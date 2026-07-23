@@ -193,6 +193,14 @@ object PreviewDiscovery {
   private const val GESTURE_HINT_PREVIEW_FQN = "ee.schimke.composeai.preview.GestureHintPreview"
   private const val LAUNCHER_WIDGET_PREVIEW_FQN =
     "ee.schimke.composeai.preview.LauncherWidgetPreview"
+  // `@OverrideVariant` — repeatable; emits one extra synthetic preview per variant with
+  // `previewOverride*` values seeded, so a state/content variant rides on the same function instead
+  // of a duplicated wrapper. Same FQN-match policy as the other annotations we own; the
+  // `.Container`
+  // FQN is the synthetic holder Kotlin generates for the repeated case. See `OverrideVariant.kt`.
+  private const val OVERRIDE_VARIANT_FQN = "ee.schimke.composeai.preview.OverrideVariant"
+  private const val OVERRIDE_VARIANT_CONTAINER_FQN =
+    "ee.schimke.composeai.preview.OverrideVariant.Container"
   // The stable FQN is shared by both Android's ui-tooling-preview and CMP's
   // `org.jetbrains.compose.components:components-ui-tooling-preview` — Kotlin
   // `expect`/`actual` collapses onto the same `androidx...` class name on
@@ -1345,6 +1353,10 @@ object PreviewDiscovery {
     val gestureHintSpec = extractGestureHintSpec(annotations)
     val launcherWidgetSpec = extractLauncherWidgetSpec(annotations)
     val launcherWidgetResizeSpec = extractLauncherWidgetResizeSpec(annotations)
+    // `@OverrideVariant` (repeatable) — each spec yields one extra synthetic preview per @Preview
+    // expansion below, rendered with its `previewOverride*` seeds applied. Applies to every
+    // expansion, the same "one annotation, applies to every preview" policy as the capture specs.
+    val overrideVariantSpecs = extractOverrideVariantSpecs(annotations)
     // @RoboComposePreviewOptions, similarly, applies to the function as a
     // whole — each timing fans out into its own manifest entry, orthogonal
     // to any multi-preview expansion.
@@ -1410,7 +1422,7 @@ object PreviewDiscovery {
 
     if (directPreviews.isNotEmpty()) {
       for (ann in directPreviews) {
-        previews.add(
+        val base =
           makePreview(
             classInfo,
             method,
@@ -1429,13 +1441,14 @@ object PreviewDiscovery {
             previewSourceFile,
             inferredTargets,
           )
-        )
+        previews.add(base)
+        for (spec in overrideVariantSpecs) previews.add(overrideVariantPreview(base, spec))
       }
       return
     }
 
     for (resolvedAnn in resolvedMultiPreviews) {
-      previews.add(
+      val base =
         makePreview(
           classInfo,
           method,
@@ -1454,7 +1467,8 @@ object PreviewDiscovery {
           previewSourceFile,
           inferredTargets,
         )
-      )
+      previews.add(base)
+      for (spec in overrideVariantSpecs) previews.add(overrideVariantPreview(base, spec))
     }
 
     // Built-in expansion of known off-classpath multi-preview annotations (issue #2613). Each
@@ -1462,7 +1476,7 @@ object PreviewDiscovery {
     // fans out the function's `@ScrollingPreview` / `@AnimatedPreview` / … captures and infers
     // targets identically.
     for (spec in builtInSpecs) {
-      previews.add(
+      val base =
         buildPreviewInfo(
           classInfo,
           method,
@@ -1479,9 +1493,104 @@ object PreviewDiscovery {
           previewSourceFile,
           inferredTargets,
         )
-      )
+      previews.add(base)
+      for (variant in overrideVariantSpecs) previews.add(overrideVariantPreview(base, variant))
     }
   }
+
+  /**
+   * Derives a synthetic override-variant preview from a rendered [base]: same function, a
+   * `_VARIANT_<name>`-suffixed id + render outputs, the [spec]'s seeds carried on
+   * [PreviewInfo.overrides] for the renderer to apply, and no data products (a state variant
+   * doesn't re-emit the heavy scroll/animation products). The unchanged `functionName` is what lets
+   * the design-catalog fold merge the variant image back under its primary sticker.
+   */
+  private fun overrideVariantPreview(base: PreviewInfo, spec: OverrideVariantSpec): PreviewInfo {
+    val tag = "_VARIANT_${spec.name}"
+    return base.copy(
+      id = base.id + tag,
+      overrides = spec,
+      captures =
+        base.captures.map { it.copy(renderOutput = insertRenderTag(it.renderOutput, tag)) },
+      dataProducts = emptyList(),
+    )
+  }
+
+  /** Inserts [tag] just before the file extension of a `renders/<stem>.<ext>` output path. */
+  private fun insertRenderTag(renderOutput: String, tag: String): String {
+    if (renderOutput.isEmpty()) return renderOutput
+    val dot = renderOutput.lastIndexOf('.')
+    val slash = renderOutput.lastIndexOf('/')
+    return if (dot > slash) renderOutput.substring(0, dot) + tag + renderOutput.substring(dot)
+    else renderOutput + tag
+  }
+
+  /**
+   * Reads `@OverrideVariant` annotations (repeatable — direct instances or the synthetic
+   * `.Container` holder Kotlin generates for the repeated case) into one [OverrideVariantSpec]
+   * each. Each per-type array entry is `"key=value"` / `"key#index=value"`; the array it lives in
+   * fixes its [OverrideSeedKind]. A variant that names no parseable seed is dropped (it would
+   * render identically to the base).
+   */
+  private fun extractOverrideVariantSpecs(
+    annotations: List<AnnotationInfo>
+  ): List<OverrideVariantSpec> {
+    val infos = mutableListOf<AnnotationInfo>()
+    for (ann in annotations) {
+      when (ann.name) {
+        OVERRIDE_VARIANT_FQN -> infos.add(ann)
+        OVERRIDE_VARIANT_CONTAINER_FQN -> {
+          when (val value = ann.parameterValues.getValue("value")) {
+            is Array<*> -> value.filterIsInstance<AnnotationInfo>().forEach { infos.add(it) }
+            is AnnotationInfo -> infos.add(value)
+            else -> {
+              val len = runCatching { java.lang.reflect.Array.getLength(value) }.getOrNull() ?: 0
+              for (i in 0 until len) {
+                (java.lang.reflect.Array.get(value, i) as? AnnotationInfo)?.let { infos.add(it) }
+              }
+            }
+          }
+        }
+      }
+    }
+    return infos.mapNotNull { info ->
+      val pv = info.parameterValues
+      val name =
+        (pv.getValue("name") as? String)?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+      val seeds =
+        readOverrideSeeds(pv.getValue("booleans"), OverrideSeedKind.BOOLEAN) +
+          readOverrideSeeds(pv.getValue("strings"), OverrideSeedKind.STRING) +
+          readOverrideSeeds(pv.getValue("ints"), OverrideSeedKind.INT) +
+          readOverrideSeeds(pv.getValue("floats"), OverrideSeedKind.FLOAT) +
+          readOverrideSeeds(pv.getValue("colors"), OverrideSeedKind.COLOR)
+      if (seeds.isEmpty()) null else OverrideVariantSpec(name = name, seeds = seeds)
+    }
+  }
+
+  /** Parses `"key=value"` / `"key#index=value"` string-array entries into typed [OverrideSeed]s. */
+  private fun readOverrideSeeds(raw: Any?, kind: OverrideSeedKind): List<OverrideSeed> =
+    readStringArray(raw).mapNotNull { entry ->
+      val eq = entry.indexOf('=')
+      if (eq <= 0) return@mapNotNull null
+      val lhs = entry.substring(0, eq).trim()
+      val value = entry.substring(eq + 1)
+      val hash = lhs.indexOf('#')
+      val key = (if (hash < 0) lhs else lhs.substring(0, hash)).trim()
+      val index = if (hash < 0) null else lhs.substring(hash + 1).trim().toIntOrNull()
+      if (key.isEmpty()) null else OverrideSeed(key = key, index = index, kind = kind, raw = value)
+    }
+
+  /** ClassGraph surfaces an `Array<String>` param as a String[]; normalise to a `List<String>`. */
+  private fun readStringArray(raw: Any?): List<String> =
+    when (raw) {
+      null -> emptyList()
+      is Array<*> -> raw.filterIsInstance<String>()
+      is String -> listOf(raw)
+      else -> {
+        val len = runCatching { java.lang.reflect.Array.getLength(raw) }.getOrNull() ?: 0
+        (0 until len).mapNotNull { java.lang.reflect.Array.get(raw, it) as? String }
+      }
+    }
 
   /**
    * Tile previews ([TILE_PREVIEW_FQN]) take a single `(context: Context)` argument supplied by the
@@ -2449,6 +2558,8 @@ object PreviewDiscovery {
       GESTURE_HINT_PREVIEW_FQN,
       LAUNCHER_WIDGET_PREVIEW_FQN,
       LAUNCHER_WIDGET_RESIZE_FQN,
+      OVERRIDE_VARIANT_FQN,
+      OVERRIDE_VARIANT_CONTAINER_FQN,
       PREVIEW_PARAMETER_FQN,
       PREVIEW_WRAPPER_FQN,
       PREVIEW_WRAPPER_CLASS_FQN,

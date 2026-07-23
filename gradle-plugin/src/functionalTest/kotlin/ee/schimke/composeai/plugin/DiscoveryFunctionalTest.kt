@@ -150,6 +150,96 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `composePreviewDiscover expands @OverrideVariant into synthetic seeded previews`() {
+    val projectDir = createCmpTestProject()
+
+    // Declare the annotation locally with the discovered FQN so the test needs no external
+    // preview-annotations artifact — discovery matches by FQN. `@Repeatable` exercises the
+    // synthetic `.Container` holder path for the two-variant case.
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "OverrideVariant.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Repeatable
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION)
+        annotation class OverrideVariant(
+            val name: String,
+            val booleans: Array<String> = [],
+            val strings: Array<String> = [],
+            val ints: Array<String> = [],
+            val floats: Array<String> = [],
+            val colors: Array<String> = [],
+        )
+        """
+          .trimIndent()
+      )
+
+    File(projectDir, "src/main/kotlin/test/Toggle.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.foundation.layout.Box
+        import androidx.compose.foundation.layout.size
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.tooling.preview.Preview
+        import androidx.compose.ui.unit.dp
+        import ee.schimke.composeai.preview.OverrideVariant
+
+        @Preview
+        @OverrideVariant(name = "off", booleans = ["checked=false"])
+        @OverrideVariant(name = "labelled", strings = ["label=Hi", "sub#1=Two"])
+        @Composable
+        fun TogglePreview() {
+            Box(modifier = Modifier.size(50.dp)) { Text("Toggle") }
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val toggles = manifest.previews.filter { it.functionName == "TogglePreview" }
+    // Base preview + one synthetic seeded preview per `@OverrideVariant`.
+    assertThat(toggles).hasSize(3)
+
+    val base = toggles.single { it.overrides == null }
+    assertThat(base.captures.single().renderOutput).doesNotContain("_VARIANT_")
+
+    val off = toggles.single { it.overrides?.name == "off" }
+    assertThat(off.id).endsWith("_VARIANT_off")
+    assertThat(off.captures.single().renderOutput).contains("_VARIANT_off")
+    assertThat(off.overrides!!.seeds)
+      .containsExactly(
+        OverrideSeed(key = "checked", index = null, kind = OverrideSeedKind.BOOLEAN, raw = "false")
+      )
+
+    // Multiple typed seeds, including an indexed knob (`sub#1` → seedKey `sub[1]`).
+    val labelled = toggles.single { it.overrides?.name == "labelled" }
+    assertThat(labelled.overrides!!.seeds)
+      .containsExactly(
+        OverrideSeed(key = "label", index = null, kind = OverrideSeedKind.STRING, raw = "Hi"),
+        OverrideSeed(key = "sub", index = 1, kind = OverrideSeedKind.STRING, raw = "Two"),
+      )
+  }
+
+  @Test
   fun `composePreviewDiscover aggregates @ColorCatalog tokens into catalog sheets`() {
     val projectDir = createCmpTestProject()
 
