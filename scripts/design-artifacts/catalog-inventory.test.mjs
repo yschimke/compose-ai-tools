@@ -92,6 +92,23 @@ test("inventoryFromPreviews ignores previews with no catalog metadata", () => {
   assert.equal(groups[0].components.length, 1);
 });
 
+test("inventoryFromPreviews (primary ++ extra-render previews): extra-only component appended, shared deduped", () => {
+  // The generator concatenates the primary bundle's previews with the
+  // `--extra-renders` supplement's before deriving the inventory, so an annotated
+  // component that lives only in the supplement still enters spec.groups, and a
+  // component in both dedupes to the primary (listed first).
+  const primary = [component("FilledButton", { componentId: "Button/Filled", group: "Buttons" })];
+  const extra = [
+    component("FilledButton", { componentId: "Button/Filled", group: "Buttons" }), // override render, same component
+    component("FocusRing", { componentId: "Button/FocusRing", group: "Buttons" }), // extra-only component
+  ];
+  const { groups } = inventoryFromPreviews([...primary, ...extra]);
+  assert.deepEqual(
+    groups[0].components.map((c) => c.componentId),
+    ["Button/Filled", "Button/FocusRing"],
+  );
+});
+
 test("inventoryFromPreviews keeps first-seen group and component order", () => {
   const { groups } = inventoryFromPreviews([
     component("A", { componentId: "A", group: "Second" }),

@@ -478,9 +478,16 @@ if (values["extra-renders"]) {
 // the annotations aren't in a released runtime) yields an empty inventory, so the
 // merge is a strict no-op and `spec.groups` is untouched: zero behaviour change
 // until a module opts in.
-const { groups: annotationGroups, orphanVariants } = inventoryFromPreviews(
-  bundle.previews,
-);
+//
+// Include the `--extra-renders` supplement's previews too: that bundle can carry an
+// annotated component the primary bundle doesn't (an Android-only render whose
+// function lives only in the supplement), and its candidate is already folded into
+// `candidates` above — so its `@CatalogComponent` must reach the inventory as well,
+// or the component would render but never enter `spec.groups`. Primary previews come
+// first, so a component present in both dedupes to the primary's annotation.
+const inventoryPreviews = [...bundle.previews, ...(extraBundle?.previews ?? [])];
+const { groups: annotationGroups, orphanVariants } =
+  inventoryFromPreviews(inventoryPreviews);
 if (orphanVariants.length > 0) {
   console.warn(
     `[${spec.system}] ${orphanVariants.length} @CatalogVariant(s) name a parent component that ` +
