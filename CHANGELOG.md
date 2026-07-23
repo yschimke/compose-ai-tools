@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.17.13](https://github.com/yschimke/compose-ai-tools/compare/v0.17.12...v0.17.13) (2026-07-23)
+
+
+### Features
+
+* **preview:** @OverrideVariant — baked override-driven preview variants ([#2678](https://github.com/yschimke/compose-ai-tools/issues/2678)) ([bfa9239](https://github.com/yschimke/compose-ai-tools/commit/bfa923979d1eca5752479c386a2ea28c4858ad58))
+* **remotecompose:** auto-capture editable named-value knob declarations ([#2677](https://github.com/yschimke/compose-ai-tools/issues/2677)) ([964271a](https://github.com/yschimke/compose-ai-tools/commit/964271a10996246ec2997828eff400c86f0c73af))
+* **remotecompose:** bridge knob declarations across the Robolectric sandbox ([#2681](https://github.com/yschimke/compose-ai-tools/issues/2681)) ([62339fc](https://github.com/yschimke/compose-ai-tools/commit/62339fcb382a4e230d7a1fa53adf559b8ecde97d))
+* **serve:** drive Remote Compose named values + profile from the live serve host ([#2674](https://github.com/yschimke/compose-ai-tools/issues/2674)) ([48df42d](https://github.com/yschimke/compose-ai-tools/commit/48df42dd507fd5384c82761ac6c82b07c9c6954b))
+
+
+### Bug Fixes
+
+* **serve:** bound the per-daemon render lock so a slow render can't starve the render queue ([#2679](https://github.com/yschimke/compose-ai-tools/issues/2679)) ([2a8f0e8](https://github.com/yschimke/compose-ai-tools/commit/2a8f0e8edb6ffc79db5f86eac4b0b2852dcb90b7))
+* **serve:** gate rolling update on readiness, not just liveness ([#2673](https://github.com/yschimke/compose-ai-tools/issues/2673)) ([9a5488b](https://github.com/yschimke/compose-ai-tools/commit/9a5488b37e9176f6e9680d41b0960a8fbb5326d3))
+* **serve:** group flat catalogs, de-dup viewer nav, styled 404, page landmarks ([#2676](https://github.com/yschimke/compose-ai-tools/issues/2676)) ([cf2bd7f](https://github.com/yschimke/compose-ai-tools/commit/cf2bd7fdf92c1cd31ad6ed93af35dd396eba3c4b))
+
+
+### Performance Improvements
+
+* **daemon:** background sandbox boot + warm renders for Android cold start ([#2682](https://github.com/yschimke/compose-ai-tools/issues/2682)) ([a7cdb23](https://github.com/yschimke/compose-ai-tools/commit/a7cdb23bb03577cfdd2c2c2883cb2c57cf6b67cb))
+
 ## [0.17.12](https://github.com/yschimke/compose-ai-tools/compare/v0.17.11...v0.17.12) (2026-07-23)
 
 
