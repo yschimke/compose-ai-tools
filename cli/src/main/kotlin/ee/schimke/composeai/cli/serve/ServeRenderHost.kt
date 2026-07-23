@@ -90,6 +90,14 @@ data class ServePreview(
    */
   val theme: String? = null,
   /**
+   * The i18n / content / a11y **variant axis** this render represents — `{"locale":"ar-XB"}`,
+   * `{"direction":"rtl"}`, `{"fontScale":"2.0"}`, `{"content":"icon+label"}`, … — or `null`/empty
+   * for the component's default render. From the catalog's `previews/variants.json`; lets the grid
+   * fold these variants onto the component's one card (like [state], rather than a tile each) and
+   * the viewer offer a variant switcher. Null keeps the current behaviour everywhere.
+   */
+  val props: Map<String, String>? = null,
+  /**
    * The top-level **section** (tab) this preview belongs to — `"Themes"`, `"Components"`,
    * `"Screens"`, `"Animations"`, … — from the catalog's `previews/variants.json`. Drives the
    * landing page's tab bar: a catalog whose previews carry sections renders tabbed, one tab per

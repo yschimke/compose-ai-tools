@@ -210,11 +210,13 @@ class ServeCatalogStore(
         // state/theme catalog (design systems) is unaffected and its manifest stays {state,theme}.
         // A catalog with neither state/theme nor a section records nothing and stays a flat grid.
         val hasSectionInfo = section != null || group != null
-        if (image.state != null || image.theme != null || hasSectionInfo) {
+        val props = image.props?.takeIf { it.isNotEmpty() }
+        if (image.state != null || image.theme != null || props != null || hasSectionInfo) {
           variants[id] =
             VariantMeta(
               state = image.state,
               theme = image.theme,
+              props = props,
               section = section,
               group = group,
               order = if (hasSectionInfo) count else null,
@@ -827,6 +829,14 @@ class ServeCatalogStore(
      * to scope the viewer's state switcher to same-theme siblings.
      */
     val theme: String? = null,
+    /**
+     * The i18n / content / a11y **variant axis** this render varies — `{"locale":"ar-XB"}`,
+     * `{"direction":"rtl"}`, `{"fontScale":"2.0"}`, `{"content":"icon+label"}`, … — or absent/empty
+     * for the component's default render. `foldVariants` re-tags each folded props variant with its
+     * axis. Carried into `previews/variants.json` so the serve grid can fold these variants onto
+     * the component's one card (like [state]) instead of showing each as its own tile.
+     */
+    val props: Map<String, String>? = null,
   )
 
   /**
@@ -845,6 +855,13 @@ class ServeCatalogStore(
   data class VariantMeta(
     val state: String? = null,
     val theme: String? = null,
+    /**
+     * The i18n / content / a11y variant axis this render varies (`{"locale":"ar-XB"}`,
+     * `{"direction":"rtl"}`, `{"fontScale":"2.0"}`, `{"content":"icon+label"}`), or absent/empty
+     * for the default render. Lets a preview host fold props variants onto the component's one card
+     * (like [state]) and offer a variant switcher. Null for a catalog that varies on neither props.
+     */
+    val props: Map<String, String>? = null,
     val section: String? = null,
     val group: String? = null,
     val order: Int? = null,

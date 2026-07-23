@@ -252,6 +252,72 @@ class ServeWebFixtureTest {
       ),
     )
 
+  // A component (Button/Filled) whose default render carries baked PROPS-axis variants — an RTL
+  // render, an ar-XB pseudo-locale, and a 2× font-scale — each in light + dark, tagged via the
+  // `props` metadata the `previews/variants.json` manifest now carries (the i18n/a11y axes the
+  // compose-m3 catalog folds via `variants`). The landing folds each component to ONE (default)
+  // card; the viewer grows a second `<nav class="cp-states" aria-label="Component variant">`
+  // switcher to the component's other same-theme variants. Captured so the visual-diff bot covers
+  // the variant fold + switcher end-to-end (the fix for the "duplicate RTL/locale tiles" the
+  // imported M3 tabs showed).
+  private val variantPreviews =
+    listOf(
+      ServePreview(
+        "button-filled__ideal__default__light",
+        "Button · Filled (light)",
+        state = "default",
+        theme = "light",
+      ),
+      ServePreview(
+        "button-filled__ideal__default__dark",
+        "Button · Filled (dark)",
+        state = "default",
+        theme = "dark",
+      ),
+      ServePreview(
+        "button-filled__ideal__default__light__direction-rtl",
+        "Button · Filled · RTL (light)",
+        state = "default",
+        theme = "light",
+        props = mapOf("direction" to "rtl"),
+      ),
+      ServePreview(
+        "button-filled__ideal__default__dark__direction-rtl",
+        "Button · Filled · RTL (dark)",
+        state = "default",
+        theme = "dark",
+        props = mapOf("direction" to "rtl"),
+      ),
+      ServePreview(
+        "button-filled__ideal__default__light__locale-ar-xb",
+        "Button · Filled · ar-XB (light)",
+        state = "default",
+        theme = "light",
+        props = mapOf("locale" to "ar-XB"),
+      ),
+      ServePreview(
+        "button-filled__ideal__default__dark__locale-ar-xb",
+        "Button · Filled · ar-XB (dark)",
+        state = "default",
+        theme = "dark",
+        props = mapOf("locale" to "ar-XB"),
+      ),
+      ServePreview(
+        "button-filled__ideal__default__light__fontscale-2.0",
+        "Button · Filled · 2× font (light)",
+        state = "default",
+        theme = "light",
+        props = mapOf("fontScale" to "2.0"),
+      ),
+      ServePreview(
+        "button-filled__ideal__default__dark__fontscale-2.0",
+        "Button · Filled · 2× font (dark)",
+        state = "default",
+        theme = "dark",
+        props = mapOf("fontScale" to "2.0"),
+      ),
+    )
+
   @Test
   fun `serve web fixtures are in sync with ServeWeb`() {
     val pagesDir = File(repoRoot(), "vscode-extension/preview-harness/fixtures/pages")
@@ -532,6 +598,31 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         siblings = statefulPreviews,
       )
+    // A catalog whose component carries baked PROPS-axis variants (RTL / pseudo-locale / large
+    // font): the landing folds the eight renders to ONE (default) card, the variants reachable via
+    // the viewer's variant switcher.
+    val landingVariants =
+      ServeWeb.landingPage(
+        "compose-m3",
+        variantPreviews,
+        token,
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+        hasHomeIndex = true,
+        version = version,
+      )
+    // The default-render viewer for that catalog: renders the `<nav aria-label="Component
+    // variant">`
+    // switcher of links to the component's other same-theme variants, the current (Default) marked
+    // active.
+    val viewerVariants =
+      ServeWeb.viewerPage(
+        variantPreviews.first(),
+        token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        siblings = variantPreviews,
+      )
 
     // The server STATUS page (GET /status): a snapshot of the running host — published catalogs +
     // their trust/liveness, the render daemons up now, the effective config, and recent daemon
@@ -645,6 +736,8 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-landing-sections.html").writeText(landingSections)
       File(pagesDir, "serve-viewer-states.html").writeText(viewerStates)
       File(pagesDir, "serve-status.html").writeText(serveStatus)
+      File(pagesDir, "serve-landing-variants.html").writeText(landingVariants)
+      File(pagesDir, "serve-viewer-variants.html").writeText(viewerVariants)
       writePlaceholderPng(File(pagesDir, "_render-placeholder.png"))
       return
     }
@@ -741,6 +834,36 @@ class ServeWebFixtureTest {
     assertTrue(
       serveStatus.contains("live · running") && serveStatus.contains("baked PNG"),
       "the catalog table distinguishes a running live catalog from a baked one",
+    )
+    assertGolden(File(pagesDir, "serve-landing-variants.html"), landingVariants)
+    assertGolden(File(pagesDir, "serve-viewer-variants.html"), viewerVariants)
+    // The variant landing folds the component's props-axis renders out: eight renders yield ONE
+    // (default) swap card, and no RTL / locale / fontscale variant is emitted as its own card.
+    assertEquals(
+      1,
+      Regex("class=\"cp-card\"").findAll(landingVariants).count(),
+      "the component folds to a single default card despite its props variants",
+    )
+    assertFalse(
+      landingVariants.contains("direction-rtl") ||
+        landingVariants.contains("locale-ar-xb") ||
+        landingVariants.contains("fontscale-2.0"),
+      "props variants are folded out of the variant landing grid",
+    )
+    // The default-render viewer renders the variant switcher, marking Default active and linking
+    // the
+    // same-theme RTL sibling, never the dark render.
+    val variantNav =
+      viewerVariants.substringAfter("aria-label=\"Component variant\"").substringBefore("</nav>")
+    assertTrue(
+      variantNav.contains("aria-current=\"page\">Default</a>") &&
+        variantNav.contains("/p/button-filled__ideal__default__light__direction-rtl") &&
+        variantNav.contains(">RTL</a>"),
+      "the viewer variant switcher marks Default active and links the same-theme RTL variant",
+    )
+    assertFalse(
+      variantNav.contains("__dark__direction-rtl"),
+      "the variant switcher stays within the current theme",
     )
     // A sectioned catalog renders a tab bar (role=tablist) with one tab per section, in authored
     // order (Themes → Components → Screens), each carrying its card count; a flat catalog shows

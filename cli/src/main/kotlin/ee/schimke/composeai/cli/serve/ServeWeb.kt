@@ -699,6 +699,17 @@ object ServeWeb {
   private fun isNonDefaultState(p: ServePreview): Boolean = p.state != null && p.state != "default"
 
   /**
+   * Whether [p] is a **non-default props variant** — an i18n / content / a11y axis render
+   * (`{"locale":"ar-XB"}`, `{"direction":"rtl"}`, `{"fontScale":"2.0"}`,
+   * `{"content":"icon+label"}`, …) the grid folds out so a component shows ONE card (its default
+   * render) instead of a card per variant, with the folded variants reachable via the viewer's
+   * [variant switcher] [variantSwitcherHtml]. Keyed off the catalog's `props` metadata (from
+   * `variants.json`), not the id: a propless preview (a plain bundle screen, or a design-system
+   * default) has empty props and is treated as default (always shown).
+   */
+  private fun hasNonDefaultProps(p: ServePreview): Boolean = !p.props.isNullOrEmpty()
+
+  /**
    * Human label for a component [state] token: the default render reads "Default"; a hyphenated
    * token like `keyboard-focus` becomes "Keyboard focus" (dashes → spaces, first letter
    * capitalised). Used for the viewer's state-switcher buttons.
@@ -768,6 +779,90 @@ object ServeWeb {
       }
     return """
       <nav class="cp-states" aria-label="Component state">
+        $links
+      </nav>
+      """
+      .trimIndent()
+  }
+
+  /** A stable signature for a preview's props axis (sorted `k=v` pairs); `""` for the default. */
+  private fun propsSignature(props: Map<String, String>?): String =
+    props?.entries?.sortedBy { it.key }?.joinToString(",") { "${it.key}=${it.value}" } ?: ""
+
+  /**
+   * Human label for a props-variant axis: "Default" for none, else a compact per-axis phrasing
+   * ("RTL", "Locale ar-XB", "Font 2.0×", "Icon+label"), falling back to `key value` for an unknown
+   * axis. Multiple axes join with " · ". Used for the viewer's variant-switcher buttons.
+   */
+  private fun propsLabel(props: Map<String, String>?): String {
+    if (props.isNullOrEmpty()) return "Default"
+    return props.entries
+      .sortedBy { it.key }
+      .joinToString(" · ") { (k, v) ->
+        when (k) {
+          "direction" -> v.uppercase()
+          "locale" -> "Locale $v"
+          "fontScale" -> "Font ${v}×"
+          "content" -> v.replaceFirstChar { it.uppercaseChar() }
+          else -> "$k $v"
+        }
+      }
+  }
+
+  /**
+   * The preview id with its trailing **props** segments removed — the key that groups a component's
+   * default render with its props-axis variants (content / locale / direction / fontScale), holding
+   * every other axis (slug, state, theme, size) fixed. The exporter appends one flattened segment
+   * per props entry to the id (`…__light__content-icon-label`, `…__compact__locale-de`), so
+   * dropping [ServePreview.props]`.size` trailing segments recovers the default render's id. The
+   * default (no props) keys to its own full id, so a propless component only ever groups with
+   * itself.
+   */
+  private fun propsFamilyKey(p: ServePreview): String {
+    val n = p.props?.size ?: 0
+    if (n == 0) return p.id
+    val parts = p.id.split("__")
+    return if (parts.size > n) parts.dropLast(n).joinToString("__") else p.id
+  }
+
+  /**
+   * The viewer's **variant switcher**: a `<nav>` of plain links from [current] to its component's
+   * baked props-axis variants (an RTL render, a pseudo-locale, a large-font render, an icon+label
+   * render) in the SAME theme and state, the default first, the current one marked
+   * `aria-current="page"`. The props analogue of [stateSwitcherHtml]: the grid folds these variants
+   * out ([hasNonDefaultProps]) so a component shows one card, and this keeps them reachable. Drawn
+   * from [all] (the host's whole preview list) by [propsFamilyKey] + theme + state so a component
+   * that also varies on state or theme doesn't cross those axes. Empty when fewer than two variants
+   * share the family — nothing to switch.
+   */
+  private fun variantSwitcherHtml(
+    current: ServePreview,
+    all: List<ServePreview>,
+    basePath: String,
+    q: String,
+  ): String {
+    val key = propsFamilyKey(current)
+    val curState = current.state ?: "default"
+    // One preview per distinct props signature, first appearance wins, restricted to the current
+    // family + theme + state so the switcher never jumps the visitor across a non-props axis.
+    val byVariant = LinkedHashMap<String, ServePreview>()
+    for (p in all) {
+      if (propsFamilyKey(p) != key) continue
+      if (p.theme != current.theme) continue
+      if ((p.state ?: "default") != curState) continue
+      byVariant.putIfAbsent(propsSignature(p.props), p)
+    }
+    if (byVariant.size < 2) return ""
+    // The default (empty props) leads; the rest keep catalog order (a stable sort preserves it).
+    val ordered = byVariant.entries.sortedBy { if (it.key == "") 0 else 1 }
+    val links =
+      ordered.joinToString("\n") { (_, p) ->
+        val href = "$basePath/p/${WebEscaping.urlEncodeSegment(p.id)}$q"
+        val active = if (p.id == current.id) " aria-current=\"page\"" else ""
+        "<a class=\"cp-state-btn\" href=\"$href\"$active>${WebEscaping.htmlEscape(propsLabel(p.props))}</a>"
+      }
+    return """
+      <nav class="cp-states" aria-label="Component variant">
         $links
       </nav>
       """
@@ -1683,11 +1778,13 @@ object ServeWeb {
     // Collapse per-theme variants into one card each so the Light/Dark control swaps a card between
     // its baked light/dark render *in place*, rather than filtering two cards. A single-theme /
     // theme-neutral card carries no swap data and the toggle leaves it alone.
-    // Fold non-default component states (unchecked/pressed/disabled/…) out of the grid first, so a
-    // component shows ONE card (its default state) instead of a card per state; the folded states
-    // stay reachable through the viewer's state switcher. Stateless previews (plain bundle screens)
-    // have no state and pass straight through.
-    val groups = groupPreviews(previews.filterNot { isNonDefaultState(it) })
+    // Fold non-default component states (unchecked/pressed/disabled/…) AND props-axis variants
+    // (locale/direction-rtl/fontScale/content) out of the grid first, so a component shows ONE card
+    // (its default render) instead of a card per state or per variant; the folded renders stay
+    // reachable through the viewer's state + variant switchers. Plain bundle screens (no state, no
+    // props) pass straight through.
+    val groups =
+      groupPreviews(previews.filterNot { isNonDefaultState(it) || hasNonDefaultProps(it) })
     fun renderSrc(p: ServePreview) = "$basePath/render/${WebEscaping.urlEncodeSegment(p.id)}.png$q"
     fun viewerHref(p: ServePreview) = "$basePath/p/${WebEscaping.urlEncodeSegment(p.id)}$q"
     fun swapCard(card: GridCard): String {
@@ -2186,11 +2283,18 @@ object ServeWeb {
     // theme).
     // Empty for a single-state component / a stateless preview, so nothing renders there.
     val stateSwitcher = stateSwitcherHtml(preview, siblings, basePath, q)
+    // The variant switcher: links to this component's props-axis variants (RTL / locale / fontScale
+    // / content) folded out of the grid, in the same theme + state. Empty when the component has no
+    // such variants, so a plain / state-only catalog is unchanged. Concatenated after the state
+    // switcher (both empty ⇒ the interpolation stays "", preserving the section-less golden).
+    val variantSwitcher = variantSwitcherHtml(preview, siblings, basePath, q)
+    val switchers =
+      listOf(stateSwitcher, variantSwitcher).filter { it.isNotBlank() }.joinToString("\n")
     val body =
       """
       <p class="cp-head"><a href="$basePath/$q">← previews</a>${trustBadge(trust)}</p>
       ${degradeBanner(degradations)}<p class="cp-sub" title="$idText">$label</p>
-      $stateSwitcher
+      $switchers
       <div class="cp-viewer-bar">
         $navToggle
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
