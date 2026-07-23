@@ -213,4 +213,47 @@ class AndroidBundleResourcesTest {
       "the opt-in must preserve the consumer Application declaration",
     )
   }
+
+  // --- daemon-package robolectric.properties (the load-bearing Application pin for Robolectric
+  // 4.16) ---
+
+  private fun daemonRobolectricProperties(configRoot: File): File =
+    File(configRoot, "ee/schimke/composeai/daemon/robolectric.properties")
+
+  @Test
+  fun `daemonClasspath pins android app Application via the daemon-package robolectric properties`() {
+    val dir = Files.createTempDirectory("abr-roboprops").toFile()
+
+    val cp =
+      AndroidBundleResources.daemonClasspath(
+        bundleWithApplicationManifest(),
+        dir,
+        "ee.schimke.meshcore.app",
+      )
+
+    // The file must live in the daemon's OWN package (that's the only robolectric.properties
+    // Robolectric merges for RobolectricHost.SandboxRunner) and pin the framework Application —
+    // the deprecated buildGlobalConfig override no longer merges over the manifest in 4.16.
+    val props = daemonRobolectricProperties(cp[0])
+    assertTrue(props.isFile, "expected daemon-package robolectric.properties under ${cp[0]}")
+    assertTrue(props.readText().contains("application=android.app.Application"), props.readText())
+  }
+
+  @Test
+  fun `daemonClasspath omits the Application pin when the daemon opts in`() {
+    val dir = Files.createTempDirectory("abr-roboprops-optin").toFile()
+
+    val cp =
+      AndroidBundleResources.daemonClasspath(
+        bundleWithApplicationManifest(),
+        dir,
+        "ee.schimke.meshcore.app",
+        useConsumerApplication = true,
+      )
+
+    // Opt-in: no `application=` line, so Robolectric falls back to the manifest Application.
+    val props = daemonRobolectricProperties(cp[0])
+    assertTrue(props.isFile, "the properties file is still written (documents the opt-in)")
+    assertTrue(!props.readText().contains("application="), props.readText())
+  }
 }
