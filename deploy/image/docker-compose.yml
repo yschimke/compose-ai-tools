@@ -77,9 +77,22 @@ services:
       # image). Empty ⇒ the CLI default (600s); set 0 to disable and serve the boot snapshot only.
       SERVE_CATALOG_REFRESH: "${SERVE_CATALOG_REFRESH:-}"
       PORT: "8080"
-    # To pin your OWN producers, mount a trust store over the baked one and keep
+    # Persist the RUNTIME download caches across image rolls. A rollout (or Watchtower
+    # recreate) replaces the container, discarding its writable layer — so without this the
+    # fresh replica cold-starts: it re-resolves every live catalog's bundle classpath
+    # (jitpack / apollo-snapshots / extra-Central jars land in `bundle-deps`) and re-fetches
+    # Google Fonts for the figma-svg export (`fonts`) on its first render. Both live under
+    # `composeAiCacheDir` = `~/.cache/composeai` (container home is /root), so a single named
+    # volume there carries them over. NB the heavy baked caches — the Robolectric
+    # `android-all` runtime and the build `~/.m2` — live in the IMAGE layer, so they already
+    # survive a roll and are deliberately NOT volume-mounted (mounting over /root/.m2 would
+    # shadow the baked content and go stale across image bumps). During a zero-downtime roll
+    # two replicas mount this volume at once; writes are content-addressed Maven-layout files,
+    # so a concurrent re-resolve is idempotent (same bytes, last-writer-wins).
+    volumes:
+      - preview_cache:/root/.cache/composeai
+    # To also pin your OWN producers, mount a trust store over the baked one and keep
     # SERVE_TRUST_STORE pointing at it:
-    # volumes:
     #   - ./producers.json:/trust/producers.json:ro
     expose:
       - "8080"
@@ -181,5 +194,9 @@ services:
       com.centurylinklabs.watchtower.enable: "true"
 
 volumes:
+  # Runtime download caches for `preview` (resolved live-bundle dep jars + fonts), kept across
+  # image rolls so a freshly-rolled replica reuses them instead of re-downloading. See the
+  # `preview` service's volumes block for why the baked android-all / ~/.m2 are excluded.
+  preview_cache:
   caddy_data:
   caddy_config:
