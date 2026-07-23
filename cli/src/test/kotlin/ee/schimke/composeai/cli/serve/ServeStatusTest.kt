@@ -147,6 +147,10 @@ class ServeStatusTest {
     assertEquals(404, get("/status.json").first)
     // With the token → 200.
     assertEquals(200, get("/status.json", token = "s3cret").first)
-    assertEquals(200, get("/status", token = "s3cret").first)
+    val (htmlCode, html) = get("/status", token = "s3cret")
+    assertEquals(200, htmlCode)
+    // The generated links keep the token so clicking them doesn't hit the intentional 404.
+    assertTrue(html.contains("href=\"/status.json?token=s3cret\""), "status.json link keeps token")
+    assertTrue(html.contains("href=\"/compose-m3/?token=s3cret\""), "catalog link keeps token")
   }
 }

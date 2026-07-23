@@ -1389,9 +1389,17 @@ object ServeWeb {
    * / liveness, which render daemons are up right now, the effective configuration, and any recent
    * daemon startup failures. The same snapshot is available as JSON at `/status.json` (or
    * `/status?format=json`) for a monitor or a Home Assistant REST sensor — this is its human face.
+   *
+   * [token] threads through the generated links exactly as the landing/home renderers do: a
+   * token-gated server ([StatusView.public] false) keeps `?token=` on the gated links
+   * (`/status.json` and each catalog `/<system>/`) so clicking them doesn't hit the intentional
+   * 404; a `--public` server drops it (the routes need none). The always-ungated `/version` /
+   * `/healthz` links stay bare either way.
    */
-  fun statusPage(view: StatusView): String {
+  fun statusPage(view: StatusView, token: String): String {
     fun esc(s: String) = WebEscaping.htmlEscape(s)
+    // Gated-link suffix: token-gated ⇒ carry the token; public ⇒ nothing (routes are open).
+    val suffix = if (view.public) "" else "?token=" + WebEscaping.urlEncodeSegment(token)
     fun stat(s: Stat) =
       "<div class=\"cp-stat\"><div class=\"cp-stat-key\">${esc(s.key)}</div>" +
         "<div class=\"cp-stat-val\">${esc(s.value)}</div></div>"
@@ -1421,7 +1429,7 @@ object ServeWeb {
             }
           val degrade = c.degradation?.let { "<div class=\"cp-muted\">${esc(it)}</div>" } ?: ""
           "<tr>" +
-            "<td><a href=\"/$idSeg/\">${esc(c.title)}</a>$listed" +
+            "<td><a href=\"/$idSeg/$suffix\">${esc(c.title)}</a>$listed" +
             "<div class=\"cp-muted\">${esc(c.id)}</div>$prov</td>" +
             "<td>${compactTrustBadge(c.trust).ifBlank { "<span class=\"cp-muted\">—</span>" }}</td>" +
             "<td>${c.previews}</td>" +
@@ -1466,7 +1474,7 @@ object ServeWeb {
           the render daemons running now, its configuration, and recent daemon startup failures. The
           same data is available as JSON for a monitor or Home Assistant sensor.</p>
         <p class="cp-about-links">
-          <a href="/status.json">/status.json</a> ·
+          <a href="/status.json$suffix">/status.json</a> ·
           <a href="/version">/version</a> ·
           <a href="/healthz">/healthz</a>
         </p>

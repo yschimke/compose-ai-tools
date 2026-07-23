@@ -541,87 +541,89 @@ class ServeWebFixtureTest {
     // failure table are captured) with fixed figures so the golden stays stable across runs.
     val serveStatus =
       ServeWeb.statusPage(
-        ServeWeb.StatusView(
-          version = version,
-          public = true,
-          overallOk = false,
-          summary =
-            listOf(
-              ServeWeb.Stat("Catalogs", "3"),
-              ServeWeb.Stat("Live daemons running", "1"),
-              ServeWeb.Stat("Active streams", "2"),
-              ServeWeb.Stat("Live seats", "3 free / 5"),
-              ServeWeb.Stat("Known sessions", "4"),
-              ServeWeb.Stat("Uptime", "3d 4h"),
-            ),
-          config =
-            listOf(
-              ServeWeb.Stat("Access", "public (open)"),
-              ServeWeb.Stat("Bind", "0.0.0.0:8080"),
-              ServeWeb.Stat("Trusted re-render", "on"),
-              ServeWeb.Stat("Trust store", "configured"),
-              ServeWeb.Stat("Catalog refresh", "600s"),
-              ServeWeb.Stat("Live seats", "5"),
-              ServeWeb.Stat("Render slots", "4"),
-              ServeWeb.Stat("Accept uploads", "off"),
-            ),
-          catalogs =
-            listOf(
-              ServeWeb.StatusCatalog(
-                id = "compose-m3",
-                title = "Compose Material 3",
-                listed = true,
-                trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
-                previews = 42,
-                live = true,
-                running = true,
-                degradation = null,
-                provenance =
-                  "yschimke/compose-ai-tools@design-artifacts/compose-m3 · 2026-07-17T09:30:00.000Z",
+        token = token,
+        view =
+          ServeWeb.StatusView(
+            version = version,
+            public = true,
+            overallOk = false,
+            summary =
+              listOf(
+                ServeWeb.Stat("Catalogs", "3"),
+                ServeWeb.Stat("Live daemons running", "1"),
+                ServeWeb.Stat("Active streams", "2"),
+                ServeWeb.Stat("Live seats", "3 free / 5"),
+                ServeWeb.Stat("Known sessions", "4"),
+                ServeWeb.Stat("Uptime", "3d 4h"),
               ),
-              ServeWeb.StatusCatalog(
-                id = "remote-m3",
-                title = "Remote Compose Material 3",
-                listed = true,
-                trust = "branch:yschimke/compose-ai-tools@design-artifacts/remote-m3",
-                previews = 6,
-                live = false,
-                running = false,
-                degradation = "this delivery branch publishes no live bundle this server can run",
-                provenance =
-                  "yschimke/compose-ai-tools@design-artifacts/remote-m3 · 2026-07-17T09:30:00.000Z",
+            config =
+              listOf(
+                ServeWeb.Stat("Access", "public (open)"),
+                ServeWeb.Stat("Bind", "0.0.0.0:8080"),
+                ServeWeb.Stat("Trusted re-render", "on"),
+                ServeWeb.Stat("Trust store", "configured"),
+                ServeWeb.Stat("Catalog refresh", "600s"),
+                ServeWeb.Stat("Live seats", "5"),
+                ServeWeb.Stat("Render slots", "4"),
+                ServeWeb.Stat("Accept uploads", "off"),
               ),
-              ServeWeb.StatusCatalog(
-                id = "cadence",
-                title = "Cadence",
-                listed = false,
-                trust = "unverified",
-                previews = 11,
-                live = true,
-                running = false,
-                degradation = null,
-                provenance = null,
+            catalogs =
+              listOf(
+                ServeWeb.StatusCatalog(
+                  id = "compose-m3",
+                  title = "Compose Material 3",
+                  listed = true,
+                  trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+                  previews = 42,
+                  live = true,
+                  running = true,
+                  degradation = null,
+                  provenance =
+                    "yschimke/compose-ai-tools@design-artifacts/compose-m3 · 2026-07-17T09:30:00.000Z",
+                ),
+                ServeWeb.StatusCatalog(
+                  id = "remote-m3",
+                  title = "Remote Compose Material 3",
+                  listed = true,
+                  trust = "branch:yschimke/compose-ai-tools@design-artifacts/remote-m3",
+                  previews = 6,
+                  live = false,
+                  running = false,
+                  degradation = "this delivery branch publishes no live bundle this server can run",
+                  provenance =
+                    "yschimke/compose-ai-tools@design-artifacts/remote-m3 · 2026-07-17T09:30:00.000Z",
+                ),
+                ServeWeb.StatusCatalog(
+                  id = "cadence",
+                  title = "Cadence",
+                  listed = false,
+                  trust = "unverified",
+                  previews = 11,
+                  live = true,
+                  running = false,
+                  degradation = null,
+                  provenance = null,
+                ),
               ),
-            ),
-          servers =
-            listOf(
-              ServeWeb.StatusServer(
-                id = "compose-m3",
-                label = "compose-m3 (live bundle)",
-                backend = "desktop",
-                activeStreams = 2,
-                upForText = "12m 5s",
-              )
-            ),
-          failures =
-            listOf(
-              ServeWeb.StatusFailure(
-                whenText = "2026-07-17 09:41 UTC",
-                session = "wear-m3",
-                reason = "daemon launch timed out after 300s",
-              )
-            ),
-        )
+            servers =
+              listOf(
+                ServeWeb.StatusServer(
+                  id = "compose-m3",
+                  label = "compose-m3 (live bundle)",
+                  backend = "desktop",
+                  activeStreams = 2,
+                  upForText = "12m 5s",
+                )
+              ),
+            failures =
+              listOf(
+                ServeWeb.StatusFailure(
+                  whenText = "2026-07-17 09:41 UTC",
+                  session = "wear-m3",
+                  reason = "daemon launch timed out after 300s",
+                )
+              ),
+          ),
       )
 
     if (update) {

@@ -497,7 +497,7 @@ class ServeHttpServer(
         ContentType.Application.Json,
       )
     } else {
-      call.respondText(ServeWeb.statusPage(data.toView()), ContentType.Text.Html)
+      call.respondText(ServeWeb.statusPage(data.toView(), token), ContentType.Text.Html)
     }
   }
 
