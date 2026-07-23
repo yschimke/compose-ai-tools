@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.17.10](https://github.com/yschimke/compose-ai-tools/compare/v0.17.9...v0.17.10) (2026-07-23)
+
+
+### Features
+
+* **design-artifacts:** add embed-deps input to the reusable export workflow ([#2662](https://github.com/yschimke/compose-ai-tools/issues/2662)) ([7e2d75e](https://github.com/yschimke/compose-ai-tools/commit/7e2d75e2eb226132ac57571187e8b50d254e03b2))
+* **serve:** add a /status page (HTML + JSON) for preview.coo.ee ([#2661](https://github.com/yschimke/compose-ai-tools/issues/2661)) ([76c3e3a](https://github.com/yschimke/compose-ai-tools/commit/76c3e3a5f3ed176bef6c3fe68b8eabff6e59dc23))
+
+
+### Bug Fixes
+
+* **serve:** fold props-axis variants onto one preview card ([#2663](https://github.com/yschimke/compose-ai-tools/issues/2663)) ([df3d066](https://github.com/yschimke/compose-ai-tools/commit/df3d066f2ac6f2ecfc4f1f9d96719e122ad5821f))
+
 ## [0.17.9](https://github.com/yschimke/compose-ai-tools/compare/v0.17.8...v0.17.9) (2026-07-23)
 
 
