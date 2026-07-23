@@ -125,4 +125,62 @@ class AndroidBundleResourcesTest {
 
     assertTrue(AndroidBundleResources.daemonClasspath(zip, dir, null).isEmpty())
   }
+
+  // --- <application android:name> sanitization (fix for the custom-Application boot crash) ---
+
+  private val androidNs = "xmlns:android=\"http://schemas.android.com/apk/res/android\""
+
+  @Test
+  fun `stripApplicationName removes a custom application name`() {
+    val xml =
+      """<manifest $androidNs package="ee.schimke.meshcore.app">
+           <application android:name=".MeshcoreApp" android:theme="@style/T"/>
+         </manifest>"""
+    val out = AndroidBundleResources.stripApplicationName(xml)
+    assertTrue(out != null, "expected a rewrite")
+    assertTrue(!out!!.contains("MeshcoreApp"), out)
+    // The theme (and every other attribute) survives — only android:name is removed.
+    assertTrue(out.contains("@style/T"), out)
+  }
+
+  @Test
+  fun `stripApplicationName returns null when there is no application name to strip`() {
+    val xml =
+      """<manifest $androidNs package="com.example">
+           <application android:theme="@style/T"/>
+         </manifest>"""
+    assertNull(AndroidBundleResources.stripApplicationName(xml))
+  }
+
+  @Test
+  fun `stripApplicationName returns null for an unparseable manifest`() {
+    assertNull(AndroidBundleResources.stripApplicationName("<manifest><application"))
+  }
+
+  @Test
+  fun `daemonClasspath points test-config at a manifest with no custom application name`() {
+    val dir = Files.createTempDirectory("abr-sanitize").toFile()
+    val manifest =
+      """<manifest $androidNs package="ee.schimke.meshcore.app">
+           <application android:name="ee.schimke.meshcore.app.MeshcoreApp"/>
+         </manifest>"""
+    val zip =
+      zipOf(
+        mapOf(
+          "android/resources.ap_" to "APK".toByteArray(),
+          "android/AndroidManifest.xml" to manifest.toByteArray(),
+        )
+      )
+
+    val cp = AndroidBundleResources.daemonClasspath(zip, dir, "ee.schimke.meshcore.app")
+
+    val props = File(cp[0], "com/android/tools/test_config.properties").readText()
+    val manifestPath =
+      props.lineSequence().first { it.startsWith("android_merged_manifest=") }.substringAfter('=')
+    val handedToRobolectric = File(manifestPath).readText()
+    assertTrue(
+      !handedToRobolectric.contains("MeshcoreApp"),
+      "the daemon manifest must not name a consumer Application: $handedToRobolectric",
+    )
+  }
 }
