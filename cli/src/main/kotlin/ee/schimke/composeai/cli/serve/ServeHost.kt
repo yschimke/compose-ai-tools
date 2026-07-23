@@ -78,6 +78,15 @@ interface ServeHost : AutoCloseable {
   fun canRenderOverridesFor(previewId: String): Boolean = canRenderOverrides
 
   /**
+   * Aggregate render-performance counters for this host's live render lane, surfaced on `/status`
+   * + `/status.json` (`runningServers[].renderStats`). Null when the host has no live render lane
+   *   to measure — a static baked bundle never renders. Daemon-backed hosts ([ServeRenderHost])
+   *   record every serve-side render round-trip; composites ([ServeCatalogLiveHost]) forward their
+   *   carried daemon's stats.
+   */
+  fun renderPerfStats(): RenderPerfSnapshot? = null
+
+  /**
    * Whether this session's daemon can actually apply the **one-handed gesture** override
    * (`overrides.gestures`) — i.e. the daemon advertises `"gestures"` in its capabilities. Only the
    * Android (Robolectric) backend does; the desktop backend behind a CMP `serve` / the published

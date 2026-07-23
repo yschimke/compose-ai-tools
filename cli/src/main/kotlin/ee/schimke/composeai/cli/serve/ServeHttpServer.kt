@@ -741,24 +741,51 @@ class ServeHttpServer(
               seatWeight = d.liveSeatWeight,
               activeStreams = d.activeStreams,
               uptimeSeconds = d.startedAt?.let { ((nowMillis - it) / 1000).coerceAtLeast(0) },
+              renderStats = d.renderStats,
             )
           },
         recentDaemonFailures = failures.map { FailureDto(it.atEpochMillis, it.session, it.reason) },
+        renderStats =
+          RenderPerfSnapshot.aggregate(
+            // A fresh daemon reports an all-zero snapshot; keep the roll-up null until something
+            // has actually rendered so a quiet server doesn't advertise a block of zeros.
+            liveDaemons
+              .mapNotNull { it.renderStats }
+              .filter { it.renders + it.cacheHits + it.busy > 0 }
+          ),
       )
 
     fun toView(): ServeWeb.StatusView {
       val seatsText =
         if (liveSeats.unbounded) "unbounded"
         else "${liveSeats.availablePermits()} free / ${liveSeats.totalPermits}"
-      val summary =
-        listOf(
-          ServeWeb.Stat("Catalogs", catalogs.size.toString()),
-          ServeWeb.Stat("Live daemons running", liveDaemons.size.toString()),
-          ServeWeb.Stat("Active streams", activeStreams.toString()),
-          ServeWeb.Stat("Live seats", seatsText),
-          ServeWeb.Stat("Known sessions", sessions.activeCount().toString()),
-          ServeWeb.Stat("Uptime", formatDuration(uptimeSeconds)),
+      val renderAgg =
+        RenderPerfSnapshot.aggregate(
+          liveDaemons
+            .mapNotNull { it.renderStats }
+            .filter { it.renders + it.cacheHits + it.busy > 0 }
         )
+      val summary = buildList {
+        add(ServeWeb.Stat("Catalogs", catalogs.size.toString()))
+        add(ServeWeb.Stat("Live daemons running", liveDaemons.size.toString()))
+        add(ServeWeb.Stat("Active streams", activeStreams.toString()))
+        add(ServeWeb.Stat("Live seats", seatsText))
+        add(ServeWeb.Stat("Known sessions", sessions.activeCount().toString()))
+        add(ServeWeb.Stat("Uptime", formatDuration(uptimeSeconds)))
+        if (renderAgg != null) {
+          // One-line human roll-up; full per-daemon detail (cold counts, p50/p95, first-render
+          // latency) is on /status.json → runningServers[].renderStats.
+          val avg = renderAgg.avgMs?.let { " · avg ${it}ms" } ?: ""
+          val worstFirst = renderAgg.firstRenderMs?.let { " · worst first ${it}ms" } ?: ""
+          add(
+            ServeWeb.Stat(
+              "Live renders",
+              "${renderAgg.ok} ok · ${renderAgg.failed} failed · " +
+                "${renderAgg.cacheHits} cached$avg$worstFirst",
+            )
+          )
+        }
+      }
       val config =
         listOf(
           ServeWeb.Stat("Access", if (isPublic) "public (open)" else "token-gated"),
@@ -1632,6 +1659,13 @@ private data class StatusResponse(
   val catalogList: List<CatalogDto>,
   val runningServers: List<RunningServerDto>,
   val recentDaemonFailures: List<FailureDto>,
+  /**
+   * Server-wide render-latency roll-up across the running live daemons (see
+   * [RenderPerfSnapshot.aggregate] — counts sum, `firstRenderMs` is the worst first render,
+   * percentiles stay per-daemon). Null when no live daemon is up or none has stats yet. Additive on
+   * `compose-preview-serve/status/v1`; per-daemon detail is on `runningServers[].renderStats`.
+   */
+  val renderStats: RenderPerfSnapshot? = null,
 )
 
 @Serializable
@@ -1702,6 +1736,12 @@ private data class RunningServerDto(
   val seatWeight: Int,
   val activeStreams: Int,
   val uptimeSeconds: Long? = null,
+  /**
+   * Serve-side render-latency counters for this daemon's live lane ([RenderPerfSnapshot]) — cold vs
+   * warm counts, first-render latency, and recent p50/p95. Null while no render has been attempted,
+   * or for hosts without a measurable live lane.
+   */
+  val renderStats: RenderPerfSnapshot? = null,
 )
 
 @Serializable

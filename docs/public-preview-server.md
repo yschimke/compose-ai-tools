@@ -406,8 +406,22 @@ form — a stable schema built for a monitor or a **Home Assistant** REST sensor
     "acceptBundles": false, "catalogRefreshSeconds": 600, "maxConcurrentRenders": 4, "liveSeats": 5 },
   "catalogList": [ { "id": "compose-m3", "listed": true, "trust": "branch:…", "previews": 42,
     "live": true, "running": false, "path": "/compose-m3/" } ],
-  "runningServers": [], "recentDaemonFailures": [] }
+  "runningServers": [ { "id": "wear-m3", "label": "wear-m3", "backend": "android", "seatWeight": 2,
+    "activeStreams": 0, "uptimeSeconds": 120,
+    "renderStats": { "renders": 12, "ok": 11, "failed": 1, "timedOut": 1, "busy": 0,
+      "cacheHits": 34, "coldRenders": 1, "firstRenderMs": 31000,
+      "minMs": 1400, "maxMs": 31000, "avgMs": 4100, "lastMs": 1900,
+      "p50Ms": 1900, "p95Ms": 6200, "windowSize": 11 } } ],
+  "recentDaemonFailures": [],
+  "renderStats": { "renders": 12, "ok": 11, "failed": 1, "…": "server-wide roll-up" } }
 ```
+
+Each running daemon carries `renderStats` — serve-side render-latency counters (cold vs warm
+counts, the first-render latency, recent p50/p95 over the last 128 renders, cache hits, busy
+backoffs, timeouts) — and the top-level `renderStats` is the roll-up across daemons
+(`firstRenderMs` there is the *worst* first render, the cold-start headline the
+background-sandbox-boot work drives down). Both are additive on `status/v1` and null/absent until
+something has rendered.
 
 A Home Assistant REST sensor reads the top-level `status` (`ok`/`degraded`) as its state and lifts
 the grouped counts + arrays as attributes, e.g.:

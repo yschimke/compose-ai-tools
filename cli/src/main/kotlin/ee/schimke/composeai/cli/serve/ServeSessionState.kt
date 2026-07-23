@@ -57,6 +57,12 @@ data class ServeSessionState(
   /** Live upstream stream count across the pooled per-preview daemons (see [perPreviewResolve]). */
   val perPreviewStreamCount: () -> Int = { 0 },
   /**
+   * Render-latency snapshots of the pooled per-preview daemons (see [perPreviewResolve]), folded
+   * into the catalog host's `/status` `renderStats` roll-up — the per-preview lane is the default
+   * render path, so without these the catalog's stats would miss most real renders.
+   */
+  val perPreviewRenderStats: () -> List<RenderPerfSnapshot> = { emptyList() },
+  /**
    * Optional reclaim hook invoked when the registry **removes** this session entirely — the
    * second-level GC of a long-idle *suspended* forked session (issue #2022), NOT ordinary
    * suspend/resume. Set by the project-mode factory ([ServeRevisionFactory]) to prune the

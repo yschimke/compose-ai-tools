@@ -648,6 +648,7 @@ class ServeCommand(args: List<String>) : Command(args) {
               baked = fallback(),
               perPreviewResolve = state.perPreviewResolve,
               perPreviewStreamCount = state.perPreviewStreamCount,
+              perPreviewRenderStats = state.perPreviewRenderStats,
             )
             // Warm the daemon off the request path so the first browse already gets the per-variant
             // SVG lane instead of the baked fallback — critical for a slow-cold-starting Android
@@ -1160,6 +1161,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           bakedFallback = bakedFallback,
           perPreviewResolve = perPreviewPool::get,
           perPreviewStreamCount = perPreviewPool::activeStreamCount,
+          perPreviewRenderStats = perPreviewPool::renderPerfStats,
         ) ?: return false
     val host = openHost(state) ?: return false
     registry.register(system, state, host = host)
