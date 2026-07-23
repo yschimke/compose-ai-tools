@@ -83,15 +83,22 @@ class AndroidBundleLaunch(
    * the platform default. The daemon uses just these — it routes previews via
    * `composeai.daemon.userClassDirs` / `previewsJsonPath`, not the render-batch props.
    */
-  fun robolectricSystemProperties(): Map<String, String> =
-    linkedMapOf(
-      "robolectric.graphicsMode" to "NATIVE",
-      "robolectric.looperMode" to "PAUSED",
-      "robolectric.conscryptMode" to "OFF",
-      "robolectric.pixelCopyRenderMode" to "hardware",
-      "roborazzi.test.record" to "true",
-      "composeai.fonts.cacheDir" to fontsCacheDir,
-    )
+  fun robolectricSystemProperties(): Map<String, String> = buildMap {
+    put("robolectric.graphicsMode", "NATIVE")
+    put("robolectric.looperMode", "PAUSED")
+    put("robolectric.conscryptMode", "OFF")
+    put("robolectric.pixelCopyRenderMode", "hardware")
+    put("roborazzi.test.record", "true")
+    put("composeai.fonts.cacheDir", fontsCacheDir)
+    // An unresolved downloadable font fails its preview by default (see `FontResolutionDiagnostics`).
+    // Forward the opt-out when this process was started with it, so a detached/serve operator can set
+    // `-Dcomposeai.fonts.failOnFallback=false` on the CLI JVM and have the child daemon honour it —
+    // otherwise a cold-cache render on the live server would fail previews with no way to downgrade
+    // to a warning. Unset ⇒ absent ⇒ the renderer's own default (fatal) applies.
+    System.getProperty("composeai.fonts.failOnFallback")?.let {
+      put("composeai.fonts.failOnFallback", it)
+    }
+  }
 
   /**
    * [robolectricSystemProperties] plus the one-shot renderer's batch I/O props: the renderer reads
