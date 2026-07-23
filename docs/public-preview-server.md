@@ -291,7 +291,8 @@ There are two ways to stand that daemon up, both fail-closed on the `Trusted` ve
    what the public server uses for `compose-m3`. A module that pulls deps from a repo **beyond
    Central + Google** (e.g. `meshcore-mobile`'s `jitpack.io` deps like `usb-serial-for-android`)
    needs those repos supplied via `--extra-maven-repos <url>[,<url>…]` (env `SERVE_EXTRA_MAVEN_REPOS`;
-   the prebuilt image defaults it to `https://jitpack.io`, `none` to disable) — otherwise the
+   the prebuilt image defaults it to the repos its baked catalogs need — `https://jitpack.io`
+   (meshcore-mobile) + the Apollo snapshots repo (Confetti); `none` to disable) — otherwise the
    resolver skips those coordinates and the daemon can't build its classpath, so the catalog falls
    back to baked PNGs (`livebundle-unavailable`). Only list repos you trust; the server fetches
    artifacts from them when resolving a trusted catalog's live bundle. Both backends are supported

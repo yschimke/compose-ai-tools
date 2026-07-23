@@ -134,10 +134,11 @@ fi
 # Google Maven. A served catalog whose module pulls deps from a non-default repo (e.g.
 # meshcore-mobile's jitpack.io deps like usb-serial-for-android) otherwise has those coordinates
 # skipped, so its live daemon can't build its classpath and the catalog falls back to baked PNGs.
-# Defaults to jitpack.io (the baked meshcore-mobile catalog needs it); override with your own comma
-# list — add a snapshot repo another catalog needs (e.g. Confetti's Apollo snapshots) — or set `none`
-# to send only Central + Google. Empty inherits this baked default.
-: "${SERVE_EXTRA_MAVEN_REPOS:=https://jitpack.io}"
+# Defaults to the repos every baked live catalog needs: jitpack.io (meshcore-mobile's
+# usb-serial-for-android etc.) and the Apollo snapshots repo (Confetti's mapped Apollo artifacts).
+# Override with your own comma list to add another catalog's repo, or set `none` to send only
+# Central + Google. Empty inherits this baked default.
+: "${SERVE_EXTRA_MAVEN_REPOS:=https://jitpack.io,https://storage.googleapis.com/apollo-snapshots/m2}"
 [[ "${SERVE_EXTRA_MAVEN_REPOS}" != "none" && -n "${SERVE_EXTRA_MAVEN_REPOS}" ]] &&
   args+=(--extra-maven-repos "${SERVE_EXTRA_MAVEN_REPOS}")
 
