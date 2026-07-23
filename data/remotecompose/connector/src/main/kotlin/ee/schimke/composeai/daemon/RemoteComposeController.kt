@@ -105,6 +105,9 @@ object RemoteComposeController {
       declarationsState.value = next
       listeners.toList().forEach { it() }
     }
+    // When a document capture is being collected ([collectingDeclarations]), also stash the
+    // declaration so the caller can re-record it on later renders (see `RemoteOverridablePreview`).
+    declarationCollector?.let { sink -> if (declaration !in sink) sink.add(declaration) }
     // Cross-classloader forward for the Android sandbox. Serialise only when the bridge is present
     // (a plain app / desktop daemon skips this entirely). Always forwarded — even when the in-CL
     // value is unchanged — so a host reset the sandbox didn't observe is repopulated.
@@ -113,6 +116,33 @@ object RemoteComposeController {
       declaration.name,
       json.encodeToString(RemoteComposeKnobDeclaration.serializer(), declaration),
     )
+  }
+
+  /** Active collection sink for [collectingDeclarations]; null when no capture is being collected. */
+  @Volatile private var declarationCollector: MutableList<RemoteComposeKnobDeclaration>? = null
+
+  /**
+   * Run [block] with declaration collection active and return its result paired with every
+   * declaration [recordDeclaration] saw during it (deduped, in first-seen order) — *in addition* to
+   * the normal recording.
+   *
+   * `RemoteOverridablePreview` wraps its memoized `captureSingleRemoteDocument` in this so it can
+   * snapshot the knobs the sticker declares while the document is captured, then re-record them on
+   * every subsequent render. That matters on the daemon path: the memoized capture only records once
+   * (during the outer *composition* phase), but `RemoteComposeOverrideExtension`'s render-start
+   * [clearDeclarations] runs from a `DisposableEffect` (the outer *apply* phase, after the capture),
+   * so without re-recording a `renderNow` / `data/fetch` render would report no knobs. Not
+   * re-entrant (one capture at a time per classloader); a nested call restores the outer sink.
+   */
+  fun <T> collectingDeclarations(block: () -> T): Pair<T, List<RemoteComposeKnobDeclaration>> {
+    val sink = mutableListOf<RemoteComposeKnobDeclaration>()
+    val previous = declarationCollector
+    declarationCollector = sink
+    return try {
+      block() to sink.toList()
+    } finally {
+      declarationCollector = previous
+    }
   }
 
   /**
