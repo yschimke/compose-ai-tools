@@ -69,6 +69,13 @@ class ServeCatalogLiveHost(
   /** Live upstream stream count across the pooled per-preview daemons (supplied by the pool). */
   private val perPreviewStreamCount: () -> Int = { 0 },
   /**
+   * Render-latency snapshots of the pooled per-preview daemons (supplied by the pool, mirroring
+   * [perPreviewStreamCount]). Folded into [renderPerfStats] — the per-preview lane is the DEFAULT
+   * render path ([liveHostFor] tries it first), so the catalog's `/status` roll-up must include it
+   * or it misses most real renders.
+   */
+  private val perPreviewRenderStats: () -> List<RenderPerfSnapshot> = { emptyList() },
+  /**
    * Serve the baked vector immediately and warm the daemon in the background rather than blocking a
    * browse on a cold (possibly minutes-long, esp. Android/Robolectric) first render — see the
    * cold-start note below. Off by default so the synchronous #2448 per-variant guarantee (and its
@@ -308,11 +315,19 @@ class ServeCatalogLiveHost(
   override fun activeStreamCount(): Int = live.activeStreamCount() + perPreviewStreamCount()
 
   /**
-   * The carried monolithic daemon's render stats. Per-preview pooled daemons keep their own
-   * (they're separate [ServeRenderHost]s owned by the pool); the monolithic lane is the one this
-   * composite routes through, so its numbers are what "this catalog's live lane" means here.
+   * This catalog's live-lane render stats: the carried monolithic daemon's counters folded together
+   * with the pooled per-preview daemons' ([perPreviewRenderStats]) — the per-preview lane is the
+   * default render path, so a monolithic-only view would sit empty while the pool does the real
+   * render work (mirrors how [activeStreamCount] adds the pool's streams).
    */
-  override fun renderPerfStats(): RenderPerfSnapshot? = live.renderPerfStats()
+  override fun renderPerfStats(): RenderPerfSnapshot? {
+    val pool = perPreviewRenderStats()
+    val monolithic = live.renderPerfStats()
+    // Aggregating a single snapshot would null its percentiles (windows don't merge), so keep the
+    // monolithic view verbatim until the pool actually has daemons to fold in.
+    if (pool.isEmpty()) return monolithic
+    return RenderPerfSnapshot.aggregate(listOfNotNull(monolithic) + pool)
+  }
 
   /**
    * Graft the daemon previews' per-preview metadata onto the baked browse surface. The daemon knows

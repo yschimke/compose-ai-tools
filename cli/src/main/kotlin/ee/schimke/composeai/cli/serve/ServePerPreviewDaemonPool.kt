@@ -77,6 +77,18 @@ class ServePerPreviewDaemonPool(
   /** Total live upstream streams across the pooled per-preview daemons. */
   fun activeStreamCount(): Int = lock.withLock { hosts.values.sumOf { it.activeStreamCount() } }
 
+  /**
+   * Render-latency snapshots of the currently-pooled per-preview daemons (see
+   * [RenderPerfSnapshot]). The per-preview lane is the DEFAULT render path for a trusted catalog,
+   * so [ServeCatalogLiveHost] folds these into its `/status` roll-up alongside the monolithic
+   * daemon's — without them the catalog's stats would sit empty while the pool does the actual
+   * render work. Snapshot-of-the-pool semantics: a reaped (LRU-evicted) daemon's history leaves
+   * with it, so the numbers describe the daemons currently alive, matching [activeStreamCount].
+   */
+  fun renderPerfStats(): List<RenderPerfSnapshot> = lock.withLock {
+    hosts.values.mapNotNull { runCatching { it.renderPerfStats() }.getOrNull() }
+  }
+
   override fun close() = lock.withLock {
     closed = true
     hosts.values.forEach { runCatching { it.close() } }
