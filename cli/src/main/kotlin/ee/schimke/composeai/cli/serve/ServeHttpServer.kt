@@ -1236,13 +1236,7 @@ class ServeHttpServer(
             .entries()
             .mapNotNull { (key, values) ->
               val value = values.firstOrNull() ?: return@mapNotNull null
-              if (
-                key in ServeOverrides.SUPPORTED_KEYS || key.startsWith(ServeOverrides.KNOB_PREFIX)
-              ) {
-                key to value
-              } else {
-                null
-              }
+              if (ServeOverrides.isOverrideParam(key)) key to value else null
             }
             .toMap()
         // Non-suspending hand-off to the socket; drop frames a slow client can't keep up with.
