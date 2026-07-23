@@ -12,6 +12,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -72,6 +73,45 @@ class CoordinateResolverTest {
       remoteRepositories = listOf(base),
       downloadCacheDir = cacheDir,
     )
+
+  @Test
+  fun `an extra repo beyond the primary ones resolves a coord the primary repos miss`() {
+    // Two loopback Maven repos ordered [primary, extra] — the exact shape ServeBundleDaemon passes
+    // as DEFAULT_REMOTE_REPOSITORIES + extraMavenRepos. The primary 404s the coordinate (Central /
+    // Google don't serve a JitPack-only dep); the extra serves it, so resolution falls through.
+    val jar = byteArrayOf(4, 2)
+    val primary = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    primary.createContext("/") { ex ->
+      ex.sendResponseHeaders(404, -1)
+      ex.close()
+    }
+    primary.start()
+    val extra = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    extra.createContext("/") { ex ->
+      ex.sendResponseHeaders(200, jar.size.toLong())
+      ex.responseBody.use { it.write(jar) }
+    }
+    extra.start()
+    try {
+      val resolver =
+        CoordinateResolver(
+          repositoryRoots = listOf(root),
+          warn = { warnings += it },
+          networkEnabled = true,
+          remoteRepositories =
+            listOf(
+              "http://127.0.0.1:${primary.address.port}",
+              "http://127.0.0.1:${extra.address.port}",
+            ),
+          downloadCacheDir = cacheDir,
+        )
+      val file = assertNotNull(resolver.resolve(maven()).file, "should resolve from the extra repo")
+      assertEquals(jar.toList(), file.readBytes().toList())
+    } finally {
+      primary.stop(0)
+      extra.stop(0)
+    }
+  }
 
   private fun maven(sha: String? = null) =
     BundleReader.ClasspathEntry.Maven(

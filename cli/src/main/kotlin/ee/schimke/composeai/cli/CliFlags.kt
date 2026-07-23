@@ -59,6 +59,7 @@ internal object CliFlags {
       "--bundles",
       "--bundle",
       "--accept-bundles-from",
+      "--extra-maven-repos",
       "--trust-store",
       "--catalogs",
       "--catalogs-unlisted",

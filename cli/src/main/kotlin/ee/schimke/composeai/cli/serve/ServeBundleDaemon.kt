@@ -95,6 +95,16 @@ internal object ServeBundleDaemon {
     system: String,
     offline: Boolean = false,
     /**
+     * Extra remote Maven repository base URLs the classpath resolver may fetch from, in addition to
+     * Maven Central + Google Maven ([CoordinateResolver.DEFAULT_REMOTE_REPOSITORIES]). A catalog
+     * whose module pulls deps from a non-default repo (e.g. `https://jitpack.io`, an
+     * Apollo/JetBrains snapshot repo) would otherwise have those coordinates skipped — leaving the
+     * live daemon's classpath incomplete, so a class that references them fails at bootstrap and
+     * the catalog silently falls back to baked PNGs. Empty by default (Central + Google only); the
+     * serve host passes its `--extra-maven-repos` / `SERVE_EXTRA_MAVEN_REPOS` list here.
+     */
+    extraMavenRepos: List<String> = emptyList(),
+    /**
      * Extra classpath directories prepended after the bundle's own `classes/` — the rehydrated
      * [BundleReader.Manifest.externalResources] pool (fonts lifted out of `classes/app.jar` by
      * `bundle externalize`, materialized at their original resource paths so
@@ -158,6 +168,9 @@ internal object ServeBundleDaemon {
       CoordinateResolver(
           warn = { onLog("catalog $system: $it") },
           networkEnabled = if (offline) false else CoordinateResolver.defaultNetworkEnabled(),
+          remoteRepositories =
+            CoordinateResolver.DEFAULT_REMOTE_REPOSITORIES +
+              extraMavenRepos.filter { it.isNotBlank() },
         )
         .resolveAll(mavenCoords)
         .mapNotNull { it.file }

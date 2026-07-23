@@ -286,9 +286,15 @@ There are two ways to stand that daemon up, both fail-closed on the `Trusted` ve
    The design-artifacts pipeline publishes the executable preview bundle (minimized module classes +
    `previews.json` + classpath manifest) onto the branch under `bundle/` and records a `liveBundle`
    in `catalog.json`. `serve` fetches that bundle like it fetches the Wasm app, resolves its
-   classpath from the local Maven/Gradle caches (or Central), and launches the render daemon
-   **straight from it** — no repo checkout, no Gradle build, no per-request compile. This is what the
-   public server uses for `compose-m3`. Both backends are supported
+   classpath from the local Maven/Gradle caches (or Central + Google Maven), and launches the render
+   daemon **straight from it** — no repo checkout, no Gradle build, no per-request compile. This is
+   what the public server uses for `compose-m3`. A module that pulls deps from a repo **beyond
+   Central + Google** (e.g. `meshcore-mobile`'s `jitpack.io` deps like `usb-serial-for-android`)
+   needs those repos supplied via `--extra-maven-repos <url>[,<url>…]` (env `SERVE_EXTRA_MAVEN_REPOS`;
+   the prebuilt image defaults it to `https://jitpack.io`, `none` to disable) — otherwise the
+   resolver skips those coordinates and the daemon can't build its classpath, so the catalog falls
+   back to baked PNGs (`livebundle-unavailable`). Only list repos you trust; the server fetches
+   artifacts from them when resolving a trusted catalog's live bundle. Both backends are supported
    ([`ServeBundleDaemon.materialize`](../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt)):
    a **desktop** bundle spawns the Skiko desktop daemon, and an **android** bundle spawns the
    Robolectric daemon **on a box that carries the Android sidecar + SDK** — the prebuilt `deploy/image`
