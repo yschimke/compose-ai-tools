@@ -236,8 +236,9 @@ internal object AndroidPreviewClasspath {
   /**
    * Static system properties (graphicsMode, looperMode, conscryptMode, pixelCopyRenderMode,
    * roborazzi.test.record, composeai.render.manifest, composeai.render.outputDir,
-   * composeai.fonts.cacheDir, composeai.fonts.offline, composeai.svg.embedFonts). Caller passes the
-   * resolved values for the path-bearing / opt-in ones; the helper returns the full map.
+   * composeai.fonts.cacheDir, composeai.fonts.offline, composeai.svg.embedFonts,
+   * composeai.fonts.failOnFallback). Caller passes the resolved values for the path-bearing /
+   * opt-in ones; the helper returns the full map.
    *
    * Note: the dynamic per-task ArgumentProviders (a11y, tier) stay inline because they need lazy
    * `Provider<>` evaluation at task execution time.
@@ -253,6 +254,7 @@ internal object AndroidPreviewClasspath {
     fontsCacheDir: String,
     fontsOffline: String,
     svgEmbedFonts: String = "true",
+    fontsFailOnFallback: String = "true",
   ): Map<String, String> =
     linkedMapOf(
       // Belt-and-braces for the graphics/looper modes. Config now
@@ -300,6 +302,13 @@ internal object AndroidPreviewClasspath {
       // the
       // daemon.
       "composeai.svg.embedFonts" to svgEmbedFonts,
+      // Whether an unresolved downloadable `Font(GoogleFont(...))` fails its preview (default) or
+      // degrades to a `<png>.warnings.json` warning. Read in the forked render / daemon JVM by
+      // `FontResolutionDiagnostics`, so it must be forwarded here — else
+      // `-Dcomposeai.fonts.failOnFallback=false` (or `-PcomposePreview.fontsFailOnFallback=false`)
+      // set on the Gradle invocation never reaches the JVM that reads it and the opt-out is
+      // unreachable.
+      "composeai.fonts.failOnFallback" to fontsFailOnFallback,
     )
 }
 
@@ -337,4 +346,20 @@ internal fun composeAiSvgEmbedFonts(project: Project): org.gradle.api.provider.P
   project.providers
     .systemProperty("composeai.svg.embedFonts")
     .orElse(project.providers.gradleProperty("composePreview.svgEmbedFonts"))
+    .orElse("true")
+
+/**
+ * The resolved value to forward as the render / daemon JVM's `composeai.fonts.failOnFallback`, so a
+ * `-Dcomposeai.fonts.failOnFallback=…` (or `-PcomposePreview.fontsFailOnFallback=…`) on the Gradle
+ * invocation reaches the forked JVM that actually reads it. Sourced from the system property first
+ * (the documented flag, matching the renderer), then the Gradle property, else `"true"` — a
+ * downloadable font that falls back to Roboto fails its preview by default; opting out (warn + keep
+ * the PNG) means passing `false` explicitly. Mirrors [composeAiSvgEmbedFonts].
+ */
+internal fun composeAiFontsFailOnFallback(
+  project: Project
+): org.gradle.api.provider.Provider<String> =
+  project.providers
+    .systemProperty("composeai.fonts.failOnFallback")
+    .orElse(project.providers.gradleProperty("composePreview.fontsFailOnFallback"))
     .orElse("true")

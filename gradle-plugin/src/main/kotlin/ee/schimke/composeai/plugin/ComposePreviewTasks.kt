@@ -639,6 +639,7 @@ internal object ComposePreviewTasks {
     val daemonFontsOffline =
       project.providers.gradleProperty("composePreview.fontsOffline").orElse("false")
     val daemonSvgEmbedFonts = composeAiSvgEmbedFonts(project)
+    val daemonFontsFailOnFallback = composeAiFontsFailOnFallback(project)
     val daemonCheapSignalFiles =
       collectDesktopCheapSignalFiles(project).joinToString(java.io.File.pathSeparator) {
         it.absolutePath
@@ -751,6 +752,7 @@ internal object ComposePreviewTasks {
       systemProperties.put("composeai.render.outputDir", rendersDirProvider)
       systemProperties.put("composeai.fonts.cacheDir", daemonFontsCacheDir)
       systemProperties.put("composeai.fonts.offline", daemonFontsOffline)
+      systemProperties.put("composeai.fonts.failOnFallback", daemonFontsFailOnFallback)
       systemProperties.put("composeai.svg.embedFonts", daemonSvgEmbedFonts)
       systemProperties.put(
         "composeai.daemon.perfettoTrace",

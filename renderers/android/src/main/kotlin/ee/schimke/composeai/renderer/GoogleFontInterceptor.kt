@@ -55,6 +55,128 @@ internal object GoogleFontCacheAccess {
 }
 
 /**
+ * Render-time surfacing for downloadable-font resolution failures.
+ *
+ * A `Font(GoogleFont(...))` that can't be resolved — offline, no cache dir, a failed download, or a
+ * family/weight Google serves no TTF for — is reported to Compose by [ShadowFontsContractCompat],
+ * which then *silently* substitutes the platform default (Roboto). That's the "my branded fonts
+ * aren't applied in screenshots" symptom: a preview that asks for Orbitron renders in Roboto with no
+ * trace in the render log to say which face fell back or why. That output is *wrong* — a branded
+ * sticker rendered in the wrong typeface — so by default the renderer treats a fallback as a
+ * **fatal** per-preview error (the render loop drops the PNG and writes the usual `.error.json`).
+ *
+ * Opt out with `-Dcomposeai.fonts.failOnFallback=false` to downgrade a fallback to a non-fatal
+ * warning: the PNG is kept and the fell-back faces are recorded in a `<png>.warnings.json` sidecar
+ * instead. Use that for a deliberately-offline render, or a catalog that genuinely tolerates the
+ * substitute face.
+ *
+ * Collection is per-preview: the render loop calls [beginPreview] before a render and [drainPreview]
+ * after, so each preview only owns the fonts *it* asked for. A one-line stderr note is emitted once
+ * per distinct `(family, weight, italic)` per process (a catalog render asks for the same face
+ * hundreds of times) — matching the daemon's other self-diagnostics, surfaced in the VS Code
+ * extension as `[daemon stderr] …`.
+ */
+internal object FontResolutionDiagnostics {
+
+  /** One downloadable face that couldn't be resolved and fell back to the platform default. */
+  data class FontFallback(
+    val family: String,
+    val weight: Int,
+    val italic: Boolean,
+    val reason: String,
+  )
+
+  private val warnedThisProcess = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+  private val currentPreview = java.util.Collections.synchronizedList(mutableListOf<FontFallback>())
+
+  /**
+   * Whether an unresolved downloadable font fails its preview (default) or degrades to a warning.
+   * Read per call so a test / daemon can flip `composeai.fonts.failOnFallback` between renders.
+   */
+  val failOnFallback: Boolean
+    get() =
+      System.getProperty("composeai.fonts.failOnFallback")?.toBooleanStrictOrNull() ?: true
+
+  /** Reset the per-preview buffer. Called by the render loop before each preview's render. */
+  fun beginPreview() {
+    synchronized(currentPreview) { currentPreview.clear() }
+  }
+
+  /** Snapshot and clear the fonts that fell back during the just-finished preview render. */
+  fun drainPreview(): List<FontFallback> =
+    synchronized(currentPreview) {
+      val snapshot = currentPreview.toList()
+      currentPreview.clear()
+      snapshot
+    }
+
+  /**
+   * Record that [key] couldn't be resolved (so text will render in the platform fallback) for
+   * [reason]. Adds it to the current preview's buffer and emits a de-duplicated stderr line.
+   */
+  fun recordFallback(key: GoogleFontKey, reason: String) {
+    val fallback = FontFallback(key.name, key.weight.weight, key.italic, reason)
+    currentPreview.add(fallback)
+    if (warnedThisProcess.add(key.fileName())) System.err.println(describe(fallback))
+  }
+
+  /**
+   * Best-effort explanation for *why* a resolution just failed, from the process's font config. The
+   * shadow doesn't get a reason back from the null [GoogleFontCacheAccess.load] result, so we infer
+   * it from the same knobs the cache reads: an unset cache dir, offline mode, else a live fetch that
+   * failed (network, or Google serves no TTF for the family/weight).
+   */
+  fun currentFailureReason(): String {
+    val cacheDir = System.getProperty("composeai.fonts.cacheDir")
+    val offline = System.getProperty("composeai.fonts.offline")?.equals("true", ignoreCase = true)
+    return when {
+      cacheDir.isNullOrBlank() -> "no font cache configured (composeai.fonts.cacheDir unset)"
+      offline == true ->
+        "offline (composeai.fonts.offline=true) and the face was not already cached"
+      else ->
+        "download from Google Fonts failed (network error, or Google serves no TTF for this " +
+          "family/weight)"
+    }
+  }
+
+  /** The human-readable line for [fallback], used for stderr and the sidecar/exception message. */
+  fun describe(fallback: FontFallback): String =
+    "ComposeAiFonts: could not resolve downloadable font \"${fallback.family}\" " +
+      "(weight=${fallback.weight}${if (fallback.italic) ", italic" else ""}) — ${fallback.reason}; " +
+      "text renders in the platform fallback (Roboto)"
+
+  /** Reset process-wide dedupe + the per-preview buffer. Tests only. */
+  internal fun resetForTest() {
+    warnedThisProcess.clear()
+    synchronized(currentPreview) { currentPreview.clear() }
+  }
+}
+
+/**
+ * Thrown by the render loop when a preview asked for one or more downloadable fonts that couldn't be
+ * resolved and `composeai.fonts.failOnFallback` is on (the default). Routes through the renderer's
+ * existing per-preview `catch (Throwable)` so the failure lands in the `.error.json` sidecar and the
+ * (wrong-typeface) PNG is dropped — the same surface a preview that threw uses.
+ */
+internal class FontFallbackException(
+  fallbacks: List<FontResolutionDiagnostics.FontFallback>
+) :
+  RuntimeException(
+    buildString {
+      append("Downloadable font(s) fell back to the platform default (Roboto), so this preview ")
+      append("would render in the wrong typeface. Warm the font cache (composeai.fonts.cacheDir) ")
+      append("or allow egress to fonts.googleapis.com + fonts.gstatic.com; set ")
+      append("-Dcomposeai.fonts.failOnFallback=false to allow the fallback as a warning instead. ")
+      append("Unresolved: ")
+      append(
+        fallbacks.joinToString("; ") {
+          "${it.family} (weight=${it.weight}${if (it.italic) ", italic" else ""}) — ${it.reason}"
+        }
+      )
+    }
+  )
+
+/**
  * Represents a single resolved Google font file keyed by family + axes. Serialised on disk as
  * `<slug>-<weight>[-italic].ttf` so the cache is human-readable under `~/.cache/composeai/fonts/`.
  */

@@ -71,6 +71,20 @@ class AndroidBundleLaunchTest {
   }
 
   @Test
+  fun `fail-on-fallback opt-out is forwarded to the daemon only when set on this process`() {
+    val prop = "composeai.fonts.failOnFallback"
+    val saved = System.getProperty(prop)
+    try {
+      System.clearProperty(prop)
+      assertTrue(!AndroidBundleLaunch().robolectricSystemProperties().containsKey(prop))
+      System.setProperty(prop, "false")
+      assertEquals("false", AndroidBundleLaunch().robolectricSystemProperties()[prop])
+    } finally {
+      if (saved == null) System.clearProperty(prop) else System.setProperty(prop, saved)
+    }
+  }
+
+  @Test
   fun `robolectric properties pin the sdk, graphics mode, stub application and font shadow`() {
     val body = AndroidBundleLaunch(sdkLevel = 34).robolectricPropertiesBody()
     val lines = body.lines()

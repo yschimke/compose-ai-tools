@@ -60,10 +60,25 @@ class ShadowFontsContractCompat {
       callback: FontsContractCompat.FontRequestCallback,
     ) {
       val key = parseFontRequestQuery(request.query)
-      val file: File? = key?.let {
-        GoogleFontCacheAccess.load(it.name, it.weight.weight, it.italic)
+      if (key == null) {
+        System.err.println(
+          "ComposeAiFonts: ignored a downloadable-font request with an unparseable query " +
+            "(${request.query}); text renders in the platform fallback (Roboto)"
+        )
+        callback.onTypefaceRequestFailed(
+          FontsContractCompat.FontRequestCallback.FAIL_REASON_FONT_NOT_FOUND
+        )
+        return
       }
+      val file: File? = GoogleFontCacheAccess.load(key.name, key.weight.weight, key.italic)
       if (file == null) {
+        // The cache couldn't produce a TTF (offline / no cache dir / failed download / no such
+        // face). Record the fallback so the render loop can fail or warn on it — text would
+        // otherwise silently render in Roboto.
+        FontResolutionDiagnostics.recordFallback(
+          key,
+          FontResolutionDiagnostics.currentFailureReason(),
+        )
         callback.onTypefaceRequestFailed(
           FontsContractCompat.FontRequestCallback.FAIL_REASON_FONT_NOT_FOUND
         )
@@ -72,6 +87,10 @@ class ShadowFontsContractCompat {
       val typeface =
         runCatching { buildTypefaceFromFile(file, key.weight.weight, key.italic) }.getOrNull()
       if (typeface == null) {
+        FontResolutionDiagnostics.recordFallback(
+          key,
+          "the cached font file could not be decoded into a Typeface (corrupt or unreadable)",
+        )
         callback.onTypefaceRequestFailed(
           FontsContractCompat.FontRequestCallback.FAIL_REASON_FONT_LOAD_ERROR
         )

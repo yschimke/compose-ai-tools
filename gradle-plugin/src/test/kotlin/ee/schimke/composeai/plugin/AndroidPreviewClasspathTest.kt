@@ -130,6 +130,34 @@ class AndroidPreviewClasspathTest {
       .containsEntry("composeai.svg.embedFonts", "true")
   }
 
+  @Test
+  fun `buildSystemProperties forwards the font fail-on-fallback flag into the render jvm`() {
+    // The render / daemon JVM reads `composeai.fonts.failOnFallback`; if this map doesn't forward
+    // it, `-Dcomposeai.fonts.failOnFallback=false` set on the Gradle invocation never reaches it
+    // and
+    // the opt-out (warn instead of fail) is unreachable — the P2 this regression-guards.
+    assertThat(
+        AndroidPreviewClasspath.buildSystemProperties(
+          manifestPath = "m.json",
+          rendersDir = "renders",
+          fontsCacheDir = "cache",
+          fontsOffline = "false",
+          fontsFailOnFallback = "false",
+        )
+      )
+      .containsEntry("composeai.fonts.failOnFallback", "false")
+    // Fatal by default when the caller doesn't override it.
+    assertThat(
+        AndroidPreviewClasspath.buildSystemProperties(
+          manifestPath = "m.json",
+          rendersDir = "renders",
+          fontsCacheDir = "cache",
+          fontsOffline = "false",
+        )
+      )
+      .containsEntry("composeai.fonts.failOnFallback", "true")
+  }
+
   private fun writeAndroidJar(file: File) {
     writeJar(file, mapOf("android/app/Application.class" to ByteArray(16)))
   }
