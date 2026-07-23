@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.17.14](https://github.com/yschimke/compose-ai-tools/compare/v0.17.13...v0.17.14) (2026-07-23)
+
+
+### Features
+
+* **catalog:** build export inventory from annotations, spec as override ([#2688](https://github.com/yschimke/compose-ai-tools/issues/2688)) ([fe59aeb](https://github.com/yschimke/compose-ai-tools/commit/fe59aebf002ea4dd174f0d817f0197853a8498b0))
+* **catalog:** source design-catalog identity from annotations ([#2680](https://github.com/yschimke/compose-ai-tools/issues/2680)) ([204a1d1](https://github.com/yschimke/compose-ai-tools/commit/204a1d1577323e8b3d1d381239d1a039ac5e9487))
+* **preview:** render @OverrideVariant everywhere + fold under parent; convert wear/m3 catalogs ([#2683](https://github.com/yschimke/compose-ai-tools/issues/2683)) ([fa7874a](https://github.com/yschimke/compose-ai-tools/commit/fa7874acf666845581a2b3a659ec43d70cfb20a8))
+* **remotecompose:** declare catalog knobs so the bundle carries them ([#2690](https://github.com/yschimke/compose-ai-tools/issues/2690)) ([6d8595b](https://github.com/yschimke/compose-ai-tools/commit/6d8595b795631edff74aa070ebfc73affbee3b8b))
+* **remotecompose:** pack declared knobs into the preview bundle sidecar ([#2686](https://github.com/yschimke/compose-ai-tools/issues/2686)) ([0073df2](https://github.com/yschimke/compose-ai-tools/commit/0073df2f8f156ec4bd7a240f6b0fedd667145c68))
+* **renderer:** fail (or warn) when a downloadable font falls back to Roboto ([#2689](https://github.com/yschimke/compose-ai-tools/issues/2689)) ([b5573c9](https://github.com/yschimke/compose-ai-tools/commit/b5573c97b9601edcbb6f51d19af56bdaef35e9f4))
+* **serve:** aggregate render-performance stats on /status + /status.json ([#2685](https://github.com/yschimke/compose-ai-tools/issues/2685)) ([5bf0ac9](https://github.com/yschimke/compose-ai-tools/commit/5bf0ac91ba37e5af0cbc02785cf0948e49cf273d))
+
+
+### Bug Fixes
+
+* **figma-svg:** raster Coil AsyncImage + derive uiMode from the manifest ([#2691](https://github.com/yschimke/compose-ai-tools/issues/2691)) ([dd2afbd](https://github.com/yschimke/compose-ai-tools/commit/dd2afbd66c62e0a5c26ff4a1604c7b1e7f419539))
+* **serve:** complete the render wait on renderFailed instead of sleeping out the budget ([#2687](https://github.com/yschimke/compose-ai-tools/issues/2687)) ([f25caec](https://github.com/yschimke/compose-ai-tools/commit/f25caecd6aecbf0ff99b67219159ebbda2d96714))
+
 ## [0.17.13](https://github.com/yschimke/compose-ai-tools/compare/v0.17.12...v0.17.13) (2026-07-23)
 
 
