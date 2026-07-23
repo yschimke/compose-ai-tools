@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 257 preview(s) across 18 module(s) · 34 error(s) · 3 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/main`. 250 preview(s) across 18 module(s) · 34 error(s) · 3 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -811,12 +811,6 @@ _No findings._
 
 _No findings._
 
-### `CheckboxUnchecked`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/CheckboxUnchecked_Dark.a11y.png" width="400" />
-
-_No findings._
-
 ### `CircularProgressSticker`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/CircularProgressSticker_Dark.png" width="400" />
@@ -907,12 +901,6 @@ _No findings._
 
 _No findings._
 
-### `FilterChipUnselected`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/FilterChipUnselected_Dark.a11y.png" width="400" />
-
-_No findings._
-
 ### `LinearProgressSticker`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/LinearProgressSticker_Dark.png" width="400" />
@@ -949,12 +937,6 @@ _No findings._
 
 _No findings._
 
-### `RadioUnselected`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/RadioUnselected_Dark.a11y.png" width="400" />
-
-_No findings._
-
 ### `SegmentedToggle`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/SegmentedToggle_Dark.a11y.png" width="400" />
@@ -976,12 +958,6 @@ _No findings._
 ### `SlottedCardSticker`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/SlottedCardSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `SwitchOff`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-m3/SwitchOff_Dark.a11y.png" width="400" />
 
 _No findings._
 
@@ -1241,12 +1217,6 @@ _No findings._
 
 _No findings._
 
-### `ButtonDisabled`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ButtonDisabled.a11y.png" width="400" />
-
-_No findings._
-
 ### `ButtonFocused`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ButtonFocused.a11y.png" width="400" />
@@ -1280,12 +1250,6 @@ _No findings._
 ### `CheckboxButtonChecked`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/CheckboxButtonChecked.a11y.png" width="400" />
-
-_No findings._
-
-### `CheckboxButtonUnchecked`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/CheckboxButtonUnchecked.a11y.png" width="400" />
 
 _No findings._
 
@@ -1370,12 +1334,6 @@ _No findings._
 ### `ScalingListSticker` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/ScalingListSticker_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `SwitchButtonOff`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-wear-m3/SwitchButtonOff.a11y.png" width="400" />
 
 _No findings._
 

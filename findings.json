@@ -1556,16 +1556,6 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "CheckboxUnchecked_Dark.a11y.png",
-      "cleanBasename": "CheckboxUnchecked_Dark.png",
-      "findings": [],
-      "functionName": "CheckboxUnchecked",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.CheckboxUnchecked_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
       "annotatedBasename": "",
       "cleanBasename": "CircularProgressSticker_Dark.png",
       "findings": [],
@@ -1716,16 +1706,6 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "FilterChipUnselected_Dark.a11y.png",
-      "cleanBasename": "FilterChipUnselected_Dark.png",
-      "findings": [],
-      "functionName": "FilterChipUnselected",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.FilterChipUnselected_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
       "annotatedBasename": "",
       "cleanBasename": "LinearProgressSticker_Dark.png",
       "findings": [],
@@ -1786,16 +1766,6 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "RadioUnselected_Dark.a11y.png",
-      "cleanBasename": "RadioUnselected_Dark.png",
-      "findings": [],
-      "functionName": "RadioUnselected",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.RadioUnselected_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
       "annotatedBasename": "SegmentedToggle_Dark.a11y.png",
       "cleanBasename": "SegmentedToggle_Dark.png",
       "findings": [],
@@ -1832,16 +1802,6 @@
       "functionName": "SlottedCardSticker",
       "module": "design-catalog-m3",
       "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SlottedCardSticker_Dark",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "SwitchOff_Dark.a11y.png",
-      "cleanBasename": "SwitchOff_Dark.png",
-      "findings": [],
-      "functionName": "SwitchOff",
-      "module": "design-catalog-m3",
-      "previewId": "com.example.designcatalogm3.CatalogPreviewsKt.SwitchOff_Dark",
       "sourceFile": "src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2366,16 +2326,6 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "ButtonDisabled.a11y.png",
-      "cleanBasename": "ButtonDisabled.png",
-      "findings": [],
-      "functionName": "ButtonDisabled",
-      "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonDisabled",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
       "annotatedBasename": "ButtonFocused.a11y.png",
       "cleanBasename": "ButtonFocused.png",
       "findings": [],
@@ -2432,16 +2382,6 @@
       "functionName": "CheckboxButtonChecked",
       "module": "design-catalog-wear-m3",
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonChecked",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "CheckboxButtonUnchecked.a11y.png",
-      "cleanBasename": "CheckboxButtonUnchecked.png",
-      "findings": [],
-      "functionName": "CheckboxButtonUnchecked",
-      "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonUnchecked",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": ""
     },
@@ -2584,16 +2524,6 @@
       "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.ScalingListSticker_Large Round",
       "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
       "variant": "wearos_large_round"
-    },
-    {
-      "annotatedBasename": "SwitchButtonOff.a11y.png",
-      "cleanBasename": "SwitchButtonOff.png",
-      "findings": [],
-      "functionName": "SwitchButtonOff",
-      "module": "design-catalog-wear-m3",
-      "previewId": "com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOff",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt",
-      "variant": ""
     },
     {
       "annotatedBasename": "SwitchButtonOn.a11y.png",
