@@ -160,22 +160,31 @@ class ServeHttpServer(
 
   /**
    * Readiness latch for `/readyz` (the rolling-update gate). Unlike `/healthz` — a static "ok" that
-   * only proves the HTTP listener is up — readiness is `true` only once a representative preview has
-   * *actually rendered* on this host, so docker-rollout won't drain traffic onto (and retire the old
-   * replica for) a new container whose render pipeline is broken or whose catalogs failed to load.
-   * Latches on the first success and stays set: the probe render is a baked, override-free snapshot
-   * for a catalog session (cheap, never wakes the daemon — see [ServeCatalogLiveHost.render]), but a
-   * plain daemon module would pay its cold render, so the poll (every ~10s) must not re-run it once
-   * proven.
+   * only proves the HTTP listener is up — readiness is `true` only once a representative preview
+   * has *actually rendered* on this host, so docker-rollout won't drain traffic onto (and retire
+   * the old replica for) a new container whose render pipeline is broken or whose catalogs failed
+   * to load. Latches on the first success and stays set: the probe render is a baked, override-free
+   * snapshot for a catalog session (cheap, never wakes the daemon — see
+   * [ServeCatalogLiveHost.render]), but a plain daemon module would pay its cold render, so it runs
+   * at most once (see [readinessProber]) and the poll only ever reads this flag.
+   *
+   * Set by the **server-owned** [readinessProber] thread, never inside a request coroutine: the
+   * `/readyz` handler must stay instant so a health checker's short command timeout (the Docker
+   * healthcheck allows 5s) can't cancel a slow first render mid-flight and discard the result — the
+   * render happens off the request path, latches here when it lands, and the next poll sees it.
    */
   private val ready = AtomicBoolean(false)
 
+  /** Starts [readinessProber] exactly once, on the first `/readyz` poll (idempotent). */
+  private val readinessProbeStarted = AtomicBoolean(false)
+
   /**
-   * Guards against overlapping readiness probes: only one render runs at a time while the latch is
-   * still cold, so a burst of `/readyz` polls (or a slow first render) can't pile up N concurrent
-   * renders. Losers report "warming" (503) until the in-flight probe latches [ready].
+   * The server-owned background thread that renders the representative preview until it succeeds,
+   * then latches [ready]. Kicked off lazily by the first `/readyz` poll (so a plain `serve` that's
+   * never health-checked pays no eager render) and interrupted on [stop]. Retries on failure so a
+   * daemon still cold-starting eventually flips ready without the request path ever blocking.
    */
-  private val readinessProbeInFlight = AtomicBoolean(false)
+  @Volatile private var readinessProber: Thread? = null
 
   /**
    * Live-seat limiter: a permit **budget** ([maxLiveSeats]) charged per session by its backend
@@ -194,8 +203,10 @@ class ServeHttpServer(
         get("/healthz") { call.respondText("ok") }
 
         // `/readyz` — ungated READINESS: "ready" only once a representative preview has actually
-        // rendered on this host (see [ready]). This is the gate docker-rollout should wait on before
-        // it drains traffic onto a new replica and retires the old one — `/healthz` going green only
+        // rendered on this host (see [ready]). This is the gate docker-rollout should wait on
+        // before
+        // it drains traffic onto a new replica and retires the old one — `/healthz` going green
+        // only
         // means the port bound, so a replica whose render pipeline is broken (dead daemon, missing
         // baked fallback, empty/failed catalog load) would pass it and get promoted into a 500-ing
         // live server. 503 ("warming") until the first render succeeds; then it latches green.
@@ -385,6 +396,7 @@ class ServeHttpServer(
 
   /** Stop with a short grace period. Idempotent enough for a shutdown hook. */
   fun stop() {
+    readinessProber?.interrupt()
     server.stop(gracePeriodMillis = 500, timeoutMillis = 2000)
   }
 
@@ -535,40 +547,61 @@ class ServeHttpServer(
   }
 
   /**
-   * `GET /readyz`: the rolling-update readiness gate. Returns `200 "ready"` once [ready] has
-   * latched — set on the first probe that renders a representative preview — and `503 "warming"`
-   * before that. Once latched it answers instantly (no render), so the ~10s healthcheck poll stays
-   * cheap even against a daemon-backed module. A single probe renders at a time ([readinessProbeInFlight]);
-   * concurrent polls short-circuit to "warming" rather than stacking renders.
+   * `GET /readyz`: the rolling-update readiness gate. Instant and non-blocking — it only reads the
+   * [ready] latch, returning `200 "ready"` once it's set and `503 "warming"` before. The render
+   * that flips the latch runs on the server-owned [readinessProber], NOT in this request coroutine,
+   * so a health checker's short command timeout (the Docker healthcheck allows 5s) can never cancel
+   * a slow first render and discard its result — the first poll just kicks the prober off and
+   * reports "warming"; a later poll sees the latched value. So the ~10s poll stays cheap even
+   * against a daemon-backed module whose cold render runs for much longer than the poll timeout.
    */
   private suspend fun RoutingContext.handleReadyz() {
     if (ready.get()) {
       call.respondText("ready")
       return
     }
-    // Upload-only server (`--accept-bundles`, no landing session): there's no representative preview
+    // Upload-only server (`--accept-bundles`, no landing session): there's no representative
+    // preview
     // to render, so "ready" means the listener is up and waiting for uploads. Latch immediately.
     if (defaultSessionId.isBlank()) {
       ready.set(true)
       call.respondText("ready")
       return
     }
-    if (!readinessProbeInFlight.compareAndSet(false, true)) {
-      call.respondText("warming", status = HttpStatusCode.ServiceUnavailable)
-      return
-    }
-    val ok =
-      try {
-        withContext(Dispatchers.IO) { probeReadiness() }
-      } finally {
-        readinessProbeInFlight.set(false)
-      }
-    if (ok) {
-      ready.set(true)
-      call.respondText("ready")
-    } else {
-      call.respondText("warming", status = HttpStatusCode.ServiceUnavailable)
-    }
+    ensureReadinessProbe()
+    call.respondText("warming", status = HttpStatusCode.ServiceUnavailable)
+  }
+
+  /**
+   * Start the server-owned readiness prober on the first `/readyz` poll (idempotent via
+   * [readinessProbeStarted]). It renders the representative preview off the request path, retrying
+   * on failure, and latches [ready] on the first success — so a client that times out mid-probe
+   * never discards the work. A daemon thread (interrupted on [stop]); it exits as soon as [ready]
+   * is set. Gated behind an actual `/readyz` hit so a plain `serve` that's never health-checked
+   * pays no eager render.
+   */
+  private fun ensureReadinessProbe() {
+    if (!readinessProbeStarted.compareAndSet(false, true)) return
+    val prober =
+      Thread(
+          {
+            while (!ready.get() && !Thread.currentThread().isInterrupted) {
+              if (probeReadiness()) {
+                ready.set(true)
+                return@Thread
+              }
+              try {
+                Thread.sleep(READINESS_PROBE_RETRY_MILLIS)
+              } catch (e: InterruptedException) {
+                return@Thread
+              }
+            }
+          },
+          "serve-readiness-probe",
+        )
+        .apply { isDaemon = true }
+    readinessProber = prober
+    prober.start()
   }
 
   /**
@@ -576,8 +609,9 @@ class ServeHttpServer(
    * successful [RenderOutcome.Ok] means the render path works end-to-end — catalogs loaded, a
    * preview exists, and the host can produce bytes (baked for a catalog session, a real daemon
    * render for a plain module). Any failure — no session, no previews, a render error, or an
-   * exception — reports not-ready so the poll retries. Runs on the IO dispatcher (the lease + render
-   * are blocking). Never throws.
+   * exception — returns false so the prober retries. Runs on the [readinessProber] thread (the
+   * lease
+   * + render are blocking). Never throws.
    */
   private fun probeReadiness(): Boolean {
     val lease = sessions.lease(defaultSessionId) ?: return false
@@ -1430,6 +1464,13 @@ class ServeHttpServer(
   companion object {
     const val TOKEN_HEADER: String = "X-Compose-Preview-Token"
     private const val DEFAULT_PORT_RANGE = 32
+
+    /**
+     * How long the readiness prober waits between failed render attempts before retrying (short, so
+     * a daemon that's still warming latches `ready` promptly once it can render). Only matters
+     * while the latch is cold; the loop exits on first success.
+     */
+    private const val READINESS_PROBE_RETRY_MILLIS = 2000L
 
     /**
      * Authorisation decision for a request: open when [isPublic], otherwise the [provided] token

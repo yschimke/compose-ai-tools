@@ -22,8 +22,8 @@ import okhttp3.Request
  * [ServeBundleHost] sessions, exercised over HTTP. Guards the two access forms — the legacy
  * `?session=` query lane and the canonical path lane (`/<system>/…`) — and, crucially, that the
  * constant top-level routes (`/healthz`, `/readyz`, `/version`) still win over the `/{system}`
- * catch-all in Ktor's route scoring (a regression here would 404 liveness/readiness checks or shadow
- * `/version`).
+ * catch-all in Ktor's route scoring (a regression here would 404 liveness/readiness checks or
+ * shadow `/version`).
  *
  * Runs public (no token) so the assertions stay about routing, not the auth gate ([ServeAuthTest]).
  */
@@ -97,6 +97,15 @@ class ServeHttpRoutingTest {
     }
   }
 
+  /** Poll `/readyz` until it latches ready (the prober renders off the request path), up to ~5s. */
+  private fun awaitReady(): Boolean {
+    repeat(50) {
+      if (get("/readyz") == 200 to "ready") return true
+      Thread.sleep(100)
+    }
+    return false
+  }
+
   @AfterTest
   fun tearDown() {
     server.stop()
@@ -112,12 +121,13 @@ class ServeHttpRoutingTest {
   }
 
   @Test
-  fun `readyz is green once the default session renders a preview`() {
-    // The default session (default-mod) carries a baked preview, so the first /readyz probe renders
-    // it successfully and latches ready — the signal docker-rollout gates the swap on. Unlike
-    // /healthz (a static "ok"), this only passes because a real render succeeded.
-    assertEquals(200 to "ready", get("/readyz"))
-    // Latched: a second poll stays green (and, on a daemon-backed host, doesn't re-render).
+  fun `readyz goes green once the default session renders a preview`() {
+    // The first poll kicks off the server-owned readiness prober; the default session (default-mod)
+    // carries a baked preview, so that render succeeds OFF the request path and latches ready — the
+    // signal docker-rollout gates the swap on. Unlike /healthz (a static "ok"), this only flips
+    // because a real render succeeded. Poll until green, exactly like a real healthcheck does.
+    assertTrue(awaitReady(), "readyz should latch ready after the default session renders")
+    // Latched: it stays green.
     assertEquals(200 to "ready", get("/readyz"))
   }
 
@@ -139,8 +149,7 @@ class ServeHttpRoutingTest {
         )
         .also { it.start() }
     try {
-      val req =
-        Request.Builder().url("http://127.0.0.1:${brokenServer.port}/readyz").build()
+      val req = Request.Builder().url("http://127.0.0.1:${brokenServer.port}/readyz").build()
       client.newCall(req).execute().use { r ->
         assertEquals(503, r.code)
         assertEquals("warming", r.body?.string())
