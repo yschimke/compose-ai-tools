@@ -452,7 +452,7 @@ internal constructor(
           } catch (e: RenderSessionException) {
             val reason = "renderNow failed: ${e.message}"
             onLog(reason)
-            perfStats.recordFailed(perfElapsedMs(), timeout = false)
+            perfStats.recordFailed(perfElapsedMs(), timeout = false, reason = reason)
             return RenderOutcome.Failed(reason)
           }
 
@@ -464,7 +464,7 @@ internal constructor(
           }
           val reason = "render rejected: ${rejected.reason}"
           onLog(reason)
-          perfStats.recordFailed(perfElapsedMs(), timeout = false)
+          perfStats.recordFailed(perfElapsedMs(), timeout = false, reason = reason)
           return RenderOutcome.Failed(reason)
         }
 
@@ -482,7 +482,7 @@ internal constructor(
           staleRenders.merge(previewId, 1, Int::plus)
           val reason = "timed out after ${budget}s waiting for render"
           onLog(reason)
-          perfStats.recordFailed(perfElapsedMs(), timeout = true)
+          perfStats.recordFailed(perfElapsedMs(), timeout = true, reason = reason)
           return RenderOutcome.Failed(reason)
         }
         // The latch also trips on `renderFailed` — the daemon reported the render body threw.
@@ -494,7 +494,7 @@ internal constructor(
         pendingFailure.get()?.let { failure ->
           val reason = "render failed: $failure"
           onLog(reason)
-          perfStats.recordFailed(perfElapsedMs(), timeout = false)
+          perfStats.recordFailed(perfElapsedMs(), timeout = false, reason = reason)
           return RenderOutcome.Failed(reason)
         }
         warmedUp.set(true)
@@ -511,7 +511,7 @@ internal constructor(
       if (bytes == null) {
         val reason = "render produced no PNG"
         onLog(reason)
-        perfStats.recordFailed(perfElapsedMs(), timeout = false)
+        perfStats.recordFailed(perfElapsedMs(), timeout = false, reason = reason)
         return RenderOutcome.Failed(reason)
       }
 
