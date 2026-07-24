@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Marks this as a Wear OS module so PreviewDiscovery sets `isWear = true`. Combined with
+         `retargetWearPreviews = false` in build.gradle.kts, this exercises the #2670 opt-out path:
+         device-less previews crop to intrinsic bounds (at wear density) instead of the 227dp
+         watch-face canvas. -->
+    <uses-feature
+        android:name="android.hardware.type.watch"
+        android:required="false" />
+</manifest>

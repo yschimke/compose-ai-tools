@@ -232,6 +232,12 @@ include(":samples:sdk-matrix")
 
 include(":samples:wear")
 
+// Wear widget/tile preview fixture for issue #2670 — a Wear module with
+// `retargetWearPreviews = false` so its device-less widget previews crop to their intrinsic
+// bounds (at wear density) for export as fixed-size drawable assets, rather than the 227dp
+// watch-face canvas.
+include(":samples:wear-widget")
+
 // Wear Compose Material 3 **design catalog** — one `@Preview` per component in its
 // primary (round size) modes, exported as a sticker sheet (see
 // `docs/design/DESIGN_CATALOGS.md` and the M3 sibling `:samples:design-catalog-m3`).

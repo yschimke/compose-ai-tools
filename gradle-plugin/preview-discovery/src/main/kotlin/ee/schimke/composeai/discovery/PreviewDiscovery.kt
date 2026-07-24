@@ -535,7 +535,8 @@ object PreviewDiscovery {
     // shell-safe, so they bypass the package-prefix stripping (they have no class/package).
     val normalized =
       retargetWearStickers(
-        input.isWear && input.retargetWearPreviews,
+        input.isWear,
+        pinWearCanvas = input.retargetWearPreviews,
         normalizeRenderOutputs(deduped),
       ) +
         discoverLottieAssets(input) +
@@ -3101,13 +3102,18 @@ object PreviewDiscovery {
    * for a device-less preview — is unchanged, so `catalog.spec.json` references and delivery
    * filenames stay stable. A no-op off Wear.
    *
-   * Callers pass `isWear = false` to opt out entirely (via the `retargetWearPreviews` extension
-   * flag, [Input.retargetWearPreviews]) — e.g. a Wear widget module whose device-less previews must
-   * crop to their intrinsic bounds for export as fixed-size drawable assets rather than occupy the
-   * watch-face canvas (#2670).
+   * [pinWearCanvas] (from the `retargetWearPreviews` extension flag, [Input.retargetWearPreviews])
+   * selects between two Wear behaviours for those device-less previews; it's a no-op off Wear:
+   * - `true` (default): pin the full 227dp watch canvas + Wear density — the sticker behaviour
+   *   above.
+   * - `false`: leave `widthDp`/`heightDp` null so the preview stays wrap-content and the renderer
+   *   crops each PNG to its intrinsic bounds, while still swapping in the Wear density (2.0x) so a
+   *   Wear widget/tile asset exported at fixed size scales to watch-density px rather than the
+   *   inherited 2.625x phone default (#2670).
    */
   internal fun retargetWearStickers(
     isWear: Boolean,
+    pinWearCanvas: Boolean = true,
     previews: List<PreviewInfo>,
   ): List<PreviewInfo> {
     if (!isWear) return previews
@@ -3117,15 +3123,27 @@ object PreviewDiscovery {
       if (
         p.kind == PreviewKind.COMPOSE && p.device == null && p.widthDp == null && p.heightDp == null
       ) {
-        // Pin the wear canvas (square 227dp) + density so fill-width components (Card) size to the
-        // wear screen and dp→px matches the render. A fixed square surface — rather than
-        // wrap-height — keeps the render and the exported figma-svg in one shared geometry, which
-        // is what makes the layered export align to the render (the alternative, wrap-height,
-        // drifts
-        // the vertical crop between the two and scores markedly worse).
-        info.copy(
-          params = p.copy(widthDp = wear.widthDp, heightDp = wear.heightDp, density = wear.density)
-        )
+        if (pinWearCanvas) {
+          // Pin the wear canvas (square 227dp) + density so fill-width components (Card) size to
+          // the wear screen and dp→px matches the render. A fixed square surface — rather than
+          // wrap-height — keeps the render and the exported figma-svg in one shared geometry, which
+          // is what makes the layered export align to the render (the alternative, wrap-height,
+          // drifts the vertical crop between the two and scores markedly worse).
+          info.copy(
+            params =
+              p.copy(widthDp = wear.widthDp, heightDp = wear.heightDp, density = wear.density)
+          )
+        } else {
+          // Opted out of the canvas pin (`retargetWearPreviews = false`): leave
+          // `widthDp`/`heightDp`
+          // null so the preview stays wrap-content and the renderer crops each PNG to its intrinsic
+          // layout bounds — needed for Wear widget/tile assets exported at fixed size (#2670).
+          // Still
+          // apply the Wear density (2.0x) rather than the inherited phone default (2.625x), so the
+          // cropped dp bounds scale to the correct watch-density px, not an oversized phone-scale
+          // export.
+          info.copy(params = p.copy(density = wear.density))
+        }
       } else {
         info
       }

@@ -68,6 +68,39 @@ class PreviewDiscoveryWearRetargetTest {
   }
 
   @Test
+  fun `on Wear with the canvas pin opted out, a device-less preview stays wrap-content at wear density`() {
+    val out =
+      PreviewDiscovery.retargetWearStickers(
+          isWear = true,
+          pinWearCanvas = false,
+          previews = listOf(preview("ImageWidget")),
+        )
+        .single()
+        .params
+
+    // Dimensions stay null → the renderer crops the PNG to the widget's intrinsic layout bounds
+    // (issue #2670) instead of pinning the 227dp watch canvas.
+    assertNull(out.widthDp)
+    assertNull(out.heightDp)
+    // Density is still swapped to the Wear default (2.0x), not the inherited phone default
+    // (2.625x), so a fixed-size Wear widget asset scales to watch-density px.
+    assertEquals(DeviceDimensions.DEFAULT_WEAR.density, out.density)
+  }
+
+  @Test
+  fun `on Wear with the canvas pin opted out, a device-pinned preview is still untouched`() {
+    val breakpoint = preview("Card_Large Round", device = "id:wearos_large_round", density = 2.0f)
+    val out =
+      PreviewDiscovery.retargetWearStickers(
+          isWear = true,
+          pinWearCanvas = false,
+          previews = listOf(breakpoint),
+        )
+        .single()
+    assertEquals(breakpoint, out)
+  }
+
+  @Test
   fun `on Wear, a device-pinned preview is left untouched`() {
     val breakpoint = preview("Card_Large Round", device = "id:wearos_large_round", density = 2.0f)
     val out =
