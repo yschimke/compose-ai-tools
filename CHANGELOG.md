@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.17.16](https://github.com/yschimke/compose-ai-tools/compare/v0.17.15...v0.17.16) (2026-07-24)
+
+
+### Features
+
+* **catalog:** drive the wear-m3 catalog inventory from annotations ([#2703](https://github.com/yschimke/compose-ai-tools/issues/2703)) ([9c0ed4b](https://github.com/yschimke/compose-ai-tools/commit/9c0ed4bf91635bf7a7ebbe60318f0576a0d9e162))
+* **deploy:** instant-roll webhook so preview.coo.ee deploys the moment an image publishes ([#2710](https://github.com/yschimke/compose-ai-tools/issues/2710)) ([ba7c182](https://github.com/yschimke/compose-ai-tools/commit/ba7c182dfc44d2241a8f9b826783efc335a61b2f))
+* **lottie:** emit the animated companion as transparent APNG, not GIF ([#2714](https://github.com/yschimke/compose-ai-tools/issues/2714)) ([d4f94d4](https://github.com/yschimke/compose-ai-tools/commit/d4f94d425650a3d7e11e454053f8e34010668a80))
+* **plugin:** render previews on a JDK matching the consumer's bytecode ([#2712](https://github.com/yschimke/compose-ai-tools/issues/2712)) ([54cc743](https://github.com/yschimke/compose-ai-tools/commit/54cc7437af12c052dc3a93b617e1dc46c67f57d1))
+* **remotecompose:** add float/dp overridable knobs + expose useful catalog knobs ([#2704](https://github.com/yschimke/compose-ai-tools/issues/2704)) ([ba2d2aa](https://github.com/yschimke/compose-ai-tools/commit/ba2d2aa34e218650bcd6c97a1ae97f3a451a93f2))
+* **serve:** per-variant figma svg, branch-linked web rasters, capped inline crops ([#2709](https://github.com/yschimke/compose-ai-tools/issues/2709)) ([6f78b03](https://github.com/yschimke/compose-ai-tools/commit/6f78b0390b43e9646ab1d0198fc8e220e06c3dea))
+* **serve:** serve captured Remote Compose docs over /render/&lt;id&gt;.rcdoc ([#2715](https://github.com/yschimke/compose-ai-tools/issues/2715)) ([41feffd](https://github.com/yschimke/compose-ai-tools/commit/41feffd6a8aa8de73cc8f49b22a9fd91a0eea249))
+* **serve:** serve the vendored Remote Compose player bundle ([#2716](https://github.com/yschimke/compose-ai-tools/issues/2716)) ([e34db63](https://github.com/yschimke/compose-ai-tools/commit/e34db632337bab100671eecca9a20dc58da69bd4))
+
+
+### Bug Fixes
+
+* **plugin:** detect jvmTarget on the KMP Android compile task ([#2713](https://github.com/yschimke/compose-ai-tools/issues/2713)) ([ed3595b](https://github.com/yschimke/compose-ai-tools/commit/ed3595b8246bda2cef9c2a668174664e2cdfdf03))
+* **renderer:** per-mode reduce motion — LONG always flattens, GIF always animates ([#2705](https://github.com/yschimke/compose-ai-tools/issues/2705)) ([2e5f89b](https://github.com/yschimke/compose-ai-tools/commit/2e5f89b25c37347fe6f6be4aa1accf93af7e7b6e))
+* **renderer:** render downloadable GoogleFonts on the daemon path (+ enforce fatal-on-fallback there) ([#2717](https://github.com/yschimke/compose-ai-tools/issues/2717)) ([d3e0983](https://github.com/yschimke/compose-ai-tools/commit/d3e09831ebee52649a6d3a05511828a1af90884e))
+
 ## [0.17.15](https://github.com/yschimke/compose-ai-tools/compare/v0.17.14...v0.17.15) (2026-07-24)
 
 
