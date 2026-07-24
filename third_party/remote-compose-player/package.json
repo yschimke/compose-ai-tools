@@ -1,0 +1,20 @@
+{
+  "name": "remote-compose-player",
+  "version": "1.0.0",
+  "description": "RemoteCompose Web Player - TypeScript port of remote-core",
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "tsc",
+    "bundle": "esbuild src/web/main.ts --bundle --outfile=web-player/bundle.js --format=iife --target=es2020 --global-name=RC",
+    "build:standalone": "bash build-standalone.sh",
+    "serve": "npx esbuild src/web/main.ts --bundle --outfile=web-player/bundle.js --format=iife --target=es2020 --global-name=RC --servedir=web-player"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.3",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "canvas": "^3.2.1"
+  }
+}
