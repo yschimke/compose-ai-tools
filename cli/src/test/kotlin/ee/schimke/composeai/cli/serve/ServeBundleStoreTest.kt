@@ -117,6 +117,9 @@ class ServeBundleStoreTest {
     assertTrue(doc.contentEquals(host.remoteComposeDoc("com.example.Red")))
     // A preview with no `ir/<id>.rc` sidecar has no client-side document.
     assertEquals(null, host.remoteComposeDoc("com.example.Missing"))
+    // The cheap existence check (which gates the viewer's canvas lane) agrees with the byte read.
+    assertTrue(host.hasRemoteComposeDoc("com.example.Red"))
+    assertEquals(false, host.hasRemoteComposeDoc("com.example.Missing"))
   }
 
   @Test

@@ -1216,6 +1216,10 @@ class ServeHttpServer(
           hasSvgExport = renderHost.hasSvgExportFor(preview.id),
           hasLiveStream = renderHost.hasLiveStream,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
+          // Per-preview: offer the in-browser Remote Compose canvas lane only when this preview
+          // carries a captured `.rc` document to replay (the browser fetches it from
+          // `/render/<id>.rc`).
+          hasRemoteComposeDoc = renderHost.hasRemoteComposeDoc(preview.id),
           wasmSrc = wasmSrc,
           wasmSameOrigin = wasmSameOrigin,
           basePath = basePath,

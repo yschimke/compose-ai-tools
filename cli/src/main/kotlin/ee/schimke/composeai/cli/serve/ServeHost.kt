@@ -141,6 +141,15 @@ interface ServeHost : AutoCloseable {
   fun remoteComposeDoc(previewId: String): ByteArray? = null
 
   /**
+   * Whether [previewId] carries a captured Remote Compose document ([remoteComposeDoc]) the viewer
+   * can render client-side in its `<canvas>` lane. Drives whether the viewer offers the "RC
+   * (browser)" toggle and its live-in-browser knob controls for this preview. Defaults to reading
+   * [remoteComposeDoc]; a bundle host overrides it with a cheap existence check so the per-preview
+   * page render doesn't read the whole doc just to know it's there.
+   */
+  fun hasRemoteComposeDoc(previewId: String): Boolean = remoteComposeDoc(previewId) != null
+
+  /**
    * Render [previewId] at [overrides] and return its figma-svg export, or [SvgOutcome.NotFound]
    * when this host can't produce SVG. Defaults to `NotFound`: only the daemon-backed
    * [ServeRenderHost] overrides this — a static [ServeBundleHost] has no daemon to export one.

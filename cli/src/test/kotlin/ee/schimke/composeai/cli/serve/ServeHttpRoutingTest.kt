@@ -269,6 +269,33 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `the viewer offers the in-browser canvas lane when a preview carries an rc document`() {
+    // compose-m3's preview has an `ir/<id>.rc` sidecar, so its viewer page advertises the RC canvas
+    // lane: the flag the transport JS keys on, the canvas, the mode radio, and the toggle button.
+    val (code, html) = get("/compose-m3/p/$previewId")
+    assertEquals(200, code)
+    assertTrue(html.contains("data-has-rc-doc=\"1\""), "viewer flags the rc document: $html")
+    assertTrue(html.contains("id=\"cp-rc-canvas\""), "rc canvas element present")
+    assertTrue(html.contains("id=\"cp-rc-btn\""), "rc toggle button present")
+    assertTrue(html.contains("value=\"rc\""), "rc mode radio present")
+    // The client-side lane JS loads the player and applies knob edits without a daemon round-trip.
+    assertTrue(html.contains("/rc-player/bundle.js"), "the lane loads the player bundle")
+    assertTrue(html.contains("RcdPlayer"), "the lane creates the Rc player")
+    assertTrue(html.contains("setNamedFloatOverride"), "rc knob edits apply client-side")
+  }
+
+  @Test
+  fun `the viewer omits the canvas lane when the preview has no rc document`() {
+    // default-mod carries no `.rc` document, so the RC canvas lane's HTML (flag, canvas, toggle) is
+    // absent and its Remote Compose knobs stay on the daemon path.
+    val (code, html) = get("/p/$previewId?session=default-mod")
+    assertEquals(200, code)
+    assertTrue(!html.contains("data-has-rc-doc"), "no rc-doc flag on a docless preview: $html")
+    assertTrue(!html.contains("id=\"cp-rc-canvas\""), "no rc canvas on a docless preview")
+    assertTrue(!html.contains("id=\"cp-rc-btn\""), "no rc toggle on a docless preview")
+  }
+
+  @Test
   fun `the rc player bundle is served as javascript with a conditional-request etag`() {
     // The vendored Remote Compose player rides in the CLI jar and is served over
     // `/rc-player/bundle.js` (a constant segment, session-independent) so the viewer's client-side
