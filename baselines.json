@@ -2356,7 +2356,7 @@
     "functionName": "IconRemote",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "IconRemote.png",
-    "sha256": "3b291080599f3d3742eb42498da414ba0523ab4bc0d08081532659ec2cddd494",
+    "sha256": "1aa20a20a95b3d927989a6c8a6aeaa577a3f06deedfa27580adc5a95aad5afa2",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.IconRemoteButton": {
