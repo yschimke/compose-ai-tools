@@ -290,7 +290,12 @@ class ServeHttpRoutingTest {
     // absent and its Remote Compose knobs stay on the daemon path.
     val (code, html) = get("/p/$previewId?session=default-mod")
     assertEquals(200, code)
-    assertTrue(!html.contains("data-has-rc-doc"), "no rc-doc flag on a docless preview: $html")
+    // The transport JS always *reads* `data-has-rc-doc`, so assert the attribute form (`="1"`) is
+    // absent rather than the bare name, plus the lane's HTML elements.
+    assertTrue(
+      !html.contains("data-has-rc-doc=\"1\""),
+      "no rc-doc flag on a docless preview: $html",
+    )
     assertTrue(!html.contains("id=\"cp-rc-canvas\""), "no rc canvas on a docless preview")
     assertTrue(!html.contains("id=\"cp-rc-btn\""), "no rc toggle on a docless preview")
   }

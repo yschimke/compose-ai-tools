@@ -1438,7 +1438,7 @@ class ServeWebFixtureTest {
     // disables them on the wasm lane rather than leaving dead-but-enabled knobs.
     assertTrue(
       both.contains("var onWasm = wasmActive();") &&
-        both.contains("!onWasm && (!staticSnapshot || canRenderOverrides"),
+        both.contains("!onWasm && !onRc && (!staticSnapshot || canRenderOverrides"),
       "server-only controls are gated off while the Wasm lane is active",
     )
     assertTrue(

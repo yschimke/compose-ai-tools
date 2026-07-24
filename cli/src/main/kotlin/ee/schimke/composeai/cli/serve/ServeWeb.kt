@@ -3413,7 +3413,12 @@ object ServeWeb {
               var n = parseInt(val, 10);
               if (!isNaN(n) && rcCtx.setNamedIntegerOverride) rcCtx.setNamedIntegerOverride(qn, n);
             } else if (kind === "bool" || kind === "boolean") {
-              if (rcCtx.setNamedBooleanOverride) rcCtx.setNamedBooleanOverride(qn, val === "true");
+              // The player's setNamedBooleanOverride only records the value — it doesn't touch the
+              // render state — so route booleans through the integer setter as 1/0, matching the
+              // daemon's BooleanValue → user-local-integer mapping.
+              if (rcCtx.setNamedIntegerOverride) {
+                rcCtx.setNamedIntegerOverride(qn, val === "true" ? 1 : 0);
+              }
             } else if (rcCtx.setNamedStringOverride) {
               rcCtx.setNamedStringOverride(qn, val);
             }
@@ -3434,15 +3439,18 @@ object ServeWeb {
             .then(function (r) { if (!r.ok) throw new Error("doc " + r.status); return r.arrayBuffer(); })
             .then(function (buf) {
               if (!rcActive()) return null;
+              // Size the canvas to the preview's real pixel dimensions BEFORE loading: the player
+              // derives the document viewport from the canvas's current size at load time, and a
+              // resize afterwards can't recover it. The baked snapshot <img> carries those
+              // dimensions (rendered at the same density), so a non-default-shaped preview fills
+              // the canvas instead of being letterboxed into the 300×150 default.
+              var w = img.naturalWidth || 0, h = img.naturalHeight || 0;
+              if (w > 0 && h > 0) { rcCanvasEl.width = w; rcCanvasEl.height = h; }
               if (!rcPlayer) rcPlayer = new window.RC.RcdPlayer(rcCanvasEl);
               return rcPlayer.loadFromArrayBuffer(buf);
             })
-            .then(function (doc) {
+            .then(function () {
               if (!rcActive()) return;
-              if (doc && doc.getWidth && doc.getHeight) {
-                var w = doc.getWidth(), h = doc.getHeight();
-                if (w > 0 && h > 0) { rcCanvasEl.width = w; rcCanvasEl.height = h; }
-              }
               rcCtx = rcPlayer.getRemoteContext ? rcPlayer.getRemoteContext() : null;
               applyRcOverrides();
               if (rcPlayer.repaint) rcPlayer.repaint();

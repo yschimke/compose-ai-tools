@@ -444,6 +444,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
             </button>
             
             
+            
             <span class="cp-mode-hint" id="cp-mode-hint"></span>
             <!-- The mode radios the transport JS drives; visually removed (the toggle above is the
                  only visible mode control). png = static snapshot, live = daemon stream, wasm =
@@ -451,6 +452,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
             <span class="cp-modes-inputs" aria-hidden="true">
               <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
               <input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1" disabled>
+              
               
             </span>
           </div>
@@ -1442,6 +1444,150 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   }
   function wasmActive() { return wasmToggle && wasmToggle.checked; }
 
+  // ---- In-browser Remote Compose canvas lane ----------------------------------------------
+  // When this preview carries a captured `.rc` document, the "RC (browser)" toggle paints it with
+  // the vendored player (RC.RcdPlayer) into #cp-rc-canvas — no daemon — and Remote Compose knob
+  // edits apply live via setNamed*Override + repaint (onRcKnobChanged) instead of a /render
+  // round-trip. Opt-in like Live / Wasm, so the default PNG snapshot is untouched.
+  var rcCanvasEl = document.getElementById("cp-rc-canvas");
+  var rcToggle = document.getElementById("cp-rc-toggle");
+  var hasRcDoc = root.getAttribute("data-has-rc-doc") === "1";
+  var rcBtn = document.getElementById("cp-rc-btn");
+  var rcPlayer = null; // the RC.RcdPlayer instance (created lazily on first open)
+  var rcCtx = null; // its WebRemoteContext, for named-value overrides
+  var rcReady = false; // a first frame is painted and the canvas revealed
+  var rcScriptState = 0; // 0 = not loaded, 1 = loading, 2 = ready
+  var rcScriptWaiters = [];
+  function rcAvailable() { return !!(hasRcDoc && rcCanvasEl); }
+  function rcActive() { return !!(rcToggle && rcToggle.checked); }
+  // Lazy-load the shared player bundle once (a constant, session-independent path); queue callers
+  // while it loads so a fast re-open can't inject the script twice.
+  function ensureRcScript(cb) {
+    if (rcScriptState === 2 || window.RC) { rcScriptState = 2; cb(true); return; }
+    rcScriptWaiters.push(cb);
+    if (rcScriptState === 1) return;
+    rcScriptState = 1;
+    var s = document.createElement("script");
+    s.src = "/rc-player/bundle.js";
+    s.onload = function () {
+      rcScriptState = 2;
+      var ws = rcScriptWaiters; rcScriptWaiters = [];
+      ws.forEach(function (f) { f(true); });
+    };
+    s.onerror = function () {
+      rcScriptState = 0;
+      var ws = rcScriptWaiters; rcScriptWaiters = [];
+      ws.forEach(function (f) { f(false); });
+    };
+    document.head.appendChild(s);
+  }
+  // The `.rc` document URL — the same `base` + token/session as the snapshot, but no override qs
+  // (the lane serves the document verbatim; knob edits apply client-side).
+  function rcDocUrl() {
+    var parts = [];
+    if (token) parts.push("token=" + encodeURIComponent(token));
+    if (session) parts.push("session=" + encodeURIComponent(session));
+    var qs = parts.join("&");
+    return base + "/render/" + encodeURIComponent(previewId) + ".rc" + (qs ? "?" + qs : "");
+  }
+  // Parse #RRGGBB / #AARRGGBB (optionally %23-escaped) into a 0xAARRGGBB int (opaque when no alpha).
+  function parseRcColor(v) {
+    if (!v) return null;
+    var h = v.replace(/^%23/, "").replace(/^#/, "");
+    if (h.length === 6) h = "FF" + h;
+    if (h.length !== 8) return null;
+    var n = parseInt(h, 16);
+    return isNaN(n) ? null : (n >>> 0);
+  }
+  // Push every Remote Compose knob's current value onto the player's context, then repaint. Names
+  // are USER:-domain-qualified (the connector registers author knobs under USER:), matching the
+  // document's named variables; kinds mirror query()'s rc.<name>=<kind>:<value> typing.
+  function applyRcOverrides() {
+    if (!rcCtx) return;
+    document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
+      var name = el.getAttribute("data-rc-name");
+      if (!name) return;
+      var qn = "USER:" + name;
+      var kind = el.getAttribute("data-rc-kind") || "string";
+      var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
+      try {
+        if (kind === "color") {
+          var argb = parseRcColor(val);
+          if (argb !== null && rcCtx.setNamedColorOverride) rcCtx.setNamedColorOverride(qn, argb);
+        } else if (kind === "float" || kind === "dp") {
+          var f = parseFloat(val);
+          if (!isNaN(f) && rcCtx.setNamedFloatOverride) rcCtx.setNamedFloatOverride(qn, f);
+        } else if (kind === "int" || kind === "integer") {
+          var n = parseInt(val, 10);
+          if (!isNaN(n) && rcCtx.setNamedIntegerOverride) rcCtx.setNamedIntegerOverride(qn, n);
+        } else if (kind === "bool" || kind === "boolean") {
+          // The player's setNamedBooleanOverride only records the value — it doesn't touch the
+          // render state — so route booleans through the integer setter as 1/0, matching the
+          // daemon's BooleanValue → user-local-integer mapping.
+          if (rcCtx.setNamedIntegerOverride) {
+            rcCtx.setNamedIntegerOverride(qn, val === "true" ? 1 : 0);
+          }
+        } else if (rcCtx.setNamedStringOverride) {
+          rcCtx.setNamedStringOverride(qn, val);
+        }
+      } catch (e) { /* a knob the document doesn't declare is a harmless no-op */ }
+    });
+    if (rcPlayer && rcPlayer.repaint) rcPlayer.repaint();
+  }
+  function openRc() {
+    if (!rcAvailable()) return;
+    root.setAttribute("data-mode", "rc");
+    canvas.hidden = true;
+    rcReady = false;
+    status.textContent = "loading RC player…";
+    ensureRcScript(function (ok) {
+      if (!ok || !window.RC) { showModeError("The Remote Compose player failed to load."); return; }
+      if (!rcActive()) return; // toggled away while the script loaded
+      fetch(rcDocUrl())
+        .then(function (r) { if (!r.ok) throw new Error("doc " + r.status); return r.arrayBuffer(); })
+        .then(function (buf) {
+          if (!rcActive()) return null;
+          // Size the canvas to the preview's real pixel dimensions BEFORE loading: the player
+          // derives the document viewport from the canvas's current size at load time, and a
+          // resize afterwards can't recover it. The baked snapshot <img> carries those
+          // dimensions (rendered at the same density), so a non-default-shaped preview fills
+          // the canvas instead of being letterboxed into the 300×150 default.
+          var w = img.naturalWidth || 0, h = img.naturalHeight || 0;
+          if (w > 0 && h > 0) { rcCanvasEl.width = w; rcCanvasEl.height = h; }
+          if (!rcPlayer) rcPlayer = new window.RC.RcdPlayer(rcCanvasEl);
+          return rcPlayer.loadFromArrayBuffer(buf);
+        })
+        .then(function () {
+          if (!rcActive()) return;
+          rcCtx = rcPlayer.getRemoteContext ? rcPlayer.getRemoteContext() : null;
+          applyRcOverrides();
+          if (rcPlayer.repaint) rcPlayer.repaint();
+          revealRc();
+        })
+        .catch(function () { showModeError("Rendering the Remote Compose document failed."); });
+    });
+  }
+  // Swap the stage from the snapshot to the painted canvas. The snapshot is removed from flow
+  // (display:none) so the stage takes the document's own size rather than stacking both.
+  function revealRc() {
+    if (!rcActive() || rcReady) return;
+    rcReady = true;
+    clearModeError();
+    rcCanvasEl.hidden = false;
+    img.style.display = "none";
+    if (rcBtn) rcBtn.setAttribute("aria-pressed", "true");
+    status.textContent = "";
+  }
+  function closeRc() {
+    if (!rcCanvasEl) return;
+    root.setAttribute("data-mode", "snapshot");
+    rcReady = false;
+    rcCanvasEl.hidden = true;
+    img.style.removeProperty("display");
+    img.hidden = false;
+    if (rcBtn) rcBtn.setAttribute("aria-pressed", "false");
+  }
+
   function onControlsChanged() {
     // Keep the copyable direct links current no matter which transport handles the change.
     refreshLinks();
@@ -1490,15 +1636,24 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
       snapshotExt = ".png";
       if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
       closeWasm();
+      closeRc();
       openStream();
     } else if (m === "wasm") {
       snapshotExt = ".png";
       if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
       closeStream();
+      closeRc();
       openWasm();
+    } else if (m === "rc") {
+      snapshotExt = ".png";
+      if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
+      closeStream();
+      closeWasm();
+      openRc();
     } else {
       closeStream();
       closeWasm();
+      closeRc();
       // Static snapshot lane: raster PNG, or the vector SVG when the format toggle is on.
       snapshotExt = svgOn() ? ".svg" : ".png";
       if (svgOn()) root.setAttribute("data-mode", "svg");
@@ -1511,7 +1666,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     // query() includes an rc.* value edited before the Wasm detour in the first snapshot render
     // (and its direct links) instead of skipping the still-disabled control. The live/wasm lanes
     // drive their own render (openStream / openWasm), so only the static lane renders here.
-    if (m !== "live" && m !== "wasm") refreshSnapshot();
+    if (m !== "live" && m !== "wasm" && m !== "rc") refreshSnapshot();
   }
   // SVG format toggle: swap the static snapshot between raster and vector. Pressing it while a
   // live lane is active drops back to the static vector render; pressing it in the static lane
@@ -1565,17 +1720,22 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     // are dead — disable them (even on a catalog that can otherwise re-render) and restore them
     // when the lane leaves Wasm. Called on every mode transition, so the states track the lane.
     var onWasm = wasmActive();
+    // The RC canvas lane, like Wasm, honours only its own overrides (the Remote Compose knobs,
+    // applied client-side): size/device/locale/theme all re-point /render, which the painted
+    // canvas ignores. So it's as "dead" for the server + wasm-honoured controls as the Wasm lane.
+    var onRc = rcActive();
     var canServerRender =
-      !onWasm && (!staticSnapshot || canRenderOverrides || !!(live && live.checked));
+      !onWasm && !onRc && (!staticSnapshot || canRenderOverrides || !!(live && live.checked));
     serverOnlyControlIds.forEach(function (id) {
       var el = document.getElementById("cp-" + id);
       if (el) el.disabled = !canServerRender;
     });
-    // The wasm-honoured trio stays live in the in-browser lane (the app applies it), so it's
-    // enabled whenever the server can render OR a Wasm app backs the session.
+    // The wasm-honoured trio stays live in the in-browser Wasm lane (the app applies it), so it's
+    // enabled whenever the server can render OR a Wasm app backs the session — but not in the RC
+    // canvas lane, which doesn't map them onto the document.
     wasmHonouredControlIds.forEach(function (id) {
       var el = document.getElementById("cp-" + id);
-      if (el) el.disabled = !(canServerRender || wasmSrc);
+      if (el) el.disabled = !(canServerRender || (wasmSrc && !onRc));
     });
     // The app-theme (themeProvider) selector is a daemon-only override the Wasm app doesn't
     // honour: dead in the in-browser lane. Disable it there; otherwise mirror its server-side
@@ -1583,14 +1743,15 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     // i.e. !staticSnapshot || canRenderOverrides).
     var themeProviderEl = document.getElementById("cp-themeProvider");
     if (themeProviderEl) {
-      themeProviderEl.disabled = onWasm || !(!staticSnapshot || canRenderOverrides);
+      themeProviderEl.disabled = onWasm || onRc || !(!staticSnapshot || canRenderOverrides);
     }
-    // Remote Compose knobs are daemon-only (Remote Compose has no in-browser runtime), so like
-    // the app-theme selector they're dead in the Wasm lane — an edit would route only through
-    // the daemon path and never touch the visible iframe. Disable them there; otherwise mirror
-    // the server-side gate (enabled iff the host can render an override).
+    // Remote Compose knobs are LIVE in the RC canvas lane — an edit applies client-side via
+    // setNamed*Override + repaint (onRcKnobChanged), no daemon needed — so enable them whenever
+    // that lane is active. Outside it they're daemon-only (Remote Compose has no in-browser
+    // runtime), so, like the app-theme selector, they're dead in the Wasm lane and otherwise
+    // gated on the host being able to render an override.
     document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
-      el.disabled = onWasm || !(!staticSnapshot || canRenderOverrides);
+      el.disabled = onRc ? false : (onWasm || !(!staticSnapshot || canRenderOverrides));
     });
   }
   // Programmatic switch (the live toggle, or a wasm-only control auto-enabling Wasm): tick the
@@ -1598,7 +1759,8 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   function setMode(m) {
     var r = document.getElementById(
       m === "live" ? "cp-live" :
-      m === "wasm" ? "cp-wasm-toggle" : "cp-mode-png");
+      m === "wasm" ? "cp-wasm-toggle" :
+      m === "rc" ? "cp-rc-toggle" : "cp-mode-png");
     if (r) r.checked = true;
     enterMode(m);
   }
@@ -1653,6 +1815,11 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   if (wasmBtn) {
     wasmBtn.addEventListener("click", function () {
       if (wasmActive()) { setMode("png"); } else { setMode("wasm"); }
+    });
+  }
+  if (rcBtn) {
+    rcBtn.addEventListener("click", function () {
+      if (rcActive()) { setMode("png"); } else { setMode("rc"); }
     });
   }
   // Keep the live canvas overlay tracking the snapshot's slot when the page reflows (the Wasm
@@ -1791,11 +1958,16 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   document.querySelectorAll(".cp-feature").forEach(function (el) {
     el.addEventListener("change", onKnobChanged);
   });
-  // Remote Compose knobs route ONLY through the server daemon (Remote Compose has no in-browser
-  // Wasm runtime), so they use the daemon-only handler like the theme selector / feature toggles
-  // — a text/number edit debounces on "input", a bool toggle on "change".
+  // Remote Compose knobs apply live in the browser when the RC canvas lane is active
+  // (setNamed*Override + repaint on the client player, no round-trip); otherwise they route
+  // through the server daemon like the theme selector / feature toggles. A text/number edit
+  // debounces on "input", a bool toggle on "change".
+  function onRcKnobChanged() {
+    if (rcActive()) { refreshLinks(); applyRcOverrides(); return; }
+    onKnobChanged();
+  }
   document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
-    el.addEventListener(el.type === "checkbox" ? "change" : "input", onKnobChanged);
+    el.addEventListener(el.type === "checkbox" ? "change" : "input", onRcKnobChanged);
   });
   // Reconcile the control enabled-state + the toggle's initial look with the session's
   // capabilities (matches the server-rendered markup; keeps them in sync after hydration).
