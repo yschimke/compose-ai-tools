@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.17.17](https://github.com/yschimke/compose-ai-tools/compare/v0.17.16...v0.17.17) (2026-07-24)
+
+
+### Features
+
+* **discovery:** add retargetWearPreviews opt-out for Wear widget previews ([#2708](https://github.com/yschimke/compose-ai-tools/issues/2708)) ([8f6b704](https://github.com/yschimke/compose-ai-tools/commit/8f6b704fdd0755ebe84f1ecf14d468cd42d51f59))
+* **plugin:** match the desktop render JVM to the consumer's bytecode ([#2718](https://github.com/yschimke/compose-ai-tools/issues/2718)) ([e0e2332](https://github.com/yschimke/compose-ai-tools/commit/e0e23323710fc2be145d0b24ef334ef40152788b))
+* **serve:** in-browser Remote Compose canvas render lane (+ rename .rcdoc → .rc) ([#2720](https://github.com/yschimke/compose-ai-tools/issues/2720)) ([ac0953f](https://github.com/yschimke/compose-ai-tools/commit/ac0953f8b26e8e66a59f1be0c59cf69ba6e4a8e7))
+
 ## [0.17.16](https://github.com/yschimke/compose-ai-tools/compare/v0.17.15...v0.17.16) (2026-07-24)
 
 
