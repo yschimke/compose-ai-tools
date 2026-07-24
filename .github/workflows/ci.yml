@@ -446,7 +446,7 @@ jobs:
       # Render the samples FIRST, in their own invocation, exactly as the desktop bundle-render job
       # does (preview-bundle-ascii.yml): `composePreviewBundle` deliberately does NOT depend on
       # `composePreviewRender` (packing without a render is a valid stub-cover flow) — it only
-      # `mustRunAfter`s it. So the IR sidecars (`<stem>.tilelayout`/`.tileresources`/`.rcdoc`) the
+      # `mustRunAfter`s it. So the IR sidecars (`<stem>.tilelayout`/`.tileresources`/`.rc`) the
       # render step writes beside each PNG have to already exist on disk before the bundle task's
       # first execution to be baked into `intermediateRepresentations`. Without this step the packed
       # bundles carry no IR and every preview falls back to classic, so the protolayout/remotecompose

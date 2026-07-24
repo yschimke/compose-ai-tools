@@ -89,11 +89,7 @@ class PreviewBundleFormatTest {
         producedBy = "test",
         intermediateRepresentations =
           listOf(
-            BundleIr(
-              previewId = "pkg.Rc",
-              format = IR_FORMAT_REMOTECOMPOSE,
-              path = "ir/pkg.Rc.rcdoc",
-            ),
+            BundleIr(previewId = "pkg.Rc", format = IR_FORMAT_REMOTECOMPOSE, path = "ir/pkg.Rc.rc"),
             BundleIr(
               previewId = "pkg.Tile",
               format = IR_FORMAT_PROTOLAYOUT,

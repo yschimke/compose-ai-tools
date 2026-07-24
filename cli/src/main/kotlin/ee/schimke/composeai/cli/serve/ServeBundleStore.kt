@@ -145,7 +145,7 @@ class ServeBundleStore(
 
   /**
    * Extract the servable `previews/` entries (baked `<id>.png`, the `<id>.overrides.json` /
-   * `<id>.remotecompose.json` knob sidecars), the sibling `ir/<id>.rcdoc` Remote Compose documents,
+   * `<id>.remotecompose.json` knob sidecars), the sibling `ir/<id>.rc` Remote Compose documents,
    * plus the root `previews.json` into [dir] (zip-slip safe, size-capped). Returns the PNG count —
    * only a baked image makes a servable preview.
    */
@@ -167,21 +167,20 @@ class ServeBundleStore(
         val isPng = underPreviews && name.endsWith(PNG_SUFFIX)
         val isOverrides = underPreviews && name.endsWith(OVERRIDES_SUFFIX)
         val isRemoteCompose = underPreviews && name.endsWith(REMOTECOMPOSE_SUFFIX)
-        // Also keep the captured Remote Compose documents from the sibling `ir/<id>.rcdoc` tree —
-        // the browser player's replayable input, served over `GET /render/<id>.rcdoc`. Dropping
+        // Also keep the captured Remote Compose documents from the sibling `ir/<id>.rc` tree —
+        // the browser player's replayable input, served over `GET /render/<id>.rc`. Dropping
         // these here would strip the client-side render lane from the upload path (POST / URL)
         // while
         // the directory path (which reads the bundle dir straight from disk) kept them.
         val underIr = name.startsWith("$IR_SUBDIR/") && ".." !in segments
-        val isRcdoc = underIr && name.endsWith(RCDOC_SUFFIX)
+        val isRc = underIr && name.endsWith(RC_SUFFIX)
         // Also keep the root `previews.json` manifest so a served bundle can surface the app's
         // declared @ThemeCatalog themes (the synthetic THEME_CATALOG entries live only here, not in
         // the per-preview sidecars). A top-level file (no path segments), so it's exempt from the
         // `previews/` prefix check but still zip-slip guarded below.
         val isPreviewsJson = name == PREVIEWS_JSON
         if (
-          !entry.isDirectory &&
-            (isPng || isOverrides || isRemoteCompose || isRcdoc || isPreviewsJson)
+          !entry.isDirectory && (isPng || isOverrides || isRemoteCompose || isRc || isPreviewsJson)
         ) {
           val target = File(dir, name)
           // Zip-slip guard: the resolved path must stay under the bundle dir.
@@ -224,7 +223,7 @@ class ServeBundleStore(
     private const val OVERRIDES_SUFFIX = ".overrides.json"
     private const val REMOTECOMPOSE_SUFFIX = ".remotecompose.json"
     private const val IR_SUBDIR = "ir"
-    private const val RCDOC_SUFFIX = ".rcdoc"
+    private const val RC_SUFFIX = ".rc"
     private const val PREVIEWS_JSON = "previews.json"
     private const val DEFAULT_MAX_BYTES = 100L * 1024 * 1024 // 100 MB
 

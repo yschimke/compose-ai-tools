@@ -103,7 +103,7 @@ fun RemoteOverridablePreview(
               )
               .bytes
           // Offer the captured RC doc so a bundle can carry + replay it without this composable's
-          // bytecode; the render harness drains it into the `renders/<stem>.rcdoc` sidecar that
+          // bytecode; the render harness drains it into the `renders/<stem>.rc` sidecar that
           // `BundlePreviewTask.resolvePreviewIr` packs. No-op outside a daemon/test render (no
           // current preview id). Best-effort — never fail the render over IR capture. See
           // IrSidecarChannel.

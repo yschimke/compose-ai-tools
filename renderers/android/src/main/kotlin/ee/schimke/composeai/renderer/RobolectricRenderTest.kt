@@ -570,7 +570,7 @@ abstract class RobolectricRenderTestBase(
     // Drop any IR sidecar from a prior run before rendering. The renders dir is reused, and
     // `BundlePreviewTask.resolvePreviewIr` treats any non-empty sidecar as authoritative — so a
     // preview that stops producing IR (RC wrapper removed, tile serialization fails, kind
-    // changed) would otherwise leave stale `<stem>.{rcdoc,tilelayout,tileresources}` that a later
+    // changed) would otherwise leave stale `<stem>.{rc,tilelayout,tileresources}` that a later
     // bundle embeds while dropping the now-classpath-backed preview's classes, breaking replay.
     deleteStaleIrSidecars(pngFile)
 
@@ -665,14 +665,14 @@ abstract class RobolectricRenderTestBase(
   /**
    * Write the IR captured during the just-finished render (if any) as a sidecar next to [pngFile],
    * keyed by the PNG stem so it matches the `renders/<stem>.<ext>` contract
-   * `BundlePreviewTask.resolvePreviewIr` reads: `.rcdoc` for a Remote Compose document, or
+   * `BundlePreviewTask.resolvePreviewIr` reads: `.rc` for a Remote Compose document, or
    * `.tilelayout` (+ `.tileresources`) for a Wear protolayout proto. Best-effort — a write failure
    * must not derail the PNG render path.
    */
   private fun deleteStaleIrSidecars(pngFile: File) {
     val dir = pngFile.parentFile ?: return
     val stem = pngFile.nameWithoutExtension
-    for (ext in listOf("rcdoc", "tilelayout", "tileresources")) {
+    for (ext in listOf("rc", "tilelayout", "tileresources")) {
       val f = File(dir, "$stem.$ext")
       if (f.isFile && !f.delete()) {
         System.err.println("Failed to delete stale IR sidecar: ${f.absolutePath}")
@@ -687,7 +687,7 @@ abstract class RobolectricRenderTestBase(
       val stem = pngFile.nameWithoutExtension
       when (capture.format) {
         ee.schimke.composeai.data.render.IrSidecarChannel.FORMAT_REMOTECOMPOSE ->
-          File(dir, "$stem.rcdoc").writeBytes(capture.bytes)
+          File(dir, "$stem.rc").writeBytes(capture.bytes)
         ee.schimke.composeai.data.render.IrSidecarChannel.FORMAT_PROTOLAYOUT -> {
           File(dir, "$stem.tilelayout").writeBytes(capture.bytes)
           capture.resourcesBytes?.let { File(dir, "$stem.tileresources").writeBytes(it) }

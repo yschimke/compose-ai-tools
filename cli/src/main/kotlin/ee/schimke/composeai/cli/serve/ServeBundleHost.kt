@@ -228,7 +228,7 @@ class ServeBundleHost(
 
   private val previewIds: Set<String> = previews.map { it.id }.toHashSet()
 
-  // The captured Remote Compose documents ride in the bundle's `ir/<id>.rcdoc` sidecars (a sibling
+  // The captured Remote Compose documents ride in the bundle's `ir/<id>.rc` sidecars (a sibling
   // of `previews/`), the browser player's replayable input.
   private val irDir = File(bundleDir, IR_SUBDIR)
 
@@ -241,7 +241,7 @@ class ServeBundleHost(
 
   override fun remoteComposeDoc(previewId: String): ByteArray? {
     if (previewId !in previewIds) return null
-    val doc = File(irDir, "$previewId$RCDOC_SUFFIX").toOkioPath()
+    val doc = File(irDir, "$previewId$RC_SUFFIX").toOkioPath()
     if (!fileSystem.exists(doc)) return null
     return try {
       fileSystem.read(doc) { readByteArray() }
@@ -396,9 +396,9 @@ class ServeBundleHost(
 
     private const val OVERRIDES_SUFFIX = ".overrides.json"
     private const val REMOTECOMPOSE_SUFFIX = ".remotecompose.json"
-    /** Sibling of `previews/` holding the captured Remote Compose docs (`ir/<id>.rcdoc`). */
+    /** Sibling of `previews/` holding the captured Remote Compose docs (`ir/<id>.rc`). */
     private const val IR_SUBDIR = "ir"
-    private const val RCDOC_SUFFIX = ".rcdoc"
+    private const val RC_SUFFIX = ".rc"
     private const val PREVIEWS_JSON = "previews.json"
     private val OVERRIDES_JSON = Json { ignoreUnknownKeys = true }
 

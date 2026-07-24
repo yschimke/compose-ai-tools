@@ -287,7 +287,7 @@ class ServeHttpServer(
 
         // The in-browser Remote Compose player: a single shared IIFE bundle (global `RC`), baked
         // into the CLI jar as a classpath resource and served here so the viewer's client-side
-        // `<canvas>` render lane (fetch `/render/<id>.rcdoc` → `RC.RcdPlayer`) can load it. Always
+        // `<canvas>` render lane (fetch `/render/<id>.rc` → `RC.RcdPlayer`) can load it. Always
         // available (unlike the operator-gated Wasm apps) — the bundle rides in the jar, not a
         // per-catalog dir. Ungated (generic client code, no session data) and CORS-open like the
         // Wasm assets so a sandboxed viewer iframe can pull it. A constant first segment, so it
@@ -1242,10 +1242,10 @@ class ServeHttpServer(
   /**
    * `GET /render/{name}` (query) and `GET /{system}/render/{name}` (path): a preview's rendered
    * bytes — a PNG for `<id>.png` (or no suffix), the figma-svg export for `<id>.svg`, the declared
-   * preview slots as JSON for `<id>.slots`, or the captured Remote Compose document for
-   * `<id>.rcdoc`. All but `.rcdoc` take the same override query params; SVG and slots are only
-   * produced by a daemon-backed host, and `.rcdoc` only by a bundle host that carries `ir/`
-   * sidecars (each 404s where unavailable).
+   * preview slots as JSON for `<id>.slots`, or the captured Remote Compose document for `<id>.rc`.
+   * All but `.rc` take the same override query params; SVG and slots are only produced by a
+   * daemon-backed host, and `.rc` only by a bundle host that carries `ir/` sidecars (each 404s
+   * where unavailable).
    */
   private suspend fun RoutingContext.handleRender(sessionInPath: Boolean) {
     if (rejectBadToken()) return
@@ -1257,16 +1257,12 @@ class ServeHttpServer(
       }
       val wantSvg = rawName.endsWith(".svg")
       val wantSlots = rawName.endsWith(".slots")
-      val wantRcDoc = rawName.endsWith(".rcdoc")
+      val wantRcDoc = rawName.endsWith(".rc")
       val previewId =
-        rawName
-          .removeSuffix(".png")
-          .removeSuffix(".svg")
-          .removeSuffix(".slots")
-          .removeSuffix(".rcdoc")
-      // The `.rcdoc` lane serves the captured Remote Compose document bytes verbatim (no override
+        rawName.removeSuffix(".png").removeSuffix(".svg").removeSuffix(".slots").removeSuffix(".rc")
+      // The `.rc` lane serves the captured Remote Compose document bytes verbatim (no override
       // pass — the in-browser player replays the doc and applies knob edits client-side), so it
-      // short-circuits ahead of the override parse. A host with no `ir/<id>.rcdoc` sidecar (a
+      // short-circuits ahead of the override parse. A host with no `ir/<id>.rc` sidecar (a
       // daemon-only host, or an unknown id) returns null → 404.
       if (wantRcDoc) {
         val bytes = renderHost.remoteComposeDoc(previewId)

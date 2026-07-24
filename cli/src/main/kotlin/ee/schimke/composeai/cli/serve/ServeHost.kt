@@ -132,11 +132,11 @@ interface ServeHost : AutoCloseable {
   fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome
 
   /**
-   * The captured Remote Compose document bytes for [previewId] — the bundle's `ir/<id>.rcdoc`
-   * sidecar — or null when this host carries none. Served over `GET /render/<id>.rcdoc` so an
-   * in-browser Remote Compose player can render the document client-side (the browser counterpart
-   * of the daemon render). Defaults to null: only a bundle host that carries the `ir/` sidecars
-   * returns bytes; a daemon-only host has none.
+   * The captured Remote Compose document bytes for [previewId] — the bundle's `ir/<id>.rc` sidecar
+   * — or null when this host carries none. Served over `GET /render/<id>.rc` so an in-browser
+   * Remote Compose player can render the document client-side (the browser counterpart of the
+   * daemon render). Defaults to null: only a bundle host that carries the `ir/` sidecars returns
+   * bytes; a daemon-only host has none.
    */
   fun remoteComposeDoc(previewId: String): ByteArray? = null
 
