@@ -49,7 +49,7 @@ jobs:
       # Android modules also need the SDK — add android-actions/setup-android@v3
       # (and a Gradle cache) here, or factor java+SDK+cache into a local
       # `./.github/actions/setup` composite as the reference workflows do.
-      - uses: yschimke/compose-ai-tools/.github/actions/apply@v0.17.14
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v0.17.15
 ```
 <!-- x-release-please-end -->
 
@@ -86,7 +86,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup           # your java + SDK + cache composite
-      - uses: yschimke/compose-ai-tools/.github/actions/apply@v0.17.14
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v0.17.15
         with:
           only: compose,resources
           # `warn` keeps CI green when a handful of previews render nothing;
@@ -99,7 +99,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      - uses: yschimke/compose-ai-tools/.github/actions/apply@v0.17.14
+      - uses: yschimke/compose-ai-tools/.github/actions/apply@v0.17.15
         with:
           # a11y renders first, then notifications stages the captures it
           # leaves behind — so the two must share a job (see below). Drop
@@ -144,7 +144,7 @@ the CLI follows it for free:
 ```toml
 # gradle/libs.versions.toml
 [versions]
-composePreviewPlugin = "0.17.14"
+composePreviewPlugin = "0.17.15"
 
 [plugins]
 composePreview = { id = "ee.schimke.composeai.preview", version.ref = "composePreviewPlugin" }
