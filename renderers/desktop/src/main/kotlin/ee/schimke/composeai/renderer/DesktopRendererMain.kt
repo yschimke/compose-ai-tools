@@ -245,11 +245,11 @@ fun main(args: Array<String>) {
       requireNotNull(assetPath) {
         "kind=LOTTIE preview is missing its asset path (renderer arg 20)"
       }
-      // The output extension selects the artefact: `.gif` → the animated capture spanning the
-      // asset's intrinsic timeline (discovery emits this as the Lottie preview's animated
-      // companion); anything else → the single still frame.
-      if (outputFile.extension.equals("gif", ignoreCase = true)) {
-        renderLottieGif(
+      // The output name selects the artefact: a `_animated.png` name → the animated capture
+      // spanning the asset's intrinsic timeline, encoded as APNG (discovery emits this as the
+      // Lottie preview's animated companion); anything else → the single still frame.
+      if (outputFile.name.endsWith("_animated.png", ignoreCase = true)) {
+        renderLottieApng(
           assetPath = assetPath,
           widthPx = widthPx,
           heightPx = heightPx,
