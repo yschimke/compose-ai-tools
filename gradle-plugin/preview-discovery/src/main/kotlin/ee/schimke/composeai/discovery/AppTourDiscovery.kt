@@ -29,6 +29,15 @@ object AppTourDiscovery {
 
   private const val ANDROID_NS = "http://schemas.android.com/apk/res/android"
 
+  /**
+   * Class-name prefixes of activities that manifest-merger injects from libraries (Glance's action
+   * trampoline, ui-tooling's `PreviewActivity`, ui-test-manifest's `ComponentActivity`, Play
+   * Services dialogs, …). They're not part of the *app* — not previewable entry points, not tour
+   * material — so they're dropped at parse time.
+   */
+  private val LIBRARY_ACTIVITY_PREFIXES =
+    listOf("android.", "androidx.", "com.android.", "com.google.android.")
+
   private val xmlFactory: XMLInputFactory =
     XMLInputFactory.newFactory().apply {
       setProperty(XMLInputFactory.SUPPORT_DTD, false)
@@ -111,7 +120,12 @@ object AppTourDiscovery {
                 currentFilter = null
               }
               "activity" -> {
-                current?.let { out += it.build(packageName) }
+                current
+                  ?.build(packageName)
+                  ?.takeIf { built ->
+                    LIBRARY_ACTIVITY_PREFIXES.none { built.className.startsWith(it) }
+                  }
+                  ?.let(out::add)
                 current = null
               }
             }
@@ -315,7 +329,6 @@ object AppTourDiscovery {
           params =
             PreviewParams(
               name = name,
-              group = spec.description,
               kind = PreviewKind.APP_TOUR,
               widthDp = device.widthDp,
               heightDp = device.heightDp,
