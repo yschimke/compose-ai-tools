@@ -128,7 +128,36 @@ test("validateSpec flags structural problems", () => {
   const { errors } = validateSpec({ groups: [] });
   assert.ok(errors.some((e) => e.includes("`system` is required")));
   assert.ok(errors.some((e) => e.includes("`title` is required")));
-  assert.ok(errors.some((e) => e.includes("`groups` must be a non-empty array")));
+  // An explicit empty `groups` is a mistake, not "annotation-supplied".
+  assert.ok(errors.some((e) => e.includes("`groups`, when present, must be a non-empty array")));
+});
+
+test("validateSpec accepts a cover-sheet spec with no groups (annotation-supplied inventory)", () => {
+  // A catalog whose inventory lives in `@CatalogComponent` / `@CatalogVariant` annotations carries
+  // only cover-sheet fields; an absent `groups` must validate cleanly when the module is annotated.
+  const { errors, warnings } = validateSpec(
+    { system: "compose-m3", title: "Compose Material 3" },
+    { knownPreviews: ["FilledButton", "SwitchOn"], annotatedInventory: true },
+  );
+  assert.deepEqual(errors, []);
+  assert.deepEqual(warnings, []);
+});
+
+test("validateSpec rejects a no-groups spec when the module has no @CatalogComponent", () => {
+  // Caller scanned the module and found no annotated inventory, so a `groups`-less spec has no
+  // components at all — reject early instead of rendering then crashing at the join.
+  const { errors } = validateSpec(
+    { system: "compose-m3", title: "Compose Material 3" },
+    { knownPreviews: ["FilledButton"], annotatedInventory: false },
+  );
+  assert.ok(errors.some((e) => e.includes("the catalog has no")));
+});
+
+test("validateSpec stays lenient on a no-groups spec when annotation state is unknown", () => {
+  // Structural-only path (no source access): don't reject — the render-time generator guard is the
+  // backstop for a genuinely empty inventory.
+  const { errors } = validateSpec({ system: "s", title: "t" });
+  assert.deepEqual(errors, []);
 });
 
 test("validateSpec flags duplicate componentId and warns on folded preview", () => {

@@ -4,7 +4,7 @@
   "title": "Design catalog spec",
   "description": "Code-led design-catalog spec: declares which @Preview composables (by function name) make up a published sticker sheet, their grouping, sections, captions, and per-component variants. Consumed by scripts/design-artifacts/generate-design-catalog.mjs over a `compose-preview bundle pack` render. Each `preview` MUST equal an exact @Preview function name in the rendered module; validate before rendering with `node scripts/design-artifacts/validate-catalog-spec.mjs`.",
   "type": "object",
-  "required": ["system", "title", "groups"],
+  "required": ["system", "title"],
   "additionalProperties": false,
   "properties": {
     "$schema": { "type": "string" },
@@ -71,8 +71,7 @@
     },
     "groups": {
       "type": "array",
-      "minItems": 1,
-      "description": "The component inventory, grouped. Group order is the display order.",
+      "description": "The component inventory, grouped. Group order is the display order. OPTIONAL: a catalog can instead declare its inventory with `@CatalogComponent` / `@CatalogVariant` annotations next to the `@Preview`s (the design-artifacts export builds the inventory from them, layering any groups declared here on top as an override). Absent ⇒ the inventory is wholly annotation-supplied.",
       "items": { "$ref": "#/definitions/group" }
     }
   },

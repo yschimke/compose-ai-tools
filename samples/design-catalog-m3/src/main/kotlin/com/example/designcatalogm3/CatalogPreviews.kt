@@ -29,6 +29,8 @@ import com.example.designcatalogm3.shared.generated.resources.msg_merged
 import com.example.designcatalogm3.shared.generated.resources.msg_specs
 import com.example.designcatalogm3.shared.generated.resources.template_title
 import ee.schimke.composeai.overrides.previewOverrideString
+import ee.schimke.composeai.preview.CatalogComponent
+import ee.schimke.composeai.preview.CatalogVariant
 import ee.schimke.composeai.preview.OverrideVariant
 import ee.schimke.composeai.preview.slots.LocalSlotMode
 import org.jetbrains.compose.resources.stringResource
@@ -49,22 +51,60 @@ import org.jetbrains.compose.resources.stringResource
 //     stateful widgets — matching what the in-browser wasm tier already does. Hard-coding `false`
 //     left every live-lane click a no-op (the segmented toggle wouldn't flip).
 //
-// Function names are the join key the export driver matches against `catalog.spec.json`'s `preview`
-// field (`PreviewDiscovery` keys off the function name), so they must not change.
+// The catalog identity — component id, group, caption, and per-variant tags — lives on each preview
+// via `@CatalogComponent` / `@CatalogVariant` (compose-ai-tools' catalog-annotations), so it sits
+// next to the composable instead of being restated in `catalog.spec.json`. The design-artifacts
+// export builds the inventory from these annotations; `catalog.spec.json` now carries only the
+// cover-sheet fields (system / title / breakpoints / referenceKits). A `@CatalogVariant.of` names
+// its parent by that parent's `@CatalogComponent.id`, so those ids are the join and must stay
+// stable.
 
 // --- Buttons — the five M3 emphasis levels, plus a disabled state. ---
 
-@CatalogModes @Composable fun FilledButton() = Sticker("button-filled")
+@CatalogComponent(
+  id = "Button/Filled",
+  group = "Buttons",
+  caption = "Highest emphasis; the primary action.",
+)
+@CatalogModes
+@Composable
+fun FilledButton() = Sticker("button-filled")
 
-@CatalogModes @Composable fun FilledTonalButtonSticker() = Sticker("button-tonal")
+@CatalogComponent(id = "Button/Tonal", group = "Buttons", caption = "Secondary, still prominent.")
+@CatalogModes
+@Composable
+fun FilledTonalButtonSticker() = Sticker("button-tonal")
 
-@CatalogModes @Composable fun OutlinedButtonSticker() = Sticker("button-outlined")
+@CatalogComponent(
+  id = "Button/Outlined",
+  group = "Buttons",
+  caption = "Medium emphasis on a busy surface.",
+)
+@CatalogModes
+@Composable
+fun OutlinedButtonSticker() = Sticker("button-outlined")
 
-@CatalogModes @Composable fun ElevatedButtonSticker() = Sticker("button-elevated")
+@CatalogComponent(
+  id = "Button/Elevated",
+  group = "Buttons",
+  caption = "Outlined alternative needing separation.",
+)
+@CatalogModes
+@Composable
+fun ElevatedButtonSticker() = Sticker("button-elevated")
 
-@CatalogModes @Composable fun TextButtonSticker() = Sticker("button-text")
+@CatalogComponent(
+  id = "Button/Text",
+  group = "Buttons",
+  caption = "Lowest emphasis; inline actions.",
+)
+@CatalogModes
+@Composable
+fun TextButtonSticker() = Sticker("button-text")
 
-@CatalogModes @Composable fun FilledButtonDisabled() = Sticker("button-filled-disabled")
+// `FilledButtonDisabled` (a `Button/Filled` variant) is declared in the States section below,
+// between the pressed/focused and content variants, so the annotation-derived variant order matches
+// the sheet's intended order (pressed → keyboard-focus → disabled → content axes).
 
 // --- Selection controls — checked/selected states (the primary mode to show). ---
 
@@ -72,43 +112,90 @@ import org.jetbrains.compose.resources.stringResource
 // the shared `checked` / `selected` knob) rather than a duplicated `*Unchecked` / `*Off` /
 // `*Unselected`
 // wrapper — the render emits a `_VARIANT_<state>` capture that folds under the primary sticker.
+@CatalogComponent(
+  id = "Checkbox/Checked",
+  group = "Selection",
+  caption = "Checked; the unchecked state folds in as an @OverrideVariant (checked = false).",
+)
 @CatalogModes
 @OverrideVariant(name = "unchecked", booleans = ["checked=false"])
 @Composable
 fun CheckboxChecked() = Sticker("checkbox-checked")
 
+@CatalogComponent(
+  id = "Switch/On",
+  group = "Selection",
+  caption = "On; the off state folds in as an @OverrideVariant (checked = false).",
+)
 @CatalogModes
 @OverrideVariant(name = "off", booleans = ["checked=false"])
 @Composable
 fun SwitchOn() = Sticker("switch-on")
 
+@CatalogComponent(
+  id = "RadioButton/Selected",
+  group = "Selection",
+  caption = "Selected; the unselected state folds in as an @OverrideVariant (selected = false).",
+)
 @CatalogModes
 @OverrideVariant(name = "unselected", booleans = ["selected=false"])
 @Composable
 fun RadioSelected() = Sticker("radiobutton-selected")
 
-@CatalogModes @Composable fun SliderMid() = Sticker("slider")
+@CatalogComponent(id = "Slider", group = "Selection")
+@CatalogModes
+@Composable
+fun SliderMid() = Sticker("slider")
 
+@CatalogComponent(
+  id = "Chip/Filter-Selected",
+  group = "Selection",
+  caption = "Selected; the unselected state folds in as an @OverrideVariant (selected = false).",
+)
 @CatalogModes
 @OverrideVariant(name = "unselected", booleans = ["selected=false"])
 @Composable
 fun FilterChipSelected() = Sticker("chip-filter-selected")
 
-@CatalogModes @Composable fun AssistChipSticker() = Sticker("chip-assist")
+@CatalogComponent(id = "Chip/Assist", group = "Selection")
+@CatalogModes
+@Composable
+fun AssistChipSticker() = Sticker("chip-assist")
 
 // --- Containment — cards and the FAB. ---
 
-@CatalogModes @Composable fun ElevatedCardSticker() = Sticker("card-elevated")
+@CatalogComponent(id = "Card/Elevated", group = "Containment")
+@CatalogModes
+@Composable
+fun ElevatedCardSticker() = Sticker("card-elevated")
 
-@CatalogModes @Composable fun OutlinedCardSticker() = Sticker("card-outlined")
+@CatalogComponent(id = "Card/Outlined", group = "Containment")
+@CatalogModes
+@Composable
+fun OutlinedCardSticker() = Sticker("card-outlined")
 
-@CatalogModes @Composable fun FilledCardSticker() = Sticker("card-filled")
+@CatalogComponent(id = "Card/Filled", group = "Containment")
+@CatalogModes
+@Composable
+fun FilledCardSticker() = Sticker("card-filled")
 
 // A slotted card: its regions are `PreviewSlot` markers. The plain sticker renders normally (the
 // markers are no-ops); `SlottedCardSlots` provides `LocalSlotMode = true` so each marker draws its
 // labelled placeholder — the slot map a structured-screen builder fills. Same body, two modes.
-@CatalogModes @Composable fun SlottedCardSticker() = Sticker("card-slots")
+@CatalogComponent(
+  id = "Card/Slots",
+  group = "Containment",
+  caption = "A card with named PreviewSlot regions a structured-screen builder fills.",
+)
+@CatalogModes
+@Composable
+fun SlottedCardSticker() = Sticker("card-slots")
 
+@CatalogVariant(
+  of = "Card/Slots",
+  state = "slot-mode",
+  caption = "Slot mode: each PreviewSlot draws its labelled placeholder.",
+)
 @CatalogModes
 @Composable
 fun SlottedCardSlotsSticker() = CatalogSticker {
@@ -117,47 +204,126 @@ fun SlottedCardSlotsSticker() = CatalogSticker {
   }
 }
 
-@CatalogModes @Composable fun FabSticker() = Sticker("fab")
+@CatalogComponent(id = "FAB", group = "Containment")
+@CatalogModes
+@Composable
+fun FabSticker() = Sticker("fab")
 
 // --- Communication — progress + badge. ---
 
-@CatalogModes @Composable fun LinearProgressSticker() = Sticker("progress-linear")
+@CatalogComponent(id = "Progress/Linear", group = "Communication")
+@CatalogModes
+@Composable
+fun LinearProgressSticker() = Sticker("progress-linear")
 
-@CatalogModes @Composable fun CircularProgressSticker() = Sticker("progress-circular")
+@CatalogComponent(id = "Progress/Circular", group = "Communication")
+@CatalogModes
+@Composable
+fun CircularProgressSticker() = Sticker("progress-circular")
 
-@CatalogModes @Composable fun BadgeSticker() = Sticker("badge")
+@CatalogComponent(id = "Badge", group = "Communication")
+@CatalogModes
+@Composable
+fun BadgeSticker() = Sticker("badge")
 
 // --- Text fields. ---
 
-@CatalogModes @Composable fun TextFieldSticker() = Sticker("textfield-filled")
+@CatalogComponent(id = "TextField/Filled", group = "Text fields")
+@CatalogModes
+@Composable
+fun TextFieldSticker() = Sticker("textfield-filled")
 
-@CatalogModes @Composable fun OutlinedTextFieldSticker() = Sticker("textfield-outlined")
+@CatalogComponent(id = "TextField/Outlined", group = "Text fields")
+@CatalogModes
+@Composable
+fun OutlinedTextFieldSticker() = Sticker("textfield-outlined")
 
 // --- Text options — maxLines + ellipsis overflow, generic-family specimens. ---
 
-@CatalogModes @Composable fun TextMaxLinesTruncated() = Sticker("text-maxlines-truncated")
+@CatalogComponent(
+  id = "Text/MaxLines-Truncated",
+  group = "Text options",
+  caption = "maxLines=2 + ellipsis overflow — exercises the textOverflow product.",
+)
+@CatalogModes
+@Composable
+fun TextMaxLinesTruncated() = Sticker("text-maxlines-truncated")
 
-@CatalogModes @Composable fun TextSerifSpecimen() = Sticker("text-serif")
+@CatalogComponent(
+  id = "Text/Serif",
+  group = "Text options",
+  caption = "Generic serif family (Noto Serif) — pins the Wasm tier’s font interception.",
+)
+@CatalogModes
+@Composable
+fun TextSerifSpecimen() = Sticker("text-serif")
 
-@CatalogModes @Composable fun TextMonospaceSpecimen() = Sticker("text-monospace")
+@CatalogComponent(
+  id = "Text/Monospace",
+  group = "Text options",
+  caption = "Generic monospace family (Droid Sans Mono) — pins the Wasm tier’s font interception.",
+)
+@CatalogModes
+@Composable
+fun TextMonospaceSpecimen() = Sticker("text-monospace")
 
+// `TextBrandedSpecimen` renders but is deliberately NOT in the published catalog inventory (it has
+// no `@CatalogComponent`), matching the pre-annotation spec, which omitted it.
 @CatalogModes @Composable fun TextBrandedSpecimen() = Sticker("text-branded")
 
 // --- States — interaction (pressed / focused), disabled, and toggle off↔on. ---
 
-@CatalogModes @Composable fun FilledButtonPressed() = Sticker("button-filled-pressed")
+@CatalogVariant(
+  of = "Button/Filled",
+  state = "pressed",
+  caption = "Held PressInteraction → pressed state layer.",
+)
+@CatalogModes
+@Composable
+fun FilledButtonPressed() = Sticker("button-filled-pressed")
 
-@CatalogModes @Composable fun FilledButtonFocused() = Sticker("button-filled-focused")
+@CatalogVariant(
+  of = "Button/Filled",
+  state = "keyboard-focus",
+  caption =
+    "Keyboard focus (focus-visible) → M3 inset focus ring. This is the directional/keyboard " +
+      "focus indicator, not the pointer/hover state layer.",
+)
+@CatalogModes
+@Composable
+fun FilledButtonFocused() = Sticker("button-filled-focused")
 
-@CatalogModes @Composable fun FilledButtonIconLabel() = Sticker("button-filled-icon-label")
+@CatalogVariant(of = "Button/Filled", state = "disabled", caption = "Disabled state.")
+@CatalogModes
+@Composable
+fun FilledButtonDisabled() = Sticker("button-filled-disabled")
 
-@CatalogModes @Composable fun OutlinedButtonDisabled() = Sticker("button-outlined-disabled")
+@CatalogVariant(
+  of = "Button/Filled",
+  props = ["content=icon+label"],
+  caption = "Content axis (not a state): leading icon + label, vs the label-only default.",
+)
+@CatalogModes
+@Composable
+fun FilledButtonIconLabel() = Sticker("button-filled-icon-label")
+
+@CatalogVariant(of = "Button/Outlined", state = "disabled", caption = "Disabled state.")
+@CatalogModes
+@Composable
+fun OutlinedButtonDisabled() = Sticker("button-outlined-disabled")
 
 // (`SwitchOff`, `CheckboxUnchecked`, `FilterChipUnselected`, `RadioUnselected` removed — those
 // states now ride their primary selection control via `@OverrideVariant`, seeding the shared
 // `checked` / `selected` knob.)
 
-@CatalogModes @Composable fun SegmentedToggle() = Sticker("segmentedbutton")
+@CatalogComponent(
+  id = "SegmentedButton",
+  group = "Selection",
+  caption = "Single-choice toggle: selected + unselected segments.",
+)
+@CatalogModes
+@Composable
+fun SegmentedToggle() = Sticker("segmentedbutton")
 
 // --- Internationalisation / accessibility axes ---
 //
@@ -181,11 +347,23 @@ fun SlottedCardSlotsSticker() = CatalogSticker {
 //     lockstep at 2.0 (large-text / dynamic-type).
 
 // Button — filled.
+@CatalogVariant(
+  of = "Button/Filled",
+  props = ["locale=ar-XB"],
+  caption =
+    "i18n axis: the ar-XB bidi pseudolocale — flips the button to RTL layout so mirroring bugs " +
+      "surface (desktop CMP pseudolocalises layout direction, not text).",
+)
 @Preview(name = "Light", locale = "ar-XB", group = "modes")
 @Preview(name = "Dark", locale = "ar-XB", uiMode = 32, group = "modes")
 @Composable
 fun FilledButtonPseudo() = Sticker("button-filled")
 
+@CatalogVariant(
+  of = "Button/Filled",
+  props = ["direction=rtl"],
+  caption = "i18n axis: forced RTL layout direction (LocalLayoutDirection = Rtl).",
+)
 @CatalogModes
 @Composable
 fun FilledButtonRtl() =
@@ -193,17 +371,36 @@ fun FilledButtonRtl() =
     Sticker("button-filled")
   }
 
+@CatalogVariant(
+  of = "Button/Filled",
+  props = ["fontScale=2.0"],
+  caption =
+    "Accessibility axis: 2× font scale (LocalDensity fontScale = 2.0) — large-text / dynamic-type " +
+      "stress.",
+)
 @Preview(name = "Light", fontScale = 2f, group = "modes")
 @Preview(name = "Dark", fontScale = 2f, uiMode = 32, group = "modes")
 @Composable
 fun FilledButtonLargeFont() = Sticker("button-filled")
 
 // List row — the on switch (a settings-style selection row).
+@CatalogVariant(
+  of = "Switch/On",
+  props = ["locale=ar-XB"],
+  caption =
+    "i18n axis: the ar-XB bidi pseudolocale — flips the row to RTL layout (desktop CMP " +
+      "pseudolocalises layout direction, not text).",
+)
 @Preview(name = "Light", locale = "ar-XB", group = "modes")
 @Preview(name = "Dark", locale = "ar-XB", uiMode = 32, group = "modes")
 @Composable
 fun SwitchOnPseudo() = Sticker("switch-on")
 
+@CatalogVariant(
+  of = "Switch/On",
+  props = ["direction=rtl"],
+  caption = "i18n axis: forced RTL layout direction (LocalLayoutDirection = Rtl).",
+)
 @CatalogModes
 @Composable
 fun SwitchOnRtl() =
@@ -211,6 +408,13 @@ fun SwitchOnRtl() =
     Sticker("switch-on")
   }
 
+@CatalogVariant(
+  of = "Switch/On",
+  props = ["fontScale=2.0"],
+  caption =
+    "Accessibility axis: 2× font scale (LocalDensity fontScale = 2.0) — large-text / dynamic-type " +
+      "stress.",
+)
 @Preview(name = "Light", fontScale = 2f, group = "modes")
 @Preview(name = "Dark", fontScale = 2f, uiMode = 32, group = "modes")
 @Composable
@@ -265,6 +469,13 @@ private val templateMessages =
  * supplies them itself ([SYSTEM_BAR_INSET]): the app bar paints under the status bar with its title
  * below the OS clock, and the content/FAB clear the gesture pill.
  */
+@CatalogComponent(
+  id = "Template/AppScaffold",
+  group = "Scaffold templates",
+  caption =
+    "Full-screen layout with the OS status bar — TopAppBar, a list, and a FAB, captured with " +
+      "showSystemUi on a phone.",
+)
 @CatalogTemplate
 @Composable
 fun AppScaffoldTemplate() = FullScreenM3 {

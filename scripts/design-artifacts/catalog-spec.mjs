@@ -197,6 +197,17 @@ export function discoverPreviews(sources, opts = {}) {
   };
 }
 
+/**
+ * True when any source declares a `@CatalogComponent` — i.e. the module supplies (at least part of)
+ * its catalog inventory from annotations rather than the spec. Lets a caller with source access tell
+ * [validateSpec] (via `annotatedInventory`) to reject a `groups`-less spec that ALSO has no
+ * annotated inventory (which would otherwise pass validation, render, then crash at the join).
+ * Comments are stripped first so a commented-out or prose mention doesn't count.
+ */
+export function hasCatalogAnnotations(sources) {
+  return sources.some((s) => /@CatalogComponent\b/.test(stripComments(s)));
+}
+
 /** Every `preview` a spec references, top-level and inside `variants`, each with
  *  a human-readable JSON-ish path for diagnostics. */
 export function specPreviewRefs(spec) {
@@ -281,8 +292,26 @@ export function validateSpec(spec, opts = {}) {
   if (typeof spec.title !== "string" || spec.title.length === 0) {
     errors.push("`title` is required (the human-readable catalog name)");
   }
+  // `groups` is optional: a catalog can supply its whole component inventory from
+  // `@CatalogComponent` / `@CatalogVariant` annotations (compose-ai-tools' catalog-annotations)
+  // and carry only cover-sheet fields here. An ABSENT `groups` therefore validates — UNLESS the
+  // caller passed `annotatedInventory: false` (it scanned the module and found no
+  // `@CatalogComponent`), in which case the catalog has no inventory at all and would render then
+  // crash, so fail here with a clear message. When the caller can't tell (`annotatedInventory`
+  // undefined, e.g. the structural-only CLI path), stay lenient. When `groups` IS present it must
+  // be a non-empty array (an explicit `[]` is a mistake, not "annotation-supplied").
+  if (spec.groups === undefined) {
+    if (opts.annotatedInventory === false) {
+      errors.push(
+        "`groups` is omitted but the module declares no @CatalogComponent — the catalog has no " +
+          "inventory. Declare `groups`, or add @CatalogComponent / @CatalogVariant to the module's " +
+          "@Preview functions.",
+      );
+    }
+    return { errors, warnings };
+  }
   if (!Array.isArray(spec.groups) || spec.groups.length === 0) {
-    errors.push("`groups` must be a non-empty array");
+    errors.push("`groups`, when present, must be a non-empty array");
     return { errors, warnings };
   }
 
