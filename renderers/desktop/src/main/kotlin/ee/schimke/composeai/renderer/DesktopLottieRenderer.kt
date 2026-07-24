@@ -75,24 +75,6 @@ fun renderLottieGif(
   val interval = frameIntervalMs.coerceAtLeast(MIN_LOTTIE_FRAME_INTERVAL_MS)
   val frameCount = (durationMs.toDouble() / interval).roundToInt().coerceAtLeast(2)
 
-  // Opaque matte the captured frames composite over before GIF encoding. A GIF
-  // carries only 1-bit transparency, so `javax.imageio`'s writer thresholds
-  // every partially-transparent pixel to fully-opaque-or-transparent — which
-  // crushes the Lottie shape's anti-aliased edge (drawn against a transparent
-  // background) into a hard two-colour boundary. A sub-pixel edge shift between
-  // otherwise-identical CI renders then flips whole boundary pixels (the shape
-  // colour <-> the transparent index, rendered as its palette colour), so the
-  // committed baseline GIF churned on essentially every push. Compositing each
-  // frame onto an opaque matte keeps the edge as a stable colour blend (which
-  // the preview pipeline's pixelmatch gate treats as unchanged), and drops the
-  // fringe artefact. The still-PNG companion keeps real 8-bit alpha, so only
-  // the GIF path needs the matte. Defaults to white (the `showBackground`
-  // colour); an explicit background wins.
-  val matte: java.awt.Color =
-    when {
-      backgroundColor != 0L -> java.awt.Color((backgroundColor.toInt() and 0xFFFFFF) or -0x1000000)
-      else -> java.awt.Color.WHITE
-    }
   val progress = mutableFloatStateOf(0f)
   val scene = ImageComposeScene(width = widthPx, height = heightPx, density = Density(density))
   val frames = ArrayList<BufferedImage>(frameCount)
@@ -118,31 +100,12 @@ fun renderLottieGif(
     for (i in 0 until frameCount) {
       progress.floatValue = i.toFloat() / frameCount
       Snapshot.sendApplyNotifications()
-      frames += scene.render().toBufferedImage().flattenOnto(matte)
+      frames += scene.render().toBufferedImage()
     }
   } finally {
     scene.close()
   }
   return ScrollGifEncoder.encode(frames = frames, outputFile = outputFile, frameDelayMs = interval)
-}
-
-/**
- * Composite [this] over an opaque [matte] into an alpha-free `TYPE_INT_RGB` image. See
- * [renderLottieGif]'s matte rationale: GIF's 1-bit transparency can't carry an anti-aliased edge, so
- * flattening the frame first keeps that edge a stable colour blend instead of a churn-prone hard
- * boundary. A no-op for already-opaque content beyond the copy.
- */
-private fun BufferedImage.flattenOnto(matte: java.awt.Color): BufferedImage {
-  val out = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
-  val g = out.createGraphics()
-  try {
-    g.color = matte
-    g.fillRect(0, 0, width, height)
-    g.drawImage(this, 0, 0, null)
-  } finally {
-    g.dispose()
-  }
-  return out
 }
 
 /**

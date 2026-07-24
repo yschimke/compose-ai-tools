@@ -60,35 +60,6 @@ class DesktopLottieRendererTest {
   }
 
   @Test
-  fun `mattes a transparent-background capture so the gif stays opaque and anti-aliased`() {
-    // The discovered-asset path renders with no background (showBackground=false,
-    // backgroundColor=0). Without a matte the anti-aliased edge is drawn against a transparent
-    // surface, and GIF's 1-bit alpha thresholds it into a two-colour hard boundary that flips
-    // pixels between runs — the baseline churn. renderLottieGif composites onto an opaque matte, so
-    // the frames are fully opaque and the edge survives as a colour blend.
-    val outputFile = File(tempFolder.newFolder("renders"), "spin-transparent.gif")
-    renderLottieGif(
-      assetPath = "lottie/spin.json",
-      widthPx = 96,
-      heightPx = 96,
-      density = 1.0f,
-      showBackground = false,
-      backgroundColor = 0L,
-      outputFile = outputFile,
-      frameIntervalMs = 100,
-    )
-
-    // No pixel is transparent: the 1-bit-alpha thresholding that caused the churn can't happen.
-    assertTrue("every pixel must be opaque after matting", allFramesOpaque(outputFile))
-    // A mid-sweep frame keeps its anti-aliased edge — far more than the two colours the
-    // transparent-background path collapsed to.
-    assertTrue(
-      "matted frame should retain anti-aliased edge blends (>2 colours)",
-      distinctColors(outputFile, 10) > 2,
-    )
-  }
-
-  @Test
   fun `caps the captured window at the max duration`() {
     val outputFile = File(tempFolder.newFolder("renders"), "spin-capped.gif")
     renderLottieGif(
@@ -112,33 +83,6 @@ class DesktopLottieRendererTest {
     ImageIO.createImageInputStream(ByteArrayInputStream(file.readBytes())).use { stream ->
       reader.input = stream
       return reader.getNumImages(true)
-    }
-  }
-
-  private fun allFramesOpaque(file: File): Boolean {
-    val reader = ImageIO.getImageReadersByFormatName("gif").next()
-    ImageIO.createImageInputStream(ByteArrayInputStream(file.readBytes())).use { stream ->
-      reader.input = stream
-      for (i in 0 until reader.getNumImages(true)) {
-        val img = reader.read(i)
-        for (y in 0 until img.height) for (x in 0 until img.width) {
-          if ((img.getRGB(x, y) ushr 24) != 0xFF) return false
-        }
-      }
-      return true
-    }
-  }
-
-  private fun distinctColors(file: File, frame: Int): Int {
-    val reader = ImageIO.getImageReadersByFormatName("gif").next()
-    ImageIO.createImageInputStream(ByteArrayInputStream(file.readBytes())).use { stream ->
-      reader.input = stream
-      val img = reader.read(frame)
-      val colors = HashSet<Int>()
-      for (y in 0 until img.height) for (x in 0 until img.width) {
-        colors.add(img.getRGB(x, y) and 0xFFFFFF)
-      }
-      return colors.size
     }
   }
 
