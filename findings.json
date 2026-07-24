@@ -504,7 +504,7 @@
       "cleanBasename": "GoogleFontsShowcasePreview_Google_Fonts_Showcase.png",
       "findings": [
         {
-          "boundsInScreen": "42,231,631,294",
+          "boundsInScreen": "42,231,629,294",
           "level": "INFO",
           "message": "This non-clickable item's speakable text: \"The quick brown fox (700)\" is identical to that of 3 other item(s).",
           "type": "DuplicateSpeakableTextCheck",
