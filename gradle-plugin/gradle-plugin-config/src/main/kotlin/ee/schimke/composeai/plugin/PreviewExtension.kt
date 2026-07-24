@@ -92,6 +92,15 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    * exported as fixed-size drawable assets: those must crop to their intrinsic layout bounds, not
    * carry the watch-face canvas whitespace.
    *
+   * **Most Wear widget projects need no config:** a glance-wear widget preview — one whose
+   * `@PreviewParameter` provider comes from `androidx.glance.wear.*` (the
+   * `Squircle`/`RectangularAllWidgetPreviewParams` that feed `WearWidgetParams`) — is auto-detected
+   * and always cropped to its intrinsic bounds regardless of this flag, since a widget sticker must
+   * never occupy the watch-face canvas. This flag is the override for the broader case: set it to
+   * `false` to crop **every** device-less preview in the module (e.g. non-glance widget param
+   * types, or a module that renders only widgets). Detection is per-preview, so one module can
+   * freely mix fill-width catalog components (pinned) with widgets (auto-cropped).
+   *
    * Set to `false` on such a module to opt out of the retarget — device-less previews then stay
    * wrap-content and the renderer crops each PNG to the composable's measured bounds (#2670).
    * Previews that already pin their own `device` / `widthDp` / `heightDp` are unaffected either
