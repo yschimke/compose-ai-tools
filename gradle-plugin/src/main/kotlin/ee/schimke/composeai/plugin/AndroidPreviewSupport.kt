@@ -2866,10 +2866,15 @@ internal object AndroidPreviewSupport {
   /**
    * Highest JVM bytecode target the consumer's classes compile to, across the Java
    * (`compileOptions.targetCompatibility` on AGP's `CommonExtension`) and Kotlin
-   * (`compilerOptions.jvmTarget` on the variant's `compile<Variant>Kotlin` task) toolchains, or
-   * `null` when neither can be read. Feeds [RenderJvmSelection] so the render JVM is raised to
-   * match the classes it must load. Fully defensive — a probe that throws (no Kotlin plugin, a
-   * renamed KGP accessor, no AGP `compileOptions`) is skipped rather than failing configuration.
+   * (`compilerOptions.jvmTarget`) toolchains, or `null` when neither can be read. Feeds
+   * [RenderJvmSelection] so the render JVM is raised to match the classes it must load. Fully
+   * defensive — a probe that throws (no Kotlin plugin, a renamed KGP accessor, no AGP
+   * `compileOptions`) is skipped rather than failing configuration.
+   *
+   * Probes both `compile<Variant>Kotlin` (android-library-only modules) and
+   * `compile<Variant>KotlinAndroid` (KMP Android modules, which route their real compile through
+   * the per-target task) — the same pair the discovery/compile wiring uses above, so a KMP module
+   * on `jvmTarget = 21` with a 17 unit-test toolchain isn't missed.
    */
   private fun detectRenderBytecodeMajor(project: Project, capVariant: String): Int? {
     val candidates = mutableListOf<Int>()
@@ -2881,7 +2886,10 @@ internal object AndroidPreviewSupport {
         ?.let { BytecodeTargetDetector.parseTargetMajor(it.toString()) }
         ?.let { candidates += it }
     }
-    BytecodeTargetDetector.detectKotlinJvmTarget(project, listOf("compile${capVariant}Kotlin"))
+    BytecodeTargetDetector.detectKotlinJvmTarget(
+        project,
+        listOf("compile${capVariant}Kotlin", "compile${capVariant}KotlinAndroid"),
+      )
       ?.let { candidates += it }
     return candidates.filter { it > 0 }.maxOrNull()
   }
