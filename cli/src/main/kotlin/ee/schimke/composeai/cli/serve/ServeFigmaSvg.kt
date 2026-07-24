@@ -45,6 +45,87 @@ internal fun inlineFigmaRasters(fileSystem: FileSystem, dir: Path, svg: String):
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Web mode (`?mode=web`)
+//
+// The default served figma-svg is self-contained: fonts base64-embedded as `@font-face`, rasters
+// inlined as `data:` URIs — right for pasting into Figma (its importer resolves fonts by family
+// name and can't fetch external hrefs) but heavy, and it duplicates the font bytes into every
+// sticker. A **web/document** viewer that opens the `.svg` URL directly (not as an `<img>`, where
+// browsers block external refs in secure-static mode) can instead pull the faces from Google Fonts.
+//
+// [webModeSvg] rewrites an embedded SVG for that context: it strips the base64 `@font-face` blocks
+// and injects a single `@import url('https://fonts.googleapis.com/css2?family=…')` covering exactly
+// the families/weights/italics the SVG uses (the `<text>` still carry those family names, so the
+// browser resolves them from the imported sheet). Rasters are left as-is (still inlined) for now —
+// referencing the per-node crops needs an HTTP route to serve them, a separate step.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One `@font-face` the SVG embeds, reduced to what a Google Fonts `css2` request needs. */
+internal data class WebFontFace(val family: String, val weight: Int, val italic: Boolean)
+
+private val FONT_FACE_BLOCK = Regex("@font-face\\{[^}]*\\}")
+
+/**
+ * Rewrite an embedded figma-svg for web/document viewing: replace the base64 `@font-face` blocks
+ * with an external Google Fonts `@import`, so the browser fetches the faces instead of the SVG
+ * carrying their bytes. A vector-only SVG, or one with no parseable `@font-face`, passes through
+ * unchanged. Rasters are untouched (still inlined). Pure — unit-testable without a served host.
+ */
+internal fun webModeSvg(svg: String): String {
+  val faces = FONT_FACE_BLOCK.findAll(svg).mapNotNull { parseWebFontFace(it.value) }.toList()
+  if (faces.isEmpty()) return svg
+  val importUrl = googleFontsImportUrl(faces) ?: return svg
+  // The URL's `&` separators (`&family=`, `&display=swap`) are XML entity starts inside the
+  // `<style>` text of an `image/svg+xml` document, so escape them — the XML parser decodes `&amp;`
+  // back to `&` before the CSS parser sees the `@import`, keeping the served SVG well-formed.
+  val importUrlXml = importUrl.replace("&", "&amp;")
+  // Drop every embedded face, then put the @import at the head of the first <style> (CSS requires
+  // `@import` before other rules; the base64 bytes are what bloated the sticker, so this is the
+  // win).
+  val stripped = FONT_FACE_BLOCK.replace(svg, "")
+  return stripped.replaceFirst("<style>", "<style>@import url('$importUrlXml');")
+}
+
+/**
+ * Parse `@font-face{font-family:'X';font-style:normal;font-weight:N;src:…}` into a [WebFontFace].
+ */
+private fun parseWebFontFace(block: String): WebFontFace? {
+  val family =
+    Regex("font-family:'([^']*)'").find(block)?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
+      ?: return null
+  val weight = Regex("font-weight:(\\d+)").find(block)?.groupValues?.get(1)?.toIntOrNull() ?: 400
+  val italic = block.contains("font-style:italic")
+  return WebFontFace(family, weight, italic)
+}
+
+/**
+ * Build a single Google Fonts `css2` URL for [faces], grouped by family with sorted, de-duplicated
+ * weights (and the `ital,wght` axis when a family carries any italic). Generic families
+ * (`sans-serif` / `serif` / `monospace` / …) are skipped — they aren't Google Fonts. Null when
+ * nothing references a real family.
+ */
+internal fun googleFontsImportUrl(faces: List<WebFontFace>): String? {
+  val generics = setOf("sans-serif", "serif", "monospace", "cursive", "fantasy", "system-ui")
+  val byFamily =
+    faces.filter { it.family.lowercase() !in generics }.groupBy { it.family }.toSortedMap()
+  if (byFamily.isEmpty()) return null
+  val families = byFamily.map { (family, fs) ->
+    val enc = family.trim().replace(" ", "+")
+    if (fs.any { it.italic }) {
+      val tuples =
+        fs
+          .map { (if (it.italic) 1 else 0) to it.weight }
+          .distinct()
+          .sortedWith(compareBy({ it.first }, { it.second }))
+      "family=$enc:ital,wght@" + tuples.joinToString(";") { "${it.first},${it.second}" }
+    } else {
+      "family=$enc:wght@" + fs.map { it.weight }.distinct().sorted().joinToString(";")
+    }
+  }
+  return "https://fonts.googleapis.com/css2?" + families.joinToString("&") + "&display=swap"
+}
+
 /**
  * True when this path is [root] or a descendant of it (both normalized) — traversal containment.
  */
