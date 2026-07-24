@@ -169,7 +169,8 @@ class ServeBundleStore(
         val isRemoteCompose = underPreviews && name.endsWith(REMOTECOMPOSE_SUFFIX)
         // Also keep the captured Remote Compose documents from the sibling `ir/<id>.rcdoc` tree —
         // the browser player's replayable input, served over `GET /render/<id>.rcdoc`. Dropping
-        // these here would strip the client-side render lane from the upload path (POST / URL) while
+        // these here would strip the client-side render lane from the upload path (POST / URL)
+        // while
         // the directory path (which reads the bundle dir straight from disk) kept them.
         val underIr = name.startsWith("$IR_SUBDIR/") && ".." !in segments
         val isRcdoc = underIr && name.endsWith(RCDOC_SUFFIX)

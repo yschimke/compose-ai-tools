@@ -243,7 +243,8 @@ class ServeHttpRoutingTest {
 
   @Test
   fun `the rcdoc render lane serves the captured remote compose document bytes`() {
-    // compose-m3 carries an `ir/<id>.rcdoc` sidecar, so `GET /render/<id>.rcdoc` returns those bytes
+    // compose-m3 carries an `ir/<id>.rcdoc` sidecar, so `GET /render/<id>.rcdoc` returns those
+    // bytes
     // verbatim (octet-stream) for the in-browser player to replay client-side.
     val req =
       Request.Builder()

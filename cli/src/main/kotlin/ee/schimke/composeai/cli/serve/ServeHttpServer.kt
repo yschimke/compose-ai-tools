@@ -1221,8 +1221,8 @@ class ServeHttpServer(
    * bytes — a PNG for `<id>.png` (or no suffix), the figma-svg export for `<id>.svg`, the declared
    * preview slots as JSON for `<id>.slots`, or the captured Remote Compose document for
    * `<id>.rcdoc`. All but `.rcdoc` take the same override query params; SVG and slots are only
-   * produced by a daemon-backed host, and `.rcdoc` only by a bundle host that carries `ir/` sidecars
-   * (each 404s where unavailable).
+   * produced by a daemon-backed host, and `.rcdoc` only by a bundle host that carries `ir/`
+   * sidecars (each 404s where unavailable).
    */
   private suspend fun RoutingContext.handleRender(sessionInPath: Boolean) {
     if (rejectBadToken()) return
