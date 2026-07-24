@@ -43,8 +43,14 @@ class RenderEngineLottieGifTest {
     val result = engine.render(spec, requestId = 7L, classLoader = javaClass.classLoader)
 
     val apngFile = File(result.pngPath!!)
-    assertTrue("rendered APNG must exist and be non-empty", apngFile.exists() && apngFile.length() > 0)
-    assertTrue("animated companion must be an `_animated.png`", apngFile.name.endsWith("_animated.png"))
+    assertTrue(
+      "rendered APNG must exist and be non-empty",
+      apngFile.exists() && apngFile.length() > 0,
+    )
+    assertTrue(
+      "animated companion must be an `_animated.png`",
+      apngFile.name.endsWith("_animated.png"),
+    )
 
     // 1000ms intrinsic / 40ms default interval → 25 frames, recorded in the APNG `acTL` chunk.
     assertEquals(25, apngNumFrames(apngFile))

@@ -38,19 +38,19 @@ const val MAX_LOTTIE_GIF_DURATION_MS: Int = 5000
  * GIF carries only 1-bit transparency: [javax.imageio]'s GIF writer thresholds every partially
  * transparent pixel to fully-opaque-or-transparent, crushing the Lottie shape's anti-aliased edge
  * into a hard two-colour boundary. A sub-pixel edge shift between otherwise-identical CI renders
- * then flips whole boundary pixels, so the committed GIF baseline churned on essentially every push.
- * APNG is a standard PNG container with full 8-bit alpha, so the edge survives as a stable colour
- * blend that the preview pipeline's pixelmatch gate treats as unchanged — and it still autoplays
- * inline on GitHub, the web, VS Code webviews, and the preview server (all browser-engine surfaces),
- * as long as the artefact keeps a `.png` extension so it's served as `image/png`.
+ * then flips whole boundary pixels, so the committed GIF baseline churned on essentially every
+ * push. APNG is a standard PNG container with full 8-bit alpha, so the edge survives as a stable
+ * colour blend that the preview pipeline's pixelmatch gate treats as unchanged — and it still
+ * autoplays inline on GitHub, the web, VS Code webviews, and the preview server (all browser-engine
+ * surfaces), as long as the artefact keeps a `.png` extension so it's served as `image/png`.
  *
- * Captures the asset's intrinsic-duration window sampled at [frameIntervalMs] into
- * `frameCount = round(durationMs / interval)` frames, progress stepped `i / frameCount` so the loop
- * wraps seamlessly. Holds a single [ImageComposeScene] and sweeps a snapshot-backed progress state
- * across it (`Snapshot.sendApplyNotifications()` flushes each step), so the Compottie parse + Skia
- * surface allocation happen once. Each captured frame is written as a PNG and stitched by
- * [ApngEncoder], which copies each frame's `IDAT` verbatim — so the RGBA (alpha-carrying) frames
- * Skiko emits become an alpha-carrying APNG with no re-quantisation.
+ * Captures the asset's intrinsic-duration window sampled at [frameIntervalMs] into `frameCount =
+ * round(durationMs / interval)` frames, progress stepped `i / frameCount` so the loop wraps
+ * seamlessly. Holds a single [ImageComposeScene] and sweeps a snapshot-backed progress state across
+ * it (`Snapshot.sendApplyNotifications()` flushes each step), so the Compottie parse + Skia surface
+ * allocation happen once. Each captured frame is written as a PNG and stitched by [ApngEncoder],
+ * which copies each frame's `IDAT` verbatim — so the RGBA (alpha-carrying) frames Skiko emits
+ * become an alpha-carrying APNG with no re-quantisation.
  *
  * Returns the written [outputFile], or throws (propagated by the caller) when the asset can't be
  * inflated or a frame can't be encoded.

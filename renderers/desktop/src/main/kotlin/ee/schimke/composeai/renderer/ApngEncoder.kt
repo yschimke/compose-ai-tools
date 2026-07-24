@@ -13,9 +13,9 @@ import java.util.zip.CRC32
  * `:daemon:core` dependency shadowed the renderer's own Lottie test fixtures).
  *
  * **Why APNG here.** The discovered-Lottie animated companion renders against a transparent
- * background; GIF's 1-bit alpha can't carry the anti-aliased edge, so it churned run-to-run. APNG is
- * a standard PNG container with full 8-bit alpha, so the RGBA frames Skiko encodes travel through
- * unchanged.
+ * background; GIF's 1-bit alpha can't carry the anti-aliased edge, so it churned run-to-run. APNG
+ * is a standard PNG container with full 8-bit alpha, so the RGBA frames Skiko encodes travel
+ * through unchanged.
  *
  * **Wire shape** (per the [APNG spec](https://wiki.mozilla.org/APNG_Specification)): the standard
  * PNG stream plus `acTL` (once, after IHDR), and per frame an `fcTL`; frame 0's pixels stay in
@@ -34,8 +34,8 @@ internal object ApngEncoder {
   private const val CHUNK_TYPE_FDAT = "fdAT"
 
   /**
-   * Stitch [frames] (contiguous PNG files sharing one IHDR) into a looping APNG at [out], each frame
-   * held for [delayNumerator]/[delayDenominator] seconds; [loopCount] `0` = infinite.
+   * Stitch [frames] (contiguous PNG files sharing one IHDR) into a looping APNG at [out], each
+   * frame held for [delayNumerator]/[delayDenominator] seconds; [loopCount] `0` = infinite.
    */
   fun encodeFromPngFrames(
     frames: List<File>,

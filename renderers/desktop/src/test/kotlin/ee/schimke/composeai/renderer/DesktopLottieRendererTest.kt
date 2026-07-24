@@ -50,7 +50,10 @@ class DesktopLottieRendererTest {
       )
 
     assertTrue("encoder should report a written file", written != null)
-    assertTrue("rendered APNG must exist and be non-empty", outputFile.exists() && outputFile.length() > 0)
+    assertTrue(
+      "rendered APNG must exist and be non-empty",
+      outputFile.exists() && outputFile.length() > 0,
+    )
     // 2000ms intrinsic / 100ms interval → 20 frames, recorded in the APNG acTL chunk.
     assertEquals(20, apngNumFrames(outputFile))
 
@@ -65,7 +68,10 @@ class DesktopLottieRendererTest {
     for (y in 0 until firstFrame.height) for (x in 0 until firstFrame.width) {
       colors.add(firstFrame.getRGB(x, y))
     }
-    assertTrue("expected anti-aliased edge blends (>2 colours), got ${colors.size}", colors.size > 2)
+    assertTrue(
+      "expected anti-aliased edge blends (>2 colours), got ${colors.size}",
+      colors.size > 2,
+    )
   }
 
   @Test
