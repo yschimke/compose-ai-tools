@@ -1257,7 +1257,21 @@ class ServeHttpServer(
             // preview (compose/figma-svg-long) instead of the viewport-sized one.
             val scroll =
               call.request.queryParameters["scroll"]?.lowercase() in setOf("long", "full", "page")
-            renderSvgResponse(renderHost, previewId, parsed.overrides, scroll = scroll)
+            // `?mode=web` serves a web/document variant: the base64 `@font-face` blocks are swapped
+            // for an external Google Fonts `@import`, so a browser viewing the `.svg` directly
+            // pulls
+            // the faces from Google instead of the SVG carrying their bytes. The default (no
+            // `mode`,
+            // or `mode=figma`) stays fully self-contained — right for `<img>`/Figma import, where
+            // external references don't load.
+            val webMode = call.request.queryParameters["mode"]?.lowercase() == "web"
+            renderSvgResponse(
+              renderHost,
+              previewId,
+              parsed.overrides,
+              scroll = scroll,
+              webMode = webMode,
+            )
             return@withLeasedSession
           }
           if (wantSlots) {
@@ -1318,6 +1332,7 @@ class ServeHttpServer(
     previewId: String,
     overrides: PreviewOverrides,
     scroll: Boolean = false,
+    webMode: Boolean = false,
   ) {
     val outcome =
       withContext(Dispatchers.IO) {
@@ -1340,8 +1355,14 @@ class ServeHttpServer(
           status = HttpStatusCode.ServiceUnavailable,
         )
       }
-      is SvgOutcome.Ok ->
-        call.respondBytes(outcome.svg, ContentType.parse(ComposeFigmaSvgProduct.MEDIA_TYPE_SVG))
+      is SvgOutcome.Ok -> {
+        // The render host produces the self-contained (embedded) SVG and caches it; the web variant
+        // is a cheap per-response rewrite of those bytes, so both modes share one render + cache.
+        val svg =
+          if (webMode) webModeSvg(outcome.svg.toString(Charsets.UTF_8)).toByteArray(Charsets.UTF_8)
+          else outcome.svg
+        call.respondBytes(svg, ContentType.parse(ComposeFigmaSvgProduct.MEDIA_TYPE_SVG))
+      }
       SvgOutcome.NotFound -> call.respondText("no such preview", status = HttpStatusCode.NotFound)
       is SvgOutcome.Failed ->
         call.respondText(outcome.reason, status = HttpStatusCode.InternalServerError)
