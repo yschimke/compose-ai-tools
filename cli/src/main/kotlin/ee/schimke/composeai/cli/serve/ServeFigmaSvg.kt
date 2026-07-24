@@ -76,11 +76,15 @@ internal fun webModeSvg(svg: String): String {
   val faces = FONT_FACE_BLOCK.findAll(svg).mapNotNull { parseWebFontFace(it.value) }.toList()
   if (faces.isEmpty()) return svg
   val importUrl = googleFontsImportUrl(faces) ?: return svg
+  // The URL's `&` separators (`&family=`, `&display=swap`) are XML entity starts inside the
+  // `<style>` text of an `image/svg+xml` document, so escape them — the XML parser decodes `&amp;`
+  // back to `&` before the CSS parser sees the `@import`, keeping the served SVG well-formed.
+  val importUrlXml = importUrl.replace("&", "&amp;")
   // Drop every embedded face, then put the @import at the head of the first <style> (CSS requires
   // `@import` before other rules; the base64 bytes are what bloated the sticker, so this is the
   // win).
   val stripped = FONT_FACE_BLOCK.replace(svg, "")
-  return stripped.replaceFirst("<style>", "<style>@import url('$importUrl');")
+  return stripped.replaceFirst("<style>", "<style>@import url('$importUrlXml');")
 }
 
 /**

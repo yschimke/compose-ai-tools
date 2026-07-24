@@ -29,12 +29,15 @@ class ServeFigmaSvgWebModeTest {
     // No base64 font bytes survive.
     assertFalse(out.contains("base64,"))
     assertFalse(out.contains("@font-face"))
-    // A single @import covers both weights of the one family.
+    // A single @import covers both weights of the one family; the URL's `&` is XML-escaped so the
+    // image/svg+xml document stays well-formed (no raw `&` entity starts).
     assertTrue(
       out.contains(
-        "@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap');"
+        "@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&amp;display=swap');"
       )
     )
+    // The raw (unescaped) separator must not appear — that would be a malformed entity start.
+    assertFalse(out.contains("&display=swap"))
     // The text node's family is untouched, so the browser resolves it from the imported sheet.
     assertTrue(out.contains("font-family=\"Roboto\""))
   }

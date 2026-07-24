@@ -983,14 +983,28 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     return location.origin + base + "/render/" + encodeURIComponent(previewId) + ext +
       (qs ? "?" + qs : "");
   }
+  function withMode(url, mode) {
+    return url + (url.indexOf("?") >= 0 ? "&" : "?") + "mode=" + mode;
+  }
   function refreshLinks() {
     [["png", ".png"], ["svg", ".svg"]].forEach(function (pair) {
       var field = document.getElementById("cp-url-" + pair[0]);
       if (!field) return;
-      var url = renderUrl(pair[1]);
-      field.value = url;
+      var embed = renderUrl(pair[1]);
       var dl = document.getElementById("cp-dl-" + pair[0]);
-      if (dl) dl.href = url;
+      if (pair[1] === ".svg") {
+        // Copy URL yields the web/document variant (`?mode=web` → external Google Fonts
+        // @import), so opening the copied link in a browser pulls the faces from Google. Copy
+        // SVG and the download stay on the embedded variant (self-contained — right for pasting
+        // into Figma or an <img>, where external refs don't load); the button reads it from
+        // data-embed-url.
+        field.value = withMode(embed, "web");
+        field.setAttribute("data-embed-url", embed);
+        if (dl) dl.href = embed;
+      } else {
+        field.value = embed;
+        if (dl) dl.href = embed;
+      }
     });
   }
   // Click the read-only URL field to copy the /render URL to the clipboard (no separate button).
@@ -1027,14 +1041,18 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
       };
       if (!navigator.clipboard || !navigator.clipboard.writeText) { reset("No clipboard"); return; }
       btn.textContent = "Copying…";
+      // Copy SVG targets the EMBEDDED variant (data-embed-url) — the field itself holds the
+      // web-mode URL for Copy URL, but a copied SVG is usually pasted into Figma / an editor,
+      // which needs the fonts baked in, not an external @import. PNG has one variant.
+      var src = (ext === ".svg" && field.getAttribute("data-embed-url")) || field.value;
       // fetch() resolves even on a non-2xx render (503 saturated, 400 bad override, 404 a
       // preview that can't export that lane), so guard on r.ok — otherwise the error body,
       // not the artefact, would land on the clipboard and still report "Copied".
       var okOrThrow = function (r) { if (!r.ok) throw new Error("render " + r.status); return r; };
       var toText =
         ext === ".svg"
-          ? fetch(field.value).then(okOrThrow).then(function (r) { return r.text(); })
-          : fetch(field.value)
+          ? fetch(src).then(okOrThrow).then(function (r) { return r.text(); })
+          : fetch(src)
               .then(okOrThrow)
               .then(function (r) { return r.blob(); })
               .then(function (blob) {
