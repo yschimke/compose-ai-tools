@@ -45,7 +45,11 @@ import {
 import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 
 import { foldVariants } from "./catalog-variants.mjs";
-import { inventoryFromPreviews, mergeCatalogGroups } from "./catalog-inventory.mjs";
+import {
+  applyGroupOrder,
+  inventoryFromPreviews,
+  mergeCatalogGroups,
+} from "./catalog-inventory.mjs";
 import { variantStateFromId } from "./variant-state.mjs";
 import { renderIndexHtml } from "./render-index-html.mjs";
 import { renderCompareHtml } from "./render-compare-html.mjs";
@@ -522,6 +526,13 @@ if (!Array.isArray(spec.groups) || spec.groups.length === 0) {
   );
   process.exit(1);
 }
+
+// Order the groups by the spec's cover-sheet `groupOrder` (a list of group names), so a catalog can
+// keep its whole inventory in annotations yet still control the group/tab display order — which is
+// presentation config, not per-component code metadata. The annotation-derived order is source
+// first-seen, which can't express the intended order when a module's source order differs. A no-op
+// when `groupOrder` is absent, so catalogs that don't set it are unchanged.
+spec.groups = applyGroupOrder(spec.groups, spec.groupOrder);
 
 // System tokens declared via `@ColorCatalog` / `@TypographyCatalog` — carried in the
 // bundle as `previews/<id>.catalog.json` sidecars (compose-ai-tools#2167), which the
