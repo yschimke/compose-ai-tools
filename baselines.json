@@ -304,14 +304,14 @@
     "serve-viewer-catalog-knobs.dark.png": {
       "fixture": "serve-viewer-catalog-knobs",
       "theme": "dark",
-      "sha256": "f4b1fa33fea5bb1552964cd175580f1f2e41dea82f51a2c1e0af5ee7b7075c97",
-      "size": 56503
+      "sha256": "a4c2412bdd317c4fb3f9b2740b651231f6c9cbaed6587fd9feeba2ef4bc43afe",
+      "size": 57494
     },
     "serve-viewer-catalog-knobs.light.png": {
       "fixture": "serve-viewer-catalog-knobs",
       "theme": "light",
-      "sha256": "400215212956412b082ef362318d40bceea7a119b98b259418f736972a8d958d",
-      "size": 56562
+      "sha256": "969c2dbedc9844b30126927991a68dab2a7d7dd6a46047e7304817c120e7a6a2",
+      "size": 57600
     },
     "serve-viewer-focus.dark.png": {
       "fixture": "serve-viewer-focus",
