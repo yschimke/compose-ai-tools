@@ -69,9 +69,14 @@
         }
       }
     },
+    "groupOrder": {
+      "type": "array",
+      "description": "Optional display order for the groups, by name (e.g. [\"Buttons\", \"Selection\", \"Containment\", …]). Presentation config, like `display`: when the inventory is annotation-supplied, the annotation-derived order follows source declaration order, which may not match the intended catalog order — this pins it. Groups not named keep their relative order after the named ones. Ignored groups (no such group) are harmless.",
+      "items": { "type": "string" }
+    },
     "groups": {
       "type": "array",
-      "description": "The component inventory, grouped. Group order is the display order. OPTIONAL: a catalog can instead declare its inventory with `@CatalogComponent` / `@CatalogVariant` annotations next to the `@Preview`s (the design-artifacts export builds the inventory from them, layering any groups declared here on top as an override). Absent ⇒ the inventory is wholly annotation-supplied.",
+      "description": "The component inventory, grouped. Group order is the display order (or `groupOrder`, when set). OPTIONAL: a catalog can instead declare its inventory with `@CatalogComponent` / `@CatalogVariant` annotations next to the `@Preview`s (the design-artifacts export builds the inventory from them, layering any groups declared here on top as an override). Absent ⇒ the inventory is wholly annotation-supplied.",
       "items": { "$ref": "#/definitions/group" }
     }
   },

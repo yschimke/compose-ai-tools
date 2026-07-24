@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/design-artifacts/catalog.spec.schema.json",
-  "$comment": "Phase-0 catalog spec for Wear Compose Material 3. Code-led: the render is authoritative; the kit references are for the one-off seed import only. Wear is dark-first, so `modes` is the single dark component capture (`@CatalogWearModes`, `showBackground = false`) rather than a light/dark pair — a Wear component sticker is one transparent capture, not one-per-breakpoint. The round size breakpoints in `breakpoints` are what the FULL-SCREEN components (scaffold templates, scaling lists, the EdgeButton) fan out across via `@CatalogWearBreakpoints` (small/large/xl round); the centred component stickers are size-agnostic and don't. A component's `variants` fold extra state renders (pressed/focused/disabled/off/…) onto the same sticker: the default preview is what the grid shows, and each variant's render becomes a secondary image (tagged with its `state`) surfaced in the single-component view, so state stickers live under their parent instead of a flat 'States' group. State variants that differ only by a `previewOverride*` knob (off↔on, unchecked↔checked, disabled) ride the primary function via `@OverrideVariant` instead of a duplicated wrapper — the render still emits a distinct `_VARIANT_<state>` capture, so they fold in the same way.",
+  "$comment": "Cover-sheet spec for Wear Compose Material 3. The component inventory — ids, grouping, captions, and per-variant tags — now lives next to the `@Preview`s as `@CatalogComponent` / `@CatalogVariant` annotations (see CatalogPreviews.kt); the design-artifacts export builds the catalog from those. This file carries only the fields that aren't per-component code metadata: the system slug, title, the library covered, the primary modes (Wear is dark-first, so `modes` is the single dark capture via `@CatalogWearModes`), the round-size breakpoints the full-screen components fan out across via `@CatalogWearBreakpoints`, the `display` stage/hero hints, the `groupOrder` (the group/tab display order — presentation config the annotation-derived source order can't express), and the published-kit references seeded for the one-off import (our render stays authoritative). State variants that differ only by a `previewOverride*` knob ride the primary function via `@OverrideVariant`.",
   "system": "wear-m3",
   "title": "Wear Compose Material 3",
   "library": ["androidx.wear.compose:compose-material3"],
@@ -15,91 +15,20 @@
     "surface": "dark",
     "hero": "Template/TimeText"
   },
+  "groupOrder": [
+    "Buttons",
+    "Selection",
+    "Containment",
+    "Lists",
+    "Layouts",
+    "Scaffold templates",
+    "Communication",
+    "Text options",
+    "Iconography",
+    "Theme"
+  ],
   "referenceKits": [
     "https://www.figma.com/community/file/1506418396052412186/m3-wear-os-apps-design-kit",
     "https://www.figma.com/community/file/1507852095734722321/m3-wear-os-tiles-design-kit"
-  ],
-  "groups": [
-    {
-      "name": "Buttons",
-      "components": [
-        { "componentId": "Button/Filled", "preview": "FilledButton",
-          "variants": [
-            { "state": "pressed", "preview": "ButtonPressed", "caption": "Held PressInteraction → pressed state layer." },
-            { "state": "focused", "preview": "ButtonFocused", "caption": "Held FocusInteraction → focus indicator (rotary / D-pad)." }
-          ]
-        },
-        { "componentId": "Button/Tonal", "preview": "FilledTonalButtonSticker" },
-        { "componentId": "Button/Outlined", "preview": "OutlinedButtonSticker" },
-        { "componentId": "Button/Child", "preview": "ChildButtonSticker" },
-        { "componentId": "EdgeButton", "preview": "EdgeButtonSticker", "caption": "Screen-hugging bottom action unique to Wear." },
-        { "componentId": "IconButton", "preview": "IconButtonSticker", "caption": "Round icon button." },
-        { "componentId": "CompactButton", "preview": "CompactButtonSticker", "caption": "Compact single-line button." },
-        { "componentId": "ButtonGroup", "preview": "ButtonGroupSticker", "caption": "Two buttons laid out edge-to-edge." }
-      ]
-    },
-    {
-      "name": "Selection",
-      "components": [
-        { "componentId": "SwitchButton/On", "preview": "SwitchButtonOn", "caption": "On state; the off state folds in as an @OverrideVariant (checked = false)." },
-        { "componentId": "CheckboxButton/Checked", "preview": "CheckboxButtonChecked", "caption": "Checked state; the unchecked state folds in as an @OverrideVariant (checked = false)." }
-      ]
-    },
-    {
-      "name": "Containment",
-      "components": [
-        { "componentId": "Card", "preview": "CardSticker" },
-        { "componentId": "Card/Outlined", "preview": "OutlinedCardSticker", "caption": "Outlined card variant (OutlinedCard)." },
-        { "componentId": "TitleCard", "preview": "TitleCardSticker" },
-        { "componentId": "ListHeader", "preview": "ListHeaderSticker" },
-        { "componentId": "AppCard", "preview": "AppCardSticker", "caption": "Card with app name, icon, title and content slots." }
-      ]
-    },
-    {
-      "name": "Lists",
-      "components": [
-        { "componentId": "TransformingLazyColumn", "preview": "ScalingListSticker", "caption": "Scaling list — items scale + fade toward the curved edges (SurfaceTransformation)." }
-      ]
-    },
-    {
-      "name": "Layouts",
-      "components": [
-        { "componentId": "Layout/List", "preview": "BlankListLayout", "caption": "Blank list-screen skeleton at each breakpoint — adopt the responsive structure (margins, slots, edge button)." }
-      ]
-    },
-    {
-      "name": "Scaffold templates",
-      "components": [
-        { "componentId": "Template/TimeText", "preview": "TimeTextScaffoldTemplate", "caption": "Full-screen list scaffold with the curved TimeText status strip — the base Wear screen." },
-        { "componentId": "Template/PageIndicator", "preview": "PageIndicatorScaffoldTemplate", "caption": "Horizontal pager scaffold with an edge-hugging HorizontalPageIndicator under the TimeText strip." },
-        { "componentId": "Template/EdgeButton", "preview": "EdgeButtonScaffoldTemplate", "caption": "List scaffold anchored by the screen-hugging EdgeButton, TimeText strip on top." }
-      ]
-    },
-    {
-      "name": "Communication",
-      "components": [
-        { "componentId": "Progress/Circular", "preview": "CircularProgressSticker" },
-        { "componentId": "Progress/Circular/Indeterminate", "preview": "IndeterminateCircularProgressSticker", "caption": "Indeterminate (animated) progress ring — the no-progress overload sweeps continuously; animates in the live preview." }
-      ]
-    },
-    {
-      "name": "Text options",
-      "components": [
-        { "componentId": "Text/MaxLines-Truncated", "preview": "TextMaxLinesTruncated", "caption": "maxLines=2 + ellipsis on a round screen." }
-      ]
-    },
-    {
-      "name": "Iconography",
-      "components": [
-        { "componentId": "Icon", "preview": "IconSticker", "caption": "The standalone Icon primitive." }
-      ]
-    },
-    {
-      "name": "Theme",
-      "components": [
-        { "componentId": "Typography", "preview": "TypographySpecimen", "caption": "A type ramp read from MaterialTheme.typography." },
-        { "componentId": "ColorScheme", "preview": "ColorSchemeSpecimen", "caption": "Colour-scheme swatches read from MaterialTheme.colorScheme." }
-      ]
-    }
   ]
 }

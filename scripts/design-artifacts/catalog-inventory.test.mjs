@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { inventoryFromPreviews, mergeCatalogGroups } from "./catalog-inventory.mjs";
+import {
+  applyGroupOrder,
+  inventoryFromPreviews,
+  mergeCatalogGroups,
+} from "./catalog-inventory.mjs";
 
 // A preview record as it appears in previews.json: a function name plus the
 // discovery-resolved `catalog` identity (light/dark multipreviews share both).
@@ -210,4 +214,29 @@ test("mergeCatalogGroups unions variants by preview, spec winning per function",
 
 test("mergeCatalogGroups is a no-op shape for an all-empty input", () => {
   assert.deepEqual(mergeCatalogGroups([], []), []);
+});
+
+// --- applyGroupOrder ----------------------------------------------------------
+
+const groupsNamed = (...names) => names.map((name) => ({ name, components: [] }));
+
+test("applyGroupOrder sorts groups into the declared order", () => {
+  const groups = groupsNamed("Lists", "Buttons", "Selection");
+  const ordered = applyGroupOrder(groups, ["Buttons", "Selection", "Lists"]);
+  assert.deepEqual(ordered.map((g) => g.name), ["Buttons", "Selection", "Lists"]);
+});
+
+test("applyGroupOrder keeps unlisted groups after the listed ones, in original order", () => {
+  const groups = groupsNamed("Communication", "Buttons", "Theme", "Selection");
+  const ordered = applyGroupOrder(groups, ["Buttons", "Selection"]);
+  assert.deepEqual(
+    ordered.map((g) => g.name),
+    ["Buttons", "Selection", "Communication", "Theme"], // unlisted keep source order
+  );
+});
+
+test("applyGroupOrder is a no-op when groupOrder is absent or empty", () => {
+  const groups = groupsNamed("B", "A");
+  assert.deepEqual(applyGroupOrder(groups, undefined), groups);
+  assert.deepEqual(applyGroupOrder(groups, []), groups);
 });

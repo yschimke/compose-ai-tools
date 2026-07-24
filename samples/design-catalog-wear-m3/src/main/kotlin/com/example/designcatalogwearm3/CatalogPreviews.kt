@@ -61,6 +61,8 @@ import androidx.wear.compose.material3.timeTextCurvedText
 import ee.schimke.composeai.overrides.previewOverrideBoolean
 import ee.schimke.composeai.overrides.previewOverrideString
 import ee.schimke.composeai.preview.AnimatedPreview
+import ee.schimke.composeai.preview.CatalogComponent
+import ee.schimke.composeai.preview.CatalogVariant
 import ee.schimke.composeai.preview.OverrideVariant
 import ee.schimke.composeai.preview.ScrollMode
 import ee.schimke.composeai.preview.ScrollingPreview
@@ -74,6 +76,7 @@ import ee.schimke.composeai.preview.slots.PreviewSlot
 // instead of a duplicated `ButtonDisabled` wrapper — the render emits a `_VARIANT_disabled` capture
 // that folds under this sticker. `pressed` / `focused` stay separate functions below: they need a
 // seeded `InteractionSource`, which isn't a `previewOverride*` knob.
+@CatalogComponent(id = "Button/Filled", group = "Buttons")
 @CatalogWearModes
 @OverrideVariant(name = "disabled", booleans = ["enabled=false"])
 @Composable
@@ -84,16 +87,19 @@ fun FilledButton() =
     }
   }
 
+@CatalogComponent(id = "Button/Tonal", group = "Buttons")
 @CatalogWearModes
 @Composable
 fun FilledTonalButtonSticker() =
   WearSticker { FilledTonalButton(onClick = {}) { Text(previewOverrideString("label", stringResource(R.string.label_tonal))) } }
 
+@CatalogComponent(id = "Button/Outlined", group = "Buttons")
 @CatalogWearModes
 @Composable
 fun OutlinedButtonSticker() =
   WearSticker { OutlinedButton(onClick = {}) { Text(previewOverrideString("label", stringResource(R.string.label_outlined))) } }
 
+@CatalogComponent(id = "Button/Child", group = "Buttons")
 @CatalogWearModes
 @Composable
 fun ChildButtonSticker() =
@@ -131,6 +137,11 @@ private val edgeButtonHistory =
 // clock), so the sticker uses @ScrollingPreview(END) — scroll the overflowing
 // list to the end (the renderer settles post-scroll animations, so the EdgeButton
 // reveal lands at rest) and capture the single settled frame.
+@CatalogComponent(
+  id = "EdgeButton",
+  group = "Buttons",
+  caption = "Screen-hugging bottom action unique to Wear.",
+)
 @CatalogWearBreakpoints
 @ScrollingPreview(modes = [ScrollMode.END])
 @Composable
@@ -188,6 +199,11 @@ private val scalingListItems =
     R.string.activity_cycle to "18 km · 41 min",
   )
 
+@CatalogComponent(
+  id = "TransformingLazyColumn",
+  group = "Lists",
+  caption = "Scaling list — items scale + fade toward the curved edges (SurfaceTransformation).",
+)
 @CatalogWearBreakpoints
 @Composable
 fun ScalingListSticker() =
@@ -234,6 +250,13 @@ fun ScalingListSticker() =
 // bottom — so the skeleton scrolls to the end (the renderer settles the reveal)
 // to actually show the edge-button slot. The slot count overflows the viewport on
 // every breakpoint so the button lands at its resting size.
+@CatalogComponent(
+  id = "Layout/List",
+  group = "Layouts",
+  caption =
+    "Blank list-screen skeleton at each breakpoint — adopt the responsive structure (margins, " +
+      "slots, edge button).",
+)
 @CatalogWearBreakpoints
 @ScrollingPreview(modes = [ScrollMode.END])
 @Composable
@@ -298,6 +321,11 @@ private val templateListItems =
 
 // Base template: the canonical Wear list screen — TimeText status strip at the
 // curved top, a ListHeader, and a scaling TransformingLazyColumn of TitleCards.
+@CatalogComponent(
+  id = "Template/TimeText",
+  group = "Scaffold templates",
+  caption = "Full-screen list scaffold with the curved TimeText status strip — the base Wear screen.",
+)
 @CatalogWearBreakpoints
 @Composable
 fun TimeTextScaffoldTemplate() =
@@ -336,6 +364,13 @@ fun TimeTextScaffoldTemplate() =
 // Page-indicator template: a horizontal pager with the Wear M3
 // HorizontalPageIndicator hugging the bottom curve. Seeded on the middle page so
 // the indicator reads as a real multi-page carousel, under the TimeText strip.
+@CatalogComponent(
+  id = "Template/PageIndicator",
+  group = "Scaffold templates",
+  caption =
+    "Horizontal pager scaffold with an edge-hugging HorizontalPageIndicator under the TimeText " +
+      "strip.",
+)
 @CatalogWearBreakpoints
 @Composable
 fun PageIndicatorScaffoldTemplate() =
@@ -361,6 +396,11 @@ fun PageIndicatorScaffoldTemplate() =
 // the (overflowing) list settles at the bottom, so the template scrolls to the
 // end via @ScrollingPreview(END) to capture the button at its resting size — here
 // paired with the TimeText status strip the full template carries.
+@CatalogComponent(
+  id = "Template/EdgeButton",
+  group = "Scaffold templates",
+  caption = "List scaffold anchored by the screen-hugging EdgeButton, TimeText strip on top.",
+)
 @CatalogWearBreakpoints
 @ScrollingPreview(modes = [ScrollMode.END])
 @Composable
@@ -411,6 +451,11 @@ fun EdgeButtonScaffoldTemplate() =
 // The off state rides this function via `@OverrideVariant` (seeding `checked = false`) instead of a
 // duplicated `SwitchButtonOff` — the render emits a `_VARIANT_off` capture that folds under this
 // sticker as the off state.
+@CatalogComponent(
+  id = "SwitchButton/On",
+  group = "Selection",
+  caption = "On state; the off state folds in as an @OverrideVariant (checked = false).",
+)
 @CatalogWearModes
 @OverrideVariant(name = "off", booleans = ["checked=false"])
 @Composable
@@ -425,6 +470,11 @@ fun SwitchButtonOn() =
 
 // The unchecked state rides this function via `@OverrideVariant` (seeding `checked = false`) instead
 // of a duplicated `CheckboxButtonUnchecked`.
+@CatalogComponent(
+  id = "CheckboxButton/Checked",
+  group = "Selection",
+  caption = "Checked state; the unchecked state folds in as an @OverrideVariant (checked = false).",
+)
 @CatalogWearModes
 @OverrideVariant(name = "unchecked", booleans = ["checked=false"])
 @Composable
@@ -447,6 +497,7 @@ fun CheckboxButtonChecked() =
 // full fillable content width — the region a structured-screen fill targets — not just the label
 // box. Height wraps the content, and Wear card/title content is already start-aligned and
 // full-width, so the baked render is unchanged.
+@CatalogComponent(id = "Card", group = "Containment")
 @CatalogWearModes
 @Composable
 fun CardSticker() =
@@ -460,6 +511,11 @@ fun CardSticker() =
 
 // The outlined card variant (`OutlinedCard`) — the Wear parallel of remote-m3's `Card/Outlined`.
 // Same "Card" label as the filled `Card` above; only the outlined-vs-filled treatment differs.
+@CatalogComponent(
+  id = "Card/Outlined",
+  group = "Containment",
+  caption = "Outlined card variant (OutlinedCard).",
+)
 @CatalogWearModes
 @Composable
 fun OutlinedCardSticker() =
@@ -471,6 +527,7 @@ fun OutlinedCardSticker() =
     }
   }
 
+@CatalogComponent(id = "TitleCard", group = "Containment")
 @CatalogWearModes
 @Composable
 fun TitleCardSticker() =
@@ -492,6 +549,7 @@ fun TitleCardSticker() =
 // No slot marker on the ListHeader: its content is horizontally centred, so a `fillMaxWidth` slot
 // box would left-shift the label in the baked render, and a header isn't a drop target the
 // structured-screen builder fills. The label stays an editable override knob.
+@CatalogComponent(id = "ListHeader", group = "Containment")
 @CatalogWearModes
 @Composable
 fun ListHeaderSticker() =
@@ -501,6 +559,7 @@ fun ListHeaderSticker() =
 // Communication.
 // ---------------------------------------------------------------------------
 
+@CatalogComponent(id = "Progress/Circular", group = "Communication")
 @CatalogWearModes
 @Composable
 fun CircularProgressSticker() =
@@ -516,6 +575,13 @@ fun CircularProgressSticker() =
 // deterministic because the renderer parks infinite animations at a fixed advance (see AGENTS.md —
 // "indeterminate CircularProgressIndicator" is a called-out case). Sized to match the determinate
 // sticker so the pair frames alike.
+@CatalogComponent(
+  id = "Progress/Circular/Indeterminate",
+  group = "Communication",
+  caption =
+    "Indeterminate (animated) progress ring — the no-progress overload sweeps continuously; " +
+      "animates in the live preview.",
+)
 @CatalogWearModes
 @Composable
 fun IndeterminateCircularProgressSticker() =
@@ -539,6 +605,11 @@ fun IndeterminateCircularProgressGif() =
 // Text options — exercises the maxLines / overflow product on a round screen.
 // ---------------------------------------------------------------------------
 
+@CatalogComponent(
+  id = "Text/MaxLines-Truncated",
+  group = "Text options",
+  caption = "maxLines=2 + ellipsis on a round screen.",
+)
 @CatalogWearModes
 @Composable
 fun TextMaxLinesTruncated() =
@@ -571,6 +642,11 @@ private fun focusedSource(): MutableInteractionSource {
   return source
 }
 
+@CatalogVariant(
+  of = "Button/Filled",
+  state = "pressed",
+  caption = "Held PressInteraction → pressed state layer.",
+)
 @CatalogWearModes
 @Composable
 fun ButtonPressed() =
@@ -580,6 +656,11 @@ fun ButtonPressed() =
     }
   }
 
+@CatalogVariant(
+  of = "Button/Filled",
+  state = "focused",
+  caption = "Held FocusInteraction → focus indicator (rotary / D-pad).",
+)
 @CatalogWearModes
 @Composable
 fun ButtonFocused() =
@@ -627,11 +708,13 @@ private val catalogIcon: ImageVector =
     }
     .build()
 
+@CatalogComponent(id = "IconButton", group = "Buttons", caption = "Round icon button.")
 @CatalogWearModes
 @Composable
 fun IconButtonSticker() =
   WearSticker { IconButton(onClick = {}) { Icon(catalogIcon, "Favourite") } }
 
+@CatalogComponent(id = "CompactButton", group = "Buttons", caption = "Compact single-line button.")
 @CatalogWearModes
 @Composable
 fun CompactButtonSticker() =
@@ -639,6 +722,11 @@ fun CompactButtonSticker() =
     CompactButton(onClick = {}, label = { Text(previewOverrideString("label", "Compact")) })
   }
 
+@CatalogComponent(
+  id = "ButtonGroup",
+  group = "Buttons",
+  caption = "Two buttons laid out edge-to-edge.",
+)
 @CatalogWearModes
 @Composable
 fun ButtonGroupSticker() =
@@ -649,6 +737,11 @@ fun ButtonGroupSticker() =
     }
   }
 
+@CatalogComponent(
+  id = "AppCard",
+  group = "Containment",
+  caption = "Card with app name, icon, title and content slots.",
+)
 @CatalogWearModes
 @Composable
 fun AppCardSticker() =
@@ -663,12 +756,18 @@ fun AppCardSticker() =
     }
   }
 
+@CatalogComponent(id = "Icon", group = "Iconography", caption = "The standalone Icon primitive.")
 @CatalogWearModes
 @Composable
 fun IconSticker() = WearSticker { Icon(catalogIcon, "Star", Modifier.size(48.dp)) }
 
 // Theme specimens — the Wear M3 type ramp and colour-scheme swatches read straight
 // from MaterialTheme, parallels of the remote-m3 theme stickers.
+@CatalogComponent(
+  id = "Typography",
+  group = "Theme",
+  caption = "A type ramp read from MaterialTheme.typography.",
+)
 @CatalogWearModes
 @Composable
 fun TypographySpecimen() =
@@ -680,6 +779,11 @@ fun TypographySpecimen() =
     }
   }
 
+@CatalogComponent(
+  id = "ColorScheme",
+  group = "Theme",
+  caption = "Colour-scheme swatches read from MaterialTheme.colorScheme.",
+)
 @CatalogWearModes
 @Composable
 fun ColorSchemeSpecimen() =
