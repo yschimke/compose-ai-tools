@@ -279,6 +279,27 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1 fontconfig
 
+      # Persist the downloadable-font cache across runs. The Android renderer's
+      # GoogleFont shadow and the figma-svg export fetch faces (Orbitron, Space
+      # Grotesk, JetBrains Mono, Noto, Roboto, …) from Google Fonts into
+      # `~/.cache/composeai/fonts` on a cache miss; caching that dir means a face is
+      # downloaded once and reused on every later run instead of re-fetched. That
+      # keeps a branded catalog's bake deterministic (e.g. meshcore's Orbitron /
+      # Space Grotesk / JetBrains Mono resolve instead of silently rendering Roboto)
+      # and stops a transient Google Fonts hiccup from degrading the render — which,
+      # now that an unresolved downloadable font is a fatal render error rather than a
+      # silent Roboto fallback, would otherwise fail the bake outright. The rolling
+      # run_id key + prefix restore accumulates newly-seen faces across runs; a
+      # partially-populated cache from a run that failed mid-render is still saved and
+      # reused, so the next run only fetches what's missing.
+      - name: Cache downloadable fonts
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/composeai/fonts
+          key: composeai-fonts-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            composeai-fonts-${{ runner.os }}-
+
       - name: Render catalog bundle
         run: |
           set -euo pipefail
