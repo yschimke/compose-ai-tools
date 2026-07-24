@@ -113,6 +113,17 @@ object PreviewDiscovery {
      * `widthDp`/`heightDp` is left untouched. Defaults to `false` (phone/desktop modules).
      */
     val isWear: Boolean = false,
+    /**
+     * Whether the Wear sticker retarget (see [isWear]) is applied at all. `true` (the default)
+     * keeps the historical behaviour: on a Wear module, device-less wrap-content previews are
+     * pinned to the Wear canvas (227dp @ 2.0x). Set `false` to opt out so those previews stay
+     * wrap-content and the renderer crops them to their intrinsic layout bounds — needed for Wear
+     * widget/tile previews (e.g. Glance `wear-tooling-preview` widgets) that are exported as
+     * fixed-size drawable assets and must not carry the watch-face canvas whitespace (#2670). A
+     * no-op when [isWear] is `false`. Wired from the `retargetWearPreviews` extension property /
+     * `-PcomposePreview.retargetWearPreviews=false` Gradle property.
+     */
+    val retargetWearPreviews: Boolean = true,
   )
 
   /** Outcome of a [discover] call. */
@@ -523,7 +534,10 @@ object PreviewDiscovery {
     // Lottie asset previews are appended after normalization with their render outputs already
     // shell-safe, so they bypass the package-prefix stripping (they have no class/package).
     val normalized =
-      retargetWearStickers(input.isWear, normalizeRenderOutputs(deduped)) +
+      retargetWearStickers(
+        input.isWear && input.retargetWearPreviews,
+        normalizeRenderOutputs(deduped),
+      ) +
         discoverLottieAssets(input) +
         discoverSvgAssets(input) +
         buildCatalogPreviews(
@@ -3086,6 +3100,11 @@ object PreviewDiscovery {
    * or fixed-size specimens) are left untouched, and the preview id — which never encodes a device
    * for a device-less preview — is unchanged, so `catalog.spec.json` references and delivery
    * filenames stay stable. A no-op off Wear.
+   *
+   * Callers pass `isWear = false` to opt out entirely (via the `retargetWearPreviews` extension
+   * flag, [Input.retargetWearPreviews]) — e.g. a Wear widget module whose device-less previews must
+   * crop to their intrinsic bounds for export as fixed-size drawable assets rather than occupy the
+   * watch-face canvas (#2670).
    */
   internal fun retargetWearStickers(
     isWear: Boolean,

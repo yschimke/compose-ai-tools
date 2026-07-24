@@ -84,6 +84,25 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
   val failOnEmpty: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
 
   /**
+   * When `true` (default), a Wear OS module's device-less, wrap-content component previews are
+   * retargeted from Studio's phone default onto the Wear canvas (227dp @ 2.0x) so a frame-less Wear
+   * sticker renders at wear density/width instead of a phone-sized canvas. This is right for
+   * design-catalog components (fill-width Cards that should size to the watch screen), but wrong for
+   * Wear **widget/tile** previews (e.g. Glance `wear-tooling-preview` widgets) whose PNGs are
+   * exported as fixed-size drawable assets: those must crop to their intrinsic layout bounds, not
+   * carry the watch-face canvas whitespace.
+   *
+   * Set to `false` on such a module to opt out of the retarget — device-less previews then stay
+   * wrap-content and the renderer crops each PNG to the composable's measured bounds (#2670).
+   * Previews that already pin their own `device` / `widthDp` / `heightDp` are unaffected either way.
+   *
+   * Override at the command line with `-PcomposePreview.retargetWearPreviews=false` to flip for a
+   * single run without editing `build.gradle.kts`.
+   */
+  val retargetWearPreviews: Property<Boolean> =
+    objects.property(Boolean::class.java).convention(true)
+
+  /**
    * When `true` (default), the plugin auto-adds the test/runtime dependencies it needs
    * (`androidx.compose.ui:ui-test-manifest`, `:ui-test-junit4`, and conditionally
    * `androidx.wear.tiles:tiles-renderer`) to the consumer's classpath. When `false`, the plugin

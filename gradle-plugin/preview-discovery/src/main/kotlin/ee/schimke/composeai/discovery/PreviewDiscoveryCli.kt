@@ -89,6 +89,7 @@ public object PreviewDiscoveryCli {
     var failOnEmpty = false
     var catalogRenderSupported = true
     var isWear = false
+    var retargetWearPreviews = true
     var outPath: File? = null
 
     var i = 0
@@ -111,6 +112,10 @@ public object PreviewDiscoveryCli {
           isWear =
             requireValue(args, i).toBooleanStrictOrNull()
               ?: throw ArgError("--wear must be 'true' or 'false'")
+        "--retarget-wear-previews" ->
+          retargetWearPreviews =
+            requireValue(args, i).toBooleanStrictOrNull()
+              ?: throw ArgError("--retarget-wear-previews must be 'true' or 'false'")
         "--fail-on-empty" -> {
           failOnEmpty = true
           i++
@@ -143,6 +148,7 @@ public object PreviewDiscoveryCli {
           failOnEmpty = failOnEmpty,
           catalogRenderSupported = catalogRenderSupported,
           isWear = isWear,
+          retargetWearPreviews = retargetWearPreviews,
         ),
       outFile = out,
     )
@@ -187,6 +193,11 @@ public object PreviewDiscoveryCli {
                           android.hardware.type.watch uses-feature) so device-less, wrap-content
                           component previews render at the wear default (227dp @ 2.0x) instead of
                           the phone default. Device-pinned and fixed-size previews are untouched.
+        --retarget-wear-previews <true|false>
+                          Whether the --wear retarget is applied. Default true. Pass false to opt
+                          out so device-less Wear previews stay wrap-content and crop to their
+                          intrinsic bounds — needed for Wear widget/tile previews exported as
+                          fixed-size drawable assets (#2670). No-op unless --wear is true.
         --help, -h        Print this message.
 
       Exit codes: 0 = success, 1 = discovery failure, 2 = argument parsing failure.

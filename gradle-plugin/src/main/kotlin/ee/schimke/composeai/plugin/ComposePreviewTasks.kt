@@ -1295,6 +1295,15 @@ internal object ComposePreviewTasks {
           .map { it.toBooleanStrictOrNull() ?: false }
           .orElse(extension.failOnEmpty)
       )
+      // `-PcomposePreview.retargetWearPreviews=false` wins over the extension so a Wear widget
+      // module can opt out of the watch-canvas retarget for a single run without editing
+      // build.gradle(.kts). Default true keeps the historical Wear-sticker behaviour (#2670).
+      retargetWearPreviews.set(
+        project.providers
+          .gradleProperty("composePreview.retargetWearPreviews")
+          .map { it.toBooleanStrictOrNull() ?: true }
+          .orElse(extension.retargetWearPreviews)
+      )
       // No per-extension opt-in plumbed here — a11y data products are produced only by the
       // daemon (see `:daemon:android`'s `RenderEngine`). The standalone `composePreviewDiscover`
       // task writes an empty `dataExtensionReports` map.
