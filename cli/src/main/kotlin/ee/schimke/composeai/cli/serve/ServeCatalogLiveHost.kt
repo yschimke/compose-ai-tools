@@ -236,6 +236,14 @@ class ServeCatalogLiveHost(
   }
 
   /**
+   * The captured Remote Compose document rides in the baked bundle's `ir/<id>.rcdoc` sidecar (the
+   * daemon has no such static export), so delegate straight to [baked]. The in-browser player
+   * replays it and applies knob edits client-side — no daemon round-trip — so the live twin never
+   * enters this lane.
+   */
+  override fun remoteComposeDoc(previewId: String): ByteArray? = baked.remoteComposeDoc(previewId)
+
+  /**
    * The daemon-backed host to route a mapped [daemonId] to: the per-preview daemon if
    * [perPreviewResolve] resolves one (the default lane, exercised routinely), else the monolithic
    * [live] daemon. Both re-render the same daemon id — the per-preview bundle simply carries only

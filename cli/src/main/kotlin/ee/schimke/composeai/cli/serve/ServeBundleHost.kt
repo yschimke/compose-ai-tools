@@ -228,11 +228,26 @@ class ServeBundleHost(
 
   private val previewIds: Set<String> = previews.map { it.id }.toHashSet()
 
+  // The captured Remote Compose documents ride in the bundle's `ir/<id>.rcdoc` sidecars (a sibling
+  // of `previews/`), the browser player's replayable input.
+  private val irDir = File(bundleDir, IR_SUBDIR)
+
   override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
     if (previewId !in previewIds) return RenderOutcome.NotFound
     val png = File(previewsDir, "$previewId$PNG_SUFFIX").toOkioPath()
     if (!fileSystem.exists(png)) return RenderOutcome.NotFound
     return RenderOutcome.Ok(fileSystem.read(png) { readByteArray() })
+  }
+
+  override fun remoteComposeDoc(previewId: String): ByteArray? {
+    if (previewId !in previewIds) return null
+    val doc = File(irDir, "$previewId$RCDOC_SUFFIX").toOkioPath()
+    if (!fileSystem.exists(doc)) return null
+    return try {
+      fileSystem.read(doc) { readByteArray() }
+    } catch (e: Exception) {
+      null
+    }
   }
 
   /**
@@ -381,6 +396,9 @@ class ServeBundleHost(
 
     private const val OVERRIDES_SUFFIX = ".overrides.json"
     private const val REMOTECOMPOSE_SUFFIX = ".remotecompose.json"
+    /** Sibling of `previews/` holding the captured Remote Compose docs (`ir/<id>.rcdoc`). */
+    private const val IR_SUBDIR = "ir"
+    private const val RCDOC_SUFFIX = ".rcdoc"
     private const val PREVIEWS_JSON = "previews.json"
     private val OVERRIDES_JSON = Json { ignoreUnknownKeys = true }
 

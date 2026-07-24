@@ -1241,9 +1241,11 @@ class ServeHttpServer(
 
   /**
    * `GET /render/{name}` (query) and `GET /{system}/render/{name}` (path): a preview's rendered
-   * bytes — a PNG for `<id>.png` (or no suffix), the figma-svg export for `<id>.svg`, or the
-   * declared preview slots as JSON for `<id>.slots`. All take the same override query params; SVG
-   * and slots are only produced by a daemon-backed host (a static bundle 404s them).
+   * bytes — a PNG for `<id>.png` (or no suffix), the figma-svg export for `<id>.svg`, the declared
+   * preview slots as JSON for `<id>.slots`, or the captured Remote Compose document for
+   * `<id>.rcdoc`. All but `.rcdoc` take the same override query params; SVG and slots are only
+   * produced by a daemon-backed host, and `.rcdoc` only by a bundle host that carries `ir/`
+   * sidecars (each 404s where unavailable).
    */
   private suspend fun RoutingContext.handleRender(sessionInPath: Boolean) {
     if (rejectBadToken()) return
@@ -1255,7 +1257,26 @@ class ServeHttpServer(
       }
       val wantSvg = rawName.endsWith(".svg")
       val wantSlots = rawName.endsWith(".slots")
-      val previewId = rawName.removeSuffix(".png").removeSuffix(".svg").removeSuffix(".slots")
+      val wantRcDoc = rawName.endsWith(".rcdoc")
+      val previewId =
+        rawName
+          .removeSuffix(".png")
+          .removeSuffix(".svg")
+          .removeSuffix(".slots")
+          .removeSuffix(".rcdoc")
+      // The `.rcdoc` lane serves the captured Remote Compose document bytes verbatim (no override
+      // pass — the in-browser player replays the doc and applies knob edits client-side), so it
+      // short-circuits ahead of the override parse. A host with no `ir/<id>.rcdoc` sidecar (a
+      // daemon-only host, or an unknown id) returns null → 404.
+      if (wantRcDoc) {
+        val bytes = renderHost.remoteComposeDoc(previewId)
+        if (bytes == null) {
+          call.respondText("no such remote compose document", status = HttpStatusCode.NotFound)
+        } else {
+          call.respondBytes(bytes, ContentType.Application.OctetStream)
+        }
+        return@withLeasedSession
+      }
       // Forward the fixed render axes plus any dynamic override params (`knob.<key>=…` knobs and
       // `rc.<name>=…` Remote Compose seeds, neither in SUPPORTED_KEYS) so a live knob / Remote
       // Compose edit reaches ServeOverrides.parse instead of being silently dropped.

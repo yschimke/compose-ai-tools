@@ -52,16 +52,24 @@ class ServeHttpRoutingTest {
   private val rcColorKnob =
     RemoteComposeKnobDeclaration("shaderColor", RemoteNamedValue.ColorValue("#FF7DE2FF"))
 
+  /** Arbitrary Remote Compose document bytes, carried into the bundle as an `ir/<id>.rcdoc`. */
+  private val rcDocBytes = byteArrayOf(0x52, 0x43, 0x01, 0x02, 0x03)
+
   private fun bundle(
     label: String,
     overrides: List<PreviewOverrideDeclaration> = emptyList(),
     remoteComposeKnobs: List<RemoteComposeKnobDeclaration> = emptyList(),
     degradations: List<ServeDegradation> = emptyList(),
+    rcDoc: ByteArray? = null,
   ): ServeBundleHost {
     val dir = Files.createTempDirectory("routing-$label").toFile().also { it.deleteOnExit() }
     File(dir, "index.html").writeText("<html></html>")
     File(dir, "previews").apply { mkdirs() }
     File(dir, "previews/$previewId.png").writeBytes(png())
+    if (rcDoc != null) {
+      File(dir, "ir").apply { mkdirs() }
+      File(dir, "ir/$previewId.rcdoc").writeBytes(rcDoc)
+    }
     if (overrides.isNotEmpty()) {
       val sidecar =
         Json.encodeToString(
@@ -86,7 +94,7 @@ class ServeHttpRoutingTest {
     registry.register("default-mod", host = bundle("default-mod"), pinned = true)
     registry.register(
       "compose-m3",
-      host = bundle("compose-m3", listOf(labelKnob), listOf(rcColorKnob)),
+      host = bundle("compose-m3", listOf(labelKnob), listOf(rcColorKnob), rcDoc = rcDocBytes),
       pinned = true,
     )
     // A baked-only session carrying a degradation reason — reachable at /baked-only/… but kept off
@@ -230,6 +238,33 @@ class ServeHttpRoutingTest {
     // semantics tree, so it resolves to NotFound (only a daemon-backed ServeRenderHost extracts
     // slots).
     val (code, _) = get("/compose-m3/render/$previewId.slots")
+    assertEquals(404, code)
+  }
+
+  @Test
+  fun `the rcdoc render lane serves the captured remote compose document bytes`() {
+    // compose-m3 carries an `ir/<id>.rcdoc` sidecar, so `GET /render/<id>.rcdoc` returns those
+    // bytes
+    // verbatim (octet-stream) for the in-browser player to replay client-side.
+    val req =
+      Request.Builder()
+        .url("http://127.0.0.1:${server.port}/compose-m3/render/$previewId.rcdoc")
+        .build()
+    client.newCall(req).execute().use { r ->
+      assertEquals(200, r.code)
+      assertEquals(
+        "application/octet-stream",
+        r.body?.contentType()?.let { "${it.type}/${it.subtype}" },
+      )
+      assertTrue(rcDocBytes.contentEquals(r.body?.bytes()), "rcdoc bytes served verbatim")
+    }
+  }
+
+  @Test
+  fun `a bundle without an rcdoc sidecar 404s the rcdoc render lane`() {
+    // default-mod carries no `ir/` tree, so the client-side player lane resolves to NotFound rather
+    // than serving an empty document.
+    val (code, _) = get("/render/$previewId.rcdoc?session=default-mod")
     assertEquals(404, code)
   }
 
