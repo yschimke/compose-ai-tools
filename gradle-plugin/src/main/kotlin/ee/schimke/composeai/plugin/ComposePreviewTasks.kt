@@ -685,12 +685,12 @@ internal object ComposePreviewTasks {
       maxHeapMb.set(extension.daemon.maxHeapMb)
       maxRendersPerSandbox.set(extension.daemon.maxRendersPerSandbox)
       warmSpare.set(extension.daemon.warmSpare)
-      // Bake an explicit render JVM into `daemon-launch.json` when the module's bytecode outruns
-      // the
-      // Gradle daemon JVM (or `renderJavaVersion` is pinned) — otherwise the desktop daemon's
-      // launcher is null and VS Code spawns it on its own bundled JDK, which can't load newer
-      // consumer classes. Mirrors the Android daemon wiring. See [RenderJvmSelection].
-      desktopRenderJavaExecutable(project, extension)?.let { javaLauncher.set(it) }
+      // Bake an explicit render JVM into `daemon-launch.json`. Unlike the in-Gradle `javaexec`
+      // render, the daemon is spawned by VS Code / MCP on *their* JDK, so we always pin a launcher
+      // (>= the module's bytecode target) rather than leaving it null — otherwise a JDK-17 editor
+      // spawns the daemon on Java 17 and can't load newer consumer classes. See
+      // [RenderJvmSelection.daemonDescriptorExecutable].
+      desktopDaemonJavaExecutable(project, extension)?.let { javaLauncher.set(it) }
       // Stage-2 BTA wiring. The configurations + dep adds are owned by
       // `wireDesktopBtaInputs` so the registration block stays scannable. Daemon JVM
       // lazily loads BTA only when the editor's save loop calls `compileSources` (gated
@@ -1208,6 +1208,28 @@ internal object ComposePreviewTasks {
       project.providers.gradleProperty("composePreview.renderJavaVersion").orNull?.toIntOrNull()
         ?: extension.renderJavaVersion.orNull
     return RenderJvmSelection.daemonJvmExecutable(
+      toolchains = toolchains,
+      gradleDaemonMajor = JavaVersion.current().majorVersion.toInt(),
+      bytecodeMajor = detectDesktopBytecodeMajor(project),
+      explicitOverride = override,
+    )
+  }
+
+  /**
+   * Like [desktopRenderJavaExecutable] but for the desktop **daemon descriptor** — always pins a
+   * launcher (never null when a toolchain service exists), because VS Code / MCP spawn the daemon
+   * on their own JDK rather than the Gradle daemon JVM, so a null launcher lets a JDK-17 editor run
+   * newer bytecode and fail. See [RenderJvmSelection.daemonDescriptorExecutable].
+   */
+  internal fun desktopDaemonJavaExecutable(
+    project: Project,
+    extension: PreviewExtension,
+  ): Provider<String>? {
+    val toolchains = project.extensions.findByType(JavaToolchainService::class.java) ?: return null
+    val override =
+      project.providers.gradleProperty("composePreview.renderJavaVersion").orNull?.toIntOrNull()
+        ?: extension.renderJavaVersion.orNull
+    return RenderJvmSelection.daemonDescriptorExecutable(
       toolchains = toolchains,
       gradleDaemonMajor = JavaVersion.current().majorVersion.toInt(),
       bytecodeMajor = detectDesktopBytecodeMajor(project),
