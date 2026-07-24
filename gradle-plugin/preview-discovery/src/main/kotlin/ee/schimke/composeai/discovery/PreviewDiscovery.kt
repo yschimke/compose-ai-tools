@@ -113,6 +113,17 @@ object PreviewDiscovery {
      * `widthDp`/`heightDp` is left untouched. Defaults to `false` (phone/desktop modules).
      */
     val isWear: Boolean = false,
+    /**
+     * Whether the Wear sticker retarget (see [isWear]) is applied at all. `true` (the default)
+     * keeps the historical behaviour: on a Wear module, device-less wrap-content previews are
+     * pinned to the Wear canvas (227dp @ 2.0x). Set `false` to opt out so those previews stay
+     * wrap-content and the renderer crops them to their intrinsic layout bounds — needed for Wear
+     * widget/tile previews (e.g. Glance `wear-tooling-preview` widgets) that are exported as
+     * fixed-size drawable assets and must not carry the watch-face canvas whitespace (#2670). A
+     * no-op when [isWear] is `false`. Wired from the `retargetWearPreviews` extension property /
+     * `-PcomposePreview.retargetWearPreviews=false` Gradle property.
+     */
+    val retargetWearPreviews: Boolean = true,
   )
 
   /** Outcome of a [discover] call. */
@@ -523,7 +534,11 @@ object PreviewDiscovery {
     // Lottie asset previews are appended after normalization with their render outputs already
     // shell-safe, so they bypass the package-prefix stripping (they have no class/package).
     val normalized =
-      retargetWearStickers(input.isWear, normalizeRenderOutputs(deduped)) +
+      retargetWearStickers(
+        input.isWear,
+        pinWearCanvas = input.retargetWearPreviews,
+        normalizeRenderOutputs(deduped),
+      ) +
         discoverLottieAssets(input) +
         discoverSvgAssets(input) +
         buildCatalogPreviews(
@@ -3089,9 +3104,28 @@ object PreviewDiscovery {
    * or fixed-size specimens) are left untouched, and the preview id — which never encodes a device
    * for a device-less preview — is unchanged, so `catalog.spec.json` references and delivery
    * filenames stay stable. A no-op off Wear.
+   *
+   * [pinWearCanvas] (from the `retargetWearPreviews` extension flag, [Input.retargetWearPreviews])
+   * selects between two Wear behaviours for those device-less previews; it's a no-op off Wear:
+   * - `true` (default): pin the full 227dp watch canvas + Wear density — the sticker behaviour
+   *   above.
+   * - `false`: leave `widthDp`/`heightDp` null so the preview stays wrap-content and the renderer
+   *   crops each PNG to its intrinsic bounds, while still swapping in the Wear density (2.0x) so a
+   *   Wear widget/tile asset exported at fixed size scales to watch-density px rather than the
+   *   inherited 2.625x phone default (#2670).
+   *
+   * **Auto-detected Wear widgets always crop, regardless of [pinWearCanvas].** A glance-wear widget
+   * preview — one whose `@PreviewParameter` provider comes from `androidx.glance.wear.*` (the
+   * `Squircle`/`RectangularAllWidgetPreviewParams` providers that feed `WearWidgetParams`) — is
+   * exported as a fixed-size drawable asset and must never occupy the watch-face canvas. Those are
+   * cropped at Wear density even under the default `pinWearCanvas = true`, so no per-module config
+   * is needed for the common widget case; the flag remains the override for the broader "crop every
+   * device-less preview" case and for non-glance widget param types (#2670). This is per-preview,
+   * so one module can mix fill-width catalog components (pinned) with widgets (cropped).
    */
   internal fun retargetWearStickers(
     isWear: Boolean,
+    pinWearCanvas: Boolean = true,
     previews: List<PreviewInfo>,
   ): List<PreviewInfo> {
     if (!isWear) return previews
@@ -3101,19 +3135,55 @@ object PreviewDiscovery {
       if (
         p.kind == PreviewKind.COMPOSE && p.device == null && p.widthDp == null && p.heightDp == null
       ) {
-        // Pin the wear canvas (square 227dp) + density so fill-width components (Card) size to the
-        // wear screen and dp→px matches the render. A fixed square surface — rather than
-        // wrap-height — keeps the render and the exported figma-svg in one shared geometry, which
-        // is what makes the layered export align to the render (the alternative, wrap-height,
-        // drifts
-        // the vertical crop between the two and scores markedly worse).
-        info.copy(
-          params = p.copy(widthDp = wear.widthDp, heightDp = wear.heightDp, density = wear.density)
-        )
+        // Glance-wear widgets crop even when the flag would otherwise pin the canvas — a widget
+        // sticker on a 227dp watch face is never what you want.
+        val pinCanvas = pinWearCanvas && !isWearWidgetPreview(p)
+        if (pinCanvas) {
+          // Pin the wear canvas (square 227dp) + density so fill-width components (Card) size to
+          // the wear screen and dp→px matches the render. A fixed square surface — rather than
+          // wrap-height — keeps the render and the exported figma-svg in one shared geometry, which
+          // is what makes the layered export align to the render (the alternative, wrap-height,
+          // drifts the vertical crop between the two and scores markedly worse).
+          info.copy(
+            params =
+              p.copy(widthDp = wear.widthDp, heightDp = wear.heightDp, density = wear.density)
+          )
+        } else {
+          // Opted out of the canvas pin (`retargetWearPreviews = false`): leave
+          // `widthDp`/`heightDp`
+          // null so the preview stays wrap-content and the renderer crops each PNG to its intrinsic
+          // layout bounds — needed for Wear widget/tile assets exported at fixed size (#2670).
+          // Still
+          // apply the Wear density (2.0x) rather than the inherited phone default (2.625x), so the
+          // cropped dp bounds scale to the correct watch-density px, not an oversized phone-scale
+          // export.
+          info.copy(params = p.copy(density = wear.density))
+        }
       } else {
         info
       }
     }
+  }
+
+  /**
+   * Package prefixes of `@PreviewParameter` providers that mark a preview as a **Wear widget** —
+   * glance-wear's `SquircleAllWidgetPreviewParams` / `RectangularAllWidgetPreviewParams` and any
+   * other provider under `androidx.glance.wear.*`, all of which feed `WearWidgetParams`. Matched by
+   * FQN prefix so the alpha package layout (`androidx.glance.wear.tooling.preview.*`) is covered
+   * without pinning an exact class. A widget so detected always crops to its intrinsic bounds
+   * ([retargetWearStickers]) rather than occupying the watch-face canvas.
+   */
+  private val WEAR_WIDGET_PARAM_PROVIDER_PREFIXES = listOf("androidx.glance.wear.")
+
+  /**
+   * True when [params] is a glance-wear widget preview — a device-less `@PreviewParameter` preview
+   * whose provider comes from [WEAR_WIDGET_PARAM_PROVIDER_PREFIXES]. Such widgets are exported as
+   * fixed-size drawable assets and must crop to their bounds regardless of the
+   * `retargetWearPreviews` flag (#2670).
+   */
+  private fun isWearWidgetPreview(params: PreviewParams): Boolean {
+    val provider = params.previewParameterProviderClassName ?: return false
+    return WEAR_WIDGET_PARAM_PROVIDER_PREFIXES.any { provider.startsWith(it) }
   }
 
   private fun extractPreviewParams(

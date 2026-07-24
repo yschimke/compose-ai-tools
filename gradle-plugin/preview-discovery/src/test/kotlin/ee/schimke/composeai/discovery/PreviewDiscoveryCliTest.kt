@@ -119,6 +119,30 @@ class PreviewDiscoveryCliTest {
   }
 
   @Test
+  fun `--retarget-wear-previews defaults to true`() {
+    assertThat(PreviewDiscoveryCli.parse(baseArgs).input.retargetWearPreviews).isTrue()
+  }
+
+  @Test
+  fun `--retarget-wear-previews false opts a Wear widget module out of the watch-canvas retarget`() {
+    val parsed =
+      PreviewDiscoveryCli.parse(
+        baseArgs + arrayOf("--wear", "true", "--retarget-wear-previews", "false")
+      )
+    assertThat(parsed.input.isWear).isTrue()
+    assertThat(parsed.input.retargetWearPreviews).isFalse()
+  }
+
+  @Test
+  fun `--retarget-wear-previews rejects a non-boolean value`() {
+    val error =
+      assertThrows(PreviewDiscoveryCli.ArgError::class.java) {
+        PreviewDiscoveryCli.parse(baseArgs + arrayOf("--retarget-wear-previews", "sometimes"))
+      }
+    assertThat(error.message).contains("must be 'true' or 'false'")
+  }
+
+  @Test
   fun `missing --module errors with a clear message`() {
     val error =
       assertThrows(PreviewDiscoveryCli.ArgError::class.java) {

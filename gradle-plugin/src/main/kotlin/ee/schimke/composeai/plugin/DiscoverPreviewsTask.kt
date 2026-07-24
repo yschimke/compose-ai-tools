@@ -131,6 +131,16 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:Input abstract val catalogRenderSupported: Property<Boolean>
 
   /**
+   * Whether a Wear module's device-less previews are retargeted onto the Wear canvas (227dp @
+   * 2.0x). `true` (default) keeps the historical behaviour; `false` opts out so device-less
+   * previews stay wrap-content and the renderer crops each PNG to its intrinsic layout bounds —
+   * needed for Wear widget/tile previews exported as fixed-size drawable assets (#2670). No effect
+   * on non-Wear modules. Wired from the `composePreview.retargetWearPreviews` extension /
+   * `-PcomposePreview.retargetWearPreviews=false` Gradle property.
+   */
+  @get:Input abstract val retargetWearPreviews: Property<Boolean>
+
+  /**
    * The variant's merged `AndroidManifest.xml` (AGP `SingleArtifact.MERGED_MANIFEST`), used only to
    * detect whether this is a Wear OS module — a `<uses-feature android:name=
    * "android.hardware.type.watch" …>` declaration. When present, [PreviewDiscovery.Input.isWear] is
@@ -180,6 +190,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         projectClassJars = scopedClassJars,
         catalogRenderSupported = catalogRenderSupported.getOrElse(true),
         isWear = isWear,
+        retargetWearPreviews = retargetWearPreviews.getOrElse(true),
       )
     when (val outcome = PreviewDiscovery.discover(input)) {
       is PreviewDiscovery.Outcome.Success -> {
