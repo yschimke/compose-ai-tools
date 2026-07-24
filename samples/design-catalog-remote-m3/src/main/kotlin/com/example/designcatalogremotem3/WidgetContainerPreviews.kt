@@ -46,7 +46,7 @@ import androidx.wear.compose.remote.material3.RemoteText
 // Unlike the component stickers these do NOT go through `RemoteSticker` /
 // `RemoteOverridablePreview` — `WearWidgetPreview` owns its own capture
 // (`WearWidgetDocument.captureRawContent` with `isInspectionMode = true`) and
-// player raster, so there is no named-value override or `.rcdoc` sidecar here.
+// player raster, so there is no named-value override or `.rc` sidecar here.
 // No Wear M3 parallel: the container is a Glance Wear *host* frame, not a
 // `remote-material3` component.
 // ---------------------------------------------------------------------------

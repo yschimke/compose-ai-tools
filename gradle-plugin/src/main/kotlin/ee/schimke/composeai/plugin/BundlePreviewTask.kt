@@ -698,8 +698,8 @@ abstract class BundlePreviewTask : DefaultTask() {
 
   /**
    * Look for a captured IR sidecar emitted by the render step next to [preview]'s PNG. The render
-   * path writes the IR alongside the rendered image using the same stem: `<stem>.rcdoc` for a
-   * Remote Compose document, or `<stem>.tilelayout` (+ optional `<stem>.tileresources`) for a Wear
+   * path writes the IR alongside the rendered image using the same stem: `<stem>.rc` for a Remote
+   * Compose document, or `<stem>.tilelayout` (+ optional `<stem>.tileresources`) for a Wear
    * protolayout proto. Returns `null` when the preview's flavour has no IR (the common case — every
    * plain `@Composable @Preview`), in which case the preview stays on the class-minimisation path.
    *

@@ -5,7 +5,7 @@ Remote Compose player whose source is vendored under
 [`third_party/remote-compose-player/`](../../../../../third_party/remote-compose-player).
 It is served over `GET /rc-player/bundle.js` by `compose-preview serve` so the
 viewer can render a preview's captured Remote Compose document
-(`GET /render/<id>.rcdoc`) client-side, in a `<canvas>`, without a Robolectric
+(`GET /render/<id>.rc`) client-side, in a `<canvas>`, without a Robolectric
 daemon — the browser counterpart of the daemon render.
 
 It is a **generated artifact** checked in on purpose: the `:cli` module builds on

@@ -85,7 +85,7 @@ dependencies {
   // rather than raw upstream `RemotePreview`, so the named-value stickers
   // (`NamedLabelRemoteButton`, `ShaderGradientSticker`) honour
   // `renderNow.overrides.remoteCompose.namedValues` in trusted live re-renders and
-  // the captured RemoteDocument lands in the bundle's `.rcdoc` sidecar. With no
+  // the captured RemoteDocument lands in the bundle's `.rc` sidecar. With no
   // seeded overrides (the vanilla `composePreviewRenderAll` / weekly render) it is
   // byte-for-byte the same output as `RemotePreview`.
   implementation(project(":data-remotecompose-connector"))

@@ -12,7 +12,7 @@ import ee.schimke.composeai.data.render.extensions.IrReplayComposableProvider
 
 /**
  * Replays a Remote Compose preview from a bundle's captured IR (schema v5): the serialized
- * `RemoteDocument` bytes ([IrSidecarChannel.FORMAT_REMOTECOMPOSE], `ir/<id>.rcdoc`) that
+ * `RemoteDocument` bytes ([IrSidecarChannel.FORMAT_REMOTECOMPOSE], `ir/<id>.rc`) that
  * [RemoteOverridablePreview]'s capture path emitted. Reconstructs the document with
  * `RemoteDocument(bytes)` and hands it to the same `RemoteDocumentPlayer` the live path uses — so a
  * bundle renders with **no** reference to the `@RemoteComposable` body that produced it (its class

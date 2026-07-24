@@ -57,7 +57,7 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  *                            `coordinates` pack.
  * ir/<id>.<ext>            — (v5) the captured **intermediate representation** for a preview whose
  *                            flavour has one: a Remote Compose document byte stream
- *                            (`<id>.rcdoc`) or a Wear protolayout `Layout` proto (`<id>.tilelayout`,
+ *                            (`<id>.rc`) or a Wear protolayout `Layout` proto (`<id>.tilelayout`,
  *                            with the companion resources proto as `<id>.tileresources`). A player
  *                            replays the IR directly through the Remote Compose / ProtoLayout
  *                            runtime — it needs neither the consumer's `@Preview` bytecode nor the
@@ -305,7 +305,7 @@ data class BundleIr(
    * [IR_FORMAT_SVG].
    */
   val format: String,
-  /** Posix zip path of the IR bytes, e.g. `ir/<id>.rcdoc` or `ir/<id>.tilelayout`. */
+  /** Posix zip path of the IR bytes, e.g. `ir/<id>.rc` or `ir/<id>.tilelayout`. */
   val path: String,
   /**
    * Posix zip path of a companion artefact the format needs, e.g. the protolayout
@@ -320,7 +320,7 @@ data class BundleIr(
  *
  * # Why a public preview server needs this
  *
- * A portable bundle's baked PNGs and IR (`previews/<id>.png`, `ir/<id>.rcdoc`, …) are **data** —
+ * A portable bundle's baked PNGs and IR (`previews/<id>.png`, `ir/<id>.rc`, …) are **data** —
  * replaying them executes no consumer code, so a public server renders them safely from any
  * uploader. But a bundle that carries `classes/app.jar` can be **re-rendered**, which runs the
  * producer's Kotlin on the server. A public server must therefore only re-render a bundle it can
@@ -527,7 +527,7 @@ const val PROVENANCE_GITHUB_OIDC: String = "github-oidc"
 const val PROVENANCE_SIGSTORE: String = "sigstore"
 
 /** File extension for a captured Remote Compose document byte stream. */
-const val IR_EXT_REMOTECOMPOSE: String = "rcdoc"
+const val IR_EXT_REMOTECOMPOSE: String = "rc"
 
 /** File extension for a captured Wear protolayout `Layout` proto. */
 const val IR_EXT_PROTOLAYOUT_LAYOUT: String = "tilelayout"

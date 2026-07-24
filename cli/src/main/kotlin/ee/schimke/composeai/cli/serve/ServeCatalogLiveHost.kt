@@ -236,7 +236,7 @@ class ServeCatalogLiveHost(
   }
 
   /**
-   * The captured Remote Compose document rides in the baked bundle's `ir/<id>.rcdoc` sidecar (the
+   * The captured Remote Compose document rides in the baked bundle's `ir/<id>.rc` sidecar (the
    * daemon has no such static export), so delegate straight to [baked]. The in-browser player
    * replays it and applies knob edits client-side — no daemon round-trip — so the live twin never
    * enters this lane.
