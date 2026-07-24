@@ -16,6 +16,8 @@ import org.gradle.api.provider.Property
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.api.tasks.testing.Test
+import org.gradle.jvm.toolchain.JavaLauncher
+import org.gradle.jvm.toolchain.JavaToolchainService
 
 /**
  * All AGP-touching code lives here, segregated from [ComposePreviewPlugin] so the plugin class
@@ -1793,6 +1795,31 @@ internal object AndroidPreviewSupport {
         }
       } else null
 
+    // --- Render JVM selection ---------------------------------------------------------------
+    // The render/daemon subprocess must fork on a JDK new enough to LOAD the consumer's compiled
+    // classes. AGP's unit-test javaLauncher follows the consumer *toolchain*, but Kotlin can emit
+    // newer bytecode than that toolchain JDK (and the VS Code daemon may fall back to its own older
+    // bundled JDK), so blindly inheriting it throws UnsupportedClassVersionError on every preview —
+    // the situation meshcore-mobile#271 worked around by downgrading app bytecode across a dozen
+    // modules. Instead pick the max of {inherited toolchain, Gradle daemon JVM, detected bytecode
+    // target}, overridable via `composePreview.renderJavaVersion`, and provision it through the
+    // toolchain service. See [RenderJvmSelection]. Computed once here and reused across the render,
+    // resource, XR and daemon-start tasks below.
+    val javaToolchains = project.extensions.getByType(JavaToolchainService::class.java)
+    val gradleDaemonMajor = JavaVersion.current().majorVersion.toInt()
+    val renderJavaOverride =
+      project.providers.gradleProperty("composePreview.renderJavaVersion").orNull?.toIntOrNull()
+        ?: extension.renderJavaVersion.orNull
+    val renderBytecodeMajor = detectRenderBytecodeMajor(project, capVariant)
+    fun renderJavaLauncher(agpTestTask: Test?): Provider<JavaLauncher>? =
+      RenderJvmSelection.launcherFor(
+        toolchains = javaToolchains,
+        inherited = agpTestTask?.javaLauncher,
+        gradleDaemonMajor = gradleDaemonMajor,
+        bytecodeMajor = renderBytecodeMajor,
+        explicitOverride = renderJavaOverride,
+      )
+
     val renderTask =
       project.tasks.register("composePreviewRender", Test::class.java) {
         group = "compose preview"
@@ -1860,19 +1887,18 @@ internal object AndroidPreviewSupport {
         // preview daemon can reuse the same set when launching its own JVM.
         jvmArgs(AndroidPreviewClasspath.buildJvmArgs())
 
-        // Inherit AGP's unit-test javaLauncher so the forked test worker
-        // runs on the same JDK as `test${capVariant}UnitTest` — which
-        // AGP has already wired to the project's Java toolchain if the
-        // consumer configured one (`java { toolchain { … } }` /
-        // `kotlin { jvmToolchain(…) }`), or to the daemon JVM otherwise.
-        //
-        // Without this, a custom `Test` task's `javaLauncher` property
-        // defaults to the first `java` on PATH, which on CI and in local
-        // shells with `JAVA_HOME` overrides is NOT necessarily the same
-        // JVM the Gradle daemon is running. That mismatch produces
-        // `ClassNotFoundException: android.app.Application` during JUnit
-        // discovery on some JVM/classloader combinations. See #142.
-        agpTestTask?.javaLauncher?.orNull?.let { javaLauncher.set(it) }
+        // Fork the render worker on AGP's unit-test javaLauncher — the JDK
+        // `test${capVariant}UnitTest` uses, wired to the project's Java toolchain
+        // (`java { toolchain { … } }` / `kotlin { jvmToolchain(…) }`) or the daemon
+        // JVM otherwise — UNLESS the consumer's bytecode target is newer than that
+        // JDK, in which case [renderJavaLauncher] raises it (via the toolchain
+        // service) so the classes actually load. Inheriting matters for the base
+        // case: a custom `Test` task's `javaLauncher` otherwise defaults to the first
+        // `java` on PATH, not the daemon JVM, producing `ClassNotFoundException:
+        // android.app.Application` during JUnit discovery on some JVM/classloader
+        // combinations (#142); raising it matters for newer bytecode, else every
+        // preview fails with `UnsupportedClassVersionError` (meshcore-mobile#271).
+        renderJavaLauncher(agpTestTask)?.let { javaLauncher.set(it) }
 
         // GoogleFont interceptor cache lives in the shared, machine-local
         // `${'$'}XDG_CACHE_HOME/composeai/fonts` (else `~/.cache/composeai/fonts`).
@@ -2006,18 +2032,26 @@ internal object AndroidPreviewSupport {
         }
       }
 
-    // Feed the JDK-aware Robolectric SDK ceiling with the JVM the render forks into. Default to the
-    // Gradle build JVM: the `composePreviewRender` Test task inherits AGP's unit-test
-    // `javaLauncher`, which — absent a consumer toolchain — is the build JVM, so this is the JVM
-    // `DefaultSdkProvider.verifySupportedSdk` actually runs under (the Confetti case the fix
-    // targets). Deliberately a plain value, NOT a provider derived from `renderTask` — mapping a
-    // `TaskProvider` carries that task as a dependency, and `renderTask` already dependsOn this
-    // generator (via the generated-resources classpath), so that would be a circular dependency.
-    // The SDK matrix forks tests into `composeai.matrix.jvmToolchain` and overrides this input
-    // directly (see `samples/sdk-matrix/build.gradle.kts`). See
+    // Feed the JDK-aware Robolectric SDK ceiling with the JVM the render actually forks into —
+    // which is exactly what [renderJavaLauncher] resolves (the raised toolchain when the consumer's
+    // bytecode outruns their toolchain, else the inherited AGP launcher, else the build JVM).
+    // Keying
+    // off the real render launcher rather than `JavaVersion.current()` also fixes the toolchain=17
+    // /
+    // Gradle-daemon=21 case, where the render forks on 17 but the ceiling used to be computed as if
+    // it were 21. Derived from `agpTestTask.javaLauncher` / the toolchain service (NOT from
+    // `renderTask`, which already dependsOn this generator — that would be a circular dependency),
+    // so no task dependency is introduced. The SDK matrix still overrides this input directly (see
+    // `samples/sdk-matrix/build.gradle.kts`). See
     // [GenerateRobolectricPropertiesTask.buildJavaMajor].
     generateRobolectricPropertiesTask.configure {
-      buildJavaMajor.set(JavaVersion.current().majorVersion.toInt())
+      val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
+      val launcher = renderJavaLauncher(agpTestTask) ?: agpTestTask?.javaLauncher
+      if (launcher != null) {
+        buildJavaMajor.set(launcher.map { it.metadata.languageVersion.asInt() })
+      } else {
+        buildJavaMajor.set(gradleDaemonMajor)
+      }
     }
 
     if (extension.resourcePreviews.enabled.get()) {
@@ -2049,7 +2083,7 @@ internal object AndroidPreviewSupport {
 
         jvmArgs(agpTestTask?.jvmArgs ?: emptyList<String>())
         jvmArgs(AndroidPreviewClasspath.buildJvmArgs())
-        agpTestTask?.javaLauncher?.orNull?.let { javaLauncher.set(it) }
+        renderJavaLauncher(agpTestTask)?.let { javaLauncher.set(it) }
 
         systemProperty("robolectric.graphicsMode", "NATIVE")
         systemProperty("robolectric.looperMode", "PAUSED")
@@ -2128,7 +2162,7 @@ internal object AndroidPreviewSupport {
 
         jvmArgs(agpTestTask?.jvmArgs ?: emptyList<String>())
         jvmArgs(AndroidPreviewClasspath.buildJvmArgs())
-        agpTestTask?.javaLauncher?.orNull?.let { javaLauncher.set(it) }
+        renderJavaLauncher(agpTestTask)?.let { javaLauncher.set(it) }
 
         systemProperty("robolectric.graphicsMode", "NATIVE")
         systemProperty("robolectric.looperMode", "PAUSED")
@@ -2526,13 +2560,15 @@ internal object AndroidPreviewSupport {
       // Property leaves room for future variants (foreground / debug) without
       // schema churn. See [DaemonBootstrapTask] / [DaemonClasspathDescriptor].
       this.mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
-      // Inherit AGP's unit-test javaLauncher exactly the way composePreviewRender
-      // does (see line ~802 above) so the daemon runs on the project's
-      // configured toolchain rather than the first `java` on PATH. AGP's
-      // javaLauncher Property is itself a config-cache-safe Provider produced
-      // by the toolchains plugin, so mapping it to an absolute path doesn't
-      // introduce any new captures.
-      agpTestTask?.javaLauncher?.let { launcher ->
+      // Bake an explicit render JVM into `daemon-launch.json` the same way composePreviewRender
+      // forks — the raised toolchain when the consumer's bytecode outruns their toolchain, else the
+      // inherited AGP launcher (the project toolchain rather than the first `java` on PATH). This
+      // is
+      // the load-bearing fix for the VS Code daemon: its `javaLauncher` is `@Optional`, and when
+      // left null the extension falls back to *its own* bundled JDK (commonly 17), which then can't
+      // load Java-21 classes (meshcore-mobile#271). Both branches are config-cache-safe Providers
+      // from the toolchains service, so mapping to an absolute path introduces no new captures.
+      renderJavaLauncher(agpTestTask)?.let { launcher ->
         this.javaLauncher.set(launcher.map { it.executablePath.asFile.absolutePath })
       }
       // Daemon module's classes FIRST so [mainClass] resolves before
@@ -2825,6 +2861,29 @@ internal object AndroidPreviewSupport {
     @get:org.gradle.api.tasks.Input val tier: org.gradle.api.provider.Provider<String>
   ) : org.gradle.process.CommandLineArgumentProvider {
     override fun asArguments(): Iterable<String> = listOf("-Dcomposeai.render.tier=${tier.get()}")
+  }
+
+  /**
+   * Highest JVM bytecode target the consumer's classes compile to, across the Java
+   * (`compileOptions.targetCompatibility` on AGP's `CommonExtension`) and Kotlin
+   * (`compilerOptions.jvmTarget` on the variant's `compile<Variant>Kotlin` task) toolchains, or
+   * `null` when neither can be read. Feeds [RenderJvmSelection] so the render JVM is raised to
+   * match the classes it must load. Fully defensive — a probe that throws (no Kotlin plugin, a
+   * renamed KGP accessor, no AGP `compileOptions`) is skipped rather than failing configuration.
+   */
+  private fun detectRenderBytecodeMajor(project: Project, capVariant: String): Int? {
+    val candidates = mutableListOf<Int>()
+    runCatching {
+      project.extensions
+        .findByType(CommonExtension::class.java)
+        ?.compileOptions
+        ?.targetCompatibility
+        ?.let { BytecodeTargetDetector.parseTargetMajor(it.toString()) }
+        ?.let { candidates += it }
+    }
+    BytecodeTargetDetector.detectKotlinJvmTarget(project, listOf("compile${capVariant}Kotlin"))
+      ?.let { candidates += it }
+    return candidates.filter { it > 0 }.maxOrNull()
   }
 
   private fun copyAttributes(target: AttributeContainer, source: AttributeContainer) {
