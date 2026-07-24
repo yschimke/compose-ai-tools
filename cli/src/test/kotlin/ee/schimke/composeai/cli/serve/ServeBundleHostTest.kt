@@ -147,6 +147,98 @@ class ServeBundleHostTest {
   }
 
   @Test
+  fun `renderSvg prefers the per-variant vector over the light-preferred slug svg`() {
+    // The catalog ships BOTH shapes: the back-compat `figma/<slug>.svg` (one per component,
+    // light-preferred) and the per-variant `figma/<slug>/<variant>.svg`. Serving the slug vector
+    // for a `…__dark` id hands out the light theme — the exact "dark URL serves a light SVG" bug.
+    val dir =
+      bundle(
+        "speakerdetails__ideal__default__dark__compact" to byteArrayOf(1),
+        "speakerdetails__ideal__default__light__compact" to byteArrayOf(2),
+      )
+    val figma = File(dir, "figma").apply { mkdirs() }
+    File(figma, "speakerdetails.svg").writeText("<svg data-variant=\"slug-light\"/>")
+    val slugDir = File(figma, "speakerdetails").apply { mkdirs() }
+    File(slugDir, "ideal__default__dark__compact.svg")
+      .writeText(
+        "<svg data-variant=\"dark\"><image href=\"ideal__default__dark__compact.figma-raster/n.png\"/></svg>"
+      )
+    File(slugDir, "ideal__default__dark__compact.figma-raster").mkdirs()
+    File(slugDir, "ideal__default__dark__compact.figma-raster/n.png").writeBytes(byteArrayOf(7))
+
+    val host = ServeBundleHost(dir, label = "b", figmaDir = figma)
+    val dark =
+      host.renderSvg("speakerdetails__ideal__default__dark__compact", PreviewOverrides())
+        as SvgOutcome.Ok
+    val darkSvg = dark.svg.decodeToString()
+    assertTrue(darkSvg.contains("data-variant=\"dark\""), "dark id must serve the dark vector")
+    // The variant's crops live in a sibling `<variant>.figma-raster/` dir and must still inline.
+    val expected = java.util.Base64.getEncoder().encodeToString(byteArrayOf(7))
+    assertTrue(darkSvg.contains("data:image/png;base64,$expected"), "variant raster inlined")
+
+    // A variant with no per-variant file falls back to the slug vector (pre-emit catalogs).
+    val light =
+      host.renderSvg("speakerdetails__ideal__default__light__compact", PreviewOverrides())
+        as SvgOutcome.Ok
+    assertTrue(light.svg.decodeToString().contains("data-variant=\"slug-light\""))
+  }
+
+  @Test
+  fun `renderSvgForWeb links rasters to the catalog branch instead of embedding`() {
+    val dir = bundle("speakerdetails__ideal__default__dark__compact" to byteArrayOf(1))
+    val figma = File(dir, "figma").apply { mkdirs() }
+    val slugDir = File(figma, "speakerdetails").apply { mkdirs() }
+    File(slugDir, "ideal__default__dark__compact.svg")
+      .writeText("<svg><image href=\"ideal__default__dark__compact.figma-raster/232.png\"/></svg>")
+    File(slugDir, "ideal__default__dark__compact.figma-raster").mkdirs()
+    File(slugDir, "ideal__default__dark__compact.figma-raster/232.png").writeBytes(byteArrayOf(7))
+
+    val host =
+      ServeBundleHost(
+        dir,
+        label = "confetti-mobile",
+        figmaDir = figma,
+        provenance =
+          ServeWeb.CatalogProvenance(
+            repo = "joreilly/Confetti",
+            branch = "design-artifacts/confetti-mobile",
+          ),
+      )
+    val ok =
+      host.renderSvgForWeb("speakerdetails__ideal__default__dark__compact", PreviewOverrides())
+        as SvgOutcome.Ok
+    val svg = ok.svg.decodeToString()
+    assertTrue(
+      svg.contains(
+        "href=\"https://raw.githubusercontent.com/joreilly/Confetti/design-artifacts/" +
+          "confetti-mobile/figma/speakerdetails/ideal__default__dark__compact.figma-raster/232.png\""
+      ),
+      "web mode must link the crop to its published branch file: $svg",
+    )
+    assertFalse(svg.contains("data:image/png"), "web mode must not embed the crop: $svg")
+  }
+
+  @Test
+  fun `renderSvgForWeb without provenance falls back to the self-contained embed`() {
+    val dir = bundle("button-filled__ideal__default__dark" to byteArrayOf(1))
+    val figma = File(dir, "figma").apply { mkdirs() }
+    File(figma, "button-filled.svg")
+      .writeText("<svg><image href=\"button-filled.figma-raster/n0.png\"/></svg>")
+    File(figma, "button-filled.figma-raster").mkdirs()
+    File(figma, "button-filled.figma-raster/n0.png").writeBytes(byteArrayOf(1, 2, 3))
+
+    val host = ServeBundleHost(dir, label = "b", figmaDir = figma)
+    val ok =
+      host.renderSvgForWeb("button-filled__ideal__default__dark", PreviewOverrides())
+        as SvgOutcome.Ok
+    val expected = java.util.Base64.getEncoder().encodeToString(byteArrayOf(1, 2, 3))
+    assertTrue(
+      ok.svg.decodeToString().contains("data:image/png;base64,$expected"),
+      "no branch to link → stay self-contained",
+    )
+  }
+
+  @Test
   fun `renderSvg is NotFound without a figma dir, for unknown ids, and for missing svgs`() {
     val dir =
       bundle("button-filled__ideal__default__dark" to byteArrayOf(1), "badge__x" to byteArrayOf(2))

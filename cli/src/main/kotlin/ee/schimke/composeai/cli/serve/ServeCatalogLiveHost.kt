@@ -255,13 +255,11 @@ class ServeCatalogLiveHost(
     daemonIdForOverrideRender(previewId, overrides)?.let {
       return liveHostFor(it).renderSvg(it, overrides)
     }
-    // No override — but the baked `figma/<slug>.svg` is keyed by component slug and light-preferred
-    // (the catalog emits one SVG per component, the light variant), so a `…__dark` id would serve
-    // the
-    // LIGHT vector even though its PNG and live render are dark. Prefer the daemon's per-variant
-    // SVG,
-    // which carries the actual variant's theme (uiMode), for any daemon-twinned id; the baked slug
-    // SVG stays the fallback for unmapped (Android-only) ids and if the daemon can't export.
+    // No override — prefer the daemon's freshly-rendered per-variant SVG for a daemon-twinned id.
+    // The baked lane now resolves a per-variant `figma/<slug>/<variant>.svg` itself (so a `…__dark`
+    // id serves the dark vector even from a cold daemon), but a catalog published before the
+    // per-variant emit existed only carries the light-preferred `figma/<slug>.svg` — the warm
+    // daemon stays the more faithful source when it's already up.
     alias[previewId]?.let { daemonId ->
       // Only await the daemon when it's warm — otherwise a cold (possibly minutes-long) render
       // would
@@ -274,6 +272,22 @@ class ServeCatalogLiveHost(
       }
     }
     return baked.renderSvg(previewId, overrides)
+  }
+
+  /**
+   * Web mode prefers the **baked** lane: only the catalog's published crops have a public branch
+   * home to link (`ServeBundleHost.renderSvgForWeb`), while a daemon render's crops exist on its
+   * disk alone and would have to be embedded anyway. An override render can't be represented by
+   * baked files, so it stays on the live (embedded) lane; a preview the baked lane can't serve
+   * falls back to the ordinary [renderSvg] routing.
+   */
+  override fun renderSvgForWeb(previewId: String, overrides: PreviewOverrides): SvgOutcome {
+    daemonIdForOverrideRender(previewId, overrides)?.let {
+      return liveHostFor(it).renderSvg(it, overrides)
+    }
+    val linked = baked.renderSvgForWeb(previewId, overrides)
+    if (linked is SvgOutcome.Ok) return linked
+    return renderSvg(previewId, overrides)
   }
 
   /**
