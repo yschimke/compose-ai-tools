@@ -76,7 +76,12 @@ internal object GoogleFontCacheAccess {
  * hundreds of times) — matching the daemon's other self-diagnostics, surfaced in the VS Code
  * extension as `[daemon stderr] …`.
  */
-internal object FontResolutionDiagnostics {
+// Public (not `internal`) so BOTH Android render paths can drive it: the gradle-plugin's
+// `RobolectricRenderTest` (same module) and the CLI `bundle pack` / serve daemon's
+// `:daemon:android` `RenderEngine`, which lives in a different module and would otherwise be unable
+// to bracket a preview's font resolution — the gap that let a daemon-path render silently ship a
+// Roboto-fallback sticker.
+object FontResolutionDiagnostics {
 
   /** One downloadable face that couldn't be resolved and fell back to the platform default. */
   data class FontFallback(
@@ -114,7 +119,7 @@ internal object FontResolutionDiagnostics {
    * Record that [key] couldn't be resolved (so text will render in the platform fallback) for
    * [reason]. Adds it to the current preview's buffer and emits a de-duplicated stderr line.
    */
-  fun recordFallback(key: GoogleFontKey, reason: String) {
+  internal fun recordFallback(key: GoogleFontKey, reason: String) {
     val fallback = FontFallback(key.name, key.weight.weight, key.italic, reason)
     currentPreview.add(fallback)
     if (warnedThisProcess.add(key.fileName())) System.err.println(describe(fallback))
@@ -158,7 +163,7 @@ internal object FontResolutionDiagnostics {
  * existing per-preview `catch (Throwable)` so the failure lands in the `.error.json` sidecar and the
  * (wrong-typeface) PNG is dropped — the same surface a preview that threw uses.
  */
-internal class FontFallbackException(
+class FontFallbackException(
   fallbacks: List<FontResolutionDiagnostics.FontFallback>
 ) :
   RuntimeException(
