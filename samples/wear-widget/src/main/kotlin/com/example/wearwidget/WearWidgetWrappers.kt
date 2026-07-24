@@ -19,6 +19,15 @@ import androidx.compose.ui.unit.dp
  *
  * Applied via `@PreviewWrapperClass("com.example.wearwidget.SquircleWidgetWrapper")` on a preview;
  * requires ui-tooling-preview 1.11+ (the `PreviewWrapperProvider` interface) on the classpath.
+ *
+ * **RemoteCompose widgets need a different wrapper.** These plain-Compose shape wrappers are correct
+ * for widgets built from ordinary composables. A *RemoteCompose* widget's value is its encoded
+ * document (the `<stem>.rcdoc` sidecar), which is captured only by the RemoteCompose wrapper
+ * (`RemoteOverridablePreviewWrapper.Wrap` → `captureSingleRemoteDocument`). Since a `@Preview` may
+ * carry only one `@PreviewWrapper`, framing a RemoteCompose widget in a shape must use a wrapper that
+ * **extends** the RemoteCompose wrapper (so the doc is preserved) — see
+ * `:samples:remotecompose`'s `SquircleRemoteWidgetWrapper` and `RemoteWidgetDocCaptureTest`. A plain
+ * shape wrapper here would render the same pixels but drop the `.rcdoc`.
  */
 class SquircleWidgetWrapper : PreviewWrapperProvider {
   @Composable
