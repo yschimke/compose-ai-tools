@@ -69,7 +69,7 @@ and logs `queryRawGalleryExtensions Failed to fetch` plus a few
 `ssl_client_socket … handshake failed` lines. Side-loaded extensions are
 unaffected.
 
-### 2 + 3. JDK 17, trust store, and the toolchain symlink
+### 2 + 3. JDKs, trust store, and the toolchain symlinks
 
 ```bash
 export JAVA_HOME="$(scripts/setup-cloud-jdk.sh)"
@@ -78,10 +78,19 @@ export JAVA_HOME="$(scripts/setup-cloud-jdk.sh)"
 [`setup-cloud-jdk.sh`](../scripts/setup-cloud-jdk.sh) does three things,
 each fixing a distinct cloud-specific failure:
 
-- **Installs Temurin 17** from Adoptium's GitHub releases, because the
-  container ships only JDK 21 but the build pins `toolchainVersion=17`
-  ([`gradle/gradle-daemon-jvm.properties`](../gradle/gradle-daemon-jvm.properties)),
-  and foojay auto-provisioning is blocked. (The bootstrap
+- **Installs a set of Temurin JDKs** (default majors `17 21 25`, override
+  with `CLOUD_JDK_MAJORS`) from Adoptium's GitHub releases. JDK 17 is the
+  build's own pinned `toolchainVersion`
+  ([`gradle/gradle-daemon-jvm.properties`](../gradle/gradle-daemon-jvm.properties));
+  the newer majors are there so the render subprocess can fork on a JDK
+  that matches the **consumer's** bytecode target — a consumer whose modules
+  compile to Java 21 needs a JDK 21 the render can load their classes on, or
+  every preview fails with `UnsupportedClassVersionError` (see
+  [`RenderJvmSelection`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/RenderJvmSelection.kt)).
+  Foojay toolchain auto-provisioning is blocked in the sandbox, so the JDKs
+  have to be placed on disk out-of-band; the primary major's `JAVA_HOME` is
+  printed on stdout, additional majors are best-effort (a not-yet-published
+  major logs a warning and is skipped). (The bootstrap
   [`scripts/install.sh --android-sdk`](../scripts/install.sh) tries to
   apt-install JDK 17 and fails here — `security.ubuntu.com` 404s the
   pinned `.deb`; the Adoptium tarball is the reliable path.)
@@ -92,15 +101,16 @@ each fixing a distinct cloud-specific failure:
   with `PKIX path building failed: unable to find valid certification
   path`. `curl` and the system JDK 21 work because their trust stores
   already carry the CA; a tarball Temurin does not.
-- **Symlinks the JDK into `/usr/lib/jvm`** so Gradle's "Common Linux
-  Locations" toolchain auto-detection finds it. This is the linchpin:
-  Gradle otherwise only sees a JDK that is the *current* daemon JVM, so a
-  build whose daemon runs on JDK 21 (because `JAVA_HOME` did not propagate
-  to a spawned `gradlew`) can't resolve a `languageVersion=17` toolchain
-  even with the JDK on disk. The symlink is what makes the repo's own
-  `toolchainVersion=17` daemon run under a JDK-21 launcher, and what lets
-  Confetti's `:proto` toolchain-17 module resolve while the daemon renders
-  on JDK 21.
+- **Symlinks each JDK into `/usr/lib/jvm`** (`temurin-17`, `temurin-21`,
+  …) so Gradle's "Common Linux Locations" toolchain auto-detection finds
+  them. This is the linchpin: Gradle otherwise only sees a JDK that is the
+  *current* daemon JVM, so a build whose daemon runs on JDK 21 (because
+  `JAVA_HOME` did not propagate to a spawned `gradlew`) can't resolve a
+  `languageVersion=17` toolchain even with the JDK on disk. The symlinks are
+  what make the repo's own `toolchainVersion=17` daemon run under a JDK-21
+  launcher, let Confetti's `:proto` toolchain-17 module resolve while the
+  daemon renders on JDK 21, and let the plugin raise a consumer's render
+  fork to a JDK 21/25 that matches their bytecode.
 
 ## JDK topology for the Confetti e2e
 

@@ -28,6 +28,29 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
   val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 
   /**
+   * JDK major version the preview *render subprocess* forks into (e.g. `21`). Escape hatch for the
+   * automatic selection: leave it unset (default) and the plugin picks a render JVM new enough to
+   * load the module's compiled classes on its own — the maximum of the consumer's toolchain, the
+   * JVM Gradle is running on, and the highest detected Kotlin `jvmTarget` / Java
+   * `targetCompatibility` — provisioning a matching JDK through Gradle's toolchain service when an
+   * upgrade is needed.
+   *
+   * Set this only to override that decision: pin a specific JDK for reproducibility, or force one
+   * when the module's bytecode target can't be auto-detected (e.g. a non-standard Kotlin compile
+   * setup). The value is honoured verbatim, including a deliberately *lower* JDK than the module
+   * compiles to — in which case classes may fail to load with `UnsupportedClassVersionError`, so
+   * lower it only when you know the render classpath stays within that JDK's bytecode level.
+   *
+   * A matching JDK must be resolvable — installed and discoverable by Gradle toolchain detection,
+   * or downloadable. When it isn't, Gradle fails with a toolchain-resolution error rather than
+   * silently falling back; `composePreviewDoctor` explains the mismatch and this knob is the fix.
+   *
+   * Override at the command line with `-PcomposePreview.renderJavaVersion=21` for a single run
+   * without editing `build.gradle.kts`.
+   */
+  val renderJavaVersion: Property<Int> = objects.property(Int::class.java)
+
+  /**
    * Number of parallel JVM forks used to render previews. Default `0` (auto).
    *
    * Special values:
