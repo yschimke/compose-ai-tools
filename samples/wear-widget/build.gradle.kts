@@ -47,6 +47,20 @@ dependencies {
   implementation(libs.compose.ui.tooling.preview)
   debugImplementation("androidx.compose.ui:ui-tooling")
 
+  // `SquircleWidgetWrapper` / `RectangularWidgetWrapper` extend `PreviewWrapperProvider`, which
+  // only
+  // exists in ui-tooling-preview 1.11+. The stable BOM pins the annotations-only artifact, so pin
+  // the 1.11 variant `compileOnly` (same shape as `:samples:android`'s `FontPreviewWrapper`). It's
+  // an interface-only artifact — nothing extra ships in the APK.
+  compileOnly(libs.compose.ui.tooling.preview.wrapper)
+  // …and on the unit-test runtime too: the renderer loads the wrapper reflectively from
+  // `wrapperClassName` during `composePreviewRender` (a Test task via `renderBeforeUnitTests`), and
+  // instantiating it needs the `PreviewWrapperProvider` super-interface on the runtime classpath.
+  testImplementation(libs.compose.ui.tooling.preview.wrapper)
+  // `@PreviewWrapperClass` — lets a plain `@Preview` name its `PreviewWrapperProvider` by FQN (read
+  // by discovery at scan time); pairs with the wrappers above.
+  implementation(project(":preview-annotations"))
+
   testImplementation(libs.junit)
   testImplementation(libs.truth)
 }

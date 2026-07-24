@@ -56,4 +56,71 @@ class WearWidgetCropPixelTest {
     assertThat(img.width).isEqualTo(192)
     assertThat(img.height).isEqualTo(192)
   }
+
+  // --- @PreviewWrapper + @PreviewParameter widget previews (mirroring wear-os-samples) ---
+  //
+  // Each squircle/rectangular preview fans out over its param provider and is framed in the ideal
+  // widget shape by a PreviewWrapperProvider. These assert BOTH: (a) the crop lands at the param's
+  // exact dp size × 2.0 wear density, and (b) the ideal shape actually clipped — the render's corner
+  // is the (masked-away) background while the interior carries the widget's blue fill.
+
+  @Test
+  fun `squircle widget previews crop to param size and mask corners to the ideal shape`() {
+    // 192dp → 384px, 228dp → 456px, both square, both at 2.0x wear density.
+    assertWidgetShapeCropped(
+      "ImageWidgetSquirclePreview_Image_Widget_Squircle_Squircle_Small.png",
+      expectedWidth = 384,
+      expectedHeight = 384,
+    )
+    assertWidgetShapeCropped(
+      "ImageWidgetSquirclePreview_Image_Widget_Squircle_Squircle_Large.png",
+      expectedWidth = 456,
+      expectedHeight = 456,
+    )
+  }
+
+  @Test
+  fun `rectangular widget previews crop to param size and mask corners to the rounded shape`() {
+    // 228×102 dp → 456×204 px, 228×150 dp → 456×300 px, at 2.0x wear density.
+    assertWidgetShapeCropped(
+      "ImageWidgetRectangularPreview_Image_Widget_Rectangular_Rectangular_Small.png",
+      expectedWidth = 456,
+      expectedHeight = 204,
+    )
+    assertWidgetShapeCropped(
+      "ImageWidgetRectangularPreview_Image_Widget_Rectangular_Rectangular_Large.png",
+      expectedWidth = 456,
+      expectedHeight = 300,
+    )
+  }
+
+  /**
+   * Asserts a framed widget render is (a) cropped to [expectedWidth]×[expectedHeight] px — the
+   * param's dp size at 2.0x wear density — and (b) clipped to its ideal shape: the top-left corner
+   * is the masked-away background (near-black) while an interior point carries the widget's blue
+   * fill (`0xFF1E88E5` = r30 g136 b229). A rectangle-fill render (no shape clip) would show the blue
+   * at the corner; a phone-density render would miss the size.
+   */
+  private fun assertWidgetShapeCropped(fileName: String, expectedWidth: Int, expectedHeight: Int) {
+    val png = File(rendersDir, fileName)
+    assertThat(png.exists()).isTrue()
+    val img = ImageIO.read(png)
+
+    assertThat(img.width).isEqualTo(expectedWidth)
+    assertThat(img.height).isEqualTo(expectedHeight)
+
+    // Corner is outside the squircle / rounded-rect → the preview background shows through.
+    val corner = img.getRGB(3, 3)
+    val cr = (corner shr 16) and 0xff
+    val cg = (corner shr 8) and 0xff
+    val cb = corner and 0xff
+    assertThat(cr + cg + cb).isLessThan(30)
+
+    // A quarter-width interior point is inside the shape → the widget's blue fill.
+    val inside = img.getRGB(img.width / 4, img.height / 2)
+    val ir = (inside shr 16) and 0xff
+    val ib = inside and 0xff
+    assertThat(ib).isGreaterThan(150)
+    assertThat(ib - ir).isGreaterThan(40)
+  }
 }
