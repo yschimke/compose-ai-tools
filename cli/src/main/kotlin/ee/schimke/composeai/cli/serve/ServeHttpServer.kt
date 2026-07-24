@@ -285,6 +285,29 @@ class ServeHttpServer(
           }
         }
 
+        // The in-browser Remote Compose player: a single shared IIFE bundle (global `RC`), baked
+        // into the CLI jar as a classpath resource and served here so the viewer's client-side
+        // `<canvas>` render lane (fetch `/render/<id>.rcdoc` → `RC.RcdPlayer`) can load it. Always
+        // available (unlike the operator-gated Wasm apps) — the bundle rides in the jar, not a
+        // per-catalog dir. Ungated (generic client code, no session data) and CORS-open like the
+        // Wasm assets so a sandboxed viewer iframe can pull it. A constant first segment, so it
+        // outscores the `/{system}` catch-all in Ktor routing.
+        get("/rc-player/bundle.js") {
+          val bytes = rcPlayerBundle
+          if (bytes.isEmpty()) {
+            call.respondText("not found", status = HttpStatusCode.NotFound)
+            return@get
+          }
+          call.response.headers.append(HttpHeaders.AccessControlAllowOrigin, "*")
+          call.response.headers.append(HttpHeaders.CacheControl, "public, max-age=3600")
+          call.response.headers.append(HttpHeaders.ETag, rcPlayerEtag)
+          if (call.request.headers[HttpHeaders.IfNoneMatch] == rcPlayerEtag) {
+            call.respond(HttpStatusCode.NotModified)
+            return@get
+          }
+          call.respondBytes(bytes, ContentType.parse("text/javascript"))
+        }
+
         // Shared/public mode ingestion: a client contributes a pre-rendered bundle (upload the zip
         // as the body, or pass `?url=` to a build-results artifact) and gets back a ?session= link.
         // Only registered when the operator opts in (a bundle store is supplied).
@@ -1543,6 +1566,35 @@ class ServeHttpServer(
   companion object {
     const val TOKEN_HEADER: String = "X-Compose-Preview-Token"
     private const val DEFAULT_PORT_RANGE = 32
+
+    /** Classpath location of the vendored Remote Compose player IIFE bundle (global `RC`). */
+    private const val RC_PLAYER_RESOURCE = "/rc-player/bundle.js"
+
+    /**
+     * The in-browser Remote Compose player bundle, loaded once from the CLI's classpath resource
+     * ([RC_PLAYER_RESOURCE]) and served over `GET /rc-player/bundle.js`. A single shared IIFE
+     * bundle (not per-catalog like the Wasm apps), so it rides in the CLI jar rather than being
+     * fetched per session. Empty when the resource is somehow absent (a broken jar) — the route
+     * then 404s instead of serving nothing.
+     */
+    internal val rcPlayerBundle: ByteArray by lazy {
+      ServeHttpServer::class.java.getResourceAsStream(RC_PLAYER_RESOURCE)?.use { it.readBytes() }
+        ?: ByteArray(0)
+    }
+
+    /**
+     * A content-hash ETag for [rcPlayerBundle]. The bundle is fixed at build time, so a strong hash
+     * makes conditional requests cheap (a 304 after the cache window instead of re-downloading ~640
+     * KB) and stays stable across restarts and replicas.
+     */
+    internal val rcPlayerEtag: String by lazy {
+      val digest = java.security.MessageDigest.getInstance("SHA-256").digest(rcPlayerBundle)
+      "\"" +
+        rcPlayerBundle.size.toString(16) +
+        "-" +
+        digest.take(8).joinToString("") { "%02x".format(it.toInt() and 0xff) } +
+        "\""
+    }
 
     /**
      * How long the readiness prober waits between failed render attempts before retrying (short, so
