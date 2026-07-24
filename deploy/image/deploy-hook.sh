@@ -35,7 +35,13 @@ HOOK_PORT="${HOOK_PORT:-9000}"
 LOCK="/tmp/deploy-hook-rollout.lock"
 TOKEN="${DEPLOY_HOOK_TOKEN:-}"
 
-log() { echo "deploy-hook: $*"; }
+# ALWAYS log to stderr, never stdout. In --handle mode stdout IS the client
+# socket (socat wires the connection to the handler's stdin/stdout), so a log line
+# on stdout would land on the wire BEFORE the HTTP status line and corrupt the
+# response — the CI POST would see a malformed reply / 502. socat leaves the
+# handler's stderr on the container log (no `stderr` EXEC option), so stderr logs
+# stay visible via `docker compose logs hook` in every mode.
+log() { echo "deploy-hook: $*" >&2; }
 
 # ---- one HTTP request, on stdin → response on stdout -----------------------
 handle() {
