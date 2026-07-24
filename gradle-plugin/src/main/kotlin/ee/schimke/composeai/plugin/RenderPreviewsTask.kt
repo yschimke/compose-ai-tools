@@ -110,6 +110,16 @@ abstract class RenderPreviewsTask : DefaultTask() {
 
   @get:Inject abstract val execOperations: ExecOperations
 
+  /**
+   * Absolute path to the `java` binary the render subprocess forks into. Unset (default) means the
+   * `javaexec` below runs on the Gradle daemon JVM — the historical behaviour. The plugin sets this
+   * only when the module's bytecode target outruns that daemon JVM (or `composePreview
+   * .renderJavaVersion` is pinned), raising the render fork to a JDK that can load the classes
+   * instead of failing with `UnsupportedClassVersionError`. See [RenderJvmSelection]. `@Input` so a
+   * JDK change re-renders; `@Optional` so the "no upgrade needed" path leaves it null.
+   */
+  @get:org.gradle.api.tasks.Optional @get:Input abstract val renderJavaExecutable: Property<String>
+
   init {
     // Explicit empty default so the desktop `composePreviewRender` registration (which never sets
     // `includeKinds`) has a configured value for this non-optional `@Input` rather than relying on
@@ -327,6 +337,9 @@ abstract class RenderPreviewsTask : DefaultTask() {
     fanoutSiblingStems: List<String> = emptyList(),
   ) {
     execOperations.javaexec {
+      // Fork on a JDK new enough for the consumer's bytecode when the plugin raised it (see
+      // [RenderJvmSelection]); otherwise leave the default (Gradle daemon JVM).
+      renderJavaExecutable.orNull?.let { executable = it }
       classpath = renderClasspath
       this.mainClass.set(mainClass)
       // Run the render JVM as a macOS "background agent" (LSUIElement) so it never claims a Dock
