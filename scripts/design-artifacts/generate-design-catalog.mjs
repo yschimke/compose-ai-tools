@@ -1071,13 +1071,6 @@ if (spec.compareWith) {
           parallelById[component.componentId] = component.parallel;
       }
     }
-    const otherComponents = (otherSpec.groups ?? []).flatMap((group) =>
-      (group.components ?? []).map((c) => ({
-        componentId: c.componentId,
-        group: group.name,
-        caption: c.caption,
-      })),
-    );
     // Resolve the sibling branch's rendered catalog.json now, so each paired
     // thumbnail can be baked to a static PNG URL on the sibling's own
     // `design-artifacts/<other>` branch (raw.githubusercontent.com) — no runtime
@@ -1101,6 +1094,27 @@ if (spec.compareWith) {
           `show "not rendered yet" until it publishes`,
       );
     }
+    // The sibling inventory (componentId / group / caption for each parallel) comes from the
+    // sibling's BUILT catalog.json when we could fetch it — that's the authoritative inventory
+    // whether the sibling declares its components in `catalog.spec.json` OR (now) via
+    // @CatalogComponent annotations, whose trimmed spec carries no `groups`. Falls back to the
+    // sibling spec's `groups` when its catalog isn't published yet (a spec-driven sibling still
+    // lists them there; an annotation-driven sibling then shows "not rendered yet" until its branch
+    // publishes, one run behind at most). Reading spec `groups` alone would drop every parallel for a
+    // migrated sibling like wear-m3.
+    const otherComponents = otherManifest?.components?.length
+      ? otherManifest.components.map((c) => ({
+          componentId: c.componentId,
+          group: c.group,
+          caption: c.caption,
+        }))
+      : (otherSpec.groups ?? []).flatMap((group) =>
+          (group.components ?? []).map((c) => ({
+            componentId: c.componentId,
+            group: group.name,
+            caption: c.caption,
+          })),
+        );
     const matchesPath = join(outPath, "matches.html");
     await writeFile(
       matchesPath,
