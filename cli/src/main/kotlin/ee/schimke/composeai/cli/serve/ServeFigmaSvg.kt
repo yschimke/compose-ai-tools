@@ -27,11 +27,29 @@ internal fun figmaRasterHrefs(svg: String): List<String> =
   FIGMA_RASTER_HREF.findAll(svg).map { it.groupValues[1] }.toList()
 
 /**
+ * Longest-edge cap (px) for a raster crop inlined into a self-contained figma-svg. A hybrid
+ * sticker's crop is captured at device resolution, so a full-screen photo/`TextField` region can
+ * run to megabytes — and the base64 embedding adds a third on top, ballooning the "paste into
+ * Figma" SVG. A crop whose longest edge exceeds this is downscaled (aspect preserved) before
+ * embedding; the SVG's `<image x y width height>` box is unchanged, so the bitmap still fills the
+ * layer exactly, just at a bounded density. 1024px keeps a component-sized crop untouched and a
+ * screen-sized one at roughly thumbnail-to-retina fidelity — right for a design reference layer.
+ */
+internal const val MAX_INLINE_RASTER_EDGE_PX: Int = 1024
+
+/**
  * Inline an SVG's `figma-raster/<node>.png` crops as `data:image/png;base64` URIs, reading each
  * crop (relative to [dir], where its href resolves) via [fileSystem], so the served SVG is
- * self-contained. A vector-only SVG passes through; a crop missing on disk is left as a plain ref.
+ * self-contained. A crop whose longest edge exceeds [maxEdgePx] is downscaled before embedding (see
+ * [MAX_INLINE_RASTER_EDGE_PX]); pass [Int.MAX_VALUE] to embed full-resolution bytes. A vector-only
+ * SVG passes through; a crop missing on disk is left as a plain ref.
  */
-internal fun inlineFigmaRasters(fileSystem: FileSystem, dir: Path, svg: String): String {
+internal fun inlineFigmaRasters(
+  fileSystem: FileSystem,
+  dir: Path,
+  svg: String,
+  maxEdgePx: Int = MAX_INLINE_RASTER_EDGE_PX,
+): String {
   if (!svg.contains("figma-raster/")) return svg
   val root = dir.normalized()
   return FIGMA_RASTER_HREF.replace(svg) { match ->
@@ -41,7 +59,59 @@ internal fun inlineFigmaRasters(fileSystem: FileSystem, dir: Path, svg: String):
     val cropPath = "$dir/$href".toPath().normalized()
     if (!cropPath.isUnder(root) || !fileSystem.exists(cropPath)) return@replace match.value
     val crop = fileSystem.read(cropPath) { readByteArray() }
-    "href=\"data:image/png;base64,${Base64.getEncoder().encodeToString(crop)}\""
+    val bounded = downscaleRaster(crop, maxEdgePx)
+    "href=\"data:image/png;base64,${Base64.getEncoder().encodeToString(bounded)}\""
+  }
+}
+
+/**
+ * [png] re-encoded with its longest edge capped at [maxEdgePx] (aspect preserved, bilinear), or the
+ * original bytes when it's already within the cap, fails to decode, or the re-encode doesn't
+ * actually shrink the payload (a tiny palette PNG can grow when re-encoded as ARGB). Never throws —
+ * a served SVG must degrade to the full-resolution embed rather than a broken layer.
+ */
+internal fun downscaleRaster(png: ByteArray, maxEdgePx: Int): ByteArray {
+  if (maxEdgePx <= 0 || maxEdgePx == Int.MAX_VALUE) return png
+  return try {
+    val image = javax.imageio.ImageIO.read(java.io.ByteArrayInputStream(png)) ?: return png
+    val longest = maxOf(image.width, image.height)
+    if (longest <= maxEdgePx) return png
+    val scale = maxEdgePx.toDouble() / longest
+    val w = (image.width * scale).toInt().coerceAtLeast(1)
+    val h = (image.height * scale).toInt().coerceAtLeast(1)
+    val scaled = java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+    scaled.createGraphics().run {
+      setRenderingHint(
+        java.awt.RenderingHints.KEY_INTERPOLATION,
+        java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR,
+      )
+      drawImage(image, 0, 0, w, h, null)
+      dispose()
+    }
+    val out = java.io.ByteArrayOutputStream()
+    javax.imageio.ImageIO.write(scaled, "png", out)
+    out.toByteArray().takeIf { it.isNotEmpty() && it.size < png.size } ?: png
+  } catch (t: Throwable) {
+    png
+  }
+}
+
+/**
+ * Rewrite an SVG's `figma-raster/<node>.png` hrefs to absolute URLs under [baseUrl] (the crops'
+ * public home — e.g. the catalog's delivery branch on `raw.githubusercontent.com`), so a
+ * web/document-served SVG *links* its rasters instead of carrying their bytes. The href's own
+ * relative path is preserved under the base, mirroring how it resolves next to the SVG on disk. A
+ * traversing href (`..` / absolute) is left untouched, exactly like [inlineFigmaRasters]'s
+ * containment. A vector-only SVG passes through.
+ */
+internal fun linkFigmaRasters(svg: String, baseUrl: String): String {
+  if (!svg.contains("figma-raster/")) return svg
+  val base = baseUrl.trimEnd('/')
+  return FIGMA_RASTER_HREF.replace(svg) { match ->
+    val href = match.groupValues[1]
+    if (href.startsWith("/") || href.contains("..") || href.contains(":"))
+      return@replace match.value
+    "href=\"$base/$href\""
   }
 }
 

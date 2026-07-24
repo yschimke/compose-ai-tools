@@ -5,6 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import okio.Path.Companion.toPath
 
 /**
  * Unit tests for the `?mode=web` figma-svg transform ([webModeSvg] / [googleFontsImportUrl]): the
@@ -87,6 +88,83 @@ class ServeFigmaSvgWebModeTest {
         listOf(WebFontFace("monospace", 400, false), WebFontFace("Roboto Mono", 500, false))
       )
     assertEquals("https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@500&display=swap", url)
+  }
+
+  @Test
+  fun `linkFigmaRasters rewrites crop hrefs onto the base url`() {
+    val svg =
+      "<svg><image href=\"ideal__default__dark__compact.figma-raster/232.png\" x=\"1\"/></svg>"
+    val base =
+      "https://raw.githubusercontent.com/joreilly/Confetti/design-artifacts/confetti-mobile/figma/speakerdetails/"
+    val linked = linkFigmaRasters(svg, base)
+    assertTrue(
+      linked.contains(
+        "href=\"https://raw.githubusercontent.com/joreilly/Confetti/design-artifacts/" +
+          "confetti-mobile/figma/speakerdetails/ideal__default__dark__compact.figma-raster/232.png\""
+      ),
+      linked,
+    )
+  }
+
+  @Test
+  fun `linkFigmaRasters leaves traversing or absolute hrefs untouched`() {
+    val traversal = "<svg><image href=\"x.figma-raster/../../secret.png\"/></svg>"
+    assertEquals(traversal, linkFigmaRasters(traversal, "https://example.com/figma"))
+    val absolute = "<svg><image href=\"https://evil.example/x.figma-raster/n.png\"/></svg>"
+    assertEquals(absolute, linkFigmaRasters(absolute, "https://example.com/figma"))
+    val vectorOnly = "<svg><rect/></svg>"
+    assertEquals(vectorOnly, linkFigmaRasters(vectorOnly, "https://example.com/figma"))
+  }
+
+  @Test
+  fun `downscaleRaster caps the longest edge and preserves aspect`() {
+    val big = java.awt.image.BufferedImage(2048, 1024, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+    big.createGraphics().run {
+      color = java.awt.Color(0x12, 0x34, 0x56)
+      fillRect(0, 0, 2048, 1024)
+      dispose()
+    }
+    val out = java.io.ByteArrayOutputStream()
+    javax.imageio.ImageIO.write(big, "png", out)
+    val png = out.toByteArray()
+
+    val bounded = downscaleRaster(png, 1024)
+    val decoded = javax.imageio.ImageIO.read(java.io.ByteArrayInputStream(bounded))
+    assertEquals(1024, decoded.width)
+    assertEquals(512, decoded.height)
+    assertTrue(bounded.size < png.size, "downscale must actually shrink the payload")
+  }
+
+  @Test
+  fun `downscaleRaster leaves a small or undecodable png untouched`() {
+    val small = java.awt.image.BufferedImage(64, 64, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+    val out = java.io.ByteArrayOutputStream()
+    javax.imageio.ImageIO.write(small, "png", out)
+    val png = out.toByteArray()
+    assertTrue(png.contentEquals(downscaleRaster(png, 1024)), "within the cap → original bytes")
+
+    val junk = byteArrayOf(1, 2, 3)
+    assertTrue(junk.contentEquals(downscaleRaster(junk, 1024)), "undecodable → original bytes")
+  }
+
+  @Test
+  fun `inlineFigmaRasters embeds a downscaled crop for an oversized raster`() {
+    val dir = java.nio.file.Files.createTempDirectory("figma").toFile().also { it.deleteOnExit() }
+    val rasterDir = java.io.File(dir, "figma-raster").apply { mkdirs() }
+    val big = java.awt.image.BufferedImage(4096, 2048, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+    javax.imageio.ImageIO.write(big, "png", java.io.File(rasterDir, "n.png"))
+    val svg = "<svg><image href=\"figma-raster/n.png\" x=\"0\" width=\"4096\"/></svg>"
+
+    val inlined =
+      inlineFigmaRasters(ee.schimke.composeai.io.SystemFileSystem, dir.absolutePath.toPath(), svg)
+    val b64 = Regex("data:image/png;base64,([^\"]+)").find(inlined)?.groupValues?.get(1)
+    assertTrue(b64 != null, "raster must be inlined: $inlined")
+    val decoded =
+      javax.imageio.ImageIO.read(
+        java.io.ByteArrayInputStream(java.util.Base64.getDecoder().decode(b64))
+      )
+    assertEquals(1024, decoded.width, "longest edge capped at MAX_INLINE_RASTER_EDGE_PX")
+    assertEquals(512, decoded.height)
   }
 
   @Test

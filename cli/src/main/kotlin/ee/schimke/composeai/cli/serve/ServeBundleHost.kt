@@ -251,24 +251,58 @@ class ServeBundleHost(
   // the actual file so it isn't offered on a preview that would render "failed". Same slug lookup
   // as
   // `renderSvg`, minus the read.
-  override fun hasSvgExportFor(previewId: String): Boolean {
-    val figma = figmaDir ?: return false
-    if (previewId !in previewIds) return false
-    val svgFile =
-      File(figma, "${previewId.substringBefore(SLUG_SEPARATOR)}$SVG_SUFFIX").toOkioPath()
-    return fileSystem.exists(svgFile)
+  override fun hasSvgExportFor(previewId: String): Boolean = figmaSvgFileFor(previewId) != null
+
+  /**
+   * The baked figma-svg file serving [previewId], or null when the catalog carries none. The
+   * catalog ships two shapes: the **per-variant** vector `figma/<slug>/<variant>.svg` (one per
+   * `images[]` entry — the dark/light/locale/size variants), and the back-compat **per-component**
+   * `figma/<slug>.svg` (one per slug, light-preferred). Prefer the per-variant file — serving the
+   * slug vector for a `…__dark` id hands out the light theme — and fall back to the slug vector for
+   * a catalog published before the per-variant emit existed.
+   */
+  private fun figmaSvgFileFor(previewId: String): okio.Path? {
+    val figma = figmaDir ?: return null
+    if (previewId !in previewIds) return null
+    val slug = previewId.substringBefore(SLUG_SEPARATOR)
+    val variant = previewId.substringAfter(SLUG_SEPARATOR, missingDelimiterValue = "")
+    if (variant.isNotEmpty()) {
+      val perVariant = File(File(figma, slug), "$variant$SVG_SUFFIX").toOkioPath()
+      if (fileSystem.exists(perVariant)) return perVariant
+    }
+    return File(figma, "$slug$SVG_SUFFIX").toOkioPath().takeIf { fileSystem.exists(it) }
   }
 
   override fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
-    val figma = figmaDir ?: return SvgOutcome.NotFound
-    if (previewId !in previewIds) return SvgOutcome.NotFound
-    val svgFile =
-      File(figma, "${previewId.substringBefore(SLUG_SEPARATOR)}$SVG_SUFFIX").toOkioPath()
-    if (!fileSystem.exists(svgFile)) return SvgOutcome.NotFound
+    val svgFile = figmaSvgFileFor(previewId) ?: return SvgOutcome.NotFound
     val svg = fileSystem.read(svgFile) { readUtf8() }
-    return SvgOutcome.Ok(
-      inlineFigmaRasters(fileSystem, figma.toOkioPath(), svg).encodeToByteArray()
-    )
+    // Crops resolve relative to the SVG's own dir: `<slug>.figma-raster/` next to the slug vector,
+    // `<variant>.figma-raster/` next to a per-variant one.
+    val dir = svgFile.parent ?: return SvgOutcome.NotFound
+    return SvgOutcome.Ok(inlineFigmaRasters(fileSystem, dir, svg).encodeToByteArray())
+  }
+
+  /**
+   * Web/document variant of [renderSvg]: instead of base64-embedding the hybrid raster crops, link
+   * them to their published home — the same files on the catalog's delivery branch
+   * (`raw.githubusercontent.com/<repo>/<branch>/figma/…`), which [provenance] records from the
+   * fetch. Keeps the web-served SVG at vector size while a document viewer resolves the crops over
+   * HTTP (an `<img>`-loaded SVG can't, but that context gets the self-contained default instead).
+   * Falls back to the embedded default when the catalog carries no provenance (a plain uploaded
+   * bundle, a local `--bundles` dir) — there's no public home to link.
+   */
+  override fun renderSvgForWeb(previewId: String, overrides: PreviewOverrides): SvgOutcome {
+    val prov = provenance ?: return renderSvg(previewId, overrides)
+    val svgFile = figmaSvgFileFor(previewId) ?: return SvgOutcome.NotFound
+    val svg = fileSystem.read(svgFile) { readUtf8() }
+    // The crops' branch URL mirrors the SVG's on-disk dir relative to the catalog root (figmaDir's
+    // parent): `figma` for the slug vector, `figma/<slug>` for a per-variant one.
+    val catalogRoot = figmaDir?.parentFile ?: return renderSvg(previewId, overrides)
+    val relDir =
+      svgFile.parent?.toFile()?.relativeToOrNull(catalogRoot)?.invariantSeparatorsPath
+        ?: return renderSvg(previewId, overrides)
+    val base = "https://raw.githubusercontent.com/${prov.repo}/${prov.branch}/$relDir"
+    return SvgOutcome.Ok(linkFigmaRasters(svg, base).encodeToByteArray())
   }
 
   /**
@@ -289,11 +323,9 @@ class ServeBundleHost(
     java.util.concurrent.ConcurrentHashMap<String, java.util.Optional<ContentCrop>>()
 
   private fun computeContentCrop(previewId: String): ContentCrop? {
-    val figma = figmaDir ?: return null
-    if (previewId !in previewIds) return null
-    val svgFile =
-      File(figma, "${previewId.substringBefore(SLUG_SEPARATOR)}$SVG_SUFFIX").toOkioPath()
-    if (!fileSystem.exists(svgFile)) return null
+    // Same per-variant-first resolution as `renderSvg` — a variant vector's viewBox reflects the
+    // exact render this preview's PNG shows.
+    val svgFile = figmaSvgFileFor(previewId) ?: return null
     val png = File(previewsDir, "$previewId$PNG_SUFFIX").toOkioPath()
     if (!fileSystem.exists(png)) return null
     return try {

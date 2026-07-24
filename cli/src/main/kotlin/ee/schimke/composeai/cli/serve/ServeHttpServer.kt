@@ -1340,8 +1340,15 @@ class ServeHttpServer(
           null
         } else {
           try {
-            if (scroll) renderHost.renderScrollSvg(previewId, overrides)
-            else renderHost.renderSvg(previewId, overrides)
+            when {
+              scroll -> renderHost.renderScrollSvg(previewId, overrides)
+              // Web mode routes through the host's web variant: a catalog-backed host links its
+              // raster crops to their published branch files instead of embedding them (the
+              // default host keeps the self-contained bytes). The font-`@import` rewrite below
+              // applies either way.
+              webMode -> renderHost.renderSvgForWeb(previewId, overrides)
+              else -> renderHost.renderSvg(previewId, overrides)
+            }
           } finally {
             renderSemaphore.release()
           }

@@ -139,6 +139,18 @@ interface ServeHost : AutoCloseable {
   fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome = SvgOutcome.NotFound
 
   /**
+   * The figma-svg export tailored for **web/document** viewing (`?mode=web`): where possible the
+   * hybrid raster crops are *linked* (an `<image href>` to the crop's public home — the catalog's
+   * delivery branch) instead of base64-embedded, so the served SVG stays kilobytes. Defaults to the
+   * self-contained [renderSvg]: a host with no public raster home (a live daemon render whose crops
+   * exist only on its disk, a plain uploaded bundle) keeps embedding — the HTTP layer's
+   * font-`@import` rewrite still applies on top either way. Only the catalog-backed
+   * [ServeBundleHost] (which knows the `repo@branch` its crops were published to) overrides this.
+   */
+  fun renderSvgForWeb(previewId: String, overrides: PreviewOverrides): SvgOutcome =
+    renderSvg(previewId, overrides)
+
+  /**
    * Render [previewId]'s **full-page** figma-svg export (`compose/figma-svg-long`) at [overrides] —
    * the whole scrollable screen as one editable SVG (a virtualised `LazyColumn` rendered at an
    * expanded viewport so every row composes), or [SvgOutcome.NotFound] when this host can't produce
