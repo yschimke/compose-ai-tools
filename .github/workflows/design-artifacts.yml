@@ -263,7 +263,9 @@ jobs:
           # a render daemon from it (no build). The DESKTOP CMP catalog (compose-m3,
           # the wasm-tier row) runs on the Skiko daemon; an Android catalog flagged
           # `androidLiveBundle` (wear-m3) runs on the Robolectric daemon a box carrying
-          # the Android sidecar provides — see deploy/image. remote-m3 stays baked-PNG.
+          # the Android sidecar provides — see deploy/image. The Android-only tiers
+          # (wear-m3 / remote-m3) publish their live bundle through the reusable job
+          # below, not this matrix.
           PUBLISH_LIVE_BUNDLE: ${{ (matrix.wasmModule != '' || matrix.androidLiveBundle == '1') && '1' || '' }}
           # Buildable source for trusted server-side re-render: catalog.json gets a
           # `source: {repo, ref, module}` so a `serve --allow-render-trusted` box can
@@ -365,9 +367,10 @@ jobs:
   # wear-m3 / remote-m3 delegate to the shared reusable workflow (same one
   # external consumers use), building the CLI from source (cli-source: build) so
   # they still publish HEAD's renderer output. They're Android (Robolectric)
-  # renders with no Wasm tier, so they fit the common pipeline; only their split
-  # lane differs — wear carries a live bundle (full split), remote-m3 is baked
-  # (view-only). See DESIGN_CATALOGS.md's reference-caller convention.
+  # renders with no Wasm tier, so they fit the common pipeline; both now carry a
+  # live bundle (full split) — the Robolectric daemon a serve host with the Android
+  # sidecar runs re-renders either. See DESIGN_CATALOGS.md's reference-caller
+  # convention.
   # ───────────────────────────────────────────────────────────────────────────
   wear-m3:
     name: wear-m3
@@ -399,9 +402,13 @@ jobs:
       spec: samples/design-catalog-remote-m3/catalog.spec.json
       module: 'samples:design-catalog-remote-m3'
       cli-source: build
-      # Remote Compose has no runnable desktop daemon on the serve host, so it
-      # stays baked: split view-only (addressable stickers, no re-render classpath).
+      # Remote Compose is an Android/Robolectric catalog, so the same Android
+      # daemon that re-renders wear-m3 (on a serve host carrying the Android
+      # sidecar) drives it — carry a live bundle and split it full so each
+      # per-preview bundle keeps its re-render classpath, and the viewer's declared
+      # Remote Compose knobs re-render live via the `rc.<name>=` override.
+      publish-live-bundle: true
       split-per-preview: true
-      split-mode: view-only
+      split-mode: full
     secrets:
       buildfetch_ro_token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
