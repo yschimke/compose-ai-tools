@@ -155,6 +155,41 @@ services:
     working_dir: /workspace
     entrypoint: ["/bin/sh", "/workspace/rollout.sh", "--loop"]
 
+  # Instant roll on publish: a token-gated webhook that rolls `preview` the moment
+  # a new image is published, instead of waiting up to ROLLOUT_INTERVAL (1200s) for
+  # the `rollout` poll above to notice. The image-publish CI (preview-host-image.yml)
+  # POSTs https://<domain>/__hooks/rollout (Caddy routes /__hooks/rollout here) with
+  # a bearer DEPLOY_HOOK_TOKEN; deploy-hook.sh checks the token and runs rollout.sh
+  # ONE-SHOT (pull + roll only if the digest changed — so a duplicate/replayed call,
+  # or one racing the poll, is a cheap no-op). The poll loop stays on as the fallback,
+  # so a missed webhook still self-heals within one interval. Same base + mounts as
+  # `rollout` (Docker socket, project ro, the docker-rollout plugin) so it reuses
+  # rollout.sh verbatim; socat is apk-added at start like rollout.sh adds compose.
+  # Fail-closed: with no DEPLOY_HOOK_TOKEN the service stays up but idle (never opens
+  # the port) — set it in .env (setup.sh generates one) to enable. Only `expose`d on
+  # the compose network, never a host port; reachable solely via Caddy's route.
+  # Comment this service out (and the Caddyfile /__hooks/rollout route) to disable the
+  # webhook and rely on the poll loop alone.
+  hook:
+    image: docker:29-cli
+    restart: always
+    depends_on:
+      - preview
+    environment:
+      # The shared secret the publish CI must present. Empty ⇒ hook disabled (idle).
+      DEPLOY_HOOK_TOKEN: "${DEPLOY_HOOK_TOKEN:-}"
+      # Passed through to the rollout it triggers (same meaning as the `rollout` svc).
+      ROLLOUT_HEALTH_TIMEOUT: "${ROLLOUT_HEALTH_TIMEOUT:-300}"
+      HOOK_PORT: "9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/workspace:ro
+      - ./docker-rollout:/usr/local/lib/docker/cli-plugins/docker-rollout:ro
+    working_dir: /workspace
+    expose:
+      - "9000"
+    entrypoint: ["/bin/sh", "/workspace/deploy-hook.sh", "--serve"]
+
   # Auto-update for `caddy` only: poll GHCR and recreate `caddy` when the
   # preview-caddy-image workflow publishes a new baked-Caddyfile image. `preview`
   # is intentionally NOT labelled here — it's rolled by the `rollout` service

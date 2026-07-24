@@ -152,3 +152,53 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      # Roll preview.coo.ee onto the just-published image IMMEDIATELY, instead of
+      # waiting up to the box's ROLLOUT_INTERVAL (default 1200s) for its poll loop
+      # to notice the new :latest. This is the RIGHT moment to fire: the image is now
+      # on GHCR and is fully self-contained (CLI + plugin jars + warm caches + the
+      # Android daemon are all baked in above), so the box needs ONLY GHCR to roll —
+      # no Maven wait can race it (the build already absorbed Central propagation via
+      # the seeded local m2 + the Dockerfile warm-render retry). Contrast a `release:
+      # published` trigger, which fires BEFORE this job builds the image and would
+      # roll the box onto the OLD :latest.
+      #
+      # Best-effort and OPTIONAL: it fires only when a DEPLOY_HOOK_TOKEN secret is set
+      # (forks / other deployers have none → skipped), and a failure never fails the
+      # publish — the box's poll loop is the fallback that still rolls within one
+      # interval. The hook only triggers a rollout CHECK of the already-configured
+      # image tag (it can't be parameterised to run anything else), so the call is a
+      # bounded no-op, not an RCE lever. See deploy/image/deploy-hook.sh.
+      - name: Notify preview.coo.ee to roll (best-effort)
+        env:
+          HOOK_URL: ${{ vars.DEPLOY_HOOK_URL || 'https://preview.coo.ee/__hooks/rollout' }}
+          HOOK_TOKEN: ${{ secrets.DEPLOY_HOOK_TOKEN }}
+          V: ${{ steps.ver.outputs.version }}
+        run: |
+          set -u
+          if [ -z "${HOOK_TOKEN}" ]; then
+            echo "no DEPLOY_HOOK_TOKEN secret — skipping deploy notify (the box's poll loop rolls within its interval)."
+            exit 0
+          fi
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -m 30 \
+            -X POST -H "Authorization: Bearer ${HOOK_TOKEN}" "${HOOK_URL}" 2>/dev/null || echo 000)
+          echo "deploy hook POST ${HOOK_URL} → HTTP ${code}"
+          case "${code}" in
+            200|202) echo "roll triggered." ;;
+            *) echo "::warning::deploy hook returned ${code}; the box will still roll on its next poll." ;;
+          esac
+          # Advisory convergence check: poll the ungated /version until it reports the
+          # new build, so this run shows the box actually rolled. Non-fatal on timeout
+          # (a slow cold-start warm render can outlast this; the roll still completes).
+          base="${HOOK_URL%/__hooks/rollout}"
+          for i in $(seq 1 30); do
+            live=$(curl -fsS -m 10 "${base}/version" 2>/dev/null \
+              | tr -d ' \n' | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' || true)
+            if [ "${live}" = "${V}" ]; then
+              echo "preview.coo.ee now serving ${V}."
+              exit 0
+            fi
+            echo "waiting for preview.coo.ee to report ${V} (currently '${live:-?}', attempt ${i}/30)…"
+            sleep 20
+          done
+          echo "::warning::preview.coo.ee did not report ${V} within ~10 min — it may still be warming or will roll on its next poll; not failing the publish."
