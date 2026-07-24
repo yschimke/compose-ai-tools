@@ -131,11 +131,11 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:Input abstract val catalogRenderSupported: Property<Boolean>
 
   /**
-   * Whether a Wear module's device-less previews are retargeted onto the Wear canvas (227dp @ 2.0x).
-   * `true` (default) keeps the historical behaviour; `false` opts out so device-less previews stay
-   * wrap-content and the renderer crops each PNG to its intrinsic layout bounds — needed for Wear
-   * widget/tile previews exported as fixed-size drawable assets (#2670). No effect on non-Wear
-   * modules. Wired from the `composePreview.retargetWearPreviews` extension /
+   * Whether a Wear module's device-less previews are retargeted onto the Wear canvas (227dp @
+   * 2.0x). `true` (default) keeps the historical behaviour; `false` opts out so device-less
+   * previews stay wrap-content and the renderer crops each PNG to its intrinsic layout bounds —
+   * needed for Wear widget/tile previews exported as fixed-size drawable assets (#2670). No effect
+   * on non-Wear modules. Wired from the `composePreview.retargetWearPreviews` extension /
    * `-PcomposePreview.retargetWearPreviews=false` Gradle property.
    */
   @get:Input abstract val retargetWearPreviews: Property<Boolean>
