@@ -1196,7 +1196,7 @@
     "functionName": "lottie/spin.json",
     "module": "samples:android",
     "renderBasename": "lottie__lottie_spin_animated.png",
-    "sha256": "765c51679c06985bf7fbb18adf14f5a797ee887112c8ea04b07e1ec1416080be",
+    "sha256": "38634f30065952d2187ba52a10d0c61025232ab01033c170a351c87c0cb3161b",
     "sourceFile": null
   },
   "samples:android/svg__svg_badge": {
@@ -3156,7 +3156,7 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round": {
