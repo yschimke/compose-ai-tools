@@ -59,7 +59,7 @@ fun LottiePreview(
  * Progress-provider overload: [progress] is read at draw time, so a caller that drives a
  * snapshot-backed state (e.g. `mutableFloatStateOf`) between renders sweeps the Lottie timeline
  * without rebuilding the composition. This is the animated-capture path — the desktop renderer's
- * `renderLottieGif` holds a single [androidx.compose.ui.ImageComposeScene] and flips the backing
+ * `renderLottieApng` holds a single [androidx.compose.ui.ImageComposeScene] and flips the backing
  * state across the intrinsic-duration frame window, re-`render()`ing each step into a GIF frame.
  *
  * Parses the composition **synchronously** (see the class-level note) and clamps the provided

@@ -13,51 +13,49 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.unit.Density
 import ee.schimke.composeai.preview.lottie.LottiePreview
 import ee.schimke.composeai.preview.lottie.lottieIntrinsicDurationMillis
-import ee.schimke.composeai.scroll.ScrollGifEncoder
-import java.awt.image.BufferedImage
-import java.io.ByteArrayInputStream
 import java.io.File
-import javax.imageio.ImageIO
 import kotlin.math.roundToInt
 import org.jetbrains.skia.EncodedImageFormat
 
-/**
- * Default per-frame interval (≈25fps) for an animated Lottie capture. Snapped to GIF's 10ms timing
- * resolution at encode time by [ScrollGifEncoder].
- */
+/** Default per-frame interval (≈25fps) for an animated Lottie capture. */
 const val DEFAULT_LOTTIE_FRAME_INTERVAL_MS: Int = 40
 
-/** Lower bound on the per-frame interval, to keep the frame count (and GIF size) bounded. */
+/** Lower bound on the per-frame interval, to keep the frame count (and artefact size) bounded. */
 const val MIN_LOTTIE_FRAME_INTERVAL_MS: Int = 20
 
 /**
  * Upper bound on the captured window, regardless of the asset's declared length. A long ambient
- * loop still produces a GIF, just truncated to this many milliseconds so the artefact stays small.
+ * loop still produces an animation, just truncated to this many milliseconds so the artefact stays
+ * small.
  */
 const val MAX_LOTTIE_GIF_DURATION_MS: Int = 5000
 
 /**
- * Render a directly-discovered Lottie asset as a **looping animated GIF**, the animated companion
- * to [renderLottieAsset]'s single still frame. No consumer composable is involved — [LottiePreview]
- * loads [assetPath] off the render classpath and inflates it via Compottie.
+ * Render a directly-discovered Lottie asset as a **looping animated PNG (APNG)** — the animated
+ * companion the discovery layer emits alongside [renderLottieAsset]'s still frame.
  *
- * **Default duration is the asset's own timeline.** When [durationMillisOverride] is null (or
- * non-positive) the capture spans [lottieIntrinsicDurationMillis] — a 2s clip yields a 2s GIF —
- * coerced into `1..`[maxDurationMillis]. The window is sampled at [frameIntervalMs] into
- * `frameCount = round(durationMs / interval)` frames, with progress stepped `i / frameCount` so the
- * final frame wraps seamlessly back to the first (a clean loop with no end-of-cycle stutter).
+ * **Why APNG rather than GIF.** The discovered asset renders against a transparent background, and
+ * GIF carries only 1-bit transparency: [javax.imageio]'s GIF writer thresholds every partially
+ * transparent pixel to fully-opaque-or-transparent, crushing the Lottie shape's anti-aliased edge
+ * into a hard two-colour boundary. A sub-pixel edge shift between otherwise-identical CI renders
+ * then flips whole boundary pixels, so the committed GIF baseline churned on essentially every
+ * push. APNG is a standard PNG container with full 8-bit alpha, so the edge survives as a stable
+ * colour blend that the preview pipeline's pixelmatch gate treats as unchanged — and it still
+ * autoplays inline on GitHub, the web, VS Code webviews, and the preview server (all browser-engine
+ * surfaces), as long as the artefact keeps a `.png` extension so it's served as `image/png`.
  *
- * **One scene, many frames.** Unlike the per-render-scene one-shot path, this holds a single
- * [ImageComposeScene] and sweeps a snapshot-backed progress state across it, re-`render()`ing each
- * step — so the comparatively expensive Compottie parse + Skia surface allocation happen once, not
- * once per frame. `Snapshot.sendApplyNotifications()` after each write is what makes the held scene
- * observe the out-of-composition state change before the next `render()`.
+ * Captures the asset's intrinsic-duration window sampled at [frameIntervalMs] into `frameCount =
+ * round(durationMs / interval)` frames, progress stepped `i / frameCount` so the loop wraps
+ * seamlessly. Holds a single [ImageComposeScene] and sweeps a snapshot-backed progress state across
+ * it (`Snapshot.sendApplyNotifications()` flushes each step), so the Compottie parse + Skia surface
+ * allocation happen once. Each captured frame is written as a PNG and stitched by [ApngEncoder],
+ * which copies each frame's `IDAT` verbatim — so the RGBA (alpha-carrying) frames Skiko emits
+ * become an alpha-carrying APNG with no re-quantisation.
  *
- * Returns the written [outputFile], or `null` when the GIF writer plugin declined (never on a
- * standard JRE) — mirrors [ScrollGifEncoder.encode]'s contract. Throws (propagated by the caller)
- * when the asset can't be inflated or a frame can't be encoded.
+ * Returns the written [outputFile], or throws (propagated by the caller) when the asset can't be
+ * inflated or a frame can't be encoded.
  */
-fun renderLottieGif(
+fun renderLottieApng(
   assetPath: String,
   widthPx: Int,
   heightPx: Int,
@@ -77,7 +75,8 @@ fun renderLottieGif(
 
   val progress = mutableFloatStateOf(0f)
   val scene = ImageComposeScene(width = widthPx, height = heightPx, density = Density(density))
-  val frames = ArrayList<BufferedImage>(frameCount)
+  val frameDir = java.nio.file.Files.createTempDirectory("lottie-apng").toFile()
+  val frameFiles = ArrayList<File>(frameCount)
   try {
     scene.setContent {
       CompositionLocalProvider(LocalInspectionMode provides true) {
@@ -85,6 +84,7 @@ fun renderLottieGif(
           when {
             backgroundColor != 0L -> Color(backgroundColor.toInt())
             showBackground -> Color.White
+            // Transparent stays transparent — APNG carries the alpha the GIF path could not.
             else -> Color.Transparent
           }
         Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
@@ -94,26 +94,32 @@ fun renderLottieGif(
         }
       }
     }
-    // Settle the first composition before sampling, mirroring the two-render warmup of the
-    // single-frame path.
+    // Settle the first composition before sampling, mirroring the still + GIF paths.
     scene.render()
     for (i in 0 until frameCount) {
       progress.floatValue = i.toFloat() / frameCount
       Snapshot.sendApplyNotifications()
-      frames += scene.render().toBufferedImage()
+      val png =
+        scene.render().encodeToData(EncodedImageFormat.PNG)
+          ?: error("Failed to encode Lottie APNG frame $i to PNG")
+      val frameFile = File(frameDir, "frame-%05d.png".format(i))
+      frameFile.writeBytes(png.bytes)
+      frameFiles += frameFile
     }
   } finally {
     scene.close()
   }
-  return ScrollGifEncoder.encode(frames = frames, outputFile = outputFile, frameDelayMs = interval)
-}
-
-/**
- * Encode a Skia frame to PNG bytes and decode into the `BufferedImage` [ScrollGifEncoder] wants.
- */
-private fun org.jetbrains.skia.Image.toBufferedImage(): BufferedImage {
-  val png =
-    encodeToData(EncodedImageFormat.PNG) ?: error("Failed to encode Lottie GIF frame to PNG")
-  return ImageIO.read(ByteArrayInputStream(png.bytes))
-    ?: error("Failed to decode Lottie GIF frame PNG")
+  return try {
+    // APNG delay is delayNumerator/delayDenominator seconds; interval ms / 1000 keeps the cadence.
+    ApngEncoder.encodeFromPngFrames(
+      frames = frameFiles,
+      delayNumerator = interval.toShort(),
+      delayDenominator = 1000.toShort(),
+      loopCount = 0,
+      out = outputFile,
+    )
+    outputFile
+  } finally {
+    frameDir.deleteRecursively()
+  }
 }

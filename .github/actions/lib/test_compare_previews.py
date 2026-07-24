@@ -416,6 +416,56 @@ class PerceptualFilterRealLibTest(unittest.TestCase):
         self.assertTrue(cp._perceptually_changed(small, big))
 
 
+class AnimatedGifPerceptualFilterTest(unittest.TestCase):
+    """`_perceptually_changed` must inspect *every* frame of an animated GIF,
+    not just frame 0. The transparent-background Lottie spin GIF is identical
+    for its first ~35 frames and only jitters in the tail, so a frame-0-only
+    compare would both (a) mask real animation edits and (b) mis-handle the
+    spin churn. Frames are synthesized here so the test needs no binary
+    fixture."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            from pixelmatch.contrib.PIL import pixelmatch  # noqa: F401
+            from PIL import Image  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("pixelmatch/Pillow not installed")
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def _gif(self, name: str, frames):
+        from PIL import Image
+        path = self.tmp / name
+        imgs = [Image.new("RGB", (40, 40), c) for c in frames]
+        imgs[0].save(path, save_all=True, append_images=imgs[1:], duration=40, loop=0)
+        return path
+
+    def test_identical_animation_reads_unchanged(self):
+        seq = [(255, 255, 255), (0, 0, 255), (0, 128, 255), (255, 255, 255)]
+        a = self._gif("a.gif", seq)
+        b = self._gif("b.gif", list(seq))
+        self.assertFalse(cp._perceptually_changed(a, b))
+
+    def test_change_only_in_tail_frame_is_detected(self):
+        # Frame 0 identical; a later frame differs wholesale — a frame-0-only
+        # compare would wrongly call this unchanged.
+        base = [(255, 255, 255), (0, 0, 255), (0, 128, 255), (255, 255, 255)]
+        changed = list(base)
+        changed[2] = (255, 0, 0)  # whole tail frame flips colour
+        a = self._gif("a.gif", base)
+        b = self._gif("b.gif", changed)
+        self.assertTrue(cp._perceptually_changed(a, b))
+
+    def test_different_frame_count_reads_changed(self):
+        # Distinct colours per frame so PIL doesn't coalesce duplicates on save.
+        a = self._gif("a.gif", [(0, 0, 0), (0, 0, 255)])
+        b = self._gif("b.gif", [(0, 0, 0), (0, 0, 255), (255, 0, 0)])
+        self.assertTrue(cp._perceptually_changed(a, b))
+
+
 class ResourceSizeAwareToleranceTest(unittest.TestCase):
     """The size-aware slack the resource path opts into. Both PNGs are real
     ``mipmap/ic_launcher`` LEGACY adaptive-icon captures of the *same*
@@ -587,6 +637,106 @@ class GenerateTest(unittest.TestCase):
         readme = (self.out / "README.md").read_text()
         self.assertIn("## Render Failures", readme)
         self.assertIn("retained", readme)
+
+    def test_perceptually_unchanged_render_retains_prior_bytes(self):
+        # A sha-different but perceptually-identical render (renderer noise,
+        # e.g. the transparent Lottie spin GIF) must keep the PRIOR baseline's
+        # sha + bytes so the baseline branch's tree doesn't churn. Stub the
+        # pixelmatch gate to stay stdlib-only (the real lib is exercised
+        # elsewhere); "noise" in the current PNG name => perceptually clean.
+        from types import SimpleNamespace
+
+        real = cp._perceptually_changed
+        cp._perceptually_changed = lambda prior, current, **_: "noise" not in current.name
+        self.addCleanup(setattr, cp, "_perceptually_changed", real)
+
+        noisy_png = self.tmp / "A.noise.png"
+        noisy_png.write_bytes(b"fresh-but-perceptually-identical")
+        cli = self.tmp / "cli2.json"
+        cli.write_text(json.dumps({
+            "previews": [
+                _entry(id="A", module="m", function="Fn", png=str(noisy_png), sha="sha-new"),
+            ],
+        }))
+
+        prior_dir = self.tmp / "prior"
+        (prior_dir / "renders" / "m").mkdir(parents=True)
+        prior_png = prior_dir / "renders" / "m" / "A.noise.png"
+        prior_png.write_bytes(b"old-baseline-bytes")
+        prior_baselines = prior_dir / "baselines.json"
+        prior_baselines.write_text(json.dumps({
+            "m/A": {
+                "sha256": "sha-old",
+                "functionName": "Fn",
+                "sourceFile": "f.kt",
+                "renderBasename": "A.noise.png",
+                "captureLabel": "",
+            },
+        }))
+
+        rc = cp.cmd_generate(SimpleNamespace(
+            cli_json=str(cli),
+            output_dir=str(self.out),
+            repo="owner/repo",
+            branch="compose-preview/main",
+            prior_baselines=str(prior_baselines),
+            prior_renders=str(prior_dir / "renders"),
+        ))
+        self.assertEqual(rc, 0)
+
+        baselines = json.loads((self.out / "baselines.json").read_text())
+        # Prior sha retained despite the fresh render having sha-new.
+        self.assertEqual(baselines["m/A"]["sha256"], "sha-old")
+        # Prior bytes replayed into the new tree, so push-branch sees no diff.
+        copied = self.out / "renders" / "m" / "A.noise.png"
+        self.assertEqual(copied.read_bytes(), b"old-baseline-bytes")
+
+    def test_perceptually_changed_render_uses_fresh_bytes(self):
+        # The complement: a genuinely-changed render keeps its fresh sha +
+        # bytes even when a prior baseline exists.
+        from types import SimpleNamespace
+
+        real = cp._perceptually_changed
+        cp._perceptually_changed = lambda prior, current, **_: "noise" not in current.name
+        self.addCleanup(setattr, cp, "_perceptually_changed", real)
+
+        fresh_png = self.tmp / "A.png"
+        fresh_png.write_bytes(b"genuinely-different")
+        cli = self.tmp / "cli3.json"
+        cli.write_text(json.dumps({
+            "previews": [
+                _entry(id="A", module="m", function="Fn", png=str(fresh_png), sha="sha-new"),
+            ],
+        }))
+
+        prior_dir = self.tmp / "prior"
+        (prior_dir / "renders" / "m").mkdir(parents=True)
+        (prior_dir / "renders" / "m" / "A.png").write_bytes(b"old-baseline-bytes")
+        prior_baselines = prior_dir / "baselines.json"
+        prior_baselines.write_text(json.dumps({
+            "m/A": {
+                "sha256": "sha-old",
+                "functionName": "Fn",
+                "sourceFile": "f.kt",
+                "renderBasename": "A.png",
+                "captureLabel": "",
+            },
+        }))
+
+        rc = cp.cmd_generate(SimpleNamespace(
+            cli_json=str(cli),
+            output_dir=str(self.out),
+            repo="owner/repo",
+            branch="compose-preview/main",
+            prior_baselines=str(prior_baselines),
+            prior_renders=str(prior_dir / "renders"),
+        ))
+        self.assertEqual(rc, 0)
+
+        baselines = json.loads((self.out / "baselines.json").read_text())
+        self.assertEqual(baselines["m/A"]["sha256"], "sha-new")
+        copied = self.out / "renders" / "m" / "A.png"
+        self.assertEqual(copied.read_bytes(), b"genuinely-different")
 
 
 class PerceptualFilterTest(unittest.TestCase):

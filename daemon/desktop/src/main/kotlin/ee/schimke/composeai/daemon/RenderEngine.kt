@@ -178,7 +178,7 @@ class RenderEngine(
     // kind=LOTTIE animated capture — sweep the asset's intrinsic timeline into a looping GIF
     // instead of capturing one still frame. Routed here (before the reflection-based setUp) because
     // a Lottie asset has no class to resolve; the render body lives in `:renderer-desktop`'s
-    // `renderLottieGif`, mirroring how `runScrollScenario` delegates to `renderScrollPreview`.
+    // `renderLottieApng`, mirroring how `runScrollScenario` delegates to `renderScrollPreview`.
     if (spec.kind == "LOTTIE" && spec.renderMode == LOTTIE_GIF_RENDER_MODE) {
       return runLottieGifScenario(spec = spec, requestId = requestId, classLoader = classLoader)
     }
@@ -440,7 +440,7 @@ class RenderEngine(
                     // Drive the file-discovered Lottie through the draw-time `progress` lambda
                     // reading the snapshot state, so a held-session scrub (mutating
                     // `lottieProgressState`) repaints on the next `render()` by redraw alone — no
-                    // recomposition required. This is the same redraw-only path `renderLottieGif`
+                    // recomposition required. This is the same redraw-only path `renderLottieApng`
                     // uses to sweep a single held scene into GIF frames. Shadow
                     // `LocalLottieProgress`
                     // to null here so the overload's draw-time `progress()` wins; the outer provide
@@ -560,7 +560,7 @@ class RenderEngine(
     // (DesktopInteractiveSession.dispatchLottieProgress);
     // the file-Lottie content reads it in its draw-time `progress` lambda, but that read only
     // invalidates once apply-notifications fire. Same pairing `:renderers:desktop`'s
-    // `renderLottieGif`
+    // `renderLottieApng`
     // uses (`sendApplyNotifications()` after each write, before `render()`). Event-driven writes
     // (clicks) are flushed by the scene's own pointer processing; this covers the out-of-band
     // write.
@@ -1192,20 +1192,21 @@ class RenderEngine(
 
   /**
    * Live-daemon `kind=LOTTIE` animated capture. Sweeps the discovered Lottie asset's intrinsic
-   * timeline into a looping GIF at `<outputDir>/<outputBaseName>.gif` by delegating to
-   * `:renderer-desktop`'s [ee.schimke.composeai.renderer.renderLottieGif]. The default window is
+   * timeline into a looping APNG at `<outputDir>/<outputBaseName>_animated.png` by delegating to
+   * `:renderer-desktop`'s [ee.schimke.composeai.renderer.renderLottieApng]. The default window is
    * the asset's own `durationFrames / frameRate`, so "animate for the preview's default duration"
-   * needs no extra payload — a 2s clip plays for 2s.
+   * needs no extra payload — a 2s clip plays for 2s. APNG rather than GIF so the anti-aliased edge
+   * over the asset's transparent background is carried by real alpha (see `renderLottieApng`).
    *
-   * The asset is resolved by [LottiePreview]/`renderLottieGif` off the **context classloader**
+   * The asset is resolved by [LottiePreview]/`renderLottieApng` off the **context classloader**
    * (which `loadLottieAsset` consults first), so we install [classLoader] for the duration of the
    * capture — the disposable child loader carries the consumer's processed resources
    * (CLASSLOADER.md § Risks 2). Mirrors [runScrollScenario]'s shape: returns a [RenderResult] whose
-   * `pngPath` points at the produced GIF (the field is the generic artefact path, same as the
+   * `pngPath` points at the produced APNG (the field is the generic artefact path, same as the
    * scroll-GIF path).
    *
-   * Throws [IllegalStateException] when the spec carries no `assetPath`, or when the GIF writer
-   * declined (never on a standard JRE) — the dispatcher surfaces it like any other render failure.
+   * Throws [IllegalStateException] when the spec carries no `assetPath`, or when the APNG writer
+   * declined — the dispatcher surfaces it like any other render failure.
    */
   private fun runLottieGifScenario(
     spec: RenderSpec,
@@ -1218,14 +1219,14 @@ class RenderEngine(
           "RenderEngine: kind=LOTTIE renderMode='$LOTTIE_GIF_RENDER_MODE' requires an assetPath on " +
             "the RenderSpec so the Lottie document can be inflated"
         )
-    val outputFile = File(outputDir, "${spec.outputBaseName}.gif")
+    val outputFile = File(outputDir, "${spec.outputBaseName}_animated.png")
     outputFile.parentFile?.mkdirs()
 
     val previousContext = Thread.currentThread().contextClassLoader
     Thread.currentThread().contextClassLoader = classLoader
     val startNs = System.nanoTime()
     try {
-      ee.schimke.composeai.renderer.renderLottieGif(
+      ee.schimke.composeai.renderer.renderLottieApng(
         assetPath = asset,
         widthPx = spec.widthPx,
         heightPx = spec.heightPx,

@@ -245,11 +245,10 @@ fun main(args: Array<String>) {
       requireNotNull(assetPath) {
         "kind=LOTTIE preview is missing its asset path (renderer arg 20)"
       }
-      // The output extension selects the artefact: `.gif` → the animated capture spanning the
-      // asset's intrinsic timeline (discovery emits this as the Lottie preview's animated
-      // companion); anything else → the single still frame.
-      if (outputFile.extension.equals("gif", ignoreCase = true)) {
-        renderLottieGif(
+      // Still vs animated dispatch keys off the discovery-derived stem, not a bare `_animated`
+      // suffix (see [isLottieAnimatedOutput]).
+      if (isLottieAnimatedOutput(assetPath, outputFile)) {
+        renderLottieApng(
           assetPath = assetPath,
           widthPx = widthPx,
           heightPx = heightPx,
@@ -550,6 +549,25 @@ private fun errorSidecarFor(pngFile: File): File =
  */
 internal fun isDataProductOutput(outputFile: File): Boolean =
   outputFile.parentFile?.parentFile?.name == "data"
+
+/**
+ * Whether [outputFile] is the **animated** Lottie companion for [assetPath] (vs the still frame).
+ *
+ * `PreviewDiscovery` emits two captures per discovered asset: the still `<stem>.png` and the
+ * animated companion `<stem>_animated.png`, where `<stem>` is `lottie__` followed by [assetPath]
+ * with every `[^A-Za-z0-9._-]` character replaced by `_`. Matching a bare `_animated.png` suffix is
+ * wrong: an asset named `*_animated.json` sanitises to a stem that already ends in `_animated`, so
+ * its *required still* would be mistaken for the animated companion (and rendered as an APNG). We
+ * recompute the exact still stem and treat only `<stem>_animated` as the companion.
+ *
+ * Keep the `lottie__` prefix + sanitisation rule in sync with
+ * `PreviewDiscovery.discoverLottieAssets`.
+ */
+internal fun isLottieAnimatedOutput(assetPath: String, outputFile: File): Boolean {
+  val stillStem =
+    "lottie__" + assetPath.substringBeforeLast('.').replace(Regex("[^A-Za-z0-9._-]"), "_")
+  return outputFile.nameWithoutExtension == "${stillStem}_animated"
+}
 
 private fun writeErrorSidecar(
   pngFile: File,

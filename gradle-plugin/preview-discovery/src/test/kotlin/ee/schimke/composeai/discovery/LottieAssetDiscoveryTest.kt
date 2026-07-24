@@ -53,13 +53,12 @@ class LottieAssetDiscoveryTest {
     assertThat(p.id).doesNotContain("/")
     assertThat(p.id).doesNotContain(":")
     // A Lottie preview ships two captures by default: the still PNG baseline plus the animated
-    // companion GIF spanning the asset's intrinsic timeline.
-    assertThat(p.captures.map { it.renderOutput.substringAfterLast('.') })
-      .containsExactly("png", "gif")
-    val still = p.captures.first { it.renderOutput.endsWith(".png") }
-    val animated = p.captures.first { it.renderOutput.endsWith(".gif") }
-    // The still PNG is the required baseline; the GIF is best-effort so a headless env that can't
-    // encode it never fails the required-render gate.
+    // companion, an APNG (`_animated.png`) spanning the asset's intrinsic timeline. Both are `.png`
+    // so the animated one is served as `image/png` and autoplays inline everywhere.
+    val animated = p.captures.first { it.renderOutput.endsWith("_animated.png") }
+    val still = p.captures.first { it.renderOutput.endsWith(".png") && it != animated }
+    // The still PNG is the required baseline; the animated APNG is best-effort so a headless env
+    // that can't encode it never fails the required-render gate.
     assertThat(still.optional).isFalse()
     assertThat(animated.optional).isTrue()
   }

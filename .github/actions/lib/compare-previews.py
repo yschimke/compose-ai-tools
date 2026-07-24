@@ -120,7 +120,7 @@ def _perceptually_changed(
     """
     try:
         from pixelmatch.contrib.PIL import pixelmatch
-        from PIL import Image
+        from PIL import Image, ImageSequence
     except ImportError:
         return True
     if not prior_png.exists() or not current_png.exists():
@@ -135,10 +135,31 @@ def _perceptually_changed(
                 limit = max(
                     limit, min(round(total * _RESOURCE_PIXEL_FRACTION), _RESOURCE_PIXEL_CAP)
                 )
-            diff = pixelmatch(prior, current, threshold=0.1, includeAA=False)
+            prior_frames = getattr(prior, "n_frames", 1)
+            current_frames = getattr(current, "n_frames", 1)
+            if prior_frames != current_frames:
+                # A different frame count is a real animation change (frames
+                # added / removed), never rounding noise.
+                return True
+            if prior_frames <= 1:
+                return pixelmatch(prior, current, threshold=0.1, includeAA=False) > limit
+            # Animated GIF: `Image.open` only exposes the first frame, so a
+            # frame-0-identical / tail-frame-jittering GIF (the transparent
+            # Lottie spin case, whose anti-aliased edge the 1-bit GIF alpha
+            # thresholds into a handful of flipping pixels per run) would
+            # otherwise always read as unchanged — masking real animation
+            # edits too. Compare every frame with the same per-frame budget a
+            # still render gets; changed if any single frame exceeds it.
+            for pf, cf in zip(
+                ImageSequence.Iterator(prior), ImageSequence.Iterator(current)
+            ):
+                if pixelmatch(
+                    pf.convert("RGBA"), cf.convert("RGBA"), threshold=0.1, includeAA=False
+                ) > limit:
+                    return True
+            return False
     except Exception:
         return True
-    return diff > limit
 
 
 def _is_changed(
@@ -446,13 +467,45 @@ def cmd_generate(args: argparse.Namespace) -> int:
         if isinstance(prior, dict) and prior.get("sha256") and prior.get("renderBasename"):
             carried_over[key] = prior
 
+    # Stabilise renderer noise on the baseline branch. A freshly-rendered
+    # PNG/GIF whose bytes differ from the prior baseline but is perceptually
+    # identical to it (sub-pixel AA jitter; or an animated GIF whose only
+    # run-to-run movement is a handful of hard-edge pixels) is kept as the
+    # PRIOR bytes + sha, so `push-branch.sh`'s tree comparison sees no change
+    # and skips the commit. This is the same pixelmatch gate the PR-diff path
+    # already applies via `_is_changed`; without it every push rewrote the
+    # baseline for imperceptible noise — most visibly the transparent-
+    # background Lottie spin GIF, whose anti-aliased edge the 1-bit GIF alpha
+    # thresholds into dozens of flipping pixels per run. Opt-in on
+    # `--prior-renders` being present (the baseline branch's render tree);
+    # first-ever generation has nothing to compare against and copies fresh.
+    stabilized: dict[str, dict] = {}
+    if prior_renders is not None:
+        for key, info in previews.items():
+            if not info["sha256"] or not info["pngPath"]:
+                continue
+            prior = prior_baselines.get(key)
+            if not isinstance(prior, dict) or not prior.get("sha256"):
+                continue
+            if prior["sha256"] == info["sha256"]:
+                continue  # bytes already identical — nothing to stabilise
+            prior_basename = prior.get("renderBasename") or info["renderBasename"]
+            prior_png = prior_renders / info["module"] / prior_basename
+            cur_png = Path(info["pngPath"])
+            if not prior_png.exists() or not cur_png.exists():
+                continue
+            if not _perceptually_changed(prior_png, cur_png):
+                stabilized[key] = {"sha256": prior["sha256"], "png": prior_png}
+
     # --- baselines.json ---
     # Persist the renderBasename alongside the sha so the compare run can
     # reconstruct raw-GitHub URLs for removed captures without needing the
     # CLI output for them.
     baselines = {
         key: {
-            "sha256": info["sha256"],
+            # Stabilised entries keep the prior baseline's sha so the
+            # generated tree stays byte-identical to the baseline branch.
+            "sha256": stabilized[key]["sha256"] if key in stabilized else info["sha256"],
             "functionName": info["functionName"],
             "sourceFile": info["sourceFile"],
             "renderBasename": info["renderBasename"],
@@ -482,15 +535,18 @@ def cmd_generate(args: argparse.Namespace) -> int:
     renders_out = out_dir / "renders"
     if renders_out.exists():
         shutil.rmtree(renders_out)
-    for info in previews.values():
+    for key, info in previews.items():
         if not info["pngPath"]:
             continue
-        png = Path(info["pngPath"])
-        if not png.exists():
-            continue
         dest = renders_out / info["module"] / info["renderBasename"]
+        # Perceptually-unchanged renders replay the prior baseline's bytes so
+        # the baseline branch doesn't churn on imperceptible noise (see the
+        # `stabilized` computation above).
+        src = stabilized[key]["png"] if key in stabilized else Path(info["pngPath"])
+        if not src.exists():
+            continue
         dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(png, dest)
+        shutil.copy2(src, dest)
     # Carry forward the prior PNG for previews whose render failed but had a
     # prior baseline — keeps the README inline image resolving even though
     # this run didn't produce a fresh capture.
