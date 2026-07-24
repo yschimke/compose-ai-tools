@@ -133,7 +133,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `FontFamilySpecimenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/FontFamilySpecimenPreview_FontFamily_specimen.png" width="150" /> |
 | `TypographySpecimenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/TypographySpecimenPreview_Typography_specimen.png" width="150" /> |
 | `lottie/spin.json` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/lottie__lottie_spin.png" width="150" /> |
-| `lottie/spin.json` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/lottie__lottie_spin.gif" width="150" /> |
+| `lottie/spin.json` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/lottie__lottie_spin_animated.png" width="150" /> |
 | `svg/badge.svg` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/svg__svg_badge.png" width="150" /> |
 | `Brand Dark theme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/themecatalog__Brand_Dark.png" width="150" /> |
 | `Brand Light theme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/themecatalog__Brand_Light.png" width="150" /> |
@@ -224,7 +224,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `SvgBadgePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/SvgBadgePreview.png" width="150" /> |
 | `SvgStarTintedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/SvgStarTintedPreview.png" width="150" /> |
 | `lottie/spin.json` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/lottie__lottie_spin.png" width="150" /> |
-| `lottie/spin.json` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/lottie__lottie_spin.gif" width="150" /> |
+| `lottie/spin.json` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/lottie__lottie_spin_animated.png" width="150" /> |
 | `svg/badge.svg` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/svg__svg_badge.png" width="150" /> |
 | `svg/star.svg` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/svg__svg_star.png" width="150" /> |
 
