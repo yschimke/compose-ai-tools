@@ -1,8 +1,10 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
+import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import java.awt.Color
 import java.awt.Font
 import java.awt.GradientPaint
@@ -174,6 +176,16 @@ class ServeWebFixtureTest {
             default = PreviewOverrideValue.StringValue("Roboto Flex"),
             suggestions = listOf("Roboto Flex", "Google Sans Flex", "Lobster Two"),
           ),
+        ),
+      // The Remote Compose named-value knobs this preview declared (the `compose/remotecompose`
+      // channel — the `rememberOverridableRemote*` wrappers). Rendered as a separate "Remote
+      // Compose"
+      // control group whose edits round-trip via `rc.<name>=<kind>:<value>`; captured alongside the
+      // plain-Compose overrides so the visual-diff bot covers both panels.
+      remoteComposeKnobs =
+        listOf(
+          RemoteComposeKnobDeclaration("label", RemoteNamedValue.StringValue("Filled")),
+          RemoteComposeKnobDeclaration("shaderColor", RemoteNamedValue.ColorValue("#FF7DE2FF")),
         ),
     )
 
@@ -839,6 +851,29 @@ class ServeWebFixtureTest {
     assertGolden(File(pagesDir, "serve-viewer-wasm.html"), wasmViewer)
     assertGolden(File(pagesDir, "serve-viewer-wasm-live.html"), wasmViewerLive)
     assertGolden(File(pagesDir, "serve-viewer-catalog-knobs.html"), viewerCatalogKnobs)
+    // The declared Remote Compose knobs render as their own "Remote Compose" control group, one
+    // `.cp-rc-knob` per knob carrying its name + wire kind (a `color` swatch value + a `string`),
+    // separate from the plain-Compose Overrides panel.
+    assertTrue(
+      viewerCatalogKnobs.contains("data-cp-group=\"remotecompose\"") &&
+        viewerCatalogKnobs.contains(">Remote Compose</summary>"),
+      "the live catalog knob viewer shows the Remote Compose control group",
+    )
+    assertTrue(
+      viewerCatalogKnobs.contains(
+        "class=\"cp-rc-knob\" data-rc-name=\"shaderColor\" " + "data-rc-kind=\"color\""
+      ),
+      "the declared RC colour knob renders a control tagged with its name + kind",
+    )
+    assertTrue(
+      viewerCatalogKnobs.contains("data-rc-name=\"label\" data-rc-kind=\"string\""),
+      "the declared RC string knob renders a control tagged with its name + kind",
+    )
+    // A preview that declares no RC knobs shows no Remote Compose group (no dead panel).
+    assertFalse(
+      viewerThemes.contains("data-cp-group=\"remotecompose\""),
+      "a preview without RC knobs shows no Remote Compose control group",
+    )
     assertGolden(File(pagesDir, "serve-viewer-themes.html"), viewerThemes)
     assertGolden(File(pagesDir, "serve-viewer-focus.html"), viewerFocus)
     // The detected-feature control shows for a focus-supporting preview…
