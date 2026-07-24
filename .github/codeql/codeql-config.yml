@@ -10,3 +10,8 @@ paths-ignore:
   # catalog's index.html so the bundle resolves the bare `@js-joda/core` import
   # offline (no CDN). Minified upstream library code.
   - 'samples/cmp-wasm-catalog/src/wasmJsMain/resources/js-joda.esm.js'
+  # Vendored upstream `remote-compose-player` (Apache-2.0), the TypeScript
+  # Remote Compose player we build a browser bundle from — see
+  # `third_party/remote-compose-player/PROVENANCE.md`. Upstream source we don't
+  # modify, so its alerts aren't actionable here.
+  - 'third_party/remote-compose-player/**'
