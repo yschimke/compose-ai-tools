@@ -269,6 +269,32 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `the rc player bundle is served as javascript with a conditional-request etag`() {
+    // The vendored Remote Compose player rides in the CLI jar and is served over
+    // `/rc-player/bundle.js` (a constant segment, session-independent) so the viewer's client-side
+    // canvas lane can load the `RC` global. Served as JS (so the browser executes it) with a
+    // content-hash ETag for cheap conditional requests.
+    val etag: String
+    val req = Request.Builder().url("http://127.0.0.1:${server.port}/rc-player/bundle.js").build()
+    client.newCall(req).execute().use { r ->
+      assertEquals(200, r.code)
+      assertEquals("text/javascript", r.body?.contentType()?.let { "${it.type}/${it.subtype}" })
+      val body = r.body?.string() ?: ""
+      assertTrue(body.contains("RcdPlayer"), "the bundle exposes the RcdPlayer entry point")
+      etag = r.header("ETag") ?: ""
+      assertTrue(etag.isNotEmpty(), "carries a content-hash ETag")
+    }
+    // A conditional GET carrying the matching ETag gets a cheap 304 instead of re-downloading the
+    // ~640 KB bundle.
+    val conditional =
+      Request.Builder()
+        .url("http://127.0.0.1:${server.port}/rc-player/bundle.js")
+        .header("If-None-Match", etag)
+        .build()
+    client.newCall(conditional).execute().use { r -> assertEquals(304, r.code) }
+  }
+
+  @Test
   fun `api previews advertises v2 and carries author override declarations`() {
     val (code, api) = get("/compose-m3/api/previews")
     assertEquals(200, code)
