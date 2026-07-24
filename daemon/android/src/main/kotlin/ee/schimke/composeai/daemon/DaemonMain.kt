@@ -788,6 +788,14 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
       className = info.className,
       functionName = info.methodName,
       overrides = bakedOverrides,
+      // Explicit LIGHT, not null. A null uiMode emits no `uiMode=` token in the routed payload,
+      // and Robolectric qualifiers apply incrementally (`setQualifiers("+…")`), so a token-less
+      // render inherits whatever `night` bit the previous render in the session left behind — a
+      // `_Light`/uiMode-less preview rendered after a `_Dark` sibling captured the dark theme,
+      // which is how the confetti-mobile catalog's data products shipped theme-lagged. `notnight`
+      // is Studio's default for `uiMode = 0` previews, so the explicit reset is AS-parity. An
+      // inbound `renderNow` override still wins in `reshapeRenderPayload`.
+      uiMode = RenderSpec.SpecUiMode.LIGHT,
     )
   val params = info.params ?: return defaults
   val density = params.density ?: defaults.density
