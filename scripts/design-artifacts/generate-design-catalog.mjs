@@ -508,6 +508,21 @@ if (annotationGroups.length > 0) {
   );
 }
 
+// Zero effective inventory: the spec declares no `groups` AND the render carried no
+// `@CatalogComponent` annotations (an author forgot them, or the render ran with a CLI/plugin that
+// predates catalog metadata). Fail here with a clear, actionable message rather than letting the
+// join iterate an undefined `spec.groups` and die with a late TypeError after the expensive render.
+if (!Array.isArray(spec.groups) || spec.groups.length === 0) {
+  console.error(
+    `[${spec.system}] no catalog inventory: catalog.spec.json declares no \`groups\` and the ` +
+      `render carried no @CatalogComponent annotations. Add @CatalogComponent / @CatalogVariant to ` +
+      `the module's @Preview functions, or declare \`groups\` in the spec. (If the render is right ` +
+      `but the metadata is missing, the CLI/plugin that produced this bundle may predate ` +
+      `catalog-annotations discovery.)`,
+  );
+  process.exit(1);
+}
+
 // System tokens declared via `@ColorCatalog` / `@TypographyCatalog` — carried in the
 // bundle as `previews/<id>.catalog.json` sidecars (compose-ai-tools#2167), which the
 // screen-render `compose/theme` never sees (an ad-hoc palette / type scale has no

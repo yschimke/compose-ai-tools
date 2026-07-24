@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { readFile } from "node:fs/promises";
 
-import { discoverPreviews, validateSpec } from "./catalog-spec.mjs";
+import { discoverPreviews, hasCatalogAnnotations, validateSpec } from "./catalog-spec.mjs";
 import { moduleToDir, collectKotlinSources } from "./catalog-spec-io.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -31,7 +31,12 @@ for (const rel of SAMPLE_SPECS) {
     const sources = await collectKotlinSources([moduleDir]);
     const { previews } = discoverPreviews(sources);
     assert.ok(previews.length > 0, `discovered no @Preview functions for ${rel}`);
-    const { errors } = validateSpec(spec, { knownPreviews: previews });
+    // Pass whether the module carries @CatalogComponent annotations, so a cover-sheet-only spec
+    // (no `groups`) is accepted iff its inventory really is annotation-supplied.
+    const { errors } = validateSpec(spec, {
+      knownPreviews: previews,
+      annotatedInventory: hasCatalogAnnotations(sources),
+    });
     assert.deepEqual(errors, [], `${rel} has spec errors:\n${errors.join("\n")}`);
   });
 }

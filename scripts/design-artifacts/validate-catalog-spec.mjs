@@ -14,7 +14,7 @@
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 
-import { discoverPreviews, validateSpec } from "./catalog-spec.mjs";
+import { discoverPreviews, hasCatalogAnnotations, validateSpec } from "./catalog-spec.mjs";
 import { resolveSourceDirs, collectKotlinSources } from "./catalog-spec-io.mjs";
 
 const { values } = parseArgs({
@@ -51,6 +51,7 @@ try {
 const srcDirs = values["module-dir"] ? [values["module-dir"], ...(values.src ?? [])] : values.src;
 
 let knownPreviews = null;
+let annotatedInventory = undefined;
 let scannedDirs = [];
 if (!values["no-scan"]) {
   scannedDirs = resolveSourceDirs({ srcDirs, spec, specPath: values.spec });
@@ -60,10 +61,16 @@ if (!values["no-scan"]) {
       extraAnnotations: values["preview-annotation"] ?? [],
     });
     knownPreviews = previews;
+    // Only meaningful when a module was scanned; leaves `annotatedInventory` undefined (lenient) on
+    // the structural-only path so a no-groups spec isn't wrongly rejected without source access.
+    annotatedInventory = hasCatalogAnnotations(sources);
   }
 }
 
-const { errors, warnings } = validateSpec(spec, knownPreviews ? { knownPreviews } : {});
+const { errors, warnings } = validateSpec(spec, {
+  ...(knownPreviews ? { knownPreviews } : {}),
+  ...(annotatedInventory !== undefined ? { annotatedInventory } : {}),
+});
 
 if (values.json) {
   console.log(
