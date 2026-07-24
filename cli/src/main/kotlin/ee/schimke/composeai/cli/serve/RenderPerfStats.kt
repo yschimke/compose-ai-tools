@@ -32,6 +32,8 @@ class RenderPerfStats {
   private var maxMs = 0L
   private var totalMs = 0L
   private var lastMs: Long? = null
+  private var lastFailureReason: String? = null
+  private var lastFailureAtEpochMillis: Long? = null
   private val window = LongArray(WINDOW_SIZE)
   private var windowCount = 0
   private var windowIdx = 0
@@ -42,13 +44,23 @@ class RenderPerfStats {
   /** The bounded render-lock acquire backed off ([RenderOutcome.Busy] → caller serves baked). */
   fun recordBusy(): Unit = synchronized(lock) { busy++ }
 
-  /** A render that ended in [RenderOutcome.Failed]; [timeout] when it blew its render budget. */
-  fun recordFailed(durationMs: Long, timeout: Boolean): Unit =
+  /**
+   * A render that ended in [RenderOutcome.Failed]; [timeout] when it blew its render budget.
+   * [reason] is the outcome's failure text — kept (truncated) so `/status.json` can say WHY a
+   * catalog's live lane is failing without anyone tailing container logs: a daemon whose every
+   * render fails otherwise shows only a climbing `failed` counter while the composite silently
+   * serves baked fallback.
+   */
+  fun recordFailed(durationMs: Long, timeout: Boolean, reason: String? = null): Unit =
     synchronized(lock) {
       renders++
       failed++
       if (timeout) timedOut++
       lastMs = durationMs
+      if (reason != null) {
+        lastFailureReason = reason.take(MAX_FAILURE_REASON_LENGTH)
+        lastFailureAtEpochMillis = System.currentTimeMillis()
+      }
     }
 
   /**
@@ -96,12 +108,17 @@ class RenderPerfStats {
         p50Ms = pct(0.5),
         p95Ms = pct(0.95),
         windowSize = windowCount,
+        lastFailureReason = lastFailureReason,
+        lastFailureAtEpochMillis = lastFailureAtEpochMillis,
       )
     }
 
   companion object {
     /** Ring size for the recent-durations percentile window. */
     const val WINDOW_SIZE: Int = 128
+
+    /** Cap on the carried failure-reason text — enough for a message, not a stack trace. */
+    const val MAX_FAILURE_REASON_LENGTH: Int = 300
   }
 }
 
@@ -137,6 +154,13 @@ data class RenderPerfSnapshot(
   val p50Ms: Long? = null,
   val p95Ms: Long? = null,
   val windowSize: Int = 0,
+  /**
+   * The most recent failure's reason text (truncated) + when it happened — the "why" behind a
+   * non-zero [failed] counter, so a catalog whose live lane silently falls back to baked is
+   * diagnosable from `/status.json` alone.
+   */
+  val lastFailureReason: String? = null,
+  val lastFailureAtEpochMillis: Long? = null,
 ) {
   companion object {
     /**
@@ -164,6 +188,13 @@ data class RenderPerfSnapshot(
         p50Ms = null,
         p95Ms = null,
         windowSize = snapshots.sumOf { it.windowSize },
+        // Most recent failure across daemons (by timestamp) so the roll-up carries a "why" too.
+        lastFailureReason =
+          snapshots
+            .filter { it.lastFailureAtEpochMillis != null }
+            .maxByOrNull { it.lastFailureAtEpochMillis!! }
+            ?.lastFailureReason,
+        lastFailureAtEpochMillis = snapshots.mapNotNull { it.lastFailureAtEpochMillis }.maxOrNull(),
       )
     }
   }

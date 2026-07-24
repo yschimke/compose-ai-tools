@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli.serve
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class RenderPerfStatsTest {
@@ -24,7 +25,7 @@ class RenderPerfStatsTest {
     stats.recordOk(1_000, cold = false)
     stats.recordCacheHit()
     stats.recordBusy()
-    stats.recordFailed(120_000, timeout = true)
+    stats.recordFailed(120_000, timeout = true, reason = "timed out after 120s waiting for render")
 
     val snap = stats.snapshot()
     assertEquals(4, snap.renders)
@@ -43,6 +44,9 @@ class RenderPerfStatsTest {
     assertEquals(120_000, snap.lastMs)
     assertEquals(3, snap.windowSize)
     assertEquals(2_000, snap.p50Ms)
+    // The failure's "why" is carried so /status can explain a climbing failed counter.
+    assertEquals("timed out after 120s waiting for render", snap.lastFailureReason)
+    assertNotNull(snap.lastFailureAtEpochMillis)
   }
 
   @Test
