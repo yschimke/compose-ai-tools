@@ -246,8 +246,21 @@ release that carries `--catalogs-unlisted`).
 released `compose-preview-host` image on an **8 GB host**, no build. The **whole deploy chain is
 automatic**: cutting a CLI release publishes the host image to GHCR (release-please invokes
 [`preview-host-image.yml`](../.github/workflows/preview-host-image.yml) via `workflow_call`, tagging
-that version **and** `:latest`), and **Watchtower** on the box polls the `:latest` tag hourly and
-rolls the `preview` container onto the new image — no manual step.
+that version **and** `:latest`), and the box's zero-downtime **`rollout`** service rolls the
+`preview` container onto the new image (`caddy` is rolled separately by **Watchtower**) — no manual
+step.
+
+The roll happens two ways, whichever fires first: the publish workflow's **final step POSTs a
+token-gated `/__hooks/rollout` webhook** so the box rolls the *instant* the image lands, and the
+`rollout` service **also polls** GHCR every `ROLLOUT_INTERVAL`s (default 1200) as a fallback so a
+missed webhook still self-heals. The webhook is fired from the **image-publish step, not a `release:
+published` event** — on purpose: at image-publish time the GHCR image is fully self-contained (baked
+CLI + plugin jars + warm caches + Android daemon), so the box needs **only GHCR** to roll and no
+Maven-Central propagation can race it (the image build already absorbed that via the seeded local
+`m2` + the Dockerfile warm-render retry). A release-event webhook would fire *before* the image is
+built and roll onto the *old* image. It's gated by a `DEPLOY_HOOK_TOKEN` (fail-closed if unset) and
+can only trigger a rollout *check* of the already-configured tag — see
+[`deploy/image` README → Instant roll on publish](../deploy/image/README.md#instant-roll-on-publish-webhook--skips-the-poll-wait).
 
 > **Why the *Publish preview-host image* Actions list can look stale.** Because that publish runs as
 > a **reusable-workflow call** from the release job, its runs appear *inside the release-please run*,
@@ -256,9 +269,10 @@ rolls the `preview` container onto the new image — no manual step.
 > **every release rebuilds the image**. To confirm which build is deployed, check the release-please
 > run, the GHCR `:latest` digest, or [`GET /version`](#endpoints) — not the preview-host-image run list.
 
-The two delivery paths move on **different clocks**: a **daemon/CLI change** reaches the box on the
-next Watchtower pull of a new release image, while a **`design-artifacts` regen** reaches it much
-sooner — the server **auto-refreshes the catalog branches** in between image rolls (re-checks each
+The two delivery paths move on **different clocks**: a **daemon/CLI change** reaches the box when it
+rolls onto a new release image (now near-instant via the publish webhook, else within one `rollout`
+poll), while a **`design-artifacts` regen** reaches it a different way — the server **auto-refreshes
+the catalog branches** in between image rolls (re-checks each
 `design-artifacts/<system>` head every `SERVE_CATALOG_REFRESH`s, default 600, and re-fetches on
 change, no restart). So a catalog repack needs no image roll, but a change to how the daemon *renders*
 (or *loads resources*) does. This is the canonical public deployment. The image bakes the

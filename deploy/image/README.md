@@ -82,6 +82,45 @@ services split the work:
   fixed `80`/`443` ports, so it can't be scaled/rolled; Watchtower's in-place
   recreate is a ~1s proxy blip, and only when the baked-Caddyfile image changes.
 
+### Instant roll on publish (webhook — skips the poll wait)
+
+The `rollout` poll only notices a new image on its next tick, so a fresh release
+sits up to `ROLLOUT_INTERVAL` (default 1200s) before the box even *starts* rolling.
+The **`hook`** service closes that gap: it exposes a token-gated
+`POST /__hooks/rollout` (routed through Caddy) that runs `rollout.sh` immediately, so
+the publish CI can push the roll the moment the image lands:
+
+> merge → release → `preview-host-image.yml` builds & pushes `:latest` → **its final
+> step POSTs `/__hooks/rollout`** → `hook` runs `rollout.sh` → new replica boots +
+> goes healthy → traffic drains over → old replica retired
+
+**Fire on the image, not the release.** The webhook is triggered from the *end of the
+image build*, not a `release: published` event — at image-publish time the GHCR image
+is fully self-contained (baked CLI + plugin jars + warm caches + Android daemon), so
+the box needs **only GHCR** to roll and **no Maven propagation can race it** (the build
+already waited Central out via the seeded local `m2` + the Dockerfile warm-render retry).
+A `release: published` webhook would fire *before* the image exists and roll the box onto
+the *old* `:latest`.
+
+**Safe to expose (behind Caddy TLS):**
+- A bearer `DEPLOY_HOOK_TOKEN` is required; **fail-closed** — with none set the `hook`
+  service stays up but idle and never opens its port (never an unauthenticated exec
+  endpoint).
+- The only effect is `rollout.sh` on the **already-configured** image tag. The caller
+  can't choose what image runs, so a leaked/replayed token forces at most a rollout
+  *check* of the tag the box is already pinned to — a bounded no-op, and idempotent
+  (`rollout.sh` rolls only if the pulled digest actually changed).
+- Single-flight: overlapping calls fold into the in-progress roll instead of launching
+  parallel rollouts.
+
+**Wiring it up.** `setup.sh` generates `DEPLOY_HOOK_TOKEN` into `.env` and prints it;
+add the **same value** as the repo's `DEPLOY_HOOK_TOKEN` Actions secret. If the box
+isn't `preview.coo.ee`, also set a `DEPLOY_HOOK_URL` repo *variable* to
+`https://<your-domain>/__hooks/rollout`. The CI step is **best-effort** — with no
+secret it's skipped, and any failure just falls back to the poll loop, which still
+rolls within one interval. To disable the webhook entirely, comment out the `hook`
+service **and** the Caddyfile `/__hooks/rollout` route; the poll loop keeps working.
+
 **How the swap stays seamless.** `preview` has a Docker `healthcheck` on the
 app's ungated `/readyz` **readiness** route — green only once the new replica has
 actually rendered a preview, not merely bound its port (that's `/healthz`), so a
@@ -167,8 +206,9 @@ Requirements / options:
   `PREVIEW_MEM_LIMIT` (which also lowers the derived live-seat budget per replica).
 - **Private GHCR package:** mount registry creds so the in-container pull can
   authenticate — add `- ~/.docker/config.json:/root/.docker/config.json:ro` to the
-  `rollout` service (for `preview`) and `- ~/.docker/config.json:/config.json:ro`
-  to `watchtower` (for `caddy`), after `docker login ghcr.io`. Public packages need
+  `rollout` service **and** the `hook` service (both run `rollout.sh` → `docker
+  compose pull preview`) and `- ~/.docker/config.json:/config.json:ro` to
+  `watchtower` (for `caddy`), after `docker login ghcr.io`. Public packages need
   nothing.
 - **Pause auto-rollout:** comment out the `rollout` service and update `preview` by
   hand with `sudo docker rollout preview` (still zero-downtime) or the blunt
@@ -193,8 +233,9 @@ docker run -d --restart always -p 8080:8080 \
 | `Dockerfile` | Downloads the released CLI, warm-renders `sample-project/`. |
 | `sample-project/` | Self-contained Compose Desktop module (foundation-only previews) + Gradle wrapper. Applies the published plugin via auto-inject. |
 | `entrypoint.sh` | Maps `$PORT`/`$SERVE_TOKEN` onto serve flags; generous `--timeout`. |
-| `docker-compose.yml` + `Caddyfile` | Pull the image + Caddy auto-HTTPS + zero-downtime (`rollout`) / Watchtower auto-updates. |
+| `docker-compose.yml` + `Caddyfile` | Pull the image + Caddy auto-HTTPS + zero-downtime (`rollout`) / Watchtower auto-updates + the `hook` instant-roll webhook. |
 | `rollout.sh` | Poll loop / one-shot that pulls `preview` and rolls it via docker-rollout. |
+| `deploy-hook.sh` | Token-gated `POST /__hooks/rollout` webhook (the `hook` service) that runs `rollout.sh` on demand — instant roll on publish. |
 | `docker-rollout` | Vendored [docker-rollout](https://github.com/wowu/docker-rollout) CLI plugin (adds `docker rollout`). |
 | `setup.sh` | Install Docker + the docker-rollout plugin, write `.env`, pull + start. |
 
