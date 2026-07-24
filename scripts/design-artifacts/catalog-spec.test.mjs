@@ -128,7 +128,19 @@ test("validateSpec flags structural problems", () => {
   const { errors } = validateSpec({ groups: [] });
   assert.ok(errors.some((e) => e.includes("`system` is required")));
   assert.ok(errors.some((e) => e.includes("`title` is required")));
-  assert.ok(errors.some((e) => e.includes("`groups` must be a non-empty array")));
+  // An explicit empty `groups` is a mistake, not "annotation-supplied".
+  assert.ok(errors.some((e) => e.includes("`groups`, when present, must be a non-empty array")));
+});
+
+test("validateSpec accepts a cover-sheet spec with no groups (annotation-supplied inventory)", () => {
+  // A catalog whose inventory lives in `@CatalogComponent` / `@CatalogVariant` annotations carries
+  // only cover-sheet fields; an absent `groups` must validate cleanly.
+  const { errors, warnings } = validateSpec(
+    { system: "compose-m3", title: "Compose Material 3" },
+    { knownPreviews: ["FilledButton", "SwitchOn"] },
+  );
+  assert.deepEqual(errors, []);
+  assert.deepEqual(warnings, []);
 });
 
 test("validateSpec flags duplicate componentId and warns on folded preview", () => {

@@ -281,8 +281,18 @@ export function validateSpec(spec, opts = {}) {
   if (typeof spec.title !== "string" || spec.title.length === 0) {
     errors.push("`title` is required (the human-readable catalog name)");
   }
+  // `groups` is optional: a catalog can supply its whole component inventory from
+  // `@CatalogComponent` / `@CatalogVariant` annotations (compose-ai-tools' catalog-annotations)
+  // and carry only cover-sheet fields here. An ABSENT `groups` therefore validates — the
+  // annotation-derived inventory is checked at render time (generate-design-catalog.mjs reports
+  // any `@CatalogVariant` whose parent has no `@CatalogComponent`). When `groups` IS present it
+  // must be a non-empty array (an explicit `[]` is a mistake, not "annotation-supplied") and is
+  // validated in full below.
+  if (spec.groups === undefined) {
+    return { errors, warnings };
+  }
   if (!Array.isArray(spec.groups) || spec.groups.length === 0) {
-    errors.push("`groups` must be a non-empty array");
+    errors.push("`groups`, when present, must be a non-empty array");
     return { errors, warnings };
   }
 
