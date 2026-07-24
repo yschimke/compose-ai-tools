@@ -2756,6 +2756,16 @@
       "variant": "wearos_large_round"
     },
     {
+      "annotatedBasename": "com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round.a11y.png",
+      "cleanBasename": "",
+      "findings": [],
+      "functionName": "ActivityListMotionLongPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
       "annotatedBasename": "ActivityListPreview_Devices_Large_Round.a11y.png",
       "cleanBasename": "ActivityListPreview_Devices_Large_Round.png",
       "findings": [],

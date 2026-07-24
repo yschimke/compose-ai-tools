@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 250 preview(s) across 18 module(s) · 34 error(s) · 3 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/main`. 251 preview(s) across 18 module(s) · 34 error(s) · 3 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1474,6 +1474,12 @@ _No findings._
 ### `ActivityListLongPreview` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/com.example.samplewear.PreviewsKt.ActivityListLongPreview_Devices - Large Round.a11y.png" width="400" />
+
+_No findings._
+
+### `ActivityListMotionLongPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round.a11y.png" width="400" />
 
 _No findings._
 
