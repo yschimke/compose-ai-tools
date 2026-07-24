@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.17.15](https://github.com/yschimke/compose-ai-tools/compare/v0.17.14...v0.17.15) (2026-07-24)
+
+
+### Features
+
+* **catalog:** drive the M3 catalog inventory from annotations ([#2700](https://github.com/yschimke/compose-ai-tools/issues/2700)) ([73a3038](https://github.com/yschimke/compose-ai-tools/commit/73a3038b6a370884c78a944704f10508dda03673))
+* **serve:** advertise Remote Compose knobs from the bundle sidecar ([#2693](https://github.com/yschimke/compose-ai-tools/issues/2693)) ([64c49f0](https://github.com/yschimke/compose-ai-tools/commit/64c49f032892944c2a5b04afdd95276bb6e1ca29))
+* **serve:** carry the last failure reason in /status renderStats ([#2698](https://github.com/yschimke/compose-ai-tools/issues/2698)) ([a7f9a79](https://github.com/yschimke/compose-ai-tools/commit/a7f9a7913dc5ac38dc4974e7f2f46c3403b1bf01))
+* **serve:** render a control per declared Remote Compose knob in the viewer ([#2696](https://github.com/yschimke/compose-ai-tools/issues/2696)) ([f600cd2](https://github.com/yschimke/compose-ai-tools/commit/f600cd2f49bcb979b2c645711521cbfd8c603d0d))
+* **serve:** web-mode figma-svg that references Google Fonts instead of embedding ([#2701](https://github.com/yschimke/compose-ai-tools/issues/2701)) ([fffa668](https://github.com/yschimke/compose-ai-tools/commit/fffa6680e85868a7e8209021a70fcd869c550538))
+
+
+### Bug Fixes
+
+* **serve:** disable Remote Compose knobs while the Wasm lane is active ([#2699](https://github.com/yschimke/compose-ai-tools/issues/2699)) ([394a6ae](https://github.com/yschimke/compose-ai-tools/commit/394a6aee449b4e67f1c3c4417e42c68d1e0a849d))
+
 ## [0.17.14](https://github.com/yschimke/compose-ai-tools/compare/v0.17.13...v0.17.14) (2026-07-23)
 
 
