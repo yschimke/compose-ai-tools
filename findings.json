@@ -2716,6 +2716,24 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "RemoteWidgetSquirclePreview_Remote_Widget_Squircle.a11y.png",
+      "cleanBasename": "RemoteWidgetSquirclePreview_Remote_Widget_Squircle.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,504,504",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "RemoteWidgetSquirclePreview",
+      "module": "remotecompose",
+      "previewId": "com.example.sampleremotecompose.WearWidgetPreviewsKt.RemoteWidgetSquirclePreview_Remote Widget Squircle",
+      "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/WearWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "SdkMatrixPreview_SdkMatrixPreview.a11y.png",
       "cleanBasename": "SdkMatrixPreview_SdkMatrixPreview.png",
       "findings": [],
@@ -2723,6 +2741,46 @@
       "module": "sdk-matrix",
       "previewId": "com.example.sdkmatrix.MatrixPreviewKt.SdkMatrixPreview_SdkMatrixPreview",
       "sourceFile": "src/main/kotlin/com/example/sdkmatrix/MatrixPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "BadgeWidgetPreview_Badge_Widget.a11y.png",
+      "cleanBasename": "BadgeWidgetPreview_Badge_Widget.png",
+      "findings": [],
+      "functionName": "BadgeWidgetPreview",
+      "module": "wear-widget",
+      "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.BadgeWidgetPreview_Badge Widget",
+      "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "ImageWidgetPreview_Image_Widget.a11y.png",
+      "cleanBasename": "ImageWidgetPreview_Image_Widget.png",
+      "findings": [],
+      "functionName": "ImageWidgetPreview",
+      "module": "wear-widget",
+      "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetPreview_Image Widget",
+      "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "",
+      "findings": [],
+      "functionName": "ImageWidgetRectangularPreview",
+      "module": "wear-widget",
+      "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetRectangularPreview_Image Widget Rectangular",
+      "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "",
+      "findings": [],
+      "functionName": "ImageWidgetSquirclePreview",
+      "module": "wear-widget",
+      "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle",
+      "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt",
       "variant": ""
     },
     {

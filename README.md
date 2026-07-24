@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 251 preview(s) across 18 module(s) · 34 error(s) · 3 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/main`. 256 preview(s) across 19 module(s) · 35 error(s) · 3 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1441,6 +1441,14 @@ _No findings._
 |--:|---|---|---|---|
 | 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
 
+### `RemoteWidgetSquirclePreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/remotecompose/RemoteWidgetSquirclePreview_Remote_Widget_Squircle.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
+
 ## sample-module
 
 ### `StaticPreview`
@@ -1605,6 +1613,28 @@ _No findings._
 ### `SettingsMainScreenLongPreview` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/com.example.samplewear.PreviewsKt.SettingsMainScreenLongPreview_Devices - Large Round.a11y.png" width="400" />
+
+_No findings._
+
+## wear-widget
+
+### `BadgeWidgetPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear-widget/BadgeWidgetPreview_Badge_Widget.a11y.png" width="400" />
+
+_No findings._
+
+### `ImageWidgetPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear-widget/ImageWidgetPreview_Image_Widget.a11y.png" width="400" />
+
+_No findings._
+
+### `ImageWidgetRectangularPreview`
+
+_No findings._
+
+### `ImageWidgetSquirclePreview`
 
 _No findings._
 
