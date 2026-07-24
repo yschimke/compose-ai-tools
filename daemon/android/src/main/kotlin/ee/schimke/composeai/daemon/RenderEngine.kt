@@ -1096,12 +1096,29 @@ class RenderEngine(
           val composableMethod = clazz.getDeclaredComposableMethod(spec.functionName)
           val bgArgb = resolveBackgroundColor(spec).toArgb()
           val heightDp = pxToDp(spec.heightPx, spec.density)
+          // Match the batch renderer's per-mode reduce-motion contract: a stitched LONG still
+          // always flattens Wear `TransformingLazyColumn` scaling (mid-scale items baked into
+          // slices are exactly what the stitcher can't collapse), while GIF frames — which
+          // genuinely animate — always keep motion. The annotation's `reduceMotion` flag governs
+          // TOP/END stills only, neither of which routes through this scenario. Each daemon scroll
+          // mode composes fresh, so the value is static per request; resolved reflectively via the
+          // request classloader and a no-op when the consumer isn't a Wear app.
+          val scrollReduceMotionLocal =
+            if (spec.renderMode == SCROLL_LONG_RENDER_MODE)
+              ee.schimke.composeai.renderer.WearReduceMotionLocal.get(classLoader)
+            else null
           rule.setContent {
-            CompositionLocalProvider(
-              LocalInspectionMode provides false,
-              ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
-                spec.clearBackground,
-            ) {
+            val provided =
+              buildList {
+                  add(LocalInspectionMode provides false)
+                  add(
+                    ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
+                      spec.clearBackground
+                  )
+                  if (scrollReduceMotionLocal != null) add(scrollReduceMotionLocal provides true)
+                }
+                .toTypedArray()
+            CompositionLocalProvider(*provided) {
               Box(modifier = Modifier.fillMaxSize().background(Color(bgArgb))) {
                 InvokeComposable(composableMethod)
               }

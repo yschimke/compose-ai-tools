@@ -982,10 +982,33 @@ abstract class RobolectricRenderTestBase(
           // is looked up reflectively so this file stays free of a
           // Wear Compose compile dep; on non-Wear modules the lookup
           // returns null and the flag is a no-op.
-          val reduceMotion =
+          //
+          // The annotation flag only governs TOP / END stills — LONG and
+          // GIF each have exactly one sensible setting and ignore it:
+          //
+          // * LONG is a stitched STILL — baked-in mid-scale items are
+          //   exactly what the content-aware stitcher cannot collapse
+          //   (Confetti's `HomeListViewLongPreview`, the one
+          //   reduceMotion = false consumer, shipped ghost/duplicate card
+          //   bands for months) — so the LONG capture ALWAYS flattens.
+          //   Mirrors the grown scroll-SVG path (`flattenWearScroll` in
+          //   `:daemon:android`'s `RenderEngine`).
+          // * GIF frames genuinely animate, so the GIF capture ALWAYS
+          //   keeps motion — flattening there would only hide what the
+          //   watch shows.
+          //
+          // Both are implemented by flipping [reduceMotionState] around
+          // the respective capture and restoring it after, so one
+          // multi-mode composition yields a clean LONG still and a lively
+          // GIF with no per-mode configuration.
+          val annotationReduceMotion =
             preview.captures.any { it.scroll?.reduceMotion == true } ||
               preview.dataProducts.any { it.scroll?.reduceMotion == true }
-          val reduceMotionLocal = if (reduceMotion) WearReduceMotionLocal.get() else null
+          val reduceMotionLocal =
+            if (annotationReduceMotion || scrollCaptureInProgress) WearReduceMotionLocal.get()
+            else null
+          val reduceMotionState =
+            androidx.compose.runtime.mutableStateOf(annotationReduceMotion)
           // @AnimatedPreview(showCurves = true): capture the slot table
           // by wrapping the composition in `InspectablePreviewContent`,
           // which seeds parameter information collection and snapshots
@@ -1064,9 +1087,6 @@ abstract class RobolectricRenderTestBase(
                 if (scrollCaptureProvidable != null) {
                   add(scrollCaptureProvidable provides scrollCaptureInProgress)
                 }
-                if (reduceMotionLocal != null) {
-                  add(reduceMotionLocal provides true)
-                }
               }
               .toTypedArray()
           // `showSystemUi = true` on a phone-shape preview wraps the
@@ -1082,6 +1102,21 @@ abstract class RobolectricRenderTestBase(
           val applySystemBars =
             params.showSystemUi && params.kind != PreviewKind.TILE && !isRoundDevice(params.device)
           rule.setContent {
+            // Reduce-motion is provided separately from [providedValues]
+            // because its value is state-backed: the LONG dispatch below
+            // flips [reduceMotionState] on around the stitched capture
+            // (and back off for a following GIF), and the recomposition
+            // must observe the change.
+            val withReduceMotion: @Composable (@Composable () -> Unit) -> Unit = { inner ->
+              if (reduceMotionLocal != null) {
+                CompositionLocalProvider(reduceMotionLocal provides reduceMotionState.value) {
+                  inner()
+                }
+              } else {
+                inner()
+              }
+            }
+            withReduceMotion {
             CompositionLocalProvider(values = providedValues) {
               if (focusExtension != null) {
                 capturedView = androidx.compose.ui.platform.LocalView.current
@@ -1157,6 +1192,7 @@ abstract class RobolectricRenderTestBase(
                 }
               }
               keyboardExtension.AroundComposable { pseudoOrPlain() }
+            }
             }
           }
           // With `mainClock.autoAdvance = false` the clock stays at 0
@@ -1248,6 +1284,28 @@ abstract class RobolectricRenderTestBase(
             RenderErrorSidecar.deleteStale(outputFile)
 
             val scroll = job.scroll
+            // LONG always flattens Wear motion, even for
+            // `reduceMotion = false` annotations (see the
+            // [reduceMotionState] doc above). Flip the state on for the
+            // stitched capture only and restore it after, so a GIF later
+            // in the same composition keeps its morph animation. Each
+            // flip settles a short recomposition window on the paused
+            // clock so the flattened (or restored) item transforms are
+            // what the next capture actually reads back.
+            val forceLongFlatten =
+              scroll != null &&
+                scroll.mode == ScrollMode.LONG &&
+                scroll.axis == ScrollAxis.VERTICAL &&
+                reduceMotionLocal != null &&
+                !annotationReduceMotion
+            if (forceLongFlatten) {
+              rule.runOnUiThread {
+                reduceMotionState.value = true
+                androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+              }
+              rule.mainClock.advanceTimeBy(REDUCE_MOTION_FLIP_SETTLE_MS)
+              currentTime += REDUCE_MOTION_FLIP_SETTLE_MS
+            }
             val longHandled =
               scroll != null &&
                 scroll.mode == ScrollMode.LONG &&
@@ -1262,10 +1320,37 @@ abstract class RobolectricRenderTestBase(
                       (params.showSystemUi || params.kind == PreviewKind.TILE),
                   outputFile = outputFile,
                 )
+            if (forceLongFlatten) {
+              rule.runOnUiThread {
+                reduceMotionState.value = false
+                androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+              }
+              rule.mainClock.advanceTimeBy(REDUCE_MOTION_FLIP_SETTLE_MS)
+              currentTime += REDUCE_MOTION_FLIP_SETTLE_MS
+            }
             // @ScrollingPreview(GIF): drive the scroller by small
             // steps and encode the sequence as an animated GIF.
             // Same multi-frame shape as LONG, but encodes into a
             // GIF container instead of stitching one tall PNG.
+            // GIF always keeps motion (see the [reduceMotionState]
+            // doc above): when the annotation flattened the
+            // composition for its stills, un-flatten around the GIF
+            // frames and restore after.
+            val forceGifMotion =
+              scroll != null &&
+                scroll.mode == ScrollMode.GIF &&
+                scroll.axis == ScrollAxis.VERTICAL &&
+                reduceMotionLocal != null &&
+                annotationReduceMotion &&
+                !longHandled
+            if (forceGifMotion) {
+              rule.runOnUiThread {
+                reduceMotionState.value = false
+                androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+              }
+              rule.mainClock.advanceTimeBy(REDUCE_MOTION_FLIP_SETTLE_MS)
+              currentTime += REDUCE_MOTION_FLIP_SETTLE_MS
+            }
             val gifHandled =
               !longHandled &&
                 scroll != null &&
@@ -1281,6 +1366,14 @@ abstract class RobolectricRenderTestBase(
                       (params.showSystemUi || params.kind == PreviewKind.TILE),
                   outputFile = outputFile,
                 )
+            if (forceGifMotion) {
+              rule.runOnUiThread {
+                reduceMotionState.value = true
+                androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+              }
+              rule.mainClock.advanceTimeBy(REDUCE_MOTION_FLIP_SETTLE_MS)
+              currentTime += REDUCE_MOTION_FLIP_SETTLE_MS
+            }
 
             // @AnimatedPreview: paused mainClock, advance per frame
             // across the annotation's window, capture each frame,
@@ -1627,6 +1720,15 @@ abstract class RobolectricRenderTestBase(
      * translation.
      */
     private const val CAPTURE_ADVANCE_MS = 32L
+
+    /**
+     * Virtual time advanced after flipping [reduceMotionState] around a LONG capture — enough
+     * paused-clock frames for the recomposition to re-read `LocalReduceMotion` and for
+     * `TransformingLazyColumn` to drop (or restore) its item transforms before the next capture
+     * reads pixels. Reduce-motion transforms snap rather than animate, so a few frames suffice;
+     * 128ms (≈ 8 frames) leaves headroom for the morph spec's own invalidation pass.
+     */
+    private const val REDUCE_MOTION_FLIP_SETTLE_MS = 128L
 
     // The per-`@FocusedPreview`-capture settle window used to live here as
     // `FOCUS_SETTLE_MS = 250L`. It moved to `:data-focus-connector`'s
