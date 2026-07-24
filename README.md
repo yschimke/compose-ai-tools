@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/pr`. 275 preview(s) across 19 module(s) · 34 error(s) · 3 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/pr`. 256 preview(s) across 19 module(s) · 35 error(s) · 3 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -785,122 +785,6 @@ _No findings._
 
 _No findings._
 
-## design-catalog-confetti
-
-### `AndroidMakersTheme`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-confetti/AndroidMakersTheme_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `BookmarkAddSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-confetti/BookmarkAddSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `BookmarkOnSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-confetti/BookmarkOnSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `BottomBarSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-confetti/BottomBarSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `BreakSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-confetti/BreakSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `ConfettiBrandTheme`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-confetti/ConfettiBrandTheme_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `DayTabRowSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-confetti/DayTabRowSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `DevFestTheme`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-confetti/DevFestTheme_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `DroidconTheme`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-confetti/DroidconTheme_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `KotlinConfTheme`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-confetti/KotlinConfTheme_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `LightningPillSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-confetti/LightningPillSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `LightningSessionCard`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-confetti/LightningSessionCard_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `ScheduleScreenTemplate` · `pixel_8`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-confetti/ScheduleScreenTemplate_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `SearchFieldSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-confetti/SearchFieldSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `SessionCardBookmarked`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-confetti/SessionCardBookmarked_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `SessionCardSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-confetti/SessionCardSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `SpeakerGridCellSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-confetti/SpeakerGridCellSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `SpeakerListItemSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-confetti/SpeakerListItemSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `TimeHeaderSticker`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-confetti/TimeHeaderSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
 ## design-catalog-m3
 
 ### `AppScaffoldTemplate` · `pixel_8`
@@ -924,12 +808,6 @@ _No findings._
 ### `CheckboxChecked`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-m3/CheckboxChecked_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `CheckboxUnchecked`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-m3/CheckboxUnchecked_Dark.a11y.png" width="400" />
 
 _No findings._
 
@@ -1023,12 +901,6 @@ _No findings._
 
 _No findings._
 
-### `FilterChipUnselected`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-m3/FilterChipUnselected_Dark.a11y.png" width="400" />
-
-_No findings._
-
 ### `LinearProgressSticker`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-m3/LinearProgressSticker_Dark.png" width="400" />
@@ -1065,12 +937,6 @@ _No findings._
 
 _No findings._
 
-### `RadioUnselected`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-m3/RadioUnselected_Dark.a11y.png" width="400" />
-
-_No findings._
-
 ### `SegmentedToggle`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-m3/SegmentedToggle_Dark.a11y.png" width="400" />
@@ -1092,12 +958,6 @@ _No findings._
 ### `SlottedCardSticker`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-m3/SlottedCardSticker_Dark.a11y.png" width="400" />
-
-_No findings._
-
-### `SwitchOff`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-m3/SwitchOff_Dark.a11y.png" width="400" />
 
 _No findings._
 
@@ -1357,12 +1217,6 @@ _No findings._
 
 _No findings._
 
-### `ButtonDisabled`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/ButtonDisabled.a11y.png" width="400" />
-
-_No findings._
-
 ### `ButtonFocused`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/ButtonFocused.a11y.png" width="400" />
@@ -1396,12 +1250,6 @@ _No findings._
 ### `CheckboxButtonChecked`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CheckboxButtonChecked.a11y.png" width="400" />
-
-_No findings._
-
-### `CheckboxButtonUnchecked`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/CheckboxButtonUnchecked.a11y.png" width="400" />
 
 _No findings._
 
@@ -1486,12 +1334,6 @@ _No findings._
 ### `ScalingListSticker` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/ScalingListSticker_Large_Round.a11y.png" width="400" />
-
-_No findings._
-
-### `SwitchButtonOff`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/design-catalog-wear-m3/SwitchButtonOff.a11y.png" width="400" />
 
 _No findings._
 
@@ -1599,6 +1441,14 @@ _No findings._
 |--:|---|---|---|---|
 | 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
 
+### `RemoteWidgetSquirclePreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/remotecompose/RemoteWidgetSquirclePreview_Remote_Widget_Squircle.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
+
 ## sample-module
 
 ### `StaticPreview`
@@ -1632,6 +1482,12 @@ _No findings._
 ### `ActivityListLongPreview` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/com.example.samplewear.PreviewsKt.ActivityListLongPreview_Devices - Large Round.a11y.png" width="400" />
+
+_No findings._
+
+### `ActivityListMotionLongPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round.a11y.png" width="400" />
 
 _No findings._
 
@@ -1751,6 +1607,34 @@ _No findings._
 ### `ScrollIndicatorStickerPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/ScrollIndicatorStickerPreview.png" width="400" />
+
+_No findings._
+
+### `SettingsMainScreenLongPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/com.example.samplewear.PreviewsKt.SettingsMainScreenLongPreview_Devices - Large Round.a11y.png" width="400" />
+
+_No findings._
+
+## wear-widget
+
+### `BadgeWidgetPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear-widget/BadgeWidgetPreview_Badge_Widget.a11y.png" width="400" />
+
+_No findings._
+
+### `ImageWidgetPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear-widget/ImageWidgetPreview_Image_Widget.a11y.png" width="400" />
+
+_No findings._
+
+### `ImageWidgetRectangularPreview`
+
+_No findings._
+
+### `ImageWidgetSquirclePreview`
 
 _No findings._
 
