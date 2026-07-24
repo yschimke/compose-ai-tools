@@ -1196,7 +1196,7 @@
     "functionName": "lottie/spin.json",
     "module": "samples:android",
     "renderBasename": "lottie__lottie_spin_animated.png",
-    "sha256": "5bf42ecaaccdf4bea0569186506c30f93c1e7a346ae9b69517ea002984d2e593",
+    "sha256": "7d9207b1a36cf9e26205d0295325d45d0bd073d46bc98eeeed39e5fce5160880",
     "sourceFile": null
   },
   "samples:android/svg__svg_badge": {
@@ -3212,7 +3212,7 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round": {
@@ -3220,7 +3220,7 @@
     "functionName": "ActivityListMotionLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListMotionLongPreview_Devices_Large_Round_SCROLL_long.png",
-    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round#1": {
