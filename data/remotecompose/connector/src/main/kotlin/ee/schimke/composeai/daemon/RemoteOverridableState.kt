@@ -3,13 +3,20 @@
 package ee.schimke.composeai.daemon
 
 import androidx.compose.remote.creation.compose.state.RemoteColor
+import androidx.compose.remote.creation.compose.state.RemoteDp
+import androidx.compose.remote.creation.compose.state.RemoteFloat
 import androidx.compose.remote.creation.compose.state.RemoteString
+import androidx.compose.remote.creation.compose.state.rdp
 import androidx.compose.remote.creation.compose.state.rememberNamedRemoteColor
+import androidx.compose.remote.creation.compose.state.rememberNamedRemoteDp
+import androidx.compose.remote.creation.compose.state.rememberNamedRemoteFloat
 import androidx.compose.remote.creation.compose.state.rememberNamedRemoteString
+import androidx.compose.remote.creation.compose.state.rf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.unit.Dp
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 
@@ -53,6 +60,37 @@ fun rememberOverridableRemoteColor(name: String, default: Color): RemoteColor {
     )
   }
   return rememberNamedRemoteColor(name, default)
+}
+
+/**
+ * [rememberOverridableRemoteString] for a **float** knob (e.g. a 0..1 progress value). The viewer
+ * renders a number field; a seed arrives as `rc.<name>=float:<value>`.
+ */
+@Composable
+fun rememberOverridableRemoteFloat(name: String, default: Float): RemoteFloat {
+  SideEffect {
+    RemoteComposeController.recordDeclaration(
+      RemoteComposeKnobDeclaration(name, RemoteNamedValue.FloatValue(default))
+    )
+  }
+  // The alpha `rememberNamedRemoteFloat` has no plain-default overload — it takes a lambda that
+  // produces the default RemoteFloat — so wrap the bare default with `.rf`.
+  return rememberNamedRemoteFloat(name) { default.rf }
+}
+
+/**
+ * [rememberOverridableRemoteString] for a **dp** knob (a density-independent measurement, e.g. an
+ * icon size). Recorded as its raw dp value; a seed arrives as `rc.<name>=dp:<value>`.
+ */
+@Composable
+fun rememberOverridableRemoteDp(name: String, default: Dp): RemoteDp {
+  SideEffect {
+    RemoteComposeController.recordDeclaration(
+      RemoteComposeKnobDeclaration(name, RemoteNamedValue.DpValue(default.value))
+    )
+  }
+  // Like the float wrapper, the alpha `rememberNamedRemoteDp` takes a lambda producing the default.
+  return rememberNamedRemoteDp(name) { default.value.rdp }
 }
 
 /** `#AARRGGBB`, matching the form `RemoteNamedValue.ColorValue` carries and the connector parses. */

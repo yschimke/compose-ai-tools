@@ -20,6 +20,8 @@ import androidx.compose.remote.creation.compose.state.RemoteColor
 import androidx.compose.remote.creation.compose.state.rb
 import androidx.compose.remote.creation.compose.state.rdp
 import ee.schimke.composeai.daemon.rememberOverridableRemoteColor
+import ee.schimke.composeai.daemon.rememberOverridableRemoteDp
+import ee.schimke.composeai.daemon.rememberOverridableRemoteFloat
 import ee.schimke.composeai.daemon.rememberOverridableRemoteString
 import androidx.compose.remote.creation.compose.state.rf
 import androidx.compose.remote.creation.compose.state.rs
@@ -269,7 +271,11 @@ fun AppCardRemote() = RemoteSticker {
 @CatalogRemoteModes
 @Composable
 fun CircularProgressRemote() = RemoteSticker {
-  RemoteCircularProgressIndicator(progress = 0.66f.rf, modifier = RemoteModifier.size(72.rdp))
+  // The 0..1 fill is an editable `progress` float knob: the viewer's number field reseeds the arc
+  // live (`rc.progress=float:<0..1>`) without re-capturing the document. Default 0.66 keeps the
+  // static sticker deterministic.
+  val progress = rememberOverridableRemoteFloat("progress", 0.66f)
+  RemoteCircularProgressIndicator(progress = progress, modifier = RemoteModifier.size(72.rdp))
 }
 
 // ---------------------------------------------------------------------------
@@ -280,7 +286,10 @@ fun CircularProgressRemote() = RemoteSticker {
 @CatalogRemoteModes
 @Composable
 fun IconRemote() = RemoteSticker {
-  RemoteIcon(starIcon, "Star".rs, modifier = RemoteModifier.size(48.rdp))
+  // An editable `iconSize` dp knob: reseeding `rc.iconSize=dp:<value>` resizes the icon live. dp is
+  // carried distinctly from a bare float so the connector binds it as a density-independent value.
+  val iconSize = rememberOverridableRemoteDp("iconSize", 48.dp)
+  RemoteIcon(starIcon, "Star".rs, modifier = RemoteModifier.size(iconSize))
 }
 
 // ---------------------------------------------------------------------------
@@ -292,9 +301,15 @@ fun IconRemote() = RemoteSticker {
 @CatalogRemoteModes
 @Composable
 fun RemoteTextSticker() = RemoteSticker {
-  // Same copy as the truncated sticker (and Wear's) — here it flows in full; the
-  // `Text/MaxLines-Truncated` pair below shows the same string clipped.
-  RemoteText("This body text is long enough to overflow two lines and truncate.".rs)
+  // Same default copy as the truncated sticker (and Wear's) — here it flows in full; the
+  // `Text/MaxLines-Truncated` pair below shows the same string clipped. The body is an editable
+  // `text` string knob, so the viewer can retype it live (`rc.text=<string>`).
+  val text =
+    rememberOverridableRemoteString(
+      "text",
+      "This body text is long enough to overflow two lines and truncate.",
+    )
+  RemoteText(text)
 }
 
 // The text primitive exercising the maxLines / overflow product on a narrow column —
