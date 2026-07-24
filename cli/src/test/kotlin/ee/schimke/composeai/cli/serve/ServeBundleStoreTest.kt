@@ -99,6 +99,27 @@ class ServeBundleStoreTest {
   }
 
   @Test
+  fun `ir rcdoc sidecars are extracted and served as the browser player's document`() {
+    // The upload path must keep the captured Remote Compose docs from the sibling `ir/` tree so the
+    // client-side player lane (`GET /render/<id>.rcdoc`) works on an uploaded bundle, not just the
+    // directory path that reads the bundle dir straight from disk.
+    val doc = byteArrayOf(0x52, 0x43, 0x01, 0x02, 0x03) // arbitrary RC doc bytes
+    val zip =
+      zipOf(
+        "previews/com.example.Red.png" to byteArrayOf(1, 2, 3),
+        "ir/com.example.Red.rcdoc" to doc,
+        "ir/../../evil.rcdoc" to byteArrayOf(9), // path traversal — must be skipped
+      )
+    val result = store().add("demo", zip, isSecurityChecked = true)
+    assertEquals(ServeBundleStore.Result.Ok("demo", 1), result)
+
+    val host = registered.getValue("demo")
+    assertTrue(doc.contentEquals(host.remoteComposeDoc("com.example.Red")))
+    // A preview with no `ir/<id>.rcdoc` sidecar has no client-side document.
+    assertEquals(null, host.remoteComposeDoc("com.example.Missing"))
+  }
+
+  @Test
   fun `the root previews_json is extracted so an uploaded bundle surfaces its declared themes`() {
     val previewsJson =
       """
