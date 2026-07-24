@@ -67,6 +67,8 @@ container with full 8-bit alpha, so the edge survives as a stable colour blend �
 `.png` (served `image/png`), it still autoplays inline on GitHub, the web, VS Code webviews, and the
 preview server (all browser-engine surfaces).
 
+![Lottie animated companion — GIF (2-colour, jagged, churns) vs APNG (transparent, anti-aliased, stable)](images/lottie-animated-companion.png)
+
 Mechanically (`renderer-desktop`'s `renderLottieApng`) a single `ImageComposeScene` is held and a
 snapshot-backed `progress` state is swept across it, re-`render()`ing each step — so the Compottie
 parse and Skia surface allocation happen once, not once per frame. Each RGBA frame Skiko emits as a
