@@ -577,6 +577,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
           
           
           
+          
           <div class="cp-status" id="cp-status"></div>
         </div>
       </div>
@@ -774,6 +775,18 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
       if (el.type === "checkbox") el.checked = (v === "true" || v === "1");
       else el.value = v;
     });
+    // Remote Compose knobs hydrate from `rc.<name>`, whose value is `<kind>:<value>`; strip the
+    // control's own `data-rc-kind` prefix back off before assigning the bare value.
+    document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
+      var name = el.getAttribute("data-rc-name");
+      if (!name) return;
+      var v = q.get("rc." + name);
+      if (v === null) return;
+      var kind = el.getAttribute("data-rc-kind") || "";
+      if (kind && v.indexOf(kind + ":") === 0) v = v.substring(kind.length + 1);
+      if (el.type === "checkbox") el.checked = (v === "true" || v === "1");
+      else el.value = v;
+    });
   })();
   // The selects + text input are opt-in (empty value = "use the preview's default"). The font
   // scale slider has no empty state, so it's gated separately: we only send fontScale once the
@@ -853,6 +866,17 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
       if (val === "") return;
       o["knob." + key] = val;
     });
+    // Remote Compose knobs carry their own `<kind>:` tag: `rc.<name>=<kind>:<value>`. Sent for
+    // every RC knob (like the plain knobs) so a Live setOverrides doesn't reset the others.
+    document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
+      if (el.disabled) return;
+      var name = el.getAttribute("data-rc-name");
+      if (!name) return;
+      var kind = el.getAttribute("data-rc-kind") || "string";
+      var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
+      if (val === "") return;
+      o["rc." + name] = kind + ":" + val;
+    });
     // Live-only overlay toggles (talkBack / touchOverlay). Their id is "cp-<key>", so the daemon
     // key is the id minus the prefix. Sent as an explicit true/false so unchecking clears the
     // overlay on the next setOverrides (which replaces the whole map). Disabled ⇒ not live ⇒
@@ -895,6 +919,19 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
       if (val === "") return;
       if (val === (el.getAttribute("data-knob-initial") || "")) return;
       parts.push("knob." + encodeURIComponent(key) + "=" + encodeURIComponent(val));
+    });
+    // Remote Compose knobs: rc.<name>=<kind>:<value>. The <kind>: prefix types the seed
+    // (color:%23AARRGGBB, int:…, bool:true, …). A knob still at its declared default is omitted
+    // so the URL stays on the instant baked snapshot until it's actually changed.
+    document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
+      if (el.disabled) return;
+      var name = el.getAttribute("data-rc-name");
+      if (!name) return;
+      var kind = el.getAttribute("data-rc-kind") || "string";
+      var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
+      if (val === "") return;
+      if (val === (el.getAttribute("data-rc-initial") || "")) return;
+      parts.push("rc." + encodeURIComponent(name) + "=" + encodeURIComponent(kind + ":" + val));
     });
     // App-declared theme (themeProvider = provider FQN). Routes to the daemon like a knob; a
     // published catalog re-renders on demand. Omitted at "(default)" so the URL stays on the
@@ -1723,6 +1760,12 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   // never the wasm auto-enable path.
   document.querySelectorAll(".cp-feature").forEach(function (el) {
     el.addEventListener("change", onKnobChanged);
+  });
+  // Remote Compose knobs route ONLY through the server daemon (Remote Compose has no in-browser
+  // Wasm runtime), so they use the daemon-only handler like the theme selector / feature toggles
+  // — a text/number edit debounces on "input", a bool toggle on "change".
+  document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
+    el.addEventListener(el.type === "checkbox" ? "change" : "input", onKnobChanged);
   });
   // Reconcile the control enabled-state + the toggle's initial look with the session's
   // capabilities (matches the server-rendered markup; keeps them in sync after hydration).

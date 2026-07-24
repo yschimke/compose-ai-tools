@@ -2545,6 +2545,7 @@ object ServeWeb {
           $overlaysHtml
           $featureControlsHtml
           ${overrideKnobsHtml(preview, canApplyOverrides || canRenderOverrides, wasmSrc != null)}
+          ${remoteComposeKnobsHtml(preview, canApplyOverrides || canRenderOverrides)}
           <div class="cp-status" id="cp-status"></div>
         </div>
       </div>
@@ -2634,6 +2635,18 @@ object ServeWeb {
           if (el.type === "checkbox") el.checked = (v === "true" || v === "1");
           else el.value = v;
         });
+        // Remote Compose knobs hydrate from `rc.<name>`, whose value is `<kind>:<value>`; strip the
+        // control's own `data-rc-kind` prefix back off before assigning the bare value.
+        document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
+          var name = el.getAttribute("data-rc-name");
+          if (!name) return;
+          var v = q.get("rc." + name);
+          if (v === null) return;
+          var kind = el.getAttribute("data-rc-kind") || "";
+          if (kind && v.indexOf(kind + ":") === 0) v = v.substring(kind.length + 1);
+          if (el.type === "checkbox") el.checked = (v === "true" || v === "1");
+          else el.value = v;
+        });
       })();
       // The selects + text input are opt-in (empty value = "use the preview's default"). The font
       // scale slider has no empty state, so it's gated separately: we only send fontScale once the
@@ -2713,6 +2726,17 @@ object ServeWeb {
           if (val === "") return;
           o["knob." + key] = val;
         });
+        // Remote Compose knobs carry their own `<kind>:` tag: `rc.<name>=<kind>:<value>`. Sent for
+        // every RC knob (like the plain knobs) so a Live setOverrides doesn't reset the others.
+        document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
+          if (el.disabled) return;
+          var name = el.getAttribute("data-rc-name");
+          if (!name) return;
+          var kind = el.getAttribute("data-rc-kind") || "string";
+          var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
+          if (val === "") return;
+          o["rc." + name] = kind + ":" + val;
+        });
         // Live-only overlay toggles (talkBack / touchOverlay). Their id is "cp-<key>", so the daemon
         // key is the id minus the prefix. Sent as an explicit true/false so unchecking clears the
         // overlay on the next setOverrides (which replaces the whole map). Disabled ⇒ not live ⇒
@@ -2755,6 +2779,19 @@ object ServeWeb {
           if (val === "") return;
           if (val === (el.getAttribute("data-knob-initial") || "")) return;
           parts.push("knob." + encodeURIComponent(key) + "=" + encodeURIComponent(val));
+        });
+        // Remote Compose knobs: rc.<name>=<kind>:<value>. The <kind>: prefix types the seed
+        // (color:%23AARRGGBB, int:…, bool:true, …). A knob still at its declared default is omitted
+        // so the URL stays on the instant baked snapshot until it's actually changed.
+        document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
+          if (el.disabled) return;
+          var name = el.getAttribute("data-rc-name");
+          if (!name) return;
+          var kind = el.getAttribute("data-rc-kind") || "string";
+          var val = (el.type === "checkbox") ? (el.checked ? "true" : "false") : el.value;
+          if (val === "") return;
+          if (val === (el.getAttribute("data-rc-initial") || "")) return;
+          parts.push("rc." + encodeURIComponent(name) + "=" + encodeURIComponent(kind + ":" + val));
         });
         // App-declared theme (themeProvider = provider FQN). Routes to the daemon like a knob; a
         // published catalog re-renders on demand. Omitted at "(default)" so the URL stays on the
@@ -3584,6 +3621,12 @@ object ServeWeb {
       document.querySelectorAll(".cp-feature").forEach(function (el) {
         el.addEventListener("change", onKnobChanged);
       });
+      // Remote Compose knobs route ONLY through the server daemon (Remote Compose has no in-browser
+      // Wasm runtime), so they use the daemon-only handler like the theme selector / feature toggles
+      // — a text/number edit debounces on "input", a bool toggle on "change".
+      document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
+        el.addEventListener(el.type === "checkbox" ? "change" : "input", onKnobChanged);
+      });
       // Reconcile the control enabled-state + the toggle's initial look with the session's
       // capabilities (matches the server-rendered markup; keeps them in sync after hydration).
       syncServerControls();
@@ -3991,6 +4034,92 @@ object ServeWeb {
       is ee.schimke.composeai.data.overrides.PreviewOverrideValue.FloatValue -> v.value.toString()
       is ee.schimke.composeai.data.overrides.PreviewOverrideValue.BooleanValue -> v.value.toString()
       is ee.schimke.composeai.data.overrides.PreviewOverrideValue.ColorValue -> v.argb
+    }
+
+  /**
+   * Renders the preview's declared **Remote Compose** named-value knobs (the
+   * `compose/remotecompose` payload carried in a bundle's `previews/<id>.remotecompose.json`) as a
+   * labelled control list — the RC counterpart of [overrideKnobsHtml]. One control per knob
+   * (checkbox for bool, number for int / float / dp, text for string and `#AARRGGBB` colour), whose
+   * edits round-trip through the `rc.<name>=<kind>:<value>` render param ([ServeOverrides] parses
+   * it back into `PreviewOverrides.remoteCompose.namedValues`). Live only when [canApplyOverrides]
+   * — Remote Compose has no in-browser (Wasm) runtime, so a plain static bundle shows the controls
+   * disabled with a one-line note (mirroring how declared knobs render on a static bundle). Empty
+   * string when the preview declared no RC knobs (the common case). The controls are marked
+   * `.cp-rc-knob` and carry `data-rc-name` / `data-rc-kind` / `data-rc-initial`; the viewer JS
+   * collects them into `rc.<name>=<kind>:<value>` params and routes an edit through the daemon-only
+   * path.
+   */
+  private fun remoteComposeKnobsHtml(preview: ServePreview, canApplyOverrides: Boolean): String {
+    if (preview.remoteComposeKnobs.isEmpty()) return ""
+    // RC is daemon-only (no Wasm tier), so the controls are live only when the session can
+    // re-render; a static bundle shows them disabled and informational.
+    val dis = if (canApplyOverrides) "" else " disabled"
+    val rows =
+      preview.remoteComposeKnobs.joinToString("\n") { d ->
+        val label = WebEscaping.htmlEscape(d.name)
+        val wireName = WebEscaping.htmlEscape(d.name)
+        val kind = rcKnobKind(d.default)
+        val value = WebEscaping.htmlEscape(rcKnobValueText(d.default))
+        // `data-rc-initial` is the value the control opens on (the author default). The viewer
+        // omits
+        // a knob still equal to it, so the first render carries no `rc.*` and a published catalog
+        // serves the instant baked snapshot rather than waking the daemon for a fresh re-render.
+        val attrs =
+          "class=\"cp-rc-knob\" data-rc-name=\"$wireName\" data-rc-kind=\"$kind\" " +
+            "data-rc-initial=\"$value\""
+        if (kind == "bool") {
+          val checked = if (value == "true") " checked" else ""
+          "<label class=\"cp-live-row\"><input type=\"checkbox\" $attrs$checked$dis> $label</label>"
+        } else {
+          val inputType = if (kind == "int" || kind == "float" || kind == "dp") "number" else "text"
+          """
+          <label>${label}
+            <input type="$inputType" $attrs value="$value"$dis>
+          </label>
+          """
+            .trimIndent()
+        }
+      }
+    val note =
+      if (canApplyOverrides) "Declared Remote Compose knobs — edit a value to re-render."
+      else "Declared Remote Compose knobs — static bundle, values are baked in."
+    return """
+      <details class="cp-group" data-cp-group="remotecompose">
+        <summary>Remote Compose</summary>
+        <div class="cp-group-body">
+          <div class="cp-knobs">
+            <div class="cp-knobs-head">$note</div>
+            $rows
+          </div>
+        </div>
+      </details>
+      """
+      .trimIndent()
+  }
+
+  /** The `<kind>` wire tag for a Remote Compose knob's typed default (see `RemoteNamedValue`). */
+  private fun rcKnobKind(v: ee.schimke.composeai.daemon.protocol.RemoteNamedValue): String =
+    when (v) {
+      is ee.schimke.composeai.daemon.protocol.RemoteNamedValue.FloatValue -> "float"
+      is ee.schimke.composeai.daemon.protocol.RemoteNamedValue.DpValue -> "dp"
+      is ee.schimke.composeai.daemon.protocol.RemoteNamedValue.IntValue -> "int"
+      is ee.schimke.composeai.daemon.protocol.RemoteNamedValue.StringValue -> "string"
+      is ee.schimke.composeai.daemon.protocol.RemoteNamedValue.BooleanValue -> "bool"
+      is ee.schimke.composeai.daemon.protocol.RemoteNamedValue.ColorValue -> "color"
+    }
+
+  /**
+   * Human/edit text for a Remote Compose knob's typed default; colour is its `#AARRGGBB` string.
+   */
+  private fun rcKnobValueText(v: ee.schimke.composeai.daemon.protocol.RemoteNamedValue): String =
+    when (v) {
+      is ee.schimke.composeai.daemon.protocol.RemoteNamedValue.FloatValue -> v.value.toString()
+      is ee.schimke.composeai.daemon.protocol.RemoteNamedValue.DpValue -> v.value.toString()
+      is ee.schimke.composeai.daemon.protocol.RemoteNamedValue.IntValue -> v.value.toString()
+      is ee.schimke.composeai.daemon.protocol.RemoteNamedValue.StringValue -> v.value
+      is ee.schimke.composeai.daemon.protocol.RemoteNamedValue.BooleanValue -> v.value.toString()
+      is ee.schimke.composeai.daemon.protocol.RemoteNamedValue.ColorValue -> v.argb
     }
 
   /**
