@@ -259,14 +259,14 @@ internal object ServeBundleDaemon {
       return null
     }
 
-    // The author-declared knob sidecars (`previews/<id>.overrides.json`) ride alongside the PNGs in
-    // the bundle. Extract them so [readPreviews] can advertise each preview's editable knobs — the
-    // `compose/overrides` payload the viewer renders as live knob controls (and that
-    // ServeCatalogLiveHost grafts onto the baked browse surface). Best-effort: a bundle that
-    // carried
-    // none simply yields previews with no knobs.
+    // The author-declared knob sidecars ride alongside the PNGs in the bundle — the plain-Compose
+    // `previews/<id>.overrides.json` (`compose/overrides`) and the Remote Compose
+    // `previews/<id>.remotecompose.json` (`compose/remotecompose`) channels. Extract both so
+    // [readPreviews] can advertise each preview's editable knobs, which the viewer renders as live
+    // knob controls (and that ServeCatalogLiveHost grafts onto the baked browse surface).
+    // Best-effort: a bundle that carried none simply yields previews with no knobs.
     val previewsDir = File(destDir, "previews").apply { mkdirs() }
-    extractOverrideSidecars(zipBytes, previewsDir, fileSystem)
+    extractKnobSidecars(zipBytes, previewsDir, fileSystem)
 
     val previews = readPreviews(previewsJson, previewsDir, fileSystem)
     if (previews.isEmpty()) {
@@ -315,7 +315,7 @@ internal object ServeBundleDaemon {
    * `previews/<id>.overrides.json` sidecar (in [previewsDir]) so the daemon-backed session
    * advertises what's editable.
    */
-  private fun readPreviews(
+  internal fun readPreviews(
     previewsJson: File,
     previewsDir: File,
     fileSystem: FileSystem,
@@ -335,6 +335,7 @@ internal object ServeBundleDaemon {
         id = it.id,
         label = it.functionName.ifBlank { it.id },
         overrides = readOverrideSidecar(previewsDir, it.id, fileSystem),
+        remoteComposeKnobs = readRemoteComposeSidecar(previewsDir, it.id, fileSystem),
         supportsFocus = focus,
         supportsGestures = gestures,
       )
@@ -342,15 +343,12 @@ internal object ServeBundleDaemon {
   }
 
   /**
-   * Extract only the `previews/<id>.overrides.json` sidecars from [zipBytes] into [previewsDir]
-   * (zip-slip safe). Mirrors the PNG-side extraction in [ServeBundleStore]; other bundle entries
-   * are handled elsewhere ([extractBundleClassesAndManifest]).
+   * Extract the per-preview knob sidecars (`previews/<id>.overrides.json` and
+   * `previews/<id>.remotecompose.json`) from [zipBytes] into [previewsDir] (zip-slip safe). Mirrors
+   * the PNG-side extraction in [ServeBundleStore]; other bundle entries are handled elsewhere
+   * ([extractBundleClassesAndManifest]).
    */
-  private fun extractOverrideSidecars(
-    zipBytes: ByteArray,
-    previewsDir: File,
-    fileSystem: FileSystem,
-  ) {
+  internal fun extractKnobSidecars(zipBytes: ByteArray, previewsDir: File, fileSystem: FileSystem) {
     val root = previewsDir.canonicalFile.toPath()
     java.util.zip.ZipInputStream(java.io.ByteArrayInputStream(zipBytes)).use { zin ->
       while (true) {
@@ -359,7 +357,7 @@ internal object ServeBundleDaemon {
         if (
           !entry.isDirectory &&
             name.startsWith("previews/") &&
-            name.endsWith(OVERRIDES_SUFFIX) &&
+            (name.endsWith(OVERRIDES_SUFFIX) || name.endsWith(REMOTECOMPOSE_SUFFIX)) &&
             ".." !in name.split("/")
         ) {
           // Strip the leading `previews/` so the file lands directly under previewsDir (keyed by
@@ -397,8 +395,40 @@ internal object ServeBundleDaemon {
     }
   }
 
-  /** Suffix of the per-preview knob sidecar; lockstep with `PreviewBundleFormat`'s. */
+  /**
+   * Read [id]'s extracted `<id>.remotecompose.json` sidecar (the `compose/remotecompose`
+   * declarations payload) into its declared knobs. Absent / unreadable ⇒ no knobs, so a bundle that
+   * carried none (or a non-RC catalog) just advertises an empty list.
+   */
+  private fun readRemoteComposeSidecar(
+    previewsDir: File,
+    id: String,
+    fileSystem: FileSystem,
+  ): List<ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration> {
+    val sidecar = File(previewsDir, "$id$REMOTECOMPOSE_SUFFIX").path.toPath()
+    if (!fileSystem.exists(sidecar)) return emptyList()
+    return try {
+      val text = fileSystem.read(sidecar) { readUtf8() }
+      overridesJson
+        .decodeFromString(
+          ee.schimke.composeai.data.remotecompose.RemoteComposeDeclarationsPayload.serializer(),
+          text,
+        )
+        .declarations
+    } catch (_: Exception) {
+      emptyList()
+    }
+  }
+
+  /**
+   * Suffix of the per-preview plain-Compose knob sidecar; lockstep with `PreviewBundleFormat`'s.
+   */
   private const val OVERRIDES_SUFFIX = ".overrides.json"
+
+  /**
+   * Suffix of the per-preview Remote Compose knob sidecar; lockstep with `PreviewBundleFormat`'s.
+   */
+  private const val REMOTECOMPOSE_SUFFIX = ".remotecompose.json"
 
   private val json = Json { encodeDefaults = true }
   private val overridesJson = Json { ignoreUnknownKeys = true }

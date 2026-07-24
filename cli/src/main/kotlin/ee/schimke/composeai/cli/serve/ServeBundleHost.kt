@@ -105,6 +105,7 @@ class ServeBundleHost(
           id = id,
           label = id,
           overrides = readOverrides(id),
+          remoteComposeKnobs = readRemoteComposeKnobs(id),
           // `state` comes only from a `catalog.json`-backed bundle's `variants.json`
           // (`meta.state`).
           // A plain module bundle has no manifest, so an `@OverrideVariant` synthetic preview
@@ -197,6 +198,29 @@ class ServeBundleHost(
     return try {
       val json = fileSystem.read(sidecar) { readUtf8() }
       OVERRIDES_JSON.decodeFromString(PreviewOverridesPayload.serializer(), json).declarations
+    } catch (e: Exception) {
+      emptyList()
+    }
+  }
+
+  /**
+   * Read the Remote Compose named-value knobs carried for [id] in the bundle's
+   * `previews/<id>.remotecompose.json` sidecar (the `compose/remotecompose` declarations payload).
+   * The RC counterpart of [readOverrides]: absent / unreadable → no knobs. A baked bundle can't
+   * re-render, so the viewer shows these as informational controls until a live daemon backs them.
+   */
+  private fun readRemoteComposeKnobs(
+    id: String
+  ): List<ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration> {
+    val sidecar = File(previewsDir, "$id$REMOTECOMPOSE_SUFFIX").toOkioPath()
+    if (!fileSystem.exists(sidecar)) return emptyList()
+    return try {
+      val json = fileSystem.read(sidecar) { readUtf8() }
+      OVERRIDES_JSON.decodeFromString(
+          ee.schimke.composeai.data.remotecompose.RemoteComposeDeclarationsPayload.serializer(),
+          json,
+        )
+        .declarations
     } catch (e: Exception) {
       emptyList()
     }
@@ -324,6 +348,7 @@ class ServeBundleHost(
       value.replace(Regex("[^a-zA-Z0-9._-]+"), "-").trim('-').lowercase().ifBlank { "x" }
 
     private const val OVERRIDES_SUFFIX = ".overrides.json"
+    private const val REMOTECOMPOSE_SUFFIX = ".remotecompose.json"
     private const val PREVIEWS_JSON = "previews.json"
     private val OVERRIDES_JSON = Json { ignoreUnknownKeys = true }
 

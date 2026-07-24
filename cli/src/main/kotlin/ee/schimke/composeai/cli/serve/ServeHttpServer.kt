@@ -5,6 +5,7 @@ import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
+import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -954,6 +955,7 @@ class ServeHttpServer(
                 label = p.label,
                 modes = p.modes.map { it.wire },
                 overrides = p.overrides,
+                remoteComposeKnobs = p.remoteComposeKnobs,
               )
             },
         )
@@ -1781,6 +1783,15 @@ private data class PreviewDto(
    * declares none (or the host doesn't carry them). Additive since `compose-preview-serve/v2`.
    */
   val overrides: List<PreviewOverrideDeclaration> = emptyList(),
+  /**
+   * The Remote Compose named-value knobs this preview declared (`compose/remotecompose`) — name +
+   * typed author default (float / dp / int / string / bool / color). The auto-capture counterpart
+   * of [overrides]: a programmatic client renders a control per entry and writes an edit back
+   * through the `rc.<name>=<kind>:<value>` render param. Empty when the preview binds no named
+   * values through the declaring `rememberOverridableRemote*` wrappers (or the host doesn't carry
+   * them). Additive since `compose-preview-serve/v2`.
+   */
+  val remoteComposeKnobs: List<RemoteComposeKnobDeclaration> = emptyList(),
 )
 
 @Serializable

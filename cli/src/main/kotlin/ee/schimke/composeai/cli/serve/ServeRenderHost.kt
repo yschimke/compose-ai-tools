@@ -63,6 +63,18 @@ data class ServePreview(
    */
   val overrides: List<ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration> = emptyList(),
   /**
+   * The Remote Compose named-value knobs this preview declared during its render (the
+   * `compose/remotecompose` editable surface). Populated from a bundle's
+   * `previews/<id>.remotecompose.json` sidecar so the viewer can present a control per knob (text
+   * field / colour swatch / slider) whose edits round-trip through the `rc.<name>=…` serve
+   * override. Empty when the preview binds no named values through the declaring
+   * `rememberOverridableRemote*` wrappers (or the host doesn't carry them). Distinct from
+   * [overrides], which is the plain-Compose `previewOverride*` surface.
+   */
+  val remoteComposeKnobs:
+    List<ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration> =
+    emptyList(),
+  /**
    * Whether this preview supports **keyboard focus** — it carries `@FocusedPreview` (discovery
    * emits a `focus` capture). Lets the viewer offer a "Keyboard focus" control *only* for previews
    * that actually have something focusable, rather than as a dead control everywhere. Applied live
