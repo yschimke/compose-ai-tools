@@ -48,6 +48,9 @@ import ee.schimke.composeai.data.theme.NodeThemeFacts
 import ee.schimke.composeai.data.theme.ThemeConsumerAttribution
 import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.renderer.AccessibilityDataProducts
+import ee.schimke.composeai.renderer.FontFallbackException
+import ee.schimke.composeai.renderer.FontResolutionDiagnostics
+import ee.schimke.composeai.renderer.RenderWarningsSidecar
 import ee.schimke.composeai.renderer.WearScrollSvgAssembler
 import ee.schimke.composeai.renderer.AccessibilityHierarchyContextKeys
 import ee.schimke.composeai.renderer.AccessibilityHierarchyExtension
@@ -916,6 +919,12 @@ class RenderEngine(
           }
         }
       }
+    // Bracket this preview's downloadable-font resolution so a face that couldn't be resolved (and
+    // fell back to Roboto) is attributed to exactly this render — mirrors the gradle-plugin's
+    // `RobolectricRenderTest`. Drained after the render below to gate on it. Without this, the
+    // `bundle pack` / serve daemon render path (which design-artifacts uses) silently shipped a
+    // Roboto-fallback sticker while `RobolectricRenderTest`'s gate only guarded the plugin path.
+    FontResolutionDiagnostics.beginPreview()
     // B2.0 — install the child classloader as the context classloader for the duration of the
     // render dispatch. Compose's reflection paths (notably PreviewParameter providers — see
     // CLASSLOADER.md § Risks 2) consult the context classloader; without this install they would
@@ -941,6 +950,19 @@ class RenderEngine(
     } finally {
       Thread.currentThread().contextClassLoader = previousContext
     }
+
+    // Font-fallback gate (reached only on a successful render — a thrown body propagated above).
+    // A downloadable face that couldn't be resolved fell back to Roboto, so this preview would ship
+    // the wrong typeface. Fail the render by default (the daemon's per-preview catch drops the PNG
+    // and records the reason, so a design-artifacts publish can't silently bake Roboto);
+    // `-Dcomposeai.fonts.failOnFallback=false` downgrades it to a `<png>.warnings.json` sidecar kept
+    // beside the PNG. Mirrors `RobolectricRenderTest`'s gate so both Android render paths behave the
+    // same.
+    val fontFallbacks = FontResolutionDiagnostics.drainPreview()
+    if (fontFallbacks.isNotEmpty() && FontResolutionDiagnostics.failOnFallback) {
+      throw FontFallbackException(fontFallbacks)
+    }
+    RenderWarningsSidecar.writeOrDelete(outputFile, fontFallbacks)
 
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
     val metrics = SandboxMeasurement.collect(sandboxStats, tookMs = tookMs)

@@ -18,7 +18,10 @@ import okio.Path.Companion.toPath
  * plugin reads this back (`ComposePreviewTasks.WarningSidecar`) and the bundle packs it next to the
  * PNG.
  */
-internal object RenderWarningsSidecar {
+// Public (not `internal`) so the CLI `bundle pack` / serve daemon's `:daemon:android` `RenderEngine`
+// can write the warnings sidecar on the daemon render path, the same as the gradle-plugin's
+// `RobolectricRenderTest` does on its path.
+object RenderWarningsSidecar {
 
   const val SCHEMA: String = "compose-preview-warnings/v1"
 
