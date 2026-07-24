@@ -3148,7 +3148,7 @@
     "functionName": "ActivityListGifPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListGifPreview_Devices_Large_Round.gif",
-    "sha256": "a0944321a173de9ab0b904e822e2fdf5cf2174cadd176a63155b052e0d45686e",
+    "sha256": "afc4a83b517bc2c714d6c1956581346968589b3f9bd37a7dbafa10d3111e6399",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListLongPreview_Devices - Large Round": {
@@ -3156,7 +3156,23 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
+  },
+  "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round": {
+    "captureLabel": "scroll long",
+    "functionName": "ActivityListMotionLongPreview",
+    "module": "samples:wear",
+    "renderBasename": "ActivityListMotionLongPreview_Devices_Large_Round_SCROLL_long.png",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
+  },
+  "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round#1": {
+    "captureLabel": "scroll gif",
+    "functionName": "ActivityListMotionLongPreview",
+    "module": "samples:wear",
+    "renderBasename": "ActivityListMotionLongPreview_Devices_Large_Round_SCROLL_gif.gif",
+    "sha256": "a0d2d7f8ab94cccdeb4eb94a778f4e589a631f2a4c6846e6053cf5bb9027d7c0",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
