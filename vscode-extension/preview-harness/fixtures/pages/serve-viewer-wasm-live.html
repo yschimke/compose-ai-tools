@@ -1481,11 +1481,16 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
       // Static snapshot lane: raster PNG, or the vector SVG when the format toggle is on.
       snapshotExt = svgOn() ? ".svg" : ".png";
       if (svgOn()) root.setAttribute("data-mode", "svg");
-      refreshSnapshot();
     }
     syncOverlayToggles();
     syncServerControls();
     updateLiveToggle();
+    // Render the static lane AFTER syncServerControls() has reconciled the daemon-only controls
+    // for the new lane. Returning from Wasm this re-enables the `.cp-rc-knob` inputs first, so
+    // query() includes an rc.* value edited before the Wasm detour in the first snapshot render
+    // (and its direct links) instead of skipping the still-disabled control. The live/wasm lanes
+    // drive their own render (openStream / openWasm), so only the static lane renders here.
+    if (m !== "live" && m !== "wasm") refreshSnapshot();
   }
   // SVG format toggle: swap the static snapshot between raster and vector. Pressing it while a
   // live lane is active drops back to the static vector render; pressing it in the static lane
@@ -1559,6 +1564,13 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     if (themeProviderEl) {
       themeProviderEl.disabled = onWasm || !(!staticSnapshot || canRenderOverrides);
     }
+    // Remote Compose knobs are daemon-only (Remote Compose has no in-browser runtime), so like
+    // the app-theme selector they're dead in the Wasm lane — an edit would route only through
+    // the daemon path and never touch the visible iframe. Disable them there; otherwise mirror
+    // the server-side gate (enabled iff the host can render an override).
+    document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
+      el.disabled = onWasm || !(!staticSnapshot || canRenderOverrides);
+    });
   }
   // Programmatic switch (the live toggle, or a wasm-only control auto-enabling Wasm): tick the
   // hidden mode radio so its state is consistent, then run the transition.
