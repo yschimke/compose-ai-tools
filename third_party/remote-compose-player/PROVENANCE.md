@@ -48,7 +48,8 @@ player.repaint();
 
 Built as above and rendered our actual captured `remote-m3` documents in headless
 Chromium: `CircularProgressRemote.rcdoc` paints correctly (the determinate arc at
-its 0.66 default).
+its 0.66 default). The render is captured at
+`docs/design/evidence/rc-ts-player/circularprogress-clientside.png`.
 
 Known gaps to resolve when wiring the live viewer lane (tracked as follow-ups, not
 blockers for vendoring):
