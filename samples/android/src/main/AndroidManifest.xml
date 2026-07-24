@@ -14,6 +14,21 @@
             </intent-filter>
         </activity>
         <!--
+          Second screen for app-level previews and the getting-started tour: reached from
+          MainActivity's "Open Now Playing" button (real startActivity) or via the
+          sample://nowplaying deep link the tour's intent step fires.
+        -->
+        <activity
+            android:name="com.example.sampleandroid.NowPlayingActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="sample" android:host="nowplaying" />
+            </intent-filter>
+        </activity>
+        <!--
           Weather AppWidget receiver — registered so `AppWidgetManager.installedProviders` returns
           an entry for `R.layout.widget_weather` at preview-render time. The auto-discovery in
           `:appwidget-preview-runtime`'s `AppWidgetContent` matches the inflated layout id

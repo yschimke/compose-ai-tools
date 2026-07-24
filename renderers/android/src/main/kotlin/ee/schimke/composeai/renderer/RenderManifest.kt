@@ -27,6 +27,17 @@ enum class PreviewKind {
   // `RenderPreviewParams.wrapperClassName` and composes its `Wrap(content)` around a canned M3
   // role + type specimen, capturing the theme's live `MaterialTheme.colorScheme` / `typography`.
   THEME_CATALOG,
+  // A real Activity from the module's merged manifest. Rendered here by `AppTourRenderer`, which
+  // launches the activity for real (full lifecycle, its own `setContent`) via Robolectric's
+  // `ActivityController` and captures its window — the launcher activity's capture is the app's
+  // hero image. Not a `PreviewRenderStrategy`: there is no composition to produce, the activity
+  // owns its own content.
+  ACTIVITY,
+  // A scripted multi-step tour of the app (committed `compose-previews/tours/` spec). Rendered
+  // here by `AppTourRenderer`: launch the start activity, then per step click / fire an intent /
+  // press back — following `startActivity` calls across real activities — and capture one PNG per
+  // step. Step payloads ride on `RenderPreviewCapture.tourStep`.
+  APP_TOUR,
 }
 
 /** Renderer-side mirror of the plugin's `CatalogTokenKind`. */
@@ -173,6 +184,35 @@ data class LauncherWidgetCapture(
   val launcherMode: Boolean = false,
 )
 
+/** Renderer-side mirror of the plugin's `TourIntentSpec`. */
+@Serializable
+data class TourIntentSpec(
+  val activityClassName: String? = null,
+  val action: String? = null,
+  val data: String? = null,
+  val categories: List<String> = emptyList(),
+  val extras: Map<String, String> = emptyMap(),
+)
+
+/** Renderer-side mirror of the plugin's `TourClickSpec`. */
+@Serializable
+data class TourClickSpec(
+  val text: String? = null,
+  val contentDescription: String? = null,
+  val tag: String? = null,
+  val viewId: String? = null,
+)
+
+/** Renderer-side mirror of the plugin's `TourStepCapture`. */
+@Serializable
+data class TourStepCapture(
+  val index: Int,
+  val label: String,
+  val click: TourClickSpec? = null,
+  val intent: TourIntentSpec? = null,
+  val back: Boolean = false,
+)
+
 /**
  * Heavy/fast threshold for [RenderPreviewCapture.cost]. Mirrors the plugin's `HEAVY_COST_THRESHOLD`
  * — anything strictly greater is considered "heavy" and gets dropped when
@@ -248,6 +288,11 @@ data class RenderPreviewCapture(
   val ambient: AmbientCapture? = null,
   val gestureHint: GestureHintCapture? = null,
   val launcherWidget: LauncherWidgetCapture? = null,
+  /**
+   * `null` → not an app-tour step. Set on every capture of a `kind=APP_TOUR` preview: the
+   * navigation action `AppTourRenderer` performs before capturing this step.
+   */
+  val tourStep: TourStepCapture? = null,
   val renderOutput: String = "",
   /**
    * Estimated render cost normalised so a static `@Preview` is `1.0`. See the plugin's
@@ -309,4 +354,9 @@ data class RenderPreviewParams(
   val kind: PreviewKind = PreviewKind.COMPOSE,
   /** For [PreviewKind.CATALOG] only: the design tokens this synthetic sheet renders, in order. */
   val catalogTokens: List<CatalogToken> = emptyList(),
+  /**
+   * For [PreviewKind.ACTIVITY] / [PreviewKind.APP_TOUR] only: the Intent the (start) activity is
+   * launched with. `null` on an ACTIVITY preview means its default launch intent.
+   */
+  val launchIntent: TourIntentSpec? = null,
 )

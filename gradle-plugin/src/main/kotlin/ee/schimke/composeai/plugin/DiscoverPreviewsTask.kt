@@ -131,17 +131,30 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:Input abstract val catalogRenderSupported: Property<Boolean>
 
   /**
-   * The variant's merged `AndroidManifest.xml` (AGP `SingleArtifact.MERGED_MANIFEST`), used only to
+   * The variant's merged `AndroidManifest.xml` (AGP `SingleArtifact.MERGED_MANIFEST`). Used to
    * detect whether this is a Wear OS module — a `<uses-feature android:name=
-   * "android.hardware.type.watch" …>` declaration. When present, [PreviewDiscovery.Input.isWear] is
-   * set so frame-less, device-less component previews render at wear density/width instead of the
-   * phone default. Optional: absent on the desktop backend and on Android modules with no manifest
-   * artifact, both of which are treated as non-Wear.
+   * "android.hardware.type.watch" …>` declaration — so frame-less, device-less component previews
+   * render at wear density/width instead of the phone default, and for app-level discovery: its
+   * `<activity>` declarations become [PreviewManifest.activities] metadata plus synthetic
+   * `kind=ACTIVITY` previews (the launcher activity's render is the app's hero image), and its
+   * launcher activity is the default start for tour specs. Optional: absent on the desktop backend
+   * and on Android modules with no manifest artifact — treated as non-Wear, no app-level previews.
    */
   @get:InputFile
   @get:Optional
   @get:PathSensitive(PathSensitivity.NONE)
   abstract val mergedManifest: RegularFileProperty
+
+  /**
+   * Committed tour scripts (`compose-previews/tours/<name>.json` under the module root), each
+   * becoming a synthetic `kind=APP_TOUR` preview whose captures are the tour's steps. Only honoured
+   * when [mergedManifest] is present (tours launch real activities — Android backend only).
+   * Optional / empty on modules without tours.
+   */
+  @get:InputFiles
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val tourSpecFiles: ConfigurableFileCollection
 
   private val json = Json {
     prettyPrint = true
@@ -180,6 +193,8 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         projectClassJars = scopedClassJars,
         catalogRenderSupported = catalogRenderSupported.getOrElse(true),
         isWear = isWear,
+        mergedManifest = mergedManifest.orNull?.asFile?.takeIf { it.exists() },
+        tourSpecFiles = tourSpecFiles.files.filter { it.isFile },
       )
     when (val outcome = PreviewDiscovery.discover(input)) {
       is PreviewDiscovery.Outcome.Success -> {
