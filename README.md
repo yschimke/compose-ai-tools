@@ -437,6 +437,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `RemoteButtonWithNamedLabelPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteButtonWithNamedLabelPreview.png" width="150" /> |
 | `RemoteButtonWithShapePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteButtonWithShapePreview.png" width="150" /> |
 | `RemoteShaderGradientPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteShaderGradientPreview.png" width="150" /> |
+| `RemoteWidgetSquirclePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteWidgetSquirclePreview_Remote_Widget_Squircle.png" width="150" /> |
 
 ## samples:sdk-matrix
 
@@ -488,6 +489,17 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `HelloTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/HelloTilePreview_Small_Round.png" width="150" /> |
 | `StepsTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/StepsTilePreview_Large_Round.png" width="150" /> |
 | `StepsTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/StepsTilePreview_Small_Round.png" width="150" /> |
+
+## samples:wear-widget
+
+| Preview | Image |
+|---------|-------|
+| `BadgeWidgetPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/BadgeWidgetPreview_Badge_Widget.png" width="150" /> |
+| `ImageWidgetPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetPreview_Image_Widget.png" width="150" /> |
+| `ImageWidgetRectangularPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetRectangularPreview_Image_Widget_Rectangular_Rectangular_Large.png" width="150" /> |
+| `ImageWidgetRectangularPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetRectangularPreview_Image_Widget_Rectangular_Rectangular_Small.png" width="150" /> |
+| `ImageWidgetSquirclePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle_Squircle_Large.png" width="150" /> |
+| `ImageWidgetSquirclePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle_Squircle_Small.png" width="150" /> |
 
 ## samples:xr-glimmer
 

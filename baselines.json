@@ -1196,7 +1196,7 @@
     "functionName": "lottie/spin.json",
     "module": "samples:android",
     "renderBasename": "lottie__lottie_spin_animated.png",
-    "sha256": "38634f30065952d2187ba52a10d0c61025232ab01033c170a351c87c0cb3161b",
+    "sha256": "5bf42ecaaccdf4bea0569186506c30f93c1e7a346ae9b69517ea002984d2e593",
     "sourceFile": null
   },
   "samples:android/svg__svg_badge": {
@@ -2967,6 +2967,14 @@
     "sha256": "fc0ba94173d63faadf5a83c702072ddaee1bdf1a4c893ae3a69c40161363ed0c",
     "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
   },
+  "samples:remotecompose/com.example.sampleremotecompose.WearWidgetPreviewsKt.RemoteWidgetSquirclePreview_Remote Widget Squircle": {
+    "captureLabel": "",
+    "functionName": "RemoteWidgetSquirclePreview",
+    "module": "samples:remotecompose",
+    "renderBasename": "RemoteWidgetSquirclePreview_Remote_Widget_Squircle.png",
+    "sha256": "a89de7f4f104ec39ef91707ba4eaa6c61bdb6d944b34f911d727376d527e05cc",
+    "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/WearWidgetPreviews.kt"
+  },
   "samples:sdk-matrix/com.example.sdkmatrix.MatrixPreviewKt.SdkMatrixPreview_SdkMatrixPreview": {
     "captureLabel": "",
     "functionName": "SdkMatrixPreview",
@@ -2974,6 +2982,54 @@
     "renderBasename": "SdkMatrixPreview_SdkMatrixPreview.png",
     "sha256": "f296d3054785848e609eb0253de40d8c1609c413ff8ba7a960e29d81fc330a2b",
     "sourceFile": "src/main/kotlin/com/example/sdkmatrix/MatrixPreview.kt"
+  },
+  "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.BadgeWidgetPreview_Badge Widget": {
+    "captureLabel": "",
+    "functionName": "BadgeWidgetPreview",
+    "module": "samples:wear-widget",
+    "renderBasename": "BadgeWidgetPreview_Badge_Widget.png",
+    "sha256": "5457c245e39f92e9987f3def108fafccdcf393a5542161f9c7f89dc2fedb9fb5",
+    "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
+  },
+  "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetPreview_Image Widget": {
+    "captureLabel": "",
+    "functionName": "ImageWidgetPreview",
+    "module": "samples:wear-widget",
+    "renderBasename": "ImageWidgetPreview_Image_Widget.png",
+    "sha256": "3af802c3b3adc5b6e088667830311fa3cad0f15a3340bd03c8e1de7cd73578aa",
+    "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
+  },
+  "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetRectangularPreview_Image Widget Rectangular": {
+    "captureLabel": "",
+    "functionName": "ImageWidgetRectangularPreview",
+    "module": "samples:wear-widget",
+    "renderBasename": "ImageWidgetRectangularPreview_Image_Widget_Rectangular_Rectangular_Large.png",
+    "sha256": "36cafa86f3b72ff187bee529a9b08f1df187cc3e105859b9789b61da63dc6f5f",
+    "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
+  },
+  "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetRectangularPreview_Image Widget Rectangular#1": {
+    "captureLabel": "",
+    "functionName": "ImageWidgetRectangularPreview",
+    "module": "samples:wear-widget",
+    "renderBasename": "ImageWidgetRectangularPreview_Image_Widget_Rectangular_Rectangular_Small.png",
+    "sha256": "44121aa9c4b440f3288b13f6cfd76a6982aa073dd1179746da7a558e36ec5e76",
+    "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
+  },
+  "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle": {
+    "captureLabel": "",
+    "functionName": "ImageWidgetSquirclePreview",
+    "module": "samples:wear-widget",
+    "renderBasename": "ImageWidgetSquirclePreview_Image_Widget_Squircle_Squircle_Large.png",
+    "sha256": "580f5654fc88611e288d1f30ba1a3f5f4f4c4e48c06b96b7ee5711fb1df1d120",
+    "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
+  },
+  "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle#1": {
+    "captureLabel": "",
+    "functionName": "ImageWidgetSquirclePreview",
+    "module": "samples:wear-widget",
+    "renderBasename": "ImageWidgetSquirclePreview_Image_Widget_Squircle_Squircle_Small.png",
+    "sha256": "3bd9581efe08044a08e116c511291cd7d5d2fed68630bdef924e1b65141bfa44",
+    "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
   "samples:wear/com.example.samplewear.AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient body \u2014 ambient": {
     "captureLabel": "",
