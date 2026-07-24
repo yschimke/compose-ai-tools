@@ -279,25 +279,28 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1 fontconfig
 
-      # Persist the downloadable-font cache across runs. The Android renderer's
-      # GoogleFont shadow and the figma-svg export fetch faces (Orbitron, Space
-      # Grotesk, JetBrains Mono, Noto, Roboto, …) from Google Fonts into
-      # `~/.cache/composeai/fonts` on a cache miss; caching that dir means a face is
-      # downloaded once and reused on every later run instead of re-fetched. That
-      # keeps a branded catalog's bake deterministic (e.g. meshcore's Orbitron /
-      # Space Grotesk / JetBrains Mono resolve instead of silently rendering Roboto)
-      # and stops a transient Google Fonts hiccup from degrading the render — which,
-      # now that an unresolved downloadable font is a fatal render error rather than a
-      # silent Roboto fallback, would otherwise fail the bake outright. The rolling
-      # run_id key + prefix restore accumulates newly-seen faces across runs; a
-      # partially-populated cache from a run that failed mid-render is still saved and
-      # reused, so the next run only fetches what's missing.
-      - name: Cache downloadable fonts
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # Restore the downloadable-font cache (the matching save runs after the render,
+      # below). The Android renderer's GoogleFont shadow and the figma-svg export fetch
+      # faces (Orbitron, Space Grotesk, JetBrains Mono, Noto, Roboto, …) from Google Fonts
+      # into `~/.cache/composeai/fonts` on a miss; restoring it means a face is downloaded
+      # once and reused, so a branded catalog resolves deterministically (meshcore's
+      # Orbitron / Space Grotesk / JetBrains Mono instead of a silent Roboto fallback) and a
+      # transient Google Fonts hiccup can't degrade the bake — which, now that an unresolved
+      # downloadable font is a fatal render error, would otherwise fail the whole render.
+      #
+      # `inputs.system` is in the key so sibling catalog jobs of ONE caller run (e.g.
+      # compose-m3 / wear-m3 / remote-m3 in design-artifacts.yml) don't collide on the
+      # shared `github.run_id` — Actions caches are immutable, so a shared key would let the
+      # first job's post-save win and discard the others' fonts. The restore-keys fall back
+      # to this catalog's prior runs, then to any catalog's (fonts are global, keyed by
+      # family, so a warm start from a sibling is a bonus).
+      - name: Restore downloadable-font cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/composeai/fonts
-          key: composeai-fonts-${{ runner.os }}-${{ github.run_id }}
+          key: composeai-fonts-${{ runner.os }}-${{ inputs.system }}-${{ github.run_id }}
           restore-keys: |
+            composeai-fonts-${{ runner.os }}-${{ inputs.system }}-
             composeai-fonts-${{ runner.os }}-
 
       - name: Render catalog bundle
@@ -316,6 +319,21 @@ jobs:
           embed=(); if [ "${{ inputs.embed-deps }}" = "true" ]; then embed=(--embed-deps); fi
           run compose-preview bundle pack --module "${{ inputs.extra-module }}" --with-semantics \
             "${embed[@]}" -o "$GITHUB_WORKSPACE/extra-bundle.png" --timeout 600
+
+      # Save the font cache even when a render step FAILED. A cold-cache run that downloaded
+      # some faces before a later one failed to resolve must persist what it got, so the
+      # rerun self-heals instead of starting cold again — `actions/cache` only saves on job
+      # success, so restore/save are split and this runs under `if: always()`. It sits right
+      # after the render steps (the only steps that fetch fonts) so a failure there still
+      # captures the partial warm-up; the fresh run_id key never hits the immutable-key
+      # conflict. Font downloads happen during the two render steps above only; the generate
+      # / split / publish steps below process the already-rendered bundle.
+      - name: Save downloadable-font cache
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/composeai/fonts
+          key: composeai-fonts-${{ runner.os }}-${{ inputs.system }}-${{ github.run_id }}
 
       - name: Generate importable catalog
         run: |
