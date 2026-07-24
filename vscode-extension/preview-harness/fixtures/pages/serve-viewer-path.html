@@ -1562,6 +1562,13 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     if (themeProviderEl) {
       themeProviderEl.disabled = onWasm || !(!staticSnapshot || canRenderOverrides);
     }
+    // Remote Compose knobs are daemon-only (Remote Compose has no in-browser runtime), so like
+    // the app-theme selector they're dead in the Wasm lane — an edit would route only through
+    // the daemon path and never touch the visible iframe. Disable them there; otherwise mirror
+    // the server-side gate (enabled iff the host can render an override).
+    document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
+      el.disabled = onWasm || !(!staticSnapshot || canRenderOverrides);
+    });
   }
   // Programmatic switch (the live toggle, or a wasm-only control auto-enabling Wasm): tick the
   // hidden mode radio so its state is consistent, then run the transition.
