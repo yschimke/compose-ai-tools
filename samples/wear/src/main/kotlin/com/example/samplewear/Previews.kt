@@ -319,9 +319,29 @@ fun ActivityListLongPreview() {
 }
 
 @WearPreviewLargeRound
-@ScrollingPreview(modes = [ScrollMode.GIF], reduceMotion = false)
+@ScrollingPreview(modes = [ScrollMode.GIF])
 @Composable
 fun ActivityListGifPreview() {
+  MaterialTheme {
+    AppScaffold(timeText = { TimeText(timeSource = FixedPreviewTimeSource) }) {
+      LongActivityListScreen()
+    }
+  }
+}
+
+/**
+ * Regression fixture for the Confetti `HomeListViewLongPreview` shape: LONG and GIF from ONE
+ * annotation, no `reduceMotion` configuration. Each medium gets its one sensible setting
+ * automatically — the LONG stitch always flattens `TransformingLazyColumn` motion (mid-scale items
+ * baked into slices produce ghost/duplicate card bands the stitcher cannot collapse), while the
+ * GIF always keeps the morph animation its frames can genuinely express. Confetti used to force
+ * `reduceMotion = false` to keep its GIF lively and shipped ghost-banded LONG stitches for months.
+ * Guarded by `LongScrollPreviewPixelTest`.
+ */
+@WearPreviewLargeRound
+@ScrollingPreview(modes = [ScrollMode.LONG, ScrollMode.GIF])
+@Composable
+fun ActivityListMotionLongPreview() {
   MaterialTheme {
     AppScaffold(timeText = { TimeText(timeSource = FixedPreviewTimeSource) }) {
       LongActivityListScreen()

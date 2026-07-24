@@ -1,6 +1,7 @@
 package com.example.samplewear
 
 import com.google.common.truth.Truth.assertThat
+import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
 import org.junit.Test
@@ -96,7 +97,62 @@ class LongScrollPreviewPixelTest {
    */
   @Test
   fun `LONG preview has no scaled-card ghost rows at slice seams`() {
-    val img = ImageIO.read(longPng)
+    assertNoScaledCardGhostRows(ImageIO.read(longPng))
+  }
+
+  /**
+   * Regression for the Confetti `HomeListViewLongPreview` configuration — LONG + GIF on one
+   * annotation. LONG must flatten `TransformingLazyColumn` motion regardless of any flag (the
+   * renderer forces `LocalReduceMotion = true` around the stitched still): without that, mid-scale
+   * items baked into the slices produce ghost/duplicate card bands the stitcher cannot collapse —
+   * the same [0.40, 0.70) width-band signature the test above gates on.
+   */
+  @Test
+  fun `LONG capture always flattens motion in a multi-mode annotation`() {
+    val motionLongPng =
+      File(
+        "build/compose-previews/data/render-scroll-long/" +
+          "ActivityListMotionLongPreview_Devices_Large_Round_SCROLL_long.png"
+      )
+    assertThat(motionLongPng.exists()).isTrue()
+    val img = ImageIO.read(motionLongPng)
+    // Multi-slice stitch, not a single-frame fallback.
+    assertThat(img.height).isGreaterThan(454 * 2)
+    assertNoScaledCardGhostRows(img)
+  }
+
+  /**
+   * The GIF half of the per-mode contract: the sibling capture from the same annotation still
+   * encodes an animated scroll (GIF always keeps motion — its frames can genuinely express it).
+   * Frame-level morph state isn't asserted — decodability plus a real frame count guards the
+   * pipeline; the LONG test above is the regression gate.
+   */
+  @Test
+  fun `GIF sibling of forced-flatten LONG still animates`() {
+    val gif =
+      File(
+        "build/compose-previews/data/render-scroll-gif/" +
+          "ActivityListMotionLongPreview_Devices_Large_Round_SCROLL_gif.gif"
+      )
+    assertThat(gif.exists()).isTrue()
+    assertThat(readGifFrames(gif).size).isAtLeast(2)
+  }
+
+  /**
+   * Reads every frame of an animated GIF into a list of [BufferedImage] — same standard
+   * `javax.imageio` reader plugin the encoder writes against (mirrors the android sample's
+   * `ScrollPreviewPixelTest`).
+   */
+  private fun readGifFrames(file: File): List<BufferedImage> {
+    val reader = ImageIO.getImageReadersByFormatName("gif").next()
+    javax.imageio.stream.FileImageInputStream(file).use { input ->
+      reader.input = input
+      val count = reader.getNumImages(true)
+      return List(count) { reader.read(it) }
+    }
+  }
+
+  private fun assertNoScaledCardGhostRows(img: BufferedImage) {
     val w = img.width
     val h = img.height
 
