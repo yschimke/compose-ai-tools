@@ -814,6 +814,12 @@ internal object ComposePreviewTasks {
           }
         }
       )
+      // Ordering-only relation to the manifest's producer — same reasoning as the Android
+      // registration: that Provider carries no build dependency, so Gradle's strict validation
+      // rejects the pair once both tasks are in one graph, and `dependsOn` would break warming a
+      // daemon before anything has been discovered. Referenced by name because the desktop
+      // pipeline registers discovery separately from this block.
+      mustRunAfter("composePreviewDiscover")
       outputFile.set(outputFileProvider)
       dependsOn(daemonClasspathGuard)
       // Stage the consumer's resources (so `sourceResourceDirs` on the daemon `-cp` is populated)
