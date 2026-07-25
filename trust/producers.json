@@ -1,5 +1,5 @@
 {
-  "_comment": "Producer-trust allowlist for a public `compose-preview serve --trust-store`. Three independent bases — pinned Ed25519 keys, trusted GitHub branches (origin trust), and CI provenance identities. A bundle/catalog the server can attribute to one of these is shown as trusted (and, with operator opt-in, eligible for server-side re-render of its executable Compose); everything else still serves its data tiers as `unverified`. Empty = trust nothing (fail-closed). See docs/public-preview-server.md.",
+  "_comment": "NOT THE FILE THE PUBLIC SERVER USES. The preview.coo.ee image is built with context `deploy/image`, so the Dockerfile's `COPY trust/ /trust/` bakes deploy/image/trust/producers.json \u2014 not this one. Edit BOTH, or the catalog appears on the front page (SERVE_CATALOGS lives in deploy/image/entrypoint.sh, which IS baked) while badging `unverified`, which is how #2750 shipped half a change. This copy is the reference/example for operators running their own server with --trust-store. Producer-trust allowlist for a public `compose-preview serve --trust-store`. Three independent bases \u2014 pinned Ed25519 keys, trusted GitHub branches (origin trust), and CI provenance identities. A bundle/catalog the server can attribute to one of these is shown as trusted (and, with operator opt-in, eligible for server-side re-render of its executable Compose); everything else still serves its data tiers as `unverified`. Empty = trust nothing (fail-closed). See docs/public-preview-server.md.",
   "keys": [
     {
       "keyId": "compose-ai-tools-ci",
@@ -32,7 +32,7 @@
   ],
   "oidc": [
     {
-      "_comment": "Advisory until full Sigstore/Fulcio+Rekor verification lands — an oidc entry only annotates a signature a pinned key already verified; it does not by itself grant trust.",
+      "_comment": "Advisory until full Sigstore/Fulcio+Rekor verification lands \u2014 an oidc entry only annotates a signature a pinned key already verified; it does not by itself grant trust.",
       "identity": "repo:yschimke/compose-ai-tools:ref:refs/heads/main"
     }
   ]
