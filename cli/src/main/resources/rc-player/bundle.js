@@ -9566,6 +9566,7 @@ var RC = (() => {
                 contentOp.setComponent(this);
               }
               this.mContentOps.push(contentOp);
+              this.hoistNestedComponentValues(contentOp);
             }
           }
           if (op instanceof CanvasContent) {
@@ -9583,6 +9584,7 @@ var RC = (() => {
           } else {
             this.mContentOps.push(op);
           }
+          this.hoistNestedComponentValues(op);
         }
       }
       if (!this.mWidthMod) {
@@ -9668,6 +9670,30 @@ var RC = (() => {
       return -1;
     }
     // --- ComponentValue (Java ComponentData pattern) ---
+    /**
+     * Collect ComponentValue bindings that live *inside* a content container (e.g.
+     * a `CanvasOperations` draw block) so this component's measured size reaches
+     * them via updateComponentValues. Without this, a CanvasOperations fill whose
+     * path geometry is built from `FloatExpression`s reading WIDTH/HEIGHT sees
+     * those variables unset (zero) and draws an empty path. Recurses through
+     * non-Component containers only — a nested child `Component` owns and collects
+     * its own ComponentValues in its own `inflate()`.
+     */
+    hoistNestedComponentValues(op) {
+      if (op instanceof Component) return;
+      const getList = op.getList;
+      if (typeof getList !== "function") return;
+      for (const child of getList.call(op)) {
+        if (child instanceof ComponentValue) {
+          if (child.getComponentId2() === this.getComponentId()) {
+            if (this.mComponentValues === null) this.mComponentValues = [];
+            this.mComponentValues.push(child);
+          }
+        } else {
+          this.hoistNestedComponentValues(child);
+        }
+      }
+    }
     /** Update bound float variables with this component's dimensions/position.
      *  Matches Java Component.updateComponentValues — called during both measure
      *  (for WIDTH/HEIGHT) and layout (for all types including POS_X/POS_Y). */

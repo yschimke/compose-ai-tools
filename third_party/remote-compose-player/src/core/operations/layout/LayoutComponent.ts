@@ -168,6 +168,7 @@ export class LayoutComponent extends Component {
                             (contentOp as any).setComponent(this);
                         }
                         this.mContentOps.push(contentOp);
+                        this.hoistNestedComponentValues(contentOp);
                     }
                 }
                 if (op instanceof CanvasContent) {
@@ -186,6 +187,7 @@ export class LayoutComponent extends Component {
                 } else {
                     this.mContentOps.push(op);
                 }
+                this.hoistNestedComponentValues(op);
             }
         }
 
@@ -290,6 +292,37 @@ export class LayoutComponent extends Component {
     }
 
     // --- ComponentValue (Java ComponentData pattern) ---
+
+    /**
+     * Collect ComponentValue bindings that live *inside* a content container (e.g.
+     * a `CanvasOperations` draw block) so this component's measured size reaches
+     * them via updateComponentValues. Without this, a CanvasOperations fill whose
+     * path geometry is built from `FloatExpression`s reading WIDTH/HEIGHT sees
+     * those variables unset (zero) and draws an empty path. Recurses through
+     * non-Component containers only — a nested child `Component` owns and collects
+     * its own ComponentValues in its own `inflate()`.
+     */
+    private hoistNestedComponentValues(op: Operation): void {
+        if (op instanceof Component) return;
+        const getList = (op as { getList?: () => Operation[] }).getList;
+        if (typeof getList !== 'function') return;
+        for (const child of getList.call(op)) {
+            if (child instanceof ComponentValue) {
+                // Only adopt a binding that actually targets *this* component.
+                // updateComponentValues writes this component's dimensions to every
+                // entry, so a nested cross-component reference (its own
+                // `getComponentId2()`) must be left alone — it's resolved against
+                // its real target by ComponentValue.apply, and adopting it here
+                // would clobber that value with our dimensions each measure.
+                if (child.getComponentId2() === this.getComponentId()) {
+                    if (this.mComponentValues === null) this.mComponentValues = [];
+                    this.mComponentValues.push(child);
+                }
+            } else {
+                this.hoistNestedComponentValues(child);
+            }
+        }
+    }
 
     /** Update bound float variables with this component's dimensions/position.
      *  Matches Java Component.updateComponentValues — called during both measure
