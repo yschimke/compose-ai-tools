@@ -28,7 +28,24 @@ class FigmaSvgDownloadableFontFamilyTest {
 
   @Test
   fun `figma svg names the branded downloadable family instead of collapsing to Roboto`() {
-    val outputDir = tempFolder.newFolder("renders-figma-downloadable-font")
+    assertNamesOrbitron(previewId = "branded-downloadable", function = "BrandedDownloadableText")
+  }
+
+  /**
+   * The production shape: several weights of the branded face plus non-Latin `Noto` fallbacks,
+   * consumed through `MaterialTheme.typography` — what meshcore-mobile's `:app` previews declare,
+   * and what still exports as Roboto on the published sticker sheet.
+   */
+  @Test
+  fun `figma svg names the branded family through a themed multi-weight family`() {
+    assertNamesOrbitron(
+      previewId = "branded-theme-typography",
+      function = "BrandedThemeTypographyText",
+    )
+  }
+
+  private fun assertNamesOrbitron(previewId: String, function: String) {
+    val outputDir = tempFolder.newFolder("renders-$previewId")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
     System.setProperty("roborazzi.test.record", "true")
     // The face can't resolve in the sandbox; a fallback must not fail the preview here.
@@ -45,30 +62,23 @@ class FigmaSvgDownloadableFontFamilyTest {
         previews =
           listOf(
             PreviewManifestEntry(
-              id = "branded-downloadable",
+              id = previewId,
               className = "ee.schimke.composeai.daemon.BrandedDownloadableFontPreviewKt",
-              functionName = "BrandedDownloadableText",
+              functionName = function,
               widthPx = 200,
               heightPx = 64,
               density = 1.0f,
-              outputBaseName = "branded-downloadable",
+              outputBaseName = previewId,
             )
           )
       )
     val host = PreviewManifestRouter(manifest = manifest)
     host.start()
     try {
-      host.submit(
-        RenderRequest.Render(payload = "previewId=branded-downloadable"),
-        timeoutMs = 120_000,
-      )
+      host.submit(RenderRequest.Render(payload = "previewId=$previewId"), timeoutMs = 120_000)
 
       val svgFile =
-        outputDir
-          .parentFile!!
-          .resolve("data")
-          .resolve("branded-downloadable")
-          .resolve("compose-figma.svg")
+        outputDir.parentFile!!.resolve("data").resolve(previewId).resolve("compose-figma.svg")
       assertTrue("figma SVG must be produced: ${svgFile.absolutePath}", svgFile.exists())
       val svg = svgFile.readText()
       assertTrue("export must carry the text", svg.contains("MeshCore"))
