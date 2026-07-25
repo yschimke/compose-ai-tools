@@ -1244,7 +1244,7 @@
     "functionName": "lottie/spin.json",
     "module": "samples:android",
     "renderBasename": "lottie__lottie_spin_animated.png",
-    "sha256": "b5733a043321b848b28e063bd21f1b2d055d258beae25fbf5d652bc37fca730c",
+    "sha256": "3561b0e517840e55a545aa564dca4c392980b153c3f703a5a90bb7a2716c3450",
     "sourceFile": null
   },
   "samples:android/svg__svg_badge": {
@@ -2340,7 +2340,7 @@
     "functionName": "AppCardRemote",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "AppCardRemote.png",
-    "sha256": "3e75a06f69e18699975f1e1707d9d9c3aeb83a50af08d75b818b2f022bb75078",
+    "sha256": "a212a9bd99bf5a9ea8d4859ae546fa7373751244cf45f703d8f5832232c06293",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.ButtonGroupRemote": {
@@ -2348,7 +2348,7 @@
     "functionName": "ButtonGroupRemote",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "ButtonGroupRemote.png",
-    "sha256": "7b7966229b255f0bfd32054364f246bf040e1dad71ef8ac72107c1fc15d71975",
+    "sha256": "436b26aac2d7038206959c7132d4d2c408262d9416773b6ffdaadc7898504c3f",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.CardRemote": {
@@ -2356,7 +2356,7 @@
     "functionName": "CardRemote",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "CardRemote.png",
-    "sha256": "f99fa2bcb117f2d25c123db0a143941d00205ac9fbec03af333a3e0e2a7e3184",
+    "sha256": "9df8c224819dbd85c8884e5631d4aaf8e2c8fe5c38e9ae93e46ddbe96bfe3852",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.CircularProgressRemote": {
@@ -2380,7 +2380,7 @@
     "functionName": "CompactRemoteButton",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "CompactRemoteButton.png",
-    "sha256": "9a4fc4622fbbf3d6a01e538ac6fd3355f766d78d6bdc2c25da91135c68355245",
+    "sha256": "9be1b8ce5963b23187188e4975255c0c657fe4ffcfd83166d1dbeec62fec0fcc",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.CustomShapeRemoteButton": {
@@ -2388,7 +2388,7 @@
     "functionName": "CustomShapeRemoteButton",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "CustomShapeRemoteButton.png",
-    "sha256": "8d26b3f995645cfe4adba6181320ddcc2c4c6bd942d4a00235db1d26f564d364",
+    "sha256": "40f1c6f9b20f4ad901e5f8249e14ac797a0ec22d9076c5700df7b828328bc0e3",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.FilledRemoteButton": {
@@ -2396,7 +2396,7 @@
     "functionName": "FilledRemoteButton",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "FilledRemoteButton.png",
-    "sha256": "fc16b84430bda7a36d38c531be1561bc315aaa4e9ba6fc94626045ab8b3a12af",
+    "sha256": "9ec496b7db6411737e7ff69d93da426ad105a65cc5cf78507385a7e9062ae58d",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.IconRemote": {
@@ -2420,7 +2420,7 @@
     "functionName": "NamedLabelRemoteButton",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "NamedLabelRemoteButton.png",
-    "sha256": "fc16b84430bda7a36d38c531be1561bc315aaa4e9ba6fc94626045ab8b3a12af",
+    "sha256": "9ec496b7db6411737e7ff69d93da426ad105a65cc5cf78507385a7e9062ae58d",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.OutlinedCardRemote": {
@@ -2428,7 +2428,7 @@
     "functionName": "OutlinedCardRemote",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "OutlinedCardRemote.png",
-    "sha256": "711218822e5bacc9e17bf6ab6ae12b862996887c71cbc952b692e90786fb60f3",
+    "sha256": "c6f35f07b6d99039dc6591a3384bdbbfd25546ba44b0d482fa281f509e209cb3",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.OutlinedRemoteButton": {
@@ -2436,7 +2436,7 @@
     "functionName": "OutlinedRemoteButton",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "OutlinedRemoteButton.png",
-    "sha256": "3fbf83a5675df28f6376801c3ffe250b41c5741ca6b7a6722a1eef0b4669b11b",
+    "sha256": "7f573e62c5782afd3b7b2d1d7c9311a0091e6229e9040fd96db34eddc6137327",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.RemoteTextSticker": {
@@ -2468,7 +2468,7 @@
     "functionName": "TitleCardRemote",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "TitleCardRemote.png",
-    "sha256": "98eb36344d4f88467b427a76978d98761736f2c25398a34a038d0184675a95c0",
+    "sha256": "9ada553af9729ba29830060f705f0e7f64180404d0d4292439cb3f9f420d7e64",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.TruncatedTextRemote": {
@@ -2996,7 +2996,7 @@
     "functionName": "RemoteButtonWithBorderPreview",
     "module": "samples:remotecompose",
     "renderBasename": "RemoteButtonWithBorderPreview.png",
-    "sha256": "05ca78c9a948b395eaec4d713f11c55e8fc631b2e921a7737ce5f3edd395e30e",
+    "sha256": "6389a4cfc5b3643c12aa3b714d4ef93a3db4d656bc25bd96296539e7a851c4b5",
     "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
   },
   "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithNamedLabelPreview": {
@@ -3004,7 +3004,7 @@
     "functionName": "RemoteButtonWithNamedLabelPreview",
     "module": "samples:remotecompose",
     "renderBasename": "RemoteButtonWithNamedLabelPreview.png",
-    "sha256": "cc9b35225e66d6e6b73d41235c60ad4e79294bfa59ce0744023e261caa0b9995",
+    "sha256": "f47c2c373000ba69faafe66e0c28d166dc206768cf618faaad41dcb2647e6b20",
     "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
   },
   "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithShapePreview": {
