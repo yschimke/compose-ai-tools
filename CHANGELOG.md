@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.25](https://github.com/yschimke/compose-ai-tools/compare/v0.17.24...v0.17.25) (2026-07-25)
+
+
+### Bug Fixes
+
+* **bundle:** bound figma-raster crops when packing, not only when serving ([#2772](https://github.com/yschimke/compose-ai-tools/issues/2772)) ([53099c1](https://github.com/yschimke/compose-ai-tools/commit/53099c1b4fd7c6a2db4e60c057e8b16213ae6b7f))
+
 ## [0.17.24](https://github.com/yschimke/compose-ai-tools/compare/v0.17.23...v0.17.24) (2026-07-25)
 
 
