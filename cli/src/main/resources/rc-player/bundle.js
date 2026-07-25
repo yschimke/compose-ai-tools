@@ -9859,21 +9859,21 @@ ${inner}`;
         }
       }
       paintContext.matrixTranslate(-tx, -ty);
-      const applyOp = (op) => {
+      paintContext.matrixTranslate(this.mPaddingLeft, this.mPaddingTop);
+      for (const op of this.mContentOps) {
+        const isDecoration = op instanceof CanvasOperations;
+        if (isDecoration) {
+          paintContext.matrixTranslate(-this.mPaddingLeft, -this.mPaddingTop);
+        }
         context.incrementOpCount();
         if (op.isDirty() && typeof op.updateVariables === "function") {
           op.markNotDirty();
           op.updateVariables(context);
         }
         op.apply(context);
-      };
-      for (const op of this.mContentOps) {
-        if (op instanceof CanvasOperations) applyOp(op);
-      }
-      paintContext.matrixTranslate(this.mPaddingLeft, this.mPaddingTop);
-      for (const op of this.mContentOps) {
-        if (op instanceof CanvasOperations) continue;
-        applyOp(op);
+        if (isDecoration) {
+          paintContext.matrixTranslate(this.mPaddingLeft, this.mPaddingTop);
+        }
       }
       const children = this.mChildrenComponents;
       if (children.length > 1) {

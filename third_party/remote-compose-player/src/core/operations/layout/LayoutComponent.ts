@@ -463,32 +463,31 @@ export class LayoutComponent extends Component {
         // Back out modifier translations
         paintContext.matrixTranslate(-tx, -ty);
 
-        // A `CanvasOperations` block is a `Modifier.drawWithContent` decoration
-        // (e.g. a Material3 button/card fill + outline): it draws at the
-        // component's *full* padded bounds and its geometry is bound from the
-        // component's measured WIDTH/HEIGHT. It must paint at the component
-        // origin — *before* the content padding inset — otherwise the fill is
-        // shifted into the content region and the leading clip crops its
-        // top/left. Content draw ops and child components stay padding-inset.
-        const applyOp = (op: Operation): void => {
+        // Translate by total padding for content
+        paintContext.matrixTranslate(this.mPaddingLeft, this.mPaddingTop);
+
+        // Paint content operations in wire order (preserving the document's
+        // draw/state sequencing). A `CanvasOperations` block is a
+        // `Modifier.drawWithContent` decoration (e.g. a Material3 button/card
+        // fill + outline) whose path geometry is bound from the component's
+        // measured WIDTH/HEIGHT: it must draw at the component's *full* padded
+        // bounds, so temporarily undo the padding inset around just that op —
+        // otherwise the fill is shifted into the content region and the leading
+        // clip crops its top/left. Every other content op stays padding-inset.
+        for (const op of this.mContentOps) {
+            const isDecoration = op instanceof CanvasOperations;
+            if (isDecoration) {
+                paintContext.matrixTranslate(-this.mPaddingLeft, -this.mPaddingTop);
+            }
             context.incrementOpCount();
             if (op.isDirty() && typeof (op as any).updateVariables === 'function') {
                 op.markNotDirty();
                 (op as any).updateVariables(context);
             }
             op.apply(context);
-        };
-        for (const op of this.mContentOps) {
-            if (op instanceof CanvasOperations) applyOp(op);
-        }
-
-        // Translate by total padding for content
-        paintContext.matrixTranslate(this.mPaddingLeft, this.mPaddingTop);
-
-        // Paint the remaining (padding-inset) content operations
-        for (const op of this.mContentOps) {
-            if (op instanceof CanvasOperations) continue;
-            applyOp(op);
+            if (isDecoration) {
+                paintContext.matrixTranslate(this.mPaddingLeft, this.mPaddingTop);
+            }
         }
 
         // Paint children sorted by z-index
