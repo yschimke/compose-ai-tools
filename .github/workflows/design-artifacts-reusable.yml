@@ -412,6 +412,37 @@ jobs:
             --from "$GITHUB_WORKSPACE/out-fold" \
             --section "$FOLD_SECTION"
 
+      # PNG ↔ Remote Compose parity page: for a catalog that ships `.rc`
+      # documents (remote-m3), render each one client-side with the vendored
+      # TypeScript player (headless Chromium) and pixel-diff it against the baked
+      # PNG — the browser-render-lane counterpart of the PNG↔figma-svg compare.
+      # A no-op (and no Chromium download) for catalogs without `ir/*.rc`.
+      - name: PNG vs Remote Compose parity page
+        if: ${{ inputs.publish || inputs.upload-out }}
+        working-directory: compose-ai-tools/scripts/design-artifacts
+        run: |
+          set -euo pipefail
+          if ! python3 - "$GITHUB_WORKSPACE/bundle.png" <<'PY'
+          import sys, zipfile
+          try:
+              names = zipfile.ZipFile(sys.argv[1]).namelist()
+              has = any(n.startswith("ir/") and n.endswith(".rc") for n in names)
+          except Exception:
+              has = False
+          sys.exit(0 if has else 1)
+          PY
+          then
+            echo "No ir/*.rc documents in the bundle — skipping the Remote Compose parity page."
+            exit 0
+          fi
+          npx playwright install --with-deps chromium
+          node rc-compare.mjs \
+            --bundle "$GITHUB_WORKSPACE/bundle.png" \
+            --player "$GITHUB_WORKSPACE/compose-ai-tools/cli/src/main/resources/rc-player/bundle.js" \
+            --out "$GITHUB_WORKSPACE/out" \
+            --system "${{ inputs.system }}" \
+            --title "${{ inputs.system }}"
+
       - name: Upload catalog bundle
         if: ${{ inputs.upload-out }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
