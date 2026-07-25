@@ -279,8 +279,10 @@ fun CircularProgressRemote() = RemoteSticker {
 }
 
 // ---------------------------------------------------------------------------
-// Iconography — the standalone `RemoteIcon` primitive. Tinted dark so it reads on the
-// sticker's white background. Wear M3 parallel: `Icon`.
+// Iconography — the standalone `RemoteIcon` primitive. Left at its default near-white
+// content tint (the dark-first `RemoteMaterialTheme` scheme), which is why the catalog is
+// tagged `display.surface: "dark"` — on a white stage this sticker is invisible.
+// Wear M3 parallel: `Icon`.
 // ---------------------------------------------------------------------------
 
 @CatalogRemoteModes
@@ -293,9 +295,10 @@ fun IconRemote() = RemoteSticker {
 }
 
 // ---------------------------------------------------------------------------
-// Text — the Remote Material 3 text primitive. An explicit dark `color` is required:
-// `RemoteText` defaults to a near-white content colour (fine inside a button surface
-// or on the shader, invisible on the sticker's white `showBackground`).
+// Text — the Remote Material 3 text primitive at its default near-white content colour
+// (the dark-first `RemoteMaterialTheme` scheme). Don't override it to a dark colour to
+// "fix" a washed-out sticker: the catalog declares `display.surface: "dark"`, so the
+// stage is what backs it.
 // ---------------------------------------------------------------------------
 
 @CatalogRemoteModes

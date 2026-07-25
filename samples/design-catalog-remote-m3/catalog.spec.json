@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/design-artifacts/catalog.spec.schema.json",
-  "$comment": "Catalog spec for Remote Compose (Wear Compose Remote Material 3 + remote-creation-compose primitives). Code-led: each sticker is a real RemoteDocument built by RemotePreview and rasterised by the Remote Compose player, so the render is authoritative. Remote Compose carries explicit colours in the document rather than a light/dark theme split, so there is a single primary mode. The component set mirrors the androidx.wear.compose.remote.material3 surface (the port of Wear Compose Material 3 to Remote Compose), minus the two non-component helpers RemoteContainerPainter (a painter factory) and RemoteTypographyTokens (the raw token table behind RemoteTypography). Each component carries a `parallel` field naming its Wear Compose Material 3 counterpart (a componentId in samples/design-catalog-wear-m3); the design-artifacts cross-system compare page pairs them side by side. The Widget Container group is the other Remote-only extra besides the shader: the squircle frame the Wear widget host draws around widget content, rendered through androidx.glance.wear:wear-tooling-preview's WearWidgetPreview wrapper (no remote-material3 or Wear M3 peer — it is a host frame, not a component). Sibling of samples/design-catalog-{m3,wear-m3}; see docs/design/DESIGN_CATALOGS.md.",
+  "$comment": "Catalog spec for Remote Compose (Wear Compose Remote Material 3 + remote-creation-compose primitives). Code-led: each sticker is a real RemoteDocument built by RemotePreview and rasterised by the Remote Compose player, so the render is authoritative. Remote Compose carries explicit colours in the document rather than a light/dark theme split, so there is a single primary mode — and because those colours come from RemoteMaterialTheme (the Wear Compose Material 3 scheme, which is dark-first), that one mode is DARK: the stickers rasterise light content on transparency (a white RemoteIcon/RemoteText, a near-black RemoteCard surface). Hence `modes: [\"dark\"]` and `display.surface: \"dark\"` — without the explicit surface the preview server's fallback id heuristic (`wear|watch` token) doesn't match `remote-m3`, backs the sheet on the default white stage, and the white-on-transparent stickers vanish. The component set mirrors the androidx.wear.compose.remote.material3 surface (the port of Wear Compose Material 3 to Remote Compose), minus the two non-component helpers RemoteContainerPainter (a painter factory) and RemoteTypographyTokens (the raw token table behind RemoteTypography). Each component carries a `parallel` field naming its Wear Compose Material 3 counterpart (a componentId in samples/design-catalog-wear-m3); the design-artifacts cross-system compare page pairs them side by side. The Widget Container group is the other Remote-only extra besides the shader: the squircle frame the Wear widget host draws around widget content, rendered through androidx.glance.wear:wear-tooling-preview's WearWidgetPreview wrapper (no remote-material3 or Wear M3 peer — it is a host frame, not a component). Sibling of samples/design-catalog-{m3,wear-m3}; see docs/design/DESIGN_CATALOGS.md.",
   "system": "remote-m3",
   "title": "Remote Compose Material 3",
   "library": [
@@ -9,7 +9,10 @@
     "androidx.glance.wear:wear"
   ],
   "module": "samples:design-catalog-remote-m3",
-  "modes": ["light"],
+  "modes": ["dark"],
+  "display": {
+    "surface": "dark"
+  },
   "referenceKits": [],
   "compareWith": "wear-m3",
   "groups": [
