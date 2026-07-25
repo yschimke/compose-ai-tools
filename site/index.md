@@ -81,7 +81,7 @@ If you'd rather wire it into your build explicitly, the plugin is on
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
-    id("ee.schimke.composeai.preview") version "0.17.16"
+    id("ee.schimke.composeai.preview") version "0.17.17"
 }
 ```
 <!-- x-release-please-end -->
