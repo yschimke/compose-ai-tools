@@ -8,10 +8,10 @@ import kotlin.test.assertTrue
 
 /**
  * Unit coverage for the `theme.fonts` serialized override — the seam that lets an app brand the M3
- * catalog's type scale per role group (e.g. `display=Orbitron, body=Space Grotesk`) through the same
- * string-knob surface as colors/shapes/metrics, with no per-preview change and no face hardcoded in
- * the catalog. Pure-logic codec (the `namedFontFamily` resolution is exercised by the render, not
- * here), like [CatalogColorSchemeTest].
+ * catalog's type scale per role group (e.g. `display=Orbitron, body=Space Grotesk`) through the
+ * same string-knob surface as colors/shapes/metrics, with no per-preview change and no face
+ * hardcoded in the catalog. Pure-logic codec (the `namedFontFamily` resolution is exercised by the
+ * render, not here), like [CatalogColorSchemeTest].
  */
 class CatalogFontFamiliesTest {
 
@@ -36,7 +36,10 @@ class CatalogFontFamiliesTest {
 
   @Test
   fun `serialize drops blank families and empties to no-override`() {
-    assertEquals("families:display=Orbitron", serializeCatalogFontFamilies(mapOf("display" to "Orbitron", "body" to "  ")))
+    assertEquals(
+      "families:display=Orbitron",
+      serializeCatalogFontFamilies(mapOf("display" to "Orbitron", "body" to "  ")),
+    )
     assertEquals("", serializeCatalogFontFamilies(emptyMap()))
     assertEquals("", serializeCatalogFontFamilies(mapOf("display" to "")))
   }
@@ -44,7 +47,9 @@ class CatalogFontFamiliesTest {
   @Test
   fun `parse ignores unknown groups and blank families`() {
     val parsed =
-      parseCatalogFontFamilies("families:display=Orbitron,mono=JetBrains Mono,title=,body=Space Grotesk")
+      parseCatalogFontFamilies(
+        "families:display=Orbitron,mono=JetBrains Mono,title=,body=Space Grotesk"
+      )
     // `mono` is not an M3 role group and `title=` is blank — both dropped; the valid two survive.
     assertEquals(mapOf("display" to "Orbitron", "body" to "Space Grotesk"), parsed)
   }
@@ -61,7 +66,8 @@ class CatalogFontFamiliesTest {
   fun `a family name with spaces survives the codec`() {
     // "Space Grotesk" / "JetBrains Mono" carry spaces; the split is on ','/'=' only, so they ride
     // intact — the render then resolves them via namedFontFamily against the vendored faces.
-    val roundTrip = parseCatalogFontFamilies(serializeCatalogFontFamilies(mapOf("title" to "JetBrains Mono")))
+    val roundTrip =
+      parseCatalogFontFamilies(serializeCatalogFontFamilies(mapOf("title" to "JetBrains Mono")))
     assertEquals(mapOf("title" to "JetBrains Mono"), roundTrip)
   }
 

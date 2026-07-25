@@ -503,19 +503,23 @@ const val CATALOG_FONTS_KNOB = "theme.fonts"
  */
 const val CATALOG_FONTS_PREFIX = "families:"
 
-/** The five M3 type-role groups a [CATALOG_FONTS_PREFIX] blob keys — each covers its three sizes. */
-val CATALOG_FONT_ROLE_GROUPS: List<String> =
-  listOf("display", "headline", "title", "body", "label")
+/**
+ * The five M3 type-role groups a [CATALOG_FONTS_PREFIX] blob keys — each covers its three sizes.
+ */
+val CATALOG_FONT_ROLE_GROUPS: List<String> = listOf("display", "headline", "title", "body", "label")
 
 /**
  * Serialize a role-group→family map into the `theme.fonts` wire form (only the five known groups
  * with a non-blank family are emitted, in canonical order). Empty ⇒ empty string (no override). A
- * consumer calls this on its brand type scale's per-group faces; the metrics ride `theme.typography`
- * separately.
+ * consumer calls this on its brand type scale's per-group faces; the metrics ride
+ * `theme.typography` separately.
  */
 fun serializeCatalogFontFamilies(families: Map<String, String>): String {
-  val kept = CATALOG_FONT_ROLE_GROUPS.mapNotNull { g -> families[g]?.trim()?.takeIf(String::isNotEmpty)?.let { g to it } }
-  return if (kept.isEmpty()) "" else CATALOG_FONTS_PREFIX + kept.joinToString(",") { (g, f) -> "$g=$f" }
+  val kept = CATALOG_FONT_ROLE_GROUPS.mapNotNull { g ->
+    families[g]?.trim()?.takeIf(String::isNotEmpty)?.let { g to it }
+  }
+  return if (kept.isEmpty()) ""
+  else CATALOG_FONTS_PREFIX + kept.joinToString(",") { (g, f) -> "$g=$f" }
 }
 
 /**
