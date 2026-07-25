@@ -1,106 +1,65 @@
+@file:Suppress("RestrictedApiAndroidX")
+
 package com.example.wearwidget
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
-import androidx.compose.ui.unit.dp
-import ee.schimke.composeai.preview.PreviewWrapperClass
+import androidx.glance.wear.core.ContainerInfo
+import androidx.glance.wear.core.WearWidgetParams
+import androidx.glance.wear.core.WidgetInstanceId
+import androidx.glance.wear.tooling.preview.SquircleAllWidgetPreviewParams
+import androidx.glance.wear.tooling.preview.SquircleLargeWidgetPreviewParams
 
 /**
- * A stand-in for a Wear OS widget/tile "sticker": a fixed-size composable exported as a drawable
- * asset (Widget Picker / Play Store catalog). Its intrinsic layout is 192×60 dp — nothing about it
- * wants the 227dp square watch-face canvas, so its preview must crop to those bounds.
+ * Glance Wear widget previews — the exact shape issue #2670 is about: a device-less `@Preview` on a
+ * widget composable driven by an `androidx.glance.wear.tooling.preview` `@PreviewParameter` provider
+ * (`WearWidgetParams`). Because the provider is under `androidx.glance.wear.*`, discovery's
+ * auto-detect recognises these as widgets and crops each render to its intrinsic bounds at wear
+ * density — no `retargetWearPreviews` config needed, never the 227dp watch-face canvas.
  *
- * See issue #2670: on a Wear module the discovery retarget normally pins device-less previews onto
- * the watch canvas; `:samples:wear-widget` sets `retargetWearPreviews = false` so this preview stays
- * wrap-content and the renderer crops it, at wear density.
+ * Each preview goes through [CapturingWearWidgetPreview], so alongside the cropped PNG the render
+ * also emits the widget's encoded RemoteCompose document as a `<stem>.rc` sidecar — the widget
+ * travels in the bundle as data, not bytecode.
  */
-@Composable
-fun ImageWidget(modifier: Modifier = Modifier) {
-  Box(
-    modifier = modifier.size(width = 192.dp, height = 60.dp).background(Color(0xFF1E88E5)),
-    contentAlignment = Alignment.Center,
-  ) {
-    BasicText(text = "Widget", style = TextStyle(color = Color.White))
-  }
-}
-
-// A frame-less, device-less `@Preview` — exactly the shape #2670 is about. With the module's
-// `retargetWearPreviews = false`, the render crops to the widget's 192×60 dp bounds (at 2.0x wear
-// density → 384×120 px) instead of a 454×454 px watch-face canvas.
-@Preview(name = "Image Widget", showBackground = true, backgroundColor = 0xFF000000)
-@Composable
-fun ImageWidgetPreview() {
-  ImageWidget()
-}
-
-// A second fixed size to show the crop tracks the composable's own bounds, not a single constant.
-@Composable
-fun BadgeWidget(modifier: Modifier = Modifier) {
-  Box(
-    modifier = modifier.size(96.dp).background(Color(0xFF43A047)),
-    contentAlignment = Alignment.Center,
-  ) {
-    BasicText(text = "OK", style = TextStyle(color = Color.White))
-  }
-}
-
-@Preview(name = "Badge Widget", showBackground = true, backgroundColor = 0xFF000000)
-@Composable
-fun BadgeWidgetPreview() {
-  BadgeWidget()
-}
-
-/**
- * The widget "content" — a solid fill sized to the given [modifier], the payload a real Glance Wear
- * widget would draw. Framing it in the ideal shape is the wrapper's job (below), mirroring how
- * wear-os-samples hands `ImageWidget()` to `WearWidgetPreview(content, params)`.
- */
-@Composable
-fun ImageWidgetContent(modifier: Modifier = Modifier) {
-  Box(
-    modifier = modifier.background(Color(0xFF1E88E5)),
-    contentAlignment = Alignment.Center,
-  ) {
-    BasicText(text = "Widget", style = TextStyle(color = Color.White))
-  }
-}
-
-/**
- * Squircle widget previews, fanned out over [SquircleAllWidgetPreviewParams] and framed in the ideal
- * squircle via `@PreviewWrapperClass` → [SquircleWidgetWrapper]. This is the plugin-native mirror of
- * the wear-os-samples
- * ```
- * @Preview @Composable fun ImageWidgetSquirclePreview(
- *   @PreviewParameter(SquircleAllWidgetPreviewParams::class) params: WearWidgetParams
- * ) = WearWidgetPreview(ImageWidget(), params)
- * ```
- * — the wrapper supplies the shape chrome `WearWidgetPreview` would, the parameter supplies the
- * size, and `retargetWearPreviews = false` keeps each render cropped to that size at wear density.
- */
-@Preview(name = "Image Widget Squircle", showBackground = true, backgroundColor = 0xFF000000)
-@PreviewWrapperClass("com.example.wearwidget.SquircleWidgetWrapper")
+// Fans out over every squircle footprint the platform ships (`SquircleAllWidgetPreviewParams`).
+@Preview(name = "Image Widget Squircle")
 @Composable
 fun ImageWidgetSquirclePreview(
   @PreviewParameter(SquircleAllWidgetPreviewParams::class) params: WearWidgetParams
 ) {
-  ImageWidgetContent(Modifier.size(width = params.widthDp.dp, height = params.heightDp.dp))
+  CapturingWearWidgetPreview(params = params) { RemoteImageWidget() }
 }
 
-/** Rectangular widget previews — the wide-footprint sibling, framed as a rounded rectangle. */
-@Preview(name = "Image Widget Rectangular", showBackground = true, backgroundColor = 0xFF000000)
-@PreviewWrapperClass("com.example.wearwidget.RectangularWidgetWrapper")
+// A single fixed footprint (`SquircleLargeWidgetPreviewParams`) to show the crop tracks the params.
+@Preview(name = "Image Widget Squircle Large")
 @Composable
-fun ImageWidgetRectangularPreview(
-  @PreviewParameter(RectangularAllWidgetPreviewParams::class) params: WearWidgetParams
+fun ImageWidgetSquircleLargePreview(
+  @PreviewParameter(SquircleLargeWidgetPreviewParams::class) params: WearWidgetParams
 ) {
-  ImageWidgetContent(Modifier.size(width = params.widthDp.dp, height = params.heightDp.dp))
+  CapturingWearWidgetPreview(params = params) { RemoteImageWidget() }
+}
+
+// The squircle host spec (240dp screen), spelled out literally — same values as the upstream
+// `SquircleSmallWidgetPreviewParams`. Kept as a plain (non-`@PreviewParameter`) preview so it emits a
+// single capture whose render stem matches its `.rc` sidecar exactly, which is what lets the bundle
+// pack the encoded document under `ir/`. (A `@PreviewParameter` fan-out renders one `.rc` per value
+// under a `_PARAM_N` stem, which the base-stem bundle IR lookup doesn't resolve — so the param
+// previews above still capture their doc as a render sidecar, but the packaged-in-bundle proof rides
+// on this fixed one.)
+private val fixedWidgetParams =
+  WearWidgetParams(
+    instanceId = WidgetInstanceId("tiles", 1),
+    containerType = ContainerInfo.CONTAINER_TYPE_SMALL,
+    widthDp = 200f,
+    heightDp = 60f,
+    horizontalPaddingDp = 8f,
+    verticalPaddingDp = 8f,
+    cornerRadiusDp = 26f,
+  )
+
+@Preview(name = "Image Widget Fixed", showBackground = false, widthDp = 216, heightDp = 76)
+@Composable
+fun ImageWidgetFixedPreview() {
+  CapturingWearWidgetPreview(params = fixedWidgetParams) { RemoteImageWidget() }
 }
