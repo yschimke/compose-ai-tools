@@ -204,6 +204,54 @@ class FigmaFontEmbedTest {
   }
 
   @Test
+  fun writeSvgEmbedsAndNamesADownloadableBrandedFamily() {
+    // Regression: a branded downloadable face (`Font(GoogleFont("Orbitron"), …)`) now captures its
+    // family name (see `googleFontFamilyName`) instead of null, so the export fetches + embeds the
+    // real Orbitron face and names the `<text>` by it — rather than collapsing to the Roboto
+    // default
+    // that made the published meshcore sticker render in Roboto (incl. `?mode=web`, whose @import
+    // is
+    // derived from these @font-face blocks).
+    val semantics =
+      ComposeSemanticsPayload(
+        ComposeSemanticsNode(
+          nodeId = "root",
+          boundsInRoot = "0,0,200,100",
+          children =
+            listOf(
+              ComposeSemanticsNode(
+                nodeId = "Text",
+                boundsInRoot = "8,8,192,40",
+                text = "MeshCore",
+                typography =
+                  ComposeSemanticsTypography(
+                    fontSize = "16.0sp",
+                    fontWeight = 500,
+                    fontFamily = "Orbitron",
+                  ),
+              )
+            ),
+        )
+      )
+    val resolver = FigmaFontResolver { family, weight, italic ->
+      if (family == "Orbitron" && weight == 500 && !italic) byteArrayOf(4, 2) else null
+    }
+
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = dir,
+      previewId = "p",
+      layout = LayoutInspectorPayload(textNode()),
+      semantics = semantics,
+      fontResolver = resolver,
+    )
+
+    val svg = dir.resolve("p").resolve(ComposeFigmaSvgDataProducer.FILE_SVG).readText()
+    assertTrue("embeds the branded downloadable face", svg.contains("font-family:'Orbitron'"))
+    assertTrue("text names the branded family", svg.contains("""font-family="Orbitron"""))
+    assertFalse("branded family must not collapse to Roboto", svg.contains("'Roboto'"))
+  }
+
+  @Test
   fun writeSvgEmbedsAConcreteSerifForAGenericSerifSpecimen() {
     // A `FontFamily.Serif` specimen captures the generic name "serif" (Compose resolves the real
     // face out of reach). The export must embed a concrete *serif* (Noto Serif) and name the text
