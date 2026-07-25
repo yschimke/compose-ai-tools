@@ -9,6 +9,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
@@ -35,9 +36,11 @@ import kotlinx.serialization.json.jsonPrimitive
  * published JAR will fail with `NoClassDefFoundError` — see the "CLI invocation" section in
  * `docs/NON_GRADLE_INTEGRATION.md`.
  *
- * `--previews` accepts a comma-separated list and can be repeated. The CLI waits for one
- * `renderFinished` notification per requested preview id, prints the resulting PNG path to stdout
- * (`<id>\t<pngPath>`), and exits 0 on success.
+ * `--previews` accepts a comma-separated list and can be repeated. The CLI waits for one terminal
+ * notification per requested preview id — `renderFinished` (success) or `renderFailed` (the
+ * composition threw) — prints the resulting PNG path to stdout (`<id>\t<pngPath>`), and exits 0
+ * when every render succeeded. A `renderFailed` ends the wait immediately and reports the daemon's
+ * error message on stderr rather than sitting out `--timeout-seconds`.
  *
  * Exit codes: `0` = all renders succeeded, `1` = at least one render rejected, failed, or timed
  * out, `2` = argument parsing failure.
@@ -62,6 +65,7 @@ public object RenderCli {
   internal fun run(parsed: ParsedArgs): Int {
     val pending = ConcurrentHashMap.newKeySet<String>().apply { addAll(parsed.previewIds) }
     val results = ConcurrentHashMap<String, String>()
+    val failures = ConcurrentHashMap<String, String>()
     val latch = CountDownLatch(parsed.previewIds.size)
 
     SubprocessRenderSessions.open(
@@ -75,14 +79,27 @@ public object RenderCli {
       .use { session ->
         session
           .onNotification { method, params ->
-            if (method != "renderFinished" || params == null) return@onNotification
+            if (params == null) return@onNotification
             val id = params["id"]?.jsonPrimitive?.contentOrNull ?: return@onNotification
-            val pngPath = params["pngPath"]?.jsonPrimitive?.contentOrNull
-            if (id in pending && pngPath != null) {
-              results[id] = pngPath
-              pending.remove(id)
-              latch.countDown()
+            if (id !in pending) return@onNotification
+            // The daemon owes exactly one terminal event per queued render: `renderFinished` with a
+            // pngPath, or `renderFailed` when the composition throws. Releasing the wait on the
+            // failure too turns a broken preview into an immediate, explanatory exit 1 instead of
+            // sitting out `--timeout-seconds` for a render the daemon already reported dead.
+            when (method) {
+              "renderFinished" -> {
+                val pngPath =
+                  params["pngPath"]?.jsonPrimitive?.contentOrNull ?: return@onNotification
+                results[id] = pngPath
+              }
+              "renderFailed" ->
+                failures[id] =
+                  params["error"]?.jsonObject?.get("message")?.jsonPrimitive?.contentOrNull
+                    ?: "daemon reported renderFailed"
+              else -> return@onNotification
             }
+            pending.remove(id)
+            latch.countDown()
           }
           .use {
             val ack =
@@ -104,6 +121,13 @@ public object RenderCli {
                 "render-cli: timed out after ${parsed.timeoutSeconds}s waiting for: " +
                   pending.joinToString(",")
               )
+              return 1
+            }
+
+            if (failures.isNotEmpty()) {
+              for ((id, message) in failures) {
+                System.err.println("render-cli: failed $id: $message")
+              }
               return 1
             }
 

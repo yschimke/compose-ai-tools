@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okio.FileSystem
 import okio.Path.Companion.toPath
@@ -75,11 +76,26 @@ internal class MatrixRenderFetcher(
       val pngPath = AtomicReference<String?>(null)
       live
         .onNotification { method, params ->
-          if (method != "renderFinished" || params == null) return@onNotification
+          val failedEvent = method == "renderFailed"
+          if ((method != "renderFinished" && !failedEvent) || params == null) return@onNotification
           val id = params["id"]?.jsonPrimitive?.contentOrNull ?: return@onNotification
           if (id != previewId) return@onNotification
-          // `unchanged` renders still carry a (re-used) pngPath, so this captures bytes either way.
-          params["pngPath"]?.jsonPrimitive?.contentOrNull?.let { pngPath.set(it) }
+          // Either terminal event releases the cell — the daemon owes exactly one per queued
+          // render, and a composition that throws emits only `renderFailed`. Without this a broken
+          // preview made every cell sit out the full RENDER_TIMEOUT_SECONDS, so an N-cell matrix
+          // took N × 180s to report what the daemon knew in seconds. `pngPath` stays null on
+          // failure, which the caller already reads as "no PNG for this cell".
+          if (failedEvent) {
+            onLog(
+              "render failed for '$id': " +
+                (params["error"]?.jsonObject?.get("message")?.jsonPrimitive?.contentOrNull
+                  ?: "daemon reported renderFailed")
+            )
+          } else {
+            // `unchanged` renders still carry a (re-used) pngPath, so this captures bytes either
+            // way.
+            params["pngPath"]?.jsonPrimitive?.contentOrNull?.let { pngPath.set(it) }
+          }
           pending.get()?.countDown()
         }
         .use {
