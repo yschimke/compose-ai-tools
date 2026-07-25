@@ -52,16 +52,24 @@ class ServeHttpRoutingTest {
   private val rcColorKnob =
     RemoteComposeKnobDeclaration("shaderColor", RemoteNamedValue.ColorValue("#FF7DE2FF"))
 
+  /** Arbitrary Remote Compose document bytes, carried into the bundle as an `ir/<id>.rc`. */
+  private val rcDocBytes = byteArrayOf(0x52, 0x43, 0x01, 0x02, 0x03)
+
   private fun bundle(
     label: String,
     overrides: List<PreviewOverrideDeclaration> = emptyList(),
     remoteComposeKnobs: List<RemoteComposeKnobDeclaration> = emptyList(),
     degradations: List<ServeDegradation> = emptyList(),
+    rcDoc: ByteArray? = null,
   ): ServeBundleHost {
     val dir = Files.createTempDirectory("routing-$label").toFile().also { it.deleteOnExit() }
     File(dir, "index.html").writeText("<html></html>")
     File(dir, "previews").apply { mkdirs() }
     File(dir, "previews/$previewId.png").writeBytes(png())
+    if (rcDoc != null) {
+      File(dir, "ir").apply { mkdirs() }
+      File(dir, "ir/$previewId.rc").writeBytes(rcDoc)
+    }
     if (overrides.isNotEmpty()) {
       val sidecar =
         Json.encodeToString(
@@ -86,7 +94,7 @@ class ServeHttpRoutingTest {
     registry.register("default-mod", host = bundle("default-mod"), pinned = true)
     registry.register(
       "compose-m3",
-      host = bundle("compose-m3", listOf(labelKnob), listOf(rcColorKnob)),
+      host = bundle("compose-m3", listOf(labelKnob), listOf(rcColorKnob), rcDoc = rcDocBytes),
       pinned = true,
     )
     // A baked-only session carrying a degradation reason — reachable at /baked-only/… but kept off
@@ -231,6 +239,65 @@ class ServeHttpRoutingTest {
     // slots).
     val (code, _) = get("/compose-m3/render/$previewId.slots")
     assertEquals(404, code)
+  }
+
+  @Test
+  fun `the rc render lane serves the captured remote compose document bytes`() {
+    // compose-m3 carries an `ir/<id>.rc` sidecar, so `GET /render/<id>.rc` returns those
+    // bytes
+    // verbatim (octet-stream) for the in-browser player to replay client-side.
+    val req =
+      Request.Builder()
+        .url("http://127.0.0.1:${server.port}/compose-m3/render/$previewId.rc")
+        .build()
+    client.newCall(req).execute().use { r ->
+      assertEquals(200, r.code)
+      assertEquals(
+        "application/octet-stream",
+        r.body?.contentType()?.let { "${it.type}/${it.subtype}" },
+      )
+      assertTrue(rcDocBytes.contentEquals(r.body?.bytes()), "rc bytes served verbatim")
+    }
+  }
+
+  @Test
+  fun `a bundle without an rc sidecar 404s the rc render lane`() {
+    // default-mod carries no `ir/` tree, so the client-side player lane resolves to NotFound rather
+    // than serving an empty document.
+    val (code, _) = get("/render/$previewId.rc?session=default-mod")
+    assertEquals(404, code)
+  }
+
+  @Test
+  fun `the viewer offers the in-browser canvas lane when a preview carries an rc document`() {
+    // compose-m3's preview has an `ir/<id>.rc` sidecar, so its viewer page advertises the RC canvas
+    // lane: the flag the transport JS keys on, the canvas, the mode radio, and the toggle button.
+    val (code, html) = get("/compose-m3/p/$previewId")
+    assertEquals(200, code)
+    assertTrue(html.contains("data-has-rc-doc=\"1\""), "viewer flags the rc document: $html")
+    assertTrue(html.contains("id=\"cp-rc-canvas\""), "rc canvas element present")
+    assertTrue(html.contains("id=\"cp-rc-btn\""), "rc toggle button present")
+    assertTrue(html.contains("value=\"rc\""), "rc mode radio present")
+    // The client-side lane JS loads the player and applies knob edits without a daemon round-trip.
+    assertTrue(html.contains("/rc-player/bundle.js"), "the lane loads the player bundle")
+    assertTrue(html.contains("RcdPlayer"), "the lane creates the Rc player")
+    assertTrue(html.contains("setNamedFloatOverride"), "rc knob edits apply client-side")
+  }
+
+  @Test
+  fun `the viewer omits the canvas lane when the preview has no rc document`() {
+    // default-mod carries no `.rc` document, so the RC canvas lane's HTML (flag, canvas, toggle) is
+    // absent and its Remote Compose knobs stay on the daemon path.
+    val (code, html) = get("/p/$previewId?session=default-mod")
+    assertEquals(200, code)
+    // The transport JS always *reads* `data-has-rc-doc`, so assert the attribute form (`="1"`) is
+    // absent rather than the bare name, plus the lane's HTML elements.
+    assertTrue(
+      !html.contains("data-has-rc-doc=\"1\""),
+      "no rc-doc flag on a docless preview: $html",
+    )
+    assertTrue(!html.contains("id=\"cp-rc-canvas\""), "no rc canvas on a docless preview")
+    assertTrue(!html.contains("id=\"cp-rc-btn\""), "no rc toggle on a docless preview")
   }
 
   @Test

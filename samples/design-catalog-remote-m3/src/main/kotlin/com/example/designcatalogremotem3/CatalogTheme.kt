@@ -25,7 +25,7 @@ import ee.schimke.composeai.daemon.RemoteOverridablePreview
  * — so the named-value stickers ([com.example.designcatalogremotem3.NamedLabelRemoteButton],
  * [com.example.designcatalogremotem3.ShaderGradientSticker]) actually flip in trusted live
  * re-renders, matching what the spec/captions advertise — and (b) offers the captured
- * `RemoteDocument` into the bundle's `.rcdoc` sidecar for replay. With no seeded overrides (the
+ * `RemoteDocument` into the bundle's `.rc` sidecar for replay. With no seeded overrides (the
  * vanilla `composePreviewRenderAll` and the weekly design-artifacts render) it is the same output
  * as plain `RemotePreview`.
  */

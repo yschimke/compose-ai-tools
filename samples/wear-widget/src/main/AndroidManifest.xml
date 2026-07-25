@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Marks this as a Wear OS module so PreviewDiscovery sets `isWear = true`. The widget previews
+         use `androidx.glance.wear.tooling.preview` `@PreviewParameter` providers, so discovery's
+         auto-detect crops them to their intrinsic bounds (at wear density) with no config — never
+         the 227dp watch-face canvas (#2670). -->
+    <uses-feature
+        android:name="android.hardware.type.watch"
+        android:required="false" />
+</manifest>

@@ -4,13 +4,16 @@ import ee.schimke.composeai.discovery.*
 import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.JavaVersion
 import org.gradle.api.Project
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.file.Directory
 import org.gradle.api.file.FileCollection
+import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskProvider
+import org.gradle.jvm.toolchain.JavaToolchainService
 
 private val previewManifestJson = Json { ignoreUnknownKeys = true }
 
@@ -244,6 +247,11 @@ internal object ComposePreviewTasks {
         // long-PNG and GIF artifacts; older Android Test wiring uses the same `data/` subdir.
         dataProductsDir.set(previewOutputDir.map { it.dir("data") })
         renderBackend.set("desktop")
+        // Fork the render subprocess on a JDK new enough for the module's bytecode. The desktop
+        // `javaexec` otherwise runs on the Gradle daemon JVM (JDK 17 here), so a consumer compiling
+        // to Java 21 would fail every preview with UnsupportedClassVersionError. See
+        // [RenderJvmSelection]; null (no upgrade needed) leaves the daemon-JVM default.
+        desktopRenderJavaExecutable(project, extension)?.let { renderJavaExecutable.set(it) }
         tier.set(tierProperty(project))
         // `composePreview.filter` convention for the `--preview` name filter (issue #2066); the
         // repeatable `--preview` CLI option overrides it. Comma-separated so a single `-P` can name
@@ -677,6 +685,12 @@ internal object ComposePreviewTasks {
       maxHeapMb.set(extension.daemon.maxHeapMb)
       maxRendersPerSandbox.set(extension.daemon.maxRendersPerSandbox)
       warmSpare.set(extension.daemon.warmSpare)
+      // Bake an explicit render JVM into `daemon-launch.json`. Unlike the in-Gradle `javaexec`
+      // render, the daemon is spawned by VS Code / MCP on *their* JDK, so we always pin a launcher
+      // (>= the module's bytecode target) rather than leaving it null — otherwise a JDK-17 editor
+      // spawns the daemon on Java 17 and can't load newer consumer classes. See
+      // [RenderJvmSelection.daemonDescriptorExecutable].
+      desktopDaemonJavaExecutable(project, extension)?.let { javaLauncher.set(it) }
       // Stage-2 BTA wiring. The configurations + dep adds are owned by
       // `wireDesktopBtaInputs` so the registration block stays scannable. Daemon JVM
       // lazily loads BTA only when the editor's save loop calls `compileSources` (gated
@@ -990,11 +1004,16 @@ internal object ComposePreviewTasks {
       task = task,
       // CMP / Kotlin-JVM: the consumer's runtime classpath is the compile classpath. Empty
       // file collection when no runtime config was found (rare; the desktop task wiring
-      // would have logged that case). Resolved through a lazy `incoming.artifactView {}.files`
-      // view so the BTA compile classpath never pins the raw `Configuration` into the daemon
-      // bootstrap task's config-cache state — see issue #1796. (The Android caller already passes
-      // AGP's config-cache-safe `Test.classpath`, so only this desktop path needs the wrap.)
-      userCompileClasspath = userRuntimeConfig?.incoming?.artifactView {}?.files ?: project.files(),
+      // would have logged that case). Resolved through `pinnedConsumerClasspath`'s lazy
+      // `incoming.artifactView { … }.files` view so the BTA compile classpath never pins the raw
+      // `Configuration` into the daemon bootstrap task's config-cache state — see issue #1796. (The
+      // Android caller already passes AGP's config-cache-safe `Test.classpath`, so only this
+      // desktop path needs the wrap.) The view pins `artifactType=jar` (issue #1852): a KMP-Android
+      // module's `androidRuntimeClasspath` exposes ~12 secondary variants, so a bare
+      // `artifactView {}` here fails with `AmbiguousArtifactsFailure` under AGP 9.3 and sinks the
+      // whole daemon-start — the same fix the render/discover/guard consumer views already carry.
+      userCompileClasspath =
+        userRuntimeConfig?.let { pinnedConsumerClasspath(project, it.name) } ?: project.files(),
       // MODULE_NAME mirrors KGP's default `compileKotlin` for non-multiplatform JVM modules
       // — `project.name`, no path-mangling. The bta-host-fixture spike confirmed Gradle
       // uses this exact spelling in `kotlin.Metadata.d2[]`.
@@ -1178,6 +1197,75 @@ internal object ComposePreviewTasks {
       .orElse("full")
 
   /**
+   * Absolute `java` path for the desktop render subprocess when the module's bytecode target
+   * outruns the Gradle daemon JVM (or `composePreview.renderJavaVersion` is pinned), else `null` to
+   * keep the default. The desktop `javaexec` inherits no launcher, so [RenderJvmSelection] treats
+   * the daemon JVM as the baseline and only ever raises it. Returns `null` when no
+   * `JavaToolchainService` is available (never on a JVM/CMP module, defensive) so the render simply
+   * stays on the daemon JVM.
+   */
+  internal fun desktopRenderJavaExecutable(
+    project: Project,
+    extension: PreviewExtension,
+  ): Provider<String>? {
+    val toolchains = project.extensions.findByType(JavaToolchainService::class.java) ?: return null
+    val override =
+      project.providers.gradleProperty("composePreview.renderJavaVersion").orNull?.toIntOrNull()
+        ?: extension.renderJavaVersion.orNull
+    return RenderJvmSelection.daemonJvmExecutable(
+      toolchains = toolchains,
+      gradleDaemonMajor = JavaVersion.current().majorVersion.toInt(),
+      bytecodeMajor = detectDesktopBytecodeMajor(project),
+      explicitOverride = override,
+    )
+  }
+
+  /**
+   * Like [desktopRenderJavaExecutable] but for the desktop **daemon descriptor** — always pins a
+   * launcher (never null when a toolchain service exists), because VS Code / MCP spawn the daemon
+   * on their own JDK rather than the Gradle daemon JVM, so a null launcher lets a JDK-17 editor run
+   * newer bytecode and fail. See [RenderJvmSelection.daemonDescriptorExecutable].
+   */
+  internal fun desktopDaemonJavaExecutable(
+    project: Project,
+    extension: PreviewExtension,
+  ): Provider<String>? {
+    val toolchains = project.extensions.findByType(JavaToolchainService::class.java) ?: return null
+    val override =
+      project.providers.gradleProperty("composePreview.renderJavaVersion").orNull?.toIntOrNull()
+        ?: extension.renderJavaVersion.orNull
+    return RenderJvmSelection.daemonDescriptorExecutable(
+      toolchains = toolchains,
+      gradleDaemonMajor = JavaVersion.current().majorVersion.toInt(),
+      bytecodeMajor = detectDesktopBytecodeMajor(project),
+      explicitOverride = override,
+    )
+  }
+
+  /**
+   * Highest JVM bytecode target a desktop/JVM (Compose Multiplatform or plain Kotlin JVM) module
+   * compiles to — Java `targetCompatibility` off [JavaPluginExtension] plus Kotlin
+   * `compilerOptions.jvmTarget` off the JVM/desktop compile tasks — or `null` when neither reads.
+   * Feeds [desktopRenderJavaExecutable]. Fully defensive, mirroring the Android detector.
+   */
+  private fun detectDesktopBytecodeMajor(project: Project): Int? {
+    val candidates = mutableListOf<Int>()
+    runCatching {
+      project.extensions
+        .findByType(JavaPluginExtension::class.java)
+        ?.targetCompatibility
+        ?.let { BytecodeTargetDetector.parseTargetMajor(it.toString()) }
+        ?.let { candidates += it }
+    }
+    BytecodeTargetDetector.detectKotlinJvmTarget(
+        project,
+        listOf("compileKotlin", "compileKotlinJvm", "compileKotlinDesktop"),
+      )
+      ?.let { candidates += it }
+    return candidates.filter { it > 0 }.maxOrNull()
+  }
+
+  /**
    * `Provider<List<String>>` for the `composePreview.filter` Gradle property — the `--preview` name
    * filter's project-property form (issue #2066). Comma-separated so a single
    * `-PcomposePreview.filter=*FooPreview,BarPreview` can name several previews; blank segments are
@@ -1294,6 +1382,15 @@ internal object ComposePreviewTasks {
           .gradleProperty("composePreview.failOnEmpty")
           .map { it.toBooleanStrictOrNull() ?: false }
           .orElse(extension.failOnEmpty)
+      )
+      // `-PcomposePreview.retargetWearPreviews=false` wins over the extension so a Wear widget
+      // module can opt out of the watch-canvas retarget for a single run without editing
+      // build.gradle(.kts). Default true keeps the historical Wear-sticker behaviour (#2670).
+      retargetWearPreviews.set(
+        project.providers
+          .gradleProperty("composePreview.retargetWearPreviews")
+          .map { it.toBooleanStrictOrNull() ?: true }
+          .orElse(extension.retargetWearPreviews)
       )
       // No per-extension opt-in plumbed here — a11y data products are produced only by the
       // daemon (see `:daemon:android`'s `RenderEngine`). The standalone `composePreviewDiscover`

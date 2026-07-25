@@ -105,6 +105,48 @@ internal object RenderJvmSelection {
       }
     }
   }
+
+  /**
+   * The absolute `java` path for a render that forks the **Gradle daemon JVM** rather than an
+   * inherited launcher — the desktop (`javaexec`) render path, which sets no executable today and
+   * so runs on whatever JVM Gradle is on (in this repo, the JDK-17 daemon). Returns `null` when no
+   * upgrade is warranted (bytecode fits the daemon JVM and no override), so the caller leaves the
+   * `javaexec` default untouched — byte-for-byte the prior behaviour. A non-null value is a
+   * config-cache-safe [Provider] resolved lazily from the toolchain service.
+   */
+  fun daemonJvmExecutable(
+    toolchains: JavaToolchainService,
+    gradleDaemonMajor: Int,
+    bytecodeMajor: Int?,
+    explicitOverride: Int?,
+  ): Provider<String>? =
+    launcherFor(toolchains, null, gradleDaemonMajor, bytecodeMajor, explicitOverride)?.map {
+      it.executablePath.asFile.absolutePath
+    }
+
+  /**
+   * The absolute `java` path to bake into a **daemon launch descriptor** (`daemon-launch.json`).
+   * Unlike [daemonJvmExecutable], this is **always** non-null (for the selected major), because the
+   * daemon is spawned by an *external* process — VS Code (`findJavaOnPath()`) or the MCP server
+   * (its own `java.home`), not Gradle. A null launcher there does not mean "use the Gradle daemon
+   * JVM"; it means "let the editor guess", and a JDK-17 editor will then spawn the daemon on Java
+   * 17 and hit `UnsupportedClassVersionError` even when the Gradle build ran on a newer JVM. So the
+   * descriptor pins the JVM unconditionally: `max(Gradle daemon JVM, bytecode target)`, or the
+   * explicit override. The `max` with the Gradle daemon JVM keeps it resolvable with no
+   * provisioning in the common case (that JVM is always a detectable toolchain), while still
+   * writing an explicit path so the editor never falls back to an older JDK.
+   */
+  fun daemonDescriptorExecutable(
+    toolchains: JavaToolchainService,
+    gradleDaemonMajor: Int,
+    bytecodeMajor: Int?,
+    explicitOverride: Int?,
+  ): Provider<String> {
+    val target = selectMajor(null, gradleDaemonMajor, bytecodeMajor, explicitOverride)
+    return toolchains
+      .launcherFor { languageVersion.set(JavaLanguageVersion.of(target)) }
+      .map { it.executablePath.asFile.absolutePath }
+  }
 }
 
 /**

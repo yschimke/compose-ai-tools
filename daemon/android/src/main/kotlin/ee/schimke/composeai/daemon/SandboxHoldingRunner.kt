@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.renderer.ShadowFontsContractCompat
 import org.junit.runners.model.FrameworkMethod
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -179,6 +180,16 @@ open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(tes
     // implementation and records the query in `PermissionsController` for the
     // `compose/permissions` data product.
     shadows += ShadowContextWrapperPermissionTracker::class.java
+    // Downloadable-GoogleFont shadow. Always registered — androidx.core's `FontsContractCompat` is
+    // on every Compose consumer classpath, so the `@Implements` link always resolves (same safety as
+    // the permission-tracker shadow above). Without it the daemon render path (`bundle pack` /
+    // serve, incl. `--with-semantics`) hits the real GMS Fonts provider — absent under Robolectric —
+    // so every `Font(GoogleFont(...))` silently rendered in the platform fallback (Roboto). The
+    // one-shot `bundle render` path got this shadow via its synthesized `robolectric.properties`, but
+    // the daemon never did. With it, a face resolves from the shared cache
+    // (`composeai.fonts.cacheDir`) / a live fetch, and a genuinely unresolvable face is recorded for
+    // `RenderEngine`'s fatal-on-fallback gate instead of vanishing.
+    shadows += ShadowFontsContractCompat::class.java
     return shadows.toTypedArray()
   }
 }

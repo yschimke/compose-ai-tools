@@ -698,15 +698,17 @@ abstract class BundlePreviewTask : DefaultTask() {
 
   /**
    * Look for a captured IR sidecar emitted by the render step next to [preview]'s PNG. The render
-   * path writes the IR alongside the rendered image using the same stem: `<stem>.rcdoc` for a
-   * Remote Compose document, or `<stem>.tilelayout` (+ optional `<stem>.tileresources`) for a Wear
+   * path writes the IR alongside the rendered image using the same stem: `<stem>.rc` for a Remote
+   * Compose document, or `<stem>.tilelayout` (+ optional `<stem>.tileresources`) for a Wear
    * protolayout proto. Returns `null` when the preview's flavour has no IR (the common case — every
    * plain `@Composable @Preview`), in which case the preview stays on the class-minimisation path.
    *
-   * Resolution mirrors [resolvePreviewPng]: the stem comes from the primary capture's
-   * `renderOutput`, and the file lives under [rendersDir]. IR sidecars are NOT fanned out across
-   * `@PreviewParameter` variants (a tile / remote document is a single artefact), so unlike the PNG
-   * path there's no sibling search.
+   * Resolution mirrors [resolvePreviewPng] — including its `@PreviewParameter` sibling search. A
+   * device-less param preview renders one document per value into `<stem>_<param>.<ext>` siblings
+   * (there is no un-suffixed `<stem>.<ext>`), and the bundle carries one representative artefact
+   * per preview id: [resolvePreviewPng] bakes the first (min-named) sibling PNG, so this packs the
+   * IR of that same sibling. Without the sibling fallback a param-driven Remote Compose / tile
+   * preview found its cover PNG but no IR, and silently dropped back to bytecode carriage.
    */
   /**
    * Look for the per-preview override sidecar the render step wrote next to [preview]'s PNG
@@ -819,21 +821,29 @@ abstract class BundlePreviewTask : DefaultTask() {
       preview.captures.firstOrNull()?.renderOutput?.takeIf { it.isNotEmpty() } ?: return null
     val stem = rel.substringAfterLast('/').removeSuffix(".png")
 
-    fun read(ext: String): ByteArray? {
-      val f = File(rendersRoot, "$stem.$ext")
-      return if (f.isFile && f.length() > 0) f.readBytes() else null
-    }
+    fun resolveIrFile(ext: String): File? = resolveIrSidecar(rendersRoot, stem, ext)
 
-    read(IR_EXT_REMOTECOMPOSE)?.let {
-      return ResolvedIr(format = IR_FORMAT_REMOTECOMPOSE, ext = IR_EXT_REMOTECOMPOSE, bytes = it)
+    resolveIrFile(IR_EXT_REMOTECOMPOSE)?.let {
+      return ResolvedIr(
+        format = IR_FORMAT_REMOTECOMPOSE,
+        ext = IR_EXT_REMOTECOMPOSE,
+        bytes = it.readBytes(),
+      )
     }
-    read(IR_EXT_PROTOLAYOUT_LAYOUT)?.let { layout ->
+    resolveIrFile(IR_EXT_PROTOLAYOUT_LAYOUT)?.let { layout ->
+      // The tile's resources proto shares the layout's exact stem (param suffix and all), so derive
+      // the companion from the resolved layout file rather than re-searching independently.
+      val layoutStem = layout.name.removeSuffix(".$IR_EXT_PROTOLAYOUT_LAYOUT")
+      val resources =
+        File(rendersRoot, "$layoutStem.$IR_EXT_PROTOLAYOUT_RESOURCES").takeIf {
+          it.isFile && it.length() > 0
+        }
       return ResolvedIr(
         format = IR_FORMAT_PROTOLAYOUT,
         ext = IR_EXT_PROTOLAYOUT_LAYOUT,
-        bytes = layout,
+        bytes = layout.readBytes(),
         resourcesExt = IR_EXT_PROTOLAYOUT_RESOURCES,
-        resourcesBytes = read(IR_EXT_PROTOLAYOUT_RESOURCES),
+        resourcesBytes = resources?.readBytes(),
       )
     }
     return null
@@ -1488,4 +1498,25 @@ abstract class BundlePreviewTask : DefaultTask() {
       baos.toByteArray()
     }
   }
+}
+
+/**
+ * Resolve the captured IR sidecar of extension [ext] for a preview whose primary render stem is
+ * [stem], under [rendersRoot]. Returns the exact `<stem>.<ext>` when present, else the first
+ * (lexicographically min-named) `@PreviewParameter` sibling — `<stem>_<param>.<ext>` or
+ * `<stem>--<dim>.<ext>` — matching the representative cover PNG
+ * `BundlePreviewTask.resolvePreviewPng` bakes for the same preview. `null` when neither exists.
+ * Top-level + internal so the fan-out behaviour is unit-testable without a Gradle task instance.
+ */
+internal fun resolveIrSidecar(rendersRoot: File, stem: String, ext: String): File? {
+  val exact = File(rendersRoot, "$stem.$ext")
+  if (exact.isFile && exact.length() > 0) return exact
+  return rendersRoot
+    .listFiles { f ->
+      f.isFile &&
+        f.length() > 0 &&
+        f.name.endsWith(".$ext") &&
+        (f.name.startsWith("${stem}_") || f.name.startsWith("$stem--"))
+    }
+    ?.minByOrNull { it.name }
 }

@@ -6,7 +6,7 @@ the browser, Node, and VS Code webviews.
 
 We vendor it so `compose-preview` can offer an **in-browser Remote Compose render
 lane** — the client-side counterpart of the CMP Kotlin/Wasm tier — so a viewer can
-render a catalog's captured `.rcdoc` document (the bytes packed at `ir/<id>.rcdoc`)
+render a catalog's captured `.rc` document (the bytes packed at `ir/<id>.rc`)
 without a server-side Robolectric daemon.
 
 ## Upstream
@@ -38,7 +38,7 @@ element, and `RC.base64ToArrayBuffer`. Render a document:
 
 ```js
 const player = new RC.RcdPlayer(canvas);
-await player.loadFromArrayBuffer(rcdocBytes);
+await player.loadFromArrayBuffer(rcBytes);
 // Named-value overrides (match a preview's declared knob names):
 player.getRemoteContext().setNamedFloatOverride('progress', 0.15);
 player.repaint();
@@ -47,7 +47,7 @@ player.repaint();
 ## Validation
 
 Built as above and rendered our actual captured `remote-m3` documents in headless
-Chromium: `CircularProgressRemote.rcdoc` paints correctly (the determinate arc at
+Chromium: `CircularProgressRemote.rc` paints correctly (the determinate arc at
 its 0.66 default). The render is captured at
 `docs/design/evidence/rc-ts-player/circularprogress-clientside.png`.
 

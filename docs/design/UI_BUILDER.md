@@ -98,7 +98,7 @@ Every row below is a shipped seam. Paths are repo-relative.
 | **Customise device dimensions** | `PreviewOverrides`: `device`, `widthPx`/`heightPx`, `fontScale`, `density`, `orientation`, breakpoints (`cli/.../serve/ServeOverrides.kt`). |
 | **Slots + placeholders** | `runtimes/slots/.../PreviewSlot.kt` — `PreviewSlot(name){}` → `testTag="dp-slot:<name>"`; `LocalSlotMode`/`slotMode=true` draws labelled empty placeholders. `data/layoutinspector/core/.../PreviewSlots.kt` → `/render/<id>.slots` returns `{previewId, slots:[{name, bounds}]}`. |
 | **Customise content per component** | `compose/overrides`: `PreviewOverrideDeclaration{key,type(string/int/float/bool/color),default,current,index}` → `previews/<id>.overrides.json` (`data/preview-overrides/core/.../PreviewOverrideModels.kt`). The property panel is already modelled. |
-| **Remember each component as data (not opaque SVG/PNG)** | (1) the enumerable override knobs above; (2) **RemoteCompose** `RemoteDocument` byte stream `ir/<id>.rcdoc` — code-free, replayable, reseedable via `namedValues` (`data/remotecompose/core/.../RemoteComposeModels.kt`, `compose/remotecompose`). |
+| **Remember each component as data (not opaque SVG/PNG)** | (1) the enumerable override knobs above; (2) **RemoteCompose** `RemoteDocument` byte stream `ir/<id>.rc` — code-free, replayable, reseedable via `namedValues` (`data/remotecompose/core/.../RemoteComposeModels.kt`, `compose/remotecompose`). |
 | **Refresh as code is fixed** | daemon live re-render + WebSocket stream; figma-plugin **Refresh selected** rebuilds `/render/<id>` from provenance stamps; RemoteCompose reseeds `namedValues` *without rebuilding the document*. |
 | **Replace a component** | figma-plugin provenance stamps (`RenderSource`) + non-destructive **reconcile** (match by `componentId`, not position). |
 | **Variants synced to one structure** | native Figma **component sets** (`state=…, theme=…, size=…`) + **variable collections**; reconcile refreshes each variant in place from the code render. |
@@ -217,7 +217,7 @@ Properties that matter:
   `ServePerPreviewLiveHost` machinery, not a new renderer.
 - **RemoteCompose is the "flatten to one replayable doc" companion.** When a
   designer wants the whole composed screen as a single portable, code-free
-  artifact (for embedding, or a stable reference render), emit an `ir/<id>.rcdoc`
+  artifact (for embedding, or a stable reference render), emit an `ir/<id>.rc`
   of the composed result — replayable with no source code.
 - **The figma-plugin consumes `screen.json` directly**: it already has
   `placeSlots` + `fillSlot`; feeding it a saved composition just replays the fills
@@ -296,7 +296,7 @@ diffed today.
 - **Nested slots.** Cards already have slots; a card dropped into a scaffold slot
   yields nested `dp-slot:` regions. Does the plugin recurse, or is one level enough
   for v1? Leaning: one level for v1, recurse later.
-- **RemoteCompose dependency.** Using `.rcdoc` as the "whole composed screen as one
+- **RemoteCompose dependency.** Using `.rc` as the "whole composed screen as one
   data document" inherits an *alpha* androidx runtime (`compileSdk 37`, opaque
   player canvas, single colour mode). Acceptable for an opt-in export; not the
   default persistence format (that's `screen.json`).

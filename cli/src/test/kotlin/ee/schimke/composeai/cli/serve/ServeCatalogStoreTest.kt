@@ -319,6 +319,70 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `a trusted liveBundle catalog materialises ir rc docs re-keyed to the catalog id`() {
+    // The live bundle carries the captured Remote Compose document as `ir/<daemon-id>.rc`; the
+    // store
+    // re-keys it to the published catalog id (via the same alias) so the baked host's client-side
+    // canvas lane serves it at `/render/<catalog-id>.rc`. A preview whose daemon twin has no `.rc`
+    // entry stays docless.
+    val root = tempRoot()
+    val rcBytes = byteArrayOf(0x52, 0x43, 0x07, 0x08)
+    val bundle =
+      polyglotBundle(
+        manifest =
+          """{"schemaVersion":8,"backend":"desktop","previewIds":["a"],"coverPreviewId":"a",""" +
+            """"externalResources":[]}""",
+        extra = mapOf("ir/FilledButton_Dark.rc" to rcBytes),
+      )
+    val json =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+       "components":[{"componentId":"Button/Filled","images":[
+         {"path":"images/button-filled/ideal__default__dark.png","theme":"dark","previewId":"FilledButton_Dark"},
+         {"path":"images/button-filled/ideal__keyboard-focus__dark.png","theme":"dark","previewId":"FilledButton_Focus"}]}]}
+      """
+        .trimIndent()
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> json.toByteArray()
+        url.endsWith("bundle/compose-m3-bundle.png") -> bundle
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+    val trust =
+      TrustStore(
+        branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
+      )
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = trust,
+        fetch = fetch,
+        // Return false so the live builder yields and the baked static host is registered — that's
+        // the host whose `remoteComposeDoc` serves the materialised `.rc`.
+        buildTrustedBundle = { _, _, _, _, _, _ -> false },
+      )
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    // On disk: the daemon-keyed entry landed re-keyed to the catalog id, beside `previews/`.
+    assertTrue(
+      File(root, "compose-m3/ir/button-filled__ideal__default__dark.rc").isFile,
+      "ir/<catalog-id>.rc materialised",
+    )
+    val host = registered.getValue("compose-m3")
+    assertTrue(
+      rcBytes.contentEquals(host.remoteComposeDoc("button-filled__ideal__default__dark")),
+      "the baked host serves the re-keyed document bytes",
+    )
+    assertTrue(host.hasRemoteComposeDoc("button-filled__ideal__default__dark"))
+    // The focus variant's daemon twin (FilledButton_Focus) has no `.rc` entry → docless.
+    assertEquals(null, host.remoteComposeDoc("button-filled__ideal__keyboard-focus__dark"))
+  }
+
+  @Test
   fun `the per-preview fetcher fetches a daemon-id's own split bundle beside the liveBundle`() {
     // The builder is handed a per-preview fetcher: given a daemon-preview id it fetches that
     // preview's OWN FULL split bundle from <liveBundle.path>/previews/<daemon-id>.png on the same
@@ -640,7 +704,10 @@ class ServeCatalogStoreTest {
     }
 
   /** Build a minimal desktop-bundle polyglot (PNG cover + zip) with the given bundle.json. */
-  private fun polyglotBundle(manifest: String): ByteArray {
+  private fun polyglotBundle(
+    manifest: String,
+    extra: Map<String, ByteArray> = emptyMap(),
+  ): ByteArray {
     val cover = png()
     val appJar =
       ByteArrayOutputStream()
@@ -661,6 +728,7 @@ class ServeCatalogStoreTest {
                 "bundle.json" to manifest.toByteArray(),
                 "previews.json" to """{"previews":[{"id":"a","functionName":"A"}]}""".toByteArray(),
                 "classes/app.jar" to appJar,
+                *extra.entries.map { it.key to it.value }.toTypedArray(),
               )) {
               z.putNextEntry(java.util.zip.ZipEntry(name))
               z.write(bytes)
