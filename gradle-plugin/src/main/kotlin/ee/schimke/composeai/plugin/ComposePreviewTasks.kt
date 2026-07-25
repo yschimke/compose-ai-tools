@@ -1004,11 +1004,16 @@ internal object ComposePreviewTasks {
       task = task,
       // CMP / Kotlin-JVM: the consumer's runtime classpath is the compile classpath. Empty
       // file collection when no runtime config was found (rare; the desktop task wiring
-      // would have logged that case). Resolved through a lazy `incoming.artifactView {}.files`
-      // view so the BTA compile classpath never pins the raw `Configuration` into the daemon
-      // bootstrap task's config-cache state — see issue #1796. (The Android caller already passes
-      // AGP's config-cache-safe `Test.classpath`, so only this desktop path needs the wrap.)
-      userCompileClasspath = userRuntimeConfig?.incoming?.artifactView {}?.files ?: project.files(),
+      // would have logged that case). Resolved through `pinnedConsumerClasspath`'s lazy
+      // `incoming.artifactView { … }.files` view so the BTA compile classpath never pins the raw
+      // `Configuration` into the daemon bootstrap task's config-cache state — see issue #1796. (The
+      // Android caller already passes AGP's config-cache-safe `Test.classpath`, so only this
+      // desktop path needs the wrap.) The view pins `artifactType=jar` (issue #1852): a KMP-Android
+      // module's `androidRuntimeClasspath` exposes ~12 secondary variants, so a bare
+      // `artifactView {}` here fails with `AmbiguousArtifactsFailure` under AGP 9.3 and sinks the
+      // whole daemon-start — the same fix the render/discover/guard consumer views already carry.
+      userCompileClasspath =
+        userRuntimeConfig?.let { pinnedConsumerClasspath(project, it.name) } ?: project.files(),
       // MODULE_NAME mirrors KGP's default `compileKotlin` for non-multiplatform JVM modules
       // — `project.name`, no path-mangling. The bta-host-fixture spike confirmed Gradle
       // uses this exact spelling in `kotlin.Metadata.d2[]`.
