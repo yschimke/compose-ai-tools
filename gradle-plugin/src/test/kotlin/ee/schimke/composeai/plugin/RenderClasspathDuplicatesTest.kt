@@ -49,7 +49,10 @@ class RenderClasspathDuplicatesTest {
   }
 
   @Test
-  fun `clean classpath reports nothing`() {
+  fun `module-level check ignores a split family - each coordinate is at one version`() {
+    // Scope boundary, not a clean bill of health: bcprov 1.85 next to bcutil 1.84 is one version
+    // per coordinate, so `find` correctly sees nothing. Catching it needs `findFamilySkew` (below)
+    // — without that, this classpath passes `classpathDuplicates=fail` and still link-errors.
     val duplicates =
       RenderClasspathDuplicates.find(
         listOf(
@@ -65,6 +68,155 @@ class RenderClasspathDuplicatesTest {
       )
 
     assertThat(duplicates).isEmpty()
+  }
+
+  @Test
+  fun `family check catches the bouncycastle split that the module check cannot`() {
+    val skews =
+      RenderClasspathDuplicates.findFamilySkew(
+        listOf(
+          cached("org.bouncycastle", "bcprov-jdk18on", "1.85"),
+          cached("org.bouncycastle", "bcutil-jdk18on", "1.84"),
+          cached("org.bouncycastle", "bcpkix-jdk18on", "1.84"),
+          cached("androidx.test", "core", "1.6.1"),
+        ),
+        coordinates(
+          module("org.bouncycastle", "bcprov-jdk18on", "1.85"),
+          module("org.bouncycastle", "bcutil-jdk18on", "1.84"),
+          module("org.bouncycastle", "bcpkix-jdk18on", "1.84"),
+          module("androidx.test", "core", "1.6.1"),
+        ),
+      )
+
+    assertThat(skews.map { it.group }).containsExactly("org.bouncycastle")
+    assertThat(skews.single().versions).containsExactly("1.85", "1.84").inOrder()
+    assertThat(skews.single().coordinates)
+      .containsExactly("bcprov-jdk18on:1.85", "bcutil-jdk18on:1.84", "bcpkix-jdk18on:1.84")
+      .inOrder()
+  }
+
+  @Test
+  fun `an aligned family is not reported`() {
+    val skews =
+      RenderClasspathDuplicates.findFamilySkew(
+        listOf(
+          cached("org.bouncycastle", "bcprov-jdk18on", "1.85"),
+          cached("org.bouncycastle", "bcutil-jdk18on", "1.85"),
+          cached("org.bouncycastle", "bcpkix-jdk18on", "1.85"),
+        ),
+        coordinates(
+          module("org.bouncycastle", "bcprov-jdk18on", "1.85"),
+          module("org.bouncycastle", "bcutil-jdk18on", "1.85"),
+          module("org.bouncycastle", "bcpkix-jdk18on", "1.85"),
+        ),
+      )
+
+    assertThat(skews).isEmpty()
+  }
+
+  @Test
+  fun `one coordinate at two versions is left to the module check, not double-reported`() {
+    // `find` already names this; repeating it as a family skew would be noise, and noise is what
+    // makes a warning ignorable.
+    val skews =
+      RenderClasspathDuplicates.findFamilySkew(
+        listOf(
+          cached("org.bouncycastle", "bcprov-jdk18on", "1.85"),
+          cached("org.bouncycastle", "bcprov-jdk18on", "1.84"),
+        ),
+        coordinates(
+          module("org.bouncycastle", "bcprov-jdk18on", "1.85"),
+          module("org.bouncycastle", "bcprov-jdk18on", "1.84"),
+        ),
+      )
+
+    assertThat(skews).isEmpty()
+  }
+
+  @Test
+  fun `a group outside the known-families table is not guessed at`() {
+    // `com.example` might well be one release train, but the plugin has no way to know that, and
+    // inventing families would produce exactly the false reports this detector avoids elsewhere.
+    val skews =
+      RenderClasspathDuplicates.findFamilySkew(
+        listOf(
+          cached("com.example", "thing-core", "1.0"),
+          cached("com.example", "thing-util", "2.0"),
+        ),
+        coordinates(
+          module("com.example", "thing-core", "1.0"),
+          module("com.example", "thing-util", "2.0"),
+        ),
+      )
+
+    assertThat(skews).isEmpty()
+  }
+
+  @Test
+  fun `family report names the coordinates and hands back a pasteable alignment rule`() {
+    val skews =
+      RenderClasspathDuplicates.findFamilySkew(
+        listOf(
+          cached("org.bouncycastle", "bcprov-jdk18on", "1.85"),
+          cached("org.bouncycastle", "bcutil-jdk18on", "1.84"),
+        ),
+        coordinates(
+          module("org.bouncycastle", "bcprov-jdk18on", "1.85"),
+          module("org.bouncycastle", "bcutil-jdk18on", "1.84"),
+        ),
+      )
+
+    val report = RenderClasspathDuplicates.reportFamilySkew(skews, ":app:composePreviewRender")
+
+    assertThat(report).contains(":app:composePreviewRender")
+    assertThat(report).contains("org.bouncycastle")
+    assertThat(report).contains("bcprov-jdk18on:1.85")
+    assertThat(report).contains("bcutil-jdk18on:1.84")
+    assertThat(report).contains("BouncycastleAlignmentRule : ComponentMetadataRule")
+    assertThat(report).contains("belongsTo")
+    // The caveat matters as much as the snippet: the rule is project-wide, so applying it can move
+    // a version the consumer's app actually ships.
+    assertThat(report).contains("EVERY configuration")
+  }
+
+  @Test
+  fun `check fails on a family skew in fail mode and warns by default`() {
+    val project = ProjectBuilder.builder().build()
+    val task = project.tasks.register("probeFamily").get()
+    val prov = project.file(cached("org.bouncycastle", "bcprov-jdk18on", "1.85"))
+    val util = project.file(cached("org.bouncycastle", "bcutil-jdk18on", "1.84"))
+    val coords =
+      mapOf(
+        prov.absolutePath to "org.bouncycastle:bcprov-jdk18on:1.85",
+        util.absolutePath to "org.bouncycastle:bcutil-jdk18on:1.84",
+      )
+
+    RenderClasspathDuplicates.check(
+      task,
+      listOf(prov, util),
+      RenderClasspathDuplicates.MODE_WARN,
+      coords,
+    )
+    RenderClasspathDuplicates.check(
+      task,
+      listOf(prov, util),
+      RenderClasspathDuplicates.MODE_OFF,
+      coords,
+    )
+
+    val thrown =
+      runCatching {
+          RenderClasspathDuplicates.check(
+            task,
+            listOf(prov, util),
+            RenderClasspathDuplicates.MODE_FAIL,
+            coords,
+          )
+        }
+        .exceptionOrNull()
+
+    assertThat(thrown).isInstanceOf(GradleException::class.java)
+    assertThat(thrown!!.message).contains("one release train")
   }
 
   @Test
