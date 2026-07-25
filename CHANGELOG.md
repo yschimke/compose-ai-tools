@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.17.21](https://github.com/yschimke/compose-ai-tools/compare/v0.17.20...v0.17.21) (2026-07-25)
+
+
+### Features
+
+* **design-artifacts:** PNG vs Remote Compose (JS player) parity page ([#2737](https://github.com/yschimke/compose-ai-tools/issues/2737)) ([eda1108](https://github.com/yschimke/compose-ai-tools/commit/eda1108b407c475b8c8f5598b6d1d8fbfaea5b6d))
+* **rc-player:** render canvas-operations draw blocks (opcode 173) ([#2740](https://github.com/yschimke/compose-ai-tools/issues/2740)) ([b2a8167](https://github.com/yschimke/compose-ai-tools/commit/b2a8167582f9585edb9f6851acf0c5b7b7773603))
+
+
+### Bug Fixes
+
+* **gradle-plugin:** resolve the render classpath as one graph, not four ([#2739](https://github.com/yschimke/compose-ai-tools/issues/2739)) ([ec4b0d9](https://github.com/yschimke/compose-ai-tools/commit/ec4b0d97350828222f1ba36c1eeaf2b4f2be52ed))
+* **serve:** don't open a replacement daemon while the outgoing one is closing ([#2742](https://github.com/yschimke/compose-ai-tools/issues/2742)) ([063c6bb](https://github.com/yschimke/compose-ai-tools/commit/063c6bb8fa774565e8fa3f9efb2b0444d6c8959f))
+* **serve:** keep a suspended catalog's trust on /status instead of a blank row ([#2738](https://github.com/yschimke/compose-ai-tools/issues/2738)) ([0da3749](https://github.com/yschimke/compose-ai-tools/commit/0da37499d0824580382b02a40f9637fe1c59f0ad))
+
 ## [0.17.20](https://github.com/yschimke/compose-ai-tools/compare/v0.17.19...v0.17.20) (2026-07-25)
 
 
