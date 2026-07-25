@@ -419,7 +419,7 @@ form — a stable schema built for a monitor or a **Home Assistant** REST sensor
   "config": { "host": "0.0.0.0", "port": 8080, "allowRenderTrusted": true, "trustStore": true,
     "acceptBundles": false, "catalogRefreshSeconds": 600, "maxConcurrentRenders": 4, "liveSeats": 5 },
   "catalogList": [ { "id": "compose-m3", "listed": true, "trust": "branch:…", "previews": 42,
-    "live": true, "running": false, "path": "/compose-m3/" } ],
+    "live": true, "running": false, "metaStale": false, "path": "/compose-m3/" } ],
   "runningServers": [ { "id": "wear-m3", "label": "wear-m3", "backend": "android", "seatWeight": 2,
     "activeStreams": 0, "uptimeSeconds": 120,
     "renderStats": { "renders": 12, "ok": 11, "failed": 1, "timedOut": 1, "busy": 0,
@@ -429,6 +429,14 @@ form — a stable schema built for a monitor or a **Home Assistant** REST sensor
   "recentDaemonFailures": [],
   "renderStats": { "renders": 12, "ok": 11, "failed": 1, "…": "server-wide roll-up" } }
 ```
+
+A catalog row carries `metaStale: true` when its `trust` / `title` / `previews` / provenance are the
+**last-known snapshot** taken while the catalog was resident rather than a live read — its daemon is
+idle, and `/status` never resumes one just to answer a poll. Those facts come from the delivery
+branch, not the daemon, so a suspension doesn't invalidate them and the catalog still counts toward
+`catalogs.trusted`; the HTML page marks such a row "last known" under its trust badge. A **null**
+`trust` means genuinely unknown (a non-catalog session, or one never yet resident) — it never means
+untrusted, which the verdict string `unverified` is what says.
 
 Each running daemon carries `renderStats` — serve-side render-latency counters (cold vs warm
 counts, the first-render latency, recent p50/p95 over the last 128 renders, cache hits, busy

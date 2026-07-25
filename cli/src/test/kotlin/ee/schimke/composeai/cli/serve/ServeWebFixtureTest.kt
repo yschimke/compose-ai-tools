@@ -702,7 +702,7 @@ class ServeWebFixtureTest {
             overallOk = false,
             summary =
               listOf(
-                ServeWeb.Stat("Catalogs", "3"),
+                ServeWeb.Stat("Catalogs", "4"),
                 ServeWeb.Stat("Live daemons running", "1"),
                 ServeWeb.Stat("Active streams", "2"),
                 ServeWeb.Stat("Live seats", "3 free / 5"),
@@ -745,6 +745,22 @@ class ServeWebFixtureTest {
                   degradation = "this delivery branch publishes no live bundle this server can run",
                   provenance =
                     "yschimke/compose-ai-tools@design-artifacts/remote-m3 · 2026-07-17T09:30:00.000Z",
+                ),
+                // A trusted catalog whose daemon has gone idle: its facts are the last-known
+                // snapshot, so the badge renders with a "last known" qualifier instead of the blank
+                // cell that used to read as untrusted.
+                ServeWeb.StatusCatalog(
+                  id = "confetti-wear",
+                  title = "Confetti Wear",
+                  listed = true,
+                  trust = "branch:joreilly/Confetti@design-artifacts/confetti-wear",
+                  previews = 18,
+                  live = true,
+                  running = false,
+                  degradation = null,
+                  provenance =
+                    "joreilly/Confetti@design-artifacts/confetti-wear · 2026-07-17T09:30:00.000Z",
+                  stale = true,
                 ),
                 ServeWeb.StatusCatalog(
                   id = "cadence",

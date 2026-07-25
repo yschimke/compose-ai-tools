@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -105,6 +106,21 @@ class ServeSessionRegistry(
   private val lock = ReentrantLock()
   private val sessions = HashMap<String, Entry>()
   private var closed = false
+
+  /**
+   * Observers notified as a session transitions resident→suspended, with the host that's about to
+   * be closed. The seam exists so a caller can snapshot facts that are only readable off a *live*
+   * host (a catalog's trust verdict, provenance and preview count) before suspension makes them
+   * unobservable — [peekHost] deliberately never resumes, so without this the `/status` page can't
+   * tell "suspended, trusted" from "untrusted". Invoked **outside** the registry lock, so a
+   * listener may call back in; failures are swallowed (an observer must never block suspension).
+   */
+  private val suspendListeners = CopyOnWriteArrayList<(String, ServeHost) -> Unit>()
+
+  /** Register a resident→suspended observer. See [suspendListeners]. */
+  fun addSuspendListener(listener: (sessionId: String, host: ServeHost) -> Unit) {
+    suspendListeners += listener
+  }
 
   // Wall-clock of the most recent acquire/lease/release across all sessions — the basis for the
   // server-level idle check ([idleMillis]) that the ephemeral exit-when-idle watchdog reads.
@@ -232,26 +248,39 @@ class ServeSessionRegistry(
     if (sessions.values.any { it.leases > 0 }) null else now - lastActivity
   }
 
-  /** Suspend (close the daemon of, keep the state of) resident sessions idle past the timeout. */
-  fun suspendIdle(): Int = lock.withLock {
-    if (closed) return 0
-    val now = clock()
-    var suspended = 0
-    for (entry in sessions.values) {
-      val host = entry.host ?: continue
-      if (
-        !entry.pinned &&
-          entry.leases == 0 &&
-          host.activeStreamCount() == 0 &&
-          now - entry.lastAccess >= idleTimeoutMillis
-      ) {
-        entry.host = null
-        entry.startedAt = null
-        runCatching { host.close() }
-        suspended++
+  /**
+   * Suspend (close the daemon of, keep the state of) resident sessions idle past the timeout.
+   *
+   * The [suspendListeners] notification and the host `close()` both run **after** the lock is
+   * released — a `close()` can block on daemon shutdown, and a listener may re-enter the registry —
+   * so the only work under the lock is detaching each host from its entry. Listeners see the host
+   * before it's closed, so a snapshot they take reads live state.
+   */
+  fun suspendIdle(): Int {
+    val detached = lock.withLock {
+      if (closed) return 0
+      val now = clock()
+      val detached = mutableListOf<Pair<String, ServeHost>>()
+      for ((id, entry) in sessions) {
+        val host = entry.host ?: continue
+        if (
+          !entry.pinned &&
+            entry.leases == 0 &&
+            host.activeStreamCount() == 0 &&
+            now - entry.lastAccess >= idleTimeoutMillis
+        ) {
+          entry.host = null
+          entry.startedAt = null
+          detached += id to host
+        }
       }
+      detached
     }
-    suspended
+    for ((id, host) in detached) {
+      suspendListeners.forEach { listener -> runCatching { listener(id, host) } }
+      runCatching { host.close() }
+    }
+    return detached.size
   }
 
   /**
@@ -286,6 +315,10 @@ class ServeSessionRegistry(
    * The resident host for [sessionId] **without** resuming a suspended one — for read-only status
    * introspection (`/status`) that must not wake an idle daemon (a monitor/Home Assistant poll
    * shouldn't keep every live catalog's daemon alive). Null when unknown or currently suspended.
+   *
+   * A null here means "not resident", **not** "no such metadata": a caller that needs a suspended
+   * session's facts should keep its own last-known snapshot via [addSuspendListener] rather than
+   * reading absence as a verdict.
    */
   fun peekHost(sessionId: String): ServeHost? = lock.withLock { sessions[sessionId]?.host }
 

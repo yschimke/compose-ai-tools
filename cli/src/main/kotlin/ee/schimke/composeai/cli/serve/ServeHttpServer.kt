@@ -33,6 +33,7 @@ import java.io.File
 import java.io.InputStream
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -687,7 +688,59 @@ class ServeHttpServer(
     val running: Boolean,
     val degradation: String?,
     val provenance: ServeWeb.CatalogProvenance?,
+    /**
+     * The metadata above is a **last-known snapshot** of a now-suspended catalog
+     * ([catalogMetaSeen]) rather than a live read, because the session's daemon is idle. Facts a
+     * suspension can't change — trust, provenance, preview count — so it's reported, just marked as
+     * not-live.
+     */
+    val stale: Boolean = false,
   )
+
+  /**
+   * Last-known catalog metadata per session id, captured while the host was resident. A suspended
+   * live catalog can't be read (`peekHost` never resumes, by design — a status poll must not wake
+   * every idle daemon), which used to render it as a blank row: no title, no preview count, and an
+   * empty trust cell **indistinguishable from untrusted**. These facts come from the signed/fetched
+   * delivery branch, not from the daemon, so a suspension doesn't invalidate them — remembering
+   * them keeps `/status` honest without costing a resume.
+   *
+   * Written on suspension (see the [sessions] listener below) and refreshed on every resident read,
+   * so it tracks a catalog refresh that re-registers a system with new provenance.
+   */
+  private val catalogMetaSeen = ConcurrentHashMap<String, CatalogMeta>()
+
+  /** A resident-time snapshot of one catalog's status facts. See [catalogMetaSeen]. */
+  private data class CatalogMeta(
+    val title: String?,
+    val trust: String?,
+    val previews: Int?,
+    val degradation: String?,
+    val provenance: ServeWeb.CatalogProvenance?,
+  )
+
+  init {
+    // Snapshot a catalog's facts as its daemon goes idle — the last moment they're readable.
+    sessions.addSuspendListener { id, host -> rememberCatalogMeta(id, host) }
+  }
+
+  /**
+   * Record [host]'s catalog facts under [id], if it is a catalog/bundle host. Cheap field reads —
+   * safe to call from the suspend listener (which runs outside the registry lock) and from the
+   * status path. A non-catalog session (a plain module) is ignored: it has no trust/provenance to
+   * remember, and caching a null would say more than we know.
+   */
+  private fun rememberCatalogMeta(id: String, host: ServeHost) {
+    val bundle = catalogBundleHost(host) ?: return
+    catalogMetaSeen[id] =
+      CatalogMeta(
+        title = bundle.title?.takeIf { it.isNotBlank() } ?: host.label,
+        trust = BundleVerifier.summary(bundle.trust),
+        previews = host.previews.size,
+        degradation = host.degradations.firstOrNull()?.detail,
+        provenance = bundle.provenance,
+      )
+  }
 
   /**
    * Raw status snapshot; the single source both the HTML page and the JSON response project from.
@@ -754,6 +807,7 @@ class ServeHttpServer(
               branch = c.provenance?.branch,
               generatedAt = c.provenance?.generatedAt,
               path = "/${c.id}/",
+              metaStale = c.stale,
             )
           },
         runningServers =
@@ -844,6 +898,7 @@ class ServeHttpServer(
               live = c.live,
               running = c.running,
               degradation = c.degradation,
+              stale = c.stale,
               provenance =
                 c.provenance?.let { p ->
                   buildString {
@@ -883,8 +938,10 @@ class ServeHttpServer(
    * daemon: a pinned static baked host is always resident (present, no live stream); a live catalog
    * is present-with-live-stream when its daemon is up and **absent** when suspended. Catalog
    * metadata (title/trust/provenance) is read via [ServeSessionRegistry.peekHost] — also
-   * non-resuming — so a suspended live catalog shows minimal detail rather than being
-   * force-resumed.
+   * non-resuming — so a suspended live catalog is reported from its last-known snapshot
+   * ([catalogMetaSeen], flagged [CatalogStat.stale]) rather than being force-resumed. It is *not*
+   * reported as blank: an empty trust cell reads as "untrusted", which is a different and wrong
+   * claim about a catalog that merely has an idle daemon.
    */
   private fun buildStatusData(): StatusData {
     val running = sessions.runningDaemons()
@@ -898,16 +955,20 @@ class ServeHttpServer(
       // catalog; present-with-live-stream ⇒ its daemon is up; present-without ⇒ static baked host.
       val running = daemon?.hasLiveStream == true
       val live = daemon == null || daemon.hasLiveStream
+      // Resident: read live and refresh the snapshot (a catalog refresh can change provenance).
+      if (host != null) rememberCatalogMeta(id, host)
+      val seen = if (host == null) catalogMetaSeen[id] else null
       CatalogStat(
         id = id,
         listed = listed,
-        title = bundle?.title?.takeIf { it.isNotBlank() } ?: host?.label,
-        trust = bundle?.let { BundleVerifier.summary(it.trust) },
-        previews = host?.previews?.size,
+        title = bundle?.title?.takeIf { it.isNotBlank() } ?: host?.label ?: seen?.title,
+        trust = bundle?.let { BundleVerifier.summary(it.trust) } ?: seen?.trust,
+        previews = host?.previews?.size ?: seen?.previews,
         live = live,
         running = running,
-        degradation = host?.degradations?.firstOrNull()?.detail,
-        provenance = bundle?.provenance,
+        degradation = host?.degradations?.firstOrNull()?.detail ?: seen?.degradation,
+        provenance = bundle?.provenance ?: seen?.provenance,
+        stale = seen != null,
       )
     }
     return StatusData(
@@ -1814,7 +1875,10 @@ private data class CatalogDto(
   val listed: Boolean,
   val title: String? = null,
   /**
-   * [BundleVerifier.summary] verdict, or null for a suspended live catalog / non-catalog session.
+   * [BundleVerifier.summary] verdict. For a suspended live catalog this is the last-known verdict
+   * (with [metaStale] set) — null means genuinely unknown: a non-catalog session, or a catalog this
+   * server has not yet had resident. Never read a null as "untrusted"; the verdict string
+   * `unverified` is what says that.
    */
   val trust: String? = null,
   val previews: Int? = null,
@@ -1828,6 +1892,14 @@ private data class CatalogDto(
   val generatedAt: String? = null,
   /** Canonical catalog path (`/<id>/`). */
   val path: String,
+  /**
+   * This row's `title`/`trust`/`previews`/`degradation`/provenance are a **last-known snapshot**
+   * taken while the catalog was resident, not a live read — its daemon is idle and `/status` never
+   * resumes one. The facts are branch-derived, so a suspension doesn't invalidate them; a monitor
+   * that wants only live-read rows can filter on this. Additive on
+   * `compose-preview-serve/status/v1`.
+   */
+  val metaStale: Boolean = false,
 )
 
 @Serializable

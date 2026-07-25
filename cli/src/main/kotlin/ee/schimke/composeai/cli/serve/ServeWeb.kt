@@ -1543,6 +1543,13 @@ object ServeWeb {
     val degradation: String?,
     /** `repo@branch · date` provenance for a fetched catalog; null for a plain bundle. */
     val provenance: String?,
+    /**
+     * The row's facts are a last-known snapshot of a catalog whose daemon is idle, not a live read
+     * (`/status` never resumes one). Rendered as a "last known" qualifier next to the trust badge,
+     * so an idle trusted catalog reads as trusted-and-idle instead of as a blank, untrusted-looking
+     * row.
+     */
+    val stale: Boolean = false,
   )
 
   /** One currently-running render daemon's row on the [statusPage]. */
@@ -1621,10 +1628,15 @@ object ServeWeb {
               else -> "<span class=\"cp-muted\">baked PNG</span>"
             }
           val degrade = c.degradation?.let { "<div class=\"cp-muted\">${esc(it)}</div>" } ?: ""
+          // An idle catalog's facts are last-known, not live — say so next to the badge rather than
+          // leaving the cell blank, which would read as untrusted.
+          val staleNote = if (c.stale) "<div class=\"cp-muted\">last known</div>" else ""
+          val trustCell =
+            compactTrustBadge(c.trust).ifBlank { "<span class=\"cp-muted\">—</span>" } + staleNote
           "<tr>" +
             "<td><a href=\"/$idSeg/$suffix\">${esc(c.title)}</a>$listed" +
             "<div class=\"cp-muted\">${esc(c.id)}</div>$prov</td>" +
-            "<td>${compactTrustBadge(c.trust).ifBlank { "<span class=\"cp-muted\">—</span>" }}</td>" +
+            "<td>$trustCell</td>" +
             "<td>${c.previews}</td>" +
             "<td>$stateCell$degrade</td>" +
             "</tr>"
