@@ -178,6 +178,16 @@ export class CoreDocument implements ExpansionDocument {
     setProperties(properties: IntMap<any> | null): void { this.mProperties = properties; }
     getProperty(key: number): any { return this.mProperties?.get(key) ?? null; }
 
+    /** The document's density behavior (DOC_DENSITY_BEHAVIOR header property,
+     *  key 27). Mirrors AndroidX CoreDocument.mDensityBehavior, which it reads via
+     *  featureIntValue(27) → Header.getInt(27, DEFAULT_DENSITY_BEHAVIOR=LEGACY).
+     *  Returns LEGACY (0 — no dp scaling) when the header omits the property. */
+    getDensityBehavior(): number {
+        if (this.mHeader) return this.mHeader.getInt(27 /* DOC_DENSITY_BEHAVIOR */, 0 /* LEGACY */);
+        const v = this.getProperty(27);
+        return typeof v === 'number' ? v : 0 /* LEGACY */;
+    }
+
     useFeature(feature: number, defaultValue = 0): boolean {
         if (!this.mHeader) return defaultValue !== 0;
         return this.mHeader.getInt(feature, defaultValue) !== 0;

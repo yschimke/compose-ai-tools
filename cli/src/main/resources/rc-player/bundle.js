@@ -748,6 +748,8 @@ var RC = (() => {
   var SYSTEM_CLOCK = SystemClock;
 
   // src/core/RemoteContext.ts
+  var DENSITY_BEHAVIOR_LEGACY = 0;
+  var DENSITY_BEHAVIOR_DP = 2;
   var _RemoteContext = class _RemoteContext {
     constructor(clock = SYSTEM_CLOCK) {
       this.mRemoteComposeState = new RemoteComposeState();
@@ -779,6 +781,12 @@ var RC = (() => {
     }
     setDensity(density) {
       if (!Number.isNaN(density) && density > 0) this.mDensity = density;
+    }
+    /** The document's density behavior (DOC_DENSITY_BEHAVIOR, key 27). Mirrors
+     *  AndroidX RemoteContext.getDensityBehavior() → CoreDocument.mDensityBehavior.
+     *  Defaults to LEGACY (no scaling) when the header omits the property. */
+    getDensityBehavior() {
+      return this.mDocument?.getDensityBehavior() ?? DENSITY_BEHAVIOR_LEGACY;
     }
     getDocLoadTime() {
       return this.mDocLoadTime;
@@ -1177,6 +1185,7 @@ var RC = (() => {
   _Header.DEBUG = 16;
   _Header.FEATURE_MEASURE_VERSION = 17;
   _Header.FEATURE_TOUCH_VERSION = 18;
+  _Header.DOC_DENSITY_BEHAVIOR = 27;
   // Data types
   _Header.DATA_TYPE_INT = 0;
   _Header.DATA_TYPE_FLOAT = 1;
@@ -4969,10 +4978,19 @@ var RC = (() => {
       if (isNaNBits(this.mBottom)) context.listensTo(idFromBits(this.mBottom), this);
     }
     updateVariables(context) {
-      if (isNaNBits(this.mLeft)) this.mLeftValue = context.getFloat(idFromBits(this.mLeft));
-      if (isNaNBits(this.mTop)) this.mTopValue = context.getFloat(idFromBits(this.mTop));
-      if (isNaNBits(this.mRight)) this.mRightValue = context.getFloat(idFromBits(this.mRight));
-      if (isNaNBits(this.mBottom)) this.mBottomValue = context.getFloat(idFromBits(this.mBottom));
+      this.mLeftValue = isNaNBits(this.mLeft) ? context.getFloat(idFromBits(this.mLeft)) : intBitsToFloat(this.mLeft);
+      this.mTopValue = isNaNBits(this.mTop) ? context.getFloat(idFromBits(this.mTop)) : intBitsToFloat(this.mTop);
+      this.mRightValue = isNaNBits(this.mRight) ? context.getFloat(idFromBits(this.mRight)) : intBitsToFloat(this.mRight);
+      this.mBottomValue = isNaNBits(this.mBottom) ? context.getFloat(idFromBits(this.mBottom)) : intBitsToFloat(this.mBottom);
+      if (context.getDensityBehavior() === DENSITY_BEHAVIOR_DP) {
+        const d = context.getDensity();
+        if (!Number.isNaN(d) && d > 0) {
+          this.mLeftValue *= d;
+          this.mTopValue *= d;
+          this.mRightValue *= d;
+          this.mBottomValue *= d;
+        }
+      }
     }
     write(_buffer) {
     }
@@ -9800,6 +9818,27 @@ ${inner}`;
       }
       this.mNeedsMeasure = false;
     }
+    /** Re-sum the cached padding totals from the padding modifiers' resolved
+     *  values. `inflate()` snapshots these at load time from the raw (dp) values,
+     *  before `PaddingModifier.updateVariables` has resolved variables or applied
+     *  DP density scaling — so the snapshot is stale for dynamic or density-scaled
+     *  padding. Called at the start of each measure (after updateVariables has run
+     *  in the data pass) so measure and paint both see the final pixel padding. */
+    refreshPadding() {
+      let l = 0, t = 0, r = 0, b = 0;
+      for (const mod of this.mComponentModifiers) {
+        if (mod instanceof PaddingModifier) {
+          l += mod.mLeftValue;
+          t += mod.mTopValue;
+          r += mod.mRightValue;
+          b += mod.mBottomValue;
+        }
+      }
+      this.mPaddingLeft = l;
+      this.mPaddingTop = t;
+      this.mPaddingRight = r;
+      this.mPaddingBottom = b;
+    }
     /** Walk modifiers reducing dimensions by padding and passing to decorators.
      *  Matches Java ComponentModifiers.layout(). */
     layoutModifiers(w, h) {
@@ -10047,6 +10086,7 @@ ${inner}`;
     }
     measure(context, minWidth, maxWidth, minHeight, maxHeight, measure) {
       const selfMeasure = measure.get(this);
+      this.refreshPadding();
       const padding_w = this.mPaddingLeft + this.mPaddingRight;
       const padding_h = this.mPaddingTop + this.mPaddingBottom;
       const wMod = this.getWidthModifier();
@@ -15888,6 +15928,19 @@ ${inner}`;
     }
     getProperty(key) {
       return this.mProperties?.get(key) ?? null;
+    }
+    /** The document's density behavior (DOC_DENSITY_BEHAVIOR header property,
+     *  key 27). Mirrors AndroidX CoreDocument.mDensityBehavior, which it reads via
+     *  featureIntValue(27) → Header.getInt(27, DEFAULT_DENSITY_BEHAVIOR=LEGACY).
+     *  Returns LEGACY (0 — no dp scaling) when the header omits the property. */
+    getDensityBehavior() {
+      if (this.mHeader) return this.mHeader.getInt(
+        27,
+        0
+        /* LEGACY */
+      );
+      const v = this.getProperty(27);
+      return typeof v === "number" ? v : 0;
     }
     useFeature(feature, defaultValue = 0) {
       if (!this.mHeader) return defaultValue !== 0;

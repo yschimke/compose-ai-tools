@@ -15,6 +15,9 @@ export abstract class LayoutManager extends LayoutComponent {
     measure(context: PaintContext, minWidth: number, maxWidth: number,
             minHeight: number, maxHeight: number, measure: MeasurePass): void {
         const selfMeasure = measure.get(this);
+        // Refresh cached padding from the (now variable-resolved, density-scaled)
+        // padding modifiers before it feeds the size computation below.
+        this.refreshPadding();
         const padding_w = this.mPaddingLeft + this.mPaddingRight;
         const padding_h = this.mPaddingTop + this.mPaddingBottom;
 

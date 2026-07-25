@@ -402,6 +402,28 @@ export class LayoutComponent extends Component {
         this.mNeedsMeasure = false;
     }
 
+    /** Re-sum the cached padding totals from the padding modifiers' resolved
+     *  values. `inflate()` snapshots these at load time from the raw (dp) values,
+     *  before `PaddingModifier.updateVariables` has resolved variables or applied
+     *  DP density scaling — so the snapshot is stale for dynamic or density-scaled
+     *  padding. Called at the start of each measure (after updateVariables has run
+     *  in the data pass) so measure and paint both see the final pixel padding. */
+    protected refreshPadding(): void {
+        let l = 0, t = 0, r = 0, b = 0;
+        for (const mod of this.mComponentModifiers) {
+            if (mod instanceof PaddingModifier) {
+                l += mod.mLeftValue;
+                t += mod.mTopValue;
+                r += mod.mRightValue;
+                b += mod.mBottomValue;
+            }
+        }
+        this.mPaddingLeft = l;
+        this.mPaddingTop = t;
+        this.mPaddingRight = r;
+        this.mPaddingBottom = b;
+    }
+
     /** Walk modifiers reducing dimensions by padding and passing to decorators.
      *  Matches Java ComponentModifiers.layout(). */
     layoutModifiers(w: number, h: number): void {
