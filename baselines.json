@@ -178,8 +178,8 @@
     "serve-home-index.light.png": {
       "fixture": "serve-home-index",
       "theme": "light",
-      "sha256": "c378c8cecb040b17b52bac81c51595e4adf42761c38935cdadf7bfba83ce1ff3",
-      "size": 112288
+      "sha256": "8654d57e51f449259268f83085c757b23c8bcdc8ef7a24d9dc76b611e2e1c681",
+      "size": 112251
     },
     "serve-landing-grouped.dark.png": {
       "fixture": "serve-landing-grouped",
