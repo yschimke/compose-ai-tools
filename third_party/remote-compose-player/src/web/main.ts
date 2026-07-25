@@ -141,9 +141,16 @@ export class RcdPlayer {
         this.document = doc;
 
         // Use the current canvas size — don't resize to document dimensions.
+        // DOC_DENSITY_AT_GENERATION is the dp→px scale the document was authored
+        // at. It is NOT a layout-space divisor: DOC_WIDTH/HEIGHT and px-typed
+        // modifiers (padding, offsets) are already in generation pixels, so the
+        // layout space is the canvas 1:1. The density is applied only to the
+        // dp-typed dimension modifiers (EXACT_DP width/height, width/heightIn),
+        // which the wire stores as raw dp. Absent (all density-1 docs today) it
+        // is 1 and nothing changes.
         const density = doc.getProperty(Header.DOC_DENSITY_AT_GENERATION) as number || 1;
-        const docWidth = this.canvas.width / density;
-        const docHeight = this.canvas.height / density;
+        const docWidth = this.canvas.width;
+        const docHeight = this.canvas.height;
 
         // Override document dimensions to match canvas
         doc.setWidth(docWidth);

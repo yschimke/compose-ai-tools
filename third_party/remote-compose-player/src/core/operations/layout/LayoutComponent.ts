@@ -70,6 +70,22 @@ export class LayoutComponent extends Component {
     getHeightInModifier(): HeightInModifier | null { return this.mHeightInMod; }
     getScrollModifier(): ScrollModifier | null { return this.mScrollModifier; }
 
+    /** Choose which of two competing width/height modifiers a component keeps.
+     *  An EXACT / EXACT_DP fixed-size constraint takes precedence over a FILL/WRAP
+     *  (Compose composes `size().fillMaxSize()` so the fixed size wins); otherwise
+     *  the later modifier wins, preserving the previous last-writer behaviour. */
+    private static preferExactSize(
+        current: WidthModifier | HeightModifier | null,
+        next: WidthModifier | HeightModifier,
+    ): WidthModifier | HeightModifier {
+        const isExact = (t: number): boolean =>
+            t === WidthModifier.EXACT || t === WidthModifier.EXACT_DP;
+        if (current && isExact(current.getType()) && !isExact(next.getType())) {
+            return current;
+        }
+        return next;
+    }
+
     inflate(): void {
         // Separate children ops into structure: modifiers, content, child components
         this.mChildrenComponents = [];
@@ -92,9 +108,14 @@ export class LayoutComponent extends Component {
                 // (matches Java ComponentModifiers pattern)
                 this.mComponentModifiers.push(op);
             } else if (op instanceof WidthModifier) {
-                this.mWidthMod = op;
+                // A component can carry several size modifiers (e.g. an explicit
+                // `size(72)` plus a widget's internal `fillMaxSize()`). Compose
+                // composes them so the fixed constraint wins — `size().fillMaxSize()`
+                // measures at the fixed size. So keep an EXACT/EXACT_DP constraint
+                // rather than letting a later FILL/WRAP clobber it (last-wins).
+                this.mWidthMod = LayoutComponent.preferExactSize(this.mWidthMod, op) as WidthModifier;
             } else if (op instanceof HeightModifier) {
-                this.mHeightMod = op;
+                this.mHeightMod = LayoutComponent.preferExactSize(this.mHeightMod, op) as HeightModifier;
             } else if (op instanceof WidthInModifier) {
                 this.mWidthInMod = op;
             } else if (op instanceof HeightInModifier) {

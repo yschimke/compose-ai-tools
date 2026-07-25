@@ -37,10 +37,9 @@ export class WidthModifier extends Operation implements VariableSupport {
     }
     updateVariables(context: RemoteContext): void {
         if ((this.mType === WidthModifier.EXACT || this.mType === WidthModifier.EXACT_DP) && isNaNBits(this.mValueBits)) {
+            // Resolve to the raw value; EXACT_DP dp→px scaling is applied uniformly
+            // in LayoutManager.measure (so static and variable values scale once).
             this.mOutValue = context.getFloat(idFromBits(this.mValueBits));
-            if (this.mType === WidthModifier.EXACT_DP) {
-                this.mOutValue *= context.getDensity();
-            }
         }
     }
     write(_buffer: WireBuffer): void { /* stub */ }
@@ -79,10 +78,9 @@ export class HeightModifier extends Operation implements VariableSupport {
     }
     updateVariables(context: RemoteContext): void {
         if ((this.mType === HeightModifier.EXACT || this.mType === HeightModifier.EXACT_DP) && isNaNBits(this.mValueBits)) {
+            // Resolve to the raw value; EXACT_DP dp→px scaling is applied uniformly
+            // in LayoutManager.measure (so static and variable values scale once).
             this.mOutValue = context.getFloat(idFromBits(this.mValueBits));
-            if (this.mType === HeightModifier.EXACT_DP) {
-                this.mOutValue *= context.getDensity();
-            }
         }
     }
     write(_buffer: WireBuffer): void { /* stub */ }
