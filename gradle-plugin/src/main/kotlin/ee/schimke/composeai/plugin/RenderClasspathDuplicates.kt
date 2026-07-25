@@ -215,7 +215,66 @@ internal object RenderClasspathDuplicates {
    * group looks splittable. A false report is expensive: it trains people to ignore the warning,
    * which is the same reasoning that keeps [find] from guessing at ambiguous artifact names.
    */
-  data class SplitFamily(val group: String, val why: String)
+  /**
+   * @param artifact which artifacts *in* [group] belong to the train. Deliberately not "everything
+   *   in the group": `org.bouncycastle` also publishes the FIPS line (`bc-fips`, `bcpkix-fips`,
+   *   `bctls-fips`), whose versions advance **independently** — `bc-fips:2.1.0` alongside
+   *   `bcpkix-fips:2.1.9` is a correct, healthy classpath. Matching the whole group would report
+   *   that as skew and, under `classpathDuplicates=fail`, break a build that has nothing wrong with
+   *   it.
+   * @param remediation the fix to print. Per-family because the right answer differs: BouncyCastle
+   *   wants aligning *up* to the highest member, Hamcrest wants pinning *down* to 1.3.
+   */
+  data class SplitFamily(
+    val group: String,
+    val why: String,
+    val artifact: Regex,
+    val remediation: String,
+  )
+
+  /**
+   * Align the family *upward* on a virtual platform. Right for BouncyCastle: the members really do
+   * move together, every member has a release at the highest version, and a hardcoded force would
+   * go stale — silently becoming a downgrade as soon as one member's floor moves, which is what
+   * happened when Robolectric went to 1.85 against a pinned 1.84.
+   */
+  private val BOUNCYCASTLE_REMEDIATION =
+    """
+    |    abstract class BouncyCastleAlignmentRule : ComponentMetadataRule {
+    |      override fun execute(context: ComponentMetadataContext) {
+    |        val id = context.details.id
+    |        if (id.group == "org.bouncycastle") {
+    |          context.details.belongsTo("org.bouncycastle:bouncycastle-virtual-platform:${'$'}{id.version}")
+    |        }
+    |      }
+    |    }
+    |    dependencies { components.all(BouncyCastleAlignmentRule::class.java) }
+    """
+      .trimMargin()
+
+  /**
+   * Pin the family *downward* to 1.3. The opposite of the BouncyCastle fix, and the reason
+   * remediation is per-family rather than one generic snippet.
+   *
+   * `hamcrest-core:2.2` / `hamcrest-library:2.2` do exist — as deprecated shims that just depend on
+   * the merged `hamcrest:2.2` — so a virtual platform *would* resolve. It would resolve to the
+   * wrong place: Espresso's compiled bytecode calls the 2-arg `AllOf.allOf(Matcher, Matcher)` that
+   * 2.x deleted, so aligning up to 2.x trades a silent mismatch for a guaranteed
+   * `NoSuchMethodError`. Substituting back to 1.3 is what `applyRenderGraphResolutionRules` already
+   * does on the render graph.
+   */
+  private val HAMCREST_REMEDIATION =
+    """
+    |    configurations.all {
+    |      resolutionStrategy.eachDependency {
+    |        if (requested.group == "org.hamcrest" && requested.name == "hamcrest") {
+    |          useTarget("org.hamcrest:hamcrest-core:1.3")
+    |          because("Espresso needs 1.3's AllOf.allOf(Matcher, Matcher); 2.x removed it")
+    |        }
+    |      }
+    |    }
+    """
+      .trimMargin()
 
   private val SPLIT_FAMILIES =
     listOf(
@@ -223,17 +282,39 @@ internal object RenderClasspathDuplicates {
       // references `IANAObjectIdentifiers` fields added in 1.81; pair it with an older asn1 jar
       // from a sibling coordinate and its static init throws NoSuchFieldError, failing every a11y
       // preview. BouncyCastle publishes no BOM.
-      SplitFamily("org.bouncycastle", "bcprov/bcutil/bcpkix ship as one release train, no BOM"),
+      //
+      // Scoped to the `-jdkXXon` / `-jdkXXtoYYon` line, which is the one that moves in lockstep.
+      // The FIPS artifacts share the group but not the release train, so they must not match.
+      SplitFamily(
+        group = "org.bouncycastle",
+        why = "bcprov/bcutil/bcpkix ship as one release train, no BOM",
+        // `bcprov-jdk18on`, `bcprov-jdk15on`, and the legacy `bcprov-jdk15to18` (which ends in the
+        // JDK number, not `on`) — all real published coordinates. `bc-fips` / `bcpkix-fips` have no
+        // `-jdk` segment at all, which is what keeps them out.
+        artifact = Regex("^bc[a-z]*-jdk\\d+(?:on|to\\d+)$"),
+        remediation = BOUNCYCASTLE_REMEDIATION,
+      ),
       // Espresso's bytecode calls Hamcrest 1.3's 2-arg `AllOf.allOf`, which 2.x replaced with
       // varargs. The merged `hamcrest` 2.x artifact and the legacy split `hamcrest-core` /
       // `hamcrest-library` 1.3 jars are different coordinates, so Gradle never dedups them and
       // `Espresso.<clinit>` throws NoSuchMethodError. See `applyRenderGraphResolutionRules`, which
       // substitutes the render graph back to 1.3 — this catches the case where that rule misses.
-      SplitFamily("org.hamcrest", "the merged 2.x jar and the split 1.3 jars overlap by class"),
+      SplitFamily(
+        group = "org.hamcrest",
+        why = "the merged 2.x jar and the split 1.3 jars overlap by class",
+        artifact = Regex("^hamcrest(?:-core|-library|-integration|-all)?$"),
+        remediation = HAMCREST_REMEDIATION,
+      ),
     )
 
   /** One split family whose members resolved to more than one version. */
-  data class FamilySkew(val group: String, val why: String, val members: List<Entry>) {
+  data class FamilySkew(val family: SplitFamily, val members: List<Entry>) {
+    val group: String
+      get() = family.group
+
+    val why: String
+      get() = family.why
+
     val versions: List<String>
       get() = members.map { it.version }.distinct()
 
@@ -263,12 +344,12 @@ internal object RenderClasspathDuplicates {
     val entries = bucketByModule(paths, coordinates).values.flatten().filter { it.group != null }
     return SPLIT_FAMILIES.mapNotNull { family ->
       val members = entries.filter {
-        it.group == family.group || it.group!!.startsWith("${family.group}.")
+        it.group == family.group && family.artifact.matches(it.artifact)
       }
       val distinctArtifacts = members.map { it.artifact }.distinct()
       val distinctVersions = members.map { it.version }.distinct()
       if (distinctArtifacts.size > 1 && distinctVersions.size > 1) {
-        FamilySkew(family.group, family.why, members)
+        FamilySkew(family, members)
       } else null
     }
   }
@@ -298,18 +379,18 @@ internal object RenderClasspathDuplicates {
   }
 
   /**
-   * Human-readable report for [findFamilySkew], with the alignment rule to paste.
+   * Human-readable report for [findFamilySkew], with the family's own remediation to paste.
    *
-   * The remediation is spelled out rather than described because the fix isn't obvious: a version
-   * force works but goes stale (and silently becomes a *downgrade* the moment one member's floor
-   * moves), while a virtual platform states the actual fact — these coordinates are one unit — and
-   * lets Gradle keep picking the highest version any member asks for.
+   * The fix is spelled out rather than described because it isn't obvious *and* it isn't uniform:
+   * BouncyCastle wants aligning up to the highest member, Hamcrest wants pinning down to 1.3
+   * (aligning it up is what breaks Espresso). Emitting one generic snippet for both would hand half
+   * of readers a fix that makes their build worse, so the text lives on [SplitFamily].
    *
-   * The plugin deliberately does NOT apply this rule itself. `ComponentMetadataRule`s register on
+   * The plugin deliberately does NOT apply any of it. `ComponentMetadataRule`s register on
    * `DependencyHandler` and so apply to *every* configuration in the project, including the
-   * consumer's `releaseRuntimeClasspath`. Aligning a family upward is usually right for a render
-   * classpath and emphatically not the preview plugin's call to make for a shipped app — so this
-   * reports and hands the decision back.
+   * consumer's `releaseRuntimeClasspath`. Changing a dependency version project-wide is
+   * emphatically not the preview plugin's call to make for a shipped app — so this reports and
+   * hands the decision back.
    */
   fun reportFamilySkew(skews: List<FamilySkew>, taskPath: String): String = buildString {
     appendLine(
@@ -321,31 +402,15 @@ internal object RenderClasspathDuplicates {
     skews.forEach { skew ->
       appendLine("  ${skew.group}  (${skew.why})")
       skew.coordinates.forEach { appendLine("    $it") }
-      appendLine("    align with:")
-      appendLine("      abstract class ${alignmentRuleName(skew.group)} : ComponentMetadataRule {")
-      appendLine("        override fun execute(context: ComponentMetadataContext) {")
-      appendLine("          val id = context.details.id")
-      appendLine("          if (id.group == \"${skew.group}\") {")
-      appendLine(
-        "            context.details.belongsTo(\"${skew.group}:${skew.group.substringAfterLast('.')}-virtual-platform:\${id.version}\")"
-      )
-      appendLine("          }")
-      appendLine("        }")
-      appendLine("      }")
-      appendLine(
-        "      dependencies { components.all(${alignmentRuleName(skew.group)}::class.java) }"
-      )
+      appendLine("    fix:")
+      appendLine(skew.family.remediation)
     }
     appendLine(
-      "Applying that rule is your call — it aligns the family across EVERY configuration in the " +
-        "module, not just the render classpath, so check it doesn't move a version your app " +
-        "ships. Set -PcomposePreview.classpathDuplicates=off to silence this."
+      "Applying that is your call — these rules act on EVERY configuration in the module, not " +
+        "just the render classpath, so check it doesn't move a version your app ships. Set " +
+        "-PcomposePreview.classpathDuplicates=off to silence this."
     )
   }
-
-  /** `org.bouncycastle` → `BouncyCastleAlignmentRule`-ish: a legal, readable Kotlin class name. */
-  private fun alignmentRuleName(group: String): String =
-    group.substringAfterLast('.').replaceFirstChar { it.uppercase() } + "AlignmentRule"
 
   /** Valid values for `-PcomposePreview.classpathDuplicates`. */
   const val MODE_WARN = "warn"
@@ -373,19 +438,21 @@ internal object RenderClasspathDuplicates {
   ) {
     if (mode == MODE_OFF) return
     val paths = files.map { it.absolutePath }
-    // Two independent faults, reported independently. A classpath can have one, the other, or
-    // both: `find` catches one module at two versions, `findFamilySkew` catches sibling
-    // coordinates of one library disagreeing — which `find` cannot see, because each coordinate is
-    // internally consistent.
+    // Two independent faults: `find` catches one module at two versions, `findFamilySkew` catches
+    // sibling coordinates of one library disagreeing — which `find` cannot see, because each
+    // coordinate is internally consistent. A classpath can have one, the other, or both.
+    //
+    // BOTH are computed and reported before anything throws. Failing on the first would hide the
+    // second until the reader fixed it and re-ran, which for a slow render task means paying the
+    // full build twice to learn something we already knew on the first pass.
     val skews = findFamilySkew(paths, coordinates)
-    if (skews.isNotEmpty()) {
-      val skewMessage = reportFamilySkew(skews, task.path)
-      if (mode == MODE_FAIL) throw GradleException(skewMessage)
-      task.logger.warn(skewMessage)
-    }
     val duplicates = find(paths, coordinates)
-    if (duplicates.isEmpty()) return
-    val message = report(duplicates, task.path)
+    val messages = buildList {
+      if (skews.isNotEmpty()) add(reportFamilySkew(skews, task.path))
+      if (duplicates.isNotEmpty()) add(report(duplicates, task.path))
+    }
+    if (messages.isEmpty()) return
+    val message = messages.joinToString("\n")
     if (mode == MODE_FAIL) throw GradleException(message)
     task.logger.warn(message)
   }

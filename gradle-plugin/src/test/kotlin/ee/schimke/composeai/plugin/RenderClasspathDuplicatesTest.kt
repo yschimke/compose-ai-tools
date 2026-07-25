@@ -134,6 +134,127 @@ class RenderClasspathDuplicatesTest {
   }
 
   @Test
+  fun `BouncyCastle FIPS artifacts are not a family - they version independently`() {
+    // `org.bouncycastle` also publishes the FIPS line, whose versions advance on their own
+    // schedule: `bc-fips:2.1.0` alongside `bcpkix-fips:2.1.9` is a correct classpath, and both
+    // coordinates really do exist at those versions. Matching the whole group would report it as
+    // skew and break an innocent build under `classpathDuplicates=fail`.
+    val skews =
+      RenderClasspathDuplicates.findFamilySkew(
+        listOf(
+          cached("org.bouncycastle", "bc-fips", "2.1.0"),
+          cached("org.bouncycastle", "bcpkix-fips", "2.1.9"),
+          cached("org.bouncycastle", "bctls-fips", "2.1.20"),
+        ),
+        coordinates(
+          module("org.bouncycastle", "bc-fips", "2.1.0"),
+          module("org.bouncycastle", "bcpkix-fips", "2.1.9"),
+          module("org.bouncycastle", "bctls-fips", "2.1.20"),
+        ),
+      )
+
+    assertThat(skews).isEmpty()
+  }
+
+  @Test
+  fun `FIPS jars alongside a real jdk18on skew do not pollute the report`() {
+    val skews =
+      RenderClasspathDuplicates.findFamilySkew(
+        listOf(
+          cached("org.bouncycastle", "bcprov-jdk18on", "1.85"),
+          cached("org.bouncycastle", "bcutil-jdk18on", "1.84"),
+          cached("org.bouncycastle", "bc-fips", "2.1.0"),
+        ),
+        coordinates(
+          module("org.bouncycastle", "bcprov-jdk18on", "1.85"),
+          module("org.bouncycastle", "bcutil-jdk18on", "1.84"),
+          module("org.bouncycastle", "bc-fips", "2.1.0"),
+        ),
+      )
+
+    assertThat(skews.single().coordinates)
+      .containsExactly("bcprov-jdk18on:1.85", "bcutil-jdk18on:1.84")
+      .inOrder()
+  }
+
+  @Test
+  fun `the legacy jdk15to18 line still counts as the same train`() {
+    val skews =
+      RenderClasspathDuplicates.findFamilySkew(
+        listOf(
+          cached("org.bouncycastle", "bcprov-jdk15to18", "1.85"),
+          cached("org.bouncycastle", "bcutil-jdk15to18", "1.84"),
+        ),
+        coordinates(
+          module("org.bouncycastle", "bcprov-jdk15to18", "1.85"),
+          module("org.bouncycastle", "bcutil-jdk15to18", "1.84"),
+        ),
+      )
+
+    assertThat(skews.single().group).isEqualTo("org.bouncycastle")
+  }
+
+  @Test
+  fun `hamcrest remediation pins down to 1_3 rather than aligning up`() {
+    // Aligning Hamcrest UP is the one thing that must not be suggested: `hamcrest-core:2.2` does
+    // exist (as a shim), so a virtual platform resolves fine — straight onto 2.x, where Espresso's
+    // 2-arg `AllOf.allOf` is gone. That's why remediation is per-family.
+    val skews =
+      RenderClasspathDuplicates.findFamilySkew(
+        listOf(
+          cached("org.hamcrest", "hamcrest", "2.2"),
+          cached("org.hamcrest", "hamcrest-core", "1.3"),
+        ),
+        coordinates(
+          module("org.hamcrest", "hamcrest", "2.2"),
+          module("org.hamcrest", "hamcrest-core", "1.3"),
+        ),
+      )
+
+    val report = RenderClasspathDuplicates.reportFamilySkew(skews, ":app:composePreviewRender")
+
+    assertThat(report).contains("org.hamcrest")
+    assertThat(report).contains("useTarget(\"org.hamcrest:hamcrest-core:1.3\")")
+    assertThat(report).doesNotContain("belongsTo")
+    assertThat(report).doesNotContain("virtual-platform")
+  }
+
+  @Test
+  fun `a classpath with both faults reports both before failing`() {
+    // Throwing on the family skew alone would hide the duplicate until the reader fixed it and
+    // re-ran — a full render's wall-clock to learn something already known on the first pass.
+    val project = ProjectBuilder.builder().build()
+    val task = project.tasks.register("probeBoth").get()
+    val provNew = project.file(cached("org.bouncycastle", "bcprov-jdk18on", "1.85"))
+    val provOld = project.file(cached("org.bouncycastle", "bcprov-jdk18on", "1.84"))
+    val util = project.file(cached("org.bouncycastle", "bcutil-jdk18on", "1.84"))
+    val coords =
+      mapOf(
+        provNew.absolutePath to "org.bouncycastle:bcprov-jdk18on:1.85",
+        provOld.absolutePath to "org.bouncycastle:bcprov-jdk18on:1.84",
+        util.absolutePath to "org.bouncycastle:bcutil-jdk18on:1.84",
+      )
+
+    val thrown =
+      runCatching {
+          RenderClasspathDuplicates.check(
+            task,
+            listOf(provNew, provOld, util),
+            RenderClasspathDuplicates.MODE_FAIL,
+            coords,
+          )
+        }
+        .exceptionOrNull()
+
+    assertThat(thrown).isInstanceOf(GradleException::class.java)
+    // The family skew…
+    assertThat(thrown!!.message).contains("one release train")
+    // …and the duplicate module, in one message.
+    assertThat(thrown.message).contains("at more than one version")
+    assertThat(thrown.message).contains("org.bouncycastle:bcprov-jdk18on")
+  }
+
+  @Test
   fun `a group outside the known-families table is not guessed at`() {
     // `com.example` might well be one release train, but the plugin has no way to know that, and
     // inventing families would produce exactly the false reports this detector avoids elsewhere.
@@ -172,7 +293,7 @@ class RenderClasspathDuplicatesTest {
     assertThat(report).contains("org.bouncycastle")
     assertThat(report).contains("bcprov-jdk18on:1.85")
     assertThat(report).contains("bcutil-jdk18on:1.84")
-    assertThat(report).contains("BouncycastleAlignmentRule : ComponentMetadataRule")
+    assertThat(report).contains("BouncyCastleAlignmentRule : ComponentMetadataRule")
     assertThat(report).contains("belongsTo")
     // The caveat matters as much as the snippet: the rule is project-wide, so applying it can move
     // a version the consumer's app actually ships.
