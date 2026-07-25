@@ -27,7 +27,8 @@ class GoogleFontFamilyNameTest {
 
   @Test
   fun nullForAFaceWithoutTheGoogleFontRequestShape() {
-    // A `getName()` alone (no `toFontRequest()`) must not be mistaken for a Google font — that would
+    // A `getName()` alone (no `toFontRequest()`) must not be mistaken for a Google font — that
+    // would
     // mis-label unrelated Font subtypes.
     class NamedButNotGoogle {
       @Suppress("unused") fun getName(): String = "Roboto"

@@ -207,8 +207,10 @@ class FigmaFontEmbedTest {
   fun writeSvgEmbedsAndNamesADownloadableBrandedFamily() {
     // Regression: a branded downloadable face (`Font(GoogleFont("Orbitron"), …)`) now captures its
     // family name (see `googleFontFamilyName`) instead of null, so the export fetches + embeds the
-    // real Orbitron face and names the `<text>` by it — rather than collapsing to the Roboto default
-    // that made the published meshcore sticker render in Roboto (incl. `?mode=web`, whose @import is
+    // real Orbitron face and names the `<text>` by it — rather than collapsing to the Roboto
+    // default
+    // that made the published meshcore sticker render in Roboto (incl. `?mode=web`, whose @import
+    // is
     // derived from these @font-face blocks).
     val semantics =
       ComposeSemanticsPayload(

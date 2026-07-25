@@ -57,15 +57,16 @@ import okio.Path.Companion.toPath
  * subtypes do — so without this a branded downloadable face labels as null and the
  * `compose/figma-svg` export collapses it to the Roboto default (the `<text>` names Roboto and
  * `?mode=web` `@import`s Roboto instead of the branded family). Detected structurally by the
- * `toFontRequest()` + `getName()` shape unique to `GoogleFontImpl`, so this platform-agnostic module
- * needs no compile dep on the google-fonts artifact and the branch stays unit-testable with a
- * stand-in.
+ * `toFontRequest()` + `getName()` shape unique to `GoogleFontImpl`, so this platform-agnostic
+ * module needs no compile dep on the google-fonts artifact and the branch stays unit-testable with
+ * a stand-in.
  */
 internal fun googleFontFamilyName(font: Any): String? {
   val methods = font.javaClass.methods
   if (methods.none { it.name == "toFontRequest" && it.parameterCount == 0 }) return null
   return runCatching {
-      methods.firstOrNull { it.name == "getName" && it.parameterCount == 0 }?.invoke(font) as? String
+      methods.firstOrNull { it.name == "getName" && it.parameterCount == 0 }?.invoke(font)
+        as? String
     }
     .getOrNull()
     ?.takeIf { it.isNotBlank() }
