@@ -139,6 +139,103 @@ class ServeStatusTest {
     assertTrue(body.contains("\"schema\":\"compose-preview-serve/status/v1\""), body)
   }
 
+  /**
+   * A trusted catalog whose daemon has gone idle must still report its trust. `/status` reads
+   * metadata with the non-resuming [ServeSessionRegistry.peekHost], so a suspended catalog used to
+   * come back as an all-null row — blank trust cell, zero previews — which on the public server
+   * (preview.coo.ee) read as "untrusted" for five of eight correctly-trusted catalogs. The facts
+   * come from the delivery branch, not the daemon, so suspension must not erase them.
+   */
+  @Test
+  fun `a suspended catalog still reports its last-known trust`() {
+    var now = 0L
+    val suspendable =
+      ServeSessionRegistry(
+        open = { null },
+        idleTimeoutMillis = 10,
+        // 0 ⇒ no reaper thread; this test drives suspendIdle() directly against the fake clock.
+        reaperIntervalMillis = 0,
+        clock = { now },
+      )
+    val trusted =
+      ServeBundleHost(
+        Files.createTempDirectory("status-idle")
+          .toFile()
+          .also { it.deleteOnExit() }
+          .apply {
+            File(this, "index.html").writeText("<html></html>")
+            File(this, "previews").mkdirs()
+            File(this, "previews/beat.png").writeBytes(png())
+          },
+        label = "confetti-wear",
+        trust =
+          BundleVerifier.Verdict.Trusted(
+            listOf(
+              BundleVerifier.Basis.Branch("joreilly/Confetti", "design-artifacts/confetti-wear")
+            )
+          ),
+        title = "Confetti Wear",
+      )
+    // Registered NOT pinned, so it suspends like a real live catalog does when its daemon idles.
+    suspendable.register("confetti-wear", host = trusted)
+    val srv =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused",
+          sessions = suspendable,
+          defaultSessionId = "confetti-wear",
+          isPublic = true,
+          catalogSessions = listOf("confetti-wear"),
+          trustStoreConfigured = true,
+        )
+        .also { it.start() }
+    try {
+      fun statusJson(): String {
+        val url = "http://127.0.0.1:${srv.port}/status.json"
+        client.newCall(Request.Builder().url(url).build()).execute().use {
+          return it.body?.string() ?: ""
+        }
+      }
+      // Resident: a live read, not a snapshot.
+      val whileResident = statusJson()
+      assertTrue(whileResident.contains("\"metaStale\":false"), whileResident)
+      assertTrue(
+        whileResident.contains(
+          "\"trust\":\"branch:joreilly/Confetti@design-artifacts/confetti-wear\""
+        ),
+        whileResident,
+      )
+
+      now = 100
+      assertEquals(1, suspendable.suspendIdle(), "the idle catalog suspends")
+
+      val whileIdle = statusJson()
+      // The regression: trust, title, preview count and provenance all survive the suspension...
+      assertTrue(
+        whileIdle.contains("\"trust\":\"branch:joreilly/Confetti@design-artifacts/confetti-wear\""),
+        "a suspended catalog keeps its trust verdict: $whileIdle",
+      )
+      assertTrue(whileIdle.contains("\"title\":\"Confetti Wear\""), whileIdle)
+      assertTrue(whileIdle.contains("\"previews\":1"), whileIdle)
+      // …flagged as last-known rather than a live read, and still counted as trusted.
+      assertTrue(whileIdle.contains("\"metaStale\":true"), whileIdle)
+      assertTrue(whileIdle.contains("\"trusted\":1"), "the summary counts it: $whileIdle")
+
+      // The HTML page says "last known" instead of leaving the trust cell reading as untrusted.
+      val htmlUrl = "http://127.0.0.1:${srv.port}/status"
+      val html =
+        client.newCall(Request.Builder().url(htmlUrl).build()).execute().use {
+          it.body?.string() ?: ""
+        }
+      assertTrue(html.contains("✓ trusted"), html)
+      assertTrue(html.contains("last known"), html)
+    } finally {
+      srv.stop()
+      suspendable.close()
+    }
+  }
+
   @Test
   fun `status is token-gated on a non-public server`() {
     server = newServer(public = false, token = "s3cret")
