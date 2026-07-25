@@ -7,15 +7,26 @@
 # is worse than no gate.
 #
 # Usage:
-#   agent-attribution-scan.sh --range <base>..<head> [--text-file <file>]
+#   agent-attribution-scan.sh --range <rev-arg> [--text-file <file>]
 #
-#   --range      commit range to scan for author/committer identity and for
-#                Co-authored-by trailers in the commit messages.
+#   --range      any `git log` revision argument — a range (<base>..<head>) or a
+#                single commit (meaning "everything reachable from it"). Scanned
+#                for author/committer identity and for Co-authored-by trailers
+#                in the commit messages.
 #   --text-file  extra text to scan for trailers (the PR title + body, which the
 #                squash commit is built from). Optional — the drift check has no
 #                PR to read.
 #
-# Exits 1 and prints the offending records when anything is found, 0 otherwise.
+# Exit codes:
+#   0  nothing found
+#   1  agent attribution found (records printed to stderr)
+#   2  could not scan — bad arguments, or a revision that does not resolve
+#
+# FAIL CLOSED. `git log` on an unresolvable revision exits nonzero and writes
+# nothing; with only `set -uo pipefail` that used to sail through both checks
+# and report "No agent ... found" with exit 0 — a security gate silently
+# passing because it scanned an empty set. Every `git log` status is therefore
+# checked explicitly, and an unresolvable revision is exit 2, never exit 0.
 #
 # Keep AGENT_NAME / AGENT_EMAIL in sync with .githooks/commit-msg and the
 # workflow's documentation block.
@@ -49,9 +60,14 @@ problems=""
 #    `Co-authored-by: Claude` line.
 #
 #    One record per identity: <sha>\t<role>\t<name>\t<email>.
-git log \
+if ! git log \
   --format='%H%x09author%x09%an%x09%ae%x0a%H%x09committer%x09%cn%x09%ce' \
-  "$range" > "$workdir/idents.txt"
+  "$range" > "$workdir/idents.txt" 2> "$workdir/git.err"; then
+  printf 'agent-attribution-scan: cannot resolve revision argument %s — refusing to report clean.\n' \
+    "$range" >&2
+  sed 's/^/  git: /' "$workdir/git.err" >&2
+  exit 2
+fi
 # tolower() rather than IGNORECASE so this holds on mawk (the default awk on
 # ubuntu-latest) as well as gawk. The email match is a substring (any
 # …@anthropic.com / …@openai.com address), but the NAME match is anchored to the
@@ -74,10 +90,20 @@ fi
 #    supplied text (PR title + body) when given — flagged when the name or email
 #    is an agent. Trailer position only, so prose that merely *mentions* a
 #    trailer does not trip the gate.
-{
-  git log --format='%B' "$range"
-  [ -n "$text_file" ] && cat "$text_file"
-} > "$workdir/all_text.txt"
+if ! git log --format='%B' "$range" > "$workdir/messages.txt" 2> "$workdir/git.err"; then
+  printf 'agent-attribution-scan: cannot read commit messages for %s — refusing to report clean.\n' \
+    "$range" >&2
+  sed 's/^/  git: /' "$workdir/git.err" >&2
+  exit 2
+fi
+cat "$workdir/messages.txt" > "$workdir/all_text.txt"
+if [ -n "$text_file" ]; then
+  if ! cat "$text_file" >> "$workdir/all_text.txt"; then
+    printf 'agent-attribution-scan: cannot read --text-file %s — refusing to report clean.\n' \
+      "$text_file" >&2
+    exit 2
+  fi
+fi
 
 coauthor_hits="$(grep -iE '^[[:space:]]*Co-authored-by:' "$workdir/all_text.txt" \
                  | grep -Ei "Co-authored-by:[[:space:]]*${AGENT_NAME}|${AGENT_EMAIL}" \

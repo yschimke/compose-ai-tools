@@ -83,8 +83,19 @@ jobs:
           # rather than interpolated into the shell.
           { printf '%s\n' "${PR_TITLE:-}"; printf '%s\n' "${PR_BODY:-}"; } > pr_text.txt
 
-          if ! .github/scripts/agent-attribution-scan.sh \
-                 --range "${BASE_SHA}..${HEAD_SHA}" --text-file pr_text.txt; then
+          .github/scripts/agent-attribution-scan.sh \
+            --range "${BASE_SHA}..${HEAD_SHA}" --text-file pr_text.txt
+          status=$?
+          # 2 means the scan could not run (unresolvable revision). That is not
+          # "clean" and it is not "found" either — say so, rather than printing
+          # the attribution message for what is actually a broken checkout.
+          if [ "$status" -eq 2 ]; then
+            printf '::error::Agent-attribution scan could not run\n'
+            echo "Could not resolve ${BASE_SHA}..${HEAD_SHA}. The scanner fails" >&2
+            echo "closed rather than reporting clean — check the checkout depth." >&2
+            exit 1
+          fi
+          if [ "$status" -ne 0 ]; then
             printf '::error::Agent attribution found in this PR\n'
             cat >&2 <<'MSG'
 
@@ -146,17 +157,57 @@ jobs:
         run: |
           set -uo pipefail
 
-          # A branch-creation or force-push reports an all-zero `before`, and
-          # after a squash merge `before` is the previous main tip. Fall back to
-          # the single pushed commit when the range is unusable, so the job
-          # never silently scans nothing.
-          range="${BEFORE_SHA}..${AFTER_SHA}"
-          if [ -z "${BEFORE_SHA//0/}" ] || ! git rev-parse --quiet --verify "${BEFORE_SHA}^{commit}" >/dev/null; then
-            range="${AFTER_SHA}~1..${AFTER_SHA}"
+          # Determining WHAT this push added is the whole job, and getting it
+          # wrong silently under-scans. Three cases:
+          #
+          #  • Branch creation — `before` is all-zero. Scan everything reachable
+          #    from the new tip; there is no earlier state to diff against.
+          #  • Ordinary push / squash merge — `before` is the previous tip and
+          #    `fetch-depth: 0` has it. Scan before..after.
+          #  • Force push — `before` is ALSO the previous tip (GitHub does not
+          #    zero it; it flags `forced` separately), but that commit may now be
+          #    unreachable and so absent from the clone. Try to fetch it by sha.
+          #
+          # If the old tip cannot be resolved even after fetching, we do NOT
+          # narrow to the tip commit: a multi-commit force push would then hide
+          # attribution in every replacement commit but the last. We fail instead
+          # — a red main run demanding a manual look is the correct outcome for a
+          # gate that cannot see its own scope.
+          if [ -z "${BEFORE_SHA//0/}" ]; then
+            range="${AFTER_SHA}"
+            echo "Branch creation — scanning all history reachable from ${AFTER_SHA}"
+          else
+            if ! git rev-parse --quiet --verify "${BEFORE_SHA}^{commit}" >/dev/null; then
+              echo "Previous tip ${BEFORE_SHA} not in the clone (force push?) — fetching it"
+              git fetch --no-tags --quiet origin "${BEFORE_SHA}" || true
+            fi
+            if ! git rev-parse --quiet --verify "${BEFORE_SHA}^{commit}" >/dev/null; then
+              printf '::error::Cannot determine what this push added\n'
+              cat >&2 <<MSG
+
+          The previous tip ${BEFORE_SHA} could not be resolved, even after
+          fetching it by sha, so the set of commits this push added to main is
+          unknown. Scanning only ${AFTER_SHA} would silently miss every other
+          commit of a multi-commit force push, so this job fails instead.
+
+          Check the pushed commits by hand:
+            git fetch origin main && git log --format='%H %an <%ae>' origin/main
+          MSG
+              exit 1
+            fi
+            range="${BEFORE_SHA}..${AFTER_SHA}"
           fi
           echo "Scanning ${range}"
 
-          if ! .github/scripts/agent-attribution-scan.sh --range "$range"; then
+          .github/scripts/agent-attribution-scan.sh --range "$range"
+          status=$?
+          if [ "$status" -eq 2 ]; then
+            printf '::error::Agent-attribution scan could not run\n'
+            echo "The scanner could not resolve '${range}'. It fails closed rather" >&2
+            echo "than reporting clean — investigate before trusting this push." >&2
+            exit 1
+          fi
+          if [ "$status" -ne 0 ]; then
             printf '::error::Agent attribution reached main\n'
             cat >&2 <<'MSG'
 
