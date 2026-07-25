@@ -243,6 +243,10 @@ compose-bom-stable = { module = "androidx.compose:compose-bom", version.ref = "c
 compose-bom-compat = { module = "androidx.compose:compose-bom", version.ref = "compose-bom-compat" }
 compose-ui = { module = "androidx.compose.ui:ui" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+# Downloadable Google-Fonts faces (`Font(GoogleFont("Orbitron"), provider)`). Test-only here: the
+# fixture preview that proves the figma-svg export names a branded downloadable family instead of
+# collapsing to Roboto. Versioned by `compose-bom-compat`.
+compose-ui-text-google-fonts = { module = "androidx.compose.ui:ui-text-google-fonts" }
 compose-material3 = { module = "androidx.compose.material3:material3" }
 # Version-pinned material3 for the M3 design catalog's inset focus ring (see the
 # `compose-material3-catalog` version note). Overrides the stable BOM's 1.4.0 for
