@@ -115,6 +115,7 @@ import {
     PatternArgument, PatternDefine
 } from './operations/loom/PatternOperations';
 import { Custom } from './operations/layout/managers/Custom';
+import { CoreSemantics } from './operations/semantics/CoreSemantics';
 
 export class Operations {
     private static readonly sMap = new Map<number, CompanionOperationFn>();
@@ -314,6 +315,9 @@ export class Operations {
 
         // Custom layout component (parse-only)
         m.set(Custom.OP_CODE, Custom.read);
+
+        // Accessibility semantics (parse-only — no visual effect)
+        m.set(CoreSemantics.OP_CODE, CoreSemantics.read);
     }
 
     static getOperations(): Map<number, CompanionOperationFn> {

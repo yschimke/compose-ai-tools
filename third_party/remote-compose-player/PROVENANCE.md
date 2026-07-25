@@ -18,10 +18,23 @@ without a server-side Robolectric daemon.
 
 ## Local modifications
 
-None — vendored verbatim from the upstream path above (`src/`, `package.json`,
+Vendored from the upstream path above (`src/`, `package.json`,
 `package-lock.json`, `tsconfig.json`, `README.md`, `BUILDING.md`). Upstream's own
 `packaging/`, `vscode-extension/`, and standalone-site tooling are intentionally
 not vendored; only the library source needed to build the browser bundle.
+
+Local deltas over that snapshot (each also filed upstream):
+
+- **`CoreSemantics` (opcode 250 / `ACCESSIBILITY_SEMANTICS`).** Added
+  `src/core/operations/semantics/CoreSemantics.ts` and registered it in
+  `src/core/Operations.ts`. Before this, an `AccessibilityModifier` op in the
+  stream hit the unknown-opcode path in `RemoteComposeBuffer.inflateFromBuffer`,
+  which logs `Unknown operation opcode: 250, skipping rest of buffer` and
+  abandons the rest of the document — so any component carrying accessibility
+  semantics (every Material3 catalog preview) lost all operations after it. The
+  op is accessibility metadata with no visual instructions, so the reader just
+  consumes its wire payload (matching `CoreSemantics.read` in remote-core) and
+  paints nothing, letting the rest of the document parse.
 
 ## Building the browser bundle
 

@@ -14954,6 +14954,48 @@ var RC = (() => {
   _Custom.OP_CODE = 93;
   var Custom = _Custom;
 
+  // src/core/operations/semantics/CoreSemantics.ts
+  var _CoreSemantics = class _CoreSemantics extends Operation {
+    constructor(mContentDescriptionId, mRole, mTextId, mStateDescriptionId, mMode, mEnabled, mClickable) {
+      super();
+      this.mContentDescriptionId = mContentDescriptionId;
+      this.mRole = mRole;
+      this.mTextId = mTextId;
+      this.mStateDescriptionId = mStateDescriptionId;
+      this.mMode = mMode;
+      this.mEnabled = mEnabled;
+      this.mClickable = mClickable;
+    }
+    write(_buffer) {
+    }
+    // Accessibility metadata has no visual effect, so applying it paints nothing.
+    apply(_context) {
+    }
+    deepToString(indent) {
+      return `${indent}CoreSemantics(contentDescription=${this.mContentDescriptionId}, role=${this.mRole}, text=${this.mTextId}, stateDescription=${this.mStateDescriptionId}, mode=${this.mMode}, enabled=${this.mEnabled}, clickable=${this.mClickable})`;
+    }
+    static read(buffer, operations) {
+      const contentDescriptionId = buffer.declareId();
+      const role = buffer.readByte();
+      const textId = buffer.declareId();
+      const stateDescriptionId = buffer.declareId();
+      const mode = buffer.readByte();
+      const enabled = buffer.readBoolean();
+      const clickable = buffer.readBoolean();
+      operations.push(new _CoreSemantics(
+        contentDescriptionId,
+        role,
+        textId,
+        stateDescriptionId,
+        mode,
+        enabled,
+        clickable
+      ));
+    }
+  };
+  _CoreSemantics.OP_CODE = 250;
+  var CoreSemantics = _CoreSemantics;
+
   // src/core/Operations.ts
   var _Operations = class _Operations {
     static init() {
@@ -15107,6 +15149,7 @@ var RC = (() => {
       m.set(PatternArgument.OP_CODE, PatternArgument.read);
       m.set(PatternDefine.OP_CODE, PatternDefine.read);
       m.set(Custom.OP_CODE, Custom.read);
+      m.set(CoreSemantics.OP_CODE, CoreSemantics.read);
     }
     static getOperations() {
       _Operations.init();
