@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.17.23](https://github.com/yschimke/compose-ai-tools/compare/v0.17.22...v0.17.23) (2026-07-25)
+
+
+### Features
+
+* **catalog:** theme.fonts knob to brand the M3 type scale per role group ([#2752](https://github.com/yschimke/compose-ai-tools/issues/2752)) ([9d120c7](https://github.com/yschimke/compose-ai-tools/commit/9d120c751a8a30786bb1c027c68c03d705966401))
+* **discovery:** support @Preview functions whose parameters are all defaulted ([#2745](https://github.com/yschimke/compose-ai-tools/issues/2745)) ([b313d43](https://github.com/yschimke/compose-ai-tools/commit/b313d43e23896a98093c97d3d8c11b479d3cdbbf))
+
+
+### Bug Fixes
+
+* **rc-player:** paint drawWithContent fills at full component bounds ([#2755](https://github.com/yschimke/compose-ai-tools/issues/2755)) ([5107630](https://github.com/yschimke/compose-ai-tools/commit/51076304bda782837405a246a69f7de3aa9bc789))
+* **rc-player:** resolve dynamic path coords + content-wrapper sizes ([#2753](https://github.com/yschimke/compose-ai-tools/issues/2753)) ([1bf6c16](https://github.com/yschimke/compose-ai-tools/commit/1bf6c16a69a6536ceb5902407ea51eb17ac81da0))
+
 ## [0.17.22](https://github.com/yschimke/compose-ai-tools/compare/v0.17.21...v0.17.22) (2026-07-25)
 
 
