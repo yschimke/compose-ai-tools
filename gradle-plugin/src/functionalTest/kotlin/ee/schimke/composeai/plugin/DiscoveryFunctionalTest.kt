@@ -1532,6 +1532,65 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `composePreviewDiscover accepts a preview whose parameters are all defaulted`() {
+    val projectDir = createCmpTestProject()
+
+    File(projectDir, "src/main/kotlin/test/Previews.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.foundation.background
+        import androidx.compose.foundation.layout.Box
+        import androidx.compose.foundation.layout.size
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.graphics.Color
+        import androidx.compose.ui.tooling.preview.Preview
+        import androidx.compose.ui.unit.dp
+
+        // The shape a production composable annotated @Preview in place almost always has.
+        // Studio renders it by filling every parameter from Kotlin's synthetic ${'$'}default
+        // bridge, and so does our renderer — discovery must not drop it.
+        // `size` is a plain Int rather than a Color: an inline value class in the signature
+        // mangles the JVM method name (DefaultedPreview-iJQMabo), which is orthogonal to the
+        // rule under test.
+        @Preview(name = "Defaulted")
+        @Composable
+        fun DefaultedPreview(modifier: Modifier = Modifier, size: Int = 50) {
+            Box(modifier = modifier.size(size.dp).background(Color.Gray))
+        }
+
+        // Only SOME parameters defaulted: `label` is required, so an all-bits default mask
+        // would pass it null and NPE at render. Must still be skipped.
+        @Preview(name = "Partially defaulted")
+        @Composable
+        fun PartiallyDefaultedPreview(label: String, modifier: Modifier = Modifier) {
+            Box(modifier = modifier.size(label.length.dp).background(Color.Gray))
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val functionNames = manifest.previews.map { it.functionName }
+    assertThat(functionNames).contains("DefaultedPreview")
+    assertThat(functionNames).doesNotContain("PartiallyDefaultedPreview")
+  }
+
+  @Test
   fun `composePreviewDiscover discovers private preview methods`() {
     val projectDir = createCmpTestProject()
 
@@ -1640,7 +1699,10 @@ class DiscoveryFunctionalTest {
         .withPluginClasspath()
         .build()
 
-    assertThat(result.output).contains("parameter(s) without @PreviewParameter provider wiring")
+    // The warning now enumerates all three admitted shapes, since "no @PreviewParameter" stopped
+    // being the whole story once fully-defaulted parameter lists became renderable.
+    assertThat(result.output)
+      .contains("parameter(s) that are neither @PreviewParameter-injected nor fully defaulted")
     val manifest =
       json.decodeFromString<PreviewManifest>(
         File(projectDir, "build/compose-previews/previews.json").readText()
