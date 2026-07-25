@@ -19,6 +19,8 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.Base64
 import javax.imageio.ImageIO
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import okio.FileSystem
 import okio.Path.Companion.toPath
 
@@ -101,16 +103,53 @@ object ComposeFigmaSvgDataProducer {
         deviceBackground = deviceBackground,
       )
     val fonts = fontResolver?.let { resolveFonts(model, it, fileSystem) }
+    // Everything this export can put a real name to: the faces it embedded, the captured→emitted
+    // family map, and the families named straight on a `<text>` when nothing was embedded.
+    val named =
+      buildSet {
+        fonts?.faces?.forEach { add(it.family) }
+        fonts?.familyOverrides?.values?.forEach { add(it) }
+        addAll(capturedFamilies(model.root))
+      }
+    val unnamed = FigmaSvgRenderedFonts.unnamedIn(named)
     val svg =
-      if (fonts == null || fonts.faces.isEmpty()) FigmaLayeredSvg.render(model)
-      else
-        FigmaLayeredSvg.render(
-          model,
-          FigmaLayeredSvg.Options(defaultFontFamily = DEFAULT_EMBED_FAMILY),
-          fonts.faces,
-          fonts.familyOverrides,
-        )
+      when {
+        // The render drew with a face this export can't name. Emitting the default here is what
+        // shipped branded stickers as Roboto, so draw boxes instead: wrong-and-obvious beats
+        // wrong-and-plausible.
+        unnamed.isNotEmpty() -> {
+          val tofu =
+            FigmaSvgFontFace(
+              family = TofuFont.FAMILY,
+              weight = 400,
+              italic = false,
+              dataBase64 =
+                Base64.getEncoder().encodeToString(TofuFont.build(codePoints(model.root))),
+              format = "truetype",
+            )
+          System.err.println(
+            "ComposeFigmaSvg: the render drew with ${unnamed.joinToString(", ")} but the export " +
+              "could not name ${if (unnamed.size == 1) "it" else "them"} — text is exported as " +
+              "missing-glyph boxes rather than silently substituting $DEFAULT_EMBED_FAMILY"
+          )
+          FigmaLayeredSvg.render(
+            model,
+            FigmaLayeredSvg.Options(defaultFontFamily = TofuFont.FAMILY),
+            (fonts?.faces.orEmpty()) + tofu,
+            fonts?.familyOverrides.orEmpty(),
+          )
+        }
+        fonts == null || fonts.faces.isEmpty() -> FigmaLayeredSvg.render(model)
+        else ->
+          FigmaLayeredSvg.render(
+            model,
+            FigmaLayeredSvg.Options(defaultFontFamily = DEFAULT_EMBED_FAMILY),
+            fonts.faces,
+            fonts.familyOverrides,
+          )
+      }
     fileSystem.write(previewDir.resolve(FILE_SVG).path.toPath()) { writeUtf8(svg) }
+    writeFontWarnings(previewDir, unnamed, named, fileSystem)
     if (frame != null && model.rasterTargets.isNotEmpty()) {
       writeRasters(previewDir, frame, model.rasterTargets, fileSystem)
     }
@@ -118,6 +157,58 @@ object ComposeFigmaSvgDataProducer {
 
   /** The face a generic/absent family maps to — Compose's default Material typeface. */
   const val DEFAULT_EMBED_FAMILY: String = "Roboto"
+
+  /** Sidecar naming the faces the render drew with that the export could not reproduce. */
+  const val FILE_FONT_WARNINGS: String = "compose-figma-fonts.warnings.json"
+
+  /** Every family named on a `<text>` in [layer]'s subtree. */
+  private fun capturedFamilies(layer: FigmaSvgLayer): Set<String> = buildSet {
+    fun walk(node: FigmaSvgLayer) {
+      node.text?.fontFamily?.takeIf { it.isNotBlank() }?.let { add(it) }
+      node.children.forEach(::walk)
+    }
+    walk(layer)
+  }
+
+  /** Every code point drawn in [layer]'s subtree, so the tofu face maps exactly what is emitted. */
+  private fun codePoints(layer: FigmaSvgLayer): Set<Int> = buildSet {
+    fun walk(node: FigmaSvgLayer) {
+      node.text?.let { t ->
+        t.content.codePoints().toArray().forEach { add(it) }
+        t.lines?.forEach { line -> line.content.codePoints().toArray().forEach { add(it) } }
+      }
+      node.children.forEach(::walk)
+    }
+    walk(layer)
+  }
+
+  /**
+   * Records the unreproducible faces beside the SVG so a degraded export is auditable after the
+   * fact — the boxes say *that* something is wrong, this says *which face*. Written only when
+   * there is something to report, so a healthy export leaves no sidecar behind.
+   */
+  private fun writeFontWarnings(
+    previewDir: File,
+    unnamed: List<String>,
+    named: Set<String>,
+    fileSystem: FileSystem,
+  ) {
+    val path = previewDir.resolve(FILE_FONT_WARNINGS).path.toPath()
+    if (unnamed.isEmpty()) {
+      runCatching { fileSystem.delete(path) } // clear a stale warning from an earlier render
+      return
+    }
+    val json = Json { encodeDefaults = false }
+    val payload =
+      FigmaSvgFontWarnings(
+        unnamedRenderedFamilies = unnamed,
+        namedFamilies = named.sorted(),
+        tofuFamily = TofuFont.FAMILY,
+      )
+    fileSystem.write(path) {
+      writeUtf8(json.encodeToString(FigmaSvgFontWarnings.serializer(), payload))
+    }
+  }
 
   /**
    * Process-wide cache of file-embedded faces, keyed on font path + weight/italic + the exact
