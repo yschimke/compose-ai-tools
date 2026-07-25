@@ -93,6 +93,78 @@ class DesktopLottieRendererTest {
     assertEquals(10, apngNumFrames(outputFile))
   }
 
+  @Test
+  fun `sweeps a distinct frame per step and renders byte-identically twice`() {
+    // Regression guard for the flapping baseline: one `scene.render()` per progress step let
+    // Compottie's snapshot-driven progress land *after* the draw now and then, so the capture
+    // reused the previous step's pixels. The duplicated frames fell on random indices each run, so
+    // the committed APNG's bytes changed on every push and the preview diff bot reported
+    // `lottie/spin.json` as changed on every PR. The spinner rotates continuously, so no two
+    // adjacent steps may share pixels, and two renders of the same asset must agree byte for byte.
+    val renders = tempFolder.newFolder("renders")
+    val first = File(renders, "spin-a_animated.png")
+    val second = File(renders, "spin-b_animated.png")
+    for (out in listOf(first, second)) {
+      renderLottieApng(
+        assetPath = "lottie/spin.json",
+        widthPx = 96,
+        heightPx = 96,
+        density = 1.0f,
+        showBackground = false,
+        backgroundColor = 0L,
+        outputFile = out,
+        frameIntervalMs = 40,
+      )
+    }
+
+    val frames = apngFramePayloads(first)
+    assertEquals(50, frames.size)
+    for (i in 1 until frames.size) {
+      assertTrue(
+        "frame $i is a stale duplicate of frame ${i - 1} — the progress step did not reach the " +
+          "painter before the capture",
+        !frames[i].contentEquals(frames[i - 1]),
+      )
+    }
+
+    assertTrue(
+      "two renders of the same asset must produce identical bytes",
+      first.readBytes().contentEquals(second.readBytes()),
+    )
+  }
+
+  /**
+   * Per-frame compressed payloads of an APNG, in order: frame 0's `IDAT` chunks, then each later
+   * frame's `fdAT` chunks with the 4-byte sequence number stripped. [ApngEncoder] copies Skiko's
+   * `IDAT` bytes verbatim and Skia's PNG encoder is deterministic for identical pixels, so two
+   * equal payloads mean two identical frames.
+   */
+  private fun apngFramePayloads(file: File): List<ByteArray> {
+    val bytes = file.readBytes()
+    val payloads = mutableListOf<ByteArray>()
+    var current: MutableList<Byte>? = null
+    var offset = 8 // skip the PNG signature
+    while (offset + 12 <= bytes.size) {
+      val length = ByteBuffer.wrap(bytes, offset, 4).int
+      val type = String(bytes, offset + 4, 4, Charsets.US_ASCII)
+      val dataStart = offset + 8
+      when (type) {
+        // `fcTL` opens a frame; flush whatever the previous one accumulated.
+        "fcTL" -> {
+          current?.let { payloads.add(it.toByteArray()) }
+          current = mutableListOf()
+        }
+        "IDAT" -> current?.addAll(bytes.slice(dataStart until dataStart + length))
+        // Drop the leading 4-byte sequence number so payloads are comparable with frame 0's IDAT.
+        "fdAT" -> current?.addAll(bytes.slice(dataStart + 4 until dataStart + length))
+      }
+      offset = dataStart + length + 4 // + CRC
+      if (type == "IEND") break
+    }
+    current?.let { payloads.add(it.toByteArray()) }
+    return payloads
+  }
+
   /** Read an APNG's `acTL` chunk and return its `numFrames` field. */
   private fun apngNumFrames(file: File): Int {
     val bytes = file.readBytes()
