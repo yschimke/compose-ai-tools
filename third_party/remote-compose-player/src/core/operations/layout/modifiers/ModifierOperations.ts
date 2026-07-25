@@ -4,7 +4,7 @@ import { Operation } from '../../../Operation';
 import type { VariableSupport } from '../../../VariableSupport';
 import type { WireBuffer } from '../../../WireBuffer';
 import type { RemoteContext } from '../../../RemoteContext';
-import { ContextMode } from '../../../RemoteContext';
+import { ContextMode, DENSITY_BEHAVIOR_DP } from '../../../RemoteContext';
 import { PaintBundle } from '../../paint/PaintBundle';
 import { isNaNBits, idFromBits, intBitsToFloat, isVariableBits } from '../../Utils';
 import { Visibility } from '../Component';
@@ -354,10 +354,26 @@ export class PaddingModifier extends Operation implements VariableSupport {
         if (isNaNBits(this.mBottom)) context.listensTo(idFromBits(this.mBottom), this);
     }
     updateVariables(context: RemoteContext): void {
-        if (isNaNBits(this.mLeft)) this.mLeftValue = context.getFloat(idFromBits(this.mLeft));
-        if (isNaNBits(this.mTop)) this.mTopValue = context.getFloat(idFromBits(this.mTop));
-        if (isNaNBits(this.mRight)) this.mRightValue = context.getFloat(idFromBits(this.mRight));
-        if (isNaNBits(this.mBottom)) this.mBottomValue = context.getFloat(idFromBits(this.mBottom));
+        // Re-derive every side from its raw bits each call (NaN → variable lookup,
+        // else the literal float) so density scaling below is idempotent across the
+        // repeated updateVariables passes the engine runs (data + per-op paint).
+        this.mLeftValue = isNaNBits(this.mLeft) ? context.getFloat(idFromBits(this.mLeft)) : intBitsToFloat(this.mLeft);
+        this.mTopValue = isNaNBits(this.mTop) ? context.getFloat(idFromBits(this.mTop)) : intBitsToFloat(this.mTop);
+        this.mRightValue = isNaNBits(this.mRight) ? context.getFloat(idFromBits(this.mRight)) : intBitsToFloat(this.mRight);
+        this.mBottomValue = isNaNBits(this.mBottom) ? context.getFloat(idFromBits(this.mBottom)) : intBitsToFloat(this.mBottom);
+        // Padding is authored in dp. Under DP density behavior AndroidX's
+        // PaddingModifierOperation.updateVariables multiplies each side by the doc
+        // density to get pixels; replicate that so padded content matches the baked
+        // render at densities != 1 (e.g. the density-2.0 Wear-aligned catalog).
+        if (context.getDensityBehavior() === DENSITY_BEHAVIOR_DP) {
+            const d = context.getDensity();
+            if (!Number.isNaN(d) && d > 0) {
+                this.mLeftValue *= d;
+                this.mTopValue *= d;
+                this.mRightValue *= d;
+                this.mBottomValue *= d;
+            }
+        }
     }
     write(_buffer: WireBuffer): void { /* stub */ }
     apply(_context: RemoteContext): void { /* handled by layout */ }

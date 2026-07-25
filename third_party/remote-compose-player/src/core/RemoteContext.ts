@@ -15,6 +15,16 @@ export enum ContextMode {
     PAINT = 'PAINT'
 }
 
+// Density behavior (DOC_DENSITY_BEHAVIOR header property, key 27).
+// Mirrors AndroidX CoreDocument.DENSITY_BEHAVIOR_*: it selects how dp-typed
+// values authored in the document (e.g. padding) are converted at playback.
+//   LEGACY (0): no density scaling — values are used as-is (the default).
+//   PIXELS (1): values are already in pixels — no scaling.
+//   DP     (2): values are in dp and must be multiplied by the doc density.
+export const DENSITY_BEHAVIOR_LEGACY = 0;
+export const DENSITY_BEHAVIOR_PIXELS = 1;
+export const DENSITY_BEHAVIOR_DP = 2;
+
 export abstract class RemoteContext {
     private static readonly MAX_OP_COUNT = 20_000;
 
@@ -51,6 +61,13 @@ export abstract class RemoteContext {
     getDensity(): number { return this.mDensity; }
     setDensity(density: number): void {
         if (!Number.isNaN(density) && density > 0) this.mDensity = density;
+    }
+
+    /** The document's density behavior (DOC_DENSITY_BEHAVIOR, key 27). Mirrors
+     *  AndroidX RemoteContext.getDensityBehavior() → CoreDocument.mDensityBehavior.
+     *  Defaults to LEGACY (no scaling) when the header omits the property. */
+    getDensityBehavior(): number {
+        return this.mDocument?.getDensityBehavior() ?? DENSITY_BEHAVIOR_LEGACY;
     }
 
     getDocLoadTime(): number { return this.mDocLoadTime; }
