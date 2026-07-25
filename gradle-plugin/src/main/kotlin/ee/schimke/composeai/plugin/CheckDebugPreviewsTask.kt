@@ -10,6 +10,7 @@ import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.SkipWhenEmpty
 import org.gradle.api.tasks.TaskAction
+import org.gradle.work.DisableCachingByDefault
 
 /**
  * Warns when `@Preview` functions live in `src/debug/` on a module that applied Google's
@@ -35,6 +36,7 @@ import org.gradle.api.tasks.TaskAction
  * silently leak the confusing failure back through. Wired as a finalizer of
  * `composePreviewDiscover` so it never blocks discovery itself.
  */
+@DisableCachingByDefault(because = "warning-only text scan; rerunning is cheaper than caching")
 abstract class CheckDebugPreviewsTask : DefaultTask() {
 
   @get:InputFiles
