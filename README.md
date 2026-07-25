@@ -6,6 +6,12 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 
 | Preview | Image |
 |---------|-------|
+| `MainActivity` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/activity__MainActivity.png" width="150" /> |
+| `NowPlayingActivity` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/activity__NowPlayingActivity.png" width="150" /> |
+| `getting-started` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/apptour__getting-started_step00_launch.png" width="150" /> |
+| `getting-started` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/apptour__getting-started_step01_open_now_playing.png" width="150" /> |
+| `getting-started` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/apptour__getting-started_step02_back_home.png" width="150" /> |
+| `getting-started` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/apptour__getting-started_step03_deep_link.png" width="150" /> |
 | `Brand colours` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/colorcatalog__Brand.png" width="150" /> |
 | `Semantic colours` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/colorcatalog__Semantic.png" width="150" /> |
 | `All colours` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/colorcatalog__all.png" width="150" /> |
@@ -432,6 +438,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 
 | Preview | Image |
 |---------|-------|
+| `MainActivity` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/activity__MainActivity.png" width="150" /> |
 | `RemoteButtonEnabledPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteButtonEnabledPreview.png" width="150" /> |
 | `RemoteButtonWithBorderPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteButtonWithBorderPreview.png" width="150" /> |
 | `RemoteButtonWithNamedLabelPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteButtonWithNamedLabelPreview.png" width="150" /> |
@@ -449,6 +456,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 
 | Preview | Image |
 |---------|-------|
+| `MainActivity` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/activity__MainActivity.png" width="150" /> |
 | `AmbientStatusAmbientPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/AmbientStatusAmbientPreview_Ambient_body_ambient.png" width="150" /> |
 | `AmbientStatusInteractivePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/AmbientStatusInteractivePreview_Ambient_body_interactive.png" width="150" /> |
 | `MediaGestureScreenHintPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/MediaGestureScreenHintPreview_Media_hints_on.png" width="150" /> |

@@ -175,6 +175,54 @@
     "sha256": "a90781a82be57f76cde772aeef416dd0b7ac8c87d5ebb451df437b8347cb7c28",
     "sourceFile": "src/main/kotlin/com/example/sampleandroidscreenshot/MainPreviews.kt"
   },
+  "samples:android/activity__MainActivity": {
+    "captureLabel": "",
+    "functionName": "MainActivity",
+    "module": "samples:android",
+    "renderBasename": "activity__MainActivity.png",
+    "sha256": "8fd5bd1d5f640146aa0d83f61e5a568a3366fa607156d6bb4c6a1f79ed1cde28",
+    "sourceFile": null
+  },
+  "samples:android/activity__NowPlayingActivity": {
+    "captureLabel": "",
+    "functionName": "NowPlayingActivity",
+    "module": "samples:android",
+    "renderBasename": "activity__NowPlayingActivity.png",
+    "sha256": "7ccb74ce9aeafd4487008d2836f1cc2be91e2b05022d793a121800fb459eff4d",
+    "sourceFile": null
+  },
+  "samples:android/apptour__getting-started": {
+    "captureLabel": "",
+    "functionName": "getting-started",
+    "module": "samples:android",
+    "renderBasename": "apptour__getting-started_step00_launch.png",
+    "sha256": "8fd5bd1d5f640146aa0d83f61e5a568a3366fa607156d6bb4c6a1f79ed1cde28",
+    "sourceFile": null
+  },
+  "samples:android/apptour__getting-started#1": {
+    "captureLabel": "",
+    "functionName": "getting-started",
+    "module": "samples:android",
+    "renderBasename": "apptour__getting-started_step01_open_now_playing.png",
+    "sha256": "7ccb74ce9aeafd4487008d2836f1cc2be91e2b05022d793a121800fb459eff4d",
+    "sourceFile": null
+  },
+  "samples:android/apptour__getting-started#2": {
+    "captureLabel": "",
+    "functionName": "getting-started",
+    "module": "samples:android",
+    "renderBasename": "apptour__getting-started_step02_back_home.png",
+    "sha256": "8fd5bd1d5f640146aa0d83f61e5a568a3366fa607156d6bb4c6a1f79ed1cde28",
+    "sourceFile": null
+  },
+  "samples:android/apptour__getting-started#3": {
+    "captureLabel": "",
+    "functionName": "getting-started",
+    "module": "samples:android",
+    "renderBasename": "apptour__getting-started_step03_deep_link.png",
+    "sha256": "7ccb74ce9aeafd4487008d2836f1cc2be91e2b05022d793a121800fb459eff4d",
+    "sourceFile": null
+  },
   "samples:android/colorcatalog__Brand": {
     "captureLabel": "",
     "functionName": "Brand colours",
@@ -1196,7 +1244,7 @@
     "functionName": "lottie/spin.json",
     "module": "samples:android",
     "renderBasename": "lottie__lottie_spin_animated.png",
-    "sha256": "9eec9057146462016e172f296c0104602b2f5cc4bd3f8cd587103d9a9920197f",
+    "sha256": "3561b0e517840e55a545aa564dca4c392980b153c3f703a5a90bb7a2716c3450",
     "sourceFile": null
   },
   "samples:android/svg__svg_badge": {
@@ -2927,6 +2975,14 @@
     "sha256": "a565cb436e54813f24d70953471fd9f4f188159a5b0fc25a50c9fbfdf7835e0a",
     "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt"
   },
+  "samples:remotecompose/activity__MainActivity": {
+    "captureLabel": "",
+    "functionName": "MainActivity",
+    "module": "samples:remotecompose",
+    "renderBasename": "activity__MainActivity.png",
+    "sha256": "a1417a6830df1e0548dd9d47c7ea9c8adf7b463a1ee5dcc4def14d0f6422f25e",
+    "sourceFile": null
+  },
   "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonEnabledPreview": {
     "captureLabel": "",
     "functionName": "RemoteButtonEnabledPreview",
@@ -3038,6 +3094,14 @@
     "renderBasename": "ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_3.png",
     "sha256": "76b6d37d4c07c9103d34755f4d6d6d13fb90205ed2817335ed0d3e84d913ff5a",
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
+  },
+  "samples:wear/activity__MainActivity": {
+    "captureLabel": "",
+    "functionName": "MainActivity",
+    "module": "samples:wear",
+    "renderBasename": "activity__MainActivity.png",
+    "sha256": "bcad6c44b86bf475cb10741ba234187127b716e215e9783914e079d8b73d216e",
+    "sourceFile": null
   },
   "samples:wear/com.example.samplewear.AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient body \u2014 ambient": {
     "captureLabel": "",
