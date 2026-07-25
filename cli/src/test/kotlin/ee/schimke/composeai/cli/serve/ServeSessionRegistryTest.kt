@@ -2,8 +2,12 @@ package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -53,6 +57,86 @@ class ServeSessionRegistryTest {
       built.incrementAndGet()
       return stateFor(sessionId)
     }
+  }
+
+  /**
+   * Suspension closes the outgoing daemon OUTSIDE the registry lock (so a blocking shutdown doesn't
+   * stall unrelated sessions), which opens a window where the entry's host is already null while
+   * its daemon is still alive. A resume landing in that window must WAIT, not open a replacement
+   * alongside it — otherwise one session briefly runs two daemon subprocesses and overshoots the
+   * live-seat / memory budget the limiter is there to enforce.
+   */
+  @Test
+  fun `a resume waits for the outgoing daemon to finish closing`() {
+    val clock = AtomicLong(0)
+    val opener = Opener()
+    val releaseClose = CountDownLatch(1)
+    val closeStarted = CountDownLatch(1)
+    val closeFinished = AtomicBoolean(false)
+    // Wrap the opened host so its close() parks until the test lets it go.
+    val blockingOpener: (ServeSessionState) -> ServeHost? = { state ->
+      val delegate = opener(state)
+      object : ServeHost by delegate {
+        override fun close() {
+          closeStarted.countDown()
+          // BOUNDED park: if this test ever fails mid-flight, the registry's own close() must not
+          // block forever on a latch nobody will release — a regression should fail, not hang CI.
+          releaseClose.await(10, TimeUnit.SECONDS)
+          delegate.close()
+          closeFinished.set(true)
+        }
+      }
+    }
+    ServeSessionRegistry(
+        open = blockingOpener,
+        idleTimeoutMillis = 10,
+        reaperIntervalMillis = 0,
+        clock = { clock.get() },
+      )
+      .use { reg ->
+        try {
+          reg.register("a", stateFor("a"))
+          assertNotNull(reg.acquire("a"))
+          assertEquals(1, opener.opened.get())
+
+          clock.set(100)
+          val suspender = Thread { reg.suspendIdle() }.apply { start() }
+          assertTrue(closeStarted.await(5, TimeUnit.SECONDS), "the suspension started closing")
+
+          // The host is detached but its daemon is still shutting down. A resume now must block.
+          val resumed = AtomicReference<ServeHost?>(null)
+          val resumeReturned = CountDownLatch(1)
+          Thread {
+              resumed.set(reg.acquire("a"))
+              resumeReturned.countDown()
+            }
+            .start()
+          assertTrue(
+            !resumeReturned.await(300, TimeUnit.MILLISECONDS),
+            "the resume must not complete while the previous daemon is still closing",
+          )
+          assertEquals(
+            1,
+            opener.opened.get(),
+            "no second daemon is opened alongside the closing one",
+          )
+
+          // Let the close finish; the parked resume then opens exactly one replacement.
+          releaseClose.countDown()
+          assertTrue(resumeReturned.await(5, TimeUnit.SECONDS), "the resume completes once closed")
+          suspender.join(5_000)
+          assertTrue(
+            closeFinished.get(),
+            "the outgoing daemon closed before the replacement opened",
+          )
+          assertNotNull(resumed.get())
+          assertEquals(2, opener.opened.get(), "exactly one replacement daemon")
+        } finally {
+          // Never leave a blocked close() parked — an assertion failure above would otherwise
+          // stall the registry's own close() inside use{}.
+          releaseClose.countDown()
+        }
+      }
   }
 
   @Test

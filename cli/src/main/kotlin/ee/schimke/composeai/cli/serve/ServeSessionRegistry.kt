@@ -73,6 +73,15 @@ class ServeSessionRegistry(
      * daemon is re-opened so it reflects the *current* run, not the session's first-ever open.
      */
     @Volatile var startedAt: Long? = null,
+    /**
+     * A suspension detached this entry's host and is closing it **right now** (outside the lock, so
+     * a blocking daemon shutdown doesn't stall every other session). [liveHost] waits this out
+     * before reopening: without it, a request arriving inside that window sees `host == null` and
+     * launches a replacement daemon while the previous one is still shutting down, so a single
+     * session momentarily runs two daemon subprocesses and overshoots the live-seat/memory budget.
+     * Closing under the lock used to serialise this implicitly.
+     */
+    @Volatile var closing: Boolean = false,
   )
 
   /**
@@ -106,6 +115,9 @@ class ServeSessionRegistry(
   private val lock = ReentrantLock()
   private val sessions = HashMap<String, Entry>()
   private var closed = false
+
+  /** Signalled when a detached host finishes closing, releasing waiters in [liveHost]. */
+  private val closeFinished = lock.newCondition()
 
   /**
    * Observers notified as a session transitions resident→suspended, with the host that's about to
@@ -255,12 +267,16 @@ class ServeSessionRegistry(
    * released — a `close()` can block on daemon shutdown, and a listener may re-enter the registry —
    * so the only work under the lock is detaching each host from its entry. Listeners see the host
    * before it's closed, so a snapshot they take reads live state.
+   *
+   * Each detached entry is marked [Entry.closing] for that window so a concurrent resume waits for
+   * the old daemon to die rather than starting a second one alongside it (see [liveHost]) — the
+   * serialisation that closing-under-the-lock used to provide, without the stall.
    */
   fun suspendIdle(): Int {
     val detached = lock.withLock {
       if (closed) return 0
       val now = clock()
-      val detached = mutableListOf<Pair<String, ServeHost>>()
+      val detached = mutableListOf<Triple<String, Entry, ServeHost>>()
       for ((id, entry) in sessions) {
         val host = entry.host ?: continue
         if (
@@ -271,14 +287,24 @@ class ServeSessionRegistry(
         ) {
           entry.host = null
           entry.startedAt = null
-          detached += id to host
+          entry.closing = true
+          detached += Triple(id, entry, host)
         }
       }
       detached
     }
-    for ((id, host) in detached) {
-      suspendListeners.forEach { listener -> runCatching { listener(id, host) } }
-      runCatching { host.close() }
+    for ((id, entry, host) in detached) {
+      try {
+        suspendListeners.forEach { listener -> runCatching { listener(id, host) } }
+        runCatching { host.close() }
+      } finally {
+        // Always clear the gate, even if a listener threw something runCatching doesn't hold —
+        // a stuck `closing` flag would block this session's resume forever.
+        lock.withLock {
+          entry.closing = false
+          closeFinished.signalAll()
+        }
+      }
     }
     return detached.size
   }
@@ -339,6 +365,8 @@ class ServeSessionRegistry(
     val hosts = lock.withLock {
       if (closed) return
       closed = true
+      // Release anyone parked on a mid-suspension close; they re-check `closed` and give up.
+      closeFinished.signalAll()
       sessions.values.mapNotNull { it.host }.also { sessions.clear() }
     }
     reaper?.shutdownNow()
@@ -360,8 +388,20 @@ class ServeSessionRegistry(
     }
   }
 
-  /** The entry's live host, resuming (re-opening) from its state if it was suspended. */
+  /**
+   * The entry's live host, resuming (re-opening) from its state if it was suspended. Caller holds
+   * [lock].
+   *
+   * A resume that lands mid-suspension first waits for the outgoing daemon to finish closing
+   * ([Entry.closing]) — otherwise this would open its replacement alongside a daemon that is still
+   * shutting down, briefly doubling that session's memory and live-seat cost. `await` releases the
+   * lock while parked, so the closer (which re-takes it only to clear the flag) still makes
+   * progress, and other sessions are unaffected.
+   */
   private fun liveHost(entry: Entry): ServeHost? {
+    while (entry.closing) closeFinished.awaitUninterruptibly()
+    // The registry may have been closed while we were parked; don't resurrect a daemon into it.
+    if (closed) return null
     entry.host?.let {
       return it
     }
