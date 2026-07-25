@@ -894,6 +894,23 @@ class JsonRpcServer(
         rejected.add(RejectedRender(id = previewId, reason = "blank preview id"))
         continue
       }
+      // App-level synthetic previews (kind=ACTIVITY / kind=APP_TOUR) launch real activities and
+      // drive multi-step navigation — only the Gradle Robolectric renderer implements that today.
+      // Reject them cleanly here rather than falling through to the composable-method reflection
+      // path, which would throw NoSuchMethodException (the "method" is the activity class itself)
+      // and surface as renderFailed. Interactive daemon support is tracked as a follow-up.
+      val kind = previewIndex.byId(previewId)?.params?.kind
+      if (kind == "ACTIVITY" || kind == "APP_TOUR") {
+        rejected.add(
+          RejectedRender(
+            id = previewId,
+            reason =
+              "kind=$kind is not renderable by the daemon yet; " +
+                "the Gradle composePreviewRender pipeline produces its captures",
+          )
+        )
+        continue
+      }
       // Coalesce a slider-drag burst: if an override-bearing render is still in-flight for this
       // previewId, drop the new one and let the client resubmit on `renderFinished`. Without this
       // a fast drag fans out to N parallel sandbox renders that all serialise on the same slot.
