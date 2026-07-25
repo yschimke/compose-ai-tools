@@ -14201,7 +14201,7 @@ ${inner}`;
         }
       }
       if (this.mChildrenComponents.length > 0 && size !== null) {
-        size.setWidth(size.getWidth() + this.mSpacedBy * (visibleChildren - 1));
+        size.setWidth(size.getWidth() + this.mSpacedBy * this.getDpBehaviorScale(context) * (visibleChildren - 1));
       }
       let childrenWidth = 0;
       let childrenHeight = 0;
@@ -14310,7 +14310,7 @@ ${inner}`;
         }
       }
       if (this.mChildrenComponents.length > 0 && size !== null) {
-        size.setHeight(size.getHeight() + this.mSpacedBy * (visibleChildren - 1));
+        size.setHeight(size.getHeight() + this.mSpacedBy * this.getDpBehaviorScale(context) * (visibleChildren - 1));
       }
       let childrenWidth = 0;
       let childrenHeight = 0;

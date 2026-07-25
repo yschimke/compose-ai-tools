@@ -71,7 +71,10 @@ export class CollapsibleRowLayout extends RowLayout {
             }
         }
         if (this.mChildrenComponents.length > 0 && size !== null) {
-            size.setWidth(size.getWidth() + (this.mSpacedBy * (visibleChildren - 1)));
+            // Match the density-scaled spacing the inherited positioning applies
+            // (RowLayout.internalLayoutMeasure) so the measured width and the child
+            // placement agree under DP density behavior.
+            size.setWidth(size.getWidth() + (this.mSpacedBy * this.getDpBehaviorScale(context) * (visibleChildren - 1)));
         }
 
         let childrenWidth = 0;
