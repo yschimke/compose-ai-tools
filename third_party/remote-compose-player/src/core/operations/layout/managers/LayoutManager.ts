@@ -21,10 +21,17 @@ export abstract class LayoutManager extends LayoutComponent {
         const wMod = this.getWidthModifier();
         const hMod = this.getHeightModifier();
 
+        // Document dp→px scale (DOC_DENSITY_AT_GENERATION; 1 for density-1 docs).
+        // Applied to dp-typed dimensions (EXACT_DP, width/heightIn) which the wire
+        // stores as raw dp; EXACT (px) and padding are left untouched.
+        const dp = this.getDpScale(context);
+
         // Determine width
         let w: number;
-        if (wMod && (wMod.getType() === WidthModifier.EXACT || wMod.getType() === WidthModifier.EXACT_DP)) {
+        if (wMod && wMod.getType() === WidthModifier.EXACT) {
             w = wMod.getValue() + padding_w;
+        } else if (wMod && wMod.getType() === WidthModifier.EXACT_DP) {
+            w = wMod.getValue() * dp + padding_w;
         } else if (wMod && wMod.getType() === WidthModifier.FILL) {
             w = maxWidth;
         } else {
@@ -34,8 +41,10 @@ export abstract class LayoutManager extends LayoutComponent {
 
         // Determine height
         let h: number;
-        if (hMod && (hMod.getType() === HeightModifier.EXACT || hMod.getType() === HeightModifier.EXACT_DP)) {
+        if (hMod && hMod.getType() === HeightModifier.EXACT) {
             h = hMod.getValue() + padding_h;
+        } else if (hMod && hMod.getType() === HeightModifier.EXACT_DP) {
+            h = hMod.getValue() * dp + padding_h;
         } else if (hMod && hMod.getType() === HeightModifier.FILL) {
             h = maxHeight;
         } else {
@@ -53,13 +62,16 @@ export abstract class LayoutManager extends LayoutComponent {
             this.computeWrapSize(context, minWidth, maxWidth - padding_w, minHeight,
                 maxHeight - padding_h, horizontalWrap, verticalWrap, measure, this.mCachedWrapSize);
 
+            // width/heightIn bounds are authored in dp (androidx `widthIn(min: Dp,
+            // max: Dp)`), but the wire stores the raw dp number — scale to px by the
+            // document's generation density (`dp`, 1 for density-1 docs).
             if (horizontalWrap) {
                 w = this.mCachedWrapSize.getWidth() + padding_w;
                 // Apply WidthIn constraints
                 const wIn = this.getWidthInModifier();
                 if (wIn) {
-                    if (wIn.getMin() >= 0) w = Math.max(w, wIn.getMin());
-                    if (wIn.getMax() >= 0) w = Math.min(w, wIn.getMax());
+                    if (wIn.getMin() >= 0) w = Math.max(w, wIn.getMin() * dp);
+                    if (wIn.getMax() >= 0) w = Math.min(w, wIn.getMax() * dp);
                 }
                 w = Math.min(w, maxWidth);
             }
@@ -67,8 +79,8 @@ export abstract class LayoutManager extends LayoutComponent {
                 h = this.mCachedWrapSize.getHeight() + padding_h;
                 const hIn = this.getHeightInModifier();
                 if (hIn) {
-                    if (hIn.getMin() >= 0) h = Math.max(h, hIn.getMin());
-                    if (hIn.getMax() >= 0) h = Math.min(h, hIn.getMax());
+                    if (hIn.getMin() >= 0) h = Math.max(h, hIn.getMin() * dp);
+                    if (hIn.getMax() >= 0) h = Math.min(h, hIn.getMax() * dp);
                 }
                 h = Math.min(h, maxHeight);
             }
@@ -163,4 +175,12 @@ export abstract class LayoutManager extends LayoutComponent {
 
     // Override in subclasses to position children
     internalLayoutMeasure(_context: PaintContext, _measure: MeasurePass): void { /* override */ }
+
+    /** The document's dp→px scale (DOC_DENSITY_AT_GENERATION). Used to convert
+     *  dp-typed dimension bounds to generation pixels. Defaults to 1 (unset/
+     *  density-1 documents), so it is a no-op for everything authored today. */
+    protected getDpScale(context: PaintContext): number {
+        const d = context.getContext().getDensity();
+        return (Number.isNaN(d) || d <= 0) ? 1 : d;
+    }
 }

@@ -4616,9 +4616,6 @@ var RC = (() => {
     updateVariables(context) {
       if ((this.mType === _WidthModifier.EXACT || this.mType === _WidthModifier.EXACT_DP) && isNaNBits(this.mValueBits)) {
         this.mOutValue = context.getFloat(idFromBits(this.mValueBits));
-        if (this.mType === _WidthModifier.EXACT_DP) {
-          this.mOutValue *= context.getDensity();
-        }
       }
     }
     write(_buffer) {
@@ -4664,9 +4661,6 @@ var RC = (() => {
     updateVariables(context) {
       if ((this.mType === _HeightModifier.EXACT || this.mType === _HeightModifier.EXACT_DP) && isNaNBits(this.mValueBits)) {
         this.mOutValue = context.getFloat(idFromBits(this.mValueBits));
-        if (this.mType === _HeightModifier.EXACT_DP) {
-          this.mOutValue *= context.getDensity();
-        }
       }
     }
     write(_buffer) {
@@ -9533,6 +9527,17 @@ ${inner}`;
     getScrollModifier() {
       return this.mScrollModifier;
     }
+    /** Choose which of two competing width/height modifiers a component keeps.
+     *  An EXACT / EXACT_DP fixed-size constraint takes precedence over a FILL/WRAP
+     *  (Compose composes `size().fillMaxSize()` so the fixed size wins); otherwise
+     *  the later modifier wins, preserving the previous last-writer behaviour. */
+    static preferExactSize(current, next) {
+      const isExact = (t) => t === WidthModifier.EXACT || t === WidthModifier.EXACT_DP;
+      if (current && isExact(current.getType()) && !isExact(next.getType())) {
+        return current;
+      }
+      return next;
+    }
     inflate() {
       this.mChildrenComponents = [];
       this.mComponentModifiers = [];
@@ -9550,9 +9555,9 @@ ${inner}`;
           this.mPaddingBottom += op.mBottomValue;
           this.mComponentModifiers.push(op);
         } else if (op instanceof WidthModifier) {
-          this.mWidthMod = op;
+          this.mWidthMod = _LayoutComponent.preferExactSize(this.mWidthMod, op);
         } else if (op instanceof HeightModifier) {
-          this.mHeightMod = op;
+          this.mHeightMod = _LayoutComponent.preferExactSize(this.mHeightMod, op);
         } else if (op instanceof WidthInModifier) {
           this.mWidthInMod = op;
         } else if (op instanceof HeightInModifier) {
@@ -10046,17 +10051,22 @@ ${inner}`;
       const padding_h = this.mPaddingTop + this.mPaddingBottom;
       const wMod = this.getWidthModifier();
       const hMod = this.getHeightModifier();
+      const dp = this.getDpScale(context);
       let w;
-      if (wMod && (wMod.getType() === WidthModifier.EXACT || wMod.getType() === WidthModifier.EXACT_DP)) {
+      if (wMod && wMod.getType() === WidthModifier.EXACT) {
         w = wMod.getValue() + padding_w;
+      } else if (wMod && wMod.getType() === WidthModifier.EXACT_DP) {
+        w = wMod.getValue() * dp + padding_w;
       } else if (wMod && wMod.getType() === WidthModifier.FILL) {
         w = maxWidth;
       } else {
         w = maxWidth;
       }
       let h;
-      if (hMod && (hMod.getType() === HeightModifier.EXACT || hMod.getType() === HeightModifier.EXACT_DP)) {
+      if (hMod && hMod.getType() === HeightModifier.EXACT) {
         h = hMod.getValue() + padding_h;
+      } else if (hMod && hMod.getType() === HeightModifier.EXACT_DP) {
+        h = hMod.getValue() * dp + padding_h;
       } else if (hMod && hMod.getType() === HeightModifier.FILL) {
         h = maxHeight;
       } else {
@@ -10083,8 +10093,8 @@ ${inner}`;
           w = this.mCachedWrapSize.getWidth() + padding_w;
           const wIn = this.getWidthInModifier();
           if (wIn) {
-            if (wIn.getMin() >= 0) w = Math.max(w, wIn.getMin());
-            if (wIn.getMax() >= 0) w = Math.min(w, wIn.getMax());
+            if (wIn.getMin() >= 0) w = Math.max(w, wIn.getMin() * dp);
+            if (wIn.getMax() >= 0) w = Math.min(w, wIn.getMax() * dp);
           }
           w = Math.min(w, maxWidth);
         }
@@ -10092,8 +10102,8 @@ ${inner}`;
           h = this.mCachedWrapSize.getHeight() + padding_h;
           const hIn = this.getHeightInModifier();
           if (hIn) {
-            if (hIn.getMin() >= 0) h = Math.max(h, hIn.getMin());
-            if (hIn.getMax() >= 0) h = Math.min(h, hIn.getMax());
+            if (hIn.getMin() >= 0) h = Math.max(h, hIn.getMin() * dp);
+            if (hIn.getMax() >= 0) h = Math.min(h, hIn.getMax() * dp);
           }
           h = Math.min(h, maxHeight);
         }
@@ -10165,6 +10175,13 @@ ${inner}`;
     }
     // Override in subclasses to position children
     internalLayoutMeasure(_context, _measure) {
+    }
+    /** The document's dp→px scale (DOC_DENSITY_AT_GENERATION). Used to convert
+     *  dp-typed dimension bounds to generation pixels. Defaults to 1 (unset/
+     *  density-1 documents), so it is a no-op for everything authored today. */
+    getDpScale(context) {
+      const d = context.getContext().getDensity();
+      return Number.isNaN(d) || d <= 0 ? 1 : d;
     }
   };
 
@@ -19252,8 +19269,8 @@ void main() {
       doc.initFromBuffer(buffer);
       this.document = doc;
       const density = doc.getProperty(Header.DOC_DENSITY_AT_GENERATION) || 1;
-      const docWidth = this.canvas.width / density;
-      const docHeight = this.canvas.height / density;
+      const docWidth = this.canvas.width;
+      const docHeight = this.canvas.height;
       doc.setWidth(docWidth);
       doc.setHeight(docHeight);
       this.paintContext = new CanvasPaintContext(null, this.ctx);
