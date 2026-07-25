@@ -1,11 +1,13 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.cli.BundleReader
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
+import java.util.zip.ZipInputStream
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
@@ -335,6 +337,11 @@ class ServeCatalogStore(
             "the bundle could not be fetched from the delivery branch"
           )
       } else {
+        // Materialise the captured Remote Compose documents (`ir/<daemon-id>.rc`) from the fetched
+        // bundle, re-keyed to the published catalog ids, so the baked host's in-browser canvas lane
+        // can serve them. Done regardless of the rehydrate/daemon outcome below — the client-side
+        // `.rc` lane needs no daemon, so it must survive a live-tier fallback.
+        extractCatalogRcDocs(bundleFile, alias, dir)
         // Rehydrate any resources the bundle externalized (fonts lifted out of classes/app.jar)
         // from
         // the branch's content-addressed pool into a shared cache + a materialized classpath dir.
@@ -521,6 +528,59 @@ class ServeCatalogStore(
     target.parentFile?.mkdirs()
     target.writeBytes(bytes)
     return target
+  }
+
+  /**
+   * Extract the captured Remote Compose documents from the fetched live [bundleFile] and
+   * materialise them beside the baked previews so the baked host's in-browser canvas lane can serve
+   * them.
+   *
+   * The packed bundle carries them as `ir/<daemon-id>.rc` (keyed by the daemon preview id — the
+   * function-descriptor id the renderer packed), but the published routes use the catalog id
+   * (`button-filled__ideal__default__dark`). [alias] is exactly that catalog-id → daemon-id map, so
+   * re-key each entry through it and write `<dir>/ir/<catalog-id>.rc` — the sibling of
+   * `<dir>/previews/` that [ServeBundleHost.remoteComposeDoc] reads. A catalog id whose daemon twin
+   * has no `.rc` entry (a non-Remote-Compose preview) is simply skipped, so only the RC previews
+   * advertise the lane. Best-effort: a malformed/unreadable bundle yields no docs (the lane stays
+   * off) rather than failing the whole catalog load.
+   */
+  private fun extractCatalogRcDocs(bundleFile: File, alias: Map<String, String>, dir: File) {
+    val docsByDaemonId =
+      try {
+        val zipBytes = BundleReader.extractZipBytes(bundleFile)
+        val out = HashMap<String, ByteArray>()
+        ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
+          var entry = zin.nextEntry
+          while (entry != null) {
+            val name = entry.name.replace('\\', '/')
+            if (
+              !entry.isDirectory &&
+                name.startsWith("$IR_DOC_DIR/") &&
+                name.endsWith(RC_DOC_SUFFIX) &&
+                ".." !in name.split("/")
+            ) {
+              val daemonId = name.removePrefix("$IR_DOC_DIR/").removeSuffix(RC_DOC_SUFFIX)
+              out[daemonId] = zin.readBytes()
+            }
+            zin.closeEntry()
+            entry = zin.nextEntry
+          }
+        }
+        out
+      } catch (e: Exception) {
+        return
+      }
+    if (docsByDaemonId.isEmpty()) return
+    val irDir = File(dir, IR_DOC_DIR)
+    val irRoot = irDir.canonicalFile.toPath()
+    for ((catalogId, daemonId) in alias) {
+      val bytes = docsByDaemonId[daemonId] ?: continue
+      val target = File(irDir, "$catalogId$RC_DOC_SUFFIX")
+      // Containment: a crafted catalog id must not let the write escape the ir/ dir.
+      if (!target.canonicalFile.toPath().startsWith(irRoot)) continue
+      target.parentFile?.mkdirs()
+      target.writeBytes(bytes)
+    }
   }
 
   /**
@@ -890,6 +950,14 @@ class ServeCatalogStore(
     private const val MAX_WASM_FILES = 64
     /** Local subdir a catalog's `liveBundle` file is fetched into (`<dir>/bundle/<file>`). */
     const val LIVE_BUNDLE_DIR = "bundle"
+
+    /**
+     * Sibling of `previews/` holding the captured Remote Compose documents (`ir/<catalog-id>.rc`),
+     * extracted from the live bundle's `ir/<daemon-id>.rc` entries by [extractCatalogRcDocs] and
+     * read back by [ServeBundleHost.remoteComposeDoc]. Mirrors the bundle's own `ir/` prefix.
+     */
+    const val IR_DOC_DIR = "ir"
+    const val RC_DOC_SUFFIX = ".rc"
 
     /**
      * Branch- and local-relative subdir (under `liveBundle.path` / [LIVE_BUNDLE_DIR]) holding the
