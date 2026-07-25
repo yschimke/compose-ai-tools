@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.17.20](https://github.com/yschimke/compose-ai-tools/compare/v0.17.19...v0.17.20) (2026-07-25)
+
+
+### Features
+
+* **apptour:** app-level previews — activity heroes and scripted app tours ([#2731](https://github.com/yschimke/compose-ai-tools/issues/2731)) ([44b0b53](https://github.com/yschimke/compose-ai-tools/commit/44b0b53f546b4ec9d19a1b25975c7e354c27ef98))
+
+
+### Bug Fixes
+
+* **bundle:** sanitize preview ids in bundle entry names so no file name carries spaces ([#2733](https://github.com/yschimke/compose-ai-tools/issues/2733)) ([d24239a](https://github.com/yschimke/compose-ai-tools/commit/d24239a4198ed875c0c5bb46839db0a1b8e5caf6))
+* **rc-player:** parse the accessibility-semantics op (250) instead of truncating ([#2734](https://github.com/yschimke/compose-ai-tools/issues/2734)) ([d407833](https://github.com/yschimke/compose-ai-tools/commit/d407833dedc894876587760347f654152caa698a))
+
 ## [0.17.19](https://github.com/yschimke/compose-ai-tools/compare/v0.17.18...v0.17.19) (2026-07-25)
 
 
