@@ -1196,7 +1196,7 @@
     "functionName": "lottie/spin.json",
     "module": "samples:android",
     "renderBasename": "lottie__lottie_spin_animated.png",
-    "sha256": "5bf42ecaaccdf4bea0569186506c30f93c1e7a346ae9b69517ea002984d2e593",
+    "sha256": "7850f156c2032a7b630b0a1086ac2200f3a0879a70c35d683fdae1402fd8436d",
     "sourceFile": null
   },
   "samples:android/svg__svg_badge": {
@@ -2983,52 +2983,60 @@
     "sha256": "f296d3054785848e609eb0253de40d8c1609c413ff8ba7a960e29d81fc330a2b",
     "sourceFile": "src/main/kotlin/com/example/sdkmatrix/MatrixPreview.kt"
   },
-  "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.BadgeWidgetPreview_Badge Widget": {
+  "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetFixedPreview_Image Widget Fixed": {
     "captureLabel": "",
-    "functionName": "BadgeWidgetPreview",
+    "functionName": "ImageWidgetFixedPreview",
     "module": "samples:wear-widget",
-    "renderBasename": "BadgeWidgetPreview_Badge_Widget.png",
-    "sha256": "5457c245e39f92e9987f3def108fafccdcf393a5542161f9c7f89dc2fedb9fb5",
+    "renderBasename": "ImageWidgetFixedPreview_Image_Widget_Fixed.png",
+    "sha256": "2b976228f6dc7a80a8644994063ed9f3e156b55333ab425f7d5144c017f3a300",
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
-  "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetPreview_Image Widget": {
+  "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquircleLargePreview_Image Widget Squircle Large": {
     "captureLabel": "",
-    "functionName": "ImageWidgetPreview",
+    "functionName": "ImageWidgetSquircleLargePreview",
     "module": "samples:wear-widget",
-    "renderBasename": "ImageWidgetPreview_Image_Widget.png",
-    "sha256": "3af802c3b3adc5b6e088667830311fa3cad0f15a3340bd03c8e1de7cd73578aa",
+    "renderBasename": "ImageWidgetSquircleLargePreview_Image_Widget_Squircle_Large_PARAM_0.png",
+    "sha256": "e7eb855ed446149417149c96f07bc85051e08bbb1f4524943a07d62280357abc",
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
-  "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetRectangularPreview_Image Widget Rectangular": {
+  "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquircleLargePreview_Image Widget Squircle Large#1": {
     "captureLabel": "",
-    "functionName": "ImageWidgetRectangularPreview",
+    "functionName": "ImageWidgetSquircleLargePreview",
     "module": "samples:wear-widget",
-    "renderBasename": "ImageWidgetRectangularPreview_Image_Widget_Rectangular_Rectangular_Large.png",
-    "sha256": "36cafa86f3b72ff187bee529a9b08f1df187cc3e105859b9789b61da63dc6f5f",
-    "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
-  },
-  "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetRectangularPreview_Image Widget Rectangular#1": {
-    "captureLabel": "",
-    "functionName": "ImageWidgetRectangularPreview",
-    "module": "samples:wear-widget",
-    "renderBasename": "ImageWidgetRectangularPreview_Image_Widget_Rectangular_Rectangular_Small.png",
-    "sha256": "44121aa9c4b440f3288b13f6cfd76a6982aa073dd1179746da7a558e36ec5e76",
+    "renderBasename": "ImageWidgetSquircleLargePreview_Image_Widget_Squircle_Large_PARAM_1.png",
+    "sha256": "76b6d37d4c07c9103d34755f4d6d6d13fb90205ed2817335ed0d3e84d913ff5a",
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
   "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle": {
     "captureLabel": "",
     "functionName": "ImageWidgetSquirclePreview",
     "module": "samples:wear-widget",
-    "renderBasename": "ImageWidgetSquirclePreview_Image_Widget_Squircle_Squircle_Large.png",
-    "sha256": "580f5654fc88611e288d1f30ba1a3f5f4f4c4e48c06b96b7ee5711fb1df1d120",
+    "renderBasename": "ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_0.png",
+    "sha256": "d50f6fb326182c35558b1bb6681e6c4c2bf7939684cab67ecd6f082c895c04fd",
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
   "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle#1": {
     "captureLabel": "",
     "functionName": "ImageWidgetSquirclePreview",
     "module": "samples:wear-widget",
-    "renderBasename": "ImageWidgetSquirclePreview_Image_Widget_Squircle_Squircle_Small.png",
-    "sha256": "3bd9581efe08044a08e116c511291cd7d5d2fed68630bdef924e1b65141bfa44",
+    "renderBasename": "ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_1.png",
+    "sha256": "81c9f5bb70768fca4c515e956d6f0db7f36cc737d6916bcac54014ebf4dedc10",
+    "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
+  },
+  "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle#2": {
+    "captureLabel": "",
+    "functionName": "ImageWidgetSquirclePreview",
+    "module": "samples:wear-widget",
+    "renderBasename": "ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_2.png",
+    "sha256": "e7eb855ed446149417149c96f07bc85051e08bbb1f4524943a07d62280357abc",
+    "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
+  },
+  "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle#3": {
+    "captureLabel": "",
+    "functionName": "ImageWidgetSquirclePreview",
+    "module": "samples:wear-widget",
+    "renderBasename": "ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_3.png",
+    "sha256": "76b6d37d4c07c9103d34755f4d6d6d13fb90205ed2817335ed0d3e84d913ff5a",
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
   "samples:wear/com.example.samplewear.AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient body \u2014 ambient": {

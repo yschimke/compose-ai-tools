@@ -494,12 +494,13 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 
 | Preview | Image |
 |---------|-------|
-| `BadgeWidgetPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/BadgeWidgetPreview_Badge_Widget.png" width="150" /> |
-| `ImageWidgetPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetPreview_Image_Widget.png" width="150" /> |
-| `ImageWidgetRectangularPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetRectangularPreview_Image_Widget_Rectangular_Rectangular_Large.png" width="150" /> |
-| `ImageWidgetRectangularPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetRectangularPreview_Image_Widget_Rectangular_Rectangular_Small.png" width="150" /> |
-| `ImageWidgetSquirclePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle_Squircle_Large.png" width="150" /> |
-| `ImageWidgetSquirclePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle_Squircle_Small.png" width="150" /> |
+| `ImageWidgetFixedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetFixedPreview_Image_Widget_Fixed.png" width="150" /> |
+| `ImageWidgetSquircleLargePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquircleLargePreview_Image_Widget_Squircle_Large_PARAM_0.png" width="150" /> |
+| `ImageWidgetSquircleLargePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquircleLargePreview_Image_Widget_Squircle_Large_PARAM_1.png" width="150" /> |
+| `ImageWidgetSquirclePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_0.png" width="150" /> |
+| `ImageWidgetSquirclePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_1.png" width="150" /> |
+| `ImageWidgetSquirclePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_2.png" width="150" /> |
+| `ImageWidgetSquirclePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_3.png" width="150" /> |
 
 ## samples:xr-glimmer
 
