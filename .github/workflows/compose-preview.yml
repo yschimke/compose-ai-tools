@@ -48,7 +48,22 @@ concurrency:
   # Per-PR group so concurrent PRs don't cancel each other; push + dispatch
   # share one slot per ref.
   group: compose-preview-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # PR runs cancel: a new push supersedes the render, and the comment is
+  # sticky so only the newest result matters.
+  #
+  # Baseline runs on main MUST NOT. They publish the "before" state every
+  # later PR diffs against, so cancelling one doesn't just waste a render —
+  # it strands the baseline at an older commit, and every subsequent PR
+  # reports the skipped commits' output as its own New/Changed/Removed. Back-
+  # to-back merges made that the norm rather than the exception: 24 of the 30
+  # main runs before this change were cancelled, so the baseline was stale far
+  # more often than not (#2766 and #2765, two PRs that touch no renderer code,
+  # both reported 19 phantom New + 19 Removed variants inherited from #2763).
+  #
+  # Queueing instead of cancelling is bounded, not unbounded: GitHub keeps at
+  # most one *pending* run per group and cancels the older pending one, so a
+  # burst of N merges runs the first and the last, not all N.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Keeps the historical job id + check name ("Apply compose-preview") so
