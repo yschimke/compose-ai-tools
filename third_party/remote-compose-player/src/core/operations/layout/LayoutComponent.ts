@@ -17,6 +17,7 @@ import { WidthModifier, HeightModifier, PaddingModifier,
 import { LayoutComputeOperation } from './modifiers/LayoutComputeOperation';
 import { LayoutComponentContent } from './LayoutComponentContent';
 import { CanvasContent } from './CanvasContent';
+import { CanvasOperations } from './CanvasOperations';
 import { ComponentValue } from '../../operations/ComponentValue';
 import { TouchExpression } from '../../operations/TouchExpression';
 import type { ComponentMeasure } from './measure/ComponentMeasure';
@@ -462,17 +463,32 @@ export class LayoutComponent extends Component {
         // Back out modifier translations
         paintContext.matrixTranslate(-tx, -ty);
 
-        // Translate by total padding for content
-        paintContext.matrixTranslate(this.mPaddingLeft, this.mPaddingTop);
-
-        // Paint content operations (non-layout draw ops)
-        for (const op of this.mContentOps) {
+        // A `CanvasOperations` block is a `Modifier.drawWithContent` decoration
+        // (e.g. a Material3 button/card fill + outline): it draws at the
+        // component's *full* padded bounds and its geometry is bound from the
+        // component's measured WIDTH/HEIGHT. It must paint at the component
+        // origin — *before* the content padding inset — otherwise the fill is
+        // shifted into the content region and the leading clip crops its
+        // top/left. Content draw ops and child components stay padding-inset.
+        const applyOp = (op: Operation): void => {
             context.incrementOpCount();
             if (op.isDirty() && typeof (op as any).updateVariables === 'function') {
                 op.markNotDirty();
                 (op as any).updateVariables(context);
             }
             op.apply(context);
+        };
+        for (const op of this.mContentOps) {
+            if (op instanceof CanvasOperations) applyOp(op);
+        }
+
+        // Translate by total padding for content
+        paintContext.matrixTranslate(this.mPaddingLeft, this.mPaddingTop);
+
+        // Paint the remaining (padding-inset) content operations
+        for (const op of this.mContentOps) {
+            if (op instanceof CanvasOperations) continue;
+            applyOp(op);
         }
 
         // Paint children sorted by z-index

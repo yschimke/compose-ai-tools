@@ -9444,6 +9444,44 @@ var RC = (() => {
   _LayoutComputeOperation.TYPE_POSITION = 1;
   var LayoutComputeOperation = _LayoutComputeOperation;
 
+  // src/core/operations/layout/CanvasOperations.ts
+  var _CanvasOperations = class _CanvasOperations extends PaintOperation {
+    constructor() {
+      super();
+      // Child drawing commands, collected during inflation (see getList()).
+      this.mList = [];
+    }
+    // Exposing getList() marks this as a Container: CoreDocument.inflateComponents
+    // redirects the ops between this one and its ContainerEnd into mList, and the
+    // DATA pass recurses through it so child data/variables load.
+    getList() {
+      return this.mList;
+    }
+    write(buffer) {
+      buffer.start(_CanvasOperations.OP_CODE);
+    }
+    paint(context) {
+      const remoteContext = context.getContext();
+      for (const op of this.mList) {
+        if (op.isDirty() && typeof op.updateVariables === "function") {
+          op.updateVariables(remoteContext);
+        }
+        remoteContext.incrementOpCount();
+        op.apply(remoteContext);
+      }
+    }
+    deepToString(indent) {
+      const inner = this.mList.map((op) => op.deepToString(indent + "  ")).join("\n");
+      return `${indent}CanvasOperations
+${inner}`;
+    }
+    static read(_buffer, operations) {
+      operations.push(new _CanvasOperations());
+    }
+  };
+  _CanvasOperations.OP_CODE = 173;
+  var CanvasOperations = _CanvasOperations;
+
   // src/core/operations/layout/LayoutComponent.ts
   var LayoutComponent = class _LayoutComponent extends Component {
     constructor() {
@@ -9821,14 +9859,21 @@ var RC = (() => {
         }
       }
       paintContext.matrixTranslate(-tx, -ty);
-      paintContext.matrixTranslate(this.mPaddingLeft, this.mPaddingTop);
-      for (const op of this.mContentOps) {
+      const applyOp = (op) => {
         context.incrementOpCount();
         if (op.isDirty() && typeof op.updateVariables === "function") {
           op.markNotDirty();
           op.updateVariables(context);
         }
         op.apply(context);
+      };
+      for (const op of this.mContentOps) {
+        if (op instanceof CanvasOperations) applyOp(op);
+      }
+      paintContext.matrixTranslate(this.mPaddingLeft, this.mPaddingTop);
+      for (const op of this.mContentOps) {
+        if (op instanceof CanvasOperations) continue;
+        applyOp(op);
       }
       const children = this.mChildrenComponents;
       if (children.length > 1) {
@@ -12793,44 +12838,6 @@ var RC = (() => {
   };
   _TextSubtext.OP_CODE = 182;
   var TextSubtext = _TextSubtext;
-
-  // src/core/operations/layout/CanvasOperations.ts
-  var _CanvasOperations = class _CanvasOperations extends PaintOperation {
-    constructor() {
-      super();
-      // Child drawing commands, collected during inflation (see getList()).
-      this.mList = [];
-    }
-    // Exposing getList() marks this as a Container: CoreDocument.inflateComponents
-    // redirects the ops between this one and its ContainerEnd into mList, and the
-    // DATA pass recurses through it so child data/variables load.
-    getList() {
-      return this.mList;
-    }
-    write(buffer) {
-      buffer.start(_CanvasOperations.OP_CODE);
-    }
-    paint(context) {
-      const remoteContext = context.getContext();
-      for (const op of this.mList) {
-        if (op.isDirty() && typeof op.updateVariables === "function") {
-          op.updateVariables(remoteContext);
-        }
-        remoteContext.incrementOpCount();
-        op.apply(remoteContext);
-      }
-    }
-    deepToString(indent) {
-      const inner = this.mList.map((op) => op.deepToString(indent + "  ")).join("\n");
-      return `${indent}CanvasOperations
-${inner}`;
-    }
-    static read(_buffer, operations) {
-      operations.push(new _CanvasOperations());
-    }
-  };
-  _CanvasOperations.OP_CODE = 173;
-  var CanvasOperations = _CanvasOperations;
 
   // src/core/operations/ParticleOperations.ts
   var OFFSET2 = 3211264;
