@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.17.22](https://github.com/yschimke/compose-ai-tools/compare/v0.17.21...v0.17.22) (2026-07-25)
+
+
+### Features
+
+* **design-artifacts:** support multi-build monorepos and external multipreviews ([#2746](https://github.com/yschimke/compose-ai-tools/issues/2746)) ([4d7f4cd](https://github.com/yschimke/compose-ai-tools/commit/4d7f4cd65d5d852b2c3f77fda4c6866d938d79aa))
+* **serve:** list the compose-samples catalogs on preview.coo.ee ([#2750](https://github.com/yschimke/compose-ai-tools/issues/2750)) ([9bb1e7e](https://github.com/yschimke/compose-ai-tools/commit/9bb1e7e5f89c5fa95f6810c5f91f941df0bc8d1c))
+
+
+### Bug Fixes
+
+* **bundle:** fetch --with-semantics by raw preview id, inject by bundle id ([#2744](https://github.com/yschimke/compose-ai-tools/issues/2744)) ([30e1c68](https://github.com/yschimke/compose-ai-tools/commit/30e1c68541f962026fcfc5f7cd975f6de8bfd572))
+* **design-artifacts:** derive --source-repo from the git remote ([#2747](https://github.com/yschimke/compose-ai-tools/issues/2747)) ([a8024b1](https://github.com/yschimke/compose-ai-tools/commit/a8024b1337a081ca8063cd7da37b514412d72ffa))
+* **rc-player:** only adopt same-component ComponentValues nested in containers ([#2751](https://github.com/yschimke/compose-ai-tools/issues/2751)) ([68545e1](https://github.com/yschimke/compose-ai-tools/commit/68545e1c2f644342e0414d8d6b470d35b1c722fe))
+* **renderer:** never write a still PNG into a .gif output path ([#2748](https://github.com/yschimke/compose-ai-tools/issues/2748)) ([7aa92c7](https://github.com/yschimke/compose-ai-tools/commit/7aa92c71c8240c0bf047cb4cf4f0e0fb0317b3a5))
+* treat renderFailed as terminal in the daemon wait loops ([#2749](https://github.com/yschimke/compose-ai-tools/issues/2749)) ([5aacb78](https://github.com/yschimke/compose-ai-tools/commit/5aacb786244b68e200d5c498c45e42e052b0232b))
+
 ## [0.17.21](https://github.com/yschimke/compose-ai-tools/compare/v0.17.20...v0.17.21) (2026-07-25)
 
 
