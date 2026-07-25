@@ -43,4 +43,29 @@ class SanitizeBundleEntryIdTest {
     assertThat(sanitizeBundleEntryId(sanitizeBundleEntryId("Foo_A B")))
       .isEqualTo(sanitizeBundleEntryId("Foo_A B"))
   }
+
+  @Test
+  fun `assignBundleEntryIds leaves non-colliding ids untouched, in order`() {
+    val map = assignBundleEntryIds(listOf("pkg.Foo_A B", "pkg.Bar_C D"))
+    assertThat(map.values.toList()).containsExactly("pkg.Foo_A_B", "pkg.Bar_C_D").inOrder()
+  }
+
+  @Test
+  fun `assignBundleEntryIds disambiguates two ids that sanitise to the same form`() {
+    // `"A B"` and `"A_B"` are distinct preview ids (the manifest dedups by raw id) that both
+    // sanitise to `Foo_A_B`. Without disambiguation their `previews/<id>.png` / `ir/<id>.rc` keys
+    // would collide and one capture would silently overwrite the other. First claimant keeps the
+    // clean form; the collision gets a numeric suffix.
+    val map = assignBundleEntryIds(listOf("Foo_A B", "Foo_A_B"))
+    assertThat(map.getValue("Foo_A B")).isEqualTo("Foo_A_B")
+    assertThat(map.getValue("Foo_A_B")).isEqualTo("Foo_A_B_1")
+    assertThat(map.values.toSet()).hasSize(2)
+  }
+
+  @Test
+  fun `assignBundleEntryIds maps a repeated raw id to a single bundle id`() {
+    val map = assignBundleEntryIds(listOf("pkg.Foo_A B", "pkg.Foo_A B"))
+    assertThat(map).hasSize(1)
+    assertThat(map.getValue("pkg.Foo_A B")).isEqualTo("pkg.Foo_A_B")
+  }
 }

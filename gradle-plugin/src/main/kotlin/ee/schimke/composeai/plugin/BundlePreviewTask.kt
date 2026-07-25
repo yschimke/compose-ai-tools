@@ -306,10 +306,13 @@ abstract class BundlePreviewTask : DefaultTask() {
     val manifest = JSON.decodeFromString(PreviewManifest.serializer(), manifestFile.readText())
     val selected = resolveSelection(manifest, previewIds.get())
     // The raw id addresses renderer-written content on disk (render sidecars, extension reports,
-    // which are keyed by the un-sanitised id); [coverId] is its bundle form, used for every id that
-    // lands *inside* the bundle — entry names and both manifests. See [sanitizeBundleEntryId].
+    // which are keyed by the un-sanitised id); the bundle form is used for every id that lands
+    // *inside* the bundle — entry names and both manifests. [bundleIds] is that raw→bundle mapping,
+    // computed once over the whole selection so it's collision-free and every materialisation
+    // agrees (see [assignBundleEntryIds]).
+    val bundleIds = assignBundleEntryIds(selected.map { it.id })
     val coverIdRaw = selected.first().id
-    val coverId = sanitizeBundleEntryId(coverIdRaw)
+    val coverId = bundleIds.getValue(coverIdRaw)
 
     // Previews whose flavour emitted a serialisable intermediate representation (Remote Compose doc
     // / Wear protolayout proto) during the render step are replayed from that IR, not by re-running
@@ -416,7 +419,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     val irZipFiles = LinkedHashMap<String, ByteArray>()
     for (preview in selected) {
       val ir = irByPreview[preview.id] ?: continue
-      val bundleId = sanitizeBundleEntryId(preview.id)
+      val bundleId = bundleIds.getValue(preview.id)
       val irPath = "$BUNDLE_IR_DIR/$bundleId.${ir.ext}"
       irZipFiles[irPath] = ir.bytes
       val resourcesPath =
@@ -493,7 +496,7 @@ abstract class BundlePreviewTask : DefaultTask() {
       BundleManifest(
         schemaVersion = BUNDLE_SCHEMA_VERSION,
         backend = backend.get(),
-        previewIds = selected.map { sanitizeBundleEntryId(it.id) },
+        previewIds = selected.map { bundleIds.getValue(it.id) },
         coverPreviewId = coverId,
         classpath = classpathEntries,
         modulePath = modulePath.get(),
@@ -510,7 +513,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     // simply omitted — the reader treats an absent entry as "not rendered yet".
     val previewPngs = LinkedHashMap<String, ByteArray>()
     for (preview in selected) {
-      resolvePreviewPng(preview)?.let { previewPngs[sanitizeBundleEntryId(preview.id)] = it }
+      resolvePreviewPng(preview)?.let { previewPngs[bundleIds.getValue(preview.id)] = it }
     }
 
     // (v8) Per-preview override sidecars: the editable knobs a preview declared via
@@ -521,7 +524,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     // that declared none.
     val overrideFiles = LinkedHashMap<String, ByteArray>()
     for (preview in selected) {
-      val bundleId = sanitizeBundleEntryId(preview.id)
+      val bundleId = bundleIds.getValue(preview.id)
       resolvePreviewOverrides(preview)?.let {
         overrideFiles["$BUNDLE_PREVIEWS_DIR/$bundleId.$BUNDLE_OVERRIDES_SIDECAR_EXT"] = it
       }
@@ -547,7 +550,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     for (preview in selected) {
       resolvePreviewCatalogTokens(preview)?.let {
         catalogTokenEntries[
-          "$BUNDLE_PREVIEWS_DIR/${sanitizeBundleEntryId(preview.id)}.$BUNDLE_CATALOG_TOKENS_SIDECAR_EXT"] =
+          "$BUNDLE_PREVIEWS_DIR/${bundleIds.getValue(preview.id)}.$BUNDLE_CATALOG_TOKENS_SIDECAR_EXT"] =
           it
       }
     }
@@ -557,7 +560,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     // reconstruct `previews/<id>.png` from these ids — so its `id`s carry the bundle form too, kept
     // in lockstep with the entry names and [BundleManifest] ids above. (`renderOutput` and other
     // producer-side paths are irrelevant in a detached bundle, so they're left as-is.)
-    val bundlePreviews = selected.map { it.copy(id = sanitizeBundleEntryId(it.id)) }
+    val bundlePreviews = selected.map { it.copy(id = bundleIds.getValue(it.id)) }
     val filteredManifest =
       if (includeDataExtensions.getOrElse(false)) {
         // When carrying extension data, rewrite the bundled manifest's `dataExtensionReports` to
@@ -1546,3 +1549,31 @@ internal fun resolveIrSidecar(rendersRoot: File, stem: String, ext: String): Fil
  * keep dot-vs-underscore-distinct ids distinct). Kept top-level + internal so it's unit-testable.
  */
 internal fun sanitizeBundleEntryId(id: String): String = id.replace(Regex("[^A-Za-z0-9._-]"), "_")
+
+/**
+ * Assign a collision-free bundle-entry id to every preview in [rawIds], preserving order. Preview
+ * `id`s are unique, but [sanitizeBundleEntryId] can map two distinct ones to the same form (sibling
+ * `@Preview` names `"A B"` and `"A_B"` both sanitise to `A_B`). Left unchecked that would collide
+ * the `previews/<id>.png` / `ir/<id>.rc` entry keys — the later capture silently overwriting the
+ * earlier — and emit duplicate ids in both bundled manifests. So the first claimant of a sanitised
+ * form keeps it and each subsequent collision gets a `_<n>` suffix, mirroring how discovery
+ * disambiguates render stems. Computed once over the whole selection and reused for every entry
+ * name and manifest so all id materialisations agree. A repeated raw id (same preview requested
+ * twice) maps to the one bundle id, not a fresh disambiguated one.
+ */
+internal fun assignBundleEntryIds(rawIds: List<String>): Map<String, String> {
+  val used = HashSet<String>()
+  val result = LinkedHashMap<String, String>()
+  for (raw in rawIds) {
+    if (result.containsKey(raw)) continue
+    val base = sanitizeBundleEntryId(raw)
+    var candidate = base
+    var n = 1
+    while (!used.add(candidate)) {
+      candidate = "${base}_$n"
+      n++
+    }
+    result[raw] = candidate
+  }
+  return result
+}
