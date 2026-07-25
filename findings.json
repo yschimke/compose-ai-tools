@@ -2744,22 +2744,20 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "BadgeWidgetPreview_Badge_Widget.a11y.png",
-      "cleanBasename": "BadgeWidgetPreview_Badge_Widget.png",
-      "findings": [],
-      "functionName": "BadgeWidgetPreview",
+      "annotatedBasename": "ImageWidgetFixedPreview_Image_Widget_Fixed.a11y.png",
+      "cleanBasename": "ImageWidgetFixedPreview_Image_Widget_Fixed.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,567,196",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "ImageWidgetFixedPreview",
       "module": "wear-widget",
-      "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.BadgeWidgetPreview_Badge Widget",
-      "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "ImageWidgetPreview_Image_Widget.a11y.png",
-      "cleanBasename": "ImageWidgetPreview_Image_Widget.png",
-      "findings": [],
-      "functionName": "ImageWidgetPreview",
-      "module": "wear-widget",
-      "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetPreview_Image Widget",
+      "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetFixedPreview_Image Widget Fixed",
       "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt",
       "variant": ""
     },
@@ -2767,9 +2765,9 @@
       "annotatedBasename": "",
       "cleanBasename": "",
       "findings": [],
-      "functionName": "ImageWidgetRectangularPreview",
+      "functionName": "ImageWidgetSquircleLargePreview",
       "module": "wear-widget",
-      "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetRectangularPreview_Image Widget Rectangular",
+      "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquircleLargePreview_Image Widget Squircle Large",
       "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt",
       "variant": ""
     },

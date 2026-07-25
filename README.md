@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/pr`. 256 preview(s) across 19 module(s) · 35 error(s) · 3 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/pr`. 255 preview(s) across 19 module(s) · 36 error(s) · 3 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1618,19 +1618,15 @@ _No findings._
 
 ## wear-widget
 
-### `BadgeWidgetPreview`
+### `ImageWidgetFixedPreview`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear-widget/BadgeWidgetPreview_Badge_Widget.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear-widget/ImageWidgetFixedPreview_Image_Widget_Fixed.a11y.png" width="400" />
 
-_No findings._
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
 
-### `ImageWidgetPreview`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear-widget/ImageWidgetPreview_Image_Widget.a11y.png" width="400" />
-
-_No findings._
-
-### `ImageWidgetRectangularPreview`
+### `ImageWidgetSquircleLargePreview`
 
 _No findings._
 
