@@ -267,13 +267,13 @@ export class RcdPlayer {
         // Keep the engine's RemoteContext in sync with the new canvas
         // size so non-SIZING_SCALE documents re-flow into it on next
         // paint.  Without this the content would keep drawing at the
-        // original load-time size.
+        // original load-time size. The layout space is canvas pixels 1:1
+        // (matching loadFromArrayBuffer) — the generation density scales the
+        // dp-typed modifiers, it is not a layout-space divisor, so dividing
+        // here would shrink density>1 documents on every resize.
         if (this.remoteContext) {
-            const density = this.remoteContext.getDensity() || 1;
-            const docW = newWidth  / density;
-            const docH = newHeight / density;
-            this.remoteContext.mWidth  = docW;
-            this.remoteContext.mHeight = docH;
+            this.remoteContext.mWidth  = newWidth;
+            this.remoteContext.mHeight = newHeight;
             // The DATA pass in CoreDocument.paint reloads
             // ID_WINDOW_WIDTH / ID_WINDOW_HEIGHT from these, so
             // expressions track the new size automatically.

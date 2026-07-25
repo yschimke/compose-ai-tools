@@ -38,14 +38,16 @@ export class FitBoxLayout extends LayoutManager {
                     measure: MeasurePass, size: Size): void {
         let found = false;
         const self = measure.get(this);
+        const dp = this.getDpScale(context);
         for (const c of this.mChildrenComponents) {
             let cw = 0;
             let ch = 0;
             if (c instanceof LayoutComponent) {
+                // width/heightIn bounds are dp — scale to px by the generation density.
                 const wIn = c.getWidthInModifier();
-                if (wIn) cw = wIn.getMin();
+                if (wIn) cw = wIn.getMin() * dp;
                 const hIn = c.getHeightInModifier();
-                if (hIn) ch = hIn.getMin();
+                if (hIn) ch = hIn.getMin() * dp;
             }
             c.measure(context, 0, maxWidth, 0, maxHeight, measure);
             const m = measure.get(c);
@@ -68,14 +70,16 @@ export class FitBoxLayout extends LayoutManager {
     computeSize(context: PaintContext, minWidth: number, maxWidth: number,
                 minHeight: number, maxHeight: number, measure: MeasurePass): void {
         let found = false;
+        const dp = this.getDpScale(context);
         for (const c of this.mChildrenComponents) {
             let cw = 0;
             let ch = 0;
             if (c instanceof LayoutComponent) {
+                // width/heightIn bounds are dp — scale to px by the generation density.
                 const wIn = c.getWidthInModifier();
-                if (wIn) cw = wIn.getMin();
+                if (wIn) cw = wIn.getMin() * dp;
                 const hIn = c.getHeightInModifier();
-                if (hIn) ch = hIn.getMin();
+                if (hIn) ch = hIn.getMin() * dp;
             }
             c.measure(context, minWidth, maxWidth, minHeight, maxHeight, measure);
             const m = measure.get(c);

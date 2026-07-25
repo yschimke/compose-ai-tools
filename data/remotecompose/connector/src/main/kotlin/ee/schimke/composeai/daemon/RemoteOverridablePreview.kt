@@ -4,6 +4,7 @@ package ee.schimke.composeai.daemon
 
 import androidx.compose.remote.creation.compose.capture.RemoteCreationDisplayInfo
 import androidx.compose.remote.creation.compose.capture.RemoteDensity
+import androidx.compose.remote.creation.compose.capture.RemoteDensityBehavior
 import androidx.compose.remote.creation.compose.capture.captureSingleRemoteDocument
 import androidx.compose.remote.creation.compose.layout.RemoteComposable
 import androidx.compose.remote.creation.profile.Profile
@@ -78,11 +79,19 @@ fun RemoteOverridablePreview(
   val context = LocalContext.current
 
   val displayMetrics = context.resources.displayMetrics
+  // Capture in `Dp` density behavior, not the 3-arg default (`Legacy`). Legacy serialises the
+  // dp-typed size modifiers (`size(dp)`, `heightIn(dp)` / `buttonSizeModifier`) inconsistently, so a
+  // player can't reproduce the generation-density render — Material3 button/card fills and the
+  // circular-progress indicator come out ~1/density too small. `Dp` keeps those dimensions in dp so
+  // a player can scale them by the generation density. That density is written into the header
+  // below (the alpha writer records DOC_WIDTH/HEIGHT in px and the density *behavior*, but not the
+  // density value itself), which the rc-player consumes to scale the dp modifiers back to px.
   val displayInfo =
     RemoteCreationDisplayInfo(
       displayMetrics.widthPixels,
       displayMetrics.heightPixels,
       displayMetrics.densityDpi,
+      densityBehavior = RemoteDensityBehavior.Dp,
     )
   // Same capture pattern as upstream `RemotePreview` — `runBlocking` inside `remember` so the
   // document materialises once per (profile, content) pair without re-capturing across
@@ -102,12 +111,19 @@ fun RemoteOverridablePreview(
                 content = content,
               )
               .bytes
+          // The `Dp` capture keeps size modifiers in dp but the alpha writer doesn't record the
+          // generation density *value* (only DOC_WIDTH/HEIGHT in px and the density behavior). Stamp
+          // DOC_DENSITY_AT_GENERATION into the header so the rc-player can scale the dp modifiers
+          // back to px; without it the fills/indicator render ~1/density too small. Best-effort and
+          // idempotent — never fail the render over it.
+          val stamped =
+            runCatching { stampGenerationDensity(bytes, displayMetrics.density) }.getOrDefault(bytes)
           // Offer the captured RC doc so a bundle can carry + replay it without this composable's
           // bytecode; the render harness drains it into the `renders/<stem>.rc` sidecar that
           // `BundlePreviewTask.resolvePreviewIr` packs. No-op outside a daemon/test render (no
           // current preview id). Best-effort — never fail the render over IR capture. See
           // IrSidecarChannel.
-          runCatching { IrSidecarChannel.offer(IrSidecarChannel.FORMAT_REMOTECOMPOSE, bytes) }
+          runCatching { IrSidecarChannel.offer(IrSidecarChannel.FORMAT_REMOTECOMPOSE, stamped) }
           RemoteDocument(bytes)
         }
       }
@@ -139,6 +155,63 @@ fun RemoteOverridablePreview(
     modifier = modifier,
     init = { player -> applyConnectorOverrides(player.stateUpdater, seededOverrides) },
   )
+}
+
+// Remote Compose modern-header wire constants (big-endian). The header op is:
+//   [op:1][major|MAGIC:4][minor:4][patch:4][propCount:4][ (tag:2)(len:2)(payload:len) ... ]
+// where tag = (dataType << 10) | key, dataType FLOAT = 1, key 7 = DOC_DENSITY_AT_GENERATION.
+private const val RC_HEADER_MAGIC = 0x048C0000.toInt()
+private const val RC_PROP_DENSITY_AT_GENERATION = 7
+private const val RC_DATATYPE_FLOAT = 1
+
+/**
+ * Insert `DOC_DENSITY_AT_GENERATION = density` into a captured RemoteDocument's header, so a player
+ * can scale the dp-typed size modifiers back to generation pixels. Returns the input unchanged if
+ * the density is unusable, the header isn't the modern property-table format, or the property is
+ * already present (idempotent). Pure byte-surgery on the header — the wire format is exercised by
+ * the rc-player parity harness.
+ */
+internal fun stampGenerationDensity(bytes: ByteArray, density: Float): ByteArray {
+  if (!density.isFinite() || density <= 0f) return bytes
+  if (bytes.size < 17) return bytes
+  fun beInt(o: Int): Int =
+    ((bytes[o].toInt() and 0xFF) shl 24) or
+      ((bytes[o + 1].toInt() and 0xFF) shl 16) or
+      ((bytes[o + 2].toInt() and 0xFF) shl 8) or
+      (bytes[o + 3].toInt() and 0xFF)
+  fun beShort(o: Int): Int = ((bytes[o].toInt() and 0xFF) shl 8) or (bytes[o + 1].toInt() and 0xFF)
+
+  if ((beInt(1) and 0xFFFF0000.toInt()) != RC_HEADER_MAGIC) return bytes
+  val propCount = beInt(13)
+  if (propCount < 0) return bytes
+  // Walk the existing property table; bail (leave unchanged) if density is already recorded or the
+  // table is malformed.
+  var off = 17
+  repeat(propCount) {
+    if (off + 4 > bytes.size) return bytes
+    if ((beShort(off) and 0x3FF) == RC_PROP_DENSITY_AT_GENERATION) return bytes
+    off += 4 + beShort(off + 2)
+  }
+
+  val tag = (RC_DATATYPE_FLOAT shl 10) or RC_PROP_DENSITY_AT_GENERATION
+  val densBits = java.lang.Float.floatToIntBits(density)
+  val out = ByteArray(bytes.size + 8)
+  System.arraycopy(bytes, 0, out, 0, 17)
+  val newCount = propCount + 1
+  out[13] = (newCount ushr 24).toByte()
+  out[14] = (newCount ushr 16).toByte()
+  out[15] = (newCount ushr 8).toByte()
+  out[16] = newCount.toByte()
+  out[17] = (tag ushr 8).toByte()
+  out[18] = tag.toByte()
+  out[19] = 0
+  out[20] = 4
+  out[21] = (densBits ushr 24).toByte()
+  out[22] = (densBits ushr 16).toByte()
+  out[23] = (densBits ushr 8).toByte()
+  out[24] = densBits.toByte()
+  System.arraycopy(bytes, 17, out, 25, bytes.size - 17)
+  return out
 }
 
 /**
