@@ -3,6 +3,7 @@
 
 import { Component, Visibility } from './Component';
 import type { Operation } from '../../Operation';
+import { PaintOperation } from '../../PaintOperation';
 import type { PaintContext } from '../../PaintContext';
 import type { RemoteContext } from '../../RemoteContext';
 import type { MeasurePass } from './measure/MeasurePass';
@@ -370,12 +371,21 @@ export class LayoutComponent extends Component {
     }
 
     paint(paintContext: PaintContext): void {
-        if (this.mDrawContentOperations !== null && this.mDrawContentOperations.length > 0) {
+        // The draw-content path (a `Modifier.drawWithContent` block) replaces the
+        // component's normal painting with its own draw ops. Only take it when the
+        // block actually contains a *drawing* op — a `DrawContentModifier` can be
+        // trailed by non-visual ops alone (e.g. accessibility `CoreSemantics`),
+        // and treating that as a custom draw would blank the component's real
+        // content (its `CanvasOperations` fill, text, and children).
+        const drawContentOps = this.mDrawContentOperations;
+        const hasCustomDraw =
+            drawContentOps !== null && drawContentOps.some((op) => op instanceof PaintOperation);
+        if (hasCustomDraw) {
             // Draw content operations handle their own painting
             paintContext.matrixSave();
             paintContext.matrixTranslate(this.mX, this.mY);
             const context = paintContext.getContext();
-            for (const op of this.mDrawContentOperations) {
+            for (const op of drawContentOps!) {
                 context.incrementOpCount();
                 if (op.isDirty() && typeof (op as any).updateVariables === 'function') {
                     op.markNotDirty();

@@ -6052,23 +6052,6 @@ var RC = (() => {
   };
   _ImpulseProcess.OP_CODE = 165;
   var ImpulseProcess = _ImpulseProcess;
-  var _CanvasOperationsOp = class _CanvasOperationsOp extends Operation {
-    constructor() {
-      super();
-    }
-    write(_buffer) {
-    }
-    apply(_context) {
-    }
-    deepToString(indent) {
-      return `${indent}CanvasOperations`;
-    }
-    static read(_buffer, operations) {
-      operations.push(new _CanvasOperationsOp());
-    }
-  };
-  _CanvasOperationsOp.OP_CODE = 173;
-  var CanvasOperationsOp = _CanvasOperationsOp;
   var _DebugMessage = class _DebugMessage extends Operation {
     constructor() {
       super();
@@ -9755,11 +9738,13 @@ var RC = (() => {
       paintContext.matrixRestore();
     }
     paint(paintContext) {
-      if (this.mDrawContentOperations !== null && this.mDrawContentOperations.length > 0) {
+      const drawContentOps = this.mDrawContentOperations;
+      const hasCustomDraw = drawContentOps !== null && drawContentOps.some((op) => op instanceof PaintOperation);
+      if (hasCustomDraw) {
         paintContext.matrixSave();
         paintContext.matrixTranslate(this.mX, this.mY);
         const context = paintContext.getContext();
-        for (const op of this.mDrawContentOperations) {
+        for (const op of drawContentOps) {
           context.incrementOpCount();
           if (op.isDirty() && typeof op.updateVariables === "function") {
             op.markNotDirty();
@@ -12767,6 +12752,44 @@ var RC = (() => {
   _TextSubtext.OP_CODE = 182;
   var TextSubtext = _TextSubtext;
 
+  // src/core/operations/layout/CanvasOperations.ts
+  var _CanvasOperations = class _CanvasOperations extends PaintOperation {
+    constructor() {
+      super();
+      // Child drawing commands, collected during inflation (see getList()).
+      this.mList = [];
+    }
+    // Exposing getList() marks this as a Container: CoreDocument.inflateComponents
+    // redirects the ops between this one and its ContainerEnd into mList, and the
+    // DATA pass recurses through it so child data/variables load.
+    getList() {
+      return this.mList;
+    }
+    write(buffer) {
+      buffer.start(_CanvasOperations.OP_CODE);
+    }
+    paint(context) {
+      const remoteContext = context.getContext();
+      for (const op of this.mList) {
+        if (op.isDirty() && typeof op.updateVariables === "function") {
+          op.updateVariables(remoteContext);
+        }
+        remoteContext.incrementOpCount();
+        op.apply(remoteContext);
+      }
+    }
+    deepToString(indent) {
+      const inner = this.mList.map((op) => op.deepToString(indent + "  ")).join("\n");
+      return `${indent}CanvasOperations
+${inner}`;
+    }
+    static read(_buffer, operations) {
+      operations.push(new _CanvasOperations());
+    }
+  };
+  _CanvasOperations.OP_CODE = 173;
+  var CanvasOperations = _CanvasOperations;
+
   // src/core/operations/ParticleOperations.ts
   var OFFSET2 = 3211264;
   var ID_REGION_MASK = 7340032;
@@ -15103,7 +15126,7 @@ var RC = (() => {
       m.set(PathAppend.OP_CODE, PathAppend.read);
       m.set(ImpulseOperation.OP_CODE, ImpulseOperation.read);
       m.set(TextAttribute.OP_CODE, TextAttribute.read);
-      m.set(CanvasOperationsOp.OP_CODE, CanvasOperationsOp.read);
+      m.set(CanvasOperations.OP_CODE, CanvasOperations.read);
       m.set(DebugMessage.OP_CODE, DebugMessage.read);
       m.set(MatrixVectorMath.OP_CODE, MatrixVectorMath.read);
       m.set(MatrixConstant.OP_CODE, MatrixConstant.read);
