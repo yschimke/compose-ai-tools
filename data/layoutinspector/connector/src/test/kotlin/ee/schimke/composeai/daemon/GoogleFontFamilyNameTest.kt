@@ -43,6 +43,44 @@ class GoogleFontFamilyNameTest {
   }
 
   @Test
+  fun namesAFaceWhoseMethodsCannotBeEnumerated() {
+    // The regression that shipped a whole branded sticker sheet as Roboto. `Class.getMethods()`
+    // resolves every method's parameter and return types, so a face whose signatures reference a
+    // class the current loader can't see makes the *method* route unusable — and gating the whole
+    // extraction on it lost the family for every downloadable face in the render. The name is still
+    // right there in a field, which is what the font recorder reads.
+    class HostileMethods {
+      @Suppress("unused") val name: String = "Orbitron"
+
+      @Suppress("unused")
+      fun toFontRequest(): Any = throw NoClassDefFoundError("androidx/core/provider/FontRequest")
+
+      override fun toString(): String = "Font(GoogleFont(\"Orbitron\", bestEffort=true))"
+    }
+    assertEquals("Orbitron", googleFontFamilyName(HostileMethods()))
+  }
+
+  @Test
+  fun namesAFaceThatOnlyDeclaresItsFamilyInToString() {
+    // No `name` field, no `getName()` — only the label. Still nameable, so still not Roboto.
+    class OnlyToString {
+      override fun toString(): String = "Font(GoogleFont(\"JetBrains Mono\"), weight=400)"
+    }
+    assertEquals("JetBrains Mono", googleFontFamilyName(OnlyToString()))
+  }
+
+  @Test
+  fun stillNullForAnUnrelatedFaceWithANameField() {
+    // Widening the detection must not start labelling arbitrary Font subtypes as Google fonts.
+    class BundledFace {
+      @Suppress("unused") val name: String = "Some Bundled Face"
+
+      override fun toString(): String = "ResourceFont(resId=2131296257, weight=400)"
+    }
+    assertNull(googleFontFamilyName(BundledFace()))
+  }
+
+  @Test
   fun extractsTheDisplayNameFromADesktopGoogleFontIdentity() {
     // A vendored desktop face's identity is the GoogleFont label; the figma-svg must name the
     // family
