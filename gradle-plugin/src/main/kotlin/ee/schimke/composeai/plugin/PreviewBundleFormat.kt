@@ -137,10 +137,23 @@ data class BundleManifest(
   val schemaVersion: Int,
   /** Backend the bundle was packed for. v1 = "desktop"; "android" follows. */
   val backend: String,
-  /** Selected preview ids (matches `previews.json[].id`). First entry = cover. */
+  /**
+   * Selected preview ids in their in-bundle (entry-name) form — sanitised by
+   * `sanitizeBundleEntryId`, so no spaces or shell-hostile characters. First entry = cover.
+   */
   val previewIds: List<String>,
   /** Preview id whose PNG forms the polyglot's leading bytes. Usually `previewIds[0]`. */
   val coverPreviewId: String?,
+  /**
+   * The raw discovery ids (`previews.json[].id` as the producing module knows them), parallel to
+   * [previewIds] — same order, same length. Sanitisation is lossy (`"A B"` and `"A_B"` both become
+   * `A_B`), so a consumer that must address the producing module's daemon or renderer — which key
+   * strictly on the raw id, e.g. `bundle pack --with-semantics`'s per-preview semantics fetch —
+   * translates through this list instead of guessing. Empty on bundles packed before the field
+   * existed; readers fall back to [previewIds], which is correct whenever the raw id needed no
+   * sanitising.
+   */
+  val rawPreviewIds: List<String> = emptyList(),
   /**
    * Classpath in load order. First entry is always [ClasspathEntry.Module] for the inlined
    * `classes/app.jar`; remaining entries are [ClasspathEntry.Maven] coordinates the player resolves

@@ -497,6 +497,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         schemaVersion = BUNDLE_SCHEMA_VERSION,
         backend = backend.get(),
         previewIds = selected.map { bundleIds.getValue(it.id) },
+        rawPreviewIds = selected.map { it.id },
         coverPreviewId = coverId,
         classpath = classpathEntries,
         modulePath = modulePath.get(),
