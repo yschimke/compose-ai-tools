@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.18](https://github.com/yschimke/compose-ai-tools/compare/v0.17.17...v0.17.18) (2026-07-25)
+
+
+### Features
+
+* **serve:** materialise catalog RC docs so the browser canvas lane works on catalogs ([#2724](https://github.com/yschimke/compose-ai-tools/issues/2724)) ([fef57fc](https://github.com/yschimke/compose-ai-tools/commit/fef57fcb6a78a0d7e232a7b4eaa3612d08b107be))
+
+
+### Bug Fixes
+
+* **gradle-plugin:** pin artifactType on the desktop daemon-start consumer classpath ([#2722](https://github.com/yschimke/compose-ai-tools/issues/2722)) ([702d56b](https://github.com/yschimke/compose-ai-tools/commit/702d56bea92f88168c66f69108c7b95c0e7ce50c))
+
 ## [0.17.17](https://github.com/yschimke/compose-ai-tools/compare/v0.17.16...v0.17.17) (2026-07-24)
 
 
