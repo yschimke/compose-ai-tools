@@ -1,4 +1,12 @@
 {
+  "app/activity__MainActivity": {
+    "captureLabel": "",
+    "functionName": "MainActivity",
+    "module": "app",
+    "renderBasename": "activity__MainActivity.png",
+    "sha256": "41ede7dcf25f893a2ea68fad690c57981edab206b81986d257bcb541375b8927",
+    "sourceFile": null
+  },
   "app/com.example.android.wearable.composestarter.presentation.MainActivityKt.GreetingScreenPreview_Devices - Large Round": {
     "captureLabel": "",
     "functionName": "GreetingScreenPreview",

@@ -24,6 +24,7 @@ Auto-rendered by the integration matrix from [`android/wear-os-samples@main`](ht
 
 | Preview | Image |
 |---------|-------|
+| `MainActivity` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/activity__MainActivity.png" width="150" /> |
 | `GreetingScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/GreetingScreenPreview_Devices_Large_Round.png" width="150" /> |
 | `GreetingScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/GreetingScreenPreview_Devices_Small_Round.png" width="150" /> |
 | `GreetingScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/wear-os-samples/renders/app/GreetingScreenPreview_Fonts_Large.png" width="150" /> |
