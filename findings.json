@@ -1933,20 +1933,6 @@
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
           "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
-        },
-        {
-          "boundsInScreen": "23,275,414,354",
-          "level": "ERROR",
-          "message": "This item's height is 30dp. Consider making the height of this touch target 48dp or larger.",
-          "type": "TouchTargetSizeCheck",
-          "viewDescription": "android.view.View"
-        },
-        {
-          "boundsInScreen": "425,275,816,354",
-          "level": "ERROR",
-          "message": "This item's height is 30dp. Consider making the height of this touch target 48dp or larger.",
-          "type": "TouchTargetSizeCheck",
-          "viewDescription": "android.view.View"
         }
       ],
       "functionName": "ButtonGroupRemote",
