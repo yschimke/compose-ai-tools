@@ -30,17 +30,8 @@ export class ImpulseProcess extends Operation {
     }
 }
 
-// ── CanvasOperations (173) ──────────────────────────────────────────
-export class CanvasOperationsOp extends Operation {
-    static readonly OP_CODE = 173;
-    constructor() { super(); }
-    write(_buffer: WireBuffer): void { /* stub */ }
-    apply(_context: RemoteContext): void { /* stub */ }
-    deepToString(indent: string): string { return `${indent}CanvasOperations`; }
-    static read(_buffer: WireBuffer, operations: Operation[]): void {
-        operations.push(new CanvasOperationsOp());
-    }
-}
+// CanvasOperations (173) is a real paint container, not a stub — see
+// operations/layout/CanvasOperations.ts.
 
 // ── DebugMessage (179) ──────────────────────────────────────────────
 export class DebugMessage extends Operation {

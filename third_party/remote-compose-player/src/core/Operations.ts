@@ -82,12 +82,13 @@ import { TextAttribute } from './operations/TextAttribute';
 import { TextLength } from './operations/TextLength';
 import { TextSubtext } from './operations/TextSubtext';
 import {
-    ImpulseOperation, ImpulseProcess, CanvasOperationsOp,
+    ImpulseOperation, ImpulseProcess,
     DebugMessage,
     HostActionMetadataOperation, RunActionOperation,
     ValueFloatExpressionChangeAction, TextLayout,
     PathTween, HapticFeedback, WakeIn, TimeAttribute
 } from './operations/StubOperations';
+import { CanvasOperations } from './operations/layout/CanvasOperations';
 import {
     ParticlesCreateOp, ParticlesLoopOp, ParticlesCompareOp
 } from './operations/ParticleOperations';
@@ -243,7 +244,7 @@ export class Operations {
         m.set(PathAppend.OP_CODE, PathAppend.read);
         m.set(ImpulseOperation.OP_CODE, ImpulseOperation.read);
         m.set(TextAttribute.OP_CODE, TextAttribute.read);
-        m.set(CanvasOperationsOp.OP_CODE, CanvasOperationsOp.read);
+        m.set(CanvasOperations.OP_CODE, CanvasOperations.read);
         m.set(DebugMessage.OP_CODE, DebugMessage.read);
         m.set(MatrixVectorMath.OP_CODE, MatrixVectorMath.read);
         m.set(MatrixConstant.OP_CODE, MatrixConstant.read);

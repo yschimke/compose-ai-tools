@@ -25,6 +25,20 @@ not vendored; only the library source needed to build the browser bundle.
 
 Local deltas over that snapshot (each also filed upstream):
 
+- **`CanvasOperations` (opcode 173).** Replaced the parse-only stub with a real
+  implementation (`src/core/operations/layout/CanvasOperations.ts`, registered in
+  `src/core/Operations.ts`), mirroring `CanvasOperations` in remote-core: a
+  `Container` whose child draw ops (between it and its `ContainerEnd`) are grouped
+  via `getList()` and replayed in `apply()` — so a component's `drawWithContent`
+  decoration (Material3 button/card fill + label) paints instead of being dropped.
+- **`LayoutComponent` draw-content guard** (`operations/layout/LayoutComponent.ts`).
+  The draw-content path only replaces normal painting when the block actually
+  holds a drawing op (a `PaintOperation`); a `DrawContentModifier` trailed solely
+  by non-visual ops (e.g. `CoreSemantics`) no longer blanks the component's real
+  content. Known remaining gap: a fill whose path geometry comes from
+  layout-bound `FloatExpression`s still resolves empty, so the fill *shape*
+  (not its colour or the label) is missing — tracked separately.
+
 - **`CoreSemantics` (opcode 250 / `ACCESSIBILITY_SEMANTICS`).** Added
   `src/core/operations/semantics/CoreSemantics.ts` and registered it in
   `src/core/Operations.ts`. Before this, an `AccessibilityModifier` op in the
