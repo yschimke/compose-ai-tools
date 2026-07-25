@@ -612,17 +612,33 @@ abstract class RobolectricRenderTestBase(
     // render is attributed to this preview (drained right after the render below).
     FontResolutionDiagnostics.beginPreview()
     try {
-      renderDefault(
-        params = params,
-        widthDp = widthDp,
-        heightDp = heightDp,
-        wrapWidth = wrapWidth,
-        wrapHeight = wrapHeight,
-        outputDir = outputDir,
-        roborazziOptions = roborazziOptions,
-        composeOptions = composeOptions,
-        inspectionMode = inspectionMode,
-      )
+      if (params.kind == PreviewKind.ACTIVITY || params.kind == PreviewKind.APP_TOUR) {
+        // App-level previews: no composition to host — the real activity owns its content.
+        // Apply the same qualifiers/fontScale the composable path would, then hand the whole
+        // launch → navigate → capture loop to [AppTourRenderer].
+        applyPreviewQualifiers(
+          widthDp = widthDp,
+          heightDp = heightDp,
+          isRound = isRoundDevice(params.device),
+          locale = params.locale,
+          uiMode = params.uiMode,
+          density = params.density,
+        )
+        org.robolectric.RuntimeEnvironment.setFontScale(params.fontScale)
+        AppTourRenderer.render(preview, outputDir, roborazziOptions)
+      } else {
+        renderDefault(
+          params = params,
+          widthDp = widthDp,
+          heightDp = heightDp,
+          wrapWidth = wrapWidth,
+          wrapHeight = wrapHeight,
+          outputDir = outputDir,
+          roborazziOptions = roborazziOptions,
+          composeOptions = composeOptions,
+          inspectionMode = inspectionMode,
+        )
+      }
       // A downloadable font that couldn't be resolved rendered in the platform fallback (Roboto) —
       // wrong typeface for a branded preview. By default that's fatal (throw → the catch below drops
       // the PNG and writes `.error.json`, same as any render failure). With

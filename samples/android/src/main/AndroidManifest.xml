@@ -7,10 +7,27 @@
         <activity
             android:name="com.example.sampleandroid.MainActivity"
             android:exported="true"
-            android:icon="@drawable/ic_settings">
+            android:icon="@drawable/ic_settings"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <!--
+          Second screen for app-level previews and the getting-started tour: reached from
+          MainActivity's "Open Now Playing" button (real startActivity) or via the
+          sample://nowplaying deep link the tour's intent step fires.
+        -->
+        <activity
+            android:name="com.example.sampleandroid.NowPlayingActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="sample" android:host="nowplaying" />
             </intent-filter>
         </activity>
         <!--

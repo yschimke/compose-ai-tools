@@ -58,6 +58,25 @@ enum class PreviewKind {
    * of `@Preview(uiMode = …)` — one declared theme per annotated provider.
    */
   THEME_CATALOG,
+  /**
+   * A real Activity declared in the module's merged `AndroidManifest.xml` — no `@Preview`, no
+   * consumer composable. The renderer launches the activity for real (full lifecycle, its own
+   * `setContent`) inside the Robolectric sandbox and captures its window — an app-level preview of
+   * the actual entry point rather than an isolated composable. The launcher activity's capture is
+   * the app's hero image; non-launcher activities are captured best-effort (`optional`) since they
+   * may require intent extras discovery can't guess. The activity FQCN travels on
+   * [PreviewInfo.className]; an optional custom launch intent on [PreviewParams.launchIntent].
+   */
+  ACTIVITY,
+  /**
+   * A scripted multi-step tour of the app — no `@Preview`, no consumer composable. Sourced from a
+   * committed `compose-previews/tours/<name>.json` spec. The renderer launches the start activity,
+   * then executes each step (click a semantics/view target, fire an intent, press back), following
+   * `startActivity` calls across real activities, and captures one PNG per step — a navigable
+   * walkthrough of the app captured as stills. Step payloads ride on [Capture.tourStep]; the start
+   * intent on [PreviewParams.launchIntent].
+   */
+  APP_TOUR,
 }
 
 /**
@@ -358,6 +377,100 @@ enum class LauncherWidgetCaptureResizeOrder {
   HeightFirst,
 }
 
+// ---------------------------------------------------------------------------
+// App previews & tours — real activities, intents, scripted navigation
+// ---------------------------------------------------------------------------
+
+/**
+ * One `<activity>` (or `<activity-alias>`) declared in the module's merged `AndroidManifest.xml`.
+ * Attached to [PreviewManifest.activities] as an index of the app's real entry points — which
+ * activities exist, which one is the launcher, and the intent-filters each responds to — so tooling
+ * and agents can see the ways to launch into (and between) the app's screens without parsing the
+ * manifest themselves. Enabled activities also fan out into synthetic [PreviewKind.ACTIVITY]
+ * previews.
+ */
+@Serializable
+data class ManifestActivity(
+  /** Fully qualified activity class name, short `.Name` forms resolved against the package. */
+  val className: String,
+  /** `android:exported` — launchable by other apps. Defaults to `false` when unspecified. */
+  val exported: Boolean = false,
+  /** `true` for the `MAIN`/`LAUNCHER` entry point — the activity whose capture is the hero. */
+  val launcher: Boolean = false,
+  /** Verbatim `android:label`, when the manifest declares one (may be a `@string/…` reference). */
+  val label: String? = null,
+  /** The activity's `<intent-filter>` declarations — the advertised ways to launch it. */
+  val intentFilters: List<ActivityIntentFilter> = emptyList(),
+)
+
+/** One `<intent-filter>` on a [ManifestActivity]. */
+@Serializable
+data class ActivityIntentFilter(
+  val actions: List<String> = emptyList(),
+  val categories: List<String> = emptyList(),
+  /** `android:scheme` values from `<data>` children — the deep-link schemes this filter matches. */
+  val dataSchemes: List<String> = emptyList(),
+  /** `android:host` values from `<data>` children. */
+  val dataHosts: List<String> = emptyList(),
+)
+
+/**
+ * An Intent to construct at render time — the launch options for a [PreviewKind.ACTIVITY] preview,
+ * a [PreviewKind.APP_TOUR]'s start step, or a tour step's explicit intent dispatch. Every field is
+ * optional: an explicit [activityClassName] targets a component directly; [action]/[data] describe
+ * an implicit intent the renderer resolves through the (real, manifest-backed) `PackageManager` —
+ * which is what makes deep-link steps honest to the manifest's intent-filters.
+ */
+@Serializable
+data class TourIntentSpec(
+  /** FQCN of the target activity for an explicit intent; `null` for implicit resolution. */
+  val activityClassName: String? = null,
+  /** Intent action, e.g. `android.intent.action.VIEW`. */
+  val action: String? = null,
+  /** Data URI string, e.g. a deep link like `myapp://detail/42`. */
+  val data: String? = null,
+  val categories: List<String> = emptyList(),
+  /** String extras placed on the intent (`putExtra(key, value)`). */
+  val extras: Map<String, String> = emptyMap(),
+)
+
+/**
+ * A click target inside a tour step. Exactly one selector should be set. Compose surfaces are
+ * matched through the semantics tree ([text], [contentDescription], [tag]); classic View surfaces
+ * through [viewId] (resource entry name) or [text]. The renderer performs the click through the
+ * matched node's real click action, so navigation side effects (`startActivity`, back-stack pushes)
+ * run for real.
+ */
+@Serializable
+data class TourClickSpec(
+  /** Match a node by its visible text (exact match, merged semantics). */
+  val text: String? = null,
+  /** Match a node by content description. */
+  val contentDescription: String? = null,
+  /** Match a Compose node by `Modifier.testTag(...)`. */
+  val tag: String? = null,
+  /** Match a classic View by its resource entry name (`R.id.<viewId>`). */
+  val viewId: String? = null,
+)
+
+/**
+ * One step of a [PreviewKind.APP_TOUR], carried on [Capture.tourStep] — the capture-dimension
+ * payload for tours, exactly like [Capture.focus] / [Capture.scroll] for their features. The
+ * renderer performs this step's action (at most one of [click] / [intent] / [back]; all unset for
+ * the synthesized launch step), settles the composition, then captures the currently-resumed
+ * activity's window into [Capture.renderOutput].
+ */
+@Serializable
+data class TourStepCapture(
+  /** Zero-based step position; step 0 is always the synthesized "launch" capture. */
+  val index: Int,
+  /** Human label from the tour spec, embedded in the render filename and shown by tooling. */
+  val label: String,
+  val click: TourClickSpec? = null,
+  val intent: TourIntentSpec? = null,
+  val back: Boolean = false,
+)
+
 /**
  * Cost catalogue, normalised so a static `@Preview` (single compose pass + one screenshot) is
  * `1.0`. The discovery task stamps the right value onto each [Capture]; tooling reads them back to
@@ -389,6 +502,20 @@ const val FOCUS_GIF_COST: Float = 40.0f
 const val ANIMATION_COST: Float = 50.0f
 const val ACCESSIBILITY_COST_PER_CAPTURE: Float = 4.0f
 const val HEAVY_COST_THRESHOLD: Float = 5.0f
+
+/**
+ * Per-capture cost for a [PreviewKind.ACTIVITY] launch: full activity lifecycle + window capture, a
+ * few compose passes' worth of work but still a single still — kept under [HEAVY_COST_THRESHOLD] so
+ * the app's hero image refreshes in the fast tier.
+ */
+const val ACTIVITY_LAUNCH_COST: Float = 4.0f
+
+/**
+ * Per-step cost for a [PreviewKind.APP_TOUR] capture: each step replays the tour prefix's activity
+ * lifecycle work on top of its own action + capture, so tours land in the heavy/on-demand bucket
+ * rather than the every-save loop.
+ */
+const val TOUR_STEP_COST: Float = 8.0f
 
 /**
  * Returns `true` when [cost] exceeds [HEAVY_COST_THRESHOLD]. Single seam so the plugin, renderer,
@@ -453,6 +580,12 @@ data class PreviewParams(
    * module resources to pack the IR. `null` for every other kind.
    */
   val assetPath: String? = null,
+  /**
+   * For [PreviewKind.ACTIVITY] and [PreviewKind.APP_TOUR] only: the Intent the renderer launches
+   * the (start) activity with. `null` on an ACTIVITY preview means "the activity's default launch
+   * intent" (explicit component, `ACTION_MAIN`); tours always carry their spec's start intent.
+   */
+  val launchIntent: TourIntentSpec? = null,
 )
 
 /**
@@ -503,6 +636,12 @@ data class Capture(
    * sizes to the resolved dp footprint of a launcher cell.
    */
   val launcherWidget: LauncherWidgetCapture? = null,
+  /**
+   * `null` → not an app-tour step. Set on every capture of a [PreviewKind.APP_TOUR] preview: the
+   * navigation action to perform before this capture and the step's label/position. See
+   * [TourStepCapture].
+   */
+  val tourStep: TourStepCapture? = null,
   /** Module-relative PNG path, e.g. `renders/<preview id>_TIME_500ms.png`. */
   val renderOutput: String = "",
   /**
@@ -808,6 +947,14 @@ data class PreviewManifest(
    * CLI / VS Code extension alongside the plugin bump.
    */
   val dataExtensionReports: Map<String, String> = emptyMap(),
+  /**
+   * The activities declared in this module's merged `AndroidManifest.xml`, when the build supplied
+   * one — the app's real entry points and the intent-filters (launcher, deep-link schemes) that
+   * launch them. Purely additive metadata: agents read it to know which screens exist and how to
+   * navigate between them (e.g. to author a tour spec); enabled activities also appear as
+   * [PreviewKind.ACTIVITY] previews. Empty for library/desktop modules.
+   */
+  val activities: List<ManifestActivity> = emptyList(),
 )
 
 // ---------------------------------------------------------------------------

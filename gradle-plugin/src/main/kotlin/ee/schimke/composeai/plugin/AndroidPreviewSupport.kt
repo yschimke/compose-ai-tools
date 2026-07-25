@@ -48,6 +48,14 @@ internal object AndroidPreviewSupport {
   internal const val SVG_RENDER_SUBDIR: String = "svg-renders"
 
   /**
+   * Module-root directory holding committed app-tour scripts. Each `*.json` inside becomes a
+   * synthetic `kind=APP_TOUR` preview (see `AppTourDiscovery`); the dir is module-rooted (not a
+   * source set) so the specs sit beside the module's other committed preview state and stay visible
+   * without source-set spelunking.
+   */
+  internal const val TOUR_SPECS_DIR: String = "compose-previews/tours"
+
+  /**
    * Floor version pinned on every plugin-injected `androidx.compose.*` coordinate that doesn't have
    * its own version source (`ui-test-manifest`, `ui-test-junit4`). Matches the Compose line that
    * `:renderer-android` compiles against (`compose-bom-compat` 2025.11.01 → Compose 1.9.5); the
@@ -635,7 +643,16 @@ internal object AndroidPreviewSupport {
         // The variant's merged manifest lets discovery detect a Wear OS module (the
         // `android.hardware.type.watch` uses-feature) and retarget its frame-less, device-less
         // component previews to wear density/width instead of the phone default (issue #1985).
+        // It also drives app-level discovery: `<activity>` entries become manifest metadata +
+        // synthetic `kind=ACTIVITY` previews (the launcher activity's render is the hero image).
         mergedManifest.set(variant.artifacts.get(SingleArtifact.MERGED_MANIFEST))
+        // Committed tour scripts: each `compose-previews/tours/<name>.json` becomes a synthetic
+        // `kind=APP_TOUR` preview whose captures are the tour's steps (launch → click/intent/back).
+        tourSpecFiles.from(
+          project.layout.projectDirectory.dir(TOUR_SPECS_DIR).asFileTree.matching {
+            include("*.json")
+          }
+        )
         if (screenshotTestEnabled) {
           dependsOn(project.tasks.matching { it.name in screenshotCompileTaskNames })
           screenshotTestRuntimeConfig?.let { stConfig ->

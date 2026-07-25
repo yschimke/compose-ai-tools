@@ -1,0 +1,12 @@
+{
+  "name": "getting-started",
+  "description": "Home → Now Playing (click), back home, then deep-link straight to Now Playing.",
+  "steps": [
+    { "label": "open now playing", "click": { "text": "Open Now Playing" } },
+    { "label": "back home", "back": true },
+    {
+      "label": "deep link",
+      "intent": { "action": "android.intent.action.VIEW", "data": "sample://nowplaying" }
+    }
+  ]
+}

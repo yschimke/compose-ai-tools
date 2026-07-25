@@ -124,6 +124,22 @@ object PreviewDiscovery {
      * `-PcomposePreview.retargetWearPreviews=false` Gradle property.
      */
     val retargetWearPreviews: Boolean = true,
+    /**
+     * The variant's merged `AndroidManifest.xml`, when the build system has one (AGP
+     * `SingleArtifact.MERGED_MANIFEST`). Non-null on the Android backend only. Drives app-level
+     * discovery: its `<activity>` declarations become [PreviewManifest.activities] metadata plus
+     * one synthetic [PreviewKind.ACTIVITY] preview each (the launcher activity's render is the
+     * app's hero image), and its launcher activity is the default start for tour specs. `null`
+     * (desktop / library backends) skips app-level discovery entirely.
+     */
+    val mergedManifest: File? = null,
+    /**
+     * Committed tour scripts (`compose-previews/tours/<name>.json`), each becoming a synthetic
+     * [PreviewKind.APP_TOUR] preview whose captures are the tour's steps. Only honoured when
+     * [mergedManifest] is present — tours launch real activities, which only the Android backend
+     * can do.
+     */
+    val tourSpecFiles: List<File> = emptyList(),
   )
 
   /** Outcome of a [discover] call. */
@@ -561,6 +577,27 @@ object PreviewDiscovery {
         ) +
         buildThemeCatalogPreviews(rawThemeCatalogs, input.catalogRenderSupported)
 
+    // App-level discovery — real activities and scripted tours. Android-backend-only (gated on a
+    // merged manifest being supplied): activities become metadata + one synthetic ACTIVITY preview
+    // each, and tour specs become APP_TOUR previews starting (by default) at the launcher
+    // activity. See [AppTourDiscovery].
+    val manifestActivities =
+      input.mergedManifest?.let { AppTourDiscovery.parseManifestActivities(it) } ?: emptyList()
+    val appPreviews =
+      if (input.mergedManifest == null) {
+        emptyList()
+      } else {
+        AppTourDiscovery.buildActivityPreviews(manifestActivities, input.isWear) +
+          AppTourDiscovery.buildTourPreviews(
+            input.tourSpecFiles,
+            launcherActivity = manifestActivities.firstOrNull { it.launcher },
+            isWear = input.isWear,
+            warnings = warnings,
+          )
+      }
+
+    val allPreviews = normalized + appPreviews
+
     // The generic per-extension reports map is empty on the standalone Gradle path — a11y
     // (today's only canned-report producer) writes its artefacts exclusively through the
     // daemon, which stamps the pointer at runtime when it has data on disk. Future
@@ -569,12 +606,13 @@ object PreviewDiscovery {
       PreviewManifest(
         module = input.moduleName,
         variant = input.variantName,
-        previews = normalized,
+        previews = allPreviews,
         dataExtensionReports = emptyMap(),
+        activities = manifestActivities,
       )
 
-    infoMessages.add("Discovered ${normalized.size} preview(s) in module '${input.moduleName}':")
-    for (preview in normalized) {
+    infoMessages.add("Discovered ${allPreviews.size} preview(s) in module '${input.moduleName}':")
+    for (preview in allPreviews) {
       infoMessages.add("  ${preview.className}.${preview.functionName}${describeVariant(preview)}")
     }
 
