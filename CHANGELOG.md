@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.17.19](https://github.com/yschimke/compose-ai-tools/compare/v0.17.18...v0.17.19) (2026-07-25)
+
+
+### Features
+
+* **wear-widget:** real Glance Wear RemoteCompose widgets that preserve the encoded doc ([#2727](https://github.com/yschimke/compose-ai-tools/issues/2727)) ([a34ffbf](https://github.com/yschimke/compose-ai-tools/commit/a34ffbfc23ff7567714c4c57b016f10ebaae736b))
+
+
+### Bug Fixes
+
+* **bundle:** pack per-param IR for @PreviewParameter previews ([#2729](https://github.com/yschimke/compose-ai-tools/issues/2729)) ([a346d04](https://github.com/yschimke/compose-ai-tools/commit/a346d042565f9a2319166155281699cf14ebaaa6))
+* **figma-svg:** name downloadable Google fonts instead of collapsing to Roboto ([#2730](https://github.com/yschimke/compose-ai-tools/issues/2730)) ([d78c096](https://github.com/yschimke/compose-ai-tools/commit/d78c096db28d41d1db263a7f617aa9b4097fe9fd))
+* **serve:** bound RC-doc decompression when materialising catalog docs ([#2725](https://github.com/yschimke/compose-ai-tools/issues/2725)) ([e2ee3db](https://github.com/yschimke/compose-ai-tools/commit/e2ee3db21a99c0dd9a2ce8576e45f08ee0e69f15))
+
 ## [0.17.18](https://github.com/yschimke/compose-ai-tools/compare/v0.17.17...v0.17.18) (2026-07-25)
 
 
