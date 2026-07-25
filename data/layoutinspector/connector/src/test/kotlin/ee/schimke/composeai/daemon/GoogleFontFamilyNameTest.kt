@@ -44,7 +44,8 @@ class GoogleFontFamilyNameTest {
 
   @Test
   fun extractsTheDisplayNameFromADesktopGoogleFontIdentity() {
-    // A vendored desktop face's identity is the GoogleFont label; the figma-svg must name the family
+    // A vendored desktop face's identity is the GoogleFont label; the figma-svg must name the
+    // family
     // ("Orbitron"), not the raw blob, so `?mode=web` can @import it.
     assertEquals(
       "Orbitron",
