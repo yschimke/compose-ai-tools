@@ -42,6 +42,54 @@ class DaemonBootstrapFunctionalTest {
       .isIn(listOf(TaskOutcome.UP_TO_DATE, TaskOutcome.FROM_CACHE))
   }
 
+  @Test
+  fun `discover and daemonStart in one invocation pass validation, discover first`() {
+    // `previewsManifest` is an @InputFile pointing at composePreviewDiscover's `previews.json`, but
+    // it's wired from a layout directory Provider that carries no build dependency. Gradle's strict
+    // validation rejected the pair the moment both tasks were in one graph:
+    //
+    //   Task ':composePreviewDaemonStart' uses this output of task ':composePreviewDiscover'
+    //   without declaring an explicit or implicit dependency.
+    //
+    // Only reproducible with both tasks requested together, which is why it survived until a
+    // combined invocation happened to be run by hand.
+    val projectDir = createCmpTestProject()
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "composePreviewDaemonStart", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":composePreviewDaemonStart")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val executed = result.tasks.map { it.path }
+    assertThat(executed).containsAtLeast(":composePreviewDiscover", ":composePreviewDaemonStart")
+    assertThat(executed.indexOf(":composePreviewDiscover"))
+      .isLessThan(executed.indexOf(":composePreviewDaemonStart"))
+  }
+
+  @Test
+  fun `daemonStart alone does not drag in discovery`() {
+    // Guards the choice of `mustRunAfter` over `dependsOn`. The daemon has to be warmable before
+    // anything has been discovered — that's why `previewsManifest` is @Optional (see its kdoc, and
+    // DaemonMain's `manifestFile.isFile` check). "Fixing" the validation error with `dependsOn`
+    // would satisfy Gradle and silently make every VS Code warm pay for a full discovery pass,
+    // deleting the fresh-module path the optionality exists to serve. This fails if anyone does.
+    val projectDir = createCmpTestProject()
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDaemonStart", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":composePreviewDaemonStart")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.task(":composePreviewDiscover")).isNull()
+  }
+
   private fun createCmpTestProject(): File {
     val projectDir = tempDir.root
 

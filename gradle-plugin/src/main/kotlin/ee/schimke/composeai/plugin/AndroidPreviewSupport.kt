@@ -2876,6 +2876,20 @@ internal object AndroidPreviewSupport {
           }
         }
       )
+      // …but that Provider is derived from a layout directory, not from `composePreviewDiscover`'s
+      // output, so it carries no build dependency. Gradle's strict validation rejects that the
+      // moment both tasks are in one graph:
+      //
+      //   Task ':composePreviewDaemonStart' uses this output of task ':composePreviewDiscover'
+      //   without declaring an explicit or implicit dependency.
+      //
+      // `mustRunAfter`, not `dependsOn`: the daemon must be warmable *before* anything has been
+      // discovered — that's the whole reason `previewsManifest` is `@Optional` (see its kdoc, and
+      // DaemonMain's `manifestFile.isFile` check). Forcing discovery here would make every VS Code
+      // warm pay for a full discovery pass and would delete the fresh-module path the optionality
+      // exists to serve. Ordering-only is exactly the relation that holds: if discovery is in the
+      // graph it must land first, and if it isn't, nothing changes.
+      mustRunAfter(discoverTask)
       this.outputFile.set(previewOutputDir.map { it.file("daemon-launch.json") })
     }
   }
