@@ -199,6 +199,37 @@ Rendering is the long pole. Two levers, both about parallelism:
   into real wall-clock savings. RAM scales with cores on GitHub-hosted runners,
   which keeps the per-fork memory bound out of the way.
 
+## Render classpath conflicts
+
+The render JVM classpath is built from a **single** resolved dependency graph:
+the plugin's renderer configuration `extendsFrom` your module's unit-test
+runtime classpath (and its `screenshotTest` runtime classpath, when Google's
+screenshot plugin is applied), so Gradle picks one version per module across
+the renderer's dependencies and your own. Only entries that exist nowhere else
+— the unit-test merged `R.jar`, generated class dirs — are appended from AGP's
+test task on top.
+
+Before this, those graphs were resolved separately and concatenated, which put
+two versions of the same module in front of one classloader. Java loads the
+first match per class, so a class from the winning jar could link against a
+sibling only the other version defined, and you'd get a `NoSuchFieldError` or
+`NoSuchMethodError` in an unrelated `<clinit>` — e.g. two `bcprov-jdk18on`
+jars failing every accessibility preview inside BouncyCastle's post-quantum
+`KeyFactorySpi`.
+
+A guard runs before each render and reports any module still present at more
+than one version, naming each version and the jar that wins:
+
+| Property | Default | Effect |
+| --- | --- | --- |
+| `composePreview.classpathDuplicates` | `warn` | `fail` turns a duplicate into a build error (good for CI); `off` silences the check. |
+| `composePreview.legacyClasspathUnion` | `false` | `true` restores the old concatenated classpath. Escape hatch only — set it if a render suddenly can't find a class that lives solely on your unit-test classpath, and please file an issue. |
+
+If the guard reports a duplicate, align the module in your own build: a version
+force, or a `belongsTo` alignment rule for a family published under several
+coordinates (`org.bouncycastle:bcprov`/`bcutil`/`bcpkix` is the common one —
+Gradle can only align coordinates it knows are the same module).
+
 ## Requirements
 
 Java 17+, Gradle 8.13+, AGP 8.13.0+ (Android), Kotlin 2.0.21+, Compose

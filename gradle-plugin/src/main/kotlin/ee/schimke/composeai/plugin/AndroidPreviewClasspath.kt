@@ -4,6 +4,8 @@ import java.io.File
 import java.util.zip.ZipFile
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.component.ProjectComponentIdentifier
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.file.Directory
 import org.gradle.api.file.FileCollection
@@ -25,14 +27,19 @@ import org.gradle.api.provider.Provider
  * Ordering invariants (load-bearing — see callers' comments and `AndroidPreviewSupport.kt`):
  * - Robolectric properties dir BEFORE consumer test resources, so the renderer's
  *   `robolectric.properties` wins classloader lookup.
- * - Renderer artifacts BEFORE consumer test runtime, so the renderer's pinned kotlinx-serialization
- *   / Roborazzi versions win on classload conflicts.
+ * - Renderer artifacts BEFORE the consumer's remaining test entries, so the renderer's pinned
+ *   kotlinx-serialization / Roborazzi versions win on classload conflicts.
  * - SDK boot classpath LAST in the outer FileCollection, since it's only there to satisfy JUnit's
  *   introspection of the test class signatures (the sandbox supplies its own `android-all`
  *   framework jars).
  *
- * Behaviour must match the inline construction byte-for-byte; this file is a refactor with no
- * semantic change.
+ * Single-resolution invariant: every *module* artifact on the render classpath comes from
+ * `rendererConfig`, which `extendsFrom(testConfig)` and therefore resolves the renderer's and the
+ * consumer's test dependencies as ONE graph with one version per module. The consumer's
+ * separately-resolved graph is no longer concatenated on top — see [buildAgpClasspathExtras] and
+ * [RenderClasspathDuplicates] for what went wrong when it was. Ordering only decides class-lookup
+ * winners when duplicates exist, so keeping the classpath duplicate-free is what makes the ordering
+ * rules above a safety net rather than the primary mechanism.
  */
 internal object AndroidPreviewClasspath {
 
@@ -58,6 +65,7 @@ internal object AndroidPreviewClasspath {
     screenshotTestRuntimeConfig: Configuration?,
     unitTestConfigDir: Provider<Directory>,
     robolectricPropertiesDir: Provider<Directory>,
+    legacyClasspathUnion: Boolean = false,
   ): FileCollection =
     project.files().apply {
       // Robolectric properties dir BEFORE consumer test resources so our
@@ -67,8 +75,39 @@ internal object AndroidPreviewClasspath {
       // for this renderer's test class.
       from(robolectricPropertiesDir)
       from(rendererConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files)
+      // `android-classes` alongside `jar` so AAR-packaged modules (sibling project deps published
+      // as AARs, AndroidX libraries) contribute their `classes.jar`. Previously this view was
+      // taken from `testConfig` instead; sourcing it from `rendererConfig` keeps every module
+      // artifact coming from ONE resolution — see the block below.
+      from(
+        rendererConfig.incoming
+          .artifactView { attributes.attribute(artifactType, "android-classes") }
+          .files
+      )
       from(rendererClassDirs)
-      if (testConfig != null) {
+      // `rendererConfig` already `extendsFrom(testConfig)` (see AndroidPreviewSupport), so it
+      // resolves the renderer's dependencies and the consumer's test-runtime dependencies in ONE
+      // graph — Gradle picks a single coherent version per module. Re-adding `testConfig`'s own
+      // artifact view on top of that undoes exactly what `extendsFrom` bought: the second view is
+      // a SEPARATE resolution, so any module the combined graph upgraded lands here twice, at two
+      // versions, in front of one classloader.
+      //
+      // Measured on homeassistant-remotecompose (plugin 0.17.16, AGP 9.3): every module in the
+      // unit-test graph is also in the renderer graph — the re-add contributed zero unique modules
+      // and nine duplicated ones (androidx.test:core 1.5.0+1.6.1, monitor 1.6.1+1.8.0, espresso,
+      // asm 9.7.1+9.10.1, commons-logging, okhttp …). Also `org.bouncycastle:bcprov-jdk18on` at
+      // 1.85 (Robolectric, via renderer-android) and 1.84 (the consumer's own mockserver test
+      // dep), whose mixed asn1/provider classes threw `NoSuchFieldError` out of
+      // `compositekem.KeyFactorySpi.<clinit>` and failed every a11y preview —
+      // homeassistant-remotecompose#495, worked around downstream with a version force.
+      //
+      // Non-module entries that live ONLY on AGP's test classpath (the unit-test merged `R.jar`,
+      // generated dirs) are preserved — they're appended separately via
+      // [buildAgpClasspathExtras], which subtracts just the module artifacts.
+      //
+      // `-PcomposePreview.legacyClasspathUnion=true` restores the old concatenation for a
+      // consumer who turns out to depend on a testConfig-only artifact we haven't anticipated.
+      if (testConfig != null && legacyClasspathUnion) {
         from(testConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files)
         from(
           testConfig.incoming
@@ -78,17 +117,21 @@ internal object AndroidPreviewClasspath {
       }
       // screenshotTest source set has its own runtime config — any
       // `screenshotTestImplementation(...)` dep the consumer declared is
-      // only visible here, not via `testConfig`. Include it so previews
-      // under `src/screenshotTest/` can reference those classes at
-      // render time. No-op when the screenshot plugin isn't applied.
-      screenshotTestRuntimeConfig?.let { stConfig ->
-        from(stConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files)
-        from(
-          stConfig.incoming
-            .artifactView { attributes.attribute(artifactType, "android-classes") }
-            .files
-        )
-      }
+      // only visible here, not via `testConfig`. `rendererConfig` now
+      // `extendsFrom`s it (see AndroidPreviewSupport), so those deps are already
+      // in the single graph above at coherent versions; re-adding this
+      // separately-resolved view is the legacy concatenation behaviour.
+      // No-op when the screenshot plugin isn't applied.
+      screenshotTestRuntimeConfig
+        ?.takeIf { legacyClasspathUnion }
+        ?.let { stConfig ->
+          from(stConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files)
+          from(
+            stConfig.incoming
+              .artifactView { attributes.attribute(artifactType, "android-classes") }
+              .files
+          )
+        }
       from(sourceClassDirs)
       from(unitTestConfigDir)
       // SDK stub android.jar on the OUTER classpath so JUnit can introspect
@@ -112,6 +155,96 @@ internal object AndroidPreviewClasspath {
       from(project.files(bootClasspath))
       from(project.files(bootClasspathFallback))
     }
+
+  /**
+   * AGP's `test<Variant>UnitTest` classpath with the module artifacts removed — i.e. only the
+   * entries that exist *nowhere else*, which is the reason that classpath is appended at all.
+   *
+   * The render tasks append `agpTestTask.classpath` to pick up files AGP contributes outside the
+   * resolved artifact views: chiefly the unit-test merged `R.jar` (added to
+   * `<variant>UnitTestRuntimeClasspath` as a raw file dep with no `artifactType` attribute, so the
+   * attribute-filtered `artifactView` in [buildTestClasspath] drops it — issue #136), plus
+   * generated class dirs. Those must stay.
+   *
+   * What must NOT stay is the rest of it: AGP's classpath also carries every module artifact from
+   * the consumer's unit-test graph, resolved independently of the renderer graph. Appending those
+   * puts a second, older copy of any module the renderer graph upgraded in front of the same
+   * classloader — the duplicate-jar failure mode described on [RenderClasspathDuplicates].
+   *
+   * Subtraction is by *file identity* against `testConfig`'s own artifact views, which is exactly
+   * right for this: when the two graphs disagree on a version they resolve to different files, so
+   * the consumer-graph copy is the one that gets dropped and the renderer-graph copy survives.
+   * `FileCollection.minus` keeps the whole thing lazy and configuration-cache friendly.
+   *
+   * Returns [agpTestClasspath] untouched when there's no `testConfig` to subtract (nothing was
+   * double-added in the first place) or when `legacyClasspathUnion` restores the old behaviour.
+   */
+  fun buildAgpClasspathExtras(
+    project: Project,
+    agpTestClasspath: FileCollection,
+    testConfig: Configuration?,
+    legacyClasspathUnion: Boolean = false,
+  ): FileCollection {
+    if (testConfig == null || legacyClasspathUnion) return agpTestClasspath
+    val moduleArtifacts =
+      project.files(
+        testConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files,
+        testConfig.incoming
+          .artifactView { attributes.attribute(artifactType, "android-classes") }
+          .files,
+      )
+    return agpTestClasspath.minus(moduleArtifacts)
+  }
+
+  /**
+   * Maps every resolved artifact file on the render classpath to the exact `group:name:version`
+   * Gradle picked for it, so [RenderClasspathDuplicates] can compare modules by identity instead of
+   * guessing from filenames.
+   *
+   * Built from the same two artifact views the classpath itself uses (`jar` and `android-classes`)
+   * across [configurations] — the *default* view would return `.aar` files that never appear on the
+   * classpath, so the map would match nothing. Pass every configuration that can contribute module
+   * artifacts (renderer or daemon, plus screenshotTest and — in legacy-union mode — testConfig);
+   * overlapping entries agree by construction, since the key is the file path.
+   *
+   * Project artifacts are keyed `project:<path>` with an empty version, so a project's own jar
+   * forms a single-version bucket rather than being mistaken for a module.
+   *
+   * Returns a `Provider` so nothing resolves at configuration time: task actions call `get()`, and
+   * the configuration cache serialises the provider rather than the live `Configuration`.
+   */
+  fun buildArtifactCoordinates(
+    project: Project,
+    configurations: List<Configuration>,
+  ): Provider<Map<String, String>> {
+    val views = configurations.flatMap { configuration ->
+      listOf("jar", "android-classes").map { type ->
+        configuration.incoming
+          .artifactView {
+            attributes.attribute(artifactType, type)
+            // A view that can't resolve some artifact must not sink the whole render — this is
+            // diagnostic input, so degrade to a smaller map instead of failing the task.
+            isLenient = true
+          }
+          .artifacts
+          .resolvedArtifacts
+          .map { artifacts ->
+            artifacts.associate { artifact ->
+              val id = artifact.id.componentIdentifier
+              val coordinate =
+                when (id) {
+                  is ModuleComponentIdentifier -> "${id.group}:${id.module}:${id.version}"
+                  is ProjectComponentIdentifier -> "project:${id.projectPath}:"
+                  else -> "${id.displayName}:"
+                }
+              artifact.file.absolutePath to coordinate
+            }
+          }
+      }
+    }
+    if (views.isEmpty()) return project.provider { emptyMap() }
+    return views.reduce { acc, next -> acc.zip(next) { a, b -> a + b } }
+  }
 
   /**
    * Lazy fallback for `android.jar`, used when AGP's `sdkComponents.bootClasspath` provider returns
