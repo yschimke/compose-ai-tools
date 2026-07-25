@@ -58,8 +58,20 @@
 # compose-samples).
 set -uo pipefail
 
+# IDENTITY vocabulary — matched against a commit's author/committer fields. The
+# name is matched ANCHORED (see below), so it must stay a list of bare agent
+# names: a token that also occurs in human names would reject real people.
 AGENT_NAME='(claude|codex|chatgpt|copilot|gemini|cursor|devin|aider|jules)'
 AGENT_EMAIL='@(anthropic[.]com|openai[.]com|cursor[.](sh|com)|devin[.]ai|sourcegraph[.]com|continue[.]dev|factory[.]ai)'
+
+# TRAILER vocabulary — matched anywhere after `Co-authored-by:`. Deliberately
+# WIDER than the identity vocabulary, and it must stay that way: a trailer is
+# free-form text an agent writes about itself, so it carries product names and
+# vendor domains that never appear as a git identity. This is the list the
+# pre-existing workflow gates used; do not trim it without replacing the
+# coverage, or attribution the old gate rejected starts sailing through all
+# four layers at once.
+AGENT_TRAILER='(claude|anthropic[.]com|copilot|openai[.]com|chatgpt|codex|gemini|cursor[.](com|sh)|devin|aider|jules|sourcegraph[.]com|cody-ai|bard|sweep-ai|tabnine|codeium|continue[.]dev|replit-ai|amazonq|amazon-q|codewhisperer|qodo|bito-ai|cognition-ai|factory[.]ai|noreply@.*-ai|.*-bot@)'
 
 revs=()
 text_files=()
@@ -189,7 +201,7 @@ for f in ${text_files[@]+"${text_files[@]}"}; do
 done
 
 coauthor_hits="$(grep -iE '^[[:space:]]*Co-authored-by:' "$workdir/all_text.txt" \
-                 | grep -Ei "Co-authored-by:[[:space:]]*${AGENT_NAME}|${AGENT_EMAIL}" \
+                 | grep -Ei "Co-authored-by:.*${AGENT_TRAILER}" \
                  || true)"
 if [ -n "$coauthor_hits" ]; then
   problems="${problems}Agent Co-authored-by trailer(s):

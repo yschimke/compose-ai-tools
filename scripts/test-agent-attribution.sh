@@ -26,9 +26,12 @@ for f in "$SCAN" "$HOOK_COMMIT_MSG" "$HOOK_PRE_PUSH"; do
 done
 
 # The commit-msg hook enforces Conventional Commits in most of these repos but
-# not all of them; only assert it where the hook actually implements it.
+# not all of them; only assert it where the hook actually implements it. Detect
+# it by the rule itself, not by the words "Conventional Commits" — a hook that
+# merely explains why it does NOT enforce them would otherwise look like one
+# that does, and the suite would assert behaviour the hook never promised.
 enforces_conventional=0
-grep -q 'Conventional Commits' "$HOOK_COMMIT_MSG" && enforces_conventional=1
+grep -q '^conv_re=' "$HOOK_COMMIT_MSG" && enforces_conventional=1
 
 pass=0; fail=0
 check() { # check <label> <expected> <actual>
@@ -81,6 +84,26 @@ t 'feat: x\n\n\xf0\x9f\xa4\x96 Generated with Claude Code\nhttps://claude.ai/cod
 t 'docs: y\n\nWe reject a Co-authored-by: Claude <noreply@anthropic.com> trailer.\n'
                                                                         check "prose mentioning a trailer mid-line accepted" 0 $?
 
+# The trailer vocabulary is deliberately wider than the identity vocabulary and
+# must stay that way — these are the providers the pre-existing workflow gates
+# covered. Trimming the list silently reopens all four enforcement layers.
+t 'feat: x\n\nCo-authored-by: Tabnine <noreply@tabnine.com>\n';         check "Tabnine co-author rejected" 1 $?
+t 'feat: x\n\nCo-authored-by: Codeium <bot@codeium.com>\n';             check "Codeium co-author rejected" 1 $?
+t 'feat: x\n\nCo-authored-by: Amazon Q <amazonq@example.com>\n';        check "Amazon Q co-author rejected" 1 $?
+t 'feat: x\n\nCo-authored-by: CodeWhisperer <cw@example.com>\n';        check "CodeWhisperer co-author rejected" 1 $?
+t 'feat: x\n\nCo-authored-by: Cursor <bot@cursor.sh>\n';                check "Cursor co-author rejected" 1 $?
+t 'feat: x\n\nCo-authored-by: Cody <bot@sourcegraph.com>\n';            check "Sourcegraph Cody co-author rejected" 1 $?
+t 'feat: x\n\nCo-authored-by: copilot-swe-agent[bot] <1+Copilot@users.noreply.github.com>\n'
+                                                                        check "copilot-swe-agent[bot] co-author rejected" 1 $?
+t 'feat: x\n\nCo-authored-by: gemini-code-assist[bot] <1+gemini-code-assist[bot]@users.noreply.github.com>\n'
+                                                                        check "gemini-code-assist[bot] co-author rejected" 1 $?
+# ...but non-agent automation is NOT an agent. These land in history routinely
+# and must keep passing, or every dependency-bump merge trips the gate.
+t 'fix(deps): bump x\n\nCo-authored-by: renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>\n'
+                                                                        check "renovate[bot] co-author accepted" 0 $?
+t 'chore: release\n\nCo-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>\n'
+                                                                        check "github-actions[bot] co-author accepted" 0 $?
+
 echo
 echo "== commit-msg and pre-push hooks, end to end =="
 up="$tmp/upstream"; w="$tmp/clone"
@@ -106,6 +129,18 @@ git commit -q -m "feat: a" -m "Co-authored-by: Claude <noreply@anthropic.com>" >
 git -c user.name=Claude -c user.email=noreply@anthropic.com commit -q -m "feat: a" >/dev/null 2>&1
                                                 check "commit made AS an agent rejected" 1 $?
 git commit -q -m "feat: a" >/dev/null 2>&1;     check "same commit as a human accepted" 0 $?
+
+# Auto-generated subjects skip the Conventional Commits rule. They must NOT
+# skip the attribution scan — a merge or a revert carries an identity and a
+# trailer like any other commit.
+echo m >> f; git add -A
+git commit -q -m "Merge branch 'x'" -m "Co-authored-by: Claude <noreply@anthropic.com>" >/dev/null 2>&1
+                                                check "Merge subject does NOT skip the trailer scan" 1 $?
+git -c user.name=Claude -c user.email=noreply@anthropic.com \
+  commit -q -m "Revert \"feat: a\"" >/dev/null 2>&1
+                                                check "Revert subject does NOT skip the identity scan" 1 $?
+git commit -q -m "Merge branch 'x'" >/dev/null 2>&1
+                                                check "clean merge subject still accepted" 0 $?
 
 if [ "$enforces_conventional" -eq 1 ]; then
   echo b >> f; git add -A
@@ -142,6 +177,21 @@ echo g >> f; git add -A
 git commit -q --no-verify -m "feat: g" -m "Co-authored-by: Codex <codex@openai.com>"
 git push -q origin dirty-feature >/dev/null 2>&1
                                                 check "pre-push rejects a dirty NEW branch" 1 $?
+
+# Regression: a STALE remote-tracking ref must not be usable as an exclusion.
+# Put a dirty commit on the remote, cache the ref locally, delete the branch on
+# the remote — refs/remotes/origin/parked lingers. Pushing a new branch that
+# carries that commit must still be caught, even though the stale ref "covers"
+# it. Deriving exclusions from the cached --remotes namespace fails this.
+git checkout -q -b parked main
+echo s >> f; git add -A
+git commit -q --no-verify -m "feat: s" -m "Co-authored-by: Claude <noreply@anthropic.com>"
+git push -q --no-verify origin parked >/dev/null 2>&1
+git fetch -q origin
+git push -q --no-verify origin --delete parked >/dev/null 2>&1
+git checkout -q -b revived
+git push -q origin revived >/dev/null 2>&1
+                                                check "pre-push ignores a STALE remote-tracking ref" 1 $?
 
 echo
 printf '%d passed, %d failed\n' "$pass" "$fail"

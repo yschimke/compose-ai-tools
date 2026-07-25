@@ -37,7 +37,46 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     # New branch on the remote. Scanning everything reachable from it would
     # re-flag the whole existing history, so scan only what this branch adds
     # that the remote does not already have somewhere.
-    set -- --rev-args "$local_sha" --not --remotes="$remote_name"
+    #
+    # The exclusions are taken from the remote's CURRENTLY ADVERTISED heads,
+    # not from this clone's cached refs/remotes/<remote>/*. A cached ref can
+    # name a branch that has since been deleted or force-pushed by someone
+    # else; excluding it would hide exactly the commits this hook exists to
+    # find — push a new branch carrying a commit only that stale ref covered,
+    # and the scan sees an empty set and passes. git has already contacted the
+    # remote to build this stdin, so the extra round trip is against a remote
+    # known to be reachable.
+    if ! advertised="$(git ls-remote --heads "$remote_name" 2>&1)"; then
+      printf '\npre-push hook: cannot list refs on %s.\n' "$remote_name" >&2
+      printf '%s\n' "$advertised" >&2
+      printf 'Without the remote ref list the scan cannot tell which commits this\n' >&2
+      printf 'branch actually adds, so it fails closed rather than guessing.\n\n' >&2
+      failed=1
+      continue
+    fi
+
+    set -- --rev-args "$local_sha"
+    unfetched=0
+    while read -r adv_sha _adv_ref; do
+      [ -n "$adv_sha" ] || continue
+      # A head we have never fetched cannot be used as an exclusion. Counting
+      # it and scanning wider is the fail-closed direction: worst case the hook
+      # reports commits the user did not write, and `git fetch` fixes that.
+      if git cat-file -e "${adv_sha}^{commit}" 2>/dev/null; then
+        set -- "$@" "^${adv_sha}"
+      else
+        unfetched=$((unfetched + 1))
+      fi
+    done <<ADVERTISED
+$advertised
+ADVERTISED
+
+    if [ "$unfetched" -gt 0 ]; then
+      printf 'pre-push hook: %d head(s) on %s are not in this clone, so the scan\n' \
+        "$unfetched" "$remote_name" >&2
+      printf 'covers more than strictly necessary. If it reports commits you did\n' >&2
+      printf 'not write, run "git fetch %s" and push again.\n' "$remote_name" >&2
+    fi
   else
     set -- --range "${remote_sha}..${local_sha}"
   fi

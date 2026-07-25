@@ -14,12 +14,19 @@ scan="$repo_root/.github/scripts/agent-attribution-scan.sh"
 # Strip git's comment lines (those starting with '#') before inspecting.
 msg_body="$(grep -v '^#' "$msg_file" || true)"
 
-# Allow auto-generated messages (merge, revert, fixup!, squash!) through
-# untouched — they're produced by git itself and not authored prose.
 first_line="$(printf '%s\n' "$msg_body" | sed -n '1{/^$/d;p;q;}')"
+
+# Auto-generated subjects (merge, revert, fixup!, squash!, amend!) are exempt
+# from the Conventional Commits rule below — git writes them, not a human.
+# They are NOT exempt from the agent-attribution check: a merge or a revert can
+# carry an agent identity or an agent co-author trailer just as easily as any
+# other commit, and letting those subjects skip the scan would leave a hole you
+# could drive a `git revert` through. So the exemption is recorded here and
+# applied only where it belongs, after the scan.
+conventional_exempt=0
 case "$first_line" in
   Merge\ *|Revert\ *|fixup!\ *|squash!\ *|amend!\ *)
-    exit 0
+    conventional_exempt=1
     ;;
 esac
 
@@ -71,6 +78,10 @@ fi
 
 # 2. Enforce Conventional Commits on the subject line.
 # Format: type(scope)?!?: description   (scope optional, '!' marks breaking change)
+if [ "$conventional_exempt" -eq 1 ]; then
+  exit 0
+fi
+
 subject="$first_line"
 if [ -z "$subject" ]; then
   fail "empty commit message."
