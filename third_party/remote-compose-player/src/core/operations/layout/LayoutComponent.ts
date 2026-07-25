@@ -145,6 +145,9 @@ export class LayoutComponent extends Component {
                 // Content container — extract its children.
                 // IMPORTANT: this check must come BEFORE `instanceof Component`
                 // because LCC and CC extend Component.
+                // Parent the wrapper to this component so its (unmeasured) size can
+                // delegate to ours — ComponentValues reference the wrapper by id.
+                (op as Component).setParent(this);
                 for (const contentOp of (op as any).getList()) {
                     if (contentOp instanceof Component) {
                         contentOp.setParent(this);

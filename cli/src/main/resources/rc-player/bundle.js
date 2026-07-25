@@ -9216,6 +9216,21 @@ var RC = (() => {
       buffer.start(_LayoutComponentContent.OP_CODE);
       buffer.writeInt(this.getComponentId());
     }
+    // A content wrapper isn't measured on its own — the enclosing LayoutComponent
+    // flattens its children up and measures itself. But `ComponentValue`s (e.g. a
+    // button/card fill sized from its content region) reference this wrapper by id,
+    // so an unmeasured 0×0 wrapper makes those bindings resolve to zero. Report the
+    // parent's measured size when this wrapper has none of its own.
+    getWidth() {
+      const w = super.getWidth();
+      if (w === 0 && this.getParent()) return this.getParent().getWidth();
+      return w;
+    }
+    getHeight() {
+      const h = super.getHeight();
+      if (h === 0 && this.getParent()) return this.getParent().getHeight();
+      return h;
+    }
     apply(_context) {
     }
     deepToString(indent) {
@@ -9546,6 +9561,7 @@ var RC = (() => {
         } else if (op instanceof DrawContentModifier) {
           this.mDrawContentOperations = [];
         } else if (op instanceof LayoutComponentContent || op instanceof CanvasContent) {
+          op.setParent(this);
           for (const contentOp of op.getList()) {
             if (contentOp instanceof Component) {
               contentOp.setParent(this);
@@ -17121,6 +17137,14 @@ void main() {
       this.pathDataCache.set(id, data);
       this.pathWindingCache.set(id, winding);
     }
+    // A path operand is either a literal float or a NaN-encoded variable id (a
+    // dynamic coordinate, e.g. a button/card fill sized from its component's
+    // measured dimensions). Dereference the id to its current float value, the way
+    // the command word and every other expression operand are resolved — reading
+    // it as a literal `intBitsToFloat` would yield NaN and collapse the path.
+    pathCoord(bits) {
+      return isNaNBits(bits) ? this.mContext.getFloat(idFromBits(bits)) : intBitsToFloat2(bits);
+    }
     buildPath2D(data, start = 0, end = 1) {
       const path = new Path2D();
       let i = 0;
@@ -17133,27 +17157,27 @@ void main() {
         switch (cmd) {
           case _CanvasPaintContext.PATH_MOVE:
             i++;
-            path.moveTo(intBitsToFloat2(data[i]), intBitsToFloat2(data[i + 1]));
+            path.moveTo(this.pathCoord(data[i]), this.pathCoord(data[i + 1]));
             i += 2;
             break;
           case _CanvasPaintContext.PATH_LINE:
             i += 3;
-            path.lineTo(intBitsToFloat2(data[i]), intBitsToFloat2(data[i + 1]));
+            path.lineTo(this.pathCoord(data[i]), this.pathCoord(data[i + 1]));
             i += 2;
             break;
           case _CanvasPaintContext.PATH_QUADRATIC:
             i += 3;
-            path.quadraticCurveTo(intBitsToFloat2(data[i]), intBitsToFloat2(data[i + 1]), intBitsToFloat2(data[i + 2]), intBitsToFloat2(data[i + 3]));
+            path.quadraticCurveTo(this.pathCoord(data[i]), this.pathCoord(data[i + 1]), this.pathCoord(data[i + 2]), this.pathCoord(data[i + 3]));
             i += 4;
             break;
           case _CanvasPaintContext.PATH_CONIC:
             i += 3;
-            path.quadraticCurveTo(intBitsToFloat2(data[i]), intBitsToFloat2(data[i + 1]), intBitsToFloat2(data[i + 2]), intBitsToFloat2(data[i + 3]));
+            path.quadraticCurveTo(this.pathCoord(data[i]), this.pathCoord(data[i + 1]), this.pathCoord(data[i + 2]), this.pathCoord(data[i + 3]));
             i += 5;
             break;
           case _CanvasPaintContext.PATH_CUBIC:
             i += 3;
-            path.bezierCurveTo(intBitsToFloat2(data[i]), intBitsToFloat2(data[i + 1]), intBitsToFloat2(data[i + 2]), intBitsToFloat2(data[i + 3]), intBitsToFloat2(data[i + 4]), intBitsToFloat2(data[i + 5]));
+            path.bezierCurveTo(this.pathCoord(data[i]), this.pathCoord(data[i + 1]), this.pathCoord(data[i + 2]), this.pathCoord(data[i + 3]), this.pathCoord(data[i + 4]), this.pathCoord(data[i + 5]));
             i += 6;
             break;
           case _CanvasPaintContext.PATH_CLOSE:

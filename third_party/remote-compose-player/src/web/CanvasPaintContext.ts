@@ -152,6 +152,15 @@ export class CanvasPaintContext extends PaintContext {
     // NanMap path command base (Java convention used in binary PathData)
     private static readonly NANMAP_PATH_BASE = 0x300000;
 
+    // A path operand is either a literal float or a NaN-encoded variable id (a
+    // dynamic coordinate, e.g. a button/card fill sized from its component's
+    // measured dimensions). Dereference the id to its current float value, the way
+    // the command word and every other expression operand are resolved — reading
+    // it as a literal `intBitsToFloat` would yield NaN and collapse the path.
+    private pathCoord(bits: number): number {
+        return isNaNBits(bits) ? this.mContext.getFloat(idFromBits(bits)) : intBitsToFloat(bits);
+    }
+
     private buildPath2D(data: Int32Array, start = 0, end = 1): Path2D {
         const path = new Path2D();
         let i = 0;
@@ -169,33 +178,33 @@ export class CanvasPaintContext extends PaintContext {
                 case CanvasPaintContext.PATH_MOVE:
                     // Format: [MOVE, x, y] = 3 positions
                     i++;
-                    path.moveTo(intBitsToFloat(data[i]), intBitsToFloat(data[i + 1]));
+                    path.moveTo(this.pathCoord(data[i]), this.pathCoord(data[i + 1]));
                     i += 2;
                     break;
                 case CanvasPaintContext.PATH_LINE:
                     // Format: [LINE, startX, startY, endX, endY] = 5 positions
                     // startX,startY are redundant (previous endpoint), skip them
                     i += 3;
-                    path.lineTo(intBitsToFloat(data[i]), intBitsToFloat(data[i + 1]));
+                    path.lineTo(this.pathCoord(data[i]), this.pathCoord(data[i + 1]));
                     i += 2;
                     break;
                 case CanvasPaintContext.PATH_QUADRATIC:
                     // Format: [QUAD, startX, startY, cpX, cpY, endX, endY] = 7 positions
                     i += 3;
-                    path.quadraticCurveTo(intBitsToFloat(data[i]), intBitsToFloat(data[i + 1]), intBitsToFloat(data[i + 2]), intBitsToFloat(data[i + 3]));
+                    path.quadraticCurveTo(this.pathCoord(data[i]), this.pathCoord(data[i + 1]), this.pathCoord(data[i + 2]), this.pathCoord(data[i + 3]));
                     i += 4;
                     break;
                 case CanvasPaintContext.PATH_CONIC:
                     // Format: [CONIC, startX, startY, cpX, cpY, endX, endY, weight] = 8 positions
                     // Approximate conic as quadratic (ignore weight)
                     i += 3;
-                    path.quadraticCurveTo(intBitsToFloat(data[i]), intBitsToFloat(data[i + 1]), intBitsToFloat(data[i + 2]), intBitsToFloat(data[i + 3]));
+                    path.quadraticCurveTo(this.pathCoord(data[i]), this.pathCoord(data[i + 1]), this.pathCoord(data[i + 2]), this.pathCoord(data[i + 3]));
                     i += 5;
                     break;
                 case CanvasPaintContext.PATH_CUBIC:
                     // Format: [CUBIC, startX, startY, cp1X, cp1Y, cp2X, cp2Y, endX, endY] = 9 positions
                     i += 3;
-                    path.bezierCurveTo(intBitsToFloat(data[i]), intBitsToFloat(data[i + 1]), intBitsToFloat(data[i + 2]), intBitsToFloat(data[i + 3]), intBitsToFloat(data[i + 4]), intBitsToFloat(data[i + 5]));
+                    path.bezierCurveTo(this.pathCoord(data[i]), this.pathCoord(data[i + 1]), this.pathCoord(data[i + 2]), this.pathCoord(data[i + 3]), this.pathCoord(data[i + 4]), this.pathCoord(data[i + 5]));
                     i += 6;
                     break;
                 case CanvasPaintContext.PATH_CLOSE:
