@@ -4926,13 +4926,22 @@ var RC = (() => {
         const b = Math.trunc(this.mB * 255 + 0.5);
         argb = a << 24 | r << 16 | g << 8 | b | 0;
       }
+      let borderWidth = this.mBorderWidth;
+      let roundedCorner = this.mRoundedCorner;
+      if (context.getDensityBehavior() === DENSITY_BEHAVIOR_DP) {
+        const d = context.getDensity();
+        if (!Number.isNaN(d) && d > 0) {
+          borderWidth *= d;
+          roundedCorner *= d;
+        }
+      }
       pb.reset();
       pb.setStyle(PaintBundle.STROKE);
       pb.setColor(argb);
-      pb.setStrokeWidth(this.mBorderWidth);
+      pb.setStrokeWidth(borderWidth);
       pc.replacePaint(pb);
-      if (this.mRoundedCorner > 0) {
-        pc.drawRoundRect(0, 0, w, h, this.mRoundedCorner, this.mRoundedCorner);
+      if (roundedCorner > 0) {
+        pc.drawRoundRect(0, 0, w, h, roundedCorner, roundedCorner);
       } else {
         pc.drawRect(0, 0, w, h);
       }
@@ -5037,7 +5046,17 @@ var RC = (() => {
       const w = this.mLayoutW;
       const h = this.mLayoutH;
       if (w > 0 && h > 0) {
-        pc.roundedClipRect(w, h, this.mTopStart, this.mTopEnd, this.mBottomStart, this.mBottomEnd);
+        let ts = this.mTopStart, te = this.mTopEnd, bs = this.mBottomStart, be = this.mBottomEnd;
+        if (context.getDensityBehavior() === DENSITY_BEHAVIOR_DP) {
+          const d = context.getDensity();
+          if (!Number.isNaN(d) && d > 0) {
+            ts *= d;
+            te *= d;
+            bs *= d;
+            be *= d;
+          }
+        }
+        pc.roundedClipRect(w, h, ts, te, bs, be);
       }
     }
     deepToString(indent) {
@@ -5354,7 +5373,15 @@ var RC = (() => {
       if (context.mMode !== "PAINT" /* PAINT */) return;
       const pc = context.getPaintContext();
       if (!pc) return;
-      pc.translate(this.mOutX, this.mOutY);
+      let ox = this.mOutX, oy = this.mOutY;
+      if (context.getDensityBehavior() === DENSITY_BEHAVIOR_DP) {
+        const d = context.getDensity();
+        if (!Number.isNaN(d) && d > 0) {
+          ox *= d;
+          oy *= d;
+        }
+      }
+      pc.translate(ox, oy);
     }
     deepToString(indent) {
       return `${indent}OffsetModifier(${this.mOutX}, ${this.mOutY})`;
@@ -10223,6 +10250,16 @@ ${inner}`;
       const d = context.getContext().getDensity();
       return Number.isNaN(d) || d <= 0 ? 1 : d;
     }
+    /** dp→px factor for values AndroidX scales *only* under DP density behavior —
+     *  layout `spacedBy` spacing here, matching Row/ColumnLayout which multiply the
+     *  gap by the density when `getDensityBehavior() == DP`. Returns 1 for LEGACY /
+     *  PIXELS behavior so authored-in-px documents are untouched. */
+    getDpBehaviorScale(context) {
+      const ctx = context.getContext();
+      if (ctx.getDensityBehavior() !== DENSITY_BEHAVIOR_DP) return 1;
+      const d = ctx.getDensity();
+      return Number.isNaN(d) || d <= 0 ? 1 : d;
+    }
   };
 
   // src/core/operations/layout/managers/BoxLayout.ts
@@ -10431,7 +10468,7 @@ ${inner}`;
         }
       }
       if (visibleChildren > 0) {
-        size.setWidth(size.getWidth() + this.mSpacedBy * (visibleChildren - 1));
+        size.setWidth(size.getWidth() + this.mSpacedBy * this.getDpBehaviorScale(context) * (visibleChildren - 1));
       }
     }
     // --- Compute size ---
@@ -10513,7 +10550,7 @@ ${inner}`;
         childrenHeight = Math.max(childrenHeight, cm.getH());
         visibleChildren++;
       }
-      childrenWidth += this.mSpacedBy * Math.max(0, visibleChildren - 1);
+      childrenWidth += this.mSpacedBy * this.getDpBehaviorScale(context) * Math.max(0, visibleChildren - 1);
       let tx = 0;
       let horizontalGap = 0;
       switch (this.mHorizontalPositioning) {
@@ -10578,7 +10615,7 @@ ${inner}`;
         if (this.mHorizontalPositioning === _RowLayout.SPACE_BETWEEN || this.mHorizontalPositioning === _RowLayout.SPACE_AROUND || this.mHorizontalPositioning === _RowLayout.SPACE_EVENLY) {
           tx += horizontalGap;
         }
-        tx += this.mSpacedBy;
+        tx += this.mSpacedBy * this.getDpBehaviorScale(context);
       }
       if (size !== null) {
         size.setWidth(childrenWidth);
@@ -10685,7 +10722,7 @@ ${inner}`;
         }
       }
       if (visibleChildren > 0) {
-        size.setHeight(size.getHeight() + this.mSpacedBy * (visibleChildren - 1));
+        size.setHeight(size.getHeight() + this.mSpacedBy * this.getDpBehaviorScale(context) * (visibleChildren - 1));
       }
     }
     computeSize(context, minWidth, maxWidth, minHeight, maxHeight, measure) {
@@ -10779,7 +10816,7 @@ ${inner}`;
         childrenHeight += cm.getH();
         visibleChildren++;
       }
-      childrenHeight += this.mSpacedBy * Math.max(0, visibleChildren - 1);
+      childrenHeight += this.mSpacedBy * this.getDpBehaviorScale(context) * Math.max(0, visibleChildren - 1);
       let ty = 0;
       let verticalGap = 0;
       switch (this.mVerticalPositioning) {
@@ -10844,7 +10881,7 @@ ${inner}`;
         if (this.mVerticalPositioning === _ColumnLayout.SPACE_BETWEEN || this.mVerticalPositioning === _ColumnLayout.SPACE_AROUND || this.mVerticalPositioning === _ColumnLayout.SPACE_EVENLY) {
           ty += verticalGap;
         }
-        ty += this.mSpacedBy;
+        ty += this.mSpacedBy * this.getDpBehaviorScale(context);
       }
     }
     write(buffer) {
@@ -14164,7 +14201,7 @@ ${inner}`;
         }
       }
       if (this.mChildrenComponents.length > 0 && size !== null) {
-        size.setWidth(size.getWidth() + this.mSpacedBy * (visibleChildren - 1));
+        size.setWidth(size.getWidth() + this.mSpacedBy * this.getDpBehaviorScale(context) * (visibleChildren - 1));
       }
       let childrenWidth = 0;
       let childrenHeight = 0;
@@ -14273,7 +14310,7 @@ ${inner}`;
         }
       }
       if (this.mChildrenComponents.length > 0 && size !== null) {
-        size.setHeight(size.getHeight() + this.mSpacedBy * (visibleChildren - 1));
+        size.setHeight(size.getHeight() + this.mSpacedBy * this.getDpBehaviorScale(context) * (visibleChildren - 1));
       }
       let childrenWidth = 0;
       let childrenHeight = 0;

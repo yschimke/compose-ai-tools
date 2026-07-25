@@ -4,6 +4,7 @@
 import { LayoutComponent } from '../LayoutComponent';
 import type { PaintContext } from '../../../PaintContext';
 import type { RemoteContext } from '../../../RemoteContext';
+import { DENSITY_BEHAVIOR_DP } from '../../../RemoteContext';
 import type { MeasurePass } from '../measure/MeasurePass';
 import { Size } from '../measure/Size';
 import { WidthModifier, HeightModifier, ScrollModifier } from '../modifiers/ModifierOperations';
@@ -184,6 +185,17 @@ export abstract class LayoutManager extends LayoutComponent {
      *  density-1 documents), so it is a no-op for everything authored today. */
     protected getDpScale(context: PaintContext): number {
         const d = context.getContext().getDensity();
+        return (Number.isNaN(d) || d <= 0) ? 1 : d;
+    }
+
+    /** dp→px factor for values AndroidX scales *only* under DP density behavior —
+     *  layout `spacedBy` spacing here, matching Row/ColumnLayout which multiply the
+     *  gap by the density when `getDensityBehavior() == DP`. Returns 1 for LEGACY /
+     *  PIXELS behavior so authored-in-px documents are untouched. */
+    protected getDpBehaviorScale(context: PaintContext): number {
+        const ctx = context.getContext();
+        if (ctx.getDensityBehavior() !== DENSITY_BEHAVIOR_DP) return 1;
+        const d = ctx.getDensity();
         return (Number.isNaN(d) || d <= 0) ? 1 : d;
     }
 }

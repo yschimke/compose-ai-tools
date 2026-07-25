@@ -71,7 +71,10 @@ export class CollapsibleColumnLayout extends ColumnLayout {
             }
         }
         if (this.mChildrenComponents.length > 0 && size !== null) {
-            size.setHeight(size.getHeight() + (this.mSpacedBy * (visibleChildren - 1)));
+            // Match the density-scaled spacing the inherited positioning applies
+            // (ColumnLayout.internalLayoutMeasure) so the measured height and the
+            // child placement agree under DP density behavior.
+            size.setHeight(size.getHeight() + (this.mSpacedBy * this.getDpBehaviorScale(context) * (visibleChildren - 1)));
         }
 
         let childrenWidth = 0;
