@@ -1551,12 +1551,13 @@ object PreviewDiscovery {
         !isNotificationPreview &&
         !isGlanceAppWidgetPreview &&
         !isXrSubspacePreview &&
-        hasUnsupportedPreviewParameters(method, previewParameter)
+        hasUnsupportedPreviewParameters(classInfo, method, previewParameter)
     if (hasUnsupportedParameters) {
       warnings.add(
         "composePreview: skipping @Preview '${classInfo.name}.${method.name}' — " +
-          "method has parameter(s) without @PreviewParameter provider wiring. " +
-          "Only parameterless previews or @PreviewParameter-injected previews are supported."
+          "method has parameter(s) that are neither @PreviewParameter-injected nor fully " +
+          "defaulted. Supported shapes: no parameters, exactly one @PreviewParameter value, " +
+          "or a default for every parameter."
       )
       return
     }
@@ -1849,14 +1850,48 @@ object PreviewDiscovery {
   }
 
   private fun hasUnsupportedPreviewParameters(
+    classInfo: ClassInfo,
     method: MethodInfo,
     previewParameter: Pair<String, Int>?,
   ): Boolean {
     val userParameters = userPreviewParameters(method)
     if (userParameters.isEmpty()) return false
-    // Current renderer contract: preview methods are either parameterless,
-    // or take exactly one value sourced by @PreviewParameter.
-    return userParameters.size != 1 || previewParameter == null
+    // Renderer contract: preview methods are parameterless, take exactly one
+    // value sourced by @PreviewParameter, or have a default for *every*
+    // parameter.
+    if (previewParameter != null) return userParameters.size != 1
+    // All-defaults is the Studio contract too, and it's common in real
+    // codebases: production composables are frequently annotated `@Preview`
+    // in place, and they nearly always carry `modifier: Modifier = Modifier`.
+    // Rejecting them dropped 5 of JetLagged's 8 previews silently — the
+    // omission only surfaced at the very end of the catalog pipeline as
+    // "missing renders". The renderer needs no change: it resolves the
+    // composable with `getDeclaredComposableMethod(functionName)` and invokes
+    // it with no args, and androidx's ComposableMethod fills every parameter
+    // from Kotlin's synthetic `$default` bridge.
+    return !allParametersHaveDefaults(classInfo, method, userParameters.size)
+  }
+
+  /**
+   * True when [method]'s first [userParameterCount] Kotlin value parameters all declare a default,
+   * read from the class's `@kotlin.Metadata`.
+   *
+   * Bytecode alone can't answer this: Kotlin emits a single synthetic `<name>$default` bridge when
+   * *any* parameter has a default, so its presence doesn't imply *all* do. Invoking with an
+   * all-bits default mask when some parameter lacks a default would pass it `null`/`0` and NPE at
+   * render time, so require metadata to confirm before admitting the preview. Unreadable metadata
+   * degrades to `false` — the preview is skipped with the existing warning, i.e. today's behaviour.
+   */
+  internal fun allParametersHaveDefaults(
+    classInfo: ClassInfo,
+    method: MethodInfo,
+    userParameterCount: Int,
+  ): Boolean {
+    val parameters = ComposableSignature.parametersOf(classInfo, method)
+    // Metadata unreadable, or it disagrees with the JVM signature about how many parameters the
+    // author wrote — don't guess.
+    if (parameters.isEmpty() || parameters.size != userParameterCount) return false
+    return parameters.all { it.hasDefault }
   }
 
   private fun userPreviewParameters(method: MethodInfo): List<MethodParameterInfo> {

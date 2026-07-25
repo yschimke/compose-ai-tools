@@ -14,3 +14,10 @@ fun sampleComponent(
 ) {}
 
 @Suppress("unused") fun noParams() {}
+
+/**
+ * Every parameter defaulted — the shape a production composable annotated `@Preview` in place
+ * almost always has (`modifier: Modifier = Modifier`). Discovery admits these.
+ */
+@Suppress("unused", "UNUSED_PARAMETER")
+fun allDefaultedComponent(modifier: String = "", count: Int = 1) {}
