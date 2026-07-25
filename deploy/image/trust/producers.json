@@ -1,5 +1,5 @@
 {
-  "_comment": "Trust store baked into the prebuilt preview-host image so a public deploy badges the published design-system catalogs as Trusted(Branch) out of the box, instead of Unverified. Branch (origin) trust only — the image carries no signing key, and branch trust is exactly what the --catalogs fetch needs: a catalog the server itself pulled from one of these branches is trusted by TLS origin, no per-bundle crypto. SERVE_TRUST_STORE defaults to this file (deploy/image/docker-compose.yml); override it, or mount your own at /trust/producers.json, to pin different producers. See docs/public-preview-server.md.",
+  "_comment": "Trust store baked into the prebuilt preview-host image so a public deploy badges the published design-system catalogs as Trusted(Branch) out of the box, instead of Unverified. Branch (origin) trust only \u2014 the image carries no signing key, and branch trust is exactly what the --catalogs fetch needs: a catalog the server itself pulled from one of these branches is trusted by TLS origin, no per-bundle crypto. SERVE_TRUST_STORE defaults to this file (deploy/image/docker-compose.yml); override it, or mount your own at /trust/producers.json, to pin different producers. See docs/public-preview-server.md.",
   "branches": [
     {
       "repo": "yschimke/compose-ai-tools",
@@ -15,6 +15,10 @@
     },
     {
       "repo": "yschimke/cadence",
+      "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "yschimke/compose-samples",
       "branch": "design-artifacts/*"
     },
     {
