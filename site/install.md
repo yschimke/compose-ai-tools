@@ -225,10 +225,44 @@ than one version, naming each version and the jar that wins:
 | `composePreview.classpathDuplicates` | `warn` | `fail` turns a duplicate into a build error (good for CI); `off` silences the check. |
 | `composePreview.legacyClasspathUnion` | `false` | `true` restores the old concatenated classpath. Escape hatch only — set it if a render suddenly can't find a class that lives solely on your unit-test classpath, and please file an issue. |
 
-If the guard reports a duplicate, align the module in your own build: a version
-force, or a `belongsTo` alignment rule for a family published under several
-coordinates (`org.bouncycastle:bcprov`/`bcutil`/`bcpkix` is the common one —
-Gradle can only align coordinates it knows are the same module).
+If the guard reports a duplicate module, align it in your own build with a
+version force, or exclude it from whichever graph shouldn't carry it.
+
+### Split families
+
+A second check covers libraries published as **several coordinates with no BOM**
+— `org.bouncycastle:bcprov`/`bcutil`/`bcpkix` is the usual offender. Gradle
+aligns a module against itself and nothing further, so the graph can settle on
+`bcprov-jdk18on:1.85` while leaving `bcutil-jdk18on:1.84`: one version per
+coordinate, no conflict to resolve, and classes that still don't agree at
+runtime. That's what failed every accessibility preview in
+[homeassistant-remotecompose#495](https://github.com/yschimke/homeassistant-remotecompose/issues/495).
+
+The fix is a virtual platform, which states that the coordinates move together
+and lets normal conflict resolution pick the highest version any member asks
+for:
+
+```kotlin
+abstract class BouncyCastleAlignmentRule : ComponentMetadataRule {
+  override fun execute(context: ComponentMetadataContext) {
+    val id = context.details.id
+    if (id.group == "org.bouncycastle") {
+      context.details.belongsTo("org.bouncycastle:bouncycastle-virtual-platform:${id.version}")
+    }
+  }
+}
+
+dependencies { components.all(BouncyCastleAlignmentRule::class.java) }
+```
+
+Prefer that over `useVersion("1.84")`: a force goes stale, and silently becomes
+a *downgrade* the moment one member's floor moves (Robolectric's did).
+
+The plugin reports this rather than applying it. `ComponentMetadataRule`s
+register on `DependencyHandler`, so they apply to **every** configuration in the
+module — including your `releaseRuntimeClasspath`. Aligning a family upward is
+usually right for a render classpath and isn't a preview tool's call to make for
+a shipped app, so the decision stays yours.
 
 ## Requirements
 
