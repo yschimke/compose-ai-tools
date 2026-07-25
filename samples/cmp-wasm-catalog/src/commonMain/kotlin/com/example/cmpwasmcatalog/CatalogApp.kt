@@ -126,7 +126,8 @@ fun CatalogApp(
   val shapes = catalogShapes(catalogOverrideString(CATALOG_SHAPES_KNOB, ""))
   // Type scale = the `theme.font` single face, then per-role-group families from `theme.fonts`
   // (e.g. display=Orbitron, body=Space Grotesk — resolved against the URL-loaded [namedFamilies],
-  // the same `role: "named"` faces `fonts.json` lists), then the `theme.typography` metrics overlay.
+  // the same `role: "named"` faces `fonts.json` lists), then the `theme.typography` metrics
+  // overlay.
   // Mirrors the desktop `CatalogSticker` so the live Wasm render brands identically to the baked
   // sticker; absent the fonts knob the middle step is a no-op, so an un-overridden render is
   // pixel-identical.
