@@ -198,6 +198,7 @@ export class RowLayout extends LayoutManager {
         }
 
         if (hasWeights) {
+            const dp = this.getDpScale(context);
             const availableSpace = selfWidth - nonWeightWidth;
             for (const child of components) {
                 if (!(child instanceof LayoutComponent && child.hasWidthWeight())) continue;
@@ -205,10 +206,11 @@ export class RowLayout extends LayoutManager {
                 if (cm.isGone()) continue;
                 const weight = child.getWidthModValue();
                 let childWidth = (weight * availableSpace) / totalWeights;
+                // widthIn bounds are dp — scale to px by the generation density.
                 const wIn = child.getWidthInModifier();
                 if (wIn) {
-                    if (wIn.getMin() >= 0) childWidth = Math.max(wIn.getMin(), childWidth);
-                    if (wIn.getMax() >= 0) childWidth = Math.min(wIn.getMax(), childWidth);
+                    if (wIn.getMin() >= 0) childWidth = Math.max(wIn.getMin() * dp, childWidth);
+                    if (wIn.getMax() >= 0) childWidth = Math.min(wIn.getMax() * dp, childWidth);
                 }
                 cm.setW(childWidth);
                 child.measure(context, childWidth, childWidth, cm.getH(), cm.getH(), measure);

@@ -10446,6 +10446,7 @@ ${inner}`;
         }
       }
       if (hasWeights) {
+        const dp = this.getDpScale(context);
         const availableSpace = selfWidth - nonWeightWidth;
         for (const child of components) {
           if (!(child instanceof LayoutComponent && child.hasWidthWeight())) continue;
@@ -10455,8 +10456,8 @@ ${inner}`;
           let childWidth = weight * availableSpace / totalWeights;
           const wIn = child.getWidthInModifier();
           if (wIn) {
-            if (wIn.getMin() >= 0) childWidth = Math.max(wIn.getMin(), childWidth);
-            if (wIn.getMax() >= 0) childWidth = Math.min(wIn.getMax(), childWidth);
+            if (wIn.getMin() >= 0) childWidth = Math.max(wIn.getMin() * dp, childWidth);
+            if (wIn.getMax() >= 0) childWidth = Math.min(wIn.getMax() * dp, childWidth);
           }
           cm.setW(childWidth);
           child.measure(context, childWidth, childWidth, cm.getH(), cm.getH(), measure);
@@ -10711,6 +10712,7 @@ ${inner}`;
         }
       }
       if (hasWeights) {
+        const dp = this.getDpScale(context);
         const availableSpace = selfHeight - nonWeightHeight;
         for (const child of children) {
           if (!(child instanceof LayoutComponent && child.hasHeightWeight())) continue;
@@ -10720,8 +10722,8 @@ ${inner}`;
           let childHeight = weight * availableSpace / totalWeights;
           const hIn = child.getHeightInModifier();
           if (hIn) {
-            if (hIn.getMin() >= 0) childHeight = Math.max(hIn.getMin(), childHeight);
-            if (hIn.getMax() >= 0) childHeight = Math.min(hIn.getMax(), childHeight);
+            if (hIn.getMin() >= 0) childHeight = Math.max(hIn.getMin() * dp, childHeight);
+            if (hIn.getMax() >= 0) childHeight = Math.min(hIn.getMax() * dp, childHeight);
           }
           cm.setH(childHeight);
           child.measure(context, cm.getW(), cm.getW(), cm.getH(), cm.getH(), measure);
@@ -13193,7 +13195,7 @@ ${inner}`;
           if (wIn) {
             const min = wIn.getMin();
             if (min !== -1) {
-              componentWidth = min;
+              componentWidth = min * this.getDpScale(context);
             }
           }
         } else {
@@ -13937,14 +13939,15 @@ ${inner}`;
     computeWrapSize(context, _minWidth, maxWidth, _minHeight, maxHeight, _horizontalWrap, _verticalWrap, measure, size) {
       let found = false;
       const self = measure.get(this);
+      const dp = this.getDpScale(context);
       for (const c of this.mChildrenComponents) {
         let cw = 0;
         let ch = 0;
         if (c instanceof LayoutComponent) {
           const wIn = c.getWidthInModifier();
-          if (wIn) cw = wIn.getMin();
+          if (wIn) cw = wIn.getMin() * dp;
           const hIn = c.getHeightInModifier();
-          if (hIn) ch = hIn.getMin();
+          if (hIn) ch = hIn.getMin() * dp;
         }
         c.measure(context, 0, maxWidth, 0, maxHeight, measure);
         const m = measure.get(c);
@@ -13965,14 +13968,15 @@ ${inner}`;
     }
     computeSize(context, minWidth, maxWidth, minHeight, maxHeight, measure) {
       let found = false;
+      const dp = this.getDpScale(context);
       for (const c of this.mChildrenComponents) {
         let cw = 0;
         let ch = 0;
         if (c instanceof LayoutComponent) {
           const wIn = c.getWidthInModifier();
-          if (wIn) cw = wIn.getMin();
+          if (wIn) cw = wIn.getMin() * dp;
           const hIn = c.getHeightInModifier();
-          if (hIn) ch = hIn.getMin();
+          if (hIn) ch = hIn.getMin() * dp;
         }
         c.measure(context, minWidth, maxWidth, minHeight, maxHeight, measure);
         const m = measure.get(c);
@@ -19310,11 +19314,8 @@ void main() {
       this.canvas.style.width = newWidth + "px";
       this.canvas.style.height = newHeight + "px";
       if (this.remoteContext) {
-        const density = this.remoteContext.getDensity() || 1;
-        const docW = newWidth / density;
-        const docH = newHeight / density;
-        this.remoteContext.mWidth = docW;
-        this.remoteContext.mHeight = docH;
+        this.remoteContext.mWidth = newWidth;
+        this.remoteContext.mHeight = newHeight;
       }
       this.scheduleRepaint();
     }
