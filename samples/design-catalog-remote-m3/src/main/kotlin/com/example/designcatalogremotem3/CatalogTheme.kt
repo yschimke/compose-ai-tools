@@ -41,11 +41,14 @@ fun RemoteSticker(content: @Composable @RemoteComposable () -> Unit) {
 }
 
 /**
- * The catalog's Remote Compose **component** multipreview. A single 200×200 capture on a solid
- * background: unlike the M3 / Wear stickers (transparent, `showBackground = false`), the Remote
- * Compose player paints onto its own opaque canvas and has no light/dark theme split of its own
- * (the document carries explicit colours), so this is the one primary mode — matching the
- * `remote-m3` spec's single `light` mode. Bump `widthDp` / `heightDp` if a component needs more
+ * The catalog's Remote Compose **component** multipreview. A single 200×200 capture. Remote Compose
+ * has no light/dark theme split of its own — the document carries explicit colours — so this is the
+ * one primary mode. Those colours come from `RemoteMaterialTheme`, the dark-first Wear Compose
+ * Material 3 scheme, so the one mode is **dark**: like the Wear stickers these rasterise onto
+ * transparency (`showBackground = false`), and the content is light-on-nothing. The catalog is
+ * tagged to match — `modes: ["dark"]` + `display.surface: "dark"` in `catalog.spec.json` — so the
+ * preview server backs the sheet on a dark stage instead of washing a white `RemoteIcon` /
+ * `RemoteText` out on the default white one. Bump `widthDp` / `heightDp` if a component needs more
  * room than a single button.
  */
 @Preview(showBackground = false, widthDp = 200, heightDp = 200) annotation class CatalogRemoteModes
@@ -53,7 +56,7 @@ fun RemoteSticker(content: @Composable @RemoteComposable () -> Unit) {
 /**
  * A larger single-capture multipreview for the components that need more room than a single button —
  * cards, the app card, a button group, the TimeText strip, and the theme (typography / colour)
- * specimens. Same solid-background, single-mode contract as [CatalogRemoteModes]; only the canvas is
+ * specimens. Same transparent, single-dark-mode contract as [CatalogRemoteModes]; only the canvas is
  * bigger so the content isn't clipped by the 200×200 frame.
  */
 @Preview(showBackground = false, widthDp = 320, heightDp = 240) annotation class CatalogRemoteLarge

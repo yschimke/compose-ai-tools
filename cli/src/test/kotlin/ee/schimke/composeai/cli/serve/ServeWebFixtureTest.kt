@@ -407,6 +407,9 @@ class ServeWebFixtureTest {
             previewCount = 6,
             trust = "branch:yschimke/compose-ai-tools@design-artifacts/remote-m3",
             heroPreviewId = "Button-Filled__ideal__default__light",
+            // Remote Compose draws the dark-first Wear scheme, so its catalog declares
+            // `display.surface: "dark"` and the hero backs on the dark stage too.
+            darkStage = true,
           ),
           // App systems published UNLISTED from their own repos but promoted to the LISTED set
           // (`--catalogs`), so they show on the front door alongside the design systems.

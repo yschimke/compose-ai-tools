@@ -36,10 +36,15 @@ and breakpoints that matter.
 The Remote Compose catalog is the sticker-sheet sibling of the
 `samples/remotecompose` demo (which shows the two *ways* to preview Remote
 Compose). Each sticker is a real `RemoteDocument` built by `RemotePreview` and
-rasterised by the Remote Compose player, so — unlike the M3/Wear stickers — it
-renders on the player's own opaque canvas (`showBackground = true`, no
-transparency) and has a single primary mode (the document carries explicit
-colours, so there is no light/dark split). It carries the alpha Remote Compose
+rasterised by the Remote Compose player, and has a single primary mode (the
+document carries explicit colours, so there is no light/dark split). That one
+mode is **dark**: the colours come from `RemoteMaterialTheme`, the dark-first
+Wear Compose Material 3 scheme, so — like the Wear stickers — the captures are
+transparent with light content. The spec tags it accordingly (`modes: ["dark"]`
++ `display.surface: "dark"`); leave the surface off and the preview server's
+fallback heuristic (a `wear`/`watch` id token, which `remote-m3` doesn't carry)
+picks the default white stage and the white `RemoteIcon` / `RemoteText` stickers
+disappear into it. It carries the alpha Remote Compose
 runtime and `compileSdk 37`, diverging from the rest of the repo; see its
 `build.gradle.kts` and `:samples:remotecompose`.
 
