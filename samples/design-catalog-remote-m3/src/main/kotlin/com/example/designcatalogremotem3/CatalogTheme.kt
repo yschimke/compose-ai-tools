@@ -48,15 +48,26 @@ fun RemoteSticker(content: @Composable @RemoteComposable () -> Unit) {
  * transparency (`showBackground = false`), and the content is light-on-nothing. The catalog is
  * tagged to match — `modes: ["dark"]` + `display.surface: "dark"` in `catalog.spec.json` — so the
  * preview server backs the sheet on a dark stage instead of washing a white `RemoteIcon` /
- * `RemoteText` out on the default white one. Bump `widthDp` / `heightDp` if a component needs more
- * room than a single button.
+ * `RemoteText` out on the default white one. Bump the device-spec `width` / `height` if a component
+ * needs more room than a single button.
+ *
+ * The render density is declared here in the **preview configuration** rather than left to the
+ * default (~2.625, a phone density). A Remote Compose document is authored for a target density, and
+ * this catalog mirrors **Wear** Compose Material 3, so `dpi=320` pins it to **density 2.0** — the
+ * same scale as the `design-catalog-wear-m3` sibling (`227dp → 454px`). A `spec:` device sets size +
+ * density with no device frame, so the transparent centred-sticker contract is unchanged; #2760
+ * stamps this density into the captured `.rc` so the player replays the dp-typed size modifiers at
+ * the same scale.
  */
-@Preview(showBackground = false, widthDp = 200, heightDp = 200) annotation class CatalogRemoteModes
+@Preview(showBackground = false, device = "spec:width=200dp,height=200dp,dpi=320")
+annotation class CatalogRemoteModes
 
 /**
  * A larger single-capture multipreview for the components that need more room than a single button —
  * cards, the app card, a button group, the TimeText strip, and the theme (typography / colour)
- * specimens. Same transparent, single-dark-mode contract as [CatalogRemoteModes]; only the canvas is
- * bigger so the content isn't clipped by the 200×200 frame.
+ * specimens. Same transparent, single-dark-mode contract as [CatalogRemoteModes] (including the
+ * `dpi=320` density-2.0 pin, matching Wear); only the canvas is bigger so the content isn't clipped
+ * by the 200×200 frame.
  */
-@Preview(showBackground = false, widthDp = 320, heightDp = 240) annotation class CatalogRemoteLarge
+@Preview(showBackground = false, device = "spec:width=320dp,height=240dp,dpi=320")
+annotation class CatalogRemoteLarge
