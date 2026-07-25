@@ -545,10 +545,21 @@ class ServeCatalogStore(
    * off) rather than failing the whole catalog load.
    */
   private fun extractCatalogRcDocs(bundleFile: File, alias: Map<String, String>, dir: File) {
+    // Only the entries the alias actually maps to are worth decoding — a bundle padded with junk
+    // `ir/` entries can't make us expand (or retain) anything the catalog will ever serve.
+    val wantedDaemonIds = alias.values.toHashSet()
+    if (wantedDaemonIds.isEmpty()) return
+    // A real RC document is a few KB; these are generous headroom whose only job is to stop a
+    // highly-compressed or oversized `ir/*.rc` entry from exhausting the heap (the 25 MB network
+    // cap
+    // bounds only the *compressed* bundle). Blowing either abandons the optional lane.
+    val maxDocBytes = 8L * 1024 * 1024
+    val maxTotalBytes = 64L * 1024 * 1024
     val docsByDaemonId =
       try {
         val zipBytes = BundleReader.extractZipBytes(bundleFile)
         val out = HashMap<String, ByteArray>()
+        var total = 0L
         ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
           var entry = zin.nextEntry
           while (entry != null) {
@@ -560,7 +571,25 @@ class ServeCatalogStore(
                 ".." !in name.split("/")
             ) {
               val daemonId = name.removePrefix("$IR_DOC_DIR/").removeSuffix(RC_DOC_SUFFIX)
-              out[daemonId] = zin.readBytes()
+              if (daemonId in wantedDaemonIds && daemonId !in out) {
+                // A zip entry decompresses unbounded, so bound the read as it streams: cap this
+                // doc AND the running total across docs, aborting the whole (optional) lane the
+                // moment either is exceeded rather than buffering the rest.
+                val buf = ByteArrayOutputStream()
+                val chunk = ByteArray(64 * 1024)
+                var docBytes = 0L
+                while (true) {
+                  val n = zin.read(chunk)
+                  if (n < 0) break
+                  docBytes += n
+                  total += n
+                  check(docBytes <= maxDocBytes && total <= maxTotalBytes) {
+                    "rc docs exceed the decompression cap"
+                  }
+                  buf.write(chunk, 0, n)
+                }
+                out[daemonId] = buf.toByteArray()
+              }
             }
             zin.closeEntry()
             entry = zin.nextEntry
