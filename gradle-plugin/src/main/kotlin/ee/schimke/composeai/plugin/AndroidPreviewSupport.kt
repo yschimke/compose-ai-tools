@@ -2730,6 +2730,22 @@ internal object AndroidPreviewSupport {
           legacyClasspathUnion = legacyClasspathUnion,
         )
       )
+      // Same duplicate guard the render Test tasks run, applied to the classpath that goes into
+      // `daemon-launch.json`. This is the path that matters most: a11y renders and the VS Code
+      // extension drive the daemon, never the standalone Test task, so the motivating failure
+      // (homeassistant-remotecompose#495) happened HERE. Checking only the Test tasks would leave
+      // a duplicate surviving in the AGP extras — or introduced by a future daemon-only addition —
+      // invisible to both the warning and `composePreview.classpathDuplicates=fail`. Runs before
+      // the descriptor is written, so a `fail` build never emits a descriptor the daemon would
+      // then launch from.
+      doFirst {
+        RenderClasspathDuplicates.check(
+          this,
+          classpath.files,
+          classpathDuplicatesMode,
+          renderArtifactCoordinates.get(),
+        )
+      }
       // Static JVM open flags from the shared helper, plus the
       // daemon-specific heap ceiling. AGP test task's own jvmArgs are
       // intentionally NOT inherited here — they're test-runner specific
