@@ -26,8 +26,8 @@ data class FigmaSvgFontWarnings(
  * Those two look identical from inside the export — both arrive as a text node with no captured
  * family — but only one of them is a defect. A stock-Material preview genuinely has no explicit
  * `fontFamily` and correctly exports as Roboto; a branded preview that lost its family exports as
- * Roboto too, and that is how a whole sticker sheet shipped in the wrong typeface. The render is the
- * only place that knows which it was, so it publishes here and the export cross-checks.
+ * Roboto too, and that is how a whole sticker sheet shipped in the wrong typeface. The render is
+ * the only place that knows which it was, so it publishes here and the export cross-checks.
  *
  * Populated by the Android render's font recorder (`FontResolverRecorder`) as resolutions happen,
  * rather than at post-capture: the recorder and the SVG export are independent post-capture

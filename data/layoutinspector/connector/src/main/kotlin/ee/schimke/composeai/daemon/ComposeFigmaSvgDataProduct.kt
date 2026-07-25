@@ -19,7 +19,6 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.Base64
 import javax.imageio.ImageIO
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okio.FileSystem
 import okio.Path.Companion.toPath
@@ -105,12 +104,11 @@ object ComposeFigmaSvgDataProducer {
     val fonts = fontResolver?.let { resolveFonts(model, it, fileSystem) }
     // Everything this export can put a real name to: the faces it embedded, the captured→emitted
     // family map, and the families named straight on a `<text>` when nothing was embedded.
-    val named =
-      buildSet {
-        fonts?.faces?.forEach { add(it.family) }
-        fonts?.familyOverrides?.values?.forEach { add(it) }
-        addAll(capturedFamilies(model.root))
-      }
+    val named = buildSet {
+      fonts?.faces?.forEach { add(it.family) }
+      fonts?.familyOverrides?.values?.forEach { add(it) }
+      addAll(capturedFamilies(model.root))
+    }
     val unnamed = FigmaSvgRenderedFonts.unnamedIn(named)
     val svg =
       when {
@@ -184,8 +182,8 @@ object ComposeFigmaSvgDataProducer {
 
   /**
    * Records the unreproducible faces beside the SVG so a degraded export is auditable after the
-   * fact — the boxes say *that* something is wrong, this says *which face*. Written only when
-   * there is something to report, so a healthy export leaves no sidecar behind.
+   * fact — the boxes say *that* something is wrong, this says *which face*. Written only when there
+   * is something to report, so a healthy export leaves no sidecar behind.
    */
   private fun writeFontWarnings(
     previewDir: File,

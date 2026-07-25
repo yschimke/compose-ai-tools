@@ -7,15 +7,15 @@ import java.io.ByteArrayOutputStream
  * hollow rectangle — the "missing glyph" box.
  *
  * The `compose/figma-svg` export exists to hand a designer the *actual* typography a render drew.
- * When it can't name the face that was drawn, the honest failure is a visible one: silently emitting
- * the Material default produced a sticker sheet that looked plausible and was wrong — branded
- * previews shipped with `font-family="Roboto, sans-serif"` over PNGs drawn in Orbitron, and nobody
- * noticed for as long as the vectors merely looked like text.
+ * When it can't name the face that was drawn, the honest failure is a visible one: silently
+ * emitting the Material default produced a sticker sheet that looked plausible and was wrong —
+ * branded previews shipped with `font-family="Roboto, sans-serif"` over PNGs drawn in Orbitron, and
+ * nobody noticed for as long as the vectors merely looked like text.
  *
  * Why a font and not "leave the family off": an unmapped character makes the viewer walk its own
- * fallback chain and render the glyph in *some* face, which looks like ordinary text again. To force
- * the box we have to genuinely support the character and draw a box for it — so the cmap maps every
- * code point the export actually emits to one box glyph.
+ * fallback chain and render the glyph in *some* face, which looks like ordinary text again. To
+ * force the box we have to genuinely support the character and draw a box for it — so the cmap maps
+ * every code point the export actually emits to one box glyph.
  *
  * The face is built per export over [codePoints] rather than shipped as a resource: mapping the
  * whole BMP to a single glyph needs either a 128 KB `glyphIdArray` or 65k composite glyphs, while a
