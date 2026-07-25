@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.cli.MAX_FIGMA_RASTER_EDGE_PX
+import ee.schimke.composeai.cli.downscaleRaster
 import java.util.Base64
 import okio.FileSystem
 import okio.Path
@@ -32,10 +34,13 @@ internal fun figmaRasterHrefs(svg: String): List<String> =
  * run to megabytes — and the base64 embedding adds a third on top, ballooning the "paste into
  * Figma" SVG. A crop whose longest edge exceeds this is downscaled (aspect preserved) before
  * embedding; the SVG's `<image x y width height>` box is unchanged, so the bitmap still fills the
- * layer exactly, just at a bounded density. 1024px keeps a component-sized crop untouched and a
- * screen-sized one at roughly thumbnail-to-retina fidelity — right for a design reference layer.
+ * layer exactly, just at a bounded density.
+ *
+ * Aliases the shared [MAX_FIGMA_RASTER_EDGE_PX], which `bundle pack` now applies when it *writes* a
+ * crop — the two must stay equal or the pack-time bound would either discard pixels this path still
+ * wanted, or leave bytes it is about to throw away.
  */
-internal const val MAX_INLINE_RASTER_EDGE_PX: Int = 1024
+internal const val MAX_INLINE_RASTER_EDGE_PX: Int = MAX_FIGMA_RASTER_EDGE_PX
 
 /**
  * Inline an SVG's `figma-raster/<node>.png` crops as `data:image/png;base64` URIs, reading each
@@ -61,38 +66,6 @@ internal fun inlineFigmaRasters(
     val crop = fileSystem.read(cropPath) { readByteArray() }
     val bounded = downscaleRaster(crop, maxEdgePx)
     "href=\"data:image/png;base64,${Base64.getEncoder().encodeToString(bounded)}\""
-  }
-}
-
-/**
- * [png] re-encoded with its longest edge capped at [maxEdgePx] (aspect preserved, bilinear), or the
- * original bytes when it's already within the cap, fails to decode, or the re-encode doesn't
- * actually shrink the payload (a tiny palette PNG can grow when re-encoded as ARGB). Never throws —
- * a served SVG must degrade to the full-resolution embed rather than a broken layer.
- */
-internal fun downscaleRaster(png: ByteArray, maxEdgePx: Int): ByteArray {
-  if (maxEdgePx <= 0 || maxEdgePx == Int.MAX_VALUE) return png
-  return try {
-    val image = javax.imageio.ImageIO.read(java.io.ByteArrayInputStream(png)) ?: return png
-    val longest = maxOf(image.width, image.height)
-    if (longest <= maxEdgePx) return png
-    val scale = maxEdgePx.toDouble() / longest
-    val w = (image.width * scale).toInt().coerceAtLeast(1)
-    val h = (image.height * scale).toInt().coerceAtLeast(1)
-    val scaled = java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB)
-    scaled.createGraphics().run {
-      setRenderingHint(
-        java.awt.RenderingHints.KEY_INTERPOLATION,
-        java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR,
-      )
-      drawImage(image, 0, 0, w, h, null)
-      dispose()
-    }
-    val out = java.io.ByteArrayOutputStream()
-    javax.imageio.ImageIO.write(scaled, "png", out)
-    out.toByteArray().takeIf { it.isNotEmpty() && it.size < png.size } ?: png
-  } catch (t: Throwable) {
-    png
   }
 }
 
