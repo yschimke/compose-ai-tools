@@ -47,10 +47,11 @@ const val MAX_LOTTIE_GIF_DURATION_MS: Int = 5000
  * Captures the asset's intrinsic-duration window sampled at [frameIntervalMs] into `frameCount =
  * round(durationMs / interval)` frames, progress stepped `i / frameCount` so the loop wraps
  * seamlessly. Holds a single [ImageComposeScene] and sweeps a snapshot-backed progress state across
- * it (`Snapshot.sendApplyNotifications()` flushes each step), so the Compottie parse + Skia surface
- * allocation happen once. Each captured frame is written as a PNG and stitched by [ApngEncoder],
- * which copies each frame's `IDAT` verbatim — so the RGBA (alpha-carrying) frames Skiko emits
- * become an alpha-carrying APNG with no re-quantisation.
+ * it (`Snapshot.sendApplyNotifications()` flushes each step, then a settle pass lands it before the
+ * capture — see the loop), so the Compottie parse + Skia surface allocation happen once. Each
+ * captured frame is written as a PNG and stitched by [ApngEncoder], which copies each frame's
+ * `IDAT` verbatim — so the RGBA (alpha-carrying) frames Skiko emits become an alpha-carrying APNG
+ * with no re-quantisation.
  *
  * Returns the written [outputFile], or throws (propagated by the caller) when the asset can't be
  * inflated or a frame can't be encoded.
@@ -99,6 +100,16 @@ fun renderLottieApng(
     for (i in 0 until frameCount) {
       progress.floatValue = i.toFloat() / frameCount
       Snapshot.sendApplyNotifications()
+      // Two passes per step; the second one is the capture. Compottie routes the new progress to
+      // its painter through a snapshot observer that *usually* — but not always — lands before
+      // the same pass draws, so a single pass now and then captured the previous step's pixels.
+      // That surfaced as a random handful of duplicated frames per run (frames 3 and 21 in one CI
+      // render, frame 25 in the next, none in a third), which rewrote the committed APNG's bytes
+      // on every push and made the diff bot report `lottie/spin.json` as changed on every PR. The
+      // settle pass drains that pending work; `render()` defaults to nanoTime 0, so it advances no
+      // clock-driven animation. Same two-render settle every other desktop capture path uses (see
+      // DesktopRendererMain's still Lottie + SVG paths).
+      scene.render()
       val png =
         scene.render().encodeToData(EncodedImageFormat.PNG)
           ?: error("Failed to encode Lottie APNG frame $i to PNG")
