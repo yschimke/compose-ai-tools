@@ -44,7 +44,26 @@ class FigmaSvgDownloadableFontFamilyTest {
     )
   }
 
-  private fun assertNamesOrbitron(previewId: String, function: String) {
+  /**
+   * The same production shape with **font embedding left on** — the mode every real render and the
+   * design-artifacts publish lane use. Embedding switches the export onto
+   * `FigmaLayeredSvg.render(model, Options(defaultFontFamily = "Roboto"), faces, familyOverrides)`,
+   * so a face whose WOFF2 can't be fetched degrades differently from the vector-only path.
+   */
+  @Test
+  fun `figma svg names the branded family with font embedding on`() {
+    assertNamesOrbitron(
+      previewId = "branded-embedded",
+      function = "BrandedThemeTypographyText",
+      embedFonts = true,
+    )
+  }
+
+  private fun assertNamesOrbitron(
+    previewId: String,
+    function: String,
+    embedFonts: Boolean = false,
+  ) {
     val outputDir = tempFolder.newFolder("renders-$previewId")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
     System.setProperty("roborazzi.test.record", "true")
@@ -55,7 +74,7 @@ class FigmaSvgDownloadableFontFamilyTest {
     // which a sandboxed/offline test must not depend on. The `<text>` family name — the thing under
     // test — is emitted either way.
     val priorEmbedFonts = System.getProperty("composeai.svg.embedFonts")
-    System.setProperty("composeai.svg.embedFonts", "false")
+    System.setProperty("composeai.svg.embedFonts", embedFonts.toString())
 
     val manifest =
       PreviewManifest(
@@ -82,9 +101,10 @@ class FigmaSvgDownloadableFontFamilyTest {
       assertTrue("figma SVG must be produced: ${svgFile.absolutePath}", svgFile.exists())
       val svg = svgFile.readText()
       assertTrue("export must carry the text", svg.contains("MeshCore"))
+      val fontLines =
+        svg.lines().filter { it.contains("<text") || it.contains("@font-face") }.joinToString("\n")
       assertTrue(
-        "the <text> must name the branded downloadable family, got:\n" +
-          svg.lines().filter { it.contains("<text") }.joinToString("\n"),
+        "the <text> must name the branded downloadable family, got:\n$fontLines",
         svg.contains("font-family=\"Orbitron"),
       )
     } finally {
