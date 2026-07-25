@@ -142,6 +142,16 @@ on:
         required: false
         type: string
         default: ''
+      working-directory:
+        description: 'Repo-relative directory holding the Gradle build to render, for a monorepo whose samples are SEPARATE builds (compose-samples: JetNews/, Jetcaster/, … each with their own gradlew, and no build at the repo root). Empty ⇒ the repo root. `spec` stays repo-root-relative either way.'
+        required: false
+        type: string
+        default: ''
+      preview-annotations:
+        description: 'Whitespace-separated multipreview annotation names to teach the build-free spec pre-flight (e.g. "WearPreviewDevices WearPreviewFontScales"). Required whenever the previews are annotated with a multipreview declared in ANOTHER module — the source scan cannot see it, so the pre-flight reports "discovered 0 @Preview function(s)" and fails every entry. Wear catalogs always need this.'
+        required: false
+        type: string
+        default: ''
       commit-user-name:
         description: 'Author/committer name for the generated delivery-branch commit.'
         required: false
@@ -245,15 +255,23 @@ jobs:
           SPEC: ${{ inputs.spec }}
           MODULE: ${{ inputs.module }}
           EXTRA_MODULE: ${{ inputs.extra-module }}
+          PREVIEW_ANNOTATIONS: ${{ inputs.preview-annotations }}
+          WORKDIR: ${{ inputs.working-directory }}
         run: |
           set -euo pipefail
-          # Gradle path (":app", "a:b") → directory ("app", "a/b").
-          to_dir() { printf '%s' "${1#:}" | tr ':' '/'; }
+          # Gradle path (":app", "a:b") → directory ("app", "a/b"), under the
+          # build's directory when the caller is a multi-build monorepo.
+          to_dir() { printf '%s' "${WORKDIR:+$WORKDIR/}${1#:}" | tr ':' '/'; }
           args=(--spec "$SPEC" --module-dir "$(to_dir "$MODULE")")
           # A catalog whose previews span the primary + one extra module must
           # resolve names against BOTH, or the extra module's previews read as
           # "missing" and fail the pre-flight.
           if [ -n "$EXTRA_MODULE" ]; then args+=(--src "$(to_dir "$EXTRA_MODULE")"); fi
+          # Multipreview annotations declared outside the scanned source (Wear's
+          # @WearPreviewDevices/@WearPreviewFontScales, or an app's own shared
+          # annotation module). Without them the scan finds nothing and every
+          # entry fails — which reads as a broken spec, not a missing flag.
+          for ann in $PREVIEW_ANNOTATIONS; do args+=(--preview-annotation "$ann"); done
           node compose-ai-tools/scripts/design-artifacts/validate-catalog-spec.mjs "${args[@]}"
 
       # Stage bundled fallback fonts into fontconfig before any render, so a
@@ -304,6 +322,9 @@ jobs:
             composeai-fonts-${{ runner.os }}-
 
       - name: Render catalog bundle
+        # compose-preview finds the Gradle root by walking up for gradlew, so a
+        # monorepo of separate builds must render from the build's own dir.
+        working-directory: ${{ inputs.working-directory || '.' }}
         run: |
           set -euo pipefail
           run() { if [ "${{ inputs.desktop-render }}" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
@@ -313,6 +334,7 @@ jobs:
 
       - name: Render extra module
         if: ${{ inputs.extra-module != '' }}
+        working-directory: ${{ inputs.working-directory || '.' }}
         run: |
           set -euo pipefail
           run() { if [ "${{ inputs.desktop-render }}" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
