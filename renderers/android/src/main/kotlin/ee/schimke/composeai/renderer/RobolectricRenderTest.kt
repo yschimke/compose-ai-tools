@@ -1462,7 +1462,31 @@ abstract class RobolectricRenderTestBase(
             // Write a structured error sidecar instead so the panel
             // surfaces the real failure.
             val productFellThrough = job is ProductRenderJob && !longHandled && !gifHandled
-            if (productFellThrough) {
+            // The same reasoning applies to a CAPTURE job that targets a GIF —
+            // `@AnimatedPreview`, or `@FocusedPreview(gif = true)`. Those are
+            // CaptureRenderJobs, so the guard above never covered them: when the
+            // animated pass bailed (no frames, encoder refused, …) they fell
+            // through to the single `captureRoboImage` below and wrote PNG bytes
+            // to a `.gif` path. Nothing failed, the file looked plausible, and
+            // the extension lied to every consumer that trusts it — browser,
+            // Figma import, the preview server. Decide on the output extension,
+            // not the job type, so a still can never land under a `.gif` name.
+            val animatedCaptureFellThrough =
+              job is CaptureRenderJob &&
+                !animationHandled &&
+                !focusGifHandled &&
+                outputFile.extension.equals("gif", ignoreCase = true)
+            if (animatedCaptureFellThrough) {
+              RenderErrorSidecar.write(
+                outputFile,
+                IllegalStateException(
+                  "Animated capture on '${preview.id}' produced no GIF — refusing to " +
+                    "write a single-frame PNG into the .gif output path. Most often the " +
+                    "preview has an unbounded axis: pin widthDp AND heightDp on an " +
+                    "@AnimatedPreview so the frames share one fixed size."
+                ),
+              )
+            } else if (productFellThrough) {
               val modeName = scroll?.mode?.name ?: "?"
               val axisName = scroll?.axis?.name ?: "VERTICAL"
               RenderErrorSidecar.write(
@@ -1510,6 +1534,7 @@ abstract class RobolectricRenderTestBase(
             // extent / frame size, not the composable's intrinsic box.
             if (
               !productFellThrough &&
+                !animatedCaptureFellThrough &&
                 !longHandled &&
                 !gifHandled &&
                 !animationHandled &&
