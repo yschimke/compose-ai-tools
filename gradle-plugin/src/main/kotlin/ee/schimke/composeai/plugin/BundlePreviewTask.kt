@@ -305,7 +305,11 @@ abstract class BundlePreviewTask : DefaultTask() {
     val manifestFile = previewsJson.get().asFile
     val manifest = JSON.decodeFromString(PreviewManifest.serializer(), manifestFile.readText())
     val selected = resolveSelection(manifest, previewIds.get())
-    val coverId = selected.first().id
+    // The raw id addresses renderer-written content on disk (render sidecars, extension reports,
+    // which are keyed by the un-sanitised id); [coverId] is its bundle form, used for every id that
+    // lands *inside* the bundle — entry names and both manifests. See [sanitizeBundleEntryId].
+    val coverIdRaw = selected.first().id
+    val coverId = sanitizeBundleEntryId(coverIdRaw)
 
     // Previews whose flavour emitted a serialisable intermediate representation (Remote Compose doc
     // / Wear protolayout proto) during the render step are replayed from that IR, not by re-running
@@ -412,17 +416,18 @@ abstract class BundlePreviewTask : DefaultTask() {
     val irZipFiles = LinkedHashMap<String, ByteArray>()
     for (preview in selected) {
       val ir = irByPreview[preview.id] ?: continue
-      val irPath = "$BUNDLE_IR_DIR/${preview.id}.${ir.ext}"
+      val bundleId = sanitizeBundleEntryId(preview.id)
+      val irPath = "$BUNDLE_IR_DIR/$bundleId.${ir.ext}"
       irZipFiles[irPath] = ir.bytes
       val resourcesPath =
         ir.resourcesBytes?.let { rb ->
-          val rp = "$BUNDLE_IR_DIR/${preview.id}.${ir.resourcesExt}"
+          val rp = "$BUNDLE_IR_DIR/$bundleId.${ir.resourcesExt}"
           irZipFiles[rp] = rb
           rp
         }
       irEntries +=
         BundleIr(
-          previewId = preview.id,
+          previewId = bundleId,
           format = ir.format,
           path = irPath,
           resourcesPath = resourcesPath,
@@ -479,7 +484,7 @@ abstract class BundlePreviewTask : DefaultTask() {
           continue
         }
         val zipPath = "$BUNDLE_EXTENSIONS_DIR/$id.json"
-        dataExtensionZipFiles[zipPath] = scopeReportToCoverPreview(src.readBytes(), coverId)
+        dataExtensionZipFiles[zipPath] = scopeReportToCoverPreview(src.readBytes(), coverIdRaw)
         dataExtensionEntries += BundleDataExtension(extensionId = id, path = zipPath)
       }
     }
@@ -488,7 +493,7 @@ abstract class BundlePreviewTask : DefaultTask() {
       BundleManifest(
         schemaVersion = BUNDLE_SCHEMA_VERSION,
         backend = backend.get(),
-        previewIds = selected.map { it.id },
+        previewIds = selected.map { sanitizeBundleEntryId(it.id) },
         coverPreviewId = coverId,
         classpath = classpathEntries,
         modulePath = modulePath.get(),
@@ -505,7 +510,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     // simply omitted — the reader treats an absent entry as "not rendered yet".
     val previewPngs = LinkedHashMap<String, ByteArray>()
     for (preview in selected) {
-      resolvePreviewPng(preview)?.let { previewPngs[preview.id] = it }
+      resolvePreviewPng(preview)?.let { previewPngs[sanitizeBundleEntryId(preview.id)] = it }
     }
 
     // (v8) Per-preview override sidecars: the editable knobs a preview declared via
@@ -516,8 +521,9 @@ abstract class BundlePreviewTask : DefaultTask() {
     // that declared none.
     val overrideFiles = LinkedHashMap<String, ByteArray>()
     for (preview in selected) {
+      val bundleId = sanitizeBundleEntryId(preview.id)
       resolvePreviewOverrides(preview)?.let {
-        overrideFiles["$BUNDLE_PREVIEWS_DIR/${preview.id}.$BUNDLE_OVERRIDES_SIDECAR_EXT"] = it
+        overrideFiles["$BUNDLE_PREVIEWS_DIR/$bundleId.$BUNDLE_OVERRIDES_SIDECAR_EXT"] = it
       }
       // Per-preview Remote Compose knob sidecars (`renders/<stem>.remotecompose.json`), packed
       // under `previews/<id>.remotecompose.json` — a separate channel from the plain-Compose
@@ -525,7 +531,7 @@ abstract class BundlePreviewTask : DefaultTask() {
       // the same verbatim-copied `overrideFiles` map, so no `buildZip` signature change. Absent for
       // previews that declared no Remote Compose knobs.
       resolvePreviewRemoteCompose(preview)?.let {
-        overrideFiles["$BUNDLE_PREVIEWS_DIR/${preview.id}.$BUNDLE_REMOTECOMPOSE_SIDECAR_EXT"] = it
+        overrideFiles["$BUNDLE_PREVIEWS_DIR/$bundleId.$BUNDLE_REMOTECOMPOSE_SIDECAR_EXT"] = it
       }
     }
 
@@ -541,10 +547,17 @@ abstract class BundlePreviewTask : DefaultTask() {
     for (preview in selected) {
       resolvePreviewCatalogTokens(preview)?.let {
         catalogTokenEntries[
-          "$BUNDLE_PREVIEWS_DIR/${preview.id}.$BUNDLE_CATALOG_TOKENS_SIDECAR_EXT"] = it
+          "$BUNDLE_PREVIEWS_DIR/${sanitizeBundleEntryId(preview.id)}.$BUNDLE_CATALOG_TOKENS_SIDECAR_EXT"] =
+          it
       }
     }
 
+    // The bundled `previews.json` addresses the same in-bundle entries as `bundle.json`, and
+    // readers
+    // reconstruct `previews/<id>.png` from these ids — so its `id`s carry the bundle form too, kept
+    // in lockstep with the entry names and [BundleManifest] ids above. (`renderOutput` and other
+    // producer-side paths are irrelevant in a detached bundle, so they're left as-is.)
+    val bundlePreviews = selected.map { it.copy(id = sanitizeBundleEntryId(it.id)) }
     val filteredManifest =
       if (includeDataExtensions.getOrElse(false)) {
         // When carrying extension data, rewrite the bundled manifest's `dataExtensionReports` to
@@ -557,11 +570,11 @@ abstract class BundlePreviewTask : DefaultTask() {
         // that were skipped (source missing) drop out of the map so nothing dangles. Left untouched
         // in the default (non-carrying) pack, preserving the historical on-disk pointers.
         manifest.copy(
-          previews = selected,
+          previews = bundlePreviews,
           dataExtensionReports = dataExtensionEntries.associate { it.extensionId to it.path },
         )
       } else {
-        manifest.copy(previews = selected)
+        manifest.copy(previews = bundlePreviews)
       }
     val zipBytes =
       buildZip(
@@ -1520,3 +1533,16 @@ internal fun resolveIrSidecar(rendersRoot: File, stem: String, ext: String): Fil
     }
     ?.minByOrNull { it.name }
 }
+
+/**
+ * Map a preview `id` to the form used for its file names *inside a bundle* — zip entry names
+ * (`previews/<id>.png`, `ir/<id>.rc`, …) and the ids in the bundle's own `bundle.json` /
+ * `previews.json`. A `@Preview(name = "Image Widget Squircle")` yields an id carrying spaces; the
+ * on-disk renderer already collapses those for its file stems (`[^A-Za-z0-9._-]` → `_`), but the
+ * pack step historically copied the raw id verbatim, so bundle entries alone kept the spaces. This
+ * applies the *same* per-character substitution the renderer uses so the whole bundle is shell- and
+ * URL-friendly and internally consistent: entry names, the ids readers reconstruct those names
+ * from, and the two manifests all agree. Dots and dashes are preserved (they never need quoting and
+ * keep dot-vs-underscore-distinct ids distinct). Kept top-level + internal so it's unit-testable.
+ */
+internal fun sanitizeBundleEntryId(id: String): String = id.replace(Regex("[^A-Za-z0-9._-]"), "_")
