@@ -6,60 +6,75 @@ plugins {
   id("ee.schimke.composeai.preview")
 }
 
-// Regression fixture for issue #2670: a Wear module (its manifest declares
-// `<uses-feature android:name="android.hardware.type.watch">`) whose widget/tile
-// previews must crop to their intrinsic layout bounds for export as fixed-size
-// drawable assets, NOT get pinned onto the 227dp watch-face canvas the way a
-// design-catalog component sticker does. `retargetWearPreviews = false` opts this
-// module out of the canvas retarget: device-less previews stay wrap-content (the
-// renderer crops each PNG to measured bounds) while discovery still swaps in the
-// Wear density (2.0x) so the cropped dp bounds scale to watch-density px, not the
-// inherited 2.625x phone default. `WearWidgetCropPixelTest` asserts the render is
-// cropped at wear density.
+// Issue #2670 fixture — a **real** Glance Wear widget module. Its manifest declares the watch
+// feature, so PreviewDiscovery marks it Wear; its widget previews use `@PreviewParameter` providers
+// from `androidx.glance.wear.tooling.preview` (the `WearWidgetParams` shape #2670 is about), so the
+// discovery auto-detect crops them to their intrinsic bounds at wear density with **no config** —
+// never the 227dp watch-face canvas.
+//
+// The widgets are Remote Compose: a Wear widget's value is its **encoded RemoteCompose document**,
+// captured here as the `<stem>.rc` sidecar via `CapturingWearWidgetPreview` (see that file).
+// That
+// keeps the widget in the portable bundle as data (its `.rc`), not as compiled `@Preview`
+// bytecode — `WearWidgetDocCaptureTest` asserts it.
 
 composePreview {
-  // Pin Robolectric to SDK 35; see the matching block in `:samples:android` for the JDK 17
-  // toolchain rationale (Robolectric SDK 36 requires JDK 21+).
+  // Pin Robolectric to SDK 35; compiles against `compileSdk = 37` (glance-wear alpha raises the AAR
+  // minCompileSdk) but Robolectric 4.16.1 only ships to API 36 (JDK 21+). Matches
+  // `:samples:remotecompose` / `:samples:design-catalog-remote-m3`.
   sdkVersion.set(35)
 
-  // Opt out of the Wear watch-canvas retarget so device-less widget previews crop to their
-  // intrinsic bounds instead of the 227dp square (#2670).
-  retargetWearPreviews.set(false)
+  // Auto-detect (not the flag) does the cropping here: the glance-wear `@PreviewParameter`
+  // providers
+  // are recognised as widgets, so we leave `retargetWearPreviews` at its `true` default to prove
+  // the
+  // zero-config path end-to-end.
 
-  // `WearWidgetCropPixelTest` reads PNGs from `build/compose-previews/renders/`; chain the
-  // unit-test tasks onto `composePreviewRenderAll` so `:samples:wear-widget:check` renders
-  // before asserting.
+  // `WearWidgetDocCaptureTest` / `WearWidgetCropPixelTest` read `.rc` + PNGs from
+  // `build/compose-previews/renders/`; chain the unit-test tasks onto `composePreviewRenderAll`.
   renderBeforeUnitTests.set(true)
 }
 
 android {
   namespace = "com.example.wearwidget"
+  // glance-wear alpha13 / wear-compose-remote alpha raise the AAR minCompileSdk to 37.
+  compileSdk = 37
+
+  defaultConfig {
+    // Remote Compose alpha artifacts require API 29+.
+    minSdk = 29
+  }
 
   buildFeatures { compose = true }
+
+  // Remote Compose / Glance Wear APIs are `@RestrictTo(LIBRARY_GROUP)`; the source-level
+  // `@file:Suppress("RestrictedApiAndroidX")` quiets the IDE, but AGP lint runs `RestrictedApi`
+  // separately — disable it here as AndroidX's own samples do.
+  lint { disable += "RestrictedApi" }
 
   testOptions { unitTests.all { it.jvmArgs("-Xmx2048m") } }
 }
 
 dependencies {
-  implementation(platform(libs.compose.bom.stable))
-  implementation(libs.compose.ui)
-  implementation(libs.compose.foundation)
-  implementation(libs.compose.ui.tooling.preview)
-  debugImplementation("androidx.compose.ui:ui-tooling")
-
-  // `SquircleWidgetWrapper` / `RectangularWidgetWrapper` extend `PreviewWrapperProvider`, which
-  // only
-  // exists in ui-tooling-preview 1.11+. The stable BOM pins the annotations-only artifact, so pin
-  // the 1.11 variant `compileOnly` (same shape as `:samples:android`'s `FontPreviewWrapper`). It's
-  // an interface-only artifact — nothing extra ships in the APK.
-  compileOnly(libs.compose.ui.tooling.preview.wrapper)
-  // …and on the unit-test runtime too: the renderer loads the wrapper reflectively from
-  // `wrapperClassName` during `composePreviewRender` (a Test task via `renderBeforeUnitTests`), and
-  // instantiating it needs the `PreviewWrapperProvider` super-interface on the runtime classpath.
-  testImplementation(libs.compose.ui.tooling.preview.wrapper)
-  // `@PreviewWrapperClass` — lets a plain `@Preview` name its `PreviewWrapperProvider` by FQN (read
-  // by discovery at scan time); pairs with the wrappers above.
-  implementation(project(":preview-annotations"))
+  // No Compose BOM — glance-wear / wear-compose-remote pull the Compose 1.11 line; pinning explicit
+  // prerelease versions avoids fighting the 1.10.x BOM used elsewhere. Same as
+  // `:samples:remotecompose`.
+  implementation(libs.compose.ui.tooling.preview.wrapper)
+  implementation(libs.compose.remote.creation)
+  implementation(libs.compose.remote.creation.compose)
+  implementation(libs.wear.compose.remote.material3)
+  // Glance Wear — the Wear OS widget layer on Remote Compose. `wear` carries the widget document +
+  // brush types (`WearWidgetDocument`, `WearWidgetBrush`) whose `captureRawContent` yields the
+  // encoded `.rc`; `wear-core` the `WearWidgetParams` container spec; `wear-tooling-preview` the
+  // `WearWidgetPreview` composable + `SquircleAllWidgetPreviewParams` providers.
+  implementation(libs.glance.wear)
+  implementation(libs.glance.wear.core)
+  implementation(libs.glance.wear.tooling.preview)
+  implementation(libs.activity.compose)
+  // `IrSidecarChannel` — the render-harness hand-off `CapturingWearWidgetPreview` offers the
+  // captured RemoteCompose document into, so it lands as the `<stem>.rc` sidecar.
+  implementation(project(":data-render-core"))
+  debugImplementation(libs.compose.ui.tooling.prerelease)
 
   testImplementation(libs.junit)
   testImplementation(libs.truth)
