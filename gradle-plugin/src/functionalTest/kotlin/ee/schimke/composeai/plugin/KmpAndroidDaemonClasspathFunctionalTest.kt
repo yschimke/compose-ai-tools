@@ -52,6 +52,12 @@ class KmpAndroidDaemonClasspathFunctionalTest {
     assertThat(result.output).doesNotContain("cannot choose between")
     assertThat(result.output).doesNotContain("AmbiguousArtifactsFailure")
     assertThat(result.output).contains("BUILD SUCCESSFUL")
+    // Assert the pinned `jar` variant was actually selected — not merely that resolution didn't
+    // throw. `pinnedConsumerClasspath` applies `lenient(true)` for `androidRuntimeClasspath`, so a
+    // future regression that dropped the `artifactType=jar` pin but kept `lenient` would resolve to
+    // an *empty* collection (the ambiguous artifact silently dropped) and still pass the checks
+    // above; requiring `stub-jar.jar` keeps the pinning itself under guard.
+    assertThat(result.output).contains("stub-jar.jar")
   }
 
   private fun createKmpAndroidConsumerProject(): File {
@@ -149,7 +155,7 @@ class KmpAndroidDaemonClasspathFunctionalTest {
                 tasks.named("composePreviewDaemonStart", DaemonBootstrapTask::class.java).map {
                     it.btaCompileClasspath
                 }
-            doLast { logger.lifecycle("resolved BTA classpath entries: ${'$'}{bta.get().files.size}") }
+            doLast { logger.lifecycle("resolved BTA classpath: ${'$'}{bta.get().files.map { it.name }}") }
         }
         """
           .trimIndent()
