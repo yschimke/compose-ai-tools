@@ -16,6 +16,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okio.FileSystem
 import okio.Path.Companion.toPath
@@ -101,11 +102,24 @@ internal class DaemonSemanticsFetcher(
       val latch = CountDownLatch(previewIds.size)
       live
         .onNotification { method, params ->
-          if (method != "renderFinished" || params == null) return@onNotification
+          val failed = method == "renderFailed"
+          if ((method != "renderFinished" && !failed) || params == null) return@onNotification
           val id = params["id"]?.jsonPrimitive?.contentOrNull ?: return@onNotification
-          // Count down on any finish for a pending id, regardless of pngPath — a failed render
-          // emits renderFinished without one, and we must not block forever waiting on it. Whether
-          // a sidecar actually materialised is decided by the disk read below.
+          // Count down on either terminal event for a pending id — the daemon owes exactly one
+          // (`renderFinished` OR `renderFailed`) per queued render, and a render whose composition
+          // throws emits only the latter. Waiting on `renderFinished` alone meant one broken
+          // preview burned the ENTIRE batch budget: a Glance composable reached through the plain
+          // `androidx.compose.ui.tooling.preview.Preview` annotation dies in the Compose applier
+          // within seconds, yet `bundle pack --with-semantics` sat out all 180s and then failed the
+          // whole catalog, reading as "the daemon hangs on widgets". Same fix ServeRenderHost
+          // already carries. Whether a sidecar actually materialised is decided by the disk read
+          // below, so a failure needs no special-casing beyond releasing the wait.
+          if (failed) {
+            val reason =
+              params["error"]?.jsonObject?.get("message")?.jsonPrimitive?.contentOrNull
+                ?: "daemon reported renderFailed"
+            onLog("render failed for '$id': $reason")
+          }
           if (pending.remove(id)) latch.countDown()
         }
         .use {

@@ -35,6 +35,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 
 /**
  * Contract for [DaemonSemanticsFetcher]: with a fake [RenderSessionFactory] whose `renderNow`
@@ -170,6 +171,53 @@ class DaemonSemanticsFetcherTest {
   }
 
   @Test
+  fun `a renderFailed preview releases the wait instead of burning the render budget`() {
+    val projectDir = newTempFolder("semantics-render-failed")
+    writeDescriptor(projectDir)
+
+    // Alpha renders; Beta's composition throws, so the daemon emits `renderFailed` — the *other*
+    // terminal event — and never a `renderFinished`. This is what a Glance composable reached
+    // through the plain `androidx.compose.ui.tooling.preview.Preview` annotation does (jetchat's
+    // MessagesWidget previews): it dies in the Compose applier within seconds. The fetcher used to
+    // wait only on `renderFinished`, so one such preview sat out the entire 180s batch budget and
+    // failed the whole catalog pack.
+    val logs = mutableListOf<String>()
+    val fetcher =
+      DaemonSemanticsFetcher(
+        factory =
+          FakeFactory(
+            produced =
+              mapOf("AlphaPreview" to """{"root":{"nodeId":"1","boundsInRoot":"0,0,4,8"}}"""),
+            failedIds = mapOf("BetaPreview" to "java.lang.ClassCastException: GlanceNode"),
+          ),
+        onLog = { logs += it },
+      )
+
+    val startedAt = System.nanoTime()
+    val outcome =
+      fetcher.fetch(
+        projectDir = projectDir,
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview", "BetaPreview"),
+      )
+    val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
+
+    assertTrue(outcome is DaemonSemanticsFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    assertEquals(setOf("AlphaPreview"), outcome.semanticsById.keys)
+    // The failure must be reported, not swallowed into a generic timeout.
+    assertTrue(
+      logs.any { "render failed for 'BetaPreview'" in it && "GlanceNode" in it },
+      "the daemon's failure message must be surfaced, got: $logs",
+    )
+    assertTrue(
+      logs.none { "timed out" in it },
+      "a reported failure must not degrade into a timeout, got: $logs",
+    )
+    // Guard the regression directly: with the bug, this fetch blocks for the full 180s budget.
+    assertTrue(elapsedMs < 30_000, "fetch should return promptly, took ${elapsedMs}ms")
+  }
+
+  @Test
   fun `missing descriptor returns DescriptorMissing`() {
     val projectDir = newTempFolder("semantics-no-descriptor")
     val fetcher = DaemonSemanticsFetcher(factory = FakeFactory(emptyMap()))
@@ -210,6 +258,7 @@ class DaemonSemanticsFetcherTest {
   private class FakeFactory(
     private val produced: Map<String, String>,
     private val fontsProduced: Map<String, String> = emptyMap(),
+    private val failedIds: Map<String, String> = emptyMap(),
   ) : RenderSessionFactory {
     override val backendKind: RenderSessionBackend = RenderSessionBackend.Subprocess
 
@@ -218,6 +267,7 @@ class DaemonSemanticsFetcherTest {
         workspaceRoot = config.workspaceRoot.absolutePath,
         produced = produced,
         fontsProduced = fontsProduced,
+        failedIds = failedIds,
         dataRoot = File(config.workspaceRoot, "build/compose-previews/data"),
       )
   }
@@ -232,14 +282,16 @@ class DaemonSemanticsFetcherTest {
   /**
    * Minimal [RenderSession] modelling the real daemon's async render: [renderNow] writes the
    * always-on `compose-semantics.json` sidecar for every preview it has canned content for, then
-   * emits a `renderFinished` notification per requested id (the signal the fetcher waits on before
-   * reading the files). Every other method throws.
+   * emits one terminal notification per requested id — `renderFailed` for ids in [failedIds],
+   * `renderFinished` otherwise. Both are signals the fetcher must stop waiting on. Every other
+   * method throws.
    */
   private class FakeSession(
     override val workspaceRoot: String,
     private val produced: Map<String, String>,
     private val dataRoot: File,
     private val fontsProduced: Map<String, String> = emptyMap(),
+    private val failedIds: Map<String, String> = emptyMap(),
   ) : RenderSession {
     private val listeners = java.util.concurrent.CopyOnWriteArrayList<NotificationListener>()
 
@@ -274,6 +326,18 @@ class DaemonSemanticsFetcherTest {
       timeout: kotlin.time.Duration,
     ): RenderNowResult {
       for (id in previewIds) {
+        val failure = failedIds[id]
+        if (failure != null) {
+          // A render whose composition throws emits `renderFailed` and *no* `renderFinished` — the
+          // daemon owes exactly one terminal event per queued render.
+          val params =
+            kotlinx.serialization.json.buildJsonObject {
+              put("id", id)
+              putJsonObject("error") { put("message", failure) }
+            }
+          listeners.forEach { it.onNotification("renderFailed", params) }
+          continue
+        }
         produced[id]?.let { content ->
           val dir = File(dataRoot, id).also { it.mkdirs() }
           File(dir, "compose-semantics.json").writeText(content)
@@ -282,8 +346,8 @@ class DaemonSemanticsFetcherTest {
           val dir = File(dataRoot, id).also { it.mkdirs() }
           File(dir, "fonts-used.json").writeText(content)
         }
-        // Emit renderFinished for *every* requested id — including ones that wrote no sidecar — so
-        // the fetcher's wait completes (a failed render still finishes) rather than timing out.
+        // Emit renderFinished for every remaining id — including ones that wrote no sidecar — so
+        // the fetcher's wait completes rather than timing out.
         val params =
           kotlinx.serialization.json.buildJsonObject {
             put("id", id)
