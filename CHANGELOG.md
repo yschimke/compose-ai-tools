@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.17.24](https://github.com/yschimke/compose-ai-tools/compare/v0.17.23...v0.17.24) (2026-07-25)
+
+
+### Features
+
+* **design-catalog-remote-m3:** declare Wear render density (2.0) in the preview config ([#2763](https://github.com/yschimke/compose-ai-tools/issues/2763)) ([16a64b3](https://github.com/yschimke/compose-ai-tools/commit/16a64b33afe2505815b8075d58b193df70adcde8))
+* **gradle-plugin:** detect split-family version skew on the render classpath ([#2761](https://github.com/yschimke/compose-ai-tools/issues/2761)) ([d9f5e0f](https://github.com/yschimke/compose-ai-tools/commit/d9f5e0f5fdaf09eb61d10b0efbea285c4e4ee1b5))
+
+
+### Bug Fixes
+
+* **catalog:** tag remote-m3 as dark-theme so its stickers aren't lost on a white stage ([#2759](https://github.com/yschimke/compose-ai-tools/issues/2759)) ([f5b5c0f](https://github.com/yschimke/compose-ai-tools/commit/f5b5c0f4776bad7f0f4449c86314cf9f4d795156))
+* **gradle-plugin:** order composePreviewDaemonStart after composePreviewDiscover ([#2766](https://github.com/yschimke/compose-ai-tools/issues/2766)) ([77217e8](https://github.com/yschimke/compose-ai-tools/commit/77217e81199dff3a435a7790278aece225cdb36d))
+* **rc-player:** capture Remote Compose docs in Dp behavior + stamp generation density ([#2760](https://github.com/yschimke/compose-ai-tools/issues/2760)) ([1c06766](https://github.com/yschimke/compose-ai-tools/commit/1c067665fe12b9023a7277338c4afb054d3b119d))
+* **rc-player:** scale dp-typed size modifiers by generation density ([#2757](https://github.com/yschimke/compose-ai-tools/issues/2757)) ([b3ecc85](https://github.com/yschimke/compose-ai-tools/commit/b3ecc851820911aac090d9a71710616dfc038ba7))
+* **remote-compose-player:** honor DP density behavior for padding ([#2768](https://github.com/yschimke/compose-ai-tools/issues/2768)) ([0f633bc](https://github.com/yschimke/compose-ai-tools/commit/0f633bc80bcd8ba2b9ee091cf9d78c8f7f5caedb))
+* **remote-compose-player:** scale corners, spacing, offset, border under DP density ([#2769](https://github.com/yschimke/compose-ai-tools/issues/2769)) ([5b26706](https://github.com/yschimke/compose-ai-tools/commit/5b26706677e991f40fefdfadab2e1ffc14520686))
+* **renderer:** settle each Lottie APNG step so the sweep stops dropping frames ([#2762](https://github.com/yschimke/compose-ai-tools/issues/2762)) ([2640f88](https://github.com/yschimke/compose-ai-tools/commit/2640f88b939e5f4458b789b8364b8f5f5fa186c3))
+* **serve:** trust compose-samples in the trust store that is actually baked ([#2764](https://github.com/yschimke/compose-ai-tools/issues/2764)) ([87bbc0b](https://github.com/yschimke/compose-ai-tools/commit/87bbc0ba4ac747373a4f7f80cf7119542186efb6))
+
 ## [0.17.23](https://github.com/yschimke/compose-ai-tools/compare/v0.17.22...v0.17.23) (2026-07-25)
 
 
