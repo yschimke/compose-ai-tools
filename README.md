@@ -343,25 +343,25 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 
 | Preview | Image |
 |---------|-------|
-| `AppCardRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/AppCardRemote.png" width="150" /> |
-| `ButtonGroupRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/ButtonGroupRemote.png" width="150" /> |
-| `CardRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/CardRemote.png" width="150" /> |
-| `CircularProgressRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/CircularProgressRemote.png" width="150" /> |
-| `ColorSchemeRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/ColorSchemeRemote.png" width="150" /> |
-| `CompactRemoteButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/CompactRemoteButton.png" width="150" /> |
-| `CustomShapeRemoteButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/CustomShapeRemoteButton.png" width="150" /> |
-| `FilledRemoteButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/FilledRemoteButton.png" width="150" /> |
-| `IconRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/IconRemote.png" width="150" /> |
-| `IconRemoteButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/IconRemoteButton.png" width="150" /> |
-| `NamedLabelRemoteButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/NamedLabelRemoteButton.png" width="150" /> |
-| `OutlinedCardRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/OutlinedCardRemote.png" width="150" /> |
-| `OutlinedRemoteButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/OutlinedRemoteButton.png" width="150" /> |
-| `RemoteTextSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/RemoteTextSticker.png" width="150" /> |
-| `ShaderGradientSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/ShaderGradientSticker.png" width="150" /> |
-| `TextRemoteButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/TextRemoteButton.png" width="150" /> |
-| `TitleCardRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/TitleCardRemote.png" width="150" /> |
-| `TruncatedTextRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/TruncatedTextRemote.png" width="150" /> |
-| `TypographyRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/TypographyRemote.png" width="150" /> |
+| `AppCardRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/AppCardRemote_width_320dp_height_240dp_dpi_320.png" width="150" /> |
+| `ButtonGroupRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/ButtonGroupRemote_width_320dp_height_240dp_dpi_320.png" width="150" /> |
+| `CardRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/CardRemote_width_320dp_height_240dp_dpi_320.png" width="150" /> |
+| `CircularProgressRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/CircularProgressRemote_width_200dp_height_200dp_dpi_320.png" width="150" /> |
+| `ColorSchemeRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/ColorSchemeRemote_width_320dp_height_240dp_dpi_320.png" width="150" /> |
+| `CompactRemoteButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/CompactRemoteButton_width_200dp_height_200dp_dpi_320.png" width="150" /> |
+| `CustomShapeRemoteButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/CustomShapeRemoteButton_width_200dp_height_200dp_dpi_320.png" width="150" /> |
+| `FilledRemoteButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/FilledRemoteButton_width_200dp_height_200dp_dpi_320.png" width="150" /> |
+| `IconRemoteButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/IconRemoteButton_width_200dp_height_200dp_dpi_320.png" width="150" /> |
+| `IconRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/IconRemote_width_200dp_height_200dp_dpi_320.png" width="150" /> |
+| `NamedLabelRemoteButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/NamedLabelRemoteButton_width_200dp_height_200dp_dpi_320.png" width="150" /> |
+| `OutlinedCardRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/OutlinedCardRemote_width_320dp_height_240dp_dpi_320.png" width="150" /> |
+| `OutlinedRemoteButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/OutlinedRemoteButton_width_200dp_height_200dp_dpi_320.png" width="150" /> |
+| `RemoteTextSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/RemoteTextSticker_width_200dp_height_200dp_dpi_320.png" width="150" /> |
+| `ShaderGradientSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/ShaderGradientSticker_width_200dp_height_200dp_dpi_320.png" width="150" /> |
+| `TextRemoteButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/TextRemoteButton_width_200dp_height_200dp_dpi_320.png" width="150" /> |
+| `TitleCardRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/TitleCardRemote_width_320dp_height_240dp_dpi_320.png" width="150" /> |
+| `TruncatedTextRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/TruncatedTextRemote_width_320dp_height_240dp_dpi_320.png" width="150" /> |
+| `TypographyRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/TypographyRemote_width_320dp_height_240dp_dpi_320.png" width="150" /> |
 | `WidgetContainerGradientRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/WidgetContainerGradientRemote.png" width="150" /> |
 | `WidgetContainerLargeRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/WidgetContainerLargeRemote.png" width="150" /> |
 | `WidgetContainerSmallRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/WidgetContainerSmallRemote.png" width="150" /> |
