@@ -532,8 +532,9 @@ private class PackSubcommand(private val args: List<String>) {
       if (meta.manifest.rawPreviewIds.size == previewIds.size) meta.manifest.rawPreviewIds
       else previewIds
     val bundleIdByRaw = rawIds.zip(previewIds).toMap()
-    fun <V> Map<String, V>.keyedByBundleId(): Map<String, V> =
-      entries.associate { (raw, v) -> (bundleIdByRaw[raw] ?: raw) to v }
+    fun <V> Map<String, V>.keyedByBundleId(): Map<String, V> = entries.associate { (raw, v) ->
+      (bundleIdByRaw[raw] ?: raw) to v
+    }
     val fetcher = DaemonSemanticsFetcher(onLog = { System.err.println("[daemon semantics] $it") })
     val outcome =
       fetcher.fetch(
@@ -562,11 +563,13 @@ private class PackSubcommand(private val args: List<String>) {
         // The layered `compose/figma-svg` export rides the same render (best-effort): carried so
         // the
         // design-catalog export can ship an editable vector per sticker beside the raster PNG.
-        val figmaSvgWritten = injectFigmaSvgIntoBundle(bundleFile, outcome.figmaSvgById.keyedByBundleId())
+        val figmaSvgWritten =
+          injectFigmaSvgIntoBundle(bundleFile, outcome.figmaSvgById.keyedByBundleId())
         // A hybrid figma-svg references `figma-raster/<node>.png` crops; carry them verbatim as
         // `previews/<id>.figma-raster/<node>.png` so the SVG's `<image>` layers resolve once the
         // export copies the SVG onto the delivery branch. Empty for the common vector-only case.
-        val figmaRasterWritten = injectFigmaRasterIntoBundle(bundleFile, outcome.figmaRasterById.keyedByBundleId())
+        val figmaRasterWritten =
+          injectFigmaRasterIntoBundle(bundleFile, outcome.figmaRasterById.keyedByBundleId())
         val semanticsLine =
           "  semantics:     $written / ${previewIds.size} preview(s) carried as " +
             "previews/<id>$BUNDLE_SEMANTICS_SUFFIX" +
@@ -1630,8 +1633,8 @@ internal object BundleReader {
     val previewIds: List<String>,
     val coverPreviewId: String?,
     /**
-     * Raw discovery ids parallel to [previewIds] (schema ≥ the sanitised-entry-name change).
-     * Empty on older bundles — fall back to [previewIds], correct whenever no sanitising happened.
+     * Raw discovery ids parallel to [previewIds] (schema ≥ the sanitised-entry-name change). Empty
+     * on older bundles — fall back to [previewIds], correct whenever no sanitising happened.
      */
     val rawPreviewIds: List<String> = emptyList(),
     val classpath: List<ClasspathEntry>,
