@@ -22,7 +22,15 @@ permissions:
 
 concurrency:
   group: vscode-preview-baselines
-  cancel-in-progress: true
+  # Same reasoning as `compose-preview.yml`: this workflow only ever
+  # publishes the "before" state for `vscode-preview-comment.yml`, so a
+  # cancelled run leaves `vscode-preview/main` behind the commits it skipped
+  # and every later PR inherits their diff. There is no PR trigger here at
+  # all — push-to-main and dispatch only — so cancelling can never be the
+  # right call. The path filter keeps this rare, but "rare" still means a
+  # silently stale baseline when two `vscode-extension/**` merges land close
+  # together.
+  cancel-in-progress: false
 
 jobs:
   update:
