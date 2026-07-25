@@ -19,6 +19,7 @@ import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.designcatalogm3.shared.CATALOG_COLORS_KNOB
+import com.example.designcatalogm3.shared.CATALOG_FONTS_KNOB
 import com.example.designcatalogm3.shared.CATALOG_FONT_GOOGLE_SANS_FLEX
 import com.example.designcatalogm3.shared.CATALOG_FONT_KNOB
 import com.example.designcatalogm3.shared.CATALOG_FONT_LOBSTER_TWO
@@ -28,11 +29,13 @@ import com.example.designcatalogm3.shared.CATALOG_SHAPES_KNOB
 import com.example.designcatalogm3.shared.CATALOG_TYPOGRAPHY_KNOB
 import com.example.designcatalogm3.shared.LocalGenericFonts
 import com.example.designcatalogm3.shared.LocalNamedFonts
+import com.example.designcatalogm3.shared.catalogApplyFontFamilies
 import com.example.designcatalogm3.shared.catalogApplyTypography
 import com.example.designcatalogm3.shared.catalogColorScheme
 import com.example.designcatalogm3.shared.catalogOverrideString
 import com.example.designcatalogm3.shared.catalogShapes
 import com.example.designcatalogm3.shared.catalogTypography
+import com.example.designcatalogm3.shared.parseCatalogFontFamilies
 
 /**
  * The catalog's theme wrapper. Each sticker is a stock [MaterialTheme] — the default light/dark
@@ -75,9 +78,18 @@ fun CatalogSticker(content: @Composable () -> Unit) {
   // resolve to the stock M3 shapes / the font-only type scale, so an un-overridden render stays
   // pixel-identical.
   val shapes = catalogShapes(catalogOverrideString(CATALOG_SHAPES_KNOB, ""))
+  // Type scale = the `theme.font` single face, then per-role-group families from `theme.fonts`
+  // (e.g. display=Orbitron, body=Space Grotesk — resolved against `CatalogNamedFonts`), then the
+  // `theme.typography` metrics overlay. Absent the fonts knob the middle step is a no-op, so an
+  // un-overridden render stays pixel-identical.
   val typography =
     catalogApplyTypography(
-      catalogTypography(font),
+      catalogApplyFontFamilies(
+        catalogTypography(font),
+        parseCatalogFontFamilies(catalogOverrideString(CATALOG_FONTS_KNOB, "")),
+        CatalogNamedFonts,
+        font,
+      ),
       catalogOverrideString(CATALOG_TYPOGRAPHY_KNOB, ""),
     )
   CatalogStickerFrame(
@@ -280,7 +292,17 @@ val CatalogNamedFonts: Map<String, FontFamily> =
       FontFamily(
         googleFontFace("Orbitron", "orbitron-400.ttf", FontWeight.Normal),
         googleFontFace("Orbitron", "orbitron-700.ttf", FontWeight.Bold),
-      )
+      ),
+    "Space Grotesk" to
+      FontFamily(
+        googleFontFace("Space Grotesk", "space-grotesk-400.ttf", FontWeight.Normal),
+        googleFontFace("Space Grotesk", "space-grotesk-700.ttf", FontWeight.Bold),
+      ),
+    "JetBrains Mono" to
+      FontFamily(
+        googleFontFace("JetBrains Mono", "jetbrains-mono-400.ttf", FontWeight.Normal),
+        googleFontFace("JetBrains Mono", "jetbrains-mono-700.ttf", FontWeight.Bold),
+      ),
   )
 
 /**

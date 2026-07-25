@@ -72,6 +72,20 @@ internal fun googleFontFamilyName(font: Any): String? {
     ?.takeIf { it.isNotBlank() }
 }
 
+private val GOOGLE_FONT_IDENTITY = Regex("""GoogleFont\("([^"]+)"""")
+
+/**
+ * The GoogleFont display name embedded in a desktop face's `identity` — a vendored downloadable
+ * face is built as `Font(identity = "Font(GoogleFont(\"Orbitron\", …), …)", data = …)`, so on the
+ * desktop (Skiko) render `getIdentity()` returns that whole string. Regex the display name back out
+ * so the `compose/figma-svg` `<text>` names `Orbitron` (and `?mode=web` `@import`s it) rather than
+ * the raw `Font(GoogleFont("Orbitron", …))` blob — the desktop counterpart to
+ * [googleFontFamilyName]'s Android `getName()`. Null for any other identity (a plain file path
+ * passes through untouched).
+ */
+internal fun googleFontNameFromIdentity(identity: String): String? =
+  GOOGLE_FONT_IDENTITY.find(identity)?.groupValues?.getOrNull(1)?.takeIf { it.isNotBlank() }
+
 /** Producer for `compose/semantics`, a compact SemanticsNode projection for inspector clients. */
 object ComposeSemanticsDataProducer {
   const val KIND: String = ComposeSemanticsProduct.KIND
@@ -489,6 +503,9 @@ object ComposeSemanticsDataProducer {
         }
         .getOrNull()
         ?.takeIf { it.isNotBlank() }
+        // A vendored desktop GoogleFont face carries the `Font(GoogleFont("X", …))` label as its
+        // identity; surface the clean display name so the figma-svg names the family, not the blob.
+        ?.let { googleFontNameFromIdentity(it) ?: it }
       ?: runCatching {
           font.javaClass.methods
             .firstOrNull { it.name == "getResId" && it.parameterCount == 0 }

@@ -481,3 +481,64 @@ private fun applyRoleMetrics(style: TextStyle, spec: String?): TextStyle {
         ?: style.fontWeight,
   )
 }
+
+// --- Typography (font families) -----------------------------------------------------------------
+
+/**
+ * Knob key the theme wrappers read for the M3 [Typography] **font-family** override, keyed by role
+ * group. Complements `theme.typography` (metrics only): a font *family* — unlike a size — is a name
+ * the tier can resolve to a vendored face, so this carries the typeface the metrics knob cannot.
+ */
+const val CATALOG_FONTS_KNOB = "theme.fonts"
+
+/**
+ * Prefix marking a `theme.fonts` value as a **serialized per-role-group family map** —
+ * `families:<group>=<GoogleFont family>,…` where `<group>` ∈ [CATALOG_FONT_ROLE_GROUPS]. Each named
+ * family is resolved via [namedFontFamily] against the tier's vendored faces, so an app can brand
+ * the catalog's whole type scale (e.g. `display=Orbitron,body=Space Grotesk`) through the existing
+ * string knob with **no per-preview change and no face hardcoded here** — exactly like
+ * [CATALOG_COLORS_SCHEME_PREFIX] does for colours. A group the blob omits keeps the base typeface
+ * (the `theme.font` face); an unvendored family degrades to that same base. See
+ * [parseCatalogFontFamilies] / `catalogApplyFontFamilies`.
+ */
+const val CATALOG_FONTS_PREFIX = "families:"
+
+/**
+ * The five M3 type-role groups a [CATALOG_FONTS_PREFIX] blob keys — each covers its three sizes.
+ */
+val CATALOG_FONT_ROLE_GROUPS: List<String> = listOf("display", "headline", "title", "body", "label")
+
+/**
+ * Serialize a role-group→family map into the `theme.fonts` wire form (only the five known groups
+ * with a non-blank family are emitted, in canonical order). Empty ⇒ empty string (no override). A
+ * consumer calls this on its brand type scale's per-group faces; the metrics ride
+ * `theme.typography` separately.
+ */
+fun serializeCatalogFontFamilies(families: Map<String, String>): String {
+  val kept = CATALOG_FONT_ROLE_GROUPS.mapNotNull { g ->
+    families[g]?.trim()?.takeIf(String::isNotEmpty)?.let { g to it }
+  }
+  return if (kept.isEmpty()) ""
+  else CATALOG_FONTS_PREFIX + kept.joinToString(",") { (g, f) -> "$g=$f" }
+}
+
+/**
+ * Parse a `families:` blob ([serializeCatalogFontFamilies]) into role-group→family. A value without
+ * the [CATALOG_FONTS_PREFIX], or one carrying no recognised group, yields an empty map (⇒ no
+ * override). Unknown groups and blank families are skipped, never thrown on — the knob is
+ * query-driven, so a bad entry must degrade rather than sink the render.
+ */
+fun parseCatalogFontFamilies(value: String): Map<String, String> {
+  if (!value.startsWith(CATALOG_FONTS_PREFIX)) return emptyMap()
+  val out = LinkedHashMap<String, String>()
+  for (pair in value.removePrefix(CATALOG_FONTS_PREFIX).split(",")) {
+    val entry = pair.trim()
+    if (entry.isEmpty()) continue
+    val sep = entry.indexOf('=')
+    if (sep <= 0) continue
+    val group = entry.substring(0, sep).trim()
+    val family = entry.substring(sep + 1).trim()
+    if (group in CATALOG_FONT_ROLE_GROUPS && family.isNotEmpty()) out[group] = family
+  }
+  return out
+}

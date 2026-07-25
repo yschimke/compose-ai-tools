@@ -3,6 +3,7 @@ package com.example.designcatalogm3.shared
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 
 /**
@@ -84,5 +85,46 @@ fun catalogTypography(fontFamily: FontFamily?): Typography {
     labelLarge = base.labelLarge.copy(fontFamily = fontFamily),
     labelMedium = base.labelMedium.copy(fontFamily = fontFamily),
     labelSmall = base.labelSmall.copy(fontFamily = fontFamily),
+  )
+}
+
+/**
+ * [base] with each M3 role group's typeface swapped to the [families] map's GoogleFont family — the
+ * `theme.fonts` counterpart to [catalogTypography]'s single face. [families] is keyed by role group
+ * (`display`/`headline`/`title`/`body`/`label`, see `parseCatalogFontFamilies`); each name resolves
+ * against [named] — the tier's vendored faces (the desktop [Map] `CatalogNamedFonts`, the wasm
+ * tier's equivalent) — so `display=Orbitron,body=Space Grotesk` brands the whole scale identically
+ * everywhere. A group [families] omits keeps [base]'s face (no copy); a specified-but-unvendored
+ * family degrades to [fallback]. Overlay the `theme.typography` **metrics** on the result. Empty
+ * [families] ⇒ [base] unchanged. Pure (the [named] lookup is passed in, not read from a composition
+ * local) so it applies before the theme's `LocalNamedFonts` provider and is unit-testable.
+ */
+fun catalogApplyFontFamilies(
+  base: Typography,
+  families: Map<String, String>,
+  named: Map<String, FontFamily>,
+  fallback: FontFamily = FontFamily.SansSerif,
+): Typography {
+  if (families.isEmpty()) return base
+  fun apply(style: TextStyle, group: String): TextStyle {
+    val family = families[group]?.let { named[it] ?: fallback } ?: return style
+    return style.copy(fontFamily = family)
+  }
+  return base.copy(
+    displayLarge = apply(base.displayLarge, "display"),
+    displayMedium = apply(base.displayMedium, "display"),
+    displaySmall = apply(base.displaySmall, "display"),
+    headlineLarge = apply(base.headlineLarge, "headline"),
+    headlineMedium = apply(base.headlineMedium, "headline"),
+    headlineSmall = apply(base.headlineSmall, "headline"),
+    titleLarge = apply(base.titleLarge, "title"),
+    titleMedium = apply(base.titleMedium, "title"),
+    titleSmall = apply(base.titleSmall, "title"),
+    bodyLarge = apply(base.bodyLarge, "body"),
+    bodyMedium = apply(base.bodyMedium, "body"),
+    bodySmall = apply(base.bodySmall, "body"),
+    labelLarge = apply(base.labelLarge, "label"),
+    labelMedium = apply(base.labelMedium, "label"),
+    labelSmall = apply(base.labelSmall, "label"),
   )
 }

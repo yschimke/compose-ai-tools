@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.example.designcatalogm3.shared.CATALOG_COLORS_KNOB
+import com.example.designcatalogm3.shared.CATALOG_FONTS_KNOB
 import com.example.designcatalogm3.shared.CATALOG_FONT_GOOGLE_SANS_FLEX
 import com.example.designcatalogm3.shared.CATALOG_FONT_KNOB
 import com.example.designcatalogm3.shared.CATALOG_FONT_ROBOTO_FLEX
@@ -42,12 +43,14 @@ import com.example.designcatalogm3.shared.CATALOG_TYPOGRAPHY_KNOB
 import com.example.designcatalogm3.shared.CatalogComponent
 import com.example.designcatalogm3.shared.LocalGenericFonts
 import com.example.designcatalogm3.shared.LocalNamedFonts
+import com.example.designcatalogm3.shared.catalogApplyFontFamilies
 import com.example.designcatalogm3.shared.catalogApplyTypography
 import com.example.designcatalogm3.shared.catalogColorScheme
 import com.example.designcatalogm3.shared.catalogComponentIds
 import com.example.designcatalogm3.shared.catalogOverrideString
 import com.example.designcatalogm3.shared.catalogShapes
 import com.example.designcatalogm3.shared.catalogTypography
+import com.example.designcatalogm3.shared.parseCatalogFontFamilies
 
 /**
  * Mounts one catalog component by id inside the M3 theme, centred on the surface. `dark` flips the
@@ -121,9 +124,21 @@ fun CatalogApp(
   // font-only
   // type scale (the baked default).
   val shapes = catalogShapes(catalogOverrideString(CATALOG_SHAPES_KNOB, ""))
+  // Type scale = the `theme.font` single face, then per-role-group families from `theme.fonts`
+  // (e.g. display=Orbitron, body=Space Grotesk — resolved against the URL-loaded [namedFamilies],
+  // the same `role: "named"` faces `fonts.json` lists), then the `theme.typography` metrics
+  // overlay.
+  // Mirrors the desktop `CatalogSticker` so the live Wasm render brands identically to the baked
+  // sticker; absent the fonts knob the middle step is a no-op, so an un-overridden render is
+  // pixel-identical.
   val typography =
     catalogApplyTypography(
-      catalogTypography(resolvedFont),
+      catalogApplyFontFamilies(
+        catalogTypography(resolvedFont),
+        parseCatalogFontFamilies(catalogOverrideString(CATALOG_FONTS_KNOB, "")),
+        namedFamilies,
+        resolvedFont ?: FontFamily.SansSerif,
+      ),
       catalogOverrideString(CATALOG_TYPOGRAPHY_KNOB, ""),
     )
   // Re-point density's fontScale (preserving the real pixel density) and the layout direction, so

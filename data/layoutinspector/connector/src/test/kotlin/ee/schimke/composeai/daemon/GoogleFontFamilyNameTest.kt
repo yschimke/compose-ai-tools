@@ -41,4 +41,30 @@ class GoogleFontFamilyNameTest {
     assertNull(googleFontFamilyName(FakeGoogleFont("")))
     assertNull(googleFontFamilyName(FakeGoogleFont("   ")))
   }
+
+  @Test
+  fun extractsTheDisplayNameFromADesktopGoogleFontIdentity() {
+    // A vendored desktop face's identity is the GoogleFont label; the figma-svg must name the
+    // family
+    // ("Orbitron"), not the raw blob, so `?mode=web` can @import it.
+    assertEquals(
+      "Orbitron",
+      googleFontNameFromIdentity(
+        "Font(GoogleFont(\"Orbitron\", bestEffort=true), weight=400, style=Normal)"
+      ),
+    )
+    assertEquals(
+      "Space Grotesk",
+      googleFontNameFromIdentity(
+        "Font(GoogleFont(\"Space Grotesk\", bestEffort=true), weight=700, style=Normal)"
+      ),
+    )
+  }
+
+  @Test
+  fun nullForANonGoogleFontIdentity() {
+    // A plain desktop file path / resource identity must pass through untouched (null ⇒ keep it).
+    assertNull(googleFontNameFromIdentity("/usr/share/fonts/truetype/Roboto-Regular.ttf"))
+    assertNull(googleFontNameFromIdentity("res/font/2131296257"))
+  }
 }

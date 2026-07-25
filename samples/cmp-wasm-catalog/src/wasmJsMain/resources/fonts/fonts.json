@@ -31,6 +31,22 @@
         { "file": "LobsterTwo-Regular.ttf", "weight": 400 },
         { "file": "LobsterTwo-Bold.ttf", "weight": 700 }
       ]
+    },
+    {
+      "name": "Space Grotesk",
+      "role": "named",
+      "fonts": [
+        { "file": "space-grotesk-400.ttf", "weight": 400 },
+        { "file": "space-grotesk-700.ttf", "weight": 700 }
+      ]
+    },
+    {
+      "name": "JetBrains Mono",
+      "role": "named",
+      "fonts": [
+        { "file": "jetbrains-mono-400.ttf", "weight": 400 },
+        { "file": "jetbrains-mono-700.ttf", "weight": 700 }
+      ]
     }
   ]
 }
