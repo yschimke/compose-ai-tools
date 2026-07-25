@@ -225,3 +225,20 @@ jobs:
           MSG
             exit 1
           fi
+
+  self-test:
+    # The detector is the only thing standing between an agent identity and the
+    # permanent history, and its failure mode is silent: a matcher that quietly
+    # stops matching still exits 0 and still prints "no agent attribution
+    # found". So it gets its own tests, run on every PR and every push, driving
+    # the real scripts and both hooks end to end.
+    name: Detector self-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Run the agent-attribution self-test
+        run: scripts/test-agent-attribution.sh

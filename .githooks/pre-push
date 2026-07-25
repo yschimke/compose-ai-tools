@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# Reject a push that would put AI-agent attribution on ANY branch.
+#
+# Why this exists alongside the commit-msg hook: commit-msg only sees the
+# message of a commit being newly written. It does not see commits that were
+# amended, rebased, cherry-picked, imported from another clone, or made before
+# the hook was installed — and none of those re-run it. This hook is the
+# catch-all: it scans every commit a push would actually add to the remote, on
+# every branch, using the same detector as CI.
+#
+# Bypass for one push with `git push --no-verify` (and expect CI to catch it).
+#
+# stdin is one line per ref being pushed:
+#   <local ref> <local sha> <remote ref> <remote sha>
+
+set -uo pipefail
+
+remote_name="${1:-origin}"
+repo_root="$(git rev-parse --show-toplevel)"
+scan="$repo_root/.github/scripts/agent-attribution-scan.sh"
+
+zero="$(git hash-object --stdin </dev/null | tr '[:xdigit:]' '0')"
+
+if [ ! -x "$scan" ]; then
+  printf '\npre-push hook: cannot find %s\n' "$scan" >&2
+  printf 'The agent-attribution detector is missing. Restore it, or bypass this\n' >&2
+  printf 'push with "git push --no-verify".\n\n' >&2
+  exit 1
+fi
+
+failed=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # Deleting a remote ref pushes nothing — nothing to scan.
+  [ "$local_sha" = "$zero" ] && continue
+
+  if [ "$remote_sha" = "$zero" ]; then
+    # New branch on the remote. Scanning everything reachable from it would
+    # re-flag the whole existing history, so scan only what this branch adds
+    # that the remote does not already have somewhere.
+    #
+    # The exclusions are taken from the remote's CURRENTLY ADVERTISED heads,
+    # not from this clone's cached refs/remotes/<remote>/*. A cached ref can
+    # name a branch that has since been deleted or force-pushed by someone
+    # else; excluding it would hide exactly the commits this hook exists to
+    # find — push a new branch carrying a commit only that stale ref covered,
+    # and the scan sees an empty set and passes. git has already contacted the
+    # remote to build this stdin, so the extra round trip is against a remote
+    # known to be reachable.
+    if ! advertised="$(git ls-remote --heads "$remote_name" 2>&1)"; then
+      printf '\npre-push hook: cannot list refs on %s.\n' "$remote_name" >&2
+      printf '%s\n' "$advertised" >&2
+      printf 'Without the remote ref list the scan cannot tell which commits this\n' >&2
+      printf 'branch actually adds, so it fails closed rather than guessing.\n\n' >&2
+      failed=1
+      continue
+    fi
+
+    set -- --rev-args "$local_sha"
+    unfetched=0
+    while read -r adv_sha _adv_ref; do
+      [ -n "$adv_sha" ] || continue
+      # A head we have never fetched cannot be used as an exclusion. Counting
+      # it and scanning wider is the fail-closed direction: worst case the hook
+      # reports commits the user did not write, and `git fetch` fixes that.
+      if git cat-file -e "${adv_sha}^{commit}" 2>/dev/null; then
+        set -- "$@" "^${adv_sha}"
+      else
+        unfetched=$((unfetched + 1))
+      fi
+    done <<ADVERTISED
+$advertised
+ADVERTISED
+
+    if [ "$unfetched" -gt 0 ]; then
+      printf 'pre-push hook: %d head(s) on %s are not in this clone, so the scan\n' \
+        "$unfetched" "$remote_name" >&2
+      printf 'covers more than strictly necessary. If it reports commits you did\n' >&2
+      printf 'not write, run "git fetch %s" and push again.\n' "$remote_name" >&2
+    fi
+  else
+    set -- --range "${remote_sha}..${local_sha}"
+  fi
+
+  scan_out="$("$scan" "$@" 2>&1)"
+  scan_status=$?
+
+  if [ "$scan_status" -eq 2 ]; then
+    printf '\n%s\n' "$scan_out" >&2
+    printf 'pre-push hook: the agent-attribution detector could not run for %s.\n' \
+      "$local_ref" >&2
+    printf 'It fails closed rather than letting an unscanned push through. Try\n' >&2
+    printf '"git fetch %s" first.\n\n' "$remote_name" >&2
+    failed=1
+  elif [ "$scan_status" -ne 0 ]; then
+    printf '\n─────────────────────────────────────────────────────────────\n' >&2
+    printf 'Push rejected: %s would add AI-agent attribution to %s.\n\n' \
+      "$local_ref" "${remote_ref:-$remote_name}" >&2
+    printf '%s\n' "$scan_out" >&2
+    cat >&2 <<'MSG'
+Commits are attributed solely to the human committer.
+
+Fix the commits and push again:
+
+  # wrong author/committer identity — repoint it and re-stamp the branch
+  git config user.name  "<your name>"
+  git config user.email "<your email>"
+  git rebase --exec 'git commit --amend --no-edit --reset-author' <upstream>
+
+  # agent Co-authored-by trailer — strip it from every commit in the branch
+  git filter-branch -f --msg-filter \
+    'grep -viE "^[[:space:]]*Co-authored-by:.*(claude|codex|anthropic|openai)"' \
+    <upstream>..HEAD
+
+(Session links and "Generated with …" footers are fine — they don't claim
+authorship. An agent co-author or an agent commit identity does.)
+─────────────────────────────────────────────────────────────
+MSG
+    failed=1
+  fi
+done
+
+exit "$failed"
