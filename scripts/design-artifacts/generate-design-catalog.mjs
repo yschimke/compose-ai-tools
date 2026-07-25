@@ -633,7 +633,47 @@ const previewBase =
 const repo =
   values["source-repo"] ||
   process.env.GITHUB_REPOSITORY ||
-  "yschimke/compose-ai-tools";
+  repoFromGitRemote() ||
+  fallbackRepo();
+
+/**
+ * `<owner>/<repo>` from the checkout's `origin` remote, or null.
+ *
+ * Covers the local/manual run: CI always exports $GITHUB_REPOSITORY, but a
+ * developer or agent generating a catalog by hand from a consumer repo has
+ * neither that nor `--source-repo`, and silently inheriting compose-ai-tools
+ * bakes README/asset links that RESOLVE but point at the wrong repository —
+ * worse than a 404, because nothing looks broken.
+ *
+ * owner/repo are the last two path segments of every GitHub remote form
+ * (`git@github.com:owner/repo.git`, `https://github.com/owner/repo`), and of
+ * the proxied remotes agent sandboxes rewrite to.
+ */
+function repoFromGitRemote() {
+  try {
+    const url = execFileSync("git", ["config", "--get", "remote.origin.url"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    const match = url.replace(/\.git$/, "").match(/[:/]([^/:]+)\/([^/]+)$/);
+    return match ? `${match[1]}/${match[2]}` : null;
+  } catch {
+    // Not a git checkout, or no origin — fall through to the warned default.
+    return null;
+  }
+}
+
+/** Last resort. Warn: every link in the bundle is about to point at this repo. */
+function fallbackRepo() {
+  const fallback = "yschimke/compose-ai-tools";
+  console.warn(
+    `could not determine the source repo (no --source-repo, no ` +
+      `$GITHUB_REPOSITORY, no git origin) — defaulting to ${fallback}. Every ` +
+      `README and asset link in this bundle will point there. Pass ` +
+      `--source-repo <owner>/<repo> if that is not where you publish.`,
+  );
+  return fallback;
+}
 
 // Bundle the in-browser CMP Wasm app into the branch (out/web/wasm/) and record
 // a `webRender` descriptor in catalog.json. `compose-preview serve --catalogs`
