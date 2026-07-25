@@ -190,6 +190,16 @@ private fun perPreviewManifest(manifest: JsonObject, id: String, fullMode: Boole
     for ((key, value) in manifest) {
       when (key) {
         "previewIds" -> put(key, buildJsonArray { add(JsonPrimitive(id)) })
+        // Keep the raw-id list parallel to previewIds: subset to this preview's raw id (same
+        // index in the source lists), falling back to the bundle id when the source bundle
+        // predates the field or the lists disagree.
+        "rawPreviewIds" -> {
+          val bundleIds =
+            manifest["previewIds"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList()
+          val raws = value.jsonArray.map { it.jsonPrimitive.content }
+          val raw = bundleIds.indexOf(id).takeIf { it in raws.indices }?.let { raws[it] } ?: id
+          put(key, buildJsonArray { add(JsonPrimitive(raw)) })
+        }
         "coverPreviewId" -> put(key, JsonPrimitive(id))
         // View-only carries no re-render classpath, so record that honestly.
         "classpath" -> put(key, if (fullMode) value else JsonArray(emptyList()))

@@ -523,12 +523,24 @@ private class PackSubcommand(private val args: List<String>) {
   ): String? {
     val previewIds = meta.manifest.previewIds
     if (previewIds.isEmpty()) return null
+    // The manifest's previewIds carry the sanitised in-bundle form; the daemon keys renders on the
+    // RAW discovery id. Fetch by raw (rawPreviewIds, parallel to previewIds — falling back to the
+    // bundle form for pre-field bundles, correct when nothing needed sanitising) and re-key each
+    // returned map to the bundle form before injecting, so `previews/<id>.semantics.json` matches
+    // the entry names readers reconstruct.
+    val rawIds =
+      if (meta.manifest.rawPreviewIds.size == previewIds.size) meta.manifest.rawPreviewIds
+      else previewIds
+    val bundleIdByRaw = rawIds.zip(previewIds).toMap()
+    fun <V> Map<String, V>.keyedByBundleId(): Map<String, V> = entries.associate { (raw, v) ->
+      (bundleIdByRaw[raw] ?: raw) to v
+    }
     val fetcher = DaemonSemanticsFetcher(onLog = { System.err.println("[daemon semantics] $it") })
     val outcome =
       fetcher.fetch(
         projectDir = target.projectDir,
         moduleName = target.gradlePath,
-        previewIds = previewIds,
+        previewIds = rawIds,
       )
     when (outcome) {
       is DaemonSemanticsFetcher.Outcome.Ok -> {
@@ -539,23 +551,25 @@ private class PackSubcommand(private val args: List<String>) {
           )
           return null
         }
-        val written = injectSemanticsIntoBundle(bundleFile, outcome.semanticsById)
+        val written = injectSemanticsIntoBundle(bundleFile, outcome.semanticsById.keyedByBundleId())
         val missing = previewIds.size - written
         // The layout-inspector tree rides alongside the semantics blob (best-effort): a preview
         // that produced a tree gets `previews/<id>.layout.json` so a consumer can build slot-level
         // redlines/wireframes. Injected after semantics so its byte count is reflected too.
-        val layoutWritten = injectLayoutIntoBundle(bundleFile, outcome.layoutById)
+        val layoutWritten = injectLayoutIntoBundle(bundleFile, outcome.layoutById.keyedByBundleId())
         // The fonts/used record rides the same render (best-effort, Android daemon only): carried
         // so the design-catalog export can generate the Wasm tier's fonts.json from actual usage.
-        val fontsWritten = injectFontsIntoBundle(bundleFile, outcome.fontsById)
+        val fontsWritten = injectFontsIntoBundle(bundleFile, outcome.fontsById.keyedByBundleId())
         // The layered `compose/figma-svg` export rides the same render (best-effort): carried so
         // the
         // design-catalog export can ship an editable vector per sticker beside the raster PNG.
-        val figmaSvgWritten = injectFigmaSvgIntoBundle(bundleFile, outcome.figmaSvgById)
+        val figmaSvgWritten =
+          injectFigmaSvgIntoBundle(bundleFile, outcome.figmaSvgById.keyedByBundleId())
         // A hybrid figma-svg references `figma-raster/<node>.png` crops; carry them verbatim as
         // `previews/<id>.figma-raster/<node>.png` so the SVG's `<image>` layers resolve once the
         // export copies the SVG onto the delivery branch. Empty for the common vector-only case.
-        val figmaRasterWritten = injectFigmaRasterIntoBundle(bundleFile, outcome.figmaRasterById)
+        val figmaRasterWritten =
+          injectFigmaRasterIntoBundle(bundleFile, outcome.figmaRasterById.keyedByBundleId())
         val semanticsLine =
           "  semantics:     $written / ${previewIds.size} preview(s) carried as " +
             "previews/<id>$BUNDLE_SEMANTICS_SUFFIX" +
@@ -1618,6 +1632,11 @@ internal object BundleReader {
     val backend: String,
     val previewIds: List<String>,
     val coverPreviewId: String?,
+    /**
+     * Raw discovery ids parallel to [previewIds] (schema ≥ the sanitised-entry-name change). Empty
+     * on older bundles — fall back to [previewIds], correct whenever no sanitising happened.
+     */
+    val rawPreviewIds: List<String> = emptyList(),
     val classpath: List<ClasspathEntry>,
     val modulePath: String,
     val producedBy: String,
