@@ -10,6 +10,7 @@ import ee.schimke.composeai.daemonlaunch.*
 import ee.schimke.composeai.discovery.*
 import org.gradle.api.JavaVersion
 import org.gradle.api.Project
+import org.gradle.api.artifacts.Configuration
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.attributes.AttributeContainer
 import org.gradle.api.provider.Property
@@ -182,6 +183,80 @@ internal object AndroidPreviewSupport {
         else -> return null
       }
     return name.removeSuffix(replacementSuffix) + "-android"
+  }
+
+  /**
+   * Applies the resolution rules every render-graph configuration needs, to [configuration].
+   *
+   * Shared between `composePreviewAndroidRenderer<Variant>` and
+   * `composePreviewAndroidDaemon<Variant>`. The daemon config `extendsFrom` the renderer config,
+   * but `extendsFrom` inherits *dependencies* only — `resolutionStrategy` is per-configuration — so
+   * without this helper the two graphs would silently drift apart and the render JVM and the daemon
+   * JVM would load different versions of the same module for the same previews.
+   *
+   * Rule 1 — KMP-Android sibling substitution. Force AndroidX / Compose Multiplatform KMP-published
+   * modules (`-desktop` / `-jvmstubs` siblings of the same coordinate) to their `-android` sibling.
+   * Kotlin's `org.jetbrains.kotlin.platform.type` attribute (`androidJvm` vs `jvm`) is the official
+   * disambiguator, but its compatibility/disambiguation rules are only registered when the Kotlin
+   * plugin is applied — consumers that build Kotlin via AGP alone (e.g. WearTilesKotlin: tile-only
+   * app, only `kotlin.compose` applied through `compose-compiler`, no `kotlin.android` anywhere)
+   * never pick `androidJvm` and Gradle then selects the desktop variant. The desktop
+   * `ViewModelProvider` is the KMP rewrite (only `<init>(ViewModelProviderImpl)` survives — the
+   * legacy `(ViewModelStoreOwner, Factory)` constructor is gone), while
+   * `lifecycle-viewmodel-savedstate-android:2.8.7`'s `getSavedStateHandlesVM` bytecode at line 107
+   * still calls that legacy constructor. Result: `NoSuchMethodError: 'void
+   * ViewModelProvider.<init>(ViewModelStoreOwner, ViewModelProvider$Factory)'` the first time
+   * `createAndroidComposeRule<ComponentActivity>()` launches the host activity, in the
+   * `ReportFragment` → `LifecycleRegistry` → `SavedStateHandleAttacher.onStateChanged` chain.
+   *
+   * Substitute by coordinate rather than attribute: setting `platform.type=androidJvm` on the
+   * config breaks resolution of pure-JVM artifacts like `kotlin-stdlib` (no `androidJvm` variant)
+   * because the compat rule isn't installed. Scoped to the render-graph configs only — consumer
+   * test runs are untouched. Re-using `requested.version` keeps it future-proof: whatever version
+   * Gradle picks for the `-desktop`/`-jvmstubs` sibling is what gets re-routed to `-android`, so
+   * the rule doesn't pin AndroidX to a stale floor. Scoped to `androidx.*` and
+   * `org.jetbrains.compose.*` because those KMP module families publish matching `-android`
+   * siblings; other JVM artifacts (kotlinx-coroutines, okio, kotlin-stdlib) are genuinely JVM-only
+   * at the published name and must not be rewritten.
+   *
+   * Rule 2 — Hamcrest. Espresso (transitively pulled by `androidx.compose.ui:ui-test-junit4`) was
+   * compiled against Hamcrest 1.3, whose `Matchers.java:33` invokes
+   * `org.hamcrest.core.AllOf.allOf(Matcher, Matcher)` — an explicit 2-arg overload that 2.x removed
+   * in favour of varargs. When a consumer adds `org.hamcrest:hamcrest:2.x` (e.g. via
+   * `junit-jupiter:5.x`), the merged 2.x jar coexists with the legacy split `hamcrest-core` /
+   * `hamcrest-library` 1.3 jars — different module coordinates, so Gradle's conflict resolution
+   * doesn't dedup them. Whichever class wins for `AllOf` vs `Matchers` is classpath-order
+   * dependent; in the failing case `Matchers` comes from 1.3 and calls into 2.x's `AllOf` —
+   * `NoSuchMethodError` at `Espresso.<clinit>`, triggered the first time `runUntilIdle` walks
+   * through `EspressoLink`. Substituting the merged artifact back to `hamcrest-core:1.3` on the
+   * render graph settles it. Note this is a *split-family* conflict, the same shape as
+   * `org.bouncycastle:bcprov`/`bcutil`/`bcpkix` — Gradle can only align coordinates it knows are
+   * the same module, so families published under several names need an explicit rule.
+   */
+  internal fun applyRenderGraphResolutionRules(configuration: Configuration) {
+    configuration.resolutionStrategy.eachDependency {
+      val req = requested
+      val targetName = kmpAndroidSiblingName(req.group, req.name)
+      if (targetName != null) {
+        useTarget(mapOf("group" to req.group, "name" to targetName, "version" to req.version))
+        because(
+          "Gradle resolved a desktop/JVM-stub KMP sibling on a config without the " +
+            "Kotlin-plugin platform-type compat rule. Force the Android sibling so the " +
+            "renderer's bytecode links against the AGP-flavoured class shapes (e.g. the " +
+            "legacy `ViewModelProvider(ViewModelStoreOwner, Factory)` constructor that " +
+            "lifecycle-viewmodel-savedstate-android still calls but the desktop variant " +
+            "removed in the KMP rewrite)."
+        )
+      }
+    }
+    configuration.resolutionStrategy.eachDependency {
+      if (requested.group == "org.hamcrest" && requested.name == "hamcrest") {
+        useTarget("org.hamcrest:hamcrest-core:1.3")
+        because(
+          "Espresso bytecode needs Hamcrest 1.3's AllOf.allOf(Matcher,Matcher); 2.x removed it"
+        )
+      }
+    }
   }
 
   /**
@@ -1339,84 +1414,21 @@ internal object AndroidPreviewSupport {
           copyAttributes(attributes, testConfig.attributes)
           extendsFrom(testConfig)
         }
-        // Force AndroidX / Compose Multiplatform KMP-published modules
-        // (`-android` / `-desktop` / `-jvmstubs` siblings of the same
-        // coordinate) to their Android sibling on the
-        // renderer test JVM. Kotlin's `org.jetbrains.kotlin.platform.type`
-        // attribute (`androidJvm` vs `jvm`) is the official disambiguator,
-        // but its compatibility/disambiguation rules are only registered when
-        // the Kotlin plugin is applied — consumers that build Kotlin via AGP
-        // alone (e.g. WearTilesKotlin: tile-only app, only `kotlin.compose`
-        // applied through `compose-compiler`, no `kotlin.android` anywhere)
-        // never pick `androidJvm` and Gradle then selects the desktop variant.
-        // The desktop `ViewModelProvider` is the KMP rewrite (only
-        // `<init>(ViewModelProviderImpl)` survives — the legacy
-        // `(ViewModelStoreOwner, Factory)` constructor is gone), while
-        // `lifecycle-viewmodel-savedstate-android:2.8.7`'s
-        // `getSavedStateHandlesVM` bytecode at line 107 still calls that
-        // legacy constructor. Result: `NoSuchMethodError: 'void
-        // ViewModelProvider.<init>(ViewModelStoreOwner, ViewModelProvider$Factory)'`
-        // the first time `createAndroidComposeRule<ComponentActivity>()`
-        // launches the host activity, in the
-        // `ReportFragment` → `LifecycleRegistry` →
-        // `SavedStateHandleAttacher.onStateChanged` chain.
-        //
-        // Substitute by coordinate rather than attribute: setting
-        // `platform.type=androidJvm` on the config breaks resolution of
-        // pure-jvm artifacts like `kotlin-stdlib` (no `androidJvm` variant)
-        // because the compat rule isn't installed. Substitution is scoped to
-        // the rendererConfig only — consumer test runs are untouched. Re-using
-        // `requested.version` keeps us future-proof: any version Gradle picks
-        // for the `-desktop`/`-jvmstubs` sibling is what we re-route to the
-        // `-android` sibling, so this rule doesn't pin AndroidX to a stale
-        // floor.
-        //
-        // Scoped to `androidx.*` and `org.jetbrains.compose.*` because those
-        // KMP module families publish matching `-android` siblings for their
-        // `-desktop` / `-jvmstubs` artifacts. Other JVM artifacts
-        // (kotlinx-coroutines, okio, kotlin-stdlib) are genuinely JVM-only at
-        // the published name and must not be rewritten.
-        resolutionStrategy.eachDependency {
-          val req = requested
-          val targetName = kmpAndroidSiblingName(req.group, req.name)
-          if (targetName != null) {
-            useTarget(mapOf("group" to req.group, "name" to targetName, "version" to req.version))
-            because(
-              "Gradle resolved a desktop/JVM-stub KMP sibling on a config without the " +
-                "Kotlin-plugin platform-type compat rule. Force the Android sibling so the " +
-                "renderer's bytecode links against the AGP-flavoured class shapes (e.g. the " +
-                "legacy `ViewModelProvider(ViewModelStoreOwner, Factory)` constructor that " +
-                "lifecycle-viewmodel-savedstate-android still calls but the desktop variant " +
-                "removed in the KMP rewrite)."
-            )
-          }
-        }
-        // Espresso (transitively pulled by `androidx.compose.ui:ui-test-junit4`) was
-        // compiled against Hamcrest 1.3, whose `Matchers.java:33` invokes
-        // `org.hamcrest.core.AllOf.allOf(Matcher, Matcher)` — an explicit 2-arg
-        // overload that 2.x removed in favour of varargs. When a consumer adds
-        // `org.hamcrest:hamcrest:2.x` (e.g. via `junit-jupiter:5.x`), the merged
-        // 2.x jar coexists with the legacy split `hamcrest-core` / `hamcrest-library`
-        // 1.3 jars (different module coordinates → no Gradle dedup). Whichever
-        // class wins for `AllOf` vs `Matchers` is classpath-order-dependent; in
-        // the failing case `Matchers` comes from 1.3 and calls into 2.x's
-        // `AllOf` — `NoSuchMethodError` at `Espresso.<clinit>` triggered the
-        // first time `runUntilIdle` walks through `EspressoLink`.
-        //
-        // Substituting the merged artifact back to `hamcrest-core:1.3` on
-        // *this* configuration is enough: `resolvedClasspath` puts rendererConfig's
-        // files ahead of the AGP test classpath in the composePreviewRender JVM
-        // classpath (see comment above `resolvedClasspath` below), so Hamcrest
-        // 1.3 wins class lookup even if the consumer's `${variant}UnitTestRuntimeClasspath`
-        // still resolves 2.x for their own tests.
-        resolutionStrategy.eachDependency {
-          if (requested.group == "org.hamcrest" && requested.name == "hamcrest") {
-            useTarget("org.hamcrest:hamcrest-core:1.3")
-            because(
-              "Espresso bytecode needs Hamcrest 1.3's AllOf.allOf(Matcher,Matcher); 2.x removed it"
-            )
-          }
-        }
+        // …and the screenshotTest source set's runtime classpath, when Google's screenshot plugin
+        // is applied. `screenshotTestImplementation(...)` deps are invisible to `testConfig`, so
+        // previews under `src/screenshotTest/` need them — but resolving that configuration
+        // separately and concatenating it is the same mistake as the unit-test graph: a module it
+        // upgrades lands next to the renderer graph's copy at a different version. Folding it in
+        // here keeps one graph. `extendsFrom` only contributes dependencies; they resolve under
+        // THIS configuration's (unit-test-flavoured) attributes, which is what the render JVM
+        // wants.
+        screenshotTestRuntimeConfig?.let { extendsFrom(it) }
+        // The KMP-Android sibling substitution and the Hamcrest rule — see
+        // [applyRenderGraphResolutionRules] for why each exists and what breaks without it. They
+        // live in a shared helper because `composePreviewAndroidDaemon$capVariant` extends this
+        // configuration and needs the identical graph: `extendsFrom` inherits dependencies but
+        // NOT `resolutionStrategy`, so the rules have to be applied to each config by hand.
+        applyRenderGraphResolutionRules(this)
       }
 
     if (useLocalRenderer) {
@@ -1512,8 +1524,21 @@ internal object AndroidPreviewSupport {
         isCanBeConsumed = false
         if (testConfig != null) {
           copyAttributes(attributes, testConfig.attributes)
-          extendsFrom(testConfig)
         }
+        // `extendsFrom(rendererConfig)` (which itself extends `testConfig`) makes this a strict
+        // superset of the render graph *by construction*, resolved in ONE pass. The daemon JVM
+        // classpath used to be `daemonRendererConfig ++ rendererConfig ++ testConfig ++ AGP's
+        // test classpath` — four independent resolutions concatenated, so a module any one of
+        // them upgraded appeared several times at several versions. That's why the BouncyCastle
+        // failure (homeassistant-remotecompose#495) hit a11y previews specifically: a11y renders
+        // run through the daemon, which stacked the most graphs.
+        extendsFrom(rendererConfig)
+        // `extendsFrom` inherits DEPENDENCIES, not `resolutionStrategy` — so the KMP-Android
+        // sibling substitution and the Hamcrest rule have to be applied here as well, or the
+        // daemon resolves `-desktop` KMP siblings and Hamcrest 2.x while the render task resolves
+        // the Android siblings and 1.3. Two JVMs rendering the same previews off different graphs
+        // is precisely the divergence this change exists to remove.
+        applyRenderGraphResolutionRules(this)
       }
 
     val daemonRendererProjectDir = project.rootDir.resolve("daemon/android")
@@ -1673,6 +1698,42 @@ internal object AndroidPreviewSupport {
     // (they need `findByName("test${capVariant}UnitTest")` which only resolves
     // late).
     val bootClasspathFallback = AndroidPreviewClasspath.buildBootClasspathFallback(project)
+    // Escape hatch back to the pre-#2731 behaviour, where the consumer's separately-resolved
+    // unit-test graph was concatenated on top of the renderer graph. That concatenation is what
+    // put two versions of one module in front of the render classloader (see
+    // [RenderClasspathDuplicates]); the flag exists only so a consumer who turns out to depend on
+    // a testConfig-only artifact has a one-line unblock while we fix the real gap.
+    val legacyClasspathUnion =
+      project.providers.gradleProperty("composePreview.legacyClasspathUnion").orNull == "true"
+    // warn (default) | fail | off — see [RenderClasspathDuplicates]. Read once at configuration
+    // time so the render task's doFirst closure captures a plain String (configuration-cache safe;
+    // the task action must never touch `project.*`).
+    val classpathDuplicatesMode =
+      project.providers
+        .gradleProperty("composePreview.classpathDuplicates")
+        .orNull
+        ?.lowercase()
+        ?.takeIf {
+          it in
+            setOf(
+              RenderClasspathDuplicates.MODE_WARN,
+              RenderClasspathDuplicates.MODE_FAIL,
+              RenderClasspathDuplicates.MODE_OFF,
+            )
+        } ?: RenderClasspathDuplicates.MODE_WARN
+    // Exact file → `group:name:version` map for the duplicate guard, covering every configuration
+    // that can put a module artifact on a render classpath. Lazy: nothing resolves here.
+    val renderArtifactCoordinates =
+      AndroidPreviewClasspath.buildArtifactCoordinates(
+        project = project,
+        configurations =
+          listOfNotNull(
+            rendererConfig,
+            daemonRendererConfig,
+            testConfig,
+            screenshotTestRuntimeConfig,
+          ),
+      )
     val resolvedClasspath =
       AndroidPreviewClasspath.buildTestClasspath(
         project = project,
@@ -1685,6 +1746,7 @@ internal object AndroidPreviewSupport {
         screenshotTestRuntimeConfig = screenshotTestRuntimeConfig,
         unitTestConfigDir = unitTestConfigDir,
         robolectricPropertiesDir = generateRobolectricPropertiesTask.flatMap { it.outputDir },
+        legacyClasspathUnion = legacyClasspathUnion,
       )
 
     val manifestFile = previewOutputDir.map { it.file("previews.json").asFile.absolutePath }
@@ -1854,13 +1916,21 @@ internal object AndroidPreviewSupport {
         // which is added to `debugUnitTestRuntimeClasspath` as a raw file
         // dep without the `artifactType=jar` attribute, so our
         // attribute-filtered `artifactView` above silently drops it).
-        // Ordering is load-bearing — putting it last means our renderer's
-        // pinned versions still win classload lookups in the earlier
-        // classpath entries. No-op on applications, since
-        // `process${Cap}Resources` puts the merged R.jar on the main
-        // runtime classpath where our existing `artifactView` already
-        // picks it up. See issue #136.
-        val agpTestClasspath = agpTestTask?.classpath ?: project.files()
+        // No-op on applications, since `process${Cap}Resources` puts the
+        // merged R.jar on the main runtime classpath where our existing
+        // `artifactView` already picks it up. See issue #136.
+        //
+        // Only those AGP-only extras are taken: `buildAgpClasspathExtras` subtracts the module
+        // artifacts, which the renderer graph already supplies at coherent versions. Appending
+        // them raw is what produced two-versions-of-one-module classpaths (issue #2731 /
+        // homeassistant-remotecompose#495).
+        val agpTestClasspath =
+          AndroidPreviewClasspath.buildAgpClasspathExtras(
+            project = project,
+            agpTestClasspath = agpTestTask?.classpath ?: project.files(),
+            testConfig = testConfig,
+            legacyClasspathUnion = legacyClasspathUnion,
+          )
         classpath =
           if (compileShardsTask != null) {
             resolvedClasspath +
@@ -2003,7 +2073,17 @@ internal object AndroidPreviewSupport {
         // compileSdk / unresolved SDK location). doFirst runs in the Gradle
         // process at task-execution time, so `classpath.files` is fully
         // resolved by the time we inspect it.
-        doFirst { AndroidPreviewClasspath.validateApplicationOnClasspath(classpath.files) }
+        doFirst {
+          AndroidPreviewClasspath.validateApplicationOnClasspath(classpath.files)
+          // Backstop for the duplicate-jar failure mode (see [RenderClasspathDuplicates]).
+          // Warns by default; `-PcomposePreview.classpathDuplicates=fail` makes it an error.
+          RenderClasspathDuplicates.check(
+            this,
+            classpath.files,
+            classpathDuplicatesMode,
+            renderArtifactCoordinates.get(),
+          )
+        }
 
         dependsOn(discoverTask)
         dependsOn(generateRobolectricPropertiesTask)
@@ -2075,7 +2155,15 @@ internal object AndroidPreviewSupport {
         description = "Render Android XML resource previews via Robolectric"
         val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
         testClassesDirs = rendererClassDirs + (agpTestTask?.testClassesDirs ?: project.files())
-        val agpTestClasspath = agpTestTask?.classpath ?: project.files()
+        // AGP-only extras (unit-test merged R.jar, generated dirs); the module artifacts come
+        // from the single renderer graph. Same rationale as composePreviewRender above.
+        val agpTestClasspath =
+          AndroidPreviewClasspath.buildAgpClasspathExtras(
+            project = project,
+            agpTestClasspath = agpTestTask?.classpath ?: project.files(),
+            testConfig = testConfig,
+            legacyClasspathUnion = legacyClasspathUnion,
+          )
         classpath =
           resolvedClasspath + (agpTestTask?.testClassesDirs ?: project.files()) + agpTestClasspath
         include("**/ResourcePreviewRenderTest.class")
@@ -2097,7 +2185,17 @@ internal object AndroidPreviewSupport {
         // Same #1243 guard as composePreviewRender above — the resource render task
         // boots Robolectric through the identical classpath and hits the same
         // `Config.<clinit>` -> `Application.class` resolution at runner init.
-        doFirst { AndroidPreviewClasspath.validateApplicationOnClasspath(classpath.files) }
+        doFirst {
+          AndroidPreviewClasspath.validateApplicationOnClasspath(classpath.files)
+          // Backstop for the duplicate-jar failure mode (see [RenderClasspathDuplicates]).
+          // Warns by default; `-PcomposePreview.classpathDuplicates=fail` makes it an error.
+          RenderClasspathDuplicates.check(
+            this,
+            classpath.files,
+            classpathDuplicatesMode,
+            renderArtifactCoordinates.get(),
+          )
+        }
 
         dependsOn("composePreviewDiscoverAndroidResources")
         dependsOn(generateRobolectricPropertiesTask)
@@ -2129,7 +2227,15 @@ internal object AndroidPreviewSupport {
         description = "Render XR subspace previews to scene.json via Robolectric"
         val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
         testClassesDirs = xrRendererClassDirs + (agpTestTask?.testClassesDirs ?: project.files())
-        val agpTestClasspath = agpTestTask?.classpath ?: project.files()
+        // AGP-only extras (unit-test merged R.jar, generated dirs); the module artifacts come
+        // from the single renderer graph. Same rationale as composePreviewRender above.
+        val agpTestClasspath =
+          AndroidPreviewClasspath.buildAgpClasspathExtras(
+            project = project,
+            agpTestClasspath = agpTestTask?.classpath ?: project.files(),
+            testConfig = testConfig,
+            legacyClasspathUnion = legacyClasspathUnion,
+          )
         classpath =
           (resolvedClasspath +
               xrRendererClassDirs +
@@ -2180,7 +2286,17 @@ internal object AndroidPreviewSupport {
 
         // Same #1243 guard as composePreviewRender — boots Robolectric through the same classpath
         // and hits the same `Config.<clinit>` -> `Application.class` resolution at runner init.
-        doFirst { AndroidPreviewClasspath.validateApplicationOnClasspath(classpath.files) }
+        doFirst {
+          AndroidPreviewClasspath.validateApplicationOnClasspath(classpath.files)
+          // Backstop for the duplicate-jar failure mode (see [RenderClasspathDuplicates]).
+          // Warns by default; `-PcomposePreview.classpathDuplicates=fail` makes it an error.
+          RenderClasspathDuplicates.check(
+            this,
+            classpath.files,
+            classpathDuplicatesMode,
+            renderArtifactCoordinates.get(),
+          )
+        }
 
         dependsOn(discoverTask)
         dependsOn(generateRobolectricPropertiesTask)
@@ -2578,22 +2694,42 @@ internal object AndroidPreviewSupport {
       // built classes JAR, `jar` would be a plain Kotlin JAR if Stream
       // B ever splits the module. Same defensive pair as
       // AndroidPreviewClasspath uses for testConfig.
+      // One graph, not three. `daemonRendererConfig` extends `rendererConfig` (which extends
+      // `testConfig`), so a single resolution of it covers the daemon module, the renderer and
+      // the consumer's test-runtime dependencies with exactly one version per module.
+      // `buildTestClasspath` is therefore given the DAEMON config as its module-artifact source —
+      // the non-module entries it adds (Robolectric properties dir, renderer class dirs, the
+      // consumer's own class dirs, the unit-test config dir, the SDK boot classpath) are
+      // identical to the render task's.
+      //
+      // Before: `daemonRendererConfig ++ rendererConfig ++ testConfig ++ AGP's test classpath`,
+      // four independent resolutions stacked in front of one classloader. Only the AGP-only
+      // extras (unit-test merged R.jar, generated dirs) are still appended, via
+      // [AndroidPreviewClasspath.buildAgpClasspathExtras].
       this.classpath.from(
-        daemonRendererConfig.incoming
-          .artifactView { attributes.attribute(artifactType, "jar") }
-          .files
+        AndroidPreviewClasspath.buildTestClasspath(
+          project = project,
+          bootClasspath = bootClasspath,
+          bootClasspathFallback = bootClasspathFallback,
+          rendererConfig = daemonRendererConfig,
+          rendererClassDirs = rendererClassDirs,
+          sourceClassDirs = sourceClassDirs,
+          testConfig = testConfig,
+          screenshotTestRuntimeConfig = screenshotTestRuntimeConfig,
+          unitTestConfigDir = unitTestConfigDir,
+          robolectricPropertiesDir = generateRobolectricPropertiesTask.flatMap { it.outputDir },
+          legacyClasspathUnion = legacyClasspathUnion,
+        )
       )
-      this.classpath.from(
-        daemonRendererConfig.incoming
-          .artifactView { attributes.attribute(artifactType, "android-classes") }
-          .files
-      )
-      // Same FileCollection the composePreviewRender `Test` task assembles, plus
-      // the AGP unit-test task's classpath (R.jar etc.) appended at the
-      // tail — see line ~764 for the rationale.
-      this.classpath.from(resolvedClasspath)
       this.classpath.from(agpTestTask?.testClassesDirs ?: project.files())
-      this.classpath.from(agpTestTask?.classpath ?: project.files())
+      this.classpath.from(
+        AndroidPreviewClasspath.buildAgpClasspathExtras(
+          project = project,
+          agpTestClasspath = agpTestTask?.classpath ?: project.files(),
+          testConfig = testConfig,
+          legacyClasspathUnion = legacyClasspathUnion,
+        )
+      )
       // Static JVM open flags from the shared helper, plus the
       // daemon-specific heap ceiling. AGP test task's own jvmArgs are
       // intentionally NOT inherited here — they're test-runner specific
