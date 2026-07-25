@@ -17,6 +17,7 @@ import { WidthModifier, HeightModifier, PaddingModifier,
 import { LayoutComputeOperation } from './modifiers/LayoutComputeOperation';
 import { LayoutComponentContent } from './LayoutComponentContent';
 import { CanvasContent } from './CanvasContent';
+import { CanvasOperations } from './CanvasOperations';
 import { ComponentValue } from '../../operations/ComponentValue';
 import { TouchExpression } from '../../operations/TouchExpression';
 import type { ComponentMeasure } from './measure/ComponentMeasure';
@@ -465,14 +466,28 @@ export class LayoutComponent extends Component {
         // Translate by total padding for content
         paintContext.matrixTranslate(this.mPaddingLeft, this.mPaddingTop);
 
-        // Paint content operations (non-layout draw ops)
+        // Paint content operations in wire order (preserving the document's
+        // draw/state sequencing). A `CanvasOperations` block is a
+        // `Modifier.drawWithContent` decoration (e.g. a Material3 button/card
+        // fill + outline) whose path geometry is bound from the component's
+        // measured WIDTH/HEIGHT: it must draw at the component's *full* padded
+        // bounds, so temporarily undo the padding inset around just that op —
+        // otherwise the fill is shifted into the content region and the leading
+        // clip crops its top/left. Every other content op stays padding-inset.
         for (const op of this.mContentOps) {
+            const isDecoration = op instanceof CanvasOperations;
+            if (isDecoration) {
+                paintContext.matrixTranslate(-this.mPaddingLeft, -this.mPaddingTop);
+            }
             context.incrementOpCount();
             if (op.isDirty() && typeof (op as any).updateVariables === 'function') {
                 op.markNotDirty();
                 (op as any).updateVariables(context);
             }
             op.apply(context);
+            if (isDecoration) {
+                paintContext.matrixTranslate(this.mPaddingLeft, this.mPaddingTop);
+            }
         }
 
         // Paint children sorted by z-index
