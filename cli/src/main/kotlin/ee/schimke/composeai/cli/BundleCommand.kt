@@ -1422,17 +1422,31 @@ internal fun injectFigmaSvgIntoBundle(
  * href="figma-raster/<node>.png">` layers resolve after the export carries them. Same in-place,
  * idempotent, byte-stable contract as the other injectors. Returns the number of crops written
  * across all previews.
+ *
+ * Each crop is bounded to [maxEdgePx] on its longest edge on the way in. Crops arrive at device
+ * resolution, and the only consumer — the serve host inlining them into a self-contained figma-svg
+ * — has always downsampled to exactly this bound before serving them, so the extra pixels were
+ * carried across the network and then discarded. They are not free: a handful of full-screen photo
+ * crops pushed Jetchat's live bundle to 27MB, past the serve host's 25MiB per-file fetch cap, and
+ * the catalog silently degraded to baked PNGs. Pass `Int.MAX_VALUE` to store crops verbatim.
+ *
+ * Byte-stability is preserved: [downscaleRaster] returns the original bytes unchanged for a crop
+ * already within the bound (the common case — component-sized crops), for one that fails to decode,
+ * and for one whose re-encode wouldn't actually shrink it. So re-packing an already-bounded bundle
+ * writes identical entries.
  */
 internal fun injectFigmaRasterIntoBundle(
   bundleFile: File,
   figmaRasterById: Map<String, Map<String, ByteArray>>,
   fileSystem: FileSystem = SystemFileSystem,
+  maxEdgePx: Int = MAX_FIGMA_RASTER_EDGE_PX,
 ): Int {
   val entries =
     figmaRasterById.entries
       .flatMap { (id, crops) ->
         crops.map { (name, bytes) ->
-          "$BUNDLE_PREVIEWS_DIR/$id$BUNDLE_FIGMA_RASTER_DIR_SUFFIX/$name" to bytes
+          "$BUNDLE_PREVIEWS_DIR/$id$BUNDLE_FIGMA_RASTER_DIR_SUFFIX/$name" to
+            downscaleRaster(bytes, maxEdgePx)
         }
       }
       .toMap()

@@ -36,6 +36,26 @@ class BundleSemanticsInjectTest {
     return baos.toByteArray()
   }
 
+  /**
+   * A [w]x[h] PNG of deterministic pseudo-random pixels. Flat-colour images compress to almost
+   * nothing, so they can't distinguish "bounded the crop" from "PNG is good at solid fills" — noise
+   * stands in for the photographic content that makes real crops expensive. Seeded from the
+   * coordinates, so the bytes are identical run to run.
+   */
+  private fun noisyPng(w: Int, h: Int): ByteArray {
+    val img = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+    var state = 0x9E3779B9.toInt()
+    for (y in 0 until h) {
+      for (x in 0 until w) {
+        state = state * 1664525 + 1013904223
+        img.setRGB(x, y, state ushr 8 and 0xFFFFFF)
+      }
+    }
+    val baos = ByteArrayOutputStream()
+    ImageIO.write(img, "png", baos)
+    return baos.toByteArray()
+  }
+
   private fun polyglot(cover: ByteArray, entries: Map<String, ByteArray>): File {
     val zip = ByteArrayOutputStream()
     ZipOutputStream(zip).use { z ->
@@ -225,6 +245,72 @@ class BundleSemanticsInjectTest {
     assertEquals(crop.toList(), names.getValue("previews/a.figma-raster/n1.png").toList())
     // SVG untouched.
     assertTrue("previews/a.figma.svg" in names.keys)
+  }
+
+  @Test
+  fun `an oversized figma-raster crop is bounded on the way into the bundle`() {
+    val file =
+      polyglot(
+        png(4, 8),
+        linkedMapOf("bundle.json" to "{}".toByteArray(), "previews/a.png" to png()),
+      )
+
+    // A device-resolution crop: 2048x1024 of incompressible noise, standing in for the full-screen
+    // photo regions that pushed a real catalog's bundle past the serve host's per-file fetch cap.
+    val crop = noisyPng(2048, 1024)
+    assertEquals(1, injectFigmaRasterIntoBundle(file, mapOf("a" to linkedMapOf("n1.png" to crop))))
+
+    val stored =
+      entries(BundleReader.extractZipBytes(file)).getValue("previews/a.figma-raster/n1.png")
+    val decoded = ImageIO.read(ByteArrayInputStream(stored))
+    assertEquals(1024, decoded.width, "longest edge bounded at MAX_FIGMA_RASTER_EDGE_PX")
+    assertEquals(512, decoded.height, "aspect ratio preserved")
+    assertTrue(
+      stored.size < crop.size,
+      "bounded crop should be smaller than the ${crop.size}-byte original, was ${stored.size}",
+    )
+  }
+
+  @Test
+  fun `a figma-raster crop within the bound is stored byte-for-byte`() {
+    val file =
+      polyglot(
+        png(4, 8),
+        linkedMapOf("bundle.json" to "{}".toByteArray(), "previews/a.png" to png()),
+      )
+
+    // Component-sized crops are the common case and must not be re-encoded: `bundle pack` is
+    // byte-stable, so re-packing an unchanged catalog has to produce an identical entry.
+    val crop = noisyPng(800, 600)
+    injectFigmaRasterIntoBundle(file, mapOf("a" to linkedMapOf("n1.png" to crop)))
+
+    val stored =
+      entries(BundleReader.extractZipBytes(file)).getValue("previews/a.figma-raster/n1.png")
+    assertEquals(
+      crop.toList(),
+      stored.toList(),
+      "within the bound → original bytes, not a re-encode",
+    )
+  }
+
+  @Test
+  fun `maxEdgePx of Int MAX_VALUE stores an oversized crop verbatim`() {
+    val file =
+      polyglot(
+        png(4, 8),
+        linkedMapOf("bundle.json" to "{}".toByteArray(), "previews/a.png" to png()),
+      )
+
+    val crop = noisyPng(2048, 1024)
+    injectFigmaRasterIntoBundle(
+      file,
+      mapOf("a" to linkedMapOf("n1.png" to crop)),
+      maxEdgePx = Int.MAX_VALUE,
+    )
+
+    val stored =
+      entries(BundleReader.extractZipBytes(file)).getValue("previews/a.figma-raster/n1.png")
+    assertEquals(crop.toList(), stored.toList(), "opt-out preserves the full-resolution crop")
   }
 
   @Test
