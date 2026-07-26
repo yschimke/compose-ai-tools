@@ -14,6 +14,14 @@ import androidx.compose.runtime.ProvidableCompositionLocal
  * `LocaleList` reflectively so previews using a newer Compose UI can read both APIs without making
  * older consumers fail class loading. `LocalLocale` is computed from the first entry in
  * `LocalLocaleList`, so providing `LocalProvidableLocaleList` supports both public locals.
+ *
+ * Normally `AbstractComposeView` installs the platform locals through Compose UI's
+ * `ProvideCommonCompositionLocals`. The preview renderer must also work when its 1.9-compiled
+ * composition host runs preview bytecode built against 1.11, however. An audit of the Compose UI
+ * platform locals added between those versions found this locale list as the only new
+ * platform-derived public local. The other addition, runtime's `LocalRetainedValuesStore`, is
+ * lifecycle state owned and installed by the composition host itself; synthesizing it here would
+ * break retention semantics.
  */
 object LocaleCompositionLocals {
   @Suppress("UNCHECKED_CAST")
@@ -38,10 +46,10 @@ object LocaleCompositionLocals {
 
   internal fun languageTags(configuration: Configuration): String {
     if (Build.VERSION.SDK_INT >= 24) {
-      return (0 until configuration.locales.size())
-        .joinToString(",") { configuration.locales[it].toLanguageTag() }
+      val locales = configuration.locales.takeUnless { it.isEmpty } ?: android.os.LocaleList.getDefault()
+      return (0 until locales.size()).joinToString(",") { locales[it].toLanguageTag() }
     }
     @Suppress("DEPRECATION")
-    return configuration.locale.toLanguageTag()
+    return (configuration.locale ?: java.util.Locale.getDefault()).toLanguageTag()
   }
 }

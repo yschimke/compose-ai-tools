@@ -2533,6 +2533,12 @@ open class RobolectricHost(
                             androidx.compose.ui.platform.LocalInspectionMode provides
                               (start.inspectionMode ?: false)
                           )
+                          ee.schimke.composeai.renderer.LocaleCompositionLocals
+                            .providedValue(
+                              androidx.compose.ui.platform.LocalConfiguration.current,
+                              classLoader,
+                            )
+                            ?.let(::add)
                           add(
                             ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
                               start.clearBackground

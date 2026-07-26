@@ -21,6 +21,18 @@ class LocaleCompositionLocalsTest {
   }
 
   @Test
+  fun `empty preview configuration falls back to a nonempty platform locale list`() {
+    val previous = Locale.getDefault()
+    try {
+      Locale.setDefault(Locale.CANADA_FRENCH)
+
+      assertEquals("fr-CA", LocaleCompositionLocals.languageTags(Configuration()))
+    } finally {
+      Locale.setDefault(previous)
+    }
+  }
+
+  @Test
   fun `older compose versions without locale locals remain supported`() {
     val configuration = Configuration().apply { setLocale(Locale.GERMANY) }
     val emptyLoader = object : ClassLoader(null) {}
