@@ -44,14 +44,12 @@ else
     printf 'DEPLOY_HOOK_TOKEN=%s\n' "$(openssl rand -hex 24)" >> .env
     echo "==> Added a generated DEPLOY_HOOK_TOKEN to .env (instant-roll webhook)"
   fi
-  # The public server briefly pinned only the first three compose-samples apps in
-  # SERVE_CATALOGS. That explicit value shadows the catalog set baked into newer
-  # images, so image rollouts alone cannot add Jetcaster, Jetsnack, and Reply.
-  # Remove only that known legacy override; operator-defined catalog lists remain
-  # untouched, while the next compose up inherits the complete image default.
-  LEGACY_COMPOSE_SAMPLES_CATALOGS='jetnews@yschimke/compose-samples,jetchat@yschimke/compose-samples,jetlagged@yschimke/compose-samples'
-  if grep -Fxq "SERVE_CATALOGS=${LEGACY_COMPOSE_SAMPLES_CATALOGS}" .env; then
-    sed -i "\\|^SERVE_CATALOGS=${LEGACY_COMPOSE_SAMPLES_CATALOGS}$|d" .env
+  # Drop the known legacy three-compose-samples SERVE_CATALOGS pin so the box
+  # inherits the fuller catalog set baked into newer images (see
+  # env-migrations.sh). Operator-defined catalog lists are left untouched.
+  # shellcheck source=deploy/image/env-migrations.sh
+  source ./env-migrations.sh
+  if migrate_legacy_serve_catalogs .env; then
     echo "==> Removed the legacy three-app SERVE_CATALOGS override (using the image default)"
   fi
   echo "==> Reusing existing .env (tokens preserved)"
