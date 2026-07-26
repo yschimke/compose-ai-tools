@@ -1121,7 +1121,7 @@ class ServeWebFixtureTest {
 
     // The home index lists every published system as a card linking to its /<system>/ catalog —
     // including remote-m3 — each carrying a hero preview img from that system's /render endpoint.
-    assertTrue(homeIndex.contains("Design systems"), "home index is headed 'Design systems'")
+    assertTrue(homeIndex.contains("Design Systems"), "home index is headed 'Design Systems'")
     assertTrue(
       homeIndex.contains("href=\"/compose-m3/\"") &&
         homeIndex.contains("href=\"/wear-m3/\"") &&
@@ -1150,6 +1150,23 @@ class ServeWebFixtureTest {
     assertTrue(
       homeIndex.contains("MeshCore"),
       "a listed app shows its human title on the front door",
+    )
+    assertTrue(
+      homeIndex.contains("<h1 class=\"cp-head\">yschimke org</h1>"),
+      "catalogs published by yschimke have their own section",
+    )
+    assertTrue(
+      homeIndex.contains("<h1 class=\"cp-head\">Other</h1>"),
+      "catalogs from all other publishers have their own final section",
+    )
+    assertTrue(
+      homeIndex.indexOf("href=\"/remote-m3/\"") <
+        homeIndex.indexOf("<h1 class=\"cp-head\">yschimke org</h1>") &&
+        homeIndex.indexOf("href=\"/homeassistant-remotecompose/\"") <
+          homeIndex.indexOf("<h1 class=\"cp-head\">Other</h1>") &&
+        homeIndex.indexOf("<h1 class=\"cp-head\">Other</h1>") <
+          homeIndex.indexOf("href=\"/confetti-wear/\""),
+      "cards are split between the design system, yschimke, and final Other sections",
     )
     // An UNLISTED catalog (cadence) is served at /<system>/ but kept OFF the front door: the home
     // index carries no separate "Apps" section, so publishing it doesn't advertise it on the
