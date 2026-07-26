@@ -81,6 +81,7 @@ import kotlinx.serialization.json.Json
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.ParameterizedRobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 
 private fun ScrollAxis.toProductAxis(): ProductScrollAxis =
   when (this) {
@@ -1100,6 +1101,10 @@ abstract class RobolectricRenderTestBase(
           val providedValues =
             buildList {
                 add(LocalInspectionMode provides inspectionMode)
+                LocaleCompositionLocals.providedValue(
+                    RuntimeEnvironment.getApplication().resources.configuration
+                  )
+                  ?.let(::add)
                 if (scrollCaptureProvidable != null) {
                   add(scrollCaptureProvidable provides scrollCaptureInProgress)
                 }
