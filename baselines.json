@@ -1244,7 +1244,7 @@
     "functionName": "lottie/spin.json",
     "module": "samples:android",
     "renderBasename": "lottie__lottie_spin_animated.png",
-    "sha256": "c630a44358bb953d9646d086d45a99af2160512ea0c365b9003305cf7e40b359",
+    "sha256": "3561b0e517840e55a545aa564dca4c392980b153c3f703a5a90bb7a2716c3450",
     "sourceFile": null
   },
   "samples:android/svg__svg_badge": {
@@ -2935,6 +2935,30 @@
     "sha256": "b78aaf7c59dadf599a76a5141258d22d9d75784bcec05359dfb61495b3138c25",
     "sourceFile": null
   },
+  "samples:design-catalog-wear-m3/wearthemecatalog__Coral": {
+    "captureLabel": "",
+    "functionName": "Coral theme",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "wearthemecatalog__Coral.png",
+    "sha256": "abf7a62a61b6819a029798c88752ea734a58bf3865bba69726099a41b4fc073e",
+    "sourceFile": null
+  },
+  "samples:design-catalog-wear-m3/wearthemecatalog__M3": {
+    "captureLabel": "",
+    "functionName": "M3 theme",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "wearthemecatalog__M3.png",
+    "sha256": "ee941f4e63f2d982dae61714e1054e591d891cfb136d336ccbb81d24a59284d6",
+    "sourceFile": null
+  },
+  "samples:design-catalog-wear-m3/wearthemecatalog__Teal": {
+    "captureLabel": "",
+    "functionName": "Teal theme",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "wearthemecatalog__Teal.png",
+    "sha256": "0ea67fc9bda172672d0d35cdb5aed240ca31a469c8c38b54e529573176931bc6",
+    "sourceFile": null
+  },
   "samples:desktop-daemon-bench/com.example.desktopdaemonbench.BenchPreviewsKt.BlueLabelPreview_BlueLabel": {
     "captureLabel": "",
     "functionName": "BlueLabelPreview",
@@ -3284,7 +3308,7 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round": {

@@ -423,6 +423,9 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `Lobster Two type styles` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/typographycatalog__Lobster_Two.png" width="150" /> |
 | `Roboto Flex type styles` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/typographycatalog__Roboto_Flex.png" width="150" /> |
 | `All type styles` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/typographycatalog__all.png" width="150" /> |
+| `Coral theme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/wearthemecatalog__Coral.png" width="150" /> |
+| `M3 theme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/wearthemecatalog__M3.png" width="150" /> |
+| `Teal theme` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-wear-m3/wearthemecatalog__Teal.png" width="150" /> |
 
 ## samples:desktop-daemon-bench
 
