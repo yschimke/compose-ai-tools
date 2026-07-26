@@ -12,7 +12,6 @@ Only a real EOF on the daemon's stdout is a closed stream.
 import importlib.util
 import json
 import os
-import re
 import subprocess
 import sys
 import unittest
@@ -145,15 +144,60 @@ class CollectNotifications(_PipeFixture):
         self.assertIn("closed mid-collect", str(ctx.exception))
 
 
-class InitTimeoutDefault(unittest.TestCase):
-    """Client patience must be >= the daemon's own sandbox-boot budget.
+class InitTimeoutDerivation(unittest.TestCase):
+    """Client patience must cover the daemon's own pool-wide boot worst case.
 
-    The daemon defaults `composeai.daemon.sandboxBootTimeoutMs` to 10 minutes
-    and refuses to answer `initialize` until the pool is up, so anything below
-    that here turns a slow-but-healthy cold boot into a red CI leg.
+    `RobolectricHost.start()` boots the eager slots sequentially and applies
+    `composeai.daemon.sandboxBootTimeoutMs` to EACH one, so a warm-spare pool's
+    worst case is 5 x 10 minutes. A flat client budget under that turns a
+    slow-but-healthy cold boot into a red CI leg — the exact bug this file
+    exists to prevent.
     """
 
-    def test_flag_default_is_at_least_the_ten_minute_boot_budget(self):
+    TEN_MIN_S = 600.0
+
+    def derive(self, props):
+        return mod._derive_init_timeout_s({"systemProperties": props})
+
+    def test_warm_spare_pool_default_covers_five_sequential_slots(self):
+        # DaemonMain defaults warmSpare on -> 5 sandboxes.
+        self.assertGreaterEqual(self.derive({}), 5 * self.TEN_MIN_S)
+
+    def test_explicit_sandbox_count_wins(self):
+        derived = self.derive({"composeai.daemon.sandboxCount": "3"})
+        self.assertGreaterEqual(derived, 3 * self.TEN_MIN_S)
+        self.assertLess(derived, 4 * self.TEN_MIN_S)
+
+    def test_warm_spare_off_is_a_single_slot(self):
+        derived = self.derive({"composeai.daemon.warmSpare": "false"})
+        self.assertGreaterEqual(derived, self.TEN_MIN_S)
+        self.assertLess(derived, 2 * self.TEN_MIN_S)
+
+    def test_background_boot_puts_only_slot_zero_on_the_critical_path(self):
+        derived = self.derive({"composeai.daemon.backgroundSandboxBoot": "true"})
+        self.assertGreaterEqual(derived, self.TEN_MIN_S)
+        self.assertLess(derived, 2 * self.TEN_MIN_S)
+
+    def test_custom_boot_budget_is_honoured(self):
+        derived = self.derive(
+            {
+                "composeai.daemon.sandboxCount": "2",
+                "composeai.daemon.sandboxBootTimeoutMs": "30000",
+            }
+        )
+        self.assertGreaterEqual(derived, 60.0)
+        self.assertLess(derived, 5 * self.TEN_MIN_S)
+
+    def test_garbage_properties_fall_back_to_the_safe_default(self):
+        derived = self.derive(
+            {
+                "composeai.daemon.sandboxCount": "not-a-number",
+                "composeai.daemon.sandboxBootTimeoutMs": "soon",
+            }
+        )
+        self.assertGreaterEqual(derived, 5 * self.TEN_MIN_S)
+
+    def test_flag_is_still_documented_as_an_override(self):
         help_text = subprocess.run(
             [sys.executable, str(_HERE / "daemon-roundtrip.py"), "--help"],
             capture_output=True,
@@ -161,14 +205,6 @@ class InitTimeoutDefault(unittest.TestCase):
             check=True,
         ).stdout
         self.assertIn("--init-timeout-s", help_text)
-        match = re.search(r"--init-timeout-s INIT_TIMEOUT_S\s+.*?\(default: ([\d.]+)\)", help_text, re.S)
-        if match is None:
-            # argparse only prints the default when the help string asks for
-            # it; fall back to parsing the source constant.
-            match = re.search(r'"--init-timeout-s",\s*\n\s*type=float,\s*\n\s*default=([\d.]+)',
-                              (_HERE / "daemon-roundtrip.py").read_text())
-        self.assertIsNotNone(match, "could not determine the --init-timeout-s default")
-        self.assertGreaterEqual(float(match.group(1)), 600.0)
 
 
 if __name__ == "__main__":

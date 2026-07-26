@@ -48,12 +48,18 @@ Two changes shipped:
 
    This is a correctness fix. It doesn't make cold start faster.
 
-   **Client contract:** because `initialize` can't answer until the pool
-   is up, every client's `initialize` timeout has to be at least the
-   sandbox-boot budget. `.github/ci/daemon-roundtrip.py` waits
-   `--init-timeout-s` (600s by default) for exactly this reason — its
-   old 120s ceiling turned a 141s cold boot on a GitHub runner into a
-   red `wear-os-samples (ComposeStarter)` leg.
+   **Client contract:** because `initialize` can't answer until the
+   eager slots are up — and `start()` boots them sequentially, applying
+   the budget to *each* — a client's `initialize` timeout has to cover
+   `slots × sandboxBootTimeoutMs`, not one slot's worth.
+   `.github/ci/daemon-roundtrip.py` derives `--init-timeout-s` from the
+   launch descriptor's own `sandboxCount` / `warmSpare` /
+   `backgroundSandboxBoot` / `sandboxBootTimeoutMs` properties for
+   exactly this reason — its old flat 120s ceiling turned a 141s cold
+   boot on a GitHub runner into a red `wear-os-samples (ComposeStarter)`
+   leg. The high ceiling costs nothing when the daemon is genuinely
+   stuck: a slot that misses its budget exits the daemon, and the client
+   sees EOF immediately.
 
 2. **`StartupTimings` instrumentation.**
    [`StartupTimings.kt`](../../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/StartupTimings.kt)
