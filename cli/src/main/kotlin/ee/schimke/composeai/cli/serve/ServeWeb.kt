@@ -1584,6 +1584,14 @@ object ServeWeb {
   /** One recent daemon startup failure's row on the [statusPage]. */
   data class StatusFailure(val whenText: String, val session: String, val reason: String)
 
+  /** One recent live render failure (distinct from a daemon failing to start). */
+  data class StatusRenderFailure(
+    val whenText: String,
+    val session: String,
+    val durationText: String,
+    val reason: String,
+  )
+
   /**
    * The rendered model for the [statusPage] — pre-formatted so the page is a pure projection (and
    * the golden fixture is deterministic). [summary] are the headline stat tiles; [config] is the
@@ -1600,6 +1608,7 @@ object ServeWeb {
     val catalogs: List<StatusCatalog>,
     val servers: List<StatusServer>,
     val failures: List<StatusFailure>,
+    val renderFailures: List<StatusRenderFailure> = emptyList(),
   )
 
   /**
@@ -1685,6 +1694,17 @@ object ServeWeb {
           } +
           "</tbody></table></div>"
 
+    val renderFailureSection =
+      if (view.renderFailures.isEmpty()) "<p class=\"cp-sub\">No recent render failures.</p>"
+      else
+        "<div class=\"cp-status-scroll\"><table class=\"cp-table\">" +
+          "<thead><tr><th>When</th><th>Session</th><th>Duration</th><th>Reason</th></tr></thead><tbody>" +
+          view.renderFailures.joinToString("\n") { f ->
+            "<tr><td>${esc(f.whenText)}</td><td>${esc(f.session)}</td>" +
+              "<td>${esc(f.durationText)}</td><td>${esc(f.reason)}</td></tr>"
+          } +
+          "</tbody></table></div>"
+
     val ver = " <span class=\"cp-about-ver\">v${esc(view.version)}</span>"
     val mode = if (view.public) "public (open)" else "token-gated"
     val body =
@@ -1730,6 +1750,9 @@ object ServeWeb {
 
       <p class="cp-status-sec">Recent daemon startup failures</p>
       $failureSection
+
+      <p class="cp-status-sec">Recent render failures</p>
+      $renderFailureSection
       """
         .trimIndent()
 

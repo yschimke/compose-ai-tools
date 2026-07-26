@@ -34,6 +34,7 @@ class RenderPerfStats {
   private var lastMs: Long? = null
   private var lastFailureReason: String? = null
   private var lastFailureAtEpochMillis: Long? = null
+  private val recentFailures = ArrayDeque<RenderFailureSample>()
   private val window = LongArray(WINDOW_SIZE)
   private var windowCount = 0
   private var windowIdx = 0
@@ -60,6 +61,15 @@ class RenderPerfStats {
       if (reason != null) {
         lastFailureReason = reason.take(MAX_FAILURE_REASON_LENGTH)
         lastFailureAtEpochMillis = System.currentTimeMillis()
+        recentFailures.addLast(
+          RenderFailureSample(
+            atEpochMillis = lastFailureAtEpochMillis!!,
+            durationMs = durationMs,
+            timedOut = timeout,
+            reason = lastFailureReason!!,
+          )
+        )
+        while (recentFailures.size > FAILURE_WINDOW_SIZE) recentFailures.removeFirst()
       }
     }
 
@@ -110,6 +120,7 @@ class RenderPerfStats {
         windowSize = windowCount,
         lastFailureReason = lastFailureReason,
         lastFailureAtEpochMillis = lastFailureAtEpochMillis,
+        recentFailures = recentFailures.toList().asReversed(),
       )
     }
 
@@ -119,8 +130,20 @@ class RenderPerfStats {
 
     /** Cap on the carried failure-reason text — enough for a message, not a stack trace. */
     const val MAX_FAILURE_REASON_LENGTH: Int = 300
+
+    /** Number of render errors retained for the human status page. */
+    const val FAILURE_WINDOW_SIZE: Int = 10
   }
 }
+
+/** One recent failed render, newest-first in [RenderPerfSnapshot.recentFailures]. */
+@Serializable
+data class RenderFailureSample(
+  val atEpochMillis: Long,
+  val durationMs: Long,
+  val timedOut: Boolean,
+  val reason: String,
+)
 
 /**
  * Point-in-time projection of [RenderPerfStats], serialized verbatim onto `/status.json`
@@ -161,6 +184,8 @@ data class RenderPerfSnapshot(
    */
   val lastFailureReason: String? = null,
   val lastFailureAtEpochMillis: Long? = null,
+  /** Bounded, newest-first failure detail for status diagnostics. */
+  val recentFailures: List<RenderFailureSample> = emptyList(),
 ) {
   companion object {
     /**
@@ -195,6 +220,11 @@ data class RenderPerfSnapshot(
             .maxByOrNull { it.lastFailureAtEpochMillis!! }
             ?.lastFailureReason,
         lastFailureAtEpochMillis = snapshots.mapNotNull { it.lastFailureAtEpochMillis }.maxOrNull(),
+        recentFailures =
+          snapshots
+            .flatMap { it.recentFailures }
+            .sortedByDescending { it.atEpochMillis }
+            .take(RenderPerfStats.FAILURE_WINDOW_SIZE),
       )
     }
   }

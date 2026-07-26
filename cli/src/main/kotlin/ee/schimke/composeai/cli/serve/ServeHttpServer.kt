@@ -937,6 +937,22 @@ class ServeHttpServer(
               reason = f.reason,
             )
           },
+        renderFailures =
+          liveDaemons
+            .flatMap { daemon ->
+              daemon.renderStats?.recentFailures.orEmpty().map { failure -> daemon to failure }
+            }
+            .sortedByDescending { (_, failure) -> failure.atEpochMillis }
+            .take(RenderPerfStats.FAILURE_WINDOW_SIZE)
+            .map { (daemon, failure) ->
+              ServeWeb.StatusRenderFailure(
+                whenText = formatInstant(failure.atEpochMillis),
+                session = daemon.label,
+                durationText =
+                  "${failure.durationMs}ms" + if (failure.timedOut) " (timeout)" else "",
+                reason = failure.reason,
+              )
+            },
       )
     }
   }

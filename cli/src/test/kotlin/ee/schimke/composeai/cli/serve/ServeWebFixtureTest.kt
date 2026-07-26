@@ -795,6 +795,15 @@ class ServeWebFixtureTest {
                   reason = "daemon launch timed out after 300s",
                 )
               ),
+            renderFailures =
+              listOf(
+                ServeWeb.StatusRenderFailure(
+                  whenText = "2026-07-17 09:43 UTC",
+                  session = "compose-m3 (live bundle)",
+                  durationText = "120000ms (timeout)",
+                  reason = "timed out waiting for renderFinished",
+                )
+              ),
           ),
       )
 
