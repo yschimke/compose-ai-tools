@@ -136,17 +136,20 @@ Two changes shipped:
 
 Menu of follow-ups, by leverage:
 
-- **Reconsider the eager warm-spare pool on the launch-descriptor path.**
-  The cheapest un-taken win, and the only one that is a config decision
-  rather than a project. `backgroundSandboxBoot=true` already exists and
-  already has the semantics worked out (dispatch across the ready
-  prefix — see [SANDBOX-POOL.md](SANDBOX-POOL.md)); `ServeBundleDaemon`
-  and the deploy image opt in, the Gradle-plugin path does not, so it
-  pays for five sandboxes before answering `initialize`. Turning it on
-  for the CI daemon leg would cut ~45 s from that leg immediately — but
-  it would also stop that leg exercising the strict
-  all-sandboxes-ready contract real plugin consumers get, so it is a
-  coverage trade, not a free win. Deliberately left as a decision.
+- ~~**Reconsider the eager warm-spare pool on the launch-descriptor
+  path.**~~ **Done** — `composePreview.daemon.backgroundSandboxBoot`
+  ([CONFIG.md](CONFIG.md)) exposes it to the Gradle-plugin launch path,
+  default `false` so the eager contract is still what consumers get
+  unless they ask otherwise. The integration daemon cell opts in via the
+  `daemon_background_boot` matrix field, which drops its eager slots from
+  5 to 1. `.github/ci/daemon-roundtrip.py` prints the measured
+  `initialize` latency and the eager-slot count on every run, so the
+  effect is readable off the leg's log rather than inferred.
+
+  What remains open is the *default*: whether the eager
+  all-sandboxes-ready contract is the right one for editor clients, or
+  whether they'd also rather render sooner. That's a product question,
+  not a perf one.
 - **Machine-resident daemon** (highest priority). Daemon survives editor
   restarts; cold start moves from "every editor open" to "every reboot."
   Lifecycle change only; needs a different anchor than parent-PID.

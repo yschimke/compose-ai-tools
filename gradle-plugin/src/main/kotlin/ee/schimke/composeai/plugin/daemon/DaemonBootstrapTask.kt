@@ -99,6 +99,12 @@ abstract class DaemonBootstrapTask : DefaultTask() {
   @get:Input abstract val warmSpare: Property<Boolean>
 
   /**
+   * Mirror of [DaemonExtension.backgroundSandboxBoot]. Baked into
+   * `composeai.daemon.backgroundSandboxBoot`.
+   */
+  @get:Input abstract val backgroundSandboxBoot: Property<Boolean>
+
+  /**
    * Fully-qualified daemon entry point class. Convention is
    * `ee.schimke.composeai.daemon.DaemonMain` (Stream B / task B1.1 will provide the
    * implementation). Surfaced as a [Property] so future variants (foreground / debug / shadow

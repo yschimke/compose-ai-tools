@@ -685,6 +685,7 @@ internal object ComposePreviewTasks {
       maxHeapMb.set(extension.daemon.maxHeapMb)
       maxRendersPerSandbox.set(extension.daemon.maxRendersPerSandbox)
       warmSpare.set(extension.daemon.warmSpare)
+      backgroundSandboxBoot.set(extension.daemon.backgroundSandboxBoot)
       // Bake an explicit render JVM into `daemon-launch.json`. Unlike the in-Gradle `javaexec`
       // render, the daemon is spawned by VS Code / MCP on *their* JDK, so we always pin a launcher
       // (>= the module's bytecode target) rather than leaving it null — otherwise a JDK-17 editor
@@ -757,6 +758,10 @@ internal object ComposePreviewTasks {
       systemProperties.put(
         "composeai.daemon.warmSpare",
         extension.daemon.warmSpare.map { it.toString() },
+      )
+      systemProperties.put(
+        "composeai.daemon.backgroundSandboxBoot",
+        extension.daemon.backgroundSandboxBoot.map { it.toString() },
       )
       systemProperties.put("composeai.daemon.modulePath", project.path)
       systemProperties.put(

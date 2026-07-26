@@ -2662,6 +2662,7 @@ internal object AndroidPreviewSupport {
       this.maxHeapMb.set(extension.daemon.maxHeapMb)
       this.maxRendersPerSandbox.set(extension.daemon.maxRendersPerSandbox)
       this.warmSpare.set(extension.daemon.warmSpare)
+      this.backgroundSandboxBoot.set(extension.daemon.backgroundSandboxBoot)
       // Stage-2 BTA wiring. The AGP unit-test task's `classpath` carries every input
       // `compileDebugKotlin` would see — Compose runtime, kotlin-stdlib, AGP-generated
       // R.jar / BuildConfig outputs, the consumer's transitive dependencies. Feed that
@@ -2804,6 +2805,10 @@ internal object AndroidPreviewSupport {
       this.systemProperties.put(
         "composeai.daemon.warmSpare",
         extension.daemon.warmSpare.map { it.toString() },
+      )
+      this.systemProperties.put(
+        "composeai.daemon.backgroundSandboxBoot",
+        extension.daemon.backgroundSandboxBoot.map { it.toString() },
       )
       // Mirrors the `application=android.app.Application` line
       // GenerateRobolectricPropertiesTask writes for the composePreviewRender Test path.

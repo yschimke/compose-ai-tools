@@ -12,6 +12,69 @@ class DaemonBootstrapFunctionalTest {
 
   @get:Rule val tempDir = TemporaryFolder()
 
+  /**
+   * `backgroundSandboxBoot` only does anything if it reaches the descriptor's `systemProperties` —
+   * that map is the daemon JVM's whole view of the config, and `.github/ci/daemon-roundtrip.py`
+   * reads the same key to size its `initialize` budget. An extension property that stops short of
+   * it is silently inert: the build script looks configured, the daemon still boots the entire
+   * eager pool, and nothing anywhere fails.
+   *
+   * Asserted here rather than in a `ProjectBuilder` unit test on purpose — querying
+   * `systemProperties` resolves the `composePreviewDesktopDaemon` configuration, which needs a real
+   * build with repositories. Only a real `composePreviewDaemonStart` proves the wiring end to end.
+   */
+  @Test
+  fun `backgroundSandboxBoot set in the daemon block reaches the descriptor`() {
+    val projectDir =
+      createCmpTestProject(
+        extraBuildScript =
+          """
+          composePreview {
+              daemon {
+                  backgroundSandboxBoot = true
+              }
+          }
+          """
+            .trimIndent()
+      )
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDaemonStart", "--stacktrace")
+      .withPluginClasspath()
+      .build()
+
+    val descriptor = File(projectDir, "build/compose-previews/daemon-launch.json").readText()
+    assertThat(backgroundSandboxBootIn(descriptor)).isEqualTo("true")
+  }
+
+  @Test
+  fun `backgroundSandboxBoot defaults to false in the descriptor`() {
+    // Default-off has to hold at the descriptor, not just the extension: the eager
+    // all-sandboxes-ready contract is what every plugin consumer gets unless they opt out.
+    val projectDir = createCmpTestProject()
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDaemonStart", "--stacktrace")
+      .withPluginClasspath()
+      .build()
+
+    val descriptor = File(projectDir, "build/compose-previews/daemon-launch.json").readText()
+    assertThat(backgroundSandboxBootIn(descriptor)).isEqualTo("false")
+  }
+
+  /**
+   * Pulls the flag's value out of the emitted descriptor without pinning its JSON formatting — the
+   * descriptor is written pretty-printed (`"key": "value"`), and an assertion that hard-codes the
+   * spacing fails for a reason that has nothing to do with the wiring under test.
+   */
+  private fun backgroundSandboxBootIn(descriptorJson: String): String? =
+    Regex("\"composeai\\.daemon\\.backgroundSandboxBoot\"\\s*:\\s*\"([^\"]*)\"")
+      .find(descriptorJson)
+      ?.groupValues
+      ?.get(1)
+
   @Test
   fun `composePreviewDaemonStart is cached after source edit`() {
     val projectDir = createCmpTestProject()
@@ -90,7 +153,7 @@ class DaemonBootstrapFunctionalTest {
     assertThat(result.task(":composePreviewDiscover")).isNull()
   }
 
-  private fun createCmpTestProject(): File {
+  private fun createCmpTestProject(extraBuildScript: String = ""): File {
     val projectDir = tempDir.root
 
     File(projectDir, "settings.gradle.kts")
@@ -135,6 +198,7 @@ class DaemonBootstrapFunctionalTest {
         java {
             toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
         }
+        $extraBuildScript
         """
           .trimIndent()
       )

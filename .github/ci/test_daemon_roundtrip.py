@@ -178,6 +178,36 @@ class InitTimeoutDerivation(unittest.TestCase):
         self.assertGreaterEqual(derived, self.TEN_MIN_S)
         self.assertLess(derived, 2 * self.TEN_MIN_S)
 
+    def test_eager_slot_count_defaults_to_the_warm_spare_pool(self):
+        # The number the measured-latency line reports. Default is the whole eager pool, which is
+        # what makes a cold `initialize` cost ~5 sandbox boots rather than one.
+        self.assertEqual(mod._eager_slot_count({"systemProperties": {}}), 5)
+
+    def test_eager_slot_count_is_one_under_background_boot(self):
+        # Background boot must collapse this to 1 regardless of pool size — that IS the change.
+        descriptor = {
+            "systemProperties": {
+                "composeai.daemon.sandboxCount": "5",
+                "composeai.daemon.backgroundSandboxBoot": "true",
+            }
+        }
+        self.assertEqual(mod._eager_slot_count(descriptor), 1)
+
+    def test_eager_slot_count_agrees_with_the_derived_budget(self):
+        # The reported slot count and the timeout must come from the same derivation — a drift
+        # here would mean the log explains a latency the budget didn't actually allow for.
+        for props in (
+            {},
+            {"composeai.daemon.backgroundSandboxBoot": "true"},
+            {"composeai.daemon.sandboxCount": "3"},
+            {"composeai.daemon.warmSpare": "false"},
+        ):
+            with self.subTest(props=props):
+                descriptor = {"systemProperties": props}
+                slots = mod._eager_slot_count(descriptor)
+                expected = slots * self.TEN_MIN_S + 60.0
+                self.assertEqual(mod._derive_init_timeout_s(descriptor), expected)
+
     def test_custom_boot_budget_is_honoured(self):
         derived = self.derive(
             {
