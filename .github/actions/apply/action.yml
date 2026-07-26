@@ -564,7 +564,18 @@ runs:
       with:
         path: ${{ steps.fonts-dir.outputs.dir }}
         key: composeai-fonts-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+        # This job's own lineage first, any job's as a cold-start fallback.
+        # Cache archives are snapshots and are never merged, so an OS-only
+        # prefix would restore whichever job saved most recently rather than
+        # this job's last state. With the compose and a11y jobs running
+        # concurrently over different font sets that never converges: both
+        # restore snapshot S, one saves S∪compose and the other S∪a11y, and the
+        # next run restores whichever landed last — so the other job refetches
+        # its own faces live, every run, which is the nondeterminism this cache
+        # exists to remove. Per-job lineage converges to each job's own set; the
+        # OS-only fallback only matters on a job's very first run.
         restore-keys: |
+          composeai-fonts-${{ runner.os }}-${{ github.job }}-
           composeai-fonts-${{ runner.os }}-
 
     - name: Run pipelines

@@ -327,6 +327,14 @@ re-fetched on every run after it. Restore and save are separate steps so a run
 that fails *after* paying the downloads still persists them, and the rerun
 starts warm.
 
+Keys are scoped per job (`github.job`), and the restore prefixes try this job's
+own lineage before falling back to any job's. Cache archives are snapshots and
+are never merged, so a shared prefix would restore whichever job saved most
+recently — and with the compose and a11y jobs running concurrently over
+different font sets that never settles: both restore the same snapshot, each
+saves its own superset, and the next run restores one of them while the other
+job refetches its faces live. Per-job lineage converges to each job's own set.
+
 Two caveats worth knowing:
 
 - **Cache scope is per branch.** A PR run reads its own branch's cache and the
