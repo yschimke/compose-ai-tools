@@ -56,21 +56,70 @@ import okio.Path.Companion.toPath
  * `identity` (a desktop file path) nor the `resId` (an Android resource) that the other `Font`
  * subtypes do — so without this a branded downloadable face labels as null and the
  * `compose/figma-svg` export collapses it to the Roboto default (the `<text>` names Roboto and
- * `?mode=web` `@import`s Roboto instead of the branded family). Detected structurally by the
- * `toFontRequest()` + `getName()` shape unique to `GoogleFontImpl`, so this platform-agnostic
- * module needs no compile dep on the google-fonts artifact and the branch stays unit-testable with
- * a stand-in.
+ * `?mode=web` `@import`s Roboto instead of the branded family).
+ *
+ * Everything here is reflective, so this platform-agnostic module needs no compile dep on the
+ * google-fonts artifact and the branch stays unit-testable with a stand-in. The name is read by
+ * three routes in descending robustness — declared field, getter, `toString()` — because gating on
+ * `getMethods()` alone proved too fragile: across a whole meshcore `:app` render, 846 text nodes
+ * captured only generic families and never a single `FontListFontFamily` name, while the font
+ * recorder (which reads declared fields) resolved the same faces to `Orbitron` in the same render.
  */
 internal fun googleFontFamilyName(font: Any): String? {
-  val methods = font.javaClass.methods
-  if (methods.none { it.name == "toFontRequest" && it.parameterCount == 0 }) return null
+  if (!looksLikeGoogleFont(font)) return null
+  // The declared field first, deliberately: it is the only route that survives a `getMethods()`
+  // that can't resolve every signature on the class. `FontResolverRecorder` reads fields for the
+  // same reason and recovers the name from the very renders where this function used to return
+  // null — `fonts-used.json` says `Font(GoogleFont("Orbitron", …))` for a preview whose
+  // `compose-figma.svg` said Roboto.
+  declaredString(font, "name")?.let {
+    return it
+  }
+  reflectedString(font, "getName")?.let {
+    return it
+  }
+  // Last resort: every Compose `Font` names its family in `toString()`, which needs no member
+  // lookup at all.
+  return googleFontNameFromIdentity(runCatching { font.toString() }.getOrDefault(""))
+}
+
+/**
+ * Whether [font] is a downloadable Google-Fonts face.
+ *
+ * Three independent signals, because no single one holds everywhere: the class name, the
+ * `toFontRequest()` shape unique to `GoogleFontImpl` (the original check — kept, but no longer the
+ * sole gate, since enumerating methods resolves every signature's types and can fail on a classpath
+ * where `androidx.core.provider.FontRequest` is absent), and the `GoogleFont("…")` marker in
+ * `toString()`. Any one is enough; failing all three means this isn't a downloadable face.
+ */
+private fun looksLikeGoogleFont(font: Any): Boolean {
+  // The exact class, not a substring: a nested/anonymous class merely *enclosed* by something
+  // Google-Font-ish carries that name too, and would be mislabelled.
+  if (font.javaClass.simpleName == "GoogleFontImpl") return true
+  val byToString = runCatching { GOOGLE_FONT_IDENTITY.containsMatchIn(font.toString()) }
+  if (byToString.getOrDefault(false)) return true
   return runCatching {
-      methods.firstOrNull { it.name == "getName" && it.parameterCount == 0 }?.invoke(font)
+      font.javaClass.methods.any { it.name == "toFontRequest" && it.parameterCount == 0 }
+    }
+    .getOrDefault(false)
+}
+
+/** A non-blank `String` from [font]'s declared field [name], or null. */
+private fun declaredString(font: Any, name: String): String? =
+  runCatching {
+      font.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(font) as? String
+    }
+    .getOrNull()
+    ?.takeIf { it.isNotBlank() }
+
+/** A non-blank `String` from [font]'s zero-arg method [name], or null. */
+private fun reflectedString(font: Any, name: String): String? =
+  runCatching {
+      font.javaClass.methods.firstOrNull { it.name == name && it.parameterCount == 0 }?.invoke(font)
         as? String
     }
     .getOrNull()
     ?.takeIf { it.isNotBlank() }
-}
 
 private val GOOGLE_FONT_IDENTITY = Regex("""GoogleFont\("([^"]+)"""")
 

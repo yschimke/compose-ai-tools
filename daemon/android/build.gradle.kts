@@ -247,6 +247,13 @@ dependencies {
   "testFixturesImplementation"(libs.compose.foundation)
   "testFixturesImplementation"(libs.compose.material3)
   "testFixturesImplementation"(libs.compose.ui)
+  // `BrandedDownloadableText` builds a `Font(GoogleFont("Orbitron"), …)` family so
+  // `FigmaSvgDownloadableFontFamilyTest` can prove the export names the branded face rather than
+  // collapsing to Roboto — the exact shape a consumer's production typography uses.
+  "testFixturesImplementation"(libs.compose.ui.text.google.fonts)
+  // `GoogleFontIntrospectionDiagnosticTest` builds the same face directly to record what a
+  // downloadable `Font` exposes to reflection inside the sandbox.
+  testImplementation(libs.compose.ui.text.google.fonts)
   // `previewOverride*` — the fixture `OverridableSquare` declares editable knobs so
   // `PreviewOverridesDataFetchE2ETest` can prove the sandbox→host bridge surfaces them via
   // `data/fetch?kind=compose/overrides`.

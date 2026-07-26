@@ -52,6 +52,7 @@ private val STRATEGIES: Map<PreviewKind, PreviewRenderStrategy> =
     PreviewKind.GLANCE_APPWIDGET to GlanceAppWidgetPreviewStrategy,
     PreviewKind.CATALOG to CatalogPreviewStrategy,
     PreviewKind.THEME_CATALOG to ThemeCatalogStrategy,
+    PreviewKind.WEAR_THEME_CATALOG to WearThemeCatalogStrategy,
   )
 
 internal fun strategyFor(kind: PreviewKind): PreviewRenderStrategy =
@@ -342,6 +343,94 @@ private object ThemeCatalogStrategy : PreviewRenderStrategy {
     val themeName = preview.params.name ?: preview.id
     val specimen: @Composable () -> Unit = { ThemeSpecimen(preview.id, themeName) }
     resolved.first.invoke(currentComposer, resolved.second, specimen)
+  }
+}
+
+/**
+ * The Wear counterpart of [ThemeCatalogStrategy]. Identical mechanism — resolve the provider,
+ * compose its `Wrap` around a canned specimen — but the specimen reads
+ * `androidx.wear.compose.material3.MaterialTheme`, which is what a Wear provider actually installs.
+ * Composing the mobile [ThemeSpecimen] in here instead would read the baseline M3 palette and
+ * report the same defaults for every declared theme.
+ */
+private object WearThemeCatalogStrategy : PreviewRenderStrategy {
+  @Composable
+  override fun Render(
+    preview: RenderPreviewEntry,
+    widthDp: Int,
+    heightDp: Int,
+    previewArgs: List<Any?>,
+  ) {
+    val wrapperFqn = preview.params.wrapperClassName ?: return
+    val resolved = remember(wrapperFqn) { resolveWrapper(wrapperFqn) }
+    val themeName = preview.params.name ?: preview.id
+    // The provider was loaded by the app's classloader; reading the Wear theme through that same
+    // loader is what makes the read see the CompositionLocal the provider actually provided.
+    val loader = resolved.second?.javaClass?.classLoader
+    val specimen: @Composable () -> Unit = { WearThemeSpecimen(preview.id, themeName, loader) }
+    resolved.first.invoke(currentComposer, resolved.second, specimen)
+  }
+}
+
+/**
+ * The Wear specimen: the Wear Material 3 colour roles as swatches and a few type-scale styles as
+ * samples, read reflectively (see [WearMaterialTheme]) from the theme in the current composition.
+ *
+ * The role list is Wear's, not the phone's: `primaryDim` / `secondaryDim` and the
+ * `surfaceContainer*` ramp exist here, while `surfaceVariant` and the light/dark-neutral
+ * `surfaceContainerLowest/Highest` pair don't. Roles absent from the consumer's wear-compose
+ * version resolve to null and are simply skipped, so an older or newer library degrades to a
+ * shorter sheet rather than failing the render. Laid out on the same neutral catalog sheet as the
+ * mobile specimen so the fixed dark labels stay legible against a dark-first Wear palette.
+ */
+@Composable
+private fun WearThemeSpecimen(previewId: String, themeName: String, loader: ClassLoader?) {
+  val scheme = WearMaterialTheme.colorSchemeOrNull(loader)
+  val typography = WearMaterialTheme.typographyOrNull(loader)
+  val roles =
+    listOf(
+        "primary",
+        "primaryDim",
+        "primaryContainer",
+        "onPrimary",
+        "onPrimaryContainer",
+        "secondary",
+        "secondaryDim",
+        "secondaryContainer",
+        "tertiary",
+        "tertiaryContainer",
+        "background",
+        "onBackground",
+        "surfaceContainerLow",
+        "surfaceContainer",
+        "surfaceContainerHigh",
+        "onSurface",
+        "onSurfaceVariant",
+        "outline",
+        "outlineVariant",
+        "error",
+        "onError",
+      )
+      .mapNotNull { role -> WearMaterialTheme.role(scheme, role)?.let { role to it } }
+  val types =
+    listOf("displaySmall", "titleLarge", "titleMedium", "bodyLarge", "bodyMedium", "labelSmall")
+      .mapNotNull { name -> WearMaterialTheme.style(typography, name)?.let { name to it } }
+  // Same resolved-token sidecar as the mobile sheet, so design-parity's catalog-export maps a Wear
+  // theme onto a Figma variable mode exactly like a phone one. Wear M3 has no `Shapes` analogue on
+  // `MaterialTheme`, so this carries colours + type only.
+  remember(previewId) {
+    CatalogTokenSidecar.writeResolved(
+      previewId,
+      themeName,
+      roles.map { (label, color) -> CatalogTokenSidecar.ResolvedToken.Colour(label, color) } +
+        types.map { (label, style) -> CatalogTokenSidecar.ResolvedToken.Type(label, style) },
+    )
+  }
+  Box(Modifier.fillMaxSize().background(CATALOG_SHEET_BACKGROUND).padding(16.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+      for ((label, color) in roles) CatalogSwatchRow(label = label, color = color)
+      for ((label, style) in types) CatalogTypeRow(label = label, style = style)
+    }
   }
 }
 

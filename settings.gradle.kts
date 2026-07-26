@@ -28,7 +28,13 @@ val matrixRobolectricVersion: String? =
   providers.gradleProperty("composeai.matrix.robolectricVersion").orNull
 
 dependencyResolutionManagement {
-  repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+  // Kotlin's wasmJs toolchain resolves Node.js from an Ivy repository that the Kotlin Gradle
+  // plugin adds to the root project while kotlinWasmNodeJsSetup is realized. Rejecting or ignoring
+  // that project repository makes the aggregate `check` task fail before any tests run because
+  // org.nodejs:node is not published to our Maven repositories. The build scripts themselves keep
+  // dependency repositories centralized here; project preference exists solely so the plugin-owned
+  // Node.js distribution repository remains usable.
+  repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
   repositories {
     google()
     mavenCentral()

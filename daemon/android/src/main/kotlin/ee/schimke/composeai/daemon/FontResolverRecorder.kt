@@ -22,6 +22,20 @@ class FontResolverRecorder(private val context: Context? = null) {
     val requestedFamily = requestedFamily(fontFamily)
     val resolvedFamily = resolvedFamily(resolved)
     val chain = fallbackCandidates(fontFamily).filterNot { it == resolvedFamily }.take(5)
+    // Publish the display name so `compose/figma-svg` can tell a legitimate platform-default text
+    // node apart from one whose branded family the capture lost (see [FigmaSvgRenderedFonts]).
+    // Recorded here rather than at post-capture because the SVG export is an independent
+    // post-capture extension with no ordering guarantee against this one.
+    //
+    // The *weight-matched* face, not `requestedFamily`: that one is the family's first declared
+    // face, which is not what gets drawn when a family mixes families across weights. A branded
+    // family that appends non-Latin fallbacks (`Orbitron` 500/600/700 then `Noto Sans JP` 400)
+    // draws Noto for normal-weight text, and recording Orbitron there would tell the export a face
+    // was used that it never sees — marking a perfectly reproducible export degraded and boxing
+    // unrelated family-less text in the same SVG.
+    FigmaSvgRenderedFonts.record(
+      matchingFont(fontFamily, fontWeight, fontStyle)?.let { displayFamilyName(fontLabel(it)) }
+    )
     val key = listOf(requestedFamily, resolvedFamily, weight.toString(), style).joinToString("|")
     entries[key] =
       FontUsedEntry(
@@ -102,6 +116,30 @@ fun recordingFontFamilyResolver(
     handler,
   ) as FontFamily.Resolver
 }
+
+/**
+ * The human family name inside a recorded label, or null when there isn't one worth reporting.
+ *
+ * The recorder's labels are whatever identity a `Font` exposes: a downloadable face arrives as
+ * `Font(GoogleFont("Orbitron", …), weight=…)`, a bundled one as a file path, and the platform
+ * default as `FontFamily.Default`. Only a concrete branded face is interesting to the SVG
+ * cross-check — the default is exactly the case that must not raise a warning, and a generic
+ * (`sans-serif`) legitimately maps to the default face.
+ */
+internal fun displayFamilyName(label: String): String? {
+  GOOGLE_FONT_LABEL.find(label)?.groupValues?.getOrNull(1)?.let { name ->
+    return name.takeIf { it.isNotBlank() }
+  }
+  if (label == "FontFamily.Default" || label.startsWith("res/font/")) return null
+  if (label.lowercase() in GENERIC_FAMILIES) return null
+  val leaf = label.substringAfterLast('/').substringBeforeLast('.')
+  return leaf.takeIf { it.isNotBlank() && !it.startsWith("Font(") }
+}
+
+private val GOOGLE_FONT_LABEL = Regex("""GoogleFont\("([^"]+)"""")
+
+private val GENERIC_FAMILIES =
+  setOf("sans-serif", "serif", "monospace", "cursive", "fantasy", "system-ui")
 
 private fun requestedFamily(fontFamily: FontFamily?): String =
   when (fontFamily) {

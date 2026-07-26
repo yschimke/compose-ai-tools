@@ -660,6 +660,76 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `composePreviewDiscover routes @WearThemeCatalog to its own kind and id namespace`() {
+    val projectDir = createCmpTestProject()
+
+    // Both annotations declared locally (FQN match, no external artifact) so one project exercises
+    // the platform split.
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "ThemeCatalogs.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.CLASS)
+        annotation class ThemeCatalog(val name: String = "", val group: String = "")
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.CLASS)
+        annotation class WearThemeCatalog(val name: String = "", val group: String = "")
+        """
+          .trimIndent()
+      )
+    // Deliberately the SAME display name on both platforms — the id namespace is what has to keep
+    // them apart, otherwise the two sheets would collide on one `renders/<id>.png`.
+    File(projectDir, "src/main/kotlin/test/Themes.kt")
+      .writeText(
+        """
+        package test
+
+        import ee.schimke.composeai.preview.ThemeCatalog
+        import ee.schimke.composeai.preview.WearThemeCatalog
+
+        @ThemeCatalog(name = "Brand", group = "B") class BrandPhoneTheme
+        @WearThemeCatalog(name = "Brand", group = "B") class BrandWearTheme
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val byId = manifest.previews.associateBy { it.id }
+
+    // Same name, distinct ids — the platform prefix, not the FQN disambiguator, separates them.
+    val phone = byId.getValue("themecatalog__Brand")
+    val wear = byId.getValue("wearthemecatalog__Brand")
+    assertThat(phone.params.kind).isEqualTo(PreviewKind.THEME_CATALOG)
+    assertThat(wear.params.kind).isEqualTo(PreviewKind.WEAR_THEME_CATALOG)
+    // Each still points at its own provider — that's what the renderer resolves and wraps.
+    assertThat(phone.params.wrapperClassName).isEqualTo("test.BrandPhoneTheme")
+    assertThat(wear.params.wrapperClassName).isEqualTo("test.BrandWearTheme")
+    // Everything else about the Wear entry matches the mobile shape (name/label/group/optional), so
+    // downstream consumers need no per-platform special-casing beyond the kind.
+    assertThat(wear.params.name).isEqualTo("Brand")
+    assertThat(wear.params.group).isEqualTo("B")
+    assertThat(wear.functionName).isEqualTo("Brand theme")
+    assertThat(wear.captures.single().optional).isTrue()
+  }
+
+  @Test
   fun `composePreviewDiscover disambiguates theme catalog ids when two providers share a name`() {
     val projectDir = createCmpTestProject()
     val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")

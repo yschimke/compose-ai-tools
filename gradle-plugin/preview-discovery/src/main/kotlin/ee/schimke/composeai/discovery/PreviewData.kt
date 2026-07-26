@@ -59,6 +59,19 @@ enum class PreviewKind {
    */
   THEME_CATALOG,
   /**
+   * The Wear counterpart of [THEME_CATALOG] — a synthetic theme catalog sheet for one
+   * `@WearThemeCatalog` provider. Same mechanism (resolve [PreviewParams.wrapperClassName], compose
+   * its `Wrap(content)` around a canned specimen), but the specimen reads
+   * `androidx.wear.compose.material3.MaterialTheme` rather than the mobile one, and shows Wear's
+   * own role set (`primaryDim`, the `surfaceContainer*` ramp).
+   *
+   * This is a distinct kind rather than a flag on [THEME_CATALOG] because the two sheets can't
+   * share a specimen: a Wear provider never installs `androidx.compose.material3.MaterialTheme`, so
+   * the mobile specimen composed inside one reads the *baseline* M3 palette and silently reports
+   * defaults for every theme. See `WearThemeCatalog`'s KDoc.
+   */
+  WEAR_THEME_CATALOG,
+  /**
    * A real Activity declared in the module's merged `AndroidManifest.xml` — no `@Preview`, no
    * consumer composable. The renderer launches the activity for real (full lifecycle, its own
    * `setContent`) inside the Robolectric sandbox and captures its window — an app-level preview of
