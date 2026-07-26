@@ -64,6 +64,19 @@ class RenderPerfStatsTest {
   }
 
   @Test
+  fun recentFailuresAreBoundedAndNewestFirst() {
+    val stats = RenderPerfStats()
+    repeat(RenderPerfStats.FAILURE_WINDOW_SIZE + 2) { index ->
+      stats.recordFailed(index.toLong(), timeout = index % 2 == 0, reason = "failure $index")
+    }
+
+    val failures = stats.snapshot().recentFailures
+    assertEquals(RenderPerfStats.FAILURE_WINDOW_SIZE, failures.size)
+    assertEquals("failure 11", failures.first().reason)
+    assertEquals("failure 2", failures.last().reason)
+  }
+
+  @Test
   fun aggregateSumsCountsAndReportsWorstFirstRender() {
     val a = RenderPerfStats().apply { recordOk(10_000, cold = true) }.snapshot()
     val b =
