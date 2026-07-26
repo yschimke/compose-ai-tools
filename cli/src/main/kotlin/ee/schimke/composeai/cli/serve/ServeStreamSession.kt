@@ -22,6 +22,7 @@ class ServeStreamSession(
   previewId: String,
   initialOverrides: Map<String, String> = emptyMap(),
   private val send: (String) -> Unit,
+  private val normalizeOverrides: (Map<String, String>) -> Map<String, String> = { it },
   /**
    * Why this connection is on the snapshot-fallback lane rather than the live daemon stream — the
    * daemon's original failure captured by [ServeLiveSession.tryStart]'s `onUnavailable` (e.g.
@@ -42,16 +43,18 @@ class ServeStreamSession(
   /** Handle one client text message: update overrides / re-render, or echo a protocol error. */
   fun onClientMessage(text: String) {
     when (val message = ServeStreamProtocol.parseClient(text)) {
-      is ServeStreamProtocol.ClientMessage.SetOverrides ->
+      is ServeStreamProtocol.ClientMessage.SetOverrides -> {
         // Validate before committing: a bad override message is reported but must not poison the
         // session — the previous (valid) overrides stay in effect for subsequent frames.
-        when (val parsed = ServeOverrides.parse(message.overrides, knobKindsFor(previewId))) {
+        val normalized = normalizeOverrides(message.overrides)
+        when (val parsed = ServeOverrides.parse(normalized, knobKindsFor(previewId))) {
           is OverrideParse.Invalid -> send(ServeStreamProtocol.errorMessage(parsed.message))
           is OverrideParse.Ok -> {
-            overrides = message.overrides
+            overrides = normalized
             sendFrame(parsed.overrides)
           }
         }
+      }
       ServeStreamProtocol.ClientMessage.RequestFrame -> renderCurrent()
       is ServeStreamProtocol.ClientMessage.Switch -> switchTo(message)
       is ServeStreamProtocol.ClientMessage.Input ->
@@ -76,7 +79,7 @@ class ServeStreamSession(
     // Validate before committing either field: a bad override must leave the current preview +
     // overrides intact (so later requestFrame keeps working), mirroring setOverrides / the live
     // lane.
-    val nextOverrides = message.overrides ?: overrides
+    val nextOverrides = message.overrides?.let(normalizeOverrides) ?: overrides
     val parsed =
       when (val p = ServeOverrides.parse(nextOverrides, knobKindsFor(message.previewId))) {
         is OverrideParse.Invalid -> {

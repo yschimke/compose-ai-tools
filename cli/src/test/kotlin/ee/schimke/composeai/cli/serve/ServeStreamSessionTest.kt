@@ -63,6 +63,27 @@ class ServeStreamSessionTest {
   }
 
   @Test
+  fun `override normalizer applies to setOverrides and switch messages`() {
+    host().use { h ->
+      val sent = CopyOnWriteArrayList<String>()
+      val session =
+        ServeStreamSession(
+          h,
+          previewId,
+          emptyMap(),
+          sent::add,
+          normalizeOverrides = { it - "uiMode" },
+        )
+      session.onClientMessage("""{"type":"setOverrides","overrides":{"uiMode":"chartreuse"}}""")
+      session.onClientMessage(
+        """{"type":"switch","previewId":"$previewId","overrides":{"uiMode":"light"}}"""
+      )
+
+      assertEquals(listOf("frame", "frame"), sent.map(::typeOf))
+    }
+  }
+
+  @Test
   fun `seq is monotonic across frames`() {
     host().use { h ->
       val sent = CopyOnWriteArrayList<String>()

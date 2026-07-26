@@ -610,6 +610,7 @@ class ServeWebFixtureTest {
         "compose-m3",
         themedPreviews,
         token,
+        sessionId = "compose-m3",
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
         hasHomeIndex = true,
@@ -1289,6 +1290,27 @@ class ServeWebFixtureTest {
       "fallback: a non-Wear system stays on the light stage",
     )
     assertNull(
+      ServeWeb.SystemDisplay.normalizeOverrideParams("confetti-wear", mapOf("uiMode" to "light"))[
+          "uiMode"],
+      "Wear ignores the generic light override",
+    )
+    assertEquals(
+      "light",
+      ServeWeb.SystemDisplay.normalizeOverrideParams("compose-m3", mapOf("uiMode" to "light"))[
+          "uiMode"],
+      "non-Wear systems retain day/night overrides",
+    )
+    assertTrue(
+      landingThemed.contains("localStorage.getItem(\"cp-theme:compose-m3\")") &&
+        landingThemed.contains("localStorage.setItem(\"cp-theme:compose-m3\", theme)"),
+      "the catalog landing persists theme under its own catalog key",
+    )
+    assertTrue(
+      viewerGestures.contains("localStorage.getItem(\"cp-theme:wear-m3\")") &&
+        !viewerGestures.contains("cp-theme:compose-m3"),
+      "a viewer reads only its own catalog's sticky theme",
+    )
+    assertNull(
       ServeWeb.SystemDisplay.normalizeOverrides(
           "confetti-wear",
           PreviewOverrides(uiMode = UiMode.LIGHT),
@@ -1324,10 +1346,6 @@ class ServeWebFixtureTest {
     assertFalse(
       landingThemed.contains(">button-filled__ideal__default__dark</div>"),
       "the dark variant is folded into the swap card, not a separate card",
-    )
-    assertTrue(
-      landingThemed.contains("localStorage.setItem(\"cp-theme\""),
-      "toggle persists the choice to the shared cp-theme key",
     )
     // The swap re-points the image + viewer link + id + label to the chosen theme's baked render.
     assertTrue(
@@ -1375,19 +1393,19 @@ class ServeWebFixtureTest {
     // The combined filter composes search with theme: on a themed catalog the script still persists
     // the theme choice, so search didn't displace the theme half.
     assertTrue(
-      landingThemed.contains("localStorage.setItem(\"cp-theme\"") &&
+      landingThemed.contains("localStorage.setItem(\"cp-theme:compose-m3\"") &&
         landingThemed.contains("getElementById(\"cp-search\")"),
       "the themed landing's filter script drives both the theme toggle and the search box",
     )
-    // The viewer both seeds its Theme select from the shared cp-theme on load (so a theme-less
-    // preview inherits the catalog choice) and writes it back on change — the sticky round-trip.
+    // The viewer both seeds its Theme select from the catalog-scoped theme key on load (so a
+    // theme-less preview inherits the catalog choice) and writes it back on change.
     assertTrue(
-      viewer.contains("localStorage.getItem(\"cp-theme\""),
-      "viewer seeds its Theme select from the shared cp-theme on load",
+      viewer.contains("localStorage.getItem(\"cp-theme:default\""),
+      "viewer seeds its Theme select from the catalog-scoped theme key on load",
     )
     assertTrue(
-      viewer.contains("localStorage.setItem(\"cp-theme\""),
-      "viewer Theme change writes the shared cp-theme key",
+      viewer.contains("localStorage.setItem(\"cp-theme:default\""),
+      "viewer Theme change writes the catalog-scoped theme key",
     )
 
     // The backend-provenance badge names the active tier. The Wasm tier is always CMP-WASM; the

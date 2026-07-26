@@ -697,7 +697,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   var pid = (root && root.getAttribute("data-preview-id")) || "";
   var themed = pid.split("__").some(function (s) { return s === "light" || s === "dark"; });
   try {
-    var stored = localStorage.getItem("cp-theme");
+    var stored = localStorage.getItem("cp-theme:compose-m3");
     if (!themed && !el.value && (stored === "light" || stored === "dark")) el.value = stored;
   } catch (e) {}
   // Keep the stage backing colour in step with the CHOSEN theme, so a re-render in the opposite
@@ -717,11 +717,11 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     if (m) root.setAttribute("data-bg-theme", m);
     else root.removeAttribute("data-bg-theme");
   }
-  // Round-trip: a Theme change writes the shared key so the catalog remembers it, and re-syncs
+  // Round-trip: a Theme change writes this catalog's key so it remembers it, and re-syncs
   // the stage backing colour.
   el.addEventListener("change", function () {
     if (el.value === "light" || el.value === "dark") {
-      try { localStorage.setItem("cp-theme", el.value); } catch (e) {}
+      try { localStorage.setItem("cp-theme:compose-m3", el.value); } catch (e) {}
     }
     syncBg();
   });
@@ -1724,6 +1724,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     ["device", "orientation", "background", "sizeMode",
      "fixedW", "fixedH", "minW", "minH", "maxW", "maxH"];
   var wasmHonouredControlIds = ["uiMode", "localeTag", "fontScale"];
+  var alwaysDark = root.getAttribute("data-always-dark") === "1";
   function syncServerControls() {
     // The in-browser Wasm lane only honours the wasm-honoured trio (uiMode/locale/fontScale) +
     // knobs (see wasmOverridePatch); size/device/orientation/background and the app-theme
@@ -1746,7 +1747,8 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     // canvas lane, which doesn't map them onto the document.
     wasmHonouredControlIds.forEach(function (id) {
       var el = document.getElementById("cp-" + id);
-      if (el) el.disabled = !(canServerRender || (wasmSrc && !onRc));
+      if (el) el.disabled = (id === "uiMode" && alwaysDark) ||
+        !(canServerRender || (wasmSrc && !onRc));
     });
     // The app-theme (themeProvider) selector is a daemon-only override the Wasm app doesn't
     // honour: dead in the in-browser lane. Disable it there; otherwise mirror its server-side
