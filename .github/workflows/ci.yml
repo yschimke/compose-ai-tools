@@ -544,6 +544,8 @@ jobs:
         run: python3 .github/actions/apply/test_compute_scope.py -v
       - name: Run change-scope classifier tests
         run: python3 .github/ci/test_change_scope.py -v
+      - name: Run daemon round-trip transport tests
+        run: python3 .github/ci/test_daemon_roundtrip.py -v
 
   # VS Code extension tests — both the existing in-process Mocha suite and
   # the @vscode/test-electron integration tests. The latter download a
