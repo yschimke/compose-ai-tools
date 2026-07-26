@@ -85,19 +85,18 @@ class ServeWebThumbCropTest {
   @Test
   fun `all compose sample catalogs are attributed to android and shown on the homepage`() {
     val sampleIds = listOf("jetnews", "jetcaster", "jetchat", "jetsnack", "jetlagged", "reply")
-    val systems =
-      sampleIds.map { id ->
-        ServeWeb.HomeSystem(
-          system = id,
-          title = id,
-          subtitle = null,
-          previewCount = 1,
-          // The preview branches currently live in this fork. That fetch/trust origin must not
-          // make the public homepage attribute Android's samples to the fork owner.
-          trust = "branch:yschimke/compose-samples@design-artifacts/$id",
-          heroPreviewId = null,
-        )
-      }
+    val systems = sampleIds.map { id ->
+      ServeWeb.HomeSystem(
+        system = id,
+        title = id,
+        subtitle = null,
+        previewCount = 1,
+        // The preview branches currently live in this fork. That fetch/trust origin must not
+        // make the public homepage attribute Android's samples to the fork owner.
+        trust = "branch:yschimke/compose-samples@design-artifacts/$id",
+        heroPreviewId = null,
+      )
+    }
 
     val html = ServeWeb.homeIndexPage(systems, token = "t", isPublic = true)
 

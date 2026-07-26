@@ -1534,8 +1534,9 @@ object ServeWeb {
       setOf("jetnews", "jetcaster", "jetchat", "jetsnack", "jetlagged", "reply")
     val designSystems = systems.filter { it.system in designSystemIds }
     val androidComposeSamples = systems.filter { it.system in androidComposeSampleIds }
-    val remaining =
-      systems.filterNot { it.system in designSystemIds || it.system in androidComposeSampleIds }
+    val remaining = systems.filterNot {
+      it.system in designSystemIds || it.system in androidComposeSampleIds
+    }
     val yschimkeSystems = remaining.filter { it.trust?.startsWith("branch:yschimke/") == true }
     val otherSystems = remaining - yschimkeSystems.toSet()
     val sections =
