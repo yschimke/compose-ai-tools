@@ -301,6 +301,50 @@ A group is only surfaced when at least one of its variants actually changed
 non-nominated variants of the same function keep the historical "Other
 variants" treatment.
 
+## Downloadable-font cache
+
+Previews that use `Font(GoogleFont(...))` resolve their faces through a
+machine-local cache at `$XDG_CACHE_HOME/composeai/fonts` (else
+`~/.cache/composeai/fonts`), keyed by `(family, weight, italic)`. On a miss the
+renderer fetches the TTF from the Google Fonts CSS API — *during the render*,
+inside the Robolectric JVM.
+
+On CI that cache starts empty on every runner, so every face is re-fetched
+every run. The action persists it across runs with `actions/cache` (on by
+default; set `fonts-cache: false` to opt out).
+
+This is a correctness fix more than a speed one. The CSS API can serve a
+different face for the same key — a static sub-font at the exact weight, or the
+family's variable TTF — and those carry different text metrics. A run that
+resolved the other one renders its whole text layer shifted by a fraction of a
+pixel, which shows up as a visual diff on a PR that changed nothing. Caching
+the bytes means the face is chosen once instead of re-rolled per run.
+
+The cache is append-only — a key always means the same face — so the save key
+is unique per run and `restore-keys` pulls the newest prior entry forward. A
+fixed key would restore but never save, and a face first seen on run N would be
+re-fetched on every run after it. Restore and save are separate steps so a run
+that fails *after* paying the downloads still persists them, and the rerun
+starts warm.
+
+Keys are scoped per job (`github.job`), and the restore prefixes try this job's
+own lineage before falling back to any job's. Cache archives are snapshots and
+are never merged, so a shared prefix would restore whichever job saved most
+recently — and with the compose and a11y jobs running concurrently over
+different font sets that never settles: both restore the same snapshot, each
+saves its own superset, and the next run restores one of them while the other
+job refetches its faces live. Per-job lineage converges to each job's own set.
+
+Two caveats worth knowing:
+
+- **Cache scope is per branch.** A PR run reads its own branch's cache and the
+  default branch's, so the baseline runs on `main` are what keep PR runs warm.
+  A brand-new face still costs one live fetch on the run that first needs it.
+- **This narrows the window, it does not close it.** A face is still fetched
+  live the first time it is seen, and whatever the API served then is what gets
+  cached. Pinning faces by content hash — so a substitution is a hard failure
+  rather than a silent metric change — needs a lockfile and is not part of this.
+
 ## Related actions
 
 - [`install`](../install/) — just put the CLI on `$PATH`, no pipelines.

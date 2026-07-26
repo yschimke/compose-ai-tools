@@ -108,6 +108,26 @@ inputs:
       globally to every module the action invokes Gradle for (notifications
       pipeline + the compose / a11y pipelines via the CLI).
     default: 'fail'
+  fonts-cache:
+    description: >
+      Persist the downloadable-font cache (`$XDG_CACHE_HOME/composeai/fonts`,
+      else `~/.cache/composeai/fonts`) across runs with `actions/cache`.
+
+      Without it every fresh runner re-fetches every `Font(GoogleFont(...))`
+      face from the Google Fonts CSS API *during the render*, inside the
+      Robolectric JVM. That is slow, but the real cost is correctness: the CSS
+      API can serve a different face for the same `(family, weight, italic)` —
+      a static sub-font at the exact weight vs the family's variable TTF — and
+      those have different text metrics. A render that resolved the other one
+      shifts its whole text layer by a fraction of a pixel, which reads as a
+      spurious visual diff on a PR that changed nothing. Fetching once and
+      reusing the bytes removes the per-run coin flip.
+
+      The cache is append-only: entries are keyed by `(family, weight, italic)`
+      and a given key always means the same face, so a run only ever adds to
+      it. Set `false` to opt out (e.g. a consumer that vendors its own fonts,
+      or an air-gapped runner with a pre-seeded directory).
+    default: 'true'
   pr-number:
     description: 'Override for PR number when context is ambiguous.'
     default: ''
@@ -514,6 +534,50 @@ runs:
         echo "generic serif      → $(fc-match -f '%{family}\n' serif) (was: ${prev_serif:-none})"
         echo "generic monospace  → $(fc-match -f '%{family}\n' monospace) (was: ${prev_mono:-none})"
 
+    # Resolve the same directory the renderer's `GoogleFontCache` uses, via the
+    # same XDG rule as `composeAiFontsCacheDir` in the Gradle plugin. Computed
+    # in a step (rather than hardcoded in the cache `path`) so the two can't
+    # drift silently: if a runner sets XDG_CACHE_HOME, we cache what the render
+    # will actually read rather than an empty `~/.cache` sibling.
+    - name: Resolve downloadable-font cache dir
+      id: fonts-dir
+      if: inputs.fonts-cache == 'true' && steps.scope.outputs.mode != 'skip'
+      shell: bash
+      run: |
+        set -euo pipefail
+        base="${XDG_CACHE_HOME:-$HOME/.cache}"
+        dir="$base/composeai/fonts"
+        mkdir -p "$dir"
+        echo "dir=$dir" >> "$GITHUB_OUTPUT"
+        echo "downloadable-font cache: $dir"
+
+    # Append-only cache, so the key is unique per run and `restore-keys` pulls
+    # the newest prior entry. A fixed key would restore but never save, so a
+    # face first seen on run N would be re-fetched on every run after it.
+    # Split restore/save (rather than plain `actions/cache`) for the same reason
+    # the android-all cache is split in integration.yml: a run that failed AFTER
+    # paying the downloads still persists them, so the rerun starts warm.
+    - name: Restore downloadable-font cache
+      id: fonts-cache-restore
+      if: inputs.fonts-cache == 'true' && steps.scope.outputs.mode != 'skip'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.fonts-dir.outputs.dir }}
+        key: composeai-fonts-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+        # This job's own lineage first, any job's as a cold-start fallback.
+        # Cache archives are snapshots and are never merged, so an OS-only
+        # prefix would restore whichever job saved most recently rather than
+        # this job's last state. With the compose and a11y jobs running
+        # concurrently over different font sets that never converges: both
+        # restore snapshot S, one saves S∪compose and the other S∪a11y, and the
+        # next run restores whichever landed last — so the other job refetches
+        # its own faces live, every run, which is the nondeterminism this cache
+        # exists to remove. Per-job lineage converges to each job's own set; the
+        # OS-only fallback only matters on a job's very first run.
+        restore-keys: |
+          composeai-fonts-${{ runner.os }}-${{ github.job }}-
+          composeai-fonts-${{ runner.os }}-
+
     - name: Run pipelines
       id: pipelines
       if: steps.scope.outputs.mode != 'skip'
@@ -586,6 +650,20 @@ runs:
         # Don't fail here — the trailing "surface failures" step decides
         # after pushes + comments have run.
         exit 0
+
+    # `always()` so a render that failed partway still persists whatever it
+    # fetched — the rerun does not re-download the same faces to fail the same
+    # way. `continue-on-error` because a cache upload is never worth failing a
+    # render over, and concurrent jobs (the compose and a11y jobs run as
+    # separate workflow jobs on the same commit) will race to save: the loser
+    # logs a "key already exists" warning, which is the expected steady state.
+    - name: Save downloadable-font cache
+      if: always() && inputs.fonts-cache == 'true' && steps.fonts-dir.outputs.dir != ''
+      continue-on-error: true
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.fonts-dir.outputs.dir }}
+        key: composeai-fonts-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
 
     # Upload artifacts as top-level GHA steps (can't run from subshells).
     # Fires whenever the relevant pipeline flagged a non-zero render rc,
