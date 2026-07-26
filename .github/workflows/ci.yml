@@ -5,8 +5,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  # Nightly full run. The heavy "anti-bit-rot" jobs below (XR composite render,
-  # the two bundle E2Es, agent-audit-samples) are drift detectors that rarely
+  # Nightly full run. The heavy "anti-bit-rot" jobs below (full sample renders,
+  # XR composite render, the two bundle E2Es, agent-audit-samples) are drift
+  # detectors that rarely
   # fail on an ordinary code PR but cost 6–12 min each and dominate the PR
   # critical path. They're gated off `pull_request` (see the per-job `if:`s) and
   # instead run here nightly + on every push to main (i.e. immediately
@@ -97,6 +98,11 @@ jobs:
           path: gradle-plugin/build/reports/tests/
 
   build-samples:
+    # Keep the required PR check to the smallest representative cross-platform
+    # slice. The expensive render/pixel suites live in build-samples-full below
+    # and run immediately after merge (plus nightly), where they still catch
+    # drift without extending the PR critical path.
+    # Keep the historical check name because branch protection requires it.
     name: Build Samples
     if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
@@ -124,6 +130,40 @@ jobs:
       # `composePreviewDiscover` alone would pass even when broken.
       - name: Render Android screenshot-test sample previews
         run: ./gradlew :samples:android-screenshot-test:composePreviewRenderAll
+      - name: Upload preview manifests
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: preview-manifests
+          path: |
+            samples/android/build/compose-previews/previews.json
+            samples/android-screenshot-test/build/compose-previews/previews.json
+            samples/cmp/build/compose-previews/previews.json
+      - name: Upload screenshot-test renders
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: samples-android-screenshot-test-renders
+          path: samples/android-screenshot-test/build/compose-previews/renders/
+
+  build-samples-full:
+    name: Build Samples (full render suite)
+    # These render-heavy checks are valuable anti-bit-rot coverage, but they
+    # duplicate the representative Android/CMP build performed by the required
+    # smoke job and routinely make Build Samples the slowest CI leg. Run them
+    # on main and nightly instead. Because this is a distinct, new check name it
+    # is not part of the existing branch-protection required-check set.
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       # Daemon-bench smoke (issue #1586). The full latency benches
       # (benchPreviewLatency / benchCompileStages) are deliberately slow and run on the
       # reference machine — see .github/workflows/daemon-bench.yml. Here we only render
@@ -150,27 +190,18 @@ jobs:
       # `build/compose-previews/{resources.json,renders/resources/}`.
       - name: Render Android resource previews
         run: ./gradlew :samples:android:composePreviewRenderAndroidResources
-      - name: Upload preview manifests
+      - name: Upload full-suite manifests
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: preview-manifests
-          path: |
-            samples/android/build/compose-previews/previews.json
-            samples/android/build/compose-previews/resources.json
-            samples/android-screenshot-test/build/compose-previews/previews.json
-            samples/cmp/build/compose-previews/previews.json
+          name: full-sample-preview-manifests
+          path: samples/android/build/compose-previews/resources.json
       - name: Upload Android resource renders
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: samples-android-resource-renders
           path: samples/android/build/compose-previews/renders/resources/
-      - name: Upload screenshot-test renders
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: samples-android-screenshot-test-renders
-          path: samples/android-screenshot-test/build/compose-previews/renders/
       - name: Upload Wear sample renders
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
