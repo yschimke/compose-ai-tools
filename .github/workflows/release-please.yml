@@ -1,9 +1,11 @@
 name: Release PR
 
 # Keeps a "chore(main): release X.Y.Z" pull request up to date based on
-# conventional-commit history since the last tag. When that PR is merged,
-# release-please creates the tag + GitHub Release, then this workflow calls
-# release.yml to build and publish the three artifacts onto that Release.
+# conventional-commit history since the last tag. Release creation and release-PR
+# creation run as separate release-please invocations so a newly cut, tagless
+# draft cannot be mistaken for an older release. When the release PR is merged,
+# release-please creates the GitHub Release, then this workflow calls release.yml
+# to build and publish the three artifacts onto that Release.
 #
 # One button: merging the release PR triggers the full publish. No manual
 # tag push, no dispatch step. See docs/RELEASING.md.
@@ -35,6 +37,13 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+          # Only cut the release in this invocation. release-please normally also
+          # computes the next candidate PR immediately after cutting a release,
+          # but our release is still a tagless draft at that point. It therefore
+          # uses the previous published release as its baseline and briefly opens
+          # a phantom, stale-version PR. `reconcile-release-pr` runs the PR-only
+          # half after the tag exists and the release has been published.
+          skip-github-pull-request: true
           # When the release PR is merged, release-please creates a DRAFT GitHub
           # Release (config `"draft": true`), populated with the CHANGELOG entry
           # as the body. The `release` job below uploads CLI + VSIX assets onto
@@ -50,16 +59,13 @@ jobs:
       # the tag now, at the release PR's merge commit. Idempotent: skips if the
       # ref already exists (e.g. a re-run, or a future non-draft release-please).
       #
-      # `!cancelled()` (not the default success-only gate) is deliberate and hard-won:
-      # the release-please-action step cuts the draft (sets `release_created=true`)
-      # and THEN builds the next candidate PR in the same step — and that second
-      # half can crash (`Error adding to tree`) *after* the release is already cut.
-      # With a plain `if: …release_created == 'true'`, that crash skips this step,
-      # so the tag is never written; the manifest then names a version with no tag,
-      # which wedges every later release-please run into re-listing all history and
-      # failing again. Running whenever a release was actually cut — even if the rp
-      # step later failed — guarantees the tag exists and breaks that trap. This is
-      # exactly what stranded 0.16.34 (draft, untagged) until it was fixed by hand.
+      # `!cancelled()` (not the default success-only gate) is deliberate and
+      # defensive: once the action reports `release_created=true`, a later action
+      # failure must not skip tag creation. Otherwise the manifest can name a
+      # version with no tag, wedging later runs into re-listing old history. This
+      # is the failure mode that stranded 0.16.34 (draft, untagged) until it was
+      # fixed by hand. The split PR pass removes the known post-release tree-write
+      # failure, while this guard continues to protect the release/tag invariant.
       - name: Ensure the release tag exists for the draft
         if: ${{ !cancelled() && steps.rp.outputs.release_created == 'true' }}
         env:
@@ -76,14 +82,31 @@ jobs:
             echo "created tag ${TAG} at ${SHA}."
           fi
 
+  # On ordinary pushes there was no pending release to cut, so run the PR-only
+  # half now and keep the candidate release PR current. On a release-PR merge,
+  # wait for `reconcile-release-pr` instead: it runs only after the new release is
+  # tagged and published, preventing the transient stale-version PR.
+  update-release-pr:
+    needs: release-please
+    if: ${{ !cancelled() && needs.release-please.outputs.release_created != 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # update the release branch
+      pull-requests: write   # open/update the release PR
+    steps:
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-release: true
+
   # Build and publish the artifacts whenever release-please actually cuts a
   # release. Skipped on "just updating the release PR" runs.
   #
   # `!cancelled() && …release_created == 'true'` rather than a plain output check:
-  # the release-please job can report `release_created=true` (draft cut) and STILL
-  # end in failure if the rp step crashes while building the next candidate PR (see
-  # the tag-ensure step). We want the artifact build to proceed whenever a release
-  # was genuinely cut, so a post-cut crash doesn't strand the release unpublished.
+  # the release-please job can report `release_created=true` (draft cut) and still
+  # end in failure afterward. We want the artifact build to proceed whenever a
+  # release was genuinely cut, so a post-cut failure doesn't strand it unpublished.
   release:
     needs: release-please
     if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' }}
@@ -209,24 +232,23 @@ jobs:
     permissions:
       contents: write   # force-push the design-artifacts/<system> delivery branches
 
-  # Reconcile the "next release" PR after a release fully publishes.
+  # Create or reconcile the "next release" PR after a release fully publishes.
   #
-  # The `release-please` job above opens the next release PR in the SAME run that
-  # cuts the release — but at that moment the just-cut version is invisible to
-  # release-please: it's a *draft* GitHub Release (config `"draft": true`), which
-  # carries no git tag, and the tag is only written by the later "Ensure the
-  # release tag exists" step. So release-please falls back to the PREVIOUS
-  # published release as its baseline, re-lists the just-released commits, and
-  # opens a phantom next-version PR (e.g. a spurious 0.17.0 with duplicated notes)
-  # that only clears on the next release-please run.
+  # A combined release-please invocation normally opens the next release PR in
+  # the SAME action step that cuts the release. At that moment the just-cut
+  # version is invisible to release-please: it's a *draft* GitHub Release (config
+  # `"draft": true`), which carries no git tag, and the tag is only written by
+  # the later "Ensure the release tag exists" step. It therefore falls back to
+  # older release history and can open a phantom stale-version PR with duplicated
+  # notes. The first invocation now sets `skip-github-pull-request`; this job is
+  # deliberately the separate PR-only half of the operation.
   #
-  # This job IS that next run: it fires after finalize-release (so both the tag
-  # and the now-published release exist), re-runs release-please with the same
-  # config, sees the correct baseline, and closes the phantom PR automatically.
-  # It cannot cut a release itself — the merged release PR is already labelled
-  # `autorelease: tagged`, so there is nothing pending to release and no
-  # downstream chain fires (no loop). If genuinely new commits landed while the
-  # release was publishing, it opens the correct next PR instead of the phantom.
+  # This job fires after finalize-release (so both the tag and the now-published
+  # release exist), re-runs release-please with the same config, and sees the
+  # correct baseline. `skip-github-release` makes the separation explicit and
+  # prevents this second invocation from ever cutting a release. If genuinely new
+  # commits landed while the release was publishing, it opens the correct next PR;
+  # otherwise it creates no PR at all.
   reconcile-release-pr:
     needs: [release-please, finalize-release]
     # Tolerate release-please's post-cut crash, but only reconcile once the release
@@ -242,3 +264,4 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+          skip-github-release: true
