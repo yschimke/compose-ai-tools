@@ -262,10 +262,21 @@ internal class GoogleFontCache(
  * Two-stage lookup:
  * 1. Try `wght@<exact>` — works for static families (Roboto, Lobster Two) and for the default
  *    weight of variable families.
- * 2. If that returns no TTF URL (purely-variable fonts like Roboto Flex reject single-weight
- *    requests at non-default weights), retry with `wght@<min>..<max>` covering the full 1–1000
- *    range. For variable fonts the response is a single `@font-face` pointing at the variable TTF;
- *    for static fonts it's multiple blocks and we pick the closest to the requested weight.
+ * 2. If that request *succeeded but carried no TTF URL* (purely-variable fonts like Roboto Flex
+ *    reject single-weight requests at non-default weights), retry with `wght@<min>..<max>` covering
+ *    the full 1–1000 range. For variable fonts the response is a single `@font-face` pointing at the
+ *    variable TTF; for static fonts it's multiple blocks and we pick the closest to the requested
+ *    weight.
+ *
+ * The stage-1/stage-2 distinction is load-bearing for reproducibility, which is why a *failed*
+ * stage-1 request returns false rather than falling through. The two stages can legitimately resolve
+ * the same `(family, weight, italic)` to different faces — a static sub-font at the exact weight vs
+ * the family's variable TTF — and those have different text metrics. Falling through on a network
+ * error therefore let a transient blip resolve a key to the other face, and because the result is
+ * cached under the same filename, that face then stuck for every later render on the machine.
+ * Consumers saw it as a whole-text-layer sub-pixel shift appearing and disappearing between CI runs
+ * on unrelated commits. Failing instead routes through the usual unresolved-font path, which is
+ * fatal per-preview by default (see [FontResolutionDiagnostics.failOnFallback]) and says so.
  *
  * The CSS2 endpoint serves WOFF2 by default (Android doesn't parse WOFF2 natively), so we send an
  * Android-2.3 User-Agent — one of the few UAs for which the API still returns TrueType. Same
@@ -276,9 +287,11 @@ internal fun downloadFromGoogleFonts(
   destination: File,
   fileSystem: FileSystem = SystemFileSystem,
 ): Boolean {
-  val exactUrl = httpGet(buildCssUrl(key), TTF_USER_AGENT)?.let { extractFirstTruetypeUrl(it) }
+  // A null here is a *failed request*, not "this family has no TTF at this weight" — don't let it
+  // silently pick up the range query's (differently-metricked) answer. See the KDoc.
+  val exactCss = httpGet(buildCssUrl(key), TTF_USER_AGENT) ?: return false
   val url =
-    exactUrl
+    extractFirstTruetypeUrl(exactCss)
       ?: run {
         val rangeCss = httpGet(buildRangeCssUrl(key), TTF_USER_AGENT) ?: return false
         pickClosestTruetypeUrl(rangeCss, key.weight.weight) ?: return false
