@@ -459,8 +459,10 @@ open class RobolectricHost(
    * waits, no cold-start cliff where the first N submits each race a 60s timeout before the sandbox
    * finishes building.
    *
-   * Cold-start cost on a fresh `~/.cache/robolectric` is dominated by downloading
-   * `android-all-instrumented-{ver}-{sdk}.jar` (~150 MB) and instrumenting every class on the
+   * Cold-start cost on a fresh Maven local repo is dominated by downloading
+   * `android-all-instrumented-{ver}-{sdk}.jar` (~150 MB, into
+   * `~/.m2/repository/org/robolectric/android-all-instrumented/` via Robolectric's own resolver —
+   * see docs/daemon/STARTUP.md) and instrumenting every class on the
    * daemon's classpath; that can run into minutes. Warm starts (cache hit + no incremental rebuild)
    * are ~5–15s. The configurable timeout below is the upper bound on the cold path.
    *
@@ -1639,7 +1641,7 @@ open class RobolectricHost(
 
     /**
      * Sysprop knob for [start]'s sandbox-bootstrap deadline. Cold first run on an empty
-     * `~/.cache/robolectric` is dominated by the `android-all-instrumented-{ver}-{sdk}.jar`
+     * Maven local repo is dominated by the `android-all-instrumented-{ver}-{sdk}.jar`
      * download (~150 MB) plus instrumenting every class on the daemon's classpath; the default
      * 10-minute ceiling covers that. Warm boots (cache hit) are 5–15s and never approach this
      * limit. Override with `-Dcomposeai.daemon.sandboxBootTimeoutMs=<ms>` for slower CI runners or
