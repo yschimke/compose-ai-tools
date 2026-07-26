@@ -24,14 +24,14 @@ class DaemonBootstrapFunctionalTest {
    * build with repositories. Only a real `composePreviewDaemonStart` proves the wiring end to end.
    */
   @Test
-  fun `backgroundSandboxBoot set in the daemon block reaches the descriptor`() {
+  fun `backgroundSandboxBoot opt-out in the daemon block reaches the descriptor`() {
     val projectDir =
       createCmpTestProject(
         extraBuildScript =
           """
           composePreview {
               daemon {
-                  backgroundSandboxBoot = true
+                  backgroundSandboxBoot = false
               }
           }
           """
@@ -45,13 +45,13 @@ class DaemonBootstrapFunctionalTest {
       .build()
 
     val descriptor = File(projectDir, "build/compose-previews/daemon-launch.json").readText()
-    assertThat(backgroundSandboxBootIn(descriptor)).isEqualTo("true")
+    assertThat(backgroundSandboxBootIn(descriptor)).isEqualTo("false")
   }
 
   @Test
-  fun `backgroundSandboxBoot defaults to false in the descriptor`() {
-    // Default-off has to hold at the descriptor, not just the extension: the eager
-    // all-sandboxes-ready contract is what every plugin consumer gets unless they opt out.
+  fun `backgroundSandboxBoot defaults to true in the descriptor`() {
+    // Default-on has to hold at the descriptor, not just the extension: this is what every plugin
+    // consumer gets, and the descriptor is the daemon JVM's only view of it.
     val projectDir = createCmpTestProject()
 
     GradleRunner.create()
@@ -61,7 +61,7 @@ class DaemonBootstrapFunctionalTest {
       .build()
 
     val descriptor = File(projectDir, "build/compose-previews/daemon-launch.json").readText()
-    assertThat(backgroundSandboxBootIn(descriptor)).isEqualTo("false")
+    assertThat(backgroundSandboxBootIn(descriptor)).isEqualTo("true")
   }
 
   /**

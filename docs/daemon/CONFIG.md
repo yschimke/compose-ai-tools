@@ -11,7 +11,7 @@ composePreview {
     maxHeapMb = 1024
     maxRendersPerSandbox = 1000
     warmSpare = true
-    backgroundSandboxBoot = false
+    backgroundSandboxBoot = true
   }
 }
 ```
@@ -65,15 +65,19 @@ Higher values amortise the spare-rebuild cost over more renders; lower values ca
 
 | | |
 |-|-|
-| **Default** | `false` |
+| **Default** | `true` |
 | **Range** | `true` / `false` |
-| **Effect** | Whether `initialize` may be answered as soon as the **first** sandbox is ready, with the rest of the pool booting on a background thread. Default `false` means the whole eager pool must be hot first. See [SANDBOX-POOL.md](SANDBOX-POOL.md) § Background pool boot. |
+| **Effect** | Whether `initialize` may be answered as soon as the **first** sandbox is ready, with the rest of the pool booting on a background thread. `false` makes the whole eager pool boot before `initialize` returns. See [SANDBOX-POOL.md](SANDBOX-POOL.md) § Background pool boot. |
 
-This is a time-to-**first**-render vs time-to-**full-capacity** trade, and it only bites when the pool is bigger than one. `RobolectricHost.start()` boots the eager slots *sequentially*, so with `warmSpare = true` (5 sandboxes) `initialize` waits for roughly `5 × sandbox boot` — ~58s at the ~11.6s-per-sandbox figure measured in SANDBOX-POOL.md — before the client may render anything.
+This is a time-to-**first**-render vs time-to-**full-capacity** trade, and it only bites when the pool is bigger than one. `RobolectricHost.start()` boots the eager slots *sequentially*, so with `warmSpare = true` (5 sandboxes) and this off, `initialize` waits for roughly `5 × sandbox boot` — ~58s at the ~11.6s-per-sandbox figure measured in SANDBOX-POOL.md — before the client may render anything.
 
-Turn it on when the first render matters more than the fifth: a cold CI leg that renders once, or an editor opening a single preview. Leave it off when a client fans out N renders the instant `initialize` returns and would rather not have them queue on the ready prefix while the pool fills.
+**Default `true`, because time-to-first-render is what a human waits on.** Nothing can render until `initialize` returns, so the eager path charges every client for the whole pool before it may draw anything — capacity that isn't needed until the *second* render. Measured on the integration daemon leg, `initialize` answers in ~6.5s with this on.
 
-Once the pool completes, dispatch is bit-identical either way; this only changes what happens *during* boot. `ServeBundleDaemon` and the deploy image already default it on for serve-spawned daemons — this knob is what makes the same trade available to the Gradle-plugin launch path.
+Set `false` when a client fans out N renders the instant `initialize` returns and would rather not have them queue on the ready prefix while the pool fills — i.e. when time-to-full-capacity genuinely beats time-to-first-render.
+
+Once the pool completes, dispatch is bit-identical either way; this only changes what happens *during* boot. `ServeBundleDaemon` and the deploy image already made this trade for serve-spawned daemons, so the Gradle-plugin launch path now matches them rather than diverging.
+
+Note this is the **descriptor** default. A `RobolectricHost` constructed in-process still boots eagerly unless its caller sets `composeai.daemon.backgroundSandboxBoot` — embedding code owns that choice directly.
 
 ### MCP-only — `replicasPerDaemon`
 
