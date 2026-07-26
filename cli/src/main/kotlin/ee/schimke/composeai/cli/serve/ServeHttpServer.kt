@@ -1394,7 +1394,8 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handleRender(sessionInPath: Boolean) {
     if (rejectBadToken()) return
-    withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
+    val sessionId = selectedSessionId(sessionInPath)
+    withLeasedSession(sessionId) { renderHost ->
       val rawName = call.parameters["name"]
       if (rawName.isNullOrBlank()) {
         call.respondText("missing preview id", status = HttpStatusCode.BadRequest)
@@ -1437,6 +1438,10 @@ class ServeHttpServer(
         is OverrideParse.Invalid ->
           call.respondText(parsed.message, status = HttpStatusCode.BadRequest)
         is OverrideParse.Ok -> {
+          // Wear/watch surfaces are always dark. The generic viewer used to leak its shared
+          // `cp-theme=light` preference into these URLs, needlessly waking the live daemon and
+          // producing a second encoding/render for an unsupported mode.
+          val overrides = ServeWeb.SystemDisplay.normalizeOverrides(sessionId, parsed.overrides)
           if (wantSvg) {
             // `?scroll=long` (or `full`/`page`) asks for the full-page export of a scrolling
             // preview (compose/figma-svg-long) instead of the viewport-sized one.
@@ -1450,17 +1455,11 @@ class ServeHttpServer(
             // or `mode=figma`) stays fully self-contained — right for `<img>`/Figma import, where
             // external references don't load.
             val webMode = call.request.queryParameters["mode"]?.lowercase() == "web"
-            renderSvgResponse(
-              renderHost,
-              previewId,
-              parsed.overrides,
-              scroll = scroll,
-              webMode = webMode,
-            )
+            renderSvgResponse(renderHost, previewId, overrides, scroll = scroll, webMode = webMode)
             return@withLeasedSession
           }
           if (wantSlots) {
-            renderSlotsResponse(renderHost, previewId, parsed.overrides)
+            renderSlotsResponse(renderHost, previewId, overrides)
             return@withLeasedSession
           }
           // The render is blocking (renderNow + await); keep it off the request dispatcher. Cap
@@ -1473,7 +1472,7 @@ class ServeHttpServer(
                 null
               } else {
                 try {
-                  renderHost.render(previewId, parsed.overrides)
+                  renderHost.render(previewId, overrides)
                 } finally {
                   renderSemaphore.release()
                 }

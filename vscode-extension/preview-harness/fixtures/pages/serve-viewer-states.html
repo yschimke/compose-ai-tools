@@ -849,7 +849,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     var o = {};
     fields.forEach(function (f) {
       var el = document.getElementById("cp-" + f);
-      if (el && el.value) o[f] = el.value;
+      if (el && !el.disabled && el.value) o[f] = el.value;
     });
     if (fontScaleTouched && fs) o.fontScale = fs.value;
     var size = sizeOverrides();

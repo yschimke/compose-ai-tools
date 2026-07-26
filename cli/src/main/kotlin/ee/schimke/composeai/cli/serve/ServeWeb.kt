@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+
 /**
  * In-code HTML/CSS/JS for the `compose-preview serve` web surface. Generated as Kotlin raw strings
  * (the house style — see [ee.schimke.composeai.cli.WebEmbed]) so the token + preview ids inject
@@ -1830,6 +1832,10 @@ object ServeWeb {
       return darkFirstIdPattern.containsMatchIn(s)
     }
 
+    /** Wear/watch renders have no day mode; discard a generic UI's accidental light override. */
+    fun normalizeOverrides(system: String, overrides: PreviewOverrides): PreviewOverrides =
+      if (isDarkFirst(system)) overrides.copy(uiMode = null) else overrides
+
     /**
      * Resolve whether [system] draws on a DARK stage, preferring the catalog's declared
      * [surface][declaredSurface] (`"light"`/`"dark"`) and falling back to the [isDarkFirst] id
@@ -2268,6 +2274,10 @@ object ServeWeb {
     val label = WebEscaping.htmlEscape(preview.label)
     val idText = WebEscaping.htmlEscape(preview.id)
     val modes = preview.modes.joinToString(",") { it.wire }
+    // Wear OS is an always-dark surface. Do not expose the generic day/night override: besides
+    // being meaningless for Wear, the shared sticky theme could otherwise replay a phone
+    // catalog's remembered "light" choice into a confetti-wear live render.
+    val wearAlwaysDark = SystemDisplay.isDarkFirst(basePath.trim('/').ifBlank { sessionId ?: "" })
     // The Wasm tier is opt-in via a toggle (like "Live (stream)"), so the always-works PNG snapshot
     // stays the default. Both the iframe and the toggle are omitted entirely when no Wasm app backs
     // this session.
@@ -2383,6 +2393,17 @@ object ServeWeb {
     // backs
     // the session.
     val wasmDis = if (overridesLive || wasmSrc != null) "" else " disabled"
+    val uiModeSelectHtml =
+      if (wearAlwaysDark)
+        """<select id="cp-uiMode" disabled>
+                  <option value="dark" selected>Dark (Wear OS)</option>
+                </select>"""
+      else
+        """<select id="cp-uiMode"$wasmDis>
+                  <option value="">Auto</option>
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                </select>"""
     // The static-snapshot note is only shown when overrides genuinely can't re-render on the server
     // ([overridesLive] false): a plain static bundle, or a Wasm-only published catalog (where
     // day/night, font scale, locale &amp; knobs apply in the browser but size/device/orientation
@@ -2572,11 +2593,7 @@ object ServeWeb {
             <summary>Appearance</summary>
             <div class="cp-group-body">
               <label>Day / Night
-                <select id="cp-uiMode"$wasmDis>
-                  <option value="">Auto</option>
-                  <option value="light">Light</option>
-                  <option value="dark">Dark</option>
-                </select>
+                $uiModeSelectHtml
               </label>
               $themeSelectorHtml
               <label>Background
@@ -2827,7 +2844,7 @@ object ServeWeb {
         var o = {};
         fields.forEach(function (f) {
           var el = document.getElementById("cp-" + f);
-          if (el && el.value) o[f] = el.value;
+          if (el && !el.disabled && el.value) o[f] = el.value;
         });
         if (fontScaleTouched && fs) o.fontScale = fs.value;
         var size = sizeOverrides();

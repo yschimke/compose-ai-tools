@@ -1,6 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
+import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
@@ -15,6 +17,7 @@ import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -1284,6 +1287,23 @@ class ServeWebFixtureTest {
     assertFalse(
       ServeWeb.SystemDisplay.resolveDarkFirst("compose-m3", null),
       "fallback: a non-Wear system stays on the light stage",
+    )
+    assertNull(
+      ServeWeb.SystemDisplay.normalizeOverrides(
+          "confetti-wear",
+          PreviewOverrides(uiMode = UiMode.LIGHT),
+        )
+        .uiMode,
+      "Wear ignores the generic light override",
+    )
+    assertEquals(
+      UiMode.LIGHT,
+      ServeWeb.SystemDisplay.normalizeOverrides(
+          "compose-m3",
+          PreviewOverrides(uiMode = UiMode.LIGHT),
+        )
+        .uiMode,
+      "non-Wear systems retain day/night overrides",
     )
 
     // The sticky theme toggle appears only for a catalog with light/dark pairs, and each paired
