@@ -51,7 +51,7 @@ else
   # untouched, while the next compose up inherits the complete image default.
   LEGACY_COMPOSE_SAMPLES_CATALOGS='jetnews@yschimke/compose-samples,jetchat@yschimke/compose-samples,jetlagged@yschimke/compose-samples'
   if grep -Fxq "SERVE_CATALOGS=${LEGACY_COMPOSE_SAMPLES_CATALOGS}" .env; then
-    sed -i '/^SERVE_CATALOGS=/d' .env
+    sed -i "\\|^SERVE_CATALOGS=${LEGACY_COMPOSE_SAMPLES_CATALOGS}$|d" .env
     echo "==> Removed the legacy three-app SERVE_CATALOGS override (using the image default)"
   fi
   echo "==> Reusing existing .env (tokens preserved)"

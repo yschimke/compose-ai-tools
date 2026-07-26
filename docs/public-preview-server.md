@@ -236,10 +236,10 @@ Both container profiles take this config from env (the entrypoint maps `SERVE_PU
 `SERVE_CATALOGS`, `SERVE_CATALOGS_UNLISTED`, `SERVE_TRUST_STORE`, `SERVE_WASM_DIR`,
 `SERVE_ACCEPT_BUNDLES` → flags) and put **Caddy** in front for TLS. They default to the **open public
 profile** (`SERVE_PUBLIC=1`, catalogs `compose-m3,wear-m3,remote-m3` plus the app systems `meshcore-mobile`,
-`homeassistant-remotecompose`, all six compose-samples apps (`jetnews`, `jetcaster`, `jetchat`, `jetsnack`,
-`jetlagged`, and `reply`), and the two Confetti apps on the front-page index; `cadence` is served unlisted at
-`/cadence/` — off the front page — via `SERVE_CATALOGS_UNLISTED`); set `SERVE_PUBLIC=0` + `SERVE_TOKEN` for a
-token-gated box.
+`homeassistant-remotecompose`, and all six compose-samples apps (`jetnews`, `jetcaster`, `jetchat`, `jetsnack`,
+`jetlagged`, and `reply`) on the front-page index; `cadence` is served unlisted at `/cadence/` — off the front
+page — via `SERVE_CATALOGS_UNLISTED`). The prebuilt `deploy/image` profile additionally includes the two
+Confetti apps. Set `SERVE_PUBLIC=0` + `SERVE_TOKEN` for a token-gated box.
 
 The prebuilt `deploy/image` **bakes a branch-trust store** at `/trust/producers.json` (trusting
 `design-artifacts/*` on `yschimke/compose-ai-tools`, `yschimke/meshcore-mobile`, and
