@@ -156,17 +156,20 @@ fun detectedFeaturesOf(preview: ee.schimke.composeai.cli.PreviewInfo): Pair<Bool
 data class ServeTheme(val name: String, val providerFqn: String, val group: String? = null)
 
 /**
- * Extract the module's declared `@ThemeCatalog` themes from a discovery manifest's preview list.
- * Discovery materializes each annotated `PreviewWrapperProvider` as a synthetic `THEME_CATALOG`
- * preview carrying the provider FQN on `params.wrapperClassName` plus its `name` / `group`; this
- * lifts those into [ServeTheme]s (the module-global theme options) without disturbing the ordinary
- * preview cards. Entries missing a provider FQN are skipped (nothing to apply). Deduped by FQN.
+ * Extract the module's declared `@ThemeCatalog` / `@WearThemeCatalog` themes from a discovery
+ * manifest's preview list. Discovery materializes each annotated `PreviewWrapperProvider` as a
+ * synthetic `THEME_CATALOG` / `WEAR_THEME_CATALOG` preview carrying the provider FQN on
+ * `params.wrapperClassName` plus its `name` / `group`; this lifts those into [ServeTheme]s (the
+ * module-global theme options) without disturbing the ordinary preview cards. Both kinds feed the
+ * same switcher — the platform only decides which specimen *sheet* gets rendered, while applying a
+ * theme to some other preview is just `Wrap`, which is platform-agnostic. Entries missing a
+ * provider FQN are skipped (nothing to apply). Deduped by FQN.
  */
 fun declaredThemesFromPreviews(
   previews: List<ee.schimke.composeai.cli.PreviewInfo>
 ): List<ServeTheme> =
   previews
-    .filter { it.params.kind == "THEME_CATALOG" }
+    .filter { it.params.kind == "THEME_CATALOG" || it.params.kind == "WEAR_THEME_CATALOG" }
     .mapNotNull { p ->
       val fqn = p.params.wrapperClassName?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
       ServeTheme(

@@ -284,6 +284,11 @@ object PreviewDiscovery {
   // See `ThemeCatalog.kt`.
   internal const val THEME_CATALOG_FQN = "ee.schimke.composeai.preview.ThemeCatalog"
 
+  // `@WearThemeCatalog` — the Wear-platform sibling, same shape and same placement rules. Separate
+  // annotation (not a flag) because the rendered specimen has to read a different `MaterialTheme`;
+  // see `WearThemeCatalog.kt`.
+  internal const val WEAR_THEME_CATALOG_FQN = "ee.schimke.composeai.preview.WearThemeCatalog"
+
   // Design-catalog inventory annotations — the code-side home for `catalog.spec.json`'s per-
   // component metadata. `@CatalogComponent` / `@CatalogVariant` land on the `@Preview` FUNCTION;
   // `@CatalogGroup` lands on the FILE (emitted onto the file's `…Kt` facade class). All BINARY /
@@ -521,15 +526,21 @@ object PreviewDiscovery {
                   )
               }
             }
-            // `@ThemeCatalog` on a `PreviewWrapperProvider` class → a theme catalog sheet. The
-            // provider FQN is all discovery records; the renderer resolves + invokes its `Wrap`.
-            classInfo.getAnnotationInfo(THEME_CATALOG_FQN)?.let { ann ->
-              rawThemeCatalogs +=
-                RawThemeCatalog(
-                  className = classInfo.name,
-                  name = annStringOrDefault(ann, "name", classInfo.simpleName),
-                  group = annStringOrDefault(ann, "group", defaultCatalogGroup(classInfo.name)),
-                )
+            // `@ThemeCatalog` / `@WearThemeCatalog` on a `PreviewWrapperProvider` class → a theme
+            // catalog sheet. The provider FQN is all discovery records; the renderer resolves +
+            // invokes its `Wrap`. The annotation picks the platform, hence the specimen: a provider
+            // carrying both is recorded once per platform (harmless, and better than dropping one).
+            for ((fqn, wear) in
+              listOf(THEME_CATALOG_FQN to false, WEAR_THEME_CATALOG_FQN to true)) {
+              classInfo.getAnnotationInfo(fqn)?.let { ann ->
+                rawThemeCatalogs +=
+                  RawThemeCatalog(
+                    className = classInfo.name,
+                    name = annStringOrDefault(ann, "name", classInfo.simpleName),
+                    group = annStringOrDefault(ann, "group", defaultCatalogGroup(classInfo.name)),
+                    wear = wear,
+                  )
+              }
             }
           }
         }
@@ -913,9 +924,16 @@ object PreviewDiscovery {
   }
 
   /**
-   * Raw `@ThemeCatalog` hit: the annotated `PreviewWrapperProvider` class + its display metadata.
+   * Raw `@ThemeCatalog` / `@WearThemeCatalog` hit: the annotated `PreviewWrapperProvider` class +
+   * its display metadata, plus which platform's specimen to render it with.
    */
-  private data class RawThemeCatalog(val className: String, val name: String, val group: String)
+  private data class RawThemeCatalog(
+    val className: String,
+    val name: String,
+    val group: String,
+    /** True for `@WearThemeCatalog` — selects the Wear specimen and the `wearthemecatalog__` id. */
+    val wear: Boolean = false,
+  )
 
   /**
    * Builds a [RawCatalogToken] from an annotated field, applying Showkase-style name/group
@@ -1120,7 +1138,11 @@ object PreviewDiscovery {
     themes: List<RawThemeCatalog>,
     renderSupported: Boolean,
   ): List<PreviewInfo> {
-    fun baseId(t: RawThemeCatalog) = "themecatalog__${t.name.replace(SANITIZE_RENDER_STEM, "_")}"
+    // Platform-scoped prefix: a Wear and a mobile theme that share a display name still get
+    // distinct ids (and so distinct `renders/<id>.png`), without needing the FQN disambiguator.
+    fun baseId(t: RawThemeCatalog) =
+      (if (t.wear) "wearthemecatalog__" else "themecatalog__") +
+        t.name.replace(SANITIZE_RENDER_STEM, "_")
     val baseCounts = themes.groupingBy { baseId(it) }.eachCount()
     return themes.map { theme ->
       val base = baseId(theme)
@@ -1142,7 +1164,8 @@ object PreviewDiscovery {
             // (#2179) by this. The display label lives on `functionName` above.
             name = theme.name,
             group = theme.group.ifEmpty { null },
-            kind = PreviewKind.THEME_CATALOG,
+            kind =
+              if (theme.wear) PreviewKind.WEAR_THEME_CATALOG else PreviewKind.THEME_CATALOG,
             wrapperClassName = theme.className,
           ),
         captures = listOf(Capture(renderOutput = "renders/$id.png", optional = !renderSupported)),
