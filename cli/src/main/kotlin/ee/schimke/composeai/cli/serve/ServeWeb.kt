@@ -1418,10 +1418,12 @@ object ServeWeb {
    * point of `preview.coo.ee` is the catalogs, so the landing lists them rather than hiding them
    * behind a nav pill). Non-catalog `serve` (no `--catalogs`) keeps the plain [landingPage].
    *
-   * [systems] are the published design systems (the `--catalogs` set), shown under "Design
-   * systems". The `--catalogs-unlisted` app catalogs are deliberately NOT indexed here — they're
-   * served at `/<system>/` (shareable by direct link) but stay off the front door entirely, so an
-   * operator can publish an app catalog without advertising it on the public landing.
+   * [systems] are the published catalogs (the `--catalogs` set), grouped into the Compose design
+   * systems, catalogs published by the `yschimke` GitHub organization, and a final "Other" section
+   * for every remaining publisher (for example, Confetti from `joreilly`). The
+   * `--catalogs-unlisted` app catalogs are deliberately NOT indexed here — they're served at
+   * `/<system>/` (shareable by direct link) but stay off the front door entirely, so an operator
+   * can publish an app catalog without advertising it on the public landing.
    */
   fun homeIndexPage(
     systems: List<HomeSystem>,
@@ -1484,12 +1486,28 @@ object ServeWeb {
       </div>
       """
         .trimIndent()
+    val designSystemIds = setOf("compose-m3", "remote-m3", "wear-m3")
+    val designSystems = systems.filter { it.system in designSystemIds }
+    val remaining = systems.filterNot { it.system in designSystemIds }
+    val yschimkeSystems = remaining.filter { it.trust?.startsWith("branch:yschimke/") == true }
+    val otherSystems = remaining - yschimkeSystems.toSet()
+    val sections =
+      listOf(
+          Triple("Design Systems", designSystems, "design system(s)"),
+          Triple("yschimke org", yschimkeSystems, "catalog(s)"),
+          Triple("Other", otherSystems, "catalog(s)"),
+        )
+        .filter { (_, list, _) -> list.isNotEmpty() }
     val body =
       if (systems.isEmpty()) {
-        "<h1 class=\"cp-head\">Design systems</h1>\n" +
+        "<h1 class=\"cp-head\">Design Systems</h1>\n" +
           "<p class=\"cp-sub\">No design systems are configured on this server.</p>"
       } else {
-        section("Design systems", systems, "design system(s)", "cp-grid")
+        sections
+          .mapIndexed { index, (heading, list, noun) ->
+            section(heading, list, noun, if (index == 0) "cp-grid" else "cp-grid-$index")
+          }
+          .joinToString("\n")
       }
     return document(
       title = "Design systems — compose-preview",
