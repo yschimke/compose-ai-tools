@@ -749,14 +749,28 @@ jobs:
       # dead jar forever. (A `github.run_id` key like the font cache uses would
       # be simpler, but at this size it would save a fresh quarter-gig per cell
       # per run and evict everything else in the repo's 10 GB budget.)
+      #
+      # Keyed PER CELL (`matrix.slug`), not globally. Cells don't all want the
+      # same coordinate: the SDK Robolectric synthesizes depends on the cell's
+      # JDK and any `composePreview.sdkVersion` pin (docs/SDK_COMPATIBILITY.md —
+      # JDK 17 clamps where JDK 21 doesn't, and `jetstream-xr` runs 21 while the
+      # rest run 17). Under one shared prefix those cells would ping-pong: each
+      # restores whichever coordinate was saved most recently, downloads the one
+      # it actually needs, and then cannot save — cache keys are immutable, so
+      # the entry for its own coordinate already exists and is never refreshed.
+      # Every cell would pay the full download every run, plus a pointless
+      # restore and upload. Per-cell keys give each one a stable coordinate.
+      # Deliberately no global restore-keys fallback either: seeding a new cell
+      # from a foreign coordinate costs a quarter-gig restore and still needs the
+      # real download.
       - name: Restore Robolectric android-all cache
         if: matrix.render || matrix.render_xr || matrix.daemon
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.m2/repository/org/robolectric/android-all-instrumented
-          key: android-all-instrumented-${{ runner.os }}-
+          key: android-all-instrumented-${{ runner.os }}-${{ matrix.slug }}-
           restore-keys: |
-            android-all-instrumented-${{ runner.os }}-
+            android-all-instrumented-${{ runner.os }}-${{ matrix.slug }}-
 
       # A truncated jar restored from cache is worse than no cache at all:
       # Robolectric's MavenArtifactFetcher skips its download when the target
@@ -1341,6 +1355,11 @@ jobs:
       # materialised, so newest-mtime is a reliable "current". Then key on what
       # survived: unchanged coordinate → same key → save is a no-op; bumped
       # coordinate → new key → new entry, old one ages out.
+      #
+      # Pruning is only sound because the key is per-cell and a cell renders at
+      # one SDK: the coordinate it wants this run is the one it wanted last run.
+      # Under a shared key this would be the thrash described on the restore
+      # step — don't collapse these keys back together.
       - name: Resolve android-all cache key
         id: android-all
         if: always() && (matrix.render || matrix.render_xr || matrix.daemon)
@@ -1379,7 +1398,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.m2/repository/org/robolectric/android-all-instrumented
-          key: android-all-instrumented-${{ runner.os }}-${{ steps.android-all.outputs.coordinate }}
+          key: android-all-instrumented-${{ runner.os }}-${{ matrix.slug }}-${{ steps.android-all.outputs.coordinate }}
 
   agp8-min:
     # Consumes build-plugin's bundle, so it rides the same change-scope gate:
@@ -1427,13 +1446,18 @@ jobs:
       # job — see the rationale on its "Restore Robolectric android-all cache"
       # step. Kept inline rather than factored into a composite action because
       # the matrix job has no checkout of this repo and so can't call one.
+      #
+      # Own key namespace for the same reason the matrix keys per cell: this
+      # fixture pins `composePreview.sdkVersion = 35` to stay inside JDK 17's
+      # Robolectric window, so its coordinate is its own and must not share an
+      # entry with cells that resolve a different SDK.
       - name: Restore Robolectric android-all cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.m2/repository/org/robolectric/android-all-instrumented
-          key: android-all-instrumented-${{ runner.os }}-
+          key: android-all-instrumented-${{ runner.os }}-agp8-min-
           restore-keys: |
-            android-all-instrumented-${{ runner.os }}-
+            android-all-instrumented-${{ runner.os }}-agp8-min-
 
       - name: Drop corrupt android-all jars
         run: |
@@ -1713,7 +1737,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.m2/repository/org/robolectric/android-all-instrumented
-          key: android-all-instrumented-${{ runner.os }}-${{ steps.android-all.outputs.coordinate }}
+          key: android-all-instrumented-${{ runner.os }}-agp8-min-${{ steps.android-all.outputs.coordinate }}
 
   publish-previews:
     name: Publish integration preview branches
