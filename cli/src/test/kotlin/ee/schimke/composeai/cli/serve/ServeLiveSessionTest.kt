@@ -232,6 +232,32 @@ class ServeLiveSessionTest {
   }
 
   @Test
+  fun `override normalizer applies to live setOverrides and switch messages`() {
+    val session = FakeRenderSession(newRenderRoot(), streaming = true)
+    host(session).use { h ->
+      val sent = CopyOnWriteArrayList<String>()
+      val live =
+        assertNotNull(
+          ServeLiveSession.tryStart(
+            h,
+            previewId,
+            emptyMap(),
+            send = sent::add,
+            normalizeOverrides = { it - "uiMode" },
+          )
+        )
+
+      live.onClientMessage("""{"type":"setOverrides","overrides":{"uiMode":"chartreuse"}}""")
+      live.onClientMessage(
+        """{"type":"switch","previewId":"$previewId","overrides":{"uiMode":"chartreuse"}}"""
+      )
+
+      assertEquals(2, session.streamStarts.get())
+      assertTrue(sent.none { typeOf(it) == "error" })
+    }
+  }
+
+  @Test
   fun `two live sessions for the same preview share one daemon stream`() {
     val session = FakeRenderSession(newRenderRoot(), streaming = true)
     host(session).use { h ->
