@@ -374,31 +374,18 @@ def _prop_is_true(props: dict[str, Any], key: str, default: bool) -> bool:
     return str(raw).strip().lower() == "true"
 
 
-def _derive_init_timeout_s(descriptor: dict[str, Any]) -> float:
-    """How long `initialize` may legitimately take, given the launch descriptor.
+def _eager_slot_count(descriptor: dict[str, Any]) -> int:
+    """How many sandbox slots sit on `initialize`'s critical path.
 
-    The Android daemon answers `initialize` only once `RobolectricHost.start()`
-    returns, and that boots the eager sandbox slots SEQUENTIALLY, applying
-    `composeai.daemon.sandboxBootTimeoutMs` (10 min default) to EACH slot. A
-    warm-spare pool is 5 slots, so the daemon's own worst case is 5 × 10 min —
-    a flat client budget under that would once again blame our impatience for
-    the daemon's slowness. Derive from the same properties the descriptor
-    launches the JVM with so the two can't drift.
+    `RobolectricHost.start()` boots the eager slots SEQUENTIALLY and only then
+    lets `initialize` answer, so this is the multiplier on both the client's
+    patience and the observed cold-start latency.
 
-    Under `backgroundSandboxBoot` only slot 0 is on the critical path.
-
-    A ceiling this high doesn't strand CI on a wedged daemon: a slot that
-    misses its budget makes the daemon exit, which lands as EOF and fails us
-    immediately. It only buys patience for a daemon that is still working.
+    Normally that's the whole pool — `warmSpare` (default on) means 5. Under
+    `composeai.daemon.backgroundSandboxBoot` only slot 0 is eager and the rest
+    boot on a background thread, so the count is 1 however big the pool is.
     """
     props = descriptor.get("systemProperties") or {}
-    boot_timeout_ms = _DEFAULT_BOOT_TIMEOUT_MS
-    raw_timeout = props.get(_BOOT_TIMEOUT_PROP)
-    if raw_timeout is not None:
-        try:
-            boot_timeout_ms = int(str(raw_timeout).strip())
-        except ValueError:
-            pass
     raw_count = props.get(_SANDBOX_COUNT_PROP)
     try:
         sandbox_count = int(str(raw_count).strip()) if raw_count is not None else None
@@ -412,8 +399,37 @@ def _derive_init_timeout_s(descriptor: dict[str, Any]) -> float:
             else 1
         )
     sandbox_count = max(1, sandbox_count)
-    eager_slots = 1 if _prop_is_true(props, _BACKGROUND_BOOT_PROP, default=False) else sandbox_count
-    return eager_slots * (boot_timeout_ms / 1000.0) + _INIT_TIMEOUT_SLACK_S
+    return 1 if _prop_is_true(props, _BACKGROUND_BOOT_PROP, default=False) else sandbox_count
+
+
+def _derive_init_timeout_s(descriptor: dict[str, Any]) -> float:
+    """How long `initialize` may legitimately take, given the launch descriptor.
+
+    The Android daemon answers `initialize` only once `RobolectricHost.start()`
+    returns, and that boots the eager sandbox slots SEQUENTIALLY, applying
+    `composeai.daemon.sandboxBootTimeoutMs` (10 min default) to EACH slot. A
+    warm-spare pool is 5 slots, so the daemon's own worst case is 5 × 10 min —
+    a flat client budget under that would once again blame our impatience for
+    the daemon's slowness. Derive from the same properties the descriptor
+    launches the JVM with so the two can't drift.
+
+    Under `backgroundSandboxBoot` only slot 0 is on the critical path — see
+    [_eager_slot_count], which is also what the measured-latency line reports so
+    the budget and the report can't disagree.
+
+    A ceiling this high doesn't strand CI on a wedged daemon: a slot that
+    misses its budget makes the daemon exit, which lands as EOF and fails us
+    immediately. It only buys patience for a daemon that is still working.
+    """
+    props = descriptor.get("systemProperties") or {}
+    boot_timeout_ms = _DEFAULT_BOOT_TIMEOUT_MS
+    raw_timeout = props.get(_BOOT_TIMEOUT_PROP)
+    if raw_timeout is not None:
+        try:
+            boot_timeout_ms = int(str(raw_timeout).strip())
+        except ValueError:
+            pass
+    return _eager_slot_count(descriptor) * (boot_timeout_ms / 1000.0) + _INIT_TIMEOUT_SLACK_S
 
 
 def _gradle_recompile(workspace: Path, gradle_args: list[str]) -> None:
@@ -518,6 +534,7 @@ def main() -> int:
             f"[daemon-roundtrip] waiting up to {init_timeout_s:.0f}s for initialize "
             "(the daemon boots its Robolectric sandbox pool first — cold boots are slow)"
         )
+        init_started_at = time.monotonic()
         init_result = driver.request(
             "initialize",
             {
@@ -533,7 +550,17 @@ def main() -> int:
         proto = init_result.get("protocolVersion")
         if proto != 2:
             raise RuntimeError(f"daemon protocolVersion={proto}, expected 2")
-        print(f"[daemon-roundtrip] initialize OK (daemonVersion={init_result.get('daemonVersion')})")
+        # Report the measured latency, not just success. This is the number that moves when the
+        # sandbox pool's boot policy changes (`composeai.daemon.backgroundSandboxBoot`) or when a
+        # cold `android-all` fetch is or isn't cached, and it's otherwise invisible — the leg just
+        # looks "slow" or "fast" in aggregate. Printed unconditionally so any run can be compared
+        # against any other without re-instrumenting.
+        init_elapsed_s = time.monotonic() - init_started_at
+        print(
+            f"[daemon-roundtrip] initialize OK in {init_elapsed_s:.1f}s "
+            f"(daemonVersion={init_result.get('daemonVersion')}, "
+            f"eager slots on the critical path: {_eager_slot_count(descriptor)})"
+        )
         driver.notify("initialized")
 
         # Pass 1: initial render of all previews.

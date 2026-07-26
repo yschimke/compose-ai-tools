@@ -193,4 +193,49 @@ class KmpAndroidDesktopRoutingTest {
     val daemon = project.tasks.getByName("composePreviewDaemonStart") as TaskInternal
     assertThat(daemon.onlyIf.isSatisfiedBy(daemon)).isTrue()
   }
+
+  @Test
+  fun `backgroundSandboxBoot reaches the launch descriptor's system properties`() {
+    // The daemon JVM only ever learns about background pool boot through the descriptor's
+    // systemProperties — RobolectricHost reads `composeai.daemon.backgroundSandboxBoot` at
+    // startup, and `.github/ci/daemon-roundtrip.py` reads the same key to size its `initialize`
+    // budget. An extension property that doesn't reach this map is silently inert: the build
+    // script looks configured, the daemon still boots the whole pool eagerly, and nothing fails.
+    val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
+    val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
+    project.configurations.create("desktopRuntimeClasspath") {
+      isCanBeResolved = true
+      isCanBeConsumed = false
+    }
+    extension.daemon { backgroundSandboxBoot.set(true) }
+
+    ComposePreviewTasks.registerDesktopTasks(project, extension)
+
+    val daemon =
+      project.tasks.getByName("composePreviewDaemonStart")
+        as ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask
+    assertThat(daemon.systemProperties.get())
+      .containsEntry("composeai.daemon.backgroundSandboxBoot", "true")
+    assertThat(daemon.backgroundSandboxBoot.get()).isTrue()
+  }
+
+  @Test
+  fun `backgroundSandboxBoot defaults to false in the launch descriptor`() {
+    // Default-off must survive all the way to the descriptor, not just the extension: the eager
+    // all-sandboxes-ready contract is what plugin consumers get today.
+    val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
+    val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
+    project.configurations.create("desktopRuntimeClasspath") {
+      isCanBeResolved = true
+      isCanBeConsumed = false
+    }
+
+    ComposePreviewTasks.registerDesktopTasks(project, extension)
+
+    val daemon =
+      project.tasks.getByName("composePreviewDaemonStart")
+        as ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask
+    assertThat(daemon.systemProperties.get())
+      .containsEntry("composeai.daemon.backgroundSandboxBoot", "false")
+  }
 }
