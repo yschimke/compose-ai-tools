@@ -70,24 +70,34 @@ abstract class DaemonExtension @Inject constructor(objects: ObjectFactory) {
 
   /**
    * Whether the daemon may answer `initialize` as soon as the FIRST sandbox is ready, booting the
-   * rest of the pool on a background thread. Default: `false`.
+   * rest of the pool on a background thread. Default: `true`.
    *
    * `RobolectricHost.start()` boots the eager slots sequentially and applies the per-slot boot
-   * budget to each, so a [warmSpare] pool (5 sandboxes) holds `initialize` for roughly
+   * budget to each, so a [warmSpare] pool (5 sandboxes) would hold `initialize` for roughly
    * `5 × sandbox boot` — ~58s at the ~11.6s-per-sandbox figure in
    * `docs/daemon/SANDBOX-POOL.md` — before the client may render anything. With this on, only slot
    * 0 is on the critical path; dispatch routes across the ready prefix while the remaining slots
    * boot behind it, and once the pool completes behaviour is bit-identical with the eager path.
    *
-   * Off by default because the eager path is the stricter contract: when `initialize` returns, the
-   * whole pool is hot, and an editor that immediately fans out N renders gets N sandboxes. Turn it
-   * on when time-to-first-render matters more than time-to-full-capacity — a cold CI leg that
-   * renders once, or an editor opening a single preview. `ServeBundleDaemon` and the deploy image
-   * already make that trade for serve-spawned daemons.
+   * On by default: time-to-first-render is what a human waits on. Nothing can render until
+   * `initialize` returns, so the eager path makes every client pay for the whole pool before it may
+   * draw anything — capacity it doesn't need until the *second* render. Measured on the CI daemon
+   * leg, `initialize` answers in ~6.5s with this on. `ServeBundleDaemon` and the deploy image
+   * already made this trade for serve-spawned daemons; this aligns the Gradle-plugin launch path
+   * with them.
+   *
+   * Set `false` to get the stricter contract back: when `initialize` returns, the whole pool is
+   * hot, so a client that immediately fans out N renders gets N sandboxes rather than queueing on
+   * the ready prefix while the pool fills. Worth it only when time-to-full-capacity genuinely
+   * matters more than time-to-first-render.
+   *
+   * Note this is the *descriptor* default, not `RobolectricHost`'s. A host constructed in-process
+   * still boots eagerly unless its caller sets `composeai.daemon.backgroundSandboxBoot` — the
+   * embedding code owns that choice directly, and its tests pin the eager contract.
    *
    * See `docs/daemon/SANDBOX-POOL.md` § Background pool boot for the dispatch, interactive-slot,
    * and slot-failure semantics this changes.
    */
   val backgroundSandboxBoot: Property<Boolean> =
-    objects.property(Boolean::class.java).convention(false)
+    objects.property(Boolean::class.java).convention(true)
 }

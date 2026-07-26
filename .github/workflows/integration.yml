@@ -325,21 +325,18 @@ jobs:
             # that the standalone `composePreviewRender` task can't see. See
             # .github/ci/daemon-roundtrip.py.
             daemon: true
-            # Answer `initialize` as soon as slot 0 is hot; boot the rest of the
-            # warm-spare pool behind it. `start()` boots the eager slots
-            # sequentially, so the default (all 5 up before `initialize`) spends
-            # ~58s at ~11.6s/sandbox buying capacity this round-trip never uses —
-            # it renders one module's previews, edits, re-renders. See
-            # docs/daemon/SANDBOX-POOL.md § Background pool boot.
+            # `daemon_background_boot` is deliberately UNSET here, so the cell
+            # inherits `composePreview.daemon.backgroundSandboxBoot`'s default
+            # (now `true`) and therefore exercises exactly what plugin consumers
+            # get. Measured effect on this leg: `initialize` answers in ~6.5s
+            # instead of waiting ~58s for all five warm-spare slots.
             #
-            # The trade: this cell no longer covers the eager all-sandboxes-ready
-            # contract end-to-end. That contract stays pinned by
-            # RobolectricHostPoolTest (real sandboxes, both paths) and by the
-            # default-off assertions in DaemonExtensionTest /
-            # KmpAndroidDesktopRoutingTest. If it needs e2e coverage again, add a
-            # second daemon cell with `daemon_background_boot: false` — that's
-            # why this is a matrix field and not a hardcoded literal.
-            daemon_background_boot: true
+            # The eager all-sandboxes-ready contract has no end-to-end cell now.
+            # It stays pinned by RobolectricHostPoolTest (real sandboxes, both
+            # paths) and by the opt-out assertions in KmpAndroidDesktopRoutingTest
+            # / DaemonBootstrapFunctionalTest. To cover it here, add a second
+            # daemon cell with `daemon_background_boot: false` — that's what the
+            # matrix field is for.
             # Surfaced in the published compose-preview/integration/<slug>
             # branch README so browsers see what this cell exercises +
             # any caveats. Hand-written; auto-derived facts (patch / build
@@ -1220,17 +1217,19 @@ jobs:
           # Idempotent for the CI-injected block, but still overrides a consumer block that
           # explicitly sets enabled = false.
           #
-          # `backgroundSandboxBoot` comes from the cell (`matrix.daemon_background_boot`) rather
-          # than being hardcoded, so the two boot contracts are both reachable from the matrix:
-          # true = `initialize` answers once slot 0 is hot (the pool finishes behind it), false =
-          # the eager contract where the whole warm-spare pool is up first. A cell that wants to
-          # cover the eager path end-to-end is a one-line matrix addition, not a workflow edit.
+          # `backgroundSandboxBoot` is only written when the cell sets
+          # `matrix.daemon_background_boot`; otherwise the line is omitted and the extension's own
+          # default applies. That matters: the default is now `true`, so unconditionally emitting
+          # `= false` for cells that don't set the field would silently opt them OUT of the
+          # default every consumer gets, and the leg would be testing a configuration nobody runs.
+          # Setting the field to `false` is how a cell covers the eager all-sandboxes-ready path.
           python3 - <<'PY'
           from pathlib import Path
           import os
           module = os.environ["MATRIX_MODULE"]
-          # Gradle wants a lowercase literal; the matrix field arrives as "true"/"false"/"".
-          background_boot = "true" if os.environ.get("MATRIX_BACKGROUND_BOOT") == "true" else "false"
+          # Unset -> emit nothing and inherit the extension default. Set -> pin it explicitly.
+          raw_boot = os.environ.get("MATRIX_BACKGROUND_BOOT", "").strip().lower()
+          boot_line = f"    backgroundSandboxBoot = {raw_boot}\n" if raw_boot in ("true", "false") else ""
           # Find the most likely build script for that module: top-level <module>/build.gradle.kts
           # (most apps), then fall back to top-level build.gradle. ComposeStarter has app/build.gradle.kts.
           candidates = [
@@ -1243,13 +1242,13 @@ jobs:
               text = p.read_text()
               suffix = (
                   "\n\ncomposePreview {\n  daemon {\n    enabled = true\n"
-                  f"    backgroundSandboxBoot = {background_boot}\n  }}\n}}\n"
+                  f"{boot_line}  }}\n}}\n"
               )
               if suffix.strip() in text:
                   print(f"daemon enable block already present in {p}")
                   break
               p.write_text(text + suffix)
-              print(f"appended daemon enable block to {p} (backgroundSandboxBoot={background_boot})")
+              print(f"appended daemon enable block to {p} (backgroundSandboxBoot={raw_boot or 'default'})")
               break
           else:
               raise SystemExit(f"no build script found for module {module}")
