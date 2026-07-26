@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.26](https://github.com/yschimke/compose-ai-tools/compare/v0.17.25...v0.17.26) (2026-07-26)
+
+
+### Bug Fixes
+
+* **figma-svg:** name branded downloadable faces, and box text that can't be named ([#2774](https://github.com/yschimke/compose-ai-tools/issues/2774)) ([55e7790](https://github.com/yschimke/compose-ai-tools/commit/55e77900336d26e8e18f3fcd7c256f217c9fbfe5))
+
 ## [0.17.25](https://github.com/yschimke/compose-ai-tools/compare/v0.17.24...v0.17.25) (2026-07-25)
 
 
