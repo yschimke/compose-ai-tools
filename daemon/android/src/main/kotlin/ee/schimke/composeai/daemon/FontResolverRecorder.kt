@@ -26,7 +26,16 @@ class FontResolverRecorder(private val context: Context? = null) {
     // node apart from one whose branded family the capture lost (see [FigmaSvgRenderedFonts]).
     // Recorded here rather than at post-capture because the SVG export is an independent
     // post-capture extension with no ordering guarantee against this one.
-    FigmaSvgRenderedFonts.record(displayFamilyName(requestedFamily))
+    //
+    // The *weight-matched* face, not `requestedFamily`: that one is the family's first declared
+    // face, which is not what gets drawn when a family mixes families across weights. A branded
+    // family that appends non-Latin fallbacks (`Orbitron` 500/600/700 then `Noto Sans JP` 400)
+    // draws Noto for normal-weight text, and recording Orbitron there would tell the export a face
+    // was used that it never sees — marking a perfectly reproducible export degraded and boxing
+    // unrelated family-less text in the same SVG.
+    FigmaSvgRenderedFonts.record(
+      matchingFont(fontFamily, fontWeight, fontStyle)?.let { displayFamilyName(fontLabel(it)) }
+    )
     val key = listOf(requestedFamily, resolvedFamily, weight.toString(), style).joinToString("|")
     entries[key] =
       FontUsedEntry(
