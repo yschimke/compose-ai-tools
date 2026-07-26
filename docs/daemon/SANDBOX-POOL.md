@@ -183,13 +183,32 @@ one sandbox instead of the whole daemon JVM.
 
 ## Background pool boot (cold-start fast path)
 
-`-Dcomposeai.daemon.backgroundSandboxBoot=true` (default **off**) changes
+`composeai.daemon.backgroundSandboxBoot` changes
 `RobolectricHost.start()`'s contract for a pool: it blocks only until
 **slot 0** is registered, then boots slots 1..N-1 sequentially on a
 background daemon thread. Sandbox boot is the dominant cold-start cost
 (~11.6 s measured per sandbox on a warm `android-all` cache), so a
 3-sandbox pool otherwise holds `initialize` — and therefore serve's first
 live render — for ~35 s of capacity nothing needs yet.
+
+**Two different defaults, and the distinction matters when diagnosing:**
+
+- **Launch descriptors default it ON.** `composePreview.daemon
+  .backgroundSandboxBoot` defaults to `true`
+  ([CONFIG.md](CONFIG.md)), so every daemon the Gradle plugin describes —
+  VS Code, MCP, the integration leg — answers `initialize` once slot 0 is
+  hot. `ServeBundleDaemon` and the deploy image do the same. Set it
+  `false` in the `daemon { … }` block to get the eager
+  all-sandboxes-ready contract back.
+- **The sysprop itself defaults OFF.** `RobolectricHost` reads
+  `-Dcomposeai.daemon.backgroundSandboxBoot` with a `false` fallback, so a
+  host constructed **in-process** (embedders, `:daemon:harness`, unit
+  tests) still boots the whole pool eagerly unless its caller opts in.
+  That code sets the property directly and its tests pin the eager
+  contract, so the fallback stays conservative.
+
+In practice a descriptor always carries an explicit value, so the sysprop
+fallback only applies where nothing set one.
 
 Semantics under background boot:
 

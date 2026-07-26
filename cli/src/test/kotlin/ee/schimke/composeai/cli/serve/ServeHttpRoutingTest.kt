@@ -364,14 +364,54 @@ class ServeHttpRoutingTest {
     val (code, body) = get("/")
     assertEquals(200, code)
     assertTrue(body.contains("Design systems"), "root is the systems index: $body")
-    // A card links to the catalog's canonical path and shows a hero preview from its /render lane.
+    // A card links to the catalog's canonical path and shows a hero preview — from the PREBAKED
+    // `/hero/` lane, not the live `/render` one, so the front door costs the server nothing to
+    // paint.
     assertTrue(body.contains("href=\"/compose-m3/\""), "index card links to the system: $body")
     assertTrue(
-      body.contains("/compose-m3/render/$previewId.png"),
-      "index card renders a hero preview: $body",
+      heroSrc(body)?.startsWith("/hero/compose-m3/") == true,
+      "index card shows a prebaked hero: $body",
+    )
+    assertTrue(
+      !body.contains("/compose-m3/render/$previewId.png"),
+      "the front door does not put a render request on the server: $body",
     )
     // It is NOT the default module's own preview grid.
     assertTrue(!body.contains("default-mod"), "root is the index, not the default module: $body")
+  }
+
+  /** The `src` of the first hero `<img>` on the home index, or null when there is none. */
+  private fun heroSrc(html: String): String? =
+    Regex("""<img[^>]*src="(/hero/[^"]+)"""").find(html)?.groupValues?.get(1)
+
+  @Test
+  fun `a prebaked hero is served immutable, and revalidates to 304`() {
+    val src = heroSrc(get("/").second) ?: error("no prebaked hero on the front door")
+    val req = Request.Builder().url("http://127.0.0.1:${server.port}$src").build()
+    val etag =
+      client.newCall(req).execute().use { r ->
+        assertEquals(200, r.code)
+        assertEquals("image/png", r.header("Content-Type")?.substringBefore(';'))
+        assertEquals(
+          "public, max-age=31536000, immutable",
+          r.header("Cache-Control"),
+          "the content-hashed hero URL can be cached forever",
+        )
+        assertTrue((r.body?.bytes()?.size ?: 0) > 0, "hero bytes are served")
+        r.header("ETag") ?: error("hero carries no ETag")
+      }
+    // A conditional request (a cache that chose to revalidate anyway) costs bytes, not a render.
+    val conditional =
+      Request.Builder()
+        .url("http://127.0.0.1:${server.port}$src")
+        .header("If-None-Match", etag)
+        .build()
+    client.newCall(conditional).execute().use { assertEquals(304, it.code) }
+  }
+
+  @Test
+  fun `an unknown hero name 404s`() {
+    assertEquals(404, get("/hero/compose-m3/0000000000000000.png").first)
   }
 
   @Test

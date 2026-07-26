@@ -471,16 +471,22 @@ open class RobolectricHost(
    * rather than rendering against a half-built host. Blocking here in [start] delivers that —
    * `JsonRpcServer.run()` only enters its read loop once we return.
    *
-   * **Background pool boot** (`-Dcomposeai.daemon.backgroundSandboxBoot=true`, default off): with a
+   * **Background pool boot** (`-Dcomposeai.daemon.backgroundSandboxBoot=true`): with a
    * pool (`sandboxCount > 1`), [start] blocks only until **slot 0** is ready and boots slots
    * 1..N-1 on a background thread. Sandbox boot is the dominant cold-start cost (~11.6 s measured
    * per sandbox on a warm `android-all` cache — see the serve cold-render handover), so a
    * 3-sandbox pool otherwise keeps `initialize` (and therefore serve's first live render) waiting
    * ~35 s for capacity it doesn't need yet. Dispatch routes only across ready slots
    * ([readySlotCount]) until the pool completes, so `daemonReady = firstSandboxReady` and the
-   * remaining boots never sit on the request path. Off by default so in-process hosts and the
-   * Gradle-plugin launch keep the strict all-sandboxes-ready contract their tests pin;
-   * `ServeBundleDaemon` and the deploy image opt serve-spawned Android daemons in.
+   * remaining boots never sit on the request path.
+   *
+   * Two defaults, deliberately different. This sysprop falls back to **off**, so a host
+   * constructed in-process (embedders, harness, unit tests) still boots the whole pool eagerly and
+   * keeps the strict all-sandboxes-ready contract those tests pin. Launch *descriptors* default it
+   * **on** — `composePreview.daemon.backgroundSandboxBoot` (docs/daemon/CONFIG.md), matching what
+   * `ServeBundleDaemon` and the deploy image already did — so every spawned daemon answers
+   * `initialize` once slot 0 is hot. A descriptor always carries an explicit value, so this
+   * fallback only applies where nothing set one.
    *
    * Configurable via `composeai.daemon.sandboxBootTimeoutMs` (default 600_000 = 10 minutes). On
    * timeout the daemon refuses to start; the client surfaces the failure via initialize never

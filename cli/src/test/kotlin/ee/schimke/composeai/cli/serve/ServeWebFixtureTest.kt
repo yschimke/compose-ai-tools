@@ -389,6 +389,15 @@ class ServeWebFixtureTest {
             previewCount = 42,
             trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
             heroPreviewId = "button-filled__ideal__default__light",
+            // The normal path: a prebaked, content-hashed hero on the immutable `/hero/` lane, the
+            // crop already in its pixels. Captured here so the golden pins the fast markup — eager
+            // load, explicit box, no CSS clip window.
+            heroImage =
+              ServeWeb.HeroImage(
+                path = "/hero/compose-m3/1f0c9a4b7d2e6503.png",
+                width = 168,
+                height = 68,
+              ),
           ),
           ServeWeb.HomeSystem(
             system = "wear-m3",
@@ -397,6 +406,12 @@ class ServeWebFixtureTest {
             previewCount = 18,
             trust = "branch:yschimke/compose-ai-tools@design-artifacts/wear-m3",
             heroPreviewId = "button-filled__ideal__default__light",
+            heroImage =
+              ServeWeb.HeroImage(
+                path = "/hero/wear-m3/9b3d51ca08e7f264.png",
+                width = 132,
+                height = 132,
+              ),
             // Wear is dark-first: the hero backs on the dark stage, not the default white.
             darkStage = true,
           ),
@@ -1129,7 +1144,7 @@ class ServeWebFixtureTest {
     )
 
     // The home index lists every published system as a card linking to its /<system>/ catalog —
-    // including remote-m3 — each carrying a hero preview img from that system's /render endpoint.
+    // including remote-m3 — each carrying a hero preview img.
     assertTrue(homeIndex.contains("Design Systems"), "home index is headed 'Design Systems'")
     assertTrue(
       homeIndex.contains("href=\"/compose-m3/\"") &&
@@ -1141,9 +1156,23 @@ class ServeWebFixtureTest {
       homeIndex.contains("Remote Compose Material 3"),
       "remote-m3 appears in the index with its human title",
     )
+    // The normal card points at the PREBAKED hero: an immutable, content-hashed URL, loaded eagerly
+    // with its box reserved up front — so the front door paints without touching the render lane.
+    assertTrue(
+      homeIndex.contains(
+        "<img loading=\"eager\" decoding=\"async\" width=\"168\" height=\"68\"" +
+          " alt=\"Compose Material 3 preview\" src=\"/hero/compose-m3/1f0c9a4b7d2e6503.png\">"
+      ),
+      "a system card shows its prebaked hero, sized and eager",
+    )
+    assertFalse(
+      homeIndex.contains("src=\"/compose-m3/render/"),
+      "a prebaked card puts no render request on the server",
+    )
+    // A catalog whose hero couldn't be prebaked still shows one — over the live /render lane.
     assertTrue(
       homeIndex.contains("src=\"/remote-m3/render/Button-Filled__ideal__default__light.png\""),
-      "each system card renders a meaningful hero preview from its /render endpoint",
+      "a card with no prebaked hero falls back to its /render endpoint",
     )
     assertTrue(
       homeIndex.contains("cp-badge--trusted"),

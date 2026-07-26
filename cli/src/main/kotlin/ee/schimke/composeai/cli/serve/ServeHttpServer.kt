@@ -57,6 +57,7 @@ import kotlinx.serialization.json.Json
  * assets):
  * - `GET /` landing page, `GET /p/{id}` viewer page,
  * - `GET /render/{id}.png` PNG bytes, `GET /api/previews` JSON, `GET /healthz` liveness,
+ * - `GET /hero/{system}/{hash}.png` a prebaked, immutable front-door thumbnail ([ServeHeroImages]),
  * - `GET /readyz` readiness (green only after a representative preview actually renders — the
  *   rolling-update gate),
  * - `GET /index.json` Storybook stories index, `GET /iframe.html?id=` isolated story render
@@ -195,6 +196,13 @@ class ServeHttpServer(
    */
   private val liveSeats: LiveSeatLimiter = LiveSeatLimiter(maxLiveSeats)
 
+  /**
+   * Prebaked front-door hero thumbnails, served by the `/hero/` route. Baked once per catalog host
+   * (see [rememberCatalogMeta]) so the public landing costs the server a handful of map lookups
+   * rather than a dozen full-resolution renders. See [ServeHeroImages].
+   */
+  private val heroImages = ServeHeroImages()
+
   private val server: EmbeddedServer<*, *> =
     embeddedServer(CIO, host = host, port = port) {
       install(WebSockets)
@@ -285,6 +293,14 @@ class ServeHttpServer(
             call.respondBytes(bytes, wasmContentType(file.name))
           }
         }
+
+        // Prebaked front-door hero thumbnails ([ServeHeroImages]). Deliberately NOT the `/render`
+        // lane: the bytes are already cropped, downscaled and resident in memory, so this takes no
+        // session lease and no render permit — it can't queue behind a catalog render, and it can't
+        // wake an idle daemon. The name IS the content hash, so the response is `immutable`: a
+        // repeat visitor's browser serves the whole front door's imagery from cache without asking.
+        // A constant first segment, so it outscores the `/{system}` catch-all in Ktor routing.
+        get("/hero/{system}/{name}") { handleHeroImage() }
 
         // The in-browser Remote Compose player: a single shared IIFE bundle (global `RC`), baked
         // into the CLI jar as a classpath resource and served here so the viewer's client-side
@@ -573,6 +589,36 @@ class ServeHttpServer(
   }
 
   /**
+   * `GET /hero/{system}/{name}`: a prebaked front-door hero thumbnail ([ServeHeroImages]).
+   *
+   * The whole point of this lane is that it does none of what `/render` does — no session lease, no
+   * render permit, no disk read, no chance of waking a suspended daemon. The bytes were cropped,
+   * downscaled and hashed when the catalog was first seen, and live in memory; serving one is a map
+   * lookup and a write.
+   *
+   * `{name}` is the content hash, so the bytes behind a URL can never change: the response is
+   * `immutable` with a year-long `max-age`, and a repeat visitor's browser paints the whole index
+   * from cache with no request at all. The `{system}` segment is only there to keep the URLs
+   * readable — the hash alone identifies the image, which is also why a URL minted before a catalog
+   * refresh keeps working. Gated like the rest (open in `--public`, else token-required).
+   */
+  private suspend fun RoutingContext.handleHeroImage() {
+    if (rejectBadToken()) return
+    val hero = call.parameters["name"]?.let { heroImages.byFileName(it) }
+    if (hero == null) {
+      call.respondText("no such hero image", status = HttpStatusCode.NotFound)
+      return
+    }
+    call.response.headers.append(HttpHeaders.CacheControl, HERO_CACHE_CONTROL)
+    call.response.headers.append(HttpHeaders.ETag, hero.etag)
+    if (call.request.headers[HttpHeaders.IfNoneMatch] == hero.etag) {
+      call.respond(HttpStatusCode.NotModified)
+      return
+    }
+    call.respondBytes(hero.bytes, ContentType.Image.PNG)
+  }
+
+  /**
    * `GET /status` (HTML, or JSON with `?format=json`) and `GET /status.json` (JSON): a live
    * snapshot of this host — published catalogs + their trust/liveness, the render daemons up right
    * now, the effective config, and recent daemon startup failures. Gated like the API routes (open
@@ -718,6 +764,14 @@ class ServeHttpServer(
     val previews: Int?,
     val heroPreviewId: String?,
     val heroCrop: ContentCrop?,
+    /**
+     * The prebaked front-door thumbnail for [heroPreviewId] — cropped, downscaled and content
+     * hashed once, served off the `/hero/` lane. Captured here (rather than looked up when the home
+     * page renders) because this is where the bundle host that owns the pixels is in hand: a
+     * suspended catalog then keeps its hero exactly like it keeps its trust badge. Null when the
+     * catalog has no hero, or its PNG couldn't be decoded — the card falls back to `/render`.
+     */
+    val heroImage: ServeHeroImages.Hero?,
     val darkStage: Boolean,
     val degradation: String?,
     val provenance: ServeWeb.CatalogProvenance?,
@@ -737,6 +791,7 @@ class ServeHttpServer(
   private fun rememberCatalogMeta(id: String, host: ServeHost) {
     val bundle = catalogBundleHost(host) ?: return
     val heroId = bundle.declaredHeroPreviewId ?: ServeWeb.representativePreviewId(host.previews)
+    val heroCrop = heroId?.let { bundle.contentCrop(it) }
     catalogMetaSeen[id] =
       CatalogMeta(
         title = bundle.title?.takeIf { it.isNotBlank() } ?: host.label,
@@ -744,7 +799,10 @@ class ServeHttpServer(
         trust = BundleVerifier.summary(bundle.trust),
         previews = host.previews.size,
         heroPreviewId = heroId,
-        heroCrop = heroId?.let { bundle.contentCrop(it) },
+        heroCrop = heroCrop,
+        // Memoised per (host instance, preview): the decode + scale runs once per catalog, and a
+        // refresh — which installs a fresh host — re-bakes under a new hash.
+        heroImage = heroId?.let { heroImages.heroFor(bundle, it, heroCrop) },
         darkStage = ServeWeb.SystemDisplay.resolveDarkFirst(id, bundle.stageSurface),
         degradation = host.degradations.firstOrNull()?.detail,
         provenance = bundle.provenance,
@@ -1024,6 +1082,16 @@ class ServeHttpServer(
         trust = meta.trust,
         heroPreviewId = meta.heroPreviewId,
         heroCrop = meta.heroCrop,
+        // The prebaked thumbnail, when the catalog has one: the card then points at the static
+        // `/hero/` lane (crop already in the pixels) instead of the live `/render` endpoint.
+        heroImage =
+          meta.heroImage?.let {
+            ServeWeb.HeroImage(
+              path = "${ServeHeroImages.PATH_PREFIX}/$system/${it.fileName}",
+              width = it.cssWidth,
+              height = it.cssHeight,
+            )
+          },
         darkStage = meta.darkStage,
       )
     }
@@ -1712,6 +1780,14 @@ class ServeHttpServer(
 
     /** Max accepted upload-body size for `POST /bundles` (matches the store's extraction cap). */
     private const val MAX_UPLOAD_BYTES = 100L * 1024 * 1024
+
+    /**
+     * Caching for the `/hero/` lane. The file name is the content hash, so the bytes behind a URL
+     * are fixed for all time — `immutable` tells the browser not to even revalidate, which is what
+     * makes a repeat visit to the front door paint its imagery with zero requests. A republished
+     * catalog changes the hash, hence the URL, so there is nothing to invalidate.
+     */
+    private const val HERO_CACHE_CONTROL = "public, max-age=31536000, immutable"
 
     private val JSON = Json { encodeDefaults = true }
 

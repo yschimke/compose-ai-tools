@@ -27,10 +27,10 @@ class DaemonExtensionTest {
     // Warm spare on by default — pays double idle memory for zero
     // user-visible recycle pause. Off-by-default would be a regression.
     assertThat(daemon.warmSpare.get()).isTrue()
-    // Background pool boot OFF by default: `initialize` must not return until the whole eager
-    // pool is hot, which is the contract plugin consumers (and the integration daemon leg) rely
-    // on. On-by-default would silently weaken that for every consumer.
-    assertThat(daemon.backgroundSandboxBoot.get()).isFalse()
+    // Background pool boot ON by default: `initialize` answers once slot 0 is hot, so
+    // time-to-first-render doesn't pay for the whole warm-spare pool. Flipping this back to
+    // off-by-default would restore the ~58s eager wait for every consumer.
+    assertThat(daemon.backgroundSandboxBoot.get()).isTrue()
   }
 
   @Test

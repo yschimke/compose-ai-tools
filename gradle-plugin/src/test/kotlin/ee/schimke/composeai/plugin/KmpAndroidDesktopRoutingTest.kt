@@ -195,7 +195,7 @@ class KmpAndroidDesktopRoutingTest {
   }
 
   @Test
-  fun `backgroundSandboxBoot flows from the daemon extension onto the bootstrap task`() {
+  fun `backgroundSandboxBoot opt-out flows from the daemon extension onto the bootstrap task`() {
     // Extension -> task @Input half of the wiring. The other half — that it also lands in the
     // descriptor's `systemProperties`, which is the only thing the daemon JVM actually reads —
     // can't be asserted here: querying that map resolves the `composePreviewDesktopDaemon`
@@ -207,19 +207,20 @@ class KmpAndroidDesktopRoutingTest {
       isCanBeResolved = true
       isCanBeConsumed = false
     }
-    extension.daemon { backgroundSandboxBoot.set(true) }
+    // Explicitly opting OUT is the interesting direction now that the default is on.
+    extension.daemon { backgroundSandboxBoot.set(false) }
 
     ComposePreviewTasks.registerDesktopTasks(project, extension)
 
     val daemon =
       project.tasks.getByName("composePreviewDaemonStart")
         as ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask
-    assertThat(daemon.backgroundSandboxBoot.get()).isTrue()
+    assertThat(daemon.backgroundSandboxBoot.get()).isFalse()
   }
 
   @Test
-  fun `backgroundSandboxBoot defaults to false on the bootstrap task`() {
-    // Default-off must survive the extension -> task hop, not just the extension's convention.
+  fun `backgroundSandboxBoot defaults to true on the bootstrap task`() {
+    // Default-on must survive the extension -> task hop, not just the extension's convention.
     val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
     val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
     project.configurations.create("desktopRuntimeClasspath") {
@@ -232,6 +233,6 @@ class KmpAndroidDesktopRoutingTest {
     val daemon =
       project.tasks.getByName("composePreviewDaemonStart")
         as ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask
-    assertThat(daemon.backgroundSandboxBoot.get()).isFalse()
+    assertThat(daemon.backgroundSandboxBoot.get()).isTrue()
   }
 }

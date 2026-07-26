@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.18.0](https://github.com/yschimke/compose-ai-tools/compare/v0.17.27...v0.18.0) (2026-07-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* **daemon:** default backgroundSandboxBoot to true ([#2788](https://github.com/yschimke/compose-ai-tools/issues/2788))
+
+### Features
+
+* **ci:** persist the downloadable-font cache across apply-action runs ([#2787](https://github.com/yschimke/compose-ai-tools/issues/2787)) ([ca3b367](https://github.com/yschimke/compose-ai-tools/commit/ca3b367a6ca9b5097b92d8598adfc932c893eb06))
+* **daemon:** default backgroundSandboxBoot to true ([#2788](https://github.com/yschimke/compose-ai-tools/issues/2788)) ([834594e](https://github.com/yschimke/compose-ai-tools/commit/834594e6f54bf419b6958383c02e6c165ab6c9c4))
+* **daemon:** expose backgroundSandboxBoot to the Gradle-plugin launch path ([#2783](https://github.com/yschimke/compose-ai-tools/issues/2783)) ([d4907c2](https://github.com/yschimke/compose-ai-tools/commit/d4907c240189a339a1d6e54d08444babf67188f2))
+
+
+### Bug Fixes
+
+* **ci:** key the android-all cache on every coordinate a cell needs ([#2785](https://github.com/yschimke/compose-ai-tools/issues/2785)) ([8335c74](https://github.com/yschimke/compose-ai-tools/commit/8335c74d18023025c4cdd8db85eee853b8a35878))
+* **scroll:** deflake stitched LONG captures and downloadable-font resolution ([#2786](https://github.com/yschimke/compose-ai-tools/issues/2786)) ([36bd523](https://github.com/yschimke/compose-ai-tools/commit/36bd523c4b52197ad63ca028241a1530e99e69d8))
+
+
+### Performance Improvements
+
+* **ci:** cache the android-all runtime and wire BuildFetch into build-plugin ([#2781](https://github.com/yschimke/compose-ai-tools/issues/2781)) ([37990aa](https://github.com/yschimke/compose-ai-tools/commit/37990aa9e8137085ff5c93166e1c8b48b8c50025))
+* **serve:** prebake the front-door hero images ([#2789](https://github.com/yschimke/compose-ai-tools/issues/2789)) ([4ef47c8](https://github.com/yschimke/compose-ai-tools/commit/4ef47c89a67996d479a392e8cdd9683e77b490ae))
+
 ## [0.17.27](https://github.com/yschimke/compose-ai-tools/compare/v0.17.26...v0.17.27) (2026-07-26)
 
 

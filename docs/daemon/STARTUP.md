@@ -139,17 +139,24 @@ Menu of follow-ups, by leverage:
 - ~~**Reconsider the eager warm-spare pool on the launch-descriptor
   path.**~~ **Done** — `composePreview.daemon.backgroundSandboxBoot`
   ([CONFIG.md](CONFIG.md)) exposes it to the Gradle-plugin launch path,
-  default `false` so the eager contract is still what consumers get
-  unless they ask otherwise. The integration daemon cell opts in via the
-  `daemon_background_boot` matrix field, which drops its eager slots from
-  5 to 1. `.github/ci/daemon-roundtrip.py` prints the measured
-  `initialize` latency and the eager-slot count on every run, so the
-  effect is readable off the leg's log rather than inferred.
+  and it **defaults to `true`** — optimise for latency. Nothing renders
+  until `initialize` returns, so the eager contract charged every client
+  for the whole pool before it could draw anything: capacity not needed
+  until the second render. Eager slots on the critical path drop from 5
+  to 1.
 
-  What remains open is the *default*: whether the eager
-  all-sandboxes-ready contract is the right one for editor clients, or
-  whether they'd also rather render sooner. That's a product question,
-  not a perf one.
+  Measured on the integration daemon leg: `initialize` answers in
+  **~6.5 s**, against the ~141 s that started this whole thread (that
+  figure also included a cold `android-all` fetch, now cached, so the two
+  changes share the credit).
+
+  Clients that would rather have full capacity up front set
+  `backgroundSandboxBoot = false`. The integration daemon cell
+  deliberately leaves the `daemon_background_boot` matrix field unset so
+  the leg exercises the default consumers actually get;
+  `.github/ci/daemon-roundtrip.py` prints the measured `initialize`
+  latency and the eager-slot count on every run, so a silent regression
+  to 5 slots is readable off the log rather than inferred.
 - **Machine-resident daemon** (highest priority). Daemon survives editor
   restarts; cold start moves from "every editor open" to "every reboot."
   Lifecycle change only; needs a different anchor than parent-PID.
