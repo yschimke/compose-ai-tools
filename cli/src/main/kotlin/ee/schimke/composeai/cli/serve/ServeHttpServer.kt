@@ -713,8 +713,12 @@ class ServeHttpServer(
   /** A resident-time snapshot of one catalog's status facts. See [catalogMetaSeen]. */
   private data class CatalogMeta(
     val title: String?,
+    val subtitle: String?,
     val trust: String?,
     val previews: Int?,
+    val heroPreviewId: String?,
+    val heroCrop: ContentCrop?,
+    val darkStage: Boolean,
     val degradation: String?,
     val provenance: ServeWeb.CatalogProvenance?,
   )
@@ -732,11 +736,16 @@ class ServeHttpServer(
    */
   private fun rememberCatalogMeta(id: String, host: ServeHost) {
     val bundle = catalogBundleHost(host) ?: return
+    val heroId = bundle.declaredHeroPreviewId ?: ServeWeb.representativePreviewId(host.previews)
     catalogMetaSeen[id] =
       CatalogMeta(
         title = bundle.title?.takeIf { it.isNotBlank() } ?: host.label,
+        subtitle = bundle.subtitle,
         trust = BundleVerifier.summary(bundle.trust),
         previews = host.previews.size,
+        heroPreviewId = heroId,
+        heroCrop = heroId?.let { bundle.contentCrop(it) },
+        darkStage = ServeWeb.SystemDisplay.resolveDarkFirst(id, bundle.stageSurface),
         degradation = host.degradations.firstOrNull()?.detail,
         provenance = bundle.provenance,
       )
@@ -981,39 +990,26 @@ class ServeHttpServer(
 
   /**
    * Resolve a list of catalog [ids] into [ServeWeb.HomeSystem] cards for the front-page index.
-   * Leases each in turn (they're cheap, pinned bundle hosts) to read its title, preview count,
-   * trust verdict, and pick a meaningful hero preview. A catalog that can't be leased (e.g.
-   * transiently unavailable) is skipped rather than sinking the whole page. Blocking — call inside
-   * a `Dispatchers.IO` context.
+   * Reads each resident host without leasing it, falling back to the metadata captured immediately
+   * before a live catalog was suspended. In particular, rendering the front page must not resume
+   * every idle catalog daemon: that made its latency and memory pressure grow with the catalog
+   * count. A catalog with neither a resident host nor a last-known snapshot is skipped rather than
+   * sinking the whole page.
    */
   private fun homeSystemsFor(ids: List<String>): List<ServeWeb.HomeSystem> =
     ids.mapNotNull { system ->
-      val lease = sessions.lease(system) ?: return@mapNotNull null
-      try {
-        val host = lease.host
-        val bundle = catalogBundleHost(host)
-        // Prefer the catalog's declared hero (`display.hero`); fall back to the representative
-        // pick.
-        val heroId =
-          bundle?.declaredHeroPreviewId ?: ServeWeb.representativePreviewId(host.previews)
-        ServeWeb.HomeSystem(
-          system = system,
-          title = bundle?.title?.takeIf { it.isNotBlank() } ?: host.label,
-          subtitle = bundle?.subtitle,
-          previewCount = host.previews.size,
-          trust = bundle?.let { BundleVerifier.summary(it.trust) },
-          heroPreviewId = heroId,
-          // Frame the hero to its component box too, so the front-page Wear card isn't a speck.
-          heroCrop = heroId?.let { bundle?.contentCrop(it) },
-          // Dark stage from the catalog's declared surface (`display.surface`), falling back to the
-          // system-name heuristic — resolved in one place (ServeWeb.SystemDisplay) so the front
-          // door
-          // and the catalog grid agree.
-          darkStage = ServeWeb.SystemDisplay.resolveDarkFirst(system, bundle?.stageSurface),
-        )
-      } finally {
-        lease.close()
-      }
+      sessions.peekHost(system)?.let { rememberCatalogMeta(system, it) }
+      val meta = catalogMetaSeen[system] ?: return@mapNotNull null
+      ServeWeb.HomeSystem(
+        system = system,
+        title = meta.title ?: system,
+        subtitle = meta.subtitle,
+        previewCount = meta.previews ?: 0,
+        trust = meta.trust,
+        heroPreviewId = meta.heroPreviewId,
+        heroCrop = meta.heroCrop,
+        darkStage = meta.darkStage,
+      )
     }
 
   /**
