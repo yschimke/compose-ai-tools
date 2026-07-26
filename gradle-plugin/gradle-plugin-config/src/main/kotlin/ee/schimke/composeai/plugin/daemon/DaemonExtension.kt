@@ -67,4 +67,27 @@ abstract class DaemonExtension @Inject constructor(objects: ObjectFactory) {
    * inline and emit a `daemonWarming` notification while the new sandbox builds.
    */
   val warmSpare: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
+
+  /**
+   * Whether the daemon may answer `initialize` as soon as the FIRST sandbox is ready, booting the
+   * rest of the pool on a background thread. Default: `false`.
+   *
+   * `RobolectricHost.start()` boots the eager slots sequentially and applies the per-slot boot
+   * budget to each, so a [warmSpare] pool (5 sandboxes) holds `initialize` for roughly
+   * `5 × sandbox boot` — ~58s at the ~11.6s-per-sandbox figure in
+   * `docs/daemon/SANDBOX-POOL.md` — before the client may render anything. With this on, only slot
+   * 0 is on the critical path; dispatch routes across the ready prefix while the remaining slots
+   * boot behind it, and once the pool completes behaviour is bit-identical with the eager path.
+   *
+   * Off by default because the eager path is the stricter contract: when `initialize` returns, the
+   * whole pool is hot, and an editor that immediately fans out N renders gets N sandboxes. Turn it
+   * on when time-to-first-render matters more than time-to-full-capacity — a cold CI leg that
+   * renders once, or an editor opening a single preview. `ServeBundleDaemon` and the deploy image
+   * already make that trade for serve-spawned daemons.
+   *
+   * See `docs/daemon/SANDBOX-POOL.md` § Background pool boot for the dispatch, interactive-slot,
+   * and slot-failure semantics this changes.
+   */
+  val backgroundSandboxBoot: Property<Boolean> =
+    objects.property(Boolean::class.java).convention(false)
 }

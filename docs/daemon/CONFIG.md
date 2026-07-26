@@ -11,6 +11,7 @@ composePreview {
     maxHeapMb = 1024
     maxRendersPerSandbox = 1000
     warmSpare = true
+    backgroundSandboxBoot = false
   }
 }
 ```
@@ -60,6 +61,20 @@ Higher values amortise the spare-rebuild cost over more renders; lower values ca
 
 `true` doubles the daemon's idle memory footprint. Set to `false` on memory-constrained dev machines (< 16GB system RAM, or where multiple modules' daemons run side by side). The recycle pause is still bounded by `maxHeapMb` + `maxRendersPerSandbox` so the worst case stays predictable.
 
+### `backgroundSandboxBoot: Boolean`
+
+| | |
+|-|-|
+| **Default** | `false` |
+| **Range** | `true` / `false` |
+| **Effect** | Whether `initialize` may be answered as soon as the **first** sandbox is ready, with the rest of the pool booting on a background thread. Default `false` means the whole eager pool must be hot first. See [SANDBOX-POOL.md](SANDBOX-POOL.md) § Background pool boot. |
+
+This is a time-to-**first**-render vs time-to-**full-capacity** trade, and it only bites when the pool is bigger than one. `RobolectricHost.start()` boots the eager slots *sequentially*, so with `warmSpare = true` (5 sandboxes) `initialize` waits for roughly `5 × sandbox boot` — ~58s at the ~11.6s-per-sandbox figure measured in SANDBOX-POOL.md — before the client may render anything.
+
+Turn it on when the first render matters more than the fifth: a cold CI leg that renders once, or an editor opening a single preview. Leave it off when a client fans out N renders the instant `initialize` returns and would rather not have them queue on the ready prefix while the pool fills.
+
+Once the pool completes, dispatch is bit-identical either way; this only changes what happens *during* boot. `ServeBundleDaemon` and the deploy image already default it on for serve-spawned daemons — this knob is what makes the same trade available to the Gradle-plugin launch path.
+
 ### MCP-only — `replicasPerDaemon`
 
 Configured at the **MCP server**, not the per-module Gradle DSL. Pass `--replicas-per-daemon N`
@@ -91,4 +106,6 @@ There is intentionally NO `-PcomposePreview.daemon.enabled=...` property overrid
 
 The descriptor written to `<module>/build/compose-previews/daemon-launch.json` carries the resolved values plus the daemon's spawn parameters (classpath, JVM args, system properties, java launcher path). Schema is versioned via the top-level `schemaVersion` field — VS Code's `daemonProcess.ts` gates on it and forces a re-run on mismatch. See `DaemonClasspathDescriptor` in the Gradle plugin.
 
-The daemon JVM reads the same values back at startup via `composeai.daemon.maxHeapMb` / `composeai.daemon.maxRendersPerSandbox` / `composeai.daemon.warmSpare` system properties, so a value change requires re-running `composePreviewDaemonStart` to refresh the descriptor.
+The daemon JVM reads the same values back at startup via `composeai.daemon.maxHeapMb` / `composeai.daemon.maxRendersPerSandbox` / `composeai.daemon.warmSpare` / `composeai.daemon.backgroundSandboxBoot` system properties, so a value change requires re-running `composePreviewDaemonStart` to refresh the descriptor.
+
+`composeai.daemon.backgroundSandboxBoot` is also read *client-side*: `.github/ci/daemon-roundtrip.py` derives its `initialize` budget from how many slots are on the critical path, so the descriptor stays the single source of truth for both ends.

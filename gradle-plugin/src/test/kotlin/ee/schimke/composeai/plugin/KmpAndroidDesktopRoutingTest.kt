@@ -193,4 +193,45 @@ class KmpAndroidDesktopRoutingTest {
     val daemon = project.tasks.getByName("composePreviewDaemonStart") as TaskInternal
     assertThat(daemon.onlyIf.isSatisfiedBy(daemon)).isTrue()
   }
+
+  @Test
+  fun `backgroundSandboxBoot flows from the daemon extension onto the bootstrap task`() {
+    // Extension -> task @Input half of the wiring. The other half — that it also lands in the
+    // descriptor's `systemProperties`, which is the only thing the daemon JVM actually reads —
+    // can't be asserted here: querying that map resolves the `composePreviewDesktopDaemon`
+    // configuration, and a bare ProjectBuilder project has no repositories to resolve it against.
+    // DaemonBootstrapFunctionalTest covers that end of it against a real build.
+    val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
+    val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
+    project.configurations.create("desktopRuntimeClasspath") {
+      isCanBeResolved = true
+      isCanBeConsumed = false
+    }
+    extension.daemon { backgroundSandboxBoot.set(true) }
+
+    ComposePreviewTasks.registerDesktopTasks(project, extension)
+
+    val daemon =
+      project.tasks.getByName("composePreviewDaemonStart")
+        as ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask
+    assertThat(daemon.backgroundSandboxBoot.get()).isTrue()
+  }
+
+  @Test
+  fun `backgroundSandboxBoot defaults to false on the bootstrap task`() {
+    // Default-off must survive the extension -> task hop, not just the extension's convention.
+    val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
+    val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
+    project.configurations.create("desktopRuntimeClasspath") {
+      isCanBeResolved = true
+      isCanBeConsumed = false
+    }
+
+    ComposePreviewTasks.registerDesktopTasks(project, extension)
+
+    val daemon =
+      project.tasks.getByName("composePreviewDaemonStart")
+        as ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask
+    assertThat(daemon.backgroundSandboxBoot.get()).isFalse()
+  }
 }

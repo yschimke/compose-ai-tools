@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.17.27](https://github.com/yschimke/compose-ai-tools/compare/v0.17.26...v0.17.27) (2026-07-26)
+
+
+### Features
+
+* **preview:** add @WearThemeCatalog so Wear theme sheets read the Wear theme ([#2778](https://github.com/yschimke/compose-ai-tools/issues/2778)) ([d8dafae](https://github.com/yschimke/compose-ai-tools/commit/d8dafae270621023392ee9db7a5ef366d95f0c4b))
+* **server:** Group home index catalogs into Design Systems, yschimke org, and Other ([#2779](https://github.com/yschimke/compose-ai-tools/issues/2779)) ([e888156](https://github.com/yschimke/compose-ai-tools/commit/e88815666ac62f37cca96f52742d243ff9170f09))
+
+
+### Bug Fixes
+
+* **ci:** wait out the daemon's cold sandbox boot in the round-trip test ([#2780](https://github.com/yschimke/compose-ai-tools/issues/2780)) ([2358a6a](https://github.com/yschimke/compose-ai-tools/commit/2358a6ac2148e99fbfd837f89d815c552f74a809))
+* **serve:** keep catalog index latency independent of daemon resumes ([#2776](https://github.com/yschimke/compose-ai-tools/issues/2776)) ([95737d8](https://github.com/yschimke/compose-ai-tools/commit/95737d8adcf3bd94f31fe136418712e7ab841cb4))
+
 ## [0.17.26](https://github.com/yschimke/compose-ai-tools/compare/v0.17.25...v0.17.26) (2026-07-26)
 
 
