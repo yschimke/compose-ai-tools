@@ -235,9 +235,11 @@ to get the pure module-less server above.
 Both container profiles take this config from env (the entrypoint maps `SERVE_PUBLIC`,
 `SERVE_CATALOGS`, `SERVE_CATALOGS_UNLISTED`, `SERVE_TRUST_STORE`, `SERVE_WASM_DIR`,
 `SERVE_ACCEPT_BUNDLES` → flags) and put **Caddy** in front for TLS. They default to the **open public
-profile** (`SERVE_PUBLIC=1`, catalogs `compose-m3,wear-m3,remote-m3` plus the app systems `meshcore-mobile` /
-`homeassistant-remotecompose` on the front-page index, and `cadence` served unlisted at `/cadence/` — off the
-front page — via `SERVE_CATALOGS_UNLISTED`); set `SERVE_PUBLIC=0` + `SERVE_TOKEN` for a token-gated box.
+profile** (`SERVE_PUBLIC=1`, catalogs `compose-m3,wear-m3,remote-m3` plus the app systems `meshcore-mobile`,
+`homeassistant-remotecompose`, all six compose-samples apps (`jetnews`, `jetcaster`, `jetchat`, `jetsnack`,
+`jetlagged`, and `reply`), and the two Confetti apps on the front-page index; `cadence` is served unlisted at
+`/cadence/` — off the front page — via `SERVE_CATALOGS_UNLISTED`); set `SERVE_PUBLIC=0` + `SERVE_TOKEN` for a
+token-gated box.
 
 The prebuilt `deploy/image` **bakes a branch-trust store** at `/trust/producers.json` (trusting
 `design-artifacts/*` on `yschimke/compose-ai-tools`, `yschimke/meshcore-mobile`, and
@@ -248,11 +250,15 @@ Mount your own over that path (or set `SERVE_TRUST_STORE` to it) to pin differen
 out — which also means a bare image pull self-heals a box without editing its compose.)
 
 The **catalog set is baked into the image the same way**: the entrypoint defaults `SERVE_CATALOGS`
-to `compose-m3,wear-m3,remote-m3,meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose`
-(front-page index) and `SERVE_CATALOGS_UNLISTED` to `cadence@yschimke/cadence` (served at `/cadence/`,
-off the front page). So a bare `docker pull` / Watchtower update serves them
+to the three built-in design systems, MeshCore Mobile, Home Assistant Remote Compose, all six
+`yschimke/compose-samples` apps, and both Confetti apps (front-page index), and defaults
+`SERVE_CATALOGS_UNLISTED` to `cadence@yschimke/cadence` (served at `/cadence/`, off the front page).
+So a bare `docker pull` / Watchtower update serves them
 without editing the box's compose. Override either with your own comma list, or `none` to serve none
-of that kind (empty inherits the baked default). The `deploy/vps` from-source path still sets these
+of that kind (empty inherits the baked default). Re-running `deploy/image/setup.sh` also removes the
+known legacy override containing only `jetnews`, `jetchat`, and `jetlagged`, allowing older
+`preview.coo.ee` deployments to inherit the complete image default without disturbing custom lists.
+The `deploy/vps` from-source path still sets these
 in its compose (it builds `main`, so the flags exist immediately; the prebuilt image needs a CLI
 release that carries `--catalogs-unlisted`).
 
