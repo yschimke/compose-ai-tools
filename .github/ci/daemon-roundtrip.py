@@ -19,6 +19,13 @@ Asserts:
 * Every reported PNG path exists and is non-empty after both passes.
 * The PNG files were rewritten by the second pass (mtime advanced).
 
+`initialize` is the long pole: the Android daemon boots its whole
+Robolectric sandbox pool before it answers (see docs/daemon/STARTUP.md),
+which on a cold CI runner is minutes, not seconds. `--init-timeout-s`
+defaults to 600s to stay at or above the daemon's own
+`composeai.daemon.sandboxBootTimeoutMs` budget, so a slow boot surfaces as
+the daemon's failure rather than this script's impatience.
+
 The mtime check is the proof that the daemon actually re-rendered in
 response to the edit. We do NOT assert pixel diffs — a no-op-comment edit
 shouldn't change pixels, and pixel parity across recompiles is the
@@ -52,11 +59,19 @@ def _frame(payload: dict[str, Any]) -> bytes:
 
 
 class FramedReader:
-    """Reads LSP-framed JSON-RPC messages from a binary stream."""
+    """Reads LSP-framed JSON-RPC messages from a binary stream.
+
+    `read_message` returns None both when the stream hit EOF and when the
+    caller's timeout expired — [at_eof] is what tells the two apart. Callers
+    MUST check it: conflating them reports a healthy-but-slow daemon as a
+    crashed one, which is exactly the misdiagnosis that made a 120s
+    `initialize` timeout look like "daemon stream closed".
+    """
 
     def __init__(self, stream):
         self._stream = stream
         self._buf = bytearray()
+        self.at_eof = False
 
     def read_message(self, timeout_s: float) -> dict[str, Any] | None:
         deadline = time.monotonic() + timeout_s
@@ -64,6 +79,8 @@ class FramedReader:
             msg = self._try_extract()
             if msg is not None:
                 return msg
+            if self.at_eof:
+                return None
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return None
@@ -72,7 +89,7 @@ class FramedReader:
                 continue
             chunk = os.read(self._stream.fileno(), 4096)
             if not chunk:
-                # EOF
+                self.at_eof = True
                 return None
             self._buf.extend(chunk)
 
@@ -148,6 +165,11 @@ class DaemonDriver:
         self._proc.stdin.write(_frame(payload))
         self._proc.stdin.flush()
 
+    def _exit_note(self) -> str:
+        """Suffix naming the daemon's exit code when it has already died."""
+        code = self._proc.poll() if self._proc is not None else None
+        return "" if code is None else f" (daemon process exited with code {code})"
+
     def request(self, method: str, params: dict[str, Any] | None, timeout_s: float = 60.0) -> dict[str, Any]:
         req_id = self._next_id
         self._next_id += 1
@@ -162,7 +184,13 @@ class DaemonDriver:
                 raise TimeoutError(f"no response to {method} (id={req_id}) within {timeout_s}s")
             msg = self._reader.read_message(remaining)
             if msg is None:
-                raise RuntimeError(f"daemon stream closed before responding to {method}")
+                if not self._reader.at_eof:
+                    # Timeout, not a dead daemon — loop so the deadline check
+                    # above raises the accurate TimeoutError.
+                    continue
+                raise RuntimeError(
+                    f"daemon stream closed before responding to {method}{self._exit_note()}"
+                )
             if "id" in msg and msg.get("id") == req_id:
                 if "error" in msg:
                     raise RuntimeError(f"{method} returned error: {msg['error']}")
@@ -197,7 +225,11 @@ class DaemonDriver:
                 )
             msg = self._reader.read_message(time_left)
             if msg is None:
-                raise RuntimeError("daemon stream closed mid-collect")
+                if not self._reader.at_eof:
+                    # Timeout — let the deadline check above raise with the
+                    # "only saw N/M" detail rather than blaming the transport.
+                    continue
+                raise RuntimeError(f"daemon stream closed mid-collect{self._exit_note()}")
             if msg.get("method") in methods:
                 collected.append(msg)
             else:
@@ -351,7 +383,23 @@ def main() -> int:
         "'--no-configuration-cache -Dorg.gradle.unsafe.isolated-projects=false')",
     )
     ap.add_argument("--render-timeout-s", type=float, default=180.0)
+    ap.add_argument(
+        "--init-timeout-s",
+        type=float,
+        default=600.0,
+        help="how long to wait for the `initialize` response. The Android daemon "
+        "does NOT answer initialize until its Robolectric sandbox pool is booted "
+        "(docs/daemon/STARTUP.md), and that boot is budgeted at 10 minutes by "
+        "`composeai.daemon.sandboxBootTimeoutMs`. Keep this >= that budget so a "
+        "cold runner reports the daemon's own failure instead of our impatience.",
+    )
     args = ap.parse_args()
+
+    # Line-buffer stdout so this script's progress interleaves correctly with
+    # the daemon's (unbuffered) stderr in CI logs. Block-buffered stdout dumps
+    # every print at exit, which puts the whole round-trip narrative *after*
+    # the stack trace that ended it.
+    sys.stdout.reconfigure(line_buffering=True)
 
     descriptor_path = Path(args.descriptor)
     descriptor = json.loads(descriptor_path.read_text())
@@ -396,6 +444,10 @@ def main() -> int:
     driver = DaemonDriver(descriptor, workspace)
     driver.spawn()
     try:
+        print(
+            f"[daemon-roundtrip] waiting up to {args.init_timeout_s:.0f}s for initialize "
+            "(the daemon boots its Robolectric sandbox pool first — cold boots are slow)"
+        )
         init_result = driver.request(
             "initialize",
             {
@@ -406,7 +458,7 @@ def main() -> int:
                 "moduleProjectDir": descriptor["workingDirectory"],
                 "capabilities": {"visibility": True, "metrics": True},
             },
-            timeout_s=120.0,
+            timeout_s=args.init_timeout_s,
         )
         proto = init_result.get("protocolVersion")
         if proto != 2:
