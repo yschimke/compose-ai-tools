@@ -918,17 +918,27 @@ private fun readLuminanceRowsOfRegion(img: BufferedImage, y0: Int, h: Int): Arra
 }
 
 /**
- * Scans `topLum` for the bottommost position whose `anchor.size` rows match `anchor` below the
- * per-pixel SAD threshold [ANCHOR_MATCH_MAX_SAD_PER_PIXEL]. Returns the row *after* the matched
+ * Scans `topLum` for the position whose `anchor.size` rows best match `anchor`, among those under
+ * the per-pixel SAD threshold [ANCHOR_MATCH_MAX_SAD_PER_PIXEL]. Returns the row *after* the matched
  * band — i.e. anchor matched at `topLum[y − anchor.size, y)` — suitable for use as a prefix-end cut
  * point, or `null` if no position hits the threshold.
  *
- * Bottommost-acceptable rather than global-min: once the EdgeButton reveals, the last list item
- * appears near the bottom of the stitched strip. A global-min search can prefer an earlier
- * similar-content scroll position (real Wear previews repeat card templates; synthetic jitter
- * patterns repeat by construction) — which would glue the EdgeButton on far above the true scroll
- * end and throw away the tail of the stitched content. Walking bottom-up and accepting the first
- * match locks onto the most recent occurrence of the last-item signature.
+ * Biased toward the bottom, but only among near-equal scores: once the EdgeButton reveals, the last
+ * list item appears near the bottom of the stitched strip, and a plain global-min search can prefer
+ * an earlier similar-content scroll position (real Wear previews repeat card templates; synthetic
+ * jitter patterns repeat by construction) — which would glue the EdgeButton on far above the true
+ * scroll end and throw away the tail of the stitched content. So we keep the "most recent
+ * occurrence" intent by walking bottom-up, but require a lower candidate to score within
+ * [ANCHOR_MATCH_TIE_MARGIN_PER_PIXEL] of the best one before it wins.
+ *
+ * Why not simply take the bottommost *acceptable* match (the original behaviour):
+ * [ANCHOR_MATCH_MAX_SAD_PER_PIXEL] is a fixed cutoff, so on a list of visually-similar rows a wrong
+ * position one row-pitch below the true one can also land under it — its score sits near the cutoff
+ * rather than near zero. Whether it did was decided by sub-pixel text rendering, so the same commit
+ * stitched two different images on different runs: the taller one repeated the final list row, and
+ * the output grew by exactly one row height. Scoring every candidate and demanding near-parity with
+ * the best makes the choice depend on how well the rows actually match rather than on which side of
+ * a fixed threshold noise pushed them.
  */
 private fun findBestAnchorMatch(
   topLum: Array<IntArray>,
@@ -941,16 +951,38 @@ private fun findBestAnchorMatch(
 
   val perPixelCutoff = (ANCHOR_MATCH_MAX_SAD_PER_PIXEL * k * width).toLong()
 
+  // Bottom-up, so `candidates` is already ordered bottommost-first.
+  val candidates = mutableListOf<Pair<Int, Long>>()
+  var bestSad = Long.MAX_VALUE
   for (y in h downTo k) {
     var sad = 0L
+    var overCutoff = false
     for (kk in 0 until k) {
       sad += rowSad(anchor[kk], topLum[y - k + kk])
-      if (sad > perPixelCutoff) break
+      if (sad > perPixelCutoff) {
+        overCutoff = true
+        break
+      }
     }
-    if (sad <= perPixelCutoff) return y
+    if (overCutoff) continue
+    candidates += y to sad
+    if (sad < bestSad) bestSad = sad
   }
-  return null
+  if (candidates.isEmpty()) return null
+
+  val tieCutoff = bestSad + (ANCHOR_MATCH_TIE_MARGIN_PER_PIXEL * k * width).toLong()
+  return candidates.first { (_, sad) -> sad <= tieCutoff }.first
 }
+
+/**
+ * How much worse (in per-pixel 0–255 luminance SAD) than the best match a *lower* anchor position
+ * may score and still be preferred for its position. The true last-item position SADs to ~0; a
+ * genuine repeat of the same card template elsewhere in the strip also SADs to ~0, so near-parity
+ * is the right test for "these are the same content, take the later one". A row-pitch-off mismatch
+ * scores well above 1 per pixel even when it squeaks under [ANCHOR_MATCH_MAX_SAD_PER_PIXEL], so it
+ * can no longer win on position alone.
+ */
+private const val ANCHOR_MATCH_TIE_MARGIN_PER_PIXEL = 1.0
 
 /**
  * Clips [file]'s image into a pill/stadium shape: half-circle at the top, rectangular middle,
