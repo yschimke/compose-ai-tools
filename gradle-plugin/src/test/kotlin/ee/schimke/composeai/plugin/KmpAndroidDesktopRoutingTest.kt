@@ -195,12 +195,12 @@ class KmpAndroidDesktopRoutingTest {
   }
 
   @Test
-  fun `backgroundSandboxBoot reaches the launch descriptor's system properties`() {
-    // The daemon JVM only ever learns about background pool boot through the descriptor's
-    // systemProperties — RobolectricHost reads `composeai.daemon.backgroundSandboxBoot` at
-    // startup, and `.github/ci/daemon-roundtrip.py` reads the same key to size its `initialize`
-    // budget. An extension property that doesn't reach this map is silently inert: the build
-    // script looks configured, the daemon still boots the whole pool eagerly, and nothing fails.
+  fun `backgroundSandboxBoot flows from the daemon extension onto the bootstrap task`() {
+    // Extension -> task @Input half of the wiring. The other half — that it also lands in the
+    // descriptor's `systemProperties`, which is the only thing the daemon JVM actually reads —
+    // can't be asserted here: querying that map resolves the `composePreviewDesktopDaemon`
+    // configuration, and a bare ProjectBuilder project has no repositories to resolve it against.
+    // DaemonBootstrapFunctionalTest covers that end of it against a real build.
     val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
     val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
     project.configurations.create("desktopRuntimeClasspath") {
@@ -214,15 +214,12 @@ class KmpAndroidDesktopRoutingTest {
     val daemon =
       project.tasks.getByName("composePreviewDaemonStart")
         as ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask
-    assertThat(daemon.systemProperties.get())
-      .containsEntry("composeai.daemon.backgroundSandboxBoot", "true")
     assertThat(daemon.backgroundSandboxBoot.get()).isTrue()
   }
 
   @Test
-  fun `backgroundSandboxBoot defaults to false in the launch descriptor`() {
-    // Default-off must survive all the way to the descriptor, not just the extension: the eager
-    // all-sandboxes-ready contract is what plugin consumers get today.
+  fun `backgroundSandboxBoot defaults to false on the bootstrap task`() {
+    // Default-off must survive the extension -> task hop, not just the extension's convention.
     val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
     val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
     project.configurations.create("desktopRuntimeClasspath") {
@@ -235,7 +232,6 @@ class KmpAndroidDesktopRoutingTest {
     val daemon =
       project.tasks.getByName("composePreviewDaemonStart")
         as ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask
-    assertThat(daemon.systemProperties.get())
-      .containsEntry("composeai.daemon.backgroundSandboxBoot", "false")
+    assertThat(daemon.backgroundSandboxBoot.get()).isFalse()
   }
 }
