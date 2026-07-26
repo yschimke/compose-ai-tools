@@ -217,6 +217,51 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `public browse pages and baked previews advertise static generation`() {
+    val homeReq = Request.Builder().url("http://127.0.0.1:${server.port}/").build()
+    client.newCall(homeReq).execute().use { response ->
+      assertEquals("static-page", response.header(ServeHttpServer.GENERATION_HEADER))
+      assertTrue(response.header("Cache-Control")?.startsWith("public, max-age=60") == true)
+    }
+
+    val landingReq = Request.Builder().url("http://127.0.0.1:${server.port}/compose-m3/").build()
+    client.newCall(landingReq).execute().use { response ->
+      assertEquals("static-page", response.header(ServeHttpServer.GENERATION_HEADER))
+      assertTrue(response.header("Cache-Control")?.startsWith("public, max-age=60") == true)
+    }
+
+    val viewerReq =
+      Request.Builder().url("http://127.0.0.1:${server.port}/compose-m3/p/$previewId").build()
+    client.newCall(viewerReq).execute().use { response ->
+      assertEquals("static-page", response.header(ServeHttpServer.GENERATION_HEADER))
+      assertTrue(response.header("Cache-Control")?.startsWith("public, max-age=60") == true)
+    }
+
+    val renderReq =
+      Request.Builder()
+        .url("http://127.0.0.1:${server.port}/compose-m3/render/$previewId.png")
+        .build()
+    client.newCall(renderReq).execute().use { response ->
+      assertEquals("baked", response.header(ServeHttpServer.GENERATION_HEADER))
+      assertTrue(response.header("Cache-Control")?.startsWith("public, max-age=300") == true)
+    }
+  }
+
+  @Test
+  fun `variant render remains non cacheable`() {
+    val req =
+      Request.Builder()
+        .url("http://127.0.0.1:${server.port}/compose-m3/render/$previewId.png?fontScale=1.5")
+        .build()
+    client.newCall(req).execute().use { response ->
+      // This fixture is a static bundle, so it can only return baked bytes; the variant-bearing
+      // request is nevertheless dynamic and must never poison the cache for another query.
+      assertEquals("baked", response.header(ServeHttpServer.GENERATION_HEADER))
+      assertEquals("no-store", response.header("Cache-Control"))
+    }
+  }
+
+  @Test
   fun `a static bundle 404s the svg render lane`() {
     // The .svg lane is routed and dispatched, but a bundle host has no daemon to run the figma-svg
     // export, so it resolves to NotFound (only a daemon-backed ServeRenderHost produces SVG).

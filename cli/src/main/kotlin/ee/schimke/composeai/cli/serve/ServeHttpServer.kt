@@ -506,6 +506,17 @@ class ServeHttpServer(
     )
   }
 
+  /**
+   * Describe the work behind a response in headers that survive a reverse proxy. This lets a
+   * browser, curl, or an agent distinguish cheap published bytes from a daemon render without
+   * access to the host logs. Static pages are cacheable only in public mode: token-bearing private
+   * URLs must never be stored by a shared cache.
+   */
+  private fun RoutingContext.markGeneration(generation: String, cacheControl: String? = null) {
+    call.response.headers.append(GENERATION_HEADER, generation)
+    cacheControl?.let { call.response.headers.append(HttpHeaders.CacheControl, it) }
+  }
+
   /** `GET /` (query) and `GET /{system}[/]` (path): the session's preview-list landing page. */
   private suspend fun RoutingContext.handleLanding(sessionInPath: Boolean) {
     if (rejectBadToken()) return
@@ -527,6 +538,7 @@ class ServeHttpServer(
       selectedSessionId(sessionInPath),
       onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
     ) { renderHost ->
+      markGeneration("static-page", pageCacheControl())
       call.respondText(
         ServeWeb.landingPage(
           renderHost.label,
@@ -582,6 +594,7 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handleHomeIndex() {
     val systems = withContext(Dispatchers.IO) { homeSystemsFor(catalogSessions) }
+    markGeneration("static-page", pageCacheControl())
     call.respondText(
       ServeWeb.homeIndexPage(systems, token, isPublic = isPublic, version = BUNDLE_VERSION),
       ContentType.Text.Html,
@@ -1338,6 +1351,7 @@ class ServeHttpServer(
       // Fail-closed: any session without a verifiable trusted verdict gets opaque (false).
       val wasmSameOrigin =
         catalogBundleHost(renderHost)?.let { it.trust is BundleVerifier.Verdict.Trusted } ?: false
+      markGeneration("static-page", pageCacheControl())
       call.respondText(
         ServeWeb.viewerPage(
           preview,
@@ -1496,7 +1510,21 @@ class ServeHttpServer(
                 status = HttpStatusCode.ServiceUnavailable,
               )
             }
-            is RenderOutcome.Ok -> call.respondBytes(outcome.png, ContentType.Image.PNG)
+            is RenderOutcome.Ok -> {
+              markGeneration(
+                outcome.generation.wire,
+                if (
+                  outcome.generation == RenderOutcome.Generation.BAKED &&
+                    overrideParams.isEmpty() &&
+                    isPublic
+                ) {
+                  STATIC_RESOURCE_CACHE_CONTROL
+                } else {
+                  DYNAMIC_RESOURCE_CACHE_CONTROL
+                },
+              )
+              call.respondBytes(outcome.png, ContentType.Image.PNG)
+            }
             RenderOutcome.NotFound ->
               call.respondText("no such preview", status = HttpStatusCode.NotFound)
             is RenderOutcome.Failed ->
@@ -1506,6 +1534,9 @@ class ServeHttpServer(
       }
     }
   }
+
+  private fun pageCacheControl(): String =
+    if (isPublic) STATIC_PAGE_CACHE_CONTROL else DYNAMIC_RESOURCE_CACHE_CONTROL
 
   /**
    * SVG lane of [handleRender]: load-shed like the PNG lane, then respond the figma-svg bytes. When
@@ -1727,7 +1758,18 @@ class ServeHttpServer(
 
   companion object {
     const val TOKEN_HEADER: String = "X-Compose-Preview-Token"
+    const val GENERATION_HEADER: String = "X-Compose-Preview-Generation"
     private const val DEFAULT_PORT_RANGE = 32
+
+    /** Short edge/browser caching for HTML assembled entirely from published catalog metadata. */
+    private const val STATIC_PAGE_CACHE_CONTROL = "public, max-age=60, stale-while-revalidate=300"
+
+    /** Published preview paths are stable but may change when a catalog refreshes in place. */
+    private const val STATIC_RESOURCE_CACHE_CONTROL =
+      "public, max-age=300, stale-while-revalidate=3600"
+
+    /** Variant renders and all token-gated responses stay out of shared and browser caches. */
+    private const val DYNAMIC_RESOURCE_CACHE_CONTROL = "no-store"
 
     /** Classpath location of the vendored Remote Compose player IIFE bundle (global `RC`). */
     private const val RC_PLAYER_RESOURCE = "/rc-player/bundle.js"

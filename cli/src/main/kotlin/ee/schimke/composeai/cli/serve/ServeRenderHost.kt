@@ -182,7 +182,20 @@ fun declaredThemesFromPreviews(
 
 /** Result of a snapshot render request. */
 sealed interface RenderOutcome {
-  data class Ok(val png: ByteArray) : RenderOutcome
+  data class Ok(
+    val png: ByteArray,
+    /** How these bytes were produced, exposed on HTTP responses for remote diagnosis. */
+    val generation: Generation = Generation.DAEMON,
+  ) : RenderOutcome
+
+  enum class Generation(val wire: String) {
+    /** Read directly from a published bundle; no renderer was involved in this request. */
+    BAKED("baked"),
+    /** Reused from the daemon host's in-memory override cache. */
+    DAEMON_CACHE("daemon-cache"),
+    /** Produced by a daemon render during this request. */
+    DAEMON("daemon"),
+  }
 
   /** No such preview id in this session's module. */
   data object NotFound : RenderOutcome
@@ -404,7 +417,7 @@ internal constructor(
     val key = ServeOverrides.cacheKey(previewId, overrides)
     cache.get(key)?.let {
       perfStats.recordCacheHit()
-      return RenderOutcome.Ok(it)
+      return RenderOutcome.Ok(it, RenderOutcome.Generation.DAEMON_CACHE)
     }
 
     // Perf accounting for `/status` (`renderStats`): the round-trip clock starts at the cache
@@ -426,7 +439,7 @@ internal constructor(
       // Double-check: another request may have filled the cache while we waited for the lock.
       cache.get(key)?.let {
         perfStats.recordCacheHit()
-        return RenderOutcome.Ok(it)
+        return RenderOutcome.Ok(it, RenderOutcome.Generation.DAEMON_CACHE)
       }
 
       // The daemon coalesces an override-bearing `renderNow` whose previewId already has one in

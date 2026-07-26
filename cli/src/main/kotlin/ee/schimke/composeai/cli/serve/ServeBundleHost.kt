@@ -236,7 +236,10 @@ class ServeBundleHost(
     if (previewId !in previewIds) return RenderOutcome.NotFound
     val png = File(previewsDir, "$previewId$PNG_SUFFIX").toOkioPath()
     if (!fileSystem.exists(png)) return RenderOutcome.NotFound
-    return RenderOutcome.Ok(fileSystem.read(png) { readByteArray() })
+    return RenderOutcome.Ok(
+      fileSystem.read(png) { readByteArray() },
+      RenderOutcome.Generation.BAKED,
+    )
   }
 
   override fun remoteComposeDoc(previewId: String): ByteArray? {
