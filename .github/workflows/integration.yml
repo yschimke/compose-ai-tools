@@ -1375,22 +1375,30 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      # Key on the FULL SET of coordinates present, and prune nothing.
+      # Key on the set of coordinates present, capped at the newest few.
       #
-      # An earlier version kept only the newest-mtime coordinate, on the theory
-      # that a cell renders at one SDK. That is false: `wear-os-samples` fetched
-      # both `15-robolectric-13954326-i7` and `16-robolectric-13921718-i7` in a
-      # single run, because the Gradle render path and the daemon path resolve
-      # different SDKs. Pruning one of them made the saved entry permanently
-      # incomplete — the dropped coordinate was re-downloaded (~200 MB) on every
-      # subsequent run, and the save then no-op'd because the key hadn't changed.
-      # Silent, and strictly worse than not caching that coordinate at all.
+      # Two failure modes bound this from either side, and both have been hit:
       #
-      # So: the key is the sorted set. Same coordinates → same key → save
-      # no-ops. A `robolectric` bump or a new SDK adds one → new key → new entry
-      # carrying everything the cell actually needs. The cost is that a
-      # superseded coordinate rides along until the entry is evicted; that is a
-      # bounded ~200 MB, where dropping it is an unbounded per-run re-download.
+      #  - Keep only ONE (newest mtime). Wrong: a cell can legitimately need
+      #    several. `wear-os-samples` fetched both `15-robolectric-13954326-i7`
+      #    and `16-robolectric-13921718-i7` in one run, because the Gradle render
+      #    path and the daemon path resolve different SDKs. Dropping one left the
+      #    entry permanently incomplete — re-downloaded (~200 MB) every run, with
+      #    the save no-op'ing because the key never changed.
+      #  - Keep ALL. Also wrong: the restore hands back the previous set, so each
+      #    `robolectric` bump folds another dead coordinate into the next entry.
+      #    Evicting older entries doesn't shrink the newest one, so the payload
+      #    grows ~200 MB per bump forever.
+      #
+      # There is no way to ask which coordinates this run actually USED: a
+      # restored jar that gets used is not rewritten, so it looks identical to
+      # one that sat untouched. Usage can't be inferred after the fact, so the
+      # bound is a deliberate policy instead — keep the MAX_COORDINATES highest
+      # Android versions and drop the rest, loudly. That covers a multi-SDK cell
+      # (2 today) with headroom, and a bump evicts the oldest rather than
+      # accumulating. A drop is logged, so if a cell ever genuinely needs more
+      # than the cap the re-download shows up as a warning rather than as an
+      # unexplained slow leg.
       - name: Resolve android-all cache key
         id: android-all
         if: always() && (matrix.render || matrix.render_xr || matrix.daemon)
@@ -1398,20 +1406,43 @@ jobs:
           set -euo pipefail
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import hashlib
+          import re
+          import shutil
           import sys
           from pathlib import Path
 
+          # Headroom over the 2 a render+daemon cell needs today. Raise it if a
+          # cell starts warning that it dropped a coordinate it wanted.
+          MAX_COORDINATES = 3
+
           root = Path.home() / ".m2/repository/org/robolectric/android-all-instrumented"
-          coordinates = sorted(
-              d.name for d in root.glob("*") if d.is_dir() and any(d.glob("*.jar"))
-          ) if root.is_dir() else []
-          if not coordinates:
+          present = [d for d in root.glob("*") if d.is_dir() and any(d.glob("*.jar"))] if root.is_dir() else []
+          if not present:
               print("no android-all coordinate on disk — nothing to cache", file=sys.stderr)
               print("coordinate=")
               raise SystemExit(0)
+
+          # Order by Android version (the leading int of e.g. `16-robolectric-13921718-i7`),
+          # newest first, name as a stable tie-break.
+          def version_of(d):
+              m = re.match(r"(\d+)", d.name)
+              return (int(m.group(1)) if m else -1, d.name)
+
+          ranked = sorted(present, key=version_of, reverse=True)
+          keep, drop = ranked[:MAX_COORDINATES], ranked[MAX_COORDINATES:]
+          for d in drop:
+              print(
+                  f"::warning::dropping android-all coordinate {d.name} — over the "
+                  f"{MAX_COORDINATES}-coordinate cache cap. If this cell needs it, "
+                  "it will be re-downloaded every run; raise MAX_COORDINATES.",
+                  file=sys.stderr,
+              )
+              shutil.rmtree(d)
+
+          coordinates = sorted(d.name for d in keep)
           # One coordinate reads plainly in the key; several would blow past a
           # sensible key length, so collapse those to a stable digest. Either way
-          # the key changes if and only if the SET changes.
+          # the key changes if and only if the retained SET changes.
           joined = "_".join(coordinates)
           key = joined if len(coordinates) == 1 else (
               f"{len(coordinates)}x-{hashlib.sha256(joined.encode()).hexdigest()[:16]}"
@@ -1744,20 +1775,43 @@ jobs:
           set -euo pipefail
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import hashlib
+          import re
+          import shutil
           import sys
           from pathlib import Path
 
+          # Headroom over the 2 a render+daemon cell needs today. Raise it if a
+          # cell starts warning that it dropped a coordinate it wanted.
+          MAX_COORDINATES = 3
+
           root = Path.home() / ".m2/repository/org/robolectric/android-all-instrumented"
-          coordinates = sorted(
-              d.name for d in root.glob("*") if d.is_dir() and any(d.glob("*.jar"))
-          ) if root.is_dir() else []
-          if not coordinates:
+          present = [d for d in root.glob("*") if d.is_dir() and any(d.glob("*.jar"))] if root.is_dir() else []
+          if not present:
               print("no android-all coordinate on disk — nothing to cache", file=sys.stderr)
               print("coordinate=")
               raise SystemExit(0)
+
+          # Order by Android version (the leading int of e.g. `16-robolectric-13921718-i7`),
+          # newest first, name as a stable tie-break.
+          def version_of(d):
+              m = re.match(r"(\d+)", d.name)
+              return (int(m.group(1)) if m else -1, d.name)
+
+          ranked = sorted(present, key=version_of, reverse=True)
+          keep, drop = ranked[:MAX_COORDINATES], ranked[MAX_COORDINATES:]
+          for d in drop:
+              print(
+                  f"::warning::dropping android-all coordinate {d.name} — over the "
+                  f"{MAX_COORDINATES}-coordinate cache cap. If this cell needs it, "
+                  "it will be re-downloaded every run; raise MAX_COORDINATES.",
+                  file=sys.stderr,
+              )
+              shutil.rmtree(d)
+
+          coordinates = sorted(d.name for d in keep)
           # One coordinate reads plainly in the key; several would blow past a
           # sensible key length, so collapse those to a stable digest. Either way
-          # the key changes if and only if the SET changes.
+          # the key changes if and only if the retained SET changes.
           joined = "_".join(coordinates)
           key = joined if len(coordinates) == 1 else (
               f"{len(coordinates)}x-{hashlib.sha256(joined.encode()).hexdigest()[:16]}"
