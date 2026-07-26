@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.18.1](https://github.com/yschimke/compose-ai-tools/compare/v0.18.0...v0.18.1) (2026-07-26)
+
+
+### Features
+
+* **server:** Show the last 10 render failures on the status page ([#2791](https://github.com/yschimke/compose-ai-tools/issues/2791)) ([b6241d2](https://github.com/yschimke/compose-ai-tools/commit/b6241d23992c5a50ebd2425d2b97aee2a1d54e8d))
+
+
+### Bug Fixes
+
+* **ci:** avoid phantom release PRs after publishing ([#2792](https://github.com/yschimke/compose-ai-tools/issues/2792)) ([4ad3ee6](https://github.com/yschimke/compose-ai-tools/commit/4ad3ee6a9fbce8f488d42966062d638afddb145e))
+
 ## [0.18.0](https://github.com/yschimke/compose-ai-tools/compare/v0.17.27...v0.18.0) (2026-07-26)
 
 
