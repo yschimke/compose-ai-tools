@@ -210,6 +210,19 @@ class ServeStatusTest {
       now = 100
       assertEquals(1, suspendable.suspendIdle(), "the idle catalog suspends")
 
+      val homeUrl = "http://127.0.0.1:${srv.port}/"
+      val home =
+        client.newCall(Request.Builder().url(homeUrl).build()).execute().use {
+          it.body?.string() ?: ""
+        }
+      assertTrue(home.contains("href=\"/confetti-wear/\""), home)
+      assertTrue(home.contains("Confetti Wear"), home)
+      assertEquals(
+        0,
+        suspendable.runningDaemons().size,
+        "building the home index must not resume an idle catalog daemon",
+      )
+
       val whileIdle = statusJson()
       // The regression: trust, title, preview count and provenance all survive the suspension...
       assertTrue(
