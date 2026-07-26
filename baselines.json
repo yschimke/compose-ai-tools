@@ -3316,7 +3316,7 @@
     "functionName": "ActivityListMotionLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListMotionLongPreview_Devices_Large_Round_SCROLL_long.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round#1": {
