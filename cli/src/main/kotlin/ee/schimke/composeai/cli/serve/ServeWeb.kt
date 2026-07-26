@@ -677,6 +677,12 @@ object ServeWeb {
   private fun bgTheme(id: String, darkFirst: Boolean): String? =
     cardTheme(id) ?: if (darkFirst) "dark" else null
 
+  /** Stable, catalog-specific persistence key shared by that catalog's landing and viewer pages. */
+  private fun themeStorageKey(sessionId: String?, basePath: String): String {
+    val catalog = basePath.trim('/').ifBlank { sessionId ?: "default" }
+    return "cp-theme:${WebEscaping.urlEncodeSegment(catalog)}"
+  }
+
   /**
    * The flattened id with its theme token stripped — the key that pairs a component's light and
    * dark variants into ONE grid card. `button-filled__ideal__default__light` and `…__dark` both key
@@ -1063,11 +1069,11 @@ object ServeWeb {
   }
 
   /**
-   * The sticky light/dark control for the catalog header. Persists to `localStorage['cp-theme']`
-   * (shared with the viewer's Theme select). [catalogFilterScript] wires it to *swap* each
-   * swappable card between its baked light/dark render in place — a no-JS client still sees the
-   * full catalog on its default renders. Shown only when the grid has at least one light/dark pair
-   * to swap.
+   * The sticky light/dark control for the catalog header. Persists to a catalog-scoped localStorage
+   * key (shared only with that catalog's viewer Theme select). [catalogFilterScript] wires it to
+   * *swap* each swappable card between its baked light/dark render in place — a no-JS client still
+   * sees the full catalog on its default renders. Shown only when the grid has at least one
+   * light/dark pair to swap.
    */
   private fun themeToggleHtml(): String =
     """
@@ -1106,9 +1112,10 @@ object ServeWeb {
    * the catalog carries light/dark pairs, the sticky Light/Dark **toggle** — which *swaps* each
    * swappable card between its baked light and dark render in place (image, viewer link, id, label,
    * and stage backing), rather than hiding cards. Single-theme / theme-neutral cards carry no swap
-   * data and are left untouched. Theme state persists to the shared `localStorage['cp-theme']` key
-   * (round-tripped with the viewer's Theme select); the search text is ephemeral. Fully client-side
-   * progressive enhancement — a no-JS client sees the full grid on its baked (default) renders.
+   * data and are left untouched. Theme state persists to a catalog-scoped localStorage key
+   * (round-tripped with that catalog's viewer Theme select); the search text is ephemeral. Fully
+   * client-side progressive enhancement — a no-JS client sees the full grid on its baked (default)
+   * renders.
    *
    * When [hasTabs] (a sectioned catalog), the same script also drives the section **tabs**:
    * clicking a tab shows only that section's panel (others' cards hidden) while a search spans
@@ -1120,12 +1127,13 @@ object ServeWeb {
     hasThemes: Boolean,
     hasTabs: Boolean,
     hasGroups: Boolean,
+    themeStorageKey: String,
   ): String {
     val themeInit =
       if (hasThemes)
         """
         var stored = null;
-        try { stored = localStorage.getItem("cp-theme"); } catch (e) {}
+        try { stored = localStorage.getItem("$themeStorageKey"); } catch (e) {}
         var theme = (stored === "light" || stored === "dark") ? stored
           : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
         var themeBtns = document.querySelectorAll(".cp-theme-btn");
@@ -1164,7 +1172,7 @@ object ServeWeb {
         """themeBtns.forEach(function (b) {
         b.addEventListener("click", function () {
           theme = b.getAttribute("data-theme-choice");
-          try { localStorage.setItem("cp-theme", theme); } catch (e) {}
+          try { localStorage.setItem("$themeStorageKey", theme); } catch (e) {}
           apply();
         });
       });"""
@@ -1265,11 +1273,11 @@ object ServeWeb {
   }
 
   /**
-   * Viewer theme-sticky script: when the Theme select is set to light/dark, write it to the shared
-   * `localStorage['cp-theme']` so the catalog remembers the last theme the visitor viewed a
-   * component in (the other half of the catalog toggle's stickiness).
+   * Viewer theme-sticky script: when the Theme select is set to light/dark, write it to this
+   * catalog's localStorage key so only this catalog remembers the last theme the visitor viewed a
+   * component in (the other half of its landing-page toggle's stickiness).
    */
-  private fun viewerThemeStickyScript(): String =
+  private fun viewerThemeStickyScript(themeStorageKey: String): String =
     """
     (function () {
       var el = document.getElementById("cp-uiMode");
@@ -1283,7 +1291,7 @@ object ServeWeb {
       var pid = (root && root.getAttribute("data-preview-id")) || "";
       var themed = pid.split("__").some(function (s) { return s === "light" || s === "dark"; });
       try {
-        var stored = localStorage.getItem("cp-theme");
+        var stored = localStorage.getItem("$themeStorageKey");
         if (!themed && !el.value && (stored === "light" || stored === "dark")) el.value = stored;
       } catch (e) {}
       // Keep the stage backing colour in step with the CHOSEN theme, so a re-render in the opposite
@@ -1303,11 +1311,11 @@ object ServeWeb {
         if (m) root.setAttribute("data-bg-theme", m);
         else root.removeAttribute("data-bg-theme");
       }
-      // Round-trip: a Theme change writes the shared key so the catalog remembers it, and re-syncs
+      // Round-trip: a Theme change writes this catalog's key so it remembers it, and re-syncs
       // the stage backing colour.
       el.addEventListener("change", function () {
         if (el.value === "light" || el.value === "dark") {
-          try { localStorage.setItem("cp-theme", el.value); } catch (e) {}
+          try { localStorage.setItem("$themeStorageKey", el.value); } catch (e) {}
         }
         syncBg();
       });
@@ -1830,6 +1838,12 @@ object ServeWeb {
       return darkFirstIdPattern.containsMatchIn(s)
     }
 
+    /** Wear/watch renders have no day mode; discard a generic UI's accidental light override. */
+    fun normalizeOverrideParams(
+      system: String,
+      overrides: Map<String, String>,
+    ): Map<String, String> = if (isDarkFirst(system)) overrides - "uiMode" else overrides
+
     /**
      * Resolve whether [system] draws on a DARK stage, preferring the catalog's declared
      * [surface][declaredSurface] (`"light"`/`"dark"`) and falling back to the [isDarkFirst] id
@@ -2128,7 +2142,8 @@ object ServeWeb {
         "\n<p id=\"cp-empty\" class=\"cp-empty\" hidden>No previews match your filter.</p>"
       else ""
     val filterScript =
-      if (hasPreviews) "\n<script>${catalogFilterScript(hasThemes, hasTabs, hasGroups)}</script>"
+      if (hasPreviews)
+        "\n<script>${catalogFilterScript(hasThemes, hasTabs, hasGroups, themeStorageKey(sessionId, basePath))}</script>"
       else ""
     return document(
       title = "$moduleLabel — compose-preview",
@@ -2268,6 +2283,11 @@ object ServeWeb {
     val label = WebEscaping.htmlEscape(preview.label)
     val idText = WebEscaping.htmlEscape(preview.id)
     val modes = preview.modes.joinToString(",") { it.wire }
+    // Wear OS is an always-dark surface. Do not expose the generic day/night override: besides
+    // being meaningless for Wear, an old light choice within the Wear catalog must not turn into a
+    // confetti-wear live render.
+    val wearAlwaysDark = SystemDisplay.isDarkFirst(basePath.trim('/').ifBlank { sessionId ?: "" })
+    val alwaysDarkAttr = if (wearAlwaysDark) " data-always-dark=\"1\"" else ""
     // The Wasm tier is opt-in via a toggle (like "Live (stream)"), so the always-works PNG snapshot
     // stays the default. Both the iframe and the toggle are omitted entirely when no Wasm app backs
     // this session.
@@ -2383,6 +2403,17 @@ object ServeWeb {
     // backs
     // the session.
     val wasmDis = if (overridesLive || wasmSrc != null) "" else " disabled"
+    val uiModeSelectHtml =
+      if (wearAlwaysDark)
+        """<select id="cp-uiMode" disabled>
+                  <option value="dark" selected>Dark (Wear OS)</option>
+                </select>"""
+      else
+        """<select id="cp-uiMode"$wasmDis>
+                  <option value="">Auto</option>
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                </select>"""
     // The static-snapshot note is only shown when overrides genuinely can't re-render on the server
     // ([overridesLive] false): a plain static bundle, or a Wasm-only published catalog (where
     // day/night, font scale, locale &amp; knobs apply in the browser but size/device/orientation
@@ -2543,7 +2574,7 @@ object ServeWeb {
         $navToggle
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
-      <div class="cp-viewer cp-controls-open"$bgThemeAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr>
+      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr>
         $navDrawer
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         <div class="cp-controls" id="cp-controls">
@@ -2572,11 +2603,7 @@ object ServeWeb {
             <summary>Appearance</summary>
             <div class="cp-group-body">
               <label>Day / Night
-                <select id="cp-uiMode"$wasmDis>
-                  <option value="">Auto</option>
-                  <option value="light">Light</option>
-                  <option value="dark">Dark</option>
-                </select>
+                $uiModeSelectHtml
               </label>
               $themeSelectorHtml
               <label>Background
@@ -2679,7 +2706,7 @@ object ServeWeb {
       <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
       <script>${groupStickyScript()}</script>
       <script>${drawerScript()}</script>
-      <script>${viewerThemeStickyScript()}</script>
+      <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>
       <script>${viewerScript()}</script>
       <script>${backendBadgeScript()}</script>
       """
@@ -2827,7 +2854,7 @@ object ServeWeb {
         var o = {};
         fields.forEach(function (f) {
           var el = document.getElementById("cp-" + f);
-          if (el && el.value) o[f] = el.value;
+          if (el && !el.disabled && el.value) o[f] = el.value;
         });
         if (fontScaleTouched && fs) o.fontScale = fs.value;
         var size = sizeOverrides();
@@ -3696,6 +3723,7 @@ object ServeWeb {
         ["device", "orientation", "background", "sizeMode",
          "fixedW", "fixedH", "minW", "minH", "maxW", "maxH"];
       var wasmHonouredControlIds = ["uiMode", "localeTag", "fontScale"];
+      var alwaysDark = root.getAttribute("data-always-dark") === "1";
       function syncServerControls() {
         // The in-browser Wasm lane only honours the wasm-honoured trio (uiMode/locale/fontScale) +
         // knobs (see wasmOverridePatch); size/device/orientation/background and the app-theme
@@ -3718,7 +3746,8 @@ object ServeWeb {
         // canvas lane, which doesn't map them onto the document.
         wasmHonouredControlIds.forEach(function (id) {
           var el = document.getElementById("cp-" + id);
-          if (el) el.disabled = !(canServerRender || (wasmSrc && !onRc));
+          if (el) el.disabled = (id === "uiMode" && alwaysDark) ||
+            !(canServerRender || (wasmSrc && !onRc));
         });
         // The app-theme (themeProvider) selector is a daemon-only override the Wasm app doesn't
         // honour: dead in the in-browser lane. Disable it there; otherwise mirror its server-side

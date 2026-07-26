@@ -15,6 +15,7 @@ import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -607,6 +608,7 @@ class ServeWebFixtureTest {
         "compose-m3",
         themedPreviews,
         token,
+        sessionId = "compose-m3",
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
         hasHomeIndex = true,
@@ -1284,6 +1286,27 @@ class ServeWebFixtureTest {
     assertFalse(
       ServeWeb.SystemDisplay.resolveDarkFirst("compose-m3", null),
       "fallback: a non-Wear system stays on the light stage",
+    )
+    assertNull(
+      ServeWeb.SystemDisplay.normalizeOverrideParams("confetti-wear", mapOf("uiMode" to "light"))[
+          "uiMode"],
+      "Wear ignores the generic light override",
+    )
+    assertEquals(
+      "light",
+      ServeWeb.SystemDisplay.normalizeOverrideParams("compose-m3", mapOf("uiMode" to "light"))[
+          "uiMode"],
+      "non-Wear systems retain day/night overrides",
+    )
+    assertTrue(
+      landingThemed.contains("localStorage.getItem(\"cp-theme:compose-m3\")") &&
+        landingThemed.contains("localStorage.setItem(\"cp-theme:compose-m3\", theme)"),
+      "the catalog landing persists theme under its own catalog key",
+    )
+    assertTrue(
+      viewerGestures.contains("localStorage.getItem(\"cp-theme:wear-m3\")") &&
+        !viewerGestures.contains("cp-theme:compose-m3"),
+      "a viewer reads only its own catalog's sticky theme",
     )
 
     // The sticky theme toggle appears only for a catalog with light/dark pairs, and each paired

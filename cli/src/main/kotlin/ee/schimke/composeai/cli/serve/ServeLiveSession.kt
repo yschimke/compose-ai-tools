@@ -23,21 +23,24 @@ private constructor(
   private val codec: StreamCodec?,
   private val maxFps: Int?,
   private val send: (String) -> Unit,
+  private val normalizeOverrides: (Map<String, String>) -> Map<String, String>,
 ) {
   @Volatile private var handle: StreamHandle? = null
 
   /** Handle one client text message: forward input, restart the stream on new overrides, etc. */
   fun onClientMessage(text: String) {
     when (val message = ServeStreamProtocol.parseClient(text)) {
-      is ServeStreamProtocol.ClientMessage.SetOverrides ->
-        when (val parsed = ServeOverrides.parse(message.overrides, knobKindsFor(previewId))) {
+      is ServeStreamProtocol.ClientMessage.SetOverrides -> {
+        val normalized = normalizeOverrides(message.overrides)
+        when (val parsed = ServeOverrides.parse(normalized, knobKindsFor(previewId))) {
           is OverrideParse.Invalid -> send(ServeStreamProtocol.errorMessage(parsed.message))
           is OverrideParse.Ok -> {
             // stream/start fixes overrides for the held session, so an override change restarts it.
-            overrides = message.overrides
+            overrides = normalized
             restart(parsed.overrides)
           }
         }
+      }
       is ServeStreamProtocol.ClientMessage.Input -> dispatchInput(message)
       is ServeStreamProtocol.ClientMessage.Switch -> switchTo(message)
       // Frames are pushed by the daemon; an explicit refresh is a no-op on the live lane.
@@ -86,7 +89,7 @@ private constructor(
    * view intact rather than going blank.
    */
   private fun switchTo(message: ServeStreamProtocol.ClientMessage.Switch) {
-    val nextOverrides = message.overrides ?: overrides
+    val nextOverrides = message.overrides?.let(normalizeOverrides) ?: overrides
     val parsed =
       when (val p = ServeOverrides.parse(nextOverrides, knobKindsFor(message.previewId))) {
         is OverrideParse.Invalid -> {
@@ -146,14 +149,25 @@ private constructor(
       codec: StreamCodec? = null,
       maxFps: Int? = null,
       send: (String) -> Unit,
+      normalizeOverrides: (Map<String, String>) -> Map<String, String> = { it },
       onUnavailable: ((String) -> Unit)? = null,
     ): ServeLiveSession? {
       val knobKinds =
         ServeOverrides.declaredKnobKinds(renderHost.previews.firstOrNull { it.id == previewId })
+      val normalizedOverrides = normalizeOverrides(overrides)
       val initial =
-        (ServeOverrides.parse(overrides, knobKinds) as? OverrideParse.Ok)?.overrides
+        (ServeOverrides.parse(normalizedOverrides, knobKinds) as? OverrideParse.Ok)?.overrides
           ?: PreviewOverrides()
-      val session = ServeLiveSession(renderHost, previewId, overrides, codec, maxFps, send)
+      val session =
+        ServeLiveSession(
+          renderHost,
+          previewId,
+          normalizedOverrides,
+          codec,
+          maxFps,
+          send,
+          normalizeOverrides,
+        )
       session.handle =
         renderHost.subscribeStream(
           previewId,

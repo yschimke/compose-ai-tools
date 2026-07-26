@@ -428,7 +428,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   </span>
 </div>
 <p class="cp-sub">5 preview(s) · click one to view with overrides ·
-          <a href="/bundle.zip">download all (.zip)</a></p>
+          <a href="/bundle.zip?session=compose-m3">download all (.zip)</a></p>
         <div class="cp-searchbar">
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
     autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
@@ -440,13 +440,13 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 </div>
 <div class="cp-grid" id="cp-grid">
         <a class="cp-card" data-swap="1" data-bg-theme="light"
-  data-l-src="/render/button-filled__ideal__default__light.png" data-l-href="/p/button-filled__ideal__default__light"
+  data-l-src="/render/button-filled__ideal__default__light.png?session=compose-m3" data-l-href="/p/button-filled__ideal__default__light?session=compose-m3"
   data-l-id="button-filled__ideal__default__light" data-l-label="Button · Filled (light)"
-  data-d-src="/render/button-filled__ideal__default__dark.png" data-d-href="/p/button-filled__ideal__default__dark"
+  data-d-src="/render/button-filled__ideal__default__dark.png?session=compose-m3" data-d-href="/p/button-filled__ideal__default__dark?session=compose-m3"
   data-d-id="button-filled__ideal__default__dark" data-d-label="Button · Filled (dark)"
-  href="/p/button-filled__ideal__default__light">
+  href="/p/button-filled__ideal__default__light?session=compose-m3">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Button · Filled (light)" src="/render/button-filled__ideal__default__light.png">
+    <img loading="lazy" alt="Button · Filled (light)" src="/render/button-filled__ideal__default__light.png?session=compose-m3">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="Button · Filled (light)">Button · Filled (light)</div>
@@ -454,22 +454,22 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   </div>
 </a>
 <a class="cp-card" data-swap="1" data-bg-theme="light"
-  data-l-src="/render/switch-on__ideal__default__light.png" data-l-href="/p/switch-on__ideal__default__light"
+  data-l-src="/render/switch-on__ideal__default__light.png?session=compose-m3" data-l-href="/p/switch-on__ideal__default__light?session=compose-m3"
   data-l-id="switch-on__ideal__default__light" data-l-label="Switch · On (light)"
-  data-d-src="/render/switch-on__ideal__default__dark.png" data-d-href="/p/switch-on__ideal__default__dark"
+  data-d-src="/render/switch-on__ideal__default__dark.png?session=compose-m3" data-d-href="/p/switch-on__ideal__default__dark?session=compose-m3"
   data-d-id="switch-on__ideal__default__dark" data-d-label="Switch · On (dark)"
-  href="/p/switch-on__ideal__default__light">
+  href="/p/switch-on__ideal__default__light?session=compose-m3">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Switch · On (light)" src="/render/switch-on__ideal__default__light.png">
+    <img loading="lazy" alt="Switch · On (light)" src="/render/switch-on__ideal__default__light.png?session=compose-m3">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="Switch · On (light)">Switch · On (light)</div>
     <div class="cp-id">switch-on__ideal__default__light</div>
   </div>
 </a>
-<a class="cp-card" href="/p/badge">
+<a class="cp-card" href="/p/badge?session=compose-m3">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Badge" src="/render/badge.png">
+    <img loading="lazy" alt="Badge" src="/render/badge.png?session=compose-m3">
   </div>
   <div class="cp-meta">
     <div class="cp-label" title="badge">Badge</div>
@@ -485,7 +485,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
       var empty = document.getElementById("cp-empty");
       var total = cards.length;
       var stored = null;
-try { stored = localStorage.getItem("cp-theme"); } catch (e) {}
+try { stored = localStorage.getItem("cp-theme:compose-m3"); } catch (e) {}
 var theme = (stored === "light" || stored === "dark") ? stored
   : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 var themeBtns = document.querySelectorAll(".cp-theme-btn");
@@ -525,7 +525,7 @@ cards.forEach(function (c) {
       themeBtns.forEach(function (b) {
         b.addEventListener("click", function () {
           theme = b.getAttribute("data-theme-choice");
-          try { localStorage.setItem("cp-theme", theme); } catch (e) {}
+          try { localStorage.setItem("cp-theme:compose-m3", theme); } catch (e) {}
           apply();
         });
       });
