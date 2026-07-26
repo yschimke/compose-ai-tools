@@ -40,6 +40,9 @@ class FontsRecorderExtension(context: Context? = null) :
 
   @Composable
   override fun Around(context: ExtensionComposeContext, content: @Composable () -> Unit) {
+    // Each preview's SVG export must see only its own faces, so clear the shared buffer as this
+    // preview starts composing rather than after it renders.
+    FigmaSvgRenderedFonts.begin()
     val baseFontResolver = LocalFontFamilyResolver.current
     CompositionLocalProvider(
       LocalFontFamilyResolver provides recordingFontFamilyResolver(baseFontResolver, recorder),
