@@ -1375,43 +1375,49 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      # Keep exactly one coordinate. After a `robolectric` bump the restored
-      # entry holds the OLD jar and this run downloads the new one alongside it,
-      # so a blind save would carry a dead quarter-gig forever. The freshly
-      # downloaded directory is strictly newer than everything the restore
-      # materialised, so newest-mtime is a reliable "current". Then key on what
-      # survived: unchanged coordinate → same key → save is a no-op; bumped
-      # coordinate → new key → new entry, old one ages out.
+      # Key on the FULL SET of coordinates present, and prune nothing.
       #
-      # Pruning is only sound because the key is per-cell and a cell renders at
-      # one SDK: the coordinate it wants this run is the one it wanted last run.
-      # Under a shared key this would be the thrash described on the restore
-      # step — don't collapse these keys back together.
+      # An earlier version kept only the newest-mtime coordinate, on the theory
+      # that a cell renders at one SDK. That is false: `wear-os-samples` fetched
+      # both `15-robolectric-13954326-i7` and `16-robolectric-13921718-i7` in a
+      # single run, because the Gradle render path and the daemon path resolve
+      # different SDKs. Pruning one of them made the saved entry permanently
+      # incomplete — the dropped coordinate was re-downloaded (~200 MB) on every
+      # subsequent run, and the save then no-op'd because the key hadn't changed.
+      # Silent, and strictly worse than not caching that coordinate at all.
+      #
+      # So: the key is the sorted set. Same coordinates → same key → save
+      # no-ops. A `robolectric` bump or a new SDK adds one → new key → new entry
+      # carrying everything the cell actually needs. The cost is that a
+      # superseded coordinate rides along until the entry is evicted; that is a
+      # bounded ~200 MB, where dropping it is an unbounded per-run re-download.
       - name: Resolve android-all cache key
         id: android-all
         if: always() && (matrix.render || matrix.render_xr || matrix.daemon)
         run: |
           set -euo pipefail
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import shutil
+          import hashlib
           import sys
           from pathlib import Path
 
           root = Path.home() / ".m2/repository/org/robolectric/android-all-instrumented"
-          versions = sorted(
-              (d for d in root.glob("*") if d.is_dir() and any(d.glob("*.jar"))),
-              key=lambda d: max(j.stat().st_mtime for j in d.glob("*.jar")),
+          coordinates = sorted(
+              d.name for d in root.glob("*") if d.is_dir() and any(d.glob("*.jar"))
           ) if root.is_dir() else []
-          if not versions:
+          if not coordinates:
               print("no android-all coordinate on disk — nothing to cache", file=sys.stderr)
               print("coordinate=")
               raise SystemExit(0)
-          current = versions[-1]
-          for stale in versions[:-1]:
-              print(f"::warning::pruning superseded android-all coordinate {stale.name}", file=sys.stderr)
-              shutil.rmtree(stale)
-          print(f"caching android-all coordinate {current.name}", file=sys.stderr)
-          print(f"coordinate={current.name}")
+          # One coordinate reads plainly in the key; several would blow past a
+          # sensible key length, so collapse those to a stable digest. Either way
+          # the key changes if and only if the SET changes.
+          joined = "_".join(coordinates)
+          key = joined if len(coordinates) == 1 else (
+              f"{len(coordinates)}x-{hashlib.sha256(joined.encode()).hexdigest()[:16]}"
+          )
+          print(f"caching {len(coordinates)} android-all coordinate(s): {joined}", file=sys.stderr)
+          print(f"coordinate={key}")
           PY
 
       # Split restore/save (rather than plain `actions/cache`) so a cell that
@@ -1737,25 +1743,27 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import shutil
+          import hashlib
           import sys
           from pathlib import Path
 
           root = Path.home() / ".m2/repository/org/robolectric/android-all-instrumented"
-          versions = sorted(
-              (d for d in root.glob("*") if d.is_dir() and any(d.glob("*.jar"))),
-              key=lambda d: max(j.stat().st_mtime for j in d.glob("*.jar")),
+          coordinates = sorted(
+              d.name for d in root.glob("*") if d.is_dir() and any(d.glob("*.jar"))
           ) if root.is_dir() else []
-          if not versions:
+          if not coordinates:
               print("no android-all coordinate on disk — nothing to cache", file=sys.stderr)
               print("coordinate=")
               raise SystemExit(0)
-          current = versions[-1]
-          for stale in versions[:-1]:
-              print(f"::warning::pruning superseded android-all coordinate {stale.name}", file=sys.stderr)
-              shutil.rmtree(stale)
-          print(f"caching android-all coordinate {current.name}", file=sys.stderr)
-          print(f"coordinate={current.name}")
+          # One coordinate reads plainly in the key; several would blow past a
+          # sensible key length, so collapse those to a stable digest. Either way
+          # the key changes if and only if the SET changes.
+          joined = "_".join(coordinates)
+          key = joined if len(coordinates) == 1 else (
+              f"{len(coordinates)}x-{hashlib.sha256(joined.encode()).hexdigest()[:16]}"
+          )
+          print(f"caching {len(coordinates)} android-all coordinate(s): {joined}", file=sys.stderr)
+          print(f"coordinate={key}")
           PY
 
       - name: Save Robolectric android-all cache
