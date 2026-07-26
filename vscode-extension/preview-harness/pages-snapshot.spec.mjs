@@ -25,11 +25,13 @@ const harnessDir = dirname(fileURLToPath(import.meta.url));
 const outDir = resolve(harnessDir, "out");
 const pagesDir = resolve(harnessDir, "fixtures", "pages");
 
-// The serve pages point `<img>` / their viewer JS at the daemon's
-// `/render/<id>.png` endpoint, which has no backend in the harness. Stub it
-// with the committed placeholder so the capture is deterministic and tiles
-// render at a realistic size instead of collapsing on broken images.
+// The serve pages point `<img>` / their viewer JS at two image lanes with no
+// backend in the harness: the daemon's `/render/<id>.png` endpoint, and the
+// front door's prebaked `/hero/<system>/<hash>.png` thumbnails. Stub both with
+// the committed placeholder so the capture is deterministic and tiles render at
+// a realistic size instead of collapsing on broken images.
 const renderPlaceholder = resolve(pagesDir, "_render-placeholder.png");
+const IMAGE_LANES = ["**/render/**", "**/hero/**"];
 
 /** Page fixtures = `fixtures/pages/*.html`, honouring the `HARNESS_FIXTURE` narrow. */
 function listPageFixtures() {
@@ -43,12 +45,14 @@ function listPageFixtures() {
 for (const fixture of listPageFixtures()) {
     for (const theme of listThemes()) {
         test(`snapshot · ${fixture} · ${theme}`, async ({ page }) => {
-            await page.route("**/render/**", (route) =>
-                route.fulfill({
-                    path: renderPlaceholder,
-                    contentType: "image/png",
-                }),
-            );
+            for (const lane of IMAGE_LANES) {
+                await page.route(lane, (route) =>
+                    route.fulfill({
+                        path: renderPlaceholder,
+                        contentType: "image/png",
+                    }),
+                );
+            }
             await page.emulateMedia({ colorScheme: theme });
             await page.goto(`/preview-harness/fixtures/pages/${fixture}.html`);
 

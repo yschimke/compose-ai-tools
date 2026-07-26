@@ -121,7 +121,13 @@ html.cp-js .cp-section-head { display: none; }
 .cp-card[hidden] { display: none; }
 .cp-imgwrap { display: flex; align-items: center; justify-content: center; min-height: 88px;
   background: #fff; padding: 12px; }
-.cp-imgwrap img { max-width: 100%; max-height: 240px; height: auto; display: block; }
+/* `width`/`height` stay auto so the max-* pair alone decides the used size and the image can
+   never be stretched. The front door's prebaked heroes DO carry width/height attributes — they
+   give the browser the aspect ratio up front (no layout shift) — but those must not become a
+   definite width, or a max-height clamp (the narrow-viewport rule below drops it to 200px)
+   would squash the height without narrowing the width. The heroes are rasterised at 2x this
+   box, so clamping here is what makes them crisp rather than merely small. */
+.cp-imgwrap img { max-width: 100%; max-height: 240px; width: auto; height: auto; display: block; }
 /* A framed thumbnail: a clip window whose aspect-ratio is the component box, that crops away a
    sticker's empty watch canvas. The window's natural width is the box (so it never upscales past
    1x), but `max-width: 100%` lets it shrink to a narrow grid card instead of overflowing it —
@@ -430,7 +436,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
         open a live, customisable preview.</p>
       <div class="cp-grid cp-syslist" id="cp-grid">
       <a class="cp-card cp-sys" href="/compose-m3/">
-  <div class="cp-imgwrap"><img loading="lazy" alt="Compose Material 3 preview" src="/compose-m3/render/button-filled__ideal__default__light.png"></div>
+  <div class="cp-imgwrap"><img loading="eager" decoding="async" width="168" height="68" alt="Compose Material 3 preview" src="/hero/compose-m3/1f0c9a4b7d2e6503.png"></div>
   <div class="cp-meta">
     <div class="cp-sys-title">Compose Material 3 <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></div>
     <div class="cp-id">compose-m3</div>
@@ -439,7 +445,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   </div>
 </a>
 <a class="cp-card cp-sys" data-bg-theme="dark" href="/wear-m3/">
-  <div class="cp-imgwrap"><img loading="lazy" alt="Wear Compose Material 3 preview" src="/wear-m3/render/button-filled__ideal__default__light.png"></div>
+  <div class="cp-imgwrap"><img loading="eager" decoding="async" width="132" height="132" alt="Wear Compose Material 3 preview" src="/hero/wear-m3/9b3d51ca08e7f264.png"></div>
   <div class="cp-meta">
     <div class="cp-sys-title">Wear Compose Material 3 <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/wear-m3">✓ trusted</span></div>
     <div class="cp-id">wear-m3</div>

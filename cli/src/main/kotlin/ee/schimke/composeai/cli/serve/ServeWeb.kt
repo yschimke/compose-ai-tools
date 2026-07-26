@@ -130,7 +130,13 @@ object ServeWeb {
     .cp-card[hidden] { display: none; }
     .cp-imgwrap { display: flex; align-items: center; justify-content: center; min-height: 88px;
       background: #fff; padding: 12px; }
-    .cp-imgwrap img { max-width: 100%; max-height: 240px; height: auto; display: block; }
+    /* `width`/`height` stay auto so the max-* pair alone decides the used size and the image can
+       never be stretched. The front door's prebaked heroes DO carry width/height attributes — they
+       give the browser the aspect ratio up front (no layout shift) — but those must not become a
+       definite width, or a max-height clamp (the narrow-viewport rule below drops it to 200px)
+       would squash the height without narrowing the width. The heroes are rasterised at 2x this
+       box, so clamping here is what makes them crisp rather than merely small. */
+    .cp-imgwrap img { max-width: 100%; max-height: 240px; width: auto; height: auto; display: block; }
     /* A framed thumbnail: a clip window whose aspect-ratio is the component box, that crops away a
        sticker's empty watch canvas. The window's natural width is the box (so it never upscales past
        1x), but `max-width: 100%` lets it shrink to a narrow grid card instead of overflowing it —
@@ -1361,6 +1367,15 @@ object ServeWeb {
     /** Content-crop for the hero thumbnail (frames a Wear sticker to its component); null ⇒ raw. */
     val heroCrop: ContentCrop? = null,
     /**
+     * The **prebaked** thumbnail for this card, when the server has one ([ServeHeroImages]). This
+     * is the fast path and the normal one: a small, already-cropped PNG on an immutable URL, so the
+     * front door's imagery costs the server nothing to serve and nothing at all on a repeat visit.
+     * Null falls back to [heroPreviewId] + [heroCrop] — the full-resolution `/render` lane with a
+     * CSS clip window — which is what a card gets when the render can't be decoded (and what the
+     * page-level unit tests exercise).
+     */
+    val heroImage: HeroImage? = null,
+    /**
      * Whether this system's hero sits on a **dark** stage — a dark-first (Wear) system, per
      * [SystemDisplay.isDarkFirst]. The card carries `data-bg-theme="dark"` so its `.cp-imgwrap`
      * backs the thumbnail on dark rather than the default white (a light-on-transparent Wear
@@ -1368,6 +1383,14 @@ object ServeWeb {
      */
     val darkStage: Boolean = false,
   )
+
+  /**
+   * A prebaked hero thumbnail on the front door: its immutable `/hero/<system>/<hash>.png` [path]
+   * and the CSS-pixel size it lays out at. The crop is already in the pixels, so the card needs no
+   * clip window; [width]/[height] are published as `<img>` attributes so the grid reserves the
+   * right box before a single byte of image arrives (no reflow, no layout shift).
+   */
+  data class HeroImage(val path: String, val width: Int, val height: Int)
 
   /**
    * A thumbnail `<img>` for [src], optionally framed to its component content box ([crop]). With no
@@ -1418,6 +1441,11 @@ object ServeWeb {
    * point of `preview.coo.ee` is the catalogs, so the landing lists them rather than hiding them
    * behind a nav pill). Non-catalog `serve` (no `--catalogs`) keeps the plain [landingPage].
    *
+   * Every card's imagery is **prebaked** ([HeroImage] / [ServeHeroImages]): a small,
+   * already-cropped PNG on an immutable, content-hashed URL, loaded eagerly. Rendering the front
+   * door therefore costs the server the HTML and nothing else — no render lane, no daemon, and on a
+   * repeat visit no image requests at all.
+   *
    * [systems] are the published catalogs (the `--catalogs` set), grouped into the Compose design
    * systems, catalogs published by the `yschimke` GitHub organization, and a final "Other" section
    * for every remaining publisher (for example, Confetti from `joreilly`). The
@@ -1443,8 +1471,18 @@ object ServeWeb {
       val sysSeg = WebEscaping.urlEncodeSegment(s.system)
       val title = WebEscaping.htmlEscape(s.title)
       val sysId = WebEscaping.htmlEscape(s.system)
+      val hero = s.heroImage
       val img =
-        if (s.heroPreviewId != null) {
+        if (hero != null) {
+          // The fast path: a prebaked, already-cropped thumbnail on an immutable URL. `eager` (not
+          // `lazy`) because these ARE the page — a dozen small PNGs the browser should start the
+          // moment it sees them, rather than deferring past layout the way lazy-loading a
+          // full-resolution render used to. The width/height attributes reserve the box up front.
+          "<img loading=\"eager\" decoding=\"async\" width=\"${hero.width}\" height=\"${hero.height}\"" +
+            " alt=\"$title preview\" src=\"${WebEscaping.htmlEscape(hero.path)}$suffix\">"
+        } else if (s.heroPreviewId != null) {
+          // Fallback: the live `/render` lane with a CSS clip window, for a catalog whose hero
+          // couldn't be prebaked.
           val idSeg = WebEscaping.urlEncodeSegment(s.heroPreviewId)
           thumbImg(
             src = "/$sysSeg/render/$idSeg.png$suffix",

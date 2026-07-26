@@ -32,6 +32,27 @@
 
    ![Front-door index — Wear systems (wear-m3, confetti-wear) on dark stages, phone/desktop on white](images/serve-home-index-stage-after.png)
 
+   The front door's imagery is **prebaked**, not rendered per visit. Each card's hero is cropped to
+   its component box, downscaled to the card's size (at 2× for retina), and content-hashed **once**
+   per catalog — when the catalog host is first seen, not on the request path — then held in memory
+   and served from `/hero/<system>/<hash>.png`. That lane deliberately does none of what `/render`
+   does: no session lease, no render-slot permit, no disk read, and no chance of waking a suspended
+   daemon, so a dozen cards can never queue behind a catalog render. Because the file name *is* the
+   content hash, the response is `Cache-Control: public, max-age=31536000, immutable` — a repeat
+   visitor paints the whole index from cache with no image requests at all, and a republished catalog
+   simply gets new URLs (nothing to invalidate). Serving `/` therefore costs the server the HTML and
+   essentially nothing else. A catalog whose hero PNG can't be decoded falls back to the live
+   `/render` lane for that one card.
+
+   The front door looks the same; it just stops shipping full-resolution renders to do it. Against
+   the live `preview.coo.ee` catalog set, the index's imagery went from **775 kB over 11 render
+   requests** to **146 kB of prebaked, permanently cacheable PNGs** — the heaviest card (a JetNews
+   phone screenshot) from 267 kB to 29 kB.
+
+   | Before — full renders over `/render`, lazy | After — prebaked heroes over `/hero`, eager |
+   | --- | --- |
+   | ![Front door served from the /render lane](images/serve-home-index-prebaked-before.png) | ![Front door served from prebaked heroes](images/serve-home-index-prebaked-after.png) |
+
    A catalog entry may name a **per-system source repo** as `<system>@<owner>/<repo>`, so one server
    can serve systems published to *different* repos — e.g. `compose-m3,wear-m3` from this repo
    alongside `meshcore-mobile@yschimke/meshcore-mobile` from the app's own repo (both listed on the
