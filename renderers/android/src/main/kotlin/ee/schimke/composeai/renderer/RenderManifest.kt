@@ -27,6 +27,11 @@ enum class PreviewKind {
   // `RenderPreviewParams.wrapperClassName` and composes its `Wrap(content)` around a canned M3
   // role + type specimen, capturing the theme's live `MaterialTheme.colorScheme` / `typography`.
   THEME_CATALOG,
+  // The Wear sibling of THEME_CATALOG, for one `@WearThemeCatalog` provider. Rendered here by
+  // `WearThemeCatalogStrategy`, which composes the same kind of canned specimen but reads
+  // `androidx.wear.compose.material3.MaterialTheme` (reflectively, via `WearMaterialTheme`) —
+  // the theme a Wear provider actually installs, and which the mobile specimen can't see.
+  WEAR_THEME_CATALOG,
   // A real Activity from the module's merged manifest. Rendered here by `AppTourRenderer`, which
   // launches the activity for real (full lifecycle, its own `setContent`) via Robolectric's
   // `ActivityController` and captures its window — the launcher activity's capture is the app's

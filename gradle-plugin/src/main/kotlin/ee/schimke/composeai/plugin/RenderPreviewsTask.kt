@@ -184,16 +184,17 @@ abstract class RenderPreviewsTask : DefaultTask() {
     val kinds = includeKinds.getOrElse(emptySet())
     val kindFiltered =
       if (kinds.isEmpty()) tierFiltered else tierFiltered.filter { it.params.kind.name in kinds }
-    // `CATALOG` / `THEME_CATALOG` sheets are synthetic (no consumer composable): a CATALOG carries
-    // its tokens as structured data (`params.catalogTokens`) and a THEME_CATALOG renders a canned
-    // specimen inside a `@ThemeCatalog` provider — neither is forwarded by this desktop path's flat
-    // positional-arg protocol, and their display `functionName` ("Brand colours" / "Meshcore
-    // theme")
-    // isn't a real composable, so `getDeclaredComposableMethod` would throw and sink
-    // `composePreviewRenderAll` on any CMP/desktop module using them. Both render on the Android
-    // backend today; desktop support is tracked in #2135. Skip them here rather than crash.
+    // `CATALOG` / `THEME_CATALOG` / `WEAR_THEME_CATALOG` sheets are synthetic (no consumer
+    // composable): a CATALOG carries its tokens as structured data (`params.catalogTokens`) and the
+    // theme kinds render a canned specimen inside a `@ThemeCatalog` / `@WearThemeCatalog` provider
+    // —
+    // none is forwarded by this desktop path's flat positional-arg protocol, and their display
+    // `functionName` ("Brand colours" / "Meshcore theme") isn't a real composable, so
+    // `getDeclaredComposableMethod` would throw and sink `composePreviewRenderAll` on any
+    // CMP/desktop module using them. All render on the Android backend today; desktop support is
+    // tracked in #2135. Skip them here rather than crash.
     val previews = kindFiltered.filter {
-      it.params.kind.name != "CATALOG" && it.params.kind.name != "THEME_CATALOG"
+      it.params.kind.name !in SYNTHETIC_CATALOG_KINDS_UNSUPPORTED_ON_DESKTOP
     }
     // Always rebuild from the filtered list now that the CATALOG skip applies unconditionally (the
     // old fast-path reused `rawManifest` verbatim, which would leave catalog entries in).
@@ -471,6 +472,14 @@ private val OVERRIDES_JSON = kotlinx.serialization.json.Json { ignoreUnknownKeys
 
 /** How many available preview names to list in a no-match `--preview` error before truncating. */
 private const val MAX_SUGGESTED_PREVIEW_NAMES = 20
+
+/**
+ * Synthetic catalog kinds the **desktop** render path can't drive: they have no consumer composable
+ * to reflect, so the flat positional-arg protocol has nothing to invoke. Compared by name because
+ * this task sees the manifest's kind as a string. Android renders all of them; see #2135.
+ */
+private val SYNTHETIC_CATALOG_KINDS_UNSUPPORTED_ON_DESKTOP =
+  setOf("CATALOG", "THEME_CATALOG", "WEAR_THEME_CATALOG")
 
 /**
  * Narrows [previews] to those matching [filters] (issue #2066). An empty/blank filter returns the

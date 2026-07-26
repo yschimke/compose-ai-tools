@@ -776,7 +776,14 @@ abstract class BundlePreviewTask : DefaultTask() {
    */
   private fun resolvePreviewCatalogTokens(preview: PreviewInfo): ByteArray? {
     if (
-      preview.params.kind != PreviewKind.CATALOG && preview.params.kind != PreviewKind.THEME_CATALOG
+      preview.params.kind !in
+        setOf(
+          PreviewKind.CATALOG,
+          PreviewKind.THEME_CATALOG,
+          // The Wear theme sheet writes the same resolved-token sidecar as its mobile sibling, so
+          // a packed Wear bundle carries its palette / type scale for a detached reader too.
+          PreviewKind.WEAR_THEME_CATALOG,
+        )
     ) {
       return null
     }
