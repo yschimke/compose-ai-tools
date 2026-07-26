@@ -1365,6 +1365,8 @@ object ServeWeb {
     val subtitle: String?,
     val previewCount: Int,
     val trust: String?,
+    /** Repository that supplied this catalog; used for publisher attribution on the homepage. */
+    val sourceRepo: String? = null,
     val heroPreviewId: String?,
     /** Content-crop for the hero thumbnail (frames a Wear sticker to its component); null ⇒ raw. */
     val heroCrop: ContentCrop? = null,
@@ -1449,8 +1451,11 @@ object ServeWeb {
    * repeat visit no image requests at all.
    *
    * [systems] are the published catalogs (the `--catalogs` set), grouped into the Compose design
-   * systems, catalogs published by the `yschimke` GitHub organization, and a final "Other" section
-   * for every remaining publisher (for example, Confetti from `joreilly`). The
+   * systems, Android's Compose samples, catalogs published by the `yschimke` GitHub organization,
+   * and a final "Other" section for every remaining publisher (for example, Confetti from
+   * `joreilly`). The sample catalogs are currently fetched from preview branches in the
+   * `yschimke/compose-samples` fork, but they represent `android/compose-samples`; grouping by the
+   * branch-trust origin would incorrectly present the fork as their publisher.
    * `--catalogs-unlisted` app catalogs are deliberately NOT indexed here — they're served at
    * `/<system>/` (shareable by direct link) but stay off the front door entirely, so an operator
    * can publish an app catalog without advertising it on the public landing.
@@ -1527,13 +1532,22 @@ object ServeWeb {
       """
         .trimIndent()
     val designSystemIds = setOf("compose-m3", "remote-m3", "wear-m3")
+    val androidComposeSampleIds =
+      setOf("jetnews", "jetcaster", "jetchat", "jetsnack", "jetlagged", "reply")
     val designSystems = systems.filter { it.system in designSystemIds }
-    val remaining = systems.filterNot { it.system in designSystemIds }
-    val yschimkeSystems = remaining.filter { it.trust?.startsWith("branch:yschimke/") == true }
+    val androidComposeSampleRepos = setOf("android/compose-samples", "yschimke/compose-samples")
+    val androidComposeSamples = systems.filter {
+      it.system in androidComposeSampleIds && it.sourceRepo in androidComposeSampleRepos
+    }
+    val remaining = systems.filterNot {
+      it.system in designSystemIds || it in androidComposeSamples
+    }
+    val yschimkeSystems = remaining.filter { it.sourceRepo?.startsWith("yschimke/") == true }
     val otherSystems = remaining - yschimkeSystems.toSet()
     val sections =
       listOf(
           Triple("Design Systems", designSystems, "design system(s)"),
+          Triple("android/compose-samples", androidComposeSamples, "sample(s)"),
           Triple("yschimke org", yschimkeSystems, "catalog(s)"),
           Triple("Other", otherSystems, "catalog(s)"),
         )

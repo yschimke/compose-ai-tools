@@ -1093,6 +1093,7 @@ class ServeHttpServer(
         subtitle = meta.subtitle,
         previewCount = meta.previews ?: 0,
         trust = meta.trust,
+        sourceRepo = meta.provenance?.repo,
         heroPreviewId = meta.heroPreviewId,
         heroCrop = meta.heroCrop,
         // The prebaked thumbnail, when the catalog has one: the card then points at the static
