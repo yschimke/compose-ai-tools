@@ -167,6 +167,22 @@ class ServeHeroImagesTest {
   }
 
   @Test
+  fun `the memo is per host object, so two catalogs never share a bake`() {
+    // Same pixels, same preview id, two distinct hosts: each must be asked for its own bytes. The
+    // memo is keyed on the host OBJECT for exactly this reason — anything derived from it (an
+    // identity hash, say) can repeat across instances and would silently serve one catalog's hero
+    // for another's.
+    val heroes = ServeHeroImages()
+    val png = png(200, 200)
+    val a = CountingHost(png)
+    val b = CountingHost(png)
+    assertEquals(heroes.heroFor(a, "hero", null), heroes.heroFor(a, "hero", null))
+    heroes.heroFor(b, "hero", crop = null)
+    assertEquals(1, a.renders, "the first host is read once")
+    assertEquals(1, b.renders, "the second host is read on its own account, not off the first")
+  }
+
+  @Test
   fun `a preview the host cannot render bakes to nothing`() {
     val heroes = ServeHeroImages()
     assertNull(heroes.heroFor(CountingHost(png(100, 100)), "missing", crop = null))

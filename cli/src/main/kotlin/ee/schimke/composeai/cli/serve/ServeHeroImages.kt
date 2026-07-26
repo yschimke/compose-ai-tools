@@ -6,6 +6,8 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.security.MessageDigest
+import java.util.Optional
+import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
 import javax.imageio.ImageIO
 import kotlin.math.max
@@ -69,12 +71,24 @@ class ServeHeroImages {
   private val byFileName = ConcurrentHashMap<String, Hero>()
 
   /**
-   * Memo of the bake, keyed by the identity of the host the pixels came from plus the preview id —
-   * so the decode + scale runs once per catalog, and a refreshed catalog (a new host instance)
-   * re-bakes. A bake that fails caches its failure too, so a corrupt PNG isn't retried on every
-   * hit.
+   * Memo of the bake, per host **object** then per preview id — so the decode + scale runs once per
+   * catalog, and a refreshed catalog (which installs a fresh host) re-bakes. A bake that fails
+   * caches its failure too, so a corrupt PNG isn't retried on every hit.
+   *
+   * The outer map is a [java.util.WeakHashMap] keyed by the host itself, deliberately, rather than
+   * by something derived from it. A host has no stable id of its own, and the obvious stand-in —
+   * `System.identityHashCode` — is *not* unique: it can collide between live objects, and the JVM
+   * may hand a fresh object the value a collected one used to have. Either would let a republished
+   * catalog inherit the previous host's hero and serve stale front-door imagery indefinitely.
+   * Keying on the object gives true identity (these hosts don't override `equals`), and the weak
+   * key ties each entry's lifetime to its host, so a retired catalog's memo is collected with it
+   * instead of accumulating across refreshes. `WeakHashMap` isn't thread-safe, hence the lock —
+   * uncontended in practice, since it only guards resolving a host to its (concurrent) per-preview
+   * map, not the bake.
    */
-  private val baked = ConcurrentHashMap<String, java.util.Optional<Hero>>()
+  private val baked = WeakHashMap<ServeHost, ConcurrentHashMap<String, Optional<Hero>>>()
+
+  private val bakedLock = Any()
 
   /**
    * The hero for [previewId] on [host], baking it on first sight. [crop] is the card's content-crop
@@ -83,13 +97,17 @@ class ServeHeroImages {
    * `/render/` lane.
    */
   fun heroFor(host: ServeHost, previewId: String, crop: ContentCrop?): Hero? {
-    val key = "${System.identityHashCode(host)}|$previewId"
-    return baked
-      .computeIfAbsent(key) {
-        val png = (host.render(previewId, EMPTY_OVERRIDES) as? RenderOutcome.Ok)?.png
-        java.util.Optional.ofNullable(png?.let { bake(it, crop) })
-      }
-      .orElse(null)
+    val perHost = synchronized(bakedLock) { baked.getOrPut(host) { ConcurrentHashMap() } }
+    // The bake itself runs outside the lock (it decodes and rescales a full render); worst case
+    // two callers racing the same cold catalog bake it twice and agree on the result, which is
+    // content-hashed and therefore identical.
+    perHost[previewId]?.let {
+      return it.orElse(null)
+    }
+    val png = (host.render(previewId, EMPTY_OVERRIDES) as? RenderOutcome.Ok)?.png
+    val hero = png?.let { bake(it, crop) }
+    perHost[previewId] = Optional.ofNullable(hero)
+    return hero
   }
 
   /** The baked hero a `/hero/<system>/<fileName>` request names, or null when unknown. */
