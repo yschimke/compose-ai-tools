@@ -476,7 +476,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
       var empty = document.getElementById("cp-empty");
       var total = cards.length;
       var stored = null;
-try { stored = localStorage.getItem("cp-theme"); } catch (e) {}
+try { stored = localStorage.getItem("cp-theme:default"); } catch (e) {}
 var theme = (stored === "light" || stored === "dark") ? stored
   : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 var themeBtns = document.querySelectorAll(".cp-theme-btn");
@@ -516,7 +516,7 @@ cards.forEach(function (c) {
       themeBtns.forEach(function (b) {
         b.addEventListener("click", function () {
           theme = b.getAttribute("data-theme-choice");
-          try { localStorage.setItem("cp-theme", theme); } catch (e) {}
+          try { localStorage.setItem("cp-theme:default", theme); } catch (e) {}
           apply();
         });
       });

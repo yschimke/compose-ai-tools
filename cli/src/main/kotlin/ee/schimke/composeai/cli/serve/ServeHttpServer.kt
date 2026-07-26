@@ -1175,7 +1175,8 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handleStorybookIframe(sessionInPath: Boolean) {
     if (rejectBadToken()) return
-    withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
+    val sessionId = selectedSessionId(sessionInPath)
+    withLeasedSession(sessionId) { renderHost ->
       val storyId = call.request.queryParameters["id"]
       if (storyId.isNullOrBlank()) {
         call.respondText("missing story id", status = HttpStatusCode.BadRequest)
@@ -1194,13 +1195,15 @@ class ServeHttpServer(
             if (ServeOverrides.isOverrideParam(key)) key to value else null
           }
           .toMap()
+      val normalizedOverrideParams =
+        ServeWeb.SystemDisplay.normalizeOverrideParams(sessionId, overrideParams)
       val knobKinds =
         ServeOverrides.declaredKnobKinds(renderHost.previews.firstOrNull { it.id == previewId })
       // `?format=svg` serves the figma-svg export as an inert svg <img> (vector, for DOM-capture
       // visual tools); default (png) inlines the raster. SVG is daemon-only, so a static bundle
       // 404s.
       val wantSvg = call.request.queryParameters["format"]?.lowercase() == "svg"
-      when (val parsed = ServeOverrides.parse(overrideParams, knobKinds)) {
+      when (val parsed = ServeOverrides.parse(normalizedOverrideParams, knobKinds)) {
         is OverrideParse.Invalid ->
           call.respondText(parsed.message, status = HttpStatusCode.BadRequest)
         is OverrideParse.Ok ->
@@ -1445,18 +1448,19 @@ class ServeHttpServer(
             if (ServeOverrides.isOverrideParam(key)) key to value else null
           }
           .toMap()
+      val normalizedOverrideParams =
+        ServeWeb.SystemDisplay.normalizeOverrideParams(sessionId, overrideParams)
       // Type a bare `knob.<key>=<value>` from the preview's declared knobs (an explicit
       // `<kind>:<value>` still wins) so the viewer never has to spell the type in the URL.
       val knobKinds =
         ServeOverrides.declaredKnobKinds(renderHost.previews.firstOrNull { it.id == previewId })
-      when (val parsed = ServeOverrides.parse(overrideParams, knobKinds)) {
+      when (val parsed = ServeOverrides.parse(normalizedOverrideParams, knobKinds)) {
         is OverrideParse.Invalid ->
           call.respondText(parsed.message, status = HttpStatusCode.BadRequest)
         is OverrideParse.Ok -> {
-          // Wear/watch surfaces are always dark. The generic viewer used to leak its shared
-          // `cp-theme=light` preference into these URLs, needlessly waking the live daemon and
-          // producing a second encoding/render for an unsupported mode.
-          val overrides = ServeWeb.SystemDisplay.normalizeOverrides(sessionId, parsed.overrides)
+          // Wear/watch surfaces are always dark. Ignore a generic or hand-authored uiMode query so
+          // it cannot wake the live daemon and produce another render for an unsupported mode.
+          val overrides = parsed.overrides
           if (wantSvg) {
             // `?scroll=long` (or `full`/`page`) asks for the full-page export of a scrolling
             // preview (compose/figma-svg-long) instead of the viewport-sized one.
@@ -1678,6 +1682,10 @@ class ServeHttpServer(
               if (ServeOverrides.isOverrideParam(key)) key to value else null
             }
             .toMap()
+            .let { ServeWeb.SystemDisplay.normalizeOverrideParams(sessionId, it) }
+        val normalizeOverrides: (Map<String, String>) -> Map<String, String> = {
+          ServeWeb.SystemDisplay.normalizeOverrideParams(sessionId, it)
+        }
         // Non-suspending hand-off to the socket; drop frames a slow client can't keep up with.
         val send: (String) -> Unit = { text -> outgoing.trySend(Frame.Text(text)) }
         // Optional stream tuning: codec (WebP is ~30–60% smaller; the daemon downgrades to PNG if
@@ -1704,6 +1712,7 @@ class ServeHttpServer(
               codec,
               maxFps,
               send,
+              normalizeOverrides,
             ) { reason ->
               if (liveUnavailableReason == null) liveUnavailableReason = reason
             }
@@ -1726,6 +1735,7 @@ class ServeHttpServer(
               previewId,
               initialOverrides,
               send,
+              normalizeOverrides = normalizeOverrides,
               liveUnavailableReason = liveUnavailableReason,
             )
           // Renders block (renderNow + await); keep them off the socket's event-loop thread.

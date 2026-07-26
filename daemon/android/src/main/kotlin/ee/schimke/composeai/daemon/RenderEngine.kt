@@ -22,6 +22,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -447,6 +448,9 @@ class RenderEngine(
                         add(LocalContext provides placeholderContext)
                       }
                       add(LocalInspectionMode provides inspectionMode)
+                      ee.schimke.composeai.renderer.LocaleCompositionLocals
+                        .providedValue(LocalConfiguration.current, classLoader)
+                        ?.let(::add)
                       // Cleared background ("crisp outline"): a composable drawing its own opaque
                       // fill drops it to match the transparent decor-view background. Defaults false.
                       add(
@@ -1133,6 +1137,9 @@ class RenderEngine(
             val provided =
               buildList {
                   add(LocalInspectionMode provides false)
+                  ee.schimke.composeai.renderer.LocaleCompositionLocals
+                    .providedValue(LocalConfiguration.current, classLoader)
+                    ?.let(::add)
                   add(
                     ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
                       spec.clearBackground
@@ -1292,6 +1299,9 @@ class RenderEngine(
             val provided =
               buildList {
                   add(LocalInspectionMode provides (spec.inspectionMode ?: true))
+                  ee.schimke.composeai.renderer.LocaleCompositionLocals
+                    .providedValue(LocalConfiguration.current, classLoader)
+                    ?.let(::add)
                   add(
                     ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
                       spec.clearBackground
@@ -1615,6 +1625,9 @@ class RenderEngine(
                   // final SVG render re-enters `render` in the non-a11y path, i.e.
                   // `spec.inspectionMode ?: true`.
                   add(LocalInspectionMode provides (spec.inspectionMode ?: true))
+                  ee.schimke.composeai.renderer.LocaleCompositionLocals
+                    .providedValue(LocalConfiguration.current, classLoader)
+                    ?.let(::add)
                   add(
                     ee.schimke.composeai.preview.slots.LocalPreviewBackgroundCleared provides
                       spec.clearBackground
