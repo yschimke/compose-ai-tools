@@ -172,14 +172,14 @@
     "serve-home-index.dark.png": {
       "fixture": "serve-home-index",
       "theme": "dark",
-      "sha256": "0539448afde9b570a3f53fe678b8bdba04c976c25b3c426f2a1d4df02db08553",
-      "size": 111545
+      "sha256": "c0a799735b564d57f4f72f6adf4dcadd66d178ae59776f7e09470d0c45803853",
+      "size": 134608
     },
     "serve-home-index.light.png": {
       "fixture": "serve-home-index",
       "theme": "light",
-      "sha256": "8654d57e51f449259268f83085c757b23c8bcdc8ef7a24d9dc76b611e2e1c681",
-      "size": 112251
+      "sha256": "47e4b9cca0218f3df6eea584befa67e800d4d8937bd17802eb1eb0c9b215443a",
+      "size": 134882
     },
     "serve-landing-grouped.dark.png": {
       "fixture": "serve-landing-grouped",
