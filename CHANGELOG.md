@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.18.2](https://github.com/yschimke/compose-ai-tools/compare/v0.18.1...v0.18.2) (2026-07-26)
+
+
+### Features
+
+* **renderer:** Support LocalLocale and LocalLocaleList in Android previews ([#2799](https://github.com/yschimke/compose-ai-tools/issues/2799)) ([1282f3f](https://github.com/yschimke/compose-ai-tools/commit/1282f3f44fab6ffc49fa84fbdd8026dc03a18a15))
+* **server:** Attribute Compose sample catalogs to android/compose-samples ([#2798](https://github.com/yschimke/compose-ai-tools/issues/2798)) ([45f65c9](https://github.com/yschimke/compose-ai-tools/commit/45f65c9ef23bb64f250c955b65448a80c28b74e8))
+* **server:** Keep Wear previews in dark mode ([#2793](https://github.com/yschimke/compose-ai-tools/issues/2793)) ([4f27afa](https://github.com/yschimke/compose-ai-tools/commit/4f27afa9f6bffc8829ef1699ffa52d46041b7451))
+* **wear:** Wear dark-mode normalization and catalog-scoped theme persistence ([#2800](https://github.com/yschimke/compose-ai-tools/issues/2800)) ([8baa882](https://github.com/yschimke/compose-ai-tools/commit/8baa882cb5be28cafd95557f3bfa00f9d237cd96))
+
+
+### Performance Improvements
+
+* **serve:** add generation header and cache static preview responses ([#2794](https://github.com/yschimke/compose-ai-tools/issues/2794)) ([9602def](https://github.com/yschimke/compose-ai-tools/commit/9602defbdb57c90962d6700b3723990d120b5688))
+
 ## [0.18.1](https://github.com/yschimke/compose-ai-tools/compare/v0.18.0...v0.18.1) (2026-07-26)
 
 

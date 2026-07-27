@@ -44,6 +44,14 @@ else
     printf 'DEPLOY_HOOK_TOKEN=%s\n' "$(openssl rand -hex 24)" >> .env
     echo "==> Added a generated DEPLOY_HOOK_TOKEN to .env (instant-roll webhook)"
   fi
+  # Drop the known legacy three-compose-samples SERVE_CATALOGS pin so the box
+  # inherits the fuller catalog set baked into newer images (see
+  # env-migrations.sh). Operator-defined catalog lists are left untouched.
+  # shellcheck source=deploy/image/env-migrations.sh
+  source ./env-migrations.sh
+  if migrate_legacy_serve_catalogs .env; then
+    echo "==> Removed the legacy three-app SERVE_CATALOGS override (using the image default)"
+  fi
   echo "==> Reusing existing .env (tokens preserved)"
 fi
 

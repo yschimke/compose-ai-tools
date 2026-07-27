@@ -238,6 +238,7 @@ docker run -d --restart always -p 8080:8080 \
 | `deploy-hook.sh` | Token-gated `POST /__hooks/rollout` webhook (the `hook` service) that runs `rollout.sh` on demand — instant roll on publish. |
 | `docker-rollout` | Vendored [docker-rollout](https://github.com/wowu/docker-rollout) CLI plugin (adds `docker rollout`). |
 | `setup.sh` | Install Docker + the docker-rollout plugin, write `.env`, pull + start. |
+| `env-migrations.sh` + `test-env-migrations.sh` | One-off `.env` rewrites `setup.sh` applies to an already-deployed box (currently: drop the legacy three-app `SERVE_CATALOGS` pin so the baked catalog default applies), and their tests. |
 
 ## Serving a different project
 
