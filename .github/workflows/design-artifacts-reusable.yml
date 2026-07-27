@@ -196,7 +196,7 @@ jobs:
       BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN: ${{ secrets.buildfetch_ro_token }}
     steps:
       - name: Check out the calling repo
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -220,7 +220,7 @@ jobs:
       # The export driver + its render helpers live in compose-ai-tools; check it
       # out (public repo) so we can run scripts/design-artifacts/.
       - name: Check out compose-ai-tools (export driver)
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: yschimke/compose-ai-tools
           ref: ${{ inputs.driver-ref }}

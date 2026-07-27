@@ -76,7 +76,7 @@ jobs:
     outputs:
       run: ${{ steps.scope.outputs.run }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Classify changed paths
@@ -113,7 +113,7 @@ jobs:
     name: Build plugin + CLI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -699,7 +699,7 @@ jobs:
           #   java_version: "21"
     steps:
       - name: Checkout ${{ matrix.repo }}
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ matrix.repo }}
           ref: ${{ matrix.ref }}
@@ -708,7 +708,7 @@ jobs:
 
       - name: Checkout ${{ matrix.secondary_repo }} (secondary)
         if: matrix.secondary_repo != ''
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ matrix.secondary_repo }}
           ref: ${{ matrix.secondary_ref }}
@@ -1446,7 +1446,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout this repo (for the fixture)
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -1777,7 +1777,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout this repo (for push-branch.sh)
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The push uses an explicit token in the remote URL (push-branch.sh),
           # so the default git credentials don't need persisting. (zizmor: artipacked)
