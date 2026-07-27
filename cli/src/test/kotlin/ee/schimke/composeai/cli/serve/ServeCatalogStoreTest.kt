@@ -12,6 +12,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 
 /**
  * Coverage for [ServeCatalogStore] — fetching a published `design-artifacts/<system>` catalog and
@@ -215,6 +217,77 @@ class ServeCatalogStoreTest {
       "default" to "light",
       byId.getValue("checkbox__ideal__default__light").let { it.state to it.theme },
     )
+  }
+
+  @Test
+  fun `catalog props preserve arbitrary JSON values through the variants manifest`() {
+    val flexibleProps =
+      """
+      {"schema":"design-parity-catalog/v1","system":"reply","components":[
+        {"componentId":"Adaptive/Phone","images":[
+          {"path":"images/adaptive-phone/ideal__default.png","props":{
+            "enabled":true,
+            "count":3,
+            "nullable":null,
+            "nested":{"mode":"compact"},
+            "items":[1,"two"]
+          }}]}]}
+      """
+        .trimIndent()
+    val root = tempRoot()
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> flexibleProps.toByteArray()
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = TrustStore.EMPTY,
+        fetch = fetch,
+      )
+
+    assertTrue(store.load("reply") is ServeCatalogStore.Result.Ok)
+    val expected =
+      Json.parseToJsonElement(
+          """{"enabled":true,"count":3,"nullable":null,"nested":{"mode":"compact"},"items":[1,"two"]}"""
+        )
+        .jsonObject
+    val preview = registered.getValue("reply").previews.single()
+    assertEquals(expected, preview.props)
+
+    val manifest = File(root, "reply/previews/${ServeCatalogStore.VARIANTS_FILE}").readText()
+    assertEquals(
+      expected,
+      Json.parseToJsonElement(manifest)
+        .jsonObject
+        .values
+        .single()
+        .jsonObject
+        .getValue("props")
+        .jsonObject,
+    )
+  }
+
+  @Test
+  fun `a malformed catalog reports the deserialization error`() {
+    val malformed = """{"components":"not-an-array"}"""
+    val result =
+      store(
+          TrustStore.EMPTY,
+          fetch = { url ->
+            if (url.endsWith("/${ServeCatalogStore.CATALOG_FILE}")) malformed.toByteArray()
+            else null
+          },
+        )
+        .load("broken")
+
+    assertTrue(result is ServeCatalogStore.Result.Failed)
+    assertTrue(result.reason.startsWith("could not parse catalog.json: "), result.reason)
+    assertTrue(result.reason.length > "could not parse catalog.json: ".length, result.reason)
   }
 
   @Test

@@ -28,7 +28,7 @@
  * fold so the workflow render matches the parity flow.
  *
  * @param {Array<{state?: string}>} defaultImages the default preview's images.
- * @param {{componentId: string, variants?: Array<{state?: string, props?: Record<string,string>, preview: string}>}} component
+ * @param {{componentId: string, variants?: Array<{state?: string, props?: Record<string,unknown>, preview: string}>}} component
  *   the spec component (its `variants` drive the fold).
  * @param {Map<string, {images: Array<object>}>} byFunction rendered candidates
  *   keyed by `@Preview` function name.

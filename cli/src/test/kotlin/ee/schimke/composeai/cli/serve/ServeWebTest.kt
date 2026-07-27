@@ -4,6 +4,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 
 /**
  * Pins the **component-state toggle** wiring in [ServeWeb]: baked non-default states
@@ -12,6 +15,10 @@ import kotlin.test.assertTrue
  * states *in the same theme*. Stateless previews (a plain uploaded bundle) are untouched.
  */
 class ServeWebTest {
+
+  private fun jsonProps(vararg entries: Pair<String, String>): JsonObject = buildJsonObject {
+    for ((key, value) in entries) put(key, JsonPrimitive(value))
+  }
 
   /**
    * A themed, state-bearing preview (id carries the theme token so the grid's theme swap still
@@ -166,28 +173,28 @@ class ServeWebTest {
         "Filled · RTL",
         state = "default",
         theme = "light",
-        props = mapOf("direction" to "rtl"),
+        props = jsonProps("direction" to "rtl"),
       ),
       ServePreview(
         "button-filled__ideal__default__dark__direction-rtl",
         "Filled · RTL",
         state = "default",
         theme = "dark",
-        props = mapOf("direction" to "rtl"),
+        props = jsonProps("direction" to "rtl"),
       ),
       ServePreview(
         "button-filled__ideal__default__light__locale-ar-xb",
         "Filled · ar-XB",
         state = "default",
         theme = "light",
-        props = mapOf("locale" to "ar-XB"),
+        props = jsonProps("locale" to "ar-XB"),
       ),
       ServePreview(
         "button-filled__ideal__default__dark__locale-ar-xb",
         "Filled · ar-XB",
         state = "default",
         theme = "dark",
-        props = mapOf("locale" to "ar-XB"),
+        props = jsonProps("locale" to "ar-XB"),
       ),
     )
 

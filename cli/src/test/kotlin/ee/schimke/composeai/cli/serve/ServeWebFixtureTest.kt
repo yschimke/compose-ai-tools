@@ -17,6 +17,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 
 /**
  * Golden generator + drift guard for the `serve` web surfaces captured by the preview-harness.
@@ -38,6 +41,10 @@ import kotlin.test.assertTrue
  * forked test JVM but not arbitrary system properties.)
  */
 class ServeWebFixtureTest {
+
+  private fun jsonProps(vararg entries: Pair<String, String>): JsonObject = buildJsonObject {
+    for ((key, value) in entries) put(key, JsonPrimitive(value))
+  }
 
   private val token = "demo-token-fixture"
   private val moduleLabel = ":samples:cmp"
@@ -292,42 +299,42 @@ class ServeWebFixtureTest {
         "Button · Filled · RTL (light)",
         state = "default",
         theme = "light",
-        props = mapOf("direction" to "rtl"),
+        props = jsonProps("direction" to "rtl"),
       ),
       ServePreview(
         "button-filled__ideal__default__dark__direction-rtl",
         "Button · Filled · RTL (dark)",
         state = "default",
         theme = "dark",
-        props = mapOf("direction" to "rtl"),
+        props = jsonProps("direction" to "rtl"),
       ),
       ServePreview(
         "button-filled__ideal__default__light__locale-ar-xb",
         "Button · Filled · ar-XB (light)",
         state = "default",
         theme = "light",
-        props = mapOf("locale" to "ar-XB"),
+        props = jsonProps("locale" to "ar-XB"),
       ),
       ServePreview(
         "button-filled__ideal__default__dark__locale-ar-xb",
         "Button · Filled · ar-XB (dark)",
         state = "default",
         theme = "dark",
-        props = mapOf("locale" to "ar-XB"),
+        props = jsonProps("locale" to "ar-XB"),
       ),
       ServePreview(
         "button-filled__ideal__default__light__fontscale-2.0",
         "Button · Filled · 2× font (light)",
         state = "default",
         theme = "light",
-        props = mapOf("fontScale" to "2.0"),
+        props = jsonProps("fontScale" to "2.0"),
       ),
       ServePreview(
         "button-filled__ideal__default__dark__fontscale-2.0",
         "Button · Filled · 2× font (dark)",
         state = "default",
         theme = "dark",
-        props = mapOf("fontScale" to "2.0"),
+        props = jsonProps("fontScale" to "2.0"),
       ),
     )
 
