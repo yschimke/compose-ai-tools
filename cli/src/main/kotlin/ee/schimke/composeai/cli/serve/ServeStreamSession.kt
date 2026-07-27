@@ -22,7 +22,8 @@ class ServeStreamSession(
   previewId: String,
   initialOverrides: Map<String, String> = emptyMap(),
   private val send: (String) -> Unit,
-  private val normalizeOverrides: (Map<String, String>) -> Map<String, String> = { it },
+  /** Catalog id, for the per-system override policy. Required: there is no "no policy" case. */
+  private val system: String,
   /**
    * Why this connection is on the snapshot-fallback lane rather than the live daemon stream — the
    * daemon's original failure captured by [ServeLiveSession.tryStart]'s `onUnavailable` (e.g.
@@ -37,6 +38,14 @@ class ServeStreamSession(
   private var overrides: Map<String, String> = initialOverrides
   private val seq = AtomicLong(0)
 
+  /**
+   * This catalog's always-dark (and any future per-system) override policy, applied to every
+   * client-supplied override map before it is parsed. Resolved from [system] rather than injected,
+   * so a socket lane can't be wired up without it — see [ServeWeb.SystemDisplay].
+   */
+  private fun normalize(overrides: Map<String, String>): Map<String, String> =
+    ServeWeb.SystemDisplay.normalizeOverrideParams(system, overrides)
+
   /** Push the first frame at the initial overrides when the connection opens. */
   fun onOpen() = renderCurrent()
 
@@ -46,7 +55,7 @@ class ServeStreamSession(
       is ServeStreamProtocol.ClientMessage.SetOverrides -> {
         // Validate before committing: a bad override message is reported but must not poison the
         // session — the previous (valid) overrides stay in effect for subsequent frames.
-        val normalized = normalizeOverrides(message.overrides)
+        val normalized = normalize(message.overrides)
         when (val parsed = ServeOverrides.parse(normalized, knobKindsFor(previewId))) {
           is OverrideParse.Invalid -> send(ServeStreamProtocol.errorMessage(parsed.message))
           is OverrideParse.Ok -> {
@@ -79,7 +88,7 @@ class ServeStreamSession(
     // Validate before committing either field: a bad override must leave the current preview +
     // overrides intact (so later requestFrame keeps working), mirroring setOverrides / the live
     // lane.
-    val nextOverrides = message.overrides?.let(normalizeOverrides) ?: overrides
+    val nextOverrides = message.overrides?.let(::normalize) ?: overrides
     val parsed =
       when (val p = ServeOverrides.parse(nextOverrides, knobKindsFor(message.previewId))) {
         is OverrideParse.Invalid -> {

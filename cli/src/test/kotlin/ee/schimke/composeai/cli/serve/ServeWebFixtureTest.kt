@@ -1,8 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
-import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
@@ -1316,22 +1314,13 @@ class ServeWebFixtureTest {
         !viewerGestures.contains("cp-theme:compose-m3"),
       "a viewer reads only its own catalog's sticky theme",
     )
-    assertNull(
-      ServeWeb.SystemDisplay.normalizeOverrides(
-          "confetti-wear",
-          PreviewOverrides(uiMode = UiMode.LIGHT),
-        )
-        .uiMode,
-      "Wear ignores the generic light override",
-    )
     assertEquals(
-      UiMode.LIGHT,
-      ServeWeb.SystemDisplay.normalizeOverrides(
-          "compose-m3",
-          PreviewOverrides(uiMode = UiMode.LIGHT),
-        )
-        .uiMode,
-      "non-Wear systems retain day/night overrides",
+      mapOf("fontScale" to "1.5"),
+      ServeWeb.SystemDisplay.normalizeOverrideParams(
+        "confetti-wear",
+        mapOf("uiMode" to "light", "fontScale" to "1.5"),
+      ),
+      "normalizing drops only uiMode — every other override survives",
     )
 
     // The sticky theme toggle appears only for a catalog with light/dark pairs, and each paired

@@ -1,7 +1,5 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.daemon.protocol.PreviewOverrides
-
 /**
  * In-code HTML/CSS/JS for the `compose-preview serve` web surface. Generated as Kotlin raw strings
  * (the house style — see [ee.schimke.composeai.cli.WebEmbed]) so the token + preview ids inject
@@ -1889,15 +1887,18 @@ object ServeWeb {
       return darkFirstIdPattern.containsMatchIn(s)
     }
 
-    /** Wear/watch renders have no day mode; discard a generic UI's accidental light override. */
+    /**
+     * Wear/watch renders have no day mode; discard a generic UI's accidental light override.
+     *
+     * Applied to the RAW parameter map — before [ServeOverrides.parse] — so every lane (render,
+     * storybook iframe, and both socket lanes) drops the override at one point, and a dropped
+     * `uiMode` never reaches the daemon as a distinct cache key. There is deliberately no
+     * post-parse twin of this: two normalizers at two layers is how one of them ends up dead.
+     */
     fun normalizeOverrideParams(
       system: String,
       overrides: Map<String, String>,
     ): Map<String, String> = if (isDarkFirst(system)) overrides - "uiMode" else overrides
-
-    /** Apply the same always-dark policy after raw override parameters have been parsed. */
-    fun normalizeOverrides(system: String, overrides: PreviewOverrides): PreviewOverrides =
-      if (isDarkFirst(system)) overrides.copy(uiMode = null) else overrides
 
     /**
      * Resolve whether [system] draws on a DARK stage, preferring the catalog's declared
