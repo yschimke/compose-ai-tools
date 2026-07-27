@@ -4,12 +4,16 @@ import android.content.res.Configuration
 import android.os.LocaleList
 import java.util.Locale
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.annotation.Config
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+/**
+ * The [Configuration]-reading half. The reflective half needs a stub classpath, which the
+ * Robolectric sandbox can't provide (it resolves `Class.forName` against its own loader and ignores
+ * the one passed in), so that lives in [LocaleCompositionLocalsResolutionTest] — a plain JVM test.
+ */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class LocaleCompositionLocalsTest {
@@ -30,13 +34,5 @@ class LocaleCompositionLocalsTest {
     } finally {
       Locale.setDefault(previous)
     }
-  }
-
-  @Test
-  fun `older compose versions without locale locals remain supported`() {
-    val configuration = Configuration().apply { setLocale(Locale.GERMANY) }
-    val emptyLoader = object : ClassLoader(null) {}
-
-    assertNull(LocaleCompositionLocals.providedValue(configuration, emptyLoader))
   }
 }
