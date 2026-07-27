@@ -1,0 +1,81 @@
+name: Remote Cache Repair
+
+# Manual repair for BuildFetch entries that are stored truncated at rest (issue #2824).
+#
+# A poisoned entry fails during *load*, so the task never executes and never pushes a replacement —
+# it cannot self-heal, and `composeai.cacheSalt` only orphans Kotlin-compilation keys. The fix is to
+# re-upload a byte-valid copy under the same key: Gradle's local build cache uses the same key space
+# and packed format as the remote, so a runner that has executed the affected task holds one.
+#
+# Runs here rather than on a laptop because cache keys are inputs-derived: a key produced by CI
+# (its Gradle/AGP/JDK, its OS) usually only reproduces on a matching runner.
+#
+# 1. `gradle-tasks` runs with `-Pcomposeai.remoteCache=off`, so the build ignores the poisoned remote
+#    entirely and executes the tasks, landing clean entries in the local cache.
+# 2. `scripts/repair-remote-cache.sh` uploads those local entries over the bad remote ones and
+#    re-reads each to confirm the stored object now terminates.
+#
+# Leave `gradle-tasks` empty to skip step 1 — useful for a check-only pass, or when the runner's
+# restored cache already holds the keys.
+
+on:
+  workflow_dispatch:
+    inputs:
+      keys:
+        description: "Space-separated cache keys to repair (32-hex each)"
+        required: true
+      gradle-tasks:
+        description: "Gradle tasks to execute first, to (re)populate the local cache. Empty = skip."
+        required: false
+        default: ""
+      check-only:
+        description: "Report health without uploading anything"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  # One repair at a time: two runs uploading the same key would race on the same object.
+  group: remote-cache-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Repair cache entries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup
+
+      - name: Execute tasks to populate the local cache
+        if: ${{ inputs.gradle-tasks != '' }}
+        env:
+          TASKS: ${{ inputs.gradle-tasks }}
+        run: |
+          # `composeai.remoteCache=off` keeps this build away from the poisoned entries — without it
+          # the build would die on the very keys it is meant to replace. The local cache stays on
+          # (settings.gradle.kts ties local.isEnabled to remotePushEnabled), so executed task outputs
+          # land in ~/.gradle/caches/build-cache-1 under the keys we are about to upload.
+          # shellcheck disable=SC2086
+          ./gradlew -Pcomposeai.remoteCache=off $TASKS
+
+      - name: Repair
+        env:
+          # Write access is required to overwrite an entry; the readonly token can only --check.
+          # Same project-specific-then-shared fallback every other workflow's `rw-token` uses (see
+          # ci.yml / .github/actions/buildfetch-cache) — there is no separate *_RW_TOKEN secret, and
+          # an unrecognized name resolves to the empty string, which the script rejects outright.
+          BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN:
+            ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN }}
+          KEYS: ${{ inputs.keys }}
+          CHECK_ONLY: ${{ inputs.check-only }}
+        run: |
+          args=""
+          if [ "$CHECK_ONLY" = "true" ]; then args="--check"; fi
+          # shellcheck disable=SC2086
+          ./scripts/repair-remote-cache.sh $args $KEYS

@@ -82,10 +82,34 @@ val cacheToken =
     .orElse(nonBlank(providers.gradleProperty("BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN")))
     .orNull
 
+// TEMPORARY (issue #2824): kill switch for the BuildFetch remote cache. Two entries are stored
+// TRUNCATED at rest — `12fcc978…a05d` (ClasspathEntrySnapshotTransform of gradle-api-9.6.1.jar) and
+// `877aca9a…c1ec` (:samples:android-screenshot-test:mergeDebugResources). Both are served as HTTP
+// 200 with a `content-length` matching the truncated body, so nothing detects the short read until
+// the gzip stream runs off the end: "Could not load from remote cache: Unexpected end of ZLIB input
+// stream". Gradle treats that as FATAL (corruption is not a recoverable cache failure), so any build
+// resolving either key dies — and it can't self-heal, because the load aborts before the task runs,
+// so nothing ever pushes a replacement.
+//
+// `composeai.cacheSalt` is the escape hatch for exactly this, but it can't reach these two: it is an
+// input property on `KotlinCompilationTask` only, and these are an AGP task and an artifact
+// transform (a transform's key comes from the input artifact + transform implementation — a task
+// input property never enters it). Bumping the salt would leave both keys resolving to the same
+// poisoned objects.
+//
+// So until BuildFetch evicts them, skip the remote entirely. This deliberately also forces
+// `remotePushEnabled` false, which keeps the LOCAL cache on for main (see `local` below) — without
+// that, a main run would execute every cacheable task with no cache at all.
+//
+// TO REVERT once the entries are evicted: delete this flag + the `composeai.remoteCache` line in
+// gradle.properties. Nothing else changed.
+val remoteCacheDisabled =
+  providers.gradleProperty("composeai.remoteCache").orElse("on").get().trim().lowercase() == "off"
+
 // True only when this run will actually push to the remote: a trusted main-branch run (ON_CI) with a
 // usable token. Anything else (PRs, dev machines, or a main run whose token is unprovisioned/blank)
 // does not push, so it must keep the local cache.
-val remotePushEnabled = onCi && cacheToken != null
+val remotePushEnabled = onCi && cacheToken != null && !remoteCacheDisabled
 
 buildCache {
   // On the trusted main-branch runs, CI is the sole writer of the BuildFetch remote cache — and the
@@ -110,8 +134,9 @@ buildCache {
       password = cacheToken
     }
 
-    isPush = onCi
-    isEnabled = cacheToken != null
+    isPush = onCi && !remoteCacheDisabled
+    // TEMPORARY (#2824): `!remoteCacheDisabled` skips the cache holding the truncated entries.
+    isEnabled = cacheToken != null && !remoteCacheDisabled
   }
 }
 
