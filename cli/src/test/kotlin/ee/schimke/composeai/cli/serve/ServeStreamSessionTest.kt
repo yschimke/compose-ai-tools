@@ -38,7 +38,7 @@ class ServeStreamSessionTest {
   fun `onOpen pushes one frame`() {
     host().use { h ->
       val sent = CopyOnWriteArrayList<String>()
-      ServeStreamSession(h, previewId, emptyMap(), sent::add).onOpen()
+      ServeStreamSession(h, previewId, emptyMap(), sent::add, system = "compose-m3").onOpen()
       assertEquals(1, sent.size)
       assertEquals("frame", typeOf(sent[0]))
     }
@@ -48,7 +48,7 @@ class ServeStreamSessionTest {
   fun `setOverrides re-renders and the frame reflects the new overrides`() {
     host().use { h ->
       val sent = CopyOnWriteArrayList<String>()
-      val session = ServeStreamSession(h, previewId, emptyMap(), sent::add)
+      val session = ServeStreamSession(h, previewId, emptyMap(), sent::add, system = "compose-m3")
       session.onOpen()
       session.onClientMessage("""{"type":"setOverrides","overrides":{"uiMode":"dark"}}""")
 
@@ -63,17 +63,13 @@ class ServeStreamSessionTest {
   }
 
   @Test
-  fun `override normalizer applies to setOverrides and switch messages`() {
+  fun `a dark-first system drops uiMode from setOverrides and switch messages`() {
     host().use { h ->
       val sent = CopyOnWriteArrayList<String>()
+      // The REAL per-system policy, resolved from the catalog id — not an injected stand-in. A
+      // uiMode the parser would reject proves it was dropped before parsing.
       val session =
-        ServeStreamSession(
-          h,
-          previewId,
-          emptyMap(),
-          sent::add,
-          normalizeOverrides = { it - "uiMode" },
-        )
+        ServeStreamSession(h, previewId, emptyMap(), sent::add, system = "confetti-wear")
       session.onClientMessage("""{"type":"setOverrides","overrides":{"uiMode":"chartreuse"}}""")
       session.onClientMessage(
         """{"type":"switch","previewId":"$previewId","overrides":{"uiMode":"light"}}"""
@@ -84,10 +80,23 @@ class ServeStreamSessionTest {
   }
 
   @Test
+  fun `a light-capable system keeps uiMode on the socket lane`() {
+    host().use { h ->
+      val sent = CopyOnWriteArrayList<String>()
+      val session = ServeStreamSession(h, previewId, emptyMap(), sent::add, system = "compose-m3")
+      // Same message, non-Wear catalog: the override reaches the parser, which rejects the bogus
+      // value. If normalization ever leaked to every system, this would silently become a frame.
+      session.onClientMessage("""{"type":"setOverrides","overrides":{"uiMode":"chartreuse"}}""")
+
+      assertEquals(listOf("error"), sent.map(::typeOf))
+    }
+  }
+
+  @Test
   fun `seq is monotonic across frames`() {
     host().use { h ->
       val sent = CopyOnWriteArrayList<String>()
-      val session = ServeStreamSession(h, previewId, emptyMap(), sent::add)
+      val session = ServeStreamSession(h, previewId, emptyMap(), sent::add, system = "compose-m3")
       session.onOpen()
       session.onClientMessage("""{"type":"requestFrame"}""")
       session.onClientMessage("""{"type":"requestFrame"}""")
@@ -102,7 +111,7 @@ class ServeStreamSessionTest {
   fun `invalid overrides produce an error frame, not a crash, and the lane stays open`() {
     host().use { h ->
       val sent = CopyOnWriteArrayList<String>()
-      val session = ServeStreamSession(h, previewId, emptyMap(), sent::add)
+      val session = ServeStreamSession(h, previewId, emptyMap(), sent::add, system = "compose-m3")
       session.onClientMessage("""{"type":"setOverrides","overrides":{"uiMode":"chartreuse"}}""")
       assertEquals("error", typeOf(sent.last()))
       // Still usable afterwards.
@@ -121,7 +130,7 @@ class ServeStreamSessionTest {
       )
       .use { h ->
         val sent = CopyOnWriteArrayList<String>()
-        val session = ServeStreamSession(h, previewId, emptyMap(), sent::add)
+        val session = ServeStreamSession(h, previewId, emptyMap(), sent::add, system = "compose-m3")
         session.onOpen()
         session.onClientMessage("""{"type":"switch","previewId":"$blue"}""")
         assertEquals(2, sent.size)
@@ -133,7 +142,7 @@ class ServeStreamSessionTest {
   fun `switch to an unknown preview errors and keeps the current one`() {
     host().use { h ->
       val sent = CopyOnWriteArrayList<String>()
-      val session = ServeStreamSession(h, previewId, emptyMap(), sent::add)
+      val session = ServeStreamSession(h, previewId, emptyMap(), sent::add, system = "compose-m3")
       session.onOpen()
       session.onClientMessage("""{"type":"switch","previewId":"com.example.Missing"}""")
       assertEquals("error", typeOf(sent.last()))
@@ -146,7 +155,7 @@ class ServeStreamSessionTest {
   fun `switch with invalid overrides errors and keeps the working view`() {
     host().use { h ->
       val sent = CopyOnWriteArrayList<String>()
-      val session = ServeStreamSession(h, previewId, emptyMap(), sent::add)
+      val session = ServeStreamSession(h, previewId, emptyMap(), sent::add, system = "compose-m3")
       session.onOpen()
       session.onClientMessage(
         """{"type":"switch","previewId":"$previewId","overrides":{"uiMode":"chartreuse"}}"""
@@ -168,6 +177,7 @@ class ServeStreamSessionTest {
           previewId,
           emptyMap(),
           sent::add,
+          system = "compose-m3",
           liveUnavailableReason =
             "the daemon could not hold an interactive session for this preview",
         )
@@ -187,7 +197,7 @@ class ServeStreamSessionTest {
     host().use { h ->
       val sent = CopyOnWriteArrayList<String>()
       // No liveUnavailableReason (e.g. a backend that returned null without one).
-      val session = ServeStreamSession(h, previewId, emptyMap(), sent::add)
+      val session = ServeStreamSession(h, previewId, emptyMap(), sent::add, system = "compose-m3")
       session.onClientMessage("""{"type":"input","kind":"click","pixelX":1,"pixelY":1}""")
       assertEquals("input requires a live stream", messageOf(sent.single()))
     }
@@ -197,7 +207,8 @@ class ServeStreamSessionTest {
   fun `unsupported message yields an error`() {
     host().use { h ->
       val sent = CopyOnWriteArrayList<String>()
-      ServeStreamSession(h, previewId, emptyMap(), sent::add).onClientMessage("""{"type":"nope"}""")
+      ServeStreamSession(h, previewId, emptyMap(), sent::add, system = "compose-m3")
+        .onClientMessage("""{"type":"nope"}""")
       assertEquals("error", typeOf(sent.single()))
     }
   }

@@ -23,15 +23,23 @@ private constructor(
   private val codec: StreamCodec?,
   private val maxFps: Int?,
   private val send: (String) -> Unit,
-  private val normalizeOverrides: (Map<String, String>) -> Map<String, String>,
+  private val system: String,
 ) {
   @Volatile private var handle: StreamHandle? = null
+
+  /**
+   * This catalog's always-dark (and any future per-system) override policy, applied to every
+   * client-supplied override map before it is parsed. Resolved from [system] rather than injected,
+   * so a socket lane can't be wired up without it — see [ServeWeb.SystemDisplay].
+   */
+  private fun normalize(overrides: Map<String, String>): Map<String, String> =
+    ServeWeb.SystemDisplay.normalizeOverrideParams(system, overrides)
 
   /** Handle one client text message: forward input, restart the stream on new overrides, etc. */
   fun onClientMessage(text: String) {
     when (val message = ServeStreamProtocol.parseClient(text)) {
       is ServeStreamProtocol.ClientMessage.SetOverrides -> {
-        val normalized = normalizeOverrides(message.overrides)
+        val normalized = normalize(message.overrides)
         when (val parsed = ServeOverrides.parse(normalized, knobKindsFor(previewId))) {
           is OverrideParse.Invalid -> send(ServeStreamProtocol.errorMessage(parsed.message))
           is OverrideParse.Ok -> {
@@ -89,7 +97,7 @@ private constructor(
    * view intact rather than going blank.
    */
   private fun switchTo(message: ServeStreamProtocol.ClientMessage.Switch) {
-    val nextOverrides = message.overrides?.let(normalizeOverrides) ?: overrides
+    val nextOverrides = message.overrides?.let(::normalize) ?: overrides
     val parsed =
       when (val p = ServeOverrides.parse(nextOverrides, knobKindsFor(message.previewId))) {
         is OverrideParse.Invalid -> {
@@ -149,25 +157,18 @@ private constructor(
       codec: StreamCodec? = null,
       maxFps: Int? = null,
       send: (String) -> Unit,
-      normalizeOverrides: (Map<String, String>) -> Map<String, String> = { it },
+      /** Catalog id, for the per-system override policy. Required: there is no "no policy" case. */
+      system: String,
       onUnavailable: ((String) -> Unit)? = null,
     ): ServeLiveSession? {
       val knobKinds =
         ServeOverrides.declaredKnobKinds(renderHost.previews.firstOrNull { it.id == previewId })
-      val normalizedOverrides = normalizeOverrides(overrides)
+      val normalizedOverrides = ServeWeb.SystemDisplay.normalizeOverrideParams(system, overrides)
       val initial =
         (ServeOverrides.parse(normalizedOverrides, knobKinds) as? OverrideParse.Ok)?.overrides
           ?: PreviewOverrides()
       val session =
-        ServeLiveSession(
-          renderHost,
-          previewId,
-          normalizedOverrides,
-          codec,
-          maxFps,
-          send,
-          normalizeOverrides,
-        )
+        ServeLiveSession(renderHost, previewId, normalizedOverrides, codec, maxFps, send, system)
       session.handle =
         renderHost.subscribeStream(
           previewId,
