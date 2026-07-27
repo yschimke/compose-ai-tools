@@ -104,9 +104,8 @@ class ServeCommand(args: List<String>) : Command(args) {
   /**
    * Optional git repo root the trusted-catalog builder ([buildTrustedCatalogSource]) and its
    * [GitWorktrees] use, instead of the served module's own project root ([findProjectRoot]). Lets a
-   * box whose primary `--module` is a standalone project (e.g. the prebuilt `deploy/image`, which
-   * serves a self-contained `sample-project`) still live-render a fetched catalog by pointing this
-   * at a separate checkout of the catalog's `source.repo` (which the entrypoint clones). The
+   * module-less box (e.g. the prebuilt `deploy/image`) live-render a fetched catalog by pointing
+   * this at a separate checkout of the catalog's `source.repo` (which the entrypoint clones). The
    * `source.repo == `[catalogRepo] and `--revisions-allow` gates are unchanged — this only moves
    * the worktree root. Off ⇒ the served module's project root, as before.
    */
@@ -1445,10 +1444,9 @@ class ServeCommand(args: List<String>) : Command(args) {
         --catalog-source-root <dir>
                           Git repo root the trusted-catalog builder (--allow-render-trusted)
                           worktrees + builds from, instead of the served --module's own project. Use
-                          when --module is a standalone project but the catalog's source.repo is a
-                          separate checkout (e.g. a prebuilt image serving sample-project that clones
-                          the CMP catalog repo for live render). The trust + same-repo + ref-allowlist
-                          gates are unchanged.
+                          when the server is module-less but the catalog's source.repo is a separate
+                          checkout (e.g. a prebuilt image that clones the CMP catalog repo for live
+                          render). The trust + same-repo + ref-allowlist gates are unchanged.
         --live-seats <n>  Live (daemon-backed) stream PERMIT BUDGET. Each live session charges permits
                           by backend weight — a desktop CMP daemon costs 1, a heavier Robolectric
                           Android one costs 2 — so one heavy catalog can't hog a flat seat count and

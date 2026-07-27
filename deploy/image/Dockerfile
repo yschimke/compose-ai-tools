@@ -3,11 +3,11 @@
 # Fast, prebuilt-friendly image for `compose-preview serve`.
 #
 # Unlike deploy/cloudrun/Dockerfile (which compiles the whole tool from source,
-# ~8 min), this installs the RELEASED compose-preview CLI tarball and renders a
-# tiny self-contained Compose Desktop project using the PUBLISHED plugin from
-# Maven Central. No build-logic, no gradle-plugin, no ~50 data modules to compile
-# — just a download + one warm render. Built once in CI and pushed to GHCR, so
-# hosts pull it and never build at all.
+# ~8 min), this installs the RELEASED compose-preview CLI tarball and the
+# release's published Maven modules. It serves published catalogs and their live
+# bundles module-less: no Gradle project, build-logic, plugin build, or sample
+# render is needed in the image. Built once in CI and pushed to GHCR, so hosts
+# pull it and never build at all.
 # Bumped automatically by release-please on each CLI release (see release-please-config.json
 # extra-files) so a fallback / local `docker build` never ships a stale CLI. An inline
 # `# x-release-please-version` can't go on the ARG line (Docker folds it into the value), so use
@@ -31,9 +31,9 @@ ENV LIBGL_ALWAYS_SOFTWARE=1 \
     GRADLE_USER_HOME=/root/.gradle
 
 # ---------------------------------------------------------------------------
-# Stage 1: fetch the released CLI and warm the render path against the project.
+# Stage 1: fetch the released CLI and seed the release's Maven modules.
 # ---------------------------------------------------------------------------
-FROM base AS build
+FROM base AS cli
 ARG CP_VERSION
 WORKDIR /opt
 # Download + unpack the released distribution (bin/compose-preview + lib dirs).
@@ -47,38 +47,13 @@ RUN curl -fsSL --retry 20 --retry-delay 30 --retry-all-errors -o /tmp/cp.tgz \
  && ln -s "/opt/compose-preview-${CP_VERSION}" /opt/compose-preview
 ENV PATH="/opt/compose-preview/bin:${PATH}"
 
-WORKDIR /project
-COPY sample-project/ /project/
-
 # Seed Maven local from the same release run (preview-host-image.yml downloads the
 # `preview-host-maven` artifact published by release.yml into deploy/image/m2/).
-# With COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1 the CLI's auto-inject seeds
-# mavenLocal() additively, so the warm render resolves the plugin + runtime modules
-# from these local jars and never has to wait on Maven Central propagation. The dir
-# always exists (.keep); on the manual workflow_dispatch path it's empty and the
-# render falls back to Central via the retry loop below.
+# Carrying the release's plugin/runtime jars makes live-bundle dependency resolution
+# self-contained instead of depending on Maven Central propagation. The directory
+# always exists (.keep); on the manual workflow_dispatch path it can be empty, in
+# which case the runtime resolver falls back to its configured remote repositories.
 COPY m2/ /root/.m2/repository/
-ENV COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1
-
-# Warm render: builds the module via the project's Gradle wrapper, pulling the
-# published plugin + Compose from Maven, then renders every preview once. Populates
-# ~/.gradle + /project/build so the runtime container starts warm. A long --timeout
-# keeps slow builders from tripping the CLI's 300s default.
-#
-# Retry the render: it's the actual Maven resolve (plugin marker + the
-# implementation/`daemon-desktop`/renderer modules the plugin pulls), and those
-# propagate to Central independently after a release — so even past the workflow's
-# pre-build wait, one module can still be a minute behind. Retrying the real
-# resolve covers every module without enumerating them; ~12 min of attempts rides
-# out the lag, then it fails hard so a genuinely broken release doesn't ship.
-RUN chmod +x ./gradlew \
- && ok=0; for i in $(seq 1 6); do \
-      if compose-preview serve --export /tmp/warm-bundle --timeout 1800; then ok=1; break; fi; \
-      echo "warm render failed (attempt ${i}/6) — likely Maven Central propagation; retrying in 120s"; \
-      rm -rf /tmp/warm-bundle; sleep 120; \
-    done; \
-    [ "${ok}" = 1 ] || { echo "warm render failed after retries" >&2; exit 1; }; \
-    rm -rf /tmp/warm-bundle
 
 # ---------------------------------------------------------------------------
 # Stage 1b (optional): Android/Wear live daemon — "do the slow work upfront".
@@ -156,7 +131,7 @@ RUN set -eu; \
 # ---------------------------------------------------------------------------
 FROM base AS runtime
 ARG CP_VERSION
-COPY --from=build "/opt/compose-preview-${CP_VERSION}" "/opt/compose-preview-${CP_VERSION}"
+COPY --from=cli "/opt/compose-preview-${CP_VERSION}" "/opt/compose-preview-${CP_VERSION}"
 RUN ln -s "/opt/compose-preview-${CP_VERSION}" /opt/compose-preview
 # Android/Wear live-render bits (see the android-daemon stage): the Robolectric
 # daemon sidecar + a minimal Android SDK (android.jar). Carried so a served Wear
@@ -205,14 +180,12 @@ ENV PATH="/opt/compose-preview/bin:${PATH}" \
     JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -Dcomposeai.cli.libDaemonAndroidDir=/opt/lib-daemon-android -Dcomposeai.serve.warmInBackground=true -Dcomposeai.serve.renderTimeoutSeconds=900 -Dcomposeai.serve.frameRenderTimeoutSeconds=120 -Dcomposeai.daemon.sandboxCount=3 -Dcomposeai.daemon.sandboxBootTimeoutMs=1800000 -Dcomposeai.daemon.backgroundSandboxBoot=true"
 
 WORKDIR /project
-# Carry the project + warmed Gradle cache + module build outputs so the first
-# runtime render is incremental, not a cold rebuild. Carry Maven local too so a
-# cold runtime re-resolve still finds the plugin without reaching Central.
-COPY --from=build /project /project
-COPY --from=build /root/.gradle /root/.gradle
-COPY --from=build /root/.m2 /root/.m2
+# Carry the release Maven tree so live bundles can resolve the plugin/runtime
+# coordinates without waiting on Central. `/project` intentionally stays empty:
+# entrypoint.sh starts module-less serve and hosts published catalogs/bundles.
+COPY --from=cli /root/.m2 /root/.m2
 # Merge the pre-fetched Robolectric `android-all` runtime into the Maven cache (after
-# the build-stage m2 so it lands alongside it), so the Android daemon's first render
+# the CLI-stage m2 so it lands alongside it), so the Android daemon's first render
 # skips the ~200 MB download.
 COPY --from=android-daemon /root/.m2/repository/org/robolectric /root/.m2/repository/org/robolectric
 

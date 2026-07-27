@@ -1,8 +1,8 @@
 # Build and publish the prebuilt preview-host Docker image to GHCR.
 #
 # Hosts then deploy with `docker compose pull` / `docker run` instead of an
-# ~8-minute source build. The image installs the RELEASED compose-preview CLI +
-# the published plugin and warm-renders a tiny standalone project (deploy/image).
+# ~8-minute source build. The image installs the RELEASED compose-preview CLI,
+# published Maven modules, and the Android daemon used by live catalog bundles.
 #
 # Triggers:
 #   - manual (workflow_dispatch) with a CLI version input
@@ -72,13 +72,13 @@ jobs:
           v="${RAW_VERSION#v}"
           echo "version=${v}" >> "$GITHUB_OUTPUT"
 
-      # Seed Maven local from the same release run so the warm render resolves the
+      # Seed Maven local from the same release run so live catalog bundles resolve
       # plugin + runtime modules from local jars instead of waiting on Central.
       # release.yml's publish-gradle-plugin job uploads `preview-host-maven` (the
       # published `ee` tree) within THIS run, so download-artifact finds it on the
       # release-chain path. On manual workflow_dispatch / on:release there's no such
-      # upstream artifact — continue-on-error leaves the dir empty and the Dockerfile
-      # falls back to Central (the warm-render retry loop rides out propagation lag).
+      # upstream artifact — continue-on-error leaves the dir empty and the runtime
+      # resolver falls back to its configured remote repositories.
       # The dir always exists (.keep) so the Dockerfile's `COPY m2/` never fails.
       - name: Prepare local Maven dir
         run: |
@@ -100,9 +100,9 @@ jobs:
           fi
 
       # Smooth out the release race for the CLI TARBALL (a GitHub Release asset
-      # release.yml uploads after the tag — always needed, m2 or not). The plugin no
-      # longer gates this poll: on the release chain it comes from the local m2 above,
-      # and on the manual path the Dockerfile's warm-render retry handles Central lag.
+      # release.yml uploads after the tag — always needed, m2 or not). Published
+      # Maven modules do not gate the image build: the release chain supplies them
+      # through the local m2 artifact, while manual builds can resolve them at runtime.
       # 1-byte range GET, ~60 min ceiling.
       - name: Wait for the released CLI tarball to be resolvable
         env:
@@ -156,10 +156,10 @@ jobs:
       # Roll preview.coo.ee onto the just-published image IMMEDIATELY, instead of
       # waiting up to the box's ROLLOUT_INTERVAL (default 1200s) for its poll loop
       # to notice the new :latest. This is the RIGHT moment to fire: the image is now
-      # on GHCR and is fully self-contained (CLI + plugin jars + warm caches + the
+      # on GHCR and is fully self-contained (CLI + plugin jars + the
       # Android daemon are all baked in above), so the box needs ONLY GHCR to roll —
-      # no Maven wait can race it (the build already absorbed Central propagation via
-      # the seeded local m2 + the Dockerfile warm-render retry). Contrast a `release:
+      # no Maven wait can race it (the release's Maven tree is baked from the same-run
+      # artifact). Contrast a `release:
       # published` trigger, which fires BEFORE this job builds the image and would
       # roll the box onto the OLD :latest.
       #
@@ -189,7 +189,8 @@ jobs:
           esac
           # Advisory convergence check: poll the ungated /version until it reports the
           # new build, so this run shows the box actually rolled. Non-fatal on timeout
-          # (a slow cold-start warm render can outlast this; the roll still completes).
+          # (a slow catalog fetch + first readiness render can outlast this; the roll
+          # still completes).
           base="${HOOK_URL%/__hooks/rollout}"
           for i in $(seq 1 30); do
             live=$(curl -fsS -m 10 "${base}/version" 2>/dev/null \

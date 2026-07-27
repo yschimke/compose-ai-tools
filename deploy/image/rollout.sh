@@ -2,7 +2,7 @@
 # Zero-downtime image updates for the `preview` service via docker-rollout.
 #
 # This replaces Watchtower's in-place stop→recreate of `preview` (which 502s for
-# the whole ~1 min the new container spends booting + warm-rendering) with a
+# the whole ~1 min the new container spends fetching catalogs + readiness-rendering) with a
 # rolling swap: pull the new image, start a SECOND preview replica alongside the
 # live one, wait for its /readyz healthcheck to pass (green only once a preview
 # actually renders — not merely once the port binds), let Caddy drain traffic
@@ -21,7 +21,7 @@ set -eu
 SERVICE="${ROLLOUT_SERVICE:-preview}"
 INTERVAL="${ROLLOUT_INTERVAL:-1200}"
 # docker-rollout's default healthcheck timeout is 60s; preview's cold start
-# (catalog fetch from the design-artifacts branches + warm render) can exceed
+# (catalog fetch from the design-artifacts branches + first readiness render) can exceed
 # that, so give it room before rollout would wrongly declare the new replica
 # unhealthy and roll back.
 HEALTH_TIMEOUT="${ROLLOUT_HEALTH_TIMEOUT:-300}"
