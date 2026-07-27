@@ -437,6 +437,7 @@ class ServeWebFixtureTest {
             subtitle = "ee.schimke.meshcore",
             previewCount = 33,
             trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
+            sourceRepo = "yschimke/meshcore-mobile",
             heroPreviewId = "device-manycontacts__ideal__default__compact",
           ),
           ServeWeb.HomeSystem(
@@ -446,6 +447,7 @@ class ServeWebFixtureTest {
             previewCount = 9,
             trust =
               "branch:yschimke/homeassistant-remotecompose@design-artifacts/homeassistant-remotecompose",
+            sourceRepo = "yschimke/homeassistant-remotecompose",
             heroPreviewId = null,
           ),
           // A Wear app (Confetti): dark-first stage, and its hero is a conference SCREEN — the most
@@ -456,6 +458,7 @@ class ServeWebFixtureTest {
             subtitle = "dev.johnoreilly.confetti",
             previewCount = 12,
             trust = "branch:joreilly/Confetti@design-artifacts/confetti-wear",
+            sourceRepo = "joreilly/Confetti",
             heroPreviewId = "conference-screen__ideal__default__dark",
             darkStage = true,
           ),

@@ -94,6 +94,7 @@ class ServeWebThumbCropTest {
         // The preview branches currently live in this fork. That fetch/trust origin must not
         // make the public homepage attribute Android's samples to the fork owner.
         trust = "branch:yschimke/compose-samples@design-artifacts/$id",
+        sourceRepo = "yschimke/compose-samples",
         heroPreviewId = null,
       )
     }
@@ -105,5 +106,25 @@ class ServeWebThumbCropTest {
     sampleIds.forEach { id ->
       assertTrue(html.contains("href=\"/$id/\""), "$id is linked from the homepage")
     }
+  }
+
+  @Test
+  fun `a reused sample id is attributed to its actual catalog repository`() {
+    val system =
+      ServeWeb.HomeSystem(
+        system = "jetnews",
+        title = "Unrelated Jetnews",
+        subtitle = null,
+        previewCount = 1,
+        trust = "branch:someorg/unrelated@design-artifacts/jetnews",
+        sourceRepo = "someorg/unrelated",
+        heroPreviewId = null,
+      )
+
+    val html = ServeWeb.homeIndexPage(listOf(system), token = "t", isPublic = true)
+
+    assertFalse(html.contains("<h1 class=\"cp-head\">android/compose-samples</h1>"))
+    assertTrue(html.contains("<h1 class=\"cp-head\">Other</h1>"))
+    assertTrue(html.contains("href=\"/jetnews/\""))
   }
 }

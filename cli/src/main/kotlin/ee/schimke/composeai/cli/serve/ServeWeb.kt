@@ -1373,6 +1373,8 @@ object ServeWeb {
     val subtitle: String?,
     val previewCount: Int,
     val trust: String?,
+    /** Repository that supplied this catalog; used for publisher attribution on the homepage. */
+    val sourceRepo: String? = null,
     val heroPreviewId: String?,
     /** Content-crop for the hero thumbnail (frames a Wear sticker to its component); null ⇒ raw. */
     val heroCrop: ContentCrop? = null,
@@ -1541,11 +1543,14 @@ object ServeWeb {
     val androidComposeSampleIds =
       setOf("jetnews", "jetcaster", "jetchat", "jetsnack", "jetlagged", "reply")
     val designSystems = systems.filter { it.system in designSystemIds }
-    val androidComposeSamples = systems.filter { it.system in androidComposeSampleIds }
-    val remaining = systems.filterNot {
-      it.system in designSystemIds || it.system in androidComposeSampleIds
+    val androidComposeSampleRepos = setOf("android/compose-samples", "yschimke/compose-samples")
+    val androidComposeSamples = systems.filter {
+      it.system in androidComposeSampleIds && it.sourceRepo in androidComposeSampleRepos
     }
-    val yschimkeSystems = remaining.filter { it.trust?.startsWith("branch:yschimke/") == true }
+    val remaining = systems.filterNot {
+      it.system in designSystemIds || it in androidComposeSamples
+    }
+    val yschimkeSystems = remaining.filter { it.sourceRepo?.startsWith("yschimke/") == true }
     val otherSystems = remaining - yschimkeSystems.toSet()
     val sections =
       listOf(
