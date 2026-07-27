@@ -1,5 +1,5 @@
 [versions]
-kotlin = "2.4.0"
+kotlin = "2.4.10"
 # Kotlin language/api floor for published modules. Set lower than `kotlin`
 # so consumers on an older Kotlin can still link against our artifacts —
 # tapmoc enforces this and fails the build if a transitive API dep raises
@@ -14,11 +14,11 @@ kotlin = "2.4.0"
 # `configureKotlinCompatibility(...)`; remove the flag (and bump this to
 # `2.1.x`) when the removal lands and we're ready to drop 2.0.x consumers.
 kotlinCoreLibraries = "2.0.21"
-agp = "9.2.1"
+agp = "9.3.0"
 ktfmt = "0.26.0"
 tapmoc = "0.4.2"
-robolectric = "4.17-beta-2"
-roborazzi = "1.68.0"
+robolectric = "4.17-SNAPSHOT"
+roborazzi = "1.70.0"
 # androidx.tracing — atrace-level sections for the Android daemon's render phases (see
 # `AndroidxTraceSections` in :daemon:android). Version-pinned (not BOM-managed) because the daemon
 # ships it in the standalone lib-daemon-android sidecar where no BOM applies.
@@ -54,7 +54,7 @@ compose-multiplatform = "1.10.3"
 # build.gradle.kts) rather than the repo default 36 — a scoped divergence, like
 # `:samples:design-catalog-remote-m3`. Drop this pin and revert to `libs.compose.material3`
 # once material3 1.5.0 is stable in `compose-bom-stable`.
-compose-material3-catalog = "1.5.0-alpha23"
+compose-material3-catalog = "1.5.0-alpha24"
 # JetBrains Compose Multiplatform material3 tracks its own line: the
 # `org.jetbrains.compose` 1.10.3 plugin pins `compose.material3` to 1.9.0
 # (material3 multiplatform 1.10.x is still alpha), so the explicit coordinate
@@ -81,7 +81,7 @@ navigation-compose = "2.9.8"
 # 1.1.x is the current stable line; bump when the Glance team ships a 1.2.x with the planned
 # preview-DSL stabilisation.
 glance-appwidget = "1.2.0-rc01"
-wear-compose = "1.7.0-alpha05"
+wear-compose = "1.7.0-alpha06"
 wear-tiles = "1.6.1"
 wear-protolayout = "1.4.1"
 wear-tooling-preview = "1.0.0"
@@ -98,7 +98,7 @@ xr-glimmer = "1.0.0-alpha15"
 # 2D Home-Space fallback of these composables through the Android Robolectric
 # pipeline (see docs/design/XR_SPATIAL_PREVIEW.md). Alpha14 was published
 # 2026-05-19.
-xr-compose = "1.0.0-alpha15"
+xr-compose = "1.0.0-alpha16"
 # XR `*-testing` fakes injected onto the offline render/test classpath (the
 # Robolectric `composePreviewRenderXr` path + `:renderer-xr` / sample tests).
 # Single source of truth: the plugin bakes these into a generated resource (see
@@ -106,9 +106,9 @@ xr-compose = "1.0.0-alpha15"
 # `AndroidPreviewSupport.kt` can't drift from the catalog. The runtime/scenecore
 # alpha line runs one ahead of the compose/arcore line — bump together with
 # `xr-compose`.
-xr-runtime-testing = "1.0.0-alpha15"
-xr-scenecore-testing = "1.0.0-alpha16"
-xr-arcore-testing = "1.0.0-alpha15"
+xr-runtime-testing = "1.0.0-beta01"
+xr-scenecore-testing = "1.0.0-beta01"
+xr-arcore-testing = "1.0.0-beta01"
 # `androidx.wear:wear` carries `androidx.wear.ambient.AmbientLifecycleObserver` —
 # the AOSP entry point both horologist's `AmbientAware` and direct subscribers
 # wrap. Used only by `:data-ambient-connector` (the Robolectric shadow + state
@@ -147,7 +147,7 @@ horologist = "0.7.15"
 #    verified-together alpha. alpha14 / alpha07 is the next such pair:
 #    `RemoteDensity.from` dropped its trailing `Context` arg and now derives
 #    density solely from the `RemoteCreationDisplayInfo` it's handed.
-compose-remote = "1.0.0-alpha14"
+compose-remote = "1.0.0-alpha15"
 wear-compose-remote = "1.0.0-alpha07"
 # Glance Wear — the Wear OS *widget* layer on top of Remote Compose. Used by
 # `:samples:design-catalog-remote-m3` to sticker the widget **container** (the
@@ -156,7 +156,7 @@ wear-compose-remote = "1.0.0-alpha07"
 # built against compose-remote alpha14 (see its POM), so bump this in lockstep
 # with the `compose-remote` pin above — a skewed pair risks the same
 # creation/player version drift the Remote Compose comment describes.
-glance-wear = "1.0.0-alpha13"
+glance-wear = "1.0.0-alpha14"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
