@@ -103,8 +103,11 @@ public object SubspaceSceneRecorder {
   ): RecordedSubspace {
     val tagged =
       allSemanticsNodes(rule).mapNotNull { node ->
+        // `semanticsConfiguration` is nullable as of `androidx.xr.compose:compose-testing`
+        // 1.0.0-beta01 — a node with no semantics reports null instead of an empty config.
+        // Either shape means "untagged", which this path already skips.
         val tag =
-          node.semanticsConfiguration.getOrNull(SemanticsProperties.TestTag)
+          node.semanticsConfiguration?.getOrNull(SemanticsProperties.TestTag)
             ?: return@mapNotNull null
         tag to node
       }
