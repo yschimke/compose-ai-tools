@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -126,5 +127,65 @@ class ServeWebThumbCropTest {
     assertFalse(html.contains("<h1 class=\"cp-head\">android/compose-samples</h1>"))
     assertTrue(html.contains("<h1 class=\"cp-head\">Other</h1>"))
     assertTrue(html.contains("href=\"/jetnews/\""))
+  }
+
+  @Test
+  fun `a reused design-system id is attributed to its actual catalog repository`() {
+    // The same spoof the sample ids are already guarded against: a catalog id is claimed by
+    // whoever publishes it, so `compose-m3` from someone else must not read as the official
+    // design system on the public front door.
+    val impostor =
+      ServeWeb.HomeSystem(
+        system = "compose-m3",
+        title = "Definitely Material 3",
+        subtitle = null,
+        previewCount = 1,
+        trust = "branch:someorg/unrelated@design-artifacts/compose-m3",
+        sourceRepo = "someorg/unrelated",
+        heroPreviewId = null,
+      )
+
+    val sections = ServeWeb.homeSections(listOf(impostor))
+
+    assertEquals(listOf("Other"), sections.map { it.heading })
+  }
+
+  @Test
+  fun `the real design systems are grouped by their source repository`() {
+    val real =
+      listOf("compose-m3", "wear-m3", "remote-m3").map { id ->
+        ServeWeb.HomeSystem(
+          system = id,
+          title = id,
+          subtitle = null,
+          previewCount = 1,
+          trust = "branch:yschimke/compose-ai-tools@design-artifacts/$id",
+          sourceRepo = "yschimke/compose-ai-tools",
+          heroPreviewId = null,
+        )
+      }
+
+    val sections = ServeWeb.homeSections(real)
+
+    assertEquals(listOf("Design Systems"), sections.map { it.heading })
+    assertEquals(3, sections.single().systems.size)
+  }
+
+  @Test
+  fun `a catalog with no provenance is never promoted into a curated section`() {
+    // Unattributed bytes: an old catalog with no provenance carries no publisher claim at all, so
+    // it lands in Other rather than inheriting a curated section from its id.
+    val unattributed =
+      ServeWeb.HomeSystem(
+        system = "wear-m3",
+        title = "Wear Compose Material 3",
+        subtitle = null,
+        previewCount = 1,
+        trust = null,
+        sourceRepo = null,
+        heroPreviewId = null,
+      )
+
+    assertEquals(listOf("Other"), ServeWeb.homeSections(listOf(unattributed)).map { it.heading })
   }
 }
