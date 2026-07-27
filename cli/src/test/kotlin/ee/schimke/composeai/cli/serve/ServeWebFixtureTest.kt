@@ -391,6 +391,7 @@ class ServeWebFixtureTest {
             subtitle = "androidx.compose.material3:material3",
             previewCount = 42,
             trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+            sourceRepo = "yschimke/compose-ai-tools",
             heroPreviewId = "button-filled__ideal__default__light",
             // The normal path: a prebaked, content-hashed hero on the immutable `/hero/` lane, the
             // crop already in its pixels. Captured here so the golden pins the fast markup — eager
@@ -408,6 +409,7 @@ class ServeWebFixtureTest {
             subtitle = "androidx.wear.compose:compose-material3",
             previewCount = 18,
             trust = "branch:yschimke/compose-ai-tools@design-artifacts/wear-m3",
+            sourceRepo = "yschimke/compose-ai-tools",
             heroPreviewId = "button-filled__ideal__default__light",
             heroImage =
               ServeWeb.HeroImage(
@@ -424,6 +426,7 @@ class ServeWebFixtureTest {
             subtitle = "androidx.wear.compose.remote:remote-material3",
             previewCount = 6,
             trust = "branch:yschimke/compose-ai-tools@design-artifacts/remote-m3",
+            sourceRepo = "yschimke/compose-ai-tools",
             heroPreviewId = "Button-Filled__ideal__default__light",
             // Remote Compose draws the dark-first Wear scheme, so its catalog declares
             // `display.surface: "dark"` and the hero backs on the dark stage too.
