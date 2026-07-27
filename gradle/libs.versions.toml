@@ -14,7 +14,7 @@ kotlin = "2.4.0"
 # `configureKotlinCompatibility(...)`; remove the flag (and bump this to
 # `2.1.x`) when the removal lands and we're ready to drop 2.0.x consumers.
 kotlinCoreLibraries = "2.0.21"
-agp = "9.2.1"
+agp = "9.3.0"
 ktfmt = "0.26.0"
 tapmoc = "0.4.2"
 robolectric = "4.17-beta-2"
