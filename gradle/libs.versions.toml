@@ -1,5 +1,9 @@
 [versions]
-kotlin = "2.4.10"
+# Held at 2.4.0: CodeQL's Kotlin extractor doesn't support 2.4.10 yet — it aborts with
+# `Kotlin version too new`, which fails the `Analyze (java-kotlin)` job as a configuration error
+# and leaves the repo's main language unscanned. Bump once the CodeQL bundle catches up (the
+# alternative, disabling Kotlin extraction, would trade away the scan itself).
+kotlin = "2.4.0"
 # Kotlin language/api floor for published modules. Set lower than `kotlin`
 # so consumers on an older Kotlin can still link against our artifacts —
 # tapmoc enforces this and fails the build if a transitive API dep raises
