@@ -577,6 +577,11 @@ jobs:
         run: python3 .github/ci/test_change_scope.py -v
       - name: Run daemon round-trip transport tests
         run: python3 .github/ci/test_daemon_roundtrip.py -v
+      # The android-all cache-key script DELETES ~200 MB coordinate directories
+      # on the integration runners, so "only drops what it says it drops" — and
+      # "the key moves iff the retained set moves" — are gated, not eyeballed.
+      - name: Run android-all cache-key tests
+        run: python3 .github/ci/test_android_all_cache_key.py -v
       # The deploy image's .env migrations edit an operator's live config on an
       # already-deployed box, so the "leaves a custom catalog list alone" cases
       # are worth a gate rather than a manual check.

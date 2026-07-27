@@ -189,6 +189,10 @@ jobs:
           # compare-previews.py can't reach them) — used by render_xr cells.
           cp .github/actions/lib/xr-gallery.py bundle/ci/
           cp .github/actions/apply/lib/push-branch.sh bundle/ci/
+          # Bounds the saved android-all cache payload after the build. Same
+          # reason as the scripts above: the matrix legs that call it have no
+          # checkout of this repo, so it has to ride in via the bundle.
+          cp .github/ci/android-all-cache-key.py bundle/ci/
           # Ship consumer patches (e.g. the adaptive-apps-samples XR
           # alpha14 upgrade) so the integration matrix can apply them to
           # the checked-out external repo before Gradle configures it.
@@ -1389,66 +1393,27 @@ jobs:
       #    Evicting older entries doesn't shrink the newest one, so the payload
       #    grows ~200 MB per bump forever.
       #
-      # There is no way to ask which coordinates this run actually USED: a
-      # restored jar that gets used is not rewritten, so it looks identical to
-      # one that sat untouched. Usage can't be inferred after the fact, so the
-      # bound is a deliberate policy instead — keep the MAX_COORDINATES highest
-      # Android versions and drop the rest, loudly. That covers a multi-SDK cell
-      # (2 today) with headroom, and a bump evicts the oldest rather than
-      # accumulating. A drop is logged, so if a cell ever genuinely needs more
-      # than the cap the re-download shows up as a warning rather than as an
-      # unexplained slow leg.
+      # The policy that resolves this — keep the highest few Android versions,
+      # delete the rest loudly — and the reasoning behind it live in
+      # .github/ci/android-all-cache-key.py, unit-tested by
+      # test_android_all_cache_key.py. Both this step and the daemon-harness one
+      # below call that one script; they must not drift apart.
       - name: Resolve android-all cache key
         id: android-all
         if: always() && (matrix.render || matrix.render_xr || matrix.daemon)
         run: |
           set -euo pipefail
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import hashlib
-          import re
-          import shutil
-          import sys
-          from pathlib import Path
-
-          # Headroom over the 2 a render+daemon cell needs today. Raise it if a
-          # cell starts warning that it dropped a coordinate it wanted.
-          MAX_COORDINATES = 3
-
-          root = Path.home() / ".m2/repository/org/robolectric/android-all-instrumented"
-          present = [d for d in root.glob("*") if d.is_dir() and any(d.glob("*.jar"))] if root.is_dir() else []
-          if not present:
-              print("no android-all coordinate on disk — nothing to cache", file=sys.stderr)
-              print("coordinate=")
-              raise SystemExit(0)
-
-          # Order by Android version (the leading int of e.g. `16-robolectric-13921718-i7`),
-          # newest first, name as a stable tie-break.
-          def version_of(d):
-              m = re.match(r"(\d+)", d.name)
-              return (int(m.group(1)) if m else -1, d.name)
-
-          ranked = sorted(present, key=version_of, reverse=True)
-          keep, drop = ranked[:MAX_COORDINATES], ranked[MAX_COORDINATES:]
-          for d in drop:
-              print(
-                  f"::warning::dropping android-all coordinate {d.name} — over the "
-                  f"{MAX_COORDINATES}-coordinate cache cap. If this cell needs it, "
-                  "it will be re-downloaded every run; raise MAX_COORDINATES.",
-                  file=sys.stderr,
-              )
-              shutil.rmtree(d)
-
-          coordinates = sorted(d.name for d in keep)
-          # One coordinate reads plainly in the key; several would blow past a
-          # sensible key length, so collapse those to a stable digest. Either way
-          # the key changes if and only if the retained SET changes.
-          joined = "_".join(coordinates)
-          key = joined if len(coordinates) == 1 else (
-              f"{len(coordinates)}x-{hashlib.sha256(joined.encode()).hexdigest()[:16]}"
-          )
-          print(f"caching {len(coordinates)} android-all coordinate(s): {joined}", file=sys.stderr)
-          print(f"coordinate={key}")
-          PY
+          # Ships in the bundle (these legs have no checkout of this repo). The
+          # step is `always()`, so it can also run after a failure that happened
+          # before the bundle was unpacked — treat that as "nothing to cache"
+          # rather than failing the leg on a missing file.
+          script="$GITHUB_WORKSPACE/bundle/ci/android-all-cache-key.py"
+          if [ -f "$script" ]; then
+            python3 "$script" >> "$GITHUB_OUTPUT"
+          else
+            echo "bundle not unpacked — nothing to cache" >&2
+            echo "coordinate=" >> "$GITHUB_OUTPUT"
+          fi
 
       # Split restore/save (rather than plain `actions/cache`) so a cell that
       # failed AFTER paying the download still persists it — the rerun starts
@@ -1767,57 +1732,24 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      # Same retention policy + reasoning as the matrix leg above:
+      # .github/ci/android-all-cache-key.py (unit-tested).
       - name: Resolve android-all cache key
         id: android-all
         if: always()
         run: |
           set -euo pipefail
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import hashlib
-          import re
-          import shutil
-          import sys
-          from pathlib import Path
-
-          # Headroom over the 2 a render+daemon cell needs today. Raise it if a
-          # cell starts warning that it dropped a coordinate it wanted.
-          MAX_COORDINATES = 3
-
-          root = Path.home() / ".m2/repository/org/robolectric/android-all-instrumented"
-          present = [d for d in root.glob("*") if d.is_dir() and any(d.glob("*.jar"))] if root.is_dir() else []
-          if not present:
-              print("no android-all coordinate on disk — nothing to cache", file=sys.stderr)
-              print("coordinate=")
-              raise SystemExit(0)
-
-          # Order by Android version (the leading int of e.g. `16-robolectric-13921718-i7`),
-          # newest first, name as a stable tie-break.
-          def version_of(d):
-              m = re.match(r"(\d+)", d.name)
-              return (int(m.group(1)) if m else -1, d.name)
-
-          ranked = sorted(present, key=version_of, reverse=True)
-          keep, drop = ranked[:MAX_COORDINATES], ranked[MAX_COORDINATES:]
-          for d in drop:
-              print(
-                  f"::warning::dropping android-all coordinate {d.name} — over the "
-                  f"{MAX_COORDINATES}-coordinate cache cap. If this cell needs it, "
-                  "it will be re-downloaded every run; raise MAX_COORDINATES.",
-                  file=sys.stderr,
-              )
-              shutil.rmtree(d)
-
-          coordinates = sorted(d.name for d in keep)
-          # One coordinate reads plainly in the key; several would blow past a
-          # sensible key length, so collapse those to a stable digest. Either way
-          # the key changes if and only if the retained SET changes.
-          joined = "_".join(coordinates)
-          key = joined if len(coordinates) == 1 else (
-              f"{len(coordinates)}x-{hashlib.sha256(joined.encode()).hexdigest()[:16]}"
-          )
-          print(f"caching {len(coordinates)} android-all coordinate(s): {joined}", file=sys.stderr)
-          print(f"coordinate={key}")
-          PY
+          # Ships in the bundle (these legs have no checkout of this repo). The
+          # step is `always()`, so it can also run after a failure that happened
+          # before the bundle was unpacked — treat that as "nothing to cache"
+          # rather than failing the leg on a missing file.
+          script="$GITHUB_WORKSPACE/bundle/ci/android-all-cache-key.py"
+          if [ -f "$script" ]; then
+            python3 "$script" >> "$GITHUB_OUTPUT"
+          else
+            echo "bundle not unpacked — nothing to cache" >&2
+            echo "coordinate=" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Save Robolectric android-all cache
         if: always() && steps.android-all.outputs.coordinate != ''
