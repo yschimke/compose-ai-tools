@@ -3,13 +3,13 @@
 A **prebuilt** Docker image that runs `compose-preview serve` with **no build on
 the host**. It's the fast alternative to [`deploy/cloudrun/Dockerfile`](../cloudrun/Dockerfile),
 which compiles the whole tool from source (~8 min) — instead this installs the
-**released** `compose-preview` CLI + a tiny self-contained Compose Desktop project
-and renders it with the **published** plugin from Maven Central. Built once in CI
-and pushed to GHCR, so hosts just pull it.
+**released** `compose-preview` CLI and serves published catalogs/live bundles
+without a local Gradle project. Built once in CI and pushed to GHCR, so hosts just
+pull it.
 
 - **Image:** `ghcr.io/yschimke/compose-preview-host:<version>` (and `:latest`)
-- **Render target:** Compose **Desktop** (Skiko software GL) for the warm-render sample, **plus** a
-  baked **Android/Robolectric** daemon + minimal Android SDK so a served Android **Wear** catalog
+- **Render targets:** Compose **Desktop** live bundles (Skiko software GL), **plus** a baked
+  **Android/Robolectric** daemon + minimal Android SDK so a served Android **Wear** catalog
   (`wear-m3`) renders live server-side. Lighting the Android live lane needs the catalog's stickers to
   carry the `previewId` daemon mapping **and** the bundle to carry the app's resource table under
   `android/`; both shipped in **0.16.50** (previewId #2492, app-resource carriage #2498 + missing-
@@ -26,12 +26,13 @@ data modules. This one skips all of that:
 | | From source (`deploy/cloudrun`) | Prebuilt (`deploy/image`) |
 |---|---|---|
 | Tool | compiled in the image (~8 min) | **released CLI tarball, downloaded** |
-| Plugin | built locally | **published, auto-injected from Maven Central** |
-| Project served | the whole repo's `:samples:cmp` | a tiny standalone `sample-project/` |
+| Release modules | built locally | **published Maven tree, baked into the image** |
+| Content served | the whole repo's `:samples:cmp` | published catalogs + live bundles |
 | Host build | yes, every deploy | **none — `docker pull`** |
 
-The image's warm render (in CI) bakes the Gradle cache + module build outputs, so
-the first runtime render is incremental.
+The image carries the release's Maven modules and both live-render backends, so
+catalog bundles can start without building a local project or waiting for the
+release to propagate through Maven Central.
 
 ## Publishing the image (one-time / per release)
 
@@ -96,9 +97,9 @@ the publish CI can push the roll the moment the image lands:
 
 **Fire on the image, not the release.** The webhook is triggered from the *end of the
 image build*, not a `release: published` event — at image-publish time the GHCR image
-is fully self-contained (baked CLI + plugin jars + warm caches + Android daemon), so
-the box needs **only GHCR** to roll and **no Maven propagation can race it** (the build
-already waited Central out via the seeded local `m2` + the Dockerfile warm-render retry).
+is fully self-contained (baked CLI + plugin jars + live-render daemons), so
+the box needs **only GHCR** to roll and **no Maven propagation can race it** (the
+same release run seeds the image's local `m2` directly).
 A `release: published` webhook would fire *before* the image exists and roll the box onto
 the *old* `:latest`.
 
@@ -230,8 +231,7 @@ docker run -d --restart always -p 8080:8080 \
 
 | File | Purpose |
 |------|---------|
-| `Dockerfile` | Downloads the released CLI, warm-renders `sample-project/`. |
-| `sample-project/` | Self-contained Compose Desktop module (foundation-only previews) + Gradle wrapper. Applies the published plugin via auto-inject. |
+| `Dockerfile` | Downloads the released CLI and carries the published Maven modules + live-render daemons. |
 | `entrypoint.sh` | Maps `$PORT`/`$SERVE_TOKEN` onto serve flags; generous `--timeout`. |
 | `docker-compose.yml` + `Caddyfile` | Pull the image + Caddy auto-HTTPS + zero-downtime (`rollout`) / Watchtower auto-updates + the `hook` instant-roll webhook. |
 | `rollout.sh` | Poll loop / one-shot that pulls `preview` and rolls it via docker-rollout. |
@@ -240,15 +240,10 @@ docker run -d --restart always -p 8080:8080 \
 | `setup.sh` | Install Docker + the docker-rollout plugin, write `.env`, pull + start. |
 | `env-migrations.sh` + `test-env-migrations.sh` | One-off `.env` rewrites `setup.sh` applies to an already-deployed box (currently: drop the legacy three-app `SERVE_CATALOGS` pin so the baked catalog default applies), and their tests. |
 
-## Serving a different project
-
-Replace `sample-project/` with your own Compose project (any module the released
-CLI can render — it auto-injects the plugin), keep a Gradle wrapper, and republish
-the image. The CLI needs only the project + network to Maven; no part of this repo.
-
 ## Notes / caveats
 
-- The runtime server still uses Gradle + Maven to render, but the baked warm cache
-  makes it incremental. `SERVE_TIMEOUT` (default 1800s) guards slow first renders.
-- The standalone project pins Kotlin `2.3.21` / Compose Multiplatform `1.10.3` to
-  match the published plugin's tested stack — bump in lockstep with the CLI version.
+- The default runtime is module-less: it serves fetched catalogs and launches
+  their trusted live bundles without running Gradle.
+- Live bundles resolve coordinate dependencies from the baked Maven tree first,
+  then the configured remote repositories. `SERVE_TIMEOUT` (default 1800s)
+  guards slow first renders.

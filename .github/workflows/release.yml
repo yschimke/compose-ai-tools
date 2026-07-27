@@ -116,8 +116,8 @@ jobs:
             publishAndReleaseToMavenCentral
       # Stage the same modules into Maven local and ship them as a build artifact.
       # The prebuilt preview-host image (preview-host-image.yml) downloads this and
-      # warm-renders against it, so the image build resolves the plugin + runtime
-      # modules from local jars INSTEAD of waiting on Maven Central propagation.
+      # bakes it into the runtime, so live catalog bundles resolve the plugin +
+      # runtime modules locally instead of waiting on Maven Central propagation.
       # Same `publish*` task set, so the local repo carries exactly what Central got
       # (plugin marker + renderer-*/data-*/daemon-*/preview-annotations/mcp).
       - name: Stage published modules into Maven local for the prebuilt image
