@@ -18,7 +18,7 @@ agp = "9.2.1"
 ktfmt = "0.26.0"
 tapmoc = "0.4.2"
 robolectric = "4.17-beta-2"
-roborazzi = "1.68.0"
+roborazzi = "1.70.0"
 # androidx.tracing — atrace-level sections for the Android daemon's render phases (see
 # `AndroidxTraceSections` in :daemon:android). Version-pinned (not BOM-managed) because the daemon
 # ships it in the standalone lib-daemon-android sidecar where no BOM applies.
