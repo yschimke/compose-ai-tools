@@ -1682,7 +1682,7 @@ _No findings._
 
 ### `OrbiterControlsPreview` · `spec:width=1280,height=720,dpi=160`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-spatial/OrbiterControlsPreview_Orbiter_TopControls.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-spatial/OrbiterControlsPreview_Orbiter_TopControls.png" width="400" />
 
 _No findings._
 

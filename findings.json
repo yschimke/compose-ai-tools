@@ -3115,7 +3115,7 @@
       "variant": "spec:width=1280,height=720,dpi=160"
     },
     {
-      "annotatedBasename": "OrbiterControlsPreview_Orbiter_TopControls.a11y.png",
+      "annotatedBasename": "",
       "cleanBasename": "OrbiterControlsPreview_Orbiter_TopControls.png",
       "findings": [],
       "functionName": "OrbiterControlsPreview",
