@@ -35,9 +35,11 @@ services:
       # SERVE_PUBLIC=0 and SERVE_TOKEN in .env.
       SERVE_PUBLIC: "${SERVE_PUBLIC:-1}"
       # The catalog set is BAKED INTO THE IMAGE (entrypoint): the front-page systems
-      # (compose-m3,wear-m3,remote-m3) and the app systems served unlisted from their own repos
-      # (meshcore-mobile, homeassistant-remotecompose, cadence). Leave these empty to inherit the
-      # baked defaults — so a bare image pull self-heals without editing this compose.
+      # (compose-m3, wear-m3, remote-m3) and the app systems fetched from their own repos
+      # (MeshCore Mobile, Home Assistant Remote Compose, the six compose-samples apps, and the two
+      # Confetti apps); Cadence is served unlisted. Leave these empty to inherit the baked defaults
+      # — so a bare image pull self-heals without editing this compose. setup.sh removes the exact
+      # legacy three-compose-samples override, which would otherwise shadow that complete default.
       # Set your own comma list to override, or the literal `none` to serve none of that
       # kind. (Empty is NOT `none` — it falls back to the baked default.)
       SERVE_CATALOGS: "${SERVE_CATALOGS:-}"

@@ -577,6 +577,11 @@ jobs:
         run: python3 .github/ci/test_change_scope.py -v
       - name: Run daemon round-trip transport tests
         run: python3 .github/ci/test_daemon_roundtrip.py -v
+      # The deploy image's .env migrations edit an operator's live config on an
+      # already-deployed box, so the "leaves a custom catalog list alone" cases
+      # are worth a gate rather than a manual check.
+      - name: Run deploy .env migration tests
+        run: ./deploy/image/test-env-migrations.sh
 
   # VS Code extension tests — both the existing in-process Mocha suite and
   # the @vscode/test-electron integration tests. The latter download a
