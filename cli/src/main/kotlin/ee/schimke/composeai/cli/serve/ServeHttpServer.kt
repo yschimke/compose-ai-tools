@@ -1093,6 +1093,7 @@ class ServeHttpServer(
         subtitle = meta.subtitle,
         previewCount = meta.previews ?: 0,
         trust = meta.trust,
+        sourceRepo = meta.provenance?.repo,
         heroPreviewId = meta.heroPreviewId,
         heroCrop = meta.heroCrop,
         // The prebaked thumbnail, when the catalog has one: the card then points at the static
@@ -1682,9 +1683,6 @@ class ServeHttpServer(
             }
             .toMap()
             .let { ServeWeb.SystemDisplay.normalizeOverrideParams(sessionId, it) }
-        val normalizeOverrides: (Map<String, String>) -> Map<String, String> = {
-          ServeWeb.SystemDisplay.normalizeOverrideParams(sessionId, it)
-        }
         // Non-suspending hand-off to the socket; drop frames a slow client can't keep up with.
         val send: (String) -> Unit = { text -> outgoing.trySend(Frame.Text(text)) }
         // Optional stream tuning: codec (WebP is ~30–60% smaller; the daemon downgrades to PNG if
@@ -1711,7 +1709,7 @@ class ServeHttpServer(
               codec,
               maxFps,
               send,
-              normalizeOverrides,
+              system = sessionId,
             ) { reason ->
               if (liveUnavailableReason == null) liveUnavailableReason = reason
             }
@@ -1734,7 +1732,7 @@ class ServeHttpServer(
               previewId,
               initialOverrides,
               send,
-              normalizeOverrides = normalizeOverrides,
+              system = sessionId,
               liveUnavailableReason = liveUnavailableReason,
             )
           // Renders block (renderNow + await); keep them off the socket's event-loop thread.

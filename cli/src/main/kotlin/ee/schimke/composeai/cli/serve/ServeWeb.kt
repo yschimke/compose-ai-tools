@@ -1,7 +1,5 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.daemon.protocol.PreviewOverrides
-
 /**
  * In-code HTML/CSS/JS for the `compose-preview serve` web surface. Generated as Kotlin raw strings
  * (the house style — see [ee.schimke.composeai.cli.WebEmbed]) so the token + preview ids inject
@@ -1373,6 +1371,8 @@ object ServeWeb {
     val subtitle: String?,
     val previewCount: Int,
     val trust: String?,
+    /** Repository that supplied this catalog; used for publisher attribution on the homepage. */
+    val sourceRepo: String? = null,
     val heroPreviewId: String?,
     /** Content-crop for the hero thumbnail (frames a Wear sticker to its component); null ⇒ raw. */
     val heroCrop: ContentCrop? = null,
@@ -1537,32 +1537,15 @@ object ServeWeb {
       </div>
       """
         .trimIndent()
-    val designSystemIds = setOf("compose-m3", "remote-m3", "wear-m3")
-    val androidComposeSampleIds =
-      setOf("jetnews", "jetcaster", "jetchat", "jetsnack", "jetlagged", "reply")
-    val designSystems = systems.filter { it.system in designSystemIds }
-    val androidComposeSamples = systems.filter { it.system in androidComposeSampleIds }
-    val remaining = systems.filterNot {
-      it.system in designSystemIds || it.system in androidComposeSampleIds
-    }
-    val yschimkeSystems = remaining.filter { it.trust?.startsWith("branch:yschimke/") == true }
-    val otherSystems = remaining - yschimkeSystems.toSet()
-    val sections =
-      listOf(
-          Triple("Design Systems", designSystems, "design system(s)"),
-          Triple("android/compose-samples", androidComposeSamples, "sample(s)"),
-          Triple("yschimke org", yschimkeSystems, "catalog(s)"),
-          Triple("Other", otherSystems, "catalog(s)"),
-        )
-        .filter { (_, list, _) -> list.isNotEmpty() }
+    val sections = homeSections(systems)
     val body =
       if (systems.isEmpty()) {
         "<h1 class=\"cp-head\">Design Systems</h1>\n" +
           "<p class=\"cp-sub\">No design systems are configured on this server.</p>"
       } else {
         sections
-          .mapIndexed { index, (heading, list, noun) ->
-            section(heading, list, noun, if (index == 0) "cp-grid" else "cp-grid-$index")
+          .mapIndexed { index, s ->
+            section(s.heading, s.systems, s.noun, if (index == 0) "cp-grid" else "cp-grid-$index")
           }
           .joinToString("\n")
       }
@@ -1574,6 +1557,61 @@ object ServeWeb {
         """
           .trimIndent(),
     )
+  }
+
+  /**
+   * One publisher-grouped section of the front page: its heading, its cards, and its count noun.
+   */
+  data class HomeSection(val heading: String, val systems: List<HomeSystem>, val noun: String)
+
+  /**
+   * Group the published catalogs by **publisher**, for the front-page sections.
+   *
+   * Attribution is decided by [HomeSystem.sourceRepo] — the repository the catalog was generated
+   * from — because that is the only field that says who *wrote* the components. Neither of the
+   * alternatives works:
+   * * The **catalog id** is claimed by whoever publishes it. A third-party catalog served as
+   *   `compose-m3` or `jetnews` would otherwise be presented as an official design system or one of
+   *   Android's samples, purely for picking that name.
+   * * The **trust verdict** names the branch the bytes were *fetched* from, which is a delivery
+   *   detail: Android's samples are currently fetched from preview branches in the
+   *   `yschimke/compose-samples` fork, and grouping on that would credit the fork owner for
+   *   Android's work.
+   *
+   * The known ids are still required alongside the repo (a repo publishing an unrelated catalog
+   * doesn't make it a design system), so the two must agree for a curated section to claim a card.
+   * A catalog with no provenance falls to "Other" — unattributed, never promoted.
+   */
+  internal fun homeSections(systems: List<HomeSystem>): List<HomeSection> {
+    fun published(ids: Set<String>, repos: Set<String>): (HomeSystem) -> Boolean = { s ->
+      s.system in ids && s.sourceRepo in repos
+    }
+
+    val isDesignSystem =
+      published(
+        ids = setOf("compose-m3", "remote-m3", "wear-m3"),
+        repos = setOf("yschimke/compose-ai-tools"),
+      )
+    val isAndroidSample =
+      published(
+        ids = setOf("jetnews", "jetcaster", "jetchat", "jetsnack", "jetlagged", "reply"),
+        // The preview branches currently live in the fork; both spellings are Android's samples.
+        repos = setOf("android/compose-samples", "yschimke/compose-samples"),
+      )
+
+    val designSystems = systems.filter(isDesignSystem)
+    val androidComposeSamples = systems.filter(isAndroidSample)
+    val remaining = systems.filterNot { isDesignSystem(it) || isAndroidSample(it) }
+    val yschimkeSystems = remaining.filter { it.sourceRepo?.startsWith("yschimke/") == true }
+    val otherSystems = remaining.filterNot { it.sourceRepo?.startsWith("yschimke/") == true }
+
+    return listOf(
+        HomeSection("Design Systems", designSystems, "design system(s)"),
+        HomeSection("android/compose-samples", androidComposeSamples, "sample(s)"),
+        HomeSection("yschimke org", yschimkeSystems, "catalog(s)"),
+        HomeSection("Other", otherSystems, "catalog(s)"),
+      )
+      .filter { it.systems.isNotEmpty() }
   }
 
   /**
@@ -1849,15 +1887,18 @@ object ServeWeb {
       return darkFirstIdPattern.containsMatchIn(s)
     }
 
-    /** Wear/watch renders have no day mode; discard a generic UI's accidental light override. */
+    /**
+     * Wear/watch renders have no day mode; discard a generic UI's accidental light override.
+     *
+     * Applied to the RAW parameter map — before [ServeOverrides.parse] — so every lane (render,
+     * storybook iframe, and both socket lanes) drops the override at one point, and a dropped
+     * `uiMode` never reaches the daemon as a distinct cache key. There is deliberately no
+     * post-parse twin of this: two normalizers at two layers is how one of them ends up dead.
+     */
     fun normalizeOverrideParams(
       system: String,
       overrides: Map<String, String>,
     ): Map<String, String> = if (isDarkFirst(system)) overrides - "uiMode" else overrides
-
-    /** Apply the same always-dark policy after raw override parameters have been parsed. */
-    fun normalizeOverrides(system: String, overrides: PreviewOverrides): PreviewOverrides =
-      if (isDarkFirst(system)) overrides.copy(uiMode = null) else overrides
 
     /**
      * Resolve whether [system] draws on a DARK stage, preferring the catalog's declared

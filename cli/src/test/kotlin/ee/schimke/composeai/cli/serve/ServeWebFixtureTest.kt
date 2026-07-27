@@ -1,8 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
-import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
@@ -391,6 +389,7 @@ class ServeWebFixtureTest {
             subtitle = "androidx.compose.material3:material3",
             previewCount = 42,
             trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+            sourceRepo = "yschimke/compose-ai-tools",
             heroPreviewId = "button-filled__ideal__default__light",
             // The normal path: a prebaked, content-hashed hero on the immutable `/hero/` lane, the
             // crop already in its pixels. Captured here so the golden pins the fast markup — eager
@@ -408,6 +407,7 @@ class ServeWebFixtureTest {
             subtitle = "androidx.wear.compose:compose-material3",
             previewCount = 18,
             trust = "branch:yschimke/compose-ai-tools@design-artifacts/wear-m3",
+            sourceRepo = "yschimke/compose-ai-tools",
             heroPreviewId = "button-filled__ideal__default__light",
             heroImage =
               ServeWeb.HeroImage(
@@ -424,6 +424,7 @@ class ServeWebFixtureTest {
             subtitle = "androidx.wear.compose.remote:remote-material3",
             previewCount = 6,
             trust = "branch:yschimke/compose-ai-tools@design-artifacts/remote-m3",
+            sourceRepo = "yschimke/compose-ai-tools",
             heroPreviewId = "Button-Filled__ideal__default__light",
             // Remote Compose draws the dark-first Wear scheme, so its catalog declares
             // `display.surface: "dark"` and the hero backs on the dark stage too.
@@ -437,6 +438,7 @@ class ServeWebFixtureTest {
             subtitle = "ee.schimke.meshcore",
             previewCount = 33,
             trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
+            sourceRepo = "yschimke/meshcore-mobile",
             heroPreviewId = "device-manycontacts__ideal__default__compact",
           ),
           ServeWeb.HomeSystem(
@@ -446,6 +448,7 @@ class ServeWebFixtureTest {
             previewCount = 9,
             trust =
               "branch:yschimke/homeassistant-remotecompose@design-artifacts/homeassistant-remotecompose",
+            sourceRepo = "yschimke/homeassistant-remotecompose",
             heroPreviewId = null,
           ),
           // A Wear app (Confetti): dark-first stage, and its hero is a conference SCREEN — the most
@@ -456,6 +459,7 @@ class ServeWebFixtureTest {
             subtitle = "dev.johnoreilly.confetti",
             previewCount = 12,
             trust = "branch:joreilly/Confetti@design-artifacts/confetti-wear",
+            sourceRepo = "joreilly/Confetti",
             heroPreviewId = "conference-screen__ideal__default__dark",
             darkStage = true,
           ),
@@ -1310,22 +1314,13 @@ class ServeWebFixtureTest {
         !viewerGestures.contains("cp-theme:compose-m3"),
       "a viewer reads only its own catalog's sticky theme",
     )
-    assertNull(
-      ServeWeb.SystemDisplay.normalizeOverrides(
-          "confetti-wear",
-          PreviewOverrides(uiMode = UiMode.LIGHT),
-        )
-        .uiMode,
-      "Wear ignores the generic light override",
-    )
     assertEquals(
-      UiMode.LIGHT,
-      ServeWeb.SystemDisplay.normalizeOverrides(
-          "compose-m3",
-          PreviewOverrides(uiMode = UiMode.LIGHT),
-        )
-        .uiMode,
-      "non-Wear systems retain day/night overrides",
+      mapOf("fontScale" to "1.5"),
+      ServeWeb.SystemDisplay.normalizeOverrideParams(
+        "confetti-wear",
+        mapOf("uiMode" to "light", "fontScale" to "1.5"),
+      ),
+      "normalizing drops only uiMode — every other override survives",
     )
 
     // The sticky theme toggle appears only for a catalog with light/dark pairs, and each paired
