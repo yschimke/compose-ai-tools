@@ -163,7 +163,12 @@ horologist = "0.7.15"
 #    `RemoteDensity.from` dropped its trailing `Context` arg and now derives
 #    density solely from the `RemoteCreationDisplayInfo` it's handed.
 compose-remote = "1.0.0-alpha15"
-wear-compose-remote = "1.0.0-alpha08"
+#    alpha08 does not exist: the whole `androidx.wear.compose.remote` group stops
+#    at alpha07 on Google Maven (remote-material3 / remote-core / remote-player all
+#    404), so #2823's bump made `:samples:design-catalog-remote-m3` unresolvable and
+#    took `main` red. Back to alpha07 until the wear side actually publishes; when it
+#    does, bump it together with `compose-remote` as the paragraph above requires.
+wear-compose-remote = "1.0.0-alpha07"
 # Glance Wear — the Wear OS *widget* layer on top of Remote Compose. Used by
 # `:samples:design-catalog-remote-m3` to sticker the widget **container** (the
 # squircle the host draws around widget content) via the
