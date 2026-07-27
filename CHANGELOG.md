@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.18.3](https://github.com/yschimke/compose-ai-tools/compare/v0.18.2...v0.18.3) (2026-07-27)
+
+
+### Features
+
+* **serve:** attribute homepage catalogs by sourceRepo ([#2801](https://github.com/yschimke/compose-ai-tools/issues/2801)) ([ea2704b](https://github.com/yschimke/compose-ai-tools/commit/ea2704b9d0b18b93e146e86d4f41bd4a10044a72))
+
+
+### Bug Fixes
+
+* **deploy:** migrate legacy compose-samples catalog override ([#2802](https://github.com/yschimke/compose-ai-tools/issues/2802)) ([0c6b33e](https://github.com/yschimke/compose-ai-tools/commit/0c6b33ed4de7e89f5bacd73b32548fb299f3c68f))
+* **deps:** update dependency pixelmatch to v7 ([#2808](https://github.com/yschimke/compose-ai-tools/issues/2808)) ([577f735](https://github.com/yschimke/compose-ai-tools/commit/577f73543aaeb0f54c3d69c96332788f2601ffa2))
+
 ## [0.18.2](https://github.com/yschimke/compose-ai-tools/compare/v0.18.1...v0.18.2) (2026-07-26)
 
 
