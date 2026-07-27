@@ -1244,7 +1244,7 @@
     "functionName": "lottie/spin.json",
     "module": "samples:android",
     "renderBasename": "lottie__lottie_spin_animated.png",
-    "sha256": "655689ceef1eb934d65fb368041e8690b619ee17ccb6b5e1c64ac759d358c5fc",
+    "sha256": "c630a44358bb953d9646d086d45a99af2160512ea0c365b9003305cf7e40b359",
     "sourceFile": null
   },
   "samples:android/svg__svg_badge": {
