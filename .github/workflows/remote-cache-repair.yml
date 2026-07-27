@@ -67,7 +67,11 @@ jobs:
       - name: Repair
         env:
           # Write access is required to overwrite an entry; the readonly token can only --check.
-          BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN: ${{ secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_RW_TOKEN }}
+          # Same project-specific-then-shared fallback every other workflow's `rw-token` uses (see
+          # ci.yml / .github/actions/buildfetch-cache) — there is no separate *_RW_TOKEN secret, and
+          # an unrecognized name resolves to the empty string, which the script rejects outright.
+          BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN:
+            ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN }}
           KEYS: ${{ inputs.keys }}
           CHECK_ONLY: ${{ inputs.check-only }}
         run: |
