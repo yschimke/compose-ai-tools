@@ -26,6 +26,7 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -109,7 +110,7 @@ data class ServePreview(
    * fold these variants onto the component's one card (like [state], rather than a tile each) and
    * the viewer offer a variant switcher. Null keeps the current behaviour everywhere.
    */
-  val props: Map<String, String>? = null,
+  val props: JsonObject? = null,
   /**
    * The top-level **section** (tab) this preview belongs to — `"Themes"`, `"Components"`,
    * `"Screens"`, `"Animations"`, … — from the catalog's `previews/variants.json`. Drives the

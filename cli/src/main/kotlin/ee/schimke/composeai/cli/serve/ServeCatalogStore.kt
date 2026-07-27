@@ -12,6 +12,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -160,10 +161,12 @@ class ServeCatalogStore(
         return Result.Failed(system, "could not fetch catalog.json: ${e.message}")
       } ?: return Result.Failed(system, "could not fetch $base$CATALOG_FILE")
     val catalog =
-      runCatching {
-          json.decodeFromString(Catalog.serializer(), catalogBytes.toString(Charsets.UTF_8))
-        }
-        .getOrNull() ?: return Result.Failed(system, "could not parse catalog.json")
+      try {
+        json.decodeFromString(Catalog.serializer(), catalogBytes.toString(Charsets.UTF_8))
+      } catch (e: Exception) {
+        val detail = e.message?.takeIf { it.isNotBlank() } ?: e::class.simpleName ?: "unknown error"
+        return Result.Failed(system, "could not parse catalog.json: $detail")
+      }
 
     // Stage the fetch so a re-load (ServeCatalogRefresher) can't turn a healthy catalog into 404s:
     // fetch the images into a sibling `.staging` dir and only swap it over the live `dir` once we
@@ -925,7 +928,7 @@ class ServeCatalogStore(
      * axis. Carried into `previews/variants.json` so the serve grid can fold these variants onto
      * the component's one card (like [state]) instead of showing each as its own tile.
      */
-    val props: Map<String, String>? = null,
+    val props: JsonObject? = null,
   )
 
   /**
@@ -950,7 +953,7 @@ class ServeCatalogStore(
      * for the default render. Lets a preview host fold props variants onto the component's one card
      * (like [state]) and offer a variant switcher. Null for a catalog that varies on neither props.
      */
-    val props: Map<String, String>? = null,
+    val props: JsonObject? = null,
     val section: String? = null,
     val group: String? = null,
     val order: Int? = null,

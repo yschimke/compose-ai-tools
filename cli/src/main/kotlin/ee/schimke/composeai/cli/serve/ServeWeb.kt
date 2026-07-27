@@ -1,5 +1,10 @@
 package ee.schimke.composeai.cli.serve
 
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+
 /**
  * In-code HTML/CSS/JS for the `compose-preview serve` web surface. Generated as Kotlin raw strings
  * (the house style — see [ee.schimke.composeai.cli.WebEmbed]) so the token + preview ids inject
@@ -815,20 +820,47 @@ object ServeWeb {
       .trimIndent()
   }
 
-  /** A stable signature for a preview's props axis (sorted `k=v` pairs); `""` for the default. */
-  private fun propsSignature(props: Map<String, String>?): String =
-    props?.entries?.sortedBy { it.key }?.joinToString(",") { "${it.key}=${it.value}" } ?: ""
+  /**
+   * Canonical JSON for a props value. Objects sort their keys recursively, while arrays preserve
+   * their authored order. This keeps the variant identity stable even when two producers emit an
+   * equivalent object with a different property order, and it keeps JSON types distinct (`true` is
+   * not the same variant as `"true"`).
+   */
+  private fun canonicalPropsJson(value: JsonElement): String =
+    when (value) {
+      is JsonObject ->
+        value.entries
+          .sortedBy { it.key }
+          .joinToString(prefix = "{", postfix = "}") { (key, child) ->
+            "${JsonPrimitive(key)}:${canonicalPropsJson(child)}"
+          }
+      is JsonArray ->
+        value.joinToString(prefix = "[", postfix = "]") { child -> canonicalPropsJson(child) }
+      else -> value.toString()
+    }
+
+  /** Human-readable form of a props value: unquote scalars, retain compact JSON for structures. */
+  private fun propsValueLabel(value: JsonElement): String =
+    if (value is JsonPrimitive) value.content else canonicalPropsJson(value)
+
+  /** A stable signature for a preview's props axis (sorted `k=value` pairs); `""` for default. */
+  private fun propsSignature(props: JsonObject?): String =
+    props
+      ?.entries
+      ?.sortedBy { it.key }
+      ?.joinToString(",") { "${it.key}=${canonicalPropsJson(it.value)}" } ?: ""
 
   /**
    * Human label for a props-variant axis: "Default" for none, else a compact per-axis phrasing
    * ("RTL", "Locale ar-XB", "Font 2.0×", "Icon+label"), falling back to `key value` for an unknown
    * axis. Multiple axes join with " · ". Used for the viewer's variant-switcher buttons.
    */
-  private fun propsLabel(props: Map<String, String>?): String {
+  private fun propsLabel(props: JsonObject?): String {
     if (props.isNullOrEmpty()) return "Default"
     return props.entries
       .sortedBy { it.key }
-      .joinToString(" · ") { (k, v) ->
+      .joinToString(" · ") { (k, rawValue) ->
+        val v = propsValueLabel(rawValue)
         when (k) {
           "direction" -> v.uppercase()
           "locale" -> "Locale $v"
