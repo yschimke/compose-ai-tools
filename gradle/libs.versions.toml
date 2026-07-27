@@ -26,7 +26,7 @@ tapmoc = "0.4.2"
 # reproducible build), so a snapshot pin fails dependency resolution outright. The
 # `org.robolectric:robolectric` rule in `.github/renovate.json` keeps that bump from coming back.
 robolectric = "4.17-beta-2"
-roborazzi = "1.68.0"
+roborazzi = "1.70.0"
 # androidx.tracing — atrace-level sections for the Android daemon's render phases (see
 # `AndroidxTraceSections` in :daemon:android). Version-pinned (not BOM-managed) because the daemon
 # ships it in the standalone lib-daemon-android sidecar where no BOM applies.
