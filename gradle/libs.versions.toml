@@ -113,14 +113,7 @@ xr-glimmer = "1.0.0-alpha15"
 # 2D Home-Space fallback of these composables through the Android Robolectric
 # pipeline (see docs/design/XR_SPATIAL_PREVIEW.md). Alpha14 was published
 # 2026-05-19.
-#
-# Held at alpha15 with the `*-testing` line below: the beta01/alpha16 set doesn't
-# compile against `:renderer-xr` as written — `SubspaceSemanticsInfo.semanticsConfiguration`
-# became nullable, so `SubspaceSceneRecorder.recordAll` needs a source change, and the
-# reflective `getRtEntity$scenecore` -> `getView` chain `contentView` uses has to be
-# re-validated against the beta runtime (the recorder's own docs name those tests as its
-# canary). That migration is split out as its own PR — bump the four pins together there.
-xr-compose = "1.0.0-alpha15"
+xr-compose = "1.0.0-alpha16"
 # XR `*-testing` fakes injected onto the offline render/test classpath (the
 # Robolectric `composePreviewRenderXr` path + `:renderer-xr` / sample tests).
 # Single source of truth: the plugin bakes these into a generated resource (see
@@ -128,10 +121,9 @@ xr-compose = "1.0.0-alpha15"
 # `AndroidPreviewSupport.kt` can't drift from the catalog. The runtime/scenecore
 # alpha line runs one ahead of the compose/arcore line — bump together with
 # `xr-compose`.
-# Held at the alpha line alongside `xr-compose` — see the migration note there.
-xr-runtime-testing = "1.0.0-alpha15"
-xr-scenecore-testing = "1.0.0-alpha16"
-xr-arcore-testing = "1.0.0-alpha15"
+xr-runtime-testing = "1.0.0-beta01"
+xr-scenecore-testing = "1.0.0-beta01"
+xr-arcore-testing = "1.0.0-beta01"
 # `androidx.wear:wear` carries `androidx.wear.ambient.AmbientLifecycleObserver` —
 # the AOSP entry point both horologist's `AmbientAware` and direct subscribers
 # wrap. Used only by `:data-ambient-connector` (the Robolectric shadow + state
