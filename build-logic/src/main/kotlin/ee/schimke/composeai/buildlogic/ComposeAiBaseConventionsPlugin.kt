@@ -6,6 +6,7 @@ import org.gradle.api.Project
 import org.gradle.api.tasks.testing.Test
 import org.gradle.kotlin.dsl.configure
 import org.gradle.kotlin.dsl.withType
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
 
 /**
  * Conventions that previously lived in the root build's `allprojects {}` block. Isolated Projects
@@ -30,6 +31,34 @@ class ComposeAiBaseConventionsPlugin : Plugin<Project> {
     project.tasks.withType<Test>().configureEach {
       systemProperty("composeai.history.enabled", "true")
       systemProperty("composeai.history.gitProvenanceTtlMs", "0")
+    }
+
+    // Build-cache salt. A Gradle cache key is the hash of a task's declared inputs, so an extra
+    // declared input property lets us move every Kotlin compilation to a fresh set of keys by
+    // bumping one number in gradle.properties.
+    //
+    // This exists because a remote-cache entry can go bad at rest: in July 2026 the BuildFetch
+    // entry for `:daemon:core:compileKotlin` was stored truncated, and every consumer that
+    // resolved that key died in the *load* ("Failed to load cache entry cc7964dd…: Could not load
+    // from remote cache: Unexpected end of ZLIB input stream") — before the task could execute,
+    // so nothing ever pushed a replacement. PR runs are read-only (see settings.gradle.kts) and
+    // main runs aborted at the same point, so it could not self-heal; it blocked every build that
+    // touched `:daemon:core` until the key changed. BuildFetch documents no way to evict a single
+    // entry (LRU under storage pressure is the only documented eviction), so a salt we control is
+    // the escape hatch.
+    //
+    // Bumping it orphans the poisoned key rather than deleting it: the next pushing main run
+    // executes the affected tasks and stores clean entries under the new keys, and everything else
+    // reads those. Cost is one cold main build; the stale entries age out via LRU. Prefer asking
+    // BuildFetch to evict the specific entry when that's an option — this is the lever for
+    // when it isn't.
+    //
+    // Applied here rather than in `composeai.kotlin-conventions` deliberately: base-conventions
+    // is the plugin *every* module applies, and `:daemon:core` — the module that was actually
+    // poisoned — does not apply the Kotlin conventions plugin.
+    val cacheSalt = project.providers.gradleProperty("composeai.cacheSalt").orElse("0")
+    project.tasks.withType<KotlinCompilationTask<*>>().configureEach {
+      inputs.property("composeai.cacheSalt", cacheSalt)
     }
   }
 }
