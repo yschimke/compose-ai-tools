@@ -1108,6 +1108,13 @@ abstract class RobolectricRenderTestBase(
                 if (scrollCaptureProvidable != null) {
                   add(scrollCaptureProvidable provides scrollCaptureInProgress)
                 }
+                // XR Compose composables (`Orbiter`, `SpatialElevation`, …) are written once and
+                // take a 2D fallback off-device — which is what an ordinary @Preview captures.
+                // Since `androidx.xr.compose` 1.0.0-alpha16 that fallback consumes `LocalSession`
+                // and null-checks it before branching, so hand it an offline session. Null (and
+                // therefore absent) whenever XR isn't on the preview's classpath, which is the
+                // overwhelmingly common case. See [OfflineXrSession].
+                OfflineXrSession.providedValue(rule.activity)?.let(::add)
               }
               .toTypedArray()
           // `showSystemUi = true` on a phone-shape preview wraps the
