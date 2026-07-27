@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.18.4](https://github.com/yschimke/compose-ai-tools/compare/v0.18.3...v0.18.4) (2026-07-27)
+
+
+### Features
+
+* **server:** Remove obsolete preview-host sample project ([#2827](https://github.com/yschimke/compose-ai-tools/issues/2827)) ([c422e2e](https://github.com/yschimke/compose-ai-tools/commit/c422e2e32ee306d0329575cb49eac1586c2ad57d))
+
+
+### Bug Fixes
+
+* **deps:** move the XR line to beta01 and null-guard the panel tag lookup ([#2819](https://github.com/yschimke/compose-ai-tools/issues/2819)) ([3b72252](https://github.com/yschimke/compose-ai-tools/commit/3b72252bce3c3a87d3c011af5bae1007b3006bbb))
+* **deps:** revert wear-compose-remote to alpha07 ([#2826](https://github.com/yschimke/compose-ai-tools/issues/2826)) ([b789cac](https://github.com/yschimke/compose-ai-tools/commit/b789cacd505b612360a83cbfd01864506b677a10))
+* **deps:** update gradle minor/patch ([#2805](https://github.com/yschimke/compose-ai-tools/issues/2805)) ([bae86c7](https://github.com/yschimke/compose-ai-tools/commit/bae86c7fdb547f62e0571581010712bf6fcc77ca))
+* **renderer:** provide LocalSession so XR 2D-fallback previews render ([#2822](https://github.com/yschimke/compose-ai-tools/issues/2822)) ([7326067](https://github.com/yschimke/compose-ai-tools/commit/7326067622a83da06615c4093cbb6cca72c03c09))
+* **renderer:** stop swallowing locale-local reflection failures, and cache the lookup ([#2817](https://github.com/yschimke/compose-ai-tools/issues/2817)) ([ed54a0f](https://github.com/yschimke/compose-ai-tools/commit/ed54a0f1e0a8279e80d5787644874eef55a714b9))
+* **serve:** attribute every homepage section by provenance, not by catalog id ([#2816](https://github.com/yschimke/compose-ai-tools/issues/2816)) ([4d3d8e8](https://github.com/yschimke/compose-ai-tools/commit/4d3d8e86a9af5a424358d4c6398f63048e4ce0d8))
+
 ## [0.18.3](https://github.com/yschimke/compose-ai-tools/compare/v0.18.2...v0.18.3) (2026-07-27)
 
 
