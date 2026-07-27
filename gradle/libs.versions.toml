@@ -17,7 +17,11 @@ kotlinCoreLibraries = "2.0.21"
 agp = "9.3.0"
 ktfmt = "0.26.0"
 tapmoc = "0.4.2"
-robolectric = "4.17-SNAPSHOT"
+# Released versions only. Robolectric publishes `4.17-SNAPSHOT` to Sonatype, and Renovate ranks it
+# above `4.17-beta-2` — but no snapshot repository is declared here (nor should one be, for a
+# reproducible build), so a snapshot pin fails dependency resolution outright. The
+# `org.robolectric:robolectric` rule in `.github/renovate.json` keeps that bump from coming back.
+robolectric = "4.17-beta-2"
 roborazzi = "1.70.0"
 # androidx.tracing — atrace-level sections for the Android daemon's render phases (see
 # `AndroidxTraceSections` in :daemon:android). Version-pinned (not BOM-managed) because the daemon
@@ -81,7 +85,14 @@ navigation-compose = "2.9.8"
 # 1.1.x is the current stable line; bump when the Glance team ships a 1.2.x with the planned
 # preview-DSL stabilisation.
 glance-appwidget = "1.2.0-rc01"
-wear-compose = "1.7.0-alpha06"
+# Held at alpha05: alpha06 redesigned `androidx.wear.compose.material3.onehandedgesture`.
+# `OneHandedGestureInteraction` is gone, and both `Modifier.oneHandedGesture` and
+# `OneHandedGestureIndicator` now take an `OneHandedGestureConfiguration` (action + key + priority)
+# plus an explicit `OneHandedGestureIndicatorState` instead of an interaction source — which
+# `:data-gestures-connector` (`GestureReporting`) and the Wear gesture-hint previews are built on.
+# Migrating that seam changes rendered output, so it lands as its own PR with visual evidence;
+# bump this back to the alpha line then.
+wear-compose = "1.7.0-alpha05"
 wear-tiles = "1.6.1"
 wear-protolayout = "1.4.1"
 wear-tooling-preview = "1.0.0"

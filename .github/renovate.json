@@ -103,6 +103,16 @@
       "allowedVersions": "/^2\\.1\\./"
     },
     {
+      "description": "robolectric: released versions only. Robolectric publishes a rolling `4.17-SNAPSHOT` to Sonatype and Renovate ranks it above `4.17-beta-2`, but the build declares no snapshot repository — so the bump resolves nowhere and fails every Android configuration. Betas and RCs are still fair game; only `-SNAPSHOT` is excluded.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchDepNames": [
+        "org.robolectric:robolectric"
+      ],
+      "allowedVersions": "!/-SNAPSHOT$/"
+    },
+    {
       "description": "VS Code API floor declarations — bumping these drops support for older editors, must be a manual decision.",
       "matchFileNames": [
         "vscode-extension/package.json"
