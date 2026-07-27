@@ -96,24 +96,44 @@ object LocaleCompositionLocals {
     }
   }
 
-  @Suppress("UNCHECKED_CAST")
-  private fun resolve(classLoader: ClassLoader, findClass: (String) -> Class<*>): Resolution =
-    try {
-      val compositionLocals = findClass("androidx.compose.ui.platform.CompositionLocalsKt")
-      val local =
-        compositionLocals.getMethod("getLocalProvidableLocaleList").invoke(null)
-          as ProvidableCompositionLocal<Any>
+  /**
+   * Resolve in two steps, because the same exception means different things either side of the
+   * line: **before** the local is found, a missing class or accessor is just an older Compose UI;
+   * **after** it, the locale locals demonstrably exist, so anything that then fails to line up —
+   * including a `LocaleList` without the `String` constructor — is a present-but-incompatible
+   * classpath, which is exactly what must be reported rather than silently ignored.
+   */
+  private fun resolve(classLoader: ClassLoader, findClass: (String) -> Class<*>): Resolution {
+    val local = findProvidableLocaleList(classLoader, findClass) ?: return Resolution.Absent
+    return try {
       val localeListClass = findClass("androidx.compose.ui.text.intl.LocaleList")
       Resolution.Bound(local, localeListClass.getConstructor(String::class.java))
+    } catch (e: ReflectiveOperationException) {
+      report(classLoader, "LocalProvidableLocaleList found but LocaleList(String) is not usable", e)
+      Resolution.Absent
+    }
+  }
+
+  /** The providable local, or null when this Compose UI simply predates it (silent, expected). */
+  @Suppress("UNCHECKED_CAST")
+  private fun findProvidableLocaleList(
+    classLoader: ClassLoader,
+    findClass: (String) -> Class<*>,
+  ): ProvidableCompositionLocal<Any>? =
+    try {
+      findClass("androidx.compose.ui.platform.CompositionLocalsKt")
+        .getMethod("getLocalProvidableLocaleList")
+        .invoke(null) as ProvidableCompositionLocal<Any>
     } catch (_: ClassNotFoundException) {
       // Compose UI older than the locale locals — the compat-BOM case. Nothing to say.
-      Resolution.Absent
+      null
     } catch (_: NoSuchMethodException) {
       // Same: the accessor arrived with the locals, so its absence means an older Compose UI.
-      Resolution.Absent
+      null
     } catch (e: ReflectiveOperationException) {
-      report(classLoader, "locale composition locals found but unusable", e)
-      Resolution.Absent
+      // The class is there but the accessor won't yield a local — not a version gap.
+      report(classLoader, "LocalProvidableLocaleList accessor is not usable", e)
+      null
     }
 
   private fun report(classLoader: ClassLoader, what: String, e: Throwable) {

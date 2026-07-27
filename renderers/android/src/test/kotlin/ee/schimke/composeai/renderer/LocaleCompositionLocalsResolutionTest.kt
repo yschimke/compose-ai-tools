@@ -2,10 +2,13 @@ package ee.schimke.composeai.renderer
 
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.compositionLocalOf
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -38,6 +41,9 @@ internal class FakeLocaleList(val languageTags: String) {
 
 /** A Compose UI whose `CompositionLocalsKt` predates the accessor (present, but wrong shape). */
 internal object AccessorlessCompositionLocalsKt
+
+/** A `LocaleList` that exists but can't be built from a language-tag string. */
+internal class ConstructorlessLocaleList private constructor()
 
 /**
  * A stand-in Compose UI classpath: serves [names] and records every lookup, so a test can assert
@@ -107,6 +113,48 @@ class LocaleCompositionLocalsResolutionTest {
     // The miss is cached too: a per-render ClassNotFoundException is the expensive default case.
     assertNull(provide(olderCompose))
     assertEquals(1, olderCompose.lookups.get())
+  }
+
+  /** Runs [body] with stderr captured, returning what it printed. */
+  private fun capturingStderr(body: () -> Unit): String {
+    val original = System.err
+    val captured = ByteArrayOutputStream()
+    System.setErr(PrintStream(captured, true))
+    try {
+      body()
+    } finally {
+      System.setErr(original)
+    }
+    return captured.toString()
+  }
+
+  @Test
+  fun `a locale list that cannot be built from tags is reported, not treated as an old compose`() {
+    // The distinction that matters: the accessor resolved, so the locale locals demonstrably
+    // exist. A LocaleList without the String constructor is then a present-but-incompatible
+    // classpath — the exact case this bridge must not swallow into a silent default locale.
+    val incompatible =
+      StubClasspath(
+        mapOf(
+          "androidx.compose.ui.platform.CompositionLocalsKt" to FakeCompositionLocalsKt::class.java,
+          "androidx.compose.ui.text.intl.LocaleList" to ConstructorlessLocaleList::class.java,
+        )
+      )
+
+    val stderr = capturingStderr { assertNull(provide(incompatible)) }
+
+    assertTrue(stderr, stderr.contains("LocaleList(String) is not usable"))
+    assertTrue(stderr, stderr.contains("default locale"))
+  }
+
+  @Test
+  fun `an old compose classpath is not reported`() {
+    val olderCompose = StubClasspath(emptyMap())
+
+    val stderr = capturingStderr { assertNull(provide(olderCompose)) }
+
+    // A compat-BOM render is the normal case; it must not print on every daemon start.
+    assertEquals("", stderr)
   }
 
   @Test
