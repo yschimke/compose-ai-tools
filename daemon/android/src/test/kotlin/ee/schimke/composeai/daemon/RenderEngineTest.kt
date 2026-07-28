@@ -422,6 +422,49 @@ class RenderEngineTest {
   }
 
   @Test
+  fun figmaSvgExportKeepsClickableEmojiAndAnnotatedFontRuns() {
+    val outputDir = tempFolder.newFolder("renders-figma-emoji")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    System.setProperty("composeai.svg.embedFonts", "false")
+    val host = RobolectricHost()
+    host.start()
+    try {
+      host.submit(
+        RenderRequest.Render(
+          payload =
+            "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+              "functionName=EmojiAndAnnotatedText;" +
+              "widthPx=180;heightPx=80;density=1.0;" +
+              "showBackground=true;outputBaseName=figma-emoji"
+        ),
+        timeoutMs = 120_000,
+      )
+
+      val svg =
+        outputDir.parentFile!!
+          .resolve("data")
+          .resolve("figma-emoji")
+          .resolve("compose-figma.svg")
+          .readText()
+      assertTrue("supplementary-plane emoji must remain editable text", svg.contains("😀"))
+      assertTrue("annotated text must preserve its base run", svg.contains(">body </tspan>"))
+      assertTrue("annotated text must preserve its explicit code run", svg.contains(">code</tspan>"))
+      assertTrue(
+        "the explicit span face must remain distinct",
+        svg.contains("""font-family="monospace""""),
+      )
+      assertFalse(
+        "known base and span families must not trigger global tofu",
+        svg.contains("ComposeAI Missing Font"),
+      )
+    } finally {
+      host.shutdown()
+      System.clearProperty("composeai.svg.embedFonts")
+    }
+  }
+
+  @Test
   fun figmaSvgLongRenderModeProducesFullPageSvg() {
     // Parity with the desktop backend: the `figma-svg-long` render mode grows the viewport until a
     // virtualised LazyColumn composes every row, sizes to content, and writes the full-page SVG to
