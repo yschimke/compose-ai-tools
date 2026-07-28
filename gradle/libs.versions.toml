@@ -89,14 +89,7 @@ navigation-compose = "2.9.8"
 # 1.1.x is the current stable line; bump when the Glance team ships a 1.2.x with the planned
 # preview-DSL stabilisation.
 glance-appwidget = "1.2.0-rc01"
-# Held at alpha05: alpha06 redesigned `androidx.wear.compose.material3.onehandedgesture`.
-# `OneHandedGestureInteraction` is gone, and both `Modifier.oneHandedGesture` and
-# `OneHandedGestureIndicator` now take an `OneHandedGestureConfiguration` (action + key + priority)
-# plus an explicit `OneHandedGestureIndicatorState` instead of an interaction source — which
-# `:data-gestures-connector` (`GestureReporting`) and the Wear gesture-hint previews are built on.
-# Migrating that seam changes rendered output, so it lands as its own PR with visual evidence;
-# bump this back to the alpha line then.
-wear-compose = "1.7.0-alpha05"
+wear-compose = "1.7.0-alpha06"
 wear-tiles = "1.6.1"
 wear-protolayout = "1.4.1"
 wear-tooling-preview = "1.0.0"

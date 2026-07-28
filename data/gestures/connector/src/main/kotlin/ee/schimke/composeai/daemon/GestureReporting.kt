@@ -1,15 +1,11 @@
 package ee.schimke.composeai.daemon
 
-import androidx.compose.foundation.interaction.Interaction
-import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -20,14 +16,12 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.wear.compose.material3.LocalContentColor
 import androidx.wear.compose.material3.onehandedgesture.GestureAction
 import androidx.wear.compose.material3.onehandedgesture.GestureIndicatorSize
-import androidx.wear.compose.material3.onehandedgesture.GesturePriority
 import androidx.wear.compose.material3.onehandedgesture.LocalOneHandedGestureEnabled
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureConfiguration
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureIndicator
-import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureInteraction
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureIndicatorState
 import androidx.wear.compose.material3.onehandedgesture.oneHandedGesture
 import ee.schimke.composeai.daemon.protocol.GestureKindOverride
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -43,7 +37,7 @@ enum class GestureType(val wire: GestureKindOverride) {
   SCROLL(GestureKindOverride.SCROLL),
   PAGE(GestureKindOverride.PAGE);
 
-  internal fun toGestureAction(): GestureAction =
+  fun toGestureAction(): GestureAction =
     when (this) {
       PRIMARY,
       SCROLL,
@@ -73,10 +67,14 @@ val LocalGestureRegistry: ProvidableCompositionLocal<GestureStateController> =
  * framework's internal, Pixel-Watch-only registry exposes.
  *
  * @param type gesture kind (drives the framework [GestureAction] and the reported wire kind).
- * @param label accessibility / hint label, forwarded to `oneHandedGesture(gestureLabel = …)` and
+ * @param label accessibility / hint label, forwarded to `oneHandedGesture(onGestureLabel = …)` and
  *   used as the handler's identity in the data product.
- * @param interactionSource shared with the matching [GestureHint] so the real indicator can
- *   visualise the gesture.
+ * @param gestureConfiguration persistent action/key/priority specification shared with the matching
+ *   [GestureHint].
+ * @param indicatorState explicit indicator state shared with the matching [GestureHint], or `null`
+ *   when this handler has no indicator.
+ * @param interactionSource forwarded to the framework so gesture activation produces the same
+ *   pressed/ripple feedback as a touch interaction.
  * @param hintAvailable whether a [GestureHint] is wired for this handler (reported, not enforced).
  * @param onGesture the action to run when the gesture fires (on-device) or is invoked (data product).
  */
@@ -84,8 +82,9 @@ val LocalGestureRegistry: ProvidableCompositionLocal<GestureStateController> =
 fun Modifier.reportedOneHandedGesture(
   type: GestureType,
   label: String,
+  gestureConfiguration: OneHandedGestureConfiguration,
+  indicatorState: OneHandedGestureIndicatorState? = null,
   interactionSource: MutableInteractionSource,
-  priority: GesturePriority = GesturePriority.Clickable,
   enabledInAmbient: Boolean = false,
   hintAvailable: Boolean = true,
   onGesture: suspend () -> Unit,
@@ -104,11 +103,11 @@ fun Modifier.reportedOneHandedGesture(
     onDispose { controller.unregister(type.wire, label) }
   }
   return this.oneHandedGesture(
-    action = type.toGestureAction(),
-    priority = priority,
+    gestureConfiguration = gestureConfiguration,
     enabledInAmbient = enabledInAmbient,
     interactionSource = interactionSource,
-    gestureLabel = label,
+    onGestureLabel = label,
+    onGestureAvailable = { indicatorState?.isIndicatorActive = true },
     onGesture = onGesture,
   )
 }
@@ -116,74 +115,41 @@ fun Modifier.reportedOneHandedGesture(
 /**
  * Wraps [content] with the real Wear [OneHandedGestureIndicator] hint affordance.
  *
- * On-device the hint shows when the gesture emits an `Indicate` interaction on [interactionSource]:
- * the real [OneHandedGestureIndicator] **fades [content] out and swaps in** the gesture animation in
- * its place (it is not an overlay — the content underneath is hidden), then fades the content back.
- *
- * In a preview [forceShow] is set, or the daemon applied `overrides.gestures.showHints = true` (the
- * seam `@GestureHintPreview` drives). On that force path the real indicator's show/hide coroutine
- * settles back to hidden during a Robolectric render's pre-roll, so a still capture never catches it
- * — instead we render the indicator's **peak frame directly**: [content] faded out and the shipped
- * indicator drawable ([GestureIndicatorIcon]) centred in its place, matching what the device shows
- * mid-gesture. On-device (no override, [forceShow] `false`) this path is not taken and the real
- * indicator behaves exactly as before.
+ * The matching [reportedOneHandedGesture] sets [indicatorState] active when the framework reports
+ * the gesture as available. In a forced still preview, [forceShow] or the daemon's
+ * `overrides.gestures.showHints = true` renders the indicator's peak frame directly because the real
+ * finite animation completes during Robolectric idle pre-roll.
  */
 @Composable
 fun GestureHint(
-  type: GestureType,
-  interactionSource: InteractionSource,
+  gestureConfiguration: OneHandedGestureConfiguration,
+  indicatorState: OneHandedGestureIndicatorState,
   modifier: Modifier = Modifier,
   forceShow: Boolean = false,
   gestureIndicatorSize: GestureIndicatorSize = GestureIndicatorSize.Medium,
   gestureIndicatorTint: Color = LocalContentColor.current,
-  content: @Composable BoxScope.() -> Unit,
+  content: @Composable () -> Unit,
 ) {
   val hintsRequested by LocalGestureRegistry.current.hintsShownState
   val forced = forceShow || hintsRequested
   if (forced) {
-    // Peak-frame replica of the real indicator's swap: content hidden (alpha 0, still measured so
-    // the layout keeps its size), gesture icon centred where the content was.
+    // The real indicator resets its finite animation before an idle still capture. Preserve the
+    // peak frame deterministically while still measuring the original content.
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
-      Box(modifier = Modifier.graphicsLayer { alpha = 0f }, content = content)
-      // `GestureIndicatorSize.size` is library-internal, so use the icon's own default (≈ the
-      // Medium indicator). Callers that need a specific size tint/scale via the icon directly.
-      GestureIndicatorIcon(type = type, tint = gestureIndicatorTint)
+      Box(modifier = Modifier.graphicsLayer { alpha = 0f }) { content() }
+      GestureIndicatorIcon(
+        action = gestureConfiguration.action,
+        tint = gestureIndicatorTint,
+      )
     }
-  } else {
-    OneHandedGestureIndicator(
-      interactionSource = interactionSource,
-      modifier = modifier,
-      gestureIndicatorSize = gestureIndicatorSize,
-      gestureIndicatorTint = gestureIndicatorTint,
-      content = content,
-    )
+    return
   }
+  OneHandedGestureIndicator(
+    gestureConfiguration = gestureConfiguration,
+    indicatorState = indicatorState,
+    modifier = modifier,
+    gestureIndicatorSize = gestureIndicatorSize,
+    gestureIndicatorTint = gestureIndicatorTint,
+    content = content,
+  )
 }
-
-/**
- * A [MutableInteractionSource] whose stream replays a single `Indicate` for [type], so a late
- * subscriber (a Wear gesture indicator collecting after composition settles) always observes it and
- * shows the hint deterministically in a single captured frame.
- *
- * [GestureHint] uses it on its force-show paths; the scroll / page indicators
- * (`OneHandedGestureScrollIndicator`, `OneHandedGestureHorizontalPageIndicator`) don't go through
- * [GestureHint], so a preview that wants their hint force-shown feeds them this source directly.
- */
-@Composable
-fun rememberForcedGestureHintSource(type: GestureType): MutableInteractionSource =
-  remember(type) {
-    object : MutableInteractionSource {
-      private val shared =
-        MutableSharedFlow<Interaction>(replay = 1, extraBufferCapacity = 16).apply {
-          tryEmit(OneHandedGestureInteraction.Indicate(type.toGestureAction(), key = "forced"))
-        }
-
-      override val interactions: Flow<Interaction> = shared
-
-      override suspend fun emit(interaction: Interaction) {
-        shared.emit(interaction)
-      }
-
-      override fun tryEmit(interaction: Interaction): Boolean = shared.tryEmit(interaction)
-    }
-  }

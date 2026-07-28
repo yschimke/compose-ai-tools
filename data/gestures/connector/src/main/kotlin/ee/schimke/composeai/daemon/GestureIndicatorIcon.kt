@@ -13,29 +13,27 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.LocalContentColor
+import androidx.wear.compose.material3.onehandedgesture.GestureAction
 
 /**
- * Renders wear-compose-material3's shipped gesture-indicator AVD
- * (`wear_one_handed_gesture_{primary,dismiss}_indicator_animation`) as a static, tinted icon via the
- * official `androidx.compose.animation.graphics` API — the same drawable the real
- * `OneHandedGestureIndicator` draws internally, shown at its resting frame.
+ * Renders wear-compose-material3's shipped gesture-indicator AVD as a static, tinted peak frame.
  *
- * [GestureHint] overlays this on its force-show path: the interactive indicator's show/hide
- * coroutine settles to hidden during a Robolectric render's pre-roll, so a forced preview draws the
- * drawable directly to make the hint visible in a single captured frame. `SCROLL` / `PAGE` ride the
- * primary indicator, matching the framework.
+ * Alpha06's explicit indicator state triggers a finite animation and is reset by the real
+ * indicator. Robolectric completes that animation during idle pre-roll, so [GestureHint] uses this
+ * replica only for a forced still capture. Normal on-device rendering uses the real state-backed
+ * indicator.
  */
 @OptIn(ExperimentalAnimationGraphicsApi::class)
 @Composable
 fun GestureIndicatorIcon(
-  type: GestureType,
+  action: GestureAction,
   modifier: Modifier = Modifier,
   size: Dp = 40.dp,
   tint: Color = LocalContentColor.current,
 ) {
   val resId =
-    when (type) {
-      GestureType.DISMISS ->
+    when (action) {
+      GestureAction.Dismiss ->
         androidx.wear.compose.material3.R.drawable
           .wear_one_handed_gesture_dismiss_indicator_animation
       else ->

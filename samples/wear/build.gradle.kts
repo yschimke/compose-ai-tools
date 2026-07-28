@@ -58,9 +58,9 @@ dependencies {
   // `:data-gestures-connector` — the Wear OS one-handed-gesture data extension. `Gestures.kt`
   // wires its screens with the connector's `reportedOneHandedGesture` / `GestureHint` seam so the
   // handlers show up in `compose/gestures` and are drivable via `renderNow.overrides.gestures`.
-  // Static `@Preview` rendering doesn't run the daemon extension chain, so previews pass
-  // `forceHint = true` (or `rememberForcedGestureHintSource`) to render the hint affordance; the
-  // daemon path force-shows it from `overrides.gestures.showHints`.
+  // Static `@Preview` rendering doesn't run the daemon extension chain, so previews activate an
+  // explicit `OneHandedGestureIndicatorState`; the daemon path activates the same state from
+  // `overrides.gestures.showHints`.
   implementation(project(":data-gestures-connector"))
 
   // `:data-ambient-connector` — the Wear OS ambient-mode data extension. The

@@ -16,8 +16,7 @@ import org.junit.Test
  * - discovery dropped the annotation from `previews.json` (the `gestureHint` capture arrives null), or
  * - the renderer didn't wrap the composition with `:data-gestures-connector`'s
  *   `GestureOverrideExtension`, or
- * - `GestureHint`'s force-show path stopped compositing the indicator drawable (the interactive
- *   `OneHandedGestureIndicator` alone settles to hidden in a still, so both would render plain).
+ * - `GestureHint`'s forced-still peak-frame path stopped drawing the configured gesture action.
  */
 class GestureHintPreviewPixelTest {
 
