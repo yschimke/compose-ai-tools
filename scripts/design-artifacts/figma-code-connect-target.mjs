@@ -21,7 +21,7 @@
  */
 export function bestTarget(targets) {
   const t = Array.isArray(targets) ? targets[0] : undefined;
-  if (!t || !t.functionName) return null;
+  if (!t || !isValidKotlinIdentifier(t.functionName)) return null;
   return {
     functionName: t.functionName,
     className: t.className ?? undefined,
@@ -32,6 +32,11 @@ export function bestTarget(targets) {
     // signature couldn't be read.
     parameters: Array.isArray(t.parameters) ? t.parameters : [],
   };
+}
+
+/** Conservative source-level Kotlin identifier check for generated call sites/imports. */
+export function isValidKotlinIdentifier(value) {
+  return typeof value === "string" && /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
 }
 
 /** Parse the raw `previews.json` entry (a `{ previews: [...] }` manifest or a bare array). */

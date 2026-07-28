@@ -19,6 +19,8 @@ test("importFor derives the import from the owner-facade FQN", () => {
   assert.equal(importFor("com.x.ui.ButtonsKt", "Button"), "import com.x.ui.Button");
   assert.equal(importFor("Button", "Button"), null); // no package
   assert.equal(importFor(undefined, "Button"), null);
+  assert.equal(importFor("com.x.ScreenKt", "Screen-G2aJUZY"), null);
+  assert.equal(importFor("com.bad-package.ScreenKt", "Screen"), null);
 });
 
 test("renderCallSite renders only required params, slots as lambdas", () => {

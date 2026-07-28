@@ -48,8 +48,21 @@ export function resolveSource({ repo, ref, module, sourceFile } = {}) {
  */
 export function importFor(className, componentName) {
   if (!className || !componentName) return null;
-  const pkg = className.split(".").slice(0, -1).join(".");
+  const ownerParts = className.split(".");
+  const packageParts = ownerParts.slice(0, -1);
+  if (
+    !isValidKotlinIdentifier(componentName) ||
+    packageParts.length === 0 ||
+    packageParts.some((part) => !isValidKotlinIdentifier(part))
+  ) {
+    return null;
+  }
+  const pkg = packageParts.join(".");
   return pkg ? `import ${pkg}.${componentName}` : null;
+}
+
+function isValidKotlinIdentifier(value) {
+  return typeof value === "string" && /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
 }
 
 /**

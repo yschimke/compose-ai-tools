@@ -41,4 +41,33 @@ class PreviewTargetInferenceTest {
   fun `nameMatches rejects bare Preview when nothing left after strip`() {
     assertThat(PreviewTargetInference.nameMatches("Preview", "Anything")).isFalse()
   }
+
+  @Test
+  fun `invalid JVM names are rejected as Kotlin import targets`() {
+    assertThat(PreviewTargetInference.isValidKotlinImportIdentifier("Screen")).isTrue()
+    assertThat(PreviewTargetInference.isValidKotlinImportIdentifier("_Screen2")).isTrue()
+    assertThat(PreviewTargetInference.isValidKotlinImportIdentifier("Screen-G2aJUZY")).isFalse()
+    assertThat(PreviewTargetInference.isValidKotlinImportIdentifier("Screen\$module")).isFalse()
+  }
+
+  @Test
+  fun `preview wrapper names and debug catalog sources are rejected`() {
+    assertThat(PreviewTargetInference.isPreviewOnlyWrapper("Wrap", null)).isTrue()
+    assertThat(PreviewTargetInference.isPreviewOnlyWrapper("JetnewsTheme", null)).isTrue()
+    assertThat(PreviewTargetInference.isPreviewOnlyWrapper("JetsnackPreviewWrapper", null)).isTrue()
+    assertThat(
+        PreviewTargetInference.isPreviewOnlyWrapper(
+          "Component",
+          "src/debug/kotlin/com/example/catalog/Components.kt",
+        )
+      )
+      .isTrue()
+    assertThat(
+        PreviewTargetInference.isPreviewOnlyWrapper(
+          "Component",
+          "src/main/kotlin/com/example/components/Components.kt",
+        )
+      )
+      .isFalse()
+  }
 }
