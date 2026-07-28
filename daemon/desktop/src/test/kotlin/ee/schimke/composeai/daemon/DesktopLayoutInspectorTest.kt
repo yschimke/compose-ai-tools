@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.paint
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
@@ -211,6 +212,24 @@ class DesktopLayoutInspectorTest {
     // 0xFF * 0.5 = 127.5 → 0x80 alpha over the opaque red.
     val faded = root.firstWhere { it.tokens?.backgroundColor == "#80FF0000" }
     assertNotNull("Modifier.paint alpha must fold into the resolved background alpha", faded)
+  }
+
+  @Test
+  fun carries_brush_background_identity_when_inspector_properties_are_absent() {
+    val root = writeAndRead {
+      Box(
+        Modifier.testTag("gradient")
+          .size(120.dp, 40.dp)
+          .background(Brush.horizontalGradient(listOf(Color.Red, Color.Blue)))
+      )
+    }
+
+    val gradient = root.firstWhere { node ->
+      node.modifiers.any {
+        it.name == "BackgroundElement" && it.properties["brush"]?.contains("Gradient") == true
+      }
+    }
+    assertNotNull("a brush background must remain identifiable in layout-inspector data", gradient)
   }
 
   @Test

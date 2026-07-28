@@ -18,7 +18,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.text.SpanStyle
@@ -29,6 +32,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
@@ -215,6 +219,24 @@ class DesktopSemanticsTokensTest {
   }
 
   @Test
+  fun resolves_effective_corner_shape_from_animated_shape_state() {
+    // Material 3 expressive ToggleButton wraps its current CornerBasedShape in an anonymous Shape
+    // whose `$state.getMorphedShape()` supplies the actual outline. Pin that structure without
+    // taking a Material 3 internal dependency: the exported button must keep the live 15dp corner
+    // instead of becoming a sharp rectangle (#2852).
+    val animatedShape = AnimatedShapeWrapper(AnimatedShapeState(RoundedCornerShape(15.dp)))
+    val root = buildTree {
+      Box(
+        Modifier.testTag("animated")
+          .size(width = 76.dp, height = 56.dp)
+          .background(Color(0xFFFFE523), animatedShape)
+      )
+    }
+
+    assertEquals("15.0dp", root.find("animated")?.tokens?.cornerRadius)
+  }
+
+  @Test
   fun resolves_text_typography_identity() {
     // #1934: a text node must surface *which face* it's drawn in — size, family, weight, style,
     // letter spacing, line height — all under the `typography` object (size folded in by #1903).
@@ -339,4 +361,14 @@ class DesktopSemanticsTokensTest {
     assertNotNull("chip must carry resolved tokens", tokens)
     assertEquals("#FFCAC4D0", tokens!!.borderColor)
   }
+}
+
+private class AnimatedShapeState(val morphedShape: Shape)
+
+private class AnimatedShapeWrapper(private val state: AnimatedShapeState) : Shape {
+  override fun createOutline(
+    size: Size,
+    layoutDirection: LayoutDirection,
+    density: Density,
+  ): Outline = state.morphedShape.createOutline(size, layoutDirection, density)
 }

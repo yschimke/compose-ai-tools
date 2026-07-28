@@ -536,17 +536,12 @@ data class FigmaSvgModel(
           raster = FigmaSvgRaster(href),
         )
       }
-      // A container filled by a `Modifier.paint(painter)` whose painter is NOT a plain
-      // `ColorPainter`
-      // — a component's private `Painter` (Wear `SwitchButton`'s animated colour painter, a
-      // lazy-list `BackgroundPainter`), a `BitmapPainter`, a gradient — leaves `backgroundColor`
-      // unresolved, so the fill would silently vanish from a vector-only export (the pill/card just
-      // disappears). We can't teach the token resolver every component's private painter type, so
-      // fall back to the frame: in hybrid mode capture the painted region as an `<image>` (exactly
-      // as an opaque `Image`/`Icon` is handled) and drop the subtree. The ONLY painter we can turn
-      // into a flat vector fill is a `ColorPainter`, so "the painter isn't `ColorPainter(...)`" is
-      // the general signal to raster — no per-class knowledge, keyed only off the captured painter
-      // string + the modifier's own drawn bounds.
+      // A container filled by paint the token model cannot flatten — a non-ColorPainter
+      // `Modifier.paint`, or a brush-backed `Modifier.background` — leaves `backgroundColor`
+      // unresolved, so the fill would silently vanish. Fall back to the frame in hybrid mode:
+      // capture the complete painted region as an `<image>` and drop its subtree. Rasterising the
+      // complete layer is deliberate for brush containers with text/children: a background-only
+      // crop is unavailable, and keeping editable descendants would draw them twice.
       if (
         ctx.captureCanvasDraws && tokens?.backgroundColor == null && hasUnvectorizablePaintFill()
       ) {
@@ -828,12 +823,18 @@ data class FigmaSvgModel(
       setOf("paint", "PainterElement", "content", "ContentPainterElement", "ContentPainterModifier")
 
     /**
-     * True when this node is filled by a `Modifier.paint` painter we can't turn into a flat colour.
-     * The token resolver only reads a plain [androidx.compose.ui.graphics.painter.ColorPainter]
-     * (whose captured string is `ColorPainter(color=Color(…))`); any other painter — a component's
-     * private `Painter`, a `BitmapPainter`, a gradient — stringifies to a class name and leaves the
-     * fill unresolved. Recognising the one painter we CAN vectorise (and rastering everything else)
-     * keeps this free of per-component knowledge: a painter present but of any other form ⇒ raster.
+     * True when this node is filled by paint we can't turn into a flat colour.
+     *
+     * A brush-backed `Modifier.background` is always unvectorisable in the current model. The
+     * connector explicitly carries a `brush` property even when Compose compiled inspector metadata
+     * out, so a gradient cannot be mistaken for an unpainted node.
+     *
+     * For `Modifier.paint`, the token resolver only reads a plain
+     * [androidx.compose.ui.graphics.painter.ColorPainter] (whose captured string is
+     * `ColorPainter(color=Color(…))`); any other painter — a component's private `Painter`, a
+     * `BitmapPainter`, a gradient — stringifies to a class name and leaves the fill unresolved.
+     * Recognising the one painter we CAN vectorise (and rastering everything else) keeps this free
+     * of per-component knowledge: a painter present but of any other form ⇒ raster.
      *
      * The one caveat is a `ColorPainter` carrying a `colorFilter`: the string still starts with
      * `ColorPainter(`, but the resolver deliberately leaves the fill unresolved because a
@@ -846,6 +847,11 @@ data class FigmaSvgModel(
      * vector export could read from it — raster.
      */
     private fun LayoutInspectorNode.hasUnvectorizablePaintFill(): Boolean {
+      val brushBackground = modifiers.firstOrNull {
+        (it.name == "background" || it.name == "BackgroundElement") &&
+          it.properties["brush"]?.let { brush -> brush != "null" } == true
+      }
+      if (brushBackground != null) return true
       val paint = modifiers.firstOrNull { it.name in PAINT_FILL_MODIFIERS } ?: return false
       val painter = paint.properties["painter"] ?: return true
       if (!painter.startsWith("ColorPainter(")) return true
@@ -855,8 +861,13 @@ data class FigmaSvgModel(
 
     /** The region a paint-fill painter actually covers — its modifier bounds, else the node box. */
     private fun LayoutInspectorNode.paintFillRegion(): LayoutInspectorBounds =
-      modifiers.firstOrNull { it.name in PAINT_FILL_MODIFIERS && it.bounds != null }?.bounds
-        ?: bounds
+      modifiers
+        .firstOrNull {
+          (it.name in PAINT_FILL_MODIFIERS ||
+            it.name == "background" ||
+            it.name == "BackgroundElement") && it.bounds != null
+        }
+        ?.bounds ?: bounds
 
     /** The Compose modifiers that paint via an imperative Canvas the token export can't read. */
     private val DRAW_MODIFIERS = setOf("drawBehind", "drawWithContent", "drawWithCache")
