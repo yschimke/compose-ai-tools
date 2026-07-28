@@ -45,8 +45,17 @@ class PlaceholderStateOverrideExtension(private val active: Boolean) :
  * Returns null when the field is unset, so a plain render leaves [LocalPlaceholderActive] null and
  * the preview keeps whatever state it computes for itself — the placeholder pin only engages when a
  * caller explicitly asks for a state.
+ *
+ * [AlwaysOnPreviewOverrideExtension] so it is consulted on **every** render rather than only when
+ * the `data/overrides` extension it is registered under has been enabled. The enable gate governs
+ * that extension's client-visible `data/fetch` product (the editable-knob payload), which this
+ * planner has nothing to do with — and the consumer that would break is exactly the one the feature
+ * targets: `serve` (`/render/<id>.png?placeholderActive=true`) never calls `extensions/enable`, so
+ * gating would parse, cache, and advertise the override while silently rendering the wrong state.
+ * Being consulted always costs nothing: [plan] abstains unless the field is set.
  */
-class PlaceholderStatePreviewOverrideExtension : DataExtension<PreviewOverrides> {
+class PlaceholderStatePreviewOverrideExtension :
+  DataExtension<PreviewOverrides>, AlwaysOnPreviewOverrideExtension {
   override val id: DataExtensionId = PlaceholderStateOverrideExtension.ID
 
   override fun plan(request: PreviewOverrides): PlannedDataExtension? =

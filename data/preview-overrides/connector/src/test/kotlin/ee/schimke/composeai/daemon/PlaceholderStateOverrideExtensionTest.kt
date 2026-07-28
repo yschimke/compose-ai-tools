@@ -29,6 +29,18 @@ class PlaceholderStateOverrideExtensionTest {
   }
 
   @Test
+  fun `the planner is always-on so serve does not need extensions-enable`() {
+    // `ExtensionRegistry.activeOverrideExtensions` gates a planner on its owning extension unless
+    // it carries this marker. `serve` (the consumer this override exists for) never calls
+    // `extensions/enable`, so without it `?placeholderActive=` would parse, cache, and advertise
+    // while silently rendering the preview's own state.
+    assertTrue(extension is AlwaysOnPreviewOverrideExtension)
+    // Always-on planners are also handed an empty bag on a no-override render; abstaining there is
+    // what keeps an unforced render byte-identical.
+    assertNull(extension.plan(PreviewOverrides()))
+  }
+
+  @Test
   fun `plan returns the extension for the loaded state too`() {
     // `false` is a real pin, not "unset": it forces the ideal state even for a preview whose own
     // state would say otherwise, which is what makes the two renders a deterministic pair.

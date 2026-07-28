@@ -1004,15 +1004,21 @@ data class FigmaSvgModel(
      * True when the node paints through a custom Canvas draw (a `Canvas`, or a component drawing
      * its chrome via `Modifier.drawBehind {…}` like the progress/slider indicators).
      *
-     * **Never** for a node carrying an *inactive* placeholder (issue #2646). A Wear/M3
-     * `Modifier.placeholder` draws through a `drawWithContent`, but in the ideal (content-loaded)
-     * state that draw is a pass-through: the pixels under it are the node's own text/children,
-     * which the vector export represents exactly. Rasterising it crops the composited frame and
-     * doubles whatever the vector path already emitted (the "text rendered twice" bug, #2644). An
-     * *active* placeholder never reaches here — [toLayer] returns its own vector layer first.
+     * The placeholder's **own** draw doesn't count (issue #2646). A Wear/M3 `Modifier.placeholder`
+     * draws through a `drawWithContent`, but in the ideal (content-loaded) state that draw is a
+     * pass-through: the pixels under it are the node's own text/children, which the vector export
+     * represents exactly. Rasterising it crops the composited frame and doubles whatever the vector
+     * path already emitted (the "text rendered twice" bug, #2644). An *active* placeholder never
+     * reaches here — [toLayer] returns its own vector layer first.
+     *
+     * Scoped to the entries [LayoutInspectorModifier.placeholder] marks, not to the whole node: a
+     * `Modifier.drawBehind {…}.placeholder(state)` chain still paints its own imperative art into
+     * the frame, and that art is not something the vector export can otherwise represent.
      */
-    private fun LayoutInspectorNode.hasCustomDraw(): Boolean =
-      placeholder == null && modifiers.any { it.name in DRAW_MODIFIERS }
+    private fun LayoutInspectorNode.hasCustomDraw(): Boolean = modifiers.any { it.isCustomDraw() }
+
+    private fun LayoutInspectorModifier.isCustomDraw(): Boolean =
+      name in DRAW_MODIFIERS && !placeholder
 
     /**
      * The region the Canvas draw actually paints — the union of the draw modifiers' bounds, which
@@ -1020,7 +1026,7 @@ data class FigmaSvgModel(
      * bounds when a draw modifier carries none.
      */
     private fun LayoutInspectorNode.drawnRegion(): LayoutInspectorBounds {
-      val drawn = modifiers.filter { it.name in DRAW_MODIFIERS }.mapNotNull { it.bounds }
+      val drawn = modifiers.filter { it.isCustomDraw() }.mapNotNull { it.bounds }
       if (drawn.isEmpty()) return bounds
       return LayoutInspectorBounds(
         left = drawn.minOf { it.left },

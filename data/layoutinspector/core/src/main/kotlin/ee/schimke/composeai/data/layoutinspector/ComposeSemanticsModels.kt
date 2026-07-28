@@ -73,10 +73,12 @@ object LayoutInspectorProduct {
   // v7: `tokens` may carry effective graphics-layer `opacity`. Additive; older entries decode it
   // as null (fully opaque).
   // v8 (#2646): each node may carry a `placeholder` — the Wear/M3 content-loading placeholder its
-  // modifier chain declares, plus whether that placeholder is currently *visible*. The figma-svg
-  // export needs the state, not just the chain: the ideal state must keep its editable content
-  // (no `drawWithContent` raster, no 50%-pill corner) while the loading state gets the placeholder
-  // block as its own vector layer. Additive — older entries parse with `placeholder = null`.
+  // modifier chain declares, plus whether that placeholder is currently *visible*, and each
+  // modifier entry carries a `placeholder` flag marking the entries that ARE that placeholder. The
+  // figma-svg export needs the state, not just the chain: the ideal state must keep its editable
+  // content (no `drawWithContent` raster, no 50%-pill corner) while the loading state gets the
+  // placeholder block as its own vector layer. Additive — older entries parse with
+  // `placeholder = null` / `false`.
   const val SCHEMA_VERSION: Int = 8
   const val FILE: String = "layout-inspector.json"
 }
@@ -588,4 +590,15 @@ data class LayoutInspectorModifier(
   val value: String? = null,
   val properties: Map<String, String> = emptyMap(),
   val bounds: LayoutInspectorBounds? = null,
+  /**
+   * True when this entry belongs to a content-loading placeholder ([PlaceholderModifiers]) — the
+   * shimmer's own element, or the anonymous `drawWithContent` / `graphicsLayer` pair
+   * `Modifier.placeholder` lowers to.
+   *
+   * Node-level [LayoutInspectorNode.placeholder] says a placeholder is present; this says *which
+   * entries are it*, which is what lets the export drop the placeholder's pass-through draw without
+   * dropping an unrelated `Modifier.drawBehind {…}` on the same chain (whose pixels are genuinely
+   * in the frame). Additive (v8): older files decode with `placeholder = false`.
+   */
+  val placeholder: Boolean = false,
 )

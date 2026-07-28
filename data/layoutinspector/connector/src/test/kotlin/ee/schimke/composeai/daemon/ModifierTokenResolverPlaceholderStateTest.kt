@@ -6,6 +6,7 @@ import androidx.wear.compose.material3.PlaceholderDrawLambdaDouble
 import androidx.wear.compose.material3.PlaceholderStateDouble
 import ee.schimke.composeai.data.layoutinspector.PlaceholderModifiers
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -71,6 +72,22 @@ class ModifierTokenResolverPlaceholderStateTest {
     class AppDrawLambda(@JvmField val unrelated: String = "")
 
     assertNull(resolve(DrawWithContentElement(AppDrawLambda())))
+  }
+
+  @Test
+  fun `per-entry identity marks the placeholder chrome and nothing else`() {
+    // What lets the export drop only the placeholder's own pass-through draw: an app's
+    // `Modifier.drawBehind` on the same chain must not be marked, or its art vanishes from the SVG.
+    class AppDrawLambda(@JvmField val unrelated: String = "")
+
+    assertTrue(ModifierTokenResolver.isPlaceholderElement(block(PlaceholderStateDouble(false))))
+    assertTrue(
+      ModifierTokenResolver.isPlaceholderElement(
+        PlaceholderShimmerElement(PlaceholderStateDouble(false))
+      )
+    )
+    assertFalse(ModifierTokenResolver.isPlaceholderElement(DrawWithContentElement(AppDrawLambda())))
+    assertFalse(ModifierTokenResolver.isPlaceholderElement(Any()))
   }
 
   @Test

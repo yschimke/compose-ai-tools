@@ -595,6 +595,28 @@ internal object ModifierTokenResolver {
   }
 
   /**
+   * True when this single modifier element *is* placeholder chrome — either the shimmer's own
+   * element or one of the anonymous `drawWithContent` / `graphicsLayer` entries
+   * `Modifier.placeholder` lowers to (recognised through the origin of the lambda it captured).
+   *
+   * Per-entry, unlike [resolvePlaceholderElements]'s per-node projection: the export needs to drop
+   * the placeholder's own pass-through draw *without* dropping an unrelated `Modifier.drawBehind`
+   * sharing the chain, whose pixels really are in the frame.
+   */
+  fun isPlaceholderElement(mod: Any): Boolean {
+    val inspectable = mod as? InspectableValue
+    if (
+      PlaceholderModifiers.isPlaceholderModifier(
+        inspectable?.nameFallback,
+        mod.javaClass.simpleName,
+      )
+    ) {
+      return true
+    }
+    return capturedValues(mod).any { PlaceholderModifiers.isPlaceholderOrigin(it.javaClass.name) }
+  }
+
+  /**
    * Everything a modifier element carries that a placeholder's identity/state could hide in: the
    * element itself, its own field values, and the field values of *those* — because the block
    * placeholder keeps its `PlaceholderState`, shape and colour inside the `drawWithContent` lambda

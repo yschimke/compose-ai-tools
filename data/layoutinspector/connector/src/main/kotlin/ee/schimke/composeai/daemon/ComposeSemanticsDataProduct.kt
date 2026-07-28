@@ -1113,6 +1113,11 @@ internal object ComposeLayoutInspector {
       value = value,
       properties = properties,
       bounds = coordinates.boundsIn(rootCoordinates),
+      // Marks the entries that ARE the placeholder (issue #2646) — the shimmer's element, or the
+      // anonymous `drawWithContent`/`graphicsLayer` pair `Modifier.placeholder` lowers to. The
+      // export drops only these when ignoring an inactive placeholder, so a real
+      // `Modifier.drawBehind {…}` on the same chain keeps its raster.
+      placeholder = ModifierTokenResolver.isPlaceholderElement(modifier),
     )
   }
 

@@ -35,7 +35,7 @@ class FigmaSvgPlaceholderStateTest {
       component = "Text",
       bounds = bounds(0, 0, 200, 50),
       size = LayoutInspectorSize(200, 50),
-      modifiers = listOf(LayoutInspectorModifier(name = "drawWithContent")),
+      modifiers = listOf(LayoutInspectorModifier(name = "drawWithContent", placeholder = true)),
       placeholder =
         LayoutInspectorPlaceholder(
           kind = PlaceholderModifiers.KIND_PLACEHOLDER,
@@ -107,6 +107,31 @@ class FigmaSvgPlaceholderStateTest {
     assertTrue("emitted as an editable shape", svg.contains("<rect"))
     assertTrue("nothing baked from the frame", !svg.contains("<image"))
     assertTrue("the covered string is gone", !svg.contains("Confetti"))
+  }
+
+  @Test
+  fun `an unrelated draw on a placeholdered node keeps its raster`() {
+    // `Modifier.drawBehind { … }.placeholder(state)`: the placeholder's own draw is a pass-through
+    // in the ideal state, but the app's imperative art really is in the frame. Suppressing every
+    // draw on the node would silently lose it, so the exclusion is per-entry, not per-node.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "chip",
+        component = "Spacer",
+        bounds = bounds(0, 0, 200, 50),
+        size = LayoutInspectorSize(200, 50),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(name = "drawBehind"),
+            LayoutInspectorModifier(name = "drawWithContent", placeholder = true),
+          ),
+        placeholder =
+          LayoutInspectorPlaceholder(kind = PlaceholderModifiers.KIND_PLACEHOLDER, visible = false),
+      )
+    val m = model(node, text = null)
+
+    assertEquals(1, m.rasterTargets.size)
+    assertNotNull(m.root.background)
   }
 
   @Test
