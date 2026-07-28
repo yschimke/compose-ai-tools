@@ -43,4 +43,29 @@ class WidgetContainerIrCaptureTest {
       assertThat(rc.length()).isGreaterThan(0L)
     }
   }
+
+  /**
+   * The document must carry the sticker's **content**, not just its container.
+   *
+   * A widget's fill rides the document's `WearWidgetBrush` while its text rides `TEXT_LAYOUT` ops,
+   * and the two fail independently: a capture that lost the content subtree would still emit a
+   * plausible, non-empty `.rc` that renders as a correctly-shaped but empty squircle. Size alone
+   * can't tell those apart, so assert on the strings themselves — they are stored as UTF-8 in the
+   * encoded document.
+   */
+  @Test
+  fun `each widget container document carries its text content`() {
+    val expected =
+      mapOf(
+        "WidgetContainerSmallRemote" to listOf("Next: Standup 10:30"),
+        "WidgetContainerLargeRemote" to listOf("Morning run", "28 min"),
+        "WidgetContainerGradientRemote" to listOf("Gradient"),
+      )
+    for ((stem, strings) in expected) {
+      val bytes = File(rendersDir, "$stem.rc").readBytes().toString(Charsets.UTF_8)
+      for (s in strings) {
+        assertThat(bytes).contains(s)
+      }
+    }
+  }
 }
