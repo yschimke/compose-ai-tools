@@ -617,6 +617,11 @@ class ServeHttpServer(
           // Why the catalog is snapshot-only, when it is (no live bundle, unverified, …) — shown as
           // a banner under the header so a browser sees it before opening a preview.
           degradations = renderHost.degradations,
+          // The module's declared @ThemeCatalog themes join the header's Theme control, so the grid
+          // can be redrawn under any theme the catalog configures — not just baked Light/Dark. Only
+          // a daemon-twinned card can actually re-render one, hence the per-preview predicate.
+          declaredThemes = renderHost.declaredThemes,
+          canRenderThemeFor = { id -> renderHost.canRenderOverridesFor(id) },
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = heroUrl),
         ),
         ContentType.Text.Html,

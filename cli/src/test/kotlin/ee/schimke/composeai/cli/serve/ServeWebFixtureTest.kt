@@ -627,6 +627,29 @@ class ServeWebFixtureTest {
         hasHomeIndex = true,
         version = version,
       )
+    // The same themed catalog served LIVE by a session whose app declares `@ThemeCatalog` themes:
+    // the header's Theme control lists every configured theme (issue #2881) — the baked Light/Dark
+    // pair plus each declared theme — instead of only Light/Dark. Picking a declared theme
+    // re-points each daemon-twinned card's thumbnail at a `?themeProvider=` render. Captured so the
+    // visual-diff bot covers the widened control.
+    val landingDeclaredThemes =
+      ServeWeb.landingPage(
+        "compose-m3",
+        themedPreviews,
+        token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+        hasHomeIndex = true,
+        version = version,
+        declaredThemes =
+          listOf(
+            ServeTheme("Brand Light", "com.example.BrandLightThemeCatalog", group = "Brand"),
+            ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog", group = "Brand"),
+            ServeTheme("High Contrast", "com.example.HighContrastThemeCatalog"),
+          ),
+        canRenderThemeFor = { true },
+      )
     // A catalog whose components carry baked non-default states: the landing folds each to ONE card
     // (the default), the non-default states reachable via the viewer switcher.
     val landingStates =
@@ -852,6 +875,7 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-landing-path.html").writeText(landingPath)
       File(pagesDir, "serve-viewer-path.html").writeText(viewerPath)
       File(pagesDir, "serve-landing-themed.html").writeText(landingThemed)
+      File(pagesDir, "serve-landing-declared-themes.html").writeText(landingDeclaredThemes)
       File(pagesDir, "serve-landing-states.html").writeText(landingStates)
       File(pagesDir, "serve-landing-sections.html").writeText(landingSections)
       File(pagesDir, "serve-viewer-states.html").writeText(viewerStates)
@@ -960,6 +984,90 @@ class ServeWebFixtureTest {
     assertGolden(File(pagesDir, "serve-landing-path.html"), landingPath)
     assertGolden(File(pagesDir, "serve-viewer-path.html"), viewerPath)
     assertGolden(File(pagesDir, "serve-landing-themed.html"), landingThemed)
+    assertGolden(File(pagesDir, "serve-landing-declared-themes.html"), landingDeclaredThemes)
+    // Issue #2881: the header control lists every CONFIGURED theme, not just Light/Dark — the baked
+    // pair plus one chip per declared `@ThemeCatalog` theme, each carrying its provider FQN.
+    assertTrue(
+      landingDeclaredThemes.contains("data-theme-choice=\"light\"") &&
+        landingDeclaredThemes.contains("data-theme-choice=\"dark\"") &&
+        landingDeclaredThemes.contains(
+          "data-theme-choice=\"theme:com.example.BrandLightThemeCatalog\""
+        ) &&
+        landingDeclaredThemes.contains(
+          "data-theme-choice=\"theme:com.example.HighContrastThemeCatalog\""
+        ),
+      "the catalog Theme control offers the baked pair plus every declared theme",
+    )
+    // Picking a declared theme re-renders through `themeProvider`. The per-card base URLs are
+    // emitted by the SERVER (in the grid's document order) and never read back out of the DOM, so
+    // no `<img src>` the script assigns originates as DOM text (CodeQL js/xss-through-dom).
+    assertTrue(
+      landingDeclaredThemes.contains(
+        "var themeBase = [\"/render/button-filled__ideal__default__light.png?session=compose-m3\""
+      ) && landingDeclaredThemes.contains("\"themeProvider=\" + encodeURIComponent(provider)"),
+      "the server emits each card's themed-render URL for the script to use",
+    )
+    assertFalse(
+      landingDeclaredThemes.contains("data-base-src"),
+      "no render URL is round-tripped through a DOM attribute",
+    )
+    // The daemon renders one at a time and sheds the overflow, so themed thumbnails are fetched
+    // serially (each queued, the next started on the previous image's load) with one delayed retry
+    // — otherwise a grid-sized burst would leave most cards on their pre-theme pixels.
+    assertTrue(
+      landingDeclaredThemes.contains("themeQueue.push({") &&
+        landingDeclaredThemes.contains("runThemeQueue(themeQueue, themeQueueGen)") &&
+        landingDeclaredThemes.contains("job.src = job.src + \"&_retry=1\""),
+      "themed renders are fetched serially with a retry, not fired as one burst",
+    )
+    // Re-pointing runs only when the theme itself changed, so a search keystroke (which also calls
+    // apply()) never restarts an in-flight themed-render queue.
+    assertTrue(
+      landingDeclaredThemes.contains("if (theme === appliedTheme) return;"),
+      "the card re-point runs only on an actual theme change",
+    )
+    // A catalog with no declared themes carries none of the theme-render machinery at all.
+    assertFalse(
+      landingThemed.contains("themeBase") || landingThemed.contains("runThemeQueue"),
+      "a baked-only catalog emits no themed-render script",
+    )
+    // A catalog with no declared themes keeps exactly the baked Light/Dark axis — no dead chips, no
+    // themeProvider plumbing offered where nothing could apply it.
+    assertFalse(
+      landingThemed.contains("data-theme-choice=\"theme:"),
+      "a catalog declaring no themes shows only the baked light/dark chips",
+    )
+    // …and declared themes are withheld from a session that cannot re-render them (a static bundle
+    // replays baked PNGs, which would ignore the theme).
+    assertFalse(
+      ServeWeb.landingPage(
+          "compose-m3",
+          themedPreviews,
+          token,
+          declaredThemes = listOf(ServeTheme("Brand Light", "com.example.BrandLightThemeCatalog")),
+        )
+        .contains("data-theme-choice=\"theme:"),
+      "a static bundle offers no declared-theme chips it could not render",
+    )
+    // A theme-NEUTRAL module (no baked light/dark pair) whose session declares themes still gets
+    // the control — a leading "Default" chip to return to the catalog's own renders, plus the
+    // declared themes. Previously such a module showed no theme control at all.
+    val neutralWithThemes =
+      ServeWeb.landingPage(
+        moduleLabel,
+        previews,
+        token,
+        declaredThemes =
+          listOf(ServeTheme("Brand Light", "com.example.BrandLightThemeCatalog", group = "Brand")),
+        canRenderThemeFor = { true },
+      )
+    assertTrue(
+      neutralWithThemes.contains("data-theme-choice=\"default\"") &&
+        neutralWithThemes.contains(
+          "data-theme-choice=\"theme:com.example.BrandLightThemeCatalog\""
+        ),
+      "a theme-neutral module with declared themes gets a Default chip plus the declared themes",
+    )
     assertGolden(File(pagesDir, "serve-landing-states.html"), landingStates)
     assertGolden(File(pagesDir, "serve-landing-sections.html"), landingSections)
     assertGolden(File(pagesDir, "serve-viewer-states.html"), viewerStates)
@@ -1356,7 +1464,9 @@ class ServeWebFixtureTest {
     )
     // The swap re-points the image + viewer link + id + label to the chosen theme's baked render.
     assertTrue(
-      landingThemed.contains("img.src = src;") &&
+      landingThemed.contains(
+        "if (img) { if (withSrc) img.src = src; img.setAttribute(\"alt\", lbl); }"
+      ) &&
         landingThemed.contains(
           "c.setAttribute(\"href\", c.getAttribute(\"data-\" + k + \"-href\"))"
         ),

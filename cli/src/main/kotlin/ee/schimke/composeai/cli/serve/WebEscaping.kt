@@ -23,6 +23,29 @@ internal object WebEscaping {
       }
     }
 
+  /**
+   * A double-quoted **JavaScript string literal** for [s], safe to interpolate into an inline
+   * `<script>`: quotes / backslashes / newlines escaped, and `<` and `&` written as `\uXXXX` so the
+   * literal can never close the script element or be read as markup by the HTML parser.
+   */
+  fun jsString(s: String): String =
+    buildString(s.length + 2) {
+      append('"')
+      for (c in s) {
+        when (c) {
+          '"' -> append("\\\"")
+          '\\' -> append("\\\\")
+          '\n' -> append("\\n")
+          '\r' -> append("\\r")
+          '<' -> append("\\u003c")
+          '>' -> append("\\u003e")
+          '&' -> append("\\u0026")
+          else -> append(c)
+        }
+      }
+      append('"')
+    }
+
   /** Unreserved URL characters (RFC 3986 §2.3) — left as-is when encoding a path segment. */
   private fun isUrlUnreserved(c: Char): Boolean =
     c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c == '-' || c == '_' || c == '.' || c == '~'
