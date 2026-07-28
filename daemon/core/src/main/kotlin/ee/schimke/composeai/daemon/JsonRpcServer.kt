@@ -1892,7 +1892,7 @@ class JsonRpcServer(
     val renderError =
       RenderError(
         kind = classification.kind,
-        message = failure.cause.message ?: failure.cause.javaClass.name,
+        message = renderFailureMessage(failure.cause),
         suggestion = classification.suggestion,
       )
     val payload = buildJsonObject {
@@ -4223,6 +4223,12 @@ class JsonRpcServer(
 
     private val SHUTDOWN_SENTINEL = ByteArray(0)
   }
+}
+
+internal fun renderFailureMessage(cause: Throwable): String {
+  val type = cause.javaClass.simpleName.ifBlank { cause.javaClass.name }
+  val detail = cause.message?.takeIf { it.isNotBlank() } ?: return type
+  return "$type: $detail"
 }
 
 // ---------------------------------------------------------------------------
