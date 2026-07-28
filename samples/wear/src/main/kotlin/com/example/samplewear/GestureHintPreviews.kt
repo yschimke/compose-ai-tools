@@ -43,6 +43,12 @@ fun MediaGestureScreen(onDismiss: () -> Unit = {}) {
   var playing by remember { mutableStateOf(false) }
   val playSource = remember { MutableInteractionSource() }
   val backSource = remember { MutableInteractionSource() }
+  val playConfiguration =
+    rememberGestureConfiguration(GestureType.PRIMARY, key = "samplewear:media-play")
+  val playIndicatorState = rememberGestureIndicatorState()
+  val backConfiguration =
+    rememberGestureConfiguration(GestureType.DISMISS, key = "samplewear:media-back")
+  val backIndicatorState = rememberGestureIndicatorState()
   ScreenScaffold {
     Column(
       modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
@@ -57,12 +63,17 @@ fun MediaGestureScreen(onDismiss: () -> Unit = {}) {
           Modifier.reportedOneHandedGesture(
             type = GestureType.PRIMARY,
             label = if (playing) "Pause" else "Play",
+            gestureConfiguration = playConfiguration,
+            indicatorState = playIndicatorState,
             interactionSource = playSource,
           ) {
             playing = !playing
           },
       ) {
-        GestureHint(type = GestureType.PRIMARY, interactionSource = playSource) {
+        GestureHint(
+          gestureConfiguration = playConfiguration,
+          indicatorState = playIndicatorState,
+        ) {
           Text(if (playing) "Pause" else "Play")
         }
       }
@@ -74,12 +85,19 @@ fun MediaGestureScreen(onDismiss: () -> Unit = {}) {
           Modifier.reportedOneHandedGesture(
             type = GestureType.DISMISS,
             label = "Back",
+            gestureConfiguration = backConfiguration,
+            indicatorState = backIndicatorState,
             interactionSource = backSource,
           ) {
             onDismiss()
           },
       ) {
-        GestureHint(type = GestureType.DISMISS, interactionSource = backSource) { Text("Back") }
+        GestureHint(
+          gestureConfiguration = backConfiguration,
+          indicatorState = backIndicatorState,
+        ) {
+          Text("Back")
+        }
       }
     }
   }

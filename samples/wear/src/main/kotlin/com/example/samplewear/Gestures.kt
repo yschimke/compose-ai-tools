@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,16 +55,19 @@ import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.TimeText
 import androidx.wear.compose.material3.TitleCard
 import androidx.wear.compose.material3.onehandedgesture.LocalOneHandedGestureEnabled
+import androidx.wear.compose.material3.onehandedgesture.GesturePriority
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureDefaults
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureConfiguration
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureHorizontalPageIndicator
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureIndicatorState
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureScrollIndicator
+import androidx.wear.compose.material3.onehandedgesture.rememberOneHandedGestureConfiguration
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import androidx.wear.compose.ui.tooling.preview.WearPreviewLargeRound
 import ee.schimke.composeai.daemon.GestureHint
 import ee.schimke.composeai.daemon.GestureType
-import ee.schimke.composeai.daemon.rememberForcedGestureHintSource
 import ee.schimke.composeai.daemon.reportedOneHandedGesture
 import kotlinx.coroutines.launch
 
@@ -91,6 +95,31 @@ object GestureRoutes {
   const val DISABLED = "disabled"
   const val HINT_BUTTON = "hint-button"
   const val HINT_FLOATING = "hint-floating"
+}
+
+@Composable
+internal fun rememberGestureConfiguration(
+  type: GestureType,
+  key: String,
+  priority: GesturePriority = GesturePriority.Clickable,
+): OneHandedGestureConfiguration =
+  rememberOneHandedGestureConfiguration(
+    action = type.toGestureAction(),
+    key = key,
+    priority = priority,
+  )
+
+@Composable
+internal fun rememberGestureIndicatorState(
+  forceShow: Boolean = false
+): OneHandedGestureIndicatorState {
+  val state = remember { OneHandedGestureIndicatorState() }
+  LaunchedEffect(forceShow, state) {
+    if (forceShow) {
+      state.isIndicatorActive = true
+    }
+  }
+  return state
 }
 
 @Composable
@@ -256,9 +285,12 @@ private fun GestureDemoScreen(
 private fun PlayGestureButton(forceHint: Boolean) {
   var playing by remember { mutableStateOf(false) }
   val interactionSource = remember { MutableInteractionSource() }
+  val gestureConfiguration =
+    rememberGestureConfiguration(GestureType.PRIMARY, key = "samplewear:play")
+  val indicatorState = rememberGestureIndicatorState()
   GestureHint(
-    type = GestureType.PRIMARY,
-    interactionSource = interactionSource,
+    gestureConfiguration = gestureConfiguration,
+    indicatorState = indicatorState,
     forceShow = forceHint,
   ) {
     Button(
@@ -268,6 +300,8 @@ private fun PlayGestureButton(forceHint: Boolean) {
         Modifier.reportedOneHandedGesture(
           type = GestureType.PRIMARY,
           label = if (playing) "Pause" else "Play",
+          gestureConfiguration = gestureConfiguration,
+          indicatorState = indicatorState,
           interactionSource = interactionSource,
         ) {
           playing = !playing
@@ -294,14 +328,17 @@ fun PrimaryActionScreen(forceHint: Boolean = false) {
 @Composable
 fun DismissActionScreen(onDismiss: () -> Unit = {}, forceHint: Boolean = false) {
   val interactionSource = remember { MutableInteractionSource() }
+  val gestureConfiguration =
+    rememberGestureConfiguration(GestureType.DISMISS, key = "samplewear:dismiss")
+  val indicatorState = rememberGestureIndicatorState()
   GestureDemoScreen(
     title = "Dismiss",
     instruction = "Wrist-turn to go back",
     gestureType = GestureType.DISMISS,
   ) {
     GestureHint(
-      type = GestureType.DISMISS,
-      interactionSource = interactionSource,
+      gestureConfiguration = gestureConfiguration,
+      indicatorState = indicatorState,
       forceShow = forceHint,
     ) {
       FilledTonalButton(
@@ -311,6 +348,8 @@ fun DismissActionScreen(onDismiss: () -> Unit = {}, forceHint: Boolean = false) 
           Modifier.reportedOneHandedGesture(
             type = GestureType.DISMISS,
             label = "Dismiss",
+            gestureConfiguration = gestureConfiguration,
+            indicatorState = indicatorState,
             interactionSource = interactionSource,
           ) {
             onDismiss()
@@ -327,8 +366,9 @@ fun DismissActionScreen(onDismiss: () -> Unit = {}, forceHint: Boolean = false) 
 fun ScrollGestureScreen(forceHint: Boolean = false) {
   val listState = rememberTransformingLazyColumnState()
   val interactionSource = remember { MutableInteractionSource() }
-  val hintSource =
-    if (forceHint) rememberForcedGestureHintSource(GestureType.SCROLL) else interactionSource
+  val gestureConfiguration =
+    rememberGestureConfiguration(GestureType.SCROLL, key = "samplewear:scroll")
+  val indicatorState = rememberGestureIndicatorState(forceHint)
   ScreenScaffold(scrollState = listState) { contentPadding ->
     Box(modifier = Modifier.fillMaxSize()) {
       TransformingLazyColumn(
@@ -339,6 +379,8 @@ fun ScrollGestureScreen(forceHint: Boolean = false) {
             .reportedOneHandedGesture(
               type = GestureType.SCROLL,
               label = "Scroll down",
+              gestureConfiguration = gestureConfiguration,
+              indicatorState = indicatorState,
               interactionSource = interactionSource,
             ) {
               OneHandedGestureDefaults.scrollDown(listState)
@@ -355,8 +397,9 @@ fun ScrollGestureScreen(forceHint: Boolean = false) {
         }
       }
       OneHandedGestureScrollIndicator(
-        interactionSource = hintSource,
-        state = listState,
+        gestureConfiguration = gestureConfiguration,
+        indicatorState = indicatorState,
+        scrollState = listState,
         modifier = Modifier.align(Alignment.CenterEnd),
       )
     }
@@ -368,8 +411,9 @@ fun ScrollGestureScreen(forceHint: Boolean = false) {
 fun PageGestureScreen(forceHint: Boolean = false) {
   val pagerState = rememberPagerState(initialPage = 0, pageCount = { 4 })
   val interactionSource = remember { MutableInteractionSource() }
-  val hintSource =
-    if (forceHint) rememberForcedGestureHintSource(GestureType.PAGE) else interactionSource
+  val gestureConfiguration =
+    rememberGestureConfiguration(GestureType.PAGE, key = "samplewear:page")
+  val indicatorState = rememberGestureIndicatorState(forceHint)
   ScreenScaffold {
     Box(modifier = Modifier.fillMaxSize()) {
       HorizontalPager(
@@ -379,6 +423,8 @@ fun PageGestureScreen(forceHint: Boolean = false) {
             .reportedOneHandedGesture(
               type = GestureType.PAGE,
               label = "Next page",
+              gestureConfiguration = gestureConfiguration,
+              indicatorState = indicatorState,
               interactionSource = interactionSource,
             ) {
               OneHandedGestureDefaults.scrollToNextPage(pagerState)
@@ -397,7 +443,8 @@ fun PageGestureScreen(forceHint: Boolean = false) {
         }
       }
       OneHandedGestureHorizontalPageIndicator(
-        interactionSource = hintSource,
+        gestureConfiguration = gestureConfiguration,
+        indicatorState = indicatorState,
         pagerState = pagerState,
         modifier = Modifier.align(Alignment.BottomCenter),
       )
@@ -409,6 +456,8 @@ fun PageGestureScreen(forceHint: Boolean = false) {
 @Composable
 fun DisabledGestureScreen() {
   val interactionSource = remember { MutableInteractionSource() }
+  val gestureConfiguration =
+    rememberGestureConfiguration(GestureType.PRIMARY, key = "samplewear:disabled-play")
   CompositionLocalProvider(LocalOneHandedGestureEnabled provides false) {
     GestureDemoScreen(title = "Disabled", instruction = "Gestures off on this screen") {
       Button(
@@ -417,6 +466,7 @@ fun DisabledGestureScreen() {
           Modifier.reportedOneHandedGesture(
             type = GestureType.PRIMARY,
             label = "Play (disabled)",
+            gestureConfiguration = gestureConfiguration,
             interactionSource = interactionSource,
           ) {},
       ) {
@@ -435,6 +485,8 @@ fun DisabledGestureScreen() {
 @Composable
 fun ButtonHintScreen(showHint: Boolean = true) {
   val interactionSource = remember { MutableInteractionSource() }
+  val gestureConfiguration =
+    rememberGestureConfiguration(GestureType.PRIMARY, key = "samplewear:button-hint")
   GestureDemoScreen(title = "Button hint", instruction = "Icon drawn on the button") {
     Box(contentAlignment = Alignment.Center) {
       Button(
@@ -444,6 +496,7 @@ fun ButtonHintScreen(showHint: Boolean = true) {
           Modifier.reportedOneHandedGesture(
             type = GestureType.PRIMARY,
             label = "Play",
+            gestureConfiguration = gestureConfiguration,
             interactionSource = interactionSource,
           ) {},
       ) {
@@ -467,6 +520,8 @@ fun ButtonHintScreen(showHint: Boolean = true) {
 @Composable
 fun FloatingHintScreen(showHint: Boolean = true) {
   val interactionSource = remember { MutableInteractionSource() }
+  val gestureConfiguration =
+    rememberGestureConfiguration(GestureType.PRIMARY, key = "samplewear:floating-hint")
   GestureDemoScreen(title = "Floating hint", instruction = "Bubble points to the button") {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
       if (showHint) {
@@ -480,6 +535,7 @@ fun FloatingHintScreen(showHint: Boolean = true) {
           Modifier.reportedOneHandedGesture(
             type = GestureType.PRIMARY,
             label = "Play",
+            gestureConfiguration = gestureConfiguration,
             interactionSource = interactionSource,
           ) {},
       ) {
@@ -541,9 +597,12 @@ fun PrimaryActionStickerPreview() {
 fun ScrollIndicatorStickerPreview() {
   GestureSticker {
     val listState = rememberTransformingLazyColumnState()
+    val gestureConfiguration =
+      rememberGestureConfiguration(GestureType.SCROLL, key = "samplewear:scroll-sticker")
     OneHandedGestureScrollIndicator(
-      interactionSource = rememberForcedGestureHintSource(GestureType.SCROLL),
-      state = listState,
+      gestureConfiguration = gestureConfiguration,
+      indicatorState = rememberGestureIndicatorState(forceShow = true),
+      scrollState = listState,
       modifier = Modifier.size(48.dp),
     )
   }
@@ -553,8 +612,11 @@ fun ScrollIndicatorStickerPreview() {
 @Composable
 fun PageIndicatorStickerPreview() {
   GestureSticker {
+    val gestureConfiguration =
+      rememberGestureConfiguration(GestureType.PAGE, key = "samplewear:page-sticker")
     OneHandedGestureHorizontalPageIndicator(
-      interactionSource = rememberForcedGestureHintSource(GestureType.PAGE),
+      gestureConfiguration = gestureConfiguration,
+      indicatorState = rememberGestureIndicatorState(forceShow = true),
       pagerState = rememberPagerState(initialPage = 1, pageCount = { 4 }),
     )
   }

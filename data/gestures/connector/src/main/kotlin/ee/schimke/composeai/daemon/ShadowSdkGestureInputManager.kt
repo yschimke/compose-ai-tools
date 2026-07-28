@@ -17,10 +17,10 @@ import org.robolectric.annotation.Implements
  *
  * - [isAvailable] returns [GestureStateController.detectionArmed] (armed by [GestureOverrideExtension]
  *   while a gesture override is applied). When armed, `GestureRegistry.invalidate()` proceeds: it
- *   subscribes to gesture actions and, after the framework's 1s indicator delay, emits
- *   `OneHandedGestureInteraction.Indicate` on the app's own interaction source — so the app's own
- *   `OneHandedGestureIndicator` shows and animates without any reporting seam. (A captured frame must
- *   advance past that delay; the daemon does so via `advanceTimeMillis`.)
+ *   subscribes to gesture actions and, after the framework's indicator delay, invokes the
+ *   registered `onGestureAvailable` callback. The app uses that callback to activate its
+ *   `OneHandedGestureIndicatorState`, so its own indicator shows without any reporting seam. (A
+ *   captured frame must advance past that delay; the daemon does so via `advanceTimeMillis`.)
  * - [subscribeToSdkGestureAction] records the detected action + captures the framework's `onGesture`
  *   callback into [GestureStateController], so the gesture is **surfaced** in `compose/gestures` and
  *   an `overrides.gestures.invoke` can **fire** the real handler.

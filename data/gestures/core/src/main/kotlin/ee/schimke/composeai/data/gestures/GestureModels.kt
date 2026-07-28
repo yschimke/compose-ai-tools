@@ -60,7 +60,7 @@ data class RegisteredGesture(
    * Lower-case wire spelling of the handler kind — `"primary"`, `"dismiss"`, `"scroll"`, `"page"`.
    */
   val type: String,
-  /** Accessibility / hint label supplied to `Modifier.oneHandedGesture(gestureLabel = …)`. */
+  /** Accessibility / hint label supplied to `Modifier.oneHandedGesture(onGestureLabel = …)`. */
   val label: String,
   /** Whether a gesture hint (`OneHandedGestureIndicator`) is wired for this handler. */
   val hintAvailable: Boolean,

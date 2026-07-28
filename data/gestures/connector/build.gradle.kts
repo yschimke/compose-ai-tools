@@ -59,18 +59,14 @@ dependencies {
   // `androidx.wear.compose.material3.onehandedgesture.*` — the real one-handed-gesture API the
   // reporting seam wraps (`oneHandedGesture`, `OneHandedGestureIndicator`, `GestureAction`,
   // `LocalOneHandedGestureEnabled`) plus `LocalContentColor`. `compileOnly` because consumers
-  // (e.g. `:samples:wear`) already pull wear-compose-material3 at runtime; the connector's public
-  // surface (extension / registry) exposes no wear types, so `:daemon:android` links without it.
+  // using the public reporting/indicator helpers are Wear apps that already pull
+  // wear-compose-material3 at runtime; `:daemon:android` can still link the connector without
+  // transitively publishing the alpha Wear stack.
   compileOnly(libs.wear.compose.material3)
   testImplementation(libs.wear.compose.material3)
 
-  // `androidx.compose.animation.graphics` — `GestureHint`'s force-show path draws
-  // wear-compose-material3's shipped gesture-indicator AVD via the official
-  // `AnimatedImageVector.animatedVectorResource` API (the real `OneHandedGestureIndicator` settles
-  // to hidden during a Robolectric pre-roll, so a forced preview draws the drawable directly).
-  // `compileOnly` because wear-compose-material3 already pulls it transitively onto every
-  // consumer's
-  // runtime classpath; the Compose BOM pins the unversioned coordinate.
+  // The forced still-capture path renders wear-compose-material3's shipped indicator AVD at its
+  // peak frame. The real alpha06 state-backed indicator completes during Robolectric idle pre-roll.
   compileOnly(platform(libs.compose.bom.stable))
   compileOnly("androidx.compose.animation:animation-graphics")
   testImplementation(platform(libs.compose.bom.stable))
