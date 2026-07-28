@@ -335,6 +335,12 @@ A `classpath` event triggers Tier-1 fingerprint recomputation; on mismatch the d
                                      // default ≈ 32ms. Bump for animation-heavy previews.
   inspectionMode?: boolean;          // Override LocalInspectionMode for this one-shot render.
                                      // Null/absent keeps normal preview semantics.
+  placeholderActive?: boolean;       // Pin the content-loading placeholder state (issue #2646):
+                                     // true = loading (Wear/M3 placeholder blocks paint), false =
+                                     // loaded. Null/absent leaves the preview's own state alone.
+                                     // Opt-in like clockEpochMillis: preview content must read
+                                     // `placeholderActive()` (:data-preview-overrides-runtime)
+                                     // into its own PlaceholderState. Both backends.
   material3Theme?: {                 // Material 3 tokens applied as MaterialTheme { preview() }.
     colorScheme?: Record<string, string>; // Role -> "#RRGGBB" or "#AARRGGBB".
     typography?: Record<string, {    // Text style name -> partial override.

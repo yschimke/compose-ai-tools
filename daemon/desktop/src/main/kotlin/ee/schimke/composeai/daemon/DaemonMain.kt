@@ -742,6 +742,11 @@ internal fun buildDesktopExtensions(
           // time-dependent UI renders deterministically. Portable — the same planner is wired into
           // `RobolectricHost.previewOverrideExtensions` on Android.
           FakeClockPreviewOverrideExtension(),
+          // Content-loading placeholder state (#2646): plans an extension only when
+          // `renderNow.overrides.placeholderActive` is set, pinning `LocalPlaceholderActive` so a
+          // placeholdered preview renders in a chosen state. Portable — the same planner is wired
+          // into `RobolectricHost.previewOverrideExtensions` on Android.
+          PlaceholderStatePreviewOverrideExtension(),
         ),
     )
   }

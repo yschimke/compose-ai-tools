@@ -123,6 +123,7 @@ class ServeOverridesTest {
           "orientation" to "landscape",
           "inspectionMode" to "true",
           "slotMode" to "true",
+          "placeholderActive" to "true",
           "talkBack" to "true",
           "touchOverlay" to "1",
           "themeProvider" to "com.example.BrandDarkThemeCatalog",
@@ -138,6 +139,7 @@ class ServeOverridesTest {
     assertEquals(Orientation.LANDSCAPE, o.orientation)
     assertEquals(true, o.inspectionMode)
     assertEquals(true, o.slotMode)
+    assertEquals(true, o.placeholderActive)
     assertEquals(true, o.talkBack)
     assertEquals(true, o.touchOverlay)
     assertEquals("com.example.BrandDarkThemeCatalog", o.themeProvider)
@@ -164,6 +166,7 @@ class ServeOverridesTest {
         mapOf("widthPx" to "-5"),
         mapOf("inspectionMode" to "maybe"),
         mapOf("slotMode" to "maybe"),
+        mapOf("placeholderActive" to "maybe"),
         mapOf("talkBack" to "maybe"),
         mapOf("touchOverlay" to "maybe"),
         mapOf("background" to "polkadot"),
@@ -225,6 +228,12 @@ class ServeOverridesTest {
     // slotMode participates, so a slot-map render isn't coalesced onto the normal render's cache.
     assertNotEquals(
       ServeOverrides.cacheKey("preview.A", ok(mapOf("slotMode" to "true"))),
+      ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
+    )
+    // Placeholder state participates: the loading and loaded renders of one preview are different
+    // pixels and must not share a cache entry (issue #2646).
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("placeholderActive" to "true"))),
       ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
     )
     // The live overlay flags participate too, so a crafted /render?talkBack / ?touchOverlay can't

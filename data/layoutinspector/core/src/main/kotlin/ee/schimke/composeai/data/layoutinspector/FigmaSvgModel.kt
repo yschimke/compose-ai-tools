@@ -587,6 +587,40 @@ data class FigmaSvgModel(
       // pathological capture; a normally-placed node keeps its real `bounds` untouched.
       val bounds = recoverBounds(parentBounds)
       val (opacity, contentOpacity) = orderedOpacities()
+      // An **active placeholder block** (issue #2646): the loading state, where the Wear/M3
+      // `Modifier.placeholder` paints its block over the content and the content itself is faded
+      // out of the render. Emit the placeholder as its own editable layer — a rounded rect in the
+      // placeholder's own colour and shape — and drop the subtree, rather than baking the
+      // composited frame into an `<image>`. This is the one state in which a placeholder-shaped
+      // rect is the correct export; the ideal state falls through and keeps its real content (the
+      // placeholder contributes no shape, no fill, and — via `hasCustomDraw` — no raster).
+      //
+      // The **shimmer** never takes this path, active or not. It rides on the container's chain (a
+      // placeholdered `TitleCard` carries it on the card itself) and only sweeps *over* whatever is
+      // beneath, so replacing the container with a block would erase the card's own background and
+      // every child. Its whole contribution is negative: no container tokens, no raster.
+      placeholder
+        ?.takeIf { it.visible == true && it.kind == PlaceholderModifiers.KIND_PLACEHOLDER }
+        ?.let { ph ->
+          return FigmaSvgLayer(
+            name = "${layerName()} Placeholder",
+            left = bounds.left,
+            top = bounds.top,
+            right = bounds.right,
+            bottom = bounds.bottom,
+            fill = ph.colorArgb?.let { argbToColor(it, ctx.colorNames) },
+            cornerRadiiPx =
+              if (ph.shape == "circle") null
+              else
+                ph.cornerRadius?.let { parseCornersPx(it, ctx.density) }
+                  ?: ph.cornerRadiusPx?.let { parseRawCornersPx(it) },
+            circle = ph.shape == "circle",
+            cut = ph.shape == "cut",
+            // Deliberately NOT the node's own opacities: an active `Modifier.placeholder` fades the
+            // content it covers to `alpha = 0` through its own `graphicsLayer`, so inheriting that
+            // would emit an invisible block. The block is drawn outside that fade, fully opaque.
+          )
+        }
       // An `Icon`/`Image` whose `ImageVector` the inspector captured emits as editable `<path>`
       // layers rather than a raster crop — the vector alternative to the opaque-by-name fallback
       // below. Placed before the raster branch so a vector-backed icon never rasterises; a
@@ -1009,10 +1043,22 @@ data class FigmaSvgModel(
     /**
      * True when the node paints through a custom Canvas draw (a `Canvas`, or a component drawing
      * its chrome via `Modifier.drawBehind {…}` like the progress/slider indicators).
+     *
+     * The placeholder's **own** draw doesn't count (issue #2646). A Wear/M3 `Modifier.placeholder`
+     * draws through a `drawWithContent`, but in the ideal (content-loaded) state that draw is a
+     * pass-through: the pixels under it are the node's own text/children, which the vector export
+     * represents exactly. Rasterising it crops the composited frame and doubles whatever the vector
+     * path already emitted (the "text rendered twice" bug, #2644). An *active* placeholder never
+     * reaches here — [toLayer] returns its own vector layer first.
+     *
+     * Scoped to the entries [LayoutInspectorModifier.placeholder] marks, not to the whole node: a
+     * `Modifier.drawBehind {…}.placeholder(state)` chain still paints its own imperative art into
+     * the frame, and that art is not something the vector export can otherwise represent.
      */
-    private fun LayoutInspectorNode.hasCustomDraw(): Boolean = modifiers.any {
-      it.name in DRAW_MODIFIERS
-    }
+    private fun LayoutInspectorNode.hasCustomDraw(): Boolean = modifiers.any { it.isCustomDraw() }
+
+    private fun LayoutInspectorModifier.isCustomDraw(): Boolean =
+      name in DRAW_MODIFIERS && !placeholder
 
     /**
      * The region the Canvas draw actually paints — the union of the draw modifiers' bounds, which
@@ -1020,7 +1066,7 @@ data class FigmaSvgModel(
      * bounds when a draw modifier carries none.
      */
     private fun LayoutInspectorNode.drawnRegion(): LayoutInspectorBounds {
-      val drawn = modifiers.filter { it.name in DRAW_MODIFIERS }.mapNotNull { it.bounds }
+      val drawn = modifiers.filter { it.isCustomDraw() }.mapNotNull { it.bounds }
       if (drawn.isEmpty()) return bounds
       return LayoutInspectorBounds(
         left = drawn.minOf { it.left },

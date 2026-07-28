@@ -889,6 +889,9 @@ typealias LayoutInspectorConstraints =
 typealias LayoutInspectorModifier =
   ee.schimke.composeai.data.layoutinspector.LayoutInspectorModifier
 
+typealias LayoutInspectorPlaceholder =
+  ee.schimke.composeai.data.layoutinspector.LayoutInspectorPlaceholder
+
 /** Producer for `layout/inspector`, backed by Compose's RootForTest/LayoutNode tree. */
 object LayoutInspectorDataProducer {
   const val KIND: String = LayoutInspectorProduct.KIND
@@ -1106,6 +1109,17 @@ internal object ComposeLayoutInspector {
         ),
       curvedTexts = curvedTexts,
       vectorGraphic = vectorGraphic,
+      // The content-loading placeholder this chain declares, plus whether it is currently visible
+      // (issue #2646). Resolved from the same modifier chain + measured size as `tokens`, by the
+      // same resolver — the placeholder's own shape/colour, which `tokens` deliberately refuses as
+      // *container* tokens, are meaningful here because they describe the placeholder block.
+      placeholder =
+        ModifierTokenResolver.resolvePlaceholder(
+          modifierInfo = modifiers,
+          sizeWidthPx = width,
+          sizeHeightPx = height,
+          density = density,
+        ),
       children = children,
     )
   }
@@ -1149,6 +1163,11 @@ internal object ComposeLayoutInspector {
       value = value,
       properties = properties,
       bounds = coordinates.boundsIn(rootCoordinates),
+      // Marks the entries that ARE the placeholder (issue #2646) — the shimmer's element, or the
+      // anonymous `drawWithContent`/`graphicsLayer` pair `Modifier.placeholder` lowers to. The
+      // export drops only these when ignoring an inactive placeholder, so a real
+      // `Modifier.drawBehind {…}` on the same chain keeps its raster.
+      placeholder = ModifierTokenResolver.isPlaceholderElement(modifier),
     )
   }
 

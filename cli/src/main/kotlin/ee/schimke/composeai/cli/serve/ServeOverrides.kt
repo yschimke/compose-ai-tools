@@ -66,6 +66,10 @@ object ServeOverrides {
       "orientation",
       "inspectionMode",
       "slotMode",
+      // Content-loading placeholder state (#2646): `placeholderActive=true` renders a placeholdered
+      // preview in its loading state, `false` in the loaded one. Boolean, like slotMode; opt-in on
+      // the preview's side (it must read `placeholderActive(...)` into its `PlaceholderState`).
+      "placeholderActive",
       // Live-only overlay toggles (held-session / recording features). The daemon composites these
       // onto the streamed frames; a baked snapshot never carries them, so the viewer offers them
       // only while a Live Compose session is active. Booleans, like inspectionMode/slotMode.
@@ -316,6 +320,19 @@ object ServeOverrides {
           }
         }
 
+    val placeholderActive =
+      params["placeholderActive"]
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          when (it.lowercase()) {
+            "true",
+            "1" -> true
+            "false",
+            "0" -> false
+            else -> return OverrideParse.Invalid("placeholderActive must be a boolean, got '$it'")
+          }
+        }
+
     // Live-only overlay flags (daemon composites onto the held session's frames). Parsed like the
     // other booleans; a malformed value is a hard Invalid rather than a silently-dropped toggle.
     val talkBack =
@@ -525,6 +542,7 @@ object ServeOverrides {
         device = params["device"]?.takeIf { it.isNotBlank() },
         inspectionMode = inspectionMode,
         slotMode = slotMode,
+        placeholderActive = placeholderActive,
         talkBack = talkBack,
         touchOverlay = touchOverlay,
         themeProvider = params["themeProvider"]?.takeIf { it.isNotBlank() },
@@ -560,6 +578,7 @@ object ServeOverrides {
       append("dev=").append(o.device).append('|')
       append("insp=").append(o.inspectionMode).append('|')
       append("slot=").append(o.slotMode).append('|')
+      append("ph=").append(o.placeholderActive).append('|')
       append("talk=").append(o.talkBack).append('|')
       append("touch=").append(o.touchOverlay).append('|')
       append("theme=").append(o.themeProvider).append('|')

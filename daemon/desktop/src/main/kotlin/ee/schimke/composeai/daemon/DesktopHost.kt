@@ -218,6 +218,9 @@ open class DesktopHost(
     add("device")
     add("inspectionMode")
     add("slotMode")
+    // Pins the content-loading placeholder state through the portable
+    // `PlaceholderStatePreviewOverrideExtension` planner (issue #2646).
+    add("placeholderActive")
     add("clearBackground")
     add("material3Theme")
     // `overrides.themeProvider` wraps the preview in an app-declared @ThemeCatalog
