@@ -20,6 +20,7 @@ import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.RoutingContext
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
@@ -158,6 +159,19 @@ class ServeHttpServer(
   private val catalogRefreshSeconds: Long = 0,
   /** Whether `POST /bundles` runtime uploads are accepted (`--accept-bundles`). */
   private val acceptBundlesEnabled: Boolean = false,
+  /**
+   * Runtime catalog administration ([ServeCatalogAdmin]) — publishing and retiring catalogs without
+   * recreating the container, persisted to the operator's `catalogs.json`. Null (the default) means
+   * the `/admin/catalogs` routes are **not registered at all**, so they 404 like any unknown path.
+   */
+  private val catalogAdmin: ServeCatalogAdmin? = null,
+  /**
+   * Shared secret for the `/admin/catalogs` routes (`--admin-token`). Separate from the browsing
+   * [token] on purpose: a public box hands its browse URL to everyone, so admin needs its own
+   * credential and must stay gated even when [isPublic] is set. Null/blank ⇒ no admin routes, so a
+   * server that never opted in can't be administered at all.
+   */
+  private val adminToken: String? = null,
 ) {
   /** The actual bound port — may differ from the requested one if it was taken (auto-picked). */
   val port: Int = pickPort(host, requestedPort, portRange)
@@ -211,6 +225,13 @@ class ServeHttpServer(
    * rather than a dozen full-resolution renders. See [ServeHeroImages].
    */
   private val heroImages = ServeHeroImages()
+
+  /**
+   * Whether the `/admin/catalogs` routes exist on this server: both an administrator
+   * ([catalogAdmin]) and an [adminToken] are required. Fail-closed by construction — an operator
+   * who never set a token gets no admin surface, not an open one.
+   */
+  private val adminEnabled: Boolean = catalogAdmin != null && !adminToken.isNullOrBlank()
 
   private val server: EmbeddedServer<*, *> =
     embeddedServer(CIO, host = host, port = port) {
@@ -393,6 +414,30 @@ class ServeHttpServer(
           }
         }
 
+        // Runtime catalog administration: publish a catalog (`POST /admin/catalogs`), retire one
+        // (`DELETE /admin/catalogs/{system}`), or list what's configured (`GET /admin/catalogs`).
+        // The catalog set is operator config, not image content — these routes are how it's edited
+        // on a running box, and every mutation is written back to `catalogs.json` so it survives a
+        // restart. Registered ONLY when both an admin implementation and an `--admin-token` are
+        // present, so a server that didn't opt in has no admin surface to find.
+        if (adminEnabled) {
+          val admin = catalogAdmin!!
+          get("/admin/catalogs") {
+            if (rejectBadAdminToken()) return@get
+            respondAdminCatalogs(admin)
+          }
+          post("/admin/catalogs") {
+            if (rejectBadAdminToken()) return@post
+            handleAdminRegister(admin)
+          }
+          delete("/admin/catalogs/{system}") {
+            if (rejectBadAdminToken()) return@delete
+            val system = call.parameters["system"].orEmpty()
+            val result = withContext(Dispatchers.IO) { admin.unregister(system) }
+            respondAdminResult(result)
+          }
+        }
+
         // A persistent frame lane. The browser opens this, receives frames as JSON
         // ([ServeStreamProtocol]), and sends override / switch / input messages back. Token is
         // checked post-handshake (can't 404 after upgrade) — a bad token closes immediately. Two
@@ -569,7 +614,7 @@ class ServeHttpServer(
     // below.
     if (
       !sessionInPath &&
-        (catalogSessions.isNotEmpty() || appCatalogSessions.isNotEmpty()) &&
+        (listedCatalogs().isNotEmpty() || unlistedCatalogs().isNotEmpty()) &&
         call.request.queryParameters["session"] == null
     ) {
       handleHomeIndex()
@@ -601,7 +646,7 @@ class ServeHttpServer(
           // A back-to-home button whenever this server publishes a front-door index — listed
           // catalogs OR unlisted app catalogs (mirrors handleLanding's home-index condition), so an
           // app-only server's landings still link home.
-          hasHomeIndex = catalogSessions.isNotEmpty() || appCatalogSessions.isNotEmpty(),
+          hasHomeIndex = listedCatalogs().isNotEmpty() || unlistedCatalogs().isNotEmpty(),
           basePath = basePath,
           version = BUNDLE_VERSION,
           // Catalog provenance (delivery branch, generation date, tool versions) for the strip
@@ -625,11 +670,113 @@ class ServeHttpServer(
   }
 
   /**
+   * Admin gate: the `/admin/catalogs` routes require [adminToken] — **never** the browse token, and
+   * never open in `--public` mode (a public box publishes its browse URL to the world). Responds
+   * 404 like the browse gate so the surface isn't confirmed to a scanner, and compares in constant
+   * time.
+   */
+  private suspend fun RoutingContext.rejectBadAdminToken(): Boolean {
+    val provided = call.request.queryParameters["token"] ?: call.request.headers[ADMIN_TOKEN_HEADER]
+    if (ServeUrls.tokensMatch(adminToken.orEmpty(), provided)) return false
+    call.respondText("not found", status = HttpStatusCode.NotFound)
+    return true
+  }
+
+  /** `GET /admin/catalogs`: the configured catalog set and each entry's latest load state. */
+  private suspend fun RoutingContext.respondAdminCatalogs(admin: ServeCatalogAdmin) {
+    val catalogs =
+      withContext(Dispatchers.IO) { admin.list() }
+        .map { state ->
+          AdminCatalogDto(
+            system = state.config.system,
+            repo = state.config.repo,
+            branch = state.config.branch,
+            listed = state.config.listed,
+            group = state.config.group?.heading,
+            state = state.loadState,
+            error = state.error,
+          )
+        }
+    call.respondText(
+      JSON.encodeToString(
+        AdminCatalogsResponse.serializer(),
+        AdminCatalogsResponse(catalogs = catalogs),
+      ),
+      ContentType.Application.Json,
+    )
+  }
+
+  /** `POST /admin/catalogs`: publish one catalog from a [ServeCatalogsConfig.Entry] JSON body. */
+  private suspend fun RoutingContext.handleAdminRegister(admin: ServeCatalogAdmin) {
+    val body =
+      withContext(Dispatchers.IO) {
+        call.receiveStream().use { readCapped(it, MAX_ADMIN_BODY_BYTES) }
+      }
+    if (body == null) {
+      call.respondText("request body too large", status = HttpStatusCode.PayloadTooLarge)
+      return
+    }
+    val entry =
+      runCatching {
+          JSON.decodeFromString(ServeCatalogsConfig.Entry.serializer(), body.decodeToString())
+        }
+        .getOrElse {
+          call.respondText(
+            "invalid catalog entry: ${it.message}",
+            status = HttpStatusCode.BadRequest,
+          )
+          return
+        }
+    // The fetch runs off the request dispatcher: publishing a catalog clones a delivery branch.
+    respondAdminResult(withContext(Dispatchers.IO) { admin.register(entry) })
+  }
+
+  /** Map a [ServeCatalogAdmin.Result] onto its HTTP status + JSON body. */
+  private suspend fun RoutingContext.respondAdminResult(result: ServeCatalogAdmin.Result) {
+    when (result) {
+      is ServeCatalogAdmin.Result.Ok ->
+        call.respondText(
+          JSON.encodeToString(
+            AdminCatalogResult.serializer(),
+            AdminCatalogResult(system = result.system, status = "ok", warning = result.warning),
+          ),
+          ContentType.Application.Json,
+        )
+      is ServeCatalogAdmin.Result.Invalid ->
+        call.respondText(result.reason, status = HttpStatusCode.BadRequest)
+      is ServeCatalogAdmin.Result.Conflict ->
+        call.respondText(result.reason, status = HttpStatusCode.Conflict)
+      // The entry was well-formed but its branch wouldn't fetch — an upstream failure, not the
+      // caller's mistake, so it reads as a bad gateway rather than a bad request.
+      is ServeCatalogAdmin.Result.Failed ->
+        call.respondText(
+          "catalog ${result.system} not published: ${result.reason}",
+          status = HttpStatusCode.BadGateway,
+        )
+    }
+  }
+
+  /**
    * The [ServeBundleHost] carrying a catalog's browse metadata (title / subtitle / trust verdict) —
    * the host itself for a static catalog, or the baked host a [ServeCatalogLiveHost] fronts when
    * the catalog is served live. Null for a plain daemon module session (no bundle metadata). Lets
    * the trust badge + card title survive a catalog being fronted by the live composite.
    */
+  /**
+   * The catalogs on the front-page index **right now**. Read from [catalogLoads] when it's wired,
+   * because the configured set is no longer fixed at startup: the admin API publishes and retires
+   * catalogs on a running server, and the tracker is what those mutations land in. Falls back to
+   * the constructor-supplied [catalogSessions] for a plain/test server with no tracker.
+   */
+  private fun listedCatalogs(): List<String> =
+    catalogLoads?.snapshot()?.filter { it.config.listed }?.map { it.config.system }
+      ?: catalogSessions
+
+  /** The served-but-unlisted catalogs right now; the [listedCatalogs] counterpart. */
+  private fun unlistedCatalogs(): List<String> =
+    catalogLoads?.snapshot()?.filterNot { it.config.listed }?.map { it.config.system }
+      ?: appCatalogSessions
+
   private fun catalogBundleHost(host: ServeHost): ServeBundleHost? =
     when (host) {
       is ServeBundleHost -> host
@@ -645,7 +792,7 @@ class ServeHttpServer(
    * `/<system>/` but stay off the front door. See [homeSystemsFor].
    */
   private suspend fun RoutingContext.handleHomeIndex() {
-    val systems = withContext(Dispatchers.IO) { homeSystemsFor(catalogSessions) }
+    val systems = withContext(Dispatchers.IO) { homeSystemsFor(listedCatalogs()) }
     // Match the first card a visitor actually sees after the homepage's publisher grouping, not
     // merely the operator's input order.
     val featured =
@@ -1149,7 +1296,7 @@ class ServeHttpServer(
     val tracked = catalogLoads?.snapshot()?.associateBy { it.config.system }.orEmpty()
     val entries =
       if (tracked.isNotEmpty()) tracked.values.map { it.config.system to it.config.listed }
-      else catalogSessions.map { it to true } + appCatalogSessions.map { it to false }
+      else listedCatalogs().map { it to true } + unlistedCatalogs().map { it to false }
     val catalogs = entries.map { (id, listed) ->
       val load = tracked[id]
       val daemon = byId[id]
@@ -1203,6 +1350,9 @@ class ServeHttpServer(
       sessions.peekHost(system)?.let { rememberCatalogMeta(system, it) }
       val meta = catalogMetaSeen[system] ?: return@mapNotNull null
       ServeWeb.HomeSystem(
+        // The front-page section this catalog was published under, straight from the operator's
+        // config — the page then checks the claim against the catalog's actual provenance.
+        group = catalogLoads?.configFor(system)?.group,
         system = system,
         title = meta.title ?: system,
         subtitle = meta.subtitle,
@@ -1884,6 +2034,13 @@ class ServeHttpServer(
 
   companion object {
     const val TOKEN_HEADER: String = "X-Compose-Preview-Token"
+
+    /** Header carrying the `--admin-token` for the `/admin/catalogs` routes. */
+    const val ADMIN_TOKEN_HEADER: String = "X-Compose-Preview-Admin-Token"
+
+    /** A catalog registration is a few hundred bytes of JSON; cap it well short of a payload. */
+    private const val MAX_ADMIN_BODY_BYTES = 64L * 1024
+
     const val GENERATION_HEADER: String = "X-Compose-Preview-Generation"
     private const val DEFAULT_PORT_RANGE = 32
 
@@ -2232,6 +2389,40 @@ private data class PreviewDto(
    * them). Additive since `compose-preview-serve/v2`.
    */
   val remoteComposeKnobs: List<RemoteComposeKnobDeclaration> = emptyList(),
+)
+
+/** One configured catalog on `GET /admin/catalogs`: its config plus its latest load outcome. */
+@Serializable
+private data class AdminCatalogDto(
+  val system: String,
+  val repo: String,
+  /** The delivery branch watched for this catalog (`design-artifacts/<system>`). */
+  val branch: String,
+  /** On the front-page index (vs. served-but-unlisted). */
+  val listed: Boolean,
+  /** The front-page section heading this catalog is published under; null ⇒ grouped by owner. */
+  val group: String? = null,
+  /** `pending` / `loaded` / `failed` / `stale` ([CatalogLoadTracker.State.loadState]). */
+  val state: String,
+  val error: String? = null,
+)
+
+@Serializable
+private data class AdminCatalogsResponse(
+  val schema: String = "compose-preview-serve/admin-catalogs/v1",
+  val catalogs: List<AdminCatalogDto>,
+)
+
+/**
+ * The result of an admin mutation. [warning] is set when the catalog is serving but the change
+ * couldn't be written back to `catalogs.json` — it will not survive a restart.
+ */
+@Serializable
+private data class AdminCatalogResult(
+  val schema: String = "compose-preview-serve/admin-catalog/v1",
+  val system: String,
+  val status: String,
+  val warning: String? = null,
 )
 
 @Serializable

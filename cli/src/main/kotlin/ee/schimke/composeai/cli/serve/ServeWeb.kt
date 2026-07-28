@@ -1450,6 +1450,22 @@ object ServeWeb {
      * sticker on white reads wrong). Default false ⇒ the light stage, unchanged.
      */
     val darkStage: Boolean = false,
+    /**
+     * The front-page section this catalog was **published under** by the operator's config
+     * ([ServeCatalogsConfig.Group]), or null when it declared none. A claim, not a fact: it only
+     * takes effect when [sourceRepo] is one of [HomeGroup.repos] — see [homeSections].
+     */
+    val group: HomeGroup? = null,
+  )
+
+  /**
+   * A front-page section a catalog may be published under: the [heading] shown, its count [noun],
+   * and the [repos] whose bytes are allowed to appear under it.
+   */
+  data class HomeGroup(
+    val heading: String,
+    val noun: String = ServeCatalogsConfig.DEFAULT_NOUN,
+    val repos: Set<String> = emptySet(),
   )
 
   /**
@@ -1587,16 +1603,21 @@ object ServeWeb {
       """
         .trimIndent()
     }
-    fun section(heading: String, list: List<HomeSystem>, noun: String, gridId: String): String =
-      """
-      <h1 class="cp-head">$heading</h1>
-      <p class="cp-sub">${list.size} $noun · pick one to browse its components and
+    // Headings and nouns come from operator config (and, for the fallback sections, from a
+    // catalog's own provenance), so they're escaped like any other data on the page.
+    fun section(heading: String, list: List<HomeSystem>, noun: String, gridId: String): String {
+      val head = WebEscaping.htmlEscape(heading)
+      val count = "${list.size} ${WebEscaping.htmlEscape(noun)}"
+      return """
+      <h1 class="cp-head">$head</h1>
+      <p class="cp-sub">$count · pick one to browse its components and
         open a live, customisable preview.</p>
       <div class="cp-grid cp-syslist" id="$gridId">
       ${list.joinToString("\n") { card(it) }}
       </div>
       """
         .trimIndent()
+    }
     val sections = homeSections(systems)
     val body =
       if (systems.isEmpty()) {
@@ -1631,61 +1652,55 @@ object ServeWeb {
   /**
    * Group the published catalogs by **publisher**, for the front-page sections.
    *
-   * Attribution is decided by [HomeSystem.sourceRepo] — the repository the catalog was generated
-   * from — because that is the only field that says who *wrote* the components. Neither of the
-   * alternatives works:
+   * The section a card lands in is **operator config, not code** ([ServeCatalogsConfig]): each
+   * catalog entry names the group it's published under, and this reduces those declarations to
+   * sections. Nothing here knows the id of any particular catalog — a server publishing catalogs
+   * this build has never heard of gets the same grouping the first-party ones do.
+   *
+   * A declared group is a **claim, checked against provenance**. [HomeSystem.sourceRepo] — the
+   * repository the catalog was generated from — must be one of the group's [HomeGroup.repos], which
+   * are exactly the repos the operator named for that entry. Neither of the alternatives works on
+   * its own:
    * * The **catalog id** is claimed by whoever publishes it. A third-party catalog served as
-   *   `compose-m3` or `jetnews` would otherwise be presented as an official design system or one of
-   *   Android's samples, purely for picking that name.
+   *   `compose-m3` would otherwise be presented as an official design system purely for picking
+   *   that name.
    * * The **trust verdict** names the branch the bytes were *fetched* from, which is a delivery
    *   detail: Android's samples are currently fetched from preview branches in the
    *   `yschimke/compose-samples` fork, and grouping on that would credit the fork owner for
-   *   Android's work.
+   *   Android's work — which is what [ServeCatalogsConfig.Entry.attributionRepos] exists to
+   *   express.
    *
-   * The known ids are still required alongside the repo (a repo publishing an unrelated catalog
-   * doesn't make it a design system), so the two must agree for a curated section to claim a card.
-   * A catalog with no provenance falls to "Other" — unattributed, never promoted.
+   * A catalog whose claim doesn't hold — or that declares no group at all — falls back to its
+   * source repo's **owner** section, and one with no provenance at all to "Other": unattributed,
+   * never promoted. Sections come out in first-appearance (i.e. configured) order, so the operator
+   * controls the front page's running order, with "Other" pinned last.
    */
   internal fun homeSections(systems: List<HomeSystem>): List<HomeSection> {
-    fun published(ids: Set<String>, repos: Set<String>): (HomeSystem) -> Boolean = { s ->
-      s.system in ids && s.sourceRepo in repos
+    val grouped = LinkedHashMap<String, MutableList<HomeSystem>>()
+    val nouns = LinkedHashMap<String, String>()
+    for (s in systems) {
+      // The claim only holds when the bytes came from a repo the operator named for this entry.
+      val claimed = s.group?.takeIf { g -> s.sourceRepo != null && s.sourceRepo in g.repos }
+      val heading = claimed?.heading ?: ownerHeading(s.sourceRepo)
+      grouped.getOrPut(heading) { mutableListOf() } += s
+      nouns.putIfAbsent(heading, claimed?.noun ?: ServeCatalogsConfig.DEFAULT_NOUN)
     }
-
-    val isDesignSystem =
-      published(
-        ids = setOf("compose-m3", "remote-m3", "wear-m3"),
-        repos = setOf("yschimke/compose-ai-tools"),
-      )
-    val isAndroidSample =
-      published(
-        ids =
-          setOf(
-            "jetnews",
-            "jetcaster",
-            "jetcaster-wear",
-            "jetchat",
-            "jetsnack",
-            "jetlagged",
-            "reply",
-          ),
-        // The preview branches currently live in the fork; both spellings are Android's samples.
-        repos = setOf("android/compose-samples", "yschimke/compose-samples"),
-      )
-
-    val designSystems = systems.filter(isDesignSystem)
-    val androidComposeSamples = systems.filter(isAndroidSample)
-    val remaining = systems.filterNot { isDesignSystem(it) || isAndroidSample(it) }
-    val yschimkeSystems = remaining.filter { it.sourceRepo?.startsWith("yschimke/") == true }
-    val otherSystems = remaining.filterNot { it.sourceRepo?.startsWith("yschimke/") == true }
-
-    return listOf(
-        HomeSection("Design Systems", designSystems, "design system(s)"),
-        HomeSection("android/compose-samples", androidComposeSamples, "sample(s)"),
-        HomeSection("yschimke org", yschimkeSystems, "catalog(s)"),
-        HomeSection("Other", otherSystems, "catalog(s)"),
-      )
-      .filter { it.systems.isNotEmpty() }
+    val sections = grouped.map { (heading, list) ->
+      HomeSection(heading, list, nouns.getValue(heading))
+    }
+    // "Other" is the unattributed bucket, so it reads last regardless of when it first appeared.
+    return sections.filterNot { it.heading == OTHER_HEADING } +
+      sections.filter { it.heading == OTHER_HEADING }
   }
+
+  /** The heading an ungrouped catalog falls back to: its repo owner's, else the "Other" bucket. */
+  private fun ownerHeading(sourceRepo: String?): String {
+    val owner = sourceRepo?.substringBefore('/')?.takeIf { it.isNotBlank() && it != sourceRepo }
+    return if (owner == null) OTHER_HEADING else "$owner org"
+  }
+
+  /** The catch-all section for catalogs carrying no usable provenance. */
+  private const val OTHER_HEADING = "Other"
 
   /**
    * A styled **404** page for a browser that followed a dead link to a catalog or preview page

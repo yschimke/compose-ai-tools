@@ -233,14 +233,79 @@ to get the pure module-less server above.
 ## Deploying `preview.coo.ee`
 
 Both container profiles take this config from env (the entrypoint maps `SERVE_PUBLIC`,
-`SERVE_CATALOGS`, `SERVE_CATALOGS_UNLISTED`, `SERVE_TRUST_STORE`, `SERVE_WASM_DIR`,
+`SERVE_CATALOGS_FILE`, `SERVE_ADMIN_TOKEN`, `SERVE_TRUST_STORE`, `SERVE_WASM_DIR`,
 `SERVE_ACCEPT_BUNDLES` → flags) and put **Caddy** in front for TLS. They default to the **open public
-profile** (`SERVE_PUBLIC=1`, catalogs `compose-m3,wear-m3,remote-m3` plus the app systems `meshcore-mobile`,
-`homeassistant-remotecompose`, and all seven compose-samples catalogs (`jetnews`, `jetcaster`,
-`jetcaster-wear`, `jetchat`, `jetsnack`, `jetlagged`, and `reply`) on the front-page index; `cadence` is
-served unlisted at `/cadence/` — off the front page — via `SERVE_CATALOGS_UNLISTED`). The prebuilt
-`deploy/image` profile additionally includes the two Confetti apps. Set `SERVE_PUBLIC=0` +
-`SERVE_TOKEN` for a token-gated box.
+profile** (`SERVE_PUBLIC=1`); set `SERVE_PUBLIC=0` + `SERVE_TOKEN` for a token-gated box.
+
+### The catalog set is config, not image content
+
+**Which catalogs a box publishes lives in a `catalogs.json` outside the image**, on the mounted
+`/config` volume (`SERVE_CATALOGS_FILE`, default `/config/catalogs.json`). Adding a catalog is an
+operator edit — or one `POST /admin/catalogs` — never an image rebuild or a CLI release:
+
+```json
+{
+  "groups": [
+    { "id": "design-systems", "heading": "Design Systems", "noun": "design system(s)" },
+    { "id": "android-samples", "heading": "android/compose-samples", "noun": "sample(s)" }
+  ],
+  "catalogs": [
+    { "system": "compose-m3", "repo": "yschimke/compose-ai-tools", "group": "design-systems" },
+    { "system": "jetnews", "repo": "yschimke/compose-samples", "group": "android-samples",
+      "attributionRepos": ["android/compose-samples"] },
+    { "system": "cadence", "repo": "yschimke/cadence", "listed": false }
+  ]
+}
+```
+
+Each entry names the catalog's delivery repo, whether it's on the front-page index (`listed: false`
+serves it at `/<system>/` but keeps it off the front door — that's how `cadence` is published), and
+the **front-page section** it appears under. Nothing in the server knows any particular catalog's id:
+grouping is entirely this config, and a catalog that declares no group is sectioned by its source
+repo's owner (`joreilly org`), with unattributed catalogs in `Other`.
+
+A `group` is a **claim checked against provenance**. The section applies only when the fetched bytes
+really came from the entry's `repo` (or one of its `attributionRepos` — which is how Android's
+samples, fetched from preview branches in the `yschimke/compose-samples` fork, are still credited to
+`android/compose-samples`). So serving a third-party catalog under the id `compose-m3` can't make it
+read as an official design system.
+
+The image carries the standard set only as a **seed** ([`deploy/image/catalogs.json`](../deploy/image/catalogs.json)
+→ `/etc/compose-preview/catalogs.default.json`), copied to `/config/catalogs.json` on first boot when
+that file doesn't exist. After that the operator's copy wins and an image pull never touches it. A
+bare `docker run` with an empty volume still comes up serving the standard catalogs.
+
+`SERVE_CATALOGS` / `SERVE_CATALOGS_UNLISTED` still work as **additions** (`<system>@<owner>/<repo>`,
+comma-separated) for a box that wants one extra catalog without editing config; a system named in
+both keeps its config entry. Re-running [`deploy/image/setup.sh`](../deploy/image/setup.sh) removes
+the known legacy `SERVE_CATALOGS` override containing only `jetnews`, `jetchat`, and `jetlagged`, so
+older `preview.coo.ee` deployments fall back to the config file cleanly.
+
+### The catalog admin API
+
+Setting `SERVE_ADMIN_TOKEN` enables three routes for publishing catalogs on a **running** server:
+
+| Route | Does |
+|---|---|
+| `GET /admin/catalogs` | the configured catalogs + each one's load state (`loaded` / `failed` / `pending` / `stale`) |
+| `POST /admin/catalogs` | publish one catalog — the body is a `catalogs.json` entry |
+| `DELETE /admin/catalogs/<system>` | retire a catalog: its session (and any live daemon) is dropped |
+
+```
+curl -H "X-Compose-Preview-Admin-Token: $SERVE_ADMIN_TOKEN" \
+     -d '{"system":"cadence","repo":"yschimke/cadence","listed":false}' \
+     https://preview.coo.ee/admin/catalogs
+```
+
+Each mutation is applied live **and** written back to `catalogs.json`, so it survives a restart; the
+response carries a `warning` when the config file couldn't be written (the catalog is still serving,
+it just won't come back). A registration fetches the branch **before** it's persisted, so a typo'd
+repo fails with `502` rather than leaving an unservable entry for every future boot to retry;
+malformed entries are `400` and re-publishing a served catalog is `409`.
+
+The admin token is **separate from the browse token** on purpose — a `--public` box hands the browse
+URL to every visitor — and the routes aren't registered at all when it's unset, so a server that
+never opted in has no admin surface to find. A bad token gets the same `404` the browse gate uses.
 
 The prebuilt `deploy/image` **bakes a branch-trust store** at `/trust/producers.json` (trusting
 `design-artifacts/*` on `yschimke/compose-ai-tools`, `yschimke/meshcore-mobile`, and
@@ -250,18 +315,11 @@ Mount your own over that path (or set `SERVE_TRUST_STORE` to it) to pin differen
 `SERVE_TRUST_STORE=none` to run trustless. (Empty falls back to the baked default — use `none` to opt
 out — which also means a bare image pull self-heals a box without editing its compose.)
 
-The **catalog set is baked into the image the same way**: the entrypoint defaults `SERVE_CATALOGS`
-to the three built-in design systems, MeshCore Mobile, Home Assistant Remote Compose, all seven
-`yschimke/compose-samples` catalogs, and both Confetti apps (front-page index), and defaults
-`SERVE_CATALOGS_UNLISTED` to `cadence@yschimke/cadence` (served at `/cadence/`, off the front page).
-So a bare `docker pull` / Watchtower update serves them
-without editing the box's compose. Override either with your own comma list, or `none` to serve none
-of that kind (empty inherits the baked default). Re-running `deploy/image/setup.sh` also removes the
-known legacy override containing only `jetnews`, `jetchat`, and `jetlagged`, allowing older
-`preview.coo.ee` deployments to inherit the complete image default without disturbing custom lists.
-The `deploy/vps` from-source path still sets these
-in its compose (it builds `main`, so the flags exist immediately; the prebuilt image needs a CLI
-release that carries `--catalogs-unlisted`).
+The catalog set is **not** baked the same way — see "The catalog set is config, not image content"
+above: the image ships it only as a first-boot seed, and the live copy lives on the `/config` volume
+where an operator edit or an admin-API call owns it. The `deploy/vps` from-source path mounts the
+same [`deploy/image/catalogs.json`](../deploy/image/catalogs.json) read-only, so both boxes publish
+one file's worth of catalogs.
 
 | | [`deploy/vps`](../deploy/vps) (from source) | [`deploy/image`](../deploy/image) (prebuilt) |
 |---|---|---|

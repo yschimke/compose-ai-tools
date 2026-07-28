@@ -1,0 +1,108 @@
+{
+  "groups": [
+    {
+      "id": "design-systems",
+      "heading": "Design Systems",
+      "noun": "design system(s)"
+    },
+    {
+      "id": "android-samples",
+      "heading": "android/compose-samples",
+      "noun": "sample(s)"
+    }
+  ],
+  "catalogs": [
+    {
+      "system": "compose-m3",
+      "repo": "yschimke/compose-ai-tools",
+      "listed": true,
+      "group": "design-systems"
+    },
+    {
+      "system": "wear-m3",
+      "repo": "yschimke/compose-ai-tools",
+      "listed": true,
+      "group": "design-systems"
+    },
+    {
+      "system": "remote-m3",
+      "repo": "yschimke/compose-ai-tools",
+      "listed": true,
+      "group": "design-systems"
+    },
+    {
+      "system": "meshcore-mobile",
+      "repo": "yschimke/meshcore-mobile",
+      "listed": true
+    },
+    {
+      "system": "homeassistant-remotecompose",
+      "repo": "yschimke/homeassistant-remotecompose",
+      "listed": true
+    },
+    {
+      "system": "jetnews",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": ["android/compose-samples"]
+    },
+    {
+      "system": "jetcaster",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": ["android/compose-samples"]
+    },
+    {
+      "system": "jetcaster-wear",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": ["android/compose-samples"]
+    },
+    {
+      "system": "jetchat",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": ["android/compose-samples"]
+    },
+    {
+      "system": "jetsnack",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": ["android/compose-samples"]
+    },
+    {
+      "system": "jetlagged",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": ["android/compose-samples"]
+    },
+    {
+      "system": "reply",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": ["android/compose-samples"]
+    },
+    {
+      "system": "confetti-wear",
+      "repo": "joreilly/Confetti",
+      "listed": true
+    },
+    {
+      "system": "confetti-mobile",
+      "repo": "joreilly/Confetti",
+      "listed": true
+    },
+    {
+      "system": "cadence",
+      "repo": "yschimke/cadence",
+      "listed": false
+    }
+  ]
+}

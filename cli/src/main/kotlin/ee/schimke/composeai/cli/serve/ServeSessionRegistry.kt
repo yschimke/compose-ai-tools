@@ -196,6 +196,18 @@ class ServeSessionRegistry(
   }
 
   /**
+   * Drop [sessionId] entirely — the counterpart of [register], for a catalog **retired** at runtime
+   * ([ServeCatalogAdmin]). The removed entry's host (and its daemon subprocess) is closed outside
+   * the lock, like the replacement path in [register]. Returns false when nothing was registered
+   * under that id.
+   */
+  fun unregister(sessionId: String): Boolean {
+    val removed = lock.withLock { sessions.remove(sessionId) }
+    removed?.host?.let { runCatching { it.close() } }
+    return removed != null
+  }
+
+  /**
    * The live host for [sessionId] — resuming a suspended session or forking a new one via
    * [factory]. Returns `null` when the session can't be created/opened, so the caller can 404.
    * Touches the idle clock.

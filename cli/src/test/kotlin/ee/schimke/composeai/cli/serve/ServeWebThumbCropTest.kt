@@ -83,6 +83,22 @@ class ServeWebThumbCropTest {
     )
   }
 
+  /** The section an operator's `catalogs.json` declares for Android's samples. */
+  private val androidSamples =
+    ServeWeb.HomeGroup(
+      heading = "android/compose-samples",
+      noun = "sample(s)",
+      // The preview branches currently live in the fork; both spellings are Android's samples.
+      repos = setOf("android/compose-samples", "yschimke/compose-samples"),
+    )
+
+  private val designSystems =
+    ServeWeb.HomeGroup(
+      heading = "Design Systems",
+      noun = "design system(s)",
+      repos = setOf("yschimke/compose-ai-tools"),
+    )
+
   @Test
   fun `all compose sample catalogs are attributed to android and shown on the homepage`() {
     val sampleIds =
@@ -98,6 +114,7 @@ class ServeWebThumbCropTest {
         trust = "branch:yschimke/compose-samples@design-artifacts/$id",
         sourceRepo = "yschimke/compose-samples",
         heroPreviewId = null,
+        group = androidSamples,
       )
     }
 
@@ -112,6 +129,8 @@ class ServeWebThumbCropTest {
 
   @Test
   fun `a reused sample id is attributed to its actual catalog repository`() {
+    // The config declares the samples section, but these bytes came from an unrelated repo — the
+    // claim doesn't hold, so the card falls back to its own publisher rather than Android's.
     val system =
       ServeWeb.HomeSystem(
         system = "jetnews",
@@ -121,12 +140,13 @@ class ServeWebThumbCropTest {
         trust = "branch:someorg/unrelated@design-artifacts/jetnews",
         sourceRepo = "someorg/unrelated",
         heroPreviewId = null,
+        group = androidSamples,
       )
 
     val html = ServeWeb.homeIndexPage(listOf(system), token = "t", isPublic = true)
 
     assertFalse(html.contains("<h1 class=\"cp-head\">android/compose-samples</h1>"))
-    assertTrue(html.contains("<h1 class=\"cp-head\">Other</h1>"))
+    assertTrue(html.contains("<h1 class=\"cp-head\">someorg org</h1>"))
     assertTrue(html.contains("href=\"/jetnews/\""))
   }
 
@@ -144,11 +164,12 @@ class ServeWebThumbCropTest {
         trust = "branch:someorg/unrelated@design-artifacts/compose-m3",
         sourceRepo = "someorg/unrelated",
         heroPreviewId = null,
+        group = designSystems,
       )
 
     val sections = ServeWeb.homeSections(listOf(impostor))
 
-    assertEquals(listOf("Other"), sections.map { it.heading })
+    assertEquals(listOf("someorg org"), sections.map { it.heading })
   }
 
   @Test
@@ -163,6 +184,7 @@ class ServeWebThumbCropTest {
           trust = "branch:yschimke/compose-ai-tools@design-artifacts/$id",
           sourceRepo = "yschimke/compose-ai-tools",
           heroPreviewId = null,
+          group = designSystems,
         )
       }
 
@@ -170,12 +192,13 @@ class ServeWebThumbCropTest {
 
     assertEquals(listOf("Design Systems"), sections.map { it.heading })
     assertEquals(3, sections.single().systems.size)
+    assertEquals("design system(s)", sections.single().noun)
   }
 
   @Test
   fun `a catalog with no provenance is never promoted into a curated section`() {
     // Unattributed bytes: an old catalog with no provenance carries no publisher claim at all, so
-    // it lands in Other rather than inheriting a curated section from its id.
+    // it lands in Other rather than inheriting a curated section from its config entry.
     val unattributed =
       ServeWeb.HomeSystem(
         system = "wear-m3",
@@ -185,8 +208,59 @@ class ServeWebThumbCropTest {
         trust = null,
         sourceRepo = null,
         heroPreviewId = null,
+        group = designSystems,
       )
 
     assertEquals(listOf("Other"), ServeWeb.homeSections(listOf(unattributed)).map { it.heading })
+  }
+
+  @Test
+  fun `an ungrouped catalog is sectioned by its repo owner, and Other reads last`() {
+    // Nothing here is hardcoded per catalog: a server publishing catalogs this build has never
+    // heard of still gets one section per publisher, with the unattributed bucket pinned last.
+    fun system(id: String, repo: String?) =
+      ServeWeb.HomeSystem(
+        system = id,
+        title = id,
+        subtitle = null,
+        previewCount = 1,
+        trust = null,
+        sourceRepo = repo,
+        heroPreviewId = null,
+      )
+
+    val sections =
+      ServeWeb.homeSections(
+        listOf(
+          system("mystery", null),
+          system("confetti-wear", "joreilly/Confetti"),
+          system("cadence", "yschimke/cadence"),
+          system("confetti-mobile", "joreilly/Confetti"),
+        )
+      )
+
+    assertEquals(listOf("joreilly org", "yschimke org", "Other"), sections.map { it.heading })
+    assertEquals(2, sections.first().systems.size)
+    assertEquals("catalog(s)", sections.first().noun)
+  }
+
+  @Test
+  fun `a section heading from config is escaped, never injected into the page`() {
+    val system =
+      ServeWeb.HomeSystem(
+        system = "somecat",
+        title = "Some Catalog",
+        subtitle = null,
+        previewCount = 1,
+        trust = null,
+        sourceRepo = "someorg/somecat",
+        heroPreviewId = null,
+        group = ServeWeb.HomeGroup(heading = "<script>x</script>", repos = setOf("someorg/somecat")),
+      )
+
+    val html = ServeWeb.homeIndexPage(listOf(system), token = "t", isPublic = true)
+
+    assertFalse(html.contains("<script>x</script>"), "config text is data, not markup")
+    assertTrue(html.contains("&lt;script&gt;x&lt;/script&gt;"))
   }
 }

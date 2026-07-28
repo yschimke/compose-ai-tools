@@ -10,9 +10,12 @@ import ee.schimke.composeai.cli.serve.ServeBundle
 import ee.schimke.composeai.cli.serve.ServeBundleDaemon
 import ee.schimke.composeai.cli.serve.ServeBundleHost
 import ee.schimke.composeai.cli.serve.ServeBundleStore
+import ee.schimke.composeai.cli.serve.ServeCatalogAdmin
 import ee.schimke.composeai.cli.serve.ServeCatalogLiveHost
 import ee.schimke.composeai.cli.serve.ServeCatalogRefresher
 import ee.schimke.composeai.cli.serve.ServeCatalogStore
+import ee.schimke.composeai.cli.serve.ServeCatalogsConfig
+import ee.schimke.composeai.cli.serve.ServeCatalogsConfigFile
 import ee.schimke.composeai.cli.serve.ServeHost
 import ee.schimke.composeai.cli.serve.ServeHttpServer
 import ee.schimke.composeai.cli.serve.ServeMdnsAdvertiser
@@ -26,6 +29,7 @@ import ee.schimke.composeai.cli.serve.ServeSessionRegistry
 import ee.schimke.composeai.cli.serve.ServeSessionState
 import ee.schimke.composeai.cli.serve.ServeStartupBundles
 import ee.schimke.composeai.cli.serve.ServeUrls
+import ee.schimke.composeai.cli.serve.ServeWeb
 import ee.schimke.composeai.cli.serve.TrustStore
 import ee.schimke.composeai.cli.serve.declaredThemesFromPreviews
 import ee.schimke.composeai.cli.serve.detectedFeaturesOf
@@ -37,6 +41,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
+import okio.Path.Companion.toPath
 
 /**
  * `compose-preview serve [--module M] [--id|--filter] [--host H] [--lan] [--port N] [--token T]`
@@ -237,6 +242,49 @@ class ServeCommand(args: List<String>) : Command(args) {
    * publish but don't want on the public front door.
    */
   private val catalogsUnlistedRaw: String? = args.flagValue("--catalogs-unlisted")
+
+  /**
+   * The **catalog set as config** (`--catalogs-file <path>`; env `SERVE_CATALOGS_FILE` in the
+   * container profiles): a `catalogs.json` ([ServeCatalogsConfig]) listing every catalog to serve,
+   * where its delivery branch lives, whether it's on the front door, and which front-page section
+   * it's published under. Meant to live on a mounted volume — *outside* the image — so publishing a
+   * catalog is an operator config edit (or an admin-API call, which rewrites this same file) rather
+   * than an image rebuild.
+   *
+   * Composes with `--catalogs` / `--catalogs-unlisted` rather than replacing them: file entries
+   * come first (they carry the group declarations), then any flag entries the file didn't already
+   * name.
+   */
+  private val catalogsFile: ServeCatalogsConfigFile? =
+    args
+      .flagValue("--catalogs-file")
+      ?.takeIf { it.isNotBlank() }
+      ?.let { ServeCatalogsConfigFile(it.toPath()) }
+
+  /**
+   * Shared secret for the runtime catalog-admin routes (`--admin-token`; env `SERVE_ADMIN_TOKEN`).
+   * Absent ⇒ `/admin/catalogs` isn't registered at all, so a server that didn't opt in has no admin
+   * surface. Deliberately distinct from the browse token: a `--public` box hands that one out to
+   * every visitor.
+   */
+  private val adminToken: String? = args.flagValue("--admin-token")?.takeIf { it.isNotBlank() }
+
+  /**
+   * The parsed `--catalogs-file`, or the empty config when none is set / it can't be read. A
+   * malformed config is reported and treated as empty rather than fatal: a box whose config file
+   * got truncated should still come up on its flag-supplied catalogs.
+   */
+  private val catalogsConfig: ServeCatalogsConfig by lazy {
+    val file = catalogsFile ?: return@lazy ServeCatalogsConfig.EMPTY
+    val parsed =
+      runCatching { file.load() }
+        .getOrElse {
+          System.err.println("serve: could not read ${file.displayPath}: ${it.message}")
+          ServeCatalogsConfig.EMPTY
+        }
+    parsed.problems().forEach { System.err.println("serve: catalogs config: $it") }
+    parsed
+  }
   /**
    * The **listed** catalog systems that actually registered (one can fail to fetch). Filled by
    * [registerCatalogs]; surfaced on the landing page as nav links so the public front door lists
@@ -303,7 +351,17 @@ class ServeCommand(args: List<String>) : Command(args) {
    * `design-artifacts/<system>` branch lives in (the shared [catalogRepo] unless the entry gave an
    * `@<owner>/<repo>` override), and whether it's [listed] on the front-page nav.
    */
-  private data class CatalogRef(val system: String, val repo: String, val listed: Boolean)
+  private data class CatalogRef(
+    val system: String,
+    val repo: String,
+    val listed: Boolean,
+    /**
+     * The front-page section this catalog is published under, with the repos allowed to claim it.
+     * Only a `--catalogs-file` entry can carry one — a bare `--catalogs` flag entry declares no
+     * publisher, so its card is grouped by its source repo's owner.
+     */
+    val group: ServeWeb.HomeGroup? = null,
+  )
 
   /**
    * Parse one comma-separated flag value into [CatalogRef]s; `<system>@<owner>/<repo>` per entry.
@@ -324,11 +382,28 @@ class ServeCommand(args: List<String>) : Command(args) {
         }
       } ?: emptyList()
 
+  /** The `--catalogs-file` entries as refs, skipping any the config itself reports as malformed. */
+  private fun configCatalogRefs(): List<CatalogRef> =
+    catalogsConfig.catalogs
+      .filter { ServeCatalogsConfig.validateEntry(it) == null }
+      .map { entry ->
+        val repo = entry.repo?.takeIf { it.isNotBlank() } ?: catalogRepo
+        CatalogRef(
+          system = entry.system,
+          repo = repo,
+          listed = entry.listed,
+          group = ServeCatalogAdmin.homeGroup(entry, repo, catalogsConfig.groups),
+        )
+      }
+
   /**
-   * All catalog refs to serve — listed first, then unlisted; de-duplicated by system (first wins).
+   * All catalog refs to serve — the config file first (it carries the front-page grouping), then
+   * the `--catalogs` / `--catalogs-unlisted` flag entries; de-duplicated by system (first wins), so
+   * a flag can add a catalog the file doesn't name but never silently re-attributes one it does.
    */
   private val catalogRefs: List<CatalogRef> by lazy {
-    (parseCatalogRefs(catalogsRaw, listed = true) +
+    (configCatalogRefs() +
+        parseCatalogRefs(catalogsRaw, listed = true) +
         parseCatalogRefs(catalogsUnlistedRaw, listed = false))
       .distinctBy { it.system }
   }
@@ -538,6 +613,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           catalogPerPreviewPoolsCloseable,
         ),
       catalogLoads = catalogReg?.loads,
+      catalogStore = catalogReg?.store,
     )
   }
 
@@ -619,6 +695,7 @@ class ServeCommand(args: List<String>) : Command(args) {
       mdnsPreviewIds = null,
       closeables = listOfNotNull(catalogPerPreviewPoolsCloseable, catalogRefresher),
       catalogLoads = catalogReg?.loads,
+      catalogStore = catalogReg?.store,
     )
   }
 
@@ -715,6 +792,8 @@ class ServeCommand(args: List<String>) : Command(args) {
     mdnsPreviewIds: List<String>?,
     closeables: List<AutoCloseable?>,
     catalogLoads: CatalogLoadTracker?,
+    /** The catalog store an admin registration fetches through; null ⇒ no runtime admin. */
+    catalogStore: ServeCatalogStore? = null,
   ) {
     val configuredCatalogs =
       catalogLoads?.snapshot()?.filter { it.config.listed }?.map { it.config.system }
@@ -722,6 +801,15 @@ class ServeCommand(args: List<String>) : Command(args) {
     val configuredApps =
       catalogLoads?.snapshot()?.filter { !it.config.listed }?.map { it.config.system }
         ?: registeredUnlistedCatalogs.toList()
+    // Runtime catalog administration: only when the operator supplied an admin token AND there's a
+    // catalog store to fetch through. Both halves are opt-in, so a plain `serve` has no admin
+    // surface at all.
+    val catalogAdmin =
+      if (adminToken != null && catalogStore != null && catalogLoads != null) {
+        buildCatalogAdmin(registry, catalogStore, catalogLoads)
+      } else {
+        null
+      }
     val server =
       ServeHttpServer(
         host = host,
@@ -743,7 +831,16 @@ class ServeCommand(args: List<String>) : Command(args) {
         trustStoreConfigured = trustStorePath != null,
         catalogRefreshSeconds = catalogRefreshSeconds,
         acceptBundlesEnabled = acceptBundles,
+        catalogAdmin = catalogAdmin,
+        adminToken = adminToken,
       )
+    if (catalogAdmin != null) {
+      System.err.println(
+        "serve: catalog admin API enabled at /admin/catalogs" +
+          (catalogsFile?.let { " (persisting to ${it.displayPath})" }
+            ?: " (runtime only — pass --catalogs-file to persist)")
+      )
+    }
 
     // Advertise on the LAN over mDNS when bound to a reachable interface (`--lan`), so the mobile /
     // wear session-viewer clients can discover this server without a typed URL. Best-effort: a null
@@ -1029,6 +1126,7 @@ class ServeCommand(args: List<String>) : Command(args) {
             listed = ref.listed,
             repo = ref.repo,
             branch = "$catalogBranchPrefix${ref.system}",
+            group = ref.group,
           )
         }
       )
@@ -1097,6 +1195,34 @@ class ServeCommand(args: List<String>) : Command(args) {
   }
 
   /**
+   * Wire the runtime catalog admin ([ServeCatalogAdmin]) to this server's moving parts: a
+   * registration fetches through the same [store] startup uses, lands in the same [loads] tracker
+   * every consumer reads, and is written back to the operator's `--catalogs-file`. Retiring a
+   * catalog drops its session (closing any live daemon) and its per-preview daemon pool.
+   */
+  private fun buildCatalogAdmin(
+    registry: ServeSessionRegistry,
+    store: ServeCatalogStore,
+    loads: CatalogLoadTracker,
+  ): ServeCatalogAdmin =
+    ServeCatalogAdmin(
+      tracker = loads,
+      defaultRepo = catalogRepo,
+      branchPrefix = catalogBranchPrefix,
+      configFile = catalogsFile,
+      groups = catalogsConfig.groups,
+      load = { system, repo ->
+        val result = store.load(system, sourceRepo = repo)
+        loads.record(result)
+        (result as? ServeCatalogStore.Result.Failed)?.reason
+      },
+      unload = { system ->
+        registry.unregister(system)
+        catalogPerPreviewPools.remove(system)?.let { runCatching { it.close() } }
+      },
+    )
+
+  /**
    * Build the background poller that keeps a running server fresh against its catalog branches (see
    * [ServeCatalogRefresher]). Null when polling is disabled ([catalogRefreshSeconds] ≤ 0) or there
    * are no catalogs. The caller seeds heads + starts it, and adds it to the server's closeables so
@@ -1109,12 +1235,16 @@ class ServeCommand(args: List<String>) : Command(args) {
     loads: CatalogLoadTracker,
   ): ServeCatalogRefresher? {
     if (catalogRefreshSeconds <= 0 || catalogRefs.isEmpty()) return null
-    val entries = catalogRefs.map {
-      ServeCatalogRefresher.Entry(
-        system = it.system,
-        repo = it.repo,
-        branch = "$catalogBranchPrefix${it.system}",
-      )
+    // Read from the tracker per pass, not from the startup refs: a catalog published through the
+    // admin API must start being polled without a restart (and a retired one must stop).
+    val entries = {
+      loads.snapshot().map {
+        ServeCatalogRefresher.Entry(
+          system = it.config.system,
+          repo = it.config.repo,
+          branch = it.config.branch,
+        )
+      }
     }
     return ServeCatalogRefresher(
       entries = entries,
@@ -1528,6 +1658,22 @@ class ServeCommand(args: List<String>) : Command(args) {
                           Like --catalogs, but served WITHOUT a front-page nav link — reachable at
                           /<system>/ and ?session=<system> but hidden from the landing "Design
                           systems" row. For app design systems we publish but keep off the front door.
+        --catalogs-file <path>
+                          The catalog set as CONFIG, not flags: a catalogs.json listing every
+                          catalog to serve ({"groups":[…],"catalogs":[{"system","repo","listed",
+                          "group"}]}). Meant to live outside the container image (a mounted volume)
+                          so publishing a catalog is a config edit, not an image rebuild. The
+                          "group" names a front-page section from "groups" — a claim honoured only
+                          when the catalog's bytes really came from the entry's repo (or one of its
+                          "attributionRepos"), so an id like compose-m3 can't buy a section. Entries
+                          here come first; --catalogs / --catalogs-unlisted add to them.
+        --admin-token <value>
+                          Enable the runtime catalog-admin API and gate it with this secret:
+                          GET /admin/catalogs, POST /admin/catalogs (a catalogs.json entry as the
+                          body), DELETE /admin/catalogs/<system>. Mutations are applied live AND
+                          written back to --catalogs-file, so they survive a restart. Separate from
+                          --token on purpose (a --public box hands that one to every visitor);
+                          omitted = the admin routes don't exist at all.
         --catalog-repo <owner/repo>
                           Default repo the catalogs are fetched from (default
                           yschimke/compose-ai-tools); per-entry @<owner>/<repo> overrides it.

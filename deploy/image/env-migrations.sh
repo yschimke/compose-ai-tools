@@ -6,9 +6,11 @@
 # to be a test, not a comment.
 
 # The public server briefly pinned only the first three compose-samples apps in
-# SERVE_CATALOGS. An explicit value shadows the catalog set baked into the image
-# (the entrypoint only falls back when SERVE_CATALOGS is unset or empty), so an
-# image rollout alone can never add Jetcaster, Jetsnack, and Reply to such a box.
+# SERVE_CATALOGS, back when that variable WAS the catalog set. It is now only an
+# addition to the operator's catalogs.json (/config/catalogs.json), so the stale
+# pin no longer shadows anything — but it does re-add three entries the config
+# file already declares, which reads as a mystery on the front page. Dropping it
+# leaves the config file as the single source of truth.
 LEGACY_COMPOSE_SAMPLES_CATALOGS='jetnews@yschimke/compose-samples,jetchat@yschimke/compose-samples,jetlagged@yschimke/compose-samples'
 
 # True when the line is a SERVE_CATALOGS assignment whose value is exactly the
@@ -30,7 +32,7 @@ _env_line_is_legacy_catalogs() {
 }
 
 # Drop only the legacy three-app SERVE_CATALOGS assignment from $1, so the next
-# `compose up` inherits the complete image default. Any other SERVE_CATALOGS
+# `compose up` serves exactly what catalogs.json declares. Any other SERVE_CATALOGS
 # value — an operator's own list, or a later override in the same file — is left
 # alone. Returns 0 when something was removed (so callers can log), 1 otherwise.
 migrate_legacy_serve_catalogs() {

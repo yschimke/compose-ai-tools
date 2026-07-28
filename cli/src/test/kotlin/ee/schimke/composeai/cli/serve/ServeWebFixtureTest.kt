@@ -387,10 +387,19 @@ class ServeWebFixtureTest {
     // with a meaningful hero preview, its title + library, trust badge, and a link to /<system>/.
     // This is what `/` serves now (instead of an arbitrary default module's grid), so the harness
     // captures it per theme.
+    // The front-page section the operator's `catalogs.json` publishes the built-in systems under —
+    // a claim honoured only for catalogs whose bytes really came from that repo.
+    val designSystemsGroup =
+      ServeWeb.HomeGroup(
+        heading = "Design Systems",
+        noun = "design system(s)",
+        repos = setOf("yschimke/compose-ai-tools"),
+      )
     val homeIndex =
       ServeWeb.homeIndexPage(
         listOf(
           ServeWeb.HomeSystem(
+            group = designSystemsGroup,
             system = "compose-m3",
             title = "Compose Material 3",
             subtitle = "androidx.compose.material3:material3",
@@ -409,6 +418,7 @@ class ServeWebFixtureTest {
               ),
           ),
           ServeWeb.HomeSystem(
+            group = designSystemsGroup,
             system = "wear-m3",
             title = "Wear Compose Material 3",
             subtitle = "androidx.wear.compose:compose-material3",
@@ -426,6 +436,7 @@ class ServeWebFixtureTest {
             darkStage = true,
           ),
           ServeWeb.HomeSystem(
+            group = designSystemsGroup,
             system = "remote-m3",
             title = "Remote Compose Material 3",
             subtitle = "androidx.wear.compose.remote:remote-material3",
@@ -1213,18 +1224,20 @@ class ServeWebFixtureTest {
       homeIndex.contains("<h1 class=\"cp-head\">yschimke org</h1>"),
       "catalogs published by yschimke have their own section",
     )
+    // A catalog that claims no configured group is sectioned by its source repo's OWNER — nothing
+    // in the server knows `confetti-wear`, so Confetti gets a `joreilly org` section for free.
     assertTrue(
-      homeIndex.contains("<h1 class=\"cp-head\">Other</h1>"),
-      "catalogs from all other publishers have their own final section",
+      homeIndex.contains("<h1 class=\"cp-head\">joreilly org</h1>"),
+      "an unconfigured publisher still gets its own section, derived from the source repo",
     )
     assertTrue(
       homeIndex.indexOf("href=\"/remote-m3/\"") <
         homeIndex.indexOf("<h1 class=\"cp-head\">yschimke org</h1>") &&
         homeIndex.indexOf("href=\"/homeassistant-remotecompose/\"") <
-          homeIndex.indexOf("<h1 class=\"cp-head\">Other</h1>") &&
-        homeIndex.indexOf("<h1 class=\"cp-head\">Other</h1>") <
+          homeIndex.indexOf("<h1 class=\"cp-head\">joreilly org</h1>") &&
+        homeIndex.indexOf("<h1 class=\"cp-head\">joreilly org</h1>") <
           homeIndex.indexOf("href=\"/confetti-wear/\""),
-      "cards are split between the design system, yschimke, and final Other sections",
+      "cards are split between the design system, yschimke, and joreilly sections",
     )
     // An UNLISTED catalog (cadence) is served at /<system>/ but kept OFF the front door: the home
     // index carries no separate "Apps" section, so publishing it doesn't advertise it on the

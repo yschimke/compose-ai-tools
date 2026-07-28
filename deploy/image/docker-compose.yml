@@ -34,14 +34,18 @@ services:
       # design-artifacts/<system> branch. For a token-gated box instead, set
       # SERVE_PUBLIC=0 and SERVE_TOKEN in .env.
       SERVE_PUBLIC: "${SERVE_PUBLIC:-1}"
-      # The catalog set is BAKED INTO THE IMAGE (entrypoint): the front-page systems
-      # (compose-m3, wear-m3, remote-m3) and the app systems fetched from their own repos
-      # (MeshCore Mobile, Home Assistant Remote Compose, the seven compose-samples catalogs, and the two
-      # Confetti apps); Cadence is served unlisted. Leave these empty to inherit the baked defaults
-      # — so a bare image pull self-heals without editing this compose. setup.sh removes the exact
-      # legacy three-compose-samples override, which would otherwise shadow that complete default.
-      # Set your own comma list to override, or the literal `none` to serve none of that
-      # kind. (Empty is NOT `none` — it falls back to the baked default.)
+      # The catalog set is CONFIG, not image content: it lives in catalogs.json on the
+      # `preview_config` volume below (/config/catalogs.json), which the entrypoint seeds
+      # from the image's default on first boot and never overwrites again. Edit that file
+      # (docker compose exec preview vi /config/catalogs.json, then restart) or POST to
+      # /admin/catalogs to publish a catalog — no image rebuild, no compose edit.
+      SERVE_CATALOGS_FILE: "${SERVE_CATALOGS_FILE:-}"
+      # Runtime catalog admin (GET/POST /admin/catalogs, DELETE /admin/catalogs/<system>).
+      # Set a strong secret in .env to enable; unset (default) means the routes don't exist.
+      # It is NOT the browse token — a public box gives that one to every visitor.
+      SERVE_ADMIN_TOKEN: "${SERVE_ADMIN_TOKEN:-}"
+      # Optional ADDITIONS to that file, for one extra catalog without editing config:
+      # <system>@<owner>/<repo>, comma-separated. Empty (the default) = the file decides.
       SERVE_CATALOGS: "${SERVE_CATALOGS:-}"
       SERVE_CATALOGS_UNLISTED: "${SERVE_CATALOGS_UNLISTED:-}"
       # The image bakes a branch-trust store at /trust/producers.json and the
@@ -94,6 +98,13 @@ services:
     # so a concurrent re-resolve is idempotent (same bytes, last-writer-wins).
     volumes:
       - preview_cache:/root/.cache/composeai
+      # The operator's catalog config (catalogs.json). On a named volume so it OUTLIVES the
+      # container: an image roll replaces the writable layer, and the published catalog set
+      # must not go with it. The entrypoint seeds this from the image default only when the
+      # file is absent, so an edit here — or a POST to /admin/catalogs, which rewrites the
+      # same file — survives every subsequent pull. Bind-mount a host path instead
+      # (`- ./catalogs.json:/config/catalogs.json`) to keep it in version control.
+      - preview_config:/config
     # To also pin your OWN producers, mount a trust store over the baked one and keep
     # SERVE_TRUST_STORE pointing at it:
     #   - ./producers.json:/trust/producers.json:ro
@@ -241,5 +252,8 @@ volumes:
   # image rolls so a freshly-rolled replica reuses them instead of re-downloading. See the
   # `preview` service's volumes block for why the baked android-all / ~/.m2 are excluded.
   preview_cache:
+  # The operator's catalogs.json — the published catalog set, kept outside the image so it
+  # survives image rolls and can be edited (or POSTed to /admin/catalogs) without a rebuild.
+  preview_config:
   caddy_data:
   caddy_config:

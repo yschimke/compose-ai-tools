@@ -20,7 +20,7 @@ class ServeCatalogRefresherTest {
     val reloads = mutableListOf<String>()
     val r =
       ServeCatalogRefresher(
-        entries = listOf(entry()),
+        entries = { listOf(entry()) },
         reload = { sys, _ ->
           reloads += sys
           true
@@ -47,7 +47,7 @@ class ServeCatalogRefresherTest {
     val reloads = AtomicInteger(0)
     val r =
       ServeCatalogRefresher(
-        entries = listOf(entry()),
+        entries = { listOf(entry()) },
         reload = { _, _ ->
           reloads.incrementAndGet()
           succeed
@@ -75,7 +75,7 @@ class ServeCatalogRefresherTest {
     val reloads = AtomicInteger(0)
     val r =
       ServeCatalogRefresher(
-        entries = listOf(entry()),
+        entries = { listOf(entry()) },
         reload = { _, _ ->
           reloads.incrementAndGet()
           true
@@ -96,7 +96,7 @@ class ServeCatalogRefresherTest {
     val reloads = AtomicInteger(0)
     val r =
       ServeCatalogRefresher(
-        entries = listOf(entry()),
+        entries = { listOf(entry()) },
         reload = { _, _ ->
           reloads.incrementAndGet()
           true
@@ -121,7 +121,7 @@ class ServeCatalogRefresherTest {
     val reloads = AtomicInteger(0)
     val r =
       ServeCatalogRefresher(
-        entries = listOf(entry("jetnews"), entry("reply")),
+        entries = { listOf(entry("jetnews"), entry("reply")) },
         reload = { system, _ ->
           if (system == "reply") reloads.incrementAndGet()
           system == "jetnews" || succeed
@@ -150,7 +150,7 @@ class ServeCatalogRefresherTest {
     val reloads = mutableListOf<String>()
     val r =
       ServeCatalogRefresher(
-        entries = listOf(entry("compose-m3"), entry("cadence")),
+        entries = { listOf(entry("compose-m3"), entry("cadence")) },
         reload = { sys, _ ->
           reloads += sys
           true

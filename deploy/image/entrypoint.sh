@@ -27,17 +27,41 @@ fi
 # system's web/wasm/ from the trusted design-artifacts branch. (--wasm-dir is for
 # the from-source image's local build.)
 #
-# The published catalog set is BAKED INTO THE IMAGE (same `:=` + `none` convention
-# as SERVE_TRUST_STORE below), so a bare `docker pull` / Watchtower auto-update
-# self-heals without editing the box's compose. Front-page systems:
-: "${SERVE_CATALOGS:=compose-m3,wear-m3,remote-m3,meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose,jetnews@yschimke/compose-samples,jetcaster@yschimke/compose-samples,jetcaster-wear@yschimke/compose-samples,jetchat@yschimke/compose-samples,jetsnack@yschimke/compose-samples,jetlagged@yschimke/compose-samples,reply@yschimke/compose-samples,confetti-wear@joreilly/Confetti,confetti-mobile@joreilly/Confetti}"
-[[ "${SERVE_CATALOGS}" != "none" ]] && args+=(--catalogs "${SERVE_CATALOGS}")
-# …and cadence, served UNLISTED from its own repo — reachable at /cadence/ (and ?session=cadence)
-# but kept OFF the front-page index. (meshcore-mobile / homeassistant-remotecompose are LISTED above
-# so they show on the front page.) <system>@<owner>/<repo> points at a per-repo design-artifacts
-# branch, which must be trusted (see the store below) to badge Trusted. `none` serves none.
-: "${SERVE_CATALOGS_UNLISTED:=cadence@yschimke/cadence}"
-[[ "${SERVE_CATALOGS_UNLISTED}" != "none" ]] && args+=(--catalogs-unlisted "${SERVE_CATALOGS_UNLISTED}")
+# The published catalog set is CONFIG, NOT IMAGE CONTENT. It lives in a catalogs.json
+# on the mounted /config volume: which catalogs to serve, the repo each one's
+# design-artifacts branch lives in, whether it's on the front door, and the front-page
+# section it's published under. Editing that file (or POSTing to /admin/catalogs) is
+# how a catalog is added — no image rebuild, no CLI release, no compose edit.
+#
+# The image carries only a SEED (/etc/compose-preview/catalogs.default.json), copied in
+# on first boot when the config file doesn't exist yet — so a bare `docker run` with an
+# empty volume still comes up serving the standard set, while an operator's existing
+# config is never overwritten by an image pull.
+: "${SERVE_CATALOGS_FILE:=/config/catalogs.json}"
+if [[ "${SERVE_CATALOGS_FILE}" != "none" ]]; then
+  if [[ ! -f "${SERVE_CATALOGS_FILE}" && -f /etc/compose-preview/catalogs.default.json ]]; then
+    if mkdir -p "$(dirname "${SERVE_CATALOGS_FILE}")" 2>/dev/null &&
+      cp /etc/compose-preview/catalogs.default.json "${SERVE_CATALOGS_FILE}" 2>/dev/null; then
+      echo "entrypoint: seeded ${SERVE_CATALOGS_FILE} from the image default" >&2
+    else
+      # Read-only / unwritable config dir: serve the baked seed directly rather than
+      # coming up with no catalogs at all. Admin writes will report they can't persist.
+      SERVE_CATALOGS_FILE=/etc/compose-preview/catalogs.default.json
+      echo "entrypoint: ${SERVE_CATALOGS_FILE} not writable — serving the baked default" >&2
+    fi
+  fi
+  args+=(--catalogs-file "${SERVE_CATALOGS_FILE}")
+fi
+# Optional ADDITIONS to the config file, for a box that wants one extra catalog without
+# editing its config: <system>@<owner>/<repo>, comma-separated. Unset by default — the
+# config file is the source of truth. A system named in both keeps its config entry.
+[[ -n "${SERVE_CATALOGS:-}" && "${SERVE_CATALOGS}" != "none" ]] && args+=(--catalogs "${SERVE_CATALOGS}")
+[[ -n "${SERVE_CATALOGS_UNLISTED:-}" && "${SERVE_CATALOGS_UNLISTED}" != "none" ]] &&
+  args+=(--catalogs-unlisted "${SERVE_CATALOGS_UNLISTED}")
+# Runtime catalog administration (GET/POST /admin/catalogs, DELETE /admin/catalogs/<system>),
+# gated by its own secret — never the browse token, which a public box hands to every visitor.
+# Unset (the default) means the admin routes don't exist at all.
+[[ -n "${SERVE_ADMIN_TOKEN:-}" ]] && args+=(--admin-token "${SERVE_ADMIN_TOKEN}")
 # Default to the baked branch-trust store so the published design-artifacts catalogs
 # badge as Trusted(Branch) out of the box. `:=` fills it when SERVE_TRUST_STORE is
 # unset OR empty (an older host compose passes ""), so a bare image pull self-heals a

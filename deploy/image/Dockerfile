@@ -207,6 +207,13 @@ COPY --from=android-daemon /root/.m2/repository/org/robolectric /root/.m2/reposi
 # defaults to /trust/producers.json). Override by mounting your own there.
 COPY trust/ /trust/
 
+# The published catalog set is CONFIG, not image content: this is only the SEED the
+# entrypoint copies to /config/catalogs.json on first boot when that (mounted) file
+# doesn't exist yet. After that the operator's copy wins — edit it, or POST to
+# /admin/catalogs — and an image pull never overwrites it. Mount /config on a volume
+# so it outlives the container.
+COPY catalogs.json /etc/compose-preview/catalogs.default.json
+
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
