@@ -583,6 +583,11 @@ jobs:
       # published catalog on stale renders without any signal.
       - name: Run design-artifacts scope tests
         run: scripts/design-artifacts/test-scope-systems.sh
+      # Covers the workflow step wrapped around that mapping — the force-all input
+      # the release chain depends on, and the compare-endpoint 300-file cap. Both
+      # fail silently in production (a delivery branch just stops regenerating).
+      - name: Run design-artifacts scope-step tests
+        run: scripts/design-artifacts/test-scope-step.sh
       - name: Run daemon round-trip transport tests
         run: python3 .github/ci/test_daemon_roundtrip.py -v
       # The android-all cache-key script DELETES ~200 MB coordinate directories
