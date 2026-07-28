@@ -74,6 +74,7 @@ import {
 import { candidatePreviewBundle } from "./bundle-previews.mjs";
 import { bridgeLivePreviewIds } from "./bridge-live-preview-ids.mjs";
 import { applySpecSections } from "./apply-spec-sections.mjs";
+import { applySpecBreakpoints } from "./catalog-breakpoints.mjs";
 
 /**
  * Best-effort fetch + parse of a JSON URL, with a short timeout. Returns null on
@@ -129,7 +130,7 @@ async function listFilesRecursive(dir) {
  * ships to npm and the pin is bumped, this can revert to a plain
  * `loadPreviewBundle(path, resolver)`.
  */
-async function loadCandidates(path) {
+async function loadCandidates(path, breakpoints) {
   const bundle = await readPreviewBundle(path);
   for (const preview of bundle.previews) {
     sanitizeNullSizes(preview.params);
@@ -151,6 +152,15 @@ async function loadCandidates(path) {
   const candidates = bundleToCandidates(
     candidateBundle,
     (entry) => entry.functionName ?? entry.id,
+  );
+  // The published candidate reader classifies every numeric width with Material
+  // window classes. Give this catalog's declared names precedence so domain
+  // breakpoints such as Wear's 192 dp `smallRound` and 227 dp `largeRound` remain
+  // distinct output axes instead of both collapsing to `compact`.
+  applySpecBreakpoints(
+    candidates,
+    candidateBundle.previews,
+    breakpoints,
   );
   // `@OverrideVariant` synthetic previews share their base's `functionName`, so `mergeByFunction`
   // (below) folds their images into the parent candidate. Stamp each one's `_VARIANT_<name>` suffix
@@ -442,7 +452,10 @@ const spec = JSON.parse(await readFile(specPath, "utf8"));
 // the join folds a function's theme/size multipreview variants (whose ids differ
 // only by an appended `_<mode>`) onto one component. See `loadCandidates` (which
 // also works around the published null-widthDp crash) and the vendored join.
-const { candidates, bundle } = await loadCandidates(rendersPath);
+const { candidates, bundle } = await loadCandidates(
+  rendersPath,
+  spec.breakpoints,
+);
 
 // Fold a supplementary render bundle in, overriding same-named functions. Lets an
 // Android-only render (the material3 1.5.0-alpha inset focus ring, which CMP can't
@@ -456,6 +469,7 @@ let extraBundle = null;
 if (values["extra-renders"]) {
   const { candidates: extra, bundle: extraRenderBundle } = await loadCandidates(
     resolve(values["extra-renders"]),
+    spec.breakpoints,
   );
   extraBundle = extraRenderBundle;
   const overridden = new Set(extra.map(functionOf));
