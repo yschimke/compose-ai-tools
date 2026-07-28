@@ -764,14 +764,14 @@ enum class CatalogRole {
  * Design-catalog identity discovered from the `@CatalogComponent` / `@CatalogVariant` /
  * `@CatalogGroup` annotations in the `preview-annotations` artifact — the code-side source for the
  * catalog metadata `catalog.spec.json` restated by hand (component id, group, section, caption,
- * variant tagging). Attached to [PreviewInfo.catalog] when a preview carries the annotations; the
- * design-artifacts export builds the catalog inventory from these entries and layers any matching
- * spec entry on top as an override.
+ * parallel counterpart, variant tagging). Attached to [PreviewInfo.catalog] when a preview carries
+ * the annotations; the design-artifacts export builds the catalog inventory from these entries and
+ * layers any matching spec entry on top as an override.
  *
  * The two [CatalogRole]s reuse one shape: [componentId] is the component's own id for a
  * [CatalogRole.COMPONENT] and the *parent* component id (`@CatalogVariant.of`) for a
  * [CatalogRole.VARIANT]. Fields that only apply to one role are `null`/empty on the other ([group]
- * / [section] / [reference] are component-only; [state] / [props] are variant-only).
+ * / [section] / [reference] / [parallel] are component-only; [state] / [props] are variant-only).
  */
 @Serializable
 data class CatalogEntry(
@@ -786,6 +786,8 @@ data class CatalogEntry(
   val caption: String? = null,
   /** COMPONENT only: seed-kit handle for the one-off import. */
   val reference: String? = null,
+  /** COMPONENT only: component id of the counterpart in the `compareWith` sibling system. */
+  val parallel: String? = null,
   /** VARIANT only: the interaction/state this render shows (`pressed`, `disabled`, …). */
   val state: String? = null,
   /** VARIANT only: named content/i18n/a11y axes distinguishing this render from the default. */

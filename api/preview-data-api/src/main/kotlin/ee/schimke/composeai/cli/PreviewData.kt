@@ -135,6 +135,7 @@ data class CatalogEntry(
   val section: String? = null,
   val caption: String? = null,
   val reference: String? = null,
+  val parallel: String? = null,
   val state: String? = null,
   val props: List<CatalogVariantProp> = emptyList(),
 )

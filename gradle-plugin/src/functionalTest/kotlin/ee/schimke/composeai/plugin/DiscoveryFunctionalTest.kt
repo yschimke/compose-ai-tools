@@ -327,6 +327,7 @@ class DiscoveryFunctionalTest {
           val group: String = "",
           val caption: String = "",
           val reference: String = "",
+          val parallel: String = "",
         )
 
         @Retention(AnnotationRetention.BINARY)
@@ -359,7 +360,11 @@ class DiscoveryFunctionalTest {
         import ee.schimke.composeai.preview.CatalogVariant
 
         // Explicit slashed id + caption; group + section come from the file `@CatalogGroup`.
-        @CatalogComponent(id = "Button/Filled", caption = "Highest emphasis; the primary action.")
+        @CatalogComponent(
+          id = "Button/Filled",
+          caption = "Highest emphasis; the primary action.",
+          parallel = "FilledButton",
+        )
         @Preview @Composable fun FilledButton() {}
 
         // A variant folded under the parent, tagged by state + a content-axis prop.
@@ -411,6 +416,7 @@ class DiscoveryFunctionalTest {
     assertThat(filled.group).isEqualTo("Buttons")
     assertThat(filled.section).isEqualTo("Components")
     assertThat(filled.caption).isEqualTo("Highest emphasis; the primary action.")
+    assertThat(filled.parallel).isEqualTo("FilledButton")
 
     // Variant: parent id on componentId, state + parsed `key=value` prop, own caption.
     val pressed = byFn.getValue("FilledButtonPressed").catalog
@@ -426,6 +432,7 @@ class DiscoveryFunctionalTest {
     assertThat(plain!!.componentId).isEqualTo("PlainSticker")
     assertThat(plain.group).isEqualTo("Buttons")
     assertThat(plain.caption).isNull()
+    assertThat(plain.parallel).isNull()
 
     // A preview with no catalog annotation stays out of the inventory.
     assertThat(byFn.getValue("NotACatalogPreview").catalog).isNull()
