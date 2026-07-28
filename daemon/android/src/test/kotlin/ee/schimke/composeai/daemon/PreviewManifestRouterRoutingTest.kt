@@ -295,4 +295,77 @@ class PreviewManifestRouterRoutingTest {
     assertTrue("inbound override wins. payload=$routed", routed.contains("uiMode=light"))
     assertFalse("manifest bit must not double-emit. payload=$routed", routed.contains("uiMode=dark"))
   }
+
+  /**
+   * Issue #2883. `fontScale` and `locale` were the last two `@Preview` axes the router still
+   * dropped: the DTO didn't declare them, so `ignoreUnknownKeys` swallowed them and a
+   * large-font/locale annotation rendered exactly like its default sibling. That made the data
+   * products those renders carry — layout, semantics and, most visibly, `compose/figma-svg` —
+   * byte-identical across variants whose Gradle-rendered PNGs plainly differ.
+   */
+  @Test
+  fun `routePayload forwards fontScale and locale from nested params`() {
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "large-font",
+              className = "com.example.PreviewsKt",
+              functionName = "FeedScreen",
+              params =
+                PreviewParamsEntry(widthDp = 400, fontScale = 1.5f, locale = "ar-XB"),
+            )
+          )
+      )
+    val router = PreviewManifestRouter(manifest = manifest)
+
+    val routed = router.routePayload("previewId=large-font")
+
+    assertTrue("fontScale must reach the render. payload=$routed", routed.contains("fontScale=1.5"))
+    assertTrue("locale must reach the render. payload=$routed", routed.contains("localeTag=ar-XB"))
+  }
+
+  @Test
+  fun `routePayload lets an inbound fontScale override the manifest`() {
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "large-font",
+              className = "com.example.PreviewsKt",
+              functionName = "FeedScreen",
+              params = PreviewParamsEntry(widthDp = 400, fontScale = 1.5f),
+            )
+          )
+      )
+    val router = PreviewManifestRouter(manifest = manifest)
+
+    val routed = router.routePayload("previewId=large-font;fontScale=2.0")
+
+    assertTrue("inbound override wins. payload=$routed", routed.contains("fontScale=2.0"))
+    assertFalse("manifest value must not double-emit. payload=$routed", routed.contains("=1.5"))
+  }
+
+  @Test
+  fun `routePayload omits a redundant unit fontScale`() {
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "plain",
+              className = "com.example.PreviewsKt",
+              functionName = "FeedScreen",
+              params = PreviewParamsEntry(widthDp = 400, fontScale = 1.0f),
+            )
+          )
+      )
+    val router = PreviewManifestRouter(manifest = manifest)
+
+    val routed = router.routePayload("previewId=plain")
+
+    assertFalse("1.0 is the annotation default. payload=$routed", routed.contains("fontScale="))
+  }
 }

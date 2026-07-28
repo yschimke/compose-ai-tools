@@ -102,6 +102,14 @@ object RenderDataArtifactContextKeys {
   val RoundClip = RenderArtifactContextKeys.RoundClip
 
   /**
+   * The flat `#AARRGGBB` background this render painted behind the composable — the resolution of
+   * `@Preview(showBackground, backgroundColor)` — so the `compose/figma-svg` export can lay the
+   * same colour down as its bottom layer. Delegates to
+   * [RenderArtifactContextKeys.PreviewBackground].
+   */
+  val PreviewBackground: ExtensionContextKey<String> = RenderArtifactContextKeys.PreviewBackground
+
+  /**
    * The held [`androidx.activity.ComponentActivity`] the rule launched for this render. Threaded to
    * extensions that read activity-scoped state — `getIntent()` (deep-link routing audits),
    * `onBackPressedDispatcher.hasEnabledCallbacks()` (registered back callbacks). Robolectric's

@@ -346,6 +346,20 @@ object ComposeSemanticsDataProducer {
         .mapNotNull { it.layoutInput.style.lineHeight.toWireTextUnit() }
         .distinct()
         .singleOrNull()
+    // Paragraph alignment, also paragraph-level (not on `SpanStyle`). The figma-svg export anchors
+    // a single-line `<text>` off this (issue #2885); without it `TextAlign.Center` exported
+    // left-anchored at the start of the layout bounds, a visible drift on any `fillMaxWidth()`
+    // heading.
+    val textAlign =
+      results.mapNotNull { textAlignName(it.layoutInput.style.textAlign) }.distinct().singleOrNull()
+    // Carried alongside it so the export can resolve the *logical* alignments (`start`/`end`),
+    // which Compose mirrors under RTL. Read off the layout input rather than inferred from the
+    // locale: a composable can flip direction locally via `LocalLayoutDirection`.
+    val layoutDirection =
+      results
+        .mapNotNull { layoutDirectionName(it.layoutInput.layoutDirection) }
+        .distinct()
+        .singleOrNull()
     val truncated = results.any { it.hasVisualOverflow }
     val didOverflowWidth = results.any { it.didOverflowWidth }
     val didOverflowHeight = results.any { it.didOverflowHeight }
@@ -418,6 +432,8 @@ object ComposeSemanticsDataProducer {
       fontFeatureSettings = fontFeatureSettings,
       letterSpacing = letterSpacing,
       lineHeight = lineHeight,
+      textAlign = textAlign,
+      layoutDirection = layoutDirection,
       foregroundColor =
         unambiguousColor(results.flatMap { it.textColors() })?.let(::colorToWireString),
       backgroundColor =
@@ -630,6 +646,35 @@ object ComposeSemanticsDataProducer {
         .getOrNull()
         ?.let { "res/font/$it" }
 
+  /** The alignment names the export knows how to act on; anything else is dropped, not guessed. */
+  private val WIRE_TEXT_ALIGNS = setOf("left", "right", "center", "justify", "start", "end")
+
+  /**
+   * A resolved paragraph [TextAlign][androidx.compose.ui.text.style.TextAlign] as a lowercase wire
+   * name (`"center"`, `"end"`, …), or null when the style leaves it unset. Read through
+   * `toString()` rather than by comparing against the `TextAlign` constants: the type is an inline
+   * value class whose shape moved between Compose versions (nullable, then non-null with an
+   * `Unspecified` sentinel), while its string form (`"Center"`, `"Unspecified"`) held steady across
+   * both. An unrecognised value — `Unspecified` today, some future addition tomorrow — is dropped
+   * rather than guessed at, so the `<text>` keeps its historical left anchor.
+   */
+  private fun textAlignName(align: Any?): String? {
+    val raw = align?.toString()?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
+    return raw.takeIf { it in WIRE_TEXT_ALIGNS }
+  }
+
+  /**
+   * A resolved `LayoutDirection` as `"ltr"` / `"rtl"`, or null for anything unrecognised. Read
+   * through `toString()` for the same reason as [textAlignName] — the enum's name (`Ltr`/`Rtl`) is
+   * the stable part of its surface.
+   */
+  private fun layoutDirectionName(direction: Any?): String? =
+    when (direction?.toString()?.trim()?.lowercase()) {
+      "ltr" -> "ltr"
+      "rtl" -> "rtl"
+      else -> null
+    }
+
   /** A resolved [TextUnit] as `"<value>sp"` / `"<value>em"`; null for unspecified / other types. */
   private fun TextUnit.toWireTextUnit(): String? =
     when (type) {
@@ -648,6 +693,8 @@ object ComposeSemanticsDataProducer {
     val fontFeatureSettings: String?,
     val letterSpacing: String?,
     val lineHeight: String?,
+    val textAlign: String?,
+    val layoutDirection: String?,
     val foregroundColor: String?,
     val backgroundColor: String?,
     val lineCount: Int?,
@@ -674,7 +721,8 @@ object ComposeSemanticsDataProducer {
         fontVariationSettings == null &&
         fontFeatureSettings == null &&
         letterSpacing == null &&
-        lineHeight == null
+        lineHeight == null &&
+        textAlign == null
     )
       null
     else
@@ -687,6 +735,8 @@ object ComposeSemanticsDataProducer {
         fontFeatureSettings = fontFeatureSettings,
         letterSpacing = letterSpacing,
         lineHeight = lineHeight,
+        textAlign = textAlign,
+        layoutDirection = layoutDirection,
         spans = spans,
       )
 

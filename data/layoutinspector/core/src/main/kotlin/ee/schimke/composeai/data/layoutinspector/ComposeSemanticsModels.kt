@@ -228,6 +228,25 @@ data class ComposeSemanticsTypography(
   /** Resolved line height as `"<value>sp"` / `"<value>em"`. */
   val lineHeight: String? = null,
   /**
+   * Resolved paragraph alignment (`TextStyle.textAlign`) as a lowercase name — `"left"`, `"right"`,
+   * `"center"`, `"justify"`, `"start"`, `"end"` — or null when the node leaves it unset or the
+   * drawn ranges disagree (issue #2885). Without it the `compose/figma-svg` export left-anchored
+   * every single-line `<text>` at the start of its layout bounds, so a `TextAlign.Center` heading
+   * inside a `fillMaxWidth()` box drifted to the left edge. Wrapped text needs no such field: its
+   * per-line `left` offsets in [ComposeSemanticsTextOverflow.lines] already encode the alignment
+   * geometrically. This is what recovers it for the single-line case, where no per-line run is
+   * captured at all.
+   */
+  val textAlign: String? = null,
+  /**
+   * Layout direction the paragraph was laid out in — `"ltr"` or `"rtl"` — or null when the capture
+   * couldn't resolve one. Only meaningful alongside [textAlign], and only for its *logical* values:
+   * Compose resolves `TextAlign.Start` to the right edge and `End` to the left under RTL, so an
+   * exporter that assumed LTR would mirror `end`-aligned text to the wrong side of its paragraph
+   * box on an `ar` / `ar-XB` render. `Left`/`Right`/`Center` are absolute and need no direction.
+   */
+  val layoutDirection: String? = null,
+  /**
    * Effective styles for the text's UTF-16 ranges when it contains an `AnnotatedString`. Each entry
    * has already been merged over the paragraph style and any overlapping spans, so a consumer can
    * emit editable styled runs without losing the base family. Null for plain text.

@@ -569,3 +569,214 @@ test("overridden functions (Android-only supplement) get no daemon id", () => {
     "pkg.CatalogKt.ButtonPressed",
   );
 });
+
+test("multi-annotation screen: each variant sticker gets its OWN annotation's preview id", () => {
+  // Regression for #2883. A screen function carrying three `@Preview` annotations — default
+  // compact, dark compact, large-font medium — produces three daemon previews that all share one
+  // `functionName`. The old lookup kept the FIRST id per function, so all three stickers resolved
+  // to the same preview; since the per-variant figma-svg emit keys off `image.previewId`, all
+  // three variants were then handed the same vector (with whichever annotation rendered first
+  // supplying the palette), while the Gradle-rendered PNGs correctly differed.
+  //
+  // The dark annotation deliberately does NOT end in "dark" — `@Preview(name = "dark theme")` is
+  // how compose-samples writes it — so nothing but the `uiMode` bits can tell it apart.
+  const spec = {
+    system: "jetsnack",
+    breakpoints: [
+      { size: "compact", widthDp: 412 },
+      { size: "medium", widthDp: 700 },
+    ],
+    groups: [
+      {
+        components: [
+          { componentId: "Screens/Feed", preview: "FeedScreenPreview", variants: [] },
+        ],
+      },
+    ],
+  };
+  const bundle = {
+    previews: [
+      {
+        id: "app.FeedKt.FeedScreenPreview_default",
+        functionName: "FeedScreenPreview",
+        params: { widthDp: 412, uiMode: 0 },
+      },
+      {
+        id: "app.FeedKt.FeedScreenPreview_dark_theme",
+        functionName: "FeedScreenPreview",
+        params: { widthDp: 412, uiMode: 0x20 },
+      },
+      {
+        id: "app.FeedKt.FeedScreenPreview_large_font",
+        functionName: "FeedScreenPreview",
+        params: { widthDp: 700, uiMode: 0, fontScale: 1.5 },
+      },
+    ],
+  };
+  const manifest = {
+    system: "jetsnack",
+    components: [
+      {
+        componentId: "Screens/Feed",
+        images: [
+          { state: "default", size: "compact" },
+          { state: "default", theme: "dark", size: "compact" },
+          { state: "default", size: "medium" },
+        ],
+      },
+    ],
+  };
+
+  bridgeLivePreviewIds(manifest, spec, bundle, new Set());
+
+  const ids = manifest.components[0].images.map((i) => i.previewId);
+  assert.deepEqual(ids, [
+    "app.FeedKt.FeedScreenPreview_default",
+    "app.FeedKt.FeedScreenPreview_dark_theme",
+    "app.FeedKt.FeedScreenPreview_large_font",
+  ]);
+  assert.equal(new Set(ids).size, 3, "each variant must resolve to a distinct render");
+});
+
+test("a single-annotation function still resolves for every sticker, unconstrained", () => {
+  // The complement of the test above: nothing about the per-variant pick may cost a component
+  // whose function has exactly one `@Preview` its id, whatever axes its stickers carry.
+  const spec = {
+    system: "wear-m3",
+    groups: [
+      {
+        components: [
+          { componentId: "Button/Filled", preview: "FilledButton", variants: [] },
+        ],
+      },
+    ],
+  };
+  const bundle = {
+    previews: [{ id: "pkg.CatalogKt.FilledButton", functionName: "FilledButton" }],
+  };
+  const manifest = {
+    system: "wear-m3",
+    components: [
+      {
+        componentId: "Button/Filled",
+        images: [
+          { state: "default" },
+          { state: "default", theme: "dark", size: "largeRound" },
+        ],
+      },
+    ],
+  };
+
+  bridgeLivePreviewIds(manifest, spec, bundle, new Set());
+
+  assert.deepEqual(
+    manifest.components[0].images.map((i) => i.previewId),
+    ["pkg.CatalogKt.FilledButton", "pkg.CatalogKt.FilledButton"],
+  );
+});
+
+test("font-scale-only annotations do not collapse onto one preview id", () => {
+  // Follow-up to #2883: when two `@Preview` annotations differ ONLY by `fontScale` (same width,
+  // same theme), scoring on theme + width alone ties them and the first id wins for both stickers
+  // — the very collapse the per-variant routing exists to prevent. The spec expresses font scale
+  // as a props variant, so the pick has to score it too. The default sticker (no props) must land
+  // on the unscaled annotation rather than an arbitrary one.
+  const spec = {
+    system: "jetsnack",
+    groups: [
+      {
+        components: [
+          {
+            componentId: "Screens/Feed",
+            preview: "FeedScreenPreview",
+            variants: [
+              { props: { fontScale: 2 }, preview: "FeedScreenPreview" },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const bundle = {
+    previews: [
+      {
+        id: "app.FeedKt.FeedScreenPreview_default",
+        functionName: "FeedScreenPreview",
+        params: { widthDp: 412 },
+      },
+      {
+        id: "app.FeedKt.FeedScreenPreview_large_font",
+        functionName: "FeedScreenPreview",
+        params: { widthDp: 412, fontScale: 2 },
+      },
+    ],
+  };
+  const manifest = {
+    system: "jetsnack",
+    components: [
+      {
+        componentId: "Screens/Feed",
+        images: [{ state: "default" }, { state: "default", props: { fontScale: 2 } }],
+      },
+    ],
+  };
+
+  bridgeLivePreviewIds(manifest, spec, bundle, new Set());
+
+  assert.deepEqual(
+    manifest.components[0].images.map((i) => i.previewId),
+    [
+      "app.FeedKt.FeedScreenPreview_default",
+      "app.FeedKt.FeedScreenPreview_large_font",
+    ],
+  );
+});
+
+test("an explicit fontScale of 1 matches an annotation that omits it", () => {
+  // `1` is the annotation default, so a spec that spells it out must still land on the preview
+  // that simply left `fontScale` unset — not score itself away from it.
+  const spec = {
+    system: "jetsnack",
+    groups: [
+      {
+        components: [
+          {
+            componentId: "Screens/Feed",
+            preview: "FeedScreenPreview",
+            variants: [{ props: { fontScale: "1x" }, preview: "FeedScreenPreview" }],
+          },
+        ],
+      },
+    ],
+  };
+  const bundle = {
+    previews: [
+      {
+        id: "app.FeedKt.FeedScreenPreview_large_font",
+        functionName: "FeedScreenPreview",
+        params: { widthDp: 412, fontScale: 2 },
+      },
+      {
+        id: "app.FeedKt.FeedScreenPreview_default",
+        functionName: "FeedScreenPreview",
+        params: { widthDp: 412 },
+      },
+    ],
+  };
+  const manifest = {
+    system: "jetsnack",
+    components: [
+      {
+        componentId: "Screens/Feed",
+        images: [{ state: "default", props: { fontScale: "1x" } }],
+      },
+    ],
+  };
+
+  bridgeLivePreviewIds(manifest, spec, bundle, new Set());
+
+  assert.equal(
+    manifest.components[0].images[0].previewId,
+    "app.FeedKt.FeedScreenPreview_default",
+  );
+});
