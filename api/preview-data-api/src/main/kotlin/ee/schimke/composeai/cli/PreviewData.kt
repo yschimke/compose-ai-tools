@@ -206,6 +206,8 @@ data class CaptureResult(
    * the skip as expected instead of reporting a render failure.
    */
   val optional: Boolean = false,
+  /** `@PreviewParameter` coordinate that distinguishes this capture from its siblings. */
+  val parameterLabel: String? = null,
 )
 
 /**

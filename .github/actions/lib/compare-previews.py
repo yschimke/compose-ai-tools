@@ -220,11 +220,15 @@ def _capture_label(capture: dict) -> str:
 
     Mirrors the TS `captureLabels.captureLabel` in the VS Code extension so
     the two surfaces agree on wording. Static captures (no dimensions)
-    return ``""``; time fan-outs read ``"500ms"``; scroll captures read
-    ``"scroll top"`` / ``"scroll end"`` / ``"scroll long"``; the
+    return ``""``; parameter fan-outs read ``"parameter 0"``; time fan-outs
+    read ``"500ms"``; scroll captures read ``"scroll top"`` /
+    ``"scroll end"`` / ``"scroll long"``; the
     cross-product reads ``"500ms \u00B7 scroll end"``.
     """
     parts: list[str] = []
+    parameter = capture.get("parameterLabel")
+    if parameter:
+        parts.append(str(parameter))
     ms = capture.get("advanceTimeMillis")
     if ms is not None:
         parts.append(f"{ms}ms")
