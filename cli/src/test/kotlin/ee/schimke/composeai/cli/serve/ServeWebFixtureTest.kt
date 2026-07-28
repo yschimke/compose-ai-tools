@@ -1614,6 +1614,27 @@ class ServeWebFixtureTest {
   }
 
   @Test
+  fun `viewer defaults to fit screen and offers an explicit fit width mode`() {
+    val view = ServeWeb.viewerPage(previews.first(), token)
+    assertTrue(
+      view.contains("aria-label=\"Preview zoom\"") &&
+        view.contains("data-zoom-mode=\"fit\" aria-pressed=\"true\">Fit screen</button>") &&
+        view.contains("data-zoom-mode=\"width\" aria-pressed=\"false\">Fit width</button>"),
+      "the viewer exposes screen and width fit modes with screen fit selected",
+    )
+    assertTrue(
+      view.contains("var maxHeight = mode === \"fit\" ? \"72vh\" : \"\";") &&
+        view.contains("applyZoom(\"fit\");"),
+      "screen fit bounds tall previews to the viewport before the initial render",
+    )
+    assertTrue(
+      view.contains("if (live && live.checked && !canvas.hidden) fitLiveCanvas();") &&
+        view.contains("if (wasmActive()) positionWasmFrame();"),
+      "changing zoom re-pins active live and Wasm overlays to the snapshot geometry",
+    )
+  }
+
+  @Test
   fun `SVG is an on-screen format toggle and an export format when the session can export SVG`() {
     val card = previews.first { it.id.endsWith("CardPreview") }
     // SVG isn't part of the awkward PNG/live radio group any more, but it's still an on-screen
