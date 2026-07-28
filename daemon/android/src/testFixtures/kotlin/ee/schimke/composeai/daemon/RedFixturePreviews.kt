@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
@@ -164,6 +165,22 @@ fun OpaqueImageSquare() {
       contentDescription = null,
       modifier = Modifier.size(32.dp),
     )
+  }
+}
+
+/** Brush-background hybrid SVG fixture: gradient pixels plus editable-looking child content. */
+@Composable
+fun GradientBackgroundCard() {
+  Box(
+    modifier =
+      Modifier.fillMaxSize()
+        .background(
+          Brush.horizontalGradient(listOf(Color(0xFFFF0000), Color(0xFF0000FF))),
+          RoundedCornerShape(8.dp),
+        ),
+    contentAlignment = Alignment.Center,
+  ) {
+    Text("Gradient", color = Color.White)
   }
 }
 

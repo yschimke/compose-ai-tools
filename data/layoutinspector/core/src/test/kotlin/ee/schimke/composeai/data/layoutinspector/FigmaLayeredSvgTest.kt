@@ -871,6 +871,48 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun aBrushBackgroundRastersTheCompleteLayerInHybridMode() {
+    val node =
+      LayoutInspectorNode(
+        nodeId = "gradient",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(12, 20, 212, 68),
+        size = LayoutInspectorSize(200, 48),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(
+              name = "BackgroundElement",
+              properties = mapOf("brush" to "LinearGradient(colors=[red, blue])"),
+              bounds = bounds(12, 20, 212, 68),
+            )
+          ),
+        children =
+          listOf(
+            layoutNode(
+              "GradientLabel",
+              24,
+              30,
+              160,
+              58,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFFFF"),
+            )
+          ),
+      )
+
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(LayoutInspectorPayload(node), captureCanvasDraws = true)
+      )
+
+    assertTrue("the gradient layer must survive as rendered pixels", svg.contains("<image "))
+    assertTrue(svg.contains("""x="12" y="20" width="200" height="48""""))
+    assertFalse(
+      "the composited raster already contains descendants, so they must not be drawn twice",
+      svg.contains("""id="GradientLabel""""),
+    )
+  }
+
+  @Test
   fun aCoil3AsyncImageContentPainterRastersFromTheFrameInHybridMode() {
     // Coil 3's `AsyncImage` draws through its own `ContentPainterElement` (inspector name
     // `content`, carrying `request`/`imageLoader` but no `painter` property) on a `Layout` whose

@@ -996,7 +996,26 @@ internal object ComposeLayoutInspector {
       inspectable?.nameFallback?.takeIf { it.isNotBlank() } ?: modifier.javaClass.simpleName
     val value = inspectable?.valueOverride?.wireValue()
     val properties =
-      inspectable?.inspectableElements?.associate { it.name to it.value.wireValue() }.orEmpty()
+      inspectable
+        ?.inspectableElements
+        ?.associate { it.name to it.value.wireValue() }
+        .orEmpty()
+        .toMutableMap()
+    // Desktop/release Compose commonly compiles `BackgroundElement` inspector properties out, so
+    // a `Modifier.background(Brush…)` otherwise serialises as an empty modifier and the figma-svg
+    // model cannot distinguish a real gradient from an unpainted node. Carry only the presence /
+    // identity string of the brush; hybrid export uses it as the signal to crop the complete layer
+    // from the rendered frame rather than silently dropping the paint.
+    if (
+      "brush" !in properties &&
+        (name == "background" || modifier.javaClass.simpleName == "BackgroundElement")
+    ) {
+      runCatching {
+          modifier.javaClass.getDeclaredField("brush").apply { isAccessible = true }.get(modifier)
+        }
+        .getOrNull()
+        ?.let { properties["brush"] = it.wireValue() }
+    }
     return LayoutInspectorModifier(
       name = name,
       value = value,

@@ -374,6 +374,54 @@ class RenderEngineTest {
   }
 
   @Test
+  fun figmaSvgExportRastersBrushBackgroundWithItsCompleteSubtree() {
+    val outputDir = tempFolder.newFolder("renders-figma-gradient")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost()
+    host.start()
+    try {
+      host.submit(
+        RenderRequest.Render(
+          payload =
+            "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+              "functionName=GradientBackgroundCard;" +
+              "widthPx=128;heightPx=48;density=1.0;" +
+              "showBackground=true;" +
+              "outputBaseName=figma-gradient"
+        ),
+        timeoutMs = 120_000,
+      )
+
+      val previewDir = outputDir.parentFile!!.resolve("data").resolve("figma-gradient")
+      val svg = previewDir.resolve("compose-figma.svg").readText()
+      assertTrue("brush-backed layer must use the hybrid raster path", svg.contains("<image "))
+      assertFalse(
+        "the complete raster already contains the label, so no editable duplicate should survive",
+        svg.contains(">Gradient<"),
+      )
+
+      val crop =
+        previewDir
+          .resolve("figma-raster")
+          .listFiles { file -> file.extension == "png" }
+          ?.singleOrNull()
+      assertNotNull("gradient layer must produce one raster crop", crop)
+      val image = ByteArrayInputStream(crop!!.readBytes()).use { ImageIO.read(it) }
+      assertNotNull("gradient raster crop must decode", image)
+      val left = image!!.getRGB(image.width / 8, image.height / 2)
+      val right = image.getRGB(image.width * 7 / 8, image.height / 2)
+      assertTrue("left side should remain red-dominant", ((left shr 16) and 0xFF) > (left and 0xFF))
+      assertTrue(
+        "right side should remain blue-dominant",
+        (right and 0xFF) > ((right shr 16) and 0xFF),
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun figmaSvgLongRenderModeProducesFullPageSvg() {
     // Parity with the desktop backend: the `figma-svg-long` render mode grows the viewport until a
     // virtualised LazyColumn composes every row, sizes to content, and writes the full-page SVG to
