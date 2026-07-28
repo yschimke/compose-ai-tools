@@ -181,6 +181,12 @@ node's root-relative `graphicsLayer` scale as `LayoutInspectorNode.transform` â€
 public `LayoutCoordinates` API, so it is backend-agnostic and present only when it isn't the identity
 â€” and `FigmaSvgModel` scales every measured signal into drawn space before it competes with `bounds`.
 
+![viewport SVG vs render, before and after](../renders/scrolling-svg/wear-tlc-viewport-scale.png)
+
+*(Same frame three ways. Before, the two edge-scaled cards below `Fosdem` are drawn at full height at
+their compressed offsets and merge into one blob that swallows the `droidcon` label; after, each card
+lands on the rect the render actually painted.)*
+
 ### What's landed vs. what remains
 
 - **Landed (backend-agnostic, unit-tested in `data-layoutinspector-core`):** the `FigmaSvgCapsuleClip`
