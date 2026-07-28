@@ -3,7 +3,7 @@
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>compose-m3 — compose-preview</title>
+        <title>loading-spinner.json — compose-preview</title>
         <style>:root { color-scheme: light dark; }
 * { box-sizing: border-box; }
 body { margin: 0; padding: 24px; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
@@ -74,13 +74,9 @@ html.cp-js .cp-section-head { display: none; }
 .cp-group-head { margin: 18px 0 10px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em;
   text-transform: uppercase; color: #8a8a92; }
 .cp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
-/* The Theme picker carries one chip per configured theme (the baked light/dark pair plus any
-   app-declared @ThemeCatalog theme), so it wraps rather than overflowing a narrow viewport. */
-.cp-theme { display: inline-flex; flex-wrap: wrap; border: 1px solid #d7d7de; border-radius: 999px;
-  overflow: hidden; max-width: 100%; }
+.cp-theme { display: inline-flex; border: 1px solid #d7d7de; border-radius: 999px; overflow: hidden; }
 .cp-theme-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
   padding: 3px 14px; cursor: pointer; }
-.cp-theme-btn + .cp-theme-btn { border-left: 1px solid #ececf1; }
 .cp-theme-btn[aria-pressed="true"] { background: #ececff; color: #3a3a8a; font-weight: 600; }
 .cp-states { display: inline-flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
 .cp-state-btn { border: 1px solid #d7d7de; border-radius: 999px; background: #fff; color: #6b6b70;
@@ -354,7 +350,6 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-group-head { color: #7a7a82; }
   .cp-theme { border-color: #34343a; }
   .cp-theme-btn { background: #1d1d20; color: #a0a0a8; }
-  .cp-theme-btn + .cp-theme-btn { border-left-color: #34343a; }
   .cp-theme-btn[aria-pressed="true"] { background: #26264a; color: #c9c9ff; }
   .cp-state-btn { background: #1d1d20; color: #a0a0a8; border-color: #34343a; }
   .cp-state-btn:hover { border-color: #4a4a55; color: #c9c9ff; }
@@ -461,254 +456,62 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
       </head>
       <body>
         <main class="cp-main">
-                <a class="cp-back" href="/">← All design systems</a>
-<h1 class="cp-head">compose-m3 <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ branch:yschimke/compose-ai-tools@design-artifacts/compose-m3</span></h1>
-        <div class="cp-toolbar">
-  <span class="cp-theme" role="group" aria-label="Preview theme">
-    <button type="button" class="cp-theme-btn" data-theme-choice="light">Light</button>
-    <button type="button" class="cp-theme-btn" data-theme-choice="dark">Dark</button>
-  </span>
+                <h1 class="cp-head">loading-spinner.json</h1>
+        <p class="cp-sub">Lottie · 48 kB
+          <span class="cp-doc-expiry" title="2026-07-28T22:15:00Z">expires in 1h</span></p>
+        <div class="cp-doc-stage" id="cp-doc-stage" data-format="lottie">
+          <div id="cp-doc-mount"></div>
+        </div>
+        <p class="cp-doc-status" id="cp-doc-status">Loading the Lottie player…</p>
+        <div class="cp-doc-facts">
+        <div class="cp-stat">
+  <div class="cp-stat-key">Name</div>
+  <div class="cp-stat-val">Loading spinner</div>
 </div>
-<p class="cp-sub">14 preview(s) · click one to view with overrides ·
-          <a href="/bundle.zip">download all (.zip)</a></p>
-        <div class="cp-searchbar">
-  <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
-    autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
-  <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="14"></span>
-  <span class="cp-bg" role="group" aria-label="Sticker background">
-    <button type="button" class="cp-bg-btn" data-bg-choice="on">Background</button>
-    <button type="button" class="cp-bg-btn" data-bg-choice="off">Transparent</button>
-  </span>
+<div class="cp-stat">
+  <div class="cp-stat-key">Bodymovin version</div>
+  <div class="cp-stat-val">5.7.4</div>
 </div>
-<div class="cp-grid-groups" id="cp-grid">
-<div class="cp-subgroup">
-<h2 class="cp-group-head">Button</h2>
-<div class="cp-cards">
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/button-filled__ideal__default__light.png" data-l-href="/p/button-filled__ideal__default__light"
-  data-l-id="button-filled__ideal__default__light" data-l-label="Button filled (light)"
-  data-d-src="/render/button-filled__ideal__default__dark.png" data-d-href="/p/button-filled__ideal__default__dark"
-  data-d-id="button-filled__ideal__default__dark" data-d-label="Button filled (dark)"
-  href="/p/button-filled__ideal__default__light">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="Button filled (light)" src="/render/button-filled__ideal__default__light.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="Button filled (light)">Button filled (light)</div>
-    <div class="cp-id">button-filled__ideal__default__light</div>
-  </div>
-</a>
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/button-outlined__ideal__default__light.png" data-l-href="/p/button-outlined__ideal__default__light"
-  data-l-id="button-outlined__ideal__default__light" data-l-label="Button outlined (light)"
-  data-d-src="/render/button-outlined__ideal__default__dark.png" data-d-href="/p/button-outlined__ideal__default__dark"
-  data-d-id="button-outlined__ideal__default__dark" data-d-label="Button outlined (dark)"
-  href="/p/button-outlined__ideal__default__light">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="Button outlined (light)" src="/render/button-outlined__ideal__default__light.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="Button outlined (light)">Button outlined (light)</div>
-    <div class="cp-id">button-outlined__ideal__default__light</div>
-  </div>
-</a>
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/button-tonal__ideal__default__light.png" data-l-href="/p/button-tonal__ideal__default__light"
-  data-l-id="button-tonal__ideal__default__light" data-l-label="Button tonal (light)"
-  data-d-src="/render/button-tonal__ideal__default__dark.png" data-d-href="/p/button-tonal__ideal__default__dark"
-  data-d-id="button-tonal__ideal__default__dark" data-d-label="Button tonal (dark)"
-  href="/p/button-tonal__ideal__default__light">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="Button tonal (light)" src="/render/button-tonal__ideal__default__light.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="Button tonal (light)">Button tonal (light)</div>
-    <div class="cp-id">button-tonal__ideal__default__light</div>
-  </div>
-</a>
+<div class="cp-stat">
+  <div class="cp-stat-key">Size</div>
+  <div class="cp-stat-val">512 × 512</div>
 </div>
+<div class="cp-stat">
+  <div class="cp-stat-key">Frames</div>
+  <div class="cp-stat-val">90 @ 30 fps</div>
 </div>
-<div class="cp-subgroup">
-<h2 class="cp-group-head">Card</h2>
-<div class="cp-cards">
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/card-elevated__ideal__default__light.png" data-l-href="/p/card-elevated__ideal__default__light"
-  data-l-id="card-elevated__ideal__default__light" data-l-label="Card elevated (light)"
-  data-d-src="/render/card-elevated__ideal__default__dark.png" data-d-href="/p/card-elevated__ideal__default__dark"
-  data-d-id="card-elevated__ideal__default__dark" data-d-label="Card elevated (dark)"
-  href="/p/card-elevated__ideal__default__light">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="Card elevated (light)" src="/render/card-elevated__ideal__default__light.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="Card elevated (light)">Card elevated (light)</div>
-    <div class="cp-id">card-elevated__ideal__default__light</div>
-  </div>
-</a>
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/card-filled__ideal__default__light.png" data-l-href="/p/card-filled__ideal__default__light"
-  data-l-id="card-filled__ideal__default__light" data-l-label="Card filled (light)"
-  data-d-src="/render/card-filled__ideal__default__dark.png" data-d-href="/p/card-filled__ideal__default__dark"
-  data-d-id="card-filled__ideal__default__dark" data-d-label="Card filled (dark)"
-  href="/p/card-filled__ideal__default__light">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="Card filled (light)" src="/render/card-filled__ideal__default__light.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="Card filled (light)">Card filled (light)</div>
-    <div class="cp-id">card-filled__ideal__default__light</div>
-  </div>
-</a>
+<div class="cp-stat">
+  <div class="cp-stat-key">Duration</div>
+  <div class="cp-stat-val">3s</div>
 </div>
+<div class="cp-stat">
+  <div class="cp-stat-key">Layers</div>
+  <div class="cp-stat-val">6</div>
 </div>
-<div class="cp-subgroup">
-<h2 class="cp-group-head">FAB</h2>
-<div class="cp-cards">
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/fab__ideal__default__light.png" data-l-href="/p/fab__ideal__default__light"
-  data-l-id="fab__ideal__default__light" data-l-label="FAB (light)"
-  data-d-src="/render/fab__ideal__default__dark.png" data-d-href="/p/fab__ideal__default__dark"
-  data-d-id="fab__ideal__default__dark" data-d-label="FAB (dark)"
-  href="/p/fab__ideal__default__light">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="FAB (light)" src="/render/fab__ideal__default__light.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="FAB (light)">FAB (light)</div>
-    <div class="cp-id">fab__ideal__default__light</div>
-  </div>
-</a>
-</div>
-</div>
-<div class="cp-subgroup">
-<h2 class="cp-group-head">Badge</h2>
-<div class="cp-cards">
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/badge__ideal__default__light.png" data-l-href="/p/badge__ideal__default__light"
-  data-l-id="badge__ideal__default__light" data-l-label="Badge (light)"
-  data-d-src="/render/badge__ideal__default__dark.png" data-d-href="/p/badge__ideal__default__dark"
-  data-d-id="badge__ideal__default__dark" data-d-label="Badge (dark)"
-  href="/p/badge__ideal__default__light">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="Badge (light)" src="/render/badge__ideal__default__light.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="Badge (light)">Badge (light)</div>
-    <div class="cp-id">badge__ideal__default__light</div>
-  </div>
-</a>
-</div>
-</div>
-</div>
-<p id="cp-empty" class="cp-empty" hidden>No previews match your filter.</p>
-<script>    (function () {
-      var cards = document.querySelectorAll(".cp-card");
-      var input = document.getElementById("cp-search");
-      var count = document.getElementById("cp-count");
-      var empty = document.getElementById("cp-empty");
-      var total = cards.length;
-      var navGroups = document.querySelectorAll(".cp-subgroup");
-      var stored = null;
-try { stored = localStorage.getItem("cp-theme:default"); } catch (e) {}
-var themeBtns = document.querySelectorAll(".cp-theme-btn");
-function validTheme(t) {
-  if (!t) return false;
-  return t === "light" || t === "dark" || t === "default" || t.indexOf("theme:") === 0;
-}
-var theme = validTheme(stored) ? stored
-  : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-// A chip is only offered when the page rendered it, so a remembered choice this catalog no
-// longer configures (a theme the app dropped) falls back to the first chip.
-var known = false;
-themeBtns.forEach(function (b) { if (b.getAttribute("data-theme-choice") === theme) known = true; });
-if (!known && themeBtns.length) theme = themeBtns[0].getAttribute("data-theme-choice");
-var appliedTheme = null;
-      function apply() {
-        themeBtns.forEach(function (b) {
-  b.setAttribute("aria-pressed", b.getAttribute("data-theme-choice") === theme ? "true" : "false");
-});
-// Point a swap card at one of its baked variants ("l"/"d"): pixels (unless the caller is
-// supplying themed ones), alt text, label, id, viewer link and stage backing.
-function applyVariant(c, k, withSrc) {
-  var src = c.getAttribute("data-" + k + "-src");
-  if (!src) return;
-  var img = c.querySelector("img");
-  var lab = c.querySelector(".cp-label");
-  var idn = c.querySelector(".cp-id");
-  var lbl = c.getAttribute("data-" + k + "-label");
-  if (img) { if (withSrc) img.src = src; img.setAttribute("alt", lbl); }
-  c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
-  if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
-  if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
-  c.setAttribute("data-bg-theme", k === "d" ? "dark" : "light");
-}
-// apply() also runs on every search keystroke; re-point the cards only when the THEME
-// actually changed, so typing never restarts an in-flight themed-render queue.
-function applyThemeChoice() {
-  if (theme === appliedTheme) return;
-  appliedTheme = theme;
-
-  var k = theme === "dark" ? "d" : "l";
-  cards.forEach(function (c, i) {
-    if (c.getAttribute("data-swap") === "1") { applyVariant(c, k, true); return; }
+        </div>
+        <p class="cp-sub" style="margin-top:18px">
+          <a href="/d/0YFhq8Kb2s7cVv1nQpZs3A/raw" download="loading-spinner.json">Download the document</a> ·
+          <a href="/docs">Share another</a>
+        </p>
+        <script>(function () {
+  var raw = "/d/0YFhq8Kb2s7cVv1nQpZs3A/raw";
+  var mount = document.getElementById("cp-doc-mount");
+  var status = document.getElementById("cp-doc-status");
+  function done() { status.textContent = ""; }
+  function fail() { status.textContent = "This document could not be played back in your browser."; }
+  var s = document.createElement("script");
+  s.src = "/doc-player/lottie/bundle.js";
+  s.onerror = function () { status.textContent = "The player failed to load."; };
+  s.onload = function () {
+      fetch(raw).then(function (r) { return r.json(); }).then(function (data) {
+  window.lottie.loadAnimation({
+    container: mount, renderer: "svg", loop: true, autoplay: true, animationData: data
   });
-}
-applyThemeChoice();
-        var q = input ? input.value.trim().toLowerCase() : "";
-        var shown = 0;
-        cards.forEach(function (c) {
-          var lab = c.querySelector(".cp-label");
-          var idn = c.querySelector(".cp-id");
-          var hay = ((lab ? lab.textContent : "") + " " + (idn ? idn.textContent : "")).toLowerCase();
-          var searchOk = q === "" || hay.indexOf(q) !== -1;
-          c.hidden = !searchOk;
-          if (searchOk) shown++;
-        });
-        if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
-        if (empty) empty.hidden = shown !== 0;
-        navGroups.forEach(function (g) { g.hidden = !g.querySelector(".cp-card:not([hidden])"); });
-      }
-      if (input) input.addEventListener("input", apply);
-      themeBtns.forEach(function (b) {
-        b.addEventListener("click", function () {
-          theme = b.getAttribute("data-theme-choice");
-          try { localStorage.setItem("cp-theme:default", theme); } catch (e) {}
-          apply();
-        });
-      });
-      // Background/Transparent toggle: flips the whole page between a solid surface (default) and the
-      // transparent-checkerboard backing, persisting the choice. Independent of theme/search filters.
-      var bgBtns = document.querySelectorAll(".cp-bg-btn");
-      function reflectBg() {
-        var off = document.documentElement.classList.contains("cp-bg-transparent");
-        bgBtns.forEach(function (b) {
-          b.setAttribute("aria-pressed",
-            b.getAttribute("data-bg-choice") === (off ? "off" : "on") ? "true" : "false");
-        });
-      }
-      bgBtns.forEach(function (b) {
-        b.addEventListener("click", function () {
-          var choice = b.getAttribute("data-bg-choice");
-          document.documentElement.classList.toggle("cp-bg-transparent", choice === "off");
-          try { localStorage.setItem("cp-bg", choice); } catch (e) {}
-          reflectBg();
-        });
-      });
-      reflectBg();
-      apply();
-    })();</script>
-<section class="cp-about">
-  <p class="cp-about-title">compose-preview · public preview server</p>
-  <p class="cp-about-body">Browse rendered Compose &amp; Compose&nbsp;Multiplatform design
-    catalogs live. CMP components run <strong>in your browser</strong> (Kotlin/Wasm, sandboxed);
-    everything else is served as pre-rendered snapshots. The server never re-runs untrusted code
-    — catalogs are trusted via signature or their published <code>design-artifacts</code> branch,
-    and anything unverified is badged.</p>
-  <p class="cp-about-links">
-    <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·
-    <a href="/version">/version</a> · <span class="cp-about-ver" title="running preview-server build">server v0.0.0-fixture</span>
-  </p>
-</section>
+  done();
+}).catch(fail);
+  };
+  document.head.appendChild(s);
+})();</script>
         </main>
       </body>
     </html>

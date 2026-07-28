@@ -296,6 +296,32 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-modes-inputs { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 /* Backend badge flips its accent green when a live lane drives the stage (see backendBadgeScript). */
 .cp-backend[data-live="true"] { background: rgba(30, 122, 52, 0.82); }
+/* Shared-document surfaces (POST /docs → GET /d/<id>): the drop zone on the upload page and the
+   played-back document + its facts on the permalink page. Both reuse the card/stage chrome. */
+.cp-drop { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 720px;
+  padding: 28px 20px; border: 2px dashed #d7d7de; border-radius: 12px; background: #fff;
+  text-align: center; cursor: pointer; }
+.cp-drop:hover, .cp-drop.cp-drop-over { border-color: #8f8ff0; background: #f6f6ff; }
+.cp-drop-title { font-size: 0.95rem; font-weight: 600; }
+.cp-drop-hint { font-size: 0.8rem; color: #6b6b70; line-height: 1.45; }
+.cp-doc-form { max-width: 720px; margin: 16px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.cp-doc-url { flex: 1 1 320px; padding: 7px 12px; font: inherit; font-size: 0.85rem;
+  border: 1px solid #d7d7de; border-radius: 999px; background: #fff; color: inherit; }
+.cp-doc-btn { font: inherit; font-size: 0.82rem; font-weight: 600; padding: 6px 16px;
+  border-radius: 999px; border: 1px solid #d7d7de; background: #fff; color: #45454c; cursor: pointer; }
+.cp-doc-btn:hover { background: #f0f0f3; }
+.cp-doc-result { max-width: 720px; margin: 18px 0 0; padding: 14px 16px; border-radius: 10px;
+  border: 1px solid #e3e3e8; background: #fff; font-size: 0.84rem; }
+.cp-doc-result[hidden] { display: none; }
+.cp-doc-result.cp-doc-error { background: #fdf0e3; color: #8a5300; border-color: #f0d3a8; }
+.cp-doc-stage { max-width: 720px; border: 1px solid #e3e3e8; border-radius: 10px; background: #fff;
+  padding: 12px; display: flex; align-items: center; justify-content: center; min-height: 260px; }
+.cp-doc-stage canvas, .cp-doc-stage svg, .cp-doc-stage img { max-width: 100%; height: auto; }
+.cp-doc-status { margin: 8px 0 0; font-size: 0.78rem; color: #6b6b70; min-height: 1.2em; }
+.cp-doc-facts { max-width: 720px; margin: 16px 0 0; display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.cp-doc-expiry { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.7rem;
+  font-weight: 600; background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
 @media (prefers-color-scheme: dark) {
   body { color: #e6e6e9; background: #161618; }
   .cp-sub, .cp-id, .cp-status, .cp-about-links, .cp-sys-desc, .cp-sys-foot { color: #a0a0a8; }
@@ -334,6 +360,17 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-state-btn:hover { border-color: #4a4a55; color: #c9c9ff; }
   .cp-state-btn[aria-current="page"] { background: #26264a; border-color: #3a3a6a; color: #c9c9ff; }
   .cp-note { background: #26262b; color: #a0a0a8; }
+  .cp-drop { background: #1d1d20; border-color: #34343a; }
+  .cp-drop:hover, .cp-drop.cp-drop-over { border-color: #6a6ad0; background: #22222c; }
+  .cp-drop-hint, .cp-doc-status { color: #a0a0a8; }
+  .cp-doc-url, .cp-doc-btn { background: #1d1d20; border-color: #34343a; color: #e6e6e9; }
+  .cp-doc-btn:hover { background: #26262b; }
+  .cp-doc-result, .cp-doc-stage { background: #1d1d20; border-color: #34343a; }
+  /* Stat tiles are shared by the status page and the document facts; without these they stayed
+     white-on-dark in both. */
+  .cp-stat { background: #1d1d20; border-color: #34343a; }
+  .cp-stat-key { color: #7a7a82; }
+  .cp-stat-val { color: #e6e6e9; }
   .cp-imgwrap, .cp-stage { background: #1d1d20; }
   html.cp-bg-transparent .cp-imgwrap, html.cp-bg-transparent .cp-stage {
     background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }

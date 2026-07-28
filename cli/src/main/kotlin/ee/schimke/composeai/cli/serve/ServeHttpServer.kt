@@ -35,6 +35,7 @@ import java.io.File
 import java.io.InputStream
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
@@ -158,6 +159,13 @@ class ServeHttpServer(
   private val catalogRefreshSeconds: Long = 0,
   /** Whether `POST /bundles` runtime uploads are accepted (`--accept-bundles`). */
   private val acceptBundlesEnabled: Boolean = false,
+  /**
+   * When non-null, enables the **document** lane: `GET /docs` (upload page), `POST /docs` (ingest a
+   * known document format), and `GET /d/{id}` (the expiring permalink that plays it back). Supplied
+   * by `--accept-docs`. Independent of [bundleStore] — a document is a single file with its own
+   * short-lived link, not a preview session.
+   */
+  private val docStore: ServeDocStore? = null,
 ) {
   /** The actual bound port — may differ from the requested one if it was taken (auto-picked). */
   val port: Int = pickPort(host, requestedPort, portRange)
@@ -318,20 +326,21 @@ class ServeHttpServer(
         // per-catalog dir. Ungated (generic client code, no session data) and CORS-open like the
         // Wasm assets so a sandboxed viewer iframe can pull it. A constant first segment, so it
         // outscores the `/{system}` catch-all in Ktor routing.
-        get("/rc-player/bundle.js") {
-          val bytes = rcPlayerBundle
-          if (bytes.isEmpty()) {
-            call.respondText("not found", status = HttpStatusCode.NotFound)
-            return@get
-          }
-          call.response.headers.append(HttpHeaders.AccessControlAllowOrigin, "*")
-          call.response.headers.append(HttpHeaders.CacheControl, "public, max-age=3600")
-          call.response.headers.append(HttpHeaders.ETag, rcPlayerEtag)
-          if (call.request.headers[HttpHeaders.IfNoneMatch] == rcPlayerEtag) {
-            call.respond(HttpStatusCode.NotModified)
-            return@get
-          }
-          call.respondBytes(bytes, ContentType.parse("text/javascript"))
+        get("/rc-player/bundle.js") { respondPlayerAsset(playerAsset(RC_PLAYER_RESOURCE)) }
+
+        // The document lane (`--accept-docs`): ingest one **known document format** (Remote Compose
+        // or Lottie — see [ServeDocFormats]) and hand back an expiring permalink that plays it in
+        // the browser. Registered only when the operator opts in. Constant first segments, so they
+        // outscore the `/{system}` catch-all in Ktor routing.
+        docStore?.let { store ->
+          get("/docs") { handleDocUploadPage(store) }
+          post("/docs") { handleDocUpload(store) }
+          get("/d/{id}") { handleDocPage(store) }
+          get("/d/{id}/raw") { handleDocRaw(store) }
+          // Each format's vendored browser player, looked up in the registry rather than routed
+          // per-format. Ungated + CORS-open like `/rc-player/bundle.js` (generic client code, no
+          // session data).
+          get("/doc-player/{format}/bundle.js") { handleDocPlayer() }
         }
 
         // Shared/public mode ingestion: a client contributes a pre-rendered bundle (upload the zip
@@ -546,6 +555,170 @@ class ServeHttpServer(
       ContentType.Text.Html,
       HttpStatusCode.NotFound,
     )
+  }
+
+  // ---- The document lane (`--accept-docs`) ---------------------------------------------------
+
+  /** `GET /docs`: the upload surface — drop a known document, get an expiring permalink back. */
+  private suspend fun RoutingContext.handleDocUploadPage(store: ServeDocStore) {
+    if (rejectBadToken()) return
+    markGeneration("static-page", pageCacheControl())
+    call.respondText(
+      ServeWeb.docUploadPage(
+        token = token,
+        isPublic = isPublic,
+        ttlSeconds = store.ttlSeconds,
+        urlUploadAllowed = store.urlFetchAllowed,
+        unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+      ),
+      ContentType.Text.Html,
+    )
+  }
+
+  /**
+   * `POST /docs` (body = the document, or `?url=` to fetch one): ingest a document and answer with
+   * its expiring permalink. `?name=` is a display label only — never a path, never the format
+   * decision (the store content-sniffs).
+   */
+  private suspend fun RoutingContext.handleDocUpload(store: ServeDocStore) {
+    if (rejectBadToken()) return
+    val name = call.request.queryParameters["name"]
+    val url = call.request.queryParameters["url"]
+    // Cap the body as it streams in — receiving it whole first would let a client OOM the server
+    // regardless of the store's own cap.
+    val body =
+      if (url == null) {
+        withContext(Dispatchers.IO) { call.receiveStream().use { readCapped(it, MAX_DOC_BYTES) } }
+          ?: run {
+            call.respondText(
+              "document exceeds ${MAX_DOC_BYTES / (1024 * 1024)}MB",
+              status = HttpStatusCode.PayloadTooLarge,
+            )
+            return
+          }
+      } else {
+        null
+      }
+    // isSecurityChecked = true: this route is token-gated (rejectBadToken above), and the store
+    // still defends in depth (format sniff, size + count caps, TTL; SSRF allowlist for the url
+    // case). The marker records that the entry point was authorised.
+    val result =
+      withContext(Dispatchers.IO) {
+        if (url != null) store.addFromUrl(name, url, isSecurityChecked = true)
+        else store.add(name, body!!, isSecurityChecked = true)
+      }
+    when (result) {
+      is ServeDocStore.Result.Ok -> {
+        val doc = result.doc
+        call.respondText(
+          JSON.encodeToString(
+            DocAcceptedResponse.serializer(),
+            DocAcceptedResponse(
+              id = doc.id,
+              name = doc.name,
+              format = doc.format.label,
+              formatId = doc.format.id,
+              bytes = doc.sizeBytes,
+              url = doc.path,
+              expiresIn = ServeWeb.humanDuration(store.remainingSeconds(doc)),
+              expiresAtEpochSeconds = doc.expiresAtMillis / 1000,
+            ),
+          ),
+          ContentType.Application.Json,
+          HttpStatusCode.Created,
+        )
+      }
+      is ServeDocStore.Result.Failed ->
+        call.respondText(result.reason, status = HttpStatusCode.BadRequest)
+    }
+  }
+
+  /** `GET /d/{id}`: the permalink page. An expired (or unknown) id is a styled 404, not a hint. */
+  private suspend fun RoutingContext.handleDocPage(store: ServeDocStore) {
+    if (rejectBadToken()) return
+    val doc = leaseDoc(store)
+    if (doc == null) {
+      respondNotFoundHtml("That document link has expired, or never existed.")
+      return
+    }
+    val size = doc.format.size(doc.bytes)
+    // An expiring capability URL must never be stored by a shared cache — no-store, always.
+    markGeneration("document", "private, no-store")
+    call.respondText(
+      ServeWeb.docPage(
+        ServeWeb.DocView(
+          id = doc.id,
+          name = doc.name,
+          formatId = doc.format.id,
+          formatLabel = doc.format.label,
+          playerPath = doc.format.playerPath,
+          rawPath = "${doc.path}/raw",
+          facts = doc.format.describe(doc.bytes),
+          sizeText = humanBytes(doc.sizeBytes),
+          expiresInText = ServeWeb.humanDuration(store.remainingSeconds(doc)),
+          expiresAtText = Instant.ofEpochMilli(doc.expiresAtMillis).toString(),
+          width = size?.width,
+          height = size?.height,
+        ),
+        token = token,
+        isPublic = isPublic,
+        unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+      ),
+      ContentType.Text.Html,
+    )
+  }
+
+  /** `GET /d/{id}/raw`: the document bytes the browser player fetches (and the download link). */
+  private suspend fun RoutingContext.handleDocRaw(store: ServeDocStore) {
+    if (rejectBadToken()) return
+    val doc = leaseDoc(store)
+    if (doc == null) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
+    markGeneration("document", "private, no-store")
+    // Client-supplied bytes: pin the declared type so no browser can sniff them into something
+    // active (e.g. HTML) served from this origin.
+    call.response.headers.append("X-Content-Type-Options", "nosniff")
+    call.respondBytes(doc.bytes, ContentType.parse(doc.format.contentType))
+  }
+
+  /** The live document this request addresses, or null when the id is malformed/expired/unknown. */
+  private fun RoutingContext.leaseDoc(store: ServeDocStore): ServeDocStore.Doc? {
+    val id = call.parameters["id"] ?: return null
+    return if (ServeDocStore.isWellFormedId(id)) store.get(id) else null
+  }
+
+  /**
+   * Serve a vendored player bundle: ungated (generic client code, no session data), CORS-open so a
+   * sandboxed viewer iframe can pull it, cached with a content ETag so a repeat load is a
+   * cheap 304.
+   */
+  private suspend fun RoutingContext.respondPlayerAsset(asset: PlayerAsset) {
+    if (asset.bytes.isEmpty()) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
+    call.response.headers.append(HttpHeaders.AccessControlAllowOrigin, "*")
+    call.response.headers.append(HttpHeaders.CacheControl, "public, max-age=3600")
+    call.response.headers.append(HttpHeaders.ETag, asset.etag)
+    if (call.request.headers[HttpHeaders.IfNoneMatch] == asset.etag) {
+      call.respond(HttpStatusCode.NotModified)
+      return
+    }
+    call.respondBytes(asset.bytes, ContentType.parse("text/javascript"))
+  }
+
+  /**
+   * `GET /doc-player/{format}/bundle.js`: a format's vendored browser player, from the registry.
+   */
+  private suspend fun RoutingContext.handleDocPlayer() {
+    val format = call.parameters["format"]?.let { ServeDocFormats.byId(it) }
+    if (format == null) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
+    respondPlayerAsset(playerAsset(format.playerResource))
   }
 
   /**
@@ -972,6 +1145,8 @@ class ServeHttpServer(
             allowRenderTrusted = allowRenderTrusted,
             trustStore = trustStoreConfigured,
             acceptBundles = acceptBundlesEnabled,
+            acceptDocs = docStore != null,
+            docTtlSeconds = docStore?.ttlSeconds ?: 0,
             catalogRefreshSeconds = catalogRefreshSeconds,
             maxConcurrentRenders = renderSlots,
             liveSeats = liveSeats.totalPermits,
@@ -1067,6 +1242,11 @@ class ServeHttpServer(
           ),
           ServeWeb.Stat("Render slots", renderSlots.toString()),
           ServeWeb.Stat("Accept uploads", if (acceptBundlesEnabled) "on" else "off"),
+          ServeWeb.Stat(
+            "Accept documents",
+            if (docStore == null) "off"
+            else "on (${ServeWeb.humanDuration(docStore.ttlSeconds)} links)",
+          ),
         )
       return ServeWeb.StatusView(
         version = BUNDLE_VERSION,
@@ -1906,30 +2086,49 @@ class ServeHttpServer(
     private const val RC_PLAYER_RESOURCE = "/rc-player/bundle.js"
 
     /**
-     * The in-browser Remote Compose player bundle, loaded once from the CLI's classpath resource
-     * ([RC_PLAYER_RESOURCE]) and served over `GET /rc-player/bundle.js`. A single shared IIFE
-     * bundle (not per-catalog like the Wasm apps), so it rides in the CLI jar rather than being
-     * fetched per session. Empty when the resource is somehow absent (a broken jar) — the route
-     * then 404s instead of serving nothing.
+     * A vendored browser player bundle baked into the CLI jar: its bytes plus a content-hash ETag.
+     * The bundles are fixed at build time, so a strong hash makes conditional requests cheap (a 304
+     * after the cache window instead of re-downloading hundreds of KB) and stays stable across
+     * restarts and replicas. [bytes] is empty when the resource is somehow absent (a broken jar) —
+     * the route then 404s instead of serving nothing.
      */
-    internal val rcPlayerBundle: ByteArray by lazy {
-      ServeHttpServer::class.java.getResourceAsStream(RC_PLAYER_RESOURCE)?.use { it.readBytes() }
-        ?: ByteArray(0)
-    }
+    internal class PlayerAsset(val bytes: ByteArray, val etag: String)
 
-    /**
-     * A content-hash ETag for [rcPlayerBundle]. The bundle is fixed at build time, so a strong hash
-     * makes conditional requests cheap (a 304 after the cache window instead of re-downloading ~640
-     * KB) and stays stable across restarts and replicas.
-     */
-    internal val rcPlayerEtag: String by lazy {
-      val digest = java.security.MessageDigest.getInstance("SHA-256").digest(rcPlayerBundle)
-      "\"" +
-        rcPlayerBundle.size.toString(16) +
-        "-" +
-        digest.take(8).joinToString("") { "%02x".format(it.toInt() and 0xff) } +
-        "\""
-    }
+    private val playerAssets = java.util.concurrent.ConcurrentHashMap<String, PlayerAsset>()
+
+    /** Load (once per classpath resource) a vendored player bundle. */
+    internal fun playerAsset(resource: String): PlayerAsset =
+      playerAssets.computeIfAbsent(resource) { path ->
+        val bytes =
+          ServeHttpServer::class.java.getResourceAsStream(path)?.use { it.readBytes() }
+            ?: ByteArray(0)
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+        val etag =
+          "\"" +
+            bytes.size.toString(16) +
+            "-" +
+            digest.take(8).joinToString("") { "%02x".format(it.toInt() and 0xff) } +
+            "\""
+        PlayerAsset(bytes, etag)
+      }
+
+    /** The Remote Compose player, kept as a named handle for the preview viewer's canvas lane. */
+    internal val rcPlayerBundle: ByteArray
+      get() = playerAsset(RC_PLAYER_RESOURCE).bytes
+
+    internal val rcPlayerEtag: String
+      get() = playerAsset(RC_PLAYER_RESOURCE).etag
+
+    /** Max accepted upload-body size for `POST /docs` (matches the document store's own cap). */
+    private val MAX_DOC_BYTES: Long = ServeDocStore.DEFAULT_MAX_DOC_BYTES.toLong()
+
+    /** `1234567` → `1.2 MB`; the size line on a document page. */
+    internal fun humanBytes(bytes: Int): String =
+      when {
+        bytes >= 1024 * 1024 -> String.format("%.1f MB", bytes / (1024.0 * 1024.0))
+        bytes >= 1024 -> "${bytes / 1024} kB"
+        else -> "$bytes B"
+      }
 
     /**
      * How long the readiness prober waits between failed render attempts before retrying (short, so
@@ -2129,6 +2328,10 @@ private data class ConfigDto(
   val allowRenderTrusted: Boolean,
   val trustStore: Boolean,
   val acceptBundles: Boolean,
+  /** Whether the document lane (`POST /docs` → `/d/<id>`) is enabled on this host. */
+  val acceptDocs: Boolean = false,
+  /** TTL of a document permalink in seconds; `0` when the document lane is off. */
+  val docTtlSeconds: Long = 0,
   /** Catalog auto-refresh interval; `0` ⇒ disabled. */
   val catalogRefreshSeconds: Long,
   val maxConcurrentRenders: Int,
@@ -2237,6 +2440,25 @@ private data class PreviewDto(
    * them). Additive since `compose-preview-serve/v2`.
    */
   val remoteComposeKnobs: List<RemoteComposeKnobDeclaration> = emptyList(),
+)
+
+@Serializable
+private data class DocAcceptedResponse(
+  val schema: String = "compose-preview-serve/doc/v1",
+  /** The permalink id — the capability. */
+  val id: String,
+  /** The display label the page shows (the sanitised upload name). */
+  val name: String,
+  /** Human format name ([ServeDocFormat.label]). */
+  val format: String,
+  /** Wire format id ([ServeDocFormat.id]) for a programmatic client. */
+  val formatId: String,
+  val bytes: Int,
+  /** Relative permalink (`/d/<id>`) — absolute-ise against the host you posted to. */
+  val url: String,
+  /** Human time left on the link, e.g. `1h`. */
+  val expiresIn: String,
+  val expiresAtEpochSeconds: Long,
 )
 
 @Serializable
