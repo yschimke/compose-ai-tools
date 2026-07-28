@@ -95,12 +95,15 @@ class DesktopLottieRendererTest {
 
   @Test
   fun `sweeps a distinct frame per step and renders byte-identically twice`() {
-    // Regression guard for the flapping baseline: one `scene.render()` per progress step let
-    // Compottie's snapshot-driven progress land *after* the draw now and then, so the capture
-    // reused the previous step's pixels. The duplicated frames fell on random indices each run, so
-    // the committed APNG's bytes changed on every push and the preview diff bot reported
-    // `lottie/spin.json` as changed on every PR. The spinner rotates continuously, so no two
-    // adjacent steps may share pixels, and two renders of the same asset must agree byte for byte.
+    // Regression guard for the flapping baseline: Compottie's progress handoff lands *after* the
+    // pass that applied the snapshot, and how many passes it needs races another thread — so any
+    // fixed number of render passes per step now and then captured the previous step's pixels. The
+    // duplicated frames fell on a different index each run (frame 35 in the CI render that prompted
+    // issue #2868), so the committed APNG's bytes flipped between two states push after push and
+    // the preview diff bot reported `lottie/spin.json` as changed on PRs that never touched it.
+    // `renderSettledFrame` converges on the pixels instead. The spinner rotates continuously, so no
+    // two adjacent steps may share pixels, and two renders of the same asset must agree byte for
+    // byte.
     val renders = tempFolder.newFolder("renders")
     val first = File(renders, "spin-a_animated.png")
     val second = File(renders, "spin-b_animated.png")
