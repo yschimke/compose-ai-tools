@@ -55,11 +55,10 @@ jobs:
   # published Maven Central artifact if the VSIX, CLI, or MCP build fails —
   # Central refuses to overwrite an already-published release version, so
   # a half-released version can't be quietly rebuilt. Gating on the other
-  # build jobs also serves as the coordination point for the `release`
-  # job: `release` only `needs` this job, so adding a builder here
-  # transitively guarantees its artifacts are uploaded before `release`
-  # downloads them. (Skill bundles live in yschimke/skills and ship from
-  # that repo — they're no longer packaged here.)
+  # core build jobs protects that irreversible step. The `release` asset job
+  # names its producers directly and therefore runs in parallel with this slow
+  # Central publish. (Skill bundles live in yschimke/skills and ship from that
+  # repo — they're no longer packaged here.)
   # `renderer-android` is published alongside the plugin so external consumers
   # that apply the plugin via Maven Central also get the Robolectric-based
   # Android renderer AAR — the plugin resolves it via matching version.
@@ -78,12 +77,9 @@ jobs:
   # GitHub Release asset (see `build-applications` below) — the Maven jar is
   # the library face of the same code.
   publish-gradle-plugin:
-    # Gate the irreversible Maven Central publish on EVERY build job, including the per-OS viewer
-    # matrix. The viewer uber jar used to build inside `build-applications` (so a viewer failure
-    # already blocked publishing); now that it lives in `build-viewer-artifacts`, that job must gate
-    # publishing too — otherwise a Linux/macOS/Windows viewer build that fails after CLI/MCP/VSIX
-    # succeed could let Maven Central publishing run, leaving an unrebuildable partial release.
-    needs: [build-applications, build-viewer-artifacts, build-vscode-extension]
+    # Gate the irreversible Maven Central publish on every core application build. The bundle viewer
+    # remains buildable from source, but its per-OS packages are no longer core release artifacts.
+    needs: [build-applications, build-vscode-extension]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -114,36 +110,11 @@ jobs:
           ./gradlew \
             :gradle-plugin:publishAndReleaseToMavenCentral \
             publishAndReleaseToMavenCentral
-      # Stage the same modules into Maven local and ship them as a build artifact.
-      # The prebuilt preview-host image (preview-host-image.yml) downloads this and
-      # bakes it into the runtime, so live catalog bundles resolve the plugin +
-      # runtime modules locally instead of waiting on Maven Central propagation.
-      # Same `publish*` task set, so the local repo carries exactly what Central got
-      # (plugin marker + renderer-*/data-*/daemon-*/preview-annotations/mcp).
-      - name: Stage published modules into Maven local for the prebuilt image
-        run: |
-          ./gradlew \
-            :gradle-plugin:publishToMavenLocal \
-            publishToMavenLocal
-          # Tar just the `ee` tree we publish — never the rest of ~/.m2 (transitive
-          # deps the image's Gradle cache resolves on its own).
-          tar -czf maven-local-ee.tgz -C "${HOME}/.m2/repository" ee
-      - name: Upload Maven local artifact for the prebuilt image
-        uses: actions/upload-artifact@v7
-        with:
-          name: preview-host-maven
-          path: maven-local-ee.tgz
-          retention-days: 7
-
   # Build the runnable applications shipped on each GitHub Release: the CLI
-  # (`compose-preview-*`), the standalone MCP server (`compose-preview-mcp-*`),
-  # and the desktop bundle viewer (`compose-preview-viewer-*`). The CLI tarball
-  # already implementation-bundles `:mcp`, so the standalone MCP archive is for
-  # consumers who only want `compose-preview-mcp` on its own (e.g. wiring it
-  # into an MCP client without dragging the CLI in). The viewer is a separate
-  # Compose Desktop application that opens a packed `.png` bundle and renders
-  # it live in a window; bigger than the CLI (ships its own Compose+Skiko
-  # runtime) so it's a separate download.
+  # (`compose-preview-*`) and the standalone MCP server (`compose-preview-mcp-*`).
+  # The CLI tarball already implementation-bundles `:mcp`, so the standalone MCP
+  # archive is for consumers who only want `compose-preview-mcp` on its own (e.g.
+  # wiring it into an MCP client without dragging the CLI in).
   #
   # Each dist is uploaded as its own artifact so `actions/upload-artifact`'s
   # lowest-common-ancestor logic collapses to the single `*/build/distributions/`
@@ -183,81 +154,6 @@ jobs:
           path: |
             mcp/build/distributions/compose-preview-mcp-*.zip
             mcp/build/distributions/compose-preview-mcp-*.tar.gz
-          retention-days: 1
-
-  # Per-OS viewer artefacts (portable-bundles.md Tier 2.2). Both are built on a Linux/macOS/Windows
-  # matrix because each carries the build host's Compose Desktop + Skiko native runtime, and jpackage
-  # only emits the installer format native to the host:
-  #   - the runnable uber jar (`compose-preview-viewer-<os>-<arch>-<ver>.jar`,
-  #     `packageUberJarForCurrentOS`) — one self-contained file anyone with a JDK 17+ can
-  #     `java -jar … bundle.png` with nothing unpacked;
-  #   - the native installer (`.deb`/`.dmg`/`.msi`, `packageDistributionForCurrentOS`) — embeds a JDK
-  #     runtime image, so a non-Java colleague installs and launches like any native app.
-  # Installers are unsigned (no Apple/Authenticode certs in CI): recipients clear a Gatekeeper /
-  # SmartScreen prompt on first launch, same as any unsigned desktop app.
-  build-viewer-artifacts:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            artifact: bundle-viewer-linux
-          - os: macos-latest
-            artifact: bundle-viewer-macos
-          - os: windows-latest
-            artifact: bundle-viewer-windows
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ env.TAG_NAME }}
-          persist-credentials: false
-      - name: Derive plugin version from tag
-        shell: bash
-        run: echo "PLUGIN_VERSION=${TAG_NAME#v}" >> "$GITHUB_ENV"
-      - uses: ./.github/actions/setup
-        with:
-          cache-read-only: 'true'
-      - name: Build the uber jar and native installer for this OS
-        shell: bash
-        # On Windows the installer is an `.msi`, which Compose Multiplatform packages via the WiX
-        # toolset. The Compose Gradle plugin registers its `downloadWix` / `unzipWix` tasks on the
-        # ROOT project (`rootProject.tasks.findByName(...) ?: rootProject.tasks.register(...)`), and
-        # `:bundle-viewer`'s `packageMsi` then reads `rootProject.tasks` / `rootProject.layout` at
-        # configuration time. That cross-project access is forbidden by this repo's Isolated Projects
-        # setting (`org.gradle.unsafe.isolated-projects=true`), and `configuration-cache.problems=fail`
-        # turns it into a hard failure — but only on Windows, since `.deb`/`.dmg` need no WiX. It's a
-        # plugin-internal access we can't satisfy from our build scripts, so disable Isolated Projects
-        # for this packaging run on Windows only. Plain configuration cache stays on (the violation is
-        # IP-specific, not a plain-CC problem), and the Linux/macOS legs keep the full IP gate.
-        run: |
-          ./gradlew \
-            ${{ runner.os == 'Windows' && '-Dorg.gradle.unsafe.isolated-projects=false' || '' }} \
-            :bundle-viewer:packageUberJarForCurrentOS \
-            :bundle-viewer:packageDistributionForCurrentOS
-      # Stage both artefacts into one flat dir before upload. `upload-artifact` derives the
-      # artifact's internal root from the literal path prefix *before* the first wildcard; the
-      # installer lives under a per-format subdir (`…/binaries/main/{deb,dmg,msi}/`), so uploading
-      # that path directly would preserve the `<fmt>/` dir inside the artifact and, after the release
-      # job's `merge-multiple` download, land the file at `artifacts/<fmt>/…` — which that job's flat
-      # `artifacts/*.{deb,dmg,msi}` globs would miss (failing the `gh release` literal-glob
-      # expansion). Copying both into a non-wildcard dir keeps the artifact contents flat. The uber
-      # jar names carry the OS+arch (`-linux-x64`, `-macos-arm64`, `-windows-x64`), so the three
-      # matrix legs never collide once merged.
-      - name: Stage artefacts for upload
-        shell: bash
-        run: |
-          mkdir -p staged-artifacts
-          cp bundle-viewer/build/compose/jars/compose-preview-viewer-*.jar staged-artifacts/
-          find bundle-viewer/build/compose/binaries/main \
-            -type f \( -name '*.deb' -o -name '*.dmg' -o -name '*.msi' \) \
-            -exec cp {} staged-artifacts/ \;
-          ls -l staged-artifacts
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ${{ matrix.artifact }}
-          path: staged-artifacts/*
-          if-no-files-found: error
           retention-days: 1
 
   build-vscode-extension:
@@ -423,14 +319,14 @@ jobs:
     # The GitHub Release asset upload depends ONLY on the build jobs that produce the assets — it is
     # deliberately NOT gated on `publish-gradle-plugin`. The Maven Central publish is slow and
     # irreversible (Central won't overwrite a published version), so it's gated behind every build
-    # job for safety; but the GitHub assets don't need to wait behind that publish. Listing the three
-    # build jobs directly lets this job run in parallel with the Maven publish, so the `.zip`/`.tar.gz`
-    # /`.jar`/installer/`.vsix` files (including the per-OS `xr-composite-*.tar.gz` binaries) land on the
-    # Release as soon as the builds finish instead of after Central wraps up. The build jobs still gate
-    # the Maven publish independently, so decoupling here doesn't weaken the irreversible-publish safety
-    # gate. (xr-composite is in `release`'s needs but deliberately NOT in `publish-gradle-plugin`'s — the
+    # job for safety; but the GitHub assets don't need to wait behind that publish. Listing the asset
+    # build jobs directly lets this job run in parallel with the Maven publish, so the CLI/MCP archives,
+    # VSIX, and per-OS `xr-composite-*.tar.gz` binaries land on the Release as soon as their builds
+    # finish instead of after Central wraps up. The build jobs still gate the Maven publish
+    # independently, so decoupling here doesn't weaken the irreversible-publish safety gate.
+    # (xr-composite is in `release`'s needs but deliberately NOT in `publish-gradle-plugin`'s — the
     # native binaries are GitHub Release assets, not Maven artifacts.)
-    needs: [build-applications, build-viewer-artifacts, build-vscode-extension, build-xr-composite]
+    needs: [build-applications, build-vscode-extension, build-xr-composite]
     runs-on: ubuntu-latest
     permissions:
       contents: write   # update the release, upload assets
@@ -443,12 +339,10 @@ jobs:
         # Each upstream upload-artifact step has a single common parent
         # directory in its `path:` list, so its LCA collapses to that dir and
         # the artifact contents are flat. After `merge-multiple: true`, every
-        # CLI / MCP / uber-jar / native-installer / VSIX file lands directly
-        # under `artifacts/`, so the shallow globs below are sufficient. The
-        # per-OS installer matrix each emits a single `.deb`/`.dmg`/`.msi`, and
-        # `release` `needs` the whole matrix, so all three are present here. If
-        # you ever expand the dist set across two parents within a single
-        # artifact, switch back to a `find artifacts -type f …` collector first.
+        # CLI / MCP / VSIX / XR compositor file lands directly under
+        # `artifacts/`, so the shallow globs below are sufficient. If you ever
+        # expand the dist set across two parents within a single artifact,
+        # switch back to a `find artifacts -type f …` collector first.
         #
         # $TAG_NAME is read from env (not templated into the script), so the
         # tag name — attacker-influenceable through git or the dispatch input
@@ -468,10 +362,6 @@ jobs:
               --clobber \
               artifacts/*.zip \
               artifacts/*.tar.gz \
-              artifacts/*.jar \
-              artifacts/*.deb \
-              artifacts/*.dmg \
-              artifacts/*.msi \
               artifacts/*.vsix
           else
             echo "Release $TAG_NAME does not exist — creating."
@@ -480,9 +370,5 @@ jobs:
               --generate-notes \
               artifacts/*.zip \
               artifacts/*.tar.gz \
-              artifacts/*.jar \
-              artifacts/*.deb \
-              artifacts/*.dmg \
-              artifacts/*.msi \
               artifacts/*.vsix
           fi

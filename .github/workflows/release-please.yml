@@ -4,8 +4,8 @@ name: Release PR
 # conventional-commit history since the last tag. Release creation and release-PR
 # creation run as separate release-please invocations so a newly cut, tagless
 # draft cannot be mistaken for an older release. When the release PR is merged,
-# release-please creates the GitHub Release, then this workflow calls release.yml
-# to build and publish the three artifacts onto that Release.
+# release-please creates the GitHub Release, then this workflow starts the core
+# release and preview-host image paths in parallel from the new tag.
 #
 # One button: merging the release PR triggers the full publish. No manual
 # tag push, no dispatch step. See docs/RELEASING.md.
@@ -55,7 +55,8 @@ jobs:
 
       # A *draft* GitHub Release does NOT create its git tag — GitHub only writes
       # the tag ref when the release is published. But the downstream build jobs
-      # (release.yml, preview-host-image.yml) check out `ref: <tag>`, so create
+      # (release.yml and the early preview-host image build) check out
+      # `ref: <tag>`, so create
       # the tag now, at the release PR's merge commit. Idempotent: skips if the
       # ref already exists (e.g. a re-run, or a future non-draft release-please).
       #
@@ -190,22 +191,23 @@ jobs:
           gh release edit "$TAG" --draft=false --latest
           echo "published $TAG."
 
-  # Publish the prebuilt preview-host image (deploy/image) for the released CLI.
-  # Same workflow_call chaining as `release`: a bot-created release won't fire
-  # preview-host-image.yml's own `on: release` trigger. `needs: finalize-release`
-  # because the image pulls the CLI tarball from the PUBLIC
-  # `releases/download/<tag>/…` URL, which 404s while the release is still a
-  # draft — so it must run only after finalize un-drafts it (which also makes its
-  # tarball-resolvable poll resolve immediately instead of riding out the upload).
-  # Same scoping as finalize: tolerate release-please's post-cut crash, but require
-  # `release` AND `finalize-release` to have actually succeeded — this job pulls the
-  # CLI tarball from the now-PUBLISHED release, which only exists if finalize ran.
+  # Publish the prebuilt preview-host image as soon as the release tag exists.
+  # It builds the CLI tarball, Android daemon, and local Maven tree directly from
+  # that tag, so it can run IN PARALLEL with release.yml and never waits for the
+  # draft GitHub Release, Maven Central publish, or Central's visibility poll.
+  #
+  # This is deliberately best-effort: preview.coo.ee must not be able to block the
+  # core CLI/Maven/GitHub release. A failed image job remains visible, while the
+  # called workflow tolerates it and the independent release/finalize chain keeps
+  # going. Manual preview-host-image dispatch remains the repair path.
   preview-host-image:
-    needs: [release-please, release, finalize-release]
-    if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' && needs.release.result == 'success' && needs.finalize-release.result == 'success' }}
+    needs: release-please
+    if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' }}
     uses: ./.github/workflows/preview-host-image.yml
     with:
       cli_version: ${{ needs.release-please.outputs.tag_name }}
+      build_from_source: true
+      non_blocking: true
     secrets: inherit
     permissions:
       contents: read

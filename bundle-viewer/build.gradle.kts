@@ -7,11 +7,10 @@ plugins {
   alias(libs.plugins.compose.compiler)
 }
 
-// Version derivation mirrors `:cli/build.gradle.kts` — CI sets `PLUGIN_VERSION` from the git
-// tag (e.g. `0.10.15`), local builds compute the next-patch SNAPSHOT from
-// `.release-please-manifest.json`. Keeping the schemes aligned means the viewer's release
-// artefact ships at the same version as the CLI / plugin / MCP server, so `compose-preview
-// $X` and `compose-preview-viewer $X` always refer to mutually compatible builds.
+// Version derivation mirrors `:cli/build.gradle.kts` — callers can set `PLUGIN_VERSION` to a
+// release version (e.g. `0.10.15`), while local builds compute the next-patch SNAPSHOT from
+// `.release-please-manifest.json`. Keeping the schemes aligned makes on-demand viewer builds
+// compatible with the corresponding CLI / plugin / MCP server.
 version =
   providers.environmentVariable("PLUGIN_VERSION").orNull
     ?: run {
@@ -36,13 +35,12 @@ base { archivesName.set("compose-preview-viewer") }
 //     non-Java colleague installs and launches the viewer with nothing else on their machine.
 // The uber jar stays Isolated-Projects-clean — unlike the GradleUp Shadow plugin, whose
 // optional-property lookup walks to the parent project and trips this repo's
-// `isolated-projects=true` + `configuration-cache.problems=fail` gate. The native-installer path is
+// Isolated Projects + `configuration-cache.problems=fail` gate. The native-installer path is
 // IP-clean on Linux/macOS (`.deb`/`.dmg`), but the Windows `.msi` is NOT: Compose Multiplatform
 // packages MSIs via the WiX toolset and registers its `downloadWix` / `unzipWix` tasks on the ROOT
 // project, so `packageMsi` reads `rootProject.tasks` / `rootProject.layout` at configuration time
-// and trips the IP gate. The release workflow's viewer-packaging step disables Isolated Projects on
-// the Windows leg only to work around this plugin-internal access (see
-// `.github/workflows/release.yml`).
+// and trips the IP gate if a caller explicitly enables it. Keep Isolated Projects disabled when
+// building the Windows installer; plain configuration cache remains supported.
 //
 // We drop the JVM `application` plugin entirely (its slim `distZip`/`distTar` is superseded by the
 // drag-around uber jar, and keeping both registers two colliding `run` tasks).
@@ -55,10 +53,9 @@ compose.desktop {
     jvmArgs += "--enable-native-access=ALL-UNNAMED"
     nativeDistributions {
       // Per-OS native installers. `TargetFormat.Deb` (Linux), `Dmg` (macOS), `Msi` (Windows) —
-      // jpackage only builds the format(s) native to the runner's OS, so the release matrix runs
-      // `packageDistributionForCurrentOS` on one runner per OS. Rpm is omitted: the Linux release
-      // runner is Ubuntu (ships `dpkg-deb`, not `rpmbuild`), and `.deb` plus the universal uber jar
-      // already cover Linux recipients.
+      // jpackage only builds the format(s) native to the current OS. Rpm is omitted because the
+      // common Linux build host is Ubuntu (ships `dpkg-deb`, not `rpmbuild`), and `.deb` plus the
+      // current-OS uber jar already cover Linux recipients.
       targetFormats(
         org.jetbrains.compose.desktop.application.dsl.TargetFormat.Deb,
         org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg,
@@ -76,8 +73,8 @@ compose.desktop {
       macOS {
         // macOS's CFBundleShortVersionString requires MAJOR >= 1; `.deb`/`.msi` accept a 0 major,
         // but the DMG build hard-fails on it. While the repo is pre-1.0 (`0.x.y`), coerce the
-        // leading-zero major to 1 for the DMG's internal version only — the release asset filename
-        // still carries the real `0.x.y`. Versions already at major >= 1 pass through unchanged.
+        // leading-zero major to 1 for the DMG's internal version only — the output filename still
+        // carries the real `0.x.y`. Versions already at major >= 1 pass through unchanged.
         packageVersion = numericVersion.replaceFirst(Regex("^0\\."), "1.")
       }
     }

@@ -231,8 +231,11 @@ jobs:
           # write token is never placed in a PR job's environment.
           rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
-      - name: Build CLI
-        run: ./gradlew :cli:build
+      # Release builds no longer package the per-OS bundle-viewer binaries. Compile
+      # and test its source here so removing that packaging matrix does not also
+      # remove the viewer's only automated coverage.
+      - name: Build CLI and bundle viewer
+        run: ./gradlew :cli:build :bundle-viewer:build
 
   # End-to-end gate for the XR composite still: build the native xr-composite binary, then run
   # the xr-spatial sample's full render so composePreviewRenderXr writes scene.json + panel

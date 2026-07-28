@@ -25,16 +25,26 @@ on:
         # server. Whatever you pass must be >= the release carrying the
         # entrypoint-defaulted flags (`--catalogs-unlisted`, 0.16.9) AND the
         # catalog knob-override render path (#2287).
-  # Called from release-please.yml when a CLI release is cut. A bot-created
+  # Called from release-please.yml as soon as a CLI release tag is cut. A bot-created
   # release won't fire the `release` trigger below (the GITHUB_TOKEN-doesn't-
   # trigger-workflows limitation the rest of the release chain already works
-  # around), so the reliable path is this workflow_call after release.yml.
+  # around), so the reliable path is this early, parallel workflow_call.
   workflow_call:
     inputs:
       cli_version:
         description: Released compose-preview version to bundle (leading v optional)
         required: true
         type: string
+      build_from_source:
+        description: Build release inputs from the checked-out tag instead of waiting for public assets
+        required: false
+        default: false
+        type: boolean
+      non_blocking:
+        description: Report a failed image build without failing the caller's core release
+        required: false
+        default: false
+        type: boolean
   # Kept as a manual escape hatch for human-published releases (which DO fire it).
   release:
     types: [published]
@@ -57,9 +67,17 @@ jobs:
     if: >-
       inputs.cli_version != '' ||
       startsWith(github.event.release.tag_name, 'v')
+    continue-on-error: ${{ inputs.non_blocking }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          # The early release-chain path builds from the exact release tag.
+          # Human release events check out their tag; manual public-asset builds
+          # keep the workflow's selected ref because a bare `0.x.y` input is not
+          # itself a git ref.
+          ref: ${{ inputs.build_from_source && inputs.cli_version || github.event.release.tag_name || github.ref }}
+          persist-credentials: false
 
       - name: Resolve bundled CLI version
         id: ver
@@ -71,40 +89,64 @@ jobs:
         run: |
           v="${RAW_VERSION#v}"
           echo "version=${v}" >> "$GITHUB_OUTPUT"
+          echo "PLUGIN_VERSION=${v}" >> "$GITHUB_ENV"
 
-      # Seed Maven local from the same release run so live catalog bundles resolve
-      # plugin + runtime modules from local jars instead of waiting on Central.
-      # release.yml's publish-gradle-plugin job uploads `preview-host-maven` (the
-      # published `ee` tree) within THIS run, so download-artifact finds it on the
-      # release-chain path. On manual workflow_dispatch / on:release there's no such
-      # upstream artifact — continue-on-error leaves the dir empty and the runtime
-      # resolver falls back to its configured remote repositories.
-      # The dir always exists (.keep) so the Dockerfile's `COPY m2/` never fails.
-      - name: Prepare local Maven dir
+      # The release-please path starts this reusable workflow as soon as the tag
+      # exists, in parallel with release.yml. Build only the inputs the server
+      # image consumes: its CLI tarball, Android daemon sidecar, and published
+      # `ee` Maven tree. This avoids both critical-path waits that used to delay
+      # preview.coo.ee:
+      #   1. the draft GitHub Release becoming public so Docker could curl assets;
+      #   2. Maven Central publishing + its advisory ~20 minute visibility poll.
+      #
+      # Manual / human-published-release runs leave these dirs empty and use the
+      # Dockerfile's public-release fallback instead.
+      - name: Prepare image input dirs
         run: |
           mkdir -p deploy/image/m2
           touch deploy/image/m2/.keep
-      - name: Download published modules (same-run release chain)
-        uses: actions/download-artifact@v8
-        continue-on-error: true
-        with:
-          name: preview-host-maven
-          path: deploy/image/m2-dl
-      - name: Unpack published modules into the build context
-        run: |
-          if [ -f deploy/image/m2-dl/maven-local-ee.tgz ]; then
-            tar -xzf deploy/image/m2-dl/maven-local-ee.tgz -C deploy/image/m2
-            echo "seeded Maven local with $(find deploy/image/m2/ee -name '*.jar' 2>/dev/null | wc -l) jars"
-          else
-            echo "no preview-host-maven artifact — Dockerfile will resolve from Maven Central."
-          fi
+          mkdir -p deploy/image/release-assets
+          touch deploy/image/release-assets/.keep
 
-      # Smooth out the release race for the CLI TARBALL (a GitHub Release asset
-      # release.yml uploads after the tag — always needed, m2 or not). Published
-      # Maven modules do not gate the image build: the release chain supplies them
-      # through the local m2 artifact, while manual builds can resolve them at runtime.
-      # 1-byte range GET, ~60 min ceiling.
+      - uses: ./.github/actions/setup
+        if: ${{ inputs.build_from_source }}
+        with:
+          cache-read-only: 'true'
+
+      - name: Build preview-host release inputs
+        if: ${{ inputs.build_from_source }}
+        env:
+          # Non-SNAPSHOT Maven publications are signed even when the destination
+          # is mavenLocal, so the same release signing material is required here.
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          ./gradlew \
+            :cli:distTar \
+            :cli:packageAndroidDaemon \
+            :gradle-plugin:publishToMavenLocal \
+            publishToMavenLocal
+
+      - name: Stage locally built image inputs
+        if: ${{ inputs.build_from_source }}
+        env:
+          V: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          cp "cli/build/distributions/compose-preview-${V}.tar.gz" \
+            deploy/image/release-assets/
+          cp "cli/build/distributions/compose-preview-android-daemon-${V}.zip" \
+            deploy/image/release-assets/
+          cp -a "${HOME}/.m2/repository/ee" deploy/image/m2/
+          echo "staged $(find deploy/image/m2/ee -name '*.jar' | wc -l) local Maven jars"
+          ls -lh deploy/image/release-assets
+
+      # Manual / human-published-release fallback: wait for the public CLI asset.
+      # The automatic release chain skips this completely because it staged the
+      # exact tag's inputs above.
       - name: Wait for the released CLI tarball to be resolvable
+        if: ${{ !inputs.build_from_source }}
         env:
           V: ${{ steps.ver.outputs.version }}
         run: |

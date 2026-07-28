@@ -271,9 +271,11 @@ release that carries `--catalogs-unlisted`).
 
 `preview.coo.ee` **runs the prebuilt [`deploy/image`](../deploy/image)** — a `docker pull` of the
 released `compose-preview-host` image on an **8 GB host**, no build. The **whole deploy chain is
-automatic**: cutting a CLI release publishes the host image to GHCR (release-please invokes
-[`preview-host-image.yml`](../.github/workflows/preview-host-image.yml) via `workflow_call`, tagging
-that version **and** `:latest`), and the box's zero-downtime **`rollout`** service rolls the
+automatic**: cutting a CLI release starts the host image build immediately from the release tag
+(release-please invokes
+[`preview-host-image.yml`](../.github/workflows/preview-host-image.yml) via `workflow_call`, in
+parallel with the core release, tagging that version **and** `:latest`), and the box's zero-downtime
+**`rollout`** service rolls the
 `preview` container onto the new image (`caddy` is rolled separately by **Watchtower**) — no manual
 step.
 
@@ -283,8 +285,8 @@ token-gated `/__hooks/rollout` webhook** so the box rolls the *instant* the imag
 missed webhook still self-heals. The webhook is fired from the **image-publish step, not a `release:
 published` event** — on purpose: at image-publish time the GHCR image is fully self-contained (baked
 CLI + plugin jars + warm caches + Android daemon), so the box needs **only GHCR** to roll and no
-Maven-Central propagation can race it (the image build already absorbed that via the seeded local
-`m2` + the Dockerfile warm-render retry). A release-event webhook would fire *before* the image is
+Maven-Central propagation can race it (the image workflow builds and seeds its local `m2` directly
+from the release tag). A release-event webhook would fire *before* the image is
 built and roll onto the *old* image. It's gated by a `DEPLOY_HOOK_TOKEN` (fail-closed if unset) and
 can only trigger a rollout *check* of the already-configured tag — see
 [`deploy/image` README → Instant roll on publish](../deploy/image/README.md#instant-roll-on-publish-webhook--skips-the-poll-wait).
