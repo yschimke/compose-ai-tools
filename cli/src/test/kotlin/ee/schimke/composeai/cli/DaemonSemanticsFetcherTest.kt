@@ -33,6 +33,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
@@ -218,6 +219,36 @@ class DaemonSemanticsFetcherTest {
   }
 
   @Test
+  fun `uses the configured render timeout while waiting for terminal notifications`() {
+    val projectDir = newTempFolder("semantics-timeout")
+    writeDescriptor(projectDir)
+
+    val logs = mutableListOf<String>()
+    val fetcher =
+      DaemonSemanticsFetcher(
+        factory = FakeFactory(produced = emptyMap(), silentIds = setOf("SlowPreview")),
+        onLog = { logs += it },
+        renderTimeout = 10.milliseconds,
+      )
+
+    val startedAt = System.nanoTime()
+    val outcome =
+      fetcher.fetch(
+        projectDir = projectDir,
+        moduleName = "sample",
+        previewIds = listOf("SlowPreview"),
+      )
+    val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
+
+    assertTrue(outcome is DaemonSemanticsFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    assertTrue(
+      logs.any { "timed out after 10ms" in it && "SlowPreview" in it },
+      "configured timeout and pending render should be logged, got: $logs",
+    )
+    assertTrue(elapsedMs < 5_000, "configured timeout should return promptly, took ${elapsedMs}ms")
+  }
+
+  @Test
   fun `missing descriptor returns DescriptorMissing`() {
     val projectDir = newTempFolder("semantics-no-descriptor")
     val fetcher = DaemonSemanticsFetcher(factory = FakeFactory(emptyMap()))
@@ -259,6 +290,7 @@ class DaemonSemanticsFetcherTest {
     private val produced: Map<String, String>,
     private val fontsProduced: Map<String, String> = emptyMap(),
     private val failedIds: Map<String, String> = emptyMap(),
+    private val silentIds: Set<String> = emptySet(),
   ) : RenderSessionFactory {
     override val backendKind: RenderSessionBackend = RenderSessionBackend.Subprocess
 
@@ -268,6 +300,7 @@ class DaemonSemanticsFetcherTest {
         produced = produced,
         fontsProduced = fontsProduced,
         failedIds = failedIds,
+        silentIds = silentIds,
         dataRoot = File(config.workspaceRoot, "build/compose-previews/data"),
       )
   }
@@ -292,6 +325,7 @@ class DaemonSemanticsFetcherTest {
     private val dataRoot: File,
     private val fontsProduced: Map<String, String> = emptyMap(),
     private val failedIds: Map<String, String> = emptyMap(),
+    private val silentIds: Set<String> = emptySet(),
   ) : RenderSession {
     private val listeners = java.util.concurrent.CopyOnWriteArrayList<NotificationListener>()
 
@@ -338,6 +372,7 @@ class DaemonSemanticsFetcherTest {
           listeners.forEach { it.onNotification("renderFailed", params) }
           continue
         }
+        if (id in silentIds) continue
         produced[id]?.let { content ->
           val dir = File(dataRoot, id).also { it.mkdirs() }
           File(dir, "compose-semantics.json").writeText(content)

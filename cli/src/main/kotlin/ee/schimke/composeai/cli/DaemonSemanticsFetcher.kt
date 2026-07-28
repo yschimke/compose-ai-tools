@@ -14,6 +14,7 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -41,6 +42,7 @@ internal class DaemonSemanticsFetcher(
   private val factory: RenderSessionFactory = SubprocessRenderSessions,
   private val onLog: (String) -> Unit = {},
   private val fileSystem: FileSystem = SystemFileSystem,
+  private val renderTimeout: Duration = DEFAULT_RENDER_TIMEOUT,
 ) {
   /**
    * Render [previewIds] through a temporary daemon and return each preview's
@@ -139,11 +141,10 @@ internal class DaemonSemanticsFetcher(
             onLog("render rejected for '${rejected.id}': ${rejected.reason}")
             if (pending.remove(rejected.id)) latch.countDown()
           }
-          val finished = latch.await(SEMANTICS_RENDER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+          val finished = latch.await(renderTimeout.inWholeMilliseconds, TimeUnit.MILLISECONDS)
           if (!finished) {
             onLog(
-              "timed out after ${SEMANTICS_RENDER_TIMEOUT_SECONDS}s waiting for renders: " +
-                pending.joinToString(",")
+              "timed out after $renderTimeout waiting for renders: " + pending.joinToString(",")
             )
           }
         }
@@ -252,10 +253,7 @@ internal class DaemonSemanticsFetcher(
     /** RPC ack budget for the (fast, queue-only) `renderNow` call itself. */
     val RENDER_ACK_TIMEOUT = 60.seconds
 
-    /**
-     * Generous budget for every queued render to emit `renderFinished` — the daemon renders the
-     * selected previews in sequence and the first also pays the sandbox cold-start.
-     */
-    const val SEMANTICS_RENDER_TIMEOUT_SECONDS = 180L
+    /** Default used by callers that do not expose a command timeout. */
+    val DEFAULT_RENDER_TIMEOUT = 300.seconds
   }
 }
