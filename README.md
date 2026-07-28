@@ -183,6 +183,12 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `LibraryBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-library/LibraryBoxPreview_Library_Box.png" width="150" /> |
 | `LibraryGreetingPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-library/LibraryGreetingPreview_Library_Greeting.png" width="150" /> |
 
+## samples:android-live-lane
+
+| Preview | Image |
+|---------|-------|
+| `LiveLaneCard` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-live-lane/LiveLaneCard_LiveLaneCard.png" width="150" /> |
+
 ## samples:android-screenshot-test
 
 | Preview | Image |

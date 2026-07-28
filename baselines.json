@@ -167,6 +167,14 @@
     "sha256": "b510e39120a1d66780b504337c92e3903a6eeb015cb147ac79e5b68ed7322fd7",
     "sourceFile": "src/main/kotlin/com/example/samplelibrary/LibraryPreviews.kt"
   },
+  "samples:android-live-lane/com.example.androidlivelane.LiveLanePreviewsKt.LiveLaneCard_LiveLaneCard": {
+    "captureLabel": "",
+    "functionName": "LiveLaneCard",
+    "module": "samples:android-live-lane",
+    "renderBasename": "LiveLaneCard_LiveLaneCard.png",
+    "sha256": "f824d028360b6464490582fccabc7cb8c52ab27c4fb771dffb680d0d04bef6b9",
+    "sourceFile": "src/main/kotlin/com/example/androidlivelane/LiveLanePreviews.kt"
+  },
   "samples:android-screenshot-test/com.example.sampleandroidscreenshot.MainPreviewsKt.MainSquarePreview_main-square": {
     "captureLabel": "",
     "functionName": "MainSquarePreview",
