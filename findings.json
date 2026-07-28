@@ -128,7 +128,7 @@
       "module": "android",
       "pngBasename": "com.example.sampleandroid.NotificationVariantPreviewsKt.BigTextVariantsPreview_Arabic.png",
       "previewId": "com.example.sampleandroid.NotificationVariantPreviewsKt.BigTextVariantsPreview_Arabic",
-      "sha256": "50930c413d84ec47a2baa9e50c4bca32cffc9782dd08b010aa8797e3080c0707",
+      "sha256": "24799e80bf2fe16ba60bdf0d57130c93ec9357bf1d290cb0bcc866742a8c350f",
       "sidecarBasename": ""
     },
     {
@@ -142,21 +142,21 @@
       "module": "android",
       "pngBasename": "com.example.sampleandroid.NotificationVariantPreviewsKt.BigTextVariantsPreview_German.png",
       "previewId": "com.example.sampleandroid.NotificationVariantPreviewsKt.BigTextVariantsPreview_German",
-      "sha256": "50930c413d84ec47a2baa9e50c4bca32cffc9782dd08b010aa8797e3080c0707",
+      "sha256": "0e3542961a14397b397e58eb7bea5b9b5b84db44aa78b300995817b6b3874cad",
       "sidecarBasename": ""
     },
     {
       "module": "android",
       "pngBasename": "com.example.sampleandroid.NotificationVariantPreviewsKt.BigTextVariantsPreview_Japanese.png",
       "previewId": "com.example.sampleandroid.NotificationVariantPreviewsKt.BigTextVariantsPreview_Japanese",
-      "sha256": "50930c413d84ec47a2baa9e50c4bca32cffc9782dd08b010aa8797e3080c0707",
+      "sha256": "d05810b99af727f7e210abdbcca84861fb0b0016c79cf1f0a8f0c3a5a9754118",
       "sidecarBasename": ""
     },
     {
       "module": "android",
       "pngBasename": "com.example.sampleandroid.NotificationVariantPreviewsKt.BigTextVariantsPreview_Large font.png",
       "previewId": "com.example.sampleandroid.NotificationVariantPreviewsKt.BigTextVariantsPreview_Large font",
-      "sha256": "50930c413d84ec47a2baa9e50c4bca32cffc9782dd08b010aa8797e3080c0707",
+      "sha256": "1fa36172d49bdabd312fecafee1fc64e9d94d64fd62893f45de4dec9a012e642",
       "sidecarBasename": ""
     },
     {
