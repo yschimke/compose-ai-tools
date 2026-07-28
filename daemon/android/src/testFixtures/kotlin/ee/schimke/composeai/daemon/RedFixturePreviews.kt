@@ -51,6 +51,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -58,6 +60,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
 
 /**
  * Test fixtures for [RenderEngineTest] and the D-harness.v2 Android real-mode scenarios. Lives in
@@ -78,6 +81,25 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun RedSquare() {
   Box(modifier = Modifier.fillMaxSize().background(Color(0xFFEF5350)))
+}
+
+/** Two-owner fixture: the activity surface plus a popup-owned semantics root. */
+@Composable
+fun MultipleSemanticsRoots() {
+  Box(
+    modifier =
+      Modifier.fillMaxSize()
+        .background(Color(0xFFEF5350))
+        .semantics { contentDescription = "activity-surface" }
+  )
+  Popup {
+    Box(
+      modifier =
+        Modifier.size(24.dp)
+          .background(Color(0xFF42A5F5))
+          .semantics { contentDescription = "popup-surface" }
+    )
+  }
 }
 
 /**

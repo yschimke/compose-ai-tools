@@ -25,6 +25,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
@@ -672,13 +674,30 @@ class RenderEngine(
                 recordOptions =
                   RoborazziOptions.RecordOptions(applyDeviceCrop = isRound && !flattenWearScroll)
               )
+            // A preview may install more than one Compose owner (Wear empty-state scaffolds and
+            // popup/dialog-like content do this). `onRoot()` asserts that exactly one node matches
+            // `isRoot`, so using it independently for capture and every data product drops the
+            // whole render as soon as a second owner appears. Resolve one owner once: prefer the
+            // owner attached to the activity's rendered window, then prefer the richest tree. Use
+            // that same interaction for pixels and its unmerged root for every structured export.
+            val rootInteractions = rule.onAllNodes(isRoot(), useUnmergedTree = true)
+            val semanticsRoots =
+              rootInteractions.fetchSemanticsNodes(atLeastOneRootRequired = false)
+            val resolvedSemanticsRoot =
+              selectRenderedSurfaceSemanticsRoot(
+                roots = semanticsRoots,
+                activityDecorView = rule.activity.window.decorView,
+              ) ?: error("No semantics root was produced for '${spec.outputBaseName}'")
+            val resolvedRootIndex = semanticsRoots.indexOf(resolvedSemanticsRoot)
+            val resolvedRootInteraction = rootInteractions[resolvedRootIndex]
             System.err.println(
               "compose-ai-daemon: [render] phase=captureRoboImage.start outputBaseName=${spec.outputBaseName}"
             )
-            rule.onRoot().also {
-              trace.section("render:captureRoboImage") {
-                it.captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
-              }
+            trace.section("render:captureRoboImage") {
+              resolvedRootInteraction.captureRoboImage(
+                file = outputFile,
+                roborazziOptions = roborazziOptions,
+              )
             }
             System.err.println(
               "compose-ai-daemon: [render] phase=captureRoboImage.done outputBaseName=${spec.outputBaseName}"
@@ -700,10 +719,7 @@ class RenderEngine(
 
             // Pull per-node theme facts while the composition is still alive so theme consumer
             // attribution (#1847) can run after the rule tears the scene down.
-            capturedThemeFacts =
-              ThemeConsumerCapture.extractFacts(
-                runCatching { rule.onRoot(useUnmergedTree = true).fetchSemanticsNode() }.getOrNull()
-              )
+            capturedThemeFacts = ThemeConsumerCapture.extractFacts(resolvedSemanticsRoot)
 
             // Always-on data-artifact extensions (fonts, resources, semantics, layout-inspector,
             // i18n, etc). Each extension owns its own recorder lifecycle (installed during
@@ -712,9 +728,7 @@ class RenderEngine(
             // post-capture context (rootDir, previewId, semantics root, layout-inspector
             // preview context, locale) and lets each extension decide what to write.
             if (dataDir != null && builtDataArtifactExtensions.isNotEmpty()) {
-              val resolvedSemanticsRoot =
-                runCatching { rule.onRoot(useUnmergedTree = true).fetchSemanticsNode() }.getOrNull()
-              val layoutInspectorPreviewContext = resolvedSemanticsRoot?.let { semanticsRoot ->
+              val layoutInspectorPreviewContext =
                 PreviewContext.Builder(
                     previewId = spec.previewId,
                     backend = PreviewBackends.ANDROID,
@@ -731,9 +745,8 @@ class RenderEngine(
                   )
                   .parameterInformationCollected()
                   .addSlotTables(slotTableCapture.snapshot())
-                  .rootForTest(semanticsRoot.root)
+                  .rootForTest(resolvedSemanticsRoot.root)
                   .build()
-              }
               val artifactContextData =
                 buildList<ExtensionContextValue<*>> {
                   add(RenderDataArtifactContextKeys.RootDir provides dataDir)
@@ -742,20 +755,22 @@ class RenderEngine(
                   spec.localeTag
                     ?.takeIf { it.isNotBlank() }
                     ?.let { add(RenderDataArtifactContextKeys.RenderedLocale provides it) }
-                  resolvedSemanticsRoot?.let {
-                    add(RenderDataArtifactContextKeys.SemanticsRoot provides it)
-                  }
+                  add(RenderDataArtifactContextKeys.SemanticsRoot provides resolvedSemanticsRoot)
                   add(RenderDataArtifactContextKeys.Density provides spec.density)
                   add(RenderDataArtifactContextKeys.SlotTables provides slotTableCapture.snapshot())
                   add(RenderDataArtifactContextKeys.FontScale provides (spec.fontScale ?: 1.0f))
                   add(RenderDataArtifactContextKeys.OutputPng provides outputFile)
                   add(RenderDataArtifactContextKeys.HeldActivity provides rule.activity)
-                  layoutInspectorPreviewContext?.let {
-                    add(RenderDataArtifactContextKeys.LayoutInspectorPreviewContext provides it)
-                    // Round-Wear clip for the shared figma-svg export — the same
-                    // `previewContext.device.isRound` the inline Android extension read.
-                    add(RenderDataArtifactContextKeys.RoundClip provides it.device.isRound)
-                  }
+                  add(
+                    RenderDataArtifactContextKeys.LayoutInspectorPreviewContext provides
+                      layoutInspectorPreviewContext
+                  )
+                  // Round-Wear clip for the shared figma-svg export — the same
+                  // `previewContext.device.isRound` the inline Android extension read.
+                  add(
+                    RenderDataArtifactContextKeys.RoundClip provides
+                      layoutInspectorPreviewContext.device.isRound
+                  )
                 }
               val extensionContextData =
                 ExtensionContextData.of(*artifactContextData.toTypedArray())
@@ -804,7 +819,7 @@ class RenderEngine(
               )
               try {
                 trace.section("a11y:dataProducts") {
-                  val view = (rule.onRoot().fetchSemanticsNode().root as ViewRootForTest).view
+                  val view = (resolvedSemanticsRoot.root as ViewRootForTest).view
                   // Hierarchy + ATF come from a typed extension instead of a direct
                   // AccessibilityChecker.analyze call. The extension owns the platform-specific
                   // ATF walk; downstream consumers (TouchTargets, Overlay) read declared inputs
@@ -860,7 +875,6 @@ class RenderEngine(
             if (dataDir != null) {
               try {
                 trace.section("uia:hierarchy") {
-                  val rootNode = rule.onRoot(useUnmergedTree = false).fetchSemanticsNode()
                   val uiaExtension = UiAutomatorHierarchyExtension()
                   val uiaStore = RecordingDataProductStore()
                   uiaExtension.process(
@@ -871,7 +885,8 @@ class RenderEngine(
                       products = uiaStore.scopedFor(uiaExtension),
                       data =
                         ExtensionContextData.of(
-                          UiAutomatorHierarchyContextKeys.SemanticsRoot provides rootNode
+                          UiAutomatorHierarchyContextKeys.SemanticsRoot provides
+                            resolvedSemanticsRoot
                         ),
                     )
                   )
@@ -1964,6 +1979,33 @@ internal fun isRoundDevice(device: String?): Boolean {
   val lower = device.lowercase()
   return lower.contains("_round") || lower.contains("isround=true") || lower.contains("shape=round")
 }
+
+/**
+ * Select the Compose semantics root representing the activity surface being captured.
+ *
+ * Multiple owners are valid (for example, a popup or Wear scaffold may add another root). Prefer
+ * owners whose Android view belongs to the activity window; if more than one does, prefer the tree
+ * with the most semantic content. Callers request the unmerged roots up front, so the selected node
+ * retains the detailed tree all structured data products need.
+ */
+internal fun selectRenderedSurfaceSemanticsRoot(
+  roots: List<SemanticsNode>,
+  activityDecorView: android.view.View,
+): SemanticsNode? =
+  roots.maxWithOrNull(
+    compareBy<SemanticsNode>(
+      { if (it.belongsToWindow(activityDecorView)) 1 else 0 },
+      { it.descendantCount() },
+      { it.boundsInRoot.width * it.boundsInRoot.height },
+    )
+  )
+
+private fun SemanticsNode.belongsToWindow(decorView: android.view.View): Boolean =
+  runCatching { (root as? ViewRootForTest)?.view?.rootView === decorView.rootView }
+    .getOrDefault(false)
+
+private fun SemanticsNode.descendantCount(): Int =
+  runCatching { 1 + children.sumOf { it.descendantCount() } }.getOrDefault(1)
 
 /**
  * Tiny @Composable trampoline that invokes [composableMethod] reflectively against the current
