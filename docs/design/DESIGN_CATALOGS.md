@@ -56,6 +56,22 @@ workflow below); this repo's catalogs are the per-component-system sheets.
 Each module carries a `catalog.spec.json` (the Phase-0 inventory: groups,
 captions, primary modes, breakpoints, and the seed-kit frame per component).
 
+### Declare a hero (`display.hero`)
+
+`display.hero` names the preview the preview server's front door features on the
+system's card — a componentId (`"Template/AppScaffold"`) or a preview-function
+name. **Declare one, and make it a screen.** With no declaration the server falls
+back to `ServeWeb.representativePreviewId`, which prefers a `Screens`-section
+preview and otherwise settles on a canonical filled button; a component-library
+catalog has no `Screens` section, so its front door ends up advertising a lone
+button — true to the inventory, useless as a shop window. Each catalog here
+therefore points its hero at its full-screen scaffold template:
+`compose-m3` → `Template/AppScaffold`, `wear-m3` → `Template/TimeText`,
+`remote-m3` → `Template/WatchScreen`. A hero that resolves to nothing is silent
+(the server just falls through), so `validateSpec` resolves it against the spec's
+componentIds, the module's `@CatalogComponent` ids, and its `@Preview` names —
+and the `validate-samples` test runs that over every catalog in this repo.
+
 ## Weekly delivery branches
 
 The [`design-artifacts`](../../.github/workflows/design-artifacts.yml) workflow

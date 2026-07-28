@@ -71,3 +71,17 @@ annotation class CatalogRemoteModes
  */
 @Preview(showBackground = false, device = "spec:width=320dp,height=240dp,dpi=320")
 annotation class CatalogRemoteLarge
+
+/**
+ * The **screen** canvas: a full Wear watch face's worth of room (227×227dp — the `largeRound`
+ * breakpoint the `design-catalog-wear-m3` sibling fans its templates across), at the same `dpi=320`
+ * density-2.0 pin as the component stickers.
+ *
+ * Unlike the component stickers, a screen template paints its own surface (see
+ * [com.example.designcatalogremotem3.WatchScreenRemote]) rather than rasterising onto transparency:
+ * a screen IS a background plus its content, and the whole point of the capture is to read as a real
+ * watch screen rather than a floating component. `showBackground = false` therefore still holds — the
+ * fill comes from the document, not the preview frame.
+ */
+@Preview(showBackground = false, device = "spec:width=227dp,height=227dp,dpi=320")
+annotation class CatalogRemoteScreen
