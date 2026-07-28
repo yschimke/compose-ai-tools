@@ -33,7 +33,7 @@ import okio.Path.Companion.toPath
  * Backend-aware, mirroring `bundle daemon`'s two launches over the **same** `DaemonMain`
  * entrypoint: a `desktop` bundle spawns the CMP/Skiko daemon (`lib-daemon-desktop` +
  * `lib-renderer`), an `android` bundle spawns the Robolectric daemon (`lib-daemon-android` +
- * `android.jar` + the JDK-17 `--add-opens` + `robolectric.*` sysprops [AndroidBundleLaunch]
+ * `android.jar` + the required `--add-opens` + `robolectric.*` sysprops [AndroidBundleLaunch]
  * supplies). Wiring the Android backend here is what gives an Android/Wear catalog (e.g. `wear-m3`)
  * a live daemon session — and hence per-variant renders + the daemon-produced `compose/figma-svg`
  * lane (`renderSvg` on [ServeCatalogLiveHost]) that a baked, per-slug `figma/<slug>.svg` can't
@@ -164,7 +164,7 @@ internal object ServeBundleDaemon {
 
     val libJars = BundleReader.extractEmbeddedLibs(zipBytes, libsDir, fileSystem)
     val mavenCoords = manifest.classpath.filterIsInstance<BundleReader.ClasspathEntry.Maven>()
-    val resolvedJars =
+    val resolvedDependencies =
       CoordinateResolver(
           warn = { onLog("catalog $system: $it") },
           networkEnabled = if (offline) false else CoordinateResolver.defaultNetworkEnabled(),
@@ -173,13 +173,11 @@ internal object ServeBundleDaemon {
               extraMavenRepos.filter { it.isNotBlank() },
         )
         .resolveAll(mavenCoords)
-        .mapNotNull { it.file }
-    // The rehydrated external-resource dirs go right after the bundle's own classes so a lifted
-    // font resolves at the same `/fonts/…` classpath path it did when carried inline.
-    val userClassPath =
-      (listOf(classesDir) + extraClasspathDirs.filter { it.isDirectory } + libJars + resolvedJars)
-        .joinToString(File.pathSeparator) { it.absolutePath }
-
+        .mapNotNull { resolution ->
+          resolution.file?.let { file -> ResolvedBundleDependency(resolution.coordinate, file) }
+        }
+    val (parentOverlayDependencies, childDependencies) =
+      resolvedDependencies.partition { shouldPrecedeDaemonSidecar(it.coordinate) }
     // Android app-resource carriage: a classic `@Preview` that calls `stringResource(R.string.…)`
     // needs the app's own `0x7f` resource table at render time. Extract the bundle's carried
     // `android/` payload and synthesize the Robolectric `test_config.properties` onto the daemon
@@ -205,6 +203,23 @@ internal object ServeBundleDaemon {
         "android" -> androidBundleDaemonLaunch(system, onLog)
         else -> desktopBundleDaemonLaunch(system, onLog)
       } ?: return null
+    val classpaths =
+      bundleDaemonClasspaths(
+        classesDir = classesDir,
+        extraClasspathDirs = extraClasspathDirs,
+        embeddedLibJars = libJars,
+        parentOverlayJars = parentOverlayDependencies.map { it.file },
+        childDependencyJars = childDependencies.map { it.file },
+        daemonSidecarClasspath = backendLaunch.daemonClasspath,
+        androidResourceClasspath = androidResourceClasspath,
+      )
+    if (parentOverlayDependencies.isNotEmpty()) {
+      onLog(
+        "catalog $system: ${parentOverlayDependencies.size} shared bundle dependency classpath " +
+          "entry(s) precede the daemon sidecar; ${childDependencies.size} app dependency " +
+          "entry(s) remain isolated"
+      )
+    }
 
     val descriptor =
       DaemonLaunchDescriptor(
@@ -216,11 +231,11 @@ internal object ServeBundleDaemon {
         // classpath / JVM args / sysprops differ (see [BackendDaemonLaunch]).
         mainClass = DAEMON_MAIN_CLASS,
         javaLauncher = null,
-        classpath = backendLaunch.daemonClasspath + androidResourceClasspath,
+        classpath = classpaths.daemonClasspath,
         jvmArgs = backendLaunch.jvmArgs,
         systemProperties =
           buildMap {
-            put("composeai.daemon.userClassDirs", userClassPath)
+            put("composeai.daemon.userClassDirs", classpaths.userClassPath)
             put("composeai.daemon.previewsJsonPath", previewsJson.absolutePath)
             // Point the daemon's render output at `<destDir>/renders`. This is what makes
             // `DaemonMain.dataRoot` non-null (`<destDir>/data`), which is the gate that *registers*
@@ -438,6 +453,74 @@ internal object ServeBundleDaemon {
   }
 
   /**
+   * Split a packed bundle's runtime into the daemon parent and disposable user child classpaths.
+   *
+   * Compose, AndroidX, Kotlin, and kotlinx packages deliberately delegate to the daemon parent
+   * loader so renderer and preview code share one class identity. Consequently, leaving the
+   * bundle's resolved Maven jars in `composeai.daemon.userClassDirs` cannot make those catalog
+   * versions win: [ee.schimke.composeai.daemon.UserClassLoaderHolder] delegates them straight to
+   * the server sidecar, producing `NoSuchMethodError` when the catalog was compiled against newer
+   * Material, Lifecycle, or coroutines APIs.
+   *
+   * Put the bundle's shared AndroidX/Compose and coroutines dependencies first on the parent `-cp`,
+   * ahead of the daemon sidecar. The JVM's left-to-right classpath order then selects the catalog's
+   * framework versions while retaining one parent-loaded copy for both renderer and app code. Keep
+   * ordinary app dependencies in the child loader. In particular, do not overlay
+   * kotlinx-serialization: the daemon's generated JSON-RPC serializers and its runtime must stay
+   * version-aligned.
+   */
+  internal fun bundleDaemonClasspaths(
+    classesDir: File,
+    extraClasspathDirs: List<File>,
+    embeddedLibJars: List<File>,
+    parentOverlayJars: List<File>,
+    childDependencyJars: List<File>,
+    daemonSidecarClasspath: List<String>,
+    androidResourceClasspath: List<String>,
+  ): BundleDaemonClasspaths {
+    // The carried r-classes.jar belongs to the catalog's AndroidX graph too. It must precede the
+    // sidecar's generated R.jar or newer Compose UI bytecode can resolve an older R$id class and
+    // fail with NoSuchFieldError.
+    val parentEntries =
+      (parentOverlayJars.map { it.absolutePath } +
+          androidResourceClasspath +
+          daemonSidecarClasspath)
+        .distinct()
+    // The rehydrated external-resource dirs go right after the bundle's own classes so a lifted
+    // font resolves at the same `/fonts/…` path it did when carried inline.
+    val childEntries =
+      (listOf(classesDir) +
+          extraClasspathDirs.filter { it.isDirectory } +
+          embeddedLibJars +
+          childDependencyJars)
+        .map { it.absolutePath }
+        .distinct()
+    return BundleDaemonClasspaths(
+      daemonClasspath = parentEntries,
+      userClassPath = childEntries.joinToString(File.pathSeparator),
+    )
+  }
+
+  internal data class BundleDaemonClasspaths(
+    val daemonClasspath: List<String>,
+    val userClassPath: String,
+  )
+
+  /**
+   * Dependencies whose packages [ee.schimke.composeai.daemon.UserClassLoaderHolder] deliberately
+   * resolves from the parent and whose consumer ABI must therefore win over the baked sidecar.
+   */
+  internal fun shouldPrecedeDaemonSidecar(coordinate: BundleReader.ClasspathEntry.Maven): Boolean =
+    coordinate.group.startsWith("androidx.") ||
+      (coordinate.group == "org.jetbrains.kotlinx" &&
+        coordinate.artifact.startsWith("kotlinx-coroutines"))
+
+  private data class ResolvedBundleDependency(
+    val coordinate: BundleReader.ClasspathEntry.Maven,
+    val file: File,
+  )
+
+  /**
    * The backend-specific half of a bundle daemon launch: the daemon (parent `-cp`) classpath, the
    * JVM args, and any extra `-D` system properties. Mirrors `BundleDaemonCommand.DaemonLaunch` but
    * flattened for the descriptor path (which applies `jvmArgs` + `systemProperties` + `classpath`
@@ -499,7 +582,7 @@ internal object ServeBundleDaemon {
   }
 
   /**
-   * Android (Robolectric) launch: `lib-daemon-android` + `android.jar`, plus the JDK-17
+   * Android (Robolectric) launch: `lib-daemon-android` + `android.jar`, plus the required
    * `--add-opens` args and `robolectric.*` mode sysprops [AndroidBundleLaunch] supplies (the same
    * ones `bundle daemon`'s `androidDaemonLaunch` passes). `resolveAndroidJar(null)` falls back to
    * `ANDROID_HOME`/`ANDROID_SDK_ROOT` since a module-less serve has no `local.properties`. Missing

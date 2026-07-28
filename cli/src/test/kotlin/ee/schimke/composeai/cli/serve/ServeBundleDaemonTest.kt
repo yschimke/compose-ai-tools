@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.cli.BundleReader
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RenderTier
 import ee.schimke.composeai.mcp.DaemonLaunchDescriptor
@@ -12,6 +13,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
@@ -34,6 +36,79 @@ import kotlinx.serialization.json.jsonPrimitive
  * override via `-Dcomposeai.cli.appHome=<install-root>` to point elsewhere.
  */
 class ServeBundleDaemonTest {
+
+  @Test
+  fun `bundle dependencies precede daemon sidecars on the shared parent classpath`() {
+    val root = Files.createTempDirectory("serve-bundle-classpaths").toFile()
+    val classes = File(root, "classes").apply { mkdirs() }
+    val resources = File(root, "resources").apply { mkdirs() }
+    val embedded = File(root, "app-project.jar")
+    val catalogMaterial = File(root, "material3-catalog.jar")
+    val catalogCoroutines = File(root, "coroutines-catalog.jar")
+    val catalogSerialization = File(root, "serialization-catalog.jar")
+    val sidecarMaterial = File(root, "material3-sidecar.jar")
+    val daemon = File(root, "daemon.jar")
+    val androidResources = File(root, "android-resources")
+
+    val result =
+      ServeBundleDaemon.bundleDaemonClasspaths(
+        classesDir = classes,
+        extraClasspathDirs = listOf(resources, File(root, "missing-resources")),
+        embeddedLibJars = listOf(embedded),
+        parentOverlayJars = listOf(catalogMaterial, catalogCoroutines, catalogMaterial),
+        childDependencyJars = listOf(catalogSerialization),
+        daemonSidecarClasspath = listOf(sidecarMaterial.absolutePath, daemon.absolutePath),
+        androidResourceClasspath = listOf(androidResources.absolutePath),
+      )
+
+    assertEquals(
+      listOf(
+        catalogMaterial.absolutePath,
+        catalogCoroutines.absolutePath,
+        androidResources.absolutePath,
+        sidecarMaterial.absolutePath,
+        daemon.absolutePath,
+      ),
+      result.daemonClasspath,
+      "catalog dependencies must win parent-classpath lookup ahead of host sidecars",
+    )
+    assertEquals(
+      listOf(classes, resources, embedded, catalogSerialization).joinToString(File.pathSeparator) {
+        it.absolutePath
+      },
+      result.userClassPath,
+    )
+    assertTrue(
+      catalogMaterial.absolutePath !in result.userClassPath,
+      "parent-loaded framework dependencies must not be duplicated in the user child loader",
+    )
+  }
+
+  @Test
+  fun `only consumer shared ABI dependencies overlay daemon internals`() {
+    fun coordinate(group: String, artifact: String) =
+      BundleReader.ClasspathEntry.Maven(group, artifact, "1", "jar")
+
+    assertTrue(
+      ServeBundleDaemon.shouldPrecedeDaemonSidecar(
+        coordinate("androidx.compose.material3", "material3")
+      )
+    )
+    assertTrue(
+      ServeBundleDaemon.shouldPrecedeDaemonSidecar(
+        coordinate("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm")
+      )
+    )
+    assertTrue(
+      !ServeBundleDaemon.shouldPrecedeDaemonSidecar(
+        coordinate("org.jetbrains.kotlinx", "kotlinx-serialization-json-jvm")
+      ),
+      "daemon protocol serializers must remain version-aligned with the sidecar runtime",
+    )
+    assertTrue(
+      !ServeBundleDaemon.shouldPrecedeDaemonSidecar(coordinate("com.squareup.okhttp3", "okhttp"))
+    )
+  }
 
   @Test
   fun `materialize produces a valid descriptor plus previews from a packed desktop bundle`() {
@@ -158,6 +233,84 @@ class ServeBundleDaemonTest {
       assertTrue(png.isFile, "rendered PNG must exist on disk: $pngPath")
       assertTrue(png.length() > 0L)
     }
+  }
+
+  /**
+   * Production compatibility proof for a published Android catalog whose Compose/AndroidX/Kotlin
+   * dependencies differ from the daemon sidecar's. This caught Jetcaster's
+   * `MotionScheme.expressive()` / mangled `TopAppBar` failures: materialization used to leave the
+   * catalog dependency graph in the child loader even though those packages delegate to the parent,
+   * so the older sidecar APIs won.
+   *
+   * Self-skips unless `-Dcomposeai.test.androidCompatibilityBundlePath=<bundle.png>` is supplied.
+   * Optionally select a known compatibility-sensitive preview with
+   * `-Dcomposeai.test.androidCompatibilityPreviewContains=<substring>`; otherwise the first preview
+   * is rendered.
+   */
+  @Test
+  fun `android bundle renders against its carried dependency versions`() {
+    val bundlePath = System.getProperty(ANDROID_COMPATIBILITY_BUNDLE_PATH_PROPERTY)
+    if (bundlePath.isNullOrBlank()) {
+      System.err.println(
+        "[ServeBundleDaemonTest] skipping android dependency compatibility — set " +
+          "-D$ANDROID_COMPATIBILITY_BUNDLE_PATH_PROPERTY=<published android bundle .png>."
+      )
+      return
+    }
+    val bundleFile = File(bundlePath)
+    assertTrue(bundleFile.isFile, "no compatibility bundle at $bundlePath")
+    ensureAppHomeConfigured()
+
+    val state =
+      assertNotNull(
+        ServeBundleDaemon.materialize(
+          bundleFile,
+          Files.createTempDirectory("serve-bundle-daemon-android-compat").toFile(),
+          "android-compatibility",
+        ),
+        "published Android compatibility bundle should materialize",
+      )
+    val parsed =
+      descriptorJson.decodeFromString(
+        DaemonLaunchDescriptor.serializer(),
+        state.descriptor.readText(),
+      )
+    val firstSidecar =
+      parsed.classpath.indexOfFirst {
+        it.contains("staged-daemon-android-libs") || it.contains("lib-daemon-android")
+      }
+    assertTrue(firstSidecar > 0, "descriptor should contain bundle dependencies before the sidecar")
+    assertTrue(
+      parsed.classpath.take(firstSidecar).any { it.contains("bundle-deps") },
+      "at least one bundle-resolved dependency should precede the Android daemon sidecar",
+    )
+
+    val selector = System.getProperty(ANDROID_COMPATIBILITY_PREVIEW_CONTAINS_PROPERTY)
+    val target =
+      selector?.let { needle -> state.previews.firstOrNull { needle in it.id } }
+        ?: state.previews.firstOrNull()
+    assertNotNull(target, "compatibility bundle should contain a selectable preview")
+
+    ServeRenderHost.open(
+        descriptorPath = state.descriptor,
+        workspaceRoot = state.workspaceRoot,
+        workspaceName = state.workspaceName,
+        previews = state.previews,
+        label = state.label,
+        declaredThemes = state.declaredThemes,
+        onLog = { line -> System.err.println("[android compatibility daemon] $line") },
+      )
+      .use { host ->
+        var outcome: RenderOutcome? = null
+        repeat(3) {
+          outcome = host.render(target.id, PreviewOverrides())
+          if (outcome is RenderOutcome.Ok) return@use
+        }
+        assertTrue(
+          outcome is RenderOutcome.Ok,
+          "catalog preview ${target.id} should render with its carried dependency APIs; got $outcome",
+        )
+      }
   }
 
   /**
@@ -358,6 +511,10 @@ class ServeBundleDaemonTest {
   private companion object {
     const val BUNDLE_PATH_PROPERTY = "composeai.test.bundlePath"
     const val ANDROID_BUNDLE_PATH_PROPERTY = "composeai.test.androidBundlePath"
+    const val ANDROID_COMPATIBILITY_BUNDLE_PATH_PROPERTY =
+      "composeai.test.androidCompatibilityBundlePath"
+    const val ANDROID_COMPATIBILITY_PREVIEW_CONTAINS_PROPERTY =
+      "composeai.test.androidCompatibilityPreviewContains"
     const val APP_HOME_PROPERTY = "composeai.cli.appHome"
     const val DEFAULT_BUNDLE_PATH = "/tmp/m3-bundle.png"
 

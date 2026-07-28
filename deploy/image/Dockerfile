@@ -20,7 +20,7 @@ ARG CP_VERSION=0.18.6
 # Stage 0: base — JDK + Skiko's native deps (same rationale as the cloudrun image:
 # libGL via libgl1, Mesa software GLX/DRI, fonts; force software GL).
 # ---------------------------------------------------------------------------
-FROM eclipse-temurin:17.0.19_10-jdk AS base
+FROM eclipse-temurin:21.0.11_10-jdk AS base
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libfreetype6 libfontconfig1 fontconfig fonts-dejavu-core \
@@ -152,8 +152,8 @@ RUN ln -s "/opt/compose-preview-${CP_VERSION}" /opt/compose-preview
 COPY --from=android-daemon /opt/lib-daemon-android /opt/lib-daemon-android
 COPY --from=android-daemon /opt/android-sdk /opt/android-sdk
 # JAVA_TOOL_OPTIONS (inherited by the spawned daemon JVM too) points the CLI at the
-# unpacked Android daemon sidecar, warms the daemon off the request path
-# (warmInBackground → serve's prewarm), and lifts BOTH cold-start budgets so a cold
+# unpacked Android daemon sidecar, keeps per-preview daemons lazy
+# (warmInBackground=false), and lifts BOTH cold-start budgets so a cold
 # Robolectric daemon doesn't abort before it can serve live:
 #   * sandboxBootTimeoutMs — the Robolectric sandbox boot (the one-time
 #     `android-all-instrumented` ~150 MB fetch + instrumentation, in RobolectricHost.start,
@@ -165,7 +165,7 @@ COPY --from=android-daemon /opt/android-sdk /opt/android-sdk
 #     which surfaced as `/render?knob.…` returning `500 timed out after 10s`. Lift it in lockstep
 #     with the cold budget so warm overrides/Wear frames have room (ServeRenderHost also gives the
 #     first override render the cold budget, so this only bounds steady-state frames).
-# Both are absorbed by prewarm off the request path, so a browse never blocks. See
+# Baked catalog pixels remain available while a requested live daemon warms. See
 # RobolectricHost / ServeCatalogLiveHost / ServeRenderHost.
 #
 # sandboxCount — the Android/Robolectric daemon defaults to a **5**-sandbox pool (DaemonMain,
@@ -190,7 +190,7 @@ ENV PATH="/opt/compose-preview/bin:${PATH}" \
     COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1 \
     ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk \
-    JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -Dcomposeai.cli.libDaemonAndroidDir=/opt/lib-daemon-android -Dcomposeai.serve.warmInBackground=true -Dcomposeai.serve.renderTimeoutSeconds=900 -Dcomposeai.serve.frameRenderTimeoutSeconds=120 -Dcomposeai.daemon.sandboxCount=3 -Dcomposeai.daemon.sandboxBootTimeoutMs=1800000 -Dcomposeai.daemon.backgroundSandboxBoot=true"
+    JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -Dcomposeai.cli.libDaemonAndroidDir=/opt/lib-daemon-android -Dcomposeai.serve.warmInBackground=false -Dcomposeai.serve.renderTimeoutSeconds=900 -Dcomposeai.serve.frameRenderTimeoutSeconds=120 -Dcomposeai.daemon.sandboxCount=3 -Dcomposeai.daemon.sandboxBootTimeoutMs=1800000 -Dcomposeai.daemon.backgroundSandboxBoot=true"
 
 WORKDIR /project
 # Carry the release Maven tree so live bundles can resolve the plugin/runtime
