@@ -4,17 +4,20 @@ package com.example.designcatalogremotem3
 
 import androidx.compose.remote.creation.compose.action.hostAction
 import androidx.compose.remote.creation.compose.layout.RemoteAlignment
+import androidx.compose.remote.creation.compose.layout.RemoteArrangement
 import androidx.compose.remote.creation.compose.layout.RemoteBox
 import androidx.compose.remote.creation.compose.layout.RemoteColumn
 import androidx.compose.remote.creation.compose.layout.RemoteRow
 import androidx.compose.remote.creation.compose.modifier.RemoteModifier
 import androidx.compose.remote.creation.compose.modifier.background
+import androidx.compose.remote.creation.compose.modifier.clip
 import androidx.compose.remote.creation.compose.modifier.fillMaxSize
 import androidx.compose.remote.creation.compose.modifier.size
 import androidx.compose.remote.creation.compose.modifier.width
 import androidx.compose.remote.creation.compose.shaders.RemoteBrush
 import androidx.compose.remote.creation.compose.shaders.linearGradient
 import androidx.compose.remote.creation.compose.shaders.solidColor
+import androidx.compose.remote.creation.compose.shapes.RemoteCircleShape
 import androidx.compose.remote.creation.compose.shapes.RemoteRoundedCornerShape
 import androidx.compose.remote.creation.compose.state.RemoteColor
 import androidx.compose.remote.creation.compose.state.rb
@@ -259,6 +262,67 @@ fun AppCardRemote() = RemoteSticker {
     title = { RemoteText("Morning run".rs) },
     appImage = { RemoteIcon(starIcon, null, modifier = RemoteModifier.size(16.rdp)) },
     content = { RemoteText("5.2 km · 28 min".rs) },
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Scaffold templates — a full-screen Remote Compose watch screen rather than a
+// single component sticker: the whole reason the catalog exists is that a
+// RemoteDocument drives a real surface (watch face / tile / widget), and one
+// button on transparency doesn't show that. This is the catalog's declared hero
+// (`display.hero` in catalog.spec.json), so it is what the preview server's front
+// door features for `remote-m3`.
+//
+// Unlike every sticker above, the screen paints its own `background` fill: a
+// screen IS a surface plus its content, so rasterising it onto transparency would
+// defeat the point. The dark fill comes from `RemoteMaterialTheme`'s own
+// background token, so the screen stays in lockstep with the (dark-first) scheme
+// the rest of the sheet reads from.
+//
+// The status clock is a plain `RemoteText`, NOT `RemoteTimeText`: as the note by
+// the text stickers records, curved text is a document op the bundled player
+// can't replay yet, so a curved strip would fail the render outright. The time is
+// frozen at "10:10" (the same literal the Wear M3 sibling's templates use) so the
+// weekly design-artifacts render doesn't churn on the system clock.
+//
+// Wear M3 parallel: `Template/TimeText` — the base Wear list screen, which this
+// mirrors slot for slot (status strip, list header, a stack of TitleCards).
+// ---------------------------------------------------------------------------
+
+// Kept to one short line each: at the 150dp list width a wrapping subtitle grows its card past the
+// round crop, so the second card would fall off the bottom of the screen.
+private val screenActivities = listOf("Morning run" to "5.2 km", "Heart rate" to "72 bpm")
+
+@CatalogRemoteScreen
+@Composable
+fun WatchScreenRemote() = RemoteSticker {
+  RemoteBox(
+    // Clipped to a circle, not left square: the watch host crops the document to the round display,
+    // so a square capture would advertise pixels the device never shows. `clip` before `background`
+    // so the fill is what gets cropped.
+    modifier =
+      RemoteModifier.fillMaxSize()
+        .clip(RemoteCircleShape)
+        .background(RemoteBrush.solidColor(RemoteMaterialTheme.colorScheme.background)),
+    contentAlignment = RemoteAlignment.Center,
+    content = {
+      // Narrower than the 227dp screen so the cards clear the round crop at their widest, the same
+      // inset a Wear `ScreenScaffold` applies to its list content.
+      RemoteColumn(
+        modifier = RemoteModifier.width(150.rdp),
+        verticalArrangement = RemoteArrangement.spacedBy(8.rdp),
+        horizontalAlignment = RemoteAlignment.CenterHorizontally,
+      ) {
+        RemoteText("10:10".rs, style = RemoteMaterialTheme.typography.labelMedium)
+        screenActivities.forEach { (title, subtitle) ->
+          RemoteTitleCard(
+            onClick = testAction,
+            title = { RemoteText(title.rs) },
+            subtitle = { RemoteText(subtitle.rs) },
+          )
+        }
+      }
+    },
   )
 }
 

@@ -141,6 +141,38 @@ rather than booting `scenario.html` and replaying messages.
 The `snapshot` path filter in `harness:snapshot` matches this spec too, so these
 land in `out/` alongside the panel fixtures and need no separate CI wiring.
 
+## Serve render lanes (daemon-backed, both backends)
+
+[`serve-lanes.spec.mjs`](serve-lanes.spec.mjs) is the odd one out: it drives a
+**real, daemon-backed `compose-preview serve`** rather than the static harness
+server, and asserts every render lane (PNG, SVG, Live `/ws/`, Wasm) actually
+honours a `?knob.…` override. Point it at a running serve with `SERVE_URL` and
+name the session with `SERVE_SYSTEM`:
+
+```sh
+SERVE_URL=http://127.0.0.1:8725 SERVE_SYSTEM=compose-m3 npm run harness:serve-lanes
+```
+
+Two boot scripts stand one up, one per render backend — both are what
+[`serve-lanes-e2e.yml`](../../.github/workflows/serve-lanes-e2e.yml) runs:
+
+- [`serve-lanes-boot.sh`](serve-lanes-boot.sh) — the **desktop CMP/Skiko** daemon,
+  live-rendering the fetched `compose-m3` catalog under xvfb + software GL. Same
+  shape preview.coo.ee runs.
+- [`serve-android-lane-boot.sh`](serve-android-lane-boot.sh) — the
+  **Android/Robolectric** daemon, live-rendering a locally packed
+  `:samples:android-live-lane` bundle (signed with a throwaway key so it verifies
+  `Trusted` and earns the live lane). Needs `:cli:stageDaemonAndroidLibs`' output
+  via `LIB_DAEMON_ANDROID_DIR` and an Android SDK for `android.jar`; no xvfb.
+
+The Android script deliberately **fails instead of degrading**: the Robolectric
+lane's historical failure mode (#2669) was fail-soft — a sandbox that aborts at
+bootstrap leaves the catalog serving baked PNGs with no error — so the script
+gates on the session registering `LIVE`, on a real `200` render, and on the log
+being free of `ClassNotFoundException`. The fixture's manifest names an
+`Application` the render classpath doesn't carry precisely to keep that gate
+honest.
+
 ## Wire-side contract
 
 ```sh

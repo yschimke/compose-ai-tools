@@ -33,9 +33,16 @@ class FontResolverRecorder(private val context: Context? = null) {
     // draws Noto for normal-weight text, and recording Orbitron there would tell the export a face
     // was used that it never sees — marking a perfectly reproducible export degraded and boxing
     // unrelated family-less text in the same SVG.
-    FigmaSvgRenderedFonts.record(
-      matchingFont(fontFamily, fontWeight, fontStyle)?.let { displayFamilyName(fontLabel(it)) }
-    )
+    val matched = matchingFont(fontFamily, fontWeight, fontStyle)
+    // An Android resource-backed face (`FontFamily(Font(R.font.montserrat_regular, …))`) reaches
+    // the capture as the bare `res/font/<resId>` handle. Recover its bytes out of the render's
+    // resource table now — this is the only place they are reachable — so the figma-svg export can
+    // embed the real face instead of emitting the numeric id as a CSS family with nothing behind
+    // it (issue #2886). Best-effort: a face we can't recover is published as a *rendered* family
+    // below, which makes the export box the text and write its warning sidecar rather than
+    // silently substituting Roboto.
+    val resourceFamily = matched?.let(::recoverResourceFont)
+    FigmaSvgRenderedFonts.record(resourceFamily ?: matched?.let { displayFamilyName(fontLabel(it)) })
     val key = listOf(requestedFamily, resolvedFamily, weight.toString(), style).joinToString("|")
     entries[key] =
       FontUsedEntry(
@@ -78,6 +85,86 @@ class FontResolverRecorder(private val context: Context? = null) {
     val label = fontLabel(font)
     return label.takeIf { it.isNotBlank() && !it.startsWith("ResourceFont(") }
   }
+
+  /**
+   * Extracts an Android resource-backed [font]'s bytes to a real file and publishes the mapping on
+   * [FigmaResourceFonts], returning the family name the `compose/figma-svg` export will end up
+   * naming it (issue #2886).
+   *
+   * Returns null for a non-resource font (nothing to recover — the caller falls back to the usual
+   * label path). For a resource font that could **not** be recovered it returns the resource's own
+   * entry name (`montserrat_regular`): that is deliberately a name the export cannot produce a
+   * face for, so it lands in `FigmaSvgRenderedFonts.unnamedIn(...)` and the text exports as
+   * missing-glyph boxes plus a warning sidecar — the house rule that wrong-and-obvious beats
+   * wrong-and-plausible. Emitting the numeric id as a CSS family with no `@font-face` behind it is
+   * exactly the silent-substitution failure this closes.
+   */
+  private fun recoverResourceFont(font: Font): String? {
+    val resId = resourceId(font) ?: return null
+    val ctx = context ?: return null
+    val identity = FigmaResourceFonts.identityFor(resId)
+    FigmaResourceFonts.pathFor(identity)?.let { cached ->
+      val file = java.io.File(cached)
+      if (file.isFile && file.length() > 0) {
+        fontFamilyOf(file.readBytes())?.let { return it }
+      }
+    }
+    // The resource table's own path tells us the on-disk extension; a `res/font/<name>.xml` family
+    // descriptor is not a face we can embed, so it takes the unrecoverable branch below.
+    val value = TypedValue()
+    val resPath =
+      runCatching {
+          ctx.resources.getValue(resId, value, true)
+          value.string?.toString()
+        }
+        .getOrNull()
+        .orEmpty()
+    val entryName =
+      runCatching { ctx.resources.getResourceEntryName(resId) }.getOrNull()?.takeIf {
+        it.isNotBlank()
+      } ?: resId.toString()
+    val extension =
+      when {
+        resPath.endsWith(".otf", ignoreCase = true) -> "otf"
+        resPath.endsWith(".ttf", ignoreCase = true) -> "ttf"
+        // No usable path (or an XML font-family descriptor): the raw stream is still worth a try
+        // for the common binary-resource case, and a non-font payload simply fails to parse below.
+        resPath.isEmpty() -> "ttf"
+        else -> return entryName
+      }
+    val bytes =
+      runCatching { ctx.resources.openRawResource(resId).use { it.readBytes() } }
+        .getOrNull()
+        ?.takeIf { it.isNotEmpty() } ?: return entryName
+    val target =
+      runCatching {
+          val dir = java.io.File(System.getProperty("java.io.tmpdir"), "composeai-res-fonts")
+          dir.mkdirs()
+          java.io.File(dir, "$entryName-$resId.$extension").apply { writeBytes(bytes) }
+        }
+        .getOrNull() ?: return entryName
+    val family = fontFamilyOf(bytes) ?: return entryName
+    FigmaResourceFonts.register(identity, target.absolutePath)
+    return family
+  }
+
+  /**
+   * The font's real family name read out of [bytes] (`"Montserrat"`) — the same read
+   * `ComposeFigmaSvgDataProducer.fontFileFamily` performs, so the name published here is exactly
+   * the one the export emits on the `<text>` and in its `@font-face`. Null when the bytes aren't a
+   * parseable font, which is how an XML font-family descriptor (or any non-font payload) is
+   * rejected rather than registered as an unusable face.
+   */
+  private fun fontFamilyOf(bytes: ByteArray): String? =
+    runCatching {
+        java.awt.Font.createFont(
+            java.awt.Font.TRUETYPE_FONT,
+            java.io.ByteArrayInputStream(bytes),
+          )
+          .family
+      }
+      .getOrNull()
+      ?.takeIf { it.isNotBlank() }
 }
 
 fun recordingFontFamilyResolver(

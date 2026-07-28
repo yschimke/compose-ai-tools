@@ -164,6 +164,29 @@ top/bottom scaffold split, and it reuses the mobile grow-and-size-to-content loo
 frame carries the full stacked list — cards, `TimeText` arc, and the revealed `EdgeButton` pill —
 inside the stadium mask.)*
 
+### The plain viewport lane keeps the fisheye — and now draws it correctly
+
+Reduce-motion flattening is a `?scroll=long` device: the long export wants a *flat list* a designer
+can edit, so removing the edge transform is the point. The plain viewport `.svg` (`GET /render/.svg`)
+is the opposite — it is the vector twin of that preview's PNG, so it must reproduce the frame *as
+composed*, fisheye included.
+
+That only works if the export honours the transform on both sides of the ledger. A node's captured
+`bounds` is already the drawn rect (mapped through the layer chain), but everything derived from a
+*token* or from the measured `size` — the fill-growth extents, corner radii, elevation, stroke width,
+type metrics — is un-transformed. Mixing the two grew each edge-scaled item back to full size while
+keeping its compressed placement, so neighbouring items overlapped into one merged blob
+([#2615](https://github.com/yschimke/compose-ai-tools/issues/2615)). The capture now carries the
+node's root-relative `graphicsLayer` scale as `LayoutInspectorNode.transform` — measured through the
+public `LayoutCoordinates` API, so it is backend-agnostic and present only when it isn't the identity
+— and `FigmaSvgModel` scales every measured signal into drawn space before it competes with `bounds`.
+
+![viewport SVG vs render, before and after](../renders/scrolling-svg/wear-tlc-viewport-scale.png)
+
+*(Same frame three ways. Before, the two edge-scaled cards below `Fosdem` are drawn at full height at
+their compressed offsets and merge into one blob that swallows the `droidcon` label; after, each card
+lands on the rect the render actually painted.)*
+
 ### What's landed vs. what remains
 
 - **Landed (backend-agnostic, unit-tested in `data-layoutinspector-core`):** the `FigmaSvgCapsuleClip`

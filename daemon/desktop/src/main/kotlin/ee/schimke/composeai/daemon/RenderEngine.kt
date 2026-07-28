@@ -23,6 +23,7 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.SystemTheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.SemanticsNode
@@ -403,13 +404,7 @@ class RenderEngine(
               }
             }
             val content: @Composable () -> Unit = {
-              val bgColor =
-                when {
-                  spec.clearBackground -> Color.Transparent
-                  spec.backgroundColor != 0L -> Color(spec.backgroundColor.toInt())
-                  spec.showBackground -> Color.White
-                  else -> Color.Transparent
-                }
+              val bgColor = previewBackgroundColor(spec)
               // The AS-parity wrap-measure box (and its fixed-axis `fillMaxSize` counterpart) is
               // shared with the one-shot `:renderer-desktop` fork via [ComposePreviewContentBox],
               // so
@@ -668,6 +663,13 @@ class RenderEngine(
                 // did;
                 // converging with Android's device-derived clip is a separate visual change.
                 add(RenderArtifactContextKeys.RoundClip provides false)
+                // The background this render painted behind the composable, so the figma-svg
+                // export lays the same colour down as its bottom layer (issue #2884). Resolved the
+                // same way the render itself resolves `bgColor` above; a transparent result
+                // publishes nothing, keeping component exports background-free.
+                previewBackgroundHex(state.spec)?.let {
+                  add(RenderArtifactContextKeys.PreviewBackground provides it)
+                }
               }
               .toTypedArray()
           )
@@ -1405,6 +1407,29 @@ class RenderEngine(
     }
   }
 }
+
+/**
+ * The flat colour a render paints behind the composable: the per-render "crisp outline" override
+ * first, then `@Preview(backgroundColor = …)`, then plain `@Preview(showBackground = true)`'s
+ * white. [Color.Transparent] when the preview opted into none — the common component case.
+ */
+internal fun previewBackgroundColor(spec: RenderSpec): Color =
+  when {
+    spec.clearBackground -> Color.Transparent
+    spec.backgroundColor != 0L -> Color(spec.backgroundColor.toInt())
+    spec.showBackground -> Color.White
+    else -> Color.Transparent
+  }
+
+/**
+ * [previewBackgroundColor] as the `#AARRGGBB` string the data-product wire format uses, or null
+ * when the render drew on transparency and the figma-svg export should stay background-free
+ * (issue #2884).
+ */
+internal fun previewBackgroundHex(spec: RenderSpec): String? =
+  previewBackgroundColor(spec)
+    .takeIf { it.alpha > 0f }
+    ?.let { "#${String.format(java.util.Locale.US, "%08X", it.toArgb())}" }
 
 /**
  * What [RenderEngine.render] needs to produce a single PNG. Decoupled from the protocol's

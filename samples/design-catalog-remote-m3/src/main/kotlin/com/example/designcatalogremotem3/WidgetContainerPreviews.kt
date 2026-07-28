@@ -18,10 +18,10 @@ import androidx.glance.wear.color
 import androidx.glance.wear.core.ContainerInfo
 import androidx.glance.wear.core.WearWidgetParams
 import androidx.glance.wear.core.WidgetInstanceId
-import androidx.glance.wear.tooling.preview.WearWidgetPreview
 import androidx.glance.wear.verticalGradient
 import androidx.wear.compose.remote.material3.RemoteMaterialTheme
 import androidx.wear.compose.remote.material3.RemoteText
+import ee.schimke.composeai.wear.preview.CapturingWearWidgetPreview
 
 // ---------------------------------------------------------------------------
 // Widget container — the squircle frame the Wear widget host draws AROUND widget
@@ -44,9 +44,20 @@ import androidx.wear.compose.remote.material3.RemoteText
 // an implementation detail likely to wander.
 //
 // Unlike the component stickers these do NOT go through `RemoteSticker` /
-// `RemoteOverridablePreview` — `WearWidgetPreview` owns its own capture
+// `RemoteOverridablePreview` — the Glance Wear preview path owns its own capture
 // (`WearWidgetDocument.captureRawContent` with `isInspectionMode = true`) and
-// player raster, so there is no named-value override or `.rc` sidecar here.
+// player raster, so there is no named-value override here.
+//
+// They DO emit the encoded document, though: each sticker renders through
+// `:wear-preview-runtime`'s `CapturingWearWidgetPreview` rather than upstream's
+// `WearWidgetPreview`. Upstream captures the `RemoteDocument` internally and keeps
+// the bytes to itself (only the raster escapes), which left these stickers riding
+// the portable bundle as compiled `@Preview` bytecode. The wrapper captures the
+// same document and offers it to `IrSidecarChannel`, so the render lands a
+// `<stem>.rc` next to the PNG and `BundlePreviewTask.resolvePreviewIr` packs it as
+// the sticker's IR — the widget travels as data, like every other Remote Compose
+// sticker in this sheet. Same wrapper `:samples:wear-widget` uses.
+//
 // No Wear M3 parallel: the container is a Glance Wear *host* frame, not a
 // `remote-material3` component.
 // ---------------------------------------------------------------------------
@@ -108,7 +119,7 @@ private fun CenteredWidgetContent(content: @Composable @RemoteComposable () -> U
 @CatalogRemoteWidgetSmall
 @Composable
 fun WidgetContainerSmallRemote() {
-  WearWidgetPreview(params = smallWidgetParams, background = WearWidgetBrush) {
+  CapturingWearWidgetPreview(params = smallWidgetParams, background = WearWidgetBrush) {
     CenteredWidgetContent { RemoteText("Next: Standup 10:30".rs) }
   }
 }
@@ -117,7 +128,7 @@ fun WidgetContainerSmallRemote() {
 @CatalogRemoteWidgetLarge
 @Composable
 fun WidgetContainerLargeRemote() {
-  WearWidgetPreview(params = largeWidgetParams, background = WearWidgetBrush) {
+  CapturingWearWidgetPreview(params = largeWidgetParams, background = WearWidgetBrush) {
     CenteredWidgetContent {
       RemoteColumn {
         RemoteText("Morning run".rs, style = RemoteMaterialTheme.typography.bodyLarge)
@@ -136,7 +147,7 @@ fun WidgetContainerLargeRemote() {
 @CatalogRemoteWidgetSmall
 @Composable
 fun WidgetContainerGradientRemote() {
-  WearWidgetPreview(
+  CapturingWearWidgetPreview(
     params = smallWidgetParams,
     background =
       WearWidgetBrush.verticalGradient(listOf(Color(0xFF101820).rc, Color(0xFF2C4A6E).rc)),

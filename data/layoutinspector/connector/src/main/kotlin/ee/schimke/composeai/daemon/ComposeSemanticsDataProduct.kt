@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.runtime.tooling.CompositionGroup
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -32,6 +33,7 @@ import ee.schimke.composeai.daemon.protocol.RecordingProbeNode
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorCurvedText
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorProduct
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorTransform
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorVectorGraphic
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorVectorPath
 import ee.schimke.composeai.data.layoutinspector.SemanticsRefs
@@ -346,6 +348,20 @@ object ComposeSemanticsDataProducer {
         .mapNotNull { it.layoutInput.style.lineHeight.toWireTextUnit() }
         .distinct()
         .singleOrNull()
+    // Paragraph alignment, also paragraph-level (not on `SpanStyle`). The figma-svg export anchors
+    // a single-line `<text>` off this (issue #2885); without it `TextAlign.Center` exported
+    // left-anchored at the start of the layout bounds, a visible drift on any `fillMaxWidth()`
+    // heading.
+    val textAlign =
+      results.mapNotNull { textAlignName(it.layoutInput.style.textAlign) }.distinct().singleOrNull()
+    // Carried alongside it so the export can resolve the *logical* alignments (`start`/`end`),
+    // which Compose mirrors under RTL. Read off the layout input rather than inferred from the
+    // locale: a composable can flip direction locally via `LocalLayoutDirection`.
+    val layoutDirection =
+      results
+        .mapNotNull { layoutDirectionName(it.layoutInput.layoutDirection) }
+        .distinct()
+        .singleOrNull()
     val truncated = results.any { it.hasVisualOverflow }
     val didOverflowWidth = results.any { it.didOverflowWidth }
     val didOverflowHeight = results.any { it.didOverflowHeight }
@@ -418,6 +434,8 @@ object ComposeSemanticsDataProducer {
       fontFeatureSettings = fontFeatureSettings,
       letterSpacing = letterSpacing,
       lineHeight = lineHeight,
+      textAlign = textAlign,
+      layoutDirection = layoutDirection,
       foregroundColor =
         unambiguousColor(results.flatMap { it.textColors() })?.let(::colorToWireString),
       backgroundColor =
@@ -630,6 +648,35 @@ object ComposeSemanticsDataProducer {
         .getOrNull()
         ?.let { "res/font/$it" }
 
+  /** The alignment names the export knows how to act on; anything else is dropped, not guessed. */
+  private val WIRE_TEXT_ALIGNS = setOf("left", "right", "center", "justify", "start", "end")
+
+  /**
+   * A resolved paragraph [TextAlign][androidx.compose.ui.text.style.TextAlign] as a lowercase wire
+   * name (`"center"`, `"end"`, …), or null when the style leaves it unset. Read through
+   * `toString()` rather than by comparing against the `TextAlign` constants: the type is an inline
+   * value class whose shape moved between Compose versions (nullable, then non-null with an
+   * `Unspecified` sentinel), while its string form (`"Center"`, `"Unspecified"`) held steady across
+   * both. An unrecognised value — `Unspecified` today, some future addition tomorrow — is dropped
+   * rather than guessed at, so the `<text>` keeps its historical left anchor.
+   */
+  private fun textAlignName(align: Any?): String? {
+    val raw = align?.toString()?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
+    return raw.takeIf { it in WIRE_TEXT_ALIGNS }
+  }
+
+  /**
+   * A resolved `LayoutDirection` as `"ltr"` / `"rtl"`, or null for anything unrecognised. Read
+   * through `toString()` for the same reason as [textAlignName] — the enum's name (`Ltr`/`Rtl`) is
+   * the stable part of its surface.
+   */
+  private fun layoutDirectionName(direction: Any?): String? =
+    when (direction?.toString()?.trim()?.lowercase()) {
+      "ltr" -> "ltr"
+      "rtl" -> "rtl"
+      else -> null
+    }
+
   /** A resolved [TextUnit] as `"<value>sp"` / `"<value>em"`; null for unspecified / other types. */
   private fun TextUnit.toWireTextUnit(): String? =
     when (type) {
@@ -648,6 +695,8 @@ object ComposeSemanticsDataProducer {
     val fontFeatureSettings: String?,
     val letterSpacing: String?,
     val lineHeight: String?,
+    val textAlign: String?,
+    val layoutDirection: String?,
     val foregroundColor: String?,
     val backgroundColor: String?,
     val lineCount: Int?,
@@ -674,7 +723,8 @@ object ComposeSemanticsDataProducer {
         fontVariationSettings == null &&
         fontFeatureSettings == null &&
         letterSpacing == null &&
-        lineHeight == null
+        lineHeight == null &&
+        textAlign == null
     )
       null
     else
@@ -687,6 +737,8 @@ object ComposeSemanticsDataProducer {
         fontFeatureSettings = fontFeatureSettings,
         letterSpacing = letterSpacing,
         lineHeight = lineHeight,
+        textAlign = textAlign,
+        layoutDirection = layoutDirection,
         spans = spans,
       )
 
@@ -838,6 +890,9 @@ typealias LayoutInspectorConstraints =
 
 typealias LayoutInspectorModifier =
   ee.schimke.composeai.data.layoutinspector.LayoutInspectorModifier
+
+typealias LayoutInspectorPlaceholder =
+  ee.schimke.composeai.data.layoutinspector.LayoutInspectorPlaceholder
 
 /** Producer for `layout/inspector`, backed by Compose's RootForTest/LayoutNode tree. */
 object LayoutInspectorDataProducer {
@@ -1056,8 +1111,54 @@ internal object ComposeLayoutInspector {
         ),
       curvedTexts = curvedTexts,
       vectorGraphic = vectorGraphic,
+      // The content-loading placeholder this chain declares, plus whether it is currently visible
+      // (issue #2646). Resolved from the same modifier chain + measured size as `tokens`, by the
+      // same resolver — the placeholder's own shape/colour, which `tokens` deliberately refuses as
+      // *container* tokens, are meaningful here because they describe the placeholder block.
+      placeholder =
+        ModifierTokenResolver.resolvePlaceholder(
+          modifierInfo = modifiers,
+          sizeWidthPx = width,
+          sizeHeightPx = height,
+          density = density,
+        ),
+      transform = coordinates.scaleIn(rootCoords),
       children = children,
     )
+  }
+
+  /**
+   * The node's draw-time scale relative to the root — the product of every `graphicsLayer` scale
+   * between it and the root — or null for the identity (the overwhelmingly common case).
+   *
+   * Measured, not reflected: two of the node's own corner offsets are mapped into root space and
+   * compared against their un-transformed span. That reads the *composed* transform through the
+   * public [LayoutCoordinates] API, so it is backend-agnostic (Android and skiko alike) and —
+   * unlike reading a `GraphicsLayerScope` off the coordinator — can't be confused by Compose
+   * reusing one scope instance across every layer it updates.
+   *
+   * A zero-area node has no measurable scale and yields null rather than a divide-by-zero.
+   */
+  private fun LayoutCoordinates?.scaleIn(
+    rootCoordinates: LayoutCoordinates?
+  ): LayoutInspectorTransform? {
+    if (this == null || rootCoordinates == null || !isAttached) return null
+    val w = size.width
+    val h = size.height
+    if (w <= 0 || h <= 0) return null
+    val transform =
+      try {
+        val origin = rootCoordinates.localPositionOf(this, Offset.Zero)
+        val right = rootCoordinates.localPositionOf(this, Offset(w.toFloat(), 0f))
+        val down = rootCoordinates.localPositionOf(this, Offset(0f, h.toFloat()))
+        LayoutInspectorTransform(
+          scaleX = (right - origin).getDistance() / w,
+          scaleY = (down - origin).getDistance() / h,
+        )
+      } catch (_: Throwable) {
+        return null
+      }
+    return transform.takeIf { it.scaled }
   }
 
   private fun ModifierInfo.toWireModifier(
@@ -1099,6 +1200,11 @@ internal object ComposeLayoutInspector {
       value = value,
       properties = properties,
       bounds = coordinates.boundsIn(rootCoordinates),
+      // Marks the entries that ARE the placeholder (issue #2646) — the shimmer's element, or the
+      // anonymous `drawWithContent`/`graphicsLayer` pair `Modifier.placeholder` lowers to. The
+      // export drops only these when ignoring an inactive placeholder, so a real
+      // `Modifier.drawBehind {…}` on the same chain keeps its raster.
+      placeholder = ModifierTokenResolver.isPlaceholderElement(modifier),
     )
   }
 

@@ -15,6 +15,28 @@ on:
     # Mondays 06:00 UTC.
     - cron: '0 6 * * 1'
   workflow_dispatch:
+  # Auto-regenerate on merge: a delivery branch goes stale the moment its catalog
+  # changes on `main`, and until this trigger existed that staleness lasted until
+  # someone remembered to dispatch (or until Monday) — the published stickers
+  # silently disagreeing with `main` in between. The `changes` job below narrows a
+  # push run to only the systems whose inputs actually moved, so a one-catalog
+  # merge regenerates one branch, not all three.
+  #
+  # DELIBERATELY NOT triggered by renderer/plugin changes (`gradle-plugin/`,
+  # `renderers/`, `cli/`). They do affect the output, but they're touched by most
+  # merges, and each system's render is ~90 minutes — a push trigger there would
+  # run hours of render on nearly every commit to `main`. Renderer drift is picked
+  # up by the Monday cron and by the release chain (`release-please.yml` →
+  # `workflow_call`); dispatch manually if a renderer change needs to land in the
+  # delivery branches sooner.
+  push:
+    branches: [main]
+    paths:
+      - 'samples/design-catalog-*/**'
+      - 'samples/cmp-wasm-catalog/**'
+      - 'scripts/design-artifacts/**'
+      - '.github/workflows/design-artifacts.yml'
+      - '.github/workflows/design-artifacts-reusable.yml'
   # Also invoked automatically at the tail of a published release (release-please.yml
   # → this workflow) so the design-artifacts/<system> delivery branches regenerate with
   # the just-released preview-runtime coordinates without a manual dispatch. Chained via
@@ -22,6 +44,15 @@ on:
   # default GITHUB_TOKEN, whose events don't start new workflow runs (the same reason
   # release-please.yml calls release.yml / preview-host-image.yml this way).
   workflow_call:
+    inputs:
+      force-all:
+        description: >-
+          Regenerate every system regardless of which files changed.
+          Defaults to true because the only caller (the release chain) exists to
+          republish every bundle against the newly released runtime.
+        type: boolean
+        default: true
+        required: false
 
 permissions:
   contents: write
@@ -31,10 +62,109 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Which delivery branches does this run need to regenerate?
+  #
+  # For anything but a `push` (cron, dispatch, the release chain) the answer is
+  # "all of them" — those runs exist precisely to refresh everything. For a push to
+  # `main` we diff the pushed range and light up only the systems whose inputs
+  # moved, so a single-catalog merge costs one ~90-minute render instead of three.
+  #
+  # The path→system mapping itself lives in scripts/design-artifacts/scope-systems.sh
+  # so it can be unit-tested (test-scope-systems.sh, run by ci.yml) rather than
+  # rotting inside a YAML heredoc — a silently-wrong mapping here would strand a
+  # delivery branch on stale renders, the exact failure this trigger prevents.
+  #
+  # The changed-file range comes from the compare API rather than a local `git diff`,
+  # so it's correct however the push was shaped — a squash merge, a multi-commit
+  # push, a release-please merge — without cloning history. If the range can't be
+  # resolved (branch creation, force-push, API hiccup) the script falls back to
+  # every system: publishing a fresh bundle is never wrong, skipping a stale one is.
+  changes:
+    name: Scope
+    if: ${{ github.repository == 'yschimke/compose-ai-tools' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      compose-m3: ${{ steps.scope.outputs.compose-m3 }}
+      wear-m3: ${{ steps.scope.outputs.wear-m3 }}
+      remote-m3: ${{ steps.scope.outputs.remote-m3 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: scope
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT: ${{ github.event_name }}
+          # A reusable workflow inherits the CALLER's github context, so on the
+          # release chain (release-please.yml is itself `on: push`) `event_name` is
+          # `push` and `event.before…sha` is the release merge — which touches
+          # CHANGELOG / gradle.properties and matches no catalog, so pure event
+          # sniffing would silently skip every system on exactly the run that must
+          # republish them all. `inputs.force-all` is the explicit signal; it is
+          # empty for push/cron (the `inputs` context is only populated for
+          # workflow_call / workflow_dispatch) and defaults to true for callers.
+          FORCE_ALL: ${{ inputs.force-all }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # Cron / dispatch / the release chain exist to refresh everything.
+          if [ "$FORCE_ALL" = "true" ] || [ "$EVENT" != "push" ]; then
+            # `if`, not `&&` — under `set -e` a failing AND-list exits the step.
+            if [ "$FORCE_ALL" = "true" ]; then
+              why="force-all (called workflow)"
+            else
+              why="event=$EVENT"
+            fi
+            echo "$why — regenerating every system" >> "$GITHUB_STEP_SUMMARY"
+            scripts/design-artifacts/scope-systems.sh --all | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # All-zero `before` = branch creation; there's no range to diff. An empty
+          # file list makes the script fall back to every system.
+          #
+          # Single un-paginated call on purpose: the compare endpoint caps `files`
+          # at 300 and paginates COMMITS, not files, so `--paginate` would not fetch
+          # the rest — it would just hand us a silently partial list. A partial list
+          # is worse than none (a catalog past the cap reads as "unchanged" and its
+          # branch quietly rots), so a capped response is treated as unresolvable and
+          # falls through to regenerating everything.
+          files=''
+          case "$BEFORE" in
+            ''|0000000000000000000000000000000000000000) ;;
+            *)
+              compare="$(gh api "repos/$REPO/compare/$BEFORE...$AFTER" 2>/dev/null || true)"
+              if [ -n "$compare" ]; then
+                count="$(jq -r '(.files // []) | length' <<<"$compare")"
+                if [ "$count" -ge 300 ]; then
+                  echo "compare returned $count files (API cap) — treating as truncated" >> "$GITHUB_STEP_SUMMARY"
+                else
+                  files="$(jq -r '(.files // [])[].filename' <<<"$compare")"
+                fi
+              fi
+              ;;
+          esac
+
+          if [ -n "$files" ]; then
+            printf 'Changed files:\n```\n%s\n```\n' "$files" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Could not resolve the changed files — regenerating every system.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          printf '%s\n' "$files" | scripts/design-artifacts/scope-systems.sh | tee -a "$GITHUB_OUTPUT" \
+            | sed 's/^/- `/; s/=true$/` → regenerate/; s/=false$/` → unchanged, skipped/' \
+            >> "$GITHUB_STEP_SUMMARY"
+
   generate:
     name: ${{ matrix.system }}
     # Don't run on forks — the publish step pushes branches into this repo.
-    if: ${{ github.repository == 'yschimke/compose-ai-tools' }}
+    needs: changes
+    if: ${{ github.repository == 'yschimke/compose-ai-tools' && needs.changes.outputs.compose-m3 == 'true' }}
     runs-on: ubuntu-latest
     env:
       # Published previews are always built against RELEASED preview-runtimes: substitute the
@@ -374,7 +504,8 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   wear-m3:
     name: wear-m3
-    if: ${{ github.repository == 'yschimke/compose-ai-tools' }}
+    needs: changes
+    if: ${{ github.repository == 'yschimke/compose-ai-tools' && needs.changes.outputs.wear-m3 == 'true' }}
     permissions:
       contents: write
     uses: ./.github/workflows/design-artifacts-reusable.yml
@@ -393,7 +524,8 @@ jobs:
 
   remote-m3:
     name: remote-m3
-    if: ${{ github.repository == 'yschimke/compose-ai-tools' }}
+    needs: changes
+    if: ${{ github.repository == 'yschimke/compose-ai-tools' && needs.changes.outputs.remote-m3 == 'true' }}
     permissions:
       contents: write
     uses: ./.github/workflows/design-artifacts-reusable.yml

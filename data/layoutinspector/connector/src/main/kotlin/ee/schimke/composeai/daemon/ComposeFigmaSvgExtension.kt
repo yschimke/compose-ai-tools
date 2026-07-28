@@ -44,6 +44,11 @@ class ComposeFigmaSvgExtension(private val fontResolver: () -> FigmaFontResolver
     val fontScale = context.get(RenderArtifactContextKeys.FontScale) ?: 1f
     val frameImage = context.get(RenderArtifactContextKeys.OutputPng)
     val roundClip = context.get(RenderArtifactContextKeys.RoundClip) ?: false
+    // The background the render painted behind the composable, when the preview opted into one.
+    // Threaded rather than re-derived so the SVG's bottom layer is the same colour the PNG shows
+    // (issue #2884) — including the device-masked Wear case, where it fills the watch face.
+    val previewBackground =
+      context.get(RenderArtifactContextKeys.PreviewBackground)?.takeIf { it.isNotBlank() }
     val layout =
       LayoutInspectorDataProducer.buildPayload(semanticsRoot, slotTables, density) ?: return
     val semantics = ComposeSemanticsDataProducer.buildPayload(semanticsRoot, density)
@@ -57,6 +62,7 @@ class ComposeFigmaSvgExtension(private val fontResolver: () -> FigmaFontResolver
       frameImage = frameImage,
       fontResolver = fontResolver(),
       roundClip = roundClip,
+      deviceBackground = previewBackground,
     )
   }
 

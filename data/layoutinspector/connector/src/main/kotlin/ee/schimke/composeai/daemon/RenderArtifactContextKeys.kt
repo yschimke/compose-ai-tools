@@ -92,4 +92,18 @@ object RenderArtifactContextKeys {
       name = "render-data-artifact.roundClip",
       type = Boolean::class.javaObjectType,
     )
+
+  /**
+   * The flat background colour the render actually painted behind the composable, as `#AARRGGBB` —
+   * the resolution of `@Preview(showBackground = …, backgroundColor = …)` (and the per-render
+   * "crisp outline" clear-background override) that the backend already computes for the PNG.
+   * Absent when the render drew on transparency, which is the common component-preview case.
+   *
+   * The `compose/figma-svg` export paints it as the bottom layer so the vector matches the raster
+   * (issue #2884): a Wear device preview declaring `showBackground = true, backgroundColor =
+   * 0xFF000000` previously exported with its round clip intact but a transparent canvas, losing the
+   * black watch face the PNG shows.
+   */
+  val PreviewBackground: ExtensionContextKey<String> =
+    ExtensionContextKey(name = "render-data-artifact.previewBackground", type = String::class.java)
 }

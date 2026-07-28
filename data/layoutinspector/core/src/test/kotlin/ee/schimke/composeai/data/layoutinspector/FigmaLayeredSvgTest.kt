@@ -1632,6 +1632,205 @@ class FigmaLayeredSvgTest {
     assertTrue(svg.contains("""fill="#202020""""))
   }
 
+  /**
+   * Issue #2885: `TextAlign.Center` used to export as a left-anchored `<text>` at the start of the
+   * paragraph's layout bounds, so a `Modifier.fillMaxWidth()` heading drifted hard left of where
+   * the PNG drew it. The resolved alignment now rides the capture and drives the anchor.
+   */
+  @Test
+  fun centeredSingleLineTextIsAnchoredAtTheMiddleOfItsParagraphBox() {
+    val layout =
+      layoutNode("Card", 0, 0, 200, 100, children = listOf(layoutNode("Text", 20, 8, 180, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "20,8,180,40",
+              text = "Wellness",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp", textAlign = "center"),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    assertWellFormedXml(svg)
+    assertTrue("centred text needs a middle anchor", svg.contains("""text-anchor="middle""""))
+    // Midpoint of the paragraph box (20..180), not its left edge.
+    assertTrue("anchor x is the box midpoint", svg.contains("""<text x="100""""))
+    assertFalse("must not stay pinned to the box start", svg.contains("""<text x="20""""))
+  }
+
+  @Test
+  fun rightAlignedSingleLineTextIsAnchoredAtTheEndOfItsParagraphBox() {
+    val layout =
+      layoutNode("Row", 0, 0, 200, 100, children = listOf(layoutNode("Text", 20, 8, 180, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "20,8,180,40",
+              text = "42",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp", textAlign = "end"),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    assertWellFormedXml(svg)
+    assertTrue(svg.contains("""text-anchor="end""""))
+    assertTrue(svg.contains("""<text x="180""""))
+  }
+
+  /**
+   * `start`/`end` are logical: Compose puts `end` at the LEFT edge under RTL. Anchoring it right
+   * regardless would mirror `ar` / `ar-XB` renders to the wrong side of the paragraph box.
+   */
+  @Test
+  fun logicalAlignmentsAreResolvedAgainstTheCapturedLayoutDirection() {
+    fun svgFor(align: String, direction: String?): String {
+      val layout =
+        layoutNode("Row", 0, 0, 200, 100, children = listOf(layoutNode("Text", 20, 8, 180, 40)))
+      val semantics =
+        ComposeSemanticsNode(
+          nodeId = "root",
+          boundsInRoot = "0,0,200,100",
+          children =
+            listOf(
+              ComposeSemanticsNode(
+                nodeId = "t",
+                boundsInRoot = "20,8,180,40",
+                text = "مرحبا",
+                typography =
+                  ComposeSemanticsTypography(
+                    fontSize = "16.0sp",
+                    textAlign = align,
+                    layoutDirection = direction,
+                  ),
+              )
+            ),
+        )
+      return render(layout, semantics = semantics)
+    }
+
+    // RTL: end → left edge, start → right edge.
+    svgFor("end", "rtl").let {
+      assertFalse("RTL end must not anchor right", it.contains("text-anchor="))
+      assertTrue(it.contains("""<text x="20""""))
+    }
+    svgFor("start", "rtl").let {
+      assertTrue("RTL start anchors at the right edge", it.contains("""text-anchor="end""""))
+      assertTrue(it.contains("""<text x="180""""))
+    }
+    // LTR (and an absent direction, which defaults to LTR) keeps the natural mapping.
+    for (direction in listOf("ltr", null)) {
+      svgFor("end", direction).let {
+        assertTrue(it.contains("""text-anchor="end""""))
+        assertTrue(it.contains("""<text x="180""""))
+      }
+      svgFor("start", direction).let {
+        assertFalse(it.contains("text-anchor="))
+        assertTrue(it.contains("""<text x="20""""))
+      }
+    }
+    // `right` is absolute — RTL must not flip it.
+    svgFor("right", "rtl").let {
+      assertTrue(it.contains("""text-anchor="end""""))
+      assertTrue(it.contains("""<text x="180""""))
+    }
+  }
+
+  @Test
+  fun unalignedTextKeepsItsHistoricalLeftAnchor() {
+    val layout =
+      layoutNode("Row", 0, 0, 200, 100, children = listOf(layoutNode("Text", 20, 8, 180, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "20,8,180,40",
+              text = "Left",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp"),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    assertFalse("no alignment captured ⇒ no anchor attribute", svg.contains("text-anchor="))
+    assertTrue(svg.contains("""<text x="20""""))
+  }
+
+  /**
+   * Issue #2884: `@Preview(showBackground = true, backgroundColor = …)` never reached the export,
+   * so a preview whose PNG is opaque exported onto transparency. A maskless preview now paints its
+   * frame as the bottom layer.
+   */
+  @Test
+  fun aPreviewBackgroundIsPaintedAsTheBottomLayer() {
+    val layout =
+      layoutNode(
+        "Screen",
+        0,
+        0,
+        100,
+        60,
+        children =
+          listOf(
+            layoutNode(
+              "Box",
+              10,
+              10,
+              90,
+              50,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+            )
+          ),
+      )
+    val model =
+      FigmaSvgModel.from(layout = LayoutInspectorPayload(layout), deviceBackground = "#FF000000")
+    assertNotNull("the opted-in background reaches the model", model.deviceBackground)
+    assertNotNull("a maskless preview gets a frame rect to fill", model.backgroundRect)
+    val svg = FigmaLayeredSvg.render(model)
+    assertWellFormedXml(svg)
+    assertTrue("background rect is emitted", svg.contains("""<rect x="10" y="10""""))
+    assertTrue(svg.contains("""fill="#000000""""))
+    assertTrue(
+      "background must be drawn before the content it sits behind",
+      svg.indexOf("""fill="#000000"""") < svg.indexOf("""fill="#6750A4""""),
+    )
+  }
+
+  @Test
+  fun aRoundDeviceStillPaintsItsBackgroundAsTheMaskShapeNotARect() {
+    val layout = layoutNode("Screen", 0, 0, 384, 384)
+    val model =
+      FigmaSvgModel.from(
+        layout = LayoutInspectorPayload(layout),
+        roundClip = true,
+        deviceBackground = "#FF000000",
+      )
+    assertNotNull(model.roundClip)
+    assertNull("a masked frame uses the mask shape, not a rect", model.backgroundRect)
+    val svg = FigmaLayeredSvg.render(model)
+    assertTrue(svg.contains("""<circle cx="192" cy="192" r="192" fill="#000000""""))
+  }
+
+  @Test
+  fun withNoOptedInBackgroundTheExportStaysTransparent() {
+    val layout = layoutNode("Card", 0, 0, 100, 60)
+    val model = FigmaSvgModel.from(LayoutInspectorPayload(layout))
+    assertNull(model.deviceBackground)
+    assertNull(model.backgroundRect)
+  }
+
   @Test
   fun capturedLetterSpacingIsEmittedSoGlyphAdvancesMatchTheRender() {
     // A tracked run (Material label/body text carries 0.1–0.5sp) must emit SVG `letter-spacing`,
@@ -1860,6 +2059,65 @@ class FigmaLayeredSvgTest {
     assertTrue(svg.contains(">base </tspan>"))
     assertTrue(svg.contains("""<tspan x="10" y="54" font-size="12" font-family="serif""""))
     assertTrue(svg.contains(">code</tspan>"))
+  }
+
+  /**
+   * A styled span's `fontSizePx` is emitted as an *overriding* `font-size` on its `<tspan>`, so a
+   * graphics-layer-scaled `Text` has to scale the spans as well as the base run — otherwise the
+   * baselines shrink while the styled glyphs stay full size and overflow their line (#2901 review).
+   */
+  @Test
+  fun annotatedTextSpansScaleWithADrawTimeTransform() {
+    val text =
+      LayoutInspectorNode(
+        nodeId = "Text",
+        component = "Text",
+        bounds = bounds(10, 10, 100, 55),
+        size = LayoutInspectorSize(180, 90),
+        transform = LayoutInspectorTransform(scaleX = 0.5f, scaleY = 0.5f),
+      )
+    val layout = layoutNode("Screen", 0, 0, 200, 100, children = listOf(text))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "10,10,100,55",
+              text = "base code",
+              typography =
+                ComposeSemanticsTypography(
+                  fontSize = "16.0sp",
+                  fontFamily = "monospace",
+                  spans =
+                    listOf(
+                      ComposeSemanticsTextSpan(0, 5, "16.0sp", "monospace", 400),
+                      ComposeSemanticsTextSpan(5, 9, "12.0sp", "serif", 400),
+                    ),
+                ),
+              textOverflow =
+                ComposeSemanticsTextOverflow(
+                  lineCount = 2,
+                  lines =
+                    listOf(
+                      ComposeSemanticsTextLine("base ", 0, 20, start = 0, end = 5),
+                      ComposeSemanticsTextLine("code", 0, 44, start = 5, end = 9),
+                    ),
+                ),
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+    // Every emitted font-size is halved — the base run and both span overrides — and so are the
+    // per-line baselines (20 → 10, 44 → 22, against the layer's top at y=10).
+    assertTrue("base run scales:\n$svg", svg.contains("""<text font-size="8""""))
+    assertTrue("16sp span scales:\n$svg", svg.contains("""y="20" font-size="8""""))
+    assertTrue("12sp span scales:\n$svg", svg.contains("""y="32" font-size="6""""))
+    assertFalse("no un-scaled span size survives:\n$svg", svg.contains("""font-size="12""""))
+    assertFalse("no un-scaled base size survives:\n$svg", svg.contains("""font-size="16""""))
   }
 
   @Test
@@ -2411,5 +2669,92 @@ class FigmaLayeredSvgTest {
   @Test
   fun defaultRasterHrefSanitizesNodeId() {
     assertEquals("figma-raster/node_12_.png", FigmaSvgModel.defaultRasterHref("node:12/"))
+  }
+
+  /**
+   * A Wear `TransformingLazyColumn` item near the round face's edge is shrunk by a draw-time
+   * `graphicsLayer` scale: its `bounds` is the small, drawn rect while its `size` stays at the full
+   * measured extent. The fill-growth heuristic used to read that gap as a `boundsIn` under-report
+   * and grow the item back to full size at the compressed placement, so neighbouring items
+   * overlapped into one merged blob (issue #2615). The captured `transform` scales every measured
+   * signal into drawn space so the export lands on the rect the render actually painted.
+   */
+  @Test
+  fun anEdgeScaledItemGrowsOnlyToItsScaledMeasuredSize() {
+    // size 203×64 at scale 0.5 → drawn 102×32, centred on the item's own bounds (100..190, 60..90).
+    val item =
+      LayoutInspectorNode(
+        nodeId = "item",
+        component = "ColumnMeasurePolicy",
+        bounds = bounds(100, 60, 190, 90),
+        size = LayoutInspectorSize(203, 64),
+        transform = LayoutInspectorTransform(scaleX = 0.5f, scaleY = 0.5f),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF332E3C", cornerRadius = "26.0dp"),
+      )
+    val list =
+      LayoutInspectorNode(
+        nodeId = "list",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(0, 0, 227, 227),
+        size = LayoutInspectorSize(227, 227),
+        children = listOf(item),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(list)))
+    assertTrue("grown to the scaled width, not 203:\n$svg", svg.contains("""width="102""""))
+    assertTrue("grown to the scaled height, not 64:\n$svg", svg.contains("""height="32""""))
+    // Centred on the bounds: (100+190-102)/2 = 94, (60+90-32)/2 = 59.
+    assertTrue(svg, svg.contains("""x="94"""") && svg.contains("""y="59""""))
+    // The corner radius rides the same scale — 26dp × 0.5.
+    assertTrue("corner radius scales with the box:\n$svg", svg.contains("""rx="13""""))
+  }
+
+  @Test
+  fun anUnscaledItemStillGrowsToItsFullMeasuredSize() {
+    // The identity transform must leave the pre-existing Wear `Button`/`Card` growth untouched.
+    val item =
+      LayoutInspectorNode(
+        nodeId = "item",
+        component = "ColumnMeasurePolicy",
+        bounds = bounds(100, 60, 190, 90),
+        size = LayoutInspectorSize(203, 64),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF332E3C"),
+      )
+    val list =
+      LayoutInspectorNode(
+        nodeId = "list",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(0, 0, 227, 227),
+        size = LayoutInspectorSize(227, 227),
+        children = listOf(item),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(list)))
+    assertTrue(svg, svg.contains("""width="203"""") && svg.contains("""height="64""""))
+  }
+
+  @Test
+  fun anItemPlacedPastTheParentEdgeIsNotPulledBackIntoView() {
+    // A list item scrolled past the viewport bottom is placed outside its parent on purpose. The
+    // parent clamp used to drag the grown shape back inside, dropping it on top of the item above;
+    // growth may only inflate the node's own placement (issue #2615).
+    val offscreen =
+      LayoutInspectorNode(
+        nodeId = "offscreen",
+        component = "ColumnMeasurePolicy",
+        bounds = bounds(60, 230, 170, 260),
+        size = LayoutInspectorSize(110, 40),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF332E3C"),
+      )
+    val list =
+      LayoutInspectorNode(
+        nodeId = "list",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(0, 0, 227, 227),
+        size = LayoutInspectorSize(227, 227),
+        children = listOf(offscreen),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(list)))
+    // Grown 40 tall and centred on 230..260 → y=225; NOT yanked up to the parent's 227-40=187.
+    assertTrue("stays where it was placed:\n$svg", svg.contains("""y="225""""))
+    assertFalse("must not be clamped into the viewport:\n$svg", svg.contains("""y="187""""))
   }
 }

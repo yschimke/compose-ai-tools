@@ -10,7 +10,12 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { readFile } from "node:fs/promises";
 
-import { discoverPreviews, hasCatalogAnnotations, validateSpec } from "./catalog-spec.mjs";
+import {
+  discoverComponentIds,
+  discoverPreviews,
+  hasCatalogAnnotations,
+  validateSpec,
+} from "./catalog-spec.mjs";
 import { moduleToDir, collectKotlinSources } from "./catalog-spec-io.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -29,12 +34,19 @@ for (const rel of SAMPLE_SPECS) {
     // the module directory here rather than relying on cwd-based derivation.
     const moduleDir = resolve(repoRoot, moduleToDir(spec.module));
     const sources = await collectKotlinSources([moduleDir]);
-    const { previews } = discoverPreviews(sources);
+    const { previews, pngLess } = discoverPreviews(sources);
     assert.ok(previews.length > 0, `discovered no @Preview functions for ${rel}`);
     // Pass whether the module carries @CatalogComponent annotations, so a cover-sheet-only spec
-    // (no `groups`) is accepted iff its inventory really is annotation-supplied.
+    // (no `groups`) is accepted iff its inventory really is annotation-supplied. `pngLess` catches
+    // the other half of the same class of bug: a spec entry pointing at a GIF-only capture the
+    // export drops (issue #2865).
     const { errors } = validateSpec(spec, {
       knownPreviews: previews,
+      pngLessPreviews: pngLess,
+      // The annotated componentIds too, so `display.hero` — which names a componentId, and for a
+      // cover-sheet-only spec (compose-m3, wear-m3) exists nowhere but the annotation — resolves
+      // here rather than silently falling back to the server's own pick.
+      knownComponentIds: discoverComponentIds(sources),
       annotatedInventory: hasCatalogAnnotations(sources),
     });
     assert.deepEqual(errors, [], `${rel} has spec errors:\n${errors.join("\n")}`);

@@ -234,6 +234,47 @@ class ServeBundleStoreTest {
   }
 
   @Test
+  fun `an injected fetcher owns the result, including a null one`() {
+    // A null from the override means "this fetch failed", not "there is no override" — otherwise
+    // the store falls through to the real network behind a test's back (a live request to the
+    // allowlisted host, and its DNS/connect timeout).
+    var calls = 0
+    val result =
+      store(
+          fetch = {
+            calls++
+            null
+          },
+          allowedHosts = listOf("ci.example.com"),
+        )
+        .addFromUrl("x", "https://ci.example.com/nope.zip", isSecurityChecked = true)
+
+    assertTrue(result is ServeBundleStore.Result.Failed)
+    assertEquals(1, calls, "the override is the only transport consulted")
+  }
+
+  @Test
+  fun `addFromUrl refuses a look-alike or subdomain of an allowed host`() {
+    // The allowlist is exact-host (shared with the document lane via ServeUrlFetch), so neither a
+    // suffix trick nor a subdomain of a trusted CI host gets fetched.
+    for (url in
+      listOf("https://ci.example.com.evil.test/art.zip", "https://sub.ci.example.com/art.zip")) {
+      var fetched = false
+      val result =
+        store(
+            fetch = {
+              fetched = true
+              null
+            },
+            allowedHosts = listOf("ci.example.com"),
+          )
+          .addFromUrl("x", url, isSecurityChecked = true)
+      assertTrue(result is ServeBundleStore.Result.Failed, url)
+      assertTrue(!fetched, "$url must not be fetched")
+    }
+  }
+
+  @Test
   fun `addFromUrl refuses a non-http scheme`() {
     val result =
       store(fetch = { ByteArray(0) }, allowedHosts = listOf("ci.example.com"))

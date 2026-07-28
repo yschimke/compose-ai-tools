@@ -2,14 +2,9 @@ package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.cli.BundleSigning
 import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
-import java.net.URI
-import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
-import okhttp3.OkHttpClient
-import okhttp3.Request
 
 /**
  * Runtime ingestion of **client-provided** portable bundles for the shared/public mode: a client
@@ -31,7 +26,11 @@ import okhttp3.Request
 class ServeBundleStore(
   private val root: File,
   private val register: (name: String, host: ServeBundleHost) -> Unit,
-  private val fetch: (String) -> ByteArray? = ::httpFetch,
+  /**
+   * Transport override for tests. Null ⇒ the real one-request-at-a-time HTTP transport, driven by
+   * [ServeUrlFetch.followingRedirects] so every redirect hop is allowlist-checked too.
+   */
+  private val fetch: ((String) -> ByteArray?)? = null,
   private val maxBytes: Long = DEFAULT_MAX_BYTES,
   /**
    * SSRF allowlist for [addFromUrl]: hostnames (case-insensitive, exact match) a `?url=` fetch is
@@ -110,10 +109,11 @@ class ServeBundleStore(
    * Fetch a bundle zip from [url] (the "link to build results" case), then [add] it.
    *
    * SSRF gate: the URL must be http/https and its host must be on [allowedHosts] (empty = refuse
-   * everything), checked here before [fetch] runs, so a client can't steer the server at an
-   * internal address. [isSecurityChecked] is the same documented audit marker as [add] — the caller
-   * asserts the entry point was authorised (token-gated). The host allowlist is the actual SSRF
-   * enforcement.
+   * everything), checked here before anything is sent — and re-checked before **every redirect
+   * hop** ([ServeUrlFetch.followingRedirects]), so an allowlisted host answering `302
+   * http://169.254.169.254/…` can't walk the server onto an internal address either.
+   * [isSecurityChecked] is the same documented audit marker as [add] — the caller asserts the entry
+   * point was authorised (token-gated). The host allowlist is the actual SSRF enforcement.
    */
   fun addFromUrl(name: String, url: String, isSecurityChecked: Boolean): Result {
     if (!isAllowedUrl(url)) {
@@ -123,7 +123,7 @@ class ServeBundleStore(
     }
     val bytes =
       try {
-        fetch(url)
+        fetchBundle(url)
       } catch (e: Exception) {
         return Result.Failed("could not fetch $url: ${e.message}")
       } ?: return Result.Failed("could not fetch $url")
@@ -131,16 +131,22 @@ class ServeBundleStore(
   }
 
   /** True when [url] is http/https and its host is on the [allowedHosts] SSRF allowlist. */
-  private fun isAllowedUrl(url: String): Boolean {
-    val uri =
-      try {
-        URI(url)
-      } catch (e: Exception) {
-        return false
-      }
-    if (uri.scheme?.lowercase() !in setOf("http", "https")) return false
-    val host = uri.host?.lowercase() ?: return false
-    return allowedHosts.any { it.equals(host, ignoreCase = true) }
+  private fun isAllowedUrl(url: String): Boolean = ServeUrlFetch.isAllowedUrl(url, allowedHosts)
+
+  /**
+   * The injected [fetch] when a caller supplied one (tests), else the real transport — which never
+   * follows a redirect on its own; [ServeUrlFetch.followingRedirects] does that, re-checking the
+   * allowlist per hop.
+   */
+  private fun fetchBundle(url: String): ByteArray? {
+    // An injected fetcher OWNS the result, including a null one — `?:` here would treat "the
+    // override reported a failure" as "there is no override" and quietly fall through to the real
+    // network.
+    val override = fetch
+    if (override != null) return override(url)
+    return ServeUrlFetch.followingRedirects(url, ::isAllowedUrl) {
+      ServeUrlFetch.sendOnce(it, maxBytes)
+    }
   }
 
   /**
@@ -235,40 +241,6 @@ class ServeBundleStore(
       // deleteRecursively() on that path before unpacking — which would wipe the wrong directory.
       if (trimmed.isEmpty() || trimmed.all { it == '.' }) return null
       return trimmed.takeIf { it.matches(Regex("[A-Za-z0-9._@-]{1,128}")) }
-    }
-
-    private val httpClient: OkHttpClient by lazy {
-      OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .build()
-    }
-
-    /** Default URL fetcher: http/https only, capped + time-bounded. SSRF is the operator's call. */
-    private fun httpFetch(url: String): ByteArray? {
-      if (URI(url).scheme?.lowercase() !in setOf("http", "https")) return null
-      httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
-        if (!response.isSuccessful) return null
-        val body = response.body ?: return null
-        return readCapped(body.byteStream(), DEFAULT_MAX_BYTES)
-      }
-    }
-
-    /**
-     * Read at most [max] bytes into memory, aborting (not buffering further) once it's exceeded.
-     */
-    private fun readCapped(input: InputStream, max: Long): ByteArray {
-      val out = ByteArrayOutputStream()
-      val buffer = ByteArray(64 * 1024)
-      var total = 0L
-      while (true) {
-        val n = input.read(buffer)
-        if (n < 0) break
-        total += n
-        require(total <= max) { "remote bundle exceeds ${max / (1024 * 1024)}MB" }
-        out.write(buffer, 0, n)
-      }
-      return out.toByteArray()
     }
   }
 }

@@ -55,7 +55,13 @@ function themeOfPreviewId(id) {
 // Hence the resolver below tries the theme-qualified key first and falls back to the bare
 // one — a lookup order that leaves every pre-existing catalog on exactly the path it took
 // before theme existed.
-function variantKey(componentId, state, props, theme) {
+//
+// `size` is a third optional trailing segment, for exactly the same reason as `theme`: a spec may
+// split a component's breakpoints across separate `@Preview` functions, and those must not collide
+// with a component whose sizes come from one function's several annotations. The resolver below
+// tries the most-qualified key first and degrades, so every pre-existing catalog stays on the path
+// it took before either axis existed.
+function variantKey(componentId, state, props, theme, size) {
   const NUL = String.fromCharCode(0);
   const propsPart = Object.entries(props ?? {})
     .sort(([a], [b]) => a.localeCompare(b))
@@ -64,7 +70,132 @@ function variantKey(componentId, state, props, theme) {
   const base = propsPart
     ? `${componentId}${NUL}${state}${NUL}${propsPart}`
     : `${componentId}${NUL}${state}`;
-  return theme ? `${base}${NUL}theme=${theme}` : base;
+  const themed = theme ? `${base}${NUL}theme=${theme}` : base;
+  return size ? `${themed}${NUL}size=${size}` : themed;
+}
+
+/** Android's `UI_MODE_NIGHT_YES` (0x20) under the `UI_MODE_NIGHT_MASK` (0x30). */
+function uiModeIsNight(uiMode) {
+  return typeof uiMode === "number" && (uiMode & 0x30) === 0x20;
+}
+
+/**
+ * The variant identity of one daemon preview: which `@Preview` annotation on its function produced
+ * it. `night`/`widthDp`/`fontScale` are null when the preview carries no signal for that axis, so
+ * a candidate never loses a comparison for an axis it simply doesn't declare.
+ *
+ * `night` prefers the annotation's own `uiMode` bits and falls back to the id suffix, because the
+ * two catalogs disagree about where the theme lives: `@CatalogModes` mints `Foo_Light`/`Foo_Dark`
+ * ids, while a hand-written `@Preview(uiMode = UI_MODE_NIGHT_YES)` (Jetsnack's `"dark theme"`, say)
+ * names itself anything at all and only the bits know.
+ */
+function variantIdentity(preview) {
+  const params = preview.params ?? {};
+  const suffixTheme = themeOfPreviewId(preview.id);
+  const night = uiModeIsNight(params.uiMode)
+    ? true
+    : suffixTheme
+      ? suffixTheme === "dark"
+      : null;
+  return {
+    id: preview.id,
+    night,
+    widthDp: typeof params.widthDp === "number" ? params.widthDp : null,
+    fontScale:
+      typeof params.fontScale === "number" && params.fontScale !== 1
+        ? params.fontScale
+        : null,
+  };
+}
+
+/**
+ * Pick the daemon preview whose `@Preview` annotation actually produced [image], out of every
+ * candidate sharing its function.
+ *
+ * This is the fix for #2883. The old lookup kept ONE id per function ("first wins"), so a screen
+ * with default / dark / large-font annotations resolved all three stickers to whichever annotation
+ * the bundle happened to list first — and since the per-variant figma-svg emit keys off
+ * `image.previewId`, all three variants were handed the same vector. The PNGs never showed it: they
+ * come from the Gradle render path, which renders each annotation in its own right.
+ *
+ * Axes are scored rather than matched exactly so a candidate that declares nothing for an axis
+ * stays eligible, and an image that constrains nothing keeps taking the first candidate — the
+ * pre-existing behaviour for every single-annotation function.
+ */
+/**
+ * The spec `@Preview` function backing [image], trying the most-qualified `variantKey` first and
+ * degrading one optional axis at a time. Order matters: `theme+size` → `theme` → `size` → bare,
+ * so a spec that folds only one axis into separate functions still resolves, and a spec that folds
+ * neither lands on the bare key it always used.
+ */
+function resolveFunction(previewForState, componentId, image, state) {
+  const keys = [];
+  if (image.theme && image.size)
+    keys.push(
+      variantKey(componentId, state, image.props, image.theme, image.size),
+    );
+  if (image.theme)
+    keys.push(variantKey(componentId, state, image.props, image.theme));
+  if (image.size)
+    keys.push(
+      variantKey(componentId, state, image.props, undefined, image.size),
+    );
+  keys.push(variantKey(componentId, state, image.props));
+  for (const key of keys) {
+    const fn = previewForState.get(key);
+    if (fn) return fn;
+  }
+  return undefined;
+}
+
+function pickVariantId(candidates, image, widthForSize) {
+  if (candidates.length === 0) return undefined;
+  if (candidates.length === 1) return candidates[0].id;
+  const wantNight =
+    image.theme === "dark" ? true : image.theme === "light" ? false : null;
+  const wantWidth = widthForSize(image.size);
+  const wantFontScale = requestedFontScale(image.props);
+  let best;
+  let bestScore = -Infinity;
+  for (const candidate of candidates) {
+    let score = 0;
+    if (wantNight !== null && candidate.night !== null) {
+      score += candidate.night === wantNight ? 2 : -2;
+    }
+    if (wantWidth !== null && candidate.widthDp !== null) {
+      score += candidate.widthDp === wantWidth ? 2 : -2;
+    }
+    // Font scale is the one axis with no dedicated image field, so a spec expresses it as a props
+    // variant. It still has to be scored, or two annotations that differ ONLY by `fontScale` tie
+    // and the first id wins for both — the same collapse this function exists to prevent. Weaker
+    // than the other axes because the no-hint case is a preference, not a constraint: an image
+    // that asks for nothing should land on the unscaled annotation rather than an arbitrary one,
+    // but must not out-vote a matching theme or width.
+    if (wantFontScale !== null) {
+      score += candidate.fontScale === wantFontScale ? 2 : -2;
+    } else {
+      score += candidate.fontScale === null ? 1 : -1;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = candidate;
+    }
+  }
+  return best?.id;
+}
+
+/**
+ * The font scale an image's `props` ask for, or null when it names none. Accepts a number or the
+ * numeric strings a hand-written spec tends to carry (`"1.5"`, `"1.5x"`); `1` is normalised to
+ * null so an explicitly-default variant matches an annotation that simply omits `fontScale`.
+ */
+function requestedFontScale(props) {
+  const raw = props?.fontScale;
+  if (raw == null) return null;
+  const value =
+    typeof raw === "number" ? raw : Number.parseFloat(String(raw).replace(/x$/i, ""));
+  if (!Number.isFinite(value) || value === 1) return null;
+  return value;
 }
 
 /**
@@ -96,14 +227,15 @@ export function bridgeLivePreviewIds(
         // `v.theme` counts as a distinguishing axis alongside state/props: a theme-only
         // variant (the split light/dark screen case) carries neither, and was previously
         // dropped here — so its sticker fell back to the component's default function and
-        // silently took the LIGHT preview's id.
-        if (v.preview && (v.state || v.props || v.theme)) {
+        // silently took the LIGHT preview's id. `v.size` is the same story one axis over.
+        if (v.preview && (v.state || v.props || v.theme || v.size)) {
           previewForState.set(
             variantKey(
               component.componentId,
               v.state ?? "default",
               v.props,
               v.theme,
+              v.size,
             ),
             v.preview,
           );
@@ -111,14 +243,11 @@ export function bridgeLivePreviewIds(
       }
     }
   }
-  // Two id-keying shapes, so both a THEMED catalog (compose-m3: one `@Preview`
-  // per `_Light`/`_Dark` variant, stickers tagged `theme`) and an UN-THEMED
-  // state-variant catalog (wear-m3 / remote-m3: one `@Preview` per state, whose
-  // stickers carry no `theme` and whose daemon ids don't end in light/dark)
-  // resolve. Themed ids key on `${fn}\0${theme}`; un-themed ids key on the bare
-  // function (first wins — state variants never share a function).
-  const daemonIdFor = new Map();
-  const unthemedIdFor = new Map();
+  // Every daemon preview a function produced, in bundle order, with the variant identity of the
+  // `@Preview` annotation behind it. Keeping the whole list — rather than the first id per
+  // function, which is what shipped one vector to every variant of a multi-annotation screen
+  // (#2883) — is what lets `pickVariantId` route each sticker to its own render.
+  const previewsByFn = new Map();
   // Every preview id in the bundle, so the `@OverrideVariant` fallback below can confirm a
   // reconstructed `<baseId>_VARIANT_<state>` id actually rendered before routing to it.
   const allPreviewIds = new Set();
@@ -128,44 +257,44 @@ export function bridgeLivePreviewIds(
   for (const bundle of Array.isArray(bundles) ? bundles : [bundles]) {
     if (!bundle) continue;
     for (const preview of bundle.previews ?? []) {
+      if (allPreviewIds.has(preview.id)) continue;
       allPreviewIds.add(preview.id);
       const fn = preview.functionName ?? preview.id;
-      const theme = themeOfPreviewId(preview.id);
-      if (theme) {
-        if (!daemonIdFor.has(`${fn}\0${theme}`))
-          daemonIdFor.set(`${fn}\0${theme}`, preview.id);
-      } else if (!unthemedIdFor.has(fn)) unthemedIdFor.set(fn, preview.id);
+      const list = previewsByFn.get(fn) ?? [];
+      list.push(variantIdentity(preview));
+      previewsByFn.set(fn, list);
     }
   }
+  // `size` → the width the spec's breakpoints declare for it, so a sticker's size axis can be
+  // compared against a candidate's `@Preview(widthDp = …)`. Empty for a spec with no breakpoints,
+  // in which case the size axis simply doesn't constrain the pick.
+  const widthBySize = new Map(
+    (spec.breakpoints ?? [])
+      .filter(
+        (b) => typeof b?.size === "string" && typeof b?.widthDp === "number",
+      )
+      .map((b) => [b.size, b.widthDp]),
+  );
+  const widthForSize = (size) =>
+    size == null ? null : (widthBySize.get(size) ?? null);
   let mapped = 0;
   for (const component of manifest.components ?? []) {
     for (const image of component.images ?? []) {
-      // Theme-qualified first, bare key second. A theme-folded component registers only
-      // the qualified key, so it resolves to its own per-theme function; a
-      // multipreview-themed component registers only the bare key, so its themed stickers
-      // miss the first lookup and land on the same entry they always did.
+      // Most-qualified key first, degrading to the bare one. A theme- or size-folded component
+      // registers only its qualified key, so it resolves to its own per-theme / per-size
+      // function; a component whose axes come from one function's several annotations registers
+      // only the bare key, so its stickers miss the qualified lookups and land on the same entry
+      // they always did — and `pickVariantId` then separates the annotations.
       const state = image.state ?? "default";
-      const fn =
-        (image.theme
-          ? previewForState.get(
-              variantKey(
-                component.componentId,
-                state,
-                image.props,
-                image.theme,
-              ),
-            )
-          : undefined) ??
-        previewForState.get(
-          variantKey(component.componentId, state, image.props),
-        );
+      const fn = resolveFunction(previewForState, component.componentId, image, state);
       if (fn && !overriddenFunctions.has(fn)) {
-        // Prefer the theme-keyed daemon id when the sticker carries a theme; fall
-        // back to the un-themed function id for state-variant catalogs (Wear/Remote).
-        const daemonId =
-          (image.theme
-            ? daemonIdFor.get(`${fn}\0${image.theme}`)
-            : undefined) ?? unthemedIdFor.get(fn);
+        // Route to the annotation that actually produced this sticker, not to the function's
+        // first-listed preview (#2883).
+        const daemonId = pickVariantId(
+          previewsByFn.get(fn) ?? [],
+          image,
+          widthForSize,
+        );
         if (daemonId) {
           image.previewId = daemonId;
           mapped++;
@@ -174,7 +303,7 @@ export function bridgeLivePreviewIds(
       }
       // `@OverrideVariant` fallback: a non-default state with NO spec `variants` entry is a
       // synthetic `<baseId>_VARIANT_<state>` preview (discovery mints the id that way). Its
-      // functionName equals the base's, so `unthemedIdFor`/`daemonIdFor` only hold the BASE id;
+      // functionName equals the base's, so the candidate list only holds the BASE ids;
       // reconstruct the variant's daemon id from the base id + the `_VARIANT_<state>` tag (theme
       // stays inside the base id, e.g. `SwitchOn_Light_VARIANT_off`), and route to it only when it
       // actually rendered. Without this the `@OverrideVariant` states carry no `previewId`, so the
@@ -188,10 +317,11 @@ export function bridgeLivePreviewIds(
           variantKey(component.componentId, "default"),
         );
         if (baseFn && !overriddenFunctions.has(baseFn)) {
-          const baseDaemonId =
-            (image.theme
-              ? daemonIdFor.get(`${baseFn}\0${image.theme}`)
-              : undefined) ?? unthemedIdFor.get(baseFn);
+          const baseDaemonId = pickVariantId(
+            previewsByFn.get(baseFn) ?? [],
+            image,
+            widthForSize,
+          );
           const variantId = baseDaemonId && `${baseDaemonId}_VARIANT_${state}`;
           if (variantId && allPreviewIds.has(variantId)) {
             image.previewId = variantId;

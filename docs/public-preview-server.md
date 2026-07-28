@@ -7,7 +7,10 @@
    `?url=`) and get a shareable `?session=<name>` link. The server shows the bundle's **data tiers**
    (baked PNGs, Remote Compose / Protolayout / Lottie IR) for any uploader, and reports a **trust
    verdict** so you can tell a bundle from a producer you trust from an anonymous one.
-2. **The design systems we publish** — `--catalogs compose-m3,wear-m3,remote-m3` fetches each
+2. **Shared documents** — with `--accept-docs`, anyone can drop a **generated document** (a Remote
+   Compose `.rc`, a Lottie JSON) at `/docs` and get back an **expiring permalink** that plays it in
+   the browser. See [Sharing a document](#sharing-a-document---accept-docs).
+3. **The design systems we publish** — `--catalogs compose-m3,wear-m3,remote-m3` fetches each
    published `design-artifacts/<system>` catalog and serves it read-only at its canonical path
    `/<system>/` (the legacy `?session=<system>` form still works). Browsing that branch and opening a
    live, customisable render are then two ends of one workflow (the branch's README + `catalog.json`
@@ -87,6 +90,34 @@ and its safety model, with a link to the machine-readable [`/version`](#endpoint
 ![Public landing "about" intro (light)](images/serve-about-public-light.png)
 
 ![Public landing "about" intro (dark)](images/serve-about-public-dark.png)
+
+## Catalog theme selector
+
+The catalog header carries a single **Theme** control listing every theme the catalog configures —
+not just Light/Dark (issue #2881):
+
+- the **baked** light/dark pair, when components were captured in both. Picking one swaps each card
+  to that render in place (instant — the pixels are already published);
+- every app-declared **`@ThemeCatalog` / `@WearThemeCatalog` theme** the session carries
+  (`ServeHost.declaredThemes`, read from the live bundle's `previews.json`). Picking one re-points
+  each card's thumbnail at `/render/<id>.png?themeProvider=<providerFqn>`, so the whole grid redraws
+  under that theme through the carried daemon — the grid-wide counterpart of the viewer's App theme
+  select.
+
+Declared themes are offered only when the session can actually render them (a trusted catalog served
+live, or a daemon-backed module); a static bundle keeps the baked light/dark chips alone, and an
+individual card with no daemon twin keeps its baked pixels. Because the daemon renders one preview
+at a time and sheds the overflow (`503 render busy`), the themed thumbnails are fetched **serially**
+— each starts when the previous image loads, with one delayed retry — rather than as a grid-sized
+burst that would leave most cards on their pre-theme pixels. Their URLs are emitted by the server
+into the page script (never read back out of a `data-` attribute), so nothing the page assigns to an
+`<img src>` originates as DOM text. A theme-neutral module whose session
+declares themes gets a leading **Default** chip to return to. The choice persists per catalog
+(`cp-theme:<system>` in `localStorage`, shared with that catalog's viewer Theme select).
+
+![Catalog theme selector (light)](images/serve-catalog-themes-light.png)
+
+![Catalog theme selector (dark)](images/serve-catalog-themes-dark.png)
 
 ## Two axes: trust × format
 
@@ -230,12 +261,71 @@ SSRF-gated (`--accept-bundles-from` doesn't apply); the operator chose the addre
 works **alongside** a `--module` (both are served); run it with no `--module` outside a Gradle project
 to get the pure module-less server above.
 
+## Sharing a document (`--accept-docs`)
+
+A bundle is a whole preview session. Often what you actually have is **one generated document** — a
+Remote Compose `.rc` an agent just emitted, a Lottie an animator exported — and one thing you want to
+do with it: **let someone else look at it.** `--accept-docs` is that lane:
+
+```bash
+compose-preview serve --public --accept-docs --doc-ttl 3600 --port 8080
+```
+
+- **`GET /docs`** — a drop zone. Drag a document in (or pick a file, or paste a link when the host
+  allows URL fetches) and the page hands back the permalink, ready to copy.
+- **`POST /docs?name=<label>`** — the same thing for a script or an agent; the document is the request
+  body. Answers `201` with `{"id","name","format","formatId","bytes","url","expiresIn",
+  "expiresAtEpochSeconds"}`, where `url` is `/d/<id>`.
+- **`GET /d/<id>`** — the permalink: the document played back **client-side** by its format's vendored
+  player, with what the server could read out of it (size, version, frame count/duration, layers) and
+  how long the link has left. `GET /d/<id>/raw` is the document itself.
+
+![The /docs drop zone](images/serve-docs-upload.png)
+
+![A shared Lottie playing at its expiring permalink](images/serve-doc-lottie.png)
+
+```bash
+# Share a Lottie an agent just generated, then hand over the link.
+curl -sS --data-binary @loading.json 'https://preview.coo.ee/docs?name=loading.json'
+# {"schema":"compose-preview-serve/doc/v1","id":"0YFhq8Kb…","format":"Lottie","url":"/d/0YFhq8Kb…",
+#  "expiresIn":"1h", …}
+```
+
+**Known formats** ([`ServeDocFormats`](../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeDocFormats.kt)) —
+adding one is a registry entry plus its player bundle, not a new route:
+
+| Format | Sniffed by | Played by | Player bundle |
+|---|---|---|---|
+| **Remote Compose** (`.rc`) | the `Header` op's `0x048C` magic | `RC.RcdPlayer` on a `<canvas>` | the same vendored player the preview viewer's canvas lane uses |
+| **Lottie** (`.json`) | a Bodymovin object (`layers` + `fr`/`ip`/`op`) | `lottie-web` (SVG renderer) | vendored MIT build, `cli/src/main/resources/lottie-player/` |
+
+Why this is safe to leave open on a public box, and where its limits are:
+
+- **Data only, played in *your* browser.** The host stores bytes and serves them back; the player runs
+  in the viewer's browser. Nothing about a document ever executes on the server — same tier as the
+  Remote Compose / Lottie rows in the format table above.
+- **Content-sniffed, not name-trusted.** An upload must *be* a known document. A zip, a script, an
+  HTML page, or an `.rc`-named impostor is refused — so the lane can't be used as a general file drop
+  or to serve attacker-chosen HTML from the host's origin. `?name=` is only ever a display label.
+- **The link is the capability, and it expires.** The id is 128 bits of `SecureRandom`, the page is
+  `Cache-Control: private, no-store`, and the document is dropped from memory once `--doc-ttl`
+  (default 1 h) is up — after which both `/d/<id>` and `/d/<id>/raw` 404 without saying whether the id
+  ever existed. Share the link with one person, and it goes away on its own.
+- **Bounded.** Per-document (8 MB), count (64) and total-memory (64 MB) caps; an upload burst evicts
+  the shares closest to expiry rather than growing the heap.
+- **`?url=` is fail-closed.** A client-supplied URL is fetched only when its host is on
+  `--accept-docs-from` (empty ⇒ uploads only) — the same SSRF gate `--accept-bundles-from` applies.
+
+On the deployed image set `SERVE_ACCEPT_DOCS=1` (plus optional `SERVE_DOC_TTL`,
+`SERVE_ACCEPT_DOCS_FROM`); it's off by default.
+
 ## Deploying `preview.coo.ee`
 
 Both container profiles take this config from env (the entrypoint maps `SERVE_PUBLIC`,
 `SERVE_CATALOGS_FILE`, `SERVE_ADMIN_TOKEN`, `SERVE_TRUST_STORE`, `SERVE_WASM_DIR`,
-`SERVE_ACCEPT_BUNDLES` → flags) and put **Caddy** in front for TLS. They default to the **open public
-profile** (`SERVE_PUBLIC=1`); set `SERVE_PUBLIC=0` + `SERVE_TOKEN` for a token-gated box.
+`SERVE_ACCEPT_BUNDLES`, `SERVE_ACCEPT_DOCS` / `SERVE_DOC_TTL` / `SERVE_ACCEPT_DOCS_FROM` → flags) and
+put **Caddy** in front for TLS. They default to the **open public profile** (`SERVE_PUBLIC=1`); set
+`SERVE_PUBLIC=0` + `SERVE_TOKEN` for a token-gated box.
 
 ### The catalog set is config, not image content
 
@@ -474,6 +564,9 @@ catalogs, one card each; the `--catalogs-unlisted` app catalogs are served at `/
 indexed here); otherwise the served module's preview grid · `GET /p/{id}?session=<s>` viewer ·
 `GET /render/{id}.png` PNG ·
 `GET /api/previews` JSON (now includes `trust`) · `POST /bundles/{name}` upload (returns `trust`) ·
+`GET /docs` document drop zone · `POST /docs` document ingest (returns an expiring `/d/<id>`) ·
+`GET /d/{id}` document permalink · `GET /d/{id}/raw` document bytes ·
+`GET /doc-player/{format}/bundle.js` the format's browser player (ungated static asset) ·
 `GET /wasm/{system}/…` in-browser CMP app (ungated static assets) · `GET /status` server status
 (HTML, or JSON with `?format=json`) · `GET /status.json` server status JSON · `GET /healthz`
 liveness · `GET /readyz` readiness (green only once a preview actually renders — the docker-rollout

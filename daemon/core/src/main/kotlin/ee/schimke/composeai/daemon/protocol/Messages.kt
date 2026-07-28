@@ -563,6 +563,19 @@ data class PreviewOverrides(
    */
   val slotMode: Boolean? = null,
   /**
+   * Per-render **content-loading placeholder state** (issue #2646). `true` renders the preview in
+   * its *loading* state (Wear/M3 placeholder blocks painting over the content), `false` in the
+   * loaded/ideal state; null leaves the preview's own state alone, so an unforced render is
+   * byte-identical.
+   *
+   * **Opt-in**, like `clockEpochMillis` / `slotMode`: a `PlaceholderState` is owned by app code, so
+   * preview content must read `placeholderActive(...)` (`:data-preview-overrides-runtime`) into the
+   * state it remembers for the pin to take effect. Both backends honour it through a composition
+   * local (`:data-preview-overrides-connector`), so there is no renderer branch — one preview can
+   * be rendered deterministically in both states.
+   */
+  val placeholderActive: Boolean? = null,
+  /**
    * Per-render **cleared background** — the "crisp outline" toggle. When `true`, the renderer
    * forces a transparent harness background (overriding the discovery-time
    * `@Preview(showBackground=…)` / `backgroundColor`) AND provides `LocalPreviewBackgroundCleared =

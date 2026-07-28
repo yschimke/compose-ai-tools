@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/design-artifacts/catalog.spec.schema.json",
-  "$comment": "Cover-sheet spec for Compose Material 3. The component inventory — ids, grouping, captions, and per-variant tags — now lives next to the `@Preview`s as `@CatalogComponent` / `@CatalogVariant` annotations (see CatalogPreviews.kt); the design-artifacts export builds the catalog from those. This file carries only the fields that aren't per-component code metadata: the system slug, title, the libraries covered, the primary modes, the documented breakpoints, and the published-kit references seeded for the one-off import (our render stays authoritative). To override or add a component from here, reintroduce a `groups` array — a spec component is layered on top of its matching annotation as a field-level override.",
+  "$comment": "Cover-sheet spec for Compose Material 3. The component inventory — ids, grouping, captions, and per-variant tags — now lives next to the `@Preview`s as `@CatalogComponent` / `@CatalogVariant` annotations (see CatalogPreviews.kt); the design-artifacts export builds the catalog from those. This file carries only the fields that aren't per-component code metadata: the system slug, title, the libraries covered, the primary modes, the documented breakpoints, the presentation hints (`display.hero` — the front-door hero preview), and the published-kit references seeded for the one-off import (our render stays authoritative). To override or add a component from here, reintroduce a `groups` array — a spec component is layered on top of its matching annotation as a field-level override.",
   "system": "compose-m3",
   "title": "Compose Material 3",
   "library": [
@@ -9,6 +9,9 @@
   ],
   "module": "samples:design-catalog-m3",
   "modes": ["light", "dark"],
+  "display": {
+    "hero": "Template/AppScaffold"
+  },
   "breakpoints": [
     { "size": "compact", "widthDp": 412 },
     { "size": "medium", "widthDp": 700 },

@@ -97,9 +97,13 @@ object ServeWeb {
     .cp-group-head { margin: 18px 0 10px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em;
       text-transform: uppercase; color: #8a8a92; }
     .cp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
-    .cp-theme { display: inline-flex; border: 1px solid #d7d7de; border-radius: 999px; overflow: hidden; }
+    /* The Theme picker carries one chip per configured theme (the baked light/dark pair plus any
+       app-declared @ThemeCatalog theme), so it wraps rather than overflowing a narrow viewport. */
+    .cp-theme { display: inline-flex; flex-wrap: wrap; border: 1px solid #d7d7de; border-radius: 999px;
+      overflow: hidden; max-width: 100%; }
     .cp-theme-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
       padding: 3px 14px; cursor: pointer; }
+    .cp-theme-btn + .cp-theme-btn { border-left: 1px solid #ececf1; }
     .cp-theme-btn[aria-pressed="true"] { background: #ececff; color: #3a3a8a; font-weight: 600; }
     .cp-states { display: inline-flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
     .cp-state-btn { border: 1px solid #d7d7de; border-radius: 999px; background: #fff; color: #6b6b70;
@@ -315,6 +319,32 @@ object ServeWeb {
     .cp-modes-inputs { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
     /* Backend badge flips its accent green when a live lane drives the stage (see backendBadgeScript). */
     .cp-backend[data-live="true"] { background: rgba(30, 122, 52, 0.82); }
+    /* Shared-document surfaces (POST /docs → GET /d/<id>): the drop zone on the upload page and the
+       played-back document + its facts on the permalink page. Both reuse the card/stage chrome. */
+    .cp-drop { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 720px;
+      padding: 28px 20px; border: 2px dashed #d7d7de; border-radius: 12px; background: #fff;
+      text-align: center; cursor: pointer; }
+    .cp-drop:hover, .cp-drop.cp-drop-over { border-color: #8f8ff0; background: #f6f6ff; }
+    .cp-drop-title { font-size: 0.95rem; font-weight: 600; }
+    .cp-drop-hint { font-size: 0.8rem; color: #6b6b70; line-height: 1.45; }
+    .cp-doc-form { max-width: 720px; margin: 16px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
+    .cp-doc-url { flex: 1 1 320px; padding: 7px 12px; font: inherit; font-size: 0.85rem;
+      border: 1px solid #d7d7de; border-radius: 999px; background: #fff; color: inherit; }
+    .cp-doc-btn { font: inherit; font-size: 0.82rem; font-weight: 600; padding: 6px 16px;
+      border-radius: 999px; border: 1px solid #d7d7de; background: #fff; color: #45454c; cursor: pointer; }
+    .cp-doc-btn:hover { background: #f0f0f3; }
+    .cp-doc-result { max-width: 720px; margin: 18px 0 0; padding: 14px 16px; border-radius: 10px;
+      border: 1px solid #e3e3e8; background: #fff; font-size: 0.84rem; }
+    .cp-doc-result[hidden] { display: none; }
+    .cp-doc-result.cp-doc-error { background: #fdf0e3; color: #8a5300; border-color: #f0d3a8; }
+    .cp-doc-stage { max-width: 720px; border: 1px solid #e3e3e8; border-radius: 10px; background: #fff;
+      padding: 12px; display: flex; align-items: center; justify-content: center; min-height: 260px; }
+    .cp-doc-stage canvas, .cp-doc-stage svg, .cp-doc-stage img { max-width: 100%; height: auto; }
+    .cp-doc-status { margin: 8px 0 0; font-size: 0.78rem; color: #6b6b70; min-height: 1.2em; }
+    .cp-doc-facts { max-width: 720px; margin: 16px 0 0; display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+    .cp-doc-expiry { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.7rem;
+      font-weight: 600; background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
     @media (prefers-color-scheme: dark) {
       body { color: #e6e6e9; background: #161618; }
       .cp-sub, .cp-id, .cp-status, .cp-about-links, .cp-sys-desc, .cp-sys-foot { color: #a0a0a8; }
@@ -347,11 +377,23 @@ object ServeWeb {
       .cp-group-head { color: #7a7a82; }
       .cp-theme { border-color: #34343a; }
       .cp-theme-btn { background: #1d1d20; color: #a0a0a8; }
+      .cp-theme-btn + .cp-theme-btn { border-left-color: #34343a; }
       .cp-theme-btn[aria-pressed="true"] { background: #26264a; color: #c9c9ff; }
       .cp-state-btn { background: #1d1d20; color: #a0a0a8; border-color: #34343a; }
       .cp-state-btn:hover { border-color: #4a4a55; color: #c9c9ff; }
       .cp-state-btn[aria-current="page"] { background: #26264a; border-color: #3a3a6a; color: #c9c9ff; }
       .cp-note { background: #26262b; color: #a0a0a8; }
+      .cp-drop { background: #1d1d20; border-color: #34343a; }
+      .cp-drop:hover, .cp-drop.cp-drop-over { border-color: #6a6ad0; background: #22222c; }
+      .cp-drop-hint, .cp-doc-status { color: #a0a0a8; }
+      .cp-doc-url, .cp-doc-btn { background: #1d1d20; border-color: #34343a; color: #e6e6e9; }
+      .cp-doc-btn:hover { background: #26262b; }
+      .cp-doc-result, .cp-doc-stage { background: #1d1d20; border-color: #34343a; }
+      /* Stat tiles are shared by the status page and the document facts; without these they stayed
+         white-on-dark in both. */
+      .cp-stat { background: #1d1d20; border-color: #34343a; }
+      .cp-stat-key { color: #7a7a82; }
+      .cp-stat-val { color: #e6e6e9; }
       .cp-imgwrap, .cp-stage { background: #1d1d20; }
       html.cp-bg-transparent .cp-imgwrap, html.cp-bg-transparent .cp-stage {
         background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }
@@ -1116,22 +1158,50 @@ object ServeWeb {
   }
 
   /**
-   * The sticky light/dark control for the catalog header. Persists to a catalog-scoped localStorage
-   * key (shared only with that catalog's viewer Theme select). [catalogFilterScript] wires it to
-   * *swap* each swappable card between its baked light/dark render in place — a no-JS client still
-   * sees the full catalog on its default renders. Shown only when the grid has at least one
-   * light/dark pair to swap.
+   * The sticky **Theme** control for the catalog header — every theme the catalog configures, not
+   * just the built-in light/dark axis (issue #2881).
+   *
+   * Two kinds of chip sit on the same axis, so a visitor picks *a theme* rather than juggling two
+   * controls:
+   * - the **baked** light/dark pair ([hasBaked]) — an instant, client-side swap between the two
+   *   renders the catalog already published (`data-theme-choice="light"` / `"dark"`);
+   * - each app-**declared** `@ThemeCatalog` / `@WearThemeCatalog` theme ([declared]) —
+   *   `data-theme-choice="theme:<providerFqn>"`, which re-points every daemon-twinned card's
+   *   thumbnail at `/render/<id>.png?themeProvider=<fqn>` so the grid redraws under that theme.
+   *
+   * A catalog with no baked pair still gets a leading `default` chip so the declared themes have
+   * something to return to. Persists to the catalog-scoped localStorage key (shared with that
+   * catalog's viewer Theme select, which ignores the `theme:` values it doesn't understand).
+   * Progressive enhancement throughout — a no-JS client sees the full grid on its baked renders.
    */
-  private fun themeToggleHtml(): String =
-    """
+  private fun themePickerHtml(hasBaked: Boolean, declared: List<ServeTheme>): String {
+    val chips = buildString {
+      if (hasBaked) {
+        append("<button type=\"button\" class=\"cp-theme-btn\" data-theme-choice=\"light\">")
+        append("Light</button>\n        ")
+        append("<button type=\"button\" class=\"cp-theme-btn\" data-theme-choice=\"dark\">")
+        append("Dark</button>")
+      } else {
+        append("<button type=\"button\" class=\"cp-theme-btn\" data-theme-choice=\"default\">")
+        append("Default</button>")
+      }
+      declared.forEach { t ->
+        val label = WebEscaping.htmlEscape(t.name)
+        val title = t.group?.let { " title=\"${WebEscaping.htmlEscape(it)} · $label\"" } ?: ""
+        append("\n        <button type=\"button\" class=\"cp-theme-btn\"")
+        append(" data-theme-choice=\"theme:${WebEscaping.htmlEscape(t.providerFqn)}\"$title>")
+        append("$label</button>")
+      }
+    }
+    return """
     <div class="cp-toolbar">
       <span class="cp-theme" role="group" aria-label="Preview theme">
-        <button type="button" class="cp-theme-btn" data-theme-choice="light">Light</button>
-        <button type="button" class="cp-theme-btn" data-theme-choice="dark">Dark</button>
+        $chips
       </span>
     </div>
     """
       .trimIndent()
+  }
 
   /**
    * The search box for the landing grid: a text input that filters cards to those whose label or id
@@ -1176,42 +1246,160 @@ object ServeWeb {
     hasGroups: Boolean,
     themeStorageKey: String,
     tabStorageKey: String,
+    /**
+     * Per-card render URL to re-request under a declared theme, in the grid's document order — a
+     * **server-emitted** JS array literal (`["/render/a.png?…", "", …]`, `""` for a card the
+     * session can't re-render). Emitted rather than read back off the card so no URL the browser
+     * assigns to an `<img src>` ever originates as DOM text (CodeQL `js/xss-through-dom`). Empty
+     * string ⇒ the catalog offers no declared themes and none of the theme-render machinery is
+     * emitted at all.
+     */
+    themeBaseJs: String = "",
   ): String {
+    val hasDeclaredThemes = themeBaseJs.isNotEmpty()
+    // The stored choice is one of `light` / `dark` (a baked swap), `default` (the catalog's own
+    // renders), or `theme:<providerFqn>` (an app-declared @ThemeCatalog theme, applied by
+    // re-pointing each daemon-twinned card's thumbnail at a `?themeProvider=` render).
     val themeInit =
       if (hasThemes)
         """
         var stored = null;
         try { stored = localStorage.getItem("$themeStorageKey"); } catch (e) {}
-        var theme = (stored === "light" || stored === "dark") ? stored
-          : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
         var themeBtns = document.querySelectorAll(".cp-theme-btn");
+        function validTheme(t) {
+          if (!t) return false;
+          return t === "light" || t === "dark" || t === "default" || t.indexOf("theme:") === 0;
+        }
+        var theme = validTheme(stored) ? stored
+          : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        // A chip is only offered when the page rendered it, so a remembered choice this catalog no
+        // longer configures (a theme the app dropped) falls back to the first chip.
+        var known = false;
+        themeBtns.forEach(function (b) { if (b.getAttribute("data-theme-choice") === theme) known = true; });
+        if (!known && themeBtns.length) theme = themeBtns[0].getAttribute("data-theme-choice");
+        var appliedTheme = null;
+        """
+          .trimIndent()
+      else ""
+    // The declared-theme lane. A declared theme re-renders on the daemon, which renders ONE AT A
+    // TIME and sheds the overflow (503 "render busy" on a bare daemon session; the baked PNG on a
+    // catalog-live one). Firing a whole grid's worth of themed thumbnails at once would therefore
+    // leave most cards on their pre-theme pixels, so they are fetched serially — each waits for the
+    // previous to load — with one delayed retry for a shed request. Baked light/dark swaps never
+    // queue: those bytes are already published. themeGen abandons an in-flight queue the moment a
+    // new theme is chosen.
+    val themeRenderInit =
+      if (hasDeclaredThemes)
+        """
+        var themeBase = $themeBaseJs;
+        var themeGen = 0;
+        function runThemeQueue(queue, gen) {
+          if (gen !== themeGen) return;
+          var job = queue.shift();
+          if (!job) return;
+          var img = job.img;
+          var settled = false;
+          function next(ok) {
+            if (settled || gen !== themeGen) return;
+            settled = true;
+            img.onload = null;
+            img.onerror = null;
+            if (!ok && !job.retried) {
+              // Re-request rather than re-assign the identical (failed, uncached) URL.
+              job.retried = true;
+              job.src = job.src + "&_retry=1";
+              queue.unshift(job);
+              setTimeout(function () { runThemeQueue(queue, gen); }, 1500);
+              return;
+            }
+            runThemeQueue(queue, gen);
+          }
+          img.onload = function () { next(true); };
+          img.onerror = function () { next(false); };
+          img.src = job.src;
+        }
         """
           .trimIndent()
       else ""
     // Swap every swappable card to the chosen theme's baked render (src / viewer href / id / label
     // /
     // stage backing), and light up the pressed button. A card missing the chosen theme is skipped.
+    // For a DECLARED theme the light/dark swap stays on the card's server-side default variant
+    // (`data-def`) and the render URL grows a `themeProvider` param — applied only to cards the
+    // session can actually re-render (`data-theme-live`), so an Android-only variant keeps its
+    // baked
+    // pixels rather than requesting a render that would ignore the theme.
+    // Under a DECLARED theme a swap card keeps its server-side default variant's metadata (label /
+    // id / viewer link / stage backing, from `data-def`) — only the pixels come from the themed
+    // render — so picking a theme never silently flips the light/dark axis too.
+    val applyDeclaredTheme =
+      if (hasDeclaredThemes)
+        """
+        var provider = theme.indexOf("theme:") === 0 ? theme.slice(6) : "";
+        themeGen++;
+        var themeQueue = [];
+        var themeQueueGen = themeGen;
+        if (provider) {
+          cards.forEach(function (c, i) {
+            if (c.getAttribute("data-swap") === "1") applyVariant(c, c.getAttribute("data-def") || "l", false);
+            var img = c.querySelector("img");
+            var base = themeBase[i];
+            if (!img || !base) return;
+            themeQueue.push({
+              img: img,
+              src: base + (base.indexOf("?") === -1 ? "?" : "&") + "themeProvider=" + encodeURIComponent(provider),
+            });
+          });
+          runThemeQueue(themeQueue, themeQueueGen);
+          return;
+        }
+        """
+          .trimIndent()
+      else ""
+    // Spliced into applyThemeChoice's body (one level in), so a catalog with no declared themes
+    // emits the plain baked swap exactly as before.
+    val applyDeclaredThemeIndented =
+      applyDeclaredTheme.lines().joinToString("") { if (it.isEmpty()) "\n" else "\n          $it" }
+    // Leaving a declared theme has to put a NON-swap card back on its baked pixels (a swap card is
+    // restored by applyVariant). Its baked URL is the same themeBase entry, minus the override.
+    val restoreBakedSrc =
+      if (hasDeclaredThemes)
+        "\n            var img = c.querySelector(\"img\");" +
+          "\n            var base = themeBase[i];" +
+          "\n            if (img && base) img.src = base;"
+      else ""
     val applyTheme =
       if (hasThemes)
         """
         themeBtns.forEach(function (b) {
           b.setAttribute("aria-pressed", b.getAttribute("data-theme-choice") === theme ? "true" : "false");
         });
-        var k = theme === "dark" ? "d" : "l";
-        cards.forEach(function (c) {
-          if (c.getAttribute("data-swap") !== "1") return;
+        // Point a swap card at one of its baked variants ("l"/"d"): pixels (unless the caller is
+        // supplying themed ones), alt text, label, id, viewer link and stage backing.
+        function applyVariant(c, k, withSrc) {
           var src = c.getAttribute("data-" + k + "-src");
           if (!src) return;
           var img = c.querySelector("img");
           var lab = c.querySelector(".cp-label");
           var idn = c.querySelector(".cp-id");
           var lbl = c.getAttribute("data-" + k + "-label");
-          if (img) { img.src = src; img.setAttribute("alt", lbl); }
+          if (img) { if (withSrc) img.src = src; img.setAttribute("alt", lbl); }
           c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
           if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
           if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
-          c.setAttribute("data-bg-theme", theme);
-        });
+          c.setAttribute("data-bg-theme", k === "d" ? "dark" : "light");
+        }
+        // apply() also runs on every search keystroke; re-point the cards only when the THEME
+        // actually changed, so typing never restarts an in-flight themed-render queue.
+        function applyThemeChoice() {
+          if (theme === appliedTheme) return;
+          appliedTheme = theme;$applyDeclaredThemeIndented
+          var k = theme === "dark" ? "d" : "l";
+          cards.forEach(function (c, i) {
+            if (c.getAttribute("data-swap") === "1") { applyVariant(c, k, true); return; }$restoreBakedSrc
+          });
+        }
+        applyThemeChoice();
         """
           .trimIndent()
       else ""
@@ -1287,7 +1475,7 @@ object ServeWeb {
       var count = document.getElementById("cp-count");
       var empty = document.getElementById("cp-empty");
       var total = cards.length;$groupDecls$tabDecls
-      $themeInit
+      ${listOf(themeInit, themeRenderInit).filter { it.isNotEmpty() }.joinToString("\n")}
       function apply() {
         $applyTheme
         var q = input ? input.value.trim().toLowerCase() : "";
@@ -1730,6 +1918,279 @@ object ServeWeb {
     )
   }
 
+  /**
+   * One ingested document as the permalink page shows it — the display facts only, so this page
+   * never touches [ServeDocStore]'s bytes or clock (and the fixtures can build one by hand).
+   */
+  data class DocView(
+    val id: String,
+    /** Display label (the uploaded filename, sanitised by the store). */
+    val name: String,
+    /** [ServeDocFormat.id] — picks the player + the mount code. */
+    val formatId: String,
+    val formatLabel: String,
+    /** Where the browser player bundle for this format is served. */
+    val playerPath: String,
+    /** Where the document bytes are served (`/d/<id>/raw`). */
+    val rawPath: String,
+    val facts: List<ServeDocFact>,
+    val sizeText: String,
+    /** Human "in 59m" form for the expiry pill. */
+    val expiresInText: String,
+    /** Absolute UTC instant the link dies, for the title attribute. */
+    val expiresAtText: String,
+    /** Declared document size, when the format announces one — sizes the canvas before load. */
+    val width: Int? = null,
+    val height: Int? = null,
+  )
+
+  /**
+   * `GET /docs` — the **upload surface** for known document formats: drop a Remote Compose `.rc` or
+   * a Lottie JSON (or paste a link to one, when the host allows URL fetches) and get back an
+   * expiring permalink to hand to someone else.
+   *
+   * Progressive-ish: the drop zone is a real `<input type="file">` inside a `<form>`, and the
+   * script turns the submit into a `fetch` so the resulting link can be shown (and copied) in
+   * place. No upload happens without an explicit pick/drop.
+   */
+  fun docUploadPage(
+    token: String,
+    isPublic: Boolean,
+    ttlSeconds: Long,
+    /** Whether `?url=` fetches are permitted here (the SSRF allowlist is non-empty). */
+    urlUploadAllowed: Boolean,
+    unfurl: UnfurlMetadata? = null,
+  ): String {
+    val query = queryString(token, sessionId = null, isPublic = isPublic)
+    val suffix = querySuffix(query)
+    val formats =
+      ServeDocFormats.ALL.joinToString(", ") { "${it.label} (<code>${it.extension}</code>)" }
+    val urlRow =
+      if (!urlUploadAllowed) ""
+      else
+        """
+        <form class="cp-doc-form" id="cp-doc-urlform">
+          <input class="cp-doc-url" id="cp-doc-url" type="url" name="url" placeholder="…or paste a link to a document"
+            aria-label="Document URL">
+          <button class="cp-doc-btn" type="submit">Fetch</button>
+        </form>
+        """
+          .trimIndent()
+    return document(
+      title = "Share a document — compose-preview",
+      unfurlDescription = "Upload a Remote Compose or Lottie document and get an expiring link.",
+      unfurl = unfurl,
+      body =
+        """
+        <h1 class="cp-head">Share a document</h1>
+        <p class="cp-sub">Upload a generated document and get a link that plays it in the browser and
+          expires after ${humanDuration(ttlSeconds)}. Supported: $formats.</p>
+        <form id="cp-doc-form" class="cp-drop" tabindex="0">
+          <span class="cp-drop-title">Drop a document here, or choose a file</span>
+          <span class="cp-drop-hint">Nothing is executed on the server — the document is played back
+            by a player running in your own browser.</span>
+          <input id="cp-doc-file" type="file" name="file" accept=".rc,.json,application/json">
+        </form>
+        $urlRow
+        <div class="cp-doc-result" id="cp-doc-result" hidden></div>
+        <script>${docUploadScript(suffix)}</script>
+        """
+          .trimIndent(),
+    )
+  }
+
+  /** Drives the upload page: POST the picked/dropped/linked document, then show its permalink. */
+  private fun docUploadScript(querySuffix: String): String =
+    """
+    (function () {
+      var form = document.getElementById("cp-doc-form");
+      var file = document.getElementById("cp-doc-file");
+      var urlForm = document.getElementById("cp-doc-urlform");
+      var out = document.getElementById("cp-doc-result");
+      var suffix = ${jsString(querySuffix)};
+      function show(html, isError) {
+        out.hidden = false;
+        out.className = "cp-doc-result" + (isError ? " cp-doc-error" : "");
+        out.innerHTML = html;
+      }
+      function esc(s) { var d = document.createElement("span"); d.textContent = s; return d.innerHTML; }
+      function post(url, body, label) {
+        show("Uploading…", false);
+        fetch(url, { method: "POST", body: body })
+          .then(function (r) {
+            return r.text().then(function (t) {
+              if (!r.ok) throw new Error(t || ("upload failed (" + r.status + ")"));
+              return JSON.parse(t);
+            });
+          })
+          .then(function (doc) {
+            // The API answers with the bare `/d/<id>` path. On a token-gated host that path 404s
+            // without the token, so the browser-facing link carries this page's own query suffix
+            // (empty in public mode, `?token=…` otherwise).
+            var path = doc.url + suffix;
+            var link = location.origin + path;
+            show(
+              "<p><strong>" + esc(label) + "</strong> — " + esc(doc.format) + ", link expires in " +
+                esc(doc.expiresIn) + ".</p>" +
+                "<p><a href=\"" + esc(path) + "\">" + esc(link) + "</a></p>" +
+                "<button type=\"button\" class=\"cp-doc-btn\" id=\"cp-doc-copy\">Copy link</button>",
+              false
+            );
+            var copy = document.getElementById("cp-doc-copy");
+            if (copy) copy.addEventListener("click", function () {
+              if (navigator.clipboard) navigator.clipboard.writeText(link);
+              copy.textContent = "Copied";
+            });
+          })
+          .catch(function (e) { show(esc(e.message || "upload failed"), true); });
+      }
+      function upload(f) {
+        if (!f) return;
+        var qs = suffix ? suffix + "&" : "?";
+        post("/docs" + qs + "name=" + encodeURIComponent(f.name), f, f.name);
+      }
+      // The drop zone doubles as the file picker: clicking anywhere in it opens the chooser.
+      form.addEventListener("click", function (e) { if (e.target !== file) file.click(); });
+      form.addEventListener("submit", function (e) { e.preventDefault(); });
+      file.addEventListener("change", function () { upload(file.files && file.files[0]); });
+      ["dragenter", "dragover"].forEach(function (t) {
+        form.addEventListener(t, function (e) { e.preventDefault(); form.classList.add("cp-drop-over"); });
+      });
+      ["dragleave", "drop"].forEach(function (t) {
+        form.addEventListener(t, function (e) { e.preventDefault(); form.classList.remove("cp-drop-over"); });
+      });
+      form.addEventListener("drop", function (e) {
+        if (e.dataTransfer && e.dataTransfer.files) upload(e.dataTransfer.files[0]);
+      });
+      if (urlForm) urlForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var value = document.getElementById("cp-doc-url").value.trim();
+        if (!value) return;
+        var qs = suffix ? suffix + "&" : "?";
+        post("/docs" + qs + "url=" + encodeURIComponent(value), null, value);
+      });
+    })();
+    """
+      .trimIndent()
+
+  /**
+   * `GET /d/<id>` — the **expiring permalink page** for one ingested document: the document itself,
+   * played back client-side by its format's vendored player, plus what the server could read out of
+   * it and how long the link has left.
+   */
+  fun docPage(
+    doc: DocView,
+    token: String,
+    isPublic: Boolean,
+    unfurl: UnfurlMetadata? = null,
+  ): String {
+    val suffix = querySuffix(queryString(token, sessionId = null, isPublic = isPublic))
+    val facts =
+      doc.facts.joinToString("\n") { fact ->
+        """
+        <div class="cp-stat">
+          <div class="cp-stat-key">${WebEscaping.htmlEscape(fact.key)}</div>
+          <div class="cp-stat-val">${WebEscaping.htmlEscape(fact.value)}</div>
+        </div>
+        """
+          .trimIndent()
+      }
+    val rawUrl = doc.rawPath + suffix
+    return document(
+      title = "${doc.name} — compose-preview",
+      unfurlDescription = "A shared ${doc.formatLabel} document, played back in your browser.",
+      unfurl = unfurl,
+      body =
+        """
+        <h1 class="cp-head">${WebEscaping.htmlEscape(doc.name)}</h1>
+        <p class="cp-sub">${WebEscaping.htmlEscape(doc.formatLabel)} · ${WebEscaping.htmlEscape(doc.sizeText)}
+          <span class="cp-doc-expiry" title="${WebEscaping.htmlEscape(doc.expiresAtText)}">expires in ${WebEscaping.htmlEscape(doc.expiresInText)}</span></p>
+        <div class="cp-doc-stage" id="cp-doc-stage" data-format="${WebEscaping.htmlEscape(doc.formatId)}">
+          ${docStageElement(doc)}
+        </div>
+        <p class="cp-doc-status" id="cp-doc-status">Loading the ${WebEscaping.htmlEscape(doc.formatLabel)} player…</p>
+        <div class="cp-doc-facts">
+        $facts
+        </div>
+        <p class="cp-sub" style="margin-top:18px">
+          <a href="$rawUrl" download="${WebEscaping.htmlEscape(doc.name)}">Download the document</a> ·
+          <a href="/docs$suffix">Share another</a>
+        </p>
+        <script>${docPlayerScript(doc, rawUrl)}</script>
+        """
+          .trimIndent(),
+    )
+  }
+
+  /** The element the format's player paints into — a canvas for RC, a container div for Lottie. */
+  private fun docStageElement(doc: DocView): String =
+    when (doc.formatId) {
+      ServeDocFormats.LOTTIE.id -> "<div id=\"cp-doc-mount\"></div>"
+      else ->
+        "<canvas id=\"cp-doc-mount\" width=\"${doc.width ?: 512}\" height=\"${doc.height ?: 512}\"></canvas>"
+    }
+
+  /**
+   * Load the format's player bundle, fetch the document, and mount it. The per-format mount is the
+   * one place formats differ on this page; everything around it (load, error reporting, the stage)
+   * is shared, and the bundle URL comes from the registry rather than being written in here.
+   */
+  private fun docPlayerScript(doc: DocView, rawUrl: String): String {
+    val mount =
+      when (doc.formatId) {
+        ServeDocFormats.LOTTIE.id ->
+          """
+          fetch(raw).then(function (r) { return r.json(); }).then(function (data) {
+            window.lottie.loadAnimation({
+              container: mount, renderer: "svg", loop: true, autoplay: true, animationData: data
+            });
+            done();
+          }).catch(fail);
+          """
+            .trimIndent()
+        else ->
+          """
+          fetch(raw).then(function (r) { return r.arrayBuffer(); }).then(function (buf) {
+            var player = new window.RC.RcdPlayer(mount);
+            return Promise.resolve(player.loadFromArrayBuffer(buf)).then(function () {
+              if (player.repaint) player.repaint();
+              done();
+            });
+          }).catch(fail);
+          """
+            .trimIndent()
+      }
+    return """
+      (function () {
+        var raw = ${jsString(rawUrl)};
+        var mount = document.getElementById("cp-doc-mount");
+        var status = document.getElementById("cp-doc-status");
+        function done() { status.textContent = ""; }
+        function fail() { status.textContent = "This document could not be played back in your browser."; }
+        var s = document.createElement("script");
+        s.src = ${jsString(doc.playerPath)};
+        s.onerror = function () { status.textContent = "The player failed to load."; };
+        s.onload = function () {
+      ${mount.prependIndent("      ")}
+        };
+        document.head.appendChild(s);
+      })();
+      """
+      .trimIndent()
+  }
+
+  /** `3600` → `1h`; used for the upload page's TTL sentence and the permalink's expiry pill. */
+  fun humanDuration(seconds: Long): String =
+    when {
+      seconds >= 3600 ->
+        "${seconds / 3600}h" + ((seconds % 3600) / 60).let { if (it > 0) " ${it}m" else "" }
+      seconds >= 60 -> "${seconds / 60}m"
+      else -> "${seconds}s"
+    }
+
+  /** A JS string literal for [value] — escaped via the JSON encoder, so quotes/slashes are safe. */
+  private fun jsString(value: String): String = JsonPrimitive(value).toString()
+
   /** A labelled figure (a stat tile / config row) on the [statusPage]. */
   data class Stat(val key: String, val value: String)
 
@@ -2141,6 +2602,21 @@ object ServeWeb {
      * a plain module). See [ServeDegradation] / [degradeBanner].
      */
     degradations: List<ServeDegradation> = emptyList(),
+    /**
+     * The app's declared `@ThemeCatalog` / `@WearThemeCatalog` themes ([ServeHost.declaredThemes]).
+     * They join the baked light/dark pair on the header's single Theme control (issue #2881), so
+     * the grid can be redrawn under any theme the catalog configures — not just Light/Dark. Offered
+     * only for cards the session can actually re-render ([canRenderThemeFor]); empty (default)
+     * keeps the plain light/dark axis.
+     */
+    declaredThemes: List<ServeTheme> = emptyList(),
+    /**
+     * Whether a given preview can be re-rendered under a `themeProvider` override — i.e. it has a
+     * daemon twin ([ServeHost.canRenderOverridesFor]). A card that can't keeps its baked pixels
+     * (which would ignore the theme) and the declared-theme chips only appear when at least one
+     * card can. Defaults to `{ false }`: a plain static bundle offers baked light/dark only.
+     */
+    canRenderThemeFor: (String) -> Boolean = { false },
     /** Absolute page + representative preview URLs for Open Graph/Twitter link previews. */
     unfurl: UnfurlMetadata? = null,
   ): String {
@@ -2161,6 +2637,19 @@ object ServeWeb {
       groupPreviews(previews.filterNot { isNonDefaultState(it) || hasNonDefaultProps(it) })
     fun renderSrc(p: ServePreview) = "$basePath/render/${WebEscaping.urlEncodeSegment(p.id)}.png$q"
     fun viewerHref(p: ServePreview) = "$basePath/p/${WebEscaping.urlEncodeSegment(p.id)}$q"
+    // The app-declared themes join the header's Theme control only when this session can actually
+    // re-render a card under one — otherwise the chips would redraw nothing.
+    fun themeRenderable(p: ServePreview) = canRenderThemeFor(p.id)
+    // The variant a card shows by default (server-side) — the one a declared theme re-renders.
+    fun renderedVariant(card: GridCard) =
+      if (card.swappable && darkFirst) card.dark!! else card.default
+    val declaredThemeChips =
+      if (declaredThemes.isEmpty()) emptyList()
+      else if (groups.any { themeRenderable(renderedVariant(it)) }) declaredThemes else emptyList()
+    // A card's themed-render base URL — "" when the session has no daemon twin for it, so it keeps
+    // its baked pixels (a themed render would ignore the theme anyway).
+    fun themeBase(card: GridCard) =
+      renderedVariant(card).let { if (themeRenderable(it)) renderSrc(it) else "" }
     fun swapCard(card: GridCard): String {
       val l = card.light!!
       val d = card.dark!!
@@ -2170,8 +2659,10 @@ object ServeWeb {
       // no URL-building in the browser.
       val def = if (darkFirst) d else l
       val defTheme = if (darkFirst) "dark" else "light"
+      // `data-def` is the variant a DECLARED theme re-renders (the server-side default), so picking
+      // one doesn't also flip the card's light/dark base.
       return """
-        <a class="cp-card" data-swap="1" data-bg-theme="$defTheme"
+        <a class="cp-card" data-swap="1" data-bg-theme="$defTheme" data-def="${if (darkFirst) "d" else "l"}"
           data-l-src="${renderSrc(l)}" data-l-href="${viewerHref(l)}"
           data-l-id="${WebEscaping.htmlEscape(l.id)}" data-l-label="${WebEscaping.htmlEscape(l.label)}"
           data-d-src="${renderSrc(d)}" data-d-href="${viewerHref(d)}"
@@ -2298,12 +2789,14 @@ object ServeWeb {
     // The catalog-provenance strip (delivery branch, generation date, tool versions, regenerate
     // link), shown under the header for a served design-system catalog.
     val prov = provenance?.let { provenanceSection(it) + "\n" } ?: ""
-    // The Light/Dark toggle shows only when at least one component is baked in BOTH themes, i.e.
-    // the
-    // grid has something to swap. A catalog with no light/dark pairs (mostly theme-neutral app
-    // screens) never sprouts a control that would do nothing.
-    val hasThemes = groups.any { it.swappable }
-    val themeToggle = if (hasThemes) themeToggleHtml() + "\n" else ""
+    // The Theme control shows when there is more than one theme to choose between: a baked
+    // light/dark pair to swap, and/or the app-declared themes this session can re-render under. A
+    // catalog with neither (mostly theme-neutral app screens on a static bundle) never sprouts a
+    // control that would do nothing.
+    val hasBakedThemes = groups.any { it.swappable }
+    val hasThemes = hasBakedThemes || declaredThemeChips.isNotEmpty()
+    val themeToggle =
+      if (hasThemes) themePickerHtml(hasBakedThemes, declaredThemeChips) + "\n" else ""
     // Search + empty-state + the combined filter script are shown whenever there are previews to
     // filter, independent of the theme axis.
     val hasPreviews = previews.isNotEmpty()
@@ -2312,6 +2805,18 @@ object ServeWeb {
       if (hasPreviews)
         "\n<p id=\"cp-empty\" class=\"cp-empty\" hidden>No previews match your filter.</p>"
       else ""
+    // The themed-render URLs in the grid's DOCUMENT order — the order the cards were just emitted
+    // in, which is what `document.querySelectorAll(".cp-card")` will report. Empty (no array, no
+    // theme-render machinery in the script) unless declared themes are actually offered.
+    val orderedCards =
+      when {
+        hasTabs -> sections.flatMap { s -> s.groups.flatMap { it.cards } }
+        synthGroups != null -> synthGroups.flatMap { it.cards }
+        else -> groups
+      }
+    val themeBaseJs =
+      if (declaredThemeChips.isEmpty()) ""
+      else orderedCards.joinToString(", ", "[", "]") { WebEscaping.jsString(themeBase(it)) }
     val filterScript =
       if (hasPreviews)
         "\n<script>${catalogFilterScript(
@@ -2320,6 +2825,7 @@ object ServeWeb {
           hasGroups,
           themeStorageKey(sessionId, basePath),
           tabStorageKey(sessionId, basePath),
+          themeBaseJs,
         )}</script>"
       else ""
     return document(

@@ -259,6 +259,11 @@ include(":samples:android-screenshot-test")
 
 include(":samples:android-daemon-bench")
 
+// Fixture for the Android (Robolectric) serve-lane e2e: a tiny preview-only app whose merged
+// manifest names an `Application` the render classpath doesn't carry — the #2669 shape. Packed into
+// a bundle and live-rendered by `serve` in `.github/workflows/serve-lanes-e2e.yml`.
+include(":samples:android-live-lane")
+
 include(":samples:sdk-matrix")
 
 include(":samples:wear")
