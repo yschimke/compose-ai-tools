@@ -13,7 +13,9 @@ import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.ColorScheme
 import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.TimeText
 import androidx.wear.compose.material3.Typography
+import androidx.wear.compose.material3.timeTextCurvedText
 import ee.schimke.composeai.overrides.previewOverrideFont
 import ee.schimke.composeai.overrides.previewOverrideString
 
@@ -95,28 +97,38 @@ fun wearColorScheme(name: String, base: ColorScheme): ColorScheme =
 @Preview(showBackground = false) annotation class CatalogWearModes
 
 /**
- * Frame for **full-screen** Wear components (scaffolds, lists, the EdgeButton) — as opposed to the
+ * A frozen curved [TimeText]: the real Wear M3 status strip drawing a fixed "10:10" instead of the
+ * system clock, so every render is deterministic and the weekly design-artifacts bundle doesn't
+ * churn on wall-clock time.
+ */
+@Composable
+fun FixedTimeText() = TimeText { timeTextCurvedText("10:10") }
+
+/**
+ * Frame for **full-screen** Wear screens (scaffolds, lists, the EdgeButton) — as opposed to the
  * centred component [WearSticker]. The Wear dark [MaterialTheme] fills the round display black and
- * [AppScaffold] supplies the screen structure; `timeText = {}` drops the status clock so the
- * capture is deterministic (a live clock would churn the weekly design-artifacts bundle). The
- * content supplies its own `ScreenScaffold`.
+ * [AppScaffold] supplies the screen structure, including the curved [FixedTimeText] status strip
+ * every real Wear screen carries. The content supplies its own `ScreenScaffold`.
+ *
+ * The clock is *frozen*, not dropped: a Wear screen without its status strip isn't the screen a
+ * designer or app author is copying — the strip reserves the curved top margin the content has to
+ * lay out around, so a capture without it under-reports the usable height. Determinism comes from
+ * the fixed "10:10", not from omitting the clock.
  */
 @Composable
 fun FullScreenWear(content: @Composable () -> Unit) {
-  WearCatalogTheme { AppScaffold(timeText = {}) { content() } }
+  WearCatalogTheme { AppScaffold(timeText = { FixedTimeText() }) { content() } }
 }
 
 /**
  * Frame for the **scaffold templates** — full-screen skeletons an app copies whole (list screen
- * with a status strip, pager, edge-button screen). Unlike [FullScreenWear] it does *not* supply the
- * [AppScaffold]/`timeText`: a template composes its own `AppScaffold(timeText = { … })` so the
- * curved [TimeText] status strip it demonstrates is part of the capture. This wrapper is just the
- * Wear dark [MaterialTheme] filling the round display black (the [CatalogWearBreakpoints] device
- * previews paint the black background).
+ * with a status strip, pager, edge-button screen). Identical to [FullScreenWear]: both supply the
+ * dark theme, the [AppScaffold], and the frozen [FixedTimeText] strip. Kept as its own name because
+ * a template's *content* is a whole screen skeleton rather than a single full-screen component.
  */
 @Composable
 fun WearScaffoldTemplate(content: @Composable () -> Unit) {
-  WearCatalogTheme { content() }
+  FullScreenWear(content)
 }
 
 /**
