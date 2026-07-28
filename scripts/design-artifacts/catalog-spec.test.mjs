@@ -176,6 +176,19 @@ test("discoverComponentIds reads the ids off @CatalogComponent", () => {
   assert.deepEqual(discoverComponentIds([source]), ["Button/Filled", "Template/AppScaffold"]);
 });
 
+test("discoverComponentIds reads a multiline positional id without swallowing later args", () => {
+  // The argument list starts with a newline + indent, so the id is NOT at offset 0; a pattern loose
+  // enough to skip that must not then mistake the positional `group` for the id.
+  const source = `
+    @CatalogComponent(
+      "Button/Filled",
+      "Buttons",
+    )
+    @Composable fun FilledButton() {}
+  `;
+  assert.deepEqual(discoverComponentIds([source]), ["Button/Filled"]);
+});
+
 test("validateSpec resolves display.hero against annotated componentIds", () => {
   // A cover-sheet spec's hero names a componentId that exists only in the module's annotations.
   const opts = { knownPreviews: ["AppScaffoldTemplate"], annotatedInventory: true };

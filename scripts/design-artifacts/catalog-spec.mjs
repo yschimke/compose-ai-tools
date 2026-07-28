@@ -226,10 +226,16 @@ export function discoverComponentIds(sources) {
   const re = /@CatalogComponent\s*\(([^)]*)\)/g;
   for (const source of sources) {
     for (const m of stripComments(source).matchAll(re)) {
-      // `id` is the annotation's first parameter, so it is spelled either positionally or as
-      // `id = "…"`. Both forms land on the first string literal in the argument list.
-      const id = m[1].match(/(?:^|[(,]\s*|id\s*=\s*)"([^"]+)"/);
-      if (id) ids.add(id[1]);
+      // `id` is the annotation's FIRST parameter, spelled either `id = "…"` or positionally. Try the
+      // named form anywhere in the argument list first, then fall back to a leading positional
+      // string. Deliberately two anchored patterns rather than one alternation over "any string
+      // literal": the arguments run over several lines, so a pattern loose enough to skip the
+      // leading newline+indent is also loose enough to match a LATER positional argument (`group`,
+      // `caption`) and mint it as a componentId.
+      const named = m[1].match(/(?:^|,)\s*id\s*=\s*"([^"]+)"/);
+      const positional = m[1].match(/^\s*"([^"]+)"/);
+      const id = named?.[1] ?? positional?.[1];
+      if (id) ids.add(id);
     }
   }
   return [...ids].sort();
