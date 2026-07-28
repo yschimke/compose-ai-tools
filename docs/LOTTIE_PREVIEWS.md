@@ -80,8 +80,9 @@ its painter from another thread, so how many render passes the handoff needs var
 a fixed pass count let the capture keep the previous step's pixels now and then. A single duplicated
 frame rewrites the whole APNG, which is why the committed baseline flapped between two byte-states
 and the diff bot reported `lottie/spin.json` as changed on unrelated PRs (issue #2868). The capture
-therefore re-renders until three consecutive passes encode identically (bounded at eight) instead of
-trusting a pass count.
+therefore re-renders until the frame has both moved off the previous step's settled bytes — which is
+precisely what a stale capture would still be showing — and stopped changing, bounded at eight
+passes. Only a genuinely held frame reaches that bound.
 
 The animated capture is **optional** in discovery: if a headless env can't encode it, the missing
 artefact never trips `composePreviewRenderAll`'s required-render gate — the still PNG remains the
