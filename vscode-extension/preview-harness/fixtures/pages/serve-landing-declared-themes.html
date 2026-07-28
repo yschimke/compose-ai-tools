@@ -447,7 +447,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   </span>
 </div>
 <div class="cp-grid" id="cp-grid">
-        <a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l" data-theme-live="1"
+        <a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/button-filled__ideal__default__light.png?session=compose-m3" data-l-href="/p/button-filled__ideal__default__light?session=compose-m3"
   data-l-id="button-filled__ideal__default__light" data-l-label="Button · Filled (light)"
   data-d-src="/render/button-filled__ideal__default__dark.png?session=compose-m3" data-d-href="/p/button-filled__ideal__default__dark?session=compose-m3"
@@ -461,7 +461,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     <div class="cp-id">button-filled__ideal__default__light</div>
   </div>
 </a>
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l" data-theme-live="1"
+<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/switch-on__ideal__default__light.png?session=compose-m3" data-l-href="/p/switch-on__ideal__default__light?session=compose-m3"
   data-l-id="switch-on__ideal__default__light" data-l-label="Switch · On (light)"
   data-d-src="/render/switch-on__ideal__default__dark.png?session=compose-m3" data-d-href="/p/switch-on__ideal__default__dark?session=compose-m3"
@@ -475,7 +475,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     <div class="cp-id">switch-on__ideal__default__light</div>
   </div>
 </a>
-<a class="cp-card" data-theme-live="1" href="/p/badge?session=compose-m3">
+<a class="cp-card" href="/p/badge?session=compose-m3">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Badge" src="/render/badge.png?session=compose-m3">
   </div>
@@ -506,39 +506,85 @@ var theme = validTheme(stored) ? stored
 var known = false;
 themeBtns.forEach(function (b) { if (b.getAttribute("data-theme-choice") === theme) known = true; });
 if (!known && themeBtns.length) theme = themeBtns[0].getAttribute("data-theme-choice");
-// Each card's server-rendered thumbnail URL, kept so a declared theme can be applied to (and
-// cleared from) it without rebuilding the URL in the browser.
-cards.forEach(function (c) {
-  var i0 = c.querySelector("img");
-  if (i0 && !i0.getAttribute("data-base-src")) i0.setAttribute("data-base-src", i0.getAttribute("src"));
-});
+var appliedTheme = null;
+var themeBase = ["/render/button-filled__ideal__default__light.png?session=compose-m3", "/render/switch-on__ideal__default__light.png?session=compose-m3", "/render/badge.png?session=compose-m3"];
+var themeGen = 0;
+function runThemeQueue(queue, gen) {
+  if (gen !== themeGen) return;
+  var job = queue.shift();
+  if (!job) return;
+  var img = job.img;
+  var settled = false;
+  function next(ok) {
+    if (settled || gen !== themeGen) return;
+    settled = true;
+    img.onload = null;
+    img.onerror = null;
+    if (!ok && !job.retried) {
+      // Re-request rather than re-assign the identical (failed, uncached) URL.
+      job.retried = true;
+      job.src = job.src + "&_retry=1";
+      queue.unshift(job);
+      setTimeout(function () { runThemeQueue(queue, gen); }, 1500);
+      return;
+    }
+    runThemeQueue(queue, gen);
+  }
+  img.onload = function () { next(true); };
+  img.onerror = function () { next(false); };
+  img.src = job.src;
+}
       function apply() {
         themeBtns.forEach(function (b) {
   b.setAttribute("aria-pressed", b.getAttribute("data-theme-choice") === theme ? "true" : "false");
 });
-var provider = theme.indexOf("theme:") === 0 ? theme.slice(6) : "";
-function themed(src, c) {
-  if (!provider || c.getAttribute("data-theme-live") !== "1") return src;
-  return src + (src.indexOf("?") === -1 ? "?" : "&") + "themeProvider=" + encodeURIComponent(provider);
-}
-cards.forEach(function (c) {
-  var img = c.querySelector("img");
-  if (c.getAttribute("data-swap") !== "1") {
-    if (img && img.getAttribute("data-base-src")) img.src = themed(img.getAttribute("data-base-src"), c);
-    return;
-  }
-  var k = provider ? (c.getAttribute("data-def") || "l") : (theme === "dark" ? "d" : "l");
+// Point a swap card at one of its baked variants ("l"/"d"): pixels (unless the caller is
+// supplying themed ones), alt text, label, id, viewer link and stage backing.
+function applyVariant(c, k, withSrc) {
   var src = c.getAttribute("data-" + k + "-src");
   if (!src) return;
+  var img = c.querySelector("img");
   var lab = c.querySelector(".cp-label");
   var idn = c.querySelector(".cp-id");
   var lbl = c.getAttribute("data-" + k + "-label");
-  if (img) { img.src = themed(src, c); img.setAttribute("alt", lbl); }
+  if (img) { if (withSrc) img.src = src; img.setAttribute("alt", lbl); }
   c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
   if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
   if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
   c.setAttribute("data-bg-theme", k === "d" ? "dark" : "light");
-});
+}
+// apply() also runs on every search keystroke; re-point the cards only when the THEME
+// actually changed, so typing never restarts an in-flight themed-render queue.
+function applyThemeChoice() {
+  if (theme === appliedTheme) return;
+  appliedTheme = theme;
+  var provider = theme.indexOf("theme:") === 0 ? theme.slice(6) : "";
+  themeGen++;
+  var themeQueue = [];
+  var themeQueueGen = themeGen;
+  if (provider) {
+    cards.forEach(function (c, i) {
+      if (c.getAttribute("data-swap") === "1") applyVariant(c, c.getAttribute("data-def") || "l", false);
+      var img = c.querySelector("img");
+      var base = themeBase[i];
+      if (!img || !base) return;
+      themeQueue.push({
+        img: img,
+        src: base + (base.indexOf("?") === -1 ? "?" : "&") + "themeProvider=" + encodeURIComponent(provider),
+      });
+    });
+    runThemeQueue(themeQueue, themeQueueGen);
+    return;
+  }
+  var k = theme === "dark" ? "d" : "l";
+  cards.forEach(function (c, i) {
+    if (c.getAttribute("data-swap") === "1") { applyVariant(c, k, true); return; }
+    var img = c.querySelector("img");
+    var base = themeBase[i];
+    if (img && base) img.src = base;
+  });
+}
+applyThemeChoice();
         var q = input ? input.value.trim().toLowerCase() : "";
         var shown = 0;
         cards.forEach(function (c) {

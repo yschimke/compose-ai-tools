@@ -503,39 +503,38 @@ var theme = validTheme(stored) ? stored
 var known = false;
 themeBtns.forEach(function (b) { if (b.getAttribute("data-theme-choice") === theme) known = true; });
 if (!known && themeBtns.length) theme = themeBtns[0].getAttribute("data-theme-choice");
-// Each card's server-rendered thumbnail URL, kept so a declared theme can be applied to (and
-// cleared from) it without rebuilding the URL in the browser.
-cards.forEach(function (c) {
-  var i0 = c.querySelector("img");
-  if (i0 && !i0.getAttribute("data-base-src")) i0.setAttribute("data-base-src", i0.getAttribute("src"));
-});
+var appliedTheme = null;
       function apply() {
         themeBtns.forEach(function (b) {
   b.setAttribute("aria-pressed", b.getAttribute("data-theme-choice") === theme ? "true" : "false");
 });
-var provider = theme.indexOf("theme:") === 0 ? theme.slice(6) : "";
-function themed(src, c) {
-  if (!provider || c.getAttribute("data-theme-live") !== "1") return src;
-  return src + (src.indexOf("?") === -1 ? "?" : "&") + "themeProvider=" + encodeURIComponent(provider);
-}
-cards.forEach(function (c) {
-  var img = c.querySelector("img");
-  if (c.getAttribute("data-swap") !== "1") {
-    if (img && img.getAttribute("data-base-src")) img.src = themed(img.getAttribute("data-base-src"), c);
-    return;
-  }
-  var k = provider ? (c.getAttribute("data-def") || "l") : (theme === "dark" ? "d" : "l");
+// Point a swap card at one of its baked variants ("l"/"d"): pixels (unless the caller is
+// supplying themed ones), alt text, label, id, viewer link and stage backing.
+function applyVariant(c, k, withSrc) {
   var src = c.getAttribute("data-" + k + "-src");
   if (!src) return;
+  var img = c.querySelector("img");
   var lab = c.querySelector(".cp-label");
   var idn = c.querySelector(".cp-id");
   var lbl = c.getAttribute("data-" + k + "-label");
-  if (img) { img.src = themed(src, c); img.setAttribute("alt", lbl); }
+  if (img) { if (withSrc) img.src = src; img.setAttribute("alt", lbl); }
   c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
   if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
   if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
   c.setAttribute("data-bg-theme", k === "d" ? "dark" : "light");
-});
+}
+// apply() also runs on every search keystroke; re-point the cards only when the THEME
+// actually changed, so typing never restarts an in-flight themed-render queue.
+function applyThemeChoice() {
+  if (theme === appliedTheme) return;
+  appliedTheme = theme;
+
+  var k = theme === "dark" ? "d" : "l";
+  cards.forEach(function (c, i) {
+    if (c.getAttribute("data-swap") === "1") { applyVariant(c, k, true); return; }
+  });
+}
+applyThemeChoice();
         var q = input ? input.value.trim().toLowerCase() : "";
         var shown = 0;
         cards.forEach(function (c) {

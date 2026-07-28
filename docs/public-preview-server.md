@@ -103,7 +103,12 @@ not just Light/Dark (issue #2881):
 
 Declared themes are offered only when the session can actually render them (a trusted catalog served
 live, or a daemon-backed module); a static bundle keeps the baked light/dark chips alone, and an
-individual card with no daemon twin keeps its baked pixels. A theme-neutral module whose session
+individual card with no daemon twin keeps its baked pixels. Because the daemon renders one preview
+at a time and sheds the overflow (`503 render busy`), the themed thumbnails are fetched **serially**
+— each starts when the previous image loads, with one delayed retry — rather than as a grid-sized
+burst that would leave most cards on their pre-theme pixels. Their URLs are emitted by the server
+into the page script (never read back out of a `data-` attribute), so nothing the page assigns to an
+`<img src>` originates as DOM text. A theme-neutral module whose session
 declares themes gets a leading **Default** chip to return to. The choice persists per catalog
 (`cp-theme:<system>` in `localStorage`, shared with that catalog's viewer Theme select).
 

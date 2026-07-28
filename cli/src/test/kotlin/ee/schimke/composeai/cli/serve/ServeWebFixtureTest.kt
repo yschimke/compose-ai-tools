@@ -998,12 +998,38 @@ class ServeWebFixtureTest {
         ),
       "the catalog Theme control offers the baked pair plus every declared theme",
     )
-    // Picking a declared theme re-renders through `themeProvider`, so cards the session can render
-    // are tagged live and the script builds the override URL from the card's default variant.
+    // Picking a declared theme re-renders through `themeProvider`. The per-card base URLs are
+    // emitted by the SERVER (in the grid's document order) and never read back out of the DOM, so
+    // no `<img src>` the script assigns originates as DOM text (CodeQL js/xss-through-dom).
     assertTrue(
-      landingDeclaredThemes.contains("data-theme-live=\"1\"") &&
-        landingDeclaredThemes.contains("\"themeProvider=\" + encodeURIComponent(provider)"),
-      "declared-theme chips re-point renderable cards at a themeProvider render",
+      landingDeclaredThemes.contains(
+        "var themeBase = [\"/render/button-filled__ideal__default__light.png?session=compose-m3\""
+      ) && landingDeclaredThemes.contains("\"themeProvider=\" + encodeURIComponent(provider)"),
+      "the server emits each card's themed-render URL for the script to use",
+    )
+    assertFalse(
+      landingDeclaredThemes.contains("data-base-src"),
+      "no render URL is round-tripped through a DOM attribute",
+    )
+    // The daemon renders one at a time and sheds the overflow, so themed thumbnails are fetched
+    // serially (each queued, the next started on the previous image's load) with one delayed retry
+    // — otherwise a grid-sized burst would leave most cards on their pre-theme pixels.
+    assertTrue(
+      landingDeclaredThemes.contains("themeQueue.push({") &&
+        landingDeclaredThemes.contains("runThemeQueue(themeQueue, themeQueueGen)") &&
+        landingDeclaredThemes.contains("job.src = job.src + \"&_retry=1\""),
+      "themed renders are fetched serially with a retry, not fired as one burst",
+    )
+    // Re-pointing runs only when the theme itself changed, so a search keystroke (which also calls
+    // apply()) never restarts an in-flight themed-render queue.
+    assertTrue(
+      landingDeclaredThemes.contains("if (theme === appliedTheme) return;"),
+      "the card re-point runs only on an actual theme change",
+    )
+    // A catalog with no declared themes carries none of the theme-render machinery at all.
+    assertFalse(
+      landingThemed.contains("themeBase") || landingThemed.contains("runThemeQueue"),
+      "a baked-only catalog emits no themed-render script",
     )
     // A catalog with no declared themes keeps exactly the baked Light/Dark axis — no dead chips, no
     // themeProvider plumbing offered where nothing could apply it.
@@ -1438,7 +1464,9 @@ class ServeWebFixtureTest {
     )
     // The swap re-points the image + viewer link + id + label to the chosen theme's baked render.
     assertTrue(
-      landingThemed.contains("img.src = themed(src, c);") &&
+      landingThemed.contains(
+        "if (img) { if (withSrc) img.src = src; img.setAttribute(\"alt\", lbl); }"
+      ) &&
         landingThemed.contains(
           "c.setAttribute(\"href\", c.getAttribute(\"data-\" + k + \"-href\"))"
         ),

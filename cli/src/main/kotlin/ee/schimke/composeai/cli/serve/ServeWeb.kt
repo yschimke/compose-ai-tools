@@ -1209,7 +1209,17 @@ object ServeWeb {
     hasGroups: Boolean,
     themeStorageKey: String,
     tabStorageKey: String,
+    /**
+     * Per-card render URL to re-request under a declared theme, in the grid's document order — a
+     * **server-emitted** JS array literal (`["/render/a.png?…", "", …]`, `""` for a card the
+     * session can't re-render). Emitted rather than read back off the card so no URL the browser
+     * assigns to an `<img src>` ever originates as DOM text (CodeQL `js/xss-through-dom`). Empty
+     * string ⇒ the catalog offers no declared themes and none of the theme-render machinery is
+     * emitted at all.
+     */
+    themeBaseJs: String = "",
   ): String {
+    val hasDeclaredThemes = themeBaseJs.isNotEmpty()
     // The stored choice is one of `light` / `dark` (a baked swap), `default` (the catalog's own
     // renders), or `theme:<providerFqn>` (an app-declared @ThemeCatalog theme, applied by
     // re-pointing each daemon-twinned card's thumbnail at a `?themeProvider=` render).
@@ -1230,12 +1240,47 @@ object ServeWeb {
         var known = false;
         themeBtns.forEach(function (b) { if (b.getAttribute("data-theme-choice") === theme) known = true; });
         if (!known && themeBtns.length) theme = themeBtns[0].getAttribute("data-theme-choice");
-        // Each card's server-rendered thumbnail URL, kept so a declared theme can be applied to (and
-        // cleared from) it without rebuilding the URL in the browser.
-        cards.forEach(function (c) {
-          var i0 = c.querySelector("img");
-          if (i0 && !i0.getAttribute("data-base-src")) i0.setAttribute("data-base-src", i0.getAttribute("src"));
-        });
+        var appliedTheme = null;
+        """
+          .trimIndent()
+      else ""
+    // The declared-theme lane. A declared theme re-renders on the daemon, which renders ONE AT A
+    // TIME and sheds the overflow (503 "render busy" on a bare daemon session; the baked PNG on a
+    // catalog-live one). Firing a whole grid's worth of themed thumbnails at once would therefore
+    // leave most cards on their pre-theme pixels, so they are fetched serially — each waits for the
+    // previous to load — with one delayed retry for a shed request. Baked light/dark swaps never
+    // queue: those bytes are already published. themeGen abandons an in-flight queue the moment a
+    // new theme is chosen.
+    val themeRenderInit =
+      if (hasDeclaredThemes)
+        """
+        var themeBase = $themeBaseJs;
+        var themeGen = 0;
+        function runThemeQueue(queue, gen) {
+          if (gen !== themeGen) return;
+          var job = queue.shift();
+          if (!job) return;
+          var img = job.img;
+          var settled = false;
+          function next(ok) {
+            if (settled || gen !== themeGen) return;
+            settled = true;
+            img.onload = null;
+            img.onerror = null;
+            if (!ok && !job.retried) {
+              // Re-request rather than re-assign the identical (failed, uncached) URL.
+              job.retried = true;
+              job.src = job.src + "&_retry=1";
+              queue.unshift(job);
+              setTimeout(function () { runThemeQueue(queue, gen); }, 1500);
+              return;
+            }
+            runThemeQueue(queue, gen);
+          }
+          img.onload = function () { next(true); };
+          img.onerror = function () { next(false); };
+          img.src = job.src;
+        }
         """
           .trimIndent()
       else ""
@@ -1247,35 +1292,77 @@ object ServeWeb {
     // session can actually re-render (`data-theme-live`), so an Android-only variant keeps its
     // baked
     // pixels rather than requesting a render that would ignore the theme.
+    // Under a DECLARED theme a swap card keeps its server-side default variant's metadata (label /
+    // id / viewer link / stage backing, from `data-def`) — only the pixels come from the themed
+    // render — so picking a theme never silently flips the light/dark axis too.
+    val applyDeclaredTheme =
+      if (hasDeclaredThemes)
+        """
+        var provider = theme.indexOf("theme:") === 0 ? theme.slice(6) : "";
+        themeGen++;
+        var themeQueue = [];
+        var themeQueueGen = themeGen;
+        if (provider) {
+          cards.forEach(function (c, i) {
+            if (c.getAttribute("data-swap") === "1") applyVariant(c, c.getAttribute("data-def") || "l", false);
+            var img = c.querySelector("img");
+            var base = themeBase[i];
+            if (!img || !base) return;
+            themeQueue.push({
+              img: img,
+              src: base + (base.indexOf("?") === -1 ? "?" : "&") + "themeProvider=" + encodeURIComponent(provider),
+            });
+          });
+          runThemeQueue(themeQueue, themeQueueGen);
+          return;
+        }
+        """
+          .trimIndent()
+      else ""
+    // Spliced into applyThemeChoice's body (one level in), so a catalog with no declared themes
+    // emits the plain baked swap exactly as before.
+    val applyDeclaredThemeIndented =
+      applyDeclaredTheme.lines().joinToString("") { if (it.isEmpty()) "\n" else "\n          $it" }
+    // Leaving a declared theme has to put a NON-swap card back on its baked pixels (a swap card is
+    // restored by applyVariant). Its baked URL is the same themeBase entry, minus the override.
+    val restoreBakedSrc =
+      if (hasDeclaredThemes)
+        "\n            var img = c.querySelector(\"img\");" +
+          "\n            var base = themeBase[i];" +
+          "\n            if (img && base) img.src = base;"
+      else ""
     val applyTheme =
       if (hasThemes)
         """
         themeBtns.forEach(function (b) {
           b.setAttribute("aria-pressed", b.getAttribute("data-theme-choice") === theme ? "true" : "false");
         });
-        var provider = theme.indexOf("theme:") === 0 ? theme.slice(6) : "";
-        function themed(src, c) {
-          if (!provider || c.getAttribute("data-theme-live") !== "1") return src;
-          return src + (src.indexOf("?") === -1 ? "?" : "&") + "themeProvider=" + encodeURIComponent(provider);
-        }
-        cards.forEach(function (c) {
-          var img = c.querySelector("img");
-          if (c.getAttribute("data-swap") !== "1") {
-            if (img && img.getAttribute("data-base-src")) img.src = themed(img.getAttribute("data-base-src"), c);
-            return;
-          }
-          var k = provider ? (c.getAttribute("data-def") || "l") : (theme === "dark" ? "d" : "l");
+        // Point a swap card at one of its baked variants ("l"/"d"): pixels (unless the caller is
+        // supplying themed ones), alt text, label, id, viewer link and stage backing.
+        function applyVariant(c, k, withSrc) {
           var src = c.getAttribute("data-" + k + "-src");
           if (!src) return;
+          var img = c.querySelector("img");
           var lab = c.querySelector(".cp-label");
           var idn = c.querySelector(".cp-id");
           var lbl = c.getAttribute("data-" + k + "-label");
-          if (img) { img.src = themed(src, c); img.setAttribute("alt", lbl); }
+          if (img) { if (withSrc) img.src = src; img.setAttribute("alt", lbl); }
           c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
           if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
           if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
           c.setAttribute("data-bg-theme", k === "d" ? "dark" : "light");
-        });
+        }
+        // apply() also runs on every search keystroke; re-point the cards only when the THEME
+        // actually changed, so typing never restarts an in-flight themed-render queue.
+        function applyThemeChoice() {
+          if (theme === appliedTheme) return;
+          appliedTheme = theme;$applyDeclaredThemeIndented
+          var k = theme === "dark" ? "d" : "l";
+          cards.forEach(function (c, i) {
+            if (c.getAttribute("data-swap") === "1") { applyVariant(c, k, true); return; }$restoreBakedSrc
+          });
+        }
+        applyThemeChoice();
         """
           .trimIndent()
       else ""
@@ -1351,7 +1438,7 @@ object ServeWeb {
       var count = document.getElementById("cp-count");
       var empty = document.getElementById("cp-empty");
       var total = cards.length;$groupDecls$tabDecls
-      $themeInit
+      ${listOf(themeInit, themeRenderInit).filter { it.isNotEmpty() }.joinToString("\n")}
       function apply() {
         $applyTheme
         var q = input ? input.value.trim().toLowerCase() : "";
@@ -2226,19 +2313,18 @@ object ServeWeb {
     fun renderSrc(p: ServePreview) = "$basePath/render/${WebEscaping.urlEncodeSegment(p.id)}.png$q"
     fun viewerHref(p: ServePreview) = "$basePath/p/${WebEscaping.urlEncodeSegment(p.id)}$q"
     // The app-declared themes join the header's Theme control only when this session can actually
-    // re-render a card under one — otherwise the chips would redraw nothing. Each such card is
-    // tagged `data-theme-live` so the script re-points only the thumbnails a `themeProvider` render
-    // would change; the rest keep their baked pixels.
+    // re-render a card under one — otherwise the chips would redraw nothing.
     fun themeRenderable(p: ServePreview) = canRenderThemeFor(p.id)
+    // The variant a card shows by default (server-side) — the one a declared theme re-renders.
+    fun renderedVariant(card: GridCard) =
+      if (card.swappable && darkFirst) card.dark!! else card.default
     val declaredThemeChips =
       if (declaredThemes.isEmpty()) emptyList()
-      else {
-        fun renderedVariant(card: GridCard) =
-          if (card.swappable && darkFirst) card.dark!! else card.default
-        if (groups.any { themeRenderable(renderedVariant(it)) }) declaredThemes else emptyList()
-      }
-    fun themeLiveAttr(p: ServePreview) =
-      if (declaredThemeChips.isNotEmpty() && themeRenderable(p)) " data-theme-live=\"1\"" else ""
+      else if (groups.any { themeRenderable(renderedVariant(it)) }) declaredThemes else emptyList()
+    // A card's themed-render base URL — "" when the session has no daemon twin for it, so it keeps
+    // its baked pixels (a themed render would ignore the theme anyway).
+    fun themeBase(card: GridCard) =
+      renderedVariant(card).let { if (themeRenderable(it)) renderSrc(it) else "" }
     fun swapCard(card: GridCard): String {
       val l = card.light!!
       val d = card.dark!!
@@ -2251,7 +2337,7 @@ object ServeWeb {
       // `data-def` is the variant a DECLARED theme re-renders (the server-side default), so picking
       // one doesn't also flip the card's light/dark base.
       return """
-        <a class="cp-card" data-swap="1" data-bg-theme="$defTheme" data-def="${if (darkFirst) "d" else "l"}"${themeLiveAttr(def)}
+        <a class="cp-card" data-swap="1" data-bg-theme="$defTheme" data-def="${if (darkFirst) "d" else "l"}"
           data-l-src="${renderSrc(l)}" data-l-href="${viewerHref(l)}"
           data-l-id="${WebEscaping.htmlEscape(l.id)}" data-l-label="${WebEscaping.htmlEscape(l.label)}"
           data-d-src="${renderSrc(d)}" data-d-href="${viewerHref(d)}"
@@ -2275,7 +2361,7 @@ object ServeWeb {
       // data-bg-theme is the thumbnail's background (explicit token, else the dark-first default).
       val bgAttr = bgTheme(p.id, darkFirst)?.let { " data-bg-theme=\"$it\"" } ?: ""
       return """
-          <a class="cp-card"$bgAttr${themeLiveAttr(p)} href="$basePath/p/$idSeg$q">
+          <a class="cp-card"$bgAttr href="$basePath/p/$idSeg$q">
             <div class="cp-imgwrap">
               ${thumbImg("$basePath/render/$idSeg.png$q", label, " loading=\"lazy\"", thumbCrop(p.id))}
             </div>
@@ -2394,6 +2480,18 @@ object ServeWeb {
       if (hasPreviews)
         "\n<p id=\"cp-empty\" class=\"cp-empty\" hidden>No previews match your filter.</p>"
       else ""
+    // The themed-render URLs in the grid's DOCUMENT order — the order the cards were just emitted
+    // in, which is what `document.querySelectorAll(".cp-card")` will report. Empty (no array, no
+    // theme-render machinery in the script) unless declared themes are actually offered.
+    val orderedCards =
+      when {
+        hasTabs -> sections.flatMap { s -> s.groups.flatMap { it.cards } }
+        synthGroups != null -> synthGroups.flatMap { it.cards }
+        else -> groups
+      }
+    val themeBaseJs =
+      if (declaredThemeChips.isEmpty()) ""
+      else orderedCards.joinToString(", ", "[", "]") { WebEscaping.jsString(themeBase(it)) }
     val filterScript =
       if (hasPreviews)
         "\n<script>${catalogFilterScript(
@@ -2402,6 +2500,7 @@ object ServeWeb {
           hasGroups,
           themeStorageKey(sessionId, basePath),
           tabStorageKey(sessionId, basePath),
+          themeBaseJs,
         )}</script>"
       else ""
     return document(
