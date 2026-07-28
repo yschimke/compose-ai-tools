@@ -48,12 +48,18 @@ internal class ServeCatalogRefresher(
   }
 
   /**
-   * Record each branch's current head so the first tick only reloads a branch that has *moved since
-   * boot*, not every branch once. Best-effort — an unresolvable branch stays absent, so its first
-   * successful resolve later counts as "changed" and triggers one reload (harmless, idempotent).
+   * Record the current head for catalogs that loaded successfully at boot, so their first tick only
+   * reloads after a branch move. [systems] deliberately excludes startup failures: leaving their
+   * head absent makes the first tick retry the unchanged branch, then every later tick until it
+   * succeeds. Previously every configured head was seeded, permanently suppressing retries for an
+   * initial fetch/parse failure until someone happened to publish a new commit.
    */
-  fun seedInitialHeads() {
-    for (e in entries) headResolver(e.repo, e.branch)?.let { lastHead[e.system] = it }
+  fun seedInitialHeads(systems: Set<String> = entries.mapTo(linkedSetOf()) { it.system }) {
+    for (e in entries) {
+      if (e.system in systems) {
+        headResolver(e.repo, e.branch)?.let { lastHead[e.system] = it }
+      }
+    }
   }
 
   /** Start the daemon poller. Idempotent-safe to call once after [seedInitialHeads]. */

@@ -187,19 +187,34 @@ jobs:
             200|202) echo "roll triggered." ;;
             *) echo "::warning::deploy hook returned ${code}; the box will still roll on its next poll." ;;
           esac
-          # Advisory convergence check: poll the ungated /version until it reports the
-          # new build, so this run shows the box actually rolled. Non-fatal on timeout
-          # (a slow catalog fetch + first readiness render can outlast this; the roll
-          # still completes).
+          # Deployment convergence + catalog health reporting. The incident that motivated this
+          # check ran the right version while silently omitting three configured catalogs. Catalog
+          # loading stays best-effort (one external branch must not block the server rollout), but
+          # the run now prints a prominent warning with every failed/stale catalog instead of
+          # declaring success from /version alone.
           base="${HOOK_URL%/__hooks/rollout}"
           for i in $(seq 1 30); do
-            live=$(curl -fsS -m 10 "${base}/version" 2>/dev/null \
+            version_json=$(curl -fsS -m 10 "${base}/version" 2>/dev/null || true)
+            status_json=$(curl -fsS -m 10 "${base}/status.json" 2>/dev/null || true)
+            live=$(printf '%s' "${version_json}" \
               | tr -d ' \n' | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' || true)
-            if [ "${live}" = "${V}" ]; then
-              echo "preview.coo.ee now serving ${V}."
+            loaded=$(printf '%s' "${status_json}" | jq -r '.catalogs.loaded // -1' 2>/dev/null || echo -1)
+            total=$(printf '%s' "${status_json}" | jq -r '.catalogs.total // -1' 2>/dev/null || echo -1)
+            failed=$(printf '%s' "${status_json}" | jq -r '.catalogs.failed // -1' 2>/dev/null || echo -1)
+            if [ "${live}" = "${V}" ] && [ "${total}" -ge 0 ] && [ "${loaded}" -ge 0 ] &&
+               [ "${failed}" -ge 0 ]; then
+              problems=$(printf '%s' "${status_json}" | jq -r \
+                '[.catalogList[] | select(.loadState != "loaded") |
+                  "\(.id) [\(.loadState)]: \(.loadError // "pending")"] | join("; ")')
+              if [ -n "${problems}" ]; then
+                echo "::warning::preview.coo.ee deployed ${V}, but catalogs are partial (${loaded}/${total} loaded, ${failed} failed): ${problems}"
+              else
+                echo "preview.coo.ee now serving ${V} with ${loaded}/${total} catalogs loaded."
+              fi
               exit 0
             fi
-            echo "waiting for preview.coo.ee to report ${V} (currently '${live:-?}', attempt ${i}/30)…"
+            echo "waiting for preview.coo.ee: version=${live:-?}/${V}, catalogs=${loaded}/${total}, failed=${failed} (attempt ${i}/30)…"
             sleep 20
           done
-          echo "::warning::preview.coo.ee did not report ${V} within ~10 min — it may still be warming or will roll on its next poll; not failing the publish."
+          echo "::error::preview.coo.ee did not converge to ${V} with a readable catalog status within ~10 min." >&2
+          exit 1

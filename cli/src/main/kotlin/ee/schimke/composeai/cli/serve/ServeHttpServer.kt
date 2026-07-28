@@ -110,6 +110,13 @@ class ServeHttpServer(
    * exists, so an app's own landing keeps a "← back" link whenever the server also lists systems.
    */
   private val appCatalogSessions: List<String> = emptyList(),
+  /**
+   * Configured catalog availability shared with startup + refresh. When present, `/status` includes
+   * failed/pending catalogs instead of silently omitting them. Catalog loading remains best-effort:
+   * `/readyz` validates a representative usable session, while this tracker makes partial service
+   * explicit and recoverable. Null preserves the plain/test server behaviour.
+   */
+  private val catalogLoads: CatalogLoadTracker? = null,
   portRange: Int = DEFAULT_PORT_RANGE,
   /**
    * Max renders in flight across the HTTP `/render` lane. Defaults to the host's CPU count so a
@@ -238,9 +245,9 @@ class ServeHttpServer(
         }
 
         // `/status` — the operator/observer view of this running host: published catalogs + their
-        // trust/liveness, the render daemons up right now, the effective config, and recent daemon
-        // startup failures. HTML by default (`?format=json` for the machine form); `/status.json`
-        // is
+        // trust/liveness/load errors, the render daemons up right now, the effective config, and
+        // recent daemon startup failures. HTML by default (`?format=json` for the machine form);
+        // `/status.json` is
         // the canonical JSON a monitor / Home Assistant sensor polls. Both are gated like the rest
         // (open in `--public`, else token-required) — the running-daemon + config detail is more
         // sensitive than `/version`/`/healthz`, so a private box keeps it behind the token.
@@ -633,10 +640,10 @@ class ServeHttpServer(
 
   /**
    * `GET /status` (HTML, or JSON with `?format=json`) and `GET /status.json` (JSON): a live
-   * snapshot of this host — published catalogs + their trust/liveness, the render daemons up right
-   * now, the effective config, and recent daemon startup failures. Gated like the API routes (open
-   * in `--public`, else token-required). The JSON form is the canonical machine surface for a
-   * monitor / Home Assistant sensor; the HTML form is its human face.
+   * snapshot of this host — configured catalogs + their availability/trust/liveness, the render
+   * daemons up right now, the effective config, and recent daemon startup failures. Gated like the
+   * API routes (open in `--public`, else token-required). The JSON form is the canonical machine
+   * surface for a monitor / Home Assistant sensor; the HTML form is its human face.
    */
   private suspend fun RoutingContext.handleStatus(json: Boolean) {
     if (rejectBadToken()) return
@@ -747,6 +754,13 @@ class ServeHttpServer(
     val running: Boolean,
     val degradation: String?,
     val provenance: ServeWeb.CatalogProvenance?,
+    /** A usable catalog session is currently registered (possibly the last good refresh copy). */
+    val available: Boolean,
+    /**
+     * Latest startup/refresh error; may coexist with [available] when the old copy was retained.
+     */
+    val loadError: String?,
+    val lastLoadAttemptEpochMillis: Long?,
     /**
      * The metadata above is a **last-known snapshot** of a now-suspended catalog
      * ([catalogMetaSeen]) rather than a live read, because the session's daemon is idle. Facts a
@@ -754,7 +768,16 @@ class ServeHttpServer(
      * not-live.
      */
     val stale: Boolean = false,
-  )
+  ) {
+    val loadState: String
+      get() =
+        when {
+          available && loadError == null -> "loaded"
+          available -> "stale"
+          loadError != null -> "failed"
+          else -> "pending"
+        }
+  }
 
   /**
    * Last-known catalog metadata per session id, captured while the host was resident. A suspended
@@ -842,7 +865,8 @@ class ServeHttpServer(
       StatusResponse(
         version = BUNDLE_VERSION,
         public = isPublic,
-        status = if (failures.isEmpty()) "ok" else "degraded",
+        status =
+          if (failures.isEmpty() && catalogs.none { it.loadError != null }) "ok" else "degraded",
         uptimeSeconds = uptimeSeconds,
         catalogs =
           CatalogSummaryDto(
@@ -850,7 +874,10 @@ class ServeHttpServer(
             listed = catalogs.count { it.listed },
             unlisted = catalogs.count { !it.listed },
             trusted = catalogs.count { it.trust != null && it.trust != "unverified" },
-            degraded = catalogs.count { it.degradation != null },
+            degraded = catalogs.count { it.degradation != null || it.loadError != null },
+            loaded = catalogs.count { it.available },
+            failed = catalogs.count { !it.available && it.loadError != null },
+            pending = catalogs.count { !it.available && it.loadError == null },
           ),
         daemons =
           DaemonSummaryDto(
@@ -888,6 +915,9 @@ class ServeHttpServer(
               generatedAt = c.provenance?.generatedAt,
               path = "/${c.id}/",
               metaStale = c.stale,
+              loadState = c.loadState,
+              loadError = c.loadError,
+              lastLoadAttemptEpochMillis = c.lastLoadAttemptEpochMillis,
             )
           },
         runningServers =
@@ -924,7 +954,7 @@ class ServeHttpServer(
             .filter { it.renders + it.cacheHits + it.busy > 0 }
         )
       val summary = buildList {
-        add(ServeWeb.Stat("Catalogs", catalogs.size.toString()))
+        add(ServeWeb.Stat("Catalogs", "${catalogs.count { it.available }}/${catalogs.size} loaded"))
         add(ServeWeb.Stat("Live daemons running", liveDaemons.size.toString()))
         add(ServeWeb.Stat("Active streams", activeStreams.toString()))
         add(ServeWeb.Stat("Live seats", seatsText))
@@ -964,7 +994,7 @@ class ServeHttpServer(
       return ServeWeb.StatusView(
         version = BUNDLE_VERSION,
         public = isPublic,
-        overallOk = failures.isEmpty(),
+        overallOk = failures.isEmpty() && catalogs.none { it.loadError != null },
         summary = summary,
         config = config,
         catalogs =
@@ -986,6 +1016,8 @@ class ServeHttpServer(
                     p.generatedAt?.let { append(" · ").append(it) }
                   }
                 },
+              loadState = c.loadState,
+              loadError = c.loadError,
             )
           },
         servers =
@@ -1042,15 +1074,20 @@ class ServeHttpServer(
   private fun buildStatusData(): StatusData {
     val running = sessions.runningDaemons()
     val byId = running.associateBy { it.id }
-    val entries = catalogSessions.map { it to true } + appCatalogSessions.map { it to false }
+    val tracked = catalogLoads?.snapshot()?.associateBy { it.config.system }.orEmpty()
+    val entries =
+      if (tracked.isNotEmpty()) tracked.values.map { it.config.system to it.config.listed }
+      else catalogSessions.map { it to true } + appCatalogSessions.map { it to false }
     val catalogs = entries.map { (id, listed) ->
+      val load = tracked[id]
       val daemon = byId[id]
       val host = sessions.peekHost(id)
       val bundle = host?.let { catalogBundleHost(it) }
       // Liveness from the resident snapshot only (never resume): absent ⇒ a suspended live
       // catalog; present-with-live-stream ⇒ its daemon is up; present-without ⇒ static baked host.
       val running = daemon?.hasLiveStream == true
-      val live = daemon == null || daemon.hasLiveStream
+      val available = load?.available ?: true
+      val live = available && (daemon == null || daemon.hasLiveStream)
       // Resident: read live and refresh the snapshot (a catalog refresh can change provenance).
       if (host != null) rememberCatalogMeta(id, host)
       val seen = if (host == null) catalogMetaSeen[id] else null
@@ -1063,7 +1100,13 @@ class ServeHttpServer(
         live = live,
         running = running,
         degradation = host?.degradations?.firstOrNull()?.detail ?: seen?.degradation,
-        provenance = bundle?.provenance ?: seen?.provenance,
+        provenance =
+          bundle?.provenance
+            ?: seen?.provenance
+            ?: load?.config?.let { ServeWeb.CatalogProvenance(it.repo, it.branch) },
+        available = available,
+        loadError = load?.error,
+        lastLoadAttemptEpochMillis = load?.lastAttemptEpochMillis,
         stale = seen != null,
       )
     }
@@ -1950,7 +1993,7 @@ private data class StatusResponse(
   val version: String,
   /** True when the box serves token-free (public preview server). */
   val public: Boolean,
-  /** `ok` when there are no recent daemon startup failures, else `degraded`. */
+  /** `ok` when there are no catalog load or recent daemon startup failures, else `degraded`. */
   val status: String,
   /** Seconds since the server started. */
   val uptimeSeconds: Long,
@@ -1976,6 +2019,12 @@ private data class CatalogSummaryDto(
   val unlisted: Int,
   val trusted: Int,
   val degraded: Int,
+  /** Configured catalogs with a usable registered copy. */
+  val loaded: Int,
+  /** Configured catalogs whose latest attempt failed before any usable copy registered. */
+  val failed: Int,
+  /** Configured catalogs not attempted yet (normally only visible during concurrent startup). */
+  val pending: Int,
 )
 
 @Serializable
@@ -2037,6 +2086,11 @@ private data class CatalogDto(
    * `compose-preview-serve/status/v1`.
    */
   val metaStale: Boolean = false,
+  /** `pending`, `loaded`, `failed`, or `stale` (last good copy + latest refresh error). */
+  val loadState: String = "loaded",
+  /** Latest catalog fetch/parse/image error, null after a successful latest attempt. */
+  val loadError: String? = null,
+  val lastLoadAttemptEpochMillis: Long? = null,
 )
 
 @Serializable

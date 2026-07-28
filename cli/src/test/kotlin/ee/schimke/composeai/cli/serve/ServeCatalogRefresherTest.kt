@@ -116,6 +116,35 @@ class ServeCatalogRefresherTest {
   }
 
   @Test
+  fun `a catalog that failed at startup retries without a branch change`() {
+    var succeed = false
+    val reloads = AtomicInteger(0)
+    val r =
+      ServeCatalogRefresher(
+        entries = listOf(entry("jetnews"), entry("reply")),
+        reload = { system, _ ->
+          if (system == "reply") reloads.incrementAndGet()
+          system == "jetnews" || succeed
+        },
+        intervalMillis = 1_000,
+        headResolver = { _, branch -> "stable-${branch.substringAfterLast('/')}" },
+        onLog = {},
+      )
+    // jetnews loaded at boot; reply did not. Seed only the usable catalog.
+    r.seedInitialHeads(setOf("jetnews"))
+    r.tick()
+    assertEquals(1, reloads.get(), "the unchanged failed catalog retries on the first tick")
+    r.tick()
+    assertEquals(2, reloads.get(), "it keeps retrying while unavailable")
+    succeed = true
+    r.tick()
+    assertEquals(3, reloads.get(), "the successful retry records the head")
+    r.tick()
+    assertEquals(3, reloads.get(), "the stable successful head is no longer retried")
+    r.close()
+  }
+
+  @Test
   fun `each catalog is tracked independently`() {
     val heads = ConcurrentHashMap(mapOf("compose-m3" to "a1", "cadence" to "c1"))
     val reloads = mutableListOf<String>()

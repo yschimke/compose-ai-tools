@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.cli.serve.BundleVerifier
+import ee.schimke.composeai.cli.serve.CatalogLoadTracker
 import ee.schimke.composeai.cli.serve.DaemonStartupLog
 import ee.schimke.composeai.cli.serve.GitWorktrees
 import ee.schimke.composeai.cli.serve.GradleRevisionBuilder
@@ -505,9 +506,9 @@ class ServeCommand(args: List<String>) : Command(args) {
     // Keep the catalogs fresh against their (routinely-changing) branches without a restart.
     val catalogRefresher =
       catalogReg
-        ?.let { buildCatalogRefresher(it.store) }
+        ?.let { buildCatalogRefresher(it.store, it.loads) }
         ?.also {
-          it.seedInitialHeads()
+          it.seedInitialHeads(catalogReg.loads.availableSystems())
           it.start()
         }
     // Runtime ingestion (--accept-bundles): clients POST a bundle (or a ?url= to one) and it's
@@ -536,6 +537,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           catalogRefresher,
           catalogPerPreviewPoolsCloseable,
         ),
+      catalogLoads = catalogReg?.loads,
     )
   }
 
@@ -568,9 +570,9 @@ class ServeCommand(args: List<String>) : Command(args) {
     // public preview server (preview.coo.ee) runs this module-less path.
     val catalogRefresher =
       catalogReg
-        ?.let { buildCatalogRefresher(it.store) }
+        ?.let { buildCatalogRefresher(it.store, it.loads) }
         ?.also {
-          it.seedInitialHeads()
+          it.seedInitialHeads(catalogReg.loads.availableSystems())
           it.start()
         }
     val bundleStore = if (acceptBundles) openUploadStore(registry) else null
@@ -616,6 +618,7 @@ class ServeCommand(args: List<String>) : Command(args) {
       mdnsModuleLabel = null,
       mdnsPreviewIds = null,
       closeables = listOfNotNull(catalogPerPreviewPoolsCloseable, catalogRefresher),
+      catalogLoads = catalogReg?.loads,
     )
   }
 
@@ -711,7 +714,14 @@ class ServeCommand(args: List<String>) : Command(args) {
     mdnsModuleLabel: String?,
     mdnsPreviewIds: List<String>?,
     closeables: List<AutoCloseable?>,
+    catalogLoads: CatalogLoadTracker?,
   ) {
+    val configuredCatalogs =
+      catalogLoads?.snapshot()?.filter { it.config.listed }?.map { it.config.system }
+        ?: registeredCatalogs.toList()
+    val configuredApps =
+      catalogLoads?.snapshot()?.filter { !it.config.listed }?.map { it.config.system }
+        ?: registeredUnlistedCatalogs.toList()
     val server =
       ServeHttpServer(
         host = host,
@@ -722,8 +732,11 @@ class ServeCommand(args: List<String>) : Command(args) {
         bundleStore = bundleStore,
         isPublic = public,
         wasmCatalogs = wasmCatalogs,
-        catalogSessions = registeredCatalogs.toList(),
-        appCatalogSessions = registeredUnlistedCatalogs.toList(),
+        // Preserve the CONFIGURED set, not only startup successes. Failed rows then stay visible on
+        // /status, and a catalog recovered by the refresher appears on the home index immediately.
+        catalogSessions = configuredCatalogs,
+        appCatalogSessions = configuredApps,
+        catalogLoads = catalogLoads,
         maxLiveSeats = liveSeats,
         daemonLog = daemonLog,
         allowRenderTrusted = allowRenderTrusted,
@@ -990,9 +1003,15 @@ class ServeCommand(args: List<String>) : Command(args) {
    * it as a pinned `?session=<system>` session ([ServeCatalogStore]). Trusted-by-origin when the
    * branch is in the trust store; otherwise served as `unverified` (the images execute no code).
    * Best-effort per system — one catalog failing to fetch doesn't sink the others or the server.
+   *
+   * [registerCatalogs] result: wasm-app dirs, the store a refresher re-loads from, and the
+   * configured/load state exposed through status.
    */
-  /** [registerCatalogs] result: the wasm-app dirs plus the [store] a refresher re-loads from. */
-  private class CatalogRegistration(val wasm: Map<String, File>, val store: ServeCatalogStore)
+  private class CatalogRegistration(
+    val wasm: Map<String, File>,
+    val store: ServeCatalogStore,
+    val loads: CatalogLoadTracker,
+  )
 
   private fun registerCatalogs(
     registry: ServeSessionRegistry,
@@ -1002,6 +1021,17 @@ class ServeCommand(args: List<String>) : Command(args) {
     val dir =
       java.nio.file.Files.createTempDirectory("serve-catalogs").toFile().also { it.deleteOnExit() }
     val wasm = linkedMapOf<String, File>()
+    val loads =
+      CatalogLoadTracker(
+        catalogRefs.map { ref ->
+          CatalogLoadTracker.Config(
+            system = ref.system,
+            listed = ref.listed,
+            repo = ref.repo,
+            branch = "$catalogBranchPrefix${ref.system}",
+          )
+        }
+      )
     val store =
       ServeCatalogStore(
         root = dir,
@@ -1046,7 +1076,9 @@ class ServeCommand(args: List<String>) : Command(args) {
         },
       )
     for (ref in catalogRefs) {
-      when (val r = store.load(ref.system, sourceRepo = ref.repo)) {
+      val result = store.load(ref.system, sourceRepo = ref.repo)
+      loads.record(result)
+      when (val r = result) {
         is ServeCatalogStore.Result.Ok -> {
           // Listed catalogs feed the front-page "Design systems" nav; unlisted app catalogs feed
           // the separate "Apps" section (both reachable at /<system>/ and ?session=<system>).
@@ -1060,7 +1092,8 @@ class ServeCommand(args: List<String>) : Command(args) {
           System.err.println("serve: catalog ${r.system} not served: ${r.reason}")
       }
     }
-    return CatalogRegistration(wasm = wasm, store = store)
+    System.err.println("serve: ${loads.startupSummary()}")
+    return CatalogRegistration(wasm = wasm, store = store, loads = loads)
   }
 
   /**
@@ -1071,7 +1104,10 @@ class ServeCommand(args: List<String>) : Command(args) {
    * place (the registry closes the replaced daemon) and rewrites the on-disk `web/wasm/` dir the
    * `/wasm/<system>/` route serves.
    */
-  private fun buildCatalogRefresher(store: ServeCatalogStore): ServeCatalogRefresher? {
+  private fun buildCatalogRefresher(
+    store: ServeCatalogStore,
+    loads: CatalogLoadTracker,
+  ): ServeCatalogRefresher? {
     if (catalogRefreshSeconds <= 0 || catalogRefs.isEmpty()) return null
     val entries = catalogRefs.map {
       ServeCatalogRefresher.Entry(
@@ -1083,7 +1119,14 @@ class ServeCommand(args: List<String>) : Command(args) {
     return ServeCatalogRefresher(
       entries = entries,
       reload = { system, repo ->
-        store.load(system, sourceRepo = repo) is ServeCatalogStore.Result.Ok
+        val result = store.load(system, sourceRepo = repo)
+        loads.record(result)
+        if (result is ServeCatalogStore.Result.Failed) {
+          System.err.println("serve: catalog $system refresh failed: ${result.reason}")
+          false
+        } else {
+          true
+        }
       },
       intervalMillis = catalogRefreshSeconds * 1000,
     )

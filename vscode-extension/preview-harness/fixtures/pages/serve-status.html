@@ -419,13 +419,14 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
       </head>
       <body>
         <main class="cp-main">
-              <h1 class="cp-head">Server status <span class="cp-badge cp-badge--unverified">⚠ 1 recent daemon failure(s)</span></h1>
+              <h1 class="cp-head">Server status <span class="cp-badge cp-badge--unverified">⚠ degraded</span></h1>
       <p class="cp-sub">compose-preview serve · public (open) <span class="cp-about-ver">v0.0.0-fixture</span></p>
       <section class="cp-about">
         <p class="cp-about-title">Status &amp; monitoring</p>
-        <p class="cp-about-body">A live snapshot of this preview server — the catalogs it publishes,
-          the render daemons running now, its configuration, and recent daemon startup failures. The
-          same data is available as JSON for a monitor or Home Assistant sensor.</p>
+        <p class="cp-about-body">A live snapshot of this preview server — every configured catalog
+          and its latest load result, the render daemons running now, its configuration, and recent
+          daemon startup failures. The same data is available as JSON for a monitor or Home
+          Assistant sensor.</p>
         <p class="cp-about-links">
           <a href="/status.json">/status.json</a> ·
           <a href="/version">/version</a> ·
