@@ -937,13 +937,20 @@ data class FigmaSvgModel(
     ): Map<String, FigmaSvgText> {
       val candidates = mutableListOf<Triple<String, IntArray, Int>>()
       fun collect(n: LayoutInspectorNode, depth: Int) {
-        candidates.add(
-          Triple(
-            n.nodeId,
-            intArrayOf(n.bounds.left, n.bounds.top, n.bounds.right, n.bounds.bottom),
-            depth,
-          )
-        )
+        val candidateBounds =
+          buildList {
+              add(n.bounds)
+              // A Text's semantics bounds include semantic modifiers such as clickable, minimum
+              // touch size, and padding, while LayoutInspectorNode.bounds is the inner glyph box.
+              // Keep the text attached to that same layout node by accepting any captured
+              // modifier boundary as a matching surface. This is essential for emoji-table cells:
+              // their 42dp clickable semantics surround a much smaller padded text layout.
+              n.modifiers.mapNotNullTo(this) { it.bounds }
+            }
+            .distinct()
+        candidateBounds.forEach { b ->
+          candidates.add(Triple(n.nodeId, intArrayOf(b.left, b.top, b.right, b.bottom), depth))
+        }
         n.children.forEach { collect(it, depth + 1) }
       }
       collect(layoutRoot, 0)

@@ -1873,6 +1873,41 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun textAttachesThroughItsOuterClickableModifierBounds() {
+    // Jetchat's emoji cells expose the full 42dp click target to semantics, while the layout
+    // node's own bounds are the inner padded glyph box. Matching only node bounds dropped every
+    // supplementary-plane emoji from the SVG even though semantics captured them.
+    val emoji =
+      LayoutInspectorNode(
+        nodeId = "emoji",
+        component = "EmptyMeasurePolicy",
+        bounds = bounds(20, 20, 40, 40),
+        size = LayoutInspectorSize(42, 42),
+        modifiers =
+          listOf(LayoutInspectorModifier(name = "clickable", bounds = bounds(0, 0, 42, 42))),
+      )
+    val layout = layoutNode("Screen", 0, 0, 100, 100, children = listOf(emoji))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,100,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "emoji-semantics",
+              boundsInRoot = "0,0,42,42",
+              text = "😀",
+              typography = ComposeSemanticsTypography(fontSize = "18.0sp"),
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+    assertTrue("surrogate-pair emoji text must remain editable", svg.contains(">😀</text>"))
+    assertTrue("text uses the inner layout origin", svg.contains("""<text x="20""""))
+  }
+
+  @Test
   fun textIsNotAttachedToAWildlyDifferentNode() {
     // A text node far from any layout node must not be force-attached (tolerance is tight).
     val layout =
