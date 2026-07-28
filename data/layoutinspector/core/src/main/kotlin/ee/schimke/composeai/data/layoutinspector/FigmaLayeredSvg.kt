@@ -138,7 +138,9 @@ object FigmaLayeredSvg {
     // An opaque layer is a leaf `<image>` — the background-free raster stands in for a subtree the
     // exporter can't vectorise. No shape/text/children; the group keeps the composable name.
     if (layer.raster != null) {
-      sb.append("""$indent<g id="${escapeAttr(layer.name)}">""").append('\n')
+      sb
+        .append("""$indent<g id="${escapeAttr(layer.name)}"${opacityAttr(layer.opacity)}>""")
+        .append('\n')
       sb.append(indent).append("  ").append(image(layer, layer.raster)).append('\n')
       sb.append("$indent</g>\n")
       return
@@ -160,7 +162,9 @@ object FigmaLayeredSvg {
     val filterAttr =
       if (layer.elevationPx >= 1.0) """ filter="url(#${shadowFilterId(layer.elevationPx)})""""
       else ""
-    sb.append("""$indent<g id="${escapeAttr(layer.name)}"$dataToken$filterAttr>""")
+    sb.append(
+      """$indent<g id="${escapeAttr(layer.name)}"$dataToken$filterAttr${opacityAttr(layer.opacity)}>"""
+    )
     sb.append('\n')
     if (options.annotateTokens && tokenName != null) {
       sb.append("""$indent  <title>${escape(layer.name)} · ${escape(tokenName)}</title>""")
@@ -287,7 +291,9 @@ object FigmaLayeredSvg {
     val x = layer.left + (layer.width - fittedWidth) / 2.0
     val y = layer.top + (layer.height - fittedHeight) / 2.0
     val sb = StringBuilder()
-    sb.append("""$indent<g id="${escapeAttr(layer.name)}">""").append('\n')
+    sb
+      .append("""$indent<g id="${escapeAttr(layer.name)}"${opacityAttr(layer.opacity)}>""")
+      .append('\n')
     sb
       .append(
         """$indent  <g transform="translate(${fmt(x)} ${fmt(y)}) scale(${fmt(scale)} ${fmt(scale)})">"""
@@ -312,6 +318,9 @@ object FigmaLayeredSvg {
       } else ""
     return """<path d="${escapeAttr(p.pathData)}" $fill$fillRule$stroke/>"""
   }
+
+  private fun opacityAttr(opacity: Double): String =
+    if (opacity < 0.999) """ opacity="${fmt(opacity.coerceIn(0.0, 1.0))}"""" else ""
 
   /**
    * A captured `#AARRGGBB` paint as an SVG colour + opacity pair (`fill="#RRGGBB"

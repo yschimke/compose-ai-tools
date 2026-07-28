@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -26,6 +27,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorBounds
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorNode
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload
 import java.io.File
@@ -102,6 +104,31 @@ class DesktopLayoutInspectorTest {
     // reflection walk reaches `LayoutNode` children after `scene.render()` Z-sorts the tree.
     assertTrue("root must have a measured width", root.size.width > 0)
     assertTrue("root must have a non-empty subtree", root.children.isNotEmpty())
+  }
+
+  @Test
+  fun captures_effective_graphics_layer_alpha() {
+    val root = writeAndRead {
+      Box(
+        Modifier.testTag("layer")
+          .size(80.dp, 40.dp)
+          .graphicsLayer {
+            alpha = 0.25f
+            scaleX = 0.5f
+            scaleY = 0.75f
+            translationX = 7f
+            translationY = 9f
+          }
+          .background(Color.Red)
+      )
+    }
+
+    val layer = root.firstWhere { it.tokens?.backgroundColor == "#FFFF0000" }
+    assertNotNull("the transformed layer must be captured", layer)
+    assertEquals("effective graphicsLayer alpha", 0.25, layer!!.tokens!!.opacity!!, 0.001)
+    // Translation and scale are already applied by LayoutCoordinates.boundsIn(root), so the
+    // exporter must not apply them a second time.
+    assertEquals(LayoutInspectorBounds(left = 27, top = 14, right = 67, bottom = 44), layer.bounds)
   }
 
   @Test

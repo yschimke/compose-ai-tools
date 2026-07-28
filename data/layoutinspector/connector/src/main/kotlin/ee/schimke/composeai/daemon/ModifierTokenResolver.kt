@@ -55,6 +55,7 @@ internal object ModifierTokenResolver {
     var elevation: String? = null
     var minWidth: String? = null
     var minHeight: String? = null
+    var opacity = 1.0
     // `CircleShape` / `CornerSize(50%)` resolve to dp against the node's shorter measured side.
     val minSidePx = minOf(sizeWidthPx, sizeHeightPx)
     for (info in modifierInfo) {
@@ -71,6 +72,7 @@ internal object ModifierTokenResolver {
       // graphicsLayers
       // — a clip and the shadow). Skipped when zero (a clip-only graphicsLayer).
       if (name == "graphicsLayer" || simpleName.contains("GraphicsLayer")) {
+        graphicsLayerAlpha(info)?.let { opacity *= it }
         shadowElevationDp(mod, elements, density)?.let { dp ->
           if (elevation == null || dp > (elevation.removeSuffix("dp").toDoubleOrNull() ?: 0.0)) {
             elevation = "${dp}dp"
@@ -145,6 +147,7 @@ internal object ModifierTokenResolver {
         gap == null &&
         padding == null &&
         elevation == null &&
+        opacity >= 0.999 &&
         minWidth == null &&
         minHeight == null
     )
@@ -162,8 +165,42 @@ internal object ModifierTokenResolver {
         gap = gap,
         padding = padding,
         elevation = elevation,
+        opacity = opacity.takeIf { it < 0.999 },
       )
   }
+
+  /**
+   * Effective alpha of one graphics-layer modifier. Lambda-based `graphicsLayer { … }` elements
+   * only expose the block itself, but their [ModifierInfo.coordinates] coordinator retains the
+   * evaluated `ReusableGraphicsLayerScope`; direct overloads may expose `alpha` on the element.
+   */
+  private fun graphicsLayerAlpha(info: ModifierInfo): Double? {
+    val scope = reflectedField(info.coordinates, "graphicsLayerScope")
+    val effective =
+      scope?.let { reflectedFloat(it, "alpha") }
+        ?: reflectedFloat(info.modifier, "alpha")
+        ?: (info.modifier as? InspectableValue)
+          ?.inspectableElements
+          ?.firstOrNull { it.name == "alpha" }
+          ?.value
+          ?.let(::floatValue)
+    return effective?.coerceIn(0f, 1f)?.toDouble()
+  }
+
+  private fun reflectedFloat(instance: Any, name: String): Float? =
+    reflectedField(instance, name)?.let(::floatValue)
+
+  private fun reflectedField(instance: Any, name: String): Any? =
+    generateSequence(instance.javaClass as Class<*>?) { it.superclass }
+      .flatMap { it.declaredFields.asSequence() }
+      .firstOrNull { it.name == name }
+      ?.let { field ->
+        runCatching {
+            field.isAccessible = true
+            field.get(instance)
+          }
+          .getOrNull()
+      }
 
   /**
    * The shadow elevation of a `graphicsLayer`/`shadow` modifier in dp, or null when it casts no

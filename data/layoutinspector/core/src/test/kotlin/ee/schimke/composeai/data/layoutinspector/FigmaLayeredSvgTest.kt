@@ -1283,6 +1283,37 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun graphicsLayerOpacityAppliesToTheWholeSvgGroup() {
+    val svg =
+      render(
+        layoutNode(
+          "FadingButton",
+          0,
+          0,
+          100,
+          40,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4", opacity = 0.25),
+          children =
+            listOf(
+              layoutNode(
+                "Label",
+                10,
+                10,
+                90,
+                30,
+                tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFFFF"),
+              )
+            ),
+        )
+      )
+
+    assertTrue(
+      "opacity belongs on the parent group so it affects fill and descendants",
+      svg.contains("""<g id="FadingButton" opacity="0.25">"""),
+    )
+  }
+
+  @Test
   fun rawPixelCornerRadiusRendersRoundedRectWithoutDensityScaling() {
     // `RoundedCornerShape(20f)` rides on `cornerRadiusPx` (not the dp `cornerRadius`) and is
     // already

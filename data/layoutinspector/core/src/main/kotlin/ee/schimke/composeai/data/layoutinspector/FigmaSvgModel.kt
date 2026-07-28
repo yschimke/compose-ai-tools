@@ -229,6 +229,8 @@ data class FigmaSvgLayer(
    * its drop shadow instead of reading as a flat fill against the render.
    */
   val elevationPx: Double = 0.0,
+  /** Effective `graphicsLayer` alpha for this layer and its subtree. */
+  val opacity: Double = 1.0,
   /**
    * Wear curved text (a `CurvedLayout`/`TimeText` clock) carried on this layer — drawn as an SVG
    * `<textPath>` along its baseline arc. Empty for the common straight-text/no-text case.
@@ -251,7 +253,8 @@ data class FigmaSvgLayer(
         raster != null ||
         vector != null ||
         background != null ||
-        curvedTexts.isNotEmpty()
+        curvedTexts.isNotEmpty() ||
+        opacity < 0.999
 }
 
 /**
@@ -524,6 +527,7 @@ data class FigmaSvgModel(
       // origin, clamped to the parent, and use it everywhere below. Best-effort geometry for a
       // pathological capture; a normally-placed node keeps its real `bounds` untouched.
       val bounds = recoverBounds(parentBounds)
+      val opacity = tokens?.opacity?.coerceIn(0.0, 1.0) ?: 1.0
       // An `Icon`/`Image` whose `ImageVector` the inspector captured emits as editable `<path>`
       // layers rather than a raster crop — the vector alternative to the opaque-by-name fallback
       // below. Placed before the raster branch so a vector-backed icon never rasterises; a
@@ -537,6 +541,7 @@ data class FigmaSvgModel(
           right = bounds.right,
           bottom = bounds.bottom,
           vector = vec,
+          opacity = opacity,
         )
       }
       // An opaque component matched by name (Image/Icon/TextField/…) can't be vectorised at all —
@@ -554,6 +559,7 @@ data class FigmaSvgModel(
           right = bounds.right,
           bottom = bounds.bottom,
           raster = FigmaSvgRaster(href),
+          opacity = opacity,
         )
       }
       // A container filled by paint the token model cannot flatten — a non-ColorPainter
@@ -577,6 +583,7 @@ data class FigmaSvgModel(
           right = region.right,
           bottom = region.bottom,
           raster = FigmaSvgRaster(href),
+          opacity = opacity,
         )
       }
       // A *leaf* node that paints via an imperative Canvas draw (`drawBehind`/`drawWithContent`) —
@@ -727,6 +734,7 @@ data class FigmaSvgModel(
         text = ctx.textByNodeId[nodeId],
         background = background,
         elevationPx = elevationPx,
+        opacity = opacity,
         curvedTexts = curvedTexts,
         children = children.map { it.toLayer(ctx, bounds) },
       )

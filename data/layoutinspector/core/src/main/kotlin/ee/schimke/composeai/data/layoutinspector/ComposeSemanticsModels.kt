@@ -36,11 +36,12 @@ object ComposeSemanticsProduct {
   // px relative to the node's top-left) for wrapped text, so the figma-svg export places one run
   // per line at the render's break points instead of collapsing the string onto one baseline.
   // Additive; older entries decode with `lines = null` (single-line rendering).
+  // v9: `tokens` may carry `opacity`, the effective alpha of the node's graphics layers. Additive;
+  // older entries decode it as null (fully opaque).
   // v10 (#2854): typography may carry effective styled `spans`, and wrapped line entries carry
   // their UTF-16 start/end offsets. This preserves the paragraph face across AnnotatedString runs
   // while retaining explicit per-span overrides (for example Karla body text with a monospace code
   // span). Additive; older entries decode with `spans = null` and line offsets unset.
-  // v9 is reserved by the independent graphics-layer export change in #2853.
   const val SCHEMA_VERSION: Int = 10
   const val FILE: String = "compose-semantics.json"
 }
@@ -69,7 +70,9 @@ object LayoutInspectorProduct {
   // `Icon`/`Image`'s `ImageVector` or (draw-capture) from a control's imperative draw lambda; its
   // paths may carry `strokeCap` / `strokeJoin` (SVG linecap/linejoin) for round-capped chrome.
   // Additive — older entries parse with `vectorGraphic = null` and paths with butt/miter defaults.
-  const val SCHEMA_VERSION: Int = 6
+  // v7: `tokens` may carry effective graphics-layer `opacity`. Additive; older entries decode it
+  // as null (fully opaque).
+  const val SCHEMA_VERSION: Int = 7
   const val FILE: String = "layout-inspector.json"
 }
 
@@ -379,6 +382,12 @@ data class ComposeSemanticsTokens(
    * so an elevated surface carries its shadow instead of reading as a flat fill against the render.
    */
   val elevation: String? = null,
+  /**
+   * Effective alpha of the node's `graphicsLayer` chain (`0.0` transparent, `1.0` opaque).
+   * Translation and scale are already reflected in captured bounds; alpha is not, so the figma-svg
+   * exporter applies this value to the layer group. Null is the common fully-opaque case.
+   */
+  val opacity: Double? = null,
 )
 
 /** Per-edge insets in dp (`"16.0dp"`), as resolved from `Modifier.padding` (issue #1897). */
