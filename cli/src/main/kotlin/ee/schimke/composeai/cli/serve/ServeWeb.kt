@@ -16,6 +16,15 @@ import kotlinx.serialization.json.JsonPrimitive
  */
 object ServeWeb {
 
+  /**
+   * Absolute URLs advertised to link unfurlers for a browser-facing page. [imageUrl] is the thing
+   * that page represents (a featured catalog hero, catalog component, or exact viewer render);
+   * utility/error pages leave it null and get an honest text-only card. Kept explicit rather than
+   * derived here because only the HTTP layer knows the externally visible scheme/host (notably when
+   * Caddy terminates TLS).
+   */
+  data class UnfurlMetadata(val pageUrl: String, val imageUrl: String? = null)
+
   private val STYLE =
     """
     :root { color-scheme: light dark; }
@@ -1525,6 +1534,8 @@ object ServeWeb {
      * fixture golden passes a fixed string so a release never churns the committed HTML.
      */
     version: String? = null,
+    /** Absolute page + representative hero URLs for Open Graph/Twitter link previews. */
+    unfurl: UnfurlMetadata? = null,
   ): String {
     val about = if (isPublic) aboutSection(version) + "\n" else ""
     // Public routes are open — no token param on the cards; a token-gated box keeps it.
@@ -1600,6 +1611,10 @@ object ServeWeb {
       }
     return document(
       title = "Design systems — compose-preview",
+      unfurlTitle = "Compose previews",
+      unfurlDescription =
+        "Browse ${systems.size} published Compose design system and app catalogs.",
+      unfurl = unfurl,
       body =
         """
         $about$body
@@ -1670,10 +1685,17 @@ object ServeWeb {
    * render / API lanes keep their plain-text 404; this is only for the HTML page routes. The back
    * link is built like [backButton] so it keeps the token on a gated ([isPublic] false) server.
    */
-  fun notFoundPage(message: String, token: String, isPublic: Boolean): String {
+  fun notFoundPage(
+    message: String,
+    token: String,
+    isPublic: Boolean,
+    unfurl: UnfurlMetadata? = null,
+  ): String {
     val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     return document(
       title = "Not found — compose-preview",
+      unfurlDescription = message,
+      unfurl = unfurl,
       body =
         """
         <h1 class="cp-head">Not found</h1>
@@ -1771,7 +1793,7 @@ object ServeWeb {
    * 404; a `--public` server drops it (the routes need none). The always-ungated `/version` /
    * `/healthz` links stay bare either way.
    */
-  fun statusPage(view: StatusView, token: String): String {
+  fun statusPage(view: StatusView, token: String, unfurl: UnfurlMetadata? = null): String {
     fun esc(s: String) = WebEscaping.htmlEscape(s)
     // Gated-link suffix: token-gated ⇒ carry the token; public ⇒ nothing (routes are open).
     val suffix = if (view.public) "" else "?token=" + WebEscaping.urlEncodeSegment(token)
@@ -1912,7 +1934,13 @@ object ServeWeb {
       """
         .trimIndent()
 
-    return document(title = "Server status — compose-preview", body = body)
+    return document(
+      title = "Server status — compose-preview",
+      body = body,
+      unfurlDescription =
+        "Live catalog, render-daemon, and deployment status for this compose-preview server.",
+      unfurl = unfurl,
+    )
   }
 
   /**
@@ -2089,6 +2117,8 @@ object ServeWeb {
      * a plain module). See [ServeDegradation] / [degradeBanner].
      */
     degradations: List<ServeDegradation> = emptyList(),
+    /** Absolute page + representative preview URLs for Open Graph/Twitter link previews. */
+    unfurl: UnfurlMetadata? = null,
   ): String {
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
     // A dark-first system (Wear) puts every unthemed card on the dark stage; explicit light/dark
@@ -2270,6 +2300,9 @@ object ServeWeb {
       else ""
     return document(
       title = "$moduleLabel — compose-preview",
+      unfurlTitle = moduleLabel,
+      unfurlDescription = "${previews.size} Compose previews in $moduleLabel",
+      unfurl = unfurl,
       body =
         """
         $back<h1 class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</h1>
@@ -2400,6 +2433,8 @@ object ServeWeb {
      * [degradeBanner].
      */
     degradations: List<ServeDegradation> = emptyList(),
+    /** Absolute viewer + PNG URLs for Open Graph/Twitter link previews. */
+    unfurl: UnfurlMetadata? = null,
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
@@ -2838,7 +2873,13 @@ object ServeWeb {
       <script>${backendBadgeScript()}</script>
       """
         .trimIndent()
-    return document(title = "$label — compose-preview", body = body)
+    return document(
+      title = "${preview.label} — compose-preview",
+      body = body,
+      unfurlTitle = preview.label,
+      unfurlDescription = "Compose preview for ${preview.label}",
+      unfurl = unfurl,
+    )
   }
 
   /**
@@ -4332,13 +4373,59 @@ object ServeWeb {
     """
       .trimIndent()
 
-  private fun document(title: String, body: String): String =
-    """
+  private fun document(
+    title: String,
+    body: String,
+    unfurlTitle: String? = null,
+    unfurlDescription: String? = null,
+    unfurl: UnfurlMetadata? = null,
+  ): String {
+    val unfurlHtml =
+      if (unfurl == null) ""
+      else {
+        val metaTitle = WebEscaping.htmlEscape(unfurlTitle ?: title)
+        val description =
+          WebEscaping.htmlEscape(unfurlDescription ?: "Compose preview rendered by compose-preview")
+        val pageUrl = WebEscaping.htmlEscape(unfurl.pageUrl)
+        val imageUrl = unfurl.imageUrl?.let(WebEscaping::htmlEscape)
+        val imageHtml =
+          if (imageUrl == null) ""
+          else
+            """
+            <meta property="og:image" content="$imageUrl">
+            <meta property="og:image:type" content="image/png">
+            <meta property="og:image:alt" content="$metaTitle">
+            """
+              .trimIndent()
+        val twitterImageHtml =
+          if (imageUrl == null) ""
+          else
+            """
+            <meta name="twitter:image" content="$imageUrl">
+            <meta name="twitter:image:alt" content="$metaTitle">
+            """
+              .trimIndent()
+        """
+        <meta property="og:type" content="website">
+        <meta property="og:site_name" content="compose-preview">
+        <meta property="og:title" content="$metaTitle">
+        <meta property="og:description" content="$description">
+        <meta property="og:url" content="$pageUrl">
+        $imageHtml
+        <meta name="twitter:card" content="${if (imageUrl == null) "summary" else "summary_large_image"}">
+        <meta name="twitter:title" content="$metaTitle">
+        <meta name="twitter:description" content="$description">
+        $twitterImageHtml
+        """
+          .trimIndent()
+      }
+    val unfurlBlock = if (unfurlHtml.isEmpty()) "" else "\n${unfurlHtml.prependIndent("        ")}"
+    return """
     <!doctype html>
     <html lang="en">
       <head>
         <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="viewport" content="width=device-width, initial-scale=1">$unfurlBlock
         <title>${WebEscaping.htmlEscape(title)}</title>
         <style>$STYLE</style>
         <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
@@ -4352,6 +4439,7 @@ object ServeWeb {
     </html>
     """
       .trimIndent() + "\n"
+  }
 
   /**
    * The copyable direct-link panel: the `/render/<id>.png` (and, when [hasSvgExport], `.svg`) URL

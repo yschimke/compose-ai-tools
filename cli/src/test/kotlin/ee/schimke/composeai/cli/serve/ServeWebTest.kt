@@ -247,4 +247,45 @@ class ServeWebTest {
       "no variant switcher for a component without props variants",
     )
   }
+
+  @Test
+  fun `viewer advertises its rendered png to link unfurlers`() {
+    val html =
+      ServeWeb.viewerPage(
+        preview = ServePreview("red", "Red & \"Blue\""),
+        token = "unused",
+        unfurl =
+          ServeWeb.UnfurlMetadata(
+            pageUrl = "https://preview.example/p/red?theme=dark&fontScale=1.5",
+            imageUrl = "https://preview.example/render/red.png?theme=dark&fontScale=1.5",
+          ),
+      )
+
+    assertTrue(
+      html.contains("<meta property=\"og:title\" content=\"Red &amp; &quot;Blue&quot;\">"),
+      "Open Graph title is present and escaped",
+    )
+    assertTrue(
+      html.contains(
+        "<meta property=\"og:image\" content=\"https://preview.example/render/red.png?" +
+          "theme=dark&amp;fontScale=1.5\">"
+      ),
+      "Open Graph image points at the rendered PNG",
+    )
+    assertTrue(
+      html.contains("<meta name=\"twitter:card\" content=\"summary_large_image\">"),
+      "large-image Twitter card is present",
+    )
+    assertTrue(
+      html.contains(
+        "<meta name=\"twitter:image\" content=\"https://preview.example/render/red.png?" +
+          "theme=dark&amp;fontScale=1.5\">"
+      ),
+      "Twitter card uses the same rendered PNG",
+    )
+    assertTrue(
+      html.contains("<title>Red &amp; &quot;Blue&quot; — compose-preview</title>"),
+      "document title is escaped exactly once",
+    )
+  }
 }
