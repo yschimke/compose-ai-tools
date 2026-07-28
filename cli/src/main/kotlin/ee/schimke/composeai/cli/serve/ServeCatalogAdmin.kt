@@ -35,7 +35,23 @@ class ServeCatalogAdmin(
   groups: List<ServeCatalogsConfig.Group> = emptyList(),
   private val onLog: (String) -> Unit = { System.err.println(it) },
 ) {
-  private val groups = groups.toMutableList()
+  /**
+   * The group table, refreshed from the file each time [persist] rewrites it (an operator can add a
+   * section by hand between admin calls). Replaced wholesale rather than mutated in place, so a
+   * concurrent [register] reading it can't observe a half-rebuilt list and reject a group that does
+   * exist.
+   */
+  @Volatile private var groups: List<ServeCatalogsConfig.Group> = groups
+
+  /**
+   * Serialises the config file's **whole** read-modify-write, not just the write. Two admin
+   * requests land on different threads; each would otherwise load the same original document, apply
+   * its own edit, and atomically move — last one wins, both report success, and the loser's catalog
+   * silently vanishes on the next restart. Atomicity of the individual save doesn't help, because
+   * the lost update happens between the load and the save. Also guards [groups], which `persist`
+   * refreshes from the file it just wrote.
+   */
+  private val configLock = Any()
 
   /** The outcome of an admin mutation, mapped to an HTTP status by the caller. */
   sealed interface Result {
@@ -63,14 +79,17 @@ class ServeCatalogAdmin(
     ServeCatalogsConfig.validateEntry(entry)?.let {
       return Result.Invalid(it)
     }
-    if (entry.group != null && groups.none { g -> g.id == entry.group }) {
+    // One snapshot for both the check and the resolution, so a concurrent config rewrite can't
+    // make this request validate against one group table and register against another.
+    val declared = groups
+    if (entry.group != null && declared.none { g -> g.id == entry.group }) {
       return Result.Invalid("unknown group '${entry.group}'")
     }
     if (tracker.configFor(entry.system) != null) {
       return Result.Conflict("catalog '${entry.system}' is already published")
     }
     val repo = entry.repo?.takeIf { it.isNotBlank() } ?: defaultRepo
-    val config = configOf(entry, repo)
+    val config = configOf(entry, repo, declared)
     if (!tracker.add(config)) {
       return Result.Conflict("catalog '${entry.system}' is already published")
     }
@@ -96,13 +115,17 @@ class ServeCatalogAdmin(
     return Result.Ok(system, persist { it.withoutEntry(system) })
   }
 
-  private fun configOf(entry: ServeCatalogsConfig.Entry, repo: String): CatalogLoadTracker.Config =
+  private fun configOf(
+    entry: ServeCatalogsConfig.Entry,
+    repo: String,
+    declaredGroups: List<ServeCatalogsConfig.Group>,
+  ): CatalogLoadTracker.Config =
     CatalogLoadTracker.Config(
       system = entry.system,
       listed = entry.listed,
       repo = repo,
       branch = "$branchPrefix${entry.system}",
-      group = homeGroup(entry, repo, groups),
+      group = homeGroup(entry, repo, declaredGroups),
     )
 
   /**
@@ -111,17 +134,18 @@ class ServeCatalogAdmin(
    */
   private fun persist(mutate: (ServeCatalogsConfig) -> ServeCatalogsConfig): String? {
     val file = configFile ?: return "not persisted: no catalogs config file is configured"
-    return runCatching {
-        val updated = mutate(file.load())
-        file.save(updated)
-        groups.clear()
-        groups += updated.groups
-        null
-      }
-      .getOrElse { e ->
-        onLog("serve: could not update ${file.displayPath}: ${e.message}")
-        "not persisted: ${e.message ?: "write failed"}"
-      }
+    return synchronized(configLock) {
+      runCatching {
+          val updated = mutate(file.load())
+          file.save(updated)
+          groups = updated.groups
+          null
+        }
+        .getOrElse { e ->
+          onLog("serve: could not update ${file.displayPath}: ${e.message}")
+          "not persisted: ${e.message ?: "write failed"}"
+        }
+    }
   }
 
   companion object {

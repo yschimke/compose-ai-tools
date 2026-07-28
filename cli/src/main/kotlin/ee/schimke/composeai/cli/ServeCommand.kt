@@ -397,6 +397,16 @@ class ServeCommand(args: List<String>) : Command(args) {
       }
 
   /**
+   * Whether this server needs the catalog machinery (store + load tracker) even with **no**
+   * configured catalogs: an `--admin-token` server publishes its first catalog at runtime, so the
+   * store it fetches through and the tracker it registers into have to exist before any request
+   * arrives. Without this, a box started against an empty (or brand-new) `catalogs.json` couldn't
+   * bootstrap itself — the admin routes it explicitly enabled would never be registered.
+   */
+  private val needsCatalogMachinery: Boolean
+    get() = catalogRefs.isNotEmpty() || adminToken != null
+
+  /**
    * All catalog refs to serve — the config file first (it carries the front-page grouping), then
    * the `--catalogs` / `--catalogs-unlisted` flag entries; de-duplicated by system (first wins), so
    * a flag can add a catalog the file doesn't name but never silently re-attributes one it does.
@@ -576,8 +586,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     // A catalog that carries a `web/wasm/` app yields a system→dir entry so the in-browser tier
     // rides the same trusted branch (no local --wasm-dir build needed).
     val catalogReg =
-      if (catalogRefs.isNotEmpty()) registerCatalogs(registry, catalogWorktrees, openHost) else null
-    val catalogWasm = catalogReg?.wasm ?: emptyMap()
+      if (needsCatalogMachinery) registerCatalogs(registry, catalogWorktrees, openHost) else null
     // Keep the catalogs fresh against their (routinely-changing) branches without a restart.
     val catalogRefresher =
       catalogReg
@@ -589,9 +598,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     // Runtime ingestion (--accept-bundles): clients POST a bundle (or a ?url= to one) and it's
     // registered as a pinned session. Unpacked under a temp dir for this server's lifetime.
     val bundleStore = if (acceptBundles) openUploadStore(registry) else null
-    // Merge the apps fetched from the catalog branches with the explicit `--wasm-dir` paths; a
-    // local `--wasm-dir` wins for a system so an operator can override the published app.
-    val wasmCatalogs = catalogWasm + filterLocalWasm()
+    val wasmCatalogs = mergedWasmCatalogs(catalogReg)
     if (wasmCatalogs.isNotEmpty()) {
       System.err.println("serve: in-browser Wasm tier for: ${wasmCatalogs.keys.joinToString(", ")}")
     }
@@ -639,9 +646,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     val registeredStartup = registerStartupBundles(registry)
     // No worktrees in module-less mode — catalogs live-render only from their carried `liveBundle`.
     val catalogReg =
-      if (catalogRefs.isNotEmpty()) registerCatalogs(registry, worktrees = null, ::openHost)
-      else null
-    val catalogWasm = catalogReg?.wasm ?: emptyMap()
+      if (needsCatalogMachinery) registerCatalogs(registry, worktrees = null, ::openHost) else null
     // Keep the catalogs fresh against their (routinely-changing) branches without a restart — the
     // public preview server (preview.coo.ee) runs this module-less path.
     val catalogRefresher =
@@ -653,8 +658,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         }
     val bundleStore = if (acceptBundles) openUploadStore(registry) else null
 
-    val localWasm = filterLocalWasm()
-    val wasmCatalogs = catalogWasm + localWasm
+    val wasmCatalogs = mergedWasmCatalogs(catalogReg)
     if (wasmCatalogs.isNotEmpty()) {
       System.err.println("serve: in-browser Wasm tier for: ${wasmCatalogs.keys.joinToString(", ")}")
     }
@@ -665,10 +669,11 @@ class ServeCommand(args: List<String>) : Command(args) {
     // An `--accept-bundles` server legitimately starts with no sessions — they arrive at runtime
     // via
     // POST /bundles — so only bail when there's genuinely nothing to serve and no way to add any.
-    if (defaultSessionId == null && !acceptBundles) {
+    // An `--admin-token` server is the same case: its catalogs arrive via POST /admin/catalogs.
+    if (defaultSessionId == null && !acceptBundles && adminToken == null) {
       System.err.println(
         "serve: nothing to serve — no --bundle / --bundles / --catalogs registered a session, and " +
-          "--accept-bundles is off."
+          "neither --accept-bundles nor --admin-token is set."
       )
       // Guide the common "ran serve in my project expecting a build" case: Gradle discovery is now
       // opt-in, so point at --discover / --module rather than leaving them staring at a bare error.
@@ -761,6 +766,29 @@ class ServeCommand(args: List<String>) : Command(args) {
   }
 
   /**
+   * The in-browser Wasm apps this server exposes: the ones carried by the served catalogs, plus the
+   * explicit `--wasm-dir` overrides (which win, so an operator can serve a local build in place of
+   * a catalog's published app).
+   *
+   * Returns the registration's **live** map rather than a merged copy, so the set tracks runtime
+   * catalog changes: publish a Wasm-carrying catalog through the admin API and its
+   * `/wasm/<system>/` route works immediately; retire one and its assets stop being served. A
+   * snapshot here was the bug — the server would have been stuck with the boot-time set.
+   */
+  private fun mergedWasmCatalogs(reg: CatalogRegistration?): MutableMap<String, File> {
+    val live = reg?.wasm ?: java.util.concurrent.ConcurrentHashMap()
+    live.putAll(localWasm)
+    return live
+  }
+
+  /**
+   * The usable `--wasm-dir` overrides, resolved once: they're the operator's explicit choice, so
+   * they win over a catalog's published app and must not be re-checked (or re-warned about) on
+   * every catalog refresh.
+   */
+  private val localWasm: Map<String, File> by lazy { filterLocalWasm() }
+
+  /**
    * Keep only `--wasm-dir` entries whose directory actually holds the assembled app (index.html).
    */
   private fun filterLocalWasm(): Map<String, File> = wasmDirs.filter { (system, dir) ->
@@ -785,7 +813,8 @@ class ServeCommand(args: List<String>) : Command(args) {
     token: String,
     defaultSessionId: String,
     bundleStore: ServeBundleStore?,
-    wasmCatalogs: Map<String, File>,
+    /** Live (see [mergedWasmCatalogs]) so a runtime catalog's Wasm app is added/removed with it. */
+    wasmCatalogs: MutableMap<String, File>,
     bannerLabel: String,
     bannerPreviewCount: Int,
     mdnsModuleLabel: String?,
@@ -806,7 +835,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     // surface at all.
     val catalogAdmin =
       if (adminToken != null && catalogStore != null && catalogLoads != null) {
-        buildCatalogAdmin(registry, catalogStore, catalogLoads)
+        buildCatalogAdmin(registry, catalogStore, catalogLoads, wasmCatalogs)
       } else {
         null
       }
@@ -1105,7 +1134,13 @@ class ServeCommand(args: List<String>) : Command(args) {
    * configured/load state exposed through status.
    */
   private class CatalogRegistration(
-    val wasm: Map<String, File>,
+    /**
+     * The in-browser Wasm apps carried by the served catalogs, **live**: the server reads this same
+     * map, so a catalog published at runtime gets its `/wasm/<system>/` route (and its viewer
+     * toggle) as soon as its branch is fetched, and a retired one stops serving stale assets. A
+     * plain snapshot would have frozen the boot-time set.
+     */
+    val wasm: MutableMap<String, File>,
     val store: ServeCatalogStore,
     val loads: CatalogLoadTracker,
   )
@@ -1117,7 +1152,9 @@ class ServeCommand(args: List<String>) : Command(args) {
   ): CatalogRegistration {
     val dir =
       java.nio.file.Files.createTempDirectory("serve-catalogs").toFile().also { it.deleteOnExit() }
-    val wasm = linkedMapOf<String, File>()
+    // Concurrent because it's read by request threads while a background catalog refresh — or an
+    // admin registration — writes to it.
+    val wasm = java.util.concurrent.ConcurrentHashMap<String, File>()
     val loads =
       CatalogLoadTracker(
         catalogRefs.map { ref ->
@@ -1138,10 +1175,14 @@ class ServeCommand(args: List<String>) : Command(args) {
         repo = catalogRepo,
         branchPrefix = catalogBranchPrefix,
         registerWasm = { system, wasmDir ->
-          wasm[system] = wasmDir
-          System.err.println(
-            "serve: catalog $system carries an in-browser Wasm app (/wasm/$system/)"
-          )
+          // A local `--wasm-dir` is the operator's explicit override, so a published app never
+          // displaces it — including on a later branch refresh, which re-runs this callback.
+          if (system !in localWasm) {
+            wasm[system] = wasmDir
+            System.err.println(
+              "serve: catalog $system carries an in-browser Wasm app (/wasm/$system/)"
+            )
+          }
         },
         buildTrustedBundle = {
           system,
@@ -1204,6 +1245,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     registry: ServeSessionRegistry,
     store: ServeCatalogStore,
     loads: CatalogLoadTracker,
+    wasmCatalogs: MutableMap<String, File>,
   ): ServeCatalogAdmin =
     ServeCatalogAdmin(
       tracker = loads,
@@ -1219,6 +1261,9 @@ class ServeCommand(args: List<String>) : Command(args) {
       unload = { system ->
         registry.unregister(system)
         catalogPerPreviewPools.remove(system)?.let { runCatching { it.close() } }
+        // Stop serving the retired catalog's in-browser app too — but never drop a local
+        // `--wasm-dir` the operator configured, which isn't the catalog's to remove.
+        if (system !in localWasm) wasmCatalogs.remove(system)
       },
     )
 
@@ -1234,7 +1279,10 @@ class ServeCommand(args: List<String>) : Command(args) {
     store: ServeCatalogStore,
     loads: CatalogLoadTracker,
   ): ServeCatalogRefresher? {
-    if (catalogRefreshSeconds <= 0 || catalogRefs.isEmpty()) return null
+    // Also built for an admin-enabled server with no configured catalogs: the entries are read from
+    // the tracker per pass, so a catalog published at runtime starts being polled without a
+    // restart.
+    if (catalogRefreshSeconds <= 0 || !needsCatalogMachinery) return null
     // Read from the tracker per pass, not from the startup refs: a catalog published through the
     // admin API must start being polled without a restart (and a retired one must stop).
     val entries = {

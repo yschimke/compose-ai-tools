@@ -282,7 +282,10 @@ class ServeHttpServer(
         // sandboxed iframe and its relative asset fetches work without a token. Registered only
         // when
         // the operator mapped a system to its built dist (`--wasm-dir`).
-        if (wasmCatalogs.isNotEmpty()) {
+        // Registered when the server has any Wasm app OR can gain one at runtime: [wasmCatalogs] is
+        // a live view of the served catalogs' apps, so an admin-published catalog that carries one
+        // needs this route to already exist. Unknown systems 404 either way.
+        if (wasmCatalogs.isNotEmpty() || adminEnabled) {
           get("/wasm/{system}/{path...}") {
             val dir = call.parameters["system"]?.let { wasmCatalogs[it] }
             if (dir == null) {

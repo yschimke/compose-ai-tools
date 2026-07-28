@@ -181,6 +181,38 @@ class ServeCatalogAdminTest {
   }
 
   @Test
+  fun `concurrent registrations all survive in the config file`() {
+    // Each mutation is a read-modify-write of one file. Without serialising the WHOLE sequence,
+    // two requests load the same document, apply their own edit, and the second atomic move
+    // silently drops the first — both callers having been told "ok". Registrations are slowed
+    // (the load callback sleeps) so the interleaving is real rather than hoped for.
+    val tracker = tracker()
+    val admin =
+      ServeCatalogAdmin(
+        tracker = tracker,
+        defaultRepo = "yschimke/compose-ai-tools",
+        branchPrefix = "design-artifacts/",
+        configFile = file,
+        load = { _, _ ->
+          Thread.sleep(20)
+          null
+        },
+        unload = {},
+        onLog = {},
+      )
+    val systems = (1..8).map { "cat-$it" }
+
+    val threads = systems.map { system ->
+      Thread { admin.register(ServeCatalogsConfig.Entry(system, "someorg/$system")) }
+        .apply { start() }
+    }
+    threads.forEach { it.join() }
+
+    assertEquals(systems.toSet(), file.load().catalogs.map { it.system }.toSet())
+    assertEquals(systems.toSet(), tracker.snapshot().map { it.config.system }.toSet())
+  }
+
+  @Test
   fun `the tracker keeps configured order and reports what is served`() {
     val tracker = tracker(CatalogLoadTracker.Config("a", true, "o/r", "b"))
     tracker.recordSuccess("a")

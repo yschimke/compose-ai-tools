@@ -83,6 +83,13 @@ class ServeAdminRoutingTest {
       onLog = {},
     )
 
+  /**
+   * The in-browser Wasm apps, as the server sees them: a LIVE map, empty at boot. A catalog
+   * published at runtime can carry one, so the `/wasm/` route has to exist and read through to the
+   * current contents rather than a boot-time snapshot.
+   */
+  private val wasmCatalogs = java.util.concurrent.ConcurrentHashMap<String, File>()
+
   private val server: ServeHttpServer by lazy {
     registry.register("compose-m3", host = bundle("compose-m3"), pinned = true)
     tracker.recordSuccess("compose-m3")
@@ -98,6 +105,7 @@ class ServeAdminRoutingTest {
         catalogLoads = tracker,
         catalogAdmin = admin,
         adminToken = adminToken,
+        wasmCatalogs = wasmCatalogs,
       )
       .also { it.start() }
   }
@@ -206,6 +214,26 @@ class ServeAdminRoutingTest {
       409,
       send("/admin/catalogs", method = "POST", body = """{"system":"compose-m3"}""").first,
     )
+  }
+
+  @Test
+  fun `a Wasm app registered after boot is served, and unregistering stops it`() {
+    // An admin-enabled server starts with no Wasm apps at all, so the route must be registered
+    // anyway and resolve against the live map — otherwise a catalog published at runtime gets no
+    // /wasm/<system>/ lane until the container is recreated.
+    assertEquals(404, send("/wasm/latecomer/index.html", token = null).first)
+
+    val dir = Files.createTempDirectory("admin-wasm").toFile().also { it.deleteOnExit() }
+    File(dir, "index.html").writeText("<html>wasm</html>")
+    wasmCatalogs["latecomer"] = dir
+
+    val (code, body) = send("/wasm/latecomer/index.html", token = null)
+    assertEquals(200, code)
+    assertTrue(body.contains("wasm"), body)
+
+    // …and a retired catalog's assets stop being served rather than lingering.
+    wasmCatalogs.remove("latecomer")
+    assertEquals(404, send("/wasm/latecomer/index.html", token = null).first)
   }
 
   @Test
