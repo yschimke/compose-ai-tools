@@ -309,7 +309,7 @@ test("discoverPreviews flags GIF-only captures as PNG-less", () => {
     @Preview @Composable fun Static() {}
 
     @Preview
-    @FocusedPreview(gif = true)
+    @FocusedPreview(gif = true, indices = [0, 1, 2])
     @Composable fun FocusGif() {}
 
     @Preview
@@ -424,4 +424,59 @@ test("validateSpec does not report PNG-less previews as coverage orphans", () =>
   });
   assert.deepEqual(errors, []);
   assert.deepEqual(warnings, []);
+});
+
+test("discoverPreviews keeps a singleton @FocusedPreview(gif = true) PNG-capable", () => {
+  // `extractFocusGifSpec` bails below two steps (a one-frame GIF wouldn't animate),
+  // so these fall back to the ordinary focus fan-out and do render a static PNG.
+  const src = `
+    @Preview @FocusedPreview(gif = true) @Composable fun DefaultIndex() {}
+    @Preview @FocusedPreview(gif = true, indices = [2]) @Composable fun OneIndex() {}
+    @Preview @FocusedPreview(gif = true, indices = [1, 1]) @Composable fun RepeatedIndex() {}
+    @Preview @FocusedPreview(gif = true, traverse = [FocusDirection.Next]) @Composable fun OneStep() {}
+  `;
+  assert.deepEqual(discoverPreviews([src]).pngLess, []);
+  // Two or more steps really is GIF-only, in either mode.
+  const gifs = `
+    @Preview @FocusedPreview(gif = true, indices = [0, 1]) @Composable fun TwoIndices() {}
+    @Preview
+    @FocusedPreview(gif = true, traverse = [FocusDirection.Next, FocusDirection.Previous])
+    @Composable fun TwoSteps() {}
+  `;
+  assert.deepEqual(discoverPreviews([gifs]).pngLess, ["TwoIndices", "TwoSteps"]);
+});
+
+test("discoverPreviews recognises directly imported ScrollMode entries", () => {
+  const src = `
+    import ee.schimke.composeai.preview.ScrollMode.GIF
+    @Preview @ScrollingPreview(modes = [GIF]) @Composable fun BareGif() {}
+    @Preview @ScrollingPreview(modes = [LONG]) @Composable fun BareLong() {}
+    @Preview @ScrollingPreview(modes = [END, GIF]) @Composable fun BareEndAndGif() {}
+    @Preview @ScrollingPreview([ScrollMode.GIF]) @Composable fun PositionalGif() {}
+  `;
+  const { pngLess } = discoverPreviews([src]);
+  assert.deepEqual(pngLess, ["BareGif", "BareLong", "PositionalGif"]);
+});
+
+test("discoverPreviews does not read a sibling argument as a scroll mode", () => {
+  // `DEFAULT_GIF_FRAME_INTERVAL_MS` must not register as ScrollMode.GIF, and the
+  // annotation still defaults to `[ScrollMode.END]` — a static capture.
+  const src = `
+    @Preview
+    @ScrollingPreview(frameIntervalMs = DEFAULT_GIF_FRAME_INTERVAL_MS, maxScrollPx = 800)
+    @Composable fun DefaultModeWithArgs() {}
+  `;
+  assert.deepEqual(discoverPreviews([src]).pngLess, []);
+});
+
+test("discoverPreviews ignores a manualClockOptions array with no stops", () => {
+  // `extractRoboTimings` reads each entry's `advanceTimeMillis`, so an empty array
+  // is zero timings — the animation still suppresses the static cross-product.
+  const src = `
+    @Preview
+    @RoboComposePreviewOptions(manualClockOptions = [])
+    @AnimatedPreview
+    @Composable fun EmptyClockStops() {}
+  `;
+  assert.deepEqual(discoverPreviews([src]).pngLess, ["EmptyClockStops"]);
 });

@@ -177,20 +177,70 @@ function annotationNames(run) {
  * Source-level detection is sound here because all three annotations are
  * `@Target(FUNCTION)` — they can't hide inside a multipreview annotation class.
  */
+/** The comma-separated entries of a Kotlin array literal's inner text. */
+function arrayItems(inner) {
+  return inner
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** The inner text of an annotation argument's array literal — `name = [...]` when
+ *  named, else the first positional `[...]`. Returns null when there is none. */
+function arrayArg(args, name) {
+  const named = args.match(new RegExp(String.raw`\b${name}\s*=\s*\[([^\]]*)\]`));
+  if (named) return named[1];
+  // A positional array is only unambiguous when no other argument is named.
+  if (/\w+\s*=/.test(args)) return null;
+  return args.match(/\[([^\]]*)\]/)?.[1] ?? null;
+}
+
+/** The `ScrollMode` names a `@ScrollingPreview` argument list selects. Kotlin allows
+ *  both the qualified `ScrollMode.GIF` and a directly imported `GIF`, so accept
+ *  either — matching only inside the `modes` array keeps sibling arguments
+ *  (`frameIntervalMs = DEFAULT_GIF_FRAME_INTERVAL_MS`) from registering as modes. */
+function scrollModeList(args) {
+  const inner = arrayArg(args, "modes");
+  if (inner === null) return [];
+  return arrayItems(inner)
+    .map((item) => item.match(/(?:ScrollMode\s*\.\s*)?(TOP|END|LONG|GIF)$/)?.[1])
+    .filter(Boolean);
+}
+
+/** How many capture steps a `@FocusedPreview(gif = true)` yields — mirrors
+ *  `readFocusSteps`: the `traverse` directions when non-empty, else the distinct
+ *  non-negative `indices` (default `[0]`). `0` when the annotation isn't GIF-mode.
+ *  An `indices`/`traverse` value that isn't a literal array reads as the default,
+ *  which keeps an unparseable annotation on the PNG-capable (lenient) side. */
+function focusGifSteps(args) {
+  if (!/\bgif\s*=\s*true\b/.test(args)) return 0;
+  const traverse = arrayArg(args, "traverse");
+  if (traverse !== null && arrayItems(traverse).length > 0) return arrayItems(traverse).length;
+  const indices = arrayArg(args, "indices");
+  if (indices === null) return 1; // default `indices = [0]`
+  const values = arrayItems(indices)
+    .map((item) => Number(item))
+    .filter((n) => Number.isInteger(n) && n >= 0);
+  return new Set(values).size;
+}
+
 export function rendersStaticPng(run) {
   const entries = annotationEntries(run);
   const named = (name) => entries.filter((e) => e.name === name);
 
   const animated = named(ANIMATED_PREVIEW_ANNOTATION).length > 0;
   const focused = named(FOCUSED_PREVIEW_ANNOTATION);
-  const focusGif = focused.some((e) => /\bgif\s*=\s*true\b/.test(e.args));
+  // `extractFocusGifSpec` returns null below two steps — a one-frame GIF wouldn't
+  // animate — so a singleton `gif = true` (notably the default `indices = [0]`)
+  // falls back to the ordinary focus fan-out and DOES render a PNG.
+  const focusGif = focused.some((e) => focusGifSteps(e.args) >= 2);
   // `@FocusedPreview(gif = true)` supersedes the per-step focus fan-out (see
   // `effectiveFocuses` in PreviewDiscovery.kt), so focus steps only count when no
   // GIF-mode annotation is present.
   const focusSteps = !focusGif && focused.length > 0;
 
   const scrollModes = named(SCROLLING_PREVIEW_ANNOTATION).flatMap((e) => {
-    const modes = [...e.args.matchAll(/ScrollMode\.(\w+)/g)].map((m) => m[1]);
+    const modes = scrollModeList(e.args);
     // No explicit `modes` → the annotation default, `[ScrollMode.END]`.
     return modes.length > 0 ? modes : ["END"];
   });
@@ -198,9 +248,11 @@ export function rendersStaticPng(run) {
   const productScrolls = scrollModes.filter((m) => PRODUCT_SCROLL_MODES.has(m));
 
   // `@RoboComposePreviewOptions(manualClockOptions = [...])` fans the function out
-  // into one PNG per virtual-time stop.
-  const timings = named(ROBO_OPTIONS_ANNOTATION).some((e) =>
-    /\bmanualClockOptions\s*=/.test(e.args),
+  // into one PNG per virtual-time stop. `extractRoboTimings` reads each entry's
+  // `advanceTimeMillis`, so an empty (or stop-less) array yields no timings at all
+  // and doesn't hold the static cross-product open.
+  const timings = named(ROBO_OPTIONS_ANNOTATION).some(
+    (e) => /\bmanualClockOptions\s*=/.test(e.args) && /\badvanceTimeMillis\s*=/.test(e.args),
   );
 
   return (

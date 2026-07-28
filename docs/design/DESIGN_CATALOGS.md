@@ -238,9 +238,10 @@ gap by scanning the module's Kotlin source directly (no Gradle build, no render)
   fast local/CI pre-flight.
 
   It also rejects a `preview` that resolves to a **PNG-less** function — one whose
-  only capture is an animated GIF or a scroll data product (`@AnimatedPreview`,
-  `@FocusedPreview(gif = true)`, or `@ScrollingPreview` with only `ScrollMode.LONG`
-  / `ScrollMode.GIF`). Those render fine, but the export represents every catalog
+  only capture is an animated GIF or a scroll data product (`@AnimatedPreview`, a
+  multi-step `@FocusedPreview(gif = true)`, or `@ScrollingPreview` with only
+  `ScrollMode.LONG` / `ScrollMode.GIF`). Those render fine, but the export
+  represents every catalog
   entry as a static sticker: `candidatePreviewBundle()` drops anything without
   `previews/<id>.png` from the candidate join, and the completeness gate then
   reports the component missing. Catalogue a static `@Preview` sibling instead and
