@@ -454,11 +454,20 @@ object FigmaLayeredSvg {
           val lineEnd = line.end
           val styled =
             if (lineStart != null && lineEnd != null) {
+              val sourceStart = lineStart.coerceIn(0, t.content.length)
+              val sourceEnd = lineEnd.coerceIn(sourceStart, t.content.length)
+              val sourceLine = t.content.substring(sourceStart, sourceEnd)
               styledTspans(
                 content = t.content,
                 spans = t.spans,
                 rangeStart = lineStart,
                 rangeEnd = lineEnd,
+                trailingContent =
+                  if (line.content.startsWith(sourceLine)) {
+                    line.content.removePrefix(sourceLine)
+                  } else {
+                    ""
+                  },
                 firstPosition =
                   """ x="${layer.left + line.left}" y="${layer.top + line.baseline}"""",
                 options = options,
@@ -490,6 +499,7 @@ object FigmaLayeredSvg {
     spans: List<FigmaSvgTextSpan>?,
     rangeStart: Int,
     rangeEnd: Int,
+    trailingContent: String = "",
     firstPosition: String,
     options: Options,
     familyOverrides: Map<String, String>,
@@ -506,6 +516,7 @@ object FigmaLayeredSvg {
     return pieces
       .mapIndexed { index, (pieceStart, pieceEnd, span) ->
         val position = if (index == 0) firstPosition else ""
+        val suffix = if (index == pieces.lastIndex) trailingContent else ""
         val size = span.fontSizePx?.let { """ font-size="${fmt(it)}"""" } ?: ""
         val family =
           span.fontFamily?.let { captured ->
@@ -517,7 +528,7 @@ object FigmaLayeredSvg {
         val weight = span.fontWeight?.let { """ font-weight="$it"""" } ?: ""
         val style = if (span.italic) """ font-style="italic"""" else ""
         val fill = span.color?.let { """ fill="${it.hex}"${opacity("fill", it)}""" } ?: ""
-        """<tspan$position$size$family$weight$style$fill>${escape(content.substring(pieceStart, pieceEnd))}</tspan>"""
+        """<tspan$position$size$family$weight$style$fill>${escape(content.substring(pieceStart, pieceEnd) + suffix)}</tspan>"""
       }
       .joinToString("")
   }

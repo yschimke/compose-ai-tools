@@ -1672,6 +1672,48 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun annotatedTextKeepsEllipsisOnTheFinalStyledLine() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 10, 10, 190, 90)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "10,10,190,90",
+              text = "base truncated",
+              typography =
+                ComposeSemanticsTypography(
+                  fontSize = "16.0sp",
+                  fontFamily = "monospace",
+                  spans =
+                    listOf(
+                      ComposeSemanticsTextSpan(0, 5, "16.0sp", "monospace", 400),
+                      ComposeSemanticsTextSpan(5, 14, "12.0sp", "serif", 400),
+                    ),
+                ),
+              textOverflow =
+                ComposeSemanticsTextOverflow(
+                  lineCount = 2,
+                  lines =
+                    listOf(
+                      ComposeSemanticsTextLine("base ", 0, 20, start = 0, end = 5),
+                      ComposeSemanticsTextLine("trunc…", 0, 44, start = 5, end = 10),
+                    ),
+                ),
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+    assertTrue(svg.contains(">trunc…</tspan>"))
+    assertFalse(svg.contains(">trunc</tspan>"))
+  }
+
+  @Test
   fun wrappedTextEmitsOnePositionedTspanPerLineInsteadOfOneBaseline() {
     val layout =
       layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 10, 10, 190, 90)))
