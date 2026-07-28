@@ -3204,7 +3204,7 @@
     "functionName": "PageGestureScreenPreview",
     "module": "samples:wear",
     "renderBasename": "PageGestureScreenPreview_Devices_Large_Round.png",
-    "sha256": "ea74b14b75944e0bf33fa1cf0c98955c30bcd1f9579187f404e87479383f9dd5",
+    "sha256": "8108859b0606d7f22257b17a22c292ad1b7ee45e7c926d7f44e7fb8ba0553b91",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
   },
   "samples:wear/com.example.samplewear.GesturesKt.PageIndicatorStickerPreview": {
@@ -3212,7 +3212,7 @@
     "functionName": "PageIndicatorStickerPreview",
     "module": "samples:wear",
     "renderBasename": "PageIndicatorStickerPreview.png",
-    "sha256": "157a5a533aa29c74bd63d4f99de758976db3c47619a15a1b68dde20191159399",
+    "sha256": "8e59736a1192d22c3be38befa97a98933f3bc8d187ec11af1eed590e3fec5535",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
   },
   "samples:wear/com.example.samplewear.GesturesKt.PrimaryActionScreenPreview_Devices - Large Round": {
@@ -3308,7 +3308,7 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "4894efeb548deb8e9074068f891ddd4a3c9901e2e5482960eebaa1dbf8e65cca",
+    "sha256": "094df53da2ad611cb769f7a7e381c83ac0dbee764bc2060d387be804c6c5ba23",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round": {
@@ -3316,7 +3316,7 @@
     "functionName": "ActivityListMotionLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListMotionLongPreview_Devices_Large_Round_SCROLL_long.png",
-    "sha256": "4894efeb548deb8e9074068f891ddd4a3c9901e2e5482960eebaa1dbf8e65cca",
+    "sha256": "094df53da2ad611cb769f7a7e381c83ac0dbee764bc2060d387be804c6c5ba23",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round#1": {
