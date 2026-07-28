@@ -88,6 +88,86 @@ class WrappedPreviewRenderTest {
     }
   }
 
+  @Test
+  fun scrollLongPreservesRequiredPreviewWrapper() {
+    val outputDir = tempFolder.newFolder("renders-wrapped-scroll")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val priorIndex = System.getProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP)
+    val previewIndex =
+      tempFolder.newFile("previews-wrapped-scroll.json").apply {
+        writeText(
+          """
+          {
+            "previews": [
+              {
+                "id": "wrapped-scroll",
+                "className": "ee.schimke.composeai.daemon.PreviewWrapperResolutionFixturesKt",
+                "functionName": "WrapperRequiredScrollableFixturePreview",
+                "dataProducts": [
+                  {
+                    "kind": "render/scroll/long",
+                    "scroll": {
+                      "mode": "LONG",
+                      "axis": "VERTICAL",
+                      "maxScrollPx": 2000,
+                      "frameIntervalMs": 0
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+          """
+            .trimIndent()
+        )
+      }
+    System.setProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP, previewIndex.absolutePath)
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "wrapped-scroll",
+              className = "ee.schimke.composeai.daemon.PreviewWrapperResolutionFixturesKt",
+              functionName = "WrapperRequiredScrollableFixturePreview",
+              params =
+                PreviewParamsEntry(
+                  widthDp = 64,
+                  heightDp = 96,
+                  density = 1.0f,
+                  wrapperClassName =
+                    "ee.schimke.composeai.daemon.RequiredCompositionLocalWrapper",
+                ),
+            )
+          )
+      )
+    val host = PreviewManifestRouter(manifest = manifest)
+    host.start()
+    try {
+      // The body throws before drawing unless its app-owned local was installed by the wrapper.
+      // Before the fix, runScrollScenario called InvokeComposable directly and this submit failed.
+      val result =
+        host.submit(
+          RenderRequest.Render(payload = "previewId=wrapped-scroll;mode=scroll-long"),
+          timeoutMs = 120_000,
+        )
+      assertNotNull("scroll-long must return its stitched PNG", result.pngPath)
+      val image = renderAndDecode(result.pngPath!!, "wrapped scroll-long")
+      assertTrue(
+        "stitched LONG capture should exceed one 96px viewport (was ${image.height}px)",
+        image.height > 96,
+      )
+    } finally {
+      host.shutdown()
+      if (priorIndex == null) {
+        System.clearProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP)
+      } else {
+        System.setProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP, priorIndex)
+      }
+    }
+  }
+
   private fun renderAndDecode(
     host: PreviewManifestRouter,
     payload: String,
@@ -97,6 +177,13 @@ class WrappedPreviewRenderTest {
     val result = host.submit(request, timeoutMs = 120_000)
     assertNotNull("$label: pngPath must be populated", result.pngPath)
     val pngFile = File(result.pngPath!!)
+    assertTrue("$label: rendered PNG must exist", pngFile.exists())
+    return ByteArrayInputStream(pngFile.readBytes()).use { ImageIO.read(it) }
+      ?: error("$label: PNG failed to decode")
+  }
+
+  private fun renderAndDecode(path: String, label: String): BufferedImage {
+    val pngFile = File(path)
     assertTrue("$label: rendered PNG must exist", pngFile.exists())
     return ByteArrayInputStream(pngFile.readBytes()).use { ImageIO.read(it) }
       ?: error("$label: PNG failed to decode")

@@ -544,6 +544,40 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  fun heldSessionPreservesRequiredPreviewWrapper() {
+    System.setProperty(
+      RenderEngine.OUTPUT_DIR_PROP,
+      tempFolder.newFolder("interactive-wrapper").absolutePath,
+    )
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    host.start()
+    try {
+      // WrapperRequiredFixturePreview throws during composition unless the app-owned environment
+      // local is installed. Before the fix, InteractiveCommand.Start dropped wrapperClassName and
+      // acquireInteractiveSession surfaced that throw as a failed start reply.
+      val session =
+        host.acquireInteractiveSession(
+          previewId = WRAPPER_REQUIRED_PREVIEW_ID,
+          classLoader = javaClass.classLoader!!,
+        )
+      try {
+        val image = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+        val green = pixelMatchPct(image, GREEN_RGB, perChannelTolerance = 8)
+        assertTrue(
+          "held frame should be rendered by the wrapper-backed preview (got " +
+            "${"%.2f".format(green * 100)}% green)",
+          green >= 0.95,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun acquireWithoutResolverThrowsUnsupported() {
     val host = RobolectricHost(sandboxCount = 2)
     assertFalse(
@@ -1102,6 +1136,17 @@ class AndroidInteractiveSessionTest {
           // dedicated strategy in the held loop instead of `getDeclaredComposableMethod`.
           kind = RenderEngine.NOTIFICATION_KIND,
         )
+      WRAPPER_REQUIRED_PREVIEW_ID ->
+        RenderSpec(
+          className = "ee.schimke.composeai.daemon.PreviewWrapperResolutionFixturesKt",
+          functionName = "WrapperRequiredFixturePreview",
+          widthPx = INTERACTIVE_WIDTH_PX,
+          heightPx = INTERACTIVE_HEIGHT_PX,
+          density = 1.0f,
+          showBackground = true,
+          outputBaseName = "interactive-wrapper",
+          wrapperClassName = "ee.schimke.composeai.daemon.RequiredCompositionLocalWrapper",
+        )
       else -> null
     }
   }
@@ -1150,6 +1195,7 @@ class AndroidInteractiveSessionTest {
     private const val RELEASE_POSITION_PREVIEW_ID = "interactive-release-position"
     private const val ROTARY_PREVIEW_ID = "interactive-rsb"
     private const val NOTIFICATION_PREVIEW_ID = "interactive-notification"
+    private const val WRAPPER_REQUIRED_PREVIEW_ID = "interactive-wrapper-required"
     private const val MISSING_RESOURCE_PREVIEW_ID = "interactive-missing-resource"
     private const val INTERACTIVE_WIDTH_PX = 96
     private const val INTERACTIVE_HEIGHT_PX = 96

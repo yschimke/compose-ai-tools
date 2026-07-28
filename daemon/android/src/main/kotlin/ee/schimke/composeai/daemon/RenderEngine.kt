@@ -1149,7 +1149,15 @@ class RenderEngine(
                 .toTypedArray()
             CompositionLocalProvider(*provided) {
               Box(modifier = Modifier.fillMaxSize().background(Color(bgArgb))) {
-                InvokeComposable(composableMethod)
+                // A scrolling preview has the same composition contract as its default capture.
+                // In particular, app-owned environment such as SharedTransition scopes is often
+                // installed by a PreviewWrapperProvider. Bypassing the wrapper here made the
+                // default PNG succeed while LONG/GIF failed during composition.
+                InvokeWithOptionalWrapper(
+                  composableMethod = composableMethod,
+                  wrapperFqnFromSpec = spec.wrapperClassName,
+                  themeProviderFqn = spec.overrides?.themeProvider,
+                )
               }
             }
           }
@@ -1970,7 +1978,7 @@ private fun InvokeComposable(composableMethod: ComposableMethod) {
  * `RemoteOverridablePreviewWrapper`) apply transparently.
  */
 @Composable
-private fun InvokeWithOptionalWrapper(
+internal fun InvokeWithOptionalWrapper(
   composableMethod: ComposableMethod,
   wrapperFqnFromSpec: String?,
   themeProviderFqn: String? = null,

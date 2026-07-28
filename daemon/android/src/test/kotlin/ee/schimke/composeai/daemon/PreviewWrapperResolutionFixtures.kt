@@ -3,8 +3,13 @@ package ee.schimke.composeai.daemon
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.PreviewWrapper
@@ -41,4 +46,52 @@ fun WrappedFixturePreview() {
 @Composable
 fun UnwrappedFixturePreview() {
   Box(modifier = Modifier)
+}
+
+/**
+ * App-owned preview environment used to model required locals such as
+ * `LocalSharedTransitionScope`. The renderer cannot provide an app-specific local itself; it must
+ * preserve the preview's declared wrapper in every render mode.
+ */
+private val LocalRequiredPreviewEnvironment = staticCompositionLocalOf { false }
+
+class RequiredCompositionLocalWrapper {
+  @Composable
+  fun Wrap(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalRequiredPreviewEnvironment provides true, content = content)
+  }
+}
+
+/**
+ * Fails before drawing unless [RequiredCompositionLocalWrapper] ran. Used by held/live regression
+ * coverage, where the wrapper FQN crosses the non-instrumented bridge as part of `Start`.
+ */
+@Composable
+fun WrapperRequiredFixturePreview() {
+  check(LocalRequiredPreviewEnvironment.current) {
+    "Required app preview environment was not installed"
+  }
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFF66BB6A)))
+}
+
+/**
+ * Scrollable twin of [WrapperRequiredFixturePreview]. The LONG/GIF path owns a separate
+ * `setContent` call and historically invoked the body directly, so its wrapper contract needs an
+ * independent end-to-end guard.
+ */
+@Composable
+fun WrapperRequiredScrollableFixturePreview() {
+  check(LocalRequiredPreviewEnvironment.current) {
+    "Required app preview environment was not installed"
+  }
+  LazyColumn(modifier = Modifier.fillMaxSize()) {
+    items(30) { index ->
+      Box(
+        modifier =
+          Modifier.fillMaxWidth()
+            .height(24.dp)
+            .background(if (index % 2 == 0) Color(0xFFEF5350) else Color(0xFF1B5E20))
+      )
+    }
+  }
 }

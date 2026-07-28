@@ -64,6 +64,8 @@ class InteractiveCommandTest {
         outputBaseName = "stream-A-frame",
         replyLatch = startLatch,
         replyError = startError,
+        wrapperClassName = "com.example.SharedTransitionPreviewWrapper",
+        themeProviderFqn = "com.example.DarkThemePreviewWrapper",
       )
     val dispatch =
       InteractiveCommand.Dispatch(
@@ -101,6 +103,11 @@ class InteractiveCommandTest {
     assertSame(startLatch, drainedStart.replyLatch)
     assertSame(startError, drainedStart.replyError)
     assertNull("replyError defaults to null", drainedStart.replyError.get())
+    assertEquals(
+      "com.example.SharedTransitionPreviewWrapper",
+      drainedStart.wrapperClassName,
+    )
+    assertEquals("com.example.DarkThemePreviewWrapper", drainedStart.themeProviderFqn)
   }
 
   @Test

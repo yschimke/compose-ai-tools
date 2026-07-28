@@ -407,8 +407,19 @@ sealed interface InteractiveCommand {
     /** Held-session `LocalInspectionMode`; `null` preserves the runtime-like default (`false`). */
     val inspectionMode: Boolean? = null,
     /**
+     * FQN of the preview's app-declared `PreviewWrapperProvider`. Held/live rendering must preserve
+     * the same wrapper as the one-shot render; wrappers commonly install required app composition
+     * locals such as shared-transition scopes.
+     */
+    val wrapperClassName: String? = null,
+    /**
+     * Optional app-declared theme `PreviewWrapperProvider` selected by a live override. Like the
+     * one-shot path, a provider that resolves successfully replaces [wrapperClassName].
+     */
+    val themeProviderFqn: String? = null,
+    /**
      * Decomposed `spec.overrides.touchOverlay`. When `true`, the held-rule loop wraps
-     * `InvokeHeldComposable` with the planner output that includes `TouchOverlayExtension`, so a
+     * the preview with the planner output that includes `TouchOverlayExtension`, so a
      * panel-driven `interactive/input` with multi-touch dispatch paints the visualization rings on
      * the streamed frames. Threaded as a primitive (not the full `PreviewOverrides` bag) because
      * the protocol's nested types live in the instrumented daemon package and don't cross the
