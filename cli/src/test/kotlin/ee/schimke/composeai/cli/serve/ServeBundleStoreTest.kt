@@ -234,6 +234,27 @@ class ServeBundleStoreTest {
   }
 
   @Test
+  fun `addFromUrl refuses a look-alike or subdomain of an allowed host`() {
+    // The allowlist is exact-host (shared with the document lane via ServeUrlFetch), so neither a
+    // suffix trick nor a subdomain of a trusted CI host gets fetched.
+    for (url in
+      listOf("https://ci.example.com.evil.test/art.zip", "https://sub.ci.example.com/art.zip")) {
+      var fetched = false
+      val result =
+        store(
+            fetch = {
+              fetched = true
+              null
+            },
+            allowedHosts = listOf("ci.example.com"),
+          )
+          .addFromUrl("x", url, isSecurityChecked = true)
+      assertTrue(result is ServeBundleStore.Result.Failed, url)
+      assertTrue(!fetched, "$url must not be fetched")
+    }
+  }
+
+  @Test
   fun `addFromUrl refuses a non-http scheme`() {
     val result =
       store(fetch = { ByteArray(0) }, allowedHosts = listOf("ci.example.com"))
