@@ -88,6 +88,29 @@ and its safety model, with a link to the machine-readable [`/version`](#endpoint
 
 ![Public landing "about" intro (dark)](images/serve-about-public-dark.png)
 
+## Catalog theme selector
+
+The catalog header carries a single **Theme** control listing every theme the catalog configures —
+not just Light/Dark (issue #2881):
+
+- the **baked** light/dark pair, when components were captured in both. Picking one swaps each card
+  to that render in place (instant — the pixels are already published);
+- every app-declared **`@ThemeCatalog` / `@WearThemeCatalog` theme** the session carries
+  (`ServeHost.declaredThemes`, read from the live bundle's `previews.json`). Picking one re-points
+  each card's thumbnail at `/render/<id>.png?themeProvider=<providerFqn>`, so the whole grid redraws
+  under that theme through the carried daemon — the grid-wide counterpart of the viewer's App theme
+  select.
+
+Declared themes are offered only when the session can actually render them (a trusted catalog served
+live, or a daemon-backed module); a static bundle keeps the baked light/dark chips alone, and an
+individual card with no daemon twin keeps its baked pixels. A theme-neutral module whose session
+declares themes gets a leading **Default** chip to return to. The choice persists per catalog
+(`cp-theme:<system>` in `localStorage`, shared with that catalog's viewer Theme select).
+
+![Catalog theme selector (light)](images/serve-catalog-themes-light.png)
+
+![Catalog theme selector (dark)](images/serve-catalog-themes-dark.png)
+
 ## Two axes: trust × format
 
 These are orthogonal. **Trust** decides attribution; **format** decides what draws the pixels. Neither
