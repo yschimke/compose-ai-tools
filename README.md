@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 255 preview(s) across 19 module(s) · 36 error(s) · 3 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/main`. 256 preview(s) across 20 module(s) · 36 error(s) · 4 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -606,6 +606,16 @@ _No findings._
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android-library/LibraryGreetingPreview_Library_Greeting.a11y.png" width="400" />
 
 _No findings._
+
+## android-live-lane
+
+### `LiveLaneCard`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android-live-lane/LiveLaneCard_LiveLaneCard.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | WARNING | DuplicateSpeakableTextCheck | android.view.View | This clickable item's speakable text: "Live lane" is identical to that of 1 other item(s). |
 
 ## android-screenshot-test
 

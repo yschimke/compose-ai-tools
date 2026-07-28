@@ -111,6 +111,24 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "LiveLaneCard_LiveLaneCard.a11y.png",
+      "cleanBasename": "LiveLaneCard_LiveLaneCard.png",
+      "findings": [
+        {
+          "boundsInScreen": "42,159,314,285",
+          "level": "WARNING",
+          "message": "This clickable item's speakable text: \"Live lane\" is identical to that of 1 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.view.View"
+        }
+      ],
+      "functionName": "LiveLaneCard",
+      "module": "android-live-lane",
+      "previewId": "com.example.androidlivelane.LiveLanePreviewsKt.LiveLaneCard_LiveLaneCard",
+      "sourceFile": "src/main/kotlin/com/example/androidlivelane/LiveLanePreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "MainSquarePreview_main_square.a11y.png",
       "cleanBasename": "MainSquarePreview_main_square.png",
       "findings": [],
