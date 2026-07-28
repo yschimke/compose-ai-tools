@@ -13,6 +13,8 @@ import ee.schimke.composeai.cli.serve.ServeBundleStore
 import ee.schimke.composeai.cli.serve.ServeCatalogLiveHost
 import ee.schimke.composeai.cli.serve.ServeCatalogRefresher
 import ee.schimke.composeai.cli.serve.ServeCatalogStore
+import ee.schimke.composeai.cli.serve.ServeDocFormats
+import ee.schimke.composeai.cli.serve.ServeDocStore
 import ee.schimke.composeai.cli.serve.ServeHost
 import ee.schimke.composeai.cli.serve.ServeHttpServer
 import ee.schimke.composeai.cli.serve.ServeMdnsAdvertiser
@@ -192,6 +194,30 @@ class ServeCommand(args: List<String>) : Command(args) {
       ?.split(",")
       ?.map { it.trim() }
       ?.filter { it.isNotEmpty() } ?: emptyList()
+
+  /**
+   * Document ingestion (`--accept-docs`): enable `GET /docs` + `POST /docs` so a client can hand
+   * the server one **known document** (a Remote Compose `.rc`, a Lottie JSON — [ServeDocFormats])
+   * and get back an **expiring permalink** (`/d/<id>`) that plays it in the browser. Off by
+   * default.
+   *
+   * Independent of `--accept-bundles`: a bundle becomes a whole preview session, a document is one
+   * file with a short-lived share link and no server-side render at all.
+   */
+  private val acceptDocs: Boolean = "--accept-docs" in args
+
+  /** How long an ingested document's permalink lives (`--doc-ttl <seconds>`). */
+  private val docTtlSeconds: Long =
+    args.flagValue("--doc-ttl")?.toLongOrNull()?.takeIf { it > 0 }
+      ?: ServeDocStore.DEFAULT_TTL_SECONDS
+
+  /**
+   * SSRF allowlist for `POST /docs?url=`: hostnames the server may fetch a document from. Empty =
+   * uploads only (fail closed), exactly like [acceptBundlesFrom].
+   */
+  private val acceptDocsFrom: List<String> =
+    args.flagValue("--accept-docs-from")?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+      ?: emptyList()
 
   /**
    * Extra remote Maven repository base URLs the live-daemon classpath resolver may fetch from, on
@@ -589,7 +615,8 @@ class ServeCommand(args: List<String>) : Command(args) {
     // An `--accept-bundles` server legitimately starts with no sessions — they arrive at runtime
     // via
     // POST /bundles — so only bail when there's genuinely nothing to serve and no way to add any.
-    if (defaultSessionId == null && !acceptBundles) {
+    // `--accept-docs` is the same case: a pure document drop-box has no sessions at all, ever.
+    if (defaultSessionId == null && !acceptBundles && !acceptDocs) {
       System.err.println(
         "serve: nothing to serve — no --bundle / --bundles / --catalogs registered a session, and " +
           "--accept-bundles is off."
@@ -664,6 +691,26 @@ class ServeCommand(args: List<String>) : Command(args) {
       // before.
       .onFailure { daemonLog.record(state.label, it.message ?: it.toString()) }
       .getOrNull()
+
+  /**
+   * Build the `--accept-docs` document store, or null when the operator didn't opt in. In-memory
+   * and TTL-bounded — an ingested document is a short-lived share, not a session, so there is
+   * nothing to register with the session registry and nothing to clean up at shutdown.
+   */
+  private fun openDocStore(): ServeDocStore? {
+    if (!acceptDocs) return null
+    if (acceptDocsFrom.isEmpty()) {
+      System.err.println(
+        "serve: --accept-docs accepts uploads only; no ?url= host is allowed (SSRF fail closed). " +
+          "Pass --accept-docs-from <host>[,<host>…] to permit URL fetches."
+      )
+    }
+    System.err.println(
+      "serve: document uploads enabled (/docs) — ${ServeDocFormats.knownSummary()}; " +
+        "links expire after ${docTtlSeconds}s"
+    )
+    return ServeDocStore(ttlSeconds = docTtlSeconds, allowedHosts = acceptDocsFrom)
+  }
 
   /** Build the `--accept-bundles` upload store (temp-dir backed), wired to [registry]. */
   private fun openUploadStore(registry: ServeSessionRegistry): ServeBundleStore {
@@ -743,6 +790,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         trustStoreConfigured = trustStorePath != null,
         catalogRefreshSeconds = catalogRefreshSeconds,
         acceptBundlesEnabled = acceptBundles,
+        docStore = openDocStore(),
       )
 
     // Advertise on the LAN over mDNS when bound to a reachable interface (`--lan`), so the mobile /
@@ -1377,6 +1425,12 @@ class ServeCommand(args: List<String>) : Command(args) {
       )
     }
     System.err.println("  Previews: $previewCount")
+    if (acceptDocs) {
+      val docsUrl =
+        if (public) "${ServeUrls.origin(localHost, port)}/docs"
+        else "${ServeUrls.origin(localHost, port)}/docs?token=$token"
+      System.err.println("  Documents: $docsUrl (drop a .rc / Lottie, get an expiring link)")
+    }
     System.err.println("  Press Ctrl-C to stop.")
   }
 
@@ -1512,6 +1566,17 @@ class ServeCommand(args: List<String>) : Command(args) {
                           SSRF allowlist for POST /bundles?url=: hostnames the server may fetch a
                           bundle from. Omitted/empty = no URL fetch is allowed (fail closed), so a
                           client can't steer the server at an arbitrary or internal address.
+        --accept-docs     Enable the DOCUMENT lane: GET /docs (drop a file) + POST /docs ingest one
+                          known document — Remote Compose (.rc) or Lottie (.json) — and hand back an
+                          expiring permalink (/d/<id>) that plays it in the viewer's browser. Data
+                          only: the server stores bytes and never renders them, so hosting an
+                          anonymous document runs nothing. Off by default.
+        --doc-ttl <seconds>
+                          How long a /d/<id> document link lives (default ${ServeDocStore.DEFAULT_TTL_SECONDS}s). The document is
+                          held in memory and dropped when it expires.
+        --accept-docs-from <host>[,<host>…]
+                          SSRF allowlist for POST /docs?url=: hostnames the server may fetch a
+                          document from. Omitted/empty = uploads only (fail closed).
         --trust-store <file>
                           Producer-trust allowlist (JSON: signing keys / branches / CI identities).
                           Uploaded bundles are verified against it and the verdict (signature /

@@ -27,6 +27,11 @@ composePreview {
   // but Robolectric 4.16.1 only ships up to API 36 (and needs JDK 21+ for that).
   // Matches `:samples:remotecompose`.
   sdkVersion.set(35)
+
+  // `WidgetContainerIrCaptureTest` reads the `.rc` sidecars out of
+  // `build/compose-previews/renders/`, so chain the render onto the unit-test task the way
+  // `:samples:wear-widget` does for its own capture test.
+  renderBeforeUnitTests.set(true)
 }
 
 android {
@@ -89,5 +94,13 @@ dependencies {
   // seeded overrides (the vanilla `composePreviewRenderAll` / weekly render) it is
   // byte-for-byte the same output as `RemotePreview`.
   implementation(project(":data-remotecompose-connector"))
+  // The widget-container stickers (`WidgetContainerPreviews.kt`) render through this module's
+  // `CapturingWearWidgetPreview` rather than upstream's `WearWidgetPreview`, so each one emits its
+  // encoded RemoteCompose document as the render's `.rc` sidecar and the bundle packs it as the
+  // sticker's IR. Shared with `:samples:wear-widget`, which uses the same wrapper.
+  implementation(project(":wear-preview-runtime"))
   debugImplementation(libs.compose.ui.tooling.prerelease)
+
+  testImplementation(libs.junit)
+  testImplementation(libs.truth)
 }

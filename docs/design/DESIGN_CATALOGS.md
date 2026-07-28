@@ -72,11 +72,24 @@ therefore points its hero at its full-screen scaffold template:
 componentIds, the module's `@CatalogComponent` ids, and its `@Preview` names —
 and the `validate-samples` test runs that over every catalog in this repo.
 
-## Weekly delivery branches
+## Delivery branches
 
 The [`design-artifacts`](../../.github/workflows/design-artifacts.yml) workflow
-runs every Monday (and on demand via `workflow_dispatch`): it renders each
-catalog module with `compose-preview bundle pack --with-semantics`, runs the
+runs **on every merge to `main` that touches a catalog** (`samples/design-catalog-*`,
+`samples/cmp-wasm-catalog`) or the export driver (`scripts/design-artifacts/`),
+plus every Monday, at the tail of a release, and on demand via
+`workflow_dispatch`. A merge-triggered run is scoped by its `changes` job to only
+the systems whose inputs moved — the mapping lives in
+[`scope-systems.sh`](../../scripts/design-artifacts/scope-systems.sh) and is
+guarded by `test-scope-systems.sh` in CI — so a one-catalog change regenerates one
+branch rather than paying three ~90-minute renders.
+
+Renderer / plugin / CLI changes are deliberately **not** in that push trigger:
+they do change the rendered output, but they're touched by most merges, so the
+weekly cron and the release chain absorb that drift instead. Dispatch manually if
+a renderer change needs to reach the delivery branches before Monday.
+
+Each run renders the catalog module with `compose-preview bundle pack --with-semantics`, runs the
 `@design-parity/catalog-export` driver
 (`scripts/generate-design-catalog.mjs`), and force-pushes the importable bundle
 to a clean **`design-artifacts/<system>`** branch — `design-artifacts/compose-m3`,
@@ -84,7 +97,7 @@ to a clean **`design-artifacts/<system>`** branch — `design-artifacts/compose-
 Claude Design. The branch holds only the generated bundle (`catalog.json`,
 `tokens.dtcg.json`, `figma-variables.json`, `images/` PNGs, and `figma/` — the
 per-sticker layered **`compose/figma-svg`** vectors), regenerated from the code
-each week so it never drifts. Each component ships both the raster PNG (in
+on each catalog change so it never drifts. Each component ships both the raster PNG (in
 `images/`) and its editable vector (`figma/<slug>.svg`): import the PNG for a
 pixel reference or the SVG for a real editable component — fills, strokes, corner
 radii, and text are live layers, not a flattened screenshot. The SVG is the same
