@@ -29,6 +29,9 @@ class FigmaFontEmbedTest {
   @After
   fun tearDown() {
     dir.deleteRecursively()
+    // The resource-font registry is process-wide by design (a resId maps to the same bytes for the
+    // life of the render JVM), so a test that seeds it must not leak into its siblings.
+    FigmaResourceFonts.clear()
   }
 
   @Test
@@ -370,6 +373,56 @@ class FigmaFontEmbedTest {
     // it so it matches the embedded face.
     assertTrue("face named by the font (stem fallback here)", svg.contains("font-family:'MyFont'"))
     assertTrue("text uses the embedded family", svg.contains("""font-family="MyFont""""))
+  }
+
+  @Test
+  fun writeSvgEmbedsAnAndroidResourceFontRecoveredByTheRender() {
+    // Issue #2886. An Android resource-backed family (`FontFamily(Font(R.font.montserrat_regular,
+    // …))`) reaches the capture as the bare `res/font/<resId>` handle — a numeric id that names
+    // nothing a browser or Figma can resolve, and that used to be emitted verbatim as the CSS
+    // family with no matching `@font-face`, so text silently fell back to sans-serif and its glyph
+    // widths / line wrapping / ellipsis positions drifted from the PNG. The render side now
+    // extracts the resource's bytes and publishes the file here; the export must embed *that* file
+    // and name the `<text>` after it, never after the id.
+    val fontFile = File(dir, "Montserrat-Regular.ttf").apply { writeBytes(byteArrayOf(10, 20, 30)) }
+    val identity = FigmaResourceFonts.identityFor(2131230721)
+    FigmaResourceFonts.register(identity, fontFile.absolutePath)
+    val semantics =
+      ComposeSemanticsPayload(
+        ComposeSemanticsNode(
+          nodeId = "root",
+          boundsInRoot = "0,0,200,100",
+          children =
+            listOf(
+              ComposeSemanticsNode(
+                nodeId = "Text",
+                boundsInRoot = "8,8,192,40",
+                text = "Hi",
+                typography = ComposeSemanticsTypography(fontSize = "16.0sp", fontFamily = identity),
+              )
+            ),
+        )
+      )
+    // The resolver returns nothing: a recovered resource face must never take the Google fetch.
+    val resolver = FigmaFontResolver { _, _, _ -> null }
+
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = dir,
+      previewId = "p",
+      layout = LayoutInspectorPayload(textNode()),
+      semantics = semantics,
+      fontResolver = resolver,
+    )
+
+    val svg = dir.resolve("p").resolve(ComposeFigmaSvgDataProducer.FILE_SVG).readText()
+    assertTrue("embeds the recovered resource face", svg.contains("format('truetype')"))
+    assertTrue("uses the resource's own bytes", svg.contains("data:font/ttf;base64,ChQe"))
+    assertTrue("the face is named", svg.contains("font-family:'Montserrat-Regular'"))
+    assertTrue(
+      "the text names the embedded family",
+      svg.contains("""font-family="Montserrat-Regular"""),
+    )
+    assertFalse("the numeric resource id must never reach the SVG", svg.contains("2131230721"))
   }
 
   @Test

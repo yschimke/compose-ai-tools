@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Preview-only module: no launcher activity.
+
+  `android:name` deliberately points at a class that DOES NOT EXIST anywhere in this module (or on
+  any render classpath). That is the whole reason this fixture exists: it reproduces the consumer
+  shape behind #2669 — an app whose merged manifest declares its own `Application`
+  (ConfettiApplication, MeshcoreApplication, …) which a packed preview bundle never carries.
+
+  Robolectric resolves the manifest-declared Application at sandbox bootstrap. A detached render (the
+  `bundle daemon` and `serve` live lanes) must therefore pin the framework `android.app.Application`
+  — through the package-scoped `robolectric.properties` written by
+  `AndroidBundleResources.daemonClasspath`, plus the `<application android:name>` strip beside it. If
+  either regresses (e.g. a Robolectric bump changes config-merge precedence again), bootstrap throws
+  `ClassNotFoundException`, every sandbox aborts, and the live lane fails SOFT to baked PNGs. The
+  `serve-lanes-android` CI job turns that silent degradation into a red build.
+
+  Lint's MissingClass is disabled in build.gradle.kts for exactly this attribute.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:name=".UnpackagedApplication"
+        android:label="Android Live Lane" />
+</manifest>

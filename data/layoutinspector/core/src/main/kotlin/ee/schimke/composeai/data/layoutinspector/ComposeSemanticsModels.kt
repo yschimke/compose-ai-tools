@@ -73,12 +73,19 @@ object LayoutInspectorProduct {
   // Additive — older entries parse with `vectorGraphic = null` and paths with butt/miter defaults.
   // v7: `tokens` may carry effective graphics-layer `opacity`. Additive; older entries decode it
   // as null (fully opaque).
-  // v8 (#2615): each node may carry a `transform` — the draw-time `graphicsLayer` scale it inherits
+  // v8 (#2646): each node may carry a `placeholder` — the Wear/M3 content-loading placeholder its
+  // modifier chain declares, plus whether that placeholder is currently *visible*, and each
+  // modifier entry carries a `placeholder` flag marking the entries that ARE that placeholder. The
+  // figma-svg export needs the state, not just the chain: the ideal state must keep its editable
+  // content (no `drawWithContent` raster, no 50%-pill corner) while the loading state gets the
+  // placeholder block as its own vector layer. Additive — older entries parse with
+  // `placeholder = null` / `false`.
+  // v9 (#2615): each node may carry a `transform` — the draw-time `graphicsLayer` scale it inherits
   // from its ancestors, present only when it isn't the identity (a Wear `TransformingLazyColumn`
   // item shrunk toward the curved edge). `bounds` already carries the scaled rect; `transform` says
   // the shrink is real, so a consumer doesn't grow the node back to its measured `size`. Additive —
   // older entries decode with `transform = null`.
-  const val SCHEMA_VERSION: Int = 8
+  const val SCHEMA_VERSION: Int = 9
   const val FILE: String = "layout-inspector.json"
 }
 
@@ -233,6 +240,25 @@ data class ComposeSemanticsTypography(
   val letterSpacing: String? = null,
   /** Resolved line height as `"<value>sp"` / `"<value>em"`. */
   val lineHeight: String? = null,
+  /**
+   * Resolved paragraph alignment (`TextStyle.textAlign`) as a lowercase name — `"left"`, `"right"`,
+   * `"center"`, `"justify"`, `"start"`, `"end"` — or null when the node leaves it unset or the
+   * drawn ranges disagree (issue #2885). Without it the `compose/figma-svg` export left-anchored
+   * every single-line `<text>` at the start of its layout bounds, so a `TextAlign.Center` heading
+   * inside a `fillMaxWidth()` box drifted to the left edge. Wrapped text needs no such field: its
+   * per-line `left` offsets in [ComposeSemanticsTextOverflow.lines] already encode the alignment
+   * geometrically. This is what recovers it for the single-line case, where no per-line run is
+   * captured at all.
+   */
+  val textAlign: String? = null,
+  /**
+   * Layout direction the paragraph was laid out in — `"ltr"` or `"rtl"` — or null when the capture
+   * couldn't resolve one. Only meaningful alongside [textAlign], and only for its *logical* values:
+   * Compose resolves `TextAlign.Start` to the right edge and `End` to the left under RTL, so an
+   * exporter that assumed LTR would mirror `end`-aligned text to the wrong side of its paragraph
+   * box on an `ar` / `ar-XB` render. `Left`/`Right`/`Center` are absolute and need no direction.
+   */
+  val layoutDirection: String? = null,
   /**
    * Effective styles for the text's UTF-16 ranges when it contains an `AnnotatedString`. Each entry
    * has already been merged over the paragraph style and any overlapping spans, so a consumer can
@@ -485,14 +511,58 @@ data class LayoutInspectorNode(
    */
   val vectorGraphic: LayoutInspectorVectorGraphic? = null,
   /**
+   * The content-loading placeholder this node's modifier chain declares — Wear M3's
+   * `Modifier.placeholder` / `Modifier.placeholderShimmer` — together with whether it is currently
+   * **visible** (issue #2646). Null for the overwhelming majority of nodes (no placeholder on the
+   * chain). See [LayoutInspectorPlaceholder] and [PlaceholderModifiers]. Additive (v8): older
+   * `layout-inspector.json` decodes with `placeholder = null`.
+   */
+  val placeholder: LayoutInspectorPlaceholder? = null,
+  /**
    * The draw-time scale this node inherits from the `graphicsLayer`s above it, when it isn't the
    * identity — a Wear `TransformingLazyColumn` item shrunk toward the curved edge. [bounds] already
    * carries the scaled rect; this says the shrink is *real* so a consumer doesn't grow the node
-   * back to its measured [size] (issue #2615). Additive (v7): older `layout-inspector.json` decodes
+   * back to its measured [size] (issue #2615). Additive (v9): older `layout-inspector.json` decodes
    * with `transform = null`.
    */
   val transform: LayoutInspectorTransform? = null,
   val children: List<LayoutInspectorNode> = emptyList(),
+)
+
+/**
+ * A content-loading placeholder declared on a node's modifier chain (issue #2646), resolved by the
+ * connector's `ModifierTokenResolver` from a modifier [PlaceholderModifiers] recognises.
+ *
+ * This is what makes the figma-svg export **state-aware** rather than point-fixing per symptom: the
+ * exporter otherwise sees only a `drawWithContent` (which it crops to an `<image>`) and a 50%-pill
+ * `shape` (which hijacks the container corner), with no way to tell the ideal state from the
+ * loading one. With this object it can do the right thing in both — ignore the overlay entirely
+ * when [visible] is false (the real content is drawn, and stays editable vector), and emit the
+ * placeholder as its own vector layer, in its own [colorArgb] / corner, when [visible] is true.
+ */
+@Serializable
+data class LayoutInspectorPlaceholder(
+  /**
+   * [PlaceholderModifiers.KIND_PLACEHOLDER] (the content-covering block) or
+   * [PlaceholderModifiers.KIND_SHIMMER] (the sweep overlay drawn over it).
+   */
+  val kind: String,
+  /**
+   * Whether the placeholder is currently painting over the content — read from the modifier's
+   * `PlaceholderState`. `false` is the ideal/content-loaded state (the `__ideal__` render
+   * variants); `true` is the loading state. **Null when the state could not be read**, which the
+   * export treats like `false`: the conservative choice, since assuming "loading" would blank real
+   * content.
+   */
+  val visible: Boolean? = null,
+  /** The placeholder block's colour as `#AARRGGBB`, or null when it couldn't be resolved. */
+  val colorArgb: String? = null,
+  /** Corner radius of the placeholder's own shape in dp wire form, as `ComposeSemanticsTokens`. */
+  val cornerRadius: String? = null,
+  /** Raw-pixel corner radius for a shape with no dp corners. See `ComposeSemanticsTokens`. */
+  val cornerRadiusPx: String? = null,
+  /** Shape descriptor (`"circle"` / `"cut"` / …) for a shape the corner fields can't express. */
+  val shape: String? = null,
 )
 
 /**
@@ -578,4 +648,15 @@ data class LayoutInspectorModifier(
   val value: String? = null,
   val properties: Map<String, String> = emptyMap(),
   val bounds: LayoutInspectorBounds? = null,
+  /**
+   * True when this entry belongs to a content-loading placeholder ([PlaceholderModifiers]) — the
+   * shimmer's own element, or the anonymous `drawWithContent` / `graphicsLayer` pair
+   * `Modifier.placeholder` lowers to.
+   *
+   * Node-level [LayoutInspectorNode.placeholder] says a placeholder is present; this says *which
+   * entries are it*, which is what lets the export drop the placeholder's pass-through draw without
+   * dropping an unrelated `Modifier.drawBehind {…}` on the same chain (whose pixels are genuinely
+   * in the frame). Additive (v8): older files decode with `placeholder = false`.
+   */
+  val placeholder: Boolean = false,
 )

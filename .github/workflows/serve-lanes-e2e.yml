@@ -9,6 +9,13 @@
 # (ServeWebFixtureTest) and the /ws/ lane had no coverage at all — it's the guard
 # that would have caught the compose/figma-svg SVG-override regression and the
 # Caddy WebSocket break.
+#
+# Two jobs, one per render backend:
+#   * `serve-lanes`         — the desktop CMP/Skiko daemon, live-rendering the fetched
+#                             `compose-m3` catalog.
+#   * `serve-lanes-android` — the Robolectric daemon, live-rendering a locally packed
+#                             `:samples:android-live-lane` bundle whose manifest names an
+#                             `Application` the render classpath doesn't carry (#2675 / #2669).
 name: Serve Lanes E2E
 
 on:
@@ -21,6 +28,16 @@ on:
       - "render-session-subprocess/**"
       - "vscode-extension/preview-harness/serve-lanes.*"
       - "vscode-extension/preview-harness/serve-lanes-boot.sh"
+      - "vscode-extension/preview-harness/serve-android-lane-boot.sh"
+      # The Android lane's fixture and the detached-render Application pin it guards.
+      - "samples/android-live-lane/**"
+      - "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt"
+      - "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleLaunch.kt"
+      # A Robolectric bump is THE regression this lane exists to catch (#2669 rode 4.15 → 4.16),
+      # and it lands entirely in the version catalog — `libs.robolectric`, consumed by
+      # `daemon/android/build.gradle.kts`. Without this entry a bump-only PR matches nothing here
+      # and merges without ever exercising the lane.
+      - "gradle/libs.versions.toml"
       - ".github/workflows/serve-lanes-e2e.yml"
   pull_request:
     paths:
@@ -30,6 +47,16 @@ on:
       - "render-session-subprocess/**"
       - "vscode-extension/preview-harness/serve-lanes.*"
       - "vscode-extension/preview-harness/serve-lanes-boot.sh"
+      - "vscode-extension/preview-harness/serve-android-lane-boot.sh"
+      # The Android lane's fixture and the detached-render Application pin it guards.
+      - "samples/android-live-lane/**"
+      - "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt"
+      - "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleLaunch.kt"
+      # A Robolectric bump is THE regression this lane exists to catch (#2669 rode 4.15 → 4.16),
+      # and it lands entirely in the version catalog — `libs.robolectric`, consumed by
+      # `daemon/android/build.gradle.kts`. Without this entry a bump-only PR matches nothing here
+      # and merges without ever exercising the lane.
+      - "gradle/libs.versions.toml"
       - ".github/workflows/serve-lanes-e2e.yml"
   workflow_dispatch:
 
@@ -108,5 +135,94 @@ jobs:
           name: serve-lanes-artifacts
           path: |
             serve-lanes.log
+            vscode-extension/preview-harness/test-results-serve-lanes/**
+          if-no-files-found: warn
+
+  # The Android/Robolectric half of the same proof (#2675). The job above only ever stood up the
+  # desktop CMP/Skiko daemon, so the daemon behind every Android catalog on preview.coo.ee
+  # (meshcore-mobile, confetti-mobile, confetti-wear) had no end-to-end CI at all — which is how
+  # #2669 shipped: on Robolectric 4.16 the deprecated `SandboxHoldingRunner.buildGlobalConfig`
+  # Application override stopped merging over the manifest, the daemon resolved the consumer's
+  # `Application` at sandbox bootstrap, threw `ClassNotFoundException`, and every Android catalog
+  # collapsed to baked PNGs. Fail-SOFT, so CI stayed green and only a manual repro caught it.
+  #
+  # This lane serves a locally packed bundle of `:samples:android-live-lane`, whose merged manifest
+  # names an `Application` the render classpath doesn't carry — the exact reproducing shape. The boot
+  # script fails the job unless the session registers LIVE *and* returns a real 200 render, so a
+  # regression in the `android.app.Application` pin (or a Robolectric bump that changes config-merge
+  # precedence again — #2671 took us to 4.17-beta-2) turns the silent degradation into a red build.
+  serve-lanes-android:
+    name: Android (Robolectric) serve lane honors overrides
+    runs-on: ubuntu-latest
+    # Robolectric sandbox bootstrap + the android-all-instrumented fetch dominate the cold render,
+    # on top of a bundle pack that renders the sample first.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+
+      # No xvfb / Mesa here (unlike the desktop lane): Robolectric rasterises offscreen through its
+      # own native graphics path. `android.jar` comes from the runner image's Android SDK
+      # (ANDROID_HOME / ANDROID_SDK_ROOT), which the daemon launch resolves.
+      - name: Build the CLI (installDist) + Android daemon sidecar
+        shell: bash
+        # `lib-daemon-android` ships as a standalone archive rather than inside the CLI dist (#1685),
+        # so stage it and point the CLI at it via `-Dcomposeai.cli.libDaemonAndroidDir` (the boot
+        # script sets that through JAVA_OPTS).
+        run: ./gradlew --no-daemon :cli:installDist :cli:stageDaemonAndroidLibs --stacktrace
+
+      - name: Pack the Android live-lane bundle
+        shell: bash
+        run: |
+          cli/build/install/compose-preview/bin/compose-preview bundle pack \
+            --module samples:android-live-lane \
+            -o "$GITHUB_WORKSPACE/android-live-lane.png" --timeout 900
+
+      - name: Install harness deps + Chromium
+        working-directory: vscode-extension
+        shell: bash
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      # Boots the daemon, signs the bundle with a throwaway key so it verifies Trusted (the live
+      # gate), and hard-fails on the fail-soft shape — see the script header.
+      - name: Boot Robolectric-daemon serve
+        shell: bash
+        env:
+          SERVE_BUNDLE: android-live-lane.png
+          LIB_DAEMON_ANDROID_DIR: cli/build/staged-daemon-android-libs
+        run: |
+          url="$(bash vscode-extension/preview-harness/serve-android-lane-boot.sh)"
+          echo "serve-android-lane: SERVE_URL=$url"
+          echo "SERVE_URL=$url" >> "$GITHUB_ENV"
+
+      # Same spec as the desktop lane, pointed at the Android session: PNG re-render, SVG override
+      # text, the Live /ws/ frame lane, and the viewer wiring. The Wasm test self-skips — an Android
+      # session has no in-browser tier.
+      - name: Drive every render lane (Chromium)
+        working-directory: vscode-extension
+        shell: bash
+        env:
+          CI: "true"
+          SERVE_SYSTEM: androidlane
+        run: npm run harness:serve-lanes
+
+      - name: Tear down serve
+        if: always()
+        shell: bash
+        run: |
+          [ -f serve-android-lane.pid ] && kill "$(cat serve-android-lane.pid)" 2>/dev/null || true
+          pkill -f 'MainKt serve' 2>/dev/null || true
+
+      - name: Upload serve log + trace on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: serve-lanes-android-artifacts
+          path: |
+            serve-android-lane.log
             vscode-extension/preview-harness/test-results-serve-lanes/**
           if-no-files-found: warn

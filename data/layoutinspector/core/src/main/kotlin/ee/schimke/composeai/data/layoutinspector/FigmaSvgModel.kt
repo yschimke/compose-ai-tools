@@ -63,6 +63,22 @@ data class FigmaSvgText(
    * registers.
    */
   val letterSpacingPx: Double? = null,
+  /**
+   * Resolved paragraph alignment as captured (`"center"`, `"end"`, `"right"`, …), or null when the
+   * capture resolved none. Drives the single-line `<text>`'s `text-anchor` + x so centred /
+   * right-aligned text lands where the render drew it rather than at the start of its layout bounds
+   * (issue #2885). Wrapped text ignores it: [lines] already carries each line's measured `left`,
+   * which encodes the alignment geometrically, and anchoring on top of that would shift every line
+   * twice.
+   */
+  val textAlign: String? = null,
+  /**
+   * Layout direction the paragraph was laid out in (`"ltr"` / `"rtl"`), when captured. Resolves the
+   * *logical* [textAlign] values: Compose puts `start` at the right edge and `end` at the left
+   * under RTL, so an LTR-assuming exporter mirrors `end`-aligned text to the wrong side on an `ar`
+   * / `ar-XB` render. Absent ⇒ treated as LTR.
+   */
+  val layoutDirection: String? = null,
   /** Effective styled UTF-16 ranges for annotated text; null for a uniform/plain run. */
   val spans: List<FigmaSvgTextSpan>? = null,
   /**
@@ -295,6 +311,9 @@ data class FigmaSvgCapsuleClip(val x: Int, val y: Int, val width: Int, val heigh
     get() = width / 2
 }
 
+/** An axis-aligned rectangle in root-pixel space. */
+data class FigmaSvgRect(val x: Int, val y: Int, val width: Int, val height: Int)
+
 data class FigmaSvgModel(
   val root: FigmaSvgLayer,
   val minX: Int,
@@ -321,6 +340,13 @@ data class FigmaSvgModel(
    * the dark face to read against while the corners outside the mask stay transparent.
    */
   val deviceBackground: FigmaSvgColor? = null,
+  /**
+   * The frame the [deviceBackground] fills when the preview carries **no** device mask — an
+   * ordinary `@Preview(showBackground = true, backgroundColor = …)` whose render painted a flat
+   * background behind the composable (issue #2884). A masked device frame ignores this and paints
+   * the mask shape instead, so the two never both draw. Null when nothing opted in.
+   */
+  val backgroundRect: FigmaSvgRect? = null,
 ) {
   val tx: Int
     get() = padding - minX
@@ -455,14 +481,27 @@ data class FigmaSvgModel(
         if (clip != null || capsule != null)
           Extent(frame.left, frame.top, frame.right, frame.bottom)
         else rootLayer.extent() ?: Extent(0, 0, 0, 0)
-      // A device preview (round or capsule mask) that opted in paints its screen background behind
-      // the tree, clipped to that mask — so a Wear device export reads as a solid face with light
-      // chrome legible, while the corners outside the mask stay transparent. Component previews
-      // pass
-      // no `deviceBackground` (and carry no mask), so they never get one.
-      val deviceBg =
-        if ((clip != null || capsule != null) && deviceBackground != null)
-          argbToColor(deviceBackground, names)
+      // A preview that opted into a background paints it behind the whole tree as the bottom
+      // layer. A device frame (round or capsule mask) paints it in the mask shape, so a Wear
+      // device export reads as a solid face with light chrome legible while the corners outside
+      // the mask stay transparent. A **maskless** preview — the ordinary
+      // `@Preview(showBackground = true, backgroundColor = …)` of issue #2884 — paints the frame
+      // rect instead; before this it painted nothing, so the SVG was transparent where the PNG was
+      // opaque. Previews that pass no `deviceBackground` (the default, and every preview that
+      // didn't declare `showBackground`) still export background-free.
+      val deviceBg = deviceBackground?.let { argbToColor(it, names) }
+      // Sized from the canvas extent rather than the root node's bounds: a wrap-content preview
+      // measures inside a generous sandbox frame (400×800 dp) and the PNG is cropped back to the
+      // composable's intrinsic size, so the background the viewer sees covers the *cropped* area.
+      // Using the raw frame here would paint the sandbox.
+      val backgroundRect =
+        if (deviceBg != null && clip == null && capsule == null)
+          FigmaSvgRect(
+            x = extent.minX,
+            y = extent.minY,
+            width = extent.maxX - extent.minX,
+            height = extent.maxY - extent.minY,
+          )
         else null
       return FigmaSvgModel(
         root = rootLayer,
@@ -475,6 +514,7 @@ data class FigmaSvgModel(
         roundClip = clip,
         capsuleClip = capsule,
         deviceBackground = deviceBg,
+        backgroundRect = backgroundRect,
       )
     }
 
@@ -546,7 +586,56 @@ data class FigmaSvgModel(
       // origin, clamped to the parent, and use it everywhere below. Best-effort geometry for a
       // pathological capture; a normally-placed node keeps its real `bounds` untouched.
       val bounds = recoverBounds(parentBounds)
+      // Anything the export derives from a *token* or from the measured `size` is an
+      // un-transformed value, while `bounds` is the rect as **drawn**. Under a draw-time
+      // `graphicsLayer` scale — a Wear `TransformingLazyColumn` item shrunk toward the curved edge
+      // — the render draws those measured values at `× scale`, so each is scaled into drawn space
+      // before it is used (issue #2615). Identity (`1.0`) for the overwhelming majority of nodes,
+      // where every expression below is unchanged.
+      val scaleX = transform?.scaleX?.toDouble() ?: 1.0
+      val scaleY = transform?.scaleY?.toDouble() ?: 1.0
+      // A corner radius is a single length against a box scaled on both axes; with the uniform
+      // scale Wear's edge transform applies, the mean is exactly that scale.
+      val scaleMean = (scaleX + scaleY) / 2.0
       val (opacity, contentOpacity) = orderedOpacities()
+      // An **active placeholder block** (issue #2646): the loading state, where the Wear/M3
+      // `Modifier.placeholder` paints its block over the content and the content itself is faded
+      // out of the render. Emit the placeholder as its own editable layer — a rounded rect in the
+      // placeholder's own colour and shape — and drop the subtree, rather than baking the
+      // composited frame into an `<image>`. This is the one state in which a placeholder-shaped
+      // rect is the correct export; the ideal state falls through and keeps its real content (the
+      // placeholder contributes no shape, no fill, and — via `hasCustomDraw` — no raster).
+      //
+      // The **shimmer** never takes this path, active or not. It rides on the container's chain (a
+      // placeholdered `TitleCard` carries it on the card itself) and only sweeps *over* whatever is
+      // beneath, so replacing the container with a block would erase the card's own background and
+      // every child. Its whole contribution is negative: no container tokens, no raster.
+      placeholder
+        ?.takeIf { it.visible == true && it.kind == PlaceholderModifiers.KIND_PLACEHOLDER }
+        ?.let { ph ->
+          return FigmaSvgLayer(
+            name = "${layerName()} Placeholder",
+            left = bounds.left,
+            top = bounds.top,
+            right = bounds.right,
+            bottom = bounds.bottom,
+            fill = ph.colorArgb?.let { argbToColor(it, ctx.colorNames) },
+            // The placeholder's corner is a measured length like any other token, so it rides the
+            // node's draw-time scale (issue #2615) — a placeholdered card near a round face's edge
+            // is drawn shrunk, corner included.
+            cornerRadiiPx =
+              if (ph.shape == "circle") null
+              else
+                (ph.cornerRadius?.let { parseCornersPx(it, ctx.density) }
+                    ?: ph.cornerRadiusPx?.let { parseRawCornersPx(it) })
+                  ?.map { it * scaleMean },
+            circle = ph.shape == "circle",
+            cut = ph.shape == "cut",
+            // Deliberately NOT the node's own opacities: an active `Modifier.placeholder` fades the
+            // content it covers to `alpha = 0` through its own `graphicsLayer`, so inheriting that
+            // would emit an invisible block. The block is drawn outside that fade, fully opaque.
+          )
+        }
       // An `Icon`/`Image` whose `ImageVector` the inspector captured emits as editable `<path>`
       // layers rather than a raster crop — the vector alternative to the opaque-by-name fallback
       // below. Placed before the raster branch so a vector-backed icon never rasterises; a
@@ -653,17 +742,6 @@ data class FigmaSvgModel(
       // shape, plus a `shape="cut"` descriptor; the renderer draws those sizes as straight
       // chamfers.
       val cut = tokens?.shape == "cut"
-      // Everything below that comes from a *token* is a measured, un-transformed value, while the
-      // node's `bounds` is the rect as **drawn**. Under a draw-time `graphicsLayer` scale — a Wear
-      // `TransformingLazyColumn` item shrunk toward the curved edge — the render draws those
-      // measured values at `× scale`, so each is scaled into drawn space here. Identity (`1.0`) for
-      // the overwhelming majority of nodes, where every expression below is unchanged.
-      val scaleX = transform?.scaleX?.toDouble() ?: 1.0
-      val scaleY = transform?.scaleY?.toDouble() ?: 1.0
-      // A corner radius is a single length against a box scaled on both axes; with the uniform
-      // scale
-      // Wear's edge transform applies, the mean is exactly that scale.
-      val scaleMean = (scaleX + scaleY) / 2.0
       val corners =
         if (circle) null
         else
@@ -1064,10 +1142,22 @@ data class FigmaSvgModel(
     /**
      * True when the node paints through a custom Canvas draw (a `Canvas`, or a component drawing
      * its chrome via `Modifier.drawBehind {…}` like the progress/slider indicators).
+     *
+     * The placeholder's **own** draw doesn't count (issue #2646). A Wear/M3 `Modifier.placeholder`
+     * draws through a `drawWithContent`, but in the ideal (content-loaded) state that draw is a
+     * pass-through: the pixels under it are the node's own text/children, which the vector export
+     * represents exactly. Rasterising it crops the composited frame and doubles whatever the vector
+     * path already emitted (the "text rendered twice" bug, #2644). An *active* placeholder never
+     * reaches here — [toLayer] returns its own vector layer first.
+     *
+     * Scoped to the entries [LayoutInspectorModifier.placeholder] marks, not to the whole node: a
+     * `Modifier.drawBehind {…}.placeholder(state)` chain still paints its own imperative art into
+     * the frame, and that art is not something the vector export can otherwise represent.
      */
-    private fun LayoutInspectorNode.hasCustomDraw(): Boolean = modifiers.any {
-      it.name in DRAW_MODIFIERS
-    }
+    private fun LayoutInspectorNode.hasCustomDraw(): Boolean = modifiers.any { it.isCustomDraw() }
+
+    private fun LayoutInspectorModifier.isCustomDraw(): Boolean =
+      name in DRAW_MODIFIERS && !placeholder
 
     /**
      * The region the Canvas draw actually paints — the union of the draw modifiers' bounds, which
@@ -1075,7 +1165,7 @@ data class FigmaSvgModel(
      * bounds when a draw modifier carries none.
      */
     private fun LayoutInspectorNode.drawnRegion(): LayoutInspectorBounds {
-      val drawn = modifiers.filter { it.name in DRAW_MODIFIERS }.mapNotNull { it.bounds }
+      val drawn = modifiers.filter { it.isCustomDraw() }.mapNotNull { it.bounds }
       if (drawn.isEmpty()) return bounds
       return LayoutInspectorBounds(
         left = drawn.minOf { it.left },
@@ -1206,6 +1296,8 @@ data class FigmaSvgModel(
           node.typography?.letterSpacing?.let {
             lineHeightToPx(it, node.typography.fontSize, density, fontScale)
           },
+        textAlign = node.typography?.textAlign,
+        layoutDirection = node.typography?.layoutDirection,
         spans =
           node.typography?.spans?.map { span ->
             FigmaSvgTextSpan(

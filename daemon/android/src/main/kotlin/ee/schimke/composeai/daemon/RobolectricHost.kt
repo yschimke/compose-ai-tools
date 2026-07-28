@@ -347,6 +347,10 @@ open class RobolectricHost(
       "device",
       "captureAdvanceMs",
       "inspectionMode",
+      // `renderNow.overrides.placeholderActive` pins the content-loading placeholder state via the
+      // `PlaceholderStatePreviewOverrideExtension` planner wired into `previewOverrideExtensions`
+      // (issue #2646).
+      "placeholderActive",
       "material3Theme",
       // `overrides.themeProvider` wraps the preview in an app-declared @ThemeCatalog
       // `PreviewWrapperProvider` (resolved off the app classpath in `InvokeWithOptionalWrapper`),
@@ -1958,6 +1962,13 @@ open class RobolectricHost(
                 // countdowns) renders deterministically. Plans null when unset, so a plain render
                 // stays byte-identical. Same portable planner registered on `DesktopHost`.
                 FakeClockPreviewOverrideExtension(),
+                // Content-loading placeholder state (#2646): when
+                // `renderNow.overrides.placeholderActive` is set, pin `LocalPlaceholderActive` so a
+                // placeholdered preview renders in the loading (or loaded) state deterministically
+                // instead of whatever its own `PlaceholderState` computes. Plans null when unset,
+                // so a plain render stays byte-identical. Same portable planner registered on
+                // `DesktopHost`.
+                PlaceholderStatePreviewOverrideExtension(),
                 // Runtime pseudolocale: when `localeTag` is `en-XA` / `ar-XB`, wrap LocalContext
                 // with a Resources subclass that pseudolocalises `getString*` returns. The
                 // planner returns null for any other tag, so non-pseudo locales keep going through

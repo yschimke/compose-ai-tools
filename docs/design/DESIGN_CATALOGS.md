@@ -56,11 +56,24 @@ workflow below); this repo's catalogs are the per-component-system sheets.
 Each module carries a `catalog.spec.json` (the Phase-0 inventory: groups,
 captions, primary modes, breakpoints, and the seed-kit frame per component).
 
-## Weekly delivery branches
+## Delivery branches
 
 The [`design-artifacts`](../../.github/workflows/design-artifacts.yml) workflow
-runs every Monday (and on demand via `workflow_dispatch`): it renders each
-catalog module with `compose-preview bundle pack --with-semantics`, runs the
+runs **on every merge to `main` that touches a catalog** (`samples/design-catalog-*`,
+`samples/cmp-wasm-catalog`) or the export driver (`scripts/design-artifacts/`),
+plus every Monday, at the tail of a release, and on demand via
+`workflow_dispatch`. A merge-triggered run is scoped by its `changes` job to only
+the systems whose inputs moved — the mapping lives in
+[`scope-systems.sh`](../../scripts/design-artifacts/scope-systems.sh) and is
+guarded by `test-scope-systems.sh` in CI — so a one-catalog change regenerates one
+branch rather than paying three ~90-minute renders.
+
+Renderer / plugin / CLI changes are deliberately **not** in that push trigger:
+they do change the rendered output, but they're touched by most merges, so the
+weekly cron and the release chain absorb that drift instead. Dispatch manually if
+a renderer change needs to reach the delivery branches before Monday.
+
+Each run renders the catalog module with `compose-preview bundle pack --with-semantics`, runs the
 `@design-parity/catalog-export` driver
 (`scripts/generate-design-catalog.mjs`), and force-pushes the importable bundle
 to a clean **`design-artifacts/<system>`** branch — `design-artifacts/compose-m3`,
@@ -68,7 +81,7 @@ to a clean **`design-artifacts/<system>`** branch — `design-artifacts/compose-
 Claude Design. The branch holds only the generated bundle (`catalog.json`,
 `tokens.dtcg.json`, `figma-variables.json`, `images/` PNGs, and `figma/` — the
 per-sticker layered **`compose/figma-svg`** vectors), regenerated from the code
-each week so it never drifts. Each component ships both the raster PNG (in
+on each catalog change so it never drifts. Each component ships both the raster PNG (in
 `images/`) and its editable vector (`figma/<slug>.svg`): import the PNG for a
 pixel reference or the SVG for a real editable component — fills, strokes, corner
 radii, and text are live layers, not a flattened screenshot. The SVG is the same
@@ -193,11 +206,17 @@ their own full-screen frame rather than the centred component sticker:
   `SYSTEM_BAR_INSET` top/bottom so the app's own chrome clears that overlay. The
   `Template/AppScaffold` template is a `TopAppBar` + list + FAB — the canonical
   "full screen layout with a status bar", rendered light + dark.
-- **Wear M3** — `WearScaffoldTemplate` supplies just the dark theme; each template
-  composes its own `AppScaffold(timeText = { … })` so the curved `TimeText` status
-  strip is part of the capture (unlike the `FullScreenWear` stickers, which drop
-  the clock). A frozen `10:10` keeps renders deterministic. Three variants cover
-  the status-strip archetypes: `Template/TimeText` (base list screen),
+- **Wear M3** — `WearScaffoldTemplate` (an alias of `FullScreenWear`) supplies the
+  dark theme *and* the `AppScaffold`, including the curved `TimeText` status strip
+  frozen at `10:10` for deterministic renders. A template composes its own
+  `ScreenScaffold` under it and must **not** add another `AppScaffold` — nesting a
+  second one would draw a second status strip. Every full-screen Wear capture
+  carries the strip, templates and stickers alike: a Wear screen without its clock
+  isn't the screen an app copies, since the strip reserves the curved top margin
+  the content lays out around. (`ScreenScaffold` still hides the strip once a list
+  is scrolled away from the top, so a `@ScrollingPreview(END)` capture legitimately
+  shows no clock.) Three template variants cover the status-strip archetypes:
+  `Template/TimeText` (base list screen),
   `Template/PageIndicator` (horizontal pager + `HorizontalPageIndicator`), and
   `Template/EdgeButton` (list anchored by the screen-hugging `EdgeButton`), each
   captured at every round breakpoint.
@@ -236,6 +255,18 @@ gap by scanning the module's Kotlin source directly (no Gradle build, no render)
   `annotation class` meta-annotated with it (`@CatalogModes`, `@CatalogTemplate`,
   …). The authoritative check remains the render + completeness gate; this is the
   fast local/CI pre-flight.
+
+  It also rejects a `preview` that resolves to a **PNG-less** function — one whose
+  only capture is an animated GIF or a scroll data product (`@AnimatedPreview`, a
+  multi-step `@FocusedPreview(gif = true)`, or `@ScrollingPreview` with only
+  `ScrollMode.LONG` / `ScrollMode.GIF`). Those render fine, but the export
+  represents every catalog
+  entry as a static sticker: `candidatePreviewBundle()` drops anything without
+  `previews/<id>.png` from the candidate join, and the completeness gate then
+  reports the component missing. Catalogue a static `@Preview` sibling instead and
+  let the GIF travel in the bundle as its own artifact. `init-catalog-spec` skips
+  these functions when scaffolding, and the validator's discovery line names them
+  so you know why they're absent.
 
 The spec shape is described by
 [`scripts/design-artifacts/catalog.spec.schema.json`](../../scripts/design-artifacts/catalog.spec.schema.json)
