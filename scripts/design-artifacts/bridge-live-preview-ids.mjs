@@ -154,6 +154,7 @@ function pickVariantId(candidates, image, widthForSize) {
   const wantNight =
     image.theme === "dark" ? true : image.theme === "light" ? false : null;
   const wantWidth = widthForSize(image.size);
+  const wantFontScale = requestedFontScale(image.props);
   let best;
   let bestScore = -Infinity;
   for (const candidate of candidates) {
@@ -164,12 +165,37 @@ function pickVariantId(candidates, image, widthForSize) {
     if (wantWidth !== null && candidate.widthDp !== null) {
       score += candidate.widthDp === wantWidth ? 2 : -2;
     }
+    // Font scale is the one axis with no dedicated image field, so a spec expresses it as a props
+    // variant. It still has to be scored, or two annotations that differ ONLY by `fontScale` tie
+    // and the first id wins for both — the same collapse this function exists to prevent. Weaker
+    // than the other axes because the no-hint case is a preference, not a constraint: an image
+    // that asks for nothing should land on the unscaled annotation rather than an arbitrary one,
+    // but must not out-vote a matching theme or width.
+    if (wantFontScale !== null) {
+      score += candidate.fontScale === wantFontScale ? 2 : -2;
+    } else {
+      score += candidate.fontScale === null ? 1 : -1;
+    }
     if (score > bestScore) {
       bestScore = score;
       best = candidate;
     }
   }
   return best?.id;
+}
+
+/**
+ * The font scale an image's `props` ask for, or null when it names none. Accepts a number or the
+ * numeric strings a hand-written spec tends to carry (`"1.5"`, `"1.5x"`); `1` is normalised to
+ * null so an explicitly-default variant matches an annotation that simply omits `fontScale`.
+ */
+function requestedFontScale(props) {
+  const raw = props?.fontScale;
+  if (raw == null) return null;
+  const value =
+    typeof raw === "number" ? raw : Number.parseFloat(String(raw).replace(/x$/i, ""));
+  if (!Number.isFinite(value) || value === 1) return null;
+  return value;
 }
 
 /**

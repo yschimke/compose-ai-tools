@@ -1832,8 +1832,15 @@ class RenderEngine(
         (pseudo == null &&
           ee.schimke.composeai.data.pseudolocale.LocaleDirection.isRtl(effectiveLocaleTag))
     val qualifiers = buildList {
-      if (!effectiveLocaleTag.isNullOrBlank()) add(localeTagToQualifier(effectiveLocaleTag))
-      if (rtl) add("ldrtl")
+      // Both the locale and its direction are emitted on EVERY render, not just when one was
+      // requested. `setQualifiers("+…")` is incremental, so a token we omit keeps whatever the
+      // previous render in this daemon set: a locale preview followed by a locale-less one left
+      // the earlier `b+ar` + `ldrtl` in force, making the second preview's strings, mirroring and
+      // every data product derived from them depend on render order. Resetting to Robolectric's
+      // own default locale (`en-rUS`) is the locale analogue of the unconditional `notnight` reset
+      // below.
+      add(localeTagToQualifier(effectiveLocaleTag?.takeIf { it.isNotBlank() } ?: DEFAULT_LOCALE_TAG))
+      add(if (rtl) "ldrtl" else "ldltr")
       if (widthDp > 0) add("w${widthDp}dp")
       if (heightDp > 0) add("h${heightDp}dp")
       if (isRound) add("round")
@@ -1865,6 +1872,13 @@ class RenderEngine(
    * `b+` prefix is mandatory for tags with non-empty regions or scripts; we use it unconditionally
    * for simplicity — single-tag forms like `b+en` are accepted.
    */
+  /**
+   * Robolectric's own default locale. Used as the reset value for a preview that requests none, so
+   * a locale-less render doesn't inherit the previous one's — this restores the default rather than
+   * imposing a new one.
+   */
+  private val DEFAULT_LOCALE_TAG = "en-US"
+
   private fun localeTagToQualifier(tag: String): String {
     val parts = tag.split('-', '_').filter { it.isNotBlank() }
     if (parts.isEmpty()) return ""

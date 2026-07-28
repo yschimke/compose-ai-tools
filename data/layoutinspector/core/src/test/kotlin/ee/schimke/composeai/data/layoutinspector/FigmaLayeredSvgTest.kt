@@ -1687,6 +1687,64 @@ class FigmaLayeredSvgTest {
     assertTrue(svg.contains("""<text x="180""""))
   }
 
+  /**
+   * `start`/`end` are logical: Compose puts `end` at the LEFT edge under RTL. Anchoring it right
+   * regardless would mirror `ar` / `ar-XB` renders to the wrong side of the paragraph box.
+   */
+  @Test
+  fun logicalAlignmentsAreResolvedAgainstTheCapturedLayoutDirection() {
+    fun svgFor(align: String, direction: String?): String {
+      val layout =
+        layoutNode("Row", 0, 0, 200, 100, children = listOf(layoutNode("Text", 20, 8, 180, 40)))
+      val semantics =
+        ComposeSemanticsNode(
+          nodeId = "root",
+          boundsInRoot = "0,0,200,100",
+          children =
+            listOf(
+              ComposeSemanticsNode(
+                nodeId = "t",
+                boundsInRoot = "20,8,180,40",
+                text = "مرحبا",
+                typography =
+                  ComposeSemanticsTypography(
+                    fontSize = "16.0sp",
+                    textAlign = align,
+                    layoutDirection = direction,
+                  ),
+              )
+            ),
+        )
+      return render(layout, semantics = semantics)
+    }
+
+    // RTL: end → left edge, start → right edge.
+    svgFor("end", "rtl").let {
+      assertFalse("RTL end must not anchor right", it.contains("text-anchor="))
+      assertTrue(it.contains("""<text x="20""""))
+    }
+    svgFor("start", "rtl").let {
+      assertTrue("RTL start anchors at the right edge", it.contains("""text-anchor="end""""))
+      assertTrue(it.contains("""<text x="180""""))
+    }
+    // LTR (and an absent direction, which defaults to LTR) keeps the natural mapping.
+    for (direction in listOf("ltr", null)) {
+      svgFor("end", direction).let {
+        assertTrue(it.contains("""text-anchor="end""""))
+        assertTrue(it.contains("""<text x="180""""))
+      }
+      svgFor("start", direction).let {
+        assertFalse(it.contains("text-anchor="))
+        assertTrue(it.contains("""<text x="20""""))
+      }
+    }
+    // `right` is absolute — RTL must not flip it.
+    svgFor("right", "rtl").let {
+      assertTrue(it.contains("""text-anchor="end""""))
+      assertTrue(it.contains("""<text x="180""""))
+    }
+  }
+
   @Test
   fun unalignedTextKeepsItsHistoricalLeftAnchor() {
     val layout =

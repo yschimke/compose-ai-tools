@@ -625,7 +625,7 @@ object FigmaLayeredSvg {
     // to the middle/right edge of the layer's own (paragraph) box and let the viewer place the run
     // around it. Without this a `TextAlign.Center` heading in a `fillMaxWidth()` box exported
     // hard against the left edge (issue #2885).
-    val (anchorX, anchor) = singleLineAnchor(layer, t.textAlign)
+    val (anchorX, anchor) = singleLineAnchor(layer, t.textAlign, t.layoutDirection)
     return """<text x="$anchorX" y="${fmt(baseline)}" font-size="${fmt(size)}"$family$weight$style$letterSpacing$anchor$fill>""" +
       "${styled ?: escape(t.content)}</text>"
   }
@@ -635,17 +635,29 @@ object FigmaLayeredSvg {
    * paragraph box. `justify` behaves as start for a single line (there is nothing to stretch to),
    * matching how Compose lays it out; an unknown/absent alignment keeps the historical left anchor
    * so nothing that wasn't explicitly aligned moves.
+   *
+   * `start`/`end` are **logical**: Compose resolves `start` to the right edge and `end` to the left
+   * under RTL, so they are resolved against [layoutDirection] (absent ⇒ LTR). `left`/`right` are
+   * absolute and ignore it.
    */
-  private fun singleLineAnchor(layer: FigmaSvgLayer, textAlign: String?): Pair<Int, String> =
-    when (textAlign?.lowercase()) {
-      // `end` is resolution-dependent in Compose (LTR → right), and every capture this export sees
-      // is laid out LTR — an RTL locale render would need the layout direction carried alongside,
-      // which the capture doesn't record today.
+  private fun singleLineAnchor(
+    layer: FigmaSvgLayer,
+    textAlign: String?,
+    layoutDirection: String?,
+  ): Pair<Int, String> {
+    val rtl = layoutDirection?.lowercase() == "rtl"
+    val resolved =
+      when (textAlign?.lowercase()) {
+        "start" -> if (rtl) "right" else "left"
+        "end" -> if (rtl) "left" else "right"
+        else -> textAlign?.lowercase()
+      }
+    return when (resolved) {
       "center" -> (layer.left + layer.width / 2) to """ text-anchor="middle""""
-      "right",
-      "end" -> layer.right to """ text-anchor="end""""
+      "right" -> layer.right to """ text-anchor="end""""
       else -> layer.left to ""
     }
+  }
 
   /** Styled `<tspan>`s for the intersections of [spans] with `[rangeStart, rangeEnd)`. */
   private fun styledTspans(

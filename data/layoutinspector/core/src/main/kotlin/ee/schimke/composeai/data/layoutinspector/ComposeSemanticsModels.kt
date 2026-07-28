@@ -239,6 +239,14 @@ data class ComposeSemanticsTypography(
    */
   val textAlign: String? = null,
   /**
+   * Layout direction the paragraph was laid out in — `"ltr"` or `"rtl"` — or null when the capture
+   * couldn't resolve one. Only meaningful alongside [textAlign], and only for its *logical* values:
+   * Compose resolves `TextAlign.Start` to the right edge and `End` to the left under RTL, so an
+   * exporter that assumed LTR would mirror `end`-aligned text to the wrong side of its paragraph
+   * box on an `ar` / `ar-XB` render. `Left`/`Right`/`Center` are absolute and need no direction.
+   */
+  val layoutDirection: String? = null,
+  /**
    * Effective styles for the text's UTF-16 ranges when it contains an `AnnotatedString`. Each entry
    * has already been merged over the paragraph style and any overlapping spans, so a consumer can
    * emit editable styled runs without losing the base family. Null for plain text.

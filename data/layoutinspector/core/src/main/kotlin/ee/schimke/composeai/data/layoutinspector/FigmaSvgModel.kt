@@ -72,6 +72,13 @@ data class FigmaSvgText(
    * twice.
    */
   val textAlign: String? = null,
+  /**
+   * Layout direction the paragraph was laid out in (`"ltr"` / `"rtl"`), when captured. Resolves the
+   * *logical* [textAlign] values: Compose puts `start` at the right edge and `end` at the left
+   * under RTL, so an LTR-assuming exporter mirrors `end`-aligned text to the wrong side on an `ar`
+   * / `ar-XB` render. Absent ⇒ treated as LTR.
+   */
+  val layoutDirection: String? = null,
   /** Effective styled UTF-16 ranges for annotated text; null for a uniform/plain run. */
   val spans: List<FigmaSvgTextSpan>? = null,
   /**
@@ -1145,6 +1152,7 @@ data class FigmaSvgModel(
             lineHeightToPx(it, node.typography.fontSize, density, fontScale)
           },
         textAlign = node.typography?.textAlign,
+        layoutDirection = node.typography?.layoutDirection,
         spans =
           node.typography?.spans?.map { span ->
             FigmaSvgTextSpan(

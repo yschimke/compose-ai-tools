@@ -352,6 +352,14 @@ object ComposeSemanticsDataProducer {
     // heading.
     val textAlign =
       results.mapNotNull { textAlignName(it.layoutInput.style.textAlign) }.distinct().singleOrNull()
+    // Carried alongside it so the export can resolve the *logical* alignments (`start`/`end`),
+    // which Compose mirrors under RTL. Read off the layout input rather than inferred from the
+    // locale: a composable can flip direction locally via `LocalLayoutDirection`.
+    val layoutDirection =
+      results
+        .mapNotNull { layoutDirectionName(it.layoutInput.layoutDirection) }
+        .distinct()
+        .singleOrNull()
     val truncated = results.any { it.hasVisualOverflow }
     val didOverflowWidth = results.any { it.didOverflowWidth }
     val didOverflowHeight = results.any { it.didOverflowHeight }
@@ -425,6 +433,7 @@ object ComposeSemanticsDataProducer {
       letterSpacing = letterSpacing,
       lineHeight = lineHeight,
       textAlign = textAlign,
+      layoutDirection = layoutDirection,
       foregroundColor =
         unambiguousColor(results.flatMap { it.textColors() })?.let(::colorToWireString),
       backgroundColor =
@@ -654,6 +663,18 @@ object ComposeSemanticsDataProducer {
     return raw.takeIf { it in WIRE_TEXT_ALIGNS }
   }
 
+  /**
+   * A resolved `LayoutDirection` as `"ltr"` / `"rtl"`, or null for anything unrecognised. Read
+   * through `toString()` for the same reason as [textAlignName] — the enum's name (`Ltr`/`Rtl`) is
+   * the stable part of its surface.
+   */
+  private fun layoutDirectionName(direction: Any?): String? =
+    when (direction?.toString()?.trim()?.lowercase()) {
+      "ltr" -> "ltr"
+      "rtl" -> "rtl"
+      else -> null
+    }
+
   /** A resolved [TextUnit] as `"<value>sp"` / `"<value>em"`; null for unspecified / other types. */
   private fun TextUnit.toWireTextUnit(): String? =
     when (type) {
@@ -673,6 +694,7 @@ object ComposeSemanticsDataProducer {
     val letterSpacing: String?,
     val lineHeight: String?,
     val textAlign: String?,
+    val layoutDirection: String?,
     val foregroundColor: String?,
     val backgroundColor: String?,
     val lineCount: Int?,
@@ -714,6 +736,7 @@ object ComposeSemanticsDataProducer {
         letterSpacing = letterSpacing,
         lineHeight = lineHeight,
         textAlign = textAlign,
+        layoutDirection = layoutDirection,
         spans = spans,
       )
 
