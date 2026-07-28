@@ -565,6 +565,15 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   var tabBtns = document.querySelectorAll(".cp-tab");
   var tabSections = document.querySelectorAll(".cp-section");
   var current = tabBtns.length ? tabBtns[0].getAttribute("data-tab") : null;
+  try {
+    var storedTab = localStorage.getItem("cp-tab:meshcore-mobile");
+    tabBtns.forEach(function (t) {
+      if (t.getAttribute("data-tab") === storedTab) current = storedTab;
+    });
+  } catch (e) {}
+  tabBtns.forEach(function (t) {
+    t.setAttribute("aria-selected", t.getAttribute("data-tab") === current ? "true" : "false");
+  });
   document.documentElement.classList.add("cp-js");
   
   function apply() {
@@ -592,6 +601,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     t.addEventListener("click", function (e) {
       e.preventDefault();
       current = t.getAttribute("data-tab");
+      try { localStorage.setItem("cp-tab:meshcore-mobile", current); } catch (e) {}
       tabBtns.forEach(function (x) { x.setAttribute("aria-selected", x === t ? "true" : "false"); });
       apply();
     });

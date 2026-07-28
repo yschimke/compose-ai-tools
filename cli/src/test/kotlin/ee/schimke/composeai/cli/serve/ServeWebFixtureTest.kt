@@ -1058,6 +1058,11 @@ class ServeWebFixtureTest {
         landingSections.contains("querySelectorAll(\".cp-tab\")"),
       "the sectioned landing wires the tab-switching script",
     )
+    assertTrue(
+      landingSections.contains("localStorage.getItem(\"cp-tab:meshcore-mobile\")") &&
+        landingSections.contains("localStorage.setItem(\"cp-tab:meshcore-mobile\", current)"),
+      "the selected tab persists per catalog and is restored when returning from a preview",
+    )
     // `role="tablist"` (the tab bar) and `classList.add("cp-js")` (the tab script) appear ONLY when
     // tabs are rendered — the shared stylesheet's `.cp-tabs` / `html.cp-js` rules are on every
     // page,

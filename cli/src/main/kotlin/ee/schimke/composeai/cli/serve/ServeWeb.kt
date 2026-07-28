@@ -688,6 +688,12 @@ object ServeWeb {
     return "cp-theme:${WebEscaping.urlEncodeSegment(catalog)}"
   }
 
+  /** Stable, catalog-specific key for the last section selected on that catalog's landing page. */
+  private fun tabStorageKey(sessionId: String?, basePath: String): String {
+    val catalog = basePath.trim('/').ifBlank { sessionId ?: "default" }
+    return "cp-tab:${WebEscaping.urlEncodeSegment(catalog)}"
+  }
+
   /**
    * The flattened id with its theme token stripped — the key that pairs a component's light and
    * dark variants into ONE grid card. `button-filled__ideal__default__light` and `…__dark` both key
@@ -1160,6 +1166,7 @@ object ServeWeb {
     hasTabs: Boolean,
     hasGroups: Boolean,
     themeStorageKey: String,
+    tabStorageKey: String,
   ): String {
     val themeInit =
       if (hasThemes)
@@ -1224,6 +1231,15 @@ object ServeWeb {
         "\n      var tabBtns = document.querySelectorAll(\".cp-tab\");" +
           "\n      var tabSections = document.querySelectorAll(\".cp-section\");" +
           "\n      var current = tabBtns.length ? tabBtns[0].getAttribute(\"data-tab\") : null;" +
+          "\n      try {" +
+          "\n        var storedTab = localStorage.getItem(\"$tabStorageKey\");" +
+          "\n        tabBtns.forEach(function (t) {" +
+          "\n          if (t.getAttribute(\"data-tab\") === storedTab) current = storedTab;" +
+          "\n        });" +
+          "\n      } catch (e) {}" +
+          "\n      tabBtns.forEach(function (t) {" +
+          "\n        t.setAttribute(\"aria-selected\", t.getAttribute(\"data-tab\") === current ? \"true\" : \"false\");" +
+          "\n      });" +
           "\n      document.documentElement.classList.add(\"cp-js\");"
       else ""
     // A card is shown when it matches the search AND (while not searching) sits in the current tab.
@@ -1249,6 +1265,7 @@ object ServeWeb {
           "\n        t.addEventListener(\"click\", function (e) {" +
           "\n          e.preventDefault();" +
           "\n          current = t.getAttribute(\"data-tab\");" +
+          "\n          try { localStorage.setItem(\"$tabStorageKey\", current); } catch (e) {}" +
           "\n          tabBtns.forEach(function (x) { x.setAttribute(\"aria-selected\", x === t ? \"true\" : \"false\"); });" +
           "\n          apply();" +
           "\n        });" +
@@ -2243,7 +2260,13 @@ object ServeWeb {
       else ""
     val filterScript =
       if (hasPreviews)
-        "\n<script>${catalogFilterScript(hasThemes, hasTabs, hasGroups, themeStorageKey(sessionId, basePath))}</script>"
+        "\n<script>${catalogFilterScript(
+          hasThemes,
+          hasTabs,
+          hasGroups,
+          themeStorageKey(sessionId, basePath),
+          tabStorageKey(sessionId, basePath),
+        )}</script>"
       else ""
     return document(
       title = "$moduleLabel — compose-preview",
