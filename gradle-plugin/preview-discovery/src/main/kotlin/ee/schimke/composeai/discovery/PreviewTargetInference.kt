@@ -2,9 +2,11 @@ package ee.schimke.composeai.discovery
 
 import io.github.classgraph.ClassInfo
 import io.github.classgraph.MethodInfo
+import io.github.classgraph.Resource
 import io.github.classgraph.ScanResult
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassVisitor
+import org.objectweb.asm.Handle
 import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
 
@@ -19,10 +21,9 @@ import org.objectweb.asm.Opcodes
  * forward-compatible with later multi-target inference (e.g. `Row { Foo(); Bar() }` returning
  * both), but the current scoring pass keeps only the top-scored candidate.
  *
- * Wrapper detection is FQN-prefix based. Project-local theme wrappers (e.g. `MyAppTheme { … }`) are
- * intentionally **not** unwrapped here — that needs reading the lambda's synthetic `invoke` class
- * and is reserved for a follow-up. The [TargetSignal.WRAPPER_UNWRAPPED] enum value is declared for
- * that future use.
+ * Project-local theme/preview wrappers are filtered by source/name, and compiler-generated lambda
+ * methods reachable from the preview are traversed so `Theme { Component() }` can still nominate
+ * `Component`.
  */
 object PreviewTargetInference {
 
@@ -112,7 +113,7 @@ object PreviewTargetInference {
     variantName: String,
     hasPreviewParameter: Boolean,
   ): List<PreviewTarget> {
-    val calls =
+    val directCalls =
       try {
         extractCalls(previewClassInfo, previewMethod)
       } catch (_: Throwable) {
@@ -121,6 +122,10 @@ object PreviewTargetInference {
         // to whatever signal they had before.
         return emptyList()
       }
+    val unwrappedCalls =
+      extractComposeSingletonLambdaCalls(directCalls, scanResult, projectClassFqns)
+    val calls = directCalls + unwrappedCalls
+    val unwrappedTargets = unwrappedCalls.mapTo(mutableSetOf()) { it.ownerFqn to it.methodName }
 
     val previewFqn = previewClassInfo.name
     val previewMethodName = previewMethod.name
@@ -133,6 +138,10 @@ object PreviewTargetInference {
         .filterNot { isWrapperFqn(it.ownerFqn) }
         .filter { it.ownerFqn in projectClassFqns }
         .mapNotNull { resolveCandidate(it, scanResult) }
+        .filterNot { candidate ->
+          !isValidKotlinImportIdentifier(candidate.method.name) ||
+            isPreviewOnlyWrapper(candidate.method.name, resolveSourceFile(candidate.ownerFqn))
+        }
         .distinctBy { it.ownerFqn to it.method.name }
         .toList()
 
@@ -160,6 +169,7 @@ object PreviewTargetInference {
               // `@PreviewParameter color: Long → Foo(color)` pattern.
               p.annotationInfo?.none { it.name == COMPOSABLE_FQN } ?: true
             } == true,
+          wrapperUnwrapped = candidate.ownerFqn to candidate.method.name in unwrappedTargets,
           totalSurvivors = survivors,
           resolveSourceFile = resolveSourceFile,
         )
@@ -206,9 +216,23 @@ object PreviewTargetInference {
     previewMethod: MethodInfo,
   ): List<Invocation> {
     val resource = previewClassInfo.resource ?: return emptyList()
-    val targetName = previewMethod.name
-    val targetDescriptor = previewMethod.typeDescriptorStr
-    val collected = mutableListOf<Invocation>()
+    val root = MethodKey(previewMethod.name, previewMethod.typeDescriptorStr)
+    return extractCalls(
+      resource = resource,
+      ownerFqn = previewClassInfo.name,
+      isRoot = { it == root },
+      shouldFollow = { candidate -> candidate.name.startsWith(previewMethod.name + '$') },
+    )
+  }
+
+  private fun extractCalls(
+    resource: Resource,
+    ownerFqn: String,
+    isRoot: (MethodKey) -> Boolean,
+    shouldFollow: (MethodKey) -> Boolean,
+  ): List<Invocation> {
+    val ownerInternal = ownerFqn.replace('.', '/')
+    val bodies = mutableMapOf<MethodKey, MethodBody>()
     resource.open().use { stream ->
       ClassReader(stream)
         .accept(
@@ -220,8 +244,10 @@ object PreviewTargetInference {
               signature: String?,
               exceptions: Array<out String>?,
             ): MethodVisitor? {
-              if (name != targetName) return null
-              if (descriptor != targetDescriptor) return null
+              val key = MethodKey(name, descriptor)
+              val calls = mutableListOf<Invocation>()
+              val nestedMethods = mutableSetOf<MethodKey>()
+              bodies[key] = MethodBody(calls, nestedMethods)
               return object : MethodVisitor(Opcodes.ASM9) {
                 override fun visitMethodInsn(
                   opcode: Int,
@@ -230,7 +256,22 @@ object PreviewTargetInference {
                   descriptor: String,
                   isInterface: Boolean,
                 ) {
-                  collected += Invocation(owner.replace('/', '.'), name, descriptor)
+                  calls += Invocation(owner.replace('/', '.'), name, descriptor)
+                  if (owner == ownerInternal) {
+                    nestedMethods += MethodKey(name, descriptor)
+                  }
+                }
+
+                override fun visitInvokeDynamicInsn(
+                  name: String,
+                  descriptor: String,
+                  bootstrapMethodHandle: Handle,
+                  vararg bootstrapMethodArguments: Any,
+                ) {
+                  bootstrapMethodArguments
+                    .filterIsInstance<Handle>()
+                    .filter { it.owner == ownerInternal }
+                    .forEach { nestedMethods += MethodKey(it.name, it.desc) }
                 }
               }
             }
@@ -238,8 +279,127 @@ object PreviewTargetInference {
           ClassReader.SKIP_DEBUG or ClassReader.SKIP_FRAMES,
         )
     }
+    val collected = mutableListOf<Invocation>()
+    val pending = ArrayDeque<MethodKey>().apply { addAll(bodies.keys.filter(isRoot)) }
+    val visited = mutableSetOf<MethodKey>()
+    while (pending.isNotEmpty()) {
+      val key = pending.removeFirst()
+      if (!visited.add(key)) continue
+      val body = bodies[key] ?: continue
+      collected += body.calls
+      pending.addAll(body.nestedMethods.filter(shouldFollow))
+    }
     return collected
   }
+
+  private data class MethodKey(val name: String, val descriptor: String)
+
+  private data class MethodBody(val calls: List<Invocation>, val nestedMethods: Set<MethodKey>)
+
+  /**
+   * Compose 2.x stores non-capturing composable lambdas in generated
+   * `ComposableSingletons$…$lambda$<key>$…` classes. A preview only calls the matching
+   * `getLambda$<key>$…` getter, so walk that narrowly identified generated class to find the
+   * component rendered inside `Theme { … }` / `Wrap { … }`.
+   */
+  private fun extractComposeSingletonLambdaCalls(
+    directCalls: List<Invocation>,
+    scanResult: ScanResult,
+    projectClassFqns: Set<String>,
+  ): List<Invocation> =
+    directCalls
+      .asSequence()
+      .filter {
+        it.ownerFqn in projectClassFqns &&
+          ".ComposableSingletons$" in it.ownerFqn &&
+          it.methodName.startsWith("getLambda$")
+      }
+      .flatMap { getter ->
+        val lambdaKey = getter.methodName.removePrefix("getLambda$").substringBefore('$')
+        if (lambdaKey.isEmpty()) return@flatMap emptySequence()
+        val lambdaClassPrefix = getter.ownerFqn + "\$lambda\$$lambdaKey\$"
+        val ownerResource = scanResult.getClassInfo(getter.ownerFqn)?.resource
+        if (ownerResource == null) return@flatMap emptySequence()
+        referencedClasses(ownerResource, lambdaClassPrefix)
+          .asSequence()
+          .flatMap { lambdaClassFqn ->
+            scanResult
+              .getResourcesWithPathIgnoringAccept(lambdaClassFqn.replace('.', '/') + ".class")
+              .asSequence()
+              .map { lambdaClassFqn to it }
+          }
+          .filter { it.second.classpathElementURI == ownerResource.classpathElementURI }
+          .flatMap { (lambdaClassFqn, resource) ->
+            try {
+              extractCalls(
+                  resource = resource,
+                  ownerFqn = lambdaClassFqn,
+                  isRoot = { key ->
+                    key.name == "invoke" && "Landroidx/compose/runtime/Composer;" in key.descriptor
+                  },
+                  shouldFollow = { false },
+                )
+                .asSequence()
+            } catch (_: Throwable) {
+              emptySequence()
+            }
+          }
+      }
+      .distinct()
+      .toList()
+
+  private fun referencedClasses(resource: Resource, classFqnPrefix: String): Set<String> {
+    val internalPrefix = classFqnPrefix.replace('.', '/')
+    val referenced = mutableSetOf<String>()
+    resource.open().use { stream ->
+      ClassReader(stream)
+        .accept(
+          object : ClassVisitor(Opcodes.ASM9) {
+            override fun visitMethod(
+              access: Int,
+              name: String,
+              descriptor: String,
+              signature: String?,
+              exceptions: Array<out String>?,
+            ): MethodVisitor =
+              object : MethodVisitor(Opcodes.ASM9) {
+                override fun visitFieldInsn(
+                  opcode: Int,
+                  owner: String,
+                  name: String,
+                  descriptor: String,
+                ) {
+                  if (owner.startsWith(internalPrefix)) {
+                    referenced += owner.replace('/', '.')
+                  }
+                }
+              }
+          },
+          ClassReader.SKIP_DEBUG or ClassReader.SKIP_FRAMES,
+        )
+    }
+    return referenced
+  }
+
+  internal fun isValidKotlinImportIdentifier(name: String): Boolean =
+    KOTLIN_IMPORT_IDENTIFIER.matches(name)
+
+  internal fun isPreviewOnlyWrapper(methodName: String, sourceFile: String?): Boolean {
+    val sourceName = methodName.substringBefore('$')
+    if (
+      sourceName == "Wrap" ||
+        sourceName.endsWith("Theme") ||
+        sourceName.endsWith("PreviewWrapper") ||
+        sourceName.endsWith("PreviewScope")
+    ) {
+      return true
+    }
+    val path = sourceFile?.replace('\\', '/')?.lowercase() ?: return false
+    val isDebugSource = path.startsWith("src/debug/") || "/src/debug/" in path
+    return isDebugSource && (path.startsWith("catalog/") || "/catalog/" in path)
+  }
+
+  private val KOTLIN_IMPORT_IDENTIFIER = Regex("[A-Za-z_][A-Za-z0-9_]*")
 
   private data class ResolvedCandidate(
     val ownerFqn: String,
@@ -284,6 +444,7 @@ object PreviewTargetInference {
     variantName: String,
     hasPreviewParameter: Boolean,
     callerMethodHasComposableParam: Boolean,
+    wrapperUnwrapped: Boolean,
     totalSurvivors: Int,
     resolveSourceFile: (String) -> String?,
   ): ScoredCandidate {
@@ -335,6 +496,10 @@ object PreviewTargetInference {
     if (hasPreviewParameter && callerMethodHasComposableParam) {
       score += 1
       signals += TargetSignal.PARAMETER_FORWARDED
+    }
+
+    if (wrapperUnwrapped) {
+      signals += TargetSignal.WRAPPER_UNWRAPPED
     }
 
     return ScoredCandidate(

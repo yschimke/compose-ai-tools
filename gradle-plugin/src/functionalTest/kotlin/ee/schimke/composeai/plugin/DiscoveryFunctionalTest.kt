@@ -2235,6 +2235,97 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `composePreviewDiscover looks through theme and catalog lambdas and rejects mangled targets`() {
+    val projectDir = createCmpTestProject()
+
+    val srcDir = File(projectDir, "src/main/kotlin/test")
+    File(srcDir, "Previews.kt").delete()
+
+    File(srcDir, "Components.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+
+        @Composable
+        fun HomeScreen() {
+            Text("home")
+        }
+
+        @JvmInline
+        value class ScreenValue(val value: Int)
+
+        @Composable
+        fun Screen(value: ScreenValue = ScreenValue(0)) {
+            Text("${'$'}{value.value}")
+        }
+        """
+          .trimIndent()
+      )
+
+    File(srcDir, "Previews.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.tooling.preview.Preview
+
+        @Composable
+        fun DemoTheme(content: @Composable () -> Unit) {
+            content()
+        }
+
+        @Composable
+        fun Wrap(content: @Composable () -> Unit) {
+            content()
+        }
+
+        @Preview
+        @Composable
+        fun ThemePreview() {
+            DemoTheme { HomeScreen() }
+        }
+
+        @Preview
+        @Composable
+        fun WrapPreview() {
+            Wrap { HomeScreen() }
+        }
+
+        @Preview
+        @Composable
+        fun MangledPreview() {
+            Screen()
+        }
+        """
+          .trimIndent()
+      )
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover", "--stacktrace")
+      .withPluginClasspath()
+      .build()
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val themeTarget =
+      manifest.previews.single { it.functionName == "ThemePreview" }.targets.single()
+    val wrapTarget = manifest.previews.single { it.functionName == "WrapPreview" }.targets.single()
+    assertThat(themeTarget.functionName).isEqualTo("HomeScreen")
+    assertThat(wrapTarget.functionName).isEqualTo("HomeScreen")
+    assertThat(themeTarget.sourceFile).contains("Components.kt")
+    assertThat(wrapTarget.sourceFile).contains("Components.kt")
+    assertThat(themeTarget.signals).contains(TargetSignal.WRAPPER_UNWRAPPED)
+    assertThat(wrapTarget.signals).contains(TargetSignal.WRAPPER_UNWRAPPED)
+    assertThat(manifest.previews.single { it.functionName == "MangledPreview" }.targets).isEmpty()
+  }
+
+  @Test
   fun `composePreviewDiscover emits no target when preview body is purely framework`() {
     // A preview that only calls AndroidX Compose primitives (no project-local composable) gets no
     // target — the inference should not invent one from theming / layout calls.

@@ -8,7 +8,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { bestTarget, targetsByFunction } from "./figma-code-connect-target.mjs";
+import {
+  bestTarget,
+  isValidKotlinIdentifier,
+  targetsByFunction,
+} from "./figma-code-connect-target.mjs";
 
 test("bestTarget takes the first (most-confident) entry, or null when none", () => {
   assert.deepEqual(
@@ -36,6 +40,12 @@ test("bestTarget takes the first (most-confident) entry, or null when none", () 
   assert.equal(bestTarget([{ sourceFile: "a.kt" }]), null);
   // A target with no parameters carried yields an empty array (never undefined).
   assert.deepEqual(bestTarget([{ functionName: "X" }]).parameters, []);
+});
+
+test("bestTarget rejects JVM-mangled names that cannot appear in Kotlin source", () => {
+  assert.equal(bestTarget([{ functionName: "Screen-G2aJUZY", confidence: "HIGH" }]), null);
+  assert.equal(isValidKotlinIdentifier("Screen"), true);
+  assert.equal(isValidKotlinIdentifier("Screen-G2aJUZY"), false);
 });
 
 test("targetsByFunction reads parsed preview.targets, preferring the light variant", () => {
