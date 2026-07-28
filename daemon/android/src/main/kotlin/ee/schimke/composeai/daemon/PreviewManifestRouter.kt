@@ -154,6 +154,9 @@ class PreviewManifestRouter(
       (inbound["kind"] ?: resolved.kind)
         ?.takeIf { it.isNotBlank() }
         ?.let { append("kind=").append(it).append(';') }
+      resolved.name
+        ?.takeIf { it.isNotBlank() }
+        ?.let { append("previewName=").append(it).append(';') }
       // `@PreviewWrapper(SomeProvider::class)` FQN sourced from `previews.json` (the gradle
       // plugin's `extractWrapperFqn` reads it off the class-file annotation tables — the
       // upstream annotation is `AnnotationRetention.BINARY` and not visible via
@@ -210,6 +213,7 @@ private fun PreviewManifestEntry.renderSpec(): RenderSpec {
     device = resolved.device,
     outputBaseName = resolved.outputBaseName,
     kind = resolved.kind,
+    previewName = resolved.name,
     wrapperClassName = resolved.wrapperClassName,
     wrapWidth = resolved.wrapWidth,
     wrapHeight = resolved.wrapHeight,
@@ -279,6 +283,7 @@ data class PreviewManifestEntry(
     val density = density ?: p?.density ?: 2.0f
     val device = device ?: p?.device
     val kind = kind ?: p?.kind
+    val name = p?.name
     val uiMode = uiMode ?: p?.uiMode ?: 0
     // A preview that declares an explicit size — or is pinned to a fixed frame by a device or a
     // non-Compose surface (tile / notification / Glance, whose render helpers consume the concrete
@@ -313,6 +318,7 @@ data class PreviewManifestEntry(
       device = device,
       outputBaseName = outputBaseName ?: id,
       kind = kind,
+      name = name,
       wrapperClassName = wrapperClassName,
       wrapWidth = wrapWidth,
       wrapHeight = wrapHeight,
@@ -348,6 +354,7 @@ data class PreviewManifestEntry(
  */
 @Serializable
 data class PreviewParamsEntry(
+  val name: String? = null,
   val device: String? = null,
   val widthDp: Int? = null,
   val heightDp: Int? = null,
@@ -394,6 +401,7 @@ data class ResolvedRenderParams(
   val device: String?,
   val outputBaseName: String,
   val kind: String? = null,
+  val name: String? = null,
   val wrapperClassName: String? = null,
   /**
    * AS-parity wrap-content flags (see [RenderSpec.wrapWidth]). Set when the preview declares no

@@ -89,6 +89,51 @@ class WrappedPreviewRenderTest {
   }
 
   @Test
+  fun wearThemeCatalogUsesSyntheticStrategyInsteadOfReflectingDisplayName() {
+    val outputDir = tempFolder.newFolder("renders-wear-theme-catalog")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val provider = "ee.schimke.composeai.daemon.GreenBorderWrapper"
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "wearthemecatalog__Dark",
+              className = provider,
+              // Synthetic catalog entries carry a display label here. It deliberately does not
+              // name a method: falling through to ordinary composable reflection reproduces the
+              // NoSuchMethodException from issue #2872.
+              functionName = "Dark theme",
+              params =
+                PreviewParamsEntry(
+                  name = "Dark",
+                  widthDp = 96,
+                  heightDp = 96,
+                  density = 1.0f,
+                  kind = "WEAR_THEME_CATALOG",
+                  wrapperClassName = provider,
+                ),
+            )
+          )
+      )
+    val host = PreviewManifestRouter(manifest = manifest)
+    host.start()
+    try {
+      val image =
+        renderAndDecode(
+          host = host,
+          payload = "previewId=wearthemecatalog__Dark",
+          label = "Wear theme catalog",
+        )
+      assertTrue("Wear theme catalog should render its requested width", image.width == 96)
+      assertTrue("Wear theme catalog should render its requested height", image.height == 96)
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun scrollLongPreservesRequiredPreviewWrapper() {
     val outputDir = tempFolder.newFolder("renders-wrapped-scroll")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)

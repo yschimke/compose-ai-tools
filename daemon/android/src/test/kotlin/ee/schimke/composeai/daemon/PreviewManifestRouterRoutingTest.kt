@@ -197,6 +197,47 @@ class PreviewManifestRouterRoutingTest {
   }
 
   @Test
+  fun `routePayload preserves Wear theme catalog kind and display name`() {
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "wearthemecatalog__Dark",
+              className = "com.example.JetcasterWearDarkThemeCatalog",
+              functionName = "Dark theme",
+              params =
+                PreviewParamsEntry(
+                  name = "Dark",
+                  widthDp = 227,
+                  heightDp = 227,
+                  kind = "WEAR_THEME_CATALOG",
+                  wrapperClassName = "com.example.JetcasterWearDarkThemeCatalog",
+                ),
+            )
+          )
+      )
+
+    val routed =
+      PreviewManifestRouter(manifest = manifest)
+        .routePayload("previewId=wearthemecatalog__Dark")
+    val spec = RenderSpec.parseFromPayloadOrNull(routed)!!
+
+    assertTrue(
+      "Wear theme catalogs must retain their strategy kind. payload=$routed",
+      spec.kind == "WEAR_THEME_CATALOG",
+    )
+    assertTrue(
+      "the synthetic sheet's clean theme name must survive routing. payload=$routed",
+      spec.previewName == "Dark",
+    )
+    assertTrue(
+      "the provider FQN must survive routing. payload=$routed",
+      spec.wrapperClassName == "com.example.JetcasterWearDarkThemeCatalog",
+    )
+  }
+
+  @Test
   fun `routePayload derives uiMode=dark from the manifest night bit`() {
     // A `_Dark` multipreview variant differs from its `_Light` sibling ONLY by
     // `@Preview(uiMode = UI_MODE_NIGHT_YES)`. Dropping the bit rendered both variants identically
