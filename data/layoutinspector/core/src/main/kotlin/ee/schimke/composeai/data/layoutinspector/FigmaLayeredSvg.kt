@@ -273,18 +273,24 @@ object FigmaLayeredSvg {
       """width="${bg.width}" height="${bg.height}"/>"""
 
   /**
-   * A captured icon [FigmaSvgVector] as a named `<g>` holding a `translate(left,top)
-   * scale(w/viewportW, h/viewportH)` group of `<path>`s — the vector's viewport coordinates mapped
-   * onto the layer's placed box, so the icon draws crisp at the component's actual size.
+   * A captured icon [FigmaSvgVector] as a named `<g>` holding a centered, uniform fit transform.
+   * Compose's `VectorPainter` preserves the viewport aspect ratio when the layout node and vector
+   * have different shapes; stretching X and Y independently flattened icons captured from
+   * animated/transitioning content into wide slivers.
    */
   private fun vectorGroup(layer: FigmaSvgLayer, vec: FigmaSvgVector, indent: String): String {
     val sx = if (vec.viewportWidth > 0f) layer.width / vec.viewportWidth.toDouble() else 1.0
     val sy = if (vec.viewportHeight > 0f) layer.height / vec.viewportHeight.toDouble() else 1.0
+    val scale = minOf(sx, sy)
+    val fittedWidth = vec.viewportWidth.toDouble() * scale
+    val fittedHeight = vec.viewportHeight.toDouble() * scale
+    val x = layer.left + (layer.width - fittedWidth) / 2.0
+    val y = layer.top + (layer.height - fittedHeight) / 2.0
     val sb = StringBuilder()
     sb.append("""$indent<g id="${escapeAttr(layer.name)}">""").append('\n')
     sb
       .append(
-        """$indent  <g transform="translate(${layer.left} ${layer.top}) scale(${fmt(sx)} ${fmt(sy)})">"""
+        """$indent  <g transform="translate(${fmt(x)} ${fmt(y)}) scale(${fmt(scale)} ${fmt(scale)})">"""
       )
       .append('\n')
     for (p in vec.paths) sb.append(indent).append("    ").append(vectorPath(p)).append('\n')

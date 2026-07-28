@@ -115,8 +115,8 @@ data class FigmaSvgRaster(val href: String)
 /**
  * An editable vector graphic (an `Icon`/`Image`'s `ImageVector`) emitted as real `<path>` layers —
  * the vector alternative to a [FigmaSvgRaster] leaf. Path coordinates are in the vector's own
- * [viewportWidth] × [viewportHeight]; the emitter wraps them in a `translate(left,top)
- * scale(w/viewportWidth, h/viewportHeight)` group so they land on the layer's placed box.
+ * [viewportWidth] × [viewportHeight]; the emitter uniformly scales and centers them in the layer's
+ * placed box, matching `VectorPainter`'s aspect-preserving fit.
  */
 data class FigmaSvgVector(
   val viewportWidth: Float,

@@ -87,6 +87,36 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun vectorPreservesItsAspectRatioInsideANonSquareLayer() {
+    val node =
+      LayoutInspectorNode(
+        nodeId = "icon",
+        component = "Icon",
+        bounds = bounds(10, 20, 58, 32),
+        size = LayoutInspectorSize(48, 12),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L24,0 L24,24 L0,24 Z",
+                  fillArgb = "#FF000000",
+                )
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    // A 24×24 vector fits the 48×12 layer at 0.5× and is horizontally centered. Independent
+    // scaling would emit scale(2 0.5), visibly flattening the icon.
+    assertTrue(svg, svg.contains("""transform="translate(28 20) scale(0.5 0.5)""""))
+    assertFalse(svg, svg.contains("scale(2 0.5)"))
+  }
+
+  @Test
   fun everyLayoutNodeBecomesANamedGroup() {
     val svg =
       render(

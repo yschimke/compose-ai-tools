@@ -450,10 +450,10 @@ data class LayoutInspectorNode(
 /**
  * An editable vector graphic (an `ImageVector` an `Icon`/`Image` painted) captured off a node's
  * `VectorPainter`. Path coordinates are in the vector's own viewport ([viewportWidth] ×
- * [viewportHeight]); the figma-svg export scales+translates them onto the node's placed bounds, so
- * the same icon renders crisp at any component size. Only solid (`SolidColor`) fills/strokes are
- * captured — a gradient/brush leaves its colour null and the export drops that fill rather than
- * guessing — matching the vector-vs-raster rule the rest of the export follows.
+ * [viewportHeight]); the figma-svg export uniformly scales and centers them in the node's placed
+ * bounds, so the same icon renders crisp without changing aspect ratio. Only solid (`SolidColor`)
+ * fills/strokes are captured — a gradient/brush leaves its colour null and the export drops that
+ * fill rather than guessing — matching the vector-vs-raster rule the rest of the export follows.
  */
 @Serializable
 data class LayoutInspectorVectorGraphic(
