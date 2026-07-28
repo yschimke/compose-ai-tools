@@ -2695,6 +2695,10 @@ object ServeWeb {
       $switchers
       <div class="cp-viewer-bar">
         $navToggle
+        <span class="cp-bg" role="group" aria-label="Preview zoom">
+          <button type="button" class="cp-bg-btn cp-zoom-btn" data-zoom-mode="fit" aria-pressed="true">Fit screen</button>
+          <button type="button" class="cp-bg-btn cp-zoom-btn" data-zoom-mode="width" aria-pressed="false">Fit width</button>
+        </span>
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
       <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr>
@@ -2857,6 +2861,36 @@ object ServeWeb {
       var status = document.getElementById("cp-status");
       var errorBox = document.getElementById("cp-error");
       var live = document.getElementById("cp-live");
+      // Tall previews used to size the stage from their full width-constrained height, which could
+      // push the rest of the viewer several screens below the fold. Default to a viewport-bounded
+      // contain fit; "Fit width" deliberately restores the old unconstrained-height presentation.
+      // The snapshot remains the geometry source for Live/Wasm, so re-pin an active overlay after
+      // changing modes.
+      var zoomBtns = document.querySelectorAll(".cp-zoom-btn");
+      function applyZoom(mode) {
+        if (mode !== "width") mode = "fit";
+        var maxHeight = mode === "fit" ? "72vh" : "";
+        img.style.maxHeight = maxHeight;
+        var rcZoomCanvas = document.getElementById("cp-rc-canvas");
+        if (rcZoomCanvas) rcZoomCanvas.style.maxHeight = maxHeight;
+        root.setAttribute("data-zoom", mode);
+        zoomBtns.forEach(function (b) {
+          b.setAttribute(
+            "aria-pressed",
+            b.getAttribute("data-zoom-mode") === mode ? "true" : "false"
+          );
+        });
+        window.requestAnimationFrame(function () {
+          if (live && live.checked && !canvas.hidden) fitLiveCanvas();
+          if (wasmActive()) positionWasmFrame();
+        });
+      }
+      zoomBtns.forEach(function (b) {
+        b.addEventListener("click", function () {
+          applyZoom(b.getAttribute("data-zoom-mode"));
+        });
+      });
+      applyZoom("fit");
       // Surface a mode-activation failure visibly, instead of leaving a stale frame that reads as a
       // (wrong) render. Every lane routes its failure here — a dead Live stream, a Wasm app that
       // never boots, a /render that errors — so "can't activate this mode" is never silent.
