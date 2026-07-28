@@ -193,11 +193,17 @@ their own full-screen frame rather than the centred component sticker:
   `SYSTEM_BAR_INSET` top/bottom so the app's own chrome clears that overlay. The
   `Template/AppScaffold` template is a `TopAppBar` + list + FAB — the canonical
   "full screen layout with a status bar", rendered light + dark.
-- **Wear M3** — `WearScaffoldTemplate` supplies just the dark theme; each template
-  composes its own `AppScaffold(timeText = { … })` so the curved `TimeText` status
-  strip is part of the capture (unlike the `FullScreenWear` stickers, which drop
-  the clock). A frozen `10:10` keeps renders deterministic. Three variants cover
-  the status-strip archetypes: `Template/TimeText` (base list screen),
+- **Wear M3** — `WearScaffoldTemplate` (an alias of `FullScreenWear`) supplies the
+  dark theme *and* the `AppScaffold`, including the curved `TimeText` status strip
+  frozen at `10:10` for deterministic renders. A template composes its own
+  `ScreenScaffold` under it and must **not** add another `AppScaffold` — nesting a
+  second one would draw a second status strip. Every full-screen Wear capture
+  carries the strip, templates and stickers alike: a Wear screen without its clock
+  isn't the screen an app copies, since the strip reserves the curved top margin
+  the content lays out around. (`ScreenScaffold` still hides the strip once a list
+  is scrolled away from the top, so a `@ScrollingPreview(END)` capture legitimately
+  shows no clock.) Three template variants cover the status-strip archetypes:
+  `Template/TimeText` (base list screen),
   `Template/PageIndicator` (horizontal pager + `HorizontalPageIndicator`), and
   `Template/EdgeButton` (list anchored by the screen-hugging `EdgeButton`), each
   captured at every round breakpoint.
