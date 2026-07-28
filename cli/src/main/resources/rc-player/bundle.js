@@ -6714,6 +6714,19 @@ var RC = (() => {
     readLongNanId() {
       return this.readLong();
     }
+    /**
+     * A NaN-boxed field read as raw float32 *integer bits* rather than a float.
+     *
+     * Same wire field as [readNanId], for callers that store the bits (the
+     * `isNaNBits`/`intBitsToFloat` representation `CoreText` uses) instead of a
+     * float. Reading the bits directly never routes the value through a JS
+     * number, so an engine that canonicalises NaN cannot drop the id payload —
+     * the same reason `isNaNBits` inspects wire bits rather than testing the
+     * float. `LoomWireBuffer` overrides this to remap the payload in place.
+     */
+    readNanIdBits() {
+      return this.readInt();
+    }
     readInt() {
       const v = this.mDataView.getInt32(this.mIndex, false);
       this.mIndex += 4;
@@ -13441,9 +13454,9 @@ ${inner}`;
       const animationId = buffer.declareId();
       const textId = buffer.readId();
       const color = buffer.readInt();
-      const fontSize = buffer.readInt();
+      const fontSize = buffer.readNanIdBits();
       const fontStyle = buffer.readInt();
-      const fontWeight = buffer.readInt();
+      const fontWeight = buffer.readNanIdBits();
       const fontFamilyId = buffer.readId();
       const textAlign = buffer.readInt();
       const overflow = buffer.readInt();
@@ -15385,6 +15398,16 @@ ${inner}`;
     }
     readLongNanId() {
       return this.mContext.resolveLongNanId(this.mWrapped.readLong());
+    }
+    // Bits-domain twin of readNanId: same remap, but the payload is rewritten in
+    // the raw float32 int bits, so the value never passes through a JS float.
+    // Mirrors RemapContext.resolveNanId, using the bits-typed helpers.
+    readNanIdBits() {
+      const bits = this.mWrapped.readInt();
+      if (!isNaNBits(bits)) return bits;
+      const id = idFromBits(bits);
+      const mapped = this.mContext.resolveId(id);
+      return mapped === id ? bits : mapped | 0 | -8388608;
     }
     // ---- Delegation ----
     getBuffer() {

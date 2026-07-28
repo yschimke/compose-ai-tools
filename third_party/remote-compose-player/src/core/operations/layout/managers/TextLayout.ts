@@ -37,13 +37,16 @@ export class TextLayout extends CoreText {
         const textId = buffer.readId();
         const color = buffer.readInt();
         // fontSize/fontWeight are NaN-boxed: a literal float, or an id smuggled in
-        // the NaN payload. `readNanId()` funnels them through `readFloat()`, which
-        // collapses the payload (JS canonicalises NaN), so read the raw 4 bytes as
-        // int bits instead — the same representation CoreText stores and decodes
-        // with isNaNBits/intBitsToFloat. Same width, so the stream stays aligned.
-        const fontSize = buffer.readInt();
+        // the NaN payload. `CoreText` stores them as raw float32 int bits and
+        // decodes with isNaNBits/intBitsToFloat, so read them in the bits domain —
+        // but via `readNanIdBits()`, not a bare `readInt()`. Both yield the same
+        // four bytes, and only the former is a remapping hook: under macro/pattern
+        // expansion `LoomWireBuffer` rewrites the id payload, and a plain
+        // `readInt()` would silently skip that, leaving each expanded instance
+        // pointing at the template's id.
+        const fontSize = buffer.readNanIdBits();
         const fontStyle = buffer.readInt();
-        const fontWeight = buffer.readInt();
+        const fontWeight = buffer.readNanIdBits();
         const fontFamilyId = buffer.readId();
         const textAlign = buffer.readInt();
         const overflow = buffer.readInt();
