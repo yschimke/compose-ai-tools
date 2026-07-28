@@ -32,6 +32,7 @@ class FigmaLayeredSvgTest {
     r: Int,
     b: Int,
     tokens: ComposeSemanticsTokens? = null,
+    modifiers: List<LayoutInspectorModifier> = emptyList(),
     children: List<LayoutInspectorNode> = emptyList(),
   ) =
     LayoutInspectorNode(
@@ -39,6 +40,7 @@ class FigmaLayeredSvgTest {
       component = component,
       bounds = bounds(l, t, r, b),
       size = LayoutInspectorSize(r - l, b - t),
+      modifiers = modifiers,
       tokens = tokens,
       children = children,
     )
@@ -84,6 +86,97 @@ class FigmaLayeredSvgTest {
       )
     val svg = render(node)
     assertTrue(svg.contains("""stroke-linecap="round""""))
+  }
+
+  @Test
+  fun vectorPreservesItsAspectRatioInsideANonSquareLayer() {
+    val node =
+      LayoutInspectorNode(
+        nodeId = "icon",
+        component = "Icon",
+        bounds = bounds(10, 20, 58, 32),
+        size = LayoutInspectorSize(48, 12),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L24,0 L24,24 L0,24 Z",
+                  fillArgb = "#FF000000",
+                )
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    // A 24×24 vector fits the 48×12 layer at 0.5× and is horizontally centered. Independent
+    // scaling would emit scale(2 0.5), visibly flattening the icon.
+    assertTrue(svg, svg.contains("""transform="translate(28 20) scale(0.5 0.5)""""))
+    assertFalse(svg, svg.contains("scale(2 0.5)"))
+  }
+
+  @Test
+  fun vectorRetainsAnExplicitNonuniformLayoutTransform() {
+    val node =
+      LayoutInspectorNode(
+        nodeId = "icon",
+        component = "Icon",
+        bounds = bounds(10, 20, 58, 44),
+        size = LayoutInspectorSize(24, 24),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L24,0 L24,24 L0,24 Z",
+                  fillArgb = "#FF000000",
+                )
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertTrue(svg, svg.contains("""transform="translate(10 20) scale(2 1)""""))
+  }
+
+  @Test
+  fun vectorHonorsExplicitFillBoundsContentScale() {
+    val node =
+      LayoutInspectorNode(
+        nodeId = "image",
+        component = "Image",
+        bounds = bounds(10, 20, 58, 32),
+        size = LayoutInspectorSize(48, 12),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(
+              name = "paint",
+              properties = mapOf("contentScale" to "ContentScale.FillBounds"),
+            )
+          ),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L24,0 L24,24 L0,24 Z",
+                  fillArgb = "#FF000000",
+                )
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertTrue(svg, svg.contains("""transform="translate(10 20) scale(2 0.5)""""))
   }
 
   @Test
@@ -1250,6 +1343,104 @@ class FigmaLayeredSvgTest {
       )
     assertTrue("no shadow filter without elevation", !svg.contains("feDropShadow"))
     assertTrue(!svg.contains("filter=\"url(#shadow"))
+  }
+
+  @Test
+  fun graphicsLayerOpacityAppliesToTheWholeSvgGroup() {
+    val svg =
+      render(
+        layoutNode(
+          "FadingButton",
+          0,
+          0,
+          100,
+          40,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4", opacity = 0.25),
+          children =
+            listOf(
+              layoutNode(
+                "Label",
+                10,
+                10,
+                90,
+                30,
+                tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFFFF"),
+              )
+            ),
+        )
+      )
+
+    assertTrue(
+      "opacity belongs on the parent group so it affects fill and descendants",
+      svg.contains("""<g id="FadingButton" opacity="0.25">"""),
+    )
+  }
+
+  @Test
+  fun graphicsLayerAfterBackgroundNestsOnlyTheInnerContent() {
+    val svg =
+      render(
+        layoutNode(
+          "FadingButton",
+          0,
+          0,
+          100,
+          40,
+          tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4", opacity = 0.25),
+          modifiers =
+            listOf(
+              LayoutInspectorModifier(name = "BackgroundElement"),
+              LayoutInspectorModifier(name = "graphicsLayer", properties = mapOf("alpha" to "0.25")),
+            ),
+          children =
+            listOf(
+              layoutNode(
+                "Label",
+                10,
+                10,
+                90,
+                30,
+                tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFFFF"),
+              )
+            ),
+        )
+      )
+
+    val shapeIndex = svg.indexOf("""fill="#6750A4"""")
+    val innerOpacityIndex = svg.indexOf("""<g opacity="0.25">""")
+    val labelIndex = svg.indexOf("""id="Label"""")
+    assertTrue("the background must stay outside the opacity group", shapeIndex < innerOpacityIndex)
+    assertTrue(
+      "the content must be nested inside the opacity group",
+      innerOpacityIndex < labelIndex,
+    )
+    assertFalse(svg.contains("""id="FadingButton" opacity="0.25""""))
+  }
+
+  @Test
+  fun finalFrameRasterDoesNotReapplyLocalOrAncestorOpacity() {
+    val node =
+      layoutNode(
+        "FadingContainer",
+        0,
+        0,
+        100,
+        100,
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4", opacity = 0.25),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(name = "graphicsLayer", properties = mapOf("alpha" to "0.25")),
+            LayoutInspectorModifier(name = "BackgroundElement"),
+          ),
+        children = listOf(layoutNode("Image", 10, 10, 90, 90)),
+      )
+    val model = FigmaSvgModel.from(LayoutInspectorPayload(node), rasterComponents = setOf("Image"))
+    val svg = FigmaLayeredSvg.render(model)
+
+    assertFalse(svg.contains("""id="FadingContainer" opacity="0.25""""))
+    assertFalse(svg.contains("""id="Image" opacity="""))
+    assertTrue(svg.contains("""<g opacity="0.25">"""))
+    assertTrue(svg.contains("<image "))
   }
 
   @Test

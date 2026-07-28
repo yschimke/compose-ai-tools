@@ -465,6 +465,49 @@ class RenderEngineTest {
   }
 
   @Test
+  fun figmaSvgExportPreservesGraphicsLayerAlphaAndVectorAspectRatio() {
+    val outputDir = tempFolder.newFolder("renders-figma-transforms")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost()
+    host.start()
+    try {
+      host.submit(
+        RenderRequest.Render(
+          payload =
+            "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+              "functionName=GraphicsLayerAndWideVector;" +
+              "widthPx=96;heightPx=48;density=1.0;" +
+              "showBackground=true;outputBaseName=figma-transforms"
+        ),
+        timeoutMs = 120_000,
+      )
+
+      val svg =
+        outputDir.parentFile!!
+          .resolve("data")
+          .resolve("figma-transforms")
+          .resolve("compose-figma.svg")
+          .readText()
+      assertTrue("alpha-zero graphics layer must remain transparent", svg.contains("""opacity="0""""))
+      assertTrue("the ImageVector must remain an editable path", svg.contains("<path "))
+
+      val scales =
+        Regex("""scale\(([-0-9.]+) ([-0-9.]+)\)""")
+          .findAll(svg)
+          .map { it.groupValues[1].toDouble() to it.groupValues[2].toDouble() }
+          .toList()
+      assertTrue("the wide vector must emit a scale transform", scales.isNotEmpty())
+      assertTrue(
+        "a square viewport must never be stretched non-uniformly: $scales",
+        scales.all { (x, y) -> abs(x - y) < 0.0001 },
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun figmaSvgLongRenderModeProducesFullPageSvg() {
     // Parity with the desktop backend: the `figma-svg-long` render mode grows the viewport until a
     // virtualised LazyColumn composes every row, sizes to content, and writes the full-page SVG to

@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -36,9 +37,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.rotary.onRotaryScrollEvent
@@ -202,6 +207,45 @@ fun EmojiAndAnnotatedText() {
       },
       modifier = Modifier.testTag("annotated"),
       style = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 16.sp),
+    )
+  }
+}
+
+/**
+ * Android end-to-end fixture for #2853: a transparent graphics-layer container beside a square
+ * vector painter measured into a deliberately non-square slot.
+ */
+@Composable
+fun GraphicsLayerAndWideVector() {
+  val diamond =
+    ImageVector.Builder(
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+      )
+      .apply {
+        path(fill = SolidColor(Color.White)) {
+          moveTo(12f, 0f)
+          lineTo(24f, 12f)
+          lineTo(12f, 24f)
+          lineTo(0f, 12f)
+          close()
+        }
+      }
+      .build()
+
+  Row(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    Box(
+      Modifier.testTag("hidden-circle")
+        .size(40.dp)
+        .graphicsLayer { alpha = 0f }
+        .background(Color.Blue, RoundedCornerShape(20.dp))
+    )
+    Icon(
+      imageVector = diamond,
+      contentDescription = "diamond",
+      modifier = Modifier.testTag("wide-vector").size(width = 48.dp, height = 16.dp),
     )
   }
 }
