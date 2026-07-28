@@ -202,6 +202,25 @@ class ServeDocRoutingTest {
   }
 
   @Test
+  fun `a token-gated host puts its token on the permalink the upload page hands back`() {
+    // The API answers with the bare `/d/<id>` path (a script already holds the token), but the
+    // page's own link must carry the token or the recipient's first click 404s.
+    val gated =
+      ServeWeb.docUploadPage("s3cret", isPublic = false, ttlSeconds = 60, urlUploadAllowed = false)
+    assertTrue(gated.contains("var suffix = \"?token=s3cret\""), "the page knows its own query")
+    assertTrue(gated.contains("var path = doc.url + suffix;"), "the link carries it")
+    assertTrue(
+      gated.contains("esc(path)"),
+      "and the anchor uses the suffixed path, not the bare one",
+    )
+    // A public host adds nothing (its links are token-free by design).
+    assertTrue(
+      ServeWeb.docUploadPage("s3cret", isPublic = true, ttlSeconds = 60, urlUploadAllowed = false)
+        .contains("var suffix = \"\"")
+    )
+  }
+
+  @Test
   fun documentRoutesAreAbsentWithoutTheOptIn() {
     // No --accept-docs ⇒ no ingestion surface at all; the paths fall through to the session
     // catch-all and 404 like any unknown session.

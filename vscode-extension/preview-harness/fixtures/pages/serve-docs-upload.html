@@ -493,11 +493,15 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
         });
       })
       .then(function (doc) {
-        var link = location.origin + doc.url;
+        // The API answers with the bare `/d/<id>` path. On a token-gated host that path 404s
+        // without the token, so the browser-facing link carries this page's own query suffix
+        // (empty in public mode, `?token=…` otherwise).
+        var path = doc.url + suffix;
+        var link = location.origin + path;
         show(
           "<p><strong>" + esc(label) + "</strong> — " + esc(doc.format) + ", link expires in " +
             esc(doc.expiresIn) + ".</p>" +
-            "<p><a href=\"" + esc(doc.url) + "\">" + esc(link) + "</a></p>" +
+            "<p><a href=\"" + esc(path) + "\">" + esc(link) + "</a></p>" +
             "<button type=\"button\" class=\"cp-doc-btn\" id=\"cp-doc-copy\">Copy link</button>",
           false
         );
