@@ -138,11 +138,16 @@ class ServeBundleStore(
    * follows a redirect on its own; [ServeUrlFetch.followingRedirects] does that, re-checking the
    * allowlist per hop.
    */
-  private fun fetchBundle(url: String): ByteArray? =
-    fetch?.invoke(url)
-      ?: ServeUrlFetch.followingRedirects(url, ::isAllowedUrl) {
-        ServeUrlFetch.sendOnce(it, maxBytes)
-      }
+  private fun fetchBundle(url: String): ByteArray? {
+    // An injected fetcher OWNS the result, including a null one — `?:` here would treat "the
+    // override reported a failure" as "there is no override" and quietly fall through to the real
+    // network.
+    val override = fetch
+    if (override != null) return override(url)
+    return ServeUrlFetch.followingRedirects(url, ::isAllowedUrl) {
+      ServeUrlFetch.sendOnce(it, maxBytes)
+    }
+  }
 
   /**
    * Extract the servable `previews/` entries (baked `<id>.png`, the `<id>.overrides.json` /

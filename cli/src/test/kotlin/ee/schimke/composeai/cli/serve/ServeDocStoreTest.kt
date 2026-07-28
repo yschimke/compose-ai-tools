@@ -136,6 +136,27 @@ class ServeDocStoreTest {
   }
 
   @Test
+  fun `an injected fetcher owns the result, including a null one`() {
+    // Same contract as the bundle store: a null from the override is a reported failure, not an
+    // absent override — the store must not quietly fall through to the real network.
+    var calls = 0
+    val store =
+      store(
+        allowedHosts = listOf("example.com"),
+        fetch = {
+          calls++
+          null
+        },
+      )
+
+    assertEquals(
+      "could not fetch https://example.com/a.json",
+      failure(store.addFromUrl(null, "https://example.com/a.json", true)),
+    )
+    assertEquals(1, calls, "the override is the only transport consulted")
+  }
+
+  @Test
   fun `minted ids are unguessable and shaped like ids`() {
     val real = List(64) { ServeDocStore.randomId() }
 

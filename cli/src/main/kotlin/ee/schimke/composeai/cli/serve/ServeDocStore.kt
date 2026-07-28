@@ -148,11 +148,16 @@ class ServeDocStore(
    * follows a redirect on its own; [ServeUrlFetch.followingRedirects] does that, re-checking the
    * allowlist per hop.
    */
-  private fun fetchDocument(url: String): ByteArray? =
-    fetch?.invoke(url)
-      ?: ServeUrlFetch.followingRedirects(url, ::isAllowedUrl) {
-        ServeUrlFetch.sendOnce(it, DEFAULT_MAX_DOC_BYTES.toLong())
-      }
+  private fun fetchDocument(url: String): ByteArray? {
+    // An injected fetcher OWNS the result, including a null one — `?:` here would treat "the
+    // override reported a failure" as "there is no override" and quietly fall through to the real
+    // network.
+    val override = fetch
+    if (override != null) return override(url)
+    return ServeUrlFetch.followingRedirects(url, ::isAllowedUrl) {
+      ServeUrlFetch.sendOnce(it, DEFAULT_MAX_DOC_BYTES.toLong())
+    }
+  }
 
   /** The live document for [id], or null when it's unknown **or expired** (expired ⇒ dropped). */
   fun get(id: String): Doc? {
