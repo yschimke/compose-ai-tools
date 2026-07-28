@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.19.0](https://github.com/yschimke/compose-ai-tools/compare/v0.18.6...v0.19.0) (2026-07-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **wear:** migrate gesture indicators to alpha06 ([#2849](https://github.com/yschimke/compose-ai-tools/issues/2849))
+
+### Features
+
+* **wear:** migrate gesture indicators to alpha06 ([#2849](https://github.com/yschimke/compose-ai-tools/issues/2849)) ([82ddbd9](https://github.com/yschimke/compose-ai-tools/commit/82ddbd9d7b1d2ab1b7c85dfb06116d8ca89e0af3))
+
+
+### Bug Fixes
+
+* **figma:** Fix Code Connect target inference for preview wrappers ([#2846](https://github.com/yschimke/compose-ai-tools/issues/2846)) ([cd5f08c](https://github.com/yschimke/compose-ai-tools/commit/cd5f08c4711c3e984fb411e6178c6aad4d44342f))
+* **previews:** label parameterized captures ([#2845](https://github.com/yschimke/compose-ai-tools/issues/2845)) ([23bbc0d](https://github.com/yschimke/compose-ai-tools/commit/23bbc0da1d430de9fb6871e78f166df2fc910313))
+* **serve:** allow larger catalog live bundles ([#2841](https://github.com/yschimke/compose-ai-tools/issues/2841)) ([e994433](https://github.com/yschimke/compose-ai-tools/commit/e994433dace879c5548b86c2dafe6d695215a7c5))
+* **serve:** honor live catalog runtime versions ([#2844](https://github.com/yschimke/compose-ai-tools/issues/2844)) ([4f218fa](https://github.com/yschimke/compose-ai-tools/commit/4f218fa00cc87acdb25f7304fd40d4c7e4af0ae7))
+
 ## [0.18.6](https://github.com/yschimke/compose-ai-tools/compare/v0.18.5...v0.18.6) (2026-07-28)
 
 
