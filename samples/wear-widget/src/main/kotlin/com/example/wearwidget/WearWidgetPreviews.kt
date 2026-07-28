@@ -10,6 +10,7 @@ import androidx.glance.wear.core.WearWidgetParams
 import androidx.glance.wear.core.WidgetInstanceId
 import androidx.glance.wear.tooling.preview.SquircleAllWidgetPreviewParams
 import androidx.glance.wear.tooling.preview.SquircleLargeWidgetPreviewParams
+import ee.schimke.composeai.wear.preview.CapturingWearWidgetPreview
 
 /**
  * Glance Wear widget previews — the exact shape issue #2670 is about: a device-less `@Preview` on a
@@ -21,6 +22,10 @@ import androidx.glance.wear.tooling.preview.SquircleLargeWidgetPreviewParams
  * Each preview goes through [CapturingWearWidgetPreview], so alongside the cropped PNG the render
  * also emits the widget's encoded RemoteCompose document as a `<stem>.rc` sidecar — the widget
  * travels in the bundle as data, not bytecode.
+ *
+ * The widget's fill is passed as the container `background` ([RemoteImageWidgetBackground]), never
+ * painted inside [RemoteImageWidget] — that is what keeps the render a single corner-clipped
+ * squircle instead of a rounded frame with a square-cornered rectangle sitting inside it.
  */
 // Fans out over every squircle footprint the platform ships (`SquircleAllWidgetPreviewParams`).
 @Preview(name = "Image Widget Squircle")
@@ -28,7 +33,9 @@ import androidx.glance.wear.tooling.preview.SquircleLargeWidgetPreviewParams
 fun ImageWidgetSquirclePreview(
   @PreviewParameter(SquircleAllWidgetPreviewParams::class) params: WearWidgetParams
 ) {
-  CapturingWearWidgetPreview(params = params) { RemoteImageWidget() }
+  CapturingWearWidgetPreview(params = params, background = RemoteImageWidgetBackground) {
+    RemoteImageWidget()
+  }
 }
 
 // A single fixed footprint (`SquircleLargeWidgetPreviewParams`) to show the crop tracks the params.
@@ -37,7 +44,9 @@ fun ImageWidgetSquirclePreview(
 fun ImageWidgetSquircleLargePreview(
   @PreviewParameter(SquircleLargeWidgetPreviewParams::class) params: WearWidgetParams
 ) {
-  CapturingWearWidgetPreview(params = params) { RemoteImageWidget() }
+  CapturingWearWidgetPreview(params = params, background = RemoteImageWidgetBackground) {
+    RemoteImageWidget()
+  }
 }
 
 // The squircle host spec (240dp screen), spelled out literally — same values as the upstream
@@ -61,5 +70,10 @@ private val fixedWidgetParams =
 @Preview(name = "Image Widget Fixed", showBackground = false, widthDp = 216, heightDp = 76)
 @Composable
 fun ImageWidgetFixedPreview() {
-  CapturingWearWidgetPreview(params = fixedWidgetParams) { RemoteImageWidget() }
+  CapturingWearWidgetPreview(
+    params = fixedWidgetParams,
+    background = RemoteImageWidgetBackground,
+  ) {
+    RemoteImageWidget()
+  }
 }

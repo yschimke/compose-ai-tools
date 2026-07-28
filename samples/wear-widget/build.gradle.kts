@@ -71,8 +71,13 @@ dependencies {
   implementation(libs.glance.wear.core)
   implementation(libs.glance.wear.tooling.preview)
   implementation(libs.activity.compose)
-  // `IrSidecarChannel` — the render-harness hand-off `CapturingWearWidgetPreview` offers the
-  // captured RemoteCompose document into, so it lands as the `<stem>.rc` sidecar.
+  // `CapturingWearWidgetPreview` — the shared Wear helper that renders a widget preview AND offers
+  // its encoded RemoteCompose document to `IrSidecarChannel`, so the render lands a `<stem>.rc`
+  // sidecar next to the PNG. Shared with `:samples:design-catalog-remote-m3` so both widget
+  // surfaces capture their document the same way.
+  implementation(project(":wear-preview-runtime"))
+  // `IrSidecarChannel` itself — `:wear-preview-runtime` keeps it `implementation`-scoped, and this
+  // module's `WearWidgetDocCaptureTest` asserts on the sidecar it produces.
   implementation(project(":data-render-core"))
   debugImplementation(libs.compose.ui.tooling.prerelease)
 
