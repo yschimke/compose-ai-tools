@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.5](https://github.com/yschimke/compose-ai-tools/compare/v0.18.4...v0.18.5) (2026-07-27)
+
+
+### Bug Fixes
+
+* **server:** accept JSON catalog props ([#2829](https://github.com/yschimke/compose-ai-tools/issues/2829)) ([1065cb0](https://github.com/yschimke/compose-ai-tools/commit/1065cb0308caa79c60555457f889ce0424c60c91))
+
 ## [0.18.4](https://github.com/yschimke/compose-ai-tools/compare/v0.18.3...v0.18.4) (2026-07-27)
 
 
