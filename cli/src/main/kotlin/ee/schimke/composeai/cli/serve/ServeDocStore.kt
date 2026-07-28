@@ -1,12 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
-import java.net.URI
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
-import okhttp3.OkHttpClient
-import okhttp3.Request
 
 /**
  * Runtime ingestion of **client-provided documents** — a Remote Compose `.rc` or a Lottie animation
@@ -42,7 +38,7 @@ class ServeDocStore(
   private val allowedHosts: List<String> = emptyList(),
   /**
    * Transport override for tests. Null ⇒ the real one-request-at-a-time HTTP transport, driven by
-   * [followingRedirects] so every hop is allowlist-checked.
+   * [ServeUrlFetch.followingRedirects] so every hop is allowlist-checked.
    */
   private val fetch: ((String) -> ByteArray?)? = null,
   /** Injected so tests can drive expiry without sleeping. */
@@ -128,7 +124,7 @@ class ServeDocStore(
   /**
    * Fetch a document from [url] and [add] it — the "paste a link instead of uploading" path. Gated
    * by the [allowedHosts] SSRF allowlist, which is applied to the starting URL **and to every
-   * redirect target** ([followingRedirects]): an allowlisted host that answers `302
+   * redirect target** ([ServeUrlFetch.followingRedirects]): an allowlisted host that answers `302
    * http://169.254.169.254/…` must not be able to walk the server onto an internal address.
    */
   fun addFromUrl(name: String?, url: String, isSecurityChecked: Boolean): Result {
@@ -149,11 +145,19 @@ class ServeDocStore(
 
   /**
    * The injected [fetch] when a caller supplied one (tests), else the real transport — which never
-   * follows a redirect on its own; [followingRedirects] does that, re-checking the allowlist per
-   * hop.
+   * follows a redirect on its own; [ServeUrlFetch.followingRedirects] does that, re-checking the
+   * allowlist per hop.
    */
-  private fun fetchDocument(url: String): ByteArray? =
-    fetch?.invoke(url) ?: followingRedirects(url, ::isAllowedUrl, ::sendOnce)
+  private fun fetchDocument(url: String): ByteArray? {
+    // An injected fetcher OWNS the result, including a null one — `?:` here would treat "the
+    // override reported a failure" as "there is no override" and quietly fall through to the real
+    // network.
+    val override = fetch
+    if (override != null) return override(url)
+    return ServeUrlFetch.followingRedirects(url, ::isAllowedUrl) {
+      ServeUrlFetch.sendOnce(it, DEFAULT_MAX_DOC_BYTES.toLong())
+    }
+  }
 
   /** The live document for [id], or null when it's unknown **or expired** (expired ⇒ dropped). */
   fun get(id: String): Doc? {
@@ -196,17 +200,7 @@ class ServeDocStore(
     }
   }
 
-  private fun isAllowedUrl(url: String): Boolean {
-    val uri =
-      try {
-        URI(url)
-      } catch (e: Exception) {
-        return false
-      }
-    if (uri.scheme?.lowercase() !in setOf("http", "https")) return false
-    val host = uri.host?.lowercase() ?: return false
-    return allowedHosts.any { it.equals(host, ignoreCase = true) }
-  }
+  private fun isAllowedUrl(url: String): Boolean = ServeUrlFetch.isAllowedUrl(url, allowedHosts)
 
   /** A safe display label: the filename's own last segment, trimmed to printable characters. */
   private fun displayName(raw: String?, format: ServeDocFormat): String {
@@ -240,74 +234,5 @@ class ServeDocStore(
 
     /** True when [id] could be one of ours — cheap shape check before a map lookup. */
     fun isWellFormedId(id: String): Boolean = id.matches(Regex("[A-Za-z0-9_-]{16,64}"))
-
-    /** Redirect hops a `?url=` fetch may take before it's treated as a failure. */
-    private const val MAX_REDIRECTS = 4
-
-    /** What one HTTP request produced: a body, a redirect to follow, or nothing usable. */
-    internal sealed interface Hop {
-      class Body(val bytes: ByteArray) : Hop
-
-      /** `Location`, already resolved against the request URL. */
-      class Redirect(val location: String) : Hop
-
-      data object Failed : Hop
-    }
-
-    /**
-     * Walk a `?url=` fetch to its document, **checking [isAllowed] before every request** — the
-     * starting URL and each redirect target alike.
-     *
-     * Redirects are followed here rather than by the HTTP client on purpose: a client that follows
-     * them itself would apply the SSRF allowlist only to the URL the operator's allowlist approved,
-     * letting an allowlisted host bounce the server onto `169.254.169.254` or any internal service.
-     * Pure over its [send] transport so the hop policy is unit-testable without a network.
-     */
-    internal fun followingRedirects(
-      start: String,
-      isAllowed: (String) -> Boolean,
-      send: (String) -> Hop,
-    ): ByteArray? {
-      var current = start
-      repeat(MAX_REDIRECTS + 1) {
-        if (!isAllowed(current)) return null
-        when (val hop = send(current)) {
-          is Hop.Body -> return hop.bytes
-          is Hop.Redirect -> current = hop.location
-          Hop.Failed -> return null
-        }
-      }
-      return null
-    }
-
-    private val httpClient: OkHttpClient by lazy {
-      OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        // The allowlist has to see every hop, so redirects are followed by [followingRedirects].
-        .followRedirects(false)
-        .followSslRedirects(false)
-        .build()
-    }
-
-    /** One request, no redirect following: http/https only, body capped. */
-    private fun sendOnce(url: String): Hop {
-      if (URI(url).scheme?.lowercase() !in setOf("http", "https")) return Hop.Failed
-      httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
-        if (response.isRedirect) {
-          val location = response.header("Location") ?: return Hop.Failed
-          // Resolve relative Locations against the request URL; the result is re-checked against
-          // the allowlist by the caller before anything is sent to it.
-          val resolved = response.request.url.resolve(location) ?: return Hop.Failed
-          return Hop.Redirect(resolved.toString())
-        }
-        if (!response.isSuccessful) return Hop.Failed
-        val body = response.body ?: return Hop.Failed
-        val bytes = body.byteStream().readNBytes(DEFAULT_MAX_DOC_BYTES + 1)
-        // One byte over the cap means the remote document is too big; add() would refuse it anyway,
-        // but stopping here avoids buffering an unbounded response.
-        return if (bytes.size > DEFAULT_MAX_DOC_BYTES) Hop.Failed else Hop.Body(bytes)
-      }
-    }
   }
 }

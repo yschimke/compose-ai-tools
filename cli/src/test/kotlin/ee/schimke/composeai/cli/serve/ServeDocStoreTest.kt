@@ -136,56 +136,24 @@ class ServeDocStoreTest {
   }
 
   @Test
-  fun `a redirect off the allowlist is refused, one onto it is followed`() {
-    val body = ServeDocFixtures.lottieDoc()
-    val allowed = { url: String -> url.startsWith("https://good.example/") }
-    fun hops(
-      vararg chain: Pair<String, ServeDocStore.Companion.Hop>
-    ): (String) -> ServeDocStore.Companion.Hop = { url ->
-      chain.firstOrNull { it.first == url }?.second ?: ServeDocStore.Companion.Hop.Failed
-    }
-
-    // An allowlisted host bouncing the server at link-local metadata gets nowhere: the target is
-    // checked BEFORE the request, so nothing is ever sent to it.
-    val sent = mutableListOf<String>()
-    val stolen =
-      ServeDocStore.followingRedirects(
-        "https://good.example/a.json",
-        allowed,
-        { url ->
-          sent += url
-          hops(
-            "https://good.example/a.json" to
-              ServeDocStore.Companion.Hop.Redirect("http://169.254.169.254/latest/meta-data")
-          )(url)
+  fun `an injected fetcher owns the result, including a null one`() {
+    // Same contract as the bundle store: a null from the override is a reported failure, not an
+    // absent override — the store must not quietly fall through to the real network.
+    var calls = 0
+    val store =
+      store(
+        allowedHosts = listOf("example.com"),
+        fetch = {
+          calls++
+          null
         },
       )
-    assertNull(stolen)
-    assertEquals(listOf("https://good.example/a.json"), sent, "the internal address is never hit")
 
-    // A redirect that stays on the allowlist is followed normally.
     assertEquals(
-      body.toList(),
-      ServeDocStore.followingRedirects(
-          "https://good.example/a.json",
-          allowed,
-          hops(
-            "https://good.example/a.json" to
-              ServeDocStore.Companion.Hop.Redirect("https://good.example/real.json"),
-            "https://good.example/real.json" to ServeDocStore.Companion.Hop.Body(body),
-          ),
-        )
-        ?.toList(),
+      "could not fetch https://example.com/a.json",
+      failure(store.addFromUrl(null, "https://example.com/a.json", true)),
     )
-
-    // A redirect loop terminates instead of spinning.
-    assertNull(
-      ServeDocStore.followingRedirects(
-        "https://good.example/a.json",
-        allowed,
-        { ServeDocStore.Companion.Hop.Redirect("https://good.example/a.json") },
-      )
-    )
+    assertEquals(1, calls, "the override is the only transport consulted")
   }
 
   @Test
