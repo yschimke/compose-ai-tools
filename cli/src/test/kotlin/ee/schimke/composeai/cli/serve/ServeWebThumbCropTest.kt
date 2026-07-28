@@ -85,7 +85,8 @@ class ServeWebThumbCropTest {
 
   @Test
   fun `all compose sample catalogs are attributed to android and shown on the homepage`() {
-    val sampleIds = listOf("jetnews", "jetcaster", "jetchat", "jetsnack", "jetlagged", "reply")
+    val sampleIds =
+      listOf("jetnews", "jetcaster", "jetcaster-wear", "jetchat", "jetsnack", "jetlagged", "reply")
     val systems = sampleIds.map { id ->
       ServeWeb.HomeSystem(
         system = id,
