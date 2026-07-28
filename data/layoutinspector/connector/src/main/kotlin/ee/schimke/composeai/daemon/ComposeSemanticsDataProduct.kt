@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import androidx.compose.runtime.tooling.CompositionData
 import androidx.compose.runtime.tooling.CompositionGroup
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -32,6 +33,7 @@ import ee.schimke.composeai.daemon.protocol.RecordingProbeNode
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorCurvedText
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorProduct
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorTransform
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorVectorGraphic
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorVectorPath
 import ee.schimke.composeai.data.layoutinspector.SemanticsRefs
@@ -1120,8 +1122,43 @@ internal object ComposeLayoutInspector {
           sizeHeightPx = height,
           density = density,
         ),
+      transform = coordinates.scaleIn(rootCoords),
       children = children,
     )
+  }
+
+  /**
+   * The node's draw-time scale relative to the root — the product of every `graphicsLayer` scale
+   * between it and the root — or null for the identity (the overwhelmingly common case).
+   *
+   * Measured, not reflected: two of the node's own corner offsets are mapped into root space and
+   * compared against their un-transformed span. That reads the *composed* transform through the
+   * public [LayoutCoordinates] API, so it is backend-agnostic (Android and skiko alike) and —
+   * unlike reading a `GraphicsLayerScope` off the coordinator — can't be confused by Compose
+   * reusing one scope instance across every layer it updates.
+   *
+   * A zero-area node has no measurable scale and yields null rather than a divide-by-zero.
+   */
+  private fun LayoutCoordinates?.scaleIn(
+    rootCoordinates: LayoutCoordinates?
+  ): LayoutInspectorTransform? {
+    if (this == null || rootCoordinates == null || !isAttached) return null
+    val w = size.width
+    val h = size.height
+    if (w <= 0 || h <= 0) return null
+    val transform =
+      try {
+        val origin = rootCoordinates.localPositionOf(this, Offset.Zero)
+        val right = rootCoordinates.localPositionOf(this, Offset(w.toFloat(), 0f))
+        val down = rootCoordinates.localPositionOf(this, Offset(0f, h.toFloat()))
+        LayoutInspectorTransform(
+          scaleX = (right - origin).getDistance() / w,
+          scaleY = (down - origin).getDistance() / h,
+        )
+      } catch (_: Throwable) {
+        return null
+      }
+    return transform.takeIf { it.scaled }
   }
 
   private fun ModifierInfo.toWireModifier(
