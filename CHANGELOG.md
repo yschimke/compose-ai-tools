@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.19.3](https://github.com/yschimke/compose-ai-tools/compare/v0.19.2...v0.19.3) (2026-07-28)
+
+
+### Features
+
+* **serve:** add page-aware link unfurling ([#2874](https://github.com/yschimke/compose-ai-tools/issues/2874)) ([125f4c8](https://github.com/yschimke/compose-ai-tools/commit/125f4c8c436326471c930937a4111f2ef406104e))
+* **serve:** register Jetcaster Wear catalog ([#2882](https://github.com/yschimke/compose-ai-tools/issues/2882)) ([b47ad01](https://github.com/yschimke/compose-ai-tools/commit/b47ad01b22d1f36296a03be85846252cc1e7008b))
+
+
+### Bug Fixes
+
+* **bundle:** render Wear theme catalog semantics ([#2876](https://github.com/yschimke/compose-ai-tools/issues/2876)) ([cea1294](https://github.com/yschimke/compose-ai-tools/commit/cea12940f06a469f69e3cdf85a663e155f49fdfe))
+* **catalog:** preserve declared Wear breakpoints ([#2875](https://github.com/yschimke/compose-ai-tools/issues/2875)) ([3ac3059](https://github.com/yschimke/compose-ai-tools/commit/3ac3059b8cf4d78ce965d798b2b36b19d092f617))
+* **semantics:** support multiple Compose roots ([#2878](https://github.com/yschimke/compose-ai-tools/issues/2878)) ([bb2fd3d](https://github.com/yschimke/compose-ai-tools/commit/bb2fd3d81f26e0f1460d44340e3e51747657ac9b))
+
 ## [0.19.2](https://github.com/yschimke/compose-ai-tools/compare/v0.19.1...v0.19.2) (2026-07-28)
 
 
