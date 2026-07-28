@@ -1,5 +1,6 @@
 package ee.schimke.composeai.data.layoutinspector
 
+import kotlin.math.abs
 import kotlinx.serialization.Serializable
 
 object ComposeSemanticsProduct {
@@ -72,7 +73,12 @@ object LayoutInspectorProduct {
   // Additive — older entries parse with `vectorGraphic = null` and paths with butt/miter defaults.
   // v7: `tokens` may carry effective graphics-layer `opacity`. Additive; older entries decode it
   // as null (fully opaque).
-  const val SCHEMA_VERSION: Int = 7
+  // v8 (#2615): each node may carry a `transform` — the draw-time `graphicsLayer` scale it inherits
+  // from its ancestors, present only when it isn't the identity (a Wear `TransformingLazyColumn`
+  // item shrunk toward the curved edge). `bounds` already carries the scaled rect; `transform` says
+  // the shrink is real, so a consumer doesn't grow the node back to its measured `size`. Additive —
+  // older entries decode with `transform = null`.
+  const val SCHEMA_VERSION: Int = 8
   const val FILE: String = "layout-inspector.json"
 }
 
@@ -401,6 +407,31 @@ data class ComposeSemanticsInsets(
 
 @Serializable data class LayoutInspectorPayload(val root: LayoutInspectorNode)
 
+/**
+ * The scale a node inherits from the `graphicsLayer`s between it and the root — the *drawn* size of
+ * one of its own layout pixels. `1.0 × 1.0` (the identity) is the overwhelmingly common case and is
+ * never captured; a value is present only when something really shrinks or grows the node at draw
+ * time.
+ *
+ * The canonical producer is Wear's `TransformingLazyColumn`, which shrinks items toward the round
+ * face's edges through a draw-time `graphicsLayer` scale while leaving their *measured*
+ * [LayoutInspectorNode.size] at full height. [LayoutInspectorNode.bounds] already carries the
+ * scaled, on-screen rect (it is mapped through the layer chain), so this field is not needed to
+ * place the node — it exists to tell a consumer that the gap between `bounds` and `size` is a real
+ * transform rather than a `boundsIn` under-report, so the consumer doesn't "recover" the node back
+ * to its unscaled size (issue #2615).
+ */
+@Serializable
+data class LayoutInspectorTransform(val scaleX: Float = 1f, val scaleY: Float = 1f) {
+  /** True when either axis is scaled enough to matter (beyond float/rounding noise). */
+  val scaled: Boolean
+    get() = abs(scaleX - 1f) > EPSILON || abs(scaleY - 1f) > EPSILON
+
+  companion object {
+    const val EPSILON: Float = 0.001f
+  }
+}
+
 @Serializable
 data class LayoutInspectorNode(
   val nodeId: String,
@@ -453,6 +484,14 @@ data class LayoutInspectorNode(
    * (v6): older `layout-inspector.json` decodes with `vectorGraphic = null`.
    */
   val vectorGraphic: LayoutInspectorVectorGraphic? = null,
+  /**
+   * The draw-time scale this node inherits from the `graphicsLayer`s above it, when it isn't the
+   * identity — a Wear `TransformingLazyColumn` item shrunk toward the curved edge. [bounds] already
+   * carries the scaled rect; this says the shrink is *real* so a consumer doesn't grow the node
+   * back to its measured [size] (issue #2615). Additive (v7): older `layout-inspector.json` decodes
+   * with `transform = null`.
+   */
+  val transform: LayoutInspectorTransform? = null,
   val children: List<LayoutInspectorNode> = emptyList(),
 )
 

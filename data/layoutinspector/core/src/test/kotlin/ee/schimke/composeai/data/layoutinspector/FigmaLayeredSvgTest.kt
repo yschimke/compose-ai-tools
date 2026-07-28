@@ -2412,4 +2412,91 @@ class FigmaLayeredSvgTest {
   fun defaultRasterHrefSanitizesNodeId() {
     assertEquals("figma-raster/node_12_.png", FigmaSvgModel.defaultRasterHref("node:12/"))
   }
+
+  /**
+   * A Wear `TransformingLazyColumn` item near the round face's edge is shrunk by a draw-time
+   * `graphicsLayer` scale: its `bounds` is the small, drawn rect while its `size` stays at the full
+   * measured extent. The fill-growth heuristic used to read that gap as a `boundsIn` under-report
+   * and grow the item back to full size at the compressed placement, so neighbouring items
+   * overlapped into one merged blob (issue #2615). The captured `transform` scales every measured
+   * signal into drawn space so the export lands on the rect the render actually painted.
+   */
+  @Test
+  fun anEdgeScaledItemGrowsOnlyToItsScaledMeasuredSize() {
+    // size 203×64 at scale 0.5 → drawn 102×32, centred on the item's own bounds (100..190, 60..90).
+    val item =
+      LayoutInspectorNode(
+        nodeId = "item",
+        component = "ColumnMeasurePolicy",
+        bounds = bounds(100, 60, 190, 90),
+        size = LayoutInspectorSize(203, 64),
+        transform = LayoutInspectorTransform(scaleX = 0.5f, scaleY = 0.5f),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF332E3C", cornerRadius = "26.0dp"),
+      )
+    val list =
+      LayoutInspectorNode(
+        nodeId = "list",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(0, 0, 227, 227),
+        size = LayoutInspectorSize(227, 227),
+        children = listOf(item),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(list)))
+    assertTrue("grown to the scaled width, not 203:\n$svg", svg.contains("""width="102""""))
+    assertTrue("grown to the scaled height, not 64:\n$svg", svg.contains("""height="32""""))
+    // Centred on the bounds: (100+190-102)/2 = 94, (60+90-32)/2 = 59.
+    assertTrue(svg, svg.contains("""x="94"""") && svg.contains("""y="59""""))
+    // The corner radius rides the same scale — 26dp × 0.5.
+    assertTrue("corner radius scales with the box:\n$svg", svg.contains("""rx="13""""))
+  }
+
+  @Test
+  fun anUnscaledItemStillGrowsToItsFullMeasuredSize() {
+    // The identity transform must leave the pre-existing Wear `Button`/`Card` growth untouched.
+    val item =
+      LayoutInspectorNode(
+        nodeId = "item",
+        component = "ColumnMeasurePolicy",
+        bounds = bounds(100, 60, 190, 90),
+        size = LayoutInspectorSize(203, 64),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF332E3C"),
+      )
+    val list =
+      LayoutInspectorNode(
+        nodeId = "list",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(0, 0, 227, 227),
+        size = LayoutInspectorSize(227, 227),
+        children = listOf(item),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(list)))
+    assertTrue(svg, svg.contains("""width="203"""") && svg.contains("""height="64""""))
+  }
+
+  @Test
+  fun anItemPlacedPastTheParentEdgeIsNotPulledBackIntoView() {
+    // A list item scrolled past the viewport bottom is placed outside its parent on purpose. The
+    // parent clamp used to drag the grown shape back inside, dropping it on top of the item above;
+    // growth may only inflate the node's own placement (issue #2615).
+    val offscreen =
+      LayoutInspectorNode(
+        nodeId = "offscreen",
+        component = "ColumnMeasurePolicy",
+        bounds = bounds(60, 230, 170, 260),
+        size = LayoutInspectorSize(110, 40),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FF332E3C"),
+      )
+    val list =
+      LayoutInspectorNode(
+        nodeId = "list",
+        component = "BoxMeasurePolicy",
+        bounds = bounds(0, 0, 227, 227),
+        size = LayoutInspectorSize(227, 227),
+        children = listOf(offscreen),
+      )
+    val svg = FigmaLayeredSvg.render(FigmaSvgModel.from(LayoutInspectorPayload(list)))
+    // Grown 40 tall and centred on 230..260 → y=225; NOT yanked up to the parent's 227-40=187.
+    assertTrue("stays where it was placed:\n$svg", svg.contains("""y="225""""))
+    assertFalse("must not be clamped into the viewport:\n$svg", svg.contains("""y="187""""))
+  }
 }
