@@ -260,6 +260,93 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `viewer unfurl metadata uses the external origin and preserves render overrides`() {
+    val request =
+      Request.Builder()
+        .url(
+          "http://127.0.0.1:${server.port}/compose-m3/p/$previewId" + "?fontScale=1.5&locale=en-US"
+        )
+        .header("Host", "preview.coo.ee")
+        .header("X-Forwarded-Proto", "https")
+        .build()
+
+    client.newCall(request).execute().use { response ->
+      assertEquals(200, response.code)
+      val html = response.body?.string().orEmpty()
+      assertTrue(
+        html.contains(
+          "<meta property=\"og:url\" content=\"https://preview.coo.ee/compose-m3/p/" +
+            "$previewId?fontScale=1.5&amp;locale=en-US\">"
+        ),
+        "canonical external viewer URL: $html",
+      )
+      val imageUrl =
+        "https://preview.coo.ee/compose-m3/render/$previewId.png?" +
+          "fontScale=1.5&amp;locale=en-US"
+      assertTrue(
+        html.contains("<meta property=\"og:image\" content=\"$imageUrl\">"),
+        "Open Graph points at the matching render: $html",
+      )
+      assertTrue(
+        html.contains("<meta name=\"twitter:image\" content=\"$imageUrl\">"),
+        "Twitter points at the matching render: $html",
+      )
+    }
+  }
+
+  @Test
+  fun `each browse page unfurls the content expected for that page`() {
+    fun proxied(path: String): Pair<Int, String> {
+      val request =
+        Request.Builder()
+          .url("http://127.0.0.1:${server.port}$path")
+          .header("Host", "preview.coo.ee")
+          .header("X-Forwarded-Proto", "https")
+          .build()
+      client.newCall(request).execute().use { response ->
+        return response.code to response.body.string()
+      }
+    }
+
+    val (homeCode, home) = proxied("/")
+    assertEquals(200, homeCode)
+    assertTrue(
+      Regex(
+          """<meta property="og:image" content="https://preview\.coo\.ee/""" +
+            """(?:hero/compose-m3/[a-f0-9]+\.png|compose-m3/render/[^"]+\.png)">"""
+        )
+        .containsMatchIn(home),
+      "the server index uses its first published catalog hero: $home",
+    )
+
+    val (catalogCode, catalog) = proxied("/compose-m3/")
+    assertEquals(200, catalogCode)
+    assertTrue(
+      catalog.contains(
+        "<meta property=\"og:image\" content=\"https://preview.coo.ee/compose-m3/render/" +
+          "$previewId.png\">"
+      ),
+      "a catalog landing uses its representative preview: $catalog",
+    )
+
+    val (statusCode, status) = proxied("/status")
+    assertEquals(200, statusCode)
+    assertTrue(
+      status.contains("<meta name=\"twitter:card\" content=\"summary\">"),
+      "the utility page gets an accurate text card",
+    )
+    assertTrue(!status.contains("<meta property=\"og:image\""), "status does not claim a component")
+
+    val (missingCode, missing) = proxied("/compose-m3/p/does-not-exist")
+    assertEquals(404, missingCode)
+    assertTrue(
+      missing.contains("<meta property=\"og:title\" content=\"Not found — compose-preview\">"),
+      "the error page describes itself",
+    )
+    assertTrue(!missing.contains("<meta property=\"og:image\""), "404 does not claim a component")
+  }
+
+  @Test
   fun `public browse pages and baked previews advertise static generation`() {
     val homeReq = Request.Builder().url("http://127.0.0.1:${server.port}/").build()
     client.newCall(homeReq).execute().use { response ->

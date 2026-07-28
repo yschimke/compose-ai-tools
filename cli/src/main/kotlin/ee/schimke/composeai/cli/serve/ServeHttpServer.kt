@@ -13,6 +13,8 @@ import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.plugins.origin
+import io.ktor.server.request.queryString
 import io.ktor.server.request.receiveStream
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytes
@@ -473,6 +475,34 @@ class ServeHttpServer(
   }
 
   /**
+   * Browser-visible origin for absolute Open Graph image URLs. Caddy preserves `Host` and supplies
+   * `X-Forwarded-Proto` while terminating TLS; direct/local serve requests fall back to Ktor's
+   * connection scheme and Host header. Only the first proxy value is relevant when a request
+   * crossed more than one hop.
+   */
+  private fun RoutingContext.externalOrigin(): String {
+    fun firstHeader(name: String): String? =
+      call.request.headers[name]?.substringBefore(',')?.trim()?.takeIf { it.isNotEmpty() }
+
+    val forwardedScheme = firstHeader("X-Forwarded-Proto")
+    val scheme =
+      forwardedScheme?.takeIf { it.equals("http", true) || it.equals("https", true) }
+        ?: call.request.origin.scheme
+    val authority =
+      firstHeader("X-Forwarded-Host")
+        ?: firstHeader(HttpHeaders.Host)
+        ?: "${call.request.origin.serverHost}:${call.request.origin.serverPort}"
+    return "${scheme.lowercase()}://$authority"
+  }
+
+  /** Raw request query, including its leading `?` only when non-empty. */
+  private fun RoutingContext.requestQuerySuffix(): String =
+    call.request.queryString().let { if (it.isEmpty()) "" else "?$it" }
+
+  /** Absolute externally visible URL for the current page (including its query). */
+  private fun RoutingContext.externalPageUrl(): String = externalOrigin() + call.request.origin.uri
+
+  /**
    * Resolve the tenant for [sessionId] and run [block] with its host while holding a
    * [ServeSessionRegistry.Lease] for the request's whole duration — so the reaper can't suspend the
    * daemon mid-request (e.g. a long `/bundle.zip` that renders every preview). Responds 404 when
@@ -507,7 +537,12 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.respondNotFoundHtml(message: String) {
     call.respondText(
-      ServeWeb.notFoundPage(message, token, isPublic),
+      ServeWeb.notFoundPage(
+        message,
+        token,
+        isPublic,
+        unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+      ),
       ContentType.Text.Html,
       HttpStatusCode.NotFound,
     )
@@ -545,6 +580,15 @@ class ServeHttpServer(
       selectedSessionId(sessionInPath),
       onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
     ) { renderHost ->
+      val heroId =
+        catalogBundleHost(renderHost)?.declaredHeroPreviewId
+          ?: ServeWeb.representativePreviewId(renderHost.previews)
+      val heroUrl = heroId?.let {
+        externalOrigin() +
+          basePath +
+          "/render/${WebEscaping.urlEncodeSegment(it)}.png" +
+          requestQuerySuffix()
+      }
       markGeneration("static-page", pageCacheControl())
       call.respondText(
         ServeWeb.landingPage(
@@ -573,6 +617,7 @@ class ServeHttpServer(
           // Why the catalog is snapshot-only, when it is (no live bundle, unverified, …) — shown as
           // a banner under the header so a browser sees it before opening a preview.
           degradations = renderHost.degradations,
+          unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = heroUrl),
         ),
         ContentType.Text.Html,
       )
@@ -601,9 +646,29 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handleHomeIndex() {
     val systems = withContext(Dispatchers.IO) { homeSystemsFor(catalogSessions) }
+    // Match the first card a visitor actually sees after the homepage's publisher grouping, not
+    // merely the operator's input order.
+    val featured =
+      ServeWeb.homeSections(systems)
+        .asSequence()
+        .flatMap { it.systems.asSequence() }
+        .firstOrNull { it.heroImage != null || it.heroPreviewId != null }
+    val featuredPath =
+      featured?.heroImage?.path
+        ?: featured?.heroPreviewId?.let {
+          "/${WebEscaping.urlEncodeSegment(featured.system)}/render/" +
+            "${WebEscaping.urlEncodeSegment(it)}.png"
+        }
+    val featuredUrl = featuredPath?.let { externalOrigin() + it + requestQuerySuffix() }
     markGeneration("static-page", pageCacheControl())
     call.respondText(
-      ServeWeb.homeIndexPage(systems, token, isPublic = isPublic, version = BUNDLE_VERSION),
+      ServeWeb.homeIndexPage(
+        systems,
+        token,
+        isPublic = isPublic,
+        version = BUNDLE_VERSION,
+        unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = featuredUrl),
+      ),
       ContentType.Text.Html,
     )
   }
@@ -655,7 +720,14 @@ class ServeHttpServer(
         ContentType.Application.Json,
       )
     } else {
-      call.respondText(ServeWeb.statusPage(data.toView(), token), ContentType.Text.Html)
+      call.respondText(
+        ServeWeb.statusPage(
+          data.toView(),
+          token,
+          unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+        ),
+        ContentType.Text.Html,
+      )
     }
   }
 
@@ -1398,6 +1470,9 @@ class ServeHttpServer(
       // Fail-closed: any session without a verifiable trusted verdict gets opaque (false).
       val wasmSameOrigin =
         catalogBundleHost(renderHost)?.let { it.trust is BundleVerifier.Verdict.Trusted } ?: false
+      val origin = externalOrigin()
+      val imageUrl =
+        "$origin$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png${requestQuerySuffix()}"
       markGeneration("static-page", pageCacheControl())
       call.respondText(
         ServeWeb.viewerPage(
@@ -1439,6 +1514,7 @@ class ServeHttpServer(
           // the
           // catalog-level reason (no live bundle, unverified, …) alongside the per-control note.
           degradations = renderHost.degradations,
+          unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = imageUrl),
         ),
         ContentType.Text.Html,
       )
