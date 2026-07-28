@@ -230,6 +230,14 @@ jobs:
     needs: [release-please, finalize-release]
     if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' && needs.finalize-release.result == 'success' }}
     uses: ./.github/workflows/design-artifacts.yml
+    with:
+      # Every bundle pins the released runtime, so a release republishes all of them
+      # — not just the catalogs whose sources happened to change. Passed explicitly
+      # rather than leaning on the input's default: a called workflow inherits THIS
+      # workflow's `push` event, so without the flag design-artifacts' change-scoping
+      # would diff the release merge (CHANGELOG / gradle.properties), match no
+      # catalog, and skip every system.
+      force-all: true
     secrets: inherit
     permissions:
       contents: write   # force-push the design-artifacts/<system> delivery branches
