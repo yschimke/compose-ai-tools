@@ -1628,6 +1628,50 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun annotatedTextEmitsStyledTspansAcrossWrappedLines() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 10, 10, 190, 90)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "10,10,190,90",
+              text = "base code",
+              typography =
+                ComposeSemanticsTypography(
+                  fontSize = "16.0sp",
+                  fontFamily = "monospace",
+                  spans =
+                    listOf(
+                      ComposeSemanticsTextSpan(0, 5, "16.0sp", "monospace", 400),
+                      ComposeSemanticsTextSpan(5, 9, "12.0sp", "serif", 400),
+                    ),
+                ),
+              textOverflow =
+                ComposeSemanticsTextOverflow(
+                  lineCount = 2,
+                  lines =
+                    listOf(
+                      ComposeSemanticsTextLine("base ", 0, 20, start = 0, end = 5),
+                      ComposeSemanticsTextLine("code", 0, 44, start = 5, end = 9),
+                    ),
+                ),
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+    assertTrue(svg.contains("""<tspan x="10" y="30" font-size="16" font-family="monospace""""))
+    assertTrue(svg.contains(">base </tspan>"))
+    assertTrue(svg.contains("""<tspan x="10" y="54" font-size="12" font-family="serif""""))
+    assertTrue(svg.contains(">code</tspan>"))
+  }
+
+  @Test
   fun wrappedTextEmitsOnePositionedTspanPerLineInsteadOfOneBaseline() {
     val layout =
       layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 10, 10, 190, 90)))

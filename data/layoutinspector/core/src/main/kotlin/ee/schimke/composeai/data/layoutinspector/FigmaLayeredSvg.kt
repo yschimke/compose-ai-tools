@@ -449,13 +449,77 @@ object FigmaLayeredSvg {
       // the captured per-line offset), so line alignment (centre/right) and the real break points
       // are preserved on Figma import.
       val tspans =
-        lines.joinToString("") {
-          """<tspan x="${layer.left + it.left}" y="${layer.top + it.baseline}">${escape(it.content)}</tspan>"""
+        lines.joinToString("") { line ->
+          val lineStart = line.start
+          val lineEnd = line.end
+          val styled =
+            if (lineStart != null && lineEnd != null) {
+              styledTspans(
+                content = t.content,
+                spans = t.spans,
+                rangeStart = lineStart,
+                rangeEnd = lineEnd,
+                firstPosition =
+                  """ x="${layer.left + line.left}" y="${layer.top + line.baseline}"""",
+                options = options,
+                familyOverrides = familyOverrides,
+              )
+            } else null
+          styled
+            ?: """<tspan x="${layer.left + line.left}" y="${layer.top + line.baseline}">${escape(line.content)}</tspan>"""
         }
       return """<text font-size="${fmt(size)}"$family$weight$style$letterSpacing$fill>$tspans</text>"""
     }
+    val styled =
+      styledTspans(
+        content = t.content,
+        spans = t.spans,
+        rangeStart = 0,
+        rangeEnd = t.content.length,
+        firstPosition = "",
+        options = options,
+        familyOverrides = familyOverrides,
+      )
     return """<text x="${layer.left}" y="${fmt(baseline)}" font-size="${fmt(size)}"$family$weight$style$letterSpacing$fill>""" +
-      "${escape(t.content)}</text>"
+      "${styled ?: escape(t.content)}</text>"
+  }
+
+  /** Styled `<tspan>`s for the intersections of [spans] with `[rangeStart, rangeEnd)`. */
+  private fun styledTspans(
+    content: String,
+    spans: List<FigmaSvgTextSpan>?,
+    rangeStart: Int,
+    rangeEnd: Int,
+    firstPosition: String,
+    options: Options,
+    familyOverrides: Map<String, String>,
+  ): String? {
+    spans ?: return null
+    val start = rangeStart.coerceIn(0, content.length)
+    val end = rangeEnd.coerceIn(start, content.length)
+    val pieces = spans.mapNotNull { span ->
+      val pieceStart = maxOf(start, span.start).coerceIn(start, end)
+      val pieceEnd = minOf(end, span.end).coerceIn(pieceStart, end)
+      if (pieceStart >= pieceEnd) null else Triple(pieceStart, pieceEnd, span)
+    }
+    if (pieces.isEmpty()) return null
+    return pieces
+      .mapIndexed { index, (pieceStart, pieceEnd, span) ->
+        val position = if (index == 0) firstPosition else ""
+        val size = span.fontSizePx?.let { """ font-size="${fmt(it)}"""" } ?: ""
+        val family =
+          span.fontFamily?.let { captured ->
+            val emitted =
+              familyOverrides[captured]
+                ?: withGenericFallback(resolveFamily(captured, options.defaultFontFamily))
+            """ font-family="${escapeAttr(emitted)}""""
+          } ?: ""
+        val weight = span.fontWeight?.let { """ font-weight="$it"""" } ?: ""
+        val style = if (span.italic) """ font-style="italic"""" else ""
+        val fill = span.color?.let { """ fill="${it.hex}"${opacity("fill", it)}""" } ?: ""
+        """<tspan$position$size$family$weight$style$fill>${escape(content.substring(pieceStart, pieceEnd))}</tspan>"""
+      }
+      .joinToString("")
   }
 
   // Typical UI-font metrics as a fraction of the em (font size). Compose lays a line out as the

@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTextSpan
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTypography
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorBounds
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorNode
@@ -145,6 +146,53 @@ class FigmaSvgTofuFallbackTest {
     assertTrue("the real family must survive", svg.contains("Orbitron"))
     assertFalse("nothing was lost, so no boxes", svg.contains(TofuFont.FAMILY))
     assertFalse("nothing was lost, so no warning", warnings("named").exists())
+  }
+
+  @Test
+  fun `annotated base and explicit span families are both named without tofu`() {
+    FigmaSvgRenderedFonts.record("Karla")
+    FigmaSvgRenderedFonts.record("monospace")
+    val semantics =
+      ComposeSemanticsPayload(
+        ComposeSemanticsNode(
+          nodeId = "root",
+          boundsInRoot = "0,0,200,100",
+          children =
+            listOf(
+              ComposeSemanticsNode(
+                nodeId = "Text",
+                boundsInRoot = "8,8,192,40",
+                text = "body code",
+                typography =
+                  ComposeSemanticsTypography(
+                    fontSize = "16.0sp",
+                    fontFamily = "Karla",
+                    spans =
+                      listOf(
+                        ComposeSemanticsTextSpan(0, 5, "16.0sp", "Karla", 400),
+                        ComposeSemanticsTextSpan(5, 9, "12.0sp", "monospace", 400),
+                      ),
+                  ),
+              )
+            ),
+        )
+      )
+
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = dir,
+      previewId = "annotated",
+      layout = layout(),
+      semantics = semantics,
+    )
+
+    val svg = dir.resolve("annotated").resolve(ComposeFigmaSvgDataProducer.FILE_SVG).readText()
+    assertTrue(svg.contains("""font-family="Karla, sans-serif""""))
+    assertTrue(svg.contains("""font-family="monospace""""))
+    assertFalse(
+      "known annotated faces must not poison the whole node",
+      svg.contains(TofuFont.FAMILY),
+    )
+    assertFalse("known annotated faces must not warn", warnings("annotated").exists())
   }
 
   @Test
