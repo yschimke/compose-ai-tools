@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.1](https://github.com/yschimke/compose-ai-tools/compare/v0.19.0...v0.19.1) (2026-07-28)
+
+
+### Features
+
+* **catalog:** carry parallel component annotations ([#2851](https://github.com/yschimke/compose-ai-tools/issues/2851)) ([7834d9b](https://github.com/yschimke/compose-ai-tools/commit/7834d9b18143a5ff7437d896f0f29318808942ac))
+
+
+### Bug Fixes
+
+* **catalog:** reject colliding variants ([#2858](https://github.com/yschimke/compose-ai-tools/issues/2858)) ([f73f3de](https://github.com/yschimke/compose-ai-tools/commit/f73f3de0217fb67f2fe16acf41e961dd7ca29456))
+* **serve:** keep IR previews out of daemon lane ([#2856](https://github.com/yschimke/compose-ai-tools/issues/2856)) ([8ab99f5](https://github.com/yschimke/compose-ai-tools/commit/8ab99f54c37fd5b9b5e35056bb36725aa2283214))
+* **tiles:** avoid linking 1.6 scope on older runtimes ([#2850](https://github.com/yschimke/compose-ai-tools/issues/2850)) ([b263833](https://github.com/yschimke/compose-ai-tools/commit/b26383375f50c1b76a840e94e0b2cfb6054f6117))
+
 ## [0.19.0](https://github.com/yschimke/compose-ai-tools/compare/v0.18.6...v0.19.0) (2026-07-28)
 
 
