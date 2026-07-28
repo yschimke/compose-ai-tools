@@ -15,6 +15,8 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import kotlin.system.exitProcess
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonClassDiscriminator
@@ -202,6 +204,7 @@ private class PackSubcommand(private val args: List<String>) {
   private val withSemantics: Boolean = "--with-semantics" in args
   private val perPreview: Boolean = "--per-preview" in args
   private val verbose: Boolean = "--verbose" in args || "-v" in args
+  private val timeout: String? = args.flagValue("--timeout")
   private val ids: List<String> =
     args
       .flagValuesAll("--id")
@@ -220,6 +223,10 @@ private class PackSubcommand(private val args: List<String>) {
         add(it)
       }
       if (verbose) add("--verbose")
+      timeout?.let {
+        add("--timeout")
+        add(it)
+      }
     }
     object : Command(cmdArgs) {
         override fun run() {
@@ -315,7 +322,12 @@ private class PackSubcommand(private val args: List<String>) {
                   )
                   null
                 } else {
-                  packSemanticsBlob(target, resolvedOutput, meta)
+                  packSemanticsBlob(
+                    target = target,
+                    bundleFile = resolvedOutput,
+                    meta = meta,
+                    renderTimeout = timeoutSeconds.seconds,
+                  )
                 }
               } else null
 
@@ -520,6 +532,7 @@ private class PackSubcommand(private val args: List<String>) {
     target: PreviewModule,
     bundleFile: File,
     meta: BundleReader.Metadata,
+    renderTimeout: Duration,
   ): String? {
     val previewIds = meta.manifest.previewIds
     if (previewIds.isEmpty()) return null
@@ -535,7 +548,11 @@ private class PackSubcommand(private val args: List<String>) {
     fun <V> Map<String, V>.keyedByBundleId(): Map<String, V> = entries.associate { (raw, v) ->
       (bundleIdByRaw[raw] ?: raw) to v
     }
-    val fetcher = DaemonSemanticsFetcher(onLog = { System.err.println("[daemon semantics] $it") })
+    val fetcher =
+      DaemonSemanticsFetcher(
+        onLog = { System.err.println("[daemon semantics] $it") },
+        renderTimeout = renderTimeout,
+      )
     val outcome =
       fetcher.fetch(
         projectDir = target.projectDir,
