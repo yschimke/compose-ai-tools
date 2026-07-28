@@ -133,6 +133,24 @@ test("foldVariants reports a theme variant that did not render, labelled by its 
   assert.deepEqual(missing, ["Screen/Foo [dark]"]);
 });
 
+test("foldVariants refuses duplicate effective output axes before export", () => {
+  const byFunction = new Map([
+    ["SecondDark", { images: [img("default", "light")] }],
+  ]);
+  assert.throws(
+    () =>
+      foldVariants(
+        [img("default", "dark")],
+        {
+          componentId: "Screen/Foo",
+          variants: [{ theme: "dark", preview: "SecondDark" }],
+        },
+        byFunction,
+      ),
+    /produces duplicate output axes/,
+  );
+});
+
 // --- index.html: default in the grid, states in the zoom view -----------------
 
 const catalogWithStates = () => ({

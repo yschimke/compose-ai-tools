@@ -52,6 +52,38 @@ test("a comparable component wires data-png + data-svg for the scorer", () => {
   assert.match(html, /<img[^>]*src="figma\/button-filled\.svg"/);
 });
 
+test("each theme pairs its PNG with the matching per-variant SVG", () => {
+  const themed = {
+    system: "compose-m3",
+    components: [
+      {
+        componentId: "button-filled",
+        group: "Buttons",
+        images: [
+          png("images/button-filled/ideal__default__light.png", { theme: "light" }),
+          png("images/button-filled/ideal__default__dark.png", { theme: "dark" }),
+        ],
+      },
+    ],
+  };
+  const html = renderCompareHtml(themed, {
+    figmaSvgSlugs: new Set(["button-filled"]),
+    figmaVariantSvgPaths: new Set([
+      "figma/button-filled/ideal__default__light.svg",
+      "figma/button-filled/ideal__default__dark.svg",
+    ]),
+    hybridSlugs: new Set(["button-filled"]),
+  });
+  assert.match(
+    html,
+    /data-png="images\/button-filled\/ideal__default__light\.png" data-png-dark="images\/button-filled\/ideal__default__dark\.png" data-svg="figma\/button-filled\/ideal__default__light\.svg" data-svg-dark="figma\/button-filled\/ideal__default__dark\.svg"/,
+  );
+  assert.match(html, /function currentSvg/);
+  assert.match(html, /fetch\(svgPath\)/);
+  // Raster hrefs are resolved from whichever variant SVG was fetched.
+  assert.match(html, /inlineRasters\(svgText, resp\.url\)/);
+});
+
 test("the in-page SSIM scorer is embedded", () => {
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
   assert.match(html, /function ssim/);
@@ -75,7 +107,7 @@ test("the scorer aligns the SVG's export padding out before scoring (translate c
   assert.match(html, /function translateOf/);
   assert.match(html, /translate\\\(/); // reads the SVG's root translate
   assert.match(html, /-tx \* scale, -ty \* scale/); // draws the SVG offset to crop the padding
-  assert.match(html, /fetch\(tr\.dataset\.svg\)/); // fetches the SVG source to read the translate
+  assert.match(html, /fetch\(svgPath\)/); // fetches the theme-matched SVG to read the translate
 });
 
 test("both columns are framed to the component's content bbox", () => {
@@ -240,7 +272,7 @@ test("identity overrides keep the cheap unchanged-vector path (baseline score pr
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
   // When applyOverrides returns the text unchanged, the plain <img src=svg> load is used.
   assert.match(html, /const changed = inlined !== rawSvg/);
-  assert.match(html, /changed \? await loadSvgString\(inlined\) : await loadImage\(tr\.dataset\.svg\)/);
+  assert.match(html, /changed \? await loadSvgString\(inlined\) : await loadImage\(svgPath\)/);
 });
 
 test("returning overrides to identity restores the displayed SVG (not the last blob)", () => {
@@ -248,9 +280,9 @@ test("returning overrides to identity restores the displayed SVG (not the last b
   assert.match(html, /function restoreSvg/);
   // The scorer takes the restore branch when the vector is unchanged.
   assert.match(html, /if \(changed\) showSvg\(tr, inlined\);\s*else restoreSvg\(tr\);/);
-  // restoreSvg only acts when a blob was actually installed, and puts src back to the source.
-  assert.match(html, /tr\.dataset\.svgShown !== "override"/);
-  assert.match(html, /img\.src = tr\.dataset\.svg/);
+  // restoreSvg puts src back to the currently selected authored theme variant.
+  assert.match(html, /const svgPath = currentSvg\(tr\)/);
+  assert.match(html, /img\.getAttribute\("src"\) !== svgPath/);
 });
 
 test("the theme override repoints the displayed PNG, not just the scored one", () => {

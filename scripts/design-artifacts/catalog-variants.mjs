@@ -40,6 +40,10 @@
 export function foldVariants(defaultImages, component, byFunction) {
   const ideal = [...defaultImages];
   const missing = [];
+  const outputKeys = new Set();
+  for (const image of defaultImages) {
+    recordOutputKey(outputKeys, image, component.componentId);
+  }
   for (const variant of component.variants ?? []) {
     const candidate = byFunction.get(variant.preview);
     if (!candidate || candidate.images.length === 0) {
@@ -51,10 +55,36 @@ export function foldVariants(defaultImages, component, byFunction) {
       if (variant.state !== undefined) tagged.state = variant.state;
       if (variant.props) tagged.props = { ...image.props, ...variant.props };
       if (variant.theme !== undefined) tagged.theme = variant.theme;
+      recordOutputKey(outputKeys, tagged, component.componentId);
       ideal.push(tagged);
     }
   }
   return { ideal, missing };
+}
+
+/**
+ * Refuse two images that the exporter would name from the same effective variant axes. Catching
+ * this before `buildCatalog` writes either PNG prevents last-write-wins pixels paired with stale
+ * manifest metadata.
+ */
+function recordOutputKey(seen, image, componentId) {
+  const props = Object.fromEntries(
+    Object.entries(image.props ?? {}).sort(([a], [b]) => a.localeCompare(b)),
+  );
+  const key = JSON.stringify({
+    variant: image.variant ?? "ideal",
+    state: image.state ?? "default",
+    theme: image.theme ?? null,
+    size: image.size ?? null,
+    props,
+  });
+  if (seen.has(key)) {
+    throw new Error(
+      `catalog component "${componentId}" produces duplicate output axes ${key}; ` +
+        "each variant must have a unique state, theme, size, or props value",
+    );
+  }
+  seen.add(key);
 }
 
 /** A short label for a variant, for the missing-render report: its state, props and/or theme. */
