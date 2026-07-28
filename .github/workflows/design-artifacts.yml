@@ -44,6 +44,15 @@ on:
   # default GITHUB_TOKEN, whose events don't start new workflow runs (the same reason
   # release-please.yml calls release.yml / preview-host-image.yml this way).
   workflow_call:
+    inputs:
+      force-all:
+        description: >-
+          Regenerate every system regardless of which files changed.
+          Defaults to true because the only caller (the release chain) exists to
+          republish every bundle against the newly released runtime.
+        type: boolean
+        default: true
+        required: false
 
 permissions:
   contents: write
@@ -88,6 +97,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EVENT: ${{ github.event_name }}
+          # A reusable workflow inherits the CALLER's github context, so on the
+          # release chain (release-please.yml is itself `on: push`) `event_name` is
+          # `push` and `event.before…sha` is the release merge — which touches
+          # CHANGELOG / gradle.properties and matches no catalog, so pure event
+          # sniffing would silently skip every system on exactly the run that must
+          # republish them all. `inputs.force-all` is the explicit signal; it is
+          # empty for push/cron (the `inputs` context is only populated for
+          # workflow_call / workflow_dispatch) and defaults to true for callers.
+          FORCE_ALL: ${{ inputs.force-all }}
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
           REPO: ${{ github.repository }}
@@ -95,19 +113,41 @@ jobs:
           set -euo pipefail
 
           # Cron / dispatch / the release chain exist to refresh everything.
-          if [ "$EVENT" != "push" ]; then
-            echo "event=$EVENT — regenerating every system" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$FORCE_ALL" = "true" ] || [ "$EVENT" != "push" ]; then
+            # `if`, not `&&` — under `set -e` a failing AND-list exits the step.
+            if [ "$FORCE_ALL" = "true" ]; then
+              why="force-all (called workflow)"
+            else
+              why="event=$EVENT"
+            fi
+            echo "$why — regenerating every system" >> "$GITHUB_STEP_SUMMARY"
             scripts/design-artifacts/scope-systems.sh --all | tee -a "$GITHUB_OUTPUT"
             exit 0
           fi
 
           # All-zero `before` = branch creation; there's no range to diff. An empty
           # file list makes the script fall back to every system.
+          #
+          # Single un-paginated call on purpose: the compare endpoint caps `files`
+          # at 300 and paginates COMMITS, not files, so `--paginate` would not fetch
+          # the rest — it would just hand us a silently partial list. A partial list
+          # is worse than none (a catalog past the cap reads as "unchanged" and its
+          # branch quietly rots), so a capped response is treated as unresolvable and
+          # falls through to regenerating everything.
           files=''
           case "$BEFORE" in
             ''|0000000000000000000000000000000000000000) ;;
-            *) files="$(gh api "repos/$REPO/compare/$BEFORE...$AFTER" \
-                 --paginate --jq '.files[].filename' 2>/dev/null || true)" ;;
+            *)
+              compare="$(gh api "repos/$REPO/compare/$BEFORE...$AFTER" 2>/dev/null || true)"
+              if [ -n "$compare" ]; then
+                count="$(jq -r '(.files // []) | length' <<<"$compare")"
+                if [ "$count" -ge 300 ]; then
+                  echo "compare returned $count files (API cap) — treating as truncated" >> "$GITHUB_STEP_SUMMARY"
+                else
+                  files="$(jq -r '(.files // [])[].filename' <<<"$compare")"
+                fi
+              fi
+              ;;
           esac
 
           if [ -n "$files" ]; then
