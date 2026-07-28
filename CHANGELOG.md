@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.18.6](https://github.com/yschimke/compose-ai-tools/compare/v0.18.5...v0.18.6) (2026-07-28)
+
+
+### Features
+
+* **serve:** add preview zoom modes ([#2837](https://github.com/yschimke/compose-ai-tools/issues/2837)) ([67d4df4](https://github.com/yschimke/compose-ai-tools/commit/67d4df4c8bf060101727b49925943e6d93df2af5))
+
+
+### Bug Fixes
+
+* **serve:** expose and retry partial catalog failures ([#2831](https://github.com/yschimke/compose-ai-tools/issues/2831)) ([ed525ba](https://github.com/yschimke/compose-ai-tools/commit/ed525ba1df513e99dfe520053e11780b600ad15c))
+* **serve:** make catalog navigation tabs sticky ([#2836](https://github.com/yschimke/compose-ai-tools/issues/2836)) ([8ee0f11](https://github.com/yschimke/compose-ai-tools/commit/8ee0f11bfcb4b436140f9f97d49cc6160405ea6f))
+
 ## [0.18.5](https://github.com/yschimke/compose-ai-tools/compare/v0.18.4...v0.18.5) (2026-07-27)
 
 
