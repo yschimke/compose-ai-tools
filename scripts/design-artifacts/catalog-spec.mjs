@@ -348,6 +348,39 @@ export function hasCatalogAnnotations(sources) {
   return sources.some((s) => /@CatalogComponent\b/.test(stripComments(s)));
 }
 
+/**
+ * The componentIds an annotated module declares — every `@CatalogComponent(id = "…")` in [sources].
+ * The annotation-supplied half of a catalog's inventory, which a spec with no `groups` (compose-m3,
+ * wear-m3) carries *nowhere* else, so a spec-only check can't see them.
+ *
+ * Used to resolve `display.hero`: the hero names a componentId, and for those catalogs the only
+ * place that id exists is the annotation next to the `@Preview`. Comments are stripped first so a
+ * commented-out annotation doesn't count. A source-only scan, so it reads the literal id and skips a
+ * computed one — the same conservative bargain [discoverPreviews] makes.
+ *
+ * @param {string[]} sources  Kotlin file contents.
+ * @returns {string[]} sorted unique componentIds.
+ */
+export function discoverComponentIds(sources) {
+  const ids = new Set();
+  const re = /@CatalogComponent\s*\(([^)]*)\)/g;
+  for (const source of sources) {
+    for (const m of stripComments(source).matchAll(re)) {
+      // `id` is the annotation's FIRST parameter, spelled either `id = "…"` or positionally. Try the
+      // named form anywhere in the argument list first, then fall back to a leading positional
+      // string. Deliberately two anchored patterns rather than one alternation over "any string
+      // literal": the arguments run over several lines, so a pattern loose enough to skip the
+      // leading newline+indent is also loose enough to match a LATER positional argument (`group`,
+      // `caption`) and mint it as a componentId.
+      const named = m[1].match(/(?:^|,)\s*id\s*=\s*"([^"]+)"/);
+      const positional = m[1].match(/^\s*"([^"]+)"/);
+      const id = named?.[1] ?? positional?.[1];
+      if (id) ids.add(id);
+    }
+  }
+  return [...ids].sort();
+}
+
 /** Every `preview` a spec references, top-level and inside `variants`, each with
  *  a human-readable JSON-ish path for diagnostics. */
 export function specPreviewRefs(spec) {
@@ -414,9 +447,16 @@ export function closest(name, candidates) {
  * spec `preview` must match one, and unreferenced previews are surfaced as a
  * coverage warning.
  *
+ * `display.hero` is resolved the same way, against the union of the spec's own componentIds, any
+ * `knownComponentIds` the caller scanned out of the module's `@CatalogComponent` annotations, and
+ * `knownPreviews`. An unresolvable hero is a silent failure at serve time — the preview server just
+ * falls through to its own representative pick — so it is caught here instead.
+ *
  * @param {object} spec
  * @param {object} [opts]
  * @param {string[]|Set<string>} [opts.knownPreviews]
+ * @param {string[]|Set<string>} [opts.knownComponentIds]  componentIds declared by
+ *   `@CatalogComponent` annotations in the module (see [discoverComponentIds]).
  * @param {string[]|Set<string>} [opts.pngLessPreviews]  Discovered preview functions
  *   that render no static `previews/<id>.png` (see [discoverPreviews]'s `pngLess`).
  *   Referencing one is an error: `candidatePreviewBundle()` drops it from the
@@ -452,6 +492,9 @@ export function validateSpec(spec, opts = {}) {
           "@Preview functions.",
       );
     }
+    // A cover-sheet-only spec still declares its hero here, and its componentIds live wholly in the
+    // module's annotations — so resolve against those alone.
+    errors.push(...heroErrors(spec, opts, new Set()));
     return { errors, warnings };
   }
   if (!Array.isArray(spec.groups) || spec.groups.length === 0) {
@@ -567,7 +610,35 @@ export function validateSpec(spec, opts = {}) {
     }
   }
 
+  errors.push(...heroErrors(spec, opts, new Set(componentIds.keys())));
+
   return { errors, warnings };
+}
+
+/**
+ * Resolve `display.hero` against everything that could name a preview: the spec's own
+ * [specComponentIds], the module's annotated componentIds, and the `@Preview` function names. The
+ * server ([ServeBundleHost.declaredHeroPreviewId]) accepts any of the three, so validation has to
+ * accept all three too — the point is only to catch a hero that matches *nothing*, which the server
+ * would silently ignore.
+ */
+function heroErrors(spec, opts, specComponentIds) {
+  const hero = spec?.display?.hero;
+  if (typeof hero !== "string" || hero.length === 0) return [];
+  // Without a module scan the candidate set is only half the picture (a hero may legitimately name a
+  // `@Preview` function this spec never lists), so a structural-only run stays lenient — the same
+  // bargain the `preview` checks make.
+  if (opts.knownPreviews === undefined && opts.knownComponentIds === undefined) return [];
+  const candidates = new Set([
+    ...specComponentIds,
+    ...(opts.knownComponentIds ?? []),
+    ...(opts.knownPreviews ?? []),
+  ]);
+  if (candidates.size === 0 || candidates.has(hero)) return [];
+  const hint = closest(hero, [...candidates]);
+  return [
+    `display.hero "${hero}" matches no componentId or @Preview function${hint ? ` — did you mean "${hint}"?` : ""}`,
+  ];
 }
 
 /** Normalise an optional array-or-Set option to a Set, or null when absent. */

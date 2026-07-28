@@ -14,7 +14,12 @@
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 
-import { discoverPreviews, hasCatalogAnnotations, validateSpec } from "./catalog-spec.mjs";
+import {
+  discoverComponentIds,
+  discoverPreviews,
+  hasCatalogAnnotations,
+  validateSpec,
+} from "./catalog-spec.mjs";
 import { resolveSourceDirs, collectKotlinSources } from "./catalog-spec-io.mjs";
 
 const { values } = parseArgs({
@@ -51,6 +56,7 @@ try {
 const srcDirs = values["module-dir"] ? [values["module-dir"], ...(values.src ?? [])] : values.src;
 
 let knownPreviews = null;
+let knownComponentIds = null;
 let pngLessPreviews = [];
 let annotatedInventory = undefined;
 let scannedDirs = [];
@@ -63,6 +69,11 @@ if (!values["no-scan"]) {
     });
     knownPreviews = previews;
     pngLessPreviews = pngLess;
+    // The annotated componentIds travel with the preview names: `display.hero` names a componentId,
+    // and for a cover-sheet spec (no `groups`) the annotations are the only place those ids exist.
+    // Scanning the module but passing only `knownPreviews` would enable hero validation against
+    // half the candidate set and reject every annotation-declared hero.
+    knownComponentIds = discoverComponentIds(sources);
     // Only meaningful when a module was scanned; leaves `annotatedInventory` undefined (lenient) on
     // the structural-only path so a no-groups spec isn't wrongly rejected without source access.
     annotatedInventory = hasCatalogAnnotations(sources);
@@ -71,6 +82,7 @@ if (!values["no-scan"]) {
 
 const { errors, warnings } = validateSpec(spec, {
   ...(knownPreviews ? { knownPreviews, pngLessPreviews } : {}),
+  ...(knownComponentIds ? { knownComponentIds } : {}),
   ...(annotatedInventory !== undefined ? { annotatedInventory } : {}),
 });
 

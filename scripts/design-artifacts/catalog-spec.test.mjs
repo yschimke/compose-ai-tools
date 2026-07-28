@@ -5,6 +5,7 @@ import {
   stripComments,
   blankStringContents,
   discoverPreviews,
+  discoverComponentIds,
   specPreviewRefs,
   editDistance,
   closest,
@@ -158,6 +159,72 @@ test("validateSpec stays lenient on a no-groups spec when annotation state is un
   // backstop for a genuinely empty inventory.
   const { errors } = validateSpec({ system: "s", title: "t" });
   assert.deepEqual(errors, []);
+});
+
+test("discoverComponentIds reads the ids off @CatalogComponent", () => {
+  const source = `
+    @CatalogComponent(
+      id = "Template/AppScaffold",
+      group = "Scaffold templates",
+      caption = "Full-screen layout (with the OS status bar).",
+    )
+    @Composable fun AppScaffoldTemplate() {}
+    @CatalogComponent(id = "Button/Filled", group = "Buttons")
+    @Composable fun FilledButton() {}
+    // @CatalogComponent(id = "Commented/Out")
+  `;
+  assert.deepEqual(discoverComponentIds([source]), ["Button/Filled", "Template/AppScaffold"]);
+});
+
+test("discoverComponentIds reads a multiline positional id without swallowing later args", () => {
+  // The argument list starts with a newline + indent, so the id is NOT at offset 0; a pattern loose
+  // enough to skip that must not then mistake the positional `group` for the id.
+  const source = `
+    @CatalogComponent(
+      "Button/Filled",
+      "Buttons",
+    )
+    @Composable fun FilledButton() {}
+  `;
+  assert.deepEqual(discoverComponentIds([source]), ["Button/Filled"]);
+});
+
+test("validateSpec resolves display.hero against annotated componentIds", () => {
+  // A cover-sheet spec's hero names a componentId that exists only in the module's annotations.
+  const opts = { knownPreviews: ["AppScaffoldTemplate"], annotatedInventory: true };
+  const spec = { system: "compose-m3", title: "T", display: { hero: "Template/AppScaffold" } };
+  assert.deepEqual(
+    validateSpec(spec, { ...opts, knownComponentIds: ["Template/AppScaffold"] }).errors,
+    [],
+  );
+  // A hero matching nothing is a silent fall-through at serve time, so fail here instead.
+  const { errors } = validateSpec(
+    { ...spec, display: { hero: "Template/AppScafold" } },
+    { ...opts, knownComponentIds: ["Template/AppScaffold"] },
+  );
+  assert.ok(errors.some((e) => e.includes('display.hero "Template/AppScafold"')));
+  assert.ok(errors.some((e) => e.includes('did you mean "Template/AppScaffold"')));
+});
+
+test("validateSpec stays lenient on display.hero with no module scan", () => {
+  // Structural-only path: the candidate set is only half the picture, so don't reject.
+  const spec = { system: "s", title: "t", display: { hero: "Whatever" } };
+  assert.deepEqual(validateSpec(spec).errors, []);
+});
+
+test("validateSpec resolves display.hero against the spec's own componentIds", () => {
+  const spec = {
+    system: "remote-m3",
+    title: "T",
+    display: { hero: "Template/WatchScreen" },
+    groups: [
+      {
+        name: "Scaffold templates",
+        components: [{ componentId: "Template/WatchScreen", preview: "WatchScreenRemote" }],
+      },
+    ],
+  };
+  assert.deepEqual(validateSpec(spec, { knownPreviews: ["WatchScreenRemote"] }).errors, []);
 });
 
 test("validateSpec flags duplicate componentId and warns on folded preview", () => {
