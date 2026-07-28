@@ -1862,6 +1862,65 @@ class FigmaLayeredSvgTest {
     assertTrue(svg.contains(">code</tspan>"))
   }
 
+  /**
+   * A styled span's `fontSizePx` is emitted as an *overriding* `font-size` on its `<tspan>`, so a
+   * graphics-layer-scaled `Text` has to scale the spans as well as the base run — otherwise the
+   * baselines shrink while the styled glyphs stay full size and overflow their line (#2901 review).
+   */
+  @Test
+  fun annotatedTextSpansScaleWithADrawTimeTransform() {
+    val text =
+      LayoutInspectorNode(
+        nodeId = "Text",
+        component = "Text",
+        bounds = bounds(10, 10, 100, 55),
+        size = LayoutInspectorSize(180, 90),
+        transform = LayoutInspectorTransform(scaleX = 0.5f, scaleY = 0.5f),
+      )
+    val layout = layoutNode("Screen", 0, 0, 200, 100, children = listOf(text))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "10,10,100,55",
+              text = "base code",
+              typography =
+                ComposeSemanticsTypography(
+                  fontSize = "16.0sp",
+                  fontFamily = "monospace",
+                  spans =
+                    listOf(
+                      ComposeSemanticsTextSpan(0, 5, "16.0sp", "monospace", 400),
+                      ComposeSemanticsTextSpan(5, 9, "12.0sp", "serif", 400),
+                    ),
+                ),
+              textOverflow =
+                ComposeSemanticsTextOverflow(
+                  lineCount = 2,
+                  lines =
+                    listOf(
+                      ComposeSemanticsTextLine("base ", 0, 20, start = 0, end = 5),
+                      ComposeSemanticsTextLine("code", 0, 44, start = 5, end = 9),
+                    ),
+                ),
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+    // Every emitted font-size is halved — the base run and both span overrides — and so are the
+    // per-line baselines (20 → 10, 44 → 22, against the layer's top at y=10).
+    assertTrue("base run scales:\n$svg", svg.contains("""<text font-size="8""""))
+    assertTrue("16sp span scales:\n$svg", svg.contains("""y="20" font-size="8""""))
+    assertTrue("12sp span scales:\n$svg", svg.contains("""y="32" font-size="6""""))
+    assertFalse("no un-scaled span size survives:\n$svg", svg.contains("""font-size="12""""))
+    assertFalse("no un-scaled base size survives:\n$svg", svg.contains("""font-size="16""""))
+  }
+
   @Test
   fun annotatedTextKeepsEllipsisOnTheFinalStyledLine() {
     val layout =

@@ -845,6 +845,10 @@ data class FigmaSvgModel(
      * The same text drawn at a node's draw-time scale: vertical metrics (size, line height,
      * baselines) follow [scaleY], horizontal ones (tracking, per-line left offsets) follow
      * [scaleX]. Identity scales return the text untouched.
+     *
+     * A styled span's own `fontSizePx` scales with the run it lives in: the emitter writes it as an
+     * *overriding* `font-size` on that span's `<tspan>`, so leaving it at the captured size would
+     * float un-shrunk glyphs over halved baselines.
      */
     private fun FigmaSvgText.scaledBy(scaleX: Double, scaleY: Double): FigmaSvgText {
       if (abs(scaleX - 1.0) < SCALE_EPSILON && abs(scaleY - 1.0) < SCALE_EPSILON) return this
@@ -852,6 +856,7 @@ data class FigmaSvgModel(
         fontSizePx = fontSizePx?.times(scaleY),
         lineHeightPx = lineHeightPx?.times(scaleY),
         letterSpacingPx = letterSpacingPx?.times(scaleX),
+        spans = spans?.map { it.copy(fontSizePx = it.fontSizePx?.times(scaleY)) },
         lines =
           lines?.map {
             it.copy(

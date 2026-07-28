@@ -152,8 +152,17 @@ class FigmaSvgWearTlcOverlapTest {
             roundClip = true,
           )
           svg = File(rootDir, "$previewId/compose-figma.svg").readText()
-          File("build/figma-svg-wear-tlc").mkdirs()
-          frame.copyTo(File("build/figma-svg-wear-tlc/$previewId-frame.png"), overwrite = true)
+          val outDir = File("build/figma-svg-wear-tlc").apply { mkdirs() }
+          frame.copyTo(File(outDir, "$previewId-frame.png"), overwrite = true)
+          // A self-contained copy with the raster sidecars (the `ScrollIndicator`'s
+          // `drawWithContent` chrome, which doesn't vectorise) base64-inlined, so the export renders
+          // standalone for PR evidence instead of showing a broken-image icon where the indicator is.
+          var inlined = svg
+          File(rootDir, "$previewId/figma-raster").listFiles().orEmpty().forEach { png ->
+            val b64 = java.util.Base64.getEncoder().encodeToString(png.readBytes())
+            inlined = inlined.replace("figma-raster/${png.name}", "data:image/png;base64,$b64")
+          }
+          File(outDir, "$previewId.inlined.svg").writeText(inlined)
         }
       }
     rule.apply(statement, Description.createTestDescription(javaClass, previewId)).evaluate()
