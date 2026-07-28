@@ -984,6 +984,7 @@ for (const component of catalog.components) {
 const figmaSvgsById = figmaSvgByIds([bundle, extraBundle]);
 let figmaVariantSvgCount = 0;
 let figmaVariantGapCount = 0;
+const figmaVariantSvgPaths = new Set();
 // Components with at least one image carrying no `previewId`. Some of those are legitimate
 // (`bridgeLivePreviewIds` deliberately skips a state with no desktop source, and any function
 // the Android-only supplement overrode) — but a component where NONE of the images bridged is
@@ -1036,6 +1037,7 @@ for (const component of indexManifest.components ?? []) {
     }
     await mkdir(variantDir, { recursive: true });
     await writeFile(variantPath, svg, "utf8");
+    figmaVariantSvgPaths.add(target);
     figmaVariantSvgCount += 1;
   }
 }
@@ -1208,6 +1210,7 @@ await writeFile(
   comparePath,
   renderCompareHtml(indexManifest, {
     figmaSvgSlugs,
+    figmaVariantSvgPaths,
     hybridSlugs: figmaSvgHybridSlugs,
   }),
   "utf8",

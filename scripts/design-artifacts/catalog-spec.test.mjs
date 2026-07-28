@@ -203,7 +203,7 @@ test("validateSpec warns about @Preview functions absent from the catalog", () =
   assert.ok(warnings.some((w) => w.includes("Unused")));
 });
 
-test("validateSpec warns when a variant has neither state, props nor theme", () => {
+test("validateSpec rejects a variant with no distinguishing axis", () => {
   const spec = {
     system: "s",
     title: "T",
@@ -214,8 +214,30 @@ test("validateSpec warns when a variant has neither state, props nor theme", () 
       },
     ],
   };
-  const { warnings } = validateSpec(spec);
-  assert.ok(warnings.some((w) => w.includes("neither `state`, `props` nor `theme`")));
+  const { errors } = validateSpec(spec);
+  assert.ok(errors.some((e) => e.includes("neither `state`, `props` nor `theme`")));
+  assert.ok(errors.some((e) => e.includes("overwrite the default artifact")));
+});
+
+test("validateSpec rejects unsupported variant properties", () => {
+  const spec = {
+    system: "s",
+    title: "T",
+    groups: [
+      {
+        name: "G",
+        components: [
+          {
+            componentId: "A",
+            preview: "P",
+            variants: [{ mode: "dark", preview: "PDark" }],
+          },
+        ],
+      },
+    ],
+  };
+  const { errors } = validateSpec(spec);
+  assert.ok(errors.some((e) => e.includes(".mode is not supported")));
 });
 
 test("validateSpec accepts a theme variant and still resolves its preview name", () => {

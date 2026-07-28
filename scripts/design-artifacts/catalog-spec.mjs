@@ -350,13 +350,25 @@ export function validateSpec(spec, opts = {}) {
         } else {
           variants.forEach((v, vi) => {
             const vp = `${cp}.variants[${vi}]`;
+            const allowedKeys = new Set(["preview", "caption", "state", "props", "theme"]);
+            for (const key of Object.keys(v ?? {})) {
+              if (!allowedKeys.has(key)) {
+                errors.push(
+                  `${vp}.${key} is not supported; expected only ${[...allowedKeys]
+                    .map((k) => `\`${k}\``)
+                    .join(", ")}`,
+                );
+              }
+            }
             if (typeof v?.preview !== "string" || v.preview.length === 0) {
               errors.push(`${vp}.preview is required`);
             } else {
               pushMulti(previewToPaths, v.preview, vp);
             }
             if (v?.state === undefined && v?.props === undefined && v?.theme === undefined) {
-              warnings.push(`${vp} has neither \`state\`, \`props\` nor \`theme\` — it won't be distinguishable from the default`);
+              errors.push(
+                `${vp} has neither \`state\`, \`props\` nor \`theme\` — it would overwrite the default artifact`,
+              );
             }
             if (v?.theme !== undefined && v.theme !== "light" && v.theme !== "dark") {
               errors.push(`${vp}.theme must be "light" or "dark" when present`);

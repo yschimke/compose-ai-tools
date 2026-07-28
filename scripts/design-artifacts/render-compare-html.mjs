@@ -45,6 +45,7 @@
  */
 
 import { slug } from "./render-wireframe-svg.mjs";
+import { figmaVariantSvgPath } from "./figma-svg-emit.mjs";
 
 /** Minimal HTML-escape for text interpolated into the page. */
 function esc(s) {
@@ -131,11 +132,13 @@ const SCORER = String.raw`
     OV.bg = bg ? bg.value : "checker";
   }
 
-  // Whether any override departs from identity. When true the score is a *probe* of
+  // Whether a vector mutation departs from identity. Theme selects a separately authored
+  // PNG/SVG pair, so it remains a baseline comparison rather than an override probe.
+  // When true the score is a *probe* of
   // the SVG's sensitivity to the knob (the PNG is the capture-time render), not a
   // baseline fidelity number — the header says so.
   function overridesActive() {
-    return Math.abs(OV.fontScale - 1) > 1e-6 || !OV.fonts || OV.theme !== "light";
+    return Math.abs(OV.fontScale - 1) > 1e-6 || !OV.fonts;
   }
 
   // Apply the active overrides to the figma-svg source text.
@@ -163,9 +166,18 @@ const SCORER = String.raw`
   }
 
   // The PNG the current theme override selects — the dark capture if the row carries
-  // one, else the light default (so the toggle is a no-op for light-only rows).
+  // a matching dark vector too, else the light default. Switching only one side would
+  // manufacture the exact cross-variant diff this page exists to prevent.
   function currentPng(tr) {
-    return OV.theme === "dark" && tr.dataset.pngDark ? tr.dataset.pngDark : tr.dataset.png;
+    return OV.theme === "dark" && tr.dataset.pngDark && tr.dataset.svgDark
+      ? tr.dataset.pngDark
+      : tr.dataset.png;
+  }
+
+  // Keep the vector on the same authored variant as the PNG. A row without a dark vector falls
+  // back to its light/base vector, matching currentPng's fallback for a missing dark capture.
+  function currentSvg(tr) {
+    return OV.theme === "dark" && tr.dataset.svgDark ? tr.dataset.svgDark : tr.dataset.svg;
   }
 
   function loadImage(src) {
@@ -247,13 +259,12 @@ const SCORER = String.raw`
   }
 
   // Put the display <img> back to the authored figma-svg once the overrides return to
-  // identity — otherwise the column keeps showing the last override's blob while the
-  // score is recomputed from the baseline vector. Only acts when a blob was actually
-  // installed, so an unchanged rescore doesn't thrash the src.
+  // identity or the selected theme changes — otherwise the column keeps showing the last
+  // override's blob or the previous theme while the score uses a different authored vector.
   function restoreSvg(tr) {
-    if (tr.dataset.svgShown !== "override") return;
     const img = tr.querySelector(".col-svg .shot img");
-    if (img) img.src = tr.dataset.svg;
+    const svgPath = currentSvg(tr);
+    if (img && img.getAttribute("src") !== svgPath) img.src = svgPath;
     tr.dataset.svgShown = "base";
   }
 
@@ -405,9 +416,10 @@ const SCORER = String.raw`
       // translate, apply the active overrides, and inline any raster crops). Both are
       // same-origin and cache-shared.
       const pngPath = currentPng(tr);
+      const svgPath = currentSvg(tr);
       const [png, resp] = await Promise.all([
         loadImage(pngPath),
-        fetch(tr.dataset.svg),
+        fetch(svgPath),
       ]);
       const rawSvg = await resp.text();
       // Apply the header overrides (font scale, drop embedded @font-face) to the vector
@@ -424,7 +436,7 @@ const SCORER = String.raw`
       // Overridden or hybrid → rasterize the (blob) string; untouched vector-only → the
       // cheap <img src=svg> path.
       const changed = inlined !== rawSvg;
-      const svg = changed ? await loadSvgString(inlined) : await loadImage(tr.dataset.svg);
+      const svg = changed ? await loadSvgString(inlined) : await loadImage(svgPath);
       // The render PNG defines the aligned coordinate space (padding-free, content at
       // (0,0)); size the shared canvas from it, capped to MAX_SIDE for offset-robustness.
       const rw = png.naturalWidth || png.width, rh = png.naturalHeight || png.height;
@@ -612,14 +624,34 @@ const SCORER = String.raw`
  * Components missing a PNG or a figma-svg still get a row (so the table is a complete
  * inventory) but with an inert "—" score that sorts to the bottom.
  */
-function componentRow(component, figmaSvgSlugs, hybridSlugs) {
+function componentSvgPaths(component, figmaSvgSlugs, figmaVariantSvgPaths) {
+  const s = slug(component.componentId ?? "(unnamed)");
+  const fallback = figmaSvgSlugs?.has(s) ? `figma/${s}.svg` : null;
+  const png = comparePng(component);
+  const pngDark = compareDarkPng(component);
+  const variantPath = (image) => {
+    const path = image && figmaVariantSvgPath(image.path);
+    return path && figmaVariantSvgPaths?.has(path) ? path : null;
+  };
+  return {
+    light: variantPath(png) ?? fallback,
+    // Callers predating per-variant vectors supplied no path set and retain the legacy flat
+    // fallback. A supplied (even empty) set is authoritative: never call one flat SVG "dark".
+    dark: variantPath(pngDark) ?? (figmaVariantSvgPaths === undefined ? fallback : null),
+  };
+}
+
+function componentRow(component, figmaSvgSlugs, figmaVariantSvgPaths, hybridSlugs) {
   const id = component.componentId ?? "(unnamed)";
   const group = component.group ?? "Components";
   const s = slug(id);
   const png = comparePng(component);
   const pngDark = compareDarkPng(component);
-  const hasSvg = figmaSvgSlugs && figmaSvgSlugs.has(s);
-  const svgPath = hasSvg ? `figma/${s}.svg` : null;
+  const { light: svgPath, dark: svgDarkPath } = componentSvgPaths(
+    component,
+    figmaSvgSlugs,
+    figmaVariantSvgPaths,
+  );
   const hybrid = Boolean(hybridSlugs && hybridSlugs.has(s));
 
   const pngCell = png
@@ -638,7 +670,7 @@ function componentRow(component, figmaSvgSlugs, hybridSlugs) {
 
   const rowAttrs =
     png && svgPath
-      ? ` data-png="${esc(png.path)}"${pngDark ? ` data-png-dark="${esc(pngDark.path)}"` : ""} data-svg="${esc(svgPath)}"`
+      ? ` data-png="${esc(png.path)}"${pngDark ? ` data-png-dark="${esc(pngDark.path)}"` : ""} data-svg="${esc(svgPath)}"${svgDarkPath ? ` data-svg-dark="${esc(svgDarkPath)}"` : ""}`
       : "";
 
   return `<tr class="crow"${rowAttrs}>
@@ -652,32 +684,35 @@ function componentRow(component, figmaSvgSlugs, hybridSlugs) {
 /**
  * Render the catalog to a complete PNG-vs-SVG comparison page.
  * @param {object} catalog the flattened manifest (system, title, components, …)
- * @param {object} [opts] { figmaSvgSlugs?: Set<string>, hybridSlugs?: Set<string> } — the slugs a
- *   figma-svg was written for, and the subset whose SVG is a hybrid (carries raster crop layers).
+ * @param {object} [opts] { figmaSvgSlugs?: Set<string>, figmaVariantSvgPaths?: Set<string>,
+ *   hybridSlugs?: Set<string> } — the back-compat slugs and exact per-variant paths written, plus
+ *   the subset whose SVG is a hybrid (carries raster crop layers).
  * @returns {string} a self-contained compare.html
  */
 export function renderCompareHtml(catalog, opts = {}) {
   const components = catalog.components ?? [];
   const figmaSvgSlugs = opts.figmaSvgSlugs;
+  const figmaVariantSvgPaths = opts.figmaVariantSvgPaths;
   const hybridSlugs = opts.hybridSlugs;
 
   const comparable = components.filter(
-    (c) => comparePng(c) && figmaSvgSlugs && figmaSvgSlugs.has(slug(c.componentId)),
+    (c) => comparePng(c) && componentSvgPaths(c, figmaSvgSlugs, figmaVariantSvgPaths).light,
   ).length;
 
   // Whether any comparable component carries a dark default capture — the theme
   // override is only offered when there's a dark PNG to switch to.
   const hasDark = components.some(
-    (c) =>
-      figmaSvgSlugs &&
-      figmaSvgSlugs.has(slug(c.componentId)) &&
-      comparePng(c) &&
-      compareDarkPng(c),
+    (c) => {
+      const paths = componentSvgPaths(c, figmaSvgSlugs, figmaVariantSvgPaths);
+      return paths.light && paths.dark && comparePng(c) && compareDarkPng(c);
+    },
   );
 
   // One flat, client-sortable table — initial paint is catalog order; the scorer
   // re-orders worst-match-first once every row has a score.
-  const body = components.map((c) => componentRow(c, figmaSvgSlugs, hybridSlugs)).join("\n");
+  const body = components
+    .map((c) => componentRow(c, figmaSvgSlugs, figmaVariantSvgPaths, hybridSlugs))
+    .join("\n");
 
   const meta = catalog.meta ?? catalog;
   const title = meta.title ?? meta.system ?? "Design catalog";
