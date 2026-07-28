@@ -33,6 +33,11 @@ on:
       - "samples/android-live-lane/**"
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt"
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleLaunch.kt"
+      # A Robolectric bump is THE regression this lane exists to catch (#2669 rode 4.15 → 4.16),
+      # and it lands entirely in the version catalog — `libs.robolectric`, consumed by
+      # `daemon/android/build.gradle.kts`. Without this entry a bump-only PR matches nothing here
+      # and merges without ever exercising the lane.
+      - "gradle/libs.versions.toml"
       - ".github/workflows/serve-lanes-e2e.yml"
   pull_request:
     paths:
@@ -47,6 +52,11 @@ on:
       - "samples/android-live-lane/**"
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt"
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleLaunch.kt"
+      # A Robolectric bump is THE regression this lane exists to catch (#2669 rode 4.15 → 4.16),
+      # and it lands entirely in the version catalog — `libs.robolectric`, consumed by
+      # `daemon/android/build.gradle.kts`. Without this entry a bump-only PR matches nothing here
+      # and merges without ever exercising the lane.
+      - "gradle/libs.versions.toml"
       - ".github/workflows/serve-lanes-e2e.yml"
   workflow_dispatch:
 
