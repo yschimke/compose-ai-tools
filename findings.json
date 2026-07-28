@@ -2280,6 +2280,24 @@
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
+      "annotatedBasename": "WatchScreenRemote_width_227dp_height_227dp_dpi_320.a11y.png",
+      "cleanBasename": "WatchScreenRemote_width_227dp_height_227dp_dpi_320.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,454,454",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "WatchScreenRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.WatchScreenRemote_width=227dp,height=227dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=227dp,height=227dp,dpi=320"
+    },
+    {
       "annotatedBasename": "WidgetContainerGradientRemote.a11y.png",
       "cleanBasename": "WidgetContainerGradientRemote.png",
       "findings": [
