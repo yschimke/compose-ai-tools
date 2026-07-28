@@ -578,6 +578,11 @@ jobs:
         run: python3 .github/actions/apply/test_compute_scope.py -v
       - name: Run change-scope classifier tests
         run: python3 .github/ci/test_change_scope.py -v
+      # Guards the path→system mapping that decides which design-artifacts delivery
+      # branches a merge to main regenerates. A false negative there strands a
+      # published catalog on stale renders without any signal.
+      - name: Run design-artifacts scope tests
+        run: scripts/design-artifacts/test-scope-systems.sh
       - name: Run daemon round-trip transport tests
         run: python3 .github/ci/test_daemon_roundtrip.py -v
       # The android-all cache-key script DELETES ~200 MB coordinate directories
