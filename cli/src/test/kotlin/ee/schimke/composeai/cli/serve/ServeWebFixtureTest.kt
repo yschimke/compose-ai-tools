@@ -714,6 +714,63 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         siblings = variantPreviews + statefulPreviews,
       )
+    // The document lane (`--accept-docs`): the upload surface, and the expiring permalink page for
+    // each known format. The permalink pages mount a vendored browser player, so the harness
+    // captures the chrome around it (title, expiry pill, facts, download row) rather than the
+    // played-back document itself.
+    val docUpload =
+      ServeWeb.docUploadPage(token, isPublic = true, ttlSeconds = 3600, urlUploadAllowed = true)
+    val docLottie =
+      ServeWeb.docPage(
+        ServeWeb.DocView(
+          id = "0YFhq8Kb2s7cVv1nQpZs3A",
+          name = "loading-spinner.json",
+          formatId = ServeDocFormats.LOTTIE.id,
+          formatLabel = ServeDocFormats.LOTTIE.label,
+          playerPath = ServeDocFormats.LOTTIE.playerPath,
+          rawPath = "/d/0YFhq8Kb2s7cVv1nQpZs3A/raw",
+          facts =
+            listOf(
+              ServeDocFact("Name", "Loading spinner"),
+              ServeDocFact("Bodymovin version", "5.7.4"),
+              ServeDocFact("Size", "512 × 512"),
+              ServeDocFact("Frames", "90 @ 30 fps"),
+              ServeDocFact("Duration", "3s"),
+              ServeDocFact("Layers", "6"),
+            ),
+          sizeText = "48 kB",
+          expiresInText = "1h",
+          expiresAtText = "2026-07-28T22:15:00Z",
+          width = 512,
+          height = 512,
+        ),
+        token,
+        isPublic = true,
+      )
+    val docRemoteCompose =
+      ServeWeb.docPage(
+        ServeWeb.DocView(
+          id = "Tz3l9WcAq0Xj5RmB7dPuKw",
+          name = "watchface.rc",
+          formatId = ServeDocFormats.REMOTE_COMPOSE.id,
+          formatLabel = ServeDocFormats.REMOTE_COMPOSE.label,
+          playerPath = ServeDocFormats.REMOTE_COMPOSE.playerPath,
+          rawPath = "/d/Tz3l9WcAq0Xj5RmB7dPuKw/raw",
+          facts =
+            listOf(
+              ServeDocFact("Format version", "1.2.0"),
+              ServeDocFact("Document size", "384 × 384"),
+            ),
+          sizeText = "12 kB",
+          expiresInText = "58m",
+          expiresAtText = "2026-07-28T22:13:00Z",
+          width = 384,
+          height = 384,
+        ),
+        token,
+        isPublic = true,
+      )
+
     // The styled 404 a browser gets when it follows a dead link to a catalog or preview page —
     // the site's own chrome with a "back to design systems" link, not a bare text/plain dead-end.
     val notFound =
@@ -861,6 +918,9 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-landing-grouped.html").writeText(landingGrouped)
       File(pagesDir, "serve-viewer-nav-collapsed.html").writeText(viewerNavCollapsed)
       File(pagesDir, "serve-notfound.html").writeText(notFound)
+      File(pagesDir, "serve-docs-upload.html").writeText(docUpload)
+      File(pagesDir, "serve-doc-lottie.html").writeText(docLottie)
+      File(pagesDir, "serve-doc-remotecompose.html").writeText(docRemoteCompose)
       writePlaceholderPng(File(pagesDir, "_render-placeholder.png"))
       return
     }
@@ -1139,6 +1199,34 @@ class ServeWebFixtureTest {
       "the collapsed nav preserves the viewer's theme (a dark preview links dark siblings)",
     )
     assertGolden(File(pagesDir, "serve-notfound.html"), notFound)
+    assertGolden(File(pagesDir, "serve-docs-upload.html"), docUpload)
+    assertGolden(File(pagesDir, "serve-doc-lottie.html"), docLottie)
+    assertGolden(File(pagesDir, "serve-doc-remotecompose.html"), docRemoteCompose)
+    // The upload page names every format it accepts and states the expiry up front, so a visitor
+    // knows what to drop and how long the resulting link lives before they share it.
+    for (format in ServeDocFormats.ALL) {
+      assertTrue(
+        docUpload.contains(format.label) && docUpload.contains(format.extension),
+        "the upload page lists ${format.id}",
+      )
+    }
+    assertTrue(docUpload.contains("expires after 1h"), "the upload page states the link TTL")
+    // A permalink page mounts its format's vendored player against the document's own bytes, and
+    // never a different format's.
+    assertTrue(
+      docLottie.contains(ServeDocFormats.LOTTIE.playerPath) &&
+        !docLottie.contains(ServeDocFormats.REMOTE_COMPOSE.playerPath),
+      "the Lottie page loads only the Lottie player",
+    )
+    assertTrue(
+      docRemoteCompose.contains(ServeDocFormats.REMOTE_COMPOSE.playerPath) &&
+        docRemoteCompose.contains("width=\"384\" height=\"384\""),
+      "the Remote Compose page loads the RC player onto a canvas sized from the document",
+    )
+    assertTrue(
+      docLottie.contains("expires in 1h") && docLottie.contains("2026-07-28T22:15:00Z"),
+      "the permalink page shows the time left and the exact expiry instant",
+    )
     // The 404 is a full styled document with a heading, the message, and a link back home — not a
     // bare text/plain dead-end.
     assertTrue(

@@ -130,6 +130,16 @@ if [[ "${SERVE_ACCEPT_BUNDLES:-}" == "1" || "${SERVE_ACCEPT_BUNDLES:-}" == "true
     args+=(--accept-bundles-from "${SERVE_ACCEPT_BUNDLES_FROM}")
 fi
 
+# Document lane: accept a generated Remote Compose / Lottie document and hand back an expiring
+# permalink (GET /docs, POST /docs, GET /d/<id>). Data-only — the document is played back by a
+# player in the visitor's browser, so nothing runs on the box. Off unless asked for.
+if [[ "${SERVE_ACCEPT_DOCS:-}" == "1" || "${SERVE_ACCEPT_DOCS:-}" == "true" ]]; then
+  args+=(--accept-docs)
+  [[ -n "${SERVE_DOC_TTL:-}" ]] && args+=(--doc-ttl "${SERVE_DOC_TTL}")
+  [[ -n "${SERVE_ACCEPT_DOCS_FROM:-}" ]] &&
+    args+=(--accept-docs-from "${SERVE_ACCEPT_DOCS_FROM}")
+fi
+
 # Extra Maven repositories the live-daemon classpath resolver may fetch from, beyond Maven Central +
 # Google Maven. A served catalog whose module pulls deps from a non-default repo (e.g.
 # meshcore-mobile's jitpack.io deps like usb-serial-for-android) otherwise has those coordinates

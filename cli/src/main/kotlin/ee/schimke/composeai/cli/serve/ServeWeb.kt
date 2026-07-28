@@ -315,6 +315,32 @@ object ServeWeb {
     .cp-modes-inputs { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
     /* Backend badge flips its accent green when a live lane drives the stage (see backendBadgeScript). */
     .cp-backend[data-live="true"] { background: rgba(30, 122, 52, 0.82); }
+    /* Shared-document surfaces (POST /docs → GET /d/<id>): the drop zone on the upload page and the
+       played-back document + its facts on the permalink page. Both reuse the card/stage chrome. */
+    .cp-drop { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 720px;
+      padding: 28px 20px; border: 2px dashed #d7d7de; border-radius: 12px; background: #fff;
+      text-align: center; cursor: pointer; }
+    .cp-drop:hover, .cp-drop.cp-drop-over { border-color: #8f8ff0; background: #f6f6ff; }
+    .cp-drop-title { font-size: 0.95rem; font-weight: 600; }
+    .cp-drop-hint { font-size: 0.8rem; color: #6b6b70; line-height: 1.45; }
+    .cp-doc-form { max-width: 720px; margin: 16px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
+    .cp-doc-url { flex: 1 1 320px; padding: 7px 12px; font: inherit; font-size: 0.85rem;
+      border: 1px solid #d7d7de; border-radius: 999px; background: #fff; color: inherit; }
+    .cp-doc-btn { font: inherit; font-size: 0.82rem; font-weight: 600; padding: 6px 16px;
+      border-radius: 999px; border: 1px solid #d7d7de; background: #fff; color: #45454c; cursor: pointer; }
+    .cp-doc-btn:hover { background: #f0f0f3; }
+    .cp-doc-result { max-width: 720px; margin: 18px 0 0; padding: 14px 16px; border-radius: 10px;
+      border: 1px solid #e3e3e8; background: #fff; font-size: 0.84rem; }
+    .cp-doc-result[hidden] { display: none; }
+    .cp-doc-result.cp-doc-error { background: #fdf0e3; color: #8a5300; border-color: #f0d3a8; }
+    .cp-doc-stage { max-width: 720px; border: 1px solid #e3e3e8; border-radius: 10px; background: #fff;
+      padding: 12px; display: flex; align-items: center; justify-content: center; min-height: 260px; }
+    .cp-doc-stage canvas, .cp-doc-stage svg, .cp-doc-stage img { max-width: 100%; height: auto; }
+    .cp-doc-status { margin: 8px 0 0; font-size: 0.78rem; color: #6b6b70; min-height: 1.2em; }
+    .cp-doc-facts { max-width: 720px; margin: 16px 0 0; display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+    .cp-doc-expiry { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.7rem;
+      font-weight: 600; background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
     @media (prefers-color-scheme: dark) {
       body { color: #e6e6e9; background: #161618; }
       .cp-sub, .cp-id, .cp-status, .cp-about-links, .cp-sys-desc, .cp-sys-foot { color: #a0a0a8; }
@@ -352,6 +378,17 @@ object ServeWeb {
       .cp-state-btn:hover { border-color: #4a4a55; color: #c9c9ff; }
       .cp-state-btn[aria-current="page"] { background: #26264a; border-color: #3a3a6a; color: #c9c9ff; }
       .cp-note { background: #26262b; color: #a0a0a8; }
+      .cp-drop { background: #1d1d20; border-color: #34343a; }
+      .cp-drop:hover, .cp-drop.cp-drop-over { border-color: #6a6ad0; background: #22222c; }
+      .cp-drop-hint, .cp-doc-status { color: #a0a0a8; }
+      .cp-doc-url, .cp-doc-btn { background: #1d1d20; border-color: #34343a; color: #e6e6e9; }
+      .cp-doc-btn:hover { background: #26262b; }
+      .cp-doc-result, .cp-doc-stage { background: #1d1d20; border-color: #34343a; }
+      /* Stat tiles are shared by the status page and the document facts; without these they stayed
+         white-on-dark in both. */
+      .cp-stat { background: #1d1d20; border-color: #34343a; }
+      .cp-stat-key { color: #7a7a82; }
+      .cp-stat-val { color: #e6e6e9; }
       .cp-imgwrap, .cp-stage { background: #1d1d20; }
       html.cp-bg-transparent .cp-imgwrap, html.cp-bg-transparent .cp-stage {
         background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }
@@ -1714,6 +1751,275 @@ object ServeWeb {
           .trimIndent(),
     )
   }
+
+  /**
+   * One ingested document as the permalink page shows it — the display facts only, so this page
+   * never touches [ServeDocStore]'s bytes or clock (and the fixtures can build one by hand).
+   */
+  data class DocView(
+    val id: String,
+    /** Display label (the uploaded filename, sanitised by the store). */
+    val name: String,
+    /** [ServeDocFormat.id] — picks the player + the mount code. */
+    val formatId: String,
+    val formatLabel: String,
+    /** Where the browser player bundle for this format is served. */
+    val playerPath: String,
+    /** Where the document bytes are served (`/d/<id>/raw`). */
+    val rawPath: String,
+    val facts: List<ServeDocFact>,
+    val sizeText: String,
+    /** Human "in 59m" form for the expiry pill. */
+    val expiresInText: String,
+    /** Absolute UTC instant the link dies, for the title attribute. */
+    val expiresAtText: String,
+    /** Declared document size, when the format announces one — sizes the canvas before load. */
+    val width: Int? = null,
+    val height: Int? = null,
+  )
+
+  /**
+   * `GET /docs` — the **upload surface** for known document formats: drop a Remote Compose `.rc` or
+   * a Lottie JSON (or paste a link to one, when the host allows URL fetches) and get back an
+   * expiring permalink to hand to someone else.
+   *
+   * Progressive-ish: the drop zone is a real `<input type="file">` inside a `<form>`, and the
+   * script turns the submit into a `fetch` so the resulting link can be shown (and copied) in
+   * place. No upload happens without an explicit pick/drop.
+   */
+  fun docUploadPage(
+    token: String,
+    isPublic: Boolean,
+    ttlSeconds: Long,
+    /** Whether `?url=` fetches are permitted here (the SSRF allowlist is non-empty). */
+    urlUploadAllowed: Boolean,
+    unfurl: UnfurlMetadata? = null,
+  ): String {
+    val query = queryString(token, sessionId = null, isPublic = isPublic)
+    val suffix = querySuffix(query)
+    val formats =
+      ServeDocFormats.ALL.joinToString(", ") { "${it.label} (<code>${it.extension}</code>)" }
+    val urlRow =
+      if (!urlUploadAllowed) ""
+      else
+        """
+        <form class="cp-doc-form" id="cp-doc-urlform">
+          <input class="cp-doc-url" id="cp-doc-url" type="url" name="url" placeholder="…or paste a link to a document"
+            aria-label="Document URL">
+          <button class="cp-doc-btn" type="submit">Fetch</button>
+        </form>
+        """
+          .trimIndent()
+    return document(
+      title = "Share a document — compose-preview",
+      unfurlDescription = "Upload a Remote Compose or Lottie document and get an expiring link.",
+      unfurl = unfurl,
+      body =
+        """
+        <h1 class="cp-head">Share a document</h1>
+        <p class="cp-sub">Upload a generated document and get a link that plays it in the browser and
+          expires after ${humanDuration(ttlSeconds)}. Supported: $formats.</p>
+        <form id="cp-doc-form" class="cp-drop" tabindex="0">
+          <span class="cp-drop-title">Drop a document here, or choose a file</span>
+          <span class="cp-drop-hint">Nothing is executed on the server — the document is played back
+            by a player running in your own browser.</span>
+          <input id="cp-doc-file" type="file" name="file" accept=".rc,.json,application/json">
+        </form>
+        $urlRow
+        <div class="cp-doc-result" id="cp-doc-result" hidden></div>
+        <script>${docUploadScript(suffix)}</script>
+        """
+          .trimIndent(),
+    )
+  }
+
+  /** Drives the upload page: POST the picked/dropped/linked document, then show its permalink. */
+  private fun docUploadScript(querySuffix: String): String =
+    """
+    (function () {
+      var form = document.getElementById("cp-doc-form");
+      var file = document.getElementById("cp-doc-file");
+      var urlForm = document.getElementById("cp-doc-urlform");
+      var out = document.getElementById("cp-doc-result");
+      var suffix = ${jsString(querySuffix)};
+      function show(html, isError) {
+        out.hidden = false;
+        out.className = "cp-doc-result" + (isError ? " cp-doc-error" : "");
+        out.innerHTML = html;
+      }
+      function esc(s) { var d = document.createElement("span"); d.textContent = s; return d.innerHTML; }
+      function post(url, body, label) {
+        show("Uploading…", false);
+        fetch(url, { method: "POST", body: body })
+          .then(function (r) {
+            return r.text().then(function (t) {
+              if (!r.ok) throw new Error(t || ("upload failed (" + r.status + ")"));
+              return JSON.parse(t);
+            });
+          })
+          .then(function (doc) {
+            var link = location.origin + doc.url;
+            show(
+              "<p><strong>" + esc(label) + "</strong> — " + esc(doc.format) + ", link expires in " +
+                esc(doc.expiresIn) + ".</p>" +
+                "<p><a href=\"" + esc(doc.url) + "\">" + esc(link) + "</a></p>" +
+                "<button type=\"button\" class=\"cp-doc-btn\" id=\"cp-doc-copy\">Copy link</button>",
+              false
+            );
+            var copy = document.getElementById("cp-doc-copy");
+            if (copy) copy.addEventListener("click", function () {
+              if (navigator.clipboard) navigator.clipboard.writeText(link);
+              copy.textContent = "Copied";
+            });
+          })
+          .catch(function (e) { show(esc(e.message || "upload failed"), true); });
+      }
+      function upload(f) {
+        if (!f) return;
+        var qs = suffix ? suffix + "&" : "?";
+        post("/docs" + qs + "name=" + encodeURIComponent(f.name), f, f.name);
+      }
+      // The drop zone doubles as the file picker: clicking anywhere in it opens the chooser.
+      form.addEventListener("click", function (e) { if (e.target !== file) file.click(); });
+      form.addEventListener("submit", function (e) { e.preventDefault(); });
+      file.addEventListener("change", function () { upload(file.files && file.files[0]); });
+      ["dragenter", "dragover"].forEach(function (t) {
+        form.addEventListener(t, function (e) { e.preventDefault(); form.classList.add("cp-drop-over"); });
+      });
+      ["dragleave", "drop"].forEach(function (t) {
+        form.addEventListener(t, function (e) { e.preventDefault(); form.classList.remove("cp-drop-over"); });
+      });
+      form.addEventListener("drop", function (e) {
+        if (e.dataTransfer && e.dataTransfer.files) upload(e.dataTransfer.files[0]);
+      });
+      if (urlForm) urlForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var value = document.getElementById("cp-doc-url").value.trim();
+        if (!value) return;
+        var qs = suffix ? suffix + "&" : "?";
+        post("/docs" + qs + "url=" + encodeURIComponent(value), null, value);
+      });
+    })();
+    """
+      .trimIndent()
+
+  /**
+   * `GET /d/<id>` — the **expiring permalink page** for one ingested document: the document itself,
+   * played back client-side by its format's vendored player, plus what the server could read out of
+   * it and how long the link has left.
+   */
+  fun docPage(
+    doc: DocView,
+    token: String,
+    isPublic: Boolean,
+    unfurl: UnfurlMetadata? = null,
+  ): String {
+    val suffix = querySuffix(queryString(token, sessionId = null, isPublic = isPublic))
+    val facts =
+      doc.facts.joinToString("\n") { fact ->
+        """
+        <div class="cp-stat">
+          <div class="cp-stat-key">${WebEscaping.htmlEscape(fact.key)}</div>
+          <div class="cp-stat-val">${WebEscaping.htmlEscape(fact.value)}</div>
+        </div>
+        """
+          .trimIndent()
+      }
+    val rawUrl = doc.rawPath + suffix
+    return document(
+      title = "${doc.name} — compose-preview",
+      unfurlDescription = "A shared ${doc.formatLabel} document, played back in your browser.",
+      unfurl = unfurl,
+      body =
+        """
+        <h1 class="cp-head">${WebEscaping.htmlEscape(doc.name)}</h1>
+        <p class="cp-sub">${WebEscaping.htmlEscape(doc.formatLabel)} · ${WebEscaping.htmlEscape(doc.sizeText)}
+          <span class="cp-doc-expiry" title="${WebEscaping.htmlEscape(doc.expiresAtText)}">expires in ${WebEscaping.htmlEscape(doc.expiresInText)}</span></p>
+        <div class="cp-doc-stage" id="cp-doc-stage" data-format="${WebEscaping.htmlEscape(doc.formatId)}">
+          ${docStageElement(doc)}
+        </div>
+        <p class="cp-doc-status" id="cp-doc-status">Loading the ${WebEscaping.htmlEscape(doc.formatLabel)} player…</p>
+        <div class="cp-doc-facts">
+        $facts
+        </div>
+        <p class="cp-sub" style="margin-top:18px">
+          <a href="$rawUrl" download="${WebEscaping.htmlEscape(doc.name)}">Download the document</a> ·
+          <a href="/docs$suffix">Share another</a>
+        </p>
+        <script>${docPlayerScript(doc, rawUrl)}</script>
+        """
+          .trimIndent(),
+    )
+  }
+
+  /** The element the format's player paints into — a canvas for RC, a container div for Lottie. */
+  private fun docStageElement(doc: DocView): String =
+    when (doc.formatId) {
+      ServeDocFormats.LOTTIE.id -> "<div id=\"cp-doc-mount\"></div>"
+      else ->
+        "<canvas id=\"cp-doc-mount\" width=\"${doc.width ?: 512}\" height=\"${doc.height ?: 512}\"></canvas>"
+    }
+
+  /**
+   * Load the format's player bundle, fetch the document, and mount it. The per-format mount is the
+   * one place formats differ on this page; everything around it (load, error reporting, the stage)
+   * is shared, and the bundle URL comes from the registry rather than being written in here.
+   */
+  private fun docPlayerScript(doc: DocView, rawUrl: String): String {
+    val mount =
+      when (doc.formatId) {
+        ServeDocFormats.LOTTIE.id ->
+          """
+          fetch(raw).then(function (r) { return r.json(); }).then(function (data) {
+            window.lottie.loadAnimation({
+              container: mount, renderer: "svg", loop: true, autoplay: true, animationData: data
+            });
+            done();
+          }).catch(fail);
+          """
+            .trimIndent()
+        else ->
+          """
+          fetch(raw).then(function (r) { return r.arrayBuffer(); }).then(function (buf) {
+            var player = new window.RC.RcdPlayer(mount);
+            return Promise.resolve(player.loadFromArrayBuffer(buf)).then(function () {
+              if (player.repaint) player.repaint();
+              done();
+            });
+          }).catch(fail);
+          """
+            .trimIndent()
+      }
+    return """
+      (function () {
+        var raw = ${jsString(rawUrl)};
+        var mount = document.getElementById("cp-doc-mount");
+        var status = document.getElementById("cp-doc-status");
+        function done() { status.textContent = ""; }
+        function fail() { status.textContent = "This document could not be played back in your browser."; }
+        var s = document.createElement("script");
+        s.src = ${jsString(doc.playerPath)};
+        s.onerror = function () { status.textContent = "The player failed to load."; };
+        s.onload = function () {
+      ${mount.prependIndent("      ")}
+        };
+        document.head.appendChild(s);
+      })();
+      """
+      .trimIndent()
+  }
+
+  /** `3600` → `1h`; used for the upload page's TTL sentence and the permalink's expiry pill. */
+  fun humanDuration(seconds: Long): String =
+    when {
+      seconds >= 3600 ->
+        "${seconds / 3600}h" + ((seconds % 3600) / 60).let { if (it > 0) " ${it}m" else "" }
+      seconds >= 60 -> "${seconds / 60}m"
+      else -> "${seconds}s"
+    }
+
+  /** A JS string literal for [value] — escaped via the JSON encoder, so quotes/slashes are safe. */
+  private fun jsString(value: String): String = JsonPrimitive(value).toString()
 
   /** A labelled figure (a stat tile / config row) on the [statusPage]. */
   data class Stat(val key: String, val value: String)
