@@ -57,7 +57,8 @@ def _entry(*, id: str, module: str = "app", function: str = "Fn",
 def _capture(*, png: str | None = None, sha: str | None = None,
              advanceTimeMillis: int | None = None,
              scroll: dict | None = None,
-             optional: bool = False) -> dict:
+             optional: bool = False,
+             parameterLabel: str | None = None) -> dict:
     """Build a CaptureResult-shaped dict for use in `_entry(captures=[…])`."""
     return {
         "pngPath": png,
@@ -65,6 +66,7 @@ def _capture(*, png: str | None = None, sha: str | None = None,
         "advanceTimeMillis": advanceTimeMillis,
         "scroll": scroll,
         "optional": optional,
+        "parameterLabel": parameterLabel,
     }
 
 
@@ -1157,6 +1159,16 @@ class CaptureLabelTest(unittest.TestCase):
     def test_time_only(self):
         self.assertEqual(cp._capture_label({"advanceTimeMillis": 500, "scroll": None}), "500ms")
 
+    def test_parameter_label_combines_with_other_dimensions(self):
+        self.assertEqual(
+            cp._capture_label({
+                "parameterLabel": "parameter 2",
+                "advanceTimeMillis": 500,
+                "scroll": None,
+            }),
+            "parameter 2 \u00B7 500ms",
+        )
+
     def test_scroll_only(self):
         self.assertEqual(
             cp._capture_label({"advanceTimeMillis": None, "scroll": {"mode": "LONG"}}),
@@ -1224,6 +1236,39 @@ class MultiCaptureGenerateTest(unittest.TestCase):
         readme = (self.out / "README.md").read_text()
         self.assertIn("Fn \u00B7 scroll top", readme)
         self.assertIn("Fn \u00B7 scroll end", readme)
+
+    def test_parameter_fanout_rows_include_their_distinct_labels(self):
+        from types import SimpleNamespace
+        self.cli_path.write_text(json.dumps({
+            "previews": [_entry(
+                id="Widget", module="wear-widget", function="WidgetPreview",
+                png=str(self.top_png), sha="zero-sha",
+                captures=[
+                    _capture(
+                        png=str(self.top_png),
+                        sha="zero-sha",
+                        parameterLabel="parameter 0",
+                    ),
+                    _capture(
+                        png=str(self.end_png),
+                        sha="one-sha",
+                        parameterLabel="parameter 1",
+                    ),
+                ],
+            )],
+        }))
+
+        rc = cp.cmd_generate(SimpleNamespace(
+            cli_json=str(self.cli_path),
+            output_dir=str(self.out),
+            repo="owner/repo",
+            branch="compose-preview/main",
+        ))
+        self.assertEqual(rc, 0)
+
+        readme = (self.out / "README.md").read_text()
+        self.assertIn("WidgetPreview \u00B7 parameter 0", readme)
+        self.assertIn("WidgetPreview \u00B7 parameter 1", readme)
 
 
 class MultiCaptureCopyChangedTest(unittest.TestCase):

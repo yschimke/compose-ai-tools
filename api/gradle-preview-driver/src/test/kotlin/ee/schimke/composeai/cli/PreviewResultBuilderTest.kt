@@ -133,6 +133,10 @@ class PreviewResultBuilderTest {
       listOf("ParamShow_PARAM_0.png", "ParamShow_PARAM_2.png", "ParamShow_PARAM_10.png"),
       names,
     )
+    assertEquals(
+      listOf("parameter 0", "parameter 2", "parameter 10"),
+      captures.map { it.parameterLabel },
+    )
   }
 
   @Test

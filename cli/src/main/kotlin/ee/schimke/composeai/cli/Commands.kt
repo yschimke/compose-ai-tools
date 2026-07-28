@@ -889,6 +889,7 @@ internal fun previewsMissingPng(results: List<PreviewResult>): List<PreviewResul
  */
 internal fun captureCoordLabel(c: CaptureResult): String =
   listOfNotNull(
+      c.parameterLabel,
       c.advanceTimeMillis?.let { "${it}ms" },
       c.scroll?.let { "scroll ${it.mode.lowercase()}" },
     )

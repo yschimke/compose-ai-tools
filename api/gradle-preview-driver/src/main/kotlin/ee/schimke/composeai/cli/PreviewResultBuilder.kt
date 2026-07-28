@@ -81,22 +81,24 @@ object PreviewResultBuilder {
         // `@PreviewParameter`-driven previews render at `<stem>_<suffix>.<ext>`, one file per
         // provider value. The manifest carries a single template capture; here we glob the actual
         // fan-out and synthesize a `CaptureResult` per file on disk.
-        val captures =
+        val captures: List<ExpandedCapture> =
           if (p.params.previewParameterProviderClassName != null) {
             p.captures.flatMap { capture ->
               expandParamCaptures(module, capture, siblingRenderOutputs, fileSystem)
             }
           } else {
-            p.captures
+            p.captures.map(::ExpandedCapture)
           }
-        val productCaptures = p.dataProducts.mapNotNull { it.asPreviewArtifactCapture(module) }
+        val productCaptures =
+          p.dataProducts.mapNotNull { it.asPreviewArtifactCapture(module) }.map(::ExpandedCapture)
         val resultCaptures =
-          if (captures.isSingleStaticCapture() && productCaptures.isNotEmpty()) {
+          if (captures.map { it.capture }.isSingleStaticCapture() && productCaptures.isNotEmpty()) {
             productCaptures
           } else {
             captures + productCaptures
           }
-        val captureResults = resultCaptures.map { capture ->
+        val captureResults = resultCaptures.map { expanded ->
+          val capture = expanded.capture
           val pngFile =
             capture.renderOutput
               .takeIf { it.isNotEmpty() }
@@ -110,6 +112,7 @@ object PreviewResultBuilder {
             sha256 = sha,
             changed = null,
             optional = capture.optional,
+            parameterLabel = expanded.parameterLabel,
           )
         }
         val first = captureResults.firstOrNull()
@@ -164,13 +167,13 @@ object PreviewResultBuilder {
     template: Capture,
     siblingRenderOutputs: Set<String>,
     fileSystem: FileSystem = SystemFileSystem,
-  ): List<Capture> {
+  ): List<ExpandedCapture> {
     val rel =
       template.renderOutput.ifEmpty {
-        return listOf(template)
+        return listOf(ExpandedCapture(template))
       }
     val file = module.projectDir.resolve("build/compose-previews/$rel").canonicalFile
-    val dir = file.parentFile ?: return listOf(template)
+    val dir = file.parentFile ?: return listOf(ExpandedCapture(template))
     val prefix = file.nameWithoutExtension + "_"
     val ext = ".${file.extension}"
     val templateDir = rel.substringBeforeLast('/', "")
@@ -188,11 +191,28 @@ object PreviewResultBuilder {
     // those dimensions. Each fan-out file points back at the same conceptual capture, just at a
     // different provider value.
     return matches.map { f ->
-      Capture(
-        advanceTimeMillis = template.advanceTimeMillis,
-        scroll = template.scroll,
-        renderOutput = dirPrefix + f.name,
+      ExpandedCapture(
+        capture =
+          Capture(
+            advanceTimeMillis = template.advanceTimeMillis,
+            scroll = template.scroll,
+            renderOutput = dirPrefix + f.name,
+          ),
+        parameterLabel = paramFanoutLabel(f.name, prefix, ext),
       )
+    }
+  }
+
+  private data class ExpandedCapture(val capture: Capture, val parameterLabel: String? = null)
+
+  private fun paramFanoutLabel(name: String, prefix: String, ext: String): String? {
+    val suffix = name.removePrefix(prefix).removeSuffix(ext)
+    val parameterIndex =
+      suffix.removePrefix("PARAM_").toIntOrNull()?.takeIf { suffix.startsWith("PARAM_") }
+    return if (parameterIndex != null) {
+      "parameter $parameterIndex"
+    } else {
+      suffix.replace('_', ' ').trim().ifEmpty { null }
     }
   }
 

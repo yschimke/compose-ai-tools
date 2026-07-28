@@ -158,5 +158,9 @@ class MissingRendersPolicyTest {
         CaptureResult(advanceTimeMillis = 500, scroll = ScrollCapture(mode = "END"))
       ),
     )
+    assertEquals(
+      "parameter 2 · 500ms",
+      captureCoordLabel(CaptureResult(advanceTimeMillis = 500, parameterLabel = "parameter 2")),
+    )
   }
 }
