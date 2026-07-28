@@ -59,6 +59,44 @@ internal fun strategyFor(kind: PreviewKind): PreviewRenderStrategy =
   STRATEGIES[kind] ?: error("No render strategy registered for PreviewKind.$kind")
 
 /**
+ * Renders a synthetic `@ThemeCatalog` / `@WearThemeCatalog` entry outside the parameterized
+ * standalone renderer.
+ *
+ * The preview daemon receives the same discovery manifest, but owns its own render loop. Exposing
+ * this narrow bridge lets it reuse the canonical theme strategies instead of treating the
+ * synthetic display [themeName] as a consumer composable method.
+ */
+@Composable
+fun ThemeCatalogPreview(
+  previewId: String,
+  themeName: String,
+  wrapperClassName: String,
+  wear: Boolean,
+  widthDp: Int,
+  heightDp: Int,
+) {
+  val kind = if (wear) PreviewKind.WEAR_THEME_CATALOG else PreviewKind.THEME_CATALOG
+  strategyFor(kind)
+    .Render(
+      preview =
+        RenderPreviewEntry(
+          id = previewId,
+          className = wrapperClassName,
+          functionName = themeName,
+          params =
+            RenderPreviewParams(
+              name = themeName,
+              wrapperClassName = wrapperClassName,
+              kind = kind,
+            ),
+        ),
+      widthDp = widthDp,
+      heightDp = heightDp,
+      previewArgs = emptyList(),
+    )
+}
+
+/**
  * Default strategy: reflect the `@Composable` and invoke it through the Composer. Honours
  * `@PreviewWrapper` by looking up the provider's `Wrap(content)` method.
  *

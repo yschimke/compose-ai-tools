@@ -236,6 +236,8 @@ class RenderEngine(
     val isTile = spec.kind.equals(TILE_KIND, ignoreCase = true)
     val isNotification = spec.kind.equals(NOTIFICATION_KIND, ignoreCase = true)
     val isGlanceAppWidget = spec.kind.equals(GLANCE_APPWIDGET_KIND, ignoreCase = true)
+    val isThemeCatalog = spec.kind.equals(THEME_CATALOG_KIND, ignoreCase = true)
+    val isWearThemeCatalog = spec.kind.equals(WEAR_THEME_CATALOG_KIND, ignoreCase = true)
     // v5 IR replay: a bundle may carry this preview's intermediate representation, in which case
     // its
     // consumer class was dropped at pack time. We then inflate the IR via the matching runtime in
@@ -259,8 +261,9 @@ class RenderEngine(
     // An IR-backed preview's consumer class was dropped at pack time, so skip the reflective load
     // whenever we have a replay path for it (protolayout direct, or a resolved RC provider).
     val isIrReplay = isProtolayoutIr || rcReplayClass != null
+    val isSyntheticThemeCatalog = isThemeCatalog || isWearThemeCatalog
     val clazz =
-      if (isIrReplay) null
+      if (isIrReplay || isSyntheticThemeCatalog) null
       else
         trace.section("classloader:loadPreviewClass") {
           Class.forName(spec.className, true, classLoader)
@@ -277,7 +280,8 @@ class RenderEngine(
     // body that fails the moment a Glance composable touches the GlanceComposition applier. The
     // dedicated branches skip top-level composable resolution and paint the result through the
     // matching renderer helper in the setContent body below.
-    val nonComposableInvocation = isTile || isNotification || isGlanceAppWidget || isIrReplay
+    val nonComposableInvocation =
+      isTile || isNotification || isGlanceAppWidget || isSyntheticThemeCatalog || isIrReplay
     val composableMethod: ComposableMethod? =
       if (nonComposableInvocation) null
       else
@@ -604,6 +608,19 @@ class RenderEngine(
                             widthDp = widthDp,
                             heightDp = heightDp,
                             classLoader = classLoader,
+                          )
+                        } else if (isSyntheticThemeCatalog) {
+                          // `@ThemeCatalog` / `@WearThemeCatalog` entries are synthetic sheets:
+                          // their functionName is a display label, not a consumer method. Reuse the
+                          // standalone renderer's canonical strategy so the provider wraps the
+                          // same canned specimen during daemon semantics/data capture.
+                          ee.schimke.composeai.renderer.ThemeCatalogPreview(
+                            previewId = spec.previewId ?: spec.outputBaseName,
+                            themeName = spec.previewName ?: spec.functionName,
+                            wrapperClassName = spec.wrapperClassName ?: spec.className,
+                            wear = isWearThemeCatalog,
+                            widthDp = pxToDp(spec.widthPx, spec.density),
+                            heightDp = pxToDp(spec.heightPx, spec.density),
                           )
                         } else {
                           InvokeWithOptionalWrapper(
@@ -1917,6 +1934,12 @@ class RenderEngine(
      */
     const val GLANCE_APPWIDGET_KIND: String = "GLANCE_APPWIDGET"
 
+    /** Synthetic `@ThemeCatalog` sheet rendered through the shared renderer strategy. */
+    const val THEME_CATALOG_KIND: String = "THEME_CATALOG"
+
+    /** Synthetic `@WearThemeCatalog` sheet rendered through the shared Wear renderer strategy. */
+    const val WEAR_THEME_CATALOG_KIND: String = "WEAR_THEME_CATALOG"
+
     /**
      * Virtual time to advance before capture in the paused-`mainClock` path, in milliseconds.
      * Mirrors `RobolectricRenderTest.CAPTURE_ADVANCE_MS` exactly so daemon-rendered PNGs match the
@@ -2238,13 +2261,14 @@ data class RenderSpec(
    */
   val overrides: PreviewOverrides? = null,
   /**
-   * Preview flavour, mirroring `ee.schimke.composeai.plugin.PreviewKind` (`"COMPOSE"` / `"TILE"` /
-   * `"NOTIFICATION"` / `"GLANCE_APPWIDGET"`). Drives renderer selection: `"TILE"` routes through
-   * [renderer.TilePreviewComposable], `"NOTIFICATION"` through `NotificationPreviewComposable`,
-   * `"GLANCE_APPWIDGET"` through `GlanceAppWidgetPreviewComposable`. `null` / `"COMPOSE"` render as
-   * a normal `@Composable`.
+   * Preview flavour, mirroring `ee.schimke.composeai.plugin.PreviewKind`. Drives renderer
+   * selection: `"TILE"`, `"NOTIFICATION"`, and `"GLANCE_APPWIDGET"` route through their dedicated
+   * renderer helpers; `"THEME_CATALOG"` and `"WEAR_THEME_CATALOG"` render synthetic specimens
+   * inside their declared provider. `null` / `"COMPOSE"` render as a normal `@Composable`.
    */
   val kind: String? = null,
+  /** Discovery-time display name for synthetic catalog sheets. */
+  val previewName: String? = null,
   /**
    * FQN of the `PreviewWrapperProvider` from `@PreviewWrapper(SomeProvider::class)` when the source
    * preview is annotated. Sourced from the gradle plugin's discovery JSON (`extractWrapperFqn`
@@ -2324,6 +2348,7 @@ data class RenderSpec(
         inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull(),
         overrides = map["overrides"]?.decodePreviewOverrides(),
         kind = map["kind"]?.takeIf { it.isNotBlank() },
+        previewName = map["previewName"]?.takeIf { it.isNotBlank() },
         wrapperClassName = map["wrapperClassName"]?.takeIf { it.isNotBlank() },
       )
     }
