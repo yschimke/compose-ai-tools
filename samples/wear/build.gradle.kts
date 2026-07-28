@@ -86,6 +86,12 @@ dependencies {
   // `@ScrollingPreview` — read by FQN at discovery time; no runtime cost.
   implementation(project(":preview-annotations"))
 
+  // `:data-preview-overrides-runtime` — the opt-in override seam. `PlaceholderPreviews.kt` reads
+  // `placeholderActive()` / `LocalPlaceholderActive` so one placeholdered card renders in both the
+  // loaded and loading states (issue #2646): the static previews pin the local directly, and a
+  // daemon render drives the same local from `renderNow.overrides.placeholderActive`.
+  implementation(project(":data-preview-overrides-runtime"))
+
   testImplementation(libs.junit)
   testImplementation(libs.truth)
 }

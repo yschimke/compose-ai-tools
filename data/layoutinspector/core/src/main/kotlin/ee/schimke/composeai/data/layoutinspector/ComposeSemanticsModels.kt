@@ -72,7 +72,12 @@ object LayoutInspectorProduct {
   // Additive — older entries parse with `vectorGraphic = null` and paths with butt/miter defaults.
   // v7: `tokens` may carry effective graphics-layer `opacity`. Additive; older entries decode it
   // as null (fully opaque).
-  const val SCHEMA_VERSION: Int = 7
+  // v8 (#2646): each node may carry a `placeholder` — the Wear/M3 content-loading placeholder its
+  // modifier chain declares, plus whether that placeholder is currently *visible*. The figma-svg
+  // export needs the state, not just the chain: the ideal state must keep its editable content
+  // (no `drawWithContent` raster, no 50%-pill corner) while the loading state gets the placeholder
+  // block as its own vector layer. Additive — older entries parse with `placeholder = null`.
+  const val SCHEMA_VERSION: Int = 8
   const val FILE: String = "layout-inspector.json"
 }
 
@@ -453,7 +458,51 @@ data class LayoutInspectorNode(
    * (v6): older `layout-inspector.json` decodes with `vectorGraphic = null`.
    */
   val vectorGraphic: LayoutInspectorVectorGraphic? = null,
+  /**
+   * The content-loading placeholder this node's modifier chain declares — Wear M3's
+   * `Modifier.placeholder` / `Modifier.placeholderShimmer` — together with whether it is currently
+   * **visible** (issue #2646). Null for the overwhelming majority of nodes (no placeholder on the
+   * chain). See [LayoutInspectorPlaceholder] and [PlaceholderModifiers]. Additive (v8): older
+   * `layout-inspector.json` decodes with `placeholder = null`.
+   */
+  val placeholder: LayoutInspectorPlaceholder? = null,
   val children: List<LayoutInspectorNode> = emptyList(),
+)
+
+/**
+ * A content-loading placeholder declared on a node's modifier chain (issue #2646), resolved by the
+ * connector's `ModifierTokenResolver` from a modifier [PlaceholderModifiers] recognises.
+ *
+ * This is what makes the figma-svg export **state-aware** rather than point-fixing per symptom: the
+ * exporter otherwise sees only a `drawWithContent` (which it crops to an `<image>`) and a 50%-pill
+ * `shape` (which hijacks the container corner), with no way to tell the ideal state from the
+ * loading one. With this object it can do the right thing in both — ignore the overlay entirely
+ * when [visible] is false (the real content is drawn, and stays editable vector), and emit the
+ * placeholder as its own vector layer, in its own [colorArgb] / corner, when [visible] is true.
+ */
+@Serializable
+data class LayoutInspectorPlaceholder(
+  /**
+   * [PlaceholderModifiers.KIND_PLACEHOLDER] (the content-covering block) or
+   * [PlaceholderModifiers.KIND_SHIMMER] (the sweep overlay drawn over it).
+   */
+  val kind: String,
+  /**
+   * Whether the placeholder is currently painting over the content — read from the modifier's
+   * `PlaceholderState`. `false` is the ideal/content-loaded state (the `__ideal__` render
+   * variants); `true` is the loading state. **Null when the state could not be read**, which the
+   * export treats like `false`: the conservative choice, since assuming "loading" would blank real
+   * content.
+   */
+  val visible: Boolean? = null,
+  /** The placeholder block's colour as `#AARRGGBB`, or null when it couldn't be resolved. */
+  val colorArgb: String? = null,
+  /** Corner radius of the placeholder's own shape in dp wire form, as `ComposeSemanticsTokens`. */
+  val cornerRadius: String? = null,
+  /** Raw-pixel corner radius for a shape with no dp corners. See `ComposeSemanticsTokens`. */
+  val cornerRadiusPx: String? = null,
+  /** Shape descriptor (`"circle"` / `"cut"` / …) for a shape the corner fields can't express. */
+  val shape: String? = null,
 )
 
 /**

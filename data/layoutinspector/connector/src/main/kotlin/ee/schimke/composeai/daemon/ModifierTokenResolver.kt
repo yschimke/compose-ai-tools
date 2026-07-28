@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ModifierInfo
 import androidx.compose.ui.platform.InspectableValue
 import androidx.compose.ui.unit.Dp
+import ee.schimke.composeai.data.layoutinspector.PlaceholderModifiers
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -122,9 +123,12 @@ internal object ModifierTokenResolver {
       // shape — so as the first shape-bearing modifier they hijack the container corner and a
       // placeholdered `TitleCard`/`Button` (modest corner) exports as a full pill (`rx =
       // height/2`).
-      // Skip their shape so the real `clip`/`paint`/`background` shape later in the chain wins.
+      // Skip their shape so the real `clip`/`paint`/`background` shape later in the chain wins; the
+      // placeholder's own shape isn't lost, it is carried on [resolvePlaceholder]'s state-aware
+      // projection, where it describes the placeholder block rather than the container (#2646).
       val nodeShape =
-        if (isPlaceholderShapeModifier(name, simpleName)) null else shapeOf(mod, elements)
+        if (PlaceholderModifiers.isPlaceholderModifier(name, simpleName)) null
+        else shapeOf(mod, elements)
       if (nodeShape != null) {
         val effectiveShape = nodeShape.effectiveCornerShape()
         if (cornerRadius == null) cornerRadius = effectiveShape.cornerRadiusWire(minSidePx, density)
@@ -507,16 +511,219 @@ internal object ModifierTokenResolver {
   }
 
   /**
-   * True for the Wear M3 `Modifier.placeholder` / `Modifier.placeholderShimmer` elements. Their
-   * inspectable `shape` is the *placeholder overlay's* shape (`PlaceholderDefaults.shape` =
-   * `ShapeTokens.CornerFull`, a 50% pill), never the container's shape — and because the modifier
-   * rides on the caller's chain ahead of the component's own Surface shape, sourcing the container
-   * corner from it exports a placeholdered `TitleCard`/`Button` as a full pill. Matched by the
-   * inspector `nameFallback` (`placeholder`/`placeholderShimmer`) or the element class name
-   * (`PlaceholderElement`, `PlaceholderShimmerElement`, …).
+   * Resolves the content-loading placeholder a node's modifier chain declares (issue #2646) — the
+   * state-aware counterpart of [resolve]'s container tokens.
+   *
+   * The identity of a placeholder modifier lives in [PlaceholderModifiers]; what this adds is the
+   * part the modifier chain alone can't tell the exporter: whether the placeholder is currently
+   * **visible**, read off its `PlaceholderState`, plus the placeholder's own colour and shape (the
+   * shape [resolve] deliberately refuses as a container corner). A `placeholder` block and a
+   * `placeholderShimmer` sweep on the same chain collapse to one projection — the block wins, since
+   * it is what an active placeholder actually paints — with the shimmer contributing its own state
+   * only when the block left it unknown.
+   *
+   * Returns null for the overwhelming majority of nodes: no placeholder modifier on the chain.
    */
-  internal fun isPlaceholderShapeModifier(name: String?, simpleName: String): Boolean =
-    name == "placeholder" || name == "placeholderShimmer" || simpleName.startsWith("Placeholder")
+  fun resolvePlaceholder(
+    modifierInfo: List<ModifierInfo>,
+    sizeWidthPx: Int,
+    sizeHeightPx: Int,
+    density: Float,
+  ): LayoutInspectorPlaceholder? =
+    resolvePlaceholderElements(modifierInfo.map { it.modifier }, sizeWidthPx, sizeHeightPx, density)
+
+  /**
+   * [resolvePlaceholder] over the bare modifier *elements* — everything it needs, since a
+   * placeholder carries no per-entry coordinates. Split out so unit tests can feed fake elements
+   * without minting a `LayoutCoordinates`.
+   */
+  internal fun resolvePlaceholderElements(
+    elements: List<Any>,
+    sizeWidthPx: Int,
+    sizeHeightPx: Int,
+    density: Float,
+  ): LayoutInspectorPlaceholder? {
+    var kind: String? = null
+    var visible: Boolean? = null
+    var colorArgb: String? = null
+    var cornerRadius: String? = null
+    var cornerRadiusPx: String? = null
+    var shape: String? = null
+    val minSidePx = minOf(sizeWidthPx, sizeHeightPx)
+    for (mod in elements) {
+      val inspectable = mod as? InspectableValue
+      val inspected = inspectable?.inspectableElements?.associate { it.name to it.value }.orEmpty()
+      // Two ways in, because the two placeholder modifiers lower differently:
+      //  - `placeholderShimmer` has its own `PlaceholderShimmerElement`, matched by name/class;
+      //  - `placeholder` is a bare `drawWithContent { … }.graphicsLayer { … }`, recognised only by
+      //    the origin of the lambda it carries (`…material3.PlaceholderKt`), found by scanning what
+      //    the element captured.
+      val captured = capturedValues(mod)
+      val modKind =
+        PlaceholderModifiers.kindOf(inspectable?.nameFallback, mod.javaClass.simpleName)
+          ?: PlaceholderModifiers.KIND_PLACEHOLDER.takeIf {
+            captured.any { v -> PlaceholderModifiers.isPlaceholderOrigin(v.javaClass.name) }
+          }
+          ?: continue
+      // The block (`placeholder`) is the authoritative source; a shimmer-only chain still reports,
+      // so a shimmering-but-not-blocked node isn't silently dropped.
+      val authoritative = kind != PlaceholderModifiers.KIND_PLACEHOLDER
+      if (authoritative) kind = modKind
+      placeholderVisible(captured)?.let { if (authoritative || visible == null) visible = it }
+      if (authoritative || colorArgb == null) {
+        placeholderColorHex(mod, inspected, captured)?.let { colorArgb = it }
+      }
+      val phShape =
+        (shapeOf(mod, inspected) ?: captured.filterIsInstance<Shape>().firstOrNull())
+          ?.effectiveCornerShape()
+      if (phShape != null && (authoritative || cornerRadius == null)) {
+        cornerRadius = phShape.cornerRadiusWire(minSidePx, density)
+        cornerRadiusPx = if (cornerRadius == null) phShape.cornerRadiusPxWire() else null
+        shape = phShape.shapeDescriptor()
+      }
+    }
+    return kind?.let {
+      LayoutInspectorPlaceholder(
+        kind = it,
+        visible = visible,
+        colorArgb = colorArgb,
+        cornerRadius = cornerRadius,
+        cornerRadiusPx = cornerRadiusPx,
+        shape = shape,
+      )
+    }
+  }
+
+  /**
+   * Everything a modifier element carries that a placeholder's identity/state could hide in: the
+   * element itself, its own field values, and the field values of *those* — because the block
+   * placeholder keeps its `PlaceholderState`, shape and colour inside the `drawWithContent` lambda
+   * the element holds, one level deeper than a normal element's inspectable properties.
+   *
+   * Two levels is the depth that reaches `element → lambda → captured state` and no further, so
+   * this stays a bounded read of a handful of fields rather than an object-graph walk.
+   */
+  private fun capturedValues(mod: Any): List<Any> {
+    val out = mutableListOf(mod)
+    val direct = fieldValues(mod)
+    out.addAll(direct)
+    direct.forEach { out.addAll(fieldValues(it)) }
+    return out
+  }
+
+  private fun fieldValues(target: Any): List<Any> =
+    runCatching {
+        target.javaClass.declaredFields.mapNotNull { field ->
+          runCatching { field.apply { isAccessible = true }.get(target) }.getOrNull()
+        }
+      }
+      .getOrDefault(emptyList())
+
+  /**
+   * Whether a placeholder is currently painting over the content, read from the `PlaceholderState`
+   * among the modifier's [captured] values. The state's API has moved across Wear releases
+   * (`isVisible` today, `isShowContent` — the inverse — earlier), and the property may be backed by
+   * a Compose `State` rather than a plain field, so both spellings and both storage shapes are
+   * probed. Returns null when no state is found or neither property is readable; the export treats
+   * unknown as "not visible" (see [LayoutInspectorPlaceholder.visible]).
+   */
+  private fun placeholderVisible(captured: List<Any>): Boolean? {
+    for (candidate in captured) {
+      if (!candidate.javaClass.simpleName.contains("PlaceholderState")) continue
+      booleanProperty(candidate, "isVisible")?.let {
+        return it
+      }
+      booleanProperty(candidate, "isShowContent")?.let {
+        return !it
+      }
+    }
+    return null
+  }
+
+  /**
+   * Reads a boolean property off an object by no-arg getter then backing field, unwrapping a
+   * Compose `State`/`MutableState` holder (`getValue()`) when that's what the property stores.
+   */
+  private fun booleanProperty(target: Any, name: String): Boolean? {
+    val raw =
+      runCatching { target.javaClass.getMethod(name).invoke(target) }.getOrNull()
+        ?: reflectField(target, name)
+        ?: return null
+    return unwrapBoolean(raw)
+  }
+
+  private fun unwrapBoolean(raw: Any): Boolean? =
+    when (raw) {
+      is Boolean -> raw
+      is androidx.compose.runtime.State<*> -> raw.value as? Boolean
+      else -> null
+    }
+
+  private fun reflectField(target: Any, name: String): Any? {
+    var cls: Class<*>? = target.javaClass
+    while (cls != null && cls != Any::class.java) {
+      val value =
+        runCatching { cls.getDeclaredField(name).apply { isAccessible = true }.get(target) }
+          .getOrNull()
+      if (value != null) return value
+      cls = cls.superclass
+    }
+    return null
+  }
+
+  /**
+   * The placeholder block's colour. `Modifier.placeholderShimmer(state, shape, color)` projects
+   * `color` through the inspector; the block placeholder captures it as a packed-long `Color` on
+   * its draw lambda, so the [captured] values are scanned for a `color`-named long field as the
+   * fallback.
+   */
+  private fun placeholderColorHex(
+    mod: Any,
+    elements: Map<String, Any?>,
+    captured: List<Any>,
+  ): String? {
+    (elements["color"] as? Color)?.let {
+      return if (it == Color.Unspecified) null else colorToWireString(it)
+    }
+    captured.forEach { candidate ->
+      colorFieldHex(candidate)?.let {
+        return it
+      }
+    }
+    return null
+  }
+
+  /**
+   * A `Color`-valued field on [target] — the value class inlines to a packed `long`, whose low 32
+   * bits carry the colour space (non-zero for anything but sRGB, which is left unresolved rather
+   * than mis-decoded).
+   *
+   * Fields are matched by name (`color`, `$color`) so an unrelated long is never read as a colour —
+   * *except* on a class that is itself part of a placeholder implementation, where the name is
+   * gone: the block placeholder's draw lambda is compiled to an `invokedynamic` class whose
+   * captures are synthetic `arg$N` fields. There, any long that decodes as an opaque-space colour
+   * is taken, which is safe precisely because the enclosing class is already known to be
+   * placeholder code.
+   */
+  private fun colorFieldHex(target: Any): String? {
+    val anyLongIsAColor = PlaceholderModifiers.isPlaceholderOrigin(target.javaClass.name)
+    val fields =
+      runCatching { target.javaClass.declaredFields }
+        .getOrNull()
+        ?.filter {
+          it.type == Long::class.javaPrimitiveType &&
+            (anyLongIsAColor || it.name.contains("color", ignoreCase = true))
+        } ?: return null
+    for (field in fields) {
+      val packed =
+        runCatching { field.apply { isAccessible = true }.getLong(target) }.getOrNull()?.toULong()
+          ?: continue
+      if (packed and 0xFFFFFFFFuL != 0uL) continue
+      val argb = (packed shr 32).toInt()
+      if (argb != 0) return "#${String.format(Locale.US, "%08X", argb)}"
+    }
+    return null
+  }
 
   /** The inspector `shape` element, or a reflected `shape` field on the modifier element. */
   private fun shapeOf(mod: Any, elements: Map<String, Any?>): Shape? {
