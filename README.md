@@ -68,15 +68,15 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `NowPlayingDebugOverlayPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NowPlayingDebugOverlayPreview_Now_Playing_debug_overlay.gif" width="150" /> |
 | `CameraPermissionDeniedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/CameraPermissionDeniedPreview_Camera_permission_denied.png" width="150" /> |
 | `CameraPermissionGrantedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/CameraPermissionGrantedPreview_Camera_permission_granted.png" width="150" /> |
-| `BodyTextPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/BodyTextPreview_Body_Text_Lorem_ipsum_dolor_sit_amet_conse.png" width="150" /> |
-| `BodyTextPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/BodyTextPreview_Body_Text_Short.png" width="150" /> |
-| `BodyTextPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/BodyTextPreview_Body_Text_The_quick_brown_fox.png" width="150" /> |
-| `PrivateProviderBadgePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PrivateProviderBadgePreview_Private_Provider_Badge_BETA.png" width="150" /> |
-| `PrivateProviderBadgePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PrivateProviderBadgePreview_Private_Provider_Badge_NEW.png" width="150" /> |
-| `PrivateProviderBadgePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PrivateProviderBadgePreview_Private_Provider_Badge_PRO.png" width="150" /> |
-| `UserCardPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/UserCardPreview_User_Card_Ada_Lovelace.png" width="150" /> |
-| `UserCardPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/UserCardPreview_User_Card_Alan_Turing.png" width="150" /> |
-| `UserCardPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/UserCardPreview_User_Card_Grace_Hopper.png" width="150" /> |
+| `BodyTextPreview · Lorem ipsum dolor sit amet conse` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/BodyTextPreview_Body_Text_Lorem_ipsum_dolor_sit_amet_conse.png" width="150" /> |
+| `BodyTextPreview · Short` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/BodyTextPreview_Body_Text_Short.png" width="150" /> |
+| `BodyTextPreview · The quick brown fox` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/BodyTextPreview_Body_Text_The_quick_brown_fox.png" width="150" /> |
+| `PrivateProviderBadgePreview · BETA` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PrivateProviderBadgePreview_Private_Provider_Badge_BETA.png" width="150" /> |
+| `PrivateProviderBadgePreview · NEW` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PrivateProviderBadgePreview_Private_Provider_Badge_NEW.png" width="150" /> |
+| `PrivateProviderBadgePreview · PRO` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PrivateProviderBadgePreview_Private_Provider_Badge_PRO.png" width="150" /> |
+| `UserCardPreview · Ada Lovelace` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/UserCardPreview_User_Card_Ada_Lovelace.png" width="150" /> |
+| `UserCardPreview · Alan Turing` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/UserCardPreview_User_Card_Alan_Turing.png" width="150" /> |
+| `UserCardPreview · Grace Hopper` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/UserCardPreview_User_Card_Grace_Hopper.png" width="150" /> |
 | `BadButtonPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/BadButtonPreview_Bad_Button.png" width="150" /> |
 | `BlueBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/BlueBoxPreview_Blue_Box.png" width="150" /> |
 | `ConfigProbePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ConfigProbePreview_Default.png" width="150" /> |
@@ -204,10 +204,10 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `MultiTouchDrawingSeededPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MultiTouchDrawingSeededPreview_Multi_Touch_Drawing_seeded.png" width="150" /> |
 | `OverridableListPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/OverridableListPreview_Overridable_List.png" width="150" /> |
 | `PinchToZoomPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/PinchToZoomPreview_Pinch_To_Zoom.png" width="150" /> |
-| `SwatchPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/SwatchPreview_Color_Swatch_Amber.png" width="150" /> |
-| `SwatchPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/SwatchPreview_Color_Swatch_Crimson.png" width="150" /> |
-| `SwatchPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/SwatchPreview_Color_Swatch_Teal.png" width="150" /> |
-| `SwatchPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/SwatchPreview_Color_Swatch_Violet.png" width="150" /> |
+| `SwatchPreview · Amber` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/SwatchPreview_Color_Swatch_Amber.png" width="150" /> |
+| `SwatchPreview · Crimson` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/SwatchPreview_Color_Swatch_Crimson.png" width="150" /> |
+| `SwatchPreview · Teal` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/SwatchPreview_Color_Swatch_Teal.png" width="150" /> |
+| `SwatchPreview · Violet` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/SwatchPreview_Color_Swatch_Violet.png" width="150" /> |
 | `AppPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/AppPreview.png" width="150" /> |
 | `BlueBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/BlueBoxPreview_Blue_Box.png" width="150" /> |
 | `Pixel8SystemUiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/Pixel8SystemUiPreview_Pixel_8.png" width="150" /> |
@@ -506,12 +506,12 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | Preview | Image |
 |---------|-------|
 | `ImageWidgetFixedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetFixedPreview_Image_Widget_Fixed.png" width="150" /> |
-| `ImageWidgetSquircleLargePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquircleLargePreview_Image_Widget_Squircle_Large_PARAM_0.png" width="150" /> |
-| `ImageWidgetSquircleLargePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquircleLargePreview_Image_Widget_Squircle_Large_PARAM_1.png" width="150" /> |
-| `ImageWidgetSquirclePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_0.png" width="150" /> |
-| `ImageWidgetSquirclePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_1.png" width="150" /> |
-| `ImageWidgetSquirclePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_2.png" width="150" /> |
-| `ImageWidgetSquirclePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_3.png" width="150" /> |
+| `ImageWidgetSquircleLargePreview · parameter 0` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquircleLargePreview_Image_Widget_Squircle_Large_PARAM_0.png" width="150" /> |
+| `ImageWidgetSquircleLargePreview · parameter 1` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquircleLargePreview_Image_Widget_Squircle_Large_PARAM_1.png" width="150" /> |
+| `ImageWidgetSquirclePreview · parameter 0` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_0.png" width="150" /> |
+| `ImageWidgetSquirclePreview · parameter 1` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_1.png" width="150" /> |
+| `ImageWidgetSquirclePreview · parameter 2` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_2.png" width="150" /> |
+| `ImageWidgetSquirclePreview · parameter 3` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear-widget/ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_3.png" width="150" /> |
 
 ## samples:xr-glimmer
 

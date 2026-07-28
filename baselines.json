@@ -672,7 +672,7 @@
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/PermissionGatedPreview.kt"
   },
   "samples:android/com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text": {
-    "captureLabel": "",
+    "captureLabel": "Lorem ipsum dolor sit amet conse",
     "functionName": "BodyTextPreview",
     "module": "samples:android",
     "renderBasename": "BodyTextPreview_Body_Text_Lorem_ipsum_dolor_sit_amet_conse.png",
@@ -680,7 +680,7 @@
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text#1": {
-    "captureLabel": "",
+    "captureLabel": "Short",
     "functionName": "BodyTextPreview",
     "module": "samples:android",
     "renderBasename": "BodyTextPreview_Body_Text_Short.png",
@@ -688,7 +688,7 @@
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text#2": {
-    "captureLabel": "",
+    "captureLabel": "The quick brown fox",
     "functionName": "BodyTextPreview",
     "module": "samples:android",
     "renderBasename": "BodyTextPreview_Body_Text_The_quick_brown_fox.png",
@@ -696,7 +696,7 @@
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.PreviewParameterPreviewsKt.PrivateProviderBadgePreview_Private Provider Badge": {
-    "captureLabel": "",
+    "captureLabel": "BETA",
     "functionName": "PrivateProviderBadgePreview",
     "module": "samples:android",
     "renderBasename": "PrivateProviderBadgePreview_Private_Provider_Badge_BETA.png",
@@ -704,7 +704,7 @@
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.PreviewParameterPreviewsKt.PrivateProviderBadgePreview_Private Provider Badge#1": {
-    "captureLabel": "",
+    "captureLabel": "NEW",
     "functionName": "PrivateProviderBadgePreview",
     "module": "samples:android",
     "renderBasename": "PrivateProviderBadgePreview_Private_Provider_Badge_NEW.png",
@@ -712,7 +712,7 @@
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.PreviewParameterPreviewsKt.PrivateProviderBadgePreview_Private Provider Badge#2": {
-    "captureLabel": "",
+    "captureLabel": "PRO",
     "functionName": "PrivateProviderBadgePreview",
     "module": "samples:android",
     "renderBasename": "PrivateProviderBadgePreview_Private_Provider_Badge_PRO.png",
@@ -720,7 +720,7 @@
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.PreviewParameterPreviewsKt.UserCardPreview_User Card": {
-    "captureLabel": "",
+    "captureLabel": "Ada Lovelace",
     "functionName": "UserCardPreview",
     "module": "samples:android",
     "renderBasename": "UserCardPreview_User_Card_Ada_Lovelace.png",
@@ -728,7 +728,7 @@
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.PreviewParameterPreviewsKt.UserCardPreview_User Card#1": {
-    "captureLabel": "",
+    "captureLabel": "Alan Turing",
     "functionName": "UserCardPreview",
     "module": "samples:android",
     "renderBasename": "UserCardPreview_User_Card_Alan_Turing.png",
@@ -736,7 +736,7 @@
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.PreviewParameterPreviewsKt.UserCardPreview_User Card#2": {
-    "captureLabel": "",
+    "captureLabel": "Grace Hopper",
     "functionName": "UserCardPreview",
     "module": "samples:android",
     "renderBasename": "UserCardPreview_User_Card_Grace_Hopper.png",
@@ -1400,7 +1400,7 @@
     "sourceFile": "src/main/kotlin/com/example/samplecmp/PinchToZoomPreview.kt"
   },
   "samples:cmp/com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch": {
-    "captureLabel": "",
+    "captureLabel": "Amber",
     "functionName": "SwatchPreview",
     "module": "samples:cmp",
     "renderBasename": "SwatchPreview_Color_Swatch_Amber.png",
@@ -1408,7 +1408,7 @@
     "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewParameterPreviews.kt"
   },
   "samples:cmp/com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch#1": {
-    "captureLabel": "",
+    "captureLabel": "Crimson",
     "functionName": "SwatchPreview",
     "module": "samples:cmp",
     "renderBasename": "SwatchPreview_Color_Swatch_Crimson.png",
@@ -1416,7 +1416,7 @@
     "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewParameterPreviews.kt"
   },
   "samples:cmp/com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch#2": {
-    "captureLabel": "",
+    "captureLabel": "Teal",
     "functionName": "SwatchPreview",
     "module": "samples:cmp",
     "renderBasename": "SwatchPreview_Color_Swatch_Teal.png",
@@ -1424,7 +1424,7 @@
     "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewParameterPreviews.kt"
   },
   "samples:cmp/com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch#3": {
-    "captureLabel": "",
+    "captureLabel": "Violet",
     "functionName": "SwatchPreview",
     "module": "samples:cmp",
     "renderBasename": "SwatchPreview_Color_Swatch_Violet.png",
@@ -3072,7 +3072,7 @@
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
   "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquircleLargePreview_Image Widget Squircle Large": {
-    "captureLabel": "",
+    "captureLabel": "parameter 0",
     "functionName": "ImageWidgetSquircleLargePreview",
     "module": "samples:wear-widget",
     "renderBasename": "ImageWidgetSquircleLargePreview_Image_Widget_Squircle_Large_PARAM_0.png",
@@ -3080,7 +3080,7 @@
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
   "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquircleLargePreview_Image Widget Squircle Large#1": {
-    "captureLabel": "",
+    "captureLabel": "parameter 1",
     "functionName": "ImageWidgetSquircleLargePreview",
     "module": "samples:wear-widget",
     "renderBasename": "ImageWidgetSquircleLargePreview_Image_Widget_Squircle_Large_PARAM_1.png",
@@ -3088,7 +3088,7 @@
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
   "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle": {
-    "captureLabel": "",
+    "captureLabel": "parameter 0",
     "functionName": "ImageWidgetSquirclePreview",
     "module": "samples:wear-widget",
     "renderBasename": "ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_0.png",
@@ -3096,7 +3096,7 @@
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
   "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle#1": {
-    "captureLabel": "",
+    "captureLabel": "parameter 1",
     "functionName": "ImageWidgetSquirclePreview",
     "module": "samples:wear-widget",
     "renderBasename": "ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_1.png",
@@ -3104,7 +3104,7 @@
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
   "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle#2": {
-    "captureLabel": "",
+    "captureLabel": "parameter 2",
     "functionName": "ImageWidgetSquirclePreview",
     "module": "samples:wear-widget",
     "renderBasename": "ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_2.png",
@@ -3112,7 +3112,7 @@
     "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt"
   },
   "samples:wear-widget/com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle#3": {
-    "captureLabel": "",
+    "captureLabel": "parameter 3",
     "functionName": "ImageWidgetSquirclePreview",
     "module": "samples:wear-widget",
     "renderBasename": "ImageWidgetSquirclePreview_Image_Widget_Squircle_PARAM_3.png",
@@ -3316,7 +3316,7 @@
     "functionName": "ActivityListMotionLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListMotionLongPreview_Devices_Large_Round_SCROLL_long.png",
-    "sha256": "094df53da2ad611cb769f7a7e381c83ac0dbee764bc2060d387be804c6c5ba23",
+    "sha256": "4894efeb548deb8e9074068f891ddd4a3c9901e2e5482960eebaa1dbf8e65cca",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round#1": {
