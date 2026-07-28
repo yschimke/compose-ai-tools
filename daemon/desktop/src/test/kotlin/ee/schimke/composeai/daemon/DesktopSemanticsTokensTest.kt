@@ -308,6 +308,33 @@ class DesktopSemanticsTokensTest {
   }
 
   @Test
+  fun annotated_text_keeps_base_family_and_effective_span_overrides() {
+    val root = buildTree {
+      Text(
+        buildAnnotatedString {
+          append("base ")
+          withStyle(SpanStyle(fontFamily = FontFamily.Serif)) { append("code") }
+        },
+        modifier = Modifier.testTag("annotated"),
+        style = TextStyle(fontFamily = FontFamily.Monospace),
+      )
+    }
+
+    val typography = root.find("annotated")?.typography
+    assertNotNull("annotated text must retain typography", typography)
+    assertEquals("monospace", typography!!.fontFamily)
+    val spans = typography.spans
+    assertNotNull("effective annotated ranges must be captured", spans)
+    assertEquals(2, spans!!.size)
+    assertEquals("monospace", spans[0].fontFamily)
+    assertEquals(0, spans[0].start)
+    assertEquals(5, spans[0].end)
+    assertEquals("serif", spans[1].fontFamily)
+    assertEquals(5, spans[1].start)
+    assertEquals(9, spans[1].end)
+  }
+
+  @Test
   fun unstyled_run_plus_styled_span_omits_weight() {
     // #1935 (review): when a run is left *unstyled* (drawing at the inherited default weight) and a
     // span overrides only part to bold, the node draws mixed weights. The unstyled run must count

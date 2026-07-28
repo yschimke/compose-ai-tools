@@ -36,7 +36,12 @@ object ComposeSemanticsProduct {
   // px relative to the node's top-left) for wrapped text, so the figma-svg export places one run
   // per line at the render's break points instead of collapsing the string onto one baseline.
   // Additive; older entries decode with `lines = null` (single-line rendering).
-  const val SCHEMA_VERSION: Int = 8
+  // v10 (#2854): typography may carry effective styled `spans`, and wrapped line entries carry
+  // their UTF-16 start/end offsets. This preserves the paragraph face across AnnotatedString runs
+  // while retaining explicit per-span overrides (for example Karla body text with a monospace code
+  // span). Additive; older entries decode with `spans = null` and line offsets unset.
+  // v9 is reserved by the independent graphics-layer export change in #2853.
+  const val SCHEMA_VERSION: Int = 10
   const val FILE: String = "compose-semantics.json"
 }
 
@@ -219,6 +224,24 @@ data class ComposeSemanticsTypography(
   val letterSpacing: String? = null,
   /** Resolved line height as `"<value>sp"` / `"<value>em"`. */
   val lineHeight: String? = null,
+  /**
+   * Effective styles for the text's UTF-16 ranges when it contains an `AnnotatedString`. Each entry
+   * has already been merged over the paragraph style and any overlapping spans, so a consumer can
+   * emit editable styled runs without losing the base family. Null for plain text.
+   */
+  val spans: List<ComposeSemanticsTextSpan>? = null,
+)
+
+/** One effective styled UTF-16 range within a text node. */
+@Serializable
+data class ComposeSemanticsTextSpan(
+  val start: Int,
+  val end: Int,
+  val fontSize: String? = null,
+  val fontFamily: String? = null,
+  val fontWeight: Int? = null,
+  val fontStyle: String? = null,
+  val foregroundColor: String? = null,
 )
 
 /**
@@ -271,7 +294,14 @@ data class ComposeSemanticsTextOverflow(
  * for centred/right-aligned text).
  */
 @Serializable
-data class ComposeSemanticsTextLine(val text: String, val left: Int, val baseline: Int)
+data class ComposeSemanticsTextLine(
+  val text: String,
+  val left: Int,
+  val baseline: Int,
+  /** UTF-16 offsets into the node's full text; absent on schema v8 captures. */
+  val start: Int? = null,
+  val end: Int? = null,
+)
 
 /**
  * Resolved design-token data for a single semantics node (issues #1897, #1908). Populated from the

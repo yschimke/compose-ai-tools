@@ -46,9 +46,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
  * Test fixtures for [RenderEngineTest] and the D-harness.v2 Android real-mode scenarios. Lives in
@@ -181,6 +185,24 @@ fun GradientBackgroundCard() {
     contentAlignment = Alignment.Center,
   ) {
     Text("Gradient", color = Color.White)
+  }
+}
+
+/** Android end-to-end fixture for #2854's emoji and annotated-font export paths. */
+@Composable
+fun EmojiAndAnnotatedText() {
+  Column(modifier = Modifier.fillMaxSize().background(Color.White)) {
+    Text("😀", modifier = Modifier.testTag("emoji").clickable {})
+    Text(
+      buildAnnotatedString {
+        append("body ")
+        withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp)) {
+          append("code")
+        }
+      },
+      modifier = Modifier.testTag("annotated"),
+      style = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 16.sp),
+    )
   }
 }
 

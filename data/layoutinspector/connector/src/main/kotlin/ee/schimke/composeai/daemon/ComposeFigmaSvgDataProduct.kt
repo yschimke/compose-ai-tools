@@ -162,7 +162,10 @@ object ComposeFigmaSvgDataProducer {
   /** Every family named on a `<text>` in [layer]'s subtree. */
   private fun capturedFamilies(layer: FigmaSvgLayer): Set<String> = buildSet {
     fun walk(node: FigmaSvgLayer) {
-      node.text?.fontFamily?.takeIf { it.isNotBlank() }?.let { add(it) }
+      node.text?.let { text ->
+        text.fontFamily?.takeIf { it.isNotBlank() }?.let { add(it) }
+        text.spans?.forEach { span -> span.fontFamily?.takeIf { it.isNotBlank() }?.let { add(it) } }
+      }
       node.children.forEach(::walk)
     }
     walk(layer)
@@ -318,12 +321,31 @@ object ComposeFigmaSvgDataProducer {
     val codePointsByFace = LinkedHashMap<Triple<String?, Int, Boolean>, MutableSet<Int>>()
     fun collect(layer: FigmaSvgLayer) {
       layer.text?.let { t ->
-        val cps =
-          codePointsByFace.getOrPut(Triple(t.fontFamily, t.fontWeight ?: 400, t.italic)) {
-            LinkedHashSet()
+        val spans = t.spans
+        if (spans.isNullOrEmpty()) {
+          val cps =
+            codePointsByFace.getOrPut(Triple(t.fontFamily, t.fontWeight ?: 400, t.italic)) {
+              LinkedHashSet()
+            }
+          t.content.codePoints().toArray().forEach { cps.add(it) }
+          t.lines?.forEach { line -> line.content.codePoints().toArray().forEach { cps.add(it) } }
+        } else {
+          spans.forEach { span ->
+            val start = span.start.coerceIn(0, t.content.length)
+            val end = span.end.coerceIn(start, t.content.length)
+            val cps =
+              codePointsByFace.getOrPut(
+                Triple(
+                  span.fontFamily ?: t.fontFamily,
+                  span.fontWeight ?: t.fontWeight ?: 400,
+                  span.italic,
+                )
+              ) {
+                LinkedHashSet()
+              }
+            t.content.substring(start, end).codePoints().toArray().forEach { cps.add(it) }
           }
-        t.content.codePoints().toArray().forEach { cps.add(it) }
-        t.lines?.forEach { line -> line.content.codePoints().toArray().forEach { cps.add(it) } }
+        }
       }
       layer.children.forEach(::collect)
     }

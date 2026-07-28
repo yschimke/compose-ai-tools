@@ -13,7 +13,6 @@ import androidx.compose.ui.semantics.SemanticsConfiguration
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.Font
@@ -309,11 +308,27 @@ object ComposeSemanticsDataProducer {
     // (inherited-default) run and a styled span omits the field rather than reporting the span's
     // value as if the node were uniform.
     val spans = results.flatMap { it.effectiveSpanStyles() }
-    val fontFamily =
+    val uniformFontFamily =
       spans
         .map { fontFamilyLabel(it.fontFamily, it.fontWeight, it.fontStyle) }
         .distinct()
         .singleOrNull()
+    // A node with explicit face overrides (for example Jetchat's Karla paragraph plus a monospace
+    // code span) is not uniformly one family, but the SVG still needs its paragraph/base face.
+    // Keep that base here and carry the effective overrides in `spans` below; returning null made
+    // the whole annotated node look unnamed and triggered the global tofu fallback.
+    val baseFontFamily =
+      results
+        .map {
+          fontFamilyLabel(
+            it.layoutInput.style.fontFamily,
+            it.layoutInput.style.fontWeight,
+            it.layoutInput.style.fontStyle,
+          )
+        }
+        .distinct()
+        .singleOrNull()
+    val fontFamily = uniformFontFamily ?: baseFontFamily
     val fontWeight = spans.map { it.fontWeight?.weight }.distinct().singleOrNull()
     val fontStyle = spans.map { fontStyleName(it.fontStyle) }.distinct().singleOrNull()
     val fontVariationSettings =
@@ -366,8 +381,32 @@ object ComposeSemanticsDataProducer {
               text = str.substring(start, end) + ellipsis,
               left = r.getLineLeft(i).roundToInt(),
               baseline = r.getLineBaseline(i).roundToInt(),
+              start = start,
+              end = end,
             )
           }
+        }
+    val styledSpans =
+      results
+        .singleOrNull()
+        ?.takeIf { it.layoutInput.text.spanStyles.isNotEmpty() }
+        ?.effectiveStyleRanges()
+        ?.map { range ->
+          ComposeSemanticsTextSpan(
+            start = range.start,
+            end = range.end,
+            fontSize = range.style.fontSize.toWireTextUnit(),
+            fontFamily =
+              fontFamilyLabel(
+                range.style.fontFamily,
+                range.style.fontWeight,
+                range.style.fontStyle,
+              ),
+            fontWeight = range.style.fontWeight?.weight,
+            fontStyle = fontStyleName(range.style.fontStyle),
+            foregroundColor =
+              range.style.color.takeIf { it != Color.Unspecified }?.let(::colorToWireString),
+          )
         }
     return LayoutTextDetails(
       text = text,
@@ -390,6 +429,7 @@ object ComposeSemanticsDataProducer {
       didOverflowWidth = didOverflowWidth.takeIf { results.isNotEmpty() },
       didOverflowHeight = didOverflowHeight.takeIf { results.isNotEmpty() },
       lines = lines,
+      spans = styledSpans,
     )
   }
 
@@ -403,26 +443,53 @@ object ComposeSemanticsDataProducer {
    * as mixed. Lets the typography extraction reason about every face actually drawn.
    */
   private fun TextLayoutResult.effectiveSpanStyles(): List<SpanStyle> {
-    val paragraph = layoutInput.style.toSpanStyle()
-    val annotated = layoutInput.text
-    val spanStyles = annotated.spanStyles
-    if (spanStyles.isEmpty()) return listOf(paragraph)
-    val merged = spanStyles.map { paragraph.merge(it.item) }
-    return if (spanStyles.coverAll(annotated.text.length)) merged else listOf(paragraph) + merged
+    return effectiveStyleRanges().map { it.style }
   }
 
-  /** Whether [spans] tile `[0, length)` with no gap — i.e. every glyph is covered by some span. */
-  private fun List<AnnotatedString.Range<SpanStyle>>.coverAll(length: Int): Boolean {
-    if (length <= 0) return true
-    var covered = 0
-    for (range in sortedBy { it.start }) {
-      val start = range.start.coerceIn(0, length)
-      val end = range.end.coerceIn(0, length)
-      if (start > covered) return false
-      if (end > covered) covered = end
-      if (covered >= length) return true
+  private data class EffectiveStyleRange(val start: Int, val end: Int, val style: SpanStyle)
+
+  /**
+   * Effective style for every drawn UTF-16 interval. Compose spans may overlap: each active style
+   * is merged over the paragraph in declaration order, so a colour-only mention keeps the Karla
+   * base while a nested code range can explicitly replace it with monospace.
+   */
+  private fun TextLayoutResult.effectiveStyleRanges(): List<EffectiveStyleRange> {
+    val paragraph = layoutInput.style.toSpanStyle()
+    val annotated = layoutInput.text
+    val length = annotated.text.length
+    val spans = annotated.spanStyles
+    if (spans.isEmpty() || length <= 0) {
+      return listOf(EffectiveStyleRange(0, length, paragraph))
     }
-    return covered >= length
+    val boundaries =
+      buildSet {
+          add(0)
+          add(length)
+          spans.forEach {
+            add(it.start.coerceIn(0, length))
+            add(it.end.coerceIn(0, length))
+          }
+        }
+        .sorted()
+    val ranges =
+      boundaries.zipWithNext().mapNotNull { (start, end) ->
+        if (start >= end) return@mapNotNull null
+        val effective =
+          spans
+            .filter { it.start < end && it.end > start }
+            .fold(paragraph) { style, span -> style.merge(span.item) }
+        EffectiveStyleRange(start, end, effective)
+      }
+    // Adjacent source ranges with the same effective style need no separate SVG tspan.
+    return ranges.fold(mutableListOf()) { merged, range ->
+      val previous = merged.lastOrNull()
+      if (previous != null && previous.end == range.start && previous.style == range.style) {
+        merged[merged.lastIndex] = previous.copy(end = range.end)
+      } else {
+        merged += range
+      }
+      merged
+    }
   }
 
   private fun TextLayoutResult.textColors(): List<Color> = buildList {
@@ -590,6 +657,7 @@ object ComposeSemanticsDataProducer {
     val didOverflowWidth: Boolean?,
     val didOverflowHeight: Boolean?,
     val lines: List<ComposeSemanticsTextLine>?,
+    val spans: List<ComposeSemanticsTextSpan>?,
   )
 
   /**
@@ -619,6 +687,7 @@ object ComposeSemanticsDataProducer {
         fontFeatureSettings = fontFeatureSettings,
         letterSpacing = letterSpacing,
         lineHeight = lineHeight,
+        spans = spans,
       )
 
   /** Groups the resolved text colours (issue #1903), or null when the node resolves none. */
@@ -750,6 +819,9 @@ typealias ComposeSemanticsTextOverflow =
 
 typealias ComposeSemanticsTextLine =
   ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTextLine
+
+typealias ComposeSemanticsTextSpan =
+  ee.schimke.composeai.data.layoutinspector.ComposeSemanticsTextSpan
 
 typealias ComposeSemanticsInsets = ee.schimke.composeai.data.layoutinspector.ComposeSemanticsInsets
 

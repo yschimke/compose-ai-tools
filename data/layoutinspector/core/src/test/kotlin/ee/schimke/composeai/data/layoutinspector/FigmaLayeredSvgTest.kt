@@ -1628,6 +1628,92 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun annotatedTextEmitsStyledTspansAcrossWrappedLines() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 10, 10, 190, 90)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "10,10,190,90",
+              text = "base code",
+              typography =
+                ComposeSemanticsTypography(
+                  fontSize = "16.0sp",
+                  fontFamily = "monospace",
+                  spans =
+                    listOf(
+                      ComposeSemanticsTextSpan(0, 5, "16.0sp", "monospace", 400),
+                      ComposeSemanticsTextSpan(5, 9, "12.0sp", "serif", 400),
+                    ),
+                ),
+              textOverflow =
+                ComposeSemanticsTextOverflow(
+                  lineCount = 2,
+                  lines =
+                    listOf(
+                      ComposeSemanticsTextLine("base ", 0, 20, start = 0, end = 5),
+                      ComposeSemanticsTextLine("code", 0, 44, start = 5, end = 9),
+                    ),
+                ),
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+    assertTrue(svg.contains("""<tspan x="10" y="30" font-size="16" font-family="monospace""""))
+    assertTrue(svg.contains(">base </tspan>"))
+    assertTrue(svg.contains("""<tspan x="10" y="54" font-size="12" font-family="serif""""))
+    assertTrue(svg.contains(">code</tspan>"))
+  }
+
+  @Test
+  fun annotatedTextKeepsEllipsisOnTheFinalStyledLine() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 10, 10, 190, 90)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "10,10,190,90",
+              text = "base truncated",
+              typography =
+                ComposeSemanticsTypography(
+                  fontSize = "16.0sp",
+                  fontFamily = "monospace",
+                  spans =
+                    listOf(
+                      ComposeSemanticsTextSpan(0, 5, "16.0sp", "monospace", 400),
+                      ComposeSemanticsTextSpan(5, 14, "12.0sp", "serif", 400),
+                    ),
+                ),
+              textOverflow =
+                ComposeSemanticsTextOverflow(
+                  lineCount = 2,
+                  lines =
+                    listOf(
+                      ComposeSemanticsTextLine("base ", 0, 20, start = 0, end = 5),
+                      ComposeSemanticsTextLine("trunc…", 0, 44, start = 5, end = 10),
+                    ),
+                ),
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+    assertTrue(svg.contains(">trunc…</tspan>"))
+    assertFalse(svg.contains(">trunc</tspan>"))
+  }
+
+  @Test
   fun wrappedTextEmitsOnePositionedTspanPerLineInsteadOfOneBaseline() {
     val layout =
       layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 10, 10, 190, 90)))
@@ -1870,6 +1956,41 @@ class FigmaLayeredSvgTest {
       )
     val svg = render(layout, semantics = semantics)
     assertTrue("text must still attach despite off-by-one bounds", svg.contains(">Hello</text>"))
+  }
+
+  @Test
+  fun textAttachesThroughItsOuterClickableModifierBounds() {
+    // Jetchat's emoji cells expose the full 42dp click target to semantics, while the layout
+    // node's own bounds are the inner padded glyph box. Matching only node bounds dropped every
+    // supplementary-plane emoji from the SVG even though semantics captured them.
+    val emoji =
+      LayoutInspectorNode(
+        nodeId = "emoji",
+        component = "EmptyMeasurePolicy",
+        bounds = bounds(20, 20, 40, 40),
+        size = LayoutInspectorSize(42, 42),
+        modifiers =
+          listOf(LayoutInspectorModifier(name = "clickable", bounds = bounds(0, 0, 42, 42))),
+      )
+    val layout = layoutNode("Screen", 0, 0, 100, 100, children = listOf(emoji))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,100,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "emoji-semantics",
+              boundsInRoot = "0,0,42,42",
+              text = "😀",
+              typography = ComposeSemanticsTypography(fontSize = "18.0sp"),
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+    assertTrue("surrogate-pair emoji text must remain editable", svg.contains(">😀</text>"))
+    assertTrue("text uses the inner layout origin", svg.contains("""<text x="20""""))
   }
 
   @Test

@@ -63,6 +63,8 @@ data class FigmaSvgText(
    * registers.
    */
   val letterSpacingPx: Double? = null,
+  /** Effective styled UTF-16 ranges for annotated text; null for a uniform/plain run. */
+  val spans: List<FigmaSvgTextSpan>? = null,
   /**
    * Per-line runs for wrapped text, in px relative to the layer's top-left, in draw order. When
    * present (2+ lines) the renderer emits one positioned `<tspan>` per line instead of a single
@@ -72,7 +74,25 @@ data class FigmaSvgText(
 )
 
 /** One laid-out line of a wrapped [FigmaSvgText], px offsets from the text layer's top-left. */
-data class FigmaSvgTextLine(val content: String, val left: Int, val baseline: Int)
+data class FigmaSvgTextLine(
+  val content: String,
+  val left: Int,
+  val baseline: Int,
+  /** UTF-16 offsets into the full text; null for schema-v8 captures. */
+  val start: Int? = null,
+  val end: Int? = null,
+)
+
+/** One effective styled UTF-16 range within [FigmaSvgText.content]. */
+data class FigmaSvgTextSpan(
+  val start: Int,
+  val end: Int,
+  val fontSizePx: Double? = null,
+  val fontFamily: String? = null,
+  val fontWeight: Int? = null,
+  val italic: Boolean = false,
+  val color: FigmaSvgColor? = null,
+)
 
 /**
  * A font face to embed in the export as an SVG `@font-face` so the `<text>` renders with the real
@@ -937,13 +957,20 @@ data class FigmaSvgModel(
     ): Map<String, FigmaSvgText> {
       val candidates = mutableListOf<Triple<String, IntArray, Int>>()
       fun collect(n: LayoutInspectorNode, depth: Int) {
-        candidates.add(
-          Triple(
-            n.nodeId,
-            intArrayOf(n.bounds.left, n.bounds.top, n.bounds.right, n.bounds.bottom),
-            depth,
-          )
-        )
+        val candidateBounds =
+          buildList {
+              add(n.bounds)
+              // A Text's semantics bounds include semantic modifiers such as clickable, minimum
+              // touch size, and padding, while LayoutInspectorNode.bounds is the inner glyph box.
+              // Keep the text attached to that same layout node by accepting any captured
+              // modifier boundary as a matching surface. This is essential for emoji-table cells:
+              // their 42dp clickable semantics surround a much smaller padded text layout.
+              n.modifiers.mapNotNullTo(this) { it.bounds }
+            }
+            .distinct()
+        candidateBounds.forEach { b ->
+          candidates.add(Triple(n.nodeId, intArrayOf(b.left, b.top, b.right, b.bottom), depth))
+        }
         n.children.forEach { collect(it, depth + 1) }
       }
       collect(layoutRoot, 0)
@@ -1010,6 +1037,18 @@ data class FigmaSvgModel(
           node.typography?.letterSpacing?.let {
             lineHeightToPx(it, node.typography.fontSize, density, fontScale)
           },
+        spans =
+          node.typography?.spans?.map { span ->
+            FigmaSvgTextSpan(
+              start = span.start,
+              end = span.end,
+              fontSizePx = span.fontSize?.let { spToPx(it, density, fontScale) },
+              fontFamily = span.fontFamily,
+              fontWeight = span.fontWeight,
+              italic = span.fontStyle == "italic",
+              color = span.foregroundColor?.let { argbToColor(it, emptyMap()) },
+            )
+          },
         // Carry per-line runs only for genuinely wrapped text (2+ lines). The captured offsets are
         // already in render px (same space as the node bounds), so they map straight to layer space
         // with no density conversion.
@@ -1017,7 +1056,15 @@ data class FigmaSvgModel(
           node.textOverflow
             ?.lines
             ?.takeIf { it.size > 1 }
-            ?.map { FigmaSvgTextLine(content = it.text, left = it.left, baseline = it.baseline) },
+            ?.map {
+              FigmaSvgTextLine(
+                content = it.text,
+                left = it.left,
+                baseline = it.baseline,
+                start = it.start,
+                end = it.end,
+              )
+            },
       )
 
     /**
