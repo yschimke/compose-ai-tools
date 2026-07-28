@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/pr`. 256 preview(s) across 20 module(s) · 36 error(s) · 4 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/pr`. 258 preview(s) across 20 module(s) · 37 error(s) · 4 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1595,6 +1595,20 @@ _No findings._
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/PageIndicatorStickerPreview.png" width="400" />
 
 _No findings._
+
+### `PlaceholderCardLoaded` · `wearos_small_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/PlaceholderCardLoaded_wearos_small_round.a11y.png" width="400" />
+
+_No findings._
+
+### `PlaceholderCardLoading` · `wearos_small_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/PlaceholderCardLoading_wearos_small_round.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | SpeakableTextPresentCheck | android.view.View | This item may not have a label readable by screen readers. |
 
 ### `PrimaryActionScreenPreview` · `wearos_large_round`
 

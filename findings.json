@@ -3013,6 +3013,34 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "PlaceholderCardLoaded_wearos_small_round.a11y.png",
+      "cleanBasename": "PlaceholderCardLoaded_wearos_small_round.png",
+      "findings": [],
+      "functionName": "PlaceholderCardLoaded",
+      "module": "wear",
+      "previewId": "com.example.samplewear.PlaceholderPreviewsKt.PlaceholderCardLoaded_wearos_small_round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/PlaceholderPreviews.kt",
+      "variant": "wearos_small_round"
+    },
+    {
+      "annotatedBasename": "PlaceholderCardLoading_wearos_small_round.a11y.png",
+      "cleanBasename": "PlaceholderCardLoading_wearos_small_round.png",
+      "findings": [
+        {
+          "boundsInScreen": "32,128,352,256",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "android.view.View"
+        }
+      ],
+      "functionName": "PlaceholderCardLoading",
+      "module": "wear",
+      "previewId": "com.example.samplewear.PlaceholderPreviewsKt.PlaceholderCardLoading_wearos_small_round",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/PlaceholderPreviews.kt",
+      "variant": "wearos_small_round"
+    },
+    {
       "annotatedBasename": "",
       "cleanBasename": "PrimaryActionScreenPreview_Devices_Large_Round.png",
       "findings": [],
