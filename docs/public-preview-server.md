@@ -236,10 +236,11 @@ Both container profiles take this config from env (the entrypoint maps `SERVE_PU
 `SERVE_CATALOGS`, `SERVE_CATALOGS_UNLISTED`, `SERVE_TRUST_STORE`, `SERVE_WASM_DIR`,
 `SERVE_ACCEPT_BUNDLES` → flags) and put **Caddy** in front for TLS. They default to the **open public
 profile** (`SERVE_PUBLIC=1`, catalogs `compose-m3,wear-m3,remote-m3` plus the app systems `meshcore-mobile`,
-`homeassistant-remotecompose`, and all six compose-samples apps (`jetnews`, `jetcaster`, `jetchat`, `jetsnack`,
-`jetlagged`, and `reply`) on the front-page index; `cadence` is served unlisted at `/cadence/` — off the front
-page — via `SERVE_CATALOGS_UNLISTED`). The prebuilt `deploy/image` profile additionally includes the two
-Confetti apps. Set `SERVE_PUBLIC=0` + `SERVE_TOKEN` for a token-gated box.
+`homeassistant-remotecompose`, and all seven compose-samples catalogs (`jetnews`, `jetcaster`,
+`jetcaster-wear`, `jetchat`, `jetsnack`, `jetlagged`, and `reply`) on the front-page index; `cadence` is
+served unlisted at `/cadence/` — off the front page — via `SERVE_CATALOGS_UNLISTED`). The prebuilt
+`deploy/image` profile additionally includes the two Confetti apps. Set `SERVE_PUBLIC=0` +
+`SERVE_TOKEN` for a token-gated box.
 
 The prebuilt `deploy/image` **bakes a branch-trust store** at `/trust/producers.json` (trusting
 `design-artifacts/*` on `yschimke/compose-ai-tools`, `yschimke/meshcore-mobile`, and
@@ -250,8 +251,8 @@ Mount your own over that path (or set `SERVE_TRUST_STORE` to it) to pin differen
 out — which also means a bare image pull self-heals a box without editing its compose.)
 
 The **catalog set is baked into the image the same way**: the entrypoint defaults `SERVE_CATALOGS`
-to the three built-in design systems, MeshCore Mobile, Home Assistant Remote Compose, all six
-`yschimke/compose-samples` apps, and both Confetti apps (front-page index), and defaults
+to the three built-in design systems, MeshCore Mobile, Home Assistant Remote Compose, all seven
+`yschimke/compose-samples` catalogs, and both Confetti apps (front-page index), and defaults
 `SERVE_CATALOGS_UNLISTED` to `cadence@yschimke/cadence` (served at `/cadence/`, off the front page).
 So a bare `docker pull` / Watchtower update serves them
 without editing the box's compose. Override either with your own comma list, or `none` to serve none

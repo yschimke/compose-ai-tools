@@ -1658,7 +1658,16 @@ object ServeWeb {
       )
     val isAndroidSample =
       published(
-        ids = setOf("jetnews", "jetcaster", "jetchat", "jetsnack", "jetlagged", "reply"),
+        ids =
+          setOf(
+            "jetnews",
+            "jetcaster",
+            "jetcaster-wear",
+            "jetchat",
+            "jetsnack",
+            "jetlagged",
+            "reply",
+          ),
         // The preview branches currently live in the fork; both spellings are Android's samples.
         repos = setOf("android/compose-samples", "yschimke/compose-samples"),
       )
