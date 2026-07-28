@@ -1688,6 +1688,10 @@ object ServeWeb {
     val degradation: String?,
     /** `repo@branch · date` provenance for a fetched catalog; null for a plain bundle. */
     val provenance: String?,
+    /** `pending`, `loaded`, `failed`, or `stale` (last good copy + latest refresh error). */
+    val loadState: String = "loaded",
+    /** Latest catalog load/refresh error. */
+    val loadError: String? = null,
     /**
      * The row's facts are a last-known snapshot of a catalog whose daemon is idle, not a live read
      * (`/status` never resumes one). Rendered as a "last known" qualifier next to the trust badge,
@@ -1728,7 +1732,7 @@ object ServeWeb {
   data class StatusView(
     val version: String,
     val public: Boolean,
-    /** No recent daemon startup failures — the healthy case (drives the header badge). */
+    /** No catalog load or recent daemon startup failures (drives the header badge). */
     val overallOk: Boolean,
     val summary: List<Stat>,
     val config: List<Stat>,
@@ -1760,9 +1764,7 @@ object ServeWeb {
 
     val healthBadge =
       if (view.overallOk) " <span class=\"cp-badge cp-badge--trusted\">✓ healthy</span>"
-      else
-        " <span class=\"cp-badge cp-badge--unverified\">⚠ ${view.failures.size} recent " +
-          "daemon failure(s)</span>"
+      else " <span class=\"cp-badge cp-badge--unverified\">⚠ degraded</span>"
 
     val summaryGrid = view.summary.joinToString("\n") { stat(it) }
     val configGrid = view.config.joinToString("\n") { stat(it) }
@@ -1777,22 +1779,31 @@ object ServeWeb {
           val prov = c.provenance?.let { "<div class=\"cp-muted\">${esc(it)}</div>" } ?: ""
           val stateCell =
             when {
+              c.loadState == "failed" ->
+                "<span class=\"cp-badge cp-badge--unverified\">failed to load</span>"
+              c.loadState == "pending" -> "<span class=\"cp-muted\">loading</span>"
+              c.loadState == "stale" ->
+                "<span class=\"cp-badge cp-badge--unverified\">stale copy</span>"
               c.running -> "<span class=\"cp-ok\">live · running</span>"
               c.live -> "live · idle"
               else -> "<span class=\"cp-muted\">baked PNG</span>"
             }
           val degrade = c.degradation?.let { "<div class=\"cp-muted\">${esc(it)}</div>" } ?: ""
+          val loadError = c.loadError?.let { "<div class=\"cp-muted\">${esc(it)}</div>" } ?: ""
           // An idle catalog's facts are last-known, not live — say so next to the badge rather than
           // leaving the cell blank, which would read as untrusted.
           val staleNote = if (c.stale) "<div class=\"cp-muted\">last known</div>" else ""
           val trustCell =
             compactTrustBadge(c.trust).ifBlank { "<span class=\"cp-muted\">—</span>" } + staleNote
+          val title =
+            if (c.loadState == "failed" || c.loadState == "pending") esc(c.title)
+            else "<a href=\"/$idSeg/$suffix\">${esc(c.title)}</a>"
           "<tr>" +
-            "<td><a href=\"/$idSeg/$suffix\">${esc(c.title)}</a>$listed" +
+            "<td>$title$listed" +
             "<div class=\"cp-muted\">${esc(c.id)}</div>$prov</td>" +
             "<td>$trustCell</td>" +
             "<td>${c.previews}</td>" +
-            "<td>$stateCell$degrade</td>" +
+            "<td>$stateCell$loadError$degrade</td>" +
             "</tr>"
         }
 
@@ -1840,9 +1851,10 @@ object ServeWeb {
       <p class="cp-sub">compose-preview serve · $mode$ver</p>
       <section class="cp-about">
         <p class="cp-about-title">Status &amp; monitoring</p>
-        <p class="cp-about-body">A live snapshot of this preview server — the catalogs it publishes,
-          the render daemons running now, its configuration, and recent daemon startup failures. The
-          same data is available as JSON for a monitor or Home Assistant sensor.</p>
+        <p class="cp-about-body">A live snapshot of this preview server — every configured catalog
+          and its latest load result, the render daemons running now, its configuration, and recent
+          daemon startup failures. The same data is available as JSON for a monitor or Home
+          Assistant sensor.</p>
         <p class="cp-about-links">
           <a href="/status.json$suffix">/status.json</a> ·
           <a href="/version">/version</a> ·

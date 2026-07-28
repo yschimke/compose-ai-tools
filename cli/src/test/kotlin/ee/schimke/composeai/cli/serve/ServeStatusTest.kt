@@ -39,7 +39,11 @@ class ServeStatusTest {
   private val registry = ServeSessionRegistry(open = { null })
   private val daemonLog = DaemonStartupLog(clock = { 1_000L })
 
-  private fun newServer(public: Boolean, token: String): ServeHttpServer {
+  private fun newServer(
+    public: Boolean,
+    token: String,
+    catalogLoads: CatalogLoadTracker? = null,
+  ): ServeHttpServer {
     registry.register(
       "default-mod",
       host = bundle("default-mod", listOf("com.example.Red")),
@@ -67,6 +71,7 @@ class ServeStatusTest {
         isPublic = public,
         catalogSessions = listOf("compose-m3"),
         appCatalogSessions = listOf("cadence"),
+        catalogLoads = catalogLoads,
         daemonLog = daemonLog,
         allowRenderTrusted = true,
         trustStoreConfigured = true,
@@ -127,8 +132,51 @@ class ServeStatusTest {
     assertTrue(body.contains("Compose Material 3"), body)
     assertTrue(body.contains("href=\"/status.json\""), body)
     // The recent failure surfaces the degraded badge + row.
-    assertTrue(body.contains("recent daemon failure(s)"), body)
+    assertTrue(body.contains("degraded"), body)
     assertTrue(body.contains("daemon launch timed out"), body)
+  }
+
+  @Test
+  fun `configured catalog failures remain visible in status`() {
+    val loads =
+      CatalogLoadTracker(
+        listOf(
+          CatalogLoadTracker.Config(
+            "compose-m3",
+            listed = true,
+            repo = "yschimke/compose-ai-tools",
+            branch = "design-artifacts/compose-m3",
+          ),
+          CatalogLoadTracker.Config(
+            "reply",
+            listed = true,
+            repo = "yschimke/compose-samples",
+            branch = "design-artifacts/reply",
+          ),
+        ),
+        clock = { 4_242L },
+      )
+    loads.recordSuccess("compose-m3")
+    loads.recordFailure("reply", "could not parse catalog.json: expected a string")
+    server = newServer(public = true, token = "unused", catalogLoads = loads)
+
+    val (jsonCode, json) = get("/status.json")
+    assertEquals(200, jsonCode)
+    assertTrue(json.contains("\"status\":\"degraded\""), json)
+    assertTrue(json.contains("\"total\":2"), json)
+    assertTrue(json.contains("\"loaded\":1"), json)
+    assertTrue(json.contains("\"failed\":1"), json)
+    assertTrue(json.contains("\"id\":\"reply\""), json)
+    assertTrue(json.contains("\"loadState\":\"failed\""), json)
+    assertTrue(json.contains("could not parse catalog.json: expected a string"), json)
+    assertTrue(json.contains("\"lastLoadAttemptEpochMillis\":4242"), json)
+
+    val (htmlCode, html) = get("/status")
+    assertEquals(200, htmlCode)
+    assertTrue(html.contains("1/2 loaded"), html)
+    assertTrue(html.contains("failed to load"), html)
+    assertTrue(html.contains("could not parse catalog.json: expected a string"), html)
+    assertTrue(!html.contains("href=\"/reply/\""), "a failed catalog must not link to a 404: $html")
   }
 
   @Test

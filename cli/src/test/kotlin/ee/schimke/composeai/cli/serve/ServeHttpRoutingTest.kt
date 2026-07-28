@@ -160,6 +160,49 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `a failed optional catalog does not block readiness`() {
+    val partialRegistry = ServeSessionRegistry(open = { null })
+    partialRegistry.register("default-mod", host = bundle("partial-default"), pinned = true)
+    val loads =
+      CatalogLoadTracker(
+        listOf(
+          CatalogLoadTracker.Config(
+            system = "reply",
+            listed = true,
+            repo = "yschimke/compose-samples",
+            branch = "design-artifacts/reply",
+          )
+        )
+      )
+    loads.recordFailure("reply", "could not parse catalog.json")
+    val partialServer =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused-in-public",
+          sessions = partialRegistry,
+          defaultSessionId = "default-mod",
+          isPublic = true,
+          catalogSessions = listOf("reply"),
+          catalogLoads = loads,
+        )
+        .also { it.start() }
+    try {
+      var response = 503 to "warming"
+      for (attempt in 0 until 50) {
+        val req = Request.Builder().url("http://127.0.0.1:${partialServer.port}/readyz").build()
+        client.newCall(req).execute().use { r -> response = r.code to (r.body?.string() ?: "") }
+        if (response.first == 200) break
+        Thread.sleep(100)
+      }
+      assertEquals(200 to "ready", response)
+    } finally {
+      partialServer.stop()
+      partialRegistry.close()
+    }
+  }
+
+  @Test
   fun `readyz withholds ready when the default session cannot render`() {
     // A server whose default session resolves to nothing (an empty registry) can't render a
     // representative preview, so /readyz must report 503 "warming" — NOT a false green. This is the

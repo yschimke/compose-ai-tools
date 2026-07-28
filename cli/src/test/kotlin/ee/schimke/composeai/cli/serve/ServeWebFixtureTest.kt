@@ -720,7 +720,7 @@ class ServeWebFixtureTest {
       ServeWeb.notFoundPage("That preview does not exist in this catalog.", token, isPublic = true)
 
     // The server STATUS page (GET /status): a snapshot of the running host — published catalogs +
-    // their trust/liveness, the render daemons up now, the effective config, and recent daemon
+    // their load/trust/liveness, the render daemons up now, the effective config, and recent daemon
     // startup failures. A representative spread (a live+running catalog, a degraded baked one, an
     // unlisted one, a running desktop daemon, and one recent failure so the amber "degraded" badge
     // +
@@ -973,7 +973,7 @@ class ServeWebFixtureTest {
       "status page headers the status and links its JSON form",
     )
     assertTrue(
-      serveStatus.contains("recent daemon failure(s)") &&
+      serveStatus.contains("⚠ degraded") &&
         serveStatus.contains("daemon launch timed out after 300s"),
       "a recent failure surfaces the degraded badge and the failure row",
     )
