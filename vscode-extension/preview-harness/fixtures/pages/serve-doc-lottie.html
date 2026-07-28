@@ -74,9 +74,13 @@ html.cp-js .cp-section-head { display: none; }
 .cp-group-head { margin: 18px 0 10px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em;
   text-transform: uppercase; color: #8a8a92; }
 .cp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
-.cp-theme { display: inline-flex; border: 1px solid #d7d7de; border-radius: 999px; overflow: hidden; }
+/* The Theme picker carries one chip per configured theme (the baked light/dark pair plus any
+   app-declared @ThemeCatalog theme), so it wraps rather than overflowing a narrow viewport. */
+.cp-theme { display: inline-flex; flex-wrap: wrap; border: 1px solid #d7d7de; border-radius: 999px;
+  overflow: hidden; max-width: 100%; }
 .cp-theme-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
   padding: 3px 14px; cursor: pointer; }
+.cp-theme-btn + .cp-theme-btn { border-left: 1px solid #ececf1; }
 .cp-theme-btn[aria-pressed="true"] { background: #ececff; color: #3a3a8a; font-weight: 600; }
 .cp-states { display: inline-flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
 .cp-state-btn { border: 1px solid #d7d7de; border-radius: 999px; background: #fff; color: #6b6b70;
@@ -350,6 +354,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-group-head { color: #7a7a82; }
   .cp-theme { border-color: #34343a; }
   .cp-theme-btn { background: #1d1d20; color: #a0a0a8; }
+  .cp-theme-btn + .cp-theme-btn { border-left-color: #34343a; }
   .cp-theme-btn[aria-pressed="true"] { background: #26264a; color: #c9c9ff; }
   .cp-state-btn { background: #1d1d20; color: #a0a0a8; border-color: #34343a; }
   .cp-state-btn:hover { border-color: #4a4a55; color: #c9c9ff; }
