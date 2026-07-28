@@ -124,14 +124,15 @@ internal object ModifierTokenResolver {
       val nodeShape =
         if (isPlaceholderShapeModifier(name, simpleName)) null else shapeOf(mod, elements)
       if (nodeShape != null) {
-        if (cornerRadius == null) cornerRadius = nodeShape.cornerRadiusWire(minSidePx, density)
+        val effectiveShape = nodeShape.effectiveCornerShape()
+        if (cornerRadius == null) cornerRadius = effectiveShape.cornerRadiusWire(minSidePx, density)
         // A `RoundedCornerShape(<px>f)` has no dp `cornerRadius`; capture its raw-pixel radii so
         // the
         // figma-svg export can still round the corner instead of dropping to a sharp rect.
         if (cornerRadius == null && cornerRadiusPx == null) {
-          cornerRadiusPx = nodeShape.cornerRadiusPxWire()
+          cornerRadiusPx = effectiveShape.cornerRadiusPxWire()
         }
-        if (shape == null) shape = nodeShape.shapeDescriptor()
+        if (shape == null) shape = effectiveShape.shapeDescriptor()
       }
     }
     val gap = arrangementGapWire(measurePolicy)
@@ -509,6 +510,32 @@ internal object ModifierTokenResolver {
           as? Shape
       }
       .getOrNull()
+  }
+
+  /**
+   * Material 3 expressive buttons expose their clipping shape through the anonymous
+   * `rememberAnimatedShape` wrapper. The wrapper is a [Shape], but not a `CornerBasedShape`, so its
+   * effective corners live on the wrapper's `state.morphedShape` and the ordinary corner getters
+   * above cannot see them. Resolve that current shape reflectively rather than coupling this module
+   * to Material 3 internals.
+   *
+   * This is deliberately a narrow fallback: normal corner shapes retain their direct getter path,
+   * and an unknown shape without a state exposing `getMorphedShape()` is returned unchanged.
+   */
+  private fun Shape.effectiveCornerShape(): Shape {
+    if (invokeNoArg("getTopStart") != null) return this
+    return javaClass.declaredFields
+      .asSequence()
+      .filter { it.name.endsWith("state", ignoreCase = true) }
+      .mapNotNull { field ->
+        runCatching {
+            field.isAccessible = true
+            field.get(this)
+          }
+          .getOrNull()
+      }
+      .mapNotNull { state -> state.invokeNoArg("getMorphedShape") as? Shape }
+      .firstOrNull() ?: this
   }
 
   /**
