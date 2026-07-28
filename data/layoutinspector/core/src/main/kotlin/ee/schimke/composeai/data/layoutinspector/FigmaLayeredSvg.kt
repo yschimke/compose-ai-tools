@@ -129,6 +129,7 @@ object FigmaLayeredSvg {
     options: Options,
     familyOverrides: Map<String, String>,
     depth: Int,
+    inheritedOpacity: Double = 1.0,
     // Monotonic counter for curved-text `<path>` ids, threaded through the whole walk so every arc
     // gets a document-unique id even when two `CurvedLayout`s share a component name — otherwise
     // duplicate ids make a later `<textPath href>` resolve to the first path (Codex #2395).
@@ -138,9 +139,9 @@ object FigmaLayeredSvg {
     // An opaque layer is a leaf `<image>` — the background-free raster stands in for a subtree the
     // exporter can't vectorise. No shape/text/children; the group keeps the composable name.
     if (layer.raster != null) {
-      sb
-        .append("""$indent<g id="${escapeAttr(layer.name)}"${opacityAttr(layer.opacity)}>""")
-        .append('\n')
+      // Raster crops come from the final composited frame, so every ancestor/local graphics-layer
+      // alpha is already baked into the pixels. Reapplying it here would fade the crop twice.
+      sb.append("""$indent<g id="${escapeAttr(layer.name)}">""").append('\n')
       sb.append(indent).append("  ").append(image(layer, layer.raster)).append('\n')
       sb.append("$indent</g>\n")
       return
@@ -149,7 +150,7 @@ object FigmaLayeredSvg {
     // transform that maps the vector's own viewport onto the layer's placed box — the vector
     // alternative to the `<image>` leaf above. Also a leaf: an icon's art has no editable subtree.
     if (layer.vector != null) {
-      sb.append(vectorGroup(layer, layer.vector, indent)).append('\n')
+      sb.append(vectorGroup(layer, layer.vector, indent, inheritedOpacity)).append('\n')
       return
     }
     val tokenName = layer.fill?.tokenName ?: layer.stroke?.tokenName
@@ -162,8 +163,11 @@ object FigmaLayeredSvg {
     val filterAttr =
       if (layer.elevationPx >= 1.0) """ filter="url(#${shadowFilterId(layer.elevationPx)})""""
       else ""
+    val containsRaster = layer.containsCapturedRaster()
+    val outerOpacity = inheritedOpacity * layer.opacity
+    val namedGroupOpacity = if (containsRaster) 1.0 else outerOpacity
     sb.append(
-      """$indent<g id="${escapeAttr(layer.name)}"$dataToken$filterAttr${opacityAttr(layer.opacity)}>"""
+      """$indent<g id="${escapeAttr(layer.name)}"$dataToken$filterAttr${opacityAttr(namedGroupOpacity)}>"""
     )
     sb.append('\n')
     if (options.annotateTokens && tokenName != null) {
@@ -177,25 +181,109 @@ object FigmaLayeredSvg {
     layer.background?.let { bg ->
       sb.append(indent).append("  ").append(backgroundImage(bg)).append('\n')
     }
-    if (layer.fill != null || layer.stroke != null) {
-      sb.append(indent).append("  ").append(shape(layer)).append('\n')
+    if (containsRaster) {
+      // A group containing a final-frame crop cannot carry inherited opacity without fading that
+      // crop twice. Apply the outer alpha only to this layer's vector shape, then thread the
+      // combined outer/content alpha into editable descendants; raster leaves deliberately ignore
+      // it above.
+      if (layer.fill != null || layer.stroke != null) {
+        appendOpacityGroup(sb, indent + "  ", outerOpacity) {
+          sb.append(indent).append("    ").append(shape(layer)).append('\n')
+        }
+      }
+      val contentOpacity = outerOpacity * layer.contentOpacity
+      if (layer.text != null || layer.curvedTexts.isNotEmpty()) {
+        appendOpacityGroup(sb, indent + "  ", contentOpacity) {
+          appendTextContent(layer, sb, options, familyOverrides, indent + "    ", curveSeq)
+        }
+      }
+      for (child in layer.children) {
+        renderLayer(
+          child,
+          sb,
+          options,
+          familyOverrides,
+          depth + 1,
+          inheritedOpacity = contentOpacity,
+          curveSeq = curveSeq,
+        )
+      }
+    } else {
+      if (layer.fill != null || layer.stroke != null) {
+        sb.append(indent).append("  ").append(shape(layer)).append('\n')
+      }
+      val hasInnerContent =
+        layer.text != null || layer.curvedTexts.isNotEmpty() || layer.children.isNotEmpty()
+      if (hasInnerContent && layer.contentOpacity < 0.999) {
+        sb
+          .append(indent)
+          .append("  ")
+          .append("""<g${opacityAttr(layer.contentOpacity)}>""")
+          .append('\n')
+        appendTextContent(layer, sb, options, familyOverrides, indent + "    ", curveSeq)
+        for (child in layer.children) {
+          renderLayer(
+            child,
+            sb,
+            options,
+            familyOverrides,
+            depth + 2,
+            inheritedOpacity = 1.0,
+            curveSeq = curveSeq,
+          )
+        }
+        sb.append(indent).append("  </g>\n")
+      } else {
+        appendTextContent(layer, sb, options, familyOverrides, indent + "  ", curveSeq)
+        for (child in layer.children) {
+          renderLayer(
+            child,
+            sb,
+            options,
+            familyOverrides,
+            depth + 1,
+            inheritedOpacity = 1.0,
+            curveSeq = curveSeq,
+          )
+        }
+      }
     }
-    if (layer.text != null) {
-      sb.append(indent).append("  ").append(text(layer, options, familyOverrides)).append('\n')
-    }
-    layer.curvedTexts.forEach { ct ->
-      sb.append(indent).append("  ").append(curvedText(ct, "c${curveSeq[0]++}")).append('\n')
-    }
-    for (child in layer.children) renderLayer(
-      child,
-      sb,
-      options,
-      familyOverrides,
-      depth + 1,
-      curveSeq,
-    )
     sb.append("$indent</g>\n")
   }
+
+  private fun appendTextContent(
+    layer: FigmaSvgLayer,
+    sb: StringBuilder,
+    options: Options,
+    familyOverrides: Map<String, String>,
+    indent: String,
+    curveSeq: IntArray,
+  ) {
+    if (layer.text != null) {
+      sb.append(indent).append(text(layer, options, familyOverrides)).append('\n')
+    }
+    layer.curvedTexts.forEach { ct ->
+      sb.append(indent).append(curvedText(ct, "c${curveSeq[0]++}")).append('\n')
+    }
+  }
+
+  private inline fun appendOpacityGroup(
+    sb: StringBuilder,
+    indent: String,
+    opacity: Double,
+    content: () -> Unit,
+  ) {
+    if (opacity >= 0.999) {
+      content()
+      return
+    }
+    sb.append(indent).append("""<g${opacityAttr(opacity)}>""").append('\n')
+    content()
+    sb.append(indent).append("</g>\n")
+  }
+
+  private fun FigmaSvgLayer.containsCapturedRaster(): Boolean =
+    raster != null || background != null || children.any { it.containsCapturedRaster() }
 
   /**
    * A Wear curved-text run (a `TimeText` clock) as an SVG `<textPath>` on its baseline arc. The
@@ -277,26 +365,47 @@ object FigmaLayeredSvg {
       """width="${bg.width}" height="${bg.height}"/>"""
 
   /**
-   * A captured icon [FigmaSvgVector] as a named `<g>` holding a centered, uniform fit transform.
-   * Compose's `VectorPainter` preserves the viewport aspect ratio when the layout node and vector
-   * have different shapes; stretching X and Y independently flattened icons captured from
-   * animated/transitioning content into wide slivers.
+   * A captured icon [FigmaSvgVector] fitted in its pre-transform layout slot, then mapped through
+   * the captured placed bounds. This preserves the normal aspect fit while retaining an explicit
+   * nonuniform graphics-layer scale; `ContentScale.FillBounds` opts directly into a stretched fit.
    */
-  private fun vectorGroup(layer: FigmaSvgLayer, vec: FigmaSvgVector, indent: String): String {
-    val sx = if (vec.viewportWidth > 0f) layer.width / vec.viewportWidth.toDouble() else 1.0
-    val sy = if (vec.viewportHeight > 0f) layer.height / vec.viewportHeight.toDouble() else 1.0
-    val scale = minOf(sx, sy)
-    val fittedWidth = vec.viewportWidth.toDouble() * scale
-    val fittedHeight = vec.viewportHeight.toDouble() * scale
+  private fun vectorGroup(
+    layer: FigmaSvgLayer,
+    vec: FigmaSvgVector,
+    indent: String,
+    inheritedOpacity: Double,
+  ): String {
+    val layoutWidth = vec.layoutWidth.takeIf { it > 0 }?.toDouble() ?: layer.width.toDouble()
+    val layoutHeight = vec.layoutHeight.takeIf { it > 0 }?.toDouble() ?: layer.height.toDouble()
+    val scaleX: Double
+    val scaleY: Double
+    if (vec.fillBounds) {
+      scaleX = if (vec.viewportWidth > 0f) layer.width / vec.viewportWidth.toDouble() else 1.0
+      scaleY = if (vec.viewportHeight > 0f) layer.height / vec.viewportHeight.toDouble() else 1.0
+    } else {
+      val layoutScale =
+        minOf(
+          layoutWidth / vec.viewportWidth.toDouble(),
+          layoutHeight / vec.viewportHeight.toDouble(),
+        )
+      val placedScaleX = if (layoutWidth > 0.0) layer.width / layoutWidth else 1.0
+      val placedScaleY = if (layoutHeight > 0.0) layer.height / layoutHeight else 1.0
+      scaleX = layoutScale * placedScaleX
+      scaleY = layoutScale * placedScaleY
+    }
+    val fittedWidth = vec.viewportWidth.toDouble() * scaleX
+    val fittedHeight = vec.viewportHeight.toDouble() * scaleY
     val x = layer.left + (layer.width - fittedWidth) / 2.0
     val y = layer.top + (layer.height - fittedHeight) / 2.0
     val sb = StringBuilder()
     sb
-      .append("""$indent<g id="${escapeAttr(layer.name)}"${opacityAttr(layer.opacity)}>""")
+      .append(
+        """$indent<g id="${escapeAttr(layer.name)}"${opacityAttr(inheritedOpacity * layer.opacity)}>"""
+      )
       .append('\n')
     sb
       .append(
-        """$indent  <g transform="translate(${fmt(x)} ${fmt(y)}) scale(${fmt(scale)} ${fmt(scale)})">"""
+        """$indent  <g transform="translate(${fmt(x)} ${fmt(y)}) scale(${fmt(scaleX)} ${fmt(scaleY)})"${opacityAttr(layer.contentOpacity)}>"""
       )
       .append('\n')
     for (p in vec.paths) sb.append(indent).append("    ").append(vectorPath(p)).append('\n')

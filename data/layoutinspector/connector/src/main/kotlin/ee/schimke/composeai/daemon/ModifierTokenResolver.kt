@@ -174,7 +174,7 @@ internal object ModifierTokenResolver {
    * only expose the block itself, but their [ModifierInfo.coordinates] coordinator retains the
    * evaluated `ReusableGraphicsLayerScope`; direct overloads may expose `alpha` on the element.
    */
-  private fun graphicsLayerAlpha(info: ModifierInfo): Double? {
+  internal fun graphicsLayerAlpha(info: ModifierInfo): Double? {
     val scope = reflectedField(info.coordinates, "graphicsLayerScope")
     val effective =
       scope?.let { reflectedFloat(it, "alpha") }

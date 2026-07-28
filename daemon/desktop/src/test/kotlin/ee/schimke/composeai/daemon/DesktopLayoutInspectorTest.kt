@@ -126,6 +126,11 @@ class DesktopLayoutInspectorTest {
     val layer = root.firstWhere { it.tokens?.backgroundColor == "#FFFF0000" }
     assertNotNull("the transformed layer must be captured", layer)
     assertEquals("effective graphicsLayer alpha", 0.25, layer!!.tokens!!.opacity!!, 0.001)
+    val graphicsLayer =
+      layer.modifiers.firstOrNull {
+        it.name == "graphicsLayer" || it.name.contains("GraphicsLayer")
+      }
+    assertEquals("ordered graphicsLayer alpha", "0.25", graphicsLayer?.properties?.get("alpha"))
     // Translation and scale are already applied by LayoutCoordinates.boundsIn(root), so the
     // exporter must not apply them a second time.
     assertEquals(LayoutInspectorBounds(left = 27, top = 14, right = 67, bottom = 44), layer.bounds)

@@ -1088,6 +1088,12 @@ internal object ComposeLayoutInspector {
         .getOrNull()
         ?.let { properties["brush"] = it.wireValue() }
     }
+    if (
+      "alpha" !in properties &&
+        (name == "graphicsLayer" || modifier.javaClass.simpleName.contains("GraphicsLayer"))
+    ) {
+      ModifierTokenResolver.graphicsLayerAlpha(this)?.let { properties["alpha"] = it.toString() }
+    }
     return LayoutInspectorModifier(
       name = name,
       value = value,

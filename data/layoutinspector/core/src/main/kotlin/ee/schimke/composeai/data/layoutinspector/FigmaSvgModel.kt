@@ -115,12 +115,16 @@ data class FigmaSvgRaster(val href: String)
 /**
  * An editable vector graphic (an `Icon`/`Image`'s `ImageVector`) emitted as real `<path>` layers —
  * the vector alternative to a [FigmaSvgRaster] leaf. Path coordinates are in the vector's own
- * [viewportWidth] × [viewportHeight]; the emitter uniformly scales and centers them in the layer's
- * placed box, matching `VectorPainter`'s aspect-preserving fit.
+ * [viewportWidth] × [viewportHeight]. [layoutWidth] × [layoutHeight] is the pre-transform layout
+ * slot, allowing the emitter to distinguish an intentionally transformed vector from a merely
+ * non-square slot. [fillBounds] preserves an explicit `ContentScale.FillBounds`.
  */
 data class FigmaSvgVector(
   val viewportWidth: Float,
   val viewportHeight: Float,
+  val layoutWidth: Int,
+  val layoutHeight: Int,
+  val fillBounds: Boolean = false,
   val paths: List<FigmaSvgVectorPath>,
 )
 
@@ -229,8 +233,10 @@ data class FigmaSvgLayer(
    * its drop shadow instead of reading as a flat fill against the render.
    */
   val elevationPx: Double = 0.0,
-  /** Effective `graphicsLayer` alpha for this layer and its subtree. */
+  /** Alpha from `graphicsLayer`s outside this layer's own drawing modifiers. */
   val opacity: Double = 1.0,
+  /** Alpha from `graphicsLayer`s inside this layer's own drawing modifiers. */
+  val contentOpacity: Double = 1.0,
   /**
    * Wear curved text (a `CurvedLayout`/`TimeText` clock) carried on this layer — drawn as an SVG
    * `<textPath>` along its baseline arc. Empty for the common straight-text/no-text case.
@@ -254,7 +260,8 @@ data class FigmaSvgLayer(
         vector != null ||
         background != null ||
         curvedTexts.isNotEmpty() ||
-        opacity < 0.999
+        opacity < 0.999 ||
+        contentOpacity < 0.999
 }
 
 /**
@@ -488,7 +495,11 @@ data class FigmaSvgModel(
      * gradient/brush-filled paths (whose colour the capture left null, matching the
      * vector-vs-raster rule: what we can't resolve to a flat paint, we don't emit as vector).
      */
-    private fun LayoutInspectorVectorGraphic.toFigmaSvgVector(): FigmaSvgVector? {
+    private fun LayoutInspectorVectorGraphic.toFigmaSvgVector(
+      layoutWidth: Int,
+      layoutHeight: Int,
+      fillBounds: Boolean,
+    ): FigmaSvgVector? {
       if (viewportWidth <= 0f || viewportHeight <= 0f) return null
       val emittable =
         paths
@@ -507,7 +518,15 @@ data class FigmaSvgModel(
             )
           }
       return if (emittable.isEmpty()) null
-      else FigmaSvgVector(viewportWidth, viewportHeight, emittable)
+      else
+        FigmaSvgVector(
+          viewportWidth = viewportWidth,
+          viewportHeight = viewportHeight,
+          layoutWidth = layoutWidth,
+          layoutHeight = layoutHeight,
+          fillBounds = fillBounds,
+          paths = emittable,
+        )
     }
 
     private fun LayoutInspectorNode.toLayer(
@@ -527,23 +546,30 @@ data class FigmaSvgModel(
       // origin, clamped to the parent, and use it everywhere below. Best-effort geometry for a
       // pathological capture; a normally-placed node keeps its real `bounds` untouched.
       val bounds = recoverBounds(parentBounds)
-      val opacity = tokens?.opacity?.coerceIn(0.0, 1.0) ?: 1.0
+      val (opacity, contentOpacity) = orderedOpacities()
       // An `Icon`/`Image` whose `ImageVector` the inspector captured emits as editable `<path>`
       // layers rather than a raster crop — the vector alternative to the opaque-by-name fallback
       // below. Placed before the raster branch so a vector-backed icon never rasterises; a
       // bitmap-backed one (no `vectorGraphic`) falls through and rasters as before. An empty/
       // gradient-only capture yields null and also falls through.
-      vectorGraphic?.toFigmaSvgVector()?.let { vec ->
-        return FigmaSvgLayer(
-          name = layerName(),
-          left = bounds.left,
-          top = bounds.top,
-          right = bounds.right,
-          bottom = bounds.bottom,
-          vector = vec,
-          opacity = opacity,
+      vectorGraphic
+        ?.toFigmaSvgVector(
+          layoutWidth = size.width,
+          layoutHeight = size.height,
+          fillBounds = hasFillBoundsContentScale(),
         )
-      }
+        ?.let { vec ->
+          return FigmaSvgLayer(
+            name = layerName(),
+            left = bounds.left,
+            top = bounds.top,
+            right = bounds.right,
+            bottom = bounds.bottom,
+            vector = vec,
+            opacity = opacity,
+            contentOpacity = contentOpacity,
+          )
+        }
       // An opaque component matched by name (Image/Icon/TextField/…) can't be vectorised at all —
       // emit an <image> for the whole node and drop the subtree.
       val opaqueByName = isOpaque(ctx.rasterComponents)
@@ -560,6 +586,7 @@ data class FigmaSvgModel(
           bottom = bounds.bottom,
           raster = FigmaSvgRaster(href),
           opacity = opacity,
+          contentOpacity = contentOpacity,
         )
       }
       // A container filled by paint the token model cannot flatten — a non-ColorPainter
@@ -584,6 +611,7 @@ data class FigmaSvgModel(
           bottom = region.bottom,
           raster = FigmaSvgRaster(href),
           opacity = opacity,
+          contentOpacity = contentOpacity,
         )
       }
       // A *leaf* node that paints via an imperative Canvas draw (`drawBehind`/`drawWithContent`) —
@@ -735,10 +763,48 @@ data class FigmaSvgModel(
         background = background,
         elevationPx = elevationPx,
         opacity = opacity,
+        contentOpacity = contentOpacity,
         curvedTexts = curvedTexts,
         children = children.map { it.toLayer(ctx, bounds) },
       )
     }
+
+    /**
+     * Split evaluated graphics-layer alpha at the first drawing modifier. Compose modifier order is
+     * outer-to-inner: `graphicsLayer().background()` fades the background and content, while
+     * `background().graphicsLayer()` leaves the background outside the faded content group.
+     */
+    private fun LayoutInspectorNode.orderedOpacities(): Pair<Double, Double> {
+      val alphas = modifiers.mapIndexedNotNull { index, modifier ->
+        modifier.properties["alpha"]?.toDoubleOrNull()?.coerceIn(0.0, 1.0)?.let { index to it }
+      }
+      if (alphas.isEmpty()) {
+        return (tokens?.opacity?.coerceIn(0.0, 1.0) ?: 1.0) to 1.0
+      }
+      val firstDraw =
+        modifiers.indexOfFirst { it.isDrawingModifier() }.takeIf { it >= 0 } ?: modifiers.size
+      val outer =
+        alphas.filter { it.first < firstDraw }.fold(1.0) { acc, (_, alpha) -> acc * alpha }
+      val content =
+        alphas.filter { it.first >= firstDraw }.fold(1.0) { acc, (_, alpha) -> acc * alpha }
+      return outer to content
+    }
+
+    private fun LayoutInspectorModifier.isDrawingModifier(): Boolean {
+      val lower = name.lowercase()
+      return lower == "background" ||
+        lower.contains("backgroundelement") ||
+        lower == "paint" ||
+        lower.contains("painterelement") ||
+        lower == "border" ||
+        lower.contains("bordermodifier") ||
+        lower.startsWith("draw")
+    }
+
+    private fun LayoutInspectorNode.hasFillBoundsContentScale(): Boolean =
+      modifiers.any { modifier ->
+        modifier.properties["contentScale"]?.contains("FillBounds", ignoreCase = true) == true
+      }
 
     /**
      * Collapse pure-grouping pass-through layers — a `<g>` that draws nothing (no
