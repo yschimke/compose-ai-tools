@@ -237,6 +237,17 @@ gap by scanning the module's Kotlin source directly (no Gradle build, no render)
   …). The authoritative check remains the render + completeness gate; this is the
   fast local/CI pre-flight.
 
+  It also rejects a `preview` that resolves to a **PNG-less** function — one whose
+  only capture is an animated GIF or a scroll data product (`@AnimatedPreview`,
+  `@FocusedPreview(gif = true)`, or `@ScrollingPreview` with only `ScrollMode.LONG`
+  / `ScrollMode.GIF`). Those render fine, but the export represents every catalog
+  entry as a static sticker: `candidatePreviewBundle()` drops anything without
+  `previews/<id>.png` from the candidate join, and the completeness gate then
+  reports the component missing. Catalogue a static `@Preview` sibling instead and
+  let the GIF travel in the bundle as its own artifact. `init-catalog-spec` skips
+  these functions when scaffolding, and the validator's discovery line names them
+  so you know why they're absent.
+
 The spec shape is described by
 [`scripts/design-artifacts/catalog.spec.schema.json`](../../scripts/design-artifacts/catalog.spec.schema.json)
 (referenced via `$schema` in each sample spec for editor validation).

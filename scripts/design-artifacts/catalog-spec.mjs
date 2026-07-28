@@ -16,6 +16,27 @@
 // a spec `preview` can reference.
 const PREVIEW_ANNOTATION = "Preview";
 
+// Capture annotations that decide whether a preview function renders a static
+// `renders/<id>.png` at all. Mirrors `emitStaticCross` in PreviewDiscovery.kt
+// (gradle-plugin/preview-discovery): a function whose ONLY capture annotations are
+// single-output GIF producers (`@AnimatedPreview`, `@FocusedPreview(gif = true)`,
+// `@ScrollingPreview` with only the data-product modes LONG/GIF) suppresses the
+// static cross-product, so no PNG is written. `@ScrollingPreview(modes = [LONG])`
+// still writes a PNG (the stitched long shot IS the render), so only the GIF cases
+// end up PNG-less.
+//
+// This matters for the spec because the catalog export's `candidatePreviewBundle()`
+// keeps only previews carrying `previews/<id>.png` — a GIF-only preview is dropped
+// from the candidate join and then reported missing by the completeness gate. See
+// bundle-previews.mjs and issue #2865.
+const ANIMATED_PREVIEW_ANNOTATION = "AnimatedPreview";
+const FOCUSED_PREVIEW_ANNOTATION = "FocusedPreview";
+const SCROLLING_PREVIEW_ANNOTATION = "ScrollingPreview";
+const ROBO_OPTIONS_ANNOTATION = "RoboComposePreviewOptions";
+// `ScrollMode` values that are emitted as data products (a tall stitched PNG /
+// scrolling GIF) rather than as ordinary captures.
+const PRODUCT_SCROLL_MODES = new Set(["LONG", "GIF"]);
+
 // A leading run of Kotlin annotations, e.g. `@CatalogModes @Preview(name = "x") `.
 // Each annotation is `@Name` optionally followed by a `(...)` argument list. The
 // arg matcher allows one level of nested parens (`@Preview(widthDp = f(1))`);
@@ -122,17 +143,72 @@ export function blankStringContents(source) {
   return out;
 }
 
+/** The `@Name` / `@Name(args…)` entries of a leading-annotation run, each with its
+ *  simple name (`a.b.CatalogModes` → `CatalogModes`) — Kotlin call sites usually
+ *  import and use the short name, which is what a multipreview `annotation class`
+ *  is declared under — and its raw argument text (`""` when there is no arg list). */
+function annotationEntries(run) {
+  const entryRe = new RegExp(String.raw`@([\w.]+)(\s*\((?:[^()]|\([^()]*\))*\))?`, "g");
+  const entries = [];
+  for (const m of run.matchAll(entryRe)) {
+    const parts = m[1].split(".");
+    entries.push({ name: parts[parts.length - 1], args: m[2] ?? "" });
+  }
+  return entries;
+}
+
 /** The set of `@Name` identifiers named in a leading-annotation run. */
 function annotationNames(run) {
-  const names = new Set();
-  for (const m of run.matchAll(/@([\w.]+)/g)) {
-    // Keep only the simple name (`a.b.CatalogModes` → `CatalogModes`) — Kotlin
-    // call sites usually import and use the short name, which is what a
-    // multipreview `annotation class` is declared under.
-    const parts = m[1].split(".");
-    names.add(parts[parts.length - 1]);
-  }
-  return names;
+  return new Set(annotationEntries(run).map((e) => e.name));
+}
+
+/**
+ * Whether a function carrying this leading-annotation run renders a static
+ * `previews/<id>.png`.
+ *
+ * Mirrors `emitStaticCross` in PreviewDiscovery.kt: the scroll × time × focus
+ * cross-product normally emits at least one PNG capture, but it is suppressed when
+ * the function's only capture annotations are single-output producers —
+ * `@AnimatedPreview`, `@FocusedPreview(gif = true)`, or a `@ScrollingPreview` whose
+ * modes are all data products (LONG/GIF, which land under `data/…` rather than
+ * `previews/<id>.png`). Those functions render, but have no static sticker for the
+ * catalog export to join on.
+ *
+ * Source-level detection is sound here because all three annotations are
+ * `@Target(FUNCTION)` — they can't hide inside a multipreview annotation class.
+ */
+export function rendersStaticPng(run) {
+  const entries = annotationEntries(run);
+  const named = (name) => entries.filter((e) => e.name === name);
+
+  const animated = named(ANIMATED_PREVIEW_ANNOTATION).length > 0;
+  const focused = named(FOCUSED_PREVIEW_ANNOTATION);
+  const focusGif = focused.some((e) => /\bgif\s*=\s*true\b/.test(e.args));
+  // `@FocusedPreview(gif = true)` supersedes the per-step focus fan-out (see
+  // `effectiveFocuses` in PreviewDiscovery.kt), so focus steps only count when no
+  // GIF-mode annotation is present.
+  const focusSteps = !focusGif && focused.length > 0;
+
+  const scrollModes = named(SCROLLING_PREVIEW_ANNOTATION).flatMap((e) => {
+    const modes = [...e.args.matchAll(/ScrollMode\.(\w+)/g)].map((m) => m[1]);
+    // No explicit `modes` → the annotation default, `[ScrollMode.END]`.
+    return modes.length > 0 ? modes : ["END"];
+  });
+  const captureScrolls = scrollModes.filter((m) => !PRODUCT_SCROLL_MODES.has(m));
+  const productScrolls = scrollModes.filter((m) => PRODUCT_SCROLL_MODES.has(m));
+
+  // `@RoboComposePreviewOptions(manualClockOptions = [...])` fans the function out
+  // into one PNG per virtual-time stop.
+  const timings = named(ROBO_OPTIONS_ANNOTATION).some((e) =>
+    /\bmanualClockOptions\s*=/.test(e.args),
+  );
+
+  return (
+    captureScrolls.length > 0 ||
+    timings ||
+    focusSteps ||
+    (!animated && !focusGif && productScrolls.length === 0)
+  );
 }
 
 /**
@@ -144,9 +220,12 @@ function annotationNames(run) {
  * @param {string[]} [opts.extraAnnotations]  Extra multipreview annotation
  *   *simple names* to treat as preview markers — for annotations declared in
  *   another module (imported), which a source-only scan can't see meta-annotated.
- * @returns {{ previews: string[], annotations: string[] }}
+ * @returns {{ previews: string[], annotations: string[], pngLess: string[] }}
  *   `previews`: sorted unique function names. `annotations`: the multipreview
  *   annotation names recognised (built-in `Preview` + discovered + extra).
+ *   `pngLess`: the subset of `previews` that render no static `previews/<id>.png`
+ *   (GIF-only / data-product-only captures — see [rendersStaticPng]); the catalog
+ *   export drops these from the candidate join, so a spec must not reference them.
  */
 export function discoverPreviews(sources, opts = {}) {
   const texts = sources.map((s) => blankStringContents(stripComments(s)));
@@ -184,16 +263,25 @@ export function discoverPreviews(sources, opts = {}) {
   // Functions whose leading run references any marker are previews.
   const funRe = new RegExp(`${LEADING_ANNOTATIONS}${MODIFIERS}fun\\s+(\\w+)`, "g");
   const previews = new Set();
+  // A function name is PNG-less only when EVERY declaration of it is (an overload
+  // or same-named function in another file that does render a sticker keeps the
+  // name joinable).
+  const pngLess = new Set();
+  const staticNames = new Set();
   for (const text of texts) {
     for (const m of text.matchAll(funRe)) {
       const names = annotationNames(m[1]);
-      if ([...names].some((a) => markers.has(a))) previews.add(m[2]);
+      if (![...names].some((a) => markers.has(a))) continue;
+      previews.add(m[2]);
+      if (rendersStaticPng(m[1])) staticNames.add(m[2]);
+      else pngLess.add(m[2]);
     }
   }
 
   return {
     previews: [...previews].sort(),
     annotations: [...markers].sort(),
+    pngLess: [...pngLess].filter((name) => !staticNames.has(name)).sort(),
   };
 }
 
@@ -277,6 +365,10 @@ export function closest(name, candidates) {
  * @param {object} spec
  * @param {object} [opts]
  * @param {string[]|Set<string>} [opts.knownPreviews]
+ * @param {string[]|Set<string>} [opts.pngLessPreviews]  Discovered preview functions
+ *   that render no static `previews/<id>.png` (see [discoverPreviews]'s `pngLess`).
+ *   Referencing one is an error: `candidatePreviewBundle()` drops it from the
+ *   candidate join and the completeness gate then reports the component missing.
  * @returns {{ errors: string[], warnings: string[] }}
  */
 export function validateSpec(spec, opts = {}) {
@@ -390,11 +482,10 @@ export function validateSpec(spec, opts = {}) {
     }
   }
 
-  const known = opts.knownPreviews
-    ? opts.knownPreviews instanceof Set
-      ? opts.knownPreviews
-      : new Set(opts.knownPreviews)
-    : null;
+  const known = toSet(opts.knownPreviews);
+  // PNG-less previews are still legitimately discovered @Preview functions, so they
+  // resolve — but they can't be catalog entries.
+  const pngLess = toSet(opts.pngLessPreviews) ?? new Set();
   if (known) {
     for (const [preview, paths] of previewToPaths) {
       if (!known.has(preview)) {
@@ -403,10 +494,20 @@ export function validateSpec(spec, opts = {}) {
         errors.push(
           `preview "${preview}" (${paths[0]}) matches no @Preview function in the scanned module${suffix}`,
         );
+      } else if (pngLess.has(preview)) {
+        errors.push(
+          `preview "${preview}" (${paths[0]}) renders no static PNG — it is an animated/data-product ` +
+            `capture (@AnimatedPreview, @FocusedPreview(gif = true), or @ScrollingPreview with only ` +
+            `LONG/GIF modes). The catalog export drops PNG-less previews from the candidate join, so ` +
+            `this entry would be reported missing by the completeness gate. Point it at a static ` +
+            `@Preview function (a plain @Preview sibling of the animated one works).`,
+        );
       }
     }
     const referenced = new Set(previewToPaths.keys());
-    const orphans = [...known].filter((p) => !referenced.has(p));
+    // PNG-less previews can't be catalogued at all, so their absence isn't a
+    // coverage gap worth reporting.
+    const orphans = [...known].filter((p) => !referenced.has(p) && !pngLess.has(p));
     if (orphans.length > 0) {
       warnings.push(
         `${orphans.length} @Preview function(s) not in the catalog: ${orphans.slice(0, 12).join(", ")}${orphans.length > 12 ? ", …" : ""}`,
@@ -415,6 +516,12 @@ export function validateSpec(spec, opts = {}) {
   }
 
   return { errors, warnings };
+}
+
+/** Normalise an optional array-or-Set option to a Set, or null when absent. */
+function toSet(value) {
+  if (!value) return null;
+  return value instanceof Set ? value : new Set(value);
 }
 
 function pushMulti(map, key, value) {

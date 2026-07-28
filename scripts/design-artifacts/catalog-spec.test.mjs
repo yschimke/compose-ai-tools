@@ -299,3 +299,129 @@ test("buildSkeletonSpec produces an editable one-group spec", () => {
   const { errors } = validateSpec(spec, { knownPreviews: ["Alpha", "Beta"] });
   assert.deepEqual(errors, []);
 });
+
+test("discoverPreviews flags GIF-only captures as PNG-less", () => {
+  const src = `
+    @Preview(name = "Toggle")
+    @AnimatedPreview(durationMs = 1000, frameIntervalMs = 100)
+    @Composable fun ToggleAnimatedPreview() {}
+
+    @Preview @Composable fun Static() {}
+
+    @Preview
+    @FocusedPreview(gif = true)
+    @Composable fun FocusGif() {}
+
+    @Preview
+    @ScrollingPreview(modes = [ScrollMode.GIF])
+    @Composable fun ScrollGif() {}
+
+    @Preview
+    @ScrollingPreview(modes = [ScrollMode.LONG])
+    @Composable fun ScrollLong() {}
+  `;
+  const { previews, pngLess } = discoverPreviews([src]);
+  assert.deepEqual(previews, [
+    "FocusGif",
+    "ScrollGif",
+    "ScrollLong",
+    "Static",
+    "ToggleAnimatedPreview",
+  ]);
+  // LONG and GIF are both data products written under `data/…`, never
+  // `previews/<id>.png`, so neither is catalogable.
+  assert.deepEqual(pngLess, ["FocusGif", "ScrollGif", "ScrollLong", "ToggleAnimatedPreview"]);
+});
+
+test("discoverPreviews keeps previews whose GIF sits alongside a static capture", () => {
+  const src = `
+    @Preview
+    @AnimatedPreview
+    @ScrollingPreview(modes = [ScrollMode.END, ScrollMode.GIF])
+    @Composable fun ScrolledAndAnimated() {}
+
+    @Preview
+    @FocusedPreview(indices = [0, 1])
+    @Composable fun FocusSteps() {}
+
+    @Preview
+    @ScrollingPreview
+    @Composable fun DefaultScroll() {}
+
+    @Preview
+    @RoboComposePreviewOptions(manualClockOptions = [ManualClockOptions(advanceTimeMillis = 300)])
+    @AnimatedPreview
+    @Composable fun TimedAndAnimated() {}
+  `;
+  const { pngLess } = discoverPreviews([src]);
+  assert.deepEqual(pngLess, []);
+});
+
+test("discoverPreviews only calls a name PNG-less when every declaration is", () => {
+  const animated = `
+    @Preview @AnimatedPreview @Composable fun Shared() {}
+  `;
+  const stat = `
+    @Preview @Composable fun Shared() {}
+  `;
+  assert.deepEqual(discoverPreviews([animated, stat]).pngLess, []);
+});
+
+test("validateSpec rejects a component pointing at a PNG-less preview", () => {
+  const spec = {
+    system: "s",
+    title: "T",
+    groups: [
+      {
+        name: "Motion",
+        components: [{ componentId: "Motion/Toggle", preview: "ToggleAnimatedPreview" }],
+      },
+    ],
+  };
+  const { errors } = validateSpec(spec, {
+    knownPreviews: ["ToggleAnimatedPreview", "Static"],
+    pngLessPreviews: ["ToggleAnimatedPreview"],
+  });
+  assert.equal(errors.length, 1);
+  assert.ok(errors[0].includes('preview "ToggleAnimatedPreview"'));
+  assert.ok(errors[0].includes("renders no static PNG"));
+});
+
+test("validateSpec rejects a PNG-less preview referenced from a variant", () => {
+  const spec = {
+    system: "s",
+    title: "T",
+    groups: [
+      {
+        name: "G",
+        components: [
+          {
+            componentId: "A",
+            preview: "Static",
+            variants: [{ state: "pressed", preview: "PressedGif" }],
+          },
+        ],
+      },
+    ],
+  };
+  const { errors } = validateSpec(spec, {
+    knownPreviews: ["Static", "PressedGif"],
+    pngLessPreviews: ["PressedGif"],
+  });
+  assert.equal(errors.length, 1);
+  assert.ok(errors[0].includes("variants[0]"));
+});
+
+test("validateSpec does not report PNG-less previews as coverage orphans", () => {
+  const spec = {
+    system: "s",
+    title: "T",
+    groups: [{ name: "G", components: [{ componentId: "A", preview: "Static" }] }],
+  };
+  const { errors, warnings } = validateSpec(spec, {
+    knownPreviews: ["Static", "ToggleAnimatedPreview"],
+    pngLessPreviews: ["ToggleAnimatedPreview"],
+  });
+  assert.deepEqual(errors, []);
+  assert.deepEqual(warnings, []);
+});

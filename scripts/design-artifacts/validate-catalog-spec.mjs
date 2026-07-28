@@ -51,16 +51,18 @@ try {
 const srcDirs = values["module-dir"] ? [values["module-dir"], ...(values.src ?? [])] : values.src;
 
 let knownPreviews = null;
+let pngLessPreviews = [];
 let annotatedInventory = undefined;
 let scannedDirs = [];
 if (!values["no-scan"]) {
   scannedDirs = resolveSourceDirs({ srcDirs, spec, specPath: values.spec });
   if (scannedDirs.length > 0) {
     const sources = await collectKotlinSources(scannedDirs);
-    const { previews } = discoverPreviews(sources, {
+    const { previews, pngLess } = discoverPreviews(sources, {
       extraAnnotations: values["preview-annotation"] ?? [],
     });
     knownPreviews = previews;
+    pngLessPreviews = pngLess;
     // Only meaningful when a module was scanned; leaves `annotatedInventory` undefined (lenient) on
     // the structural-only path so a no-groups spec isn't wrongly rejected without source access.
     annotatedInventory = hasCatalogAnnotations(sources);
@@ -68,7 +70,7 @@ if (!values["no-scan"]) {
 }
 
 const { errors, warnings } = validateSpec(spec, {
-  ...(knownPreviews ? { knownPreviews } : {}),
+  ...(knownPreviews ? { knownPreviews, pngLessPreviews } : {}),
   ...(annotatedInventory !== undefined ? { annotatedInventory } : {}),
 });
 
@@ -79,6 +81,7 @@ if (values.json) {
         spec: values.spec,
         scannedDirs,
         discoveredPreviews: knownPreviews ? knownPreviews.length : null,
+        pngLessPreviews,
         errors,
         warnings,
         ok: errors.length === 0,
@@ -90,7 +93,10 @@ if (values.json) {
 } else {
   if (knownPreviews) {
     console.log(
-      `Scanned ${scannedDirs.length} source dir(s); discovered ${knownPreviews.length} @Preview function(s).`,
+      `Scanned ${scannedDirs.length} source dir(s); discovered ${knownPreviews.length} @Preview function(s)` +
+        (pngLessPreviews.length > 0
+          ? `, ${pngLessPreviews.length} of them PNG-less (not catalogable): ${pngLessPreviews.join(", ")}.`
+          : "."),
     );
   } else {
     console.log(
