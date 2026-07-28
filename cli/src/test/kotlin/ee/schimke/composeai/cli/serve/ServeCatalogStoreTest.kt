@@ -392,6 +392,72 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `a mixed liveBundle routes only class-backed previews to the daemon`() {
+    val remoteId = "com.example.CatalogKt.RemotePreview"
+    val widgetId = "com.example.WidgetKt.WidgetPreview"
+    val rcBytes = byteArrayOf(0x52, 0x43, 0x01)
+    val bundle =
+      polyglotBundle(
+        manifest =
+          """
+          {"schemaVersion":8,"backend":"android",
+           "previewIds":["$remoteId","$widgetId"],"coverPreviewId":"$remoteId",
+           "classpath":[{"kind":"module","path":"classes/app.jar"}],
+           "modulePath":":samples:remote","producedBy":"test",
+           "intermediateRepresentations":[
+             {"previewId":"$remoteId","format":"remotecompose","path":"ir/$remoteId.rc"}
+           ],"externalResources":[]}
+          """
+            .trimIndent(),
+        extra = mapOf("ir/$remoteId.rc" to rcBytes),
+      )
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"remote-m3",
+       "liveBundle":{"path":"bundle/","file":"bundle.png"},
+       "components":[
+         {"componentId":"Remote","images":[
+           {"path":"images/remote/ideal__default.png","previewId":"$remoteId"}]},
+         {"componentId":"Widget","images":[
+           {"path":"images/widget/ideal__default.png","previewId":"$widgetId"}]}
+       ]}
+      """
+        .trimIndent()
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.toByteArray()
+        url.endsWith("bundle/bundle.png") -> bundle
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+    val root = tempRoot()
+    var captured: Map<String, String>? = null
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust =
+          TrustStore(
+            branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
+          ),
+        fetch = fetch,
+        buildTrustedBundle = { _, _, _, alias, _, _ ->
+          captured = alias
+          true
+        },
+      )
+
+    assertTrue(store.load("remote-m3") is ServeCatalogStore.Result.Ok)
+    assertEquals(mapOf("widget__ideal__default" to widgetId), captured)
+    assertContentEquals(
+      rcBytes,
+      File(root, "remote-m3/ir/remote__ideal__default.rc").readBytes(),
+      "the IR-backed preview remains available for browser-side replay",
+    )
+  }
+
+  @Test
   fun `live bundles use the larger dedicated download envelope`() {
     // jetchat (36.5 MB) and jetsnack (51.2 MB) are valid published bundles that exceed the 25 MB
     // catalog-asset cap. The ordinary fetcher must remain tight for images, while the executable

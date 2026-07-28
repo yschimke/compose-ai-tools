@@ -134,6 +134,35 @@ class ServeCatalogStore(
     return alias
   }
 
+  /**
+   * Restrict a carried bundle's server-side alias to previews that still have executable bytecode.
+   *
+   * An IR-backed preview (currently Remote Compose) is intentionally omitted from
+   * `classes/app.jar`: the bundle carries its captured document under `ir/` instead. It remains in
+   * the full alias while [extractCatalogRcDocs] re-keys that document for browser replay, but
+   * handing it to the daemon would deterministically fail with `ClassNotFoundException`.
+   *
+   * Metadata failures retain the original alias; the bundle builder owns diagnostics and rejection
+   * for malformed bundles, and this filter must not hide that more useful failure path.
+   */
+  private fun classBackedAliasForBundle(
+    bundleFile: File,
+    alias: Map<String, String>,
+  ): Map<String, String> {
+    val irPreviewIds =
+      try {
+        BundleReader.readMetadata(bundleFile).manifest.intermediateRepresentations.mapTo(
+          mutableSetOf()
+        ) {
+          it.previewId
+        }
+      } catch (_: Exception) {
+        return alias
+      }
+    if (irPreviewIds.isEmpty()) return alias
+    return alias.filterValues { it !in irPreviewIds }
+  }
+
   sealed interface Result {
     data class Ok(val system: String, val previewCount: Int, val trust: String) : Result
 
@@ -347,6 +376,9 @@ class ServeCatalogStore(
         // can serve them. Done regardless of the rehydrate/daemon outcome below — the client-side
         // `.rc` lane needs no daemon, so it must survive a live-tier fallback.
         extractCatalogRcDocs(bundleFile, alias, dir)
+        // IR-backed previews have no class in app.jar by design. Preserve their full alias above
+        // for `.rc` extraction, but never advertise them to either daemon lane.
+        val classBackedAlias = classBackedAliasForBundle(bundleFile, alias)
         // Rehydrate any resources the bundle externalized (fonts lifted out of classes/app.jar)
         // from
         // the branch's content-addressed pool into a shared cache + a materialized classpath dir.
@@ -368,21 +400,22 @@ class ServeCatalogStore(
             // which suffix maps to which id without the publisher's ordering, so we only serve the
             // per-preview lane for ids with an unambiguous stem; a colliding id resolves null and
             // falls back to the monolithic daemon (which serves every preview correctly).
-            val safeStems = uniquePerPreviewStems(alias.values)
+            val safeStems = uniquePerPreviewStems(classBackedAlias.values)
             val fetchPerPreview: (String) -> File? = { daemonId ->
               safeStems[daemonId]?.let { stem ->
                 fetchPerPreviewBundle(stem, liveBundle, base, dir, safe)
               }
             }
             if (
-              buildTrustedBundle(
-                safe,
-                bundleFile,
-                res.dir,
-                alias,
-                { bakedFallback(emptyList()) },
-                fetchPerPreview,
-              )
+              classBackedAlias.isNotEmpty() &&
+                buildTrustedBundle(
+                  safe,
+                  bundleFile,
+                  res.dir,
+                  classBackedAlias,
+                  { bakedFallback(emptyList()) },
+                  fetchPerPreview,
+                )
             ) {
               return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live bundle)")
             }

@@ -109,4 +109,13 @@ class RenderErrorClassifierTest {
     assertEquals(RenderErrorKind.SDK_MISMATCH, RenderErrorClassifier.classify(cause).kind)
     assertNotNull(RenderErrorClassifier.classify(cause).suggestion)
   }
+
+  @Test
+  fun renderFailureMessagePrefixesTheExceptionType() {
+    assertEquals(
+      "ClassNotFoundException: com.example.CatalogPreviewsKt",
+      renderFailureMessage(ClassNotFoundException("com.example.CatalogPreviewsKt")),
+    )
+    assertEquals("IllegalStateException", renderFailureMessage(IllegalStateException()))
+  }
 }
