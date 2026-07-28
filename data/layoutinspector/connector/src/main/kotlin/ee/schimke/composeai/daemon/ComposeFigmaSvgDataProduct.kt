@@ -361,9 +361,14 @@ object ComposeFigmaSvgDataProducer {
    * don't emit — so a bare `truetype` src would be skipped and the text would silently fall back.
    */
   private fun fontFilePath(family: String, fileSystem: FileSystem): okio.Path? {
-    val lower = family.lowercase()
+    // An Android resource-backed face reaches the capture as `res/font/<resId>` — a handle, not a
+    // path, and never a name a consumer could resolve. The render side extracts those bytes to a
+    // real file and publishes the mapping here, so the export embeds the actual face instead of
+    // emitting the numeric id as a CSS family with no `@font-face` behind it (issue #2886).
+    val candidate = FigmaResourceFonts.pathFor(family) ?: family
+    val lower = candidate.lowercase()
     if (!(lower.endsWith(".ttf") || lower.endsWith(".otf"))) return null
-    val path = family.toPath()
+    val path = candidate.toPath()
     return path.takeIf { runCatching { fileSystem.exists(it) }.getOrDefault(false) }
   }
 

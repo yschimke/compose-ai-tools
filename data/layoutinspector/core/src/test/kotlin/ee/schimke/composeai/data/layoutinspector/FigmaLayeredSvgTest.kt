@@ -1632,6 +1632,147 @@ class FigmaLayeredSvgTest {
     assertTrue(svg.contains("""fill="#202020""""))
   }
 
+  /**
+   * Issue #2885: `TextAlign.Center` used to export as a left-anchored `<text>` at the start of the
+   * paragraph's layout bounds, so a `Modifier.fillMaxWidth()` heading drifted hard left of where
+   * the PNG drew it. The resolved alignment now rides the capture and drives the anchor.
+   */
+  @Test
+  fun centeredSingleLineTextIsAnchoredAtTheMiddleOfItsParagraphBox() {
+    val layout =
+      layoutNode("Card", 0, 0, 200, 100, children = listOf(layoutNode("Text", 20, 8, 180, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "20,8,180,40",
+              text = "Wellness",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp", textAlign = "center"),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    assertWellFormedXml(svg)
+    assertTrue("centred text needs a middle anchor", svg.contains("""text-anchor="middle""""))
+    // Midpoint of the paragraph box (20..180), not its left edge.
+    assertTrue("anchor x is the box midpoint", svg.contains("""<text x="100""""))
+    assertFalse("must not stay pinned to the box start", svg.contains("""<text x="20""""))
+  }
+
+  @Test
+  fun rightAlignedSingleLineTextIsAnchoredAtTheEndOfItsParagraphBox() {
+    val layout =
+      layoutNode("Row", 0, 0, 200, 100, children = listOf(layoutNode("Text", 20, 8, 180, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "20,8,180,40",
+              text = "42",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp", textAlign = "end"),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    assertWellFormedXml(svg)
+    assertTrue(svg.contains("""text-anchor="end""""))
+    assertTrue(svg.contains("""<text x="180""""))
+  }
+
+  @Test
+  fun unalignedTextKeepsItsHistoricalLeftAnchor() {
+    val layout =
+      layoutNode("Row", 0, 0, 200, 100, children = listOf(layoutNode("Text", 20, 8, 180, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "20,8,180,40",
+              text = "Left",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp"),
+            )
+          ),
+      )
+    val svg = render(layout, semantics = semantics)
+    assertFalse("no alignment captured ⇒ no anchor attribute", svg.contains("text-anchor="))
+    assertTrue(svg.contains("""<text x="20""""))
+  }
+
+  /**
+   * Issue #2884: `@Preview(showBackground = true, backgroundColor = …)` never reached the export,
+   * so a preview whose PNG is opaque exported onto transparency. A maskless preview now paints its
+   * frame as the bottom layer.
+   */
+  @Test
+  fun aPreviewBackgroundIsPaintedAsTheBottomLayer() {
+    val layout =
+      layoutNode(
+        "Screen",
+        0,
+        0,
+        100,
+        60,
+        children =
+          listOf(
+            layoutNode(
+              "Box",
+              10,
+              10,
+              90,
+              50,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+            )
+          ),
+      )
+    val model =
+      FigmaSvgModel.from(layout = LayoutInspectorPayload(layout), deviceBackground = "#FF000000")
+    assertNotNull("the opted-in background reaches the model", model.deviceBackground)
+    assertNotNull("a maskless preview gets a frame rect to fill", model.backgroundRect)
+    val svg = FigmaLayeredSvg.render(model)
+    assertWellFormedXml(svg)
+    assertTrue("background rect is emitted", svg.contains("""<rect x="10" y="10""""))
+    assertTrue(svg.contains("""fill="#000000""""))
+    assertTrue(
+      "background must be drawn before the content it sits behind",
+      svg.indexOf("""fill="#000000"""") < svg.indexOf("""fill="#6750A4""""),
+    )
+  }
+
+  @Test
+  fun aRoundDeviceStillPaintsItsBackgroundAsTheMaskShapeNotARect() {
+    val layout = layoutNode("Screen", 0, 0, 384, 384)
+    val model =
+      FigmaSvgModel.from(
+        layout = LayoutInspectorPayload(layout),
+        roundClip = true,
+        deviceBackground = "#FF000000",
+      )
+    assertNotNull(model.roundClip)
+    assertNull("a masked frame uses the mask shape, not a rect", model.backgroundRect)
+    val svg = FigmaLayeredSvg.render(model)
+    assertTrue(svg.contains("""<circle cx="192" cy="192" r="192" fill="#000000""""))
+  }
+
+  @Test
+  fun withNoOptedInBackgroundTheExportStaysTransparent() {
+    val layout = layoutNode("Card", 0, 0, 100, 60)
+    val model = FigmaSvgModel.from(LayoutInspectorPayload(layout))
+    assertNull(model.deviceBackground)
+    assertNull(model.backgroundRect)
+  }
+
   @Test
   fun capturedLetterSpacingIsEmittedSoGlyphAdvancesMatchTheRender() {
     // A tracked run (Material label/body text carries 0.1–0.5sp) must emit SVG `letter-spacing`,

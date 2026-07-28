@@ -113,7 +113,14 @@ object FigmaLayeredSvg {
               """fill="${bg.hex}"$fillOpacity/>"""
           clip != null ->
             """<circle cx="${clip.cx}" cy="${clip.cy}" r="${clip.r}" fill="${bg.hex}"$fillOpacity/>"""
-          else -> null
+          // A maskless `@Preview(showBackground = true, backgroundColor = …)` paints the flat
+          // frame the render drew behind the composable (issue #2884) — without it the SVG was
+          // transparent exactly where the PNG was opaque.
+          else ->
+            model.backgroundRect?.let { r ->
+              """<rect x="${r.x}" y="${r.y}" width="${r.width}" height="${r.height}" """ +
+                """fill="${bg.hex}"$fillOpacity/>"""
+            }
         }
       if (shape != null) sb.append("  ").append(shape).append('\n')
     }
@@ -613,9 +620,32 @@ object FigmaLayeredSvg {
         options = options,
         familyOverrides = familyOverrides,
       )
-    return """<text x="${layer.left}" y="${fmt(baseline)}" font-size="${fmt(size)}"$family$weight$style$letterSpacing$fill>""" +
+    // Single-line text: anchor it the way the paragraph was aligned. Left/start keeps the
+    // historical `x = layer.left` with no anchor attribute; centre/right/end move the anchor point
+    // to the middle/right edge of the layer's own (paragraph) box and let the viewer place the run
+    // around it. Without this a `TextAlign.Center` heading in a `fillMaxWidth()` box exported
+    // hard against the left edge (issue #2885).
+    val (anchorX, anchor) = singleLineAnchor(layer, t.textAlign)
+    return """<text x="$anchorX" y="${fmt(baseline)}" font-size="${fmt(size)}"$family$weight$style$letterSpacing$anchor$fill>""" +
       "${styled ?: escape(t.content)}</text>"
   }
+
+  /**
+   * The `x` and `text-anchor` attribute for a single-line run under [textAlign], within [layer]'s
+   * paragraph box. `justify` behaves as start for a single line (there is nothing to stretch to),
+   * matching how Compose lays it out; an unknown/absent alignment keeps the historical left anchor
+   * so nothing that wasn't explicitly aligned moves.
+   */
+  private fun singleLineAnchor(layer: FigmaSvgLayer, textAlign: String?): Pair<Int, String> =
+    when (textAlign?.lowercase()) {
+      // `end` is resolution-dependent in Compose (LTR → right), and every capture this export sees
+      // is laid out LTR — an RTL locale render would need the layout direction carried alongside,
+      // which the capture doesn't record today.
+      "center" -> (layer.left + layer.width / 2) to """ text-anchor="middle""""
+      "right",
+      "end" -> layer.right to """ text-anchor="end""""
+      else -> layer.left to ""
+    }
 
   /** Styled `<tspan>`s for the intersections of [spans] with `[rangeStart, rangeEnd)`. */
   private fun styledTspans(

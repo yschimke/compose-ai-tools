@@ -63,6 +63,15 @@ data class FigmaSvgText(
    * registers.
    */
   val letterSpacingPx: Double? = null,
+  /**
+   * Resolved paragraph alignment as captured (`"center"`, `"end"`, `"right"`, …), or null when the
+   * capture resolved none. Drives the single-line `<text>`'s `text-anchor` + x so centred /
+   * right-aligned text lands where the render drew it rather than at the start of its layout bounds
+   * (issue #2885). Wrapped text ignores it: [lines] already carries each line's measured `left`,
+   * which encodes the alignment geometrically, and anchoring on top of that would shift every line
+   * twice.
+   */
+  val textAlign: String? = null,
   /** Effective styled UTF-16 ranges for annotated text; null for a uniform/plain run. */
   val spans: List<FigmaSvgTextSpan>? = null,
   /**
@@ -295,6 +304,9 @@ data class FigmaSvgCapsuleClip(val x: Int, val y: Int, val width: Int, val heigh
     get() = width / 2
 }
 
+/** An axis-aligned rectangle in root-pixel space. */
+data class FigmaSvgRect(val x: Int, val y: Int, val width: Int, val height: Int)
+
 data class FigmaSvgModel(
   val root: FigmaSvgLayer,
   val minX: Int,
@@ -321,6 +333,13 @@ data class FigmaSvgModel(
    * the dark face to read against while the corners outside the mask stay transparent.
    */
   val deviceBackground: FigmaSvgColor? = null,
+  /**
+   * The frame the [deviceBackground] fills when the preview carries **no** device mask — an
+   * ordinary `@Preview(showBackground = true, backgroundColor = …)` whose render painted a flat
+   * background behind the composable (issue #2884). A masked device frame ignores this and paints
+   * the mask shape instead, so the two never both draw. Null when nothing opted in.
+   */
+  val backgroundRect: FigmaSvgRect? = null,
 ) {
   val tx: Int
     get() = padding - minX
@@ -455,14 +474,27 @@ data class FigmaSvgModel(
         if (clip != null || capsule != null)
           Extent(frame.left, frame.top, frame.right, frame.bottom)
         else rootLayer.extent() ?: Extent(0, 0, 0, 0)
-      // A device preview (round or capsule mask) that opted in paints its screen background behind
-      // the tree, clipped to that mask — so a Wear device export reads as a solid face with light
-      // chrome legible, while the corners outside the mask stay transparent. Component previews
-      // pass
-      // no `deviceBackground` (and carry no mask), so they never get one.
-      val deviceBg =
-        if ((clip != null || capsule != null) && deviceBackground != null)
-          argbToColor(deviceBackground, names)
+      // A preview that opted into a background paints it behind the whole tree as the bottom
+      // layer. A device frame (round or capsule mask) paints it in the mask shape, so a Wear
+      // device export reads as a solid face with light chrome legible while the corners outside
+      // the mask stay transparent. A **maskless** preview — the ordinary
+      // `@Preview(showBackground = true, backgroundColor = …)` of issue #2884 — paints the frame
+      // rect instead; before this it painted nothing, so the SVG was transparent where the PNG was
+      // opaque. Previews that pass no `deviceBackground` (the default, and every preview that
+      // didn't declare `showBackground`) still export background-free.
+      val deviceBg = deviceBackground?.let { argbToColor(it, names) }
+      // Sized from the canvas extent rather than the root node's bounds: a wrap-content preview
+      // measures inside a generous sandbox frame (400×800 dp) and the PNG is cropped back to the
+      // composable's intrinsic size, so the background the viewer sees covers the *cropped* area.
+      // Using the raw frame here would paint the sandbox.
+      val backgroundRect =
+        if (deviceBg != null && clip == null && capsule == null)
+          FigmaSvgRect(
+            x = extent.minX,
+            y = extent.minY,
+            width = extent.maxX - extent.minX,
+            height = extent.maxY - extent.minY,
+          )
         else null
       return FigmaSvgModel(
         root = rootLayer,
@@ -475,6 +507,7 @@ data class FigmaSvgModel(
         roundClip = clip,
         capsuleClip = capsule,
         deviceBackground = deviceBg,
+        backgroundRect = backgroundRect,
       )
     }
 
@@ -1111,6 +1144,7 @@ data class FigmaSvgModel(
           node.typography?.letterSpacing?.let {
             lineHeightToPx(it, node.typography.fontSize, density, fontScale)
           },
+        textAlign = node.typography?.textAlign,
         spans =
           node.typography?.spans?.map { span ->
             FigmaSvgTextSpan(

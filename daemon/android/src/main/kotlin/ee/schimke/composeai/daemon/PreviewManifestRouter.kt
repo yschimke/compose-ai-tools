@@ -129,8 +129,17 @@ class PreviewManifestRouter(
       // PROTOCOL.md § 5 (`renderNow.overrides`) — locale / fontScale / uiMode / orientation
       // pass straight through to the qualifier builder in `RenderEngine`. Wire-format twin
       // of the desktop router; keep both in lockstep so a single payload drives both.
-      inbound["localeTag"]?.let { append("localeTag=").append(it).append(';') }
-      inbound["fontScale"]?.let { append("fontScale=").append(it).append(';') }
+      // An inbound override wins; otherwise fall back to the manifest-declared
+      // `@Preview(locale = …)` / `@Preview(fontScale = …)`. Dropping the manifest values rendered
+      // every large-font / locale annotation of a function exactly like its default sibling, so
+      // their carried data products (layout / semantics / figma-svg) were byte-identical even
+      // though the PNGs — rendered by the Gradle path, which never lost them — differed (#2883).
+      (inbound["localeTag"] ?: resolved.locale)?.let {
+        append("localeTag=").append(it).append(';')
+      }
+      (inbound["fontScale"] ?: resolved.fontScale?.toString())?.let {
+        append("fontScale=").append(it).append(';')
+      }
       // uiMode: an inbound override wins; otherwise derive from the manifest-declared
       // `@Preview(uiMode = …)` — the axis a `_Dark`/`_Light` multipreview varies on. Dropping it
       // rendered every such variant identically, so the bundled data products (layout/semantics/
@@ -220,6 +229,9 @@ private fun PreviewManifestEntry.renderSpec(): RenderSpec {
     // The manifest-declared night bit, so a held session composes the same theme the one-shot
     // render painted. Mirrors the desktop router's resolver.
     uiMode = if (uiModeIsNight(resolved.uiMode)) RenderSpec.SpecUiMode.DARK else null,
+    // …and the other two axes a multi-annotation preview varies on, for the same reason.
+    fontScale = resolved.fontScale,
+    localeTag = resolved.locale,
   )
 }
 
@@ -264,6 +276,10 @@ data class PreviewManifestEntry(
    */
   val device: String? = null,
   val outputBaseName: String? = null,
+  /** Flat-schema mirror of [PreviewParamsEntry.fontScale]. */
+  val fontScale: Float? = null,
+  /** Flat-schema mirror of [PreviewParamsEntry.locale]. */
+  val locale: String? = null,
   /**
    * Flat-schema sibling of [PreviewParamsEntry.kind] — see kdoc there. Harness fixtures that use
    * the flat shape can supply this directly; the production gradle plugin writes it under
@@ -285,6 +301,10 @@ data class PreviewManifestEntry(
     val kind = kind ?: p?.kind
     val name = p?.name
     val uiMode = uiMode ?: p?.uiMode ?: 0
+    // `1.0` is the annotation's own default, so it carries no information — treat it as unset and
+    // let the render use its default rather than pinning a redundant qualifier.
+    val fontScale = (fontScale ?: p?.fontScale)?.takeIf { it > 0f && it != 1.0f }
+    val locale = (locale ?: p?.locale)?.takeIf { it.isNotBlank() }
     // A preview that declares an explicit size — or is pinned to a fixed frame by a device or a
     // non-Compose surface (tile / notification / Glance, whose render helpers consume the concrete
     // widthPx/heightPx) — keeps that frame. One that declares NONE renders wrap-content (AS-parity):
@@ -323,6 +343,8 @@ data class PreviewManifestEntry(
       wrapWidth = wrapWidth,
       wrapHeight = wrapHeight,
       uiMode = uiMode,
+      fontScale = fontScale,
+      locale = locale,
     )
   }
 
@@ -348,9 +370,9 @@ data class PreviewManifestEntry(
 
 /**
  * Subset of the plugin's [PreviewParams][ee.schimke.composeai.plugin.PreviewParams] the daemon's
- * render path consumes. Any plugin-side fields the daemon doesn't yet care about (fontScale,
- * locale, group, …) are silently dropped via `ignoreUnknownKeys = true`. Add them here when the
- * daemon grows the matching render-path support.
+ * render path consumes. Any plugin-side fields the daemon doesn't yet care about (group, …) are
+ * silently dropped via `ignoreUnknownKeys = true`. Add them here when the daemon grows the matching
+ * render-path support.
  */
 @Serializable
 data class PreviewParamsEntry(
@@ -359,6 +381,19 @@ data class PreviewParamsEntry(
   val widthDp: Int? = null,
   val heightDp: Int? = null,
   val density: Float? = null,
+  /**
+   * `@Preview(fontScale = …)`. One of the three axes a multi-annotation preview varies on (with
+   * `uiMode` and `device`), and the last one the daemon was still dropping: a large-font variant
+   * rendered at 1.0 and produced data products — layout / semantics / figma-svg — byte-identical
+   * to the default variant's (issue #2883). `1.0f` and null are interchangeable ("unset").
+   */
+  val fontScale: Float? = null,
+  /**
+   * `@Preview(locale = …)` as a BCP-47 tag. Same reasoning as [fontScale]: a locale variant that
+   * doesn't reach the render composes the default locale's strings, so its captured trees repeat
+   * the default variant's.
+   */
+  val locale: String? = null,
   val showBackground: Boolean = false,
   val backgroundColor: Long = 0L,
   /**
@@ -412,4 +447,8 @@ data class ResolvedRenderParams(
   val wrapHeight: Boolean = false,
   /** Raw `@Preview(uiMode = ...)` Configuration bits; 0 = unset. See [PreviewParamsEntry.uiMode]. */
   val uiMode: Int = 0,
+  /** `@Preview(fontScale = ...)`, null when unset (or the redundant `1.0`). */
+  val fontScale: Float? = null,
+  /** `@Preview(locale = ...)` BCP-47 tag, null when unset. */
+  val locale: String? = null,
 )

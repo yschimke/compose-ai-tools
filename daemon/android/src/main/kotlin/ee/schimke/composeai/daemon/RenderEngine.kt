@@ -771,6 +771,17 @@ class RenderEngine(
                     RenderDataArtifactContextKeys.RoundClip provides
                       layoutInspectorPreviewContext.device.isRound
                   )
+                  // The background this render actually painted behind the composable — the
+                  // resolution of `@Preview(showBackground, backgroundColor)` the PNG was drawn
+                  // over. Published so the figma-svg export can lay the same colour down as its
+                  // bottom layer (issue #2884). A transparent resolution (the default for a
+                  // component preview, and the crisp-outline override) publishes nothing, so
+                  // those exports stay background-free.
+                  resolveBackgroundColor(spec)
+                    .takeIf { it.alpha > 0f }
+                    ?.let {
+                      add(RenderDataArtifactContextKeys.PreviewBackground provides argbHex(it))
+                    }
                 }
               val extensionContextData =
                 ExtensionContextData.of(*artifactContextData.toTypedArray())
@@ -1745,6 +1756,10 @@ class RenderEngine(
       reduceMotion = reduceMotion,
       frameIntervalMs = frameIntervalMs,
     )
+
+  /** A resolved [Color] as the `#AARRGGBB` string the data-product wire format uses. */
+  private fun argbHex(color: Color): String =
+    "#${String.format(java.util.Locale.US, "%08X", color.toArgb())}"
 
   private fun resolveBackgroundColor(spec: RenderSpec): Color =
     when {
