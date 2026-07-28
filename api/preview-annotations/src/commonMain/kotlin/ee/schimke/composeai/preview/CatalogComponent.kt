@@ -18,6 +18,8 @@ package ee.schimke.composeai.preview
  *   the one-line description shown under the sticker.
  * * [reference] defaults to empty. Override with a seed-kit handle (Figma node etc.) for the
  *   one-off import; the render stays authoritative.
+ * * [parallel] defaults to empty. Override with the component id of the counterpart in the sibling
+ *   system named by the catalog's `compareWith` setting.
  *
  * ```kotlin
  * @file:CatalogGroup("Buttons")
@@ -41,6 +43,7 @@ annotation class CatalogComponent(
   val group: String = "",
   val caption: String = "",
   val reference: String = "",
+  val parallel: String = "",
 )
 
 /**

@@ -26,13 +26,19 @@ test("inventoryFromPreviews builds one component per COMPONENT entry, keyed on f
       componentId: "Button/Filled",
       group: "Buttons",
       caption: "Primary action.",
+      parallel: "FilledButton",
     }),
     component("OutlinedButton", { componentId: "Button/Outlined", group: "Buttons" }),
   ]);
   assert.equal(groups.length, 1);
   assert.equal(groups[0].name, "Buttons");
   assert.deepEqual(groups[0].components, [
-    { componentId: "Button/Filled", preview: "FilledButton", caption: "Primary action." },
+    {
+      componentId: "Button/Filled",
+      preview: "FilledButton",
+      caption: "Primary action.",
+      parallel: "FilledButton",
+    },
     { componentId: "Button/Outlined", preview: "OutlinedButton" },
   ]);
 });

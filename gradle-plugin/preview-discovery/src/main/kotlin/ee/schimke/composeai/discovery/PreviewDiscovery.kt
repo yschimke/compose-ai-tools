@@ -1018,6 +1018,7 @@ object PreviewDiscovery {
       section = fileGroup?.section,
       caption = annStringOrNull(component, "caption"),
       reference = annStringOrNull(component, "reference"),
+      parallel = annStringOrNull(component, "parallel"),
     )
   }
 
@@ -1164,8 +1165,7 @@ object PreviewDiscovery {
             // (#2179) by this. The display label lives on `functionName` above.
             name = theme.name,
             group = theme.group.ifEmpty { null },
-            kind =
-              if (theme.wear) PreviewKind.WEAR_THEME_CATALOG else PreviewKind.THEME_CATALOG,
+            kind = if (theme.wear) PreviewKind.WEAR_THEME_CATALOG else PreviewKind.THEME_CATALOG,
             wrapperClassName = theme.className,
           ),
         captures = listOf(Capture(renderOutput = "renders/$id.png", optional = !renderSupported)),
