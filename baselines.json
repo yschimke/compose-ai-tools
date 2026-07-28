@@ -169,6 +169,42 @@
       "sha256": "1cf2657abcf8754ff9d820546459efaffaca4e1ebc7e8ec89e9150b79f1639d6",
       "size": 92183
     },
+    "serve-doc-lottie.dark.png": {
+      "fixture": "serve-doc-lottie",
+      "theme": "dark",
+      "sha256": "5959fbb25e31653be1650b39da4a16e9ebda940400d01dc94d2d8ed49b26eeff",
+      "size": 30527
+    },
+    "serve-doc-lottie.light.png": {
+      "fixture": "serve-doc-lottie",
+      "theme": "light",
+      "sha256": "98fda8f945c8515a250d85f0a2135f3b9139de9d54c241656de10dbe4b2f9c14",
+      "size": 30535
+    },
+    "serve-doc-remotecompose.dark.png": {
+      "fixture": "serve-doc-remotecompose",
+      "theme": "dark",
+      "sha256": "192586b84b44fddb5bbc5c76e1e64eb6908a6941e83a84d4c6a0d9f7320a5fc9",
+      "size": 23170
+    },
+    "serve-doc-remotecompose.light.png": {
+      "fixture": "serve-doc-remotecompose",
+      "theme": "light",
+      "sha256": "78890384ceaeecf3178eed0eae03a8f28e31bc76d8f16d6277cbb30c2f6a70eb",
+      "size": 23254
+    },
+    "serve-docs-upload.dark.png": {
+      "fixture": "serve-docs-upload",
+      "theme": "dark",
+      "sha256": "8e6d8c805869229ac05041208de02dd08a0ddda8b0e2bda7ad54e40b8817e120",
+      "size": 37356
+    },
+    "serve-docs-upload.light.png": {
+      "fixture": "serve-docs-upload",
+      "theme": "light",
+      "sha256": "40a5d5a6cd352fe6a44b0ea022f229eba979d352639cbbf6fc823caa908de05c",
+      "size": 37571
+    },
     "serve-home-index.dark.png": {
       "fixture": "serve-home-index",
       "theme": "dark",
@@ -304,8 +340,8 @@
     "serve-status.dark.png": {
       "fixture": "serve-status",
       "theme": "dark",
-      "sha256": "c2ab3f9ecaf997bdb2359cd6f349944159f9f67ea218c50fd4a400f668bbcf5e",
-      "size": 156395
+      "sha256": "bae7c2bda1c4486485e558f53694ededd2e3a712ce76902dca650450d8993a75",
+      "size": 155728
     },
     "serve-status.light.png": {
       "fixture": "serve-status",

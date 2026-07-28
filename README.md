@@ -102,6 +102,27 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![remotecompose-state/dark](renders/remotecompose-state.dark.png) |
 | `light` | ![remotecompose-state/light](renders/remotecompose-state.light.png) |
 
+## serve-doc-lottie
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-doc-lottie/dark](renders/serve-doc-lottie.dark.png) |
+| `light` | ![serve-doc-lottie/light](renders/serve-doc-lottie.light.png) |
+
+## serve-doc-remotecompose
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-doc-remotecompose/dark](renders/serve-doc-remotecompose.dark.png) |
+| `light` | ![serve-doc-remotecompose/light](renders/serve-doc-remotecompose.light.png) |
+
+## serve-docs-upload
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-docs-upload/dark](renders/serve-docs-upload.dark.png) |
+| `light` | ![serve-docs-upload/light](renders/serve-docs-upload.light.png) |
+
 ## serve-home-index
 
 | Theme | Capture |
