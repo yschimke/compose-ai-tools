@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.19.2](https://github.com/yschimke/compose-ai-tools/compare/v0.19.1...v0.19.2) (2026-07-28)
+
+
+### Bug Fixes
+
+* **android:** preserve preview wrappers in all render modes ([#2866](https://github.com/yschimke/compose-ai-tools/issues/2866)) ([685e005](https://github.com/yschimke/compose-ai-tools/commit/685e005e9bd55b6e548ff4b8b7609fa043023c9f))
+* **bundle:** honor timeout while collecting SVG data ([#2863](https://github.com/yschimke/compose-ai-tools/issues/2863)) ([025d200](https://github.com/yschimke/compose-ai-tools/commit/025d2004b1117616a11442b0daa8a5e82aabeae1))
+* **figma-svg:** preserve brush backgrounds and expressive shapes ([#2860](https://github.com/yschimke/compose-ai-tools/issues/2860)) ([9227b60](https://github.com/yschimke/compose-ai-tools/commit/9227b608acc93fae2422aacdfd9a835822b54e90))
+* **figma-svg:** preserve emoji and annotated text fonts ([#2862](https://github.com/yschimke/compose-ai-tools/issues/2862)) ([f7d1c3b](https://github.com/yschimke/compose-ai-tools/commit/f7d1c3b061cd0c67068946537375a1dc646c0568))
+* **figma-svg:** preserve graphics-layer transforms ([#2861](https://github.com/yschimke/compose-ai-tools/issues/2861)) ([7269992](https://github.com/yschimke/compose-ai-tools/commit/7269992bd6c0da8f721d5d70f84a3342f1eec130))
+
 ## [0.19.1](https://github.com/yschimke/compose-ai-tools/compare/v0.19.0...v0.19.1) (2026-07-28)
 
 
