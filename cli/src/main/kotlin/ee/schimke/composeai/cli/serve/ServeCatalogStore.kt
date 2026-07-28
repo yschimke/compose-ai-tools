@@ -32,7 +32,8 @@ import okhttp3.Request
  * Fetch surface: a fixed `https://raw.githubusercontent.com/<repo>/<branch>/…` base derived from
  * the **operator-supplied** `--catalogs` / `--catalog-repo` flags — not client input — so there's
  * no SSRF lever here (unlike the `?url=` upload path). [fetch] is injected so tests can stub the
- * network.
+ * network. Catalog assets retain a tight per-file cap; executable live bundles use the same larger
+ * envelope as uploaded/startup bundles.
  */
 class ServeCatalogStore(
   private val root: File,
@@ -40,7 +41,8 @@ class ServeCatalogStore(
   private val trust: TrustStore,
   private val repo: String = DEFAULT_REPO,
   private val branchPrefix: String = DEFAULT_BRANCH_PREFIX,
-  private val fetch: (String) -> ByteArray? = ::httpFetch,
+  private val fetch: ((String) -> ByteArray?)? = null,
+  private val networkFetch: (url: String, maxBytes: Long) -> ByteArray? = ::httpFetch,
   private val maxImages: Int = DEFAULT_MAX_IMAGES,
   /**
    * Called when the catalog declares an in-browser Wasm app (`webRender` in `catalog.json`) and its
@@ -156,7 +158,7 @@ class ServeCatalogStore(
 
     val catalogBytes =
       try {
-        fetch(base + CATALOG_FILE)
+        fetchCatalogAsset(base + CATALOG_FILE)
       } catch (e: Exception) {
         return Result.Failed(system, "could not fetch catalog.json: ${e.message}")
       } ?: return Result.Failed(system, "could not fetch $base$CATALOG_FILE")
@@ -201,7 +203,7 @@ class ServeCatalogStore(
         // containment check costs nothing and guards a compromised/garbled catalog.
         val segments = path.split("/")
         if (!path.startsWith("$IMAGES_DIR/") || !path.endsWith(".png") || ".." in segments) continue
-        val bytes = runCatching { fetch(base + path) }.getOrNull() ?: continue
+        val bytes = runCatching { fetchCatalogAsset(base + path) }.getOrNull() ?: continue
         val id = previewIdFor(path)
         val target = File(previewsDir, "$id.png")
         if (!target.canonicalFile.toPath().startsWith(previewsRoot)) continue
@@ -486,7 +488,8 @@ class ServeCatalogStore(
       val target = File(wasmDir, rel)
       if (!target.canonicalFile.toPath().startsWith(wasmRoot)) return fail("escaping entry '$name'")
       val bytes =
-        runCatching { fetch("$base$prefix/$rel") }.getOrNull() ?: return fail("missing $rel")
+        runCatching { fetchCatalogAsset("$base$prefix/$rel") }.getOrNull()
+          ?: return fail("missing $rel")
       target.parentFile?.mkdirs()
       target.writeBytes(bytes)
     }
@@ -523,7 +526,7 @@ class ServeCatalogStore(
     }
     val prefix = liveBundle.path.trim('/')
     val url = if (prefix.isEmpty()) "$base$name" else "$base$prefix/$name"
-    val bytes = runCatching { fetch(url) }.getOrNull()
+    val bytes = runCatching { fetchExecutableBundle(url) }.getOrNull()
     if (bytes == null) {
       System.err.println("serve: $system liveBundle fetch failed ($url) — skipping")
       return null
@@ -668,7 +671,7 @@ class ServeCatalogStore(
     val prefix = liveBundle.path.trim('/')
     val rel = "$PER_PREVIEW_DIR/$stem.png"
     val url = if (prefix.isEmpty()) "$base$rel" else "$base$prefix/$rel"
-    val bytes = runCatching { fetch(url) }.getOrNull()
+    val bytes = runCatching { fetchExecutableBundle(url) }.getOrNull()
     if (bytes == null) {
       // Expected when the branch ships no per-preview bundle for this id (older catalog, view-only
       // tier); the caller falls back to the monolithic daemon. Quiet — not an error.
@@ -756,7 +759,7 @@ class ServeCatalogStore(
         cached.delete()
         val url =
           if (prefix.isEmpty()) "$base$RES_POOL_DIR/$sha" else "$base$prefix/$RES_POOL_DIR/$sha"
-        val bytes = runCatching { fetch(url) }.getOrNull()
+        val bytes = runCatching { fetchCatalogAsset(url) }.getOrNull()
         if (bytes == null) {
           System.err.println(
             "serve: $system external resource fetch failed ($url) — skipping live bundle"
@@ -805,7 +808,8 @@ class ServeCatalogStore(
     var wrote = 0
     for (slug in slugs) {
       if (slug.isEmpty() || "/" in slug || ".." in slug) continue
-      val svgBytes = runCatching { fetch("$base$FIGMA_DIR/$slug.svg") }.getOrNull() ?: continue
+      val svgBytes =
+        runCatching { fetchCatalogAsset("$base$FIGMA_DIR/$slug.svg") }.getOrNull() ?: continue
       val svgFile = File(figmaDir, "$slug.svg")
       if (!svgFile.canonicalFile.toPath().startsWith(figmaRoot)) continue
       svgFile.parentFile?.mkdirs()
@@ -819,7 +823,8 @@ class ServeCatalogStore(
         if (href.isEmpty() || ".." in href.split("/")) continue
         val cropFile = File(figmaDir, href)
         if (!cropFile.canonicalFile.toPath().startsWith(figmaRoot)) continue
-        val cropBytes = runCatching { fetch("$base$FIGMA_DIR/$href") }.getOrNull() ?: continue
+        val cropBytes =
+          runCatching { fetchCatalogAsset("$base$FIGMA_DIR/$href") }.getOrNull() ?: continue
         cropFile.parentFile?.mkdirs()
         cropFile.writeBytes(cropBytes)
       }
@@ -1043,7 +1048,8 @@ class ServeCatalogStore(
       imagePath.removePrefix("$IMAGES_DIR/").removeSuffix(".png").replace("/", "__")
 
     private const val DEFAULT_MAX_IMAGES = 1000
-    private const val MAX_FETCH_BYTES = 25L * 1024 * 1024 // 25 MB per file
+    private const val MAX_FETCH_BYTES = 25L * 1024 * 1024 // 25 MB per catalog asset
+    internal const val MAX_LIVE_BUNDLE_FETCH_BYTES = 100L * 1024 * 1024
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -1054,12 +1060,11 @@ class ServeCatalogStore(
         .build()
     }
 
-    /** Default fetcher: https only, capped + time-bounded. */
-    private fun httpFetch(url: String): ByteArray? {
+    private fun httpFetch(url: String, maxBytes: Long): ByteArray? {
       httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
         if (!response.isSuccessful) return null
         val body = response.body ?: return null
-        return readCapped(body.byteStream(), MAX_FETCH_BYTES)
+        return readCapped(body.byteStream(), maxBytes)
       }
     }
 
@@ -1077,4 +1082,16 @@ class ServeCatalogStore(
       return out.toByteArray()
     }
   }
+
+  /** Fetch an ordinary catalog asset using the existing tight per-file envelope. */
+  private fun fetchCatalogAsset(url: String): ByteArray? =
+    if (fetch != null) fetch.invoke(url) else networkFetch(url, MAX_FETCH_BYTES)
+
+  /**
+   * Fetch an executable bundle using the 100 MB envelope shared by uploaded and startup bundles. A
+   * one-argument [fetch] override still intercepts every request, preserving the compact test seam
+   * and callers that provide their own transport.
+   */
+  private fun fetchExecutableBundle(url: String): ByteArray? =
+    if (fetch != null) fetch.invoke(url) else networkFetch(url, MAX_LIVE_BUNDLE_FETCH_BYTES)
 }

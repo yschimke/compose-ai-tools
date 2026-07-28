@@ -392,6 +392,62 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `live bundles use the larger dedicated download envelope`() {
+    // jetchat (36.5 MB) and jetsnack (51.2 MB) are valid published bundles that exceed the 25 MB
+    // catalog-asset cap. The ordinary fetcher must remain tight for images, while the executable
+    // bundle takes the dedicated 100 MB path shared with uploaded/startup bundles.
+    assertTrue(
+      ServeCatalogStore.MAX_LIVE_BUNDLE_FETCH_BYTES >= 51_218_125L,
+      "the live-bundle cap must accommodate the published jetsnack bundle",
+    )
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"jetsnack",
+       "liveBundle":{"path":"bundle/","file":"bundle.png"},
+       "components":[{"componentId":"Button","images":[
+         {"path":"images/button/ideal__default.png","previewId":"ButtonPreview"}]}]}
+      """
+        .trimIndent()
+    val requestedLimits = linkedMapOf<String, Long>()
+    val networkFetch: (String, Long) -> ByteArray? = { url, maxBytes ->
+      requestedLimits[url] = maxBytes
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.toByteArray()
+        url.endsWith("bundle/bundle.png") -> byteArrayOf(1, 2, 3)
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+    val trust =
+      TrustStore(
+        branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
+      )
+    var builderCalled = false
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = trust,
+        networkFetch = networkFetch,
+        buildTrustedBundle = { _, _, _, _, _, _ ->
+          builderCalled = true
+          true
+        },
+      )
+
+    assertTrue(store.load("jetsnack") is ServeCatalogStore.Result.Ok)
+    assertEquals(
+      25L * 1024 * 1024,
+      requestedLimits.entries.single { it.key.endsWith("/catalog.json") }.value,
+    )
+    assertEquals(
+      ServeCatalogStore.MAX_LIVE_BUNDLE_FETCH_BYTES,
+      requestedLimits.entries.single { it.key.endsWith("bundle/bundle.png") }.value,
+    )
+    assertTrue(builderCalled)
+  }
+
+  @Test
   fun `a trusted liveBundle catalog materialises ir rc docs re-keyed to the catalog id`() {
     // The live bundle carries the captured Remote Compose document as `ir/<daemon-id>.rc`; the
     // store
