@@ -238,6 +238,9 @@ dependencies {
   testImplementation(libs.compose.material3)
   testImplementation(libs.compose.runtime)
   testImplementation(libs.wear.compose.foundation)
+  // TileScopeResourcesCompatTest exercises both the pre-1.6 no-scope path and the modern
+  // scope-resource merge. Production remains compileOnly so consumers supply their Tiles version.
+  testImplementation(libs.wear.protolayout)
   // Wear Material3 on the TEST classpath only — it supplies `SurfaceTransformation` /
   // `transformedHeight` so `WearScrollSvgGrowthTest` can render a round preview with the real Wear
   // item scaling and show reduce-motion flatten it. Test-scoped on purpose: the daemon must never

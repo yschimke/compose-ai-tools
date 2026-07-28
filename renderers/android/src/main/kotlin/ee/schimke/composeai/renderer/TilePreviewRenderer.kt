@@ -13,7 +13,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.wear.protolayout.DeviceParametersBuilders
 import androidx.wear.protolayout.DeviceParametersBuilders.DeviceParameters
 import androidx.wear.protolayout.LayoutElementBuilders
-import androidx.wear.protolayout.ProtoLayoutScope
 import androidx.wear.protolayout.ResourceBuilders
 import androidx.wear.protolayout.proto.LayoutElementProto
 import androidx.wear.protolayout.proto.ResourceProto
@@ -119,7 +118,7 @@ private fun renderTileInto(
   // `onTileResourceRequest` returns an empty bundle and `TileRenderer` only inflates the
   // `Resources` we pass it, so unharvested scope images (contact avatars) render blank.
   val resources =
-    mergeScopeResources(data.onTileResourceRequest(resourcesRequest), tileRequest.scope)
+    TileScopeResourcesCompat.merge(data.onTileResourceRequest(resourcesRequest), tileRequest)
 
   val layout =
     tile.tileTimeline?.timelineEntries?.firstOrNull()?.layout
@@ -144,24 +143,40 @@ private fun renderTileInto(
 }
 
 /**
- * Combines the resources returned by `onTileResourceRequest` ([requested]) with any images the
- * layout registered into the TileRequest's [scope] during `onTileRequest` — the modern
- * `ProtoLayoutScope` image API (`materialScopeWithResources` / `avatarImage` / `basicImage`). Scope
- * images are merged on top of the requested map (proto map merge is last-wins per id). Returns
- * [requested] unchanged when the scope holds nothing, so the classic explicit-mapping path is
- * byte-for-byte untouched.
+ * Compatibility bridge for the `TileRequest.getScope()` API added in Wear Tiles 1.6.
+ *
+ * The renderer still supports consumers on Tiles 1.5, whose `TileRequest` has no scope method or
+ * `ProtoLayoutScope` return type. Keeping both types out of this object's signatures and bytecode
+ * prevents the JVM from linking the 1.6 API while rendering a classic `onTileResourceRequest`
+ * preview. On 1.6+, scope images are merged on top of the requested map (last resource id wins).
  */
-private fun mergeScopeResources(
-  requested: ResourceBuilders.Resources,
-  scope: ProtoLayoutScope,
-): ResourceBuilders.Resources {
-  if (!scope.hasResources()) return requested
-  val merged =
-    ResourceProto.Resources.newBuilder()
-      .mergeFrom(requested.toProto())
-      .mergeFrom(scope.collectResources().toProto())
-      .build()
-  return ResourceBuilders.Resources.fromProto(merged)
+internal object TileScopeResourcesCompat {
+  fun merge(
+    requested: ResourceBuilders.Resources,
+    tileRequest: Any,
+  ): ResourceBuilders.Resources {
+    val scope =
+      runCatching { tileRequest.javaClass.getMethod("getScope").invoke(tileRequest) }.getOrNull()
+        ?: return requested
+    val hasResources =
+      runCatching {
+          scope.javaClass.getMethod("hasResources").invoke(scope) as? Boolean
+        }
+        .getOrNull() == true
+    if (!hasResources) return requested
+    val scopeResources =
+      runCatching {
+          scope.javaClass.getMethod("collectResources").invoke(scope)
+            as? ResourceBuilders.Resources
+        }
+        .getOrNull() ?: return requested
+    val merged =
+      ResourceProto.Resources.newBuilder()
+        .mergeFrom(requested.toProto())
+        .mergeFrom(scopeResources.toProto())
+        .build()
+    return ResourceBuilders.Resources.fromProto(merged)
+  }
 }
 
 /**
