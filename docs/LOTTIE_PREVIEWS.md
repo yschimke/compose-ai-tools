@@ -75,6 +75,14 @@ parse and Skia surface allocation happen once, not once per frame. Each RGBA fra
 PNG is stitched into the APNG by `renderer-desktop`'s pure-JVM `ApngEncoder`, which copies each
 frame's `IDAT` verbatim (no re-quantisation, so the alpha is preserved).
 
+Each step is captured only once its pixels have *settled*: Compottie publishes a new `progress` to
+its painter from another thread, so how many render passes the handoff needs varies run to run, and
+a fixed pass count let the capture keep the previous step's pixels now and then. A single duplicated
+frame rewrites the whole APNG, which is why the committed baseline flapped between two byte-states
+and the diff bot reported `lottie/spin.json` as changed on unrelated PRs (issue #2868). The capture
+therefore re-renders until three consecutive passes encode identically (bounded at eight) instead of
+trusting a pass count.
+
 The animated capture is **optional** in discovery: if a headless env can't encode it, the missing
 artefact never trips `composePreviewRenderAll`'s required-render gate — the still PNG remains the
 required baseline.

@@ -47,9 +47,9 @@ const val MAX_LOTTIE_GIF_DURATION_MS: Int = 5000
  * Captures the asset's intrinsic-duration window sampled at [frameIntervalMs] into `frameCount =
  * round(durationMs / interval)` frames, progress stepped `i / frameCount` so the loop wraps
  * seamlessly. Holds a single [ImageComposeScene] and sweeps a snapshot-backed progress state across
- * it (`Snapshot.sendApplyNotifications()` flushes each step, then a settle pass lands it before the
- * capture — see the loop), so the Compottie parse + Skia surface allocation happen once. Each
- * captured frame is written as a PNG and stitched by [ApngEncoder], which copies each frame's
+ * it (`Snapshot.sendApplyNotifications()` flushes each step, then [renderSettledFrame] renders
+ * until the pixels stop changing), so the Compottie parse + Skia surface allocation happen once.
+ * Each captured frame is written as a PNG and stitched by [ApngEncoder], which copies each frame's
  * `IDAT` verbatim — so the RGBA (alpha-carrying) frames Skiko emits become an alpha-carrying APNG
  * with no re-quantisation.
  *
@@ -100,21 +100,8 @@ fun renderLottieApng(
     for (i in 0 until frameCount) {
       progress.floatValue = i.toFloat() / frameCount
       Snapshot.sendApplyNotifications()
-      // Two passes per step; the second one is the capture. Compottie routes the new progress to
-      // its painter through a snapshot observer that *usually* — but not always — lands before
-      // the same pass draws, so a single pass now and then captured the previous step's pixels.
-      // That surfaced as a random handful of duplicated frames per run (frames 3 and 21 in one CI
-      // render, frame 25 in the next, none in a third), which rewrote the committed APNG's bytes
-      // on every push and made the diff bot report `lottie/spin.json` as changed on every PR. The
-      // settle pass drains that pending work; `render()` defaults to nanoTime 0, so it advances no
-      // clock-driven animation. Same two-render settle every other desktop capture path uses (see
-      // DesktopRendererMain's still Lottie + SVG paths).
-      scene.render()
-      val png =
-        scene.render().encodeToData(EncodedImageFormat.PNG)
-          ?: error("Failed to encode Lottie APNG frame $i to PNG")
       val frameFile = File(frameDir, "frame-%05d.png".format(i))
-      frameFile.writeBytes(png.bytes)
+      frameFile.writeBytes(renderSettledFrame(scene, i))
       frameFiles += frameFile
     }
   } finally {
@@ -133,4 +120,50 @@ fun renderLottieApng(
   } finally {
     frameDir.deleteRecursively()
   }
+}
+
+/**
+ * How many consecutive render passes must agree byte-for-byte before a swept frame is accepted as
+ * settled. Three, not two: a single agreeing pair can still be two *stale* passes when the progress
+ * step is late reaching the painter, and one duplicated frame is enough to rewrite the whole APNG.
+ */
+private const val LOTTIE_SETTLE_AGREEMENTS: Int = 3
+
+/**
+ * Upper bound on render passes per swept frame, so a pathological asset that never reaches
+ * [LOTTIE_SETTLE_AGREEMENTS] agreeing passes still terminates with its most recent pixels rather
+ * than spinning.
+ */
+private const val MAX_LOTTIE_SETTLE_PASSES: Int = 8
+
+/**
+ * Render [scene] repeatedly until the encoded PNG stops changing, and return the settled bytes.
+ *
+ * Compottie routes a new `progress` to its painter through work that lands *after* the pass that
+ * applied the snapshot — usually on the very next pass, but not always, because that work is
+ * published from another thread and races the render. A fixed pass count therefore can't fix it:
+ * with one pass per step the capture reused the previous step's pixels outright, and with a fixed
+ * settle pass it still did so now and then. The duplicates fell on a different index each run
+ * (frame 35 in one CI render, none in the next, frames 3 and 21 in an earlier one), so the
+ * committed APNG's bytes flipped between two states push after push and the diff bot reported
+ * `lottie/spin.json` as changed on PRs that never touched it (issue #2868).
+ *
+ * Converging on the pixels instead makes the capture independent of how many passes the async
+ * handoff needs. A step whose progress already landed on the first pass settles immediately at the
+ * [LOTTIE_SETTLE_AGREEMENTS]th identical pass; a late one keeps rendering until the new pixels
+ * appear and then agree. `render()` defaults to nanoTime 0, so the extra passes advance no
+ * clock-driven animation — they only drain pending work.
+ */
+private fun renderSettledFrame(scene: ImageComposeScene, frameIndex: Int): ByteArray {
+  var previous: ByteArray? = null
+  var agreements = 1
+  repeat(MAX_LOTTIE_SETTLE_PASSES) {
+    val bytes =
+      scene.render().encodeToData(EncodedImageFormat.PNG)?.bytes
+        ?: error("Failed to encode Lottie APNG frame $frameIndex to PNG")
+    agreements = if (previous?.contentEquals(bytes) == true) agreements + 1 else 1
+    previous = bytes
+    if (agreements >= LOTTIE_SETTLE_AGREEMENTS) return bytes
+  }
+  return previous ?: error("Failed to render Lottie APNG frame $frameIndex")
 }
