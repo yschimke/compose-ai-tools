@@ -1339,8 +1339,14 @@ open class RobolectricHost(
             null -> null
           },
         inspectionMode = inspectionMode,
+        // Preserve the preview's declared wrapper in held/live mode. This is part of the preview's
+        // composition contract, not decoration: wrappers may provide required app locals.
+        wrapperClassName = spec.wrapperClassName,
+        // Theme providers use the same PreviewWrapperProvider machinery and replace the declared
+        // wrapper when they resolve, matching the one-shot render path.
+        themeProviderFqn = spec.overrides?.themeProvider,
         // Decomposed `spec.overrides.touchOverlay` so the held-rule loop can wrap
-        // `InvokeHeldComposable` with the touch-overlay planner output. Other override fields
+        // the preview with the touch-overlay planner output. Other override fields
         // stay on the host side; only the ones planners actually read on the interactive path
         // get threaded across the sandbox boundary (see the field's doc on
         // `InteractiveCommand.Start`).
@@ -2612,7 +2618,15 @@ open class RobolectricHost(
                               classLoader = classLoader,
                             )
                           } else {
-                            InvokeHeldComposable(composableMethod!!)
+                            // The held composition must obey the same app environment contract as a
+                            // one-shot render. A PreviewWrapperProvider may install required
+                            // composition locals (for example app-owned SharedTransition scopes),
+                            // and a selected theme provider replaces it on the same terms.
+                            InvokeWithOptionalWrapper(
+                              composableMethod = composableMethod!!,
+                              wrapperFqnFromSpec = start.wrapperClassName,
+                              themeProviderFqn = start.themeProviderFqn,
+                            )
                           }
                         }
                       }
@@ -3845,17 +3859,4 @@ open class RobolectricHost(
       private val UNRESOLVED_REASON_JSON: Json = Json { encodeDefaults = true }
     }
   }
-}
-
-/**
- * Tiny @Composable trampoline — same shape as `RenderEngine.kt`'s top-level private
- * `InvokeComposable`, duplicated here because Kotlin top-level `private` is file-scoped and the
- * held-rule loop in `SandboxRunner` lives in this file. Reflectively invokes a
- * [androidx.compose.runtime.reflect.ComposableMethod] so the held composition can host any
- *
- * @Preview-shaped function the user resolves.
- */
-@androidx.compose.runtime.Composable
-private fun InvokeHeldComposable(method: androidx.compose.runtime.reflect.ComposableMethod) {
-  method.invoke(androidx.compose.runtime.currentComposer, null)
 }

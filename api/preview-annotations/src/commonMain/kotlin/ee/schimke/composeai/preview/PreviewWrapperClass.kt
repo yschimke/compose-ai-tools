@@ -22,6 +22,37 @@ package ee.schimke.composeai.preview
  * androidx-free `preview-annotations` artifact (it has no compile dependency on
  * `ui-tooling-preview` and its `PreviewWrapperProvider`). Consumers that want to use the annotation
  * depend on `ee.schimke.composeai:preview-annotations`.
+ *
+ * A wrapper is also the supported way to install **app-owned** preview environment. The renderer
+ * provides standard Compose locals, but it cannot discover arbitrary locals declared by an app. For
+ * example, an app whose screens require its own `LocalSharedTransitionScope` and
+ * `LocalAnimatedVisibilityScope` can create real AndroidX scopes compositionally and map them to
+ * those locals once:
+ * ```
+ * class SharedTransitionPreviewWrapper : PreviewWrapperProvider {
+ *   @Composable
+ *   override fun Wrap(content: @Composable () -> Unit) {
+ *     SharedTransitionLayout {
+ *       AnimatedVisibility(visible = true) {
+ *         CompositionLocalProvider(
+ *           LocalSharedTransitionScope provides this@SharedTransitionLayout,
+ *           LocalAnimatedVisibilityScope provides this,
+ *           content = content,
+ *         )
+ *       }
+ *     }
+ *   }
+ * }
+ *
+ * @Preview
+ * @PreviewWrapperClass("com.example.app.SharedTransitionPreviewWrapper")
+ * @Composable
+ * fun HomePreview() = HomeScreen()
+ * ```
+ *
+ * Keep a required app local non-null with a descriptive throwing default; the app host and preview
+ * wrapper should both provide a valid value. Make it nullable only when the composable deliberately
+ * supports running without that environment—for example, by omitting shared-element modifiers.
  */
 @Retention(AnnotationRetention.BINARY)
 @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
