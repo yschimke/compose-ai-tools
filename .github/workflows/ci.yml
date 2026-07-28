@@ -574,10 +574,10 @@ jobs:
         run: python3 .github/actions/lib/test_xr_gallery.py -v
       - name: Run apply skew-guard tests
         run: python3 .github/actions/apply/test_check_skew.py -v
+      - name: Run post-comment tests
+        run: python3 .github/actions/apply/test_post_comment.py -v
       - name: Run apply change-scope tests
         run: python3 .github/actions/apply/test_compute_scope.py -v
-      - name: Run apply sticky-comment tests
-        run: python3 .github/actions/apply/test_post_comment.py -v
       - name: Run change-scope classifier tests
         run: python3 .github/ci/test_change_scope.py -v
       - name: Run daemon round-trip transport tests

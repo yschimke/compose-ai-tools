@@ -6,6 +6,12 @@ The script is pure shell against the `gh` CLI, so the tests drive it with a
 enough to pin the behaviour that actually broke in issue #2869: a PATCH that
 sent `@_comment_body.md` as a literal string, wiping the marker off the
 sticky comment so every later run posted a fresh duplicate.
+
+Supersedes `lib/test-post-comment.sh` (issue #2868), whose three cases are
+carried over below. That double answered every listing call with the same
+id, which can't express a script that now lists three times for three
+different questions — does a corpse exist, does the sticky comment exist,
+did the write land. The store here is stateful, so those are distinct.
 """
 
 import json
@@ -59,10 +65,11 @@ def jq_ids(expr):
             marker = re.search(r'startswith\("(.*)"\)', expr).group(1)
             if c["body"].startswith(marker):
                 out.append(c["id"])
-        elif "test(" in expr:
+        elif ".body ==" in expr:
+            placeholder = re.search(r'\.body == "(.*?)"', expr).group(1)
             if c.get("user", {}).get("type") != "Bot":
                 continue
-            if re.match(r"^@[A-Za-z0-9_./-]+\.md\s*$", c["body"]):
+            if c["body"] == placeholder:
                 out.append(c["id"])
     return out
 
@@ -185,13 +192,40 @@ class PostCommentTest(unittest.TestCase):
         self.assertEqual(len(bodies), 1)
         self.assertTrue(bodies[0].startswith(MARKER))
 
-    def test_leaves_human_comments_that_merely_mention_a_file(self):
-        human = {"id": 5, "body": "@_comment_body.md", "user": {"type": "User"}}
-        other = {"id": 6, "body": "see @notes.md for context",
-                 "user": {"type": "Bot"}}
-        self.run_script(f"{MARKER}\nfresh\n", [human, other])
+    def test_leaves_comments_that_are_not_our_own_placeholder(self):
+        # A human comment with the same text; a bot comment that merely
+        # mentions a .md file; and another integration's placeholder — none
+        # of these are this action's corpse, so none may be deleted.
+        others = [
+            {"id": 5, "body": "@_comment_body.md", "user": {"type": "User"}},
+            {"id": 6, "body": "see @notes.md for context",
+             "user": {"type": "Bot"}},
+            {"id": 7, "body": "@reports/result.md", "user": {"type": "Bot"}},
+        ]
+        self.run_script(f"{MARKER}\nfresh\n", others)
         self.assertNotIn("delete", [c["call"] for c in self.calls()])
-        self.assertEqual(len(self.comments()), 3)
+        self.assertEqual(len(self.comments()), 4)
+
+    def test_only_cleans_the_current_pipelines_placeholder(self):
+        # The a11y run must not delete the compose run's corpse: each
+        # invocation owns exactly the placeholder its own BODY_FILE names.
+        corpses = [
+            {"id": 5, "body": "@_comment_body.md", "user": {"type": "Bot"}},
+            {"id": 6, "body": "@_a11y_comment.md", "user": {"type": "Bot"}},
+        ]
+        self.state.write_text(json.dumps(corpses))
+        body_file = self.tmp / "_a11y_comment.md"
+        body_file.write_text(f"{MARKER}\nfresh\n")
+        proc = subprocess.run(
+            ["bash", str(SCRIPT)], cwd=self.tmp,
+            env={**self.env, "BODY_FILE": str(body_file)},
+            capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual([c for c in self.calls() if c["call"] == "delete"],
+                         [{"call": "delete", "id": 6}])
+        self.assertIn("@_comment_body.md",
+                      [c["body"] for c in self.comments()])
 
     def test_fails_loudly_when_the_body_does_not_land(self):
         """A write that loses the marker must go red, not post duplicates."""
