@@ -36,7 +36,6 @@ import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.foundation.pager.HorizontalPager
 import androidx.wear.compose.foundation.pager.rememberPagerState
-import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.Card
 import androidx.wear.compose.material3.OutlinedCard
@@ -53,11 +52,9 @@ import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.SwitchButton
 import androidx.wear.compose.material3.Text
-import androidx.wear.compose.material3.TimeText
 import androidx.wear.compose.material3.TitleCard
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
-import androidx.wear.compose.material3.timeTextCurvedText
 import ee.schimke.composeai.overrides.previewOverrideBoolean
 import ee.schimke.composeai.overrides.previewOverrideString
 import ee.schimke.composeai.preview.AnimatedPreview
@@ -295,21 +292,15 @@ fun BlankListLayout() =
 
 // ---------------------------------------------------------------------------
 // Scaffold templates — full-screen, pre-built screen skeletons an app copies
-// whole, captured at every breakpoint. Unlike the [FullScreenWear] stickers
-// above (which drop the clock via `timeText = {}`), each template composes its
-// own `AppScaffold(timeText = { … })` so the curved status strip is part of the
-// capture. The clock is frozen at a fixed "10:10" so the weekly design-artifacts
-// bundle doesn't churn on the live system time.
+// whole, captured at every breakpoint. Like every other full-screen capture they
+// carry the curved TimeText status strip, supplied once by [WearScaffoldTemplate]
+// (an alias of [FullScreenWear]) and frozen at "10:10" so the weekly
+// design-artifacts bundle doesn't churn on the live system time.
 //
 // The three variants mirror the Wear status-strip archetypes: the base list
 // screen, a horizontal pager with a page indicator, and a screen anchored by an
 // edge-hugging button.
 // ---------------------------------------------------------------------------
-
-// A frozen curved TimeText: the real Wear M3 status strip drawing a fixed
-// "10:10" instead of the system clock, so every render is deterministic.
-@Composable
-private fun FixedTimeText() = TimeText { timeTextCurvedText("10:10") }
 
 private val templateListItems =
   listOf(
@@ -330,32 +321,30 @@ private val templateListItems =
 @Composable
 fun TimeTextScaffoldTemplate() =
   WearScaffoldTemplate {
-    AppScaffold(timeText = { FixedTimeText() }) {
-      val listState = rememberTransformingLazyColumnState()
-      val spec = rememberTransformationSpec()
-      ScreenScaffold(scrollState = listState) { contentPadding ->
-        TransformingLazyColumn(
-          state = listState,
-          contentPadding = contentPadding,
-          modifier = Modifier.fillMaxSize(),
-        ) {
-          item {
-            ListHeader(
-              modifier = Modifier.transformedHeight(this, spec),
-              transformation = SurfaceTransformation(spec),
-            ) {
-              Text(previewOverrideString("header", stringResource(R.string.header_activity)))
-            }
+    val listState = rememberTransformingLazyColumnState()
+    val spec = rememberTransformationSpec()
+    ScreenScaffold(scrollState = listState) { contentPadding ->
+      TransformingLazyColumn(
+        state = listState,
+        contentPadding = contentPadding,
+        modifier = Modifier.fillMaxSize(),
+      ) {
+        item {
+          ListHeader(
+            modifier = Modifier.transformedHeight(this, spec),
+            transformation = SurfaceTransformation(spec),
+          ) {
+            Text(previewOverrideString("header", stringResource(R.string.header_activity)))
           }
-          items(templateListItems) { (titleRes, subtitle) ->
-            TitleCard(
-              onClick = {},
-              title = { Text(stringResource(titleRes)) },
-              subtitle = { Text(subtitle) },
-              modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-              transformation = SurfaceTransformation(spec),
-            )
-          }
+        }
+        items(templateListItems) { (titleRes, subtitle) ->
+          TitleCard(
+            onClick = {},
+            title = { Text(stringResource(titleRes)) },
+            subtitle = { Text(subtitle) },
+            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+            transformation = SurfaceTransformation(spec),
+          )
         }
       }
     }
@@ -375,19 +364,17 @@ fun TimeTextScaffoldTemplate() =
 @Composable
 fun PageIndicatorScaffoldTemplate() =
   WearScaffoldTemplate {
-    AppScaffold(timeText = { FixedTimeText() }) {
-      val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
-      Box(Modifier.fillMaxSize()) {
-        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-          Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(previewOverrideString("page", stringResource(R.string.label_page, page + 1), index = page))
-          }
+    val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
+    Box(Modifier.fillMaxSize()) {
+      HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+          Text(previewOverrideString("page", stringResource(R.string.label_page, page + 1), index = page))
         }
-        HorizontalPageIndicator(
-          pagerState = pagerState,
-          modifier = Modifier.align(Alignment.BottomCenter),
-        )
       }
+      HorizontalPageIndicator(
+        pagerState = pagerState,
+        modifier = Modifier.align(Alignment.BottomCenter),
+      )
     }
   }
 
@@ -406,39 +393,37 @@ fun PageIndicatorScaffoldTemplate() =
 @Composable
 fun EdgeButtonScaffoldTemplate() =
   WearScaffoldTemplate {
-    AppScaffold(timeText = { FixedTimeText() }) {
-      val listState = rememberTransformingLazyColumnState()
-      val spec = rememberTransformationSpec()
-      ScreenScaffold(
-        scrollState = listState,
-        edgeButton = {
-          EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {
-            Text(previewOverrideString("edgeLabel", stringResource(R.string.label_start)))
+    val listState = rememberTransformingLazyColumnState()
+    val spec = rememberTransformationSpec()
+    ScreenScaffold(
+      scrollState = listState,
+      edgeButton = {
+        EdgeButton(onClick = {}, buttonSize = EdgeButtonSize.Large) {
+          Text(previewOverrideString("edgeLabel", stringResource(R.string.label_start)))
+        }
+      },
+    ) { contentPadding ->
+      TransformingLazyColumn(
+        state = listState,
+        contentPadding = contentPadding,
+        modifier = Modifier.fillMaxSize(),
+      ) {
+        item {
+          ListHeader(
+            modifier = Modifier.transformedHeight(this, spec),
+            transformation = SurfaceTransformation(spec),
+          ) {
+            Text(previewOverrideString("header", stringResource(R.string.header_workout)))
           }
-        },
-      ) { contentPadding ->
-        TransformingLazyColumn(
-          state = listState,
-          contentPadding = contentPadding,
-          modifier = Modifier.fillMaxSize(),
-        ) {
-          item {
-            ListHeader(
-              modifier = Modifier.transformedHeight(this, spec),
-              transformation = SurfaceTransformation(spec),
-            ) {
-              Text(previewOverrideString("header", stringResource(R.string.header_workout)))
-            }
-          }
-          items(edgeButtonHistory) { (titleRes, subtitle) ->
-            TitleCard(
-              onClick = {},
-              title = { Text(stringResource(titleRes)) },
-              subtitle = { Text(subtitle) },
-              modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-              transformation = SurfaceTransformation(spec),
-            )
-          }
+        }
+        items(edgeButtonHistory) { (titleRes, subtitle) ->
+          TitleCard(
+            onClick = {},
+            title = { Text(stringResource(titleRes)) },
+            subtitle = { Text(subtitle) },
+            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+            transformation = SurfaceTransformation(spec),
+          )
         }
       }
     }

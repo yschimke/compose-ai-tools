@@ -57,13 +57,23 @@ if (sources.length === 0) {
   process.exit(1);
 }
 
-const { previews, annotations } = discoverPreviews(sources, {
+const { previews: discovered, annotations, pngLess } = discoverPreviews(sources, {
   extraAnnotations: values["preview-annotation"] ?? [],
 });
+// PNG-less previews (@AnimatedPreview / @FocusedPreview(gif = true) / LONG-GIF-only
+// @ScrollingPreview) render no static sticker, so the catalog export drops them and
+// the completeness gate reports them missing — scaffolding them in would produce a
+// spec that fails validation. See catalog-spec.mjs `rendersStaticPng`.
+const skipped = new Set(pngLess);
+const previews = discovered.filter((p) => !skipped.has(p));
 if (previews.length === 0) {
   console.error(
-    `init-catalog-spec: found no @Preview functions under ${dirs.join(", ")}. ` +
-      `If your previews use an imported multipreview annotation, pass it via --preview-annotation.`,
+    skipped.size > 0
+      ? `init-catalog-spec: every @Preview function under ${dirs.join(", ")} renders only an ` +
+          `animated GIF / scroll data product (${[...skipped].join(", ")}) — none can be a catalog ` +
+          `entry. Add a static @Preview sibling for the components you want catalogued.`
+      : `init-catalog-spec: found no @Preview functions under ${dirs.join(", ")}. ` +
+          `If your previews use an imported multipreview annotation, pass it via --preview-annotation.`,
   );
   process.exit(1);
 }
@@ -82,5 +92,9 @@ await writeFile(values.out, JSON.stringify(spec, null, 2) + "\n", "utf8");
 console.error(
   `Wrote ${values.out}: ${previews.length} component(s) in one "Components" group ` +
     `(recognised preview annotations: ${annotations.join(", ")}).\n` +
+    (skipped.size > 0
+      ? `Skipped ${skipped.size} PNG-less preview(s) — animated GIF / scroll data products the ` +
+        `catalog export can't join: ${[...skipped].join(", ")}.\n`
+      : "") +
     `Next: group/caption them, add variants, then \`node validate-catalog-spec.mjs --spec ${values.out}\`.`,
 );

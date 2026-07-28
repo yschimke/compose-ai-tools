@@ -56,8 +56,14 @@ COMMENT_ID=$(gh api \
   | head -1)
 
 if [ -n "$COMMENT_ID" ]; then
+  # `-F`, not `-f`: only `--field` expands a leading `@` into the file's
+  # contents. `--raw-field` sends the value verbatim, so `-f body=@file`
+  # PATCHed the sticky comment to the literal string "@_comment_body.md",
+  # wiping the rendered diff off every PR whose comment already existed
+  # (issue #2868). The first post is unaffected — it goes through
+  # `gh pr comment --body-file` below.
   gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
-    -X PATCH -f "body=@${BODY_FILE}"
+    -X PATCH -F "body=@${BODY_FILE}"
 else
   gh pr comment "$PR_NUMBER" --body-file "$BODY_FILE"
 fi

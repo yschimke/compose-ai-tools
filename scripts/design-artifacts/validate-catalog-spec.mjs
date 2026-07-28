@@ -57,16 +57,18 @@ const srcDirs = values["module-dir"] ? [values["module-dir"], ...(values.src ?? 
 
 let knownPreviews = null;
 let knownComponentIds = null;
+let pngLessPreviews = [];
 let annotatedInventory = undefined;
 let scannedDirs = [];
 if (!values["no-scan"]) {
   scannedDirs = resolveSourceDirs({ srcDirs, spec, specPath: values.spec });
   if (scannedDirs.length > 0) {
     const sources = await collectKotlinSources(scannedDirs);
-    const { previews } = discoverPreviews(sources, {
+    const { previews, pngLess } = discoverPreviews(sources, {
       extraAnnotations: values["preview-annotation"] ?? [],
     });
     knownPreviews = previews;
+    pngLessPreviews = pngLess;
     // The annotated componentIds travel with the preview names: `display.hero` names a componentId,
     // and for a cover-sheet spec (no `groups`) the annotations are the only place those ids exist.
     // Scanning the module but passing only `knownPreviews` would enable hero validation against
@@ -79,7 +81,7 @@ if (!values["no-scan"]) {
 }
 
 const { errors, warnings } = validateSpec(spec, {
-  ...(knownPreviews ? { knownPreviews } : {}),
+  ...(knownPreviews ? { knownPreviews, pngLessPreviews } : {}),
   ...(knownComponentIds ? { knownComponentIds } : {}),
   ...(annotatedInventory !== undefined ? { annotatedInventory } : {}),
 });
@@ -91,6 +93,7 @@ if (values.json) {
         spec: values.spec,
         scannedDirs,
         discoveredPreviews: knownPreviews ? knownPreviews.length : null,
+        pngLessPreviews,
         errors,
         warnings,
         ok: errors.length === 0,
@@ -102,7 +105,10 @@ if (values.json) {
 } else {
   if (knownPreviews) {
     console.log(
-      `Scanned ${scannedDirs.length} source dir(s); discovered ${knownPreviews.length} @Preview function(s).`,
+      `Scanned ${scannedDirs.length} source dir(s); discovered ${knownPreviews.length} @Preview function(s)` +
+        (pngLessPreviews.length > 0
+          ? `, ${pngLessPreviews.length} of them PNG-less (not catalogable): ${pngLessPreviews.join(", ")}.`
+          : "."),
     );
   } else {
     console.log(
