@@ -31,24 +31,31 @@ ENV LIBGL_ALWAYS_SOFTWARE=1 \
     GRADLE_USER_HOME=/root/.gradle
 
 # ---------------------------------------------------------------------------
-# Stage 1: fetch the released CLI and seed the release's Maven modules.
+# Stage 1: install the released CLI and seed the release's Maven modules.
 # ---------------------------------------------------------------------------
 FROM base AS cli
 ARG CP_VERSION
 WORKDIR /opt
-# Download + unpack the released distribution (bin/compose-preview + lib dirs).
-# --retry-all-errors + a long window waits out the release-asset upload race: on a
-# fresh `v*` release the GitHub Release exists before release.yml finishes pushing
-# the tarball, so the first GETs can 404. Retry every 30s for up to ~10 min.
-RUN curl -fsSL --retry 20 --retry-delay 30 --retry-all-errors -o /tmp/cp.tgz \
-      "https://github.com/yschimke/compose-ai-tools/releases/download/v${CP_VERSION}/compose-preview-${CP_VERSION}.tar.gz" \
- && tar -xzf /tmp/cp.tgz -C /opt \
- && rm /tmp/cp.tgz \
- && ln -s "/opt/compose-preview-${CP_VERSION}" /opt/compose-preview
+# Automatic releases stage the exact tag's tarball in the build context and can
+# build/deploy before the draft GitHub Release becomes public. Manual and
+# human-published-release builds leave the dir empty and retain the public-asset
+# fallback (with retries for upload propagation).
+COPY release-assets/ /tmp/release-assets/
+RUN set -eu; \
+    local="/tmp/release-assets/compose-preview-${CP_VERSION}.tar.gz"; \
+    if [ -f "$local" ]; then \
+      cp "$local" /tmp/cp.tgz; \
+    else \
+      curl -fsSL --retry 20 --retry-delay 30 --retry-all-errors -o /tmp/cp.tgz \
+        "https://github.com/yschimke/compose-ai-tools/releases/download/v${CP_VERSION}/compose-preview-${CP_VERSION}.tar.gz"; \
+    fi; \
+    tar -xzf /tmp/cp.tgz -C /opt; \
+    rm /tmp/cp.tgz; \
+    ln -s "/opt/compose-preview-${CP_VERSION}" /opt/compose-preview
 ENV PATH="/opt/compose-preview/bin:${PATH}"
 
-# Seed Maven local from the same release run (preview-host-image.yml downloads the
-# `preview-host-maven` artifact published by release.yml into deploy/image/m2/).
+# Seed Maven local from the same release tag (preview-host-image.yml builds the
+# published `ee` tree directly into deploy/image/m2/).
 # Carrying the release's plugin/runtime jars makes live-bundle dependency resolution
 # self-contained instead of depending on Maven Central propagation. The directory
 # always exists (.keep); on the manual workflow_dispatch path it can be empty, in
@@ -72,6 +79,7 @@ COPY m2/ /root/.m2/repository/
 FROM base AS android-daemon
 ARG CP_VERSION
 ARG ANDROID_SDK_PLATFORM=android-35
+COPY release-assets/ /tmp/release-assets/
 # Minimal Android SDK: just the cmdline-tools + one platform's android.jar (no
 # emulator/build-tools — Robolectric renders host-side).
 ENV ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/android-sdk
@@ -86,11 +94,16 @@ RUN set -eu; \
     rm /tmp/cmdtools.zip; \
     yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null; \
     "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" "platforms;${ANDROID_SDK_PLATFORM}" >/dev/null
-# Unpack the released Android daemon sidecar → /opt/lib-daemon-android (same retry
-# window as the CLI tarball, for the release-asset upload race).
+# Unpack the released Android daemon sidecar → /opt/lib-daemon-android. Automatic
+# releases use the locally staged archive; manual builds retain the public fallback.
 RUN set -eu; \
-    curl -fsSL --retry 20 --retry-delay 30 --retry-all-errors -o /tmp/android-daemon.zip \
-      "https://github.com/yschimke/compose-ai-tools/releases/download/v${CP_VERSION}/compose-preview-android-daemon-${CP_VERSION}.zip"; \
+    local="/tmp/release-assets/compose-preview-android-daemon-${CP_VERSION}.zip"; \
+    if [ -f "$local" ]; then \
+      cp "$local" /tmp/android-daemon.zip; \
+    else \
+      curl -fsSL --retry 20 --retry-delay 30 --retry-all-errors -o /tmp/android-daemon.zip \
+        "https://github.com/yschimke/compose-ai-tools/releases/download/v${CP_VERSION}/compose-preview-android-daemon-${CP_VERSION}.zip"; \
+    fi; \
     unzip -q /tmp/android-daemon.zip -d /opt; \
     rm /tmp/android-daemon.zip; \
     test -d /opt/lib-daemon-android

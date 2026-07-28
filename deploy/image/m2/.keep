@@ -1,4 +1,4 @@
 Placeholder so the Dockerfile `COPY m2/` always has a directory.
-CI (preview-host-image.yml) drops the published `ee` Maven tree here from the
-`preview-host-maven` artifact; locally it stays empty and runtime dependency
-resolution falls back to the configured remote repositories.
+The automatic release path builds the same tag's published `ee` Maven tree
+directly into this directory; manual/local builds leave it empty and runtime
+dependency resolution falls back to the configured remote repositories.

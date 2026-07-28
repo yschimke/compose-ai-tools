@@ -18,7 +18,7 @@ In **Settings → Actions → General → Workflow permissions**, tick **"Allow 
 
    Requires repo setting **Settings → General → Pull Requests → "Default to pull request title for squash merges"**. The repo-level API field is `squash_merge_commit_title=PR_TITLE` (not the default `COMMIT_OR_PR_TITLE`, which reuses the first commit's headline on single-commit PRs — that's the gap that let #94 through).
 2. **Review the release PR.** Titled `chore(main): release X.Y.Z`. Check the proposed `CHANGELOG.md`, the version bumps in `README.md`, `docs/*.md`, `DoctorCommand.kt`, and `.release-please-manifest.json`. Amend commit messages on `main` if the bump isn't right — the PR updates itself.
-3. **Merge the release PR.** On the next `release-please.yml` run (fires immediately on the merge commit), it creates the `vX.Y.Z` tag + a **draft** GitHub Release, then invokes `release.yml` to build and upload the artifacts onto that draft. A `finalize-release` job verifies the required assets are attached (and polls Maven Central for the published plugin), then un-drafts the Release and marks it `latest`. Only after that does the prebuilt `preview-host-image` build (it pulls the now-public CLI tarball). Once the release is finalized, `regenerate-design-artifacts` also fires (chained via `workflow_call`), rebuilding the `design-artifacts/<system>` delivery branches against the just-released preview-runtime coordinates — the published sticker bundles pin `composeaiReleasedRuntimeVersion`, which the release PR just bumped, so they'd otherwise lag until the Monday cron. If a required asset is missing the release **stays a draft** so it's never half-published — re-run `release.yml` for the tag, then re-run the finalize step.
+3. **Merge the release PR.** On the next `release-please.yml` run (fires immediately on the merge commit), it creates the `vX.Y.Z` tag + a **draft** GitHub Release, then starts two independent paths from that tag. `release.yml` builds and uploads the core artifacts; a `finalize-release` job verifies them (and polls Maven Central for the published plugin), then un-drafts the Release and marks it `latest`. In parallel, `preview-host-image.yml` builds its CLI, Android daemon, and local Maven tree directly from the tag, pushes the image, and rolls `preview.coo.ee` without waiting for either Maven Central or the draft Release to become public. The preview deployment is best-effort and cannot block the core release. Once the release is finalized, `regenerate-design-artifacts` also fires, rebuilding the `design-artifacts/<system>` delivery branches against the just-released preview-runtime coordinates — the published sticker bundles pin `composeaiReleasedRuntimeVersion`, which the release PR just bumped, so they'd otherwise lag until the Monday cron. If a required core asset is missing the release **stays a draft** so it's never half-published — re-run `release.yml` for the tag, then re-run the finalize step.
 
    > **Why draft-then-finalize.** release-please used to publish the Release immediately on merge, so `/releases/latest` flipped to the new version ~20 min before the CLI tarball finished uploading — anyone installing in that window hit "release not found" (a 404 on `latest/download/compose-preview-<v>.tar.gz`). A **draft** Release is excluded from `/releases/latest` and the `latest/download/…` redirect, so consumers only ever see a release whose assets are all present. One gotcha the workflow handles: a draft Release does **not** create its git tag (GitHub writes the tag only on publish), so `release-please.yml` creates the tag itself at the merge commit before the build jobs check it out.
 
@@ -51,13 +51,23 @@ Both fallbacks share the same concurrency group as the primary path, so they can
    - **Data product connectors** — `ee.schimke.composeai:data-*-connector` artifacts used by daemon modules, including recomposition
 
    Maven Central is the only Maven coordinate source — we no longer mirror jars onto GitHub Packages. Consumers point Gradle at `mavenCentral()` and resolve every module from there.
-2. Builds the **CLI** and the standalone **MCP server** as `.zip` / `.tar.gz` distributions, and the **bundle viewer** as a single runnable uber jar:
+2. Builds the **CLI** and the standalone **MCP server** as `.zip` / `.tar.gz` distributions:
    - `compose-preview-<ver>.{zip,tar.gz}` — the CLI; tarball already implementation-bundles `:mcp` and the desktop renderer.
    - `compose-preview-mcp-<ver>.{zip,tar.gz}` — the MCP server standalone for consumers who want to wire it into an MCP client without dragging the CLI in.
-   - `compose-preview-viewer-<os>-<arch>-<ver>.jar` — single-window Compose Desktop app, built by Compose's `packageUberJarForCurrentOS`, that opens a packed bundle and renders its `@Preview` composable live (`java -jar compose-preview-viewer-<os>-<arch>-<ver>.jar <bundle.png>`, or drag-and-drop). One self-contained file — no unpacking — but **per-OS** (it carries that OS's Compose Multiplatform + Skiko runtime, ~40 MB). The release runner for this jar is Linux, so the published jar is `linux-x64`; macOS/Windows recipients build it locally with `./gradlew :bundle-viewer:packageUberJarForCurrentOS`.
-   - `compose-preview-viewer*.{deb,dmg,msi}` — native installers for the viewer, one per OS, built by `packageDistributionForCurrentOS` (`jpackage`) on a Linux/macOS/Windows matrix. Each embeds a JDK runtime image, so a recipient with **no JDK** installs and launches the viewer like any native app. Unsigned — first launch clears a one-time Gatekeeper (macOS) / SmartScreen (Windows) prompt. The uber jar above stays the no-install option for anyone who has a JDK.
 3. Packages the **VS Code extension** as a `.vsix` file and publishes it to the **VS Code Marketplace** and **Open VSX** (runs alongside the Release upload, so a marketplace outage can't block the GitHub Release).
-4. Uploads the CLI, MCP, viewer (uber jar + native installers), and VS Code extension artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
+4. Uploads the CLI, MCP, XR compositor, and VS Code extension artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
+
+Alongside `release.yml`, the automatic release chain starts
+`preview-host-image.yml` immediately after tag creation. That job builds only
+the server image's inputs from the tag and deploys independently; it is not a
+dependency of Maven publishing, GitHub Release finalization, or the CLI assets.
+
+The Compose Desktop bundle viewer remains in `:bundle-viewer` and is compiled and
+tested by normal CI, but its large per-OS binaries are not core release assets.
+Build a self-contained jar for the current OS with
+`./gradlew :bundle-viewer:packageUberJarForCurrentOS`, or a native
+`.deb` / `.dmg` / `.msi` with
+`./gradlew :bundle-viewer:packageDistributionForCurrentOS`.
 
 Skill bundles (`compose-preview`, `compose-preview-review`) and the
 canonical bootstrap installer (`scripts/install.sh`) ship from a

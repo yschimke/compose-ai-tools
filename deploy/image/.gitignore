@@ -5,4 +5,8 @@
 # Keep the dir (so the Dockerfile COPY works) but never commit the jars.
 m2/*
 !m2/.keep
-m2-dl/
+
+# Automatic releases stage the exact tag's CLI + Android daemon here before
+# docker build; manual image builds leave it empty and use public release assets.
+release-assets/*
+!release-assets/.keep

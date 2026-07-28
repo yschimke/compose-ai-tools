@@ -25,8 +25,8 @@ data modules. This one skips all of that:
 
 | | From source (`deploy/cloudrun`) | Prebuilt (`deploy/image`) |
 |---|---|---|
-| Tool | compiled in the image (~8 min) | **released CLI tarball, downloaded** |
-| Release modules | built locally | **published Maven tree, baked into the image** |
+| Tool | compiled in the image (~8 min) | **release CLI tarball, staged by CI** |
+| Release modules | built locally | **same-tag Maven tree, baked into the image** |
 | Content served | the whole repo's `:samples:cmp` | published catalogs + live bundles |
 | Host build | yes, every deploy | **none — `docker pull`** |
 
@@ -37,7 +37,9 @@ release to propagate through Maven Central.
 ## Publishing the image (one-time / per release)
 
 The [`preview-host-image.yml`](../../.github/workflows/preview-host-image.yml)
-workflow builds and pushes to GHCR. Trigger it either way:
+workflow builds and pushes to GHCR. The automatic path starts as soon as the
+release tag exists and builds its inputs directly from that tag, in parallel
+with the core release. Trigger it either way:
 
 - **On a CLI release** (`v*` tag) — automatic; bundles that version + tags `latest`.
 - **Manually** — Actions → *Publish preview-host image* → run with a `cli_version`
@@ -75,7 +77,8 @@ services split the work:
   live one, waits for that replica's `/readyz` healthcheck to pass, lets Caddy
   drain traffic onto it, then retires the old replica. The chain stays hands-off:
 
-  > merge → cut a `v*` release → `preview-host-image.yml` publishes `:latest` →
+  > merge → cut a `v*` tag → core release + `preview-host-image.yml` start in
+  > parallel → image publishes `:latest` →
   > `rollout` pulls it → new replica boots + goes healthy → traffic drains over →
   > old replica retired
 
@@ -91,7 +94,7 @@ The **`hook`** service closes that gap: it exposes a token-gated
 `POST /__hooks/rollout` (routed through Caddy) that runs `rollout.sh` immediately, so
 the publish CI can push the roll the moment the image lands:
 
-> merge → release → `preview-host-image.yml` builds & pushes `:latest` → **its final
+> merge → release tag → `preview-host-image.yml` builds & pushes `:latest` → **its final
 > step POSTs `/__hooks/rollout`** → `hook` runs `rollout.sh` → new replica boots +
 > goes healthy → traffic drains over → old replica retired
 
@@ -99,7 +102,7 @@ the publish CI can push the roll the moment the image lands:
 image build*, not a `release: published` event — at image-publish time the GHCR image
 is fully self-contained (baked CLI + plugin jars + live-render daemons), so
 the box needs **only GHCR** to roll and **no Maven propagation can race it** (the
-same release run seeds the image's local `m2` directly).
+image workflow builds and seeds its local `m2` directly from the release tag).
 A `release: published` webhook would fire *before* the image exists and roll the box onto
 the *old* `:latest`.
 
