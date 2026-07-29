@@ -1376,17 +1376,26 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     // Track whether the stream ever delivered a frame: a close/error *before* the first frame is
     // a failed activation (surface it), whereas a close *after* frames is just a normal teardown.
     var liveGotFrame = false;
-    ws = new WebSocket(proto + "//" + location.host + base + "/ws/" +
+    // Hold the socket in a per-activation local as well as `ws`, and gate every callback on
+    // `ws === sock`. Toggling Live off and straight back on opens a replacement before the old
+    // socket's close event is delivered, and that stale callback would otherwise clear the NEW
+    // connection's pending badge (its own liveGotFrame is true, so it skips the error branch)
+    // and null out `ws` — orphaning the live socket the input/override senders reach for.
+    var sock = new WebSocket(proto + "//" + location.host + base + "/ws/" +
       encodeURIComponent(previewId) + "?" + (qs ? qs + "&codec=webp" : "codec=webp"));
-    ws.onopen = function () {
+    ws = sock;
+    sock.onopen = function () {
       // The connect URL seeds only query()'s fields — the display axes plus changed knobs — so
       // the live-only overlays (talkBack / touchOverlay) and anything toggled during the
       // connecting window aren't in it. Replay the full live override map once the socket is
       // ready so the daemon reflects the exact current control state, including an overlay
       // checked before onopen whose change event the readyState guard dropped.
-      ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
+      sock.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
     };
-    ws.onmessage = function (ev) {
+    sock.onmessage = function (ev) {
+      // A frame from a socket the viewer has already replaced is stale in both senses: it must
+      // not paint over the new lane's stage, nor report it as connected.
+      if (ws !== sock) return;
       var m;
       try { m = JSON.parse(ev.data); } catch (e) { return; }
       if (m.type === "frame") { liveGotFrame = true; clearModeError(); drawFrame(m.dataBase64, m.codec); setPending(null); }
@@ -1394,8 +1403,11 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     };
     // onerror always precedes onclose; let onclose decide (it carries the code/reason). Only
     // surface here if the socket somehow errors while already open+frame-less and never closes.
-    ws.onerror = function () { if (!liveGotFrame) setPending("connecting…"); };
-    ws.onclose = function (ev) {
+    sock.onerror = function () { if (ws === sock && !liveGotFrame) setPending("connecting…"); };
+    sock.onclose = function (ev) {
+      // Not the current socket ⇒ a teardown the viewer already accounted for in closeStream()
+      // (which cleared pending and restored the snapshot). Leave the live lane's state alone.
+      if (ws !== sock) return;
       ws = null;
       // The lane is done waiting either way — it painted, or it failed (showModeError below).
       setPending(null);
