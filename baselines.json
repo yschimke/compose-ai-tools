@@ -2351,6 +2351,14 @@
     "sha256": "c97aa1544447fe65adf186a05c6fb21f13f55b2bd1993df9103528a2353d0ea7",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.BrandedTextRemote_width=200dp,height=200dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "BrandedTextRemote",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "BrandedTextRemote_width_200dp_height_200dp_dpi_320.png",
+    "sha256": "8674d2ba9d38ca000866c867ab749862bc7d118f7389e7e924e7f8a1d8e95077",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
+  },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.ButtonGroupRemote_width=320dp,height=240dp,dpi=320": {
     "captureLabel": "",
     "functionName": "ButtonGroupRemote",
@@ -3340,7 +3348,7 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "094df53da2ad611cb769f7a7e381c83ac0dbee764bc2060d387be804c6c5ba23",
+    "sha256": "4894efeb548deb8e9074068f891ddd4a3c9901e2e5482960eebaa1dbf8e65cca",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round": {
@@ -3348,7 +3356,7 @@
     "functionName": "ActivityListMotionLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListMotionLongPreview_Devices_Large_Round_SCROLL_long.png",
-    "sha256": "094df53da2ad611cb769f7a7e381c83ac0dbee764bc2060d387be804c6c5ba23",
+    "sha256": "4894efeb548deb8e9074068f891ddd4a3c9901e2e5482960eebaa1dbf8e65cca",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round#1": {

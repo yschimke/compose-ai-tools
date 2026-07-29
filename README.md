@@ -350,6 +350,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | Preview | Image |
 |---------|-------|
 | `AppCardRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/AppCardRemote_width_320dp_height_240dp_dpi_320.png" width="150" /> |
+| `BrandedTextRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/BrandedTextRemote_width_200dp_height_200dp_dpi_320.png" width="150" /> |
 | `ButtonGroupRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/ButtonGroupRemote_width_320dp_height_240dp_dpi_320.png" width="150" /> |
 | `CardRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/CardRemote_width_320dp_height_240dp_dpi_320.png" width="150" /> |
 | `CircularProgressRemote` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-remote-m3/CircularProgressRemote_width_200dp_height_200dp_dpi_320.png" width="150" /> |
