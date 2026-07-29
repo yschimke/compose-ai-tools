@@ -188,6 +188,12 @@ for (const id of rcIds) {
         player.setTheme(theme);
         await player.loadFromArrayBuffer(bytes.buffer);
         await new Promise((r) => setTimeout(r, 250));
+        // The first paint is what *discovers* which named font families the document asks for —
+        // resolution happens mid-paint, per TYPEFACE op — so the wait has to come after it. A
+        // single-shot render has no later frame in which a face could appear, so without this the
+        // branded text would screenshot in the fallback typeface.
+        player.repaint();
+        await player.fontsReady();
         player.repaint();
         return { dataUrl: canvas.toDataURL("image/png") };
       } catch (e) {

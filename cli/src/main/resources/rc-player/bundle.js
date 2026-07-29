@@ -21,10 +21,20 @@ var RC = (() => {
   // src/web/main.ts
   var main_exports = {};
   __export(main_exports, {
+    GOOGLE_PREFIX: () => GOOGLE_PREFIX,
     RcPlayerElement: () => RcPlayerElement,
     RcdPlayer: () => RcdPlayer,
     base64ToArrayBuffer: () => base64ToArrayBuffer,
-    createPlayer: () => createPlayer
+    configureWebFonts: () => configureWebFonts,
+    createPlayer: () => createPlayer,
+    cssFontStackFor: () => cssFontStackFor,
+    cssQuoted: () => cssQuoted,
+    ensureWebFont: () => ensureWebFont,
+    googleFontsUrl: () => googleFontsUrl,
+    namedFontStack: () => namedFontStack,
+    parseFamily: () => parseFamily,
+    resetWebFonts: () => resetWebFonts,
+    webFontsReady: () => webFontsReady
   });
 
   // src/core/operations/Utils.ts
@@ -17195,6 +17205,123 @@ void main() {
     }
   };
 
+  // src/web/WebFonts.ts
+  var DEFAULT_BASE_URL = "https://fonts.googleapis.com/css2";
+  var config = { enabled: true, baseUrl: DEFAULT_BASE_URL };
+  function configureWebFonts(patch) {
+    config = { ...config, ...patch };
+  }
+  var WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
+  function googleFontsUrl(family, baseUrl = config.baseUrl) {
+    const axis = WEIGHTS.map((w) => `0,${w}`).concat(WEIGHTS.map((w) => `1,${w}`)).join(";");
+    const name = encodeURIComponent(family.trim()).replace(/%20/g, "+");
+    return `${baseUrl}?family=${name}:ital,wght@${axis}&display=block`;
+  }
+  var GOOGLE_PREFIX = "google:";
+  function parseFamily(family) {
+    const trimmed = family.trim();
+    if (trimmed.toLowerCase().startsWith(GOOGLE_PREFIX)) {
+      return { source: "google", name: trimmed.slice(GOOGLE_PREFIX.length).trim() };
+    }
+    return { source: "local", name: trimmed };
+  }
+  var stylesheets = /* @__PURE__ */ new Map();
+  var variants = /* @__PURE__ */ new Map();
+  var done = /* @__PURE__ */ new Set();
+  var waiting = /* @__PURE__ */ new Map();
+  function variantKey(family, weight, italic) {
+    return `${family.toLowerCase()}|${weight}|${italic ? "i" : "n"}`;
+  }
+  function notify(key) {
+    done.add(key);
+    const listeners = waiting.get(key);
+    waiting.delete(key);
+    listeners?.forEach((fn) => fn());
+  }
+  var failed = /* @__PURE__ */ new Set();
+  function unquote(family) {
+    return family.replace(/^["']|["']$/g, "");
+  }
+  function cssQuoted(family) {
+    return family.replace(/[\\"]/g, "\\$&");
+  }
+  function hasLocalFace(family) {
+    const want = family.toLowerCase();
+    let found = false;
+    document.fonts.forEach((face) => {
+      if (unquote(face.family).toLowerCase() === want) found = true;
+    });
+    return found;
+  }
+  function loadStylesheet(url) {
+    return new Promise((resolve, reject) => {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = url;
+      link.addEventListener("load", () => resolve());
+      link.addEventListener("error", () => reject(new Error(`stylesheet did not load: ${url}`)));
+      document.head.appendChild(link);
+    });
+  }
+  function registerStylesheet(family) {
+    const key = family.toLowerCase();
+    const existing = stylesheets.get(key);
+    if (existing) return existing;
+    let p;
+    if (!config.enabled) {
+      p = Promise.resolve();
+    } else if (typeof document === "undefined" || !document.fonts) {
+      p = Promise.resolve();
+    } else if (hasLocalFace(family)) {
+      p = Promise.resolve();
+    } else {
+      p = loadStylesheet(googleFontsUrl(family));
+    }
+    stylesheets.set(key, p);
+    return p;
+  }
+  async function loadVariant(family, weight, italic) {
+    await registerStylesheet(family);
+    if (typeof document === "undefined" || !document.fonts) return;
+    await document.fonts.load(`${italic ? "italic " : ""}${weight} 16px "${cssQuoted(family)}"`);
+  }
+  function ensureWebFont(family, weight = 400, italic = false, onLoaded) {
+    const key = variantKey(family, weight, italic);
+    if (onLoaded && !done.has(key)) {
+      const set = waiting.get(key) ?? /* @__PURE__ */ new Set();
+      set.add(onLoaded);
+      waiting.set(key, set);
+    }
+    const existing = variants.get(key);
+    if (existing) return existing;
+    const p = loadVariant(family, weight, italic).catch((e) => {
+      const famKey = family.toLowerCase();
+      if (!failed.has(famKey)) {
+        failed.add(famKey);
+        console.warn(`WebFonts: no web font for "${family}", using the fallback stack`, e);
+      }
+    }).then(() => notify(key));
+    variants.set(key, p);
+    return p;
+  }
+  async function webFontsReady() {
+    let pending = [...variants.values()];
+    while (pending.length > 0) {
+      await Promise.all(pending);
+      const next = [...variants.values()];
+      if (next.length === pending.length) break;
+      pending = next;
+    }
+  }
+  function resetWebFonts() {
+    stylesheets.clear();
+    variants.clear();
+    done.clear();
+    waiting.clear();
+    failed.clear();
+    config = { enabled: true, baseUrl: DEFAULT_BASE_URL };
+  }
+
   // src/web/CanvasPaintContext.ts
   function argbToRgba(argb) {
     const a = (argb >>> 24 & 255) / 255;
@@ -17214,6 +17341,9 @@ void main() {
       default:
         return "Roboto, sans-serif";
     }
+  }
+  function namedFontStack(family) {
+    return `"${cssQuoted(family)}", ${cssFontStackFor(0)}`;
   }
   var _CanvasPaintContext = class _CanvasPaintContext extends PaintContext {
     constructor(context, canvas) {
@@ -17273,6 +17403,13 @@ void main() {
         }
         throw new Error("No canvas factory available for graphics layers");
       };
+      // --- Typeface resolution ---
+      /**
+       * Called when a named family finishes loading, so a player that already painted a frame in the
+       * fallback face can repaint it in the real one. Null for single-shot renderers, which instead
+       * await `webFontsReady()` before painting the frame they keep.
+       */
+      this.onFontLoaded = null;
       this.mainCanvas = null;
       this.bitmapCanvasCache = /* @__PURE__ */ new Map();
       if (!canvas) {
@@ -17289,6 +17426,32 @@ void main() {
     }
     getText(id) {
       return this.textCache.get(id) ?? null;
+    }
+    /**
+     * CSS stack for a `PaintBundle.TYPEFACE` operand.
+     *
+     * The operand is overloaded: below `START_ID` it is one of the four generic typeface constants,
+     * at or above it the document's *text id* for a named family (`CoreText.updateVariables` ends
+     * `else this.mType = this.mFontFamilyId`). The two ranges cannot collide — ids are handed out
+     * from `START_ID` upward, so no text id is ever 0..3 — which is what makes this single integer
+     * safe to disambiguate by magnitude.
+     *
+     * A `google:`-namespaced family is fetched; an unprefixed one is only *named*, leaving it to
+     * whatever the host already has. Requesting the face is fire-and-forget: resolution has to be
+     * synchronous because it happens mid-paint, so the stack names the family now and the face
+     * arrives later (repainted via `onFontLoaded`, or awaited by a single-shot renderer). Until then
+     * the fallback paints.
+     */
+    fontStackForTypeface(fontType) {
+      if (fontType < RemoteComposeState.START_ID) return cssFontStackFor(fontType);
+      const family = this.getText(fontType);
+      if (!family) return cssFontStackFor(0);
+      const { source, name } = parseFamily(family);
+      if (!name) return cssFontStackFor(0);
+      if (source === "google") {
+        ensureWebFont(name, this.fontWeight, this.fontItalic, this.onFontLoaded ?? void 0);
+      }
+      return namedFontStack(name);
     }
     // --- Bitmap cache ---
     loadBitmap(imageId, encoding, type, width, height, bitmap) {
@@ -17673,7 +17836,7 @@ void main() {
             this.fontWeight = weight > 0 ? weight : 400;
             this.fontItalic = italic;
             const fontType = arr[i++];
-            this.fontFamily = cssFontStackFor(fontType);
+            this.fontFamily = this.fontStackForTypeface(fontType);
             this.setFont();
             break;
           }
@@ -19415,6 +19578,7 @@ void main() {
       doc.setWidth(docWidth);
       doc.setHeight(docHeight);
       this.paintContext = new CanvasPaintContext(null, this.ctx);
+      this.paintContext.onFontLoaded = () => this.scheduleRepaint();
       this.remoteContext = new WebRemoteContext(this.paintContext);
       doc.initializeContext(this.remoteContext);
       this.remoteContext.setPaintContext(this.paintContext);
@@ -19444,6 +19608,17 @@ void main() {
       if (this.document) {
         this.renderFrame(performance.now());
       }
+    }
+    /**
+     * Resolves once every named font family this document has asked for is paintable.
+     *
+     * Only a single-shot renderer needs this — it has no later frame in which a face could appear,
+     * so it must `await player.fontsReady()` between the first paint (which is what *discovers* the
+     * families) and the frame it keeps. Interactive players get the same effect from the repaint the
+     * player schedules when a face lands.
+     */
+    fontsReady() {
+      return webFontsReady();
     }
     resize(newWidth, newHeight) {
       this.canvas.width = newWidth;

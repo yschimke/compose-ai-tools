@@ -83,6 +83,68 @@ Local deltas over that snapshot (each also filed upstream):
   also owns the weight ranges: declared at discrete weights, a request for an in-between weight
   (Wear M3 asks for 450) resolves upward to Medium and renders visibly too heavy.
 
+- **Named font families, served from Google Fonts** (`src/web/WebFonts.ts`, wired into
+  `src/web/CanvasPaintContext.ts` and `src/web/main.ts`). A document can name a family rather than
+  pick one of the four generic typefaces (`RemoteFontFamily.Named(...)`), but that name never reached
+  the paint layer: `CoreText.updateVariables` ends `else this.mType = this.mFontFamilyId`, so a named
+  family arrives at `PaintBundle.TYPEFACE` as the document's **text id**, which `cssFontStackFor`
+  didn't recognise and mapped to its `default` — every branded string silently rendered in Roboto.
+  The operand is now disambiguated by magnitude (ids are handed out from `RemoteComposeState
+  .START_ID` = 42 upward, so no text id can collide with the generics 0..3), resolved back through
+  the text table, and the face registered on demand.
+
+  Which families to fetch is stated by the document rather than guessed: a family namespaced
+  `google:Orbitron` is fetched from the Google Fonts CSS API, an unprefixed one is only *named* and
+  left to the host. Treating any unrecognised family as a Google Font would turn a typo — or a name
+  that only means something on the host, like `SF Pro` — into a network request, with no way to say
+  "this one is local".
+
+  Three things this has to get right, all covered by
+  `scripts/design-artifacts/rc-webfonts.test.mjs`:
+
+  - **The request form must enumerate weights, not range them.** `wght@100..900` is rejected with
+    HTTP 400 by any family that isn't variable (`Lobster`, `Pacifico`), and at the `<link>` a 400 is
+    indistinguishable from a network failure — so a static family would be reported unavailable and
+    fall back. The enumerated `ital,wght@0,100;…;1,900` is accepted for variable and static families
+    alike, and the API returns only the faces the family actually ships, so over-asking is free.
+  - **`@font-face` is lazy and canvas does not drive it.** `ctx.font` neither triggers a load nor
+    waits for one, so the face is loaded explicitly. Note `document.fonts.check()` is useless as an
+    assertion here — it answers *true* for a family that was never declared at all, so it cannot tell
+    "registered" from "fell back"; the tests measure text width instead. The load is asked for *by
+    font shorthand*, for the (weight, style) the paint op actually carries, so the browser's own CSS
+    matching fetches just that face: the stylesheet declares every weight, but declaring is free and
+    fetching is not — pulling all six of Orbitron's to draw one regular label would also hold
+    `fontsReady()` open on faces nothing paints.
+  - **Callbacks are per waiter and fire once.** Resolution runs per *paint*, so a settled variant
+    must never re-announce — that would schedule a repaint from inside painting, forever — while a
+    caller that arrives mid-fetch must still be recorded: with two players on a page, dropping the
+    second leaves that canvas in the fallback permanently, since a static document has no later
+    frame to recover on.
+  - **Resolution is synchronous but fetching is not.** Resolution happens mid-paint, so the stack
+    names the family immediately and the face lands later: interactive players repaint via
+    `onFontLoaded`, and single-shot renderers await `player.fontsReady()` *after* the first paint,
+    which is what discovers the families in the first place.
+
+  `configureWebFonts({enabled, baseUrl})` is the embedder's switch — off for a webview whose CSP
+  forbids the font origins or a hermetic CI lane, redirected for a mirror. A family that cannot be
+  served never throws: it degrades to the fallback generic, because a document naming a font we
+  can't fetch is an authoring fact, not a player fault.
+
+  **Known asymmetry.** The snapshot renderer does *not* yet honour a named family in an `.rc`
+  document — Robolectric resolves it through `DefaultTypefaceResolver`, which looks the name up as a
+  file under `/system/fonts/` and finds nothing, so the baked raster stays Roboto while the browser
+  lane now draws the real face. The hook to close this exists (`RemoteDocumentPlayer` takes a
+  `TypefaceResolver`, and `renderers/android` already downloads Google Fonts for Compose's own font
+  resolver via `GoogleFontCache`); what it needs is that downloader lifted out of `renderers/android`
+  into a module the Remote Compose connector can also see, rather than a second copy of it. Until
+  then the `Text/Branded` sticker is expected to read high on the PNG↔Remote-Compose parity page —
+  that row is measuring the renderer gap, not a player regression.
+
+  That gap also shows up as *clipping*, which is worth knowing before it is mistaken for a text-layout
+  bug: an `.rc` carries geometry the authoring renderer measured, so while that renderer resolves the
+  family to Roboto the player is drawing a wider face into a box measured for a narrower one. Closing
+  the renderer side fixes the metrics and the typeface together.
+
 ## Building the browser bundle
 
 ```sh

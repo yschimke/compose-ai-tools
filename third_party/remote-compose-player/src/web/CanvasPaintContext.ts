@@ -5,6 +5,8 @@ import { PaintBundle, intBitsToFloat } from '../core/operations/paint/PaintBundl
 import { isNaNBits, idFromBits, floatToRawIntBits } from '../core/operations/Utils';
 import { transpileAgslToGlsl } from '../core/shader/AgslTranspiler';
 import { WebGLShaderRenderer } from './shader/WebGLShaderRenderer';
+import { RemoteComposeState } from '../core/RemoteComposeState';
+import { ensureWebFont, parseFamily, cssQuoted } from './WebFonts';
 import type { ShaderData } from '../core/operations/ShaderData';
 
 function argbToRgba(argb: number): string {
@@ -44,6 +46,26 @@ export function cssFontStackFor(fontType: number): string {
         // DEFAULT (0, and anything unrecognised) resolve to the same face.
         default: return 'Roboto, sans-serif';
     }
+}
+
+/**
+ * CSS font stack for a *named* family (`RemoteFontFamily.Named("Orbitron")`), with the default
+ * stack behind it.
+ *
+ * The fallback is the whole safety story: the name is only a request, so a page that could not
+ * register the family (no network, a webview CSP, a family Google doesn't serve) renders the same
+ * Roboto it rendered before this existed, rather than whatever the host picks for an unknown family.
+ *
+ * Quoted because this is fed to the canvas `font` shorthand, where a bare multi-word `Space Grotesk`
+ * is a parse error that silently voids the entire assignment — leaving the previous font in place,
+ * which reads as "the named family was ignored" rather than as the syntax error it is.
+ *
+ * `cssQuoted` escapes `\` as well as `"`; escaping only the quote would let a family ending in a
+ * backslash swallow the rest of the stack, which is the same silent-void failure the quoting exists
+ * to prevent.
+ */
+export function namedFontStack(family: string): string {
+    return `"${cssQuoted(family)}", ${cssFontStackFor(0)}`;
 }
 
 export class CanvasPaintContext extends PaintContext {
@@ -139,6 +161,47 @@ export class CanvasPaintContext extends PaintContext {
     loadText(id: number, text: string): void { this.textCache.set(id, text); }
 
     getText(id: number): string | null { return this.textCache.get(id) ?? null; }
+
+    // --- Typeface resolution ---
+
+    /**
+     * Called when a named family finishes loading, so a player that already painted a frame in the
+     * fallback face can repaint it in the real one. Null for single-shot renderers, which instead
+     * await `webFontsReady()` before painting the frame they keep.
+     */
+    onFontLoaded: (() => void) | null = null;
+
+    /**
+     * CSS stack for a `PaintBundle.TYPEFACE` operand.
+     *
+     * The operand is overloaded: below `START_ID` it is one of the four generic typeface constants,
+     * at or above it the document's *text id* for a named family (`CoreText.updateVariables` ends
+     * `else this.mType = this.mFontFamilyId`). The two ranges cannot collide — ids are handed out
+     * from `START_ID` upward, so no text id is ever 0..3 — which is what makes this single integer
+     * safe to disambiguate by magnitude.
+     *
+     * A `google:`-namespaced family is fetched; an unprefixed one is only *named*, leaving it to
+     * whatever the host already has. Requesting the face is fire-and-forget: resolution has to be
+     * synchronous because it happens mid-paint, so the stack names the family now and the face
+     * arrives later (repainted via `onFontLoaded`, or awaited by a single-shot renderer). Until then
+     * the fallback paints.
+     */
+    private fontStackForTypeface(fontType: number): string {
+        if (fontType < RemoteComposeState.START_ID) return cssFontStackFor(fontType);
+        const family = this.getText(fontType);
+        // A named family whose text id resolves to nothing means the document referenced a string it
+        // never loaded; treat it as unstyled rather than painting a stack named "null".
+        if (!family) return cssFontStackFor(0);
+        const { source, name } = parseFamily(family);
+        if (!name) return cssFontStackFor(0);
+        // Only the weight/style this op actually asks for. `fontWeight`/`fontItalic` were decoded
+        // from the same operation a few lines up, so the request is exact rather than "every face
+        // the family publishes".
+        if (source === 'google') {
+            ensureWebFont(name, this.fontWeight, this.fontItalic, this.onFontLoaded ?? undefined);
+        }
+        return namedFontStack(name);
+    }
 
     // --- Bitmap cache ---
 
@@ -537,7 +600,7 @@ export class CanvasPaintContext extends PaintContext {
                     this.fontItalic = italic;
 
                     const fontType = arr[i++];
-                    this.fontFamily = cssFontStackFor(fontType);
+                    this.fontFamily = this.fontStackForTypeface(fontType);
                     this.setFont();
                     break;
                 }

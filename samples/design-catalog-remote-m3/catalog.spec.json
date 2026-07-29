@@ -61,7 +61,8 @@
       "name": "Text",
       "components": [
         { "componentId": "Text/Body", "preview": "RemoteTextSticker", "parallel": "Text/MaxLines-Truncated", "caption": "The Remote Material 3 text primitive on its own." },
-        { "componentId": "Text/MaxLines-Truncated", "preview": "TruncatedTextRemote", "parallel": "Text/MaxLines-Truncated", "caption": "maxLines=2 + ellipsis on a narrow column." }
+        { "componentId": "Text/MaxLines-Truncated", "preview": "TruncatedTextRemote", "parallel": "Text/MaxLines-Truncated", "caption": "maxLines=2 + ellipsis on a narrow column." },
+        { "componentId": "Text/Branded", "preview": "BrandedTextRemote", "parallel": "Text/MaxLines-Truncated", "caption": "Text in a named font family (RemoteFontFamily.Named(\"google:Orbitron\")) rather than a generic typeface — the google: namespace marks it a Google Fonts family, which the browser lane fetches and the snapshot renderer resolves from its vendored copy." }
       ]
     },
     {
