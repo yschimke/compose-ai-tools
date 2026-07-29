@@ -42,7 +42,16 @@ class FontResolverRecorder(private val context: Context? = null) {
     // below, which makes the export box the text and write its warning sidecar rather than
     // silently substituting Roboto.
     val resourceFamily = matched?.let(::recoverResourceFont)
-    FigmaSvgRenderedFonts.record(resourceFamily ?: matched?.let { displayFamilyName(fontLabel(it)) })
+    val displayName = matched?.let { displayFamilyName(fontLabel(it)) }
+    // A downloadable `Font(GoogleFont("Lato"), …)` resolved to a real TTF in the renderer's font
+    // cache for the PNG. Publish that file so the figma-svg export embeds the same bytes rather
+    // than re-fetching a WOFF2 by name — a second network hop that silently produced no
+    // `@font-face` on an offline or egress-closed catalog render, leaving the SVG on the browser's
+    // sans-serif while the PNG had the real face (issue #2906).
+    if (resourceFamily == null && matched != null && displayName != null) {
+      recoverDownloadableFont(matched, displayName, weight, style == "italic")
+    }
+    FigmaSvgRenderedFonts.record(resourceFamily ?: displayName)
     val key = listOf(requestedFamily, resolvedFamily, weight.toString(), style).joinToString("|")
     entries[key] =
       FontUsedEntry(
@@ -146,6 +155,35 @@ class FontResolverRecorder(private val context: Context? = null) {
     val family = fontFamilyOf(bytes) ?: return entryName
     FigmaResourceFonts.register(identity, target.absolutePath)
     return family
+  }
+
+  /**
+   * Publishes the cached TTF a downloadable [font] resolved to, under the family name the capture
+   * records for it (issue #2906).
+   *
+   * Gated on the `GoogleFont("…")` label so only a genuinely downloadable face is registered — a
+   * bundled or resource face reaches this method by a different route and must not have a
+   * family-keyed path attached to it. Registration is weight/style-qualified because the captured
+   * identity is the *family*: Lato 400 and Lato 600 are different files, and a bare-family
+   * registration would hand whichever resolved last to every weight the export asks about.
+   *
+   * A cache miss is deliberately silent: it means the render didn't draw with this face either
+   * (it fell back), which `FontResolutionDiagnostics` already reports on the render side.
+   */
+  private fun recoverDownloadableFont(
+    font: Font,
+    family: String,
+    weight: Int,
+    italic: Boolean,
+  ) {
+    if (GOOGLE_FONT_LABEL.find(fontLabel(font)) == null) return
+    if (FigmaResourceFonts.pathFor(family, weight, italic) != null) return
+    val file =
+      runCatching {
+          ee.schimke.composeai.renderer.GoogleFontFiles.cached(family, weight, italic)
+        }
+        .getOrNull() ?: return
+    FigmaResourceFonts.register(family, weight, italic, file.absolutePath)
   }
 
   /**

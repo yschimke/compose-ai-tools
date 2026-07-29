@@ -248,7 +248,7 @@ object ComposeFigmaSvgDataProducer {
     val faces = LinkedHashMap<String, FigmaSvgFontFace>()
     val overrides = HashMap<String, String>()
     fun add(captured: String?, weight: Int, italic: Boolean, codePoints: Set<Int>) {
-      val fontPath = captured?.let { fontFilePath(it, fileSystem) }
+      val fontPath = captured?.let { fontFilePath(it, weight, italic, fileSystem) }
       if (fontPath != null) {
         // Subset to a stable base charset (printable ASCII) plus whatever this face actually draws,
         // so every Latin sticker asks for the *same* subset — computed once, cached process-wide,
@@ -360,12 +360,20 @@ object ComposeFigmaSvgDataProducer {
    * `format('collection')` plus a face selection (the collection carries several faces), which we
    * don't emit — so a bare `truetype` src would be skipped and the text would silently fall back.
    */
-  private fun fontFilePath(family: String, fileSystem: FileSystem): okio.Path? {
-    // An Android resource-backed face reaches the capture as `res/font/<resId>` — a handle, not a
-    // path, and never a name a consumer could resolve. The render side extracts those bytes to a
-    // real file and publishes the mapping here, so the export embeds the actual face instead of
-    // emitting the numeric id as a CSS family with no `@font-face` behind it (issue #2886).
-    val candidate = FigmaResourceFonts.pathFor(family) ?: family
+  private fun fontFilePath(
+    family: String,
+    weight: Int,
+    italic: Boolean,
+    fileSystem: FileSystem,
+  ): okio.Path? {
+    // Two kinds of face reach the capture as a handle rather than a path, and both are published
+    // here by the render side — the only place their bytes are reachable:
+    //  - an Android resource face, as `res/font/<resId>` (issue #2886), and
+    //  - a downloadable `GoogleFont`, as its bare family name (issue #2906), registered per
+    //    weight/style because one family spans several files.
+    // Consulting the registry first means the export embeds the exact bytes the render drew with,
+    // instead of naming a family it provides no `@font-face` for.
+    val candidate = FigmaResourceFonts.pathFor(family, weight, italic) ?: family
     val lower = candidate.lowercase()
     if (!(lower.endsWith(".ttf") || lower.endsWith(".otf"))) return null
     val path = candidate.toPath()
