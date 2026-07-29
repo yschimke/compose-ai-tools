@@ -20,6 +20,8 @@ function withEmbedded(base) {
     ShaderGradientSticker: { embeddedRendered: true, embeddedMismatchPct: 1.2, embeddedMismatchPx: 3_307 },
     // JS could not decode it; the embedded player could
     Undecodable: { embeddedRendered: true, embeddedMismatchPct: 8, embeddedMismatchPx: 22_050 },
+    // a blank baked reference: the embedded player renders it and "matches" for the wrong reason
+    BrandedTextRemote: { embeddedRendered: true, embeddedMismatchPct: 0, embeddedMismatchPx: 0 },
   };
   return {
     ...base,
@@ -174,6 +176,70 @@ test("a row no player rendered sinks below every row either player rendered", ()
   ];
   const html = renderRcCompareHtml({ system: "s", title: "t", rows });
   assert.ok(html.indexOf("EmbeddedOnly") < html.indexOf("Dead"));
+});
+
+/**
+ * A blank baked reference is the case that used to score as a *perfect* match: both sides flatten
+ * onto the same neutral background, so "the player drew nothing" and "the player matched exactly"
+ * are the same pixels. These rows must be shown but never scored.
+ */
+const blankRow = {
+  id: "pkg.CatalogPreviewsKt.BrandedTextRemote",
+  name: "BrandedTextRemote",
+  group: "",
+  width: 525,
+  height: 525,
+  rendered: true,
+  // What the diff *would* have said — the emitter must not report it.
+  mismatchPct: 0,
+  mismatchPx: 0,
+  referenceBlank: true,
+  baked: "rc-baked/pkg.CatalogPreviewsKt.BrandedTextRemote.png",
+  rc: "rc/pkg.CatalogPreviewsKt.BrandedTextRemote.png",
+  diff: "rc-diff/pkg.CatalogPreviewsKt.BrandedTextRemote.png",
+};
+
+const blankModel = { ...model, rows: [...model.rows, blankRow] };
+
+test("a blank-reference row is rendered but not scored, and stays out of both means", () => {
+  const s = summarizeRcCompare(blankModel.rows);
+  assert.equal(s.total, 4);
+  // it *rendered* — the player ran; it is only unscorable
+  assert.equal(s.rendered, 3);
+  assert.equal(s.scored, 2);
+  assert.equal(s.blankReference, 1);
+  // unchanged from the model without it: a 0% that never happened must not drag the mean down
+  assert.ok(Math.abs(s.meanPct - 38.15) < 1e-9);
+});
+
+test("a blank reference is excluded from the embedded mean too — the reference is shared", () => {
+  const s = summarizeRcCompare(withEmbedded(blankModel).rows);
+  assert.equal(s.embeddedRendered, 4);
+  assert.equal(s.embeddedScored, 3);
+  assert.ok(Math.abs(s.embeddedMeanPct - (41.5 + 1.2 + 8) / 3) < 1e-9);
+});
+
+test("a blank-reference row shows 'no reference' rather than a green 0.00%", () => {
+  const html = renderRcCompareHtml(blankModel);
+  assert.match(html, /class="score na">no reference</);
+  assert.match(html, /baked PNG is fully transparent/);
+  // the 0.00% chip belongs to TextRemoteButton, which has a real reference — exactly one of them
+  assert.equal(html.match(/class="score good">0\.00%/g).length, 1);
+  assert.equal(html.match(/class="score na">no reference/g).length, 1);
+});
+
+test("a blank-reference row sinks rather than topping the table on an unearned 0%", () => {
+  const html = renderRcCompareHtml(blankModel);
+  const iBlank = html.indexOf("BrandedTextRemote");
+  // below *every* scored row, including the 0.00% one it would otherwise have tied with
+  assert.ok(html.indexOf("ShaderGradientSticker") < iBlank);
+  assert.ok(html.indexOf("TextRemoteButton") < iBlank);
+});
+
+test("both lanes read 'no reference' on a blank row — neither player gets credit", () => {
+  const html = renderRcCompareHtml(withEmbedded(blankModel));
+  assert.equal(html.match(/class="score na">no reference/g).length, 2);
+  assert.match(html, /1<\/strong> unscored \(blank reference\)/);
 });
 
 test("an empty catalog renders the no-RC-docs notice, not a table", () => {

@@ -40,6 +40,7 @@ import pixelmatch from "pixelmatch";
 import { chromium } from "playwright";
 
 import { renderRcCompareHtml } from "./render-rc-compare-html.mjs";
+import { BG, flattenOnto, isFullyTransparent } from "./rc-compare-pixels.mjs";
 import { DEFAULT_FONTS_DIR, fontFaceCss, loadAndVerifyFonts } from "./rc-fonts.mjs";
 
 function arg(name, def = undefined) {
@@ -120,25 +121,6 @@ function baseName(name, prefix, suffix) {
   return name.slice(prefix.length, name.length - suffix.length);
 }
 
-// Flatten an RGBA image onto an opaque neutral so the diff is meaningful for both
-// light and dark content. The catalog PNGs are stickers on a *transparent*
-// background; pixelmatch composites transparent pixels over white, so light
-// content on transparent (a white icon, pale text) would read as identical to a
-// blank canvas — a false 0% match. Compositing both sides over the same mid-grey
-// makes light *and* dark content contrast, so a blank render always diffs.
-const BG = [128, 128, 128];
-function flattenOnto(png, [br, bg, bb]) {
-  const d = png.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const a = d[i + 3] / 255;
-    d[i] = Math.round(d[i] * a + br * (1 - a));
-    d[i + 1] = Math.round(d[i + 1] * a + bg * (1 - a));
-    d[i + 2] = Math.round(d[i + 2] * a + bb * (1 - a));
-    d[i + 3] = 255;
-  }
-  return png;
-}
-
 const bundleBuf = fs.readFileSync(BUNDLE);
 const entries = readZipEntries(bundleBuf);
 
@@ -208,8 +190,11 @@ if (EMBEDDED) {
  * `baked` is already flattened onto the neutral background by the caller, so the embedded render is
  * flattened the same way before diffing — otherwise a transparent-background render would score as
  * a false match the same way the baked stickers would.
+ *
+ * `referenceBlank` suppresses the percentage (the images are still written, so the blank reference
+ * is visible on the page) — see `isFullyTransparent`.
  */
-function embeddedFor(id, baked, width, height) {
+function embeddedFor(id, baked, width, height, referenceBlank) {
   if (!EMBEDDED) return {};
   const png = path.join(EMBEDDED, `${id}.png`);
   if (!fs.existsSync(png)) {
@@ -245,8 +230,8 @@ function embeddedFor(id, baked, width, height) {
   fs.writeFileSync(path.join(dirs.embeddedDiff, `${id}.png`), PNG.sync.write(diff));
   return {
     embeddedRendered: true,
-    embeddedMismatchPct: (100 * px) / (width * height),
-    embeddedMismatchPx: px,
+    embeddedMismatchPct: referenceBlank ? null : (100 * px) / (width * height),
+    embeddedMismatchPx: referenceBlank ? null : px,
     embedded: `rc-embedded/${id}.png`,
     embeddedDiff: `rc-embedded-diff/${id}.png`,
   };
@@ -276,7 +261,10 @@ for (const id of rcIds) {
     console.log(`rc-compare: no baked PNG for ${id}, skipping`);
     continue;
   }
-  const baked = flattenOnto(PNG.sync.read(entries.get(pngName)()), BG);
+  // Ask about blankness first: `flattenOnto` composites the alpha away in place.
+  const bakedRaw = PNG.sync.read(entries.get(pngName)());
+  const referenceBlank = isFullyTransparent(bakedRaw);
+  const baked = flattenOnto(bakedRaw, BG);
   const rcB64 = entries.get(`ir/${id}.rc`)().toString("base64");
   const { width, height } = baked;
 
@@ -317,7 +305,7 @@ for (const id of rcIds) {
 
   // Embedded lane, computed independently of whether the JS player managed this document — either
   // player can render one the other chokes on, and the page scores them separately.
-  const embedded = embeddedFor(id, baked, width, height);
+  const embedded = embeddedFor(id, baked, width, height, referenceBlank);
 
   if (result.error || truncated) {
     rows.push({
@@ -333,6 +321,7 @@ for (const id of rcIds) {
       baked: `rc-baked/${id}.png`,
       rc: "",
       diff: "",
+      referenceBlank,
       ...embedded,
     });
     fs.writeFileSync(path.join(dirs.baked, `${id}.png`), PNG.sync.write(baked));
@@ -358,13 +347,20 @@ for (const id of rcIds) {
     width,
     height,
     rendered: true,
-    mismatchPct,
-    mismatchPx,
+    mismatchPct: referenceBlank ? null : mismatchPct,
+    mismatchPx: referenceBlank ? null : mismatchPx,
     baked: `rc-baked/${id}.png`,
     rc: `rc/${id}.png`,
     diff: `rc-diff/${id}.png`,
+    referenceBlank,
     ...embedded,
   });
+  if (referenceBlank) {
+    // Worth a line of its own: a blank baked capture is a catalog bug, and it is exactly the case
+    // that used to disappear into a green 0.00%.
+    console.log(`  ${name}: UNSCORED — baked PNG is fully transparent (${width}×${height})`);
+    continue;
+  }
   const embNote =
     embedded.embeddedRendered === undefined
       ? ""
@@ -385,7 +381,10 @@ const html = renderRcCompareHtml(model, {
 fs.writeFileSync(path.join(OUT, "rc-compare.html"), html);
 
 const rendered = rows.filter((r) => r.rendered);
-const meanPct = rendered.length ? rendered.reduce((s, r) => s + r.mismatchPct, 0) / rendered.length : null;
+// Blank-reference rows are rendered but unscorable, so they are kept out of the mean — see
+// `isFullyTransparent`. Left in `rendered` because the player did in fact render them.
+const scored = rendered.filter((r) => !r.referenceBlank);
+const meanPct = scored.length ? scored.reduce((s, r) => s + r.mismatchPct, 0) / scored.length : null;
 fs.writeFileSync(
   path.join(OUT, "rc-compare-summary.json"),
   JSON.stringify(
@@ -393,6 +392,8 @@ fs.writeFileSync(
       system: SYSTEM,
       total: rows.length,
       rendered: rendered.length,
+      scored: scored.length,
+      blankReference: rows.filter((r) => r.referenceBlank).length,
       unsupported: rows.length - rendered.length,
       meanMismatchPct: meanPct,
       threshold: THRESHOLD,
@@ -400,8 +401,9 @@ fs.writeFileSync(
       embedded: EMBEDDED
         ? {
             rendered: rows.filter((r) => r.embeddedRendered).length,
+            scored: rows.filter((r) => r.embeddedRendered && !r.referenceBlank).length,
             meanMismatchPct: (() => {
-              const ok = rows.filter((r) => r.embeddedRendered);
+              const ok = rows.filter((r) => r.embeddedRendered && !r.referenceBlank);
               return ok.length ? ok.reduce((s, r) => s + r.embeddedMismatchPct, 0) / ok.length : null;
             })(),
           }
@@ -414,6 +416,7 @@ fs.writeFileSync(
         width: r.width,
         height: r.height,
         note: r.note ?? null,
+        referenceBlank: r.referenceBlank ?? false,
         embeddedRendered: r.embeddedRendered ?? null,
         embeddedMismatchPct: r.embeddedMismatchPct ?? null,
         embeddedMismatchPx: r.embeddedMismatchPx ?? null,
@@ -442,5 +445,8 @@ if (fs.existsSync(indexPath)) {
 
 console.log(
   `rc-compare: wrote ${OUT}/rc-compare.html — ${rendered.length}/${rows.length} rendered` +
+    (rendered.length === scored.length
+      ? ""
+      : `, ${rendered.length - scored.length} unscored (blank reference)`) +
     (meanPct == null ? "" : `, mean mismatch ${meanPct.toFixed(2)}%`),
 );
