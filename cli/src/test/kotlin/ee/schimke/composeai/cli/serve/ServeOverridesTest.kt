@@ -43,6 +43,58 @@ class ServeOverridesTest {
   }
 
   @Test
+  fun `a themeProvider the catalog declares is accepted`() {
+    val parsed =
+      ServeOverrides.parse(
+        mapOf("themeProvider" to "com.example.BrandDarkThemeCatalog"),
+        declaredThemeFqns =
+          setOf("com.example.BrandLightThemeCatalog", "com.example.BrandDarkThemeCatalog"),
+      )
+    assertTrue(parsed is OverrideParse.Ok, "expected Ok, got $parsed")
+    assertEquals("com.example.BrandDarkThemeCatalog", parsed.overrides.themeProvider)
+  }
+
+  @Test
+  fun `a themeProvider the catalog does not declare is rejected, not silently defaulted`() {
+    val parsed =
+      ServeOverrides.parse(
+        mapOf("themeProvider" to "com.example.TotallyBogusThemeCatalog"),
+        declaredThemeFqns = setOf("com.example.BrandDarkThemeCatalog"),
+      )
+    assertTrue(parsed is OverrideParse.Invalid, "expected Invalid, got $parsed")
+    assertTrue(
+      parsed.message.contains("com.example.TotallyBogusThemeCatalog"),
+      "message should name the rejected provider: ${parsed.message}",
+    )
+    assertTrue(
+      parsed.message.contains("com.example.BrandDarkThemeCatalog"),
+      "message should list what the catalog does declare: ${parsed.message}",
+    )
+  }
+
+  @Test
+  fun `a themeProvider against a catalog that declares none is rejected`() {
+    val parsed =
+      ServeOverrides.parse(
+        mapOf("themeProvider" to "com.example.BrandDarkThemeCatalog"),
+        declaredThemeFqns = emptySet(),
+      )
+    assertTrue(parsed is OverrideParse.Invalid, "expected Invalid, got $parsed")
+    assertTrue(
+      parsed.message.contains("declares no"),
+      "message should say the catalog declares none: ${parsed.message}",
+    )
+  }
+
+  @Test
+  fun `a caller that does not know the session themes skips validation`() {
+    // `declaredThemeFqns = null` is the default — the pre-existing behaviour for callers with no
+    // session in hand. Covered so the back-compat default can't be tightened by accident.
+    val o = ok(mapOf("themeProvider" to "com.example.AnythingThemeCatalog"))
+    assertEquals("com.example.AnythingThemeCatalog", o.themeProvider)
+  }
+
+  @Test
   fun `focus tab index maps to a focus override with the overlay drawn`() {
     val o = ok(mapOf("focus" to "2"))
     assertEquals(2, o.focus?.tabIndex)

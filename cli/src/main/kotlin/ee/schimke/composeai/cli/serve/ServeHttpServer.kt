@@ -1652,11 +1652,16 @@ class ServeHttpServer(
         ServeWeb.SystemDisplay.normalizeOverrideParams(sessionId, overrideParams)
       val knobKinds =
         ServeOverrides.declaredKnobKinds(renderHost.previews.firstOrNull { it.id == previewId })
+      // Reject a themeProvider this catalog never declared instead of quietly rendering the
+      // default theme under its name (see ServeOverrides.parse).
+      val declaredThemeFqns = renderHost.declaredThemes.map { it.providerFqn }.toSet()
       // `?format=svg` serves the figma-svg export as an inert svg <img> (vector, for DOM-capture
       // visual tools); default (png) inlines the raster. SVG is daemon-only, so a static bundle
       // 404s.
       val wantSvg = call.request.queryParameters["format"]?.lowercase() == "svg"
-      when (val parsed = ServeOverrides.parse(normalizedOverrideParams, knobKinds)) {
+      when (
+        val parsed = ServeOverrides.parse(normalizedOverrideParams, knobKinds, declaredThemeFqns)
+      ) {
         is OverrideParse.Invalid ->
           call.respondText(parsed.message, status = HttpStatusCode.BadRequest)
         is OverrideParse.Ok ->
@@ -1911,7 +1916,12 @@ class ServeHttpServer(
       // `<kind>:<value>` still wins) so the viewer never has to spell the type in the URL.
       val knobKinds =
         ServeOverrides.declaredKnobKinds(renderHost.previews.firstOrNull { it.id == previewId })
-      when (val parsed = ServeOverrides.parse(normalizedOverrideParams, knobKinds)) {
+      // Reject a themeProvider this catalog never declared instead of quietly rendering the
+      // default theme under its name (see ServeOverrides.parse).
+      val declaredThemeFqns = renderHost.declaredThemes.map { it.providerFqn }.toSet()
+      when (
+        val parsed = ServeOverrides.parse(normalizedOverrideParams, knobKinds, declaredThemeFqns)
+      ) {
         is OverrideParse.Invalid ->
           call.respondText(parsed.message, status = HttpStatusCode.BadRequest)
         is OverrideParse.Ok -> {

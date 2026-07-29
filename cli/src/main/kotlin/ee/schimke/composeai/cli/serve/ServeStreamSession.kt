@@ -56,7 +56,10 @@ class ServeStreamSession(
         // Validate before committing: a bad override message is reported but must not poison the
         // session — the previous (valid) overrides stay in effect for subsequent frames.
         val normalized = normalize(message.overrides)
-        when (val parsed = ServeOverrides.parse(normalized, knobKindsFor(previewId))) {
+        when (
+          val parsed =
+            ServeOverrides.parse(normalized, knobKindsFor(previewId), declaredThemeFqns())
+        ) {
           is OverrideParse.Invalid -> send(ServeStreamProtocol.errorMessage(parsed.message))
           is OverrideParse.Ok -> {
             overrides = normalized
@@ -90,7 +93,10 @@ class ServeStreamSession(
     // lane.
     val nextOverrides = message.overrides?.let(::normalize) ?: overrides
     val parsed =
-      when (val p = ServeOverrides.parse(nextOverrides, knobKindsFor(message.previewId))) {
+      when (
+        val p =
+          ServeOverrides.parse(nextOverrides, knobKindsFor(message.previewId), declaredThemeFqns())
+      ) {
         is OverrideParse.Invalid -> {
           send(ServeStreamProtocol.errorMessage(p.message))
           return
@@ -109,6 +115,13 @@ class ServeStreamSession(
     ServeOverrides.declaredKnobKinds(renderHost.previews.firstOrNull { it.id == id })
 
   /**
+   * The session's declared `@ThemeCatalog` provider FQNs, so a `themeProvider` this catalog never
+   * declared is reported as an error rather than silently rendering the default theme.
+   */
+  private fun declaredThemeFqns(): Set<String> =
+    renderHost.declaredThemes.map { it.providerFqn }.toSet()
+
+  /**
    * The message for an [input][ServeStreamProtocol.ClientMessage.Input] the snapshot lane can't
    * dispatch. When the live lane's original failure was captured, surface it so the user sees *why*
    * (e.g. "…: the daemon could not hold an interactive session for this preview") instead of a bare
@@ -119,7 +132,9 @@ class ServeStreamSession(
     else "input requires a live stream — unavailable: $liveUnavailableReason"
 
   private fun renderCurrent() {
-    when (val parsed = ServeOverrides.parse(overrides, knobKindsFor(previewId))) {
+    when (
+      val parsed = ServeOverrides.parse(overrides, knobKindsFor(previewId), declaredThemeFqns())
+    ) {
       is OverrideParse.Invalid -> send(ServeStreamProtocol.errorMessage(parsed.message))
       is OverrideParse.Ok -> sendFrame(parsed.overrides)
     }

@@ -107,6 +107,64 @@ class ServeLiveSessionTest {
   }
 
   @Test
+  fun `tryStart refuses an undeclared themeProvider in the opening query`() {
+    // The socket's *initial* overrides are validated too, not just later setOverrides / switch
+    // messages — otherwise a direct WebSocket client asking for a theme this catalog never
+    // declared would be silently subscribed to a default-themed stream, and a later frame would
+    // clear the viewer's error overlay while the wrong stream kept running (Codex #2923 review).
+    val session = FakeRenderSession(newRenderRoot(), streaming = true)
+    val themed =
+      ServeRenderHost(
+        session,
+        listOf(ServePreview(previewId, "Red")),
+        declaredThemes = listOf(ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog")),
+        renderTimeoutSeconds = 30,
+      )
+    themed.use { h ->
+      var reason: String? = null
+      assertNull(
+        ServeLiveSession.tryStart(
+          h,
+          previewId,
+          mapOf("themeProvider" to "com.example.NopeThemeCatalog"),
+          send = {},
+          system = "compose-m3",
+          onUnavailable = { reason = it },
+        )
+      )
+      assertNotNull(reason)
+      assertTrue(
+        reason.contains("com.example.NopeThemeCatalog"),
+        "expected the rejected provider in the reason, got: $reason",
+      )
+    }
+  }
+
+  @Test
+  fun `tryStart accepts a declared themeProvider in the opening query`() {
+    val session = FakeRenderSession(newRenderRoot(), streaming = true)
+    val themed =
+      ServeRenderHost(
+        session,
+        listOf(ServePreview(previewId, "Red")),
+        declaredThemes = listOf(ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog")),
+        renderTimeoutSeconds = 30,
+      )
+    themed.use { h ->
+      val live =
+        ServeLiveSession.tryStart(
+          h,
+          previewId,
+          mapOf("themeProvider" to "com.example.BrandDarkThemeCatalog"),
+          send = {},
+          system = "compose-m3",
+        )
+      assertNotNull(live)
+      live.close()
+    }
+  }
+
+  @Test
   fun `daemon-pushed frames are forwarded as frame messages`() {
     val session = FakeRenderSession(newRenderRoot(), streaming = true)
     host(session).use { h ->

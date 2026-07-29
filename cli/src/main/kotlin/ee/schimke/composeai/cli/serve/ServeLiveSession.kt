@@ -40,7 +40,10 @@ private constructor(
     when (val message = ServeStreamProtocol.parseClient(text)) {
       is ServeStreamProtocol.ClientMessage.SetOverrides -> {
         val normalized = normalize(message.overrides)
-        when (val parsed = ServeOverrides.parse(normalized, knobKindsFor(previewId))) {
+        when (
+          val parsed =
+            ServeOverrides.parse(normalized, knobKindsFor(previewId), declaredThemeFqns())
+        ) {
           is OverrideParse.Invalid -> send(ServeStreamProtocol.errorMessage(parsed.message))
           is OverrideParse.Ok -> {
             // stream/start fixes overrides for the held session, so an override change restarts it.
@@ -99,7 +102,10 @@ private constructor(
   private fun switchTo(message: ServeStreamProtocol.ClientMessage.Switch) {
     val nextOverrides = message.overrides?.let(::normalize) ?: overrides
     val parsed =
-      when (val p = ServeOverrides.parse(nextOverrides, knobKindsFor(message.previewId))) {
+      when (
+        val p =
+          ServeOverrides.parse(nextOverrides, knobKindsFor(message.previewId), declaredThemeFqns())
+      ) {
         is OverrideParse.Invalid -> {
           send(ServeStreamProtocol.errorMessage(p.message))
           return
@@ -124,6 +130,13 @@ private constructor(
   private fun knobKindsFor(id: String): Map<String, String> =
     ServeOverrides.declaredKnobKinds(renderHost.previews.firstOrNull { it.id == id })
 
+  /**
+   * The session's declared `@ThemeCatalog` provider FQNs, so a `themeProvider` this catalog never
+   * declared is reported as an error rather than silently rendering the default theme.
+   */
+  private fun declaredThemeFqns(): Set<String> =
+    renderHost.declaredThemes.map { it.providerFqn }.toSet()
+
   private fun onFrame(frame: StreamFrameParams) {
     // `unchanged` heartbeats carry no payload — nothing to paint.
     val payload = frame.payloadBase64 ?: return
@@ -146,9 +159,11 @@ private constructor(
       }
 
     /**
-     * Try to open a daemon-backed live stream. Returns `null` when streaming is unsupported, so the
-     * caller falls back to the snapshot lane. An invalid initial-overrides query degrades to the
-     * preview's defaults (the bad value would otherwise block the whole live session at connect).
+     * Try to open a daemon-backed live stream. Returns `null` when streaming is unsupported, or
+     * when the initial-overrides query is invalid — in both cases the caller falls back to the
+     * snapshot lane, which re-parses the same overrides and reports the reason once. The invalid
+     * case used to degrade to the preview's defaults and subscribe anyway; that quietly served a
+     * default-themed stream to a client that had asked for something else.
      */
     fun tryStart(
       renderHost: ServeHost,
@@ -164,9 +179,29 @@ private constructor(
       val knobKinds =
         ServeOverrides.declaredKnobKinds(renderHost.previews.firstOrNull { it.id == previewId })
       val normalizedOverrides = ServeWeb.SystemDisplay.normalizeOverrideParams(system, overrides)
+      // Validate the socket's *initial* query too, not just the later `setOverrides` / `switch`
+      // messages. Degrading an invalid parse to `PreviewOverrides()` here would subscribe the
+      // client to a stream rendered under the default theme while it believes it asked for another
+      // one — the exact silent-default this validation exists to stop, and worse on a live stream
+      // than on a snapshot because a later frame would clear the viewer's error overlay while the
+      // wrong stream kept running. Refuse to start instead: the reason goes out through
+      // [onUnavailable], and the caller's fallback to [ServeStreamSession] re-parses the same
+      // overrides and reports it once, rather than this lane and that one both sending it.
       val initial =
-        (ServeOverrides.parse(normalizedOverrides, knobKinds) as? OverrideParse.Ok)?.overrides
-          ?: PreviewOverrides()
+        when (
+          val parsed =
+            ServeOverrides.parse(
+              normalizedOverrides,
+              knobKinds,
+              renderHost.declaredThemes.map { it.providerFqn }.toSet(),
+            )
+        ) {
+          is OverrideParse.Invalid -> {
+            onUnavailable?.invoke(parsed.message)
+            return null
+          }
+          is OverrideParse.Ok -> parsed.overrides
+        }
       val session =
         ServeLiveSession(renderHost, previewId, normalizedOverrides, codec, maxFps, send, system)
       session.handle =
