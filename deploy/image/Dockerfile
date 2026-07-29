@@ -150,18 +150,19 @@ RUN set -eu; \
 # fonts.googleapis.com, and the same bytes CI rendered the PNGs with.
 #
 # LICENSING — this stage REDISTRIBUTES font binaries in a published image, which is a different act
-# from the runtime fetch it replaces. Every family below is in the google/fonts open corpus under
-# OFL-1.1 or Apache-2.0, which permit redistribution. `Google Sans Flex` is deliberately ABSENT: the
-# CSS2 endpoint serves it, but it is not in google/fonts under any license dir, so its
-# redistribution terms are unclear. It keeps working exactly as before (fetched at runtime on first
-# use) — it is only not baked. Add it to FONT_PREWARM_FAMILIES yourself if you have cleared the
-# licensing for your deployment.
+# from the runtime fetch it replaces. All but one family below are in the google/fonts open corpus
+# under OFL-1.1 or Apache-2.0, which permit redistribution. `Google Sans Flex` is the exception: the
+# CSS2 endpoint serves it, but it is in no license directory of that repo, so its terms can't be
+# read off the corpus. It is baked here because the project owner confirmed redistribution is
+# cleared for this deployment — if you fork this image, that clearance is NOT inherited, so re-check
+# it or drop the family from FONT_PREWARM_FAMILIES. Dropping it only forgoes the baked copy; the
+# renderer still fetches it at runtime, exactly as every family did before this stage existed.
 #
-# The list mirrors `PixelSystemFontAliases.ALIASES` minus that exclusion; extend both together.
+# The list mirrors `PixelSystemFontAliases.ALIASES`; extend both together.
 # ---------------------------------------------------------------------------
 FROM base AS fonts
 COPY prewarm-fonts.sh /usr/local/bin/prewarm-fonts.sh
-ARG FONT_PREWARM_FAMILIES="Roboto|Roboto Flex|Noto Sans|Noto Serif|Noto Sans Mono|Cutive Mono|Coming Soon|Dancing Script|Carrois Gothic SC"
+ARG FONT_PREWARM_FAMILIES="Roboto|Roboto Flex|Google Sans Flex|Noto Sans|Noto Serif|Noto Sans Mono|Cutive Mono|Coming Soon|Dancing Script|Carrois Gothic SC"
 # `IFS='|'` + an unquoted expansion is how the pipe-separated list becomes one argument per family;
 # family names contain spaces, so splitting on whitespace would be wrong.
 RUN set -eu; \
