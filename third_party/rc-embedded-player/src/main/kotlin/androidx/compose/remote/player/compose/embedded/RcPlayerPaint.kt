@@ -20,7 +20,6 @@ package androidx.compose.remote.player.compose.embedded
 
 import android.graphics.BitmapShader
 import android.graphics.Matrix
-import android.graphics.Paint
 import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.os.Build
@@ -41,8 +40,14 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
 
 /*
  * Paint state + PaintBundle decoding for the embedded player's canvas draw path. Splits the paint
@@ -89,38 +94,58 @@ internal class ComposeLocalPaint {
 
     /** The fill color with the paint's [alpha] folded into its alpha channel. */
     fun effectiveColor(): Color = Color(color).let { it.copy(alpha = it.alpha * alpha) }
+}
 
-    /**
-     * Build a framework [android.graphics.Paint] for the canvas text draw ops (DRAW_TEXT and its
-     * on-path/anchored variants) from the current paint state: anti-aliased, the effective color,
-     * the text size, and a bold/italic [android.graphics.Typeface] derived from font weight/style.
-     */
-    fun toNativeTextPaint(context: RemoteContext): Paint {
-        val resolver = EmbeddedPlayerTypefaceResolver(context)
-        val italic = fontStyle == FontStyle.Italic
-
-        val fontInstance =
-            if (isTypefaceSet) {
-                if (fontFamily in 0..3) {
-                    resolver.resolve(fontFamily, fontWeight, italic, null, 400, false)
-                } else {
-                    val name = context.getText(fontFamily)
-                    if (name != null) {
-                        resolver.resolve(name, fontWeight, italic, null, 400, false)
-                    } else {
-                        resolver.resolve(0, fontWeight, italic, null, 400, false)
-                    }
-                }
-            } else {
-                resolver.resolve(0, fontWeight, italic, null, 400, false)
-            }
-
-        return Paint().apply {
-            isAntiAlias = true
-            color = effectiveColor().toArgb()
-            textSize = this@ComposeLocalPaint.textSize
-            typeface = fontInstance.getTypeface()
+/**
+ * The Compose [TextStyle] this paint state describes — colour or brush, size, weight, style, family
+ * and fill/stroke.
+ *
+ * Extracted verbatim from `DrawText`'s inline construction in `RcPlayerDrawing.kt`, which is still
+ * its only caller: same generic-family mapping, same `FontFamily.Default` fallback, same upstream
+ * TODO. Purely a move — the arithmetic and every branch are unchanged.
+ *
+ * Note this is *not* how the other three canvas text ops style themselves. They go through the
+ * framework `Paint` in `RcPlayerTextPlatform.kt`, which resolves named and downloadable families
+ * that this mapping drops on the floor. Unifying them means teaching this builder that resolution,
+ * not pointing the native ops at it — see PROVENANCE.md.
+ */
+internal fun ComposeLocalPaint.toTextStyle(density: Density): TextStyle {
+    // TODO: Support proper font family resolution (see aosp/4187117)
+    val family =
+        when (fontFamily) {
+            1 -> FontFamily.SansSerif
+            2 -> FontFamily.Serif
+            3 -> FontFamily.Monospace
+            else -> FontFamily.Default
         }
+    val drawStyle =
+        if (isStroke)
+            Stroke(
+                width = strokeWidth,
+                cap = mapStrokeCap(strokeCap),
+                join = mapStrokeJoin(strokeJoin),
+            )
+        else Fill
+    val size = with(density) { textSize.toSp() }
+    return if (brush != null) {
+        TextStyle(
+            brush = brush,
+            alpha = alpha,
+            fontSize = size,
+            fontWeight = FontWeight(fontWeight),
+            fontStyle = fontStyle,
+            fontFamily = family,
+            drawStyle = drawStyle,
+        )
+    } else {
+        TextStyle(
+            color = effectiveColor(),
+            fontSize = size,
+            fontWeight = FontWeight(fontWeight),
+            fontStyle = fontStyle,
+            fontFamily = family,
+            drawStyle = drawStyle,
+        )
     }
 }
 

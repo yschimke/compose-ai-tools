@@ -19,7 +19,6 @@
 package androidx.compose.remote.player.compose.embedded
 
 import android.graphics.Bitmap
-import android.graphics.Rect
 import android.graphics.drawable.BitmapDrawable
 import androidx.compose.remote.core.Operation
 import androidx.compose.remote.core.PaintOperation
@@ -73,23 +72,20 @@ import androidx.compose.remote.player.compose.utils.getPath
 import androidx.compose.remote.player.compose.utils.getTweenPath
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect as ComposeRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Matrix
+import androidx.compose.ui.graphics.Path as ComposePath
 import androidx.compose.ui.graphics.PathMeasure
-import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.text.TextMeasurer
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 
@@ -694,49 +690,8 @@ internal fun DrawScope.executeOperations(
                     val x = resolveFloat(op.mX, op.mOutX, read)
                     val y = resolveFloat(op.mY, op.mOutY, read)
                     // textMeasurer is non-null
-                    val fontStyle = paintState.fontStyle
-                    val fontWeight = FontWeight(paintState.fontWeight)
-                    // TODO: Support proper font family resolution (see aosp/4187117)
-                    val fontFamily =
-                        when (paintState.fontFamily) {
-                            1 -> FontFamily.SansSerif
-                            2 -> FontFamily.Serif
-                            3 -> FontFamily.Monospace
-                            else -> FontFamily.Default
-                        }
-
-                    val style =
-                        if (paintState.isStroke)
-                            Stroke(
-                                width = paintState.strokeWidth,
-                                cap = mapStrokeCap(paintState.strokeCap),
-                                join = mapStrokeJoin(paintState.strokeJoin),
-                            )
-                        else Fill
-
-                    val textStyle =
-                        if (paintState.brush != null) {
-                            TextStyle(
-                                brush = paintState.brush,
-                                alpha = paintState.alpha,
-                                fontSize = paintState.textSize.toSp(),
-                                fontWeight = fontWeight,
-                                fontStyle = fontStyle,
-                                fontFamily = fontFamily,
-                                drawStyle = style,
-                            )
-                        } else {
-                            TextStyle(
-                                color = paintState.effectiveColor(),
-                                fontSize = paintState.textSize.toSp(),
-                                fontWeight = fontWeight,
-                                fontStyle = fontStyle,
-                                fontFamily = fontFamily,
-                                drawStyle = style,
-                            )
-                        }
-
-                    val textLayoutResult = textMeasurer.measure(text = text, style = textStyle)
+                    val textLayoutResult =
+                        textMeasurer.measure(text = text, style = paintState.toTextStyle(this))
 
                     // Assuming y is baseline
                     val baseline = textLayoutResult.getLineBaseline(0)
@@ -758,13 +713,8 @@ internal fun DrawScope.executeOperations(
                     val hOffset = data.hOffset
                     val vOffset = data.vOffset
                     val path = remoteContext.mRemoteComposeState.getPath(pathId, 0f, 1f)
-                    drawContext.canvas.nativeCanvas.drawTextOnPath(
-                        full,
-                        path.asAndroidPath(),
-                        hOffset,
-                        vOffset,
-                        paintState.toNativeTextPaint(read),
-                    )
+                    // No multiplatform equivalent — see `drawTextOnPathPlatform`.
+                    drawTextOnPathPlatform(full, path, hOffset, vOffset, paintState, read)
                 }
             }
             is DrawTextAnchored -> {
@@ -779,17 +729,18 @@ internal fun DrawScope.executeOperations(
                 val textId = data.textId
                 val full = read.getText(textId)
                 if (full != null && !paintState.textSize.isNaN()) {
-                    val nativePaint = paintState.toNativeTextPaint(read)
                     val flags = data.flags
                     val baseline = (flags and DrawTextAnchored.BASELINE_RELATIVE) != 0
-                    val bounds = android.graphics.Rect()
-                    nativePaint.getTextBounds(full, 0, full.length, bounds)
+                    // Measure and draw both go through the platform seam — see
+                    // `RcPlayerTextPlatform.kt`. They must use the same text engine and the same
+                    // resolved typeface, or the anchoring below places glyphs it didn't measure.
+                    val bounds = measureTextInkBounds(full, paintState, read)
                     val outX = data.x
                     val outY = data.y
                     val outPanX = data.panX
                     val outPanY = data.panY
-                    val textWidth = (bounds.right - bounds.left).toFloat()
-                    val textHeight = (bounds.bottom - bounds.top).toFloat()
+                    val textWidth = bounds.width
+                    val textHeight = bounds.height
                     val hOffset = (0f - textWidth) * (1f + outPanX) / 2f - bounds.left
                     val x = outX + hOffset
                     val y =
@@ -798,9 +749,9 @@ internal fun DrawScope.executeOperations(
                         } else {
                             outY +
                                 (0f - textHeight) * (1f - outPanY) / 2f +
-                                (if (baseline) textHeight / 2f else -bounds.top.toFloat())
+                                (if (baseline) textHeight / 2f else -bounds.top)
                         }
-                    drawContext.canvas.nativeCanvas.drawText(full, x, y, nativePaint)
+                    drawTextAtOriginPlatform(full, x, y, paintState, read)
                 }
             }
             is DrawBitmapScaled -> {
@@ -996,8 +947,7 @@ internal fun DrawScope.executeOperations(
                     val warpRadiusOffset = data.warpRadiusOffset
                     val alignment = data.alignment
                     val placement = data.placement
-                    val nativePaint = paintState.toNativeTextPaint(read)
-                    val textWidth = nativePaint.measureText(full)
+                    val textWidth = measureTextWidth(full, paintState, read)
                     val finalRadius = radius + warpRadiusOffset
                     val clockwise = placement == DrawTextOnCircle.Placement.OUTSIDE
                     var sweepDegrees =
@@ -1021,24 +971,21 @@ internal fun DrawScope.executeOperations(
                             else -> {}
                         }
                     }
+                    // Compose's `Path.addArc` is multiplatform; only the draw below is not.
                     val textPath =
-                        android.graphics.Path().apply {
+                        ComposePath().apply {
                             addArc(
-                                centerX - finalRadius,
-                                centerY - finalRadius,
-                                centerX + finalRadius,
-                                centerY + finalRadius,
+                                ComposeRect(
+                                    centerX - finalRadius,
+                                    centerY - finalRadius,
+                                    centerX + finalRadius,
+                                    centerY + finalRadius,
+                                ),
                                 finalStartAngle,
                                 sweepDegrees,
                             )
                         }
-                    drawContext.canvas.nativeCanvas.drawTextOnPath(
-                        full,
-                        textPath,
-                        0f,
-                        0f,
-                        nativePaint,
-                    )
+                    drawTextOnPathPlatform(full, textPath, 0f, 0f, paintState, read)
                 }
             }
             is DrawBitmapFontText -> {
