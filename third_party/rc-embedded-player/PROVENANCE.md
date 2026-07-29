@@ -105,19 +105,86 @@ for library modules, and the module now carries its own resource table (the cert
 
 ## Planned: CMP android/jvm
 
-The player is *nearly* platform-agnostic — `remote-core`, which carries the document and operation
-model, is a plain `java-library` upstream with no Android dependency. The Android coupling that
-remains is thin and concentrated:
+Goal: a `jvm` target that renders through Compose Desktop's Skia backend, so the `rc-compare` lane
+rasterizes `.rc` documents headlessly **without Robolectric** — and, as a side effect, without the
+software-canvas ambiguity that made the shader finding hard to attribute (see the tracking issue).
 
-- `RcPlayerPaint.kt` — `android.graphics.Paint` for canvas text draws, `RuntimeShader` (AGSL) for
-  shader ops, `BitmapShader`/`Shader`/`Matrix`.
-- `RcPlayerDrawing.kt`, `state/RcPlayerState.kt` — `android.graphics.Bitmap`, `Rect`,
-  `BitmapDrawable`.
-- `EmbeddedPlayerTypefaceResolver.kt` — `android.graphics.Typeface`.
-- `GraphContext.kt`, `RcPlayer.kt` — `AndroidRemoteContext` as the platform `RemoteContext`.
+### Measured surface
 
-Splitting those behind `expect`/`actual` gives a `jvm` target that renders through Compose Desktop's
-Skia backend, which is what lets the `rc-compare` lane rasterize `.rc` documents headlessly **without
-Robolectric**. Text has to move to Compose's own `TextMeasurer`/`DrawScope` primitives rather than a
-framework `Paint`, and AGSL has no JVM equivalent (desktop Compose exposes SkSL `RuntimeEffect`), so
-shader parity across the two targets will not be exact.
+**32 of the 42 vendored files reference nothing platform-specific** — no `android.*`, no
+`androidx.core.*`, no `player.core.platform.*`, no `ui.text.googlefonts`. They move as-is. The
+remaining 10, with what actually couples them:
+
+| file | coupling |
+| --- | --- |
+| `RcPlayerPaint.kt` | `Paint`, `RuntimeShader`, `BitmapShader`, `Shader`, `Matrix`, `Build` |
+| `RcPlayerDrawing.kt` | `Bitmap`, `Rect`, `drawable` |
+| `RcPlayer.kt` | `SuppressLint`, `PendingIntent`, `AndroidRemoteContext` |
+| `EmbeddedPlayerTypefaceResolver.kt` | `Typeface`, `Handler`, `Looper`, `Log`, `FontRequest`, `FontsContractCompat`, `AndroidRemoteContext`, `TypefaceResolver`, `FontInstance` |
+| `RcImageLoader.kt` | `Bitmap`, `drawable`, `content.res` |
+| `state/RcPlayerState.kt` | `Bitmap` |
+| `GraphContext.kt` | extends `AndroidRemoteContext` |
+| `RcPlayerParticles.kt` | `AndroidPaintContext` |
+| `RcPlayerTextLayout.kt` | `googlefonts.Font`, `googlefonts.GoogleFont` |
+| `DrawablePainter.kt` | `drawable.Drawable` — Android-only by definition, no jvm counterpart needed |
+
+### The source-set shape is `jvmCommon`, not `common`
+
+`remote-core` — the document and operation model the player reads throughout — is a plain
+`java-library` upstream, **not** a multiplatform artifact. So the shared code is not
+platform-agnostic; it is *JVM*-common. The layout has to be an intermediate source set both targets
+depend on:
+
+```
+commonMain        (empty, or Compose-only helpers)
+└── jvmCommonMain  ← the 32 clean files + the `remote-core` dependency
+    ├── androidMain ← the 10 above, as today
+    └── jvmMain     ← their jvm actuals
+```
+
+Putting `remote-core` in `commonMain` would not resolve. This is the single most important structural
+constraint and the easiest one to get wrong.
+
+### What a `JvmRemoteContext` actually costs
+
+Less than the line counts suggest. `RemoteContext` (remote-core, JVM) declares **42 abstract
+members**, and `AndroidRemoteContext` implements them in 669 lines — but the contract is
+overwhelmingly a *variable/state store*, which is platform-neutral: `loadFloat`/`getFloat`,
+`loadColor`/`getColor`, `loadText`/`getText`, `loadInteger`, `setNamed*Override` /
+`clearNamed*Override`, `addCollection`, `putDataMap`/`getDataMap`, `putObject`/`getObject`,
+`listensTo`, `updateOps`, `loadAnimatedFloat`, `loadPathData`/`getPathData` (plain float arrays).
+
+Genuinely platform-bound, and short: `loadBitmap` (decode), `hapticEffect` (no-op on jvm),
+`runAction`/`runNamedAction`/`addClickArea` (host callbacks), `loadShader`/`getShader` (storage of a
+core `ShaderData`).
+
+`AndroidPaintContext` is 1510 lines but is reached **only** by `RcPlayerParticles.kt` — the embedded
+player draws through Compose's `DrawScope`, not the core's paint pipeline. Particles can stay
+Android-only in a first cut rather than forcing a Skia `PaintContext` port.
+
+### Known parity limits before starting
+
+- **Text.** `RcPlayerPaint.kt` builds a framework `android.graphics.Paint` for the canvas text draw
+  ops. On jvm this has to move to Compose's own `TextMeasurer` / `DrawScope`, so text metrics will
+  not be bit-identical across the two targets.
+- **Shaders.** AGSL has no JVM equivalent; desktop Compose exposes SkSL `RuntimeEffect`, which is
+  close but not the same language or the same uniform plumbing. Shader parity across targets will not
+  be exact — and note the embedded player's shader path already diverges from the View player on
+  *Android* (89% on `ShaderGradientSticker`), so that wants fixing before it is used as a jvm
+  baseline.
+- **Downloadable fonts.** `google:`-prefixed fonts go through `FontRequest`/`FontsContractCompat`,
+  which is Android-only. The jvm target needs either a bundled-font path or an explicit unsupported.
+
+### Sequencing
+
+1. Restructure to KMP with **only** the android target, moving the 32/10 split into
+   `jvmCommonMain`/`androidMain`. No `expect`/`actual` needed yet — `androidMain` sees
+   `jvmCommonMain` directly. Verify by re-running the 24-document render and confirming the numbers
+   are unchanged.
+2. Add the `jvm` target and the `expect`/`actual` seams, starting with `RemoteContext` and image
+   decode.
+3. Port text off framework `Paint`.
+4. Shaders last, after the Android-side shader divergence is understood.
+
+Step 1 is the safe, verifiable milestone: it is a pure source-set move whose success criterion is
+"the existing render output does not change".
