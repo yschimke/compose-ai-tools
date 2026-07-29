@@ -235,6 +235,16 @@ object ServeWeb {
     .cp-overlays-head { font-size: 0.72rem; color: #6b6b70; }
     .cp-knobs input:disabled { opacity: 0.7; }
     .cp-links { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+    /* The under-stage column: the lane toggles (Live / Wasm / SVG), the static-snapshot note, and
+       the Export & direct links card. Page-level, not part of the collapsible overrides drawer, so
+       picking a lane and grabbing the /render URLs stay visible with the drawer closed. */
+    .cp-below { margin: 18px 0 0; max-width: 720px; display: flex; flex-direction: column; gap: 12px; }
+    /* Export & direct links: its own border is the card's, so the .cp-links divider rule above is
+       dropped inside it. */
+    .cp-export { padding: 12px 14px; border: 1px solid #e3e3e8;
+      border-radius: 10px; background: #fff; }
+    .cp-export-head { margin: 0 0 10px; font-size: 0.78rem; font-weight: 600; color: #45454c; }
+    .cp-export .cp-links { border-top: 0; padding-top: 0; }
     .cp-link-row { display: flex; align-items: center; gap: 6px; }
     .cp-link-kind { font-size: 0.72rem; font-weight: 600; color: #6b6b70; width: 30px; flex: none; }
     .cp-url { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -349,6 +359,8 @@ object ServeWeb {
       body { color: #e6e6e9; background: #161618; }
       .cp-sub, .cp-id, .cp-status, .cp-about-links, .cp-sys-desc, .cp-sys-foot { color: #a0a0a8; }
       .cp-card, .cp-stage, .cp-knobs, .cp-links, .cp-about { border-color: #34343a; }
+      .cp-export { background: #1d1d20; border-color: #34343a; }
+      .cp-export-head { color: #c9c9d0; }
       .cp-url { background: #1d1d20; color: #e6e6e9; border-color: #34343a; }
       .cp-url.cp-url-copied { border-color: #8f8ff0; box-shadow: 0 0 0 2px rgba(143, 143, 240, 0.3); }
       .cp-copyimg, .cp-dl { background: #1d1d20; border-color: #34343a; }
@@ -1638,6 +1650,22 @@ object ServeWeb {
      * sticker on white reads wrong). Default false ⇒ the light stage, unchanged.
      */
     val darkStage: Boolean = false,
+    /**
+     * The front-page section this catalog was **published under** by the operator's config
+     * ([ServeCatalogsConfig.Group]), or null when it declared none. A claim, not a fact: it only
+     * takes effect when [sourceRepo] is one of [HomeGroup.repos] — see [homeSections].
+     */
+    val group: HomeGroup? = null,
+  )
+
+  /**
+   * A front-page section a catalog may be published under: the [heading] shown, its count [noun],
+   * and the [repos] whose bytes are allowed to appear under it.
+   */
+  data class HomeGroup(
+    val heading: String,
+    val noun: String = ServeCatalogsConfig.DEFAULT_NOUN,
+    val repos: Set<String> = emptySet(),
   )
 
   /**
@@ -1775,16 +1803,21 @@ object ServeWeb {
       """
         .trimIndent()
     }
-    fun section(heading: String, list: List<HomeSystem>, noun: String, gridId: String): String =
-      """
-      <h1 class="cp-head">$heading</h1>
-      <p class="cp-sub">${list.size} $noun · pick one to browse its components and
+    // Headings and nouns come from operator config (and, for the fallback sections, from a
+    // catalog's own provenance), so they're escaped like any other data on the page.
+    fun section(heading: String, list: List<HomeSystem>, noun: String, gridId: String): String {
+      val head = WebEscaping.htmlEscape(heading)
+      val count = "${list.size} ${WebEscaping.htmlEscape(noun)}"
+      return """
+      <h1 class="cp-head">$head</h1>
+      <p class="cp-sub">$count · pick one to browse its components and
         open a live, customisable preview.</p>
       <div class="cp-grid cp-syslist" id="$gridId">
       ${list.joinToString("\n") { card(it) }}
       </div>
       """
         .trimIndent()
+    }
     val sections = homeSections(systems)
     val body =
       if (systems.isEmpty()) {
@@ -1819,61 +1852,55 @@ object ServeWeb {
   /**
    * Group the published catalogs by **publisher**, for the front-page sections.
    *
-   * Attribution is decided by [HomeSystem.sourceRepo] — the repository the catalog was generated
-   * from — because that is the only field that says who *wrote* the components. Neither of the
-   * alternatives works:
+   * The section a card lands in is **operator config, not code** ([ServeCatalogsConfig]): each
+   * catalog entry names the group it's published under, and this reduces those declarations to
+   * sections. Nothing here knows the id of any particular catalog — a server publishing catalogs
+   * this build has never heard of gets the same grouping the first-party ones do.
+   *
+   * A declared group is a **claim, checked against provenance**. [HomeSystem.sourceRepo] — the
+   * repository the catalog was generated from — must be one of the group's [HomeGroup.repos], which
+   * are exactly the repos the operator named for that entry. Neither of the alternatives works on
+   * its own:
    * * The **catalog id** is claimed by whoever publishes it. A third-party catalog served as
-   *   `compose-m3` or `jetnews` would otherwise be presented as an official design system or one of
-   *   Android's samples, purely for picking that name.
+   *   `compose-m3` would otherwise be presented as an official design system purely for picking
+   *   that name.
    * * The **trust verdict** names the branch the bytes were *fetched* from, which is a delivery
    *   detail: Android's samples are currently fetched from preview branches in the
    *   `yschimke/compose-samples` fork, and grouping on that would credit the fork owner for
-   *   Android's work.
+   *   Android's work — which is what [ServeCatalogsConfig.Entry.attributionRepos] exists to
+   *   express.
    *
-   * The known ids are still required alongside the repo (a repo publishing an unrelated catalog
-   * doesn't make it a design system), so the two must agree for a curated section to claim a card.
-   * A catalog with no provenance falls to "Other" — unattributed, never promoted.
+   * A catalog whose claim doesn't hold — or that declares no group at all — falls back to its
+   * source repo's **owner** section, and one with no provenance at all to "Other": unattributed,
+   * never promoted. Sections come out in first-appearance (i.e. configured) order, so the operator
+   * controls the front page's running order, with "Other" pinned last.
    */
   internal fun homeSections(systems: List<HomeSystem>): List<HomeSection> {
-    fun published(ids: Set<String>, repos: Set<String>): (HomeSystem) -> Boolean = { s ->
-      s.system in ids && s.sourceRepo in repos
+    val grouped = LinkedHashMap<String, MutableList<HomeSystem>>()
+    val nouns = LinkedHashMap<String, String>()
+    for (s in systems) {
+      // The claim only holds when the bytes came from a repo the operator named for this entry.
+      val claimed = s.group?.takeIf { g -> s.sourceRepo != null && s.sourceRepo in g.repos }
+      val heading = claimed?.heading ?: ownerHeading(s.sourceRepo)
+      grouped.getOrPut(heading) { mutableListOf() } += s
+      nouns.putIfAbsent(heading, claimed?.noun ?: ServeCatalogsConfig.DEFAULT_NOUN)
     }
-
-    val isDesignSystem =
-      published(
-        ids = setOf("compose-m3", "remote-m3", "wear-m3"),
-        repos = setOf("yschimke/compose-ai-tools"),
-      )
-    val isAndroidSample =
-      published(
-        ids =
-          setOf(
-            "jetnews",
-            "jetcaster",
-            "jetcaster-wear",
-            "jetchat",
-            "jetsnack",
-            "jetlagged",
-            "reply",
-          ),
-        // The preview branches currently live in the fork; both spellings are Android's samples.
-        repos = setOf("android/compose-samples", "yschimke/compose-samples"),
-      )
-
-    val designSystems = systems.filter(isDesignSystem)
-    val androidComposeSamples = systems.filter(isAndroidSample)
-    val remaining = systems.filterNot { isDesignSystem(it) || isAndroidSample(it) }
-    val yschimkeSystems = remaining.filter { it.sourceRepo?.startsWith("yschimke/") == true }
-    val otherSystems = remaining.filterNot { it.sourceRepo?.startsWith("yschimke/") == true }
-
-    return listOf(
-        HomeSection("Design Systems", designSystems, "design system(s)"),
-        HomeSection("android/compose-samples", androidComposeSamples, "sample(s)"),
-        HomeSection("yschimke org", yschimkeSystems, "catalog(s)"),
-        HomeSection("Other", otherSystems, "catalog(s)"),
-      )
-      .filter { it.systems.isNotEmpty() }
+    val sections = grouped.map { (heading, list) ->
+      HomeSection(heading, list, nouns.getValue(heading))
+    }
+    // "Other" is the unattributed bucket, so it reads last regardless of when it first appeared.
+    return sections.filterNot { it.heading == OTHER_HEADING } +
+      sections.filter { it.heading == OTHER_HEADING }
   }
+
+  /** The heading an ungrouped catalog falls back to: its repo owner's, else the "Other" bucket. */
+  private fun ownerHeading(sourceRepo: String?): String {
+    val owner = sourceRepo?.substringBefore('/')?.takeIf { it.isNotBlank() && it != sourceRepo }
+    return if (owner == null) OTHER_HEADING else "$owner org"
+  }
+
+  /** The catch-all section for catalogs carrying no usable provenance. */
+  private const val OTHER_HEADING = "Other"
 
   /**
    * A styled **404** page for a browser that followed a dead link to a catalog or preview page
@@ -3255,27 +3282,6 @@ object ServeWeb {
         $navDrawer
         <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         <div class="cp-controls" id="cp-controls">
-          $snapshotNote
-          <div class="cp-preview-mode">
-            <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false"$liveToggleDis>
-              <span class="cp-live-dot" aria-hidden="true"></span>
-              <span id="cp-live-toggle-label">Live preview</span>
-            </button>
-            $wasmToggleBtn
-            $rcToggleBtn
-            $svgFmtToggle
-            <span class="cp-mode-hint" id="cp-mode-hint"></span>
-            <!-- The mode radios the transport JS drives; visually removed (the toggle above is the
-                 only visible mode control). png = static snapshot, live = daemon stream, wasm =
-                 in-browser app. -->
-            <span class="cp-modes-inputs" aria-hidden="true">
-              <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
-              <input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1"$liveDis>
-              $wasmModeInput
-              $rcModeInput
-            </span>
-          </div>
-          ${downloadLinksHtml(hasSvgExport)}
           <details class="cp-group" data-cp-group="appearance">
             <summary>Appearance</summary>
             <div class="cp-group-body">
@@ -3319,6 +3325,7 @@ object ServeWeb {
               </div>
             </div>
           </details>
+          ${scrollGroupHtml(hasSvgExport)}
           <details class="cp-group" data-cp-group="locale">
             <summary>Locale &amp; text</summary>
             <div class="cp-group-body">
@@ -3377,6 +3384,34 @@ object ServeWeb {
           ${remoteComposeKnobsHtml(preview, canApplyOverrides || canRenderOverrides)}
           <div class="cp-status" id="cp-status"></div>
         </div>
+      </div>
+      <!-- What you get *out* of the preview lives in the page under the stage, outside the
+           collapsible overrides drawer: the lane toggles (Live / Wasm / SVG) that pick what the
+           stage shows, and the copyable /render URLs. Closing ⚙ Overrides — or never opening the
+           mobile bottom sheet — no longer hides them. The drawer keeps only the render *overrides*
+           (appearance, size, scroll, locale, device, knobs). -->
+      <div class="cp-below">
+        <div class="cp-preview-mode">
+          <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false"$liveToggleDis>
+            <span class="cp-live-dot" aria-hidden="true"></span>
+            <span id="cp-live-toggle-label">Live preview</span>
+          </button>
+          $wasmToggleBtn
+          $rcToggleBtn
+          $svgFmtToggle
+          <span class="cp-mode-hint" id="cp-mode-hint"></span>
+          <!-- The mode radios the transport JS drives; visually removed (the toggle above is the
+               only visible mode control). png = static snapshot, live = daemon stream, wasm =
+               in-browser app. -->
+          <span class="cp-modes-inputs" aria-hidden="true">
+            <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
+            <input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1"$liveDis>
+            $wasmModeInput
+            $rcModeInput
+          </span>
+        </div>
+        $snapshotNote
+        ${downloadLinksHtml(hasSvgExport)}
       </div>
       <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
            tapping it dismisses the sheet. Inert on desktop. -->
@@ -4966,6 +5001,12 @@ object ServeWeb {
    * shareable, scriptable handle on the exact render (a `curl`-able PNG/SVG). The URLs are built
    * client-side from `location.origin` + the session base, so they're absolute and work from
    * anywhere; the fields start empty and are filled on first render.
+   *
+   * This is a **page-level section under the stage**, not a group inside the collapsible overrides
+   * drawer: grabbing the URL / PNG / SVG of what's on screen is the viewer's primary hand-off, so
+   * it stays visible whether or not the ⚙ Overrides drawer is open (and, on mobile, without opening
+   * a bottom sheet). The one control that genuinely *shapes* the export — "Full page (scroll)" —
+   * lives in the overrides drawer's Scroll group instead ([scrollGroupHtml]).
    */
   private fun downloadLinksHtml(hasSvgExport: Boolean): String {
     fun row(kind: String, ext: String): String =
@@ -4980,30 +5021,42 @@ object ServeWeb {
       </div>
       """
         .trimIndent()
-    // The SVG lane is export-only now (no on-screen SVG mode). Its download row carries the
-    // "Full page (scroll)" toggle, which points the copyable/downloadable SVG URL at the full-page
-    // `?scroll=long` export of a scrolling preview (a tall Wear capsule / grown LazyColumn) instead
-    // of the viewport-sized SVG. The viewer JS (`withScroll`) folds it into the `.svg` URL only.
-    val svgRow =
-      if (hasSvgExport)
-        "\n" +
-          row("SVG", "svg") +
-          "\n<label class=\"cp-live-row\"><input id=\"cp-scroll-long\" type=\"checkbox\"> " +
-          "Full page (scroll) — SVG only</label>"
-      else ""
+    // The SVG lane is export-only now (no on-screen SVG mode); its shape is controlled by the
+    // "Full page (scroll)" toggle over in the overrides drawer's Scroll group.
+    val svgRow = if (hasSvgExport) "\n" + row("SVG", "svg") else ""
     return """
-      <details class="cp-group" data-cp-group="export" open>
-        <summary>Export &amp; direct links</summary>
-        <div class="cp-group-body">
-          <div class="cp-links">
-            <div class="cp-knobs-head">The current view as a URL (overrides applied)</div>
-            ${row("PNG", "png")}$svgRow
-          </div>
+      <section class="cp-export" aria-labelledby="cp-export-head">
+        <h2 class="cp-export-head" id="cp-export-head">Export &amp; direct links</h2>
+        <div class="cp-links">
+          <div class="cp-knobs-head">The current view as a URL (overrides applied)</div>
+          ${row("PNG", "png")}$svgRow
         </div>
-      </details>
+      </section>
       """
       .trimIndent()
   }
+
+  /**
+   * The overrides drawer's Scroll group: "Full page (scroll)", which points the copyable /
+   * downloadable SVG export at the full-page `?scroll=long` render of a scrolling preview (a tall
+   * Wear capsule / grown LazyColumn) instead of the viewport-sized SVG. It's an override on what
+   * gets rendered — not a link — so it sits with the other axes in the drawer rather than in the
+   * always-visible export section. The viewer JS (`withScroll`) folds it into the `.svg` URL only,
+   * hence the "SVG only" note; empty when the session can't export SVG at all.
+   */
+  private fun scrollGroupHtml(hasSvgExport: Boolean): String =
+    if (!hasSvgExport) ""
+    else
+      """
+      <details class="cp-group" data-cp-group="scroll">
+        <summary>Scroll</summary>
+        <div class="cp-group-body">
+          <label class="cp-live-row"><input id="cp-scroll-long" type="checkbox"> Full page (scroll)</label>
+          <div class="cp-knobs-head">Exports the whole scrollable page — SVG only.</div>
+        </div>
+      </details>
+      """
+        .trimIndent()
 
   /**
    * Renders the preview's author-declared editable knobs (the `compose/overrides` payload carried

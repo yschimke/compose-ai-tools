@@ -42,6 +42,14 @@ fi
 #   SERVE_CATALOGS=compose-m3,wear-m3
 #   SERVE_TRUST_STORE=trust/producers.json
 #   SERVE_WASM_DIR=compose-m3=samples/cmp-wasm-catalog/build/wasmDist
+# The catalog set as config: a catalogs.json (which catalogs, from which repos, listed or
+# not, under which front-page section). Mount it from outside the image and point this at
+# it, so publishing a catalog is a config edit rather than a redeploy. SERVE_CATALOGS below
+# still works and simply adds to whatever the file declares.
+[[ -n "${SERVE_CATALOGS_FILE:-}" ]] && args+=(--catalogs-file "${SERVE_CATALOGS_FILE}")
+# Runtime catalog admin (GET/POST /admin/catalogs, DELETE /admin/catalogs/<system>), gated by
+# its own secret — never the browse token. Unset = the routes don't exist.
+[[ -n "${SERVE_ADMIN_TOKEN:-}" ]] && args+=(--admin-token "${SERVE_ADMIN_TOKEN}")
 [[ -n "${SERVE_CATALOGS:-}" ]] && args+=(--catalogs "${SERVE_CATALOGS}")
 # Design systems served but hidden from the front-page nav — reachable at /<system>/
 # (and ?session=<system>). Each entry may carry a per-repo source as <system>@<owner>/<repo>

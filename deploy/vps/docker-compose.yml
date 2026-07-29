@@ -26,12 +26,16 @@ services:
       # serves the in-browser CMP tier from the image's local wasm build via
       # SERVE_WASM_DIR. For a token-gated box, set SERVE_PUBLIC=0 + SERVE_TOKEN.
       SERVE_PUBLIC: "${SERVE_PUBLIC:-1}"
-      SERVE_CATALOGS: "${SERVE_CATALOGS:-compose-m3,wear-m3,remote-m3,meshcore-mobile@yschimke/meshcore-mobile,homeassistant-remotecompose@yschimke/homeassistant-remotecompose,jetnews@yschimke/compose-samples,jetcaster@yschimke/compose-samples,jetcaster-wear@yschimke/compose-samples,jetchat@yschimke/compose-samples,jetsnack@yschimke/compose-samples,jetlagged@yschimke/compose-samples,reply@yschimke/compose-samples}"
-      # cadence is served UNLISTED from its own repo — reachable at /cadence/ (and ?session=cadence)
-      # but kept OFF the front-page index. (meshcore-mobile / homeassistant-remotecompose are LISTED
-      # above so they DO show on the front page.) <system>@<owner>/<repo> points serve at each app's
-      # design-artifacts/<system> branch; those branches are in trust/producers.json → Trusted(Branch).
-      SERVE_CATALOGS_UNLISTED: "${SERVE_CATALOGS_UNLISTED:-cadence@yschimke/cadence}"
+      # The catalog set is CONFIG: catalogs.json declares which catalogs to serve, the repo
+      # each one's design-artifacts/<system> branch lives in, whether it's on the front page,
+      # and the section it's published under (those branches are in trust/producers.json →
+      # Trusted(Branch)). Bind-mounted below from the repo, so publishing a catalog is a file
+      # edit + restart — not a compose edit. cadence is declared `listed: false` there:
+      # reachable at /cadence/ but kept off the front-page index.
+      SERVE_CATALOGS_FILE: "${SERVE_CATALOGS_FILE:-/config/catalogs.json}"
+      # Optional additions to that file (<system>@<owner>/<repo>, comma-separated).
+      SERVE_CATALOGS: "${SERVE_CATALOGS:-}"
+      SERVE_CATALOGS_UNLISTED: "${SERVE_CATALOGS_UNLISTED:-}"
       SERVE_TRUST_STORE: "${SERVE_TRUST_STORE:-trust/producers.json}"
       SERVE_WASM_DIR: "${SERVE_WASM_DIR:-compose-m3=samples/cmp-wasm-catalog/build/wasmDist}"
       # Live (daemon-backed) server-side re-render. Now that compose-m3 is a
@@ -49,6 +53,11 @@ services:
       SERVE_LIVE_SEATS: "${SERVE_LIVE_SEATS:-1}"
       SERVE_TOKEN: "${SERVE_TOKEN:-}"
       PORT: "8080"
+    volumes:
+      # The published catalog set, kept in version control and mounted read-only (this box
+      # doesn't run the admin API, so nothing needs to write it back). Shared with the
+      # prebuilt-image profile so both boxes publish the same catalogs from one file.
+      - ../image/catalogs.json:/config/catalogs.json:ro
     expose:
       - "8080"
     # One warm Desktop daemon fits comfortably in a few GB; this cap just keeps a

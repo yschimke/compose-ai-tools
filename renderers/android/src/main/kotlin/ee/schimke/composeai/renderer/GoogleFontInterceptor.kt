@@ -55,6 +55,33 @@ internal object GoogleFontCacheAccess {
 }
 
 /**
+ * Read-only view of the downloadable-font cache for consumers that need the *file the render
+ * actually drew with* rather than a fresh resolution.
+ *
+ * The `compose/figma-svg` export used to embed a downloadable face by re-fetching a WOFF2 from
+ * Google by family name — a second network round-trip, independent of the TTF the render had
+ * already resolved. It failed exactly where it mattered: a catalog render whose font cache was
+ * warm (so the PNG is correct) but whose egress is closed, or which runs
+ * `composeai.fonts.offline`, produced an SVG with no `@font-face` at all, so browsers fell back to
+ * sans-serif and every glyph width, line break and ellipsis drifted from the PNG (issue #2906).
+ *
+ * Looking the already-resolved file up instead makes the embedded face the same bytes the raster
+ * used, by construction, and removes the network from the export path entirely.
+ */
+object GoogleFontFiles {
+  /**
+   * The cached TTF for `(family, weight, italic)`, or null when nothing has resolved it. Never
+   * downloads — a miss means the render didn't draw with this face either, and the export should
+   * degrade rather than fetch a face the raster never saw.
+   */
+  fun cached(family: String, weight: Int, italic: Boolean): File? {
+    val dir = System.getProperty("composeai.fonts.cacheDir")?.takeIf { it.isNotBlank() } ?: return null
+    val file = File(dir, GoogleFontKey(family, FontWeight(weight), italic).fileName())
+    return file.takeIf { it.isFile && it.length() > 0 }
+  }
+}
+
+/**
  * Render-time surfacing for downloadable-font resolution failures.
  *
  * A `Font(GoogleFont(...))` that can't be resolved — offline, no cache dir, a failed download, or a

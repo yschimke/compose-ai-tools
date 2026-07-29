@@ -426,6 +426,70 @@ class FigmaFontEmbedTest {
   }
 
   @Test
+  fun writeSvgEmbedsTheDownloadableFaceTheRenderResolvedRatherThanRefetchingIt() {
+    // Issue #2906. A downloadable `Font(GoogleFont("Lato"), …)` reaches the capture as the bare
+    // family name. The export used to hand that to the Google-Fonts WOFF2 resolver — a second
+    // network round-trip, independent of the TTF the render had already resolved — so a catalog
+    // whose font cache was warm but whose egress was closed produced an SVG with NO `@font-face`
+    // while its PNG carried the real face. The render now publishes the resolved file and the
+    // export embeds those exact bytes, with no resolver involvement at all.
+    val lato = File(dir, "lato-600.ttf").apply { writeBytes(byteArrayOf(11, 22, 33)) }
+    FigmaResourceFonts.register("Lato", 600, false, lato.absolutePath)
+    val semantics =
+      ComposeSemanticsPayload(
+        ComposeSemanticsNode(
+          nodeId = "root",
+          boundsInRoot = "0,0,200,100",
+          children =
+            listOf(
+              ComposeSemanticsNode(
+                nodeId = "Text",
+                boundsInRoot = "8,8,192,40",
+                text = "AVE TIME IN BED",
+                typography =
+                  ComposeSemanticsTypography(
+                    fontSize = "16.0sp",
+                    fontWeight = 600,
+                    fontFamily = "Lato",
+                  ),
+              )
+            ),
+        )
+      )
+    // The resolver must never be consulted for a face the render already resolved.
+    val resolver = FigmaFontResolver { _, _, _ -> error("must not re-fetch a resolved face") }
+
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = dir,
+      previewId = "p",
+      layout = LayoutInspectorPayload(textNode()),
+      semantics = semantics,
+      fontResolver = resolver,
+    )
+
+    val svg = dir.resolve("p").resolve(ComposeFigmaSvgDataProducer.FILE_SVG).readText()
+    assertTrue("embeds the resolved face", svg.contains("format('truetype')"))
+    assertTrue("uses the render's own bytes", svg.contains("data:font/ttf;base64,CxYh"))
+    assertTrue("text names the embedded family", svg.contains("""font-family="lato-600"""))
+  }
+
+  @Test
+  fun aFamilyRegistrationIsScopedToItsWeight() {
+    // One family spans several files: Lato 400 and Lato 600 have different metrics. A bare-family
+    // registration would hand whichever resolved last to every weight, so the registry is
+    // weight/style-qualified and a lookup for an unregistered weight must miss rather than reuse.
+    val lato600 = File(dir, "lato-600.ttf").apply { writeBytes(byteArrayOf(1)) }
+    FigmaResourceFonts.register("Lato", 600, false, lato600.absolutePath)
+
+    assertEquals(lato600.absolutePath, FigmaResourceFonts.pathFor("Lato", 600, false))
+    assertEquals(null, FigmaResourceFonts.pathFor("Lato", 400, false))
+    assertEquals(null, FigmaResourceFonts.pathFor("Lato", 600, true))
+    // The face-agnostic form still resolves for a per-face identity like `res/font/<resId>`.
+    FigmaResourceFonts.register("res/font/42", lato600.absolutePath)
+    assertEquals(lato600.absolutePath, FigmaResourceFonts.pathFor("res/font/42", 700, false))
+  }
+
+  @Test
   fun writeSvgSkipsTtcCollectionsRatherThanEmbedThemAsTruetype() {
     // A `.ttc` collection can't be embedded as a bare `format('truetype')` src (it needs
     // `format('collection')` + a face selection we don't emit), so the file path is not treated as

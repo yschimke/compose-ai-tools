@@ -65,6 +65,8 @@ internal object CliFlags {
       "--trust-store",
       "--catalogs",
       "--catalogs-unlisted",
+      "--catalogs-file",
+      "--admin-token",
       "--catalog-repo",
       "--catalog-branch-prefix",
       "--catalog-refresh-interval",

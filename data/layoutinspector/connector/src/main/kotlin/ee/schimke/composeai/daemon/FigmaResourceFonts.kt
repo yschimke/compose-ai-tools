@@ -39,14 +39,39 @@ object FigmaResourceFonts {
    * Record that [identity] (a value from [identityFor]) is available on disk at [path] — an
    * absolute `.ttf`/`.otf` the export can read and subset. Later registrations for the same
    * identity win, so a re-extraction after a cleared temp dir heals the mapping.
+   *
+   * This face-agnostic form suits a per-face identity like `res/font/<resId>`, where the handle
+   * already names one concrete weight/style.
    */
   fun register(identity: String, path: String) {
     if (identity.isBlank() || path.isBlank()) return
     paths[identity] = path
   }
 
+  /**
+   * Weight/style-qualified registration, for an identity that names a **family** rather than a face
+   * — a downloadable `GoogleFont("Lato")` reaches the capture as the bare family, but Lato 400 and
+   * Lato 600 are different files with different metrics. Registering those under the bare name
+   * would embed whichever landed last for every weight the export asks about.
+   */
+  fun register(identity: String, weight: Int, italic: Boolean, path: String) {
+    if (identity.isBlank() || path.isBlank()) return
+    paths[key(identity, weight, italic)] = path
+  }
+
   /** The registered file for [identity], or null when nothing recovered that face. */
   fun pathFor(identity: String): String? = paths[identity]
+
+  /**
+   * The registered file for a specific face: the weight/style-qualified registration when one
+   * exists, else the face-agnostic one. The fallback is what keeps per-face identities
+   * (`res/font/<resId>`) resolving through the same lookup.
+   */
+  fun pathFor(identity: String, weight: Int, italic: Boolean): String? =
+    paths[key(identity, weight, italic)] ?: paths[identity]
+
+  private fun key(identity: String, weight: Int, italic: Boolean): String =
+    "$identity|$weight|$italic"
 
   /** Drop every registration. Tests only — production accumulates for the process's life. */
   fun clear() {

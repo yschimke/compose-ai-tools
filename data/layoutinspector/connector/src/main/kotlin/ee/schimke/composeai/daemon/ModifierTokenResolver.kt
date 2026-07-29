@@ -192,20 +192,35 @@ internal object ModifierTokenResolver {
   }
 
   /**
-   * Effective alpha of one graphics-layer modifier. Lambda-based `graphicsLayer { … }` elements
-   * only expose the block itself, but their [ModifierInfo.coordinates] coordinator retains the
-   * evaluated `ReusableGraphicsLayerScope`; direct overloads may expose `alpha` on the element.
+   * Effective alpha of one graphics-layer modifier.
+   *
+   * Three shapes, probed in order of how much we can trust them:
+   * 1. The **named-parameter** overload (`graphicsLayer(alpha = 0f)`) keeps `alpha` as a real field
+   *    on the element, and the inspector also exposes it as a property.
+   * 2. The **lambda** overload (`graphicsLayer { alpha = … }`) keeps only the opaque block, so we
+   *    evaluate it ourselves against a recording scope ([evaluateLayerBlockAlpha]).
+   * 3. Only if neither answered, the coordinator's `graphicsLayerScope`.
+   *
+   * The ordering is the fix for issue #2853. Probing the coordinator *first* looked like it covered
+   * the lambda case, but `graphicsLayerScope` is a **shared static** on `NodeCoordinator` that
+   * Compose reuses for whichever layer it updated most recently — so it reports some other node's
+   * alpha, and for Jetchat's `RecordButton` (`graphicsLayer { alpha = containerAlpha.value }`, zero
+   * when idle) it read back 1 and the export drew an opaque blue circle the PNG doesn't have.
+   * Evaluating the block is per-node and exact, which is why it now runs before that fallback
+   * rather than after it.
    */
   internal fun graphicsLayerAlpha(info: ModifierInfo): Double? {
-    val scope = reflectedField(info.coordinates, "graphicsLayerScope")
     val effective =
-      scope?.let { reflectedFloat(it, "alpha") }
-        ?: reflectedFloat(info.modifier, "alpha")
+      reflectedFloat(info.modifier, "alpha")
         ?: (info.modifier as? InspectableValue)
           ?.inspectableElements
           ?.firstOrNull { it.name == "alpha" }
           ?.value
           ?.let(::floatValue)
+        ?: evaluateLayerBlockAlpha(info.modifier)
+        ?: reflectedField(info.coordinates, "graphicsLayerScope")?.let {
+          reflectedFloat(it, "alpha")
+        }
     return effective?.coerceIn(0f, 1f)?.toDouble()
   }
 
@@ -280,6 +295,114 @@ internal object ModifierTokenResolver {
     val color = value as? Color ?: (value as? Long)?.let { Color(it.toULong()) } ?: return null
     return if (color == Color.Unspecified) null else colorToWireString(color)
   }
+
+  /**
+   * Runs a lambda-form `graphicsLayer { … }` block against a recording scope and returns the alpha
+   * it assigned, or null when [modifier] carries no such block (or the block can't be run).
+   *
+   * The scope is a [java.lang.reflect.Proxy] over whatever interface the block expects rather than
+   * a hand-written `GraphicsLayerScope` implementation: that interface has gained members across
+   * Compose releases, and a proxy records the setters it actually sees while answering every other
+   * call with a type-appropriate default. So this keeps working when the interface grows.
+   *
+   * Re-running the block is safe and is what makes the value *current*: a `graphicsLayer` block is
+   * a series of property assignments, and reading the animation state it closes over gives exactly
+   * the alpha the frame was drawn with.
+   */
+  internal fun evaluateLayerBlockAlpha(modifier: Any): Float? {
+    val block = layerBlock(modifier) ?: return null
+    val recorded = HashMap<String, Any?>()
+    // The scope interface by name, not from the lambda's generic signature: a Kotlin lambda erases
+    // to a raw `Function1`, so there is no type argument to read back off it.
+    val iface =
+      runCatching {
+          Class.forName(
+            "androidx.compose.ui.graphics.GraphicsLayerScope",
+            false,
+            modifier.javaClass.classLoader,
+          )
+        }
+        .getOrNull()
+        ?.takeIf { it.isInterface } ?: return null
+    val scope =
+      runCatching {
+          java.lang.reflect.Proxy.newProxyInstance(iface.classLoader, arrayOf(iface)) { _, m, args
+            ->
+            val name = m.name
+            when {
+              name.startsWith("set") && args != null && args.size == 1 -> {
+                recorded[name.removePrefix("set").replaceFirstChar { it.lowercase() }] = args[0]
+                null
+              }
+              // Getters (and anything else) answer with a harmless default so a block that reads
+              // back a property it just set, or consults `density`, doesn't blow up mid-evaluation.
+              else -> defaultFor(m.returnType, name, recorded)
+            }
+          }
+        }
+        .getOrNull() ?: return null
+    @Suppress("UNCHECKED_CAST") val invoke = block as? Function1<Any?, Any?> ?: return null
+    runCatching { invoke(scope) }.getOrNull() ?: return null
+    return recorded["alpha"] as? Float
+  }
+
+  /** The `GraphicsLayerScope.() -> Unit` a lambda-form `graphicsLayer` element holds, if any. */
+  private fun layerBlock(modifier: Any): Any? =
+    generateSequence(modifier.javaClass as Class<*>?) { it.superclass }
+      .flatMap { it.declaredFields.asSequence() }
+      .firstOrNull { field ->
+        kotlin.jvm.functions.Function1::class.java.isAssignableFrom(field.type) &&
+          (field.name == "block" || field.name == "layerBlock")
+      }
+      ?.let { field ->
+        runCatching {
+            field.isAccessible = true
+            field.get(modifier)
+          }
+          .getOrNull()
+      }
+
+  /**
+   * A benign return value for a proxied scope call: whatever the block already assigned when it
+   * reads a property back, else the type's zero. `density`/`fontScale` answer 1 so a block that
+   * converts dp inside itself divides by something sane rather than zero.
+   */
+  private fun defaultFor(type: Class<*>, name: String, recorded: Map<String, Any?>): Any? {
+    val property = name.removePrefix("get").replaceFirstChar { it.lowercase() }
+    recorded[property]?.let {
+      return it
+    }
+    GRAPHICS_LAYER_DEFAULTS[property]?.let {
+      return it
+    }
+    return when (type) {
+      java.lang.Float.TYPE -> 0f
+      java.lang.Boolean.TYPE -> false
+      java.lang.Integer.TYPE -> 0
+      java.lang.Long.TYPE -> 0L
+      else -> null
+    }
+  }
+
+  /**
+   * `GraphicsLayerScope`'s own identity defaults, for a property the block **reads before
+   * writing**.
+   *
+   * A relative assignment (`graphicsLayer { alpha *= fade }`) starts from Compose's default, not
+   * from zero — answering 0 there would record `alpha = 0` for every non-zero fade and make the
+   * node vanish from the export, which is the same class of bug this evaluator exists to fix.
+   * Anything not listed keeps the type's zero, which is the identity for translation and rotation.
+   */
+  private val GRAPHICS_LAYER_DEFAULTS: Map<String, Any> =
+    mapOf(
+      "alpha" to 1f,
+      "scaleX" to 1f,
+      "scaleY" to 1f,
+      // Compose's `DefaultCameraDistance`.
+      "cameraDistance" to 8f,
+      "density" to 1f,
+      "fontScale" to 1f,
+    )
 
   private fun reflectedFloat(instance: Any, name: String): Float? =
     reflectedField(instance, name)?.let(::floatValue)
@@ -416,6 +539,55 @@ internal object ModifierTokenResolver {
   }
 
   /**
+   * Follows a delegating painter down to the concrete painter it ultimately draws, by looking for a
+   * single field that is itself a `Painter`. Returns [painter] unchanged when it delegates to
+   * nothing (the common case) — so a real `ColorPainter`, `BitmapPainter` or `VectorPainter` is
+   * handed back as-is and classified normally by the caller.
+   *
+   * A wrapper carrying **more than one** painter field is left alone: which one is the fill is a
+   * guess, and guessing wrong would paint the container in the wrong colour — worse than the raster
+   * fallback. Depth is bounded so a self-referential painter can't spin.
+   */
+  private fun unwrapDelegatingPainter(painter: Any): Any {
+    var current = painter
+    repeat(MAX_PAINTER_UNWRAP_DEPTH) {
+      if (current.javaClass.simpleName == "ColorPainter") return current
+      val delegates =
+        generateSequence(current.javaClass as Class<*>?) { it.superclass }
+          .flatMap { it.declaredFields.asSequence() }
+          .filter { field ->
+            field.type.name != current.javaClass.name && isPainterType(field.type)
+          }
+          .toList()
+      val next =
+        delegates.singleOrNull()?.let { field ->
+          runCatching {
+              field.isAccessible = true
+              field.get(current)
+            }
+            .getOrNull()
+        } ?: return current
+      current = next
+    }
+    return current
+  }
+
+  /** True when [type] is (or extends) Compose's `Painter`. */
+  private fun isPainterType(type: Class<*>): Boolean =
+    generateSequence(type as Class<*>?) { it.superclass }
+      .any { it.name == "androidx.compose.ui.graphics.painter.Painter" }
+
+  /** Bound on [unwrapDelegatingPainter]'s descent; real wrappers nest one or two deep. */
+  private const val MAX_PAINTER_UNWRAP_DEPTH = 4
+
+  /**
+   * Test seam for [painterColorHex]'s painter half: resolves the flat fill a `Modifier.paint`
+   * painter would contribute, with no modifier element map to fall back on.
+   */
+  internal fun painterFillHexForTest(painter: Any): String? =
+    painterColorHex(mapOf("painter" to painter), Any())
+
+  /**
    * Resolves a painter-based container fill (`Modifier.paint(painter, alpha, colorFilter)`) as ARGB
    * hex. Only a solid [androidx.compose.ui.graphics.painter.ColorPainter] yields a colour — the
    * fill Wear M3 surfaces apply for their container — while bitmap / vector / gradient painters (an
@@ -483,7 +655,15 @@ internal object ModifierTokenResolver {
           }
           .getOrNull() ?: return null
       } else {
-        painter
+        // Any *other* delegating painter is unwrapped structurally rather than by name (issue
+        // #2615). Wear's scaling list wraps a surface's fill in more than one shape depending on
+        // the component — a `FilledIconButton` or a transformed `SurfaceTransformation` card does
+        // not necessarily arrive as `BackgroundPainter` — and each unrecognised wrapper collapsed
+        // its whole container to a raster, taking the editable subtree with it: exactly the
+        // "transformed surfaces absent, reduced to isolated raster/icon leaves" symptom. Following
+        // a single painter-typed field down to a `ColorPainter` recovers the flat fill without
+        // needing to know the wrapper's class.
+        unwrapDelegatingPainter(painter)
       }
     if (fillPainter.javaClass.simpleName != "ColorPainter") return null
     val baseArgb =

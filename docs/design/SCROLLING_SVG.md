@@ -252,7 +252,8 @@ lands on the rect the render actually painted.)*
     `runWearScrollSliceSvg` (which calls the same assembler), writing the capsule to
     `<dataDir>/<previewId>/figma-long/compose-figma-long.svg`; the preview server serves it at
     `GET /render/<id>.svg?scroll=long` and the viewer surfaces it as the "Full page (scroll)" toggle
-    under SVG mode. A round preview that turns out not to be scrollable falls back to the grow-tall /
+    in the overrides drawer's **Scroll** group, which reshapes the SVG export links under the stage.
+    A round preview that turns out not to be scrollable falls back to the grow-tall /
     inscribed-circle export.
   - **CI visual diff:** the capsule is registered with the vscode preview-harness as a self-contained
     page fixture (`vscode-extension/preview-harness/fixtures/pages/serve-wear-scroll-long-capsule.html`),
