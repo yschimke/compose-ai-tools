@@ -97,6 +97,24 @@ internal class ComposeLocalPaint {
 }
 
 /**
+ * The six fields the canvas text ops need, projected out of the paint state so the platform seam in
+ * `RcPlayerTextPlatform.kt` can take a value both halves can name.
+ *
+ * Pure projection — no mapping and no defaulting. [ComposeLocalPaint.effectiveColor] is applied here
+ * so the alpha fold happens once, on the side that owns it; a platform sets the resulting ARGB on its
+ * paint verbatim.
+ */
+internal fun ComposeLocalPaint.toTextPaintSpec(): TextPaintSpec =
+    TextPaintSpec(
+        textSize = textSize,
+        fontFamily = fontFamily,
+        isTypefaceSet = isTypefaceSet,
+        fontWeight = fontWeight,
+        italic = fontStyle == FontStyle.Italic,
+        argbColor = effectiveColor().toArgb(),
+    )
+
+/**
  * The Compose [TextStyle] this paint state describes — colour or brush, size, weight, style, family
  * and fill/stroke.
  *

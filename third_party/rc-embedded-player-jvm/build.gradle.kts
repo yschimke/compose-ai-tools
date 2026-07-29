@@ -69,20 +69,40 @@ val sharedPlayerSources =
     // The `rememberRemote*AsState` family, and the expression/animation evaluator behind it.
     "androidx/compose/remote/player/compose/embedded/state/RcPlayerState.kt",
     "androidx/compose/remote/player/compose/embedded/state/RcPlayerExpression.kt",
+    // The canvas text seam's vocabulary: the paint projection the four text functions take, and the
+    // ink-bounds carrier they return. Neutral values, so both halves share this one rather than
+    // agreeing on two copies of it.
+    "androidx/compose/remote/player/compose/embedded/RcPlayerTextPaintSpec.kt",
   )
+
+/**
+ * This module's *own* player sources — the jvm half of a seam, in the shared package but with no
+ * counterpart to share.
+ *
+ * `RcPlayerTextPlatformJvm.kt` answers the four functions `RcPlayerTextPlatform.kt` declares for
+ * Android over skiko. The name differs from the Android file's on purpose: `include` patterns are
+ * matched per *relative* path across every srcDir, so two files at the same relative path could not
+ * be told apart — including the jvm one by name would silently pull in the Android one as well.
+ */
+val jvmPlayerSources =
+  listOf("androidx/compose/remote/player/compose/embedded/RcPlayerTextPlatformJvm.kt")
 
 kotlin {
   sourceSets["main"].kotlin.apply {
     srcDir("../rc-embedded-player/src/main/kotlin")
     // `include` filters every srcDir of this source set, so this module's own sources need a
     // pattern too — otherwise the explicit list above would silently exclude them.
-    include(sharedPlayerSources + "ee/**")
+    include(sharedPlayerSources + jvmPlayerSources + "ee/**")
   }
 }
 
 // The shared sources are AOSP-formatted (4-space) and must stay a verbatim snapshot, so they are
 // exempt from this repo's Google-style ktfmt — same as in the Android module, where AGP's source
-// sets happen not to be picked up at all. Only this module's own sources are formatted.
+// sets happen not to be picked up at all. This also covers `jvmPlayerSources`, which is not
+// vendored
+// but is a direct sibling of a 4-space file in the same package: matching the file it implements
+// beats matching this repo's house style for a seam whose two halves are meant to be read together.
+// Everything under `ee/**` — this module's tests — is formatted normally.
 tasks
   .withType<org.gradle.api.tasks.SourceTask>()
   .matching { it.name.startsWith("ktfmt") }
@@ -98,4 +118,17 @@ dependencies {
   @Suppress("DEPRECATION") implementation(compose.foundation)
 
   testImplementation(libs.junit)
+
+  // `compose.foundation` brings skiko's *API* jar, which is all the jvm text seam needs to compile
+  // against — but calling into Skia needs the platform's `libskiko` too, and that ships in a
+  // separate
+  // per-OS artifact. `compose.desktop.currentOs` is how the Compose plugin names the right one
+  // without this file pinning a skiko version that could drift from `compose-multiplatform`.
+  //
+  // Test-only on purpose. A library has no business choosing the host it will run on; an
+  // application
+  // consuming this module declares its own natives, exactly as any Compose Desktop app does. What
+  // needs them here is `DesktopTextPlatformTest`, which rasterizes for real rather than mocking the
+  // canvas — the whole reason it can catch a measure/draw disagreement.
+  @Suppress("DEPRECATION") testRuntimeOnly(compose.desktop.currentOs)
 }

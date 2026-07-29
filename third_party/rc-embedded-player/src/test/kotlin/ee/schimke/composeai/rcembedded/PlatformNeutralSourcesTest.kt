@@ -215,6 +215,9 @@ class PlatformNeutralSourcesTest {
         // framework android.graphics.Paint + RuntimeShader
         "ComposeLocalPaint",
         "updatePaintFromBundle",
+        // extensions on ComposeLocalPaint, so they stay wherever it stays
+        "toTextPaintSpec",
+        "toTextStyle",
         // Drawable-typed image loading
         "RcImageLoader",
         "EmbeddedRcImageLoader",
@@ -257,6 +260,11 @@ class PlatformNeutralSourcesTest {
         "RcPlayerEasing.kt",
         "state/RcPlayerState.kt",
         "state/RcPlayerExpression.kt",
+        // The canvas text seam's vocabulary — the paint projection its four functions take and the
+        // ink-bounds carrier they return. Plain values, which is what lets the seam be implemented
+        // twice (android here, skiko in `:third-party-rc-embedded-player-jvm`) without either
+        // signature naming a platform.
+        "RcPlayerTextPaintSpec.kt",
       )
   }
 }

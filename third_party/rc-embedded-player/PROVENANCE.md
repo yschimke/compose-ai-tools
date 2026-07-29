@@ -149,10 +149,18 @@ revert to upstream verbatim.
   Android, and it also splits measurement from drawing — `toNativeTextPaint` resolves named and
   downloadable families that the `TextStyle` path maps to `FontFamily.Default`, so a document naming
   a font would be measured with one face and drawn with another. Keeping both sides on the framework
-  `Paint` makes that class of drift impossible by construction. The jvm sibling replicates these four
-  over skiko (`org.jetbrains.skia.Font`, `Canvas.drawString`, `PathMeasure` glyph placement) and is
-  judged against Android's output — which is only a meaningful target because Android's output did
-  not move.
+  `Paint` makes that class of drift impossible by construction.
+
+  The four take a **`TextPaintSpec`** (`RcPlayerTextPaintSpec.kt`) rather than `ComposeLocalPaint`.
+  That projection is what makes the seam implementable off Android at all: the paint state carries
+  brushes, colour filters and a framework `Shader`, and stays Android-coupled until the AGSL path
+  (issue #2954) is seamed, while the text ops need six fields out of it — size, family id, weight,
+  slant, whether a typeface was set, and the alpha-folded ARGB. `ComposeLocalPaint.toTextPaintSpec()`
+  is a pure projection with no mapping or defaulting; `TextInkBounds` moved into the same file, since
+  both halves return it. A side benefit at the two call sites that measure *and* draw
+  (`DrawTextAnchored`, `DrawTextOnCircle`): they now build one spec and hand it to both, so the
+  "measured with one face, drawn with another" failure is impossible per call rather than merely
+  unlikely.
 
   `toTextStyle` is a pure extraction of `DrawText`'s own inline `TextStyle` construction, its only
   caller, generics-only family mapping and upstream `aosp/4187117` TODO included. Unifying it with
@@ -262,8 +270,10 @@ what actually couples them:
 
 The parenthesised "was also" entries are coupling this branch has already moved out, not coupling
 removed: it now lives in `RcPlayerTextPlatform.kt`, which is written here rather than vendored and so
-is not one of the 42. Concentrating it there is the point — it is the file a jvm sibling replaces,
-and the two vendored files above no longer need one.
+is not one of the 42 — alongside its neutral vocabulary in `RcPlayerTextPaintSpec.kt` and its skiko
+counterpart `RcPlayerTextPlatformJvm.kt` in the jvm module. Concentrating it there is the point: it is
+the one file a jvm sibling had to replace, that sibling now exists, and the two vendored files above
+never needed one.
 
 #### 32/10 is a coupling *surface*, not a partition
 
@@ -339,6 +349,47 @@ Verified by compile and by the module's `check`. **Not** verified by a render: t
 needs a staged catalog (see the sequencing note below), so the claim here is "no behaviour change by
 construction", not "the 24-document render is unchanged".
 
+#### Done: the canvas text seam has both halves
+
+`:third-party-rc-embedded-player-jvm` now carries **`RcPlayerTextPlatformJvm.kt`** — the same four
+functions over skiko, so the seam is implemented on both sides rather than declared on one. Three are
+close to direct swaps: `Font.measureText` for `Paint.getTextBounds` (Skia unions the positioned glyph
+bounds, the same construction, though it does not round out to whole pixels the way Android's integer
+`Rect` out-param does), `Font.measureTextWidth` for `Paint.measureText`, and `Canvas.drawString` for
+`Canvas.drawText` — same pen-start-and-baseline origin.
+
+`drawTextOnPath` is the one with no counterpart call, and it is built on Skia's own primitive for the
+job rather than hand-rolled: a `TextBlob` of per-glyph `RSXform`s (rotate + translate), which is what
+the framework assembles internally too, so the placement is computed here but the drawing is still one
+Skia call. It reproduces the framework's behaviour — each glyph centred half an advance along the
+path and rotated to the tangent there, `hOffset` along and `vOffset` perpendicular, glyphs past the
+end dropped and the run continuing onto the next contour of a multi-contour path.
+
+Font resolution mirrors `EmbeddedPlayerTypefaceResolver` branch for branch, with two documented
+divergences. `google:` is a `FontsContractCompat` download on Android and has no JVM equivalent, so
+the name is tried locally and substituted if absent — the "downloadable fonts" limit below, and a
+substitution rather than an error. And Skia has no generic families, so the core ids map through a
+candidate list (CSS-style names first, which is what fontconfig resolves on Linux, then concrete
+faces for hosts where those mean nothing). One trap worth recording: `matchFamilyStyle(null, …)` —
+the obvious way to ask for the default face — returns **null** on Linux, and `Font(null, size)`
+measures zero rather than falling back, so the resolver never yields null while the host has any font
+at all.
+
+`DesktopTextPlatformTest` verifies it by rasterizing for real. It asserts relationships, not numbers:
+the font stacks differ across the seam so any pinned width would pin the host's fonts, and the
+strongest test is that measured ink bounds predict where the drawn glyphs actually land — which is
+exactly the invariant `DrawTextAnchored` rests on, and the one a face mismatch would break while
+every other test still passed. **It needs skiko's natives**, which means the per-OS
+`skiko-awt-runtime-*` artifact (pulled in as `testRuntimeOnly(compose.desktop.currentOs)`) *and* a
+loadable GL library — `libskiko` links it even for raster-only drawing. Where that is missing the
+class skips loudly rather than failing sixteen times; if you see that message the environment needs
+`libgl1` on `LD_LIBRARY_PATH`, and note Gradle test workers inherit the *daemon's* environment, so
+`./gradlew --stop` after exporting it.
+
+What this does **not** finish: the ops that call these four still live in `RcPlayerDrawing.kt`, which
+needs `Bitmap`/`BitmapDrawable`, so no draw op runs on the JVM yet. The seam is ready ahead of its
+callers — deliberately, since it was the piece with an unknown in it.
+
 #### Done: it runs on the desktop JVM
 
 `:third-party-rc-embedded-player-jvm` compiles the neutral subset of this module's sources against
@@ -405,11 +456,12 @@ Android-only in a first cut rather than forcing a Skia `PaintContext` port.
 ### Known parity limits before starting
 
 - **Text.** The canvas text ops measure and draw through a framework `android.graphics.Paint`. That
-  is now behind one seam (`RcPlayerTextPlatform.kt`, four functions), so what jvm owes is a skiko
-  replication of those four rather than a rewrite of the ops. Text metrics still will not be
-  bit-identical across targets — Skia's shaping is reachable from both, but Android's font stack is
-  not — so this stays a parity limit; the seam only makes it a *measurable* one, since both sides
-  answer the same four questions.
+  is behind one seam (`RcPlayerTextPlatform.kt`, four functions) and the skiko half is **written**
+  (`RcPlayerTextPlatformJvm.kt` — see "Done: the canvas text seam has both halves"), so what is left
+  here is not a port but the parity limit itself: metrics will not be bit-identical across targets,
+  because Skia's shaping is reachable from both but Android's font stack is not. The seam makes that a
+  *measurable* difference — both sides answer the same four questions about the same
+  `TextPaintSpec` — rather than a diffuse one.
 - **Shaders.** AGSL has no JVM equivalent; desktop Compose exposes SkSL `RuntimeEffect`, which is
   close but not the same language or the same uniform plumbing. Shader parity across targets will not
   be exact — and note the embedded player's shader path already diverges from the View player on
@@ -442,8 +494,9 @@ single-target milestone it cannot be verified. It splits into 1a/1b.
      `RcPlayerExpression.kt` and `RcPlayerState.kt` compile for the jvm target.
    - The canvas text ops' framework `Paint` — **done** (`RcPlayerTextPlatform.kt`), which is what
      removed `Paint` from `RcPlayerPaint.kt` and the native canvas from `RcPlayerDrawing.kt`. A
-     seam, not a port: Android's text output is unchanged and the jvm side is a skiko sibling of
-     four functions.
+     seam, not a port: Android's text output is unchanged. **Both halves now exist** — the skiko
+     sibling is written and tested against a real raster, so step 4 below is spent early and text is
+     no longer on the critical path.
    - **Next: the draw path.** `RcPlayerChildren`/`RcPlayerComponent` out of `RcPlayer.kt`, then the
      bitmap-typed helpers out of `RcPlayerDrawing.kt` so `executeOperations`' dispatcher can follow.
      This is the large remaining piece and where the deferrals below start to matter.
@@ -469,7 +522,10 @@ single-target milestone it cannot be verified. It splits into 1a/1b.
 3. Add the `jvm` target and the `expect`/`actual` seams, starting with `RemoteContext`
    (`GraphContext`'s `AndroidRemoteContext` base) and image decode. This is where the remaining
    chains in the table are actually paid for, not step 1.
-4. Port text off framework `Paint`.
+4. ~~Port text off framework `Paint`.~~ — **done ahead of order**, both halves. Pulled forward
+   because it was the step with an actual unknown in it (does Skia answer the same four questions?),
+   and the answer turned out to be yes; leaving it last would have deferred the only risk in the plan
+   to the end. Its callers still wait on bitmaps.
 5. Shaders last, after the Android-side shader divergence is understood.
 
 **On the success criterion.** "The existing render output does not change" is the right test for
