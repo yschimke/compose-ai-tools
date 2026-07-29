@@ -80,6 +80,14 @@ abstract class RenderPreviewsTask : DefaultTask() {
    * as a convention, from the `composePreview.idFilter` Gradle property wired at registration.
    * Matching (glob `*`/`?` or substring) lives in [PreviewNameFilter.matchesId]. `@Input` so a
    * filter change re-runs the render.
+   *
+   * **Scope: this task only, i.e. the desktop/JVM render backend.** On an Android module
+   * `composePreviewRender` is a Robolectric `Test` task registered by [AndroidPreviewSupport],
+   * which reads none of these properties — so neither this nor [previewIdExcludes] (nor the
+   * pre-existing [previewFilters]) narrows an Android render. They are inert there rather than
+   * wrong: an absent filter means "render everything", the historical behaviour. Extending the
+   * Robolectric path is tracked separately; until then a catalog's render-time saving from a filter
+   * only lands on a desktop/CMP module.
    */
   @get:Input abstract val previewIdFilters: ListProperty<String>
 

@@ -1305,6 +1305,13 @@ internal object ComposePreviewTasks {
    * `ORG_GRADLE_PROJECT_composePreview.idFilter`, and reach `composePreviewRender` through `bundle
    * pack` with no CLI flag. Lazy through `project.providers` so reading it doesn't invalidate the
    * configuration cache when the property flips between runs.
+   *
+   * Wired only onto the DESKTOP `composePreviewRender` ([RenderPreviewsTask]). On an Android module
+   * that task name is a Robolectric `Test` task registered by [AndroidPreviewSupport], which reads
+   * neither this nor [previewFilterProperty] — so a filter is INERT on an Android render (it
+   * renders everything, the historical behaviour) rather than wrong. Extending the Robolectric path
+   * is tracked separately; until then a catalog's render-time saving only lands on a desktop/CMP
+   * module.
    */
   internal fun previewIdFilterProperty(project: Project): Provider<List<String>> =
     project.providers
@@ -1319,7 +1326,8 @@ internal object ComposePreviewTasks {
    * carry no theme suffix, so the deferral is expressed as what to skip.
    *
    * Set by the design-artifacts pipeline as `ORG_GRADLE_PROJECT_composePreview.idExclude` so it
-   * reaches `composePreviewRender` through `bundle pack` with no CLI flag.
+   * reaches `composePreviewRender` through `bundle pack` with no CLI flag — on a desktop module.
+   * Inert on an Android render for the reason given on [previewIdFilterProperty].
    */
   internal fun previewIdExcludeProperty(project: Project): Provider<List<String>> =
     project.providers
