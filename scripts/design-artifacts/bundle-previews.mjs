@@ -21,6 +21,10 @@
  *   - catalog-token sheets — `@ColorCatalog` / `@TypographyCatalog` / `@ThemeCatalog` metadata
  *     previews are rendered PNG-less by design, but their `previews/<id>.catalog.json` sidecars are
  *     read separately via `catalogTokensFromBundle(bundle)` to export `themeTokens`.
+ *   - previews that simply produce no still — an `AndroidView`-hosted composable, a horologist
+ *     `ScalingLazyColumn` screen. Nothing in the annotations marks these, so a spec that catalogues
+ *     one declares it with `"capture": "none"` (see capture-mode.mjs / issue #2946); they are
+ *     dropped here like the rest, but don't count as a missing render.
  *
  * Because this returns a **clone** and never mutates `bundle.previews`, those catalog-token sheets
  * stay in the original bundle for the token pass (and layout wireframes / fonts manifest, which

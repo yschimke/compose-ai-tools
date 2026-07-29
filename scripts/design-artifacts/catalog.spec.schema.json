@@ -131,6 +131,11 @@
           "type": "string",
           "description": "One-line description shown under the sticker."
         },
+        "capture": {
+          "enum": ["static", "none"],
+          "default": "static",
+          "description": "What this component exports. `static` (the default) expects a `previews/<id>.png` sticker; a spec entry that renders none is a missing render and the strict publish gate refuses the whole system. `none` DECLARES that this preview exports no sticker — an AndroidView-hosted composable, a horologist ScalingLazyColumn screen, or a GIF-only capture — so it is excluded from the candidate join without counting as missing, and the entry stays in the spec as the record that the coverage is sticker-less (if the content is animated, put its group under `section: \"Animations\"` to keep it out of the component tabs). Use it only when the render genuinely produces no PNG; deleting the entry instead hides the gap."
+        },
         "reference": {
           "type": "string",
           "description": "Optional seed-kit handle (Figma node etc.) for the one-off import."
@@ -171,6 +176,11 @@
           "description": "EXACT @Preview function name for this variant render."
         },
         "caption": { "type": "string" },
+        "capture": {
+          "enum": ["static", "none"],
+          "default": "static",
+          "description": "As on a component: `none` declares that this variant render exports no static PNG, so it is skipped in the fold without counting as a missing render."
+        },
         "priority": { "$ref": "#/definitions/priority" },
         "state": {
           "type": "string",
