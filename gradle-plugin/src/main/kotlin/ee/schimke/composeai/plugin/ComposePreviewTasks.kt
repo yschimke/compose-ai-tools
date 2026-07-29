@@ -257,6 +257,10 @@ internal object ComposePreviewTasks {
         // repeatable `--preview` CLI option overrides it. Comma-separated so a single `-P` can name
         // several previews.
         previewFilters.convention(previewFilterProperty(project))
+        // `composePreview.idFilter` convention for the `--preview-id` fan-out-member filter (issue
+        // #2966); the repeatable `--preview-id` CLI option overrides it.
+        previewIdFilters.convention(previewIdFilterProperty(project))
+        previewIdExcludes.convention(previewIdExcludeProperty(project))
         displayFilterFilters.set(AndroidPreviewSupport.resolveDisplayFilterFilters(project))
         deviceFrameDevice.set(AndroidPreviewSupport.resolveDeviceFrameDevice(project))
         renderClasspath.from(sourceClassDirs)
@@ -1287,6 +1291,39 @@ internal object ComposePreviewTasks {
   internal fun previewFilterProperty(project: Project): Provider<List<String>> =
     project.providers
       .gradleProperty("composePreview.filter")
+      .map { v -> v.split(",").map(String::trim).filter(String::isNotEmpty) }
+      .orElse(emptyList())
+
+  /**
+   * `Provider<List<String>>` for the `composePreview.idFilter` Gradle property — the `--preview-id`
+   * filter's project-property form (issue #2966). Selects individual members of a `@Preview`
+   * function's fan-out by discovered **id**, which `composePreview.filter` can't: a multipreview
+   * member / `@PreviewParameter` row has its own id but shares its `functionName`.
+   *
+   * Same shape as [previewFilterProperty] — comma-separated, blanks dropped, absent ⇒ empty list
+   * ("render every preview") — so the design-artifacts pipeline can set it the same way, via
+   * `ORG_GRADLE_PROJECT_composePreview.idFilter`, and reach `composePreviewRender` through `bundle
+   * pack` with no CLI flag. Lazy through `project.providers` so reading it doesn't invalidate the
+   * configuration cache when the property flips between runs.
+   */
+  internal fun previewIdFilterProperty(project: Project): Provider<List<String>> =
+    project.providers
+      .gradleProperty("composePreview.idFilter")
+      .map { v -> v.split(",").map(String::trim).filter(String::isNotEmpty) }
+      .orElse(emptyList())
+
+  /**
+   * `Provider<List<String>>` for the `composePreview.idExclude` Gradle property — the
+   * `--exclude-preview-id` form, and the one a design catalog's deferred palettes actually use
+   * (issue #2966): the ids to *keep* aren't a matchable set, since the untagged primary stickers
+   * carry no theme suffix, so the deferral is expressed as what to skip.
+   *
+   * Set by the design-artifacts pipeline as `ORG_GRADLE_PROJECT_composePreview.idExclude` so it
+   * reaches `composePreviewRender` through `bundle pack` with no CLI flag.
+   */
+  internal fun previewIdExcludeProperty(project: Project): Provider<List<String>> =
+    project.providers
+      .gradleProperty("composePreview.idExclude")
       .map { v -> v.split(",").map(String::trim).filter(String::isNotEmpty) }
       .orElse(emptyList())
 

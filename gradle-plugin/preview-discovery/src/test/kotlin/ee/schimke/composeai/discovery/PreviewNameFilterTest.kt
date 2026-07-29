@@ -99,4 +99,31 @@ class PreviewNameFilterTest {
   fun `fqName falls back to the bare function name in the default package`() {
     assertThat(PreviewNameFilter.fqName("FooKt", "BarPreview")).isEqualTo("BarPreview")
   }
+
+  @Test
+  fun `matchesId with an empty filter keeps every id`() {
+    assertThat(PreviewNameFilter.matchesId(emptyList(), "FilledButton_Dark")).isTrue()
+    assertThat(PreviewNameFilter.matchesId(listOf("  ", ""), "FilledButton_Dark")).isTrue()
+  }
+
+  @Test
+  fun `matchesId globs a fan-out suffix`() {
+    // The catalog case: keep one palette per component, defer the rest to the live preview server.
+    assertThat(PreviewNameFilter.matchesId(listOf("*_Light"), "FilledButton_Light")).isTrue()
+    assertThat(PreviewNameFilter.matchesId(listOf("*_Light"), "FilledButton_Dark")).isFalse()
+  }
+
+  @Test
+  fun `matchesId treats a glob-free pattern as equality-or-substring, like matches`() {
+    assertThat(PreviewNameFilter.matchesId(listOf("FilledButton_Dark"), "FilledButton_Dark"))
+      .isTrue()
+    assertThat(PreviewNameFilter.matchesId(listOf("Filled"), "FilledButton_Dark")).isTrue()
+    assertThat(PreviewNameFilter.matchesId(listOf("Outlined"), "FilledButton_Dark")).isFalse()
+  }
+
+  @Test
+  fun `matchesId does not treat a dot in an id as a wildcard`() {
+    // Ids can carry package-qualified forms; `.` must stay literal, as it does for fqName matching.
+    assertThat(PreviewNameFilter.matchesId(listOf("com.example.Foo"), "comXexampleXFoo")).isFalse()
+  }
 }
