@@ -186,6 +186,37 @@ class PixelSystemFontAliasesTest {
   }
 
   /**
+   * The public entry point both render tiers call. Outside Robolectric there is no real
+   * `Typeface.sSystemFontMap`, so nothing seeds and every alias counts as missing — which is
+   * exactly the shape asserted here: the miss must be *reported*, because a silently unseeded
+   * `roboto-flex` is what made serve's live daemon render Wear text in Roboto while the baked PNG
+   * of the same preview showed Roboto Flex.
+   *
+   * Also pins the one-shot behaviour: seeding runs per render, so warning on every call would bury
+   * the log. Both assertions live in one test because the guard is process-global — split across
+   * two tests, whichever ran second would find it already tripped.
+   */
+  @Test
+  fun `seedSystemFonts reports unseeded aliases once per process`() {
+    val warnings = mutableListOf<String>()
+
+    val seeded = PixelSystemFontAliases.seedSystemFonts(warn = warnings::add)
+
+    assertEquals(emptyList<String>(), seeded)
+    assertEquals(1, warnings.size)
+    // Every alias is named, so the log says which families are about to render as Roboto.
+    PixelSystemFontAliases.ALIASES.keys.forEach {
+      assertTrue("expected '$it' in: ${warnings[0]}", warnings[0].contains(it))
+    }
+    // …and it points at the two things that actually fix it.
+    assertTrue(warnings[0].contains("composeai.fonts.cacheDir"))
+    assertTrue(warnings[0].contains("fonts.gstatic.com"))
+
+    PixelSystemFontAliases.seedSystemFonts(warn = warnings::add)
+    assertEquals("second call must not re-warn", 1, warnings.size)
+  }
+
+  /**
    * Distinct, reference-equal-by-design stand-ins for [Typeface]. We can't use `Typeface.DEFAULT` /
    * `Typeface.DEFAULT_BOLD` here — those fields are populated by the real platform at boot and are
    * null against the JVM android.jar stub these unit tests run on.
