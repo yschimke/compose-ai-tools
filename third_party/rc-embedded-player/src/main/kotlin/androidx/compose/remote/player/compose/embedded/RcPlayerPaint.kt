@@ -20,7 +20,6 @@ package androidx.compose.remote.player.compose.embedded
 
 import android.graphics.BitmapShader
 import android.graphics.Matrix
-import android.graphics.Paint
 import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.os.Build
@@ -42,7 +41,13 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
 
 /*
  * Paint state + PaintBundle decoding for the embedded player's canvas draw path. Splits the paint
@@ -90,37 +95,52 @@ internal class ComposeLocalPaint {
     /** The fill color with the paint's [alpha] folded into its alpha channel. */
     fun effectiveColor(): Color = Color(color).let { it.copy(alpha = it.alpha * alpha) }
 
-    /**
-     * Build a framework [android.graphics.Paint] for the canvas text draw ops (DRAW_TEXT and its
-     * on-path/anchored variants) from the current paint state: anti-aliased, the effective color,
-     * the text size, and a bold/italic [android.graphics.Typeface] derived from font weight/style.
-     */
-    fun toNativeTextPaint(context: RemoteContext): Paint {
-        val resolver = EmbeddedPlayerTypefaceResolver(context)
-        val italic = fontStyle == FontStyle.Italic
+}
 
-        val fontInstance =
-            if (isTypefaceSet) {
-                if (fontFamily in 0..3) {
-                    resolver.resolve(fontFamily, fontWeight, italic, null, 400, false)
-                } else {
-                    val name = context.getText(fontFamily)
-                    if (name != null) {
-                        resolver.resolve(name, fontWeight, italic, null, 400, false)
-                    } else {
-                        resolver.resolve(0, fontWeight, italic, null, 400, false)
-                    }
-                }
-            } else {
-                resolver.resolve(0, fontWeight, italic, null, 400, false)
-            }
-
-        return Paint().apply {
-            isAntiAlias = true
-            color = effectiveColor().toArgb()
-            textSize = this@ComposeLocalPaint.textSize
-            typeface = fontInstance.getTypeface()
+/**
+ * The Compose [TextStyle] this paint state describes — colour or brush, size, weight, style, family
+ * and fill/stroke.
+ *
+ * Shared by every text op so they cannot drift: `DrawText` and `DrawTextAnchored` previously built
+ * this inline and via a framework `Paint` respectively, which is exactly how two text paths end up
+ * rendering differently.
+ */
+internal fun ComposeLocalPaint.toTextStyle(density: Density): TextStyle {
+    val drawStyle =
+        if (isStroke)
+            Stroke(
+                width = strokeWidth,
+                cap = mapStrokeCap(strokeCap),
+                join = mapStrokeJoin(strokeJoin),
+            )
+        else Fill
+    val size = with(density) { textSize.toSp() }
+    val family =
+        when (fontFamily) {
+            1 -> FontFamily.SansSerif
+            2 -> FontFamily.Serif
+            3 -> FontFamily.Monospace
+            else -> FontFamily.Default
         }
+    return if (brush != null) {
+        TextStyle(
+            brush = brush,
+            alpha = alpha,
+            fontSize = size,
+            fontWeight = FontWeight(fontWeight),
+            fontStyle = fontStyle,
+            fontFamily = family,
+            drawStyle = drawStyle,
+        )
+    } else {
+        TextStyle(
+            color = effectiveColor(),
+            fontSize = size,
+            fontWeight = FontWeight(fontWeight),
+            fontStyle = fontStyle,
+            fontFamily = family,
+            drawStyle = drawStyle,
+        )
     }
 }
 

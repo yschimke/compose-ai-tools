@@ -130,6 +130,36 @@ revert to upstream verbatim.
   sole contract method that does is `loadBitmap` — which `GraphContext` already stubbed. Worth
   reporting upstream alongside their issue #12: the split they describe is close to mechanical.
 
+- **Text draws through Compose, with only glyph *measurement* left platform-specific**
+  (`RcPlayerTextPlatform.kt`, plus `toTextStyle` in `RcPlayerPaint.kt`). Three text ops reached for
+  the framework: `DrawTextAnchored` built an `android.graphics.Paint`, measured with
+  `getTextBounds`, and drew via `nativeCanvas.drawText`; `DrawTextOnPath` and `DrawTextOnCircle`
+  drew via `nativeCanvas.drawTextOnPath`.
+
+  The split now follows what Compose can actually express. **Shared:** the `TextStyle` (one builder,
+  used by every text op — `DrawText` and `DrawTextAnchored` previously built it two different ways,
+  which is how two text paths end up rendering differently), the anchoring arithmetic, the arc path
+  (`Path.addArc` is multiplatform), and the draw itself via `drawText(TextLayoutResult)`.
+  **Platform:** `measureTextInkBounds`, `measureTextWidth`, and `drawTextOnPathPlatform`.
+
+  Why measurement stays platform-specific: `DrawTextAnchored` positions against *ink* bounds — the
+  box the glyphs actually mark — and reads `left`/`top` directly, mirroring
+  `DrawTextAnchored.getHorizontalOffset`/`getVerticalOffset` in remote-core. Compose exposes layout
+  bounds, which include side bearings and line spacing. Substituting them would silently shift every
+  anchored string rather than port it. Text-on-path has no Compose equivalent at all — neither
+  `DrawScope` nor `TextMeasurer` places glyphs along a path.
+
+  Net: `android.graphics.Paint` is gone from `RcPlayerPaint.kt`, `android.graphics.Rect` from
+  `RcPlayerDrawing.kt`, and `RcPlayerDrawing.kt` **no longer touches the native canvas at all** — it
+  is down to `Bitmap`/`BitmapDrawable`, i.e. the image-decode seam. A jvm sibling of
+  `RcPlayerTextPlatform.kt` over Skia (`Font.measureText`, `PathMeasure` glyph placement) is all the
+  draw path needs on that front.
+
+  **Not behaviour-preserving on Android**, unlike the other deltas here. Anchored text now rasterizes
+  through Compose's text stack rather than `Canvas.drawText`, so antialiasing and shaping can differ
+  even with identical metrics — and it now matches how plain `DrawText` already drew, which is
+  arguably the point. The rc-compare lane is the judge; this was not verified by a render.
+
 - **`PaintBundle.TEXTURE` uses multiplatform `ImageShader` instead of `BitmapShader`**
   (`RcPlayerPaint.kt`). The texture path built a framework `BitmapShader` and needed a parallel
   `nativeTileMode` table to feed it — a second tile-mode mapping alongside the Compose `mapTileMode`
