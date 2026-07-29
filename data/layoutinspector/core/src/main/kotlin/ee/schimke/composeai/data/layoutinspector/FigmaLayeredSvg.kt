@@ -495,14 +495,28 @@ object FigmaLayeredSvg {
           layoutWidth / vec.viewportWidth.toDouble(),
           layoutHeight / vec.viewportHeight.toDouble(),
         )
-      // Then apply the node's *captured* draw-time scale, not the ratio of its drawn box to its
-      // layout slot. Those two disagree whenever a node is clipped rather than scaled, and the
-      // ratio reading squashed a square icon in an animating container to `scale(0.49 0.13)`
-      // (issue #2853): Jetsnack's FAB shrinks the box it draws its icon into, but the icon itself
-      // is never distorted — it's cropped, and it stays square right up to the point it vanishes.
-      // A real non-uniform layer scale still reads correctly, because the capture reports it.
-      scaleX = layoutScale * vec.scaleX
-      scaleY = layoutScale * vec.scaleY
+      if (vec.fromDrawCapture) {
+        // A draw capture's viewport is already in *placed* px — the recorder is sized to the node's
+        // drawn bounds, not its layout slot — so the drawn/slot ratio is what maps it back, and it
+        // cancels `layoutScale` to 1 in the usual case. A `RadioButton`/`Checkbox` relies on this:
+        // it records a ~20px viewport while measuring to a 48dp touch target, and dropping the
+        // ratio would draw the control at 2.4× over its own box.
+        val placedScaleX = if (layoutWidth > 0.0) layer.width / layoutWidth else 1.0
+        val placedScaleY = if (layoutHeight > 0.0) layer.height / layoutHeight else 1.0
+        scaleX = layoutScale * placedScaleX
+        scaleY = layoutScale * placedScaleY
+      } else {
+        // An `ImageVector`'s viewport is the icon's own space, so after fitting it to the layout
+        // slot the only thing left to apply is the node's *captured* draw-time scale — not the
+        // ratio of its drawn box to that slot. Those two disagree whenever a node is clipped
+        // rather than scaled, and the ratio reading squashed a square icon in an animating
+        // container to `scale(0.49 0.13)` (issue #2853): Jetsnack's FAB shrinks the box it draws
+        // its icon into, but the icon is never distorted — it's cropped, and stays square right up
+        // to the point it vanishes. A real non-uniform layer scale still reads correctly, because
+        // the capture reports it.
+        scaleX = layoutScale * vec.scaleX
+        scaleY = layoutScale * vec.scaleY
+      }
     }
     val fittedWidth = vec.viewportWidth.toDouble() * scaleX
     val fittedHeight = vec.viewportHeight.toDouble() * scaleY

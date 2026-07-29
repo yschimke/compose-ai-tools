@@ -410,6 +410,38 @@ class FigmaLayeredSvgTest {
    * A uniformly shrunk node (Wear's curved-edge transform, #2615) still scales with its capture.
    */
   @Test
+  fun aDrawCapturedControlKeepsItsPlacedBoundsScale() {
+    // A draw-captured control records its viewport in *placed* px while measuring to its 48dp
+    // touch target, so the drawn/slot ratio is what maps it back — dropping it would draw a
+    // RadioButton at 2.4× over its own box. Only `ImageVector` nodes take the transform rule.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "radio",
+        component = "RadioButton",
+        bounds = bounds(0, 0, 20, 20),
+        size = LayoutInspectorSize(48, 48),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 20f,
+            viewportHeight = 20f,
+            fromDrawCapture = true,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L20,0 L20,20 L0,20 Z",
+                  fillArgb = "#FF000000",
+                )
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertTrue("the control must draw at its own size\n$svg", svg.contains("""scale(1 1)"""))
+    assertFalse("must not blow up to the touch target\n$svg", svg.contains("scale(2.4"))
+  }
+
+  @Test
   fun aUniformlyScaledVectorFollowsItsCapturedTransform() {
     val node =
       LayoutInspectorNode(

@@ -153,6 +153,12 @@ data class FigmaSvgVector(
    */
   val scaleX: Double = 1.0,
   val scaleY: Double = 1.0,
+  /**
+   * True when the paths were recorded from the node's own draw lambda rather than an `ImageVector`
+   * — which also decides what coordinate space [viewportWidth]/[viewportHeight] are in, and so how
+   * the emitter scales them. See [FigmaLayeredSvg]'s vector placement.
+   */
+  val fromDrawCapture: Boolean = false,
   val paths: List<FigmaSvgVectorPath>,
 )
 
@@ -591,6 +597,7 @@ data class FigmaSvgModel(
           fillBounds = fillBounds,
           scaleX = scaleX,
           scaleY = scaleY,
+          fromDrawCapture = fromDrawCapture,
           paths = emittable,
         )
     }
