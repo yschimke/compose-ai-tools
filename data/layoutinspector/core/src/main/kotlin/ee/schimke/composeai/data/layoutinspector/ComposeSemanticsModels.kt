@@ -280,6 +280,30 @@ data class ComposeSemanticsTextSpan(
 )
 
 /**
+ * A linear gradient brush, reduced to what an SVG `<linearGradient>` needs (issue #2852).
+ *
+ * Coordinates are **fractions of the node's own box** (`0..1`), which is exactly SVG's default
+ * `objectBoundingBox` gradient space — so the export needs no size arithmetic, and the same capture
+ * is correct whatever the node was measured at. Compose's own `horizontalGradient` /
+ * `verticalGradient` express "to the far edge" as `Float.POSITIVE_INFINITY`; that resolves to the
+ * box edge, i.e. `1.0`, at capture time.
+ *
+ * Only linear gradients are modelled. A radial/sweep/shader brush leaves this null so the layer
+ * takes the raster fallback rather than being emitted as a gradient it isn't.
+ */
+@Serializable
+data class LayoutInspectorGradient(
+  /** `#AARRGGBB` stop colours, in order. */
+  val colors: List<String>,
+  /** Explicit stop positions (`0..1`), or null for evenly spaced stops. */
+  val stops: List<Float>? = null,
+  val startX: Float = 0f,
+  val startY: Float = 0f,
+  val endX: Float = 1f,
+  val endY: Float = 0f,
+)
+
+/**
  * Resolved text colours of a semantics node (issue #1903) — the consolidation home for the former
  * flat `layoutForegroundColor` / `layoutBackgroundColor`. ARGB hex (`#AARRGGBB`). Null fields where
  * the node doesn't resolve an unambiguous colour (e.g. text usually has no own background — the
@@ -349,6 +373,15 @@ data class ComposeSemanticsTextLine(
 data class ComposeSemanticsTokens(
   /** Resolved container/fill colour as ARGB hex (`#AARRGGBB`), e.g. from `Modifier.background`. */
   val backgroundColor: String? = null,
+  /**
+   * A **linear** gradient `Modifier.background(brush, …)` paints, when the brush could be read
+   * (issue #2852). Present instead of [backgroundColor], which only ever resolves a `SolidColor`. A
+   * brush we can't parse leaves both null and the export rasters the layer instead of dropping the
+   * paint.
+   */
+  val backgroundGradient: LayoutInspectorGradient? = null,
+  /** The border counterpart of [backgroundGradient] — `Modifier.border(width, brush, shape)`. */
+  val borderGradient: LayoutInspectorGradient? = null,
   /**
    * Resolved outline/stroke colour as ARGB hex (`#AARRGGBB`) from `Modifier.border` (issue #1908) —
    * the role colours (`outline` / `outlineVariant`) a direct `Modifier.background` never carries.

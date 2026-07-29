@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ModifierInfo
 import androidx.compose.ui.platform.InspectableValue
 import androidx.compose.ui.unit.Dp
+import ee.schimke.composeai.data.layoutinspector.LayoutInspectorGradient
 import ee.schimke.composeai.data.layoutinspector.PlaceholderModifiers
 import java.lang.reflect.Field
 import java.lang.reflect.Modifier
@@ -59,6 +60,8 @@ internal object ModifierTokenResolver {
     var minWidth: String? = null
     var minHeight: String? = null
     var opacity = 1.0
+    var backgroundGradient: LayoutInspectorGradient? = null
+    var borderGradient: LayoutInspectorGradient? = null
     // `CircleShape` / `CornerSize(50%)` resolve to dp against the node's shorter measured side.
     val minSidePx = minOf(sizeWidthPx, sizeHeightPx)
     for (info in modifierInfo) {
@@ -85,6 +88,11 @@ internal object ModifierTokenResolver {
 
       if (backgroundColor == null && (name == "background" || simpleName == "BackgroundElement")) {
         backgroundColor = backgroundColorHex(mod, elements, inspectable?.valueOverride)
+        // A brush background resolves no flat colour; capture the gradient itself so the export
+        // emits a real `<linearGradient>` instead of rastering the whole layer (issue #2852).
+        if (backgroundColor == null && backgroundGradient == null) {
+          backgroundGradient = linearGradient(mod, elements, sizeWidthPx, sizeHeightPx)
+        }
       }
       // `Modifier.paint(painter)` with a solid `ColorPainter` — Wear M3's `Button`/`Card`/
       // `FilledTonalButton`/`SwitchButton` fill their container this way (through the wear
@@ -111,6 +119,12 @@ internal object ModifierTokenResolver {
       if (borderColor == null && (name == "border" || simpleName.startsWith("BorderModifier"))) {
         borderColor = borderColorHex(mod, elements)
         borderWidth = borderWidthDp(mod, elements)
+        // Jetsnack's gradient-tinted icon button rings itself with
+        // `border(width, Brush.linearGradient(...), CircleShape)`. Before this the brush resolved
+        // to no colour and the ring vanished from the export entirely (issue #2852).
+        if (borderColor == null && borderGradient == null) {
+          borderGradient = linearGradient(mod, elements, sizeWidthPx, sizeHeightPx)
+        }
       }
       if (padding == null && (name == "padding" || simpleName.startsWith("PaddingElement"))) {
         padding = paddingInsets(mod, elements, inspectable?.valueOverride)
@@ -154,6 +168,8 @@ internal object ModifierTokenResolver {
         padding == null &&
         elevation == null &&
         opacity >= 0.999 &&
+        backgroundGradient == null &&
+        borderGradient == null &&
         minWidth == null &&
         minHeight == null
     )
@@ -172,6 +188,8 @@ internal object ModifierTokenResolver {
         padding = padding,
         elevation = elevation,
         opacity = opacity.takeIf { it < 0.999 },
+        backgroundGradient = backgroundGradient,
+        borderGradient = borderGradient,
       )
   }
 
@@ -206,6 +224,78 @@ internal object ModifierTokenResolver {
           reflectedFloat(it, "alpha")
         }
     return effective?.coerceIn(0f, 1f)?.toDouble()
+  }
+
+  /**
+   * Reads a **linear** gradient brush off [mod]'s `brush` field (or an inspector `brush` element)
+   * into the wire [LayoutInspectorGradient] (issue #2852).
+   *
+   * Compose's `LinearGradient` is internal, so `colors` / `stops` / `start` / `end` are taken
+   * reflectively. Offsets are normalised into `0..1` fractions of the node box — SVG's default
+   * gradient space — so the emitter needs no size arithmetic; `horizontalGradient` /
+   * `verticalGradient` encode "to the far edge" as `Float.POSITIVE_INFINITY`, which resolves to the
+   * edge (`1.0`).
+   *
+   * Returns null for a `SolidColor` (the flat-colour path already covers it) and for any
+   * radial/sweep/shader brush, so those keep the raster fallback rather than being emitted as a
+   * gradient they aren't.
+   */
+  internal fun linearGradient(
+    mod: Any,
+    elements: Map<String, Any?>,
+    widthPx: Int,
+    heightPx: Int,
+  ): LayoutInspectorGradient? {
+    val brush =
+      elements["brush"]
+        ?: runCatching {
+            mod.javaClass.getDeclaredField("brush").apply { isAccessible = true }.get(mod)
+          }
+          .getOrNull()
+        ?: return null
+    if (brush.javaClass.simpleName != "LinearGradient") return null
+    val colors =
+      (reflectedField(brush, "colors") as? List<*>)?.mapNotNull { colorWire(it) } ?: return null
+    if (colors.size < 2) return null
+    @Suppress("UNCHECKED_CAST")
+    val stops = (reflectedField(brush, "stops") as? List<Float>)?.takeIf { it.size == colors.size }
+    val w = widthPx.toFloat().takeIf { it > 0f } ?: return null
+    val h = heightPx.toFloat().takeIf { it > 0f } ?: return null
+    val start = reflectedField(brush, "start")
+    val end = reflectedField(brush, "end")
+    return LayoutInspectorGradient(
+      colors = colors,
+      stops = stops,
+      startX = (offsetAxis(start, 0, 0f) / w).coerceIn(0f, 1f),
+      startY = (offsetAxis(start, 1, 0f) / h).coerceIn(0f, 1f),
+      // A non-finite endpoint component means "the far edge of the box" on *that* axis, so each
+      // one falls back to its own extent. `Brush.linearGradient(colors)` with no explicit
+      // endpoints stores `Offset.Infinite` — both axes infinite — which is the diagonal
+      // top-left → bottom-right gradient several samples use; falling back to 0 on Y flattened
+      // those to horizontal. `horizontalGradient`/`verticalGradient` leave the other axis finite
+      // at 0, so they are unaffected.
+      endX = (offsetAxis(end, 0, w) / w).coerceIn(0f, 1f),
+      endY = (offsetAxis(end, 1, h) / h).coerceIn(0f, 1f),
+    )
+  }
+
+  /**
+   * One axis of a Compose `Offset`. `Offset` is a value class over a packed `Long`, so the
+   * reflected field is that packed value rather than an object with accessors. A non-finite
+   * component (`Float.POSITIVE_INFINITY`, how `horizontalGradient` spells "the far edge") falls
+   * back to [fallback].
+   */
+  private fun offsetAxis(value: Any?, axis: Int, fallback: Float): Float {
+    val packed = (value as? Long) ?: return fallback
+    val bits = if (axis == 0) (packed shr 32).toInt() else (packed and 0xFFFFFFFFL).toInt()
+    val f = Float.fromBits(bits)
+    return if (f.isFinite()) f else fallback
+  }
+
+  /** A `Color` value-class instance (or its packed `ULong`) as the `#AARRGGBB` wire string. */
+  private fun colorWire(value: Any?): String? {
+    val color = value as? Color ?: (value as? Long)?.let { Color(it.toULong()) } ?: return null
+    return if (color == Color.Unspecified) null else colorToWireString(color)
   }
 
   /**

@@ -118,6 +118,227 @@ class FigmaLayeredSvgTest {
     assertFalse(svg, svg.contains("scale(2 0.5)"))
   }
 
+  /**
+   * Issue #2852: Jetsnack's gradient-tinted icon button rings itself with `border(width,
+   * Brush.linearGradient(...), CircleShape)`. The brush resolved to no flat colour, so the ring
+   * vanished from the export entirely — a nearly-black circle against a PNG showing a
+   * cyan-to-purple border. The captured gradient is now emitted as a real `<linearGradient>` def
+   * the stroke references, so it survives *and* stays editable in Figma.
+   */
+  @Test
+  fun aGradientBorderIsEmittedAsALinearGradientStroke() {
+    val node =
+      layoutNode(
+        "IconButton",
+        0,
+        0,
+        48,
+        48,
+        tokens =
+          ComposeSemanticsTokens(
+            shape = "circle",
+            borderWidth = "2.0dp",
+            borderGradient =
+              LayoutInspectorGradient(
+                colors = listOf("#FF00FFFF", "#FF7B1FA2"),
+                startX = 0f,
+                startY = 0f,
+                endX = 1f,
+                endY = 1f,
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertWellFormedXml(svg)
+    assertTrue(svg, svg.contains("<linearGradient"))
+    assertTrue("first stop", svg.contains("""stop-color="#00FFFF""""))
+    assertTrue("second stop", svg.contains("""stop-color="#7B1FA2""""))
+    assertTrue("diagonal", svg.contains("""x2="1""") && svg.contains("""y2="1""""))
+    assertTrue("the stroke references the def", svg.contains("""stroke="url(#gs-"""))
+    // Evenly spaced by default, as Compose does when the brush declares no stops.
+    assertTrue(svg, svg.contains("""offset="0""""))
+    assertTrue(svg, svg.contains("""offset="1""""))
+  }
+
+  @Test
+  fun aGradientBackgroundIsEmittedAsALinearGradientFill() {
+    val node =
+      layoutNode(
+        "Ramp",
+        0,
+        0,
+        100,
+        20,
+        tokens =
+          ComposeSemanticsTokens(
+            backgroundGradient =
+              LayoutInspectorGradient(
+                colors = listOf("#FFFF0000", "#8000FF00"),
+                stops = listOf(0f, 0.75f),
+              )
+          ),
+      )
+
+    val svg = render(node)
+
+    assertWellFormedXml(svg)
+    assertTrue("the fill references the def", svg.contains("""fill="url(#gf-"""))
+    assertTrue("explicit stop position is kept", svg.contains("""offset="0.75""""))
+    // A translucent stop keeps its alpha as stop-opacity rather than losing it in the hex.
+    assertTrue(svg, svg.contains("""stop-opacity="0.5"""))
+  }
+
+  @Test
+  fun aLayerWithBothGradientsGetsTwoDistinctDefs() {
+    val node =
+      layoutNode(
+        "Chip",
+        0,
+        0,
+        60,
+        24,
+        tokens =
+          ComposeSemanticsTokens(
+            backgroundGradient = LayoutInspectorGradient(colors = listOf("#FF111111", "#FF222222")),
+            borderGradient = LayoutInspectorGradient(colors = listOf("#FF333333", "#FF444444")),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertWellFormedXml(svg)
+    assertEquals("one def per gradient", 2, Regex("<linearGradient").findAll(svg).count())
+    assertTrue(svg, svg.contains("""fill="url(#gf-"""))
+    assertTrue(svg, svg.contains("""stroke="url(#gs-"""))
+    assertGradientReferencesResolve(svg)
+  }
+
+  /** Every `url(#…)` a shape points at, and every `<linearGradient id="…">` the doc defines. */
+  private fun gradientRefs(svg: String) =
+    Regex("""url\(#(g[fs]-[^)]+)\)""").findAll(svg).map { it.groupValues[1] }.toList()
+
+  private fun gradientDefIds(svg: String) =
+    Regex("""<linearGradient id="([^"]+)"""").findAll(svg).map { it.groupValues[1] }.toList()
+
+  /**
+   * A `url(#…)` that names no def paints nothing at all, so the gradient silently disappears —
+   * which is the very failure #2852 is about. Asserting the *prefix* of the reference isn't enough
+   * to catch that; the id has to actually resolve.
+   */
+  private fun assertGradientReferencesResolve(svg: String) {
+    val defs = gradientDefIds(svg)
+    val refs = gradientRefs(svg)
+    assertTrue("expected at least one gradient reference in\n$svg", refs.isNotEmpty())
+    for (ref in refs) {
+      assertTrue("`url(#$ref)` resolves to no def (defs: $defs)\n$svg", defs.contains(ref))
+    }
+    assertEquals("def ids must be unique", defs.size, defs.distinct().size)
+  }
+
+  /**
+   * The bordered case: `shape()` insets its layer copy by half the stroke so SVG's centered stroke
+   * lands inside the bounds like Compose's does — and the gradient id used to be derived from that
+   * *inset* copy's coordinates while the def was keyed on the original. Even the default 1px border
+   * rounds to a 1px inset, so every bordered gradient layer emitted a dangling `url(#…)` and drew
+   * nothing.
+   */
+  @Test
+  fun aBorderedGradientLayerReferencesTheDefThatWasActuallyEmitted() {
+    val node =
+      layoutNode(
+        "GradientRing",
+        0,
+        0,
+        48,
+        48,
+        tokens =
+          ComposeSemanticsTokens(
+            shape = "circle",
+            borderWidth = "2.0dp",
+            backgroundGradient = LayoutInspectorGradient(colors = listOf("#FF111111", "#FF222222")),
+            borderGradient = LayoutInspectorGradient(colors = listOf("#FF00FFFF", "#FF7B1FA2")),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertWellFormedXml(svg)
+    assertGradientReferencesResolve(svg)
+  }
+
+  /**
+   * Two overlaid children can share a name *and* a top-left — and distinct names can sanitise to
+   * the same slug — so an id derived from name + coordinates collided and both shapes resolved to
+   * one def, painting one layer with the other's colours.
+   */
+  @Test
+  fun overlaidSiblingsSharingANameAndOriginGetDistinctGradientIds() {
+    fun ramp(first: String, second: String) =
+      layoutNode(
+        "Ramp",
+        0,
+        0,
+        40,
+        40,
+        tokens =
+          ComposeSemanticsTokens(
+            backgroundGradient = LayoutInspectorGradient(colors = listOf(first, second))
+          ),
+      )
+    val node =
+      layoutNode(
+        "Stack",
+        0,
+        0,
+        40,
+        40,
+        children = listOf(ramp("#FF111111", "#FF222222"), ramp("#FF333333", "#FF444444")),
+      )
+
+    val svg = render(node)
+
+    assertWellFormedXml(svg)
+    assertEquals("one def per gradient", 2, gradientDefIds(svg).size)
+    assertGradientReferencesResolve(svg)
+    assertEquals("each sibling references its own def", 2, gradientRefs(svg).distinct().size)
+    // Both colour pairs survive — a collision would drop one layer's stops entirely.
+    assertTrue(svg, svg.contains("""stop-color="#111111""""))
+    assertTrue(svg, svg.contains("""stop-color="#333333""""))
+  }
+
+  /**
+   * A gradient border is a stroke like any other and takes the captured `borderWidth`; keying the
+   * width on the flat `stroke` alone left every brush ring at the 1px default, so Jetsnack's 2dp
+   * gradient ring drew as a hairline (and thinner still at capture densities above 1).
+   */
+  @Test
+  fun aGradientBorderUsesTheCapturedWidth() {
+    val node =
+      layoutNode(
+        "GradientRing",
+        0,
+        0,
+        48,
+        48,
+        tokens =
+          ComposeSemanticsTokens(
+            shape = "circle",
+            borderWidth = "2.0dp",
+            borderGradient = LayoutInspectorGradient(colors = listOf("#FF00FFFF", "#FF7B1FA2")),
+          ),
+      )
+
+    val svg = render(node, density = 2f)
+
+    assertWellFormedXml(svg)
+    assertTrue(
+      "2dp at density 2 is a 4px ring, not a 1px hairline\n$svg",
+      svg.contains("""stroke-width="4""""),
+    )
+  }
+
   @Test
   fun vectorRetainsAnExplicitNonuniformLayoutTransform() {
     val node =

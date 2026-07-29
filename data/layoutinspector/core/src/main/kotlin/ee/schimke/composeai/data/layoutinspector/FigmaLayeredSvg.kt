@@ -1,5 +1,6 @@
 package ee.schimke.composeai.data.layoutinspector
 
+import java.util.IdentityHashMap
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -74,6 +75,9 @@ object FigmaLayeredSvg {
     // its Material drop shadow instead of reading as a flat fill.
     val elevations = collectElevations(model.root)
     if (elevations.isNotEmpty()) sb.append(shadowFilterDefs(elevations))
+    // Brush fills/strokes captured off the modifier chain, as real gradient defs (issue #2852).
+    val gradientSeq = gradientSeq(model.root)
+    sb.append(gradientDefs(model.root, gradientSeq))
     // A round Wear device screen masks the whole tree to the inscribed circle (Roborazzi's device
     // crop), so the square full-frame background doesn't paint the corners the render leaves clear.
     // A *tall* Wear scroll frame masks to a vertical stadium (capsule) instead — the circle would
@@ -124,11 +128,15 @@ object FigmaLayeredSvg {
         }
       if (shape != null) sb.append("  ").append(shape).append('\n')
     }
-    renderLayer(model.root, sb, options, familyOverrides, depth = 1)
+    renderLayer(model.root, sb, options, familyOverrides, depth = 1, gradientSeq = gradientSeq)
     sb.append("</g>\n")
     sb.append("</svg>\n")
     return sb.toString()
   }
+
+  /** True when this layer draws its own rect: a flat fill/stroke, or a captured brush (#2852). */
+  private fun FigmaSvgLayer.paintsShape(): Boolean =
+    fill != null || stroke != null || fillGradient != null || strokeGradient != null
 
   private fun renderLayer(
     layer: FigmaSvgLayer,
@@ -141,6 +149,8 @@ object FigmaLayeredSvg {
     // gets a document-unique id even when two `CurvedLayout`s share a component name — otherwise
     // duplicate ids make a later `<textPath href>` resolve to the first path (Codex #2395).
     curveSeq: IntArray = intArrayOf(0),
+    // Gradient def ids, assigned once for the whole tree so a shape's `url(#…)` always resolves.
+    gradientSeq: Map<FigmaSvgLayer, Int> = emptyMap(),
   ) {
     val indent = "  ".repeat(depth)
     // An opaque layer is a leaf `<image>` — the background-free raster stands in for a subtree the
@@ -193,9 +203,9 @@ object FigmaLayeredSvg {
       // crop twice. Apply the outer alpha only to this layer's vector shape, then thread the
       // combined outer/content alpha into editable descendants; raster leaves deliberately ignore
       // it above.
-      if (layer.fill != null || layer.stroke != null) {
+      if (layer.paintsShape()) {
         appendOpacityGroup(sb, indent + "  ", outerOpacity) {
-          sb.append(indent).append("    ").append(shape(layer)).append('\n')
+          sb.append(indent).append("    ").append(shape(layer, gradientSeq)).append('\n')
         }
       }
       val contentOpacity = outerOpacity * layer.contentOpacity
@@ -213,11 +223,12 @@ object FigmaLayeredSvg {
           depth + 1,
           inheritedOpacity = contentOpacity,
           curveSeq = curveSeq,
+          gradientSeq = gradientSeq,
         )
       }
     } else {
-      if (layer.fill != null || layer.stroke != null) {
-        sb.append(indent).append("  ").append(shape(layer)).append('\n')
+      if (layer.paintsShape()) {
+        sb.append(indent).append("  ").append(shape(layer, gradientSeq)).append('\n')
       }
       val hasInnerContent =
         layer.text != null || layer.curvedTexts.isNotEmpty() || layer.children.isNotEmpty()
@@ -237,6 +248,7 @@ object FigmaLayeredSvg {
             depth + 2,
             inheritedOpacity = 1.0,
             curveSeq = curveSeq,
+            gradientSeq = gradientSeq,
           )
         }
         sb.append(indent).append("  </g>\n")
@@ -251,6 +263,7 @@ object FigmaLayeredSvg {
             depth + 1,
             inheritedOpacity = 1.0,
             curveSeq = curveSeq,
+            gradientSeq = gradientSeq,
           )
         }
       }
@@ -325,6 +338,91 @@ object FigmaLayeredSvg {
   private fun curvedColorHex(argb: String): String {
     val hex = argb.removePrefix("#")
     return if (hex.length == 8) "#${hex.substring(2)}" else "#$hex"
+  }
+
+  /**
+   * A per-layer gradient sequence number, assigned by one pre-order walk and shared between the
+   * `<defs>` and the shapes that reference them, so both sides always agree on the id.
+   *
+   * Keyed by layer *identity* and derived from position in the walk rather than from the layer's
+   * name or coordinates: two overlaid children can share a name and a top-left, and sanitising
+   * distinct names can collapse them to the same slug, either of which would emit duplicate def ids
+   * and paint one of the layers with the other's colours. The same monotonic-counter shape
+   * `curveSeq` already uses for curved-text path ids (Codex #2395).
+   */
+  private fun gradientSeq(root: FigmaSvgLayer): Map<FigmaSvgLayer, Int> {
+    val seq = IdentityHashMap<FigmaSvgLayer, Int>()
+    fun visit(layer: FigmaSvgLayer) {
+      if (layer.fillGradient != null || layer.strokeGradient != null) seq[layer] = seq.size
+      layer.children.forEach(::visit)
+    }
+    visit(root)
+    return seq
+  }
+
+  /**
+   * A document-unique id for one of a layer's gradients: its sequence number plus a fill/stroke
+   * discriminator, so a component carrying both a gradient fill and a gradient border gets two
+   * distinct defs. Returns null for a layer that declared no gradient.
+   */
+  private fun gradientId(
+    seq: Map<FigmaSvgLayer, Int>,
+    layer: FigmaSvgLayer,
+    kind: String,
+  ): String? = seq[layer]?.let { "g$kind-$it" }
+
+  /** Every gradient in the tree as an SVG `<linearGradient>` def, in document order. */
+  private fun gradientDefs(root: FigmaSvgLayer, seq: Map<FigmaSvgLayer, Int>): String {
+    val sb = StringBuilder()
+    fun emit(layer: FigmaSvgLayer) {
+      layer.fillGradient?.let { g ->
+        gradientId(seq, layer, "f")?.let { sb.append(linearGradientDef(it, g)) }
+      }
+      layer.strokeGradient?.let { g ->
+        gradientId(seq, layer, "s")?.let { sb.append(linearGradientDef(it, g)) }
+      }
+      layer.children.forEach(::emit)
+    }
+    emit(root)
+    if (sb.isEmpty()) return ""
+    return "<defs>\n$sb</defs>\n"
+  }
+
+  /**
+   * One `<linearGradient>`. Coordinates are already fractions of the node box, which is SVG's
+   * default `objectBoundingBox` gradient space, so they map across unchanged. Stops default to even
+   * spacing when the brush declared none — the same rule Compose applies.
+   */
+  private fun linearGradientDef(id: String, gradient: LayoutInspectorGradient): String {
+    val sb = StringBuilder()
+    sb.append("""  <linearGradient id="$id" x1="${fmt(gradient.startX.toDouble())}" """)
+    sb.append("""y1="${fmt(gradient.startY.toDouble())}" x2="${fmt(gradient.endX.toDouble())}" """)
+    sb.append("""y2="${fmt(gradient.endY.toDouble())}">""").append('\n')
+    val last = (gradient.colors.size - 1).coerceAtLeast(1)
+    gradient.colors.forEachIndexed { index, argb ->
+      val offset = gradient.stops?.getOrNull(index) ?: (index.toFloat() / last)
+      val color = argbToSvg(argb)
+      val alpha = argbAlpha(argb)
+      val alphaAttr = if (alpha < 0.999) """ stop-opacity="${fmt(alpha)}"""" else ""
+      sb
+        .append("""    <stop offset="${fmt(offset.toDouble())}" stop-color="$color"$alphaAttr/>""")
+        .append('\n')
+    }
+    sb.append("  </linearGradient>\n")
+    return sb.toString()
+  }
+
+  /** `#AARRGGBB` → the `#RRGGBB` an SVG `stop-color` takes. */
+  private fun argbToSvg(argb: String): String {
+    val hex = argb.removePrefix("#")
+    return if (hex.length == 8) "#${hex.substring(2)}" else "#$hex"
+  }
+
+  /** The alpha channel of `#AARRGGBB` as `0..1`; opaque when the string carries no alpha. */
+  private fun argbAlpha(argb: String): Double {
+    val hex = argb.removePrefix("#")
+    if (hex.length != 8) return 1.0
+    return (hex.substring(0, 2).toIntOrNull(16) ?: 255) / 255.0
   }
 
   /** Distinct rounded-px elevations in the tree, so one `feDropShadow` def is shared per level. */
@@ -455,7 +553,7 @@ object FigmaLayeredSvg {
     return """$kind="#$rgb"$opAttr"""
   }
 
-  private fun shape(layer0: FigmaSvgLayer): String {
+  private fun shape(layer0: FigmaSvgLayer, gradientSeq: Map<FigmaSvgLayer, Int>): String {
     // Compose's `Modifier.border` draws the stroke *inside* the layout bounds; SVG centers a stroke
     // on the path, so a bare rect at the bounds paints half the stroke outside the edge (the
     // "double
@@ -465,7 +563,7 @@ object FigmaLayeredSvg {
     // Only when stroked — a fill-only shape keeps its exact bounds; corner radii shrink by the same
     // inset so a pill stays a pill.
     val layer =
-      if (layer0.stroke != null) {
+      if (layer0.stroke != null || layer0.strokeGradient != null) {
         val d = (layer0.strokeWidthPx / 2.0).roundToInt()
         layer0.copy(
           left = layer0.left + d,
@@ -477,12 +575,28 @@ object FigmaLayeredSvg {
       } else {
         layer0
       }
+    // A captured brush wins over the flat token: `url(#…)` points at a `<linearGradient>` def
+    // emitted for this layer, so a gradient-painted container stays an editable vector layer
+    // instead of collapsing to a raster or vanishing entirely (issue #2852).
+    //
+    // The id is looked up against `layer0`, the layer as `gradientDefs` saw it — `layer` above may
+    // be an inset *copy* made for the centered stroke, and an identity-keyed lookup on the copy
+    // would miss, emitting a `url(#…)` pointing at no def at all. (Even a default 1px border
+    // rounds to a 1px inset, so this hit every bordered gradient layer.)
     val fillAttr =
-      layer.fill?.let { """fill="${it.hex}"${opacity("fill", it)}""" } ?: """fill="none""""
+      layer.fillGradient
+        ?.let { gradientId(gradientSeq, layer0, "f") }
+        ?.let { """fill="url(#$it)"""" }
+        ?: layer.fill?.let { """fill="${it.hex}"${opacity("fill", it)}""" }
+        ?: """fill="none""""
     val strokeAttr =
-      layer.stroke?.let {
-        """ stroke="${it.hex}"${opacity("stroke", it)} stroke-width="${fmt(layer.strokeWidthPx)}""""
-      } ?: ""
+      layer.strokeGradient
+        ?.let { gradientId(gradientSeq, layer0, "s") }
+        ?.let { """ stroke="url(#$it)" stroke-width="${fmt(layer.strokeWidthPx)}"""" }
+        ?: layer.stroke?.let {
+          """ stroke="${it.hex}"${opacity("stroke", it)} stroke-width="${fmt(layer.strokeWidthPx)}""""
+        }
+        ?: ""
     val radii = effectiveRadii(layer)
     return if (radii == null) {
       """<rect x="${layer.left}" y="${layer.top}" width="${layer.width}" height="${layer.height}" """ +
