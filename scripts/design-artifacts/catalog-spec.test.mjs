@@ -479,6 +479,79 @@ test("validateSpec rejects a PNG-less preview referenced from a variant", () => 
   assert.ok(errors[0].includes("variants[0]"));
 });
 
+test('validateSpec accepts a PNG-less preview declared `capture: "animated"`', () => {
+  const spec = {
+    system: "s",
+    title: "T",
+    groups: [
+      {
+        name: "Motion",
+        section: "Animations",
+        components: [
+          {
+            componentId: "Motion/Toggle",
+            preview: "ToggleAnimatedPreview",
+            capture: "animated",
+          },
+        ],
+      },
+    ],
+  };
+  const { errors } = validateSpec(spec, {
+    knownPreviews: ["ToggleAnimatedPreview", "Static"],
+    pngLessPreviews: ["ToggleAnimatedPreview"],
+  });
+  assert.deepEqual(errors, []);
+});
+
+test('validateSpec still rejects an undeclared ref to a preview another entry declared "animated"', () => {
+  const spec = {
+    system: "s",
+    title: "T",
+    groups: [
+      {
+        name: "G",
+        components: [
+          { componentId: "A", preview: "Gif", capture: "animated" },
+          { componentId: "B", preview: "Gif" },
+        ],
+      },
+    ],
+  };
+  const { errors } = validateSpec(spec, {
+    knownPreviews: ["Gif"],
+    pngLessPreviews: ["Gif"],
+  });
+  // One error for the undeclared entry, naming ITS path — not the declared one's.
+  const pngLess = errors.filter((e) => e.includes("renders no static PNG"));
+  assert.equal(pngLess.length, 1);
+  assert.ok(pngLess[0].includes("components[1]"));
+});
+
+test("validateSpec rejects a capture value that isn't a declared mode", () => {
+  const spec = {
+    system: "s",
+    title: "T",
+    groups: [
+      {
+        name: "G",
+        components: [
+          { componentId: "A", preview: "P", capture: "gif" },
+          {
+            componentId: "B",
+            preview: "Q",
+            variants: [{ state: "pressed", preview: "R", capture: true }],
+          },
+        ],
+      },
+    ],
+  };
+  const { errors } = validateSpec(spec);
+  assert.equal(errors.length, 2);
+  assert.ok(errors[0].includes("components[0].capture must be one of"));
+  assert.ok(errors[1].includes("variants[0].capture must be one of"));
+});
+
 test("validateSpec does not report PNG-less previews as coverage orphans", () => {
   const spec = {
     system: "s",

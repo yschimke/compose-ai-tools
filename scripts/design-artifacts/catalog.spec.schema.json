@@ -121,6 +121,11 @@
           "type": "string",
           "description": "One-line description shown under the sticker."
         },
+        "capture": {
+          "enum": ["static", "animated"],
+          "default": "static",
+          "description": "How this component captures. `static` (the default) expects a `previews/<id>.png` sticker; a spec entry that renders none is a missing render and the strict publish gate refuses the whole system. `animated` DECLARES that this preview has no static sticker — an AndroidView-hosted composable, a horologist ScalingLazyColumn screen, or a GIF-only capture — so it is excluded from the candidate join without counting as missing, and the entry stays in the spec as the record that the coverage is non-static (put its group under `section: \"Animations\"` to keep it out of the component tabs). Use it only when the render genuinely produces no PNG; deleting the entry instead hides the gap."
+        },
         "reference": {
           "type": "string",
           "description": "Optional seed-kit handle (Figma node etc.) for the one-off import."
@@ -160,6 +165,11 @@
           "description": "EXACT @Preview function name for this variant render."
         },
         "caption": { "type": "string" },
+        "capture": {
+          "enum": ["static", "animated"],
+          "default": "static",
+          "description": "As on a component: `animated` declares that this variant render has no static PNG, so it is skipped in the fold without counting as a missing render."
+        },
         "state": {
           "type": "string",
           "description": "The interaction/state this variant shows (pressed, keyboard-focus, disabled, off, …)."

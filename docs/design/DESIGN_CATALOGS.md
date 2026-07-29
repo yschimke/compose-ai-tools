@@ -284,11 +284,52 @@ gap by scanning the module's Kotlin source directly (no Gradle build, no render)
   reports the component missing. Catalogue a static `@Preview` sibling instead and
   let the GIF travel in the bundle as its own artifact. `init-catalog-spec` skips
   these functions when scaffolding, and the validator's discovery line names them
-  so you know why they're absent.
+  so you know why they're absent. When there is no static sibling to point at, the
+  entry can instead declare `"capture": "animated"` — see below.
 
 The spec shape is described by
 [`scripts/design-artifacts/catalog.spec.schema.json`](../../scripts/design-artifacts/catalog.spec.schema.json)
 (referenced via `$schema` in each sample spec for editor validation).
+
+## Components with no static sticker (`capture: "animated"`)
+
+Not every PNG-less preview announces itself in the source. A composable hosted in
+an `AndroidView` (say an HTML-rendering `TextView`) and a horologist
+`ScalingLazyColumn` screen are both written as a plain `@Preview` and still land
+without a `previews/<id>.png` — so the candidate join drops them and the
+completeness gate reports them as **missing renders**, refusing to publish the
+whole system. Deleting the entry publishes, but the sticker sheet then silently
+under-represents the design system.
+
+Declare the situation instead:
+
+```json
+{
+  "name": "Screens",
+  "section": "Animations",
+  "components": [
+    {
+      "componentId": "Screens/Watch list",
+      "preview": "WatchListPreview",
+      "capture": "animated",
+      "caption": "Scrolling watch list (no static frame — ScalingLazyColumn)"
+    }
+  ]
+}
+```
+
+`"capture": "animated"` (component or variant; absent ⇒ `"static"`) keeps the
+entry in the inventory, excludes it from the candidate join like any other
+PNG-less preview, and stops it counting as a missing render — the export names it
+on every run instead:
+
+```text
+[pocketcasts-wear] declared non-static (capture: "animated"), no sticker exported for: Screens/Watch list
+```
+
+Unlike `--allow-incomplete`, this is per-component: every other entry keeps the
+strict gate. Use it only where the render genuinely produces no PNG — a spec entry
+that *should* have rendered and didn't is exactly what the gate exists to catch.
 
 ## Adding a component
 

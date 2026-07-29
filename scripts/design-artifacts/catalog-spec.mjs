@@ -10,6 +10,8 @@
 // run without `npm ci`. The CLI wrappers are validate-catalog-spec.mjs and
 // init-catalog-spec.mjs.
 
+import { CAPTURE_MODES, isAnimatedCapture } from "./capture-mode.mjs";
+
 // The built-in Compose preview annotation. Any function annotated with it — or
 // with a *multipreview* annotation (an annotation class itself meta-annotated
 // with @Preview, e.g. @CatalogModes) — is a rendered preview whose function name
@@ -461,6 +463,7 @@ export function closest(name, candidates) {
  *   that render no static `previews/<id>.png` (see [discoverPreviews]'s `pngLess`).
  *   Referencing one is an error: `candidatePreviewBundle()` drops it from the
  *   candidate join and the completeness gate then reports the component missing.
+ *   An entry that declares `"capture": "animated"` is exempt — it has said so.
  * @returns {{ errors: string[], warnings: string[] }}
  */
 export function validateSpec(spec, opts = {}) {
@@ -504,6 +507,9 @@ export function validateSpec(spec, opts = {}) {
 
   const componentIds = new Map(); // componentId -> first path
   const previewToPaths = new Map(); // preview name -> [paths]
+  // The subset of the above whose referring entry did NOT declare `"capture": "animated"`. A
+  // PNG-less preview is only an error for those: an animated entry is *declaring* the absence.
+  const staticRefPaths = new Map(); // preview name -> [paths]
 
   spec.groups.forEach((group, gi) => {
     const gp = `groups[${gi}]`;
@@ -525,10 +531,12 @@ export function validateSpec(spec, opts = {}) {
       } else {
         componentIds.set(comp.componentId, cp);
       }
+      errors.push(...captureErrors(comp, cp));
       if (typeof comp?.preview !== "string" || comp.preview.length === 0) {
         errors.push(`${cp}.preview is required (an exact @Preview function name)`);
       } else {
         pushMulti(previewToPaths, comp.preview, cp);
+        if (!isAnimatedCapture(comp)) pushMulti(staticRefPaths, comp.preview, cp);
       }
       const variants = comp?.variants;
       if (variants !== undefined) {
@@ -537,7 +545,14 @@ export function validateSpec(spec, opts = {}) {
         } else {
           variants.forEach((v, vi) => {
             const vp = `${cp}.variants[${vi}]`;
-            const allowedKeys = new Set(["preview", "caption", "state", "props", "theme"]);
+            const allowedKeys = new Set([
+              "preview",
+              "caption",
+              "state",
+              "props",
+              "theme",
+              "capture",
+            ]);
             for (const key of Object.keys(v ?? {})) {
               if (!allowedKeys.has(key)) {
                 errors.push(
@@ -547,10 +562,12 @@ export function validateSpec(spec, opts = {}) {
                 );
               }
             }
+            errors.push(...captureErrors(v, vp));
             if (typeof v?.preview !== "string" || v.preview.length === 0) {
               errors.push(`${vp}.preview is required`);
             } else {
               pushMulti(previewToPaths, v.preview, vp);
+              if (!isAnimatedCapture(v)) pushMulti(staticRefPaths, v.preview, vp);
             }
             if (v?.state === undefined && v?.props === undefined && v?.theme === undefined) {
               errors.push(
@@ -589,13 +606,17 @@ export function validateSpec(spec, opts = {}) {
         errors.push(
           `preview "${preview}" (${paths[0]}) matches no @Preview function in the scanned module${suffix}`,
         );
-      } else if (pngLess.has(preview)) {
+      } else if (pngLess.has(preview) && staticRefPaths.has(preview)) {
+        // Entries that declared `"capture": "animated"` are exempt — they have *said* the preview is
+        // non-static, which is exactly what this error asks for. Only the undeclared refs fail.
         errors.push(
-          `preview "${preview}" (${paths[0]}) renders no static PNG — it is an animated/data-product ` +
-            `capture (@AnimatedPreview, @FocusedPreview(gif = true), or @ScrollingPreview with only ` +
-            `LONG/GIF modes). The catalog export drops PNG-less previews from the candidate join, so ` +
-            `this entry would be reported missing by the completeness gate. Point it at a static ` +
-            `@Preview function (a plain @Preview sibling of the animated one works).`,
+          `preview "${preview}" (${staticRefPaths.get(preview)[0]}) renders no static PNG — it is an ` +
+            `animated/data-product capture (@AnimatedPreview, @FocusedPreview(gif = true), or ` +
+            `@ScrollingPreview with only LONG/GIF modes). The catalog export drops PNG-less previews ` +
+            `from the candidate join, so this entry would be reported missing by the completeness ` +
+            `gate. Point it at a static @Preview function (a plain @Preview sibling of the animated ` +
+            `one works), or declare the entry \`"capture": "animated"\` to keep it in the spec as a ` +
+            `known non-static component.`,
         );
       }
     }
@@ -639,6 +660,24 @@ function heroErrors(spec, opts, specComponentIds) {
   return [
     `display.hero "${hero}" matches no componentId or @Preview function${hint ? ` — did you mean "${hint}"?` : ""}`,
   ];
+}
+
+/**
+ * Validate an entry's optional `capture` axis (component or variant). Only the values in
+ * [CAPTURE_MODES] mean anything to the export, and a typo (`"animation"`, `"gif"`) would read as the
+ * default `"static"` and silently sink the publish on the very component it was meant to exempt —
+ * so it is an error here rather than a shrug at render time.
+ */
+function captureErrors(entry, path) {
+  const capture = entry?.capture;
+  if (capture === undefined) return [];
+  if (typeof capture !== "string" || !CAPTURE_MODES.includes(capture)) {
+    return [
+      `${path}.capture must be one of ${CAPTURE_MODES.map((m) => `"${m}"`).join(", ")} ` +
+        `(absent ⇒ "static")`,
+    ];
+  }
+  return [];
 }
 
 /** Normalise an optional array-or-Set option to a Set, or null when absent. */
