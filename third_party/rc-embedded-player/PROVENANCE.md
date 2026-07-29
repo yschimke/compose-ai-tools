@@ -130,6 +130,17 @@ revert to upstream verbatim.
   sole contract method that does is `loadBitmap` — which `GraphContext` already stubbed. Worth
   reporting upstream alongside their issue #12: the split they describe is close to mechanical.
 
+- **`PaintBundle.TEXTURE` uses multiplatform `ImageShader` instead of `BitmapShader`**
+  (`RcPlayerPaint.kt`). The texture path built a framework `BitmapShader` and needed a parallel
+  `nativeTileMode` table to feed it — a second tile-mode mapping alongside the Compose `mapTileMode`
+  the same file already used everywhere else. `ImageShader` is the multiplatform equivalent and takes
+  the Compose `TileMode` directly, so the duplicate table is gone and the bitmap goes through
+  `asImageBitmap()`.
+
+  Behaviour-preserving: same tile modes, same image, still wrapped as a `ShaderBrush`. Note the
+  *other* `BitmapShader` in this file stays — it binds a bitmap uniform inside `buildRuntimeShader`,
+  so it belongs to the AGSL path, which is deferred (issue #2954).
+
 - **`RcImageSource` extracted, and `mapEasing` split out of `RcPlayer.kt`** (`RcImageSource.kt`,
   `RcPlayerEasing.kt`). Two small deltas with the same shape: a neutral declaration was living inside
   an Android-coupled one, so everything that touched it inherited coupling it never used.
@@ -399,7 +410,7 @@ single-target milestone it cannot be verified. It splits into 1a/1b.
    isolated enough to postpone): **particles** — `RcPlayerParticles.kt` is the only
    `AndroidPaintContext` user, so deferring it avoids a Skia `PaintContext` port entirely, at the
    cost of a small seam where `RcPlayerPaint.kt`/`RcPlayerDrawing.kt` dispatch into it; **AGSL
-   shaders** (`RcPlayerPaint.kt`, `RcPlayer.kt`); and **downloadable fonts**
+   shaders** (`RcPlayerPaint.kt`, `RcPlayer.kt`, tracked as issue #2954); and **downloadable fonts**
    (`RcPlayerTextLayout.kt`). What is *not* deferrable is framework `Paint` and bitmaps — those are
    the draw path itself.
 2. **1b — restructure to KMP, android target only,** moving the (now much larger) clean set into
