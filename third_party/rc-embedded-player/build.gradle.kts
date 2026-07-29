@@ -25,6 +25,7 @@ plugins {
   id("composeai.android-conventions")
   alias(libs.plugins.android.library)
   alias(libs.plugins.compose.compiler)
+  alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -50,9 +51,28 @@ android {
   // resolve.
   buildFeatures { androidResources = true }
 
+  // The render harness is a Robolectric test that inflates real Compose content, so it needs the
+  // library's merged resources on the unit-test classpath.
+  testOptions { unitTests { isIncludeAndroidResources = true } }
+
   // The player reaches `androidx.compose.remote.core.*` members marked `@RestrictTo(LIBRARY_GROUP)`
   // — unavoidable for an out-of-tree copy of in-tree code. Upstream's own module disables the check.
   lint { disable += "RestrictedApi" }
+}
+
+// Hand the render harness its input/output directories. Gradle properties rather than ambient env so
+// a run is reproducible from the command line:
+//
+//   ./gradlew :third-party-rc-embedded-player:testDebugUnitTest \
+//     -Prc.embedded.input=<dir with <id>.rc + manifest.json> -Prc.embedded.output=<dir>
+//
+// Absent either property the harness skips, so `check` stays green without a staged catalog.
+tasks.withType<Test>().configureEach {
+  for (key in listOf("rc.embedded.input", "rc.embedded.output")) {
+    (project.findProperty(key) as String?)?.let { systemProperty(key, it) }
+  }
+  // Robolectric's NATIVE graphics mode needs a real heap to rasterize into.
+  maxHeapSize = "2g"
 }
 
 dependencies {
@@ -81,4 +101,14 @@ dependencies {
   // `FontRequest` / `FontsContractCompat` behind the resolver's `google:` font prefix.
   implementation(libs.androidx.core)
   implementation(libs.androidx.collection)
+
+  // `RcEmbeddedRenderHarness` — rasterizes `.rc` documents through the player for the rc-compare
+  // lane. Robolectric with `@GraphicsMode(NATIVE)` is the stopgap until the CMP jvm target lets this
+  // run on a plain JVM (see PROVENANCE.md).
+  testImplementation(platform(libs.compose.bom.compat))
+  testImplementation(libs.ui.test.junit4)
+  testImplementation(libs.ui.test.manifest)
+  testImplementation(libs.robolectric)
+  testImplementation(libs.junit)
+  testImplementation(libs.kotlinx.serialization.json)
 }
