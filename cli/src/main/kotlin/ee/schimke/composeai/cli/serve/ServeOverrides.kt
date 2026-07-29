@@ -184,10 +184,21 @@ object ServeOverrides {
    * [knobKinds] maps a knob's `wireKey` to its declared kind so a bare `knob.<key>=<value>` is
    * typed without the caller spelling it (see [declaredKnobKinds]); an explicit `<kind>:<value>`
    * prefix still wins, and an undeclared key with a bare value falls back to a string.
+   *
+   * [declaredThemeFqns] is the session's `@ThemeCatalog` provider FQNs
+   * ([ServeHost.declaredThemes]). A `themeProvider` outside that set is rejected here rather than
+   * passed down: the renderer's `loadWrapperByFqnOrNull` logs to stderr and returns null on a class
+   * it can't load, so a misspelled or stale FQN used to come back HTTP 200 with a
+   * **default-themed** PNG — visually indistinguishable from a theme that genuinely renders the
+   * same, and therefore the kind of failure a caller can stare straight through. `null` (the
+   * default) means "the caller doesn't know this session's themes" and skips the check; an **empty
+   * set** means the session declares none, so any `themeProvider` is rejected — nothing could apply
+   * it.
    */
   fun parse(
     params: Map<String, String>,
     knobKinds: Map<String, String> = emptyMap(),
+    declaredThemeFqns: Set<String>? = null,
   ): OverrideParse {
     fun blank(key: String): Boolean = params[key]?.isBlank() ?: true
 
@@ -519,6 +530,19 @@ object ServeOverrides {
         }
     }
 
+    val themeProvider = params["themeProvider"]?.takeIf { it.isNotBlank() }
+    if (themeProvider != null && declaredThemeFqns != null && themeProvider !in declaredThemeFqns) {
+      return OverrideParse.Invalid(
+        if (declaredThemeFqns.isEmpty()) {
+          "themeProvider '$themeProvider' cannot be applied: this catalog declares no " +
+            "@ThemeCatalog providers"
+        } else {
+          "unknown themeProvider '$themeProvider'; this catalog declares " +
+            declaredThemeFqns.sorted().joinToString(", ")
+        }
+      )
+    }
+
     // Fold the two Remote Compose facets into one override, or leave null when neither is present
     // so
     // an rc-free render carries no `remoteCompose` payload (identical wire shape to before).
@@ -545,7 +569,7 @@ object ServeOverrides {
         placeholderActive = placeholderActive,
         talkBack = talkBack,
         touchOverlay = touchOverlay,
-        themeProvider = params["themeProvider"]?.takeIf { it.isNotBlank() },
+        themeProvider = themeProvider,
         focus = focus,
         gestures = gestures,
         clearBackground = clearBackground,
