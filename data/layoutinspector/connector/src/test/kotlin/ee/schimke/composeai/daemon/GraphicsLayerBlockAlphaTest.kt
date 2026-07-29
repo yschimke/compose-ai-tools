@@ -62,6 +62,21 @@ class GraphicsLayerBlockAlphaTest {
   }
 
   @Test
+  fun `a relative assignment starts from Compose's default alpha, not zero`() {
+    // `alpha *= fade` reads alpha before writing it. Answering 0 there would record 0 for every
+    // non-zero fade and blank the node — the same class of bug this evaluator exists to fix.
+    val fade = 0.4f
+    val element = BlockLayerElement { alpha *= fade }
+    assertEquals(0.4f, ModifierTokenResolver.evaluateLayerBlockAlpha(element))
+  }
+
+  @Test
+  fun `scale defaults to unity when read before assignment`() {
+    val element = BlockLayerElement { alpha = scaleX }
+    assertEquals(1f, ModifierTokenResolver.evaluateLayerBlockAlpha(element))
+  }
+
+  @Test
   fun `an element with no block is left to the field path`() {
     assertNull(ModifierTokenResolver.evaluateLayerBlockAlpha(FieldLayerElement(0f)))
   }

@@ -282,14 +282,37 @@ internal object ModifierTokenResolver {
     recorded[property]?.let {
       return it
     }
+    GRAPHICS_LAYER_DEFAULTS[property]?.let {
+      return it
+    }
     return when (type) {
-      java.lang.Float.TYPE -> if (property == "density" || property == "fontScale") 1f else 0f
+      java.lang.Float.TYPE -> 0f
       java.lang.Boolean.TYPE -> false
       java.lang.Integer.TYPE -> 0
       java.lang.Long.TYPE -> 0L
       else -> null
     }
   }
+
+  /**
+   * `GraphicsLayerScope`'s own identity defaults, for a property the block **reads before
+   * writing**.
+   *
+   * A relative assignment (`graphicsLayer { alpha *= fade }`) starts from Compose's default, not
+   * from zero — answering 0 there would record `alpha = 0` for every non-zero fade and make the
+   * node vanish from the export, which is the same class of bug this evaluator exists to fix.
+   * Anything not listed keeps the type's zero, which is the identity for translation and rotation.
+   */
+  private val GRAPHICS_LAYER_DEFAULTS: Map<String, Any> =
+    mapOf(
+      "alpha" to 1f,
+      "scaleX" to 1f,
+      "scaleY" to 1f,
+      // Compose's `DefaultCameraDistance`.
+      "cameraDistance" to 8f,
+      "density" to 1f,
+      "fontScale" to 1f,
+    )
 
   private fun reflectedFloat(instance: Any, name: String): Float? =
     reflectedField(instance, name)?.let(::floatValue)
