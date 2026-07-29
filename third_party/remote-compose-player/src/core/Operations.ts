@@ -85,9 +85,10 @@ import {
     ImpulseOperation, ImpulseProcess,
     DebugMessage,
     HostActionMetadataOperation, RunActionOperation,
-    ValueFloatExpressionChangeAction, TextLayout,
+    ValueFloatExpressionChangeAction,
     PathTween, HapticFeedback, WakeIn, TimeAttribute
 } from './operations/StubOperations';
+import { TextLayout } from './operations/layout/managers/TextLayout';
 import { CanvasOperations } from './operations/layout/CanvasOperations';
 import {
     ParticlesCreateOp, ParticlesLoopOp, ParticlesCompareOp

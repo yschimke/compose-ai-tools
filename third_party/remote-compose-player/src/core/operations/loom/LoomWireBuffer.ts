@@ -4,6 +4,7 @@
 // readLongNanId to route through a RemapContext.
 
 import { WireBuffer } from '../../WireBuffer';
+import { isNaNBits, idFromBits } from '../Utils';
 import type { RemapContext } from './RemapContext';
 
 export class LoomWireBuffer extends WireBuffer {
@@ -23,6 +24,17 @@ export class LoomWireBuffer extends WireBuffer {
     override readId(): number { return this.mContext.resolveId(this.mWrapped.readInt()); }
     override readNanId(): number { return this.mContext.resolveNanId(this.mWrapped.readFloat()); }
     override readLongNanId(): number { return this.mContext.resolveLongNanId(this.mWrapped.readLong()); }
+
+    // Bits-domain twin of readNanId: same remap, but the payload is rewritten in
+    // the raw float32 int bits, so the value never passes through a JS float.
+    // Mirrors RemapContext.resolveNanId, using the bits-typed helpers.
+    override readNanIdBits(): number {
+        const bits = this.mWrapped.readInt();
+        if (!isNaNBits(bits)) return bits;
+        const id = idFromBits(bits);
+        const mapped = this.mContext.resolveId(id);
+        return mapped === id ? bits : ((mapped | 0) | (-0x800000));
+    }
 
     // ---- Delegation ----
     override getBuffer(): Uint8Array { return this.mWrapped.getBuffer(); }

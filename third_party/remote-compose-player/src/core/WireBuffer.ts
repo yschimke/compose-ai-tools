@@ -112,6 +112,18 @@ export class WireBuffer {
     readNanId(): number { return this.readFloat(); }
     readLongNanId(): number { return this.readLong(); }
 
+    /**
+     * A NaN-boxed field read as raw float32 *integer bits* rather than a float.
+     *
+     * Same wire field as [readNanId], for callers that store the bits (the
+     * `isNaNBits`/`intBitsToFloat` representation `CoreText` uses) instead of a
+     * float. Reading the bits directly never routes the value through a JS
+     * number, so an engine that canonicalises NaN cannot drop the id payload —
+     * the same reason `isNaNBits` inspects wire bits rather than testing the
+     * float. `LoomWireBuffer` overrides this to remap the payload in place.
+     */
+    readNanIdBits(): number { return this.readInt(); }
+
     readInt(): number {
         const v = this.mDataView.getInt32(this.mIndex, false);
         this.mIndex += 4;

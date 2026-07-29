@@ -50,6 +50,27 @@ Local deltas over that snapshot (each also filed upstream):
   consumes its wire payload (matching `CoreSemantics.read` in remote-core) and
   paints nothing, letting the rest of the document parse.
 
+- **`TextLayout` (opcode 208 / `TEXT_LAYOUT`).** Replaced the parse-only stub
+  with a real component: `src/core/operations/layout/managers/TextLayout.ts`
+  extends `CoreText` (239) and is registered in `src/core/Operations.ts` in place
+  of the `StubOperations` entry. `TEXT_LAYOUT` is the same text component as
+  `CoreText` in a narrower, fixed-positional encoding — the form the Glance Wear
+  widget capture (`WearWidgetDocument.captureRawContent`) and `remote-material3`'s
+  `RemoteText` emit. The stub consumed the right number of bytes, so the stream
+  stayed aligned and **no** unknown-opcode warning fired, but it discarded every
+  field and painted nothing: a document whose text arrived this way replayed as
+  its background alone. That is a strictly worse failure than opcode 250's
+  truncation, because nothing reports it — the PNG↔RC parity page scored the
+  text-less renders inside the catalog's normal mismatch band, since a missing
+  string and a font-substituted one cost a similar pixel count. Extending
+  `CoreText` reuses its measure/layout/paint path; only the wire decoding
+  differs. One decoding subtlety: `fontSize`/`fontWeight` are NaN-boxed (a
+  literal float, or an id in the NaN payload), and `WireBuffer.readNanId()`
+  routes them through `readFloat()`, which collapses the payload because JS
+  canonicalises NaN — so those two fields are read as raw int bits via
+  `readInt()` (same 4 bytes, so the stream stays aligned), matching what
+  `CoreText` stores and decodes with `isNaNBits`/`intBitsToFloat`.
+
 ## Building the browser bundle
 
 ```sh

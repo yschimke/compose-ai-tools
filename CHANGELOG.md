@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.19.4](https://github.com/yschimke/compose-ai-tools/compare/v0.19.3...v0.19.4) (2026-07-28)
+
+
+### Features
+
+* **catalog:** front the compose-m3 and remote-m3 catalogs with screen heroes ([#2892](https://github.com/yschimke/compose-ai-tools/issues/2892)) ([376a983](https://github.com/yschimke/compose-ai-tools/commit/376a98392a2887f2a6d09d9bd15b93ba487866f7))
+* **figma-svg:** model placeholders first-class and state-aware ([#2900](https://github.com/yschimke/compose-ai-tools/issues/2900)) ([36c9377](https://github.com/yschimke/compose-ai-tools/commit/36c9377f6a3404285a1de75b7a7befe8598a804e))
+* **serve:** list every configured theme on the catalog page ([#2891](https://github.com/yschimke/compose-ai-tools/issues/2891)) ([65723f3](https://github.com/yschimke/compose-ai-tools/commit/65723f35b99aa685d40add38d291b3b690e6fc3e))
+* **serve:** share generated documents via expiring permalinks ([#2893](https://github.com/yschimke/compose-ai-tools/issues/2893)) ([aca5c13](https://github.com/yschimke/compose-ai-tools/commit/aca5c13bbc34a16ad4512dd915b5ecd58b978a35))
+
+
+### Bug Fixes
+
+* **catalog:** reject GIF-only previews in spec validation ([#2887](https://github.com/yschimke/compose-ai-tools/issues/2887)) ([58dd8e9](https://github.com/yschimke/compose-ai-tools/commit/58dd8e9d1ad17d0b6f161112bbab3d1095e29105))
+* **ci:** stop sticky PR comments duplicating on every run ([#2896](https://github.com/yschimke/compose-ai-tools/issues/2896)) ([b80fdba](https://github.com/yschimke/compose-ai-tools/commit/b80fdba398c37313587b598463af75ed7ded5d83))
+* **figma-svg:** honor per-variant identity, preview background, text align and resource fonts ([#2894](https://github.com/yschimke/compose-ai-tools/issues/2894)) ([b40bb1b](https://github.com/yschimke/compose-ai-tools/commit/b40bb1b80319d4fe7000f2001babb9eb7647a855))
+* **figma-svg:** honour graphics-layer scale in the viewport export ([#2901](https://github.com/yschimke/compose-ai-tools/issues/2901)) ([7896762](https://github.com/yschimke/compose-ai-tools/commit/78967623f1a8c8464b9e25fe0f0ff44577c9170b))
+* **lottie:** settle each swept APNG frame before capturing ([#2888](https://github.com/yschimke/compose-ai-tools/issues/2888)) ([7e582cc](https://github.com/yschimke/compose-ai-tools/commit/7e582cc9dd4cca438ab33e4d6a71a6bb375f52df))
+* **wear-catalog:** render the TimeText status strip on screen previews ([#2889](https://github.com/yschimke/compose-ai-tools/issues/2889)) ([44820e9](https://github.com/yschimke/compose-ai-tools/commit/44820e94c4029c58306938cb4a7eca855016e507))
+* **wear-widget:** paint the widget fill as the container background, not inside content ([#2895](https://github.com/yschimke/compose-ai-tools/issues/2895)) ([715ad42](https://github.com/yschimke/compose-ai-tools/commit/715ad42b5c9f84cbeeb877ebcebb6ef31b6a4cdc))
+
 ## [0.19.3](https://github.com/yschimke/compose-ai-tools/compare/v0.19.2...v0.19.3) (2026-07-28)
 
 
