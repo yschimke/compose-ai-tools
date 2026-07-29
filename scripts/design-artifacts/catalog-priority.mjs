@@ -11,20 +11,26 @@
  *     the serve host, which re-renders it from the carried live bundle / buildable source); it is
  *     simply not rasterised in CI.
  *
- * Two forms, because they buy different things:
+ * Two forms, because they buy different things — and, right now, because only one of them takes
+ * effect:
  *
- *   - **per entry** — `priority` on a component or one of its `variants`. A wholly-deferred entry
- *     names a `@Preview` function nothing else needs, so it can be dropped from the render itself
- *     (see [renderFilterPatterns]) — real build time, not just a smaller bundle.
- *   - **per axis** — `modePriority: { "light": "required", "*": "deferred" }`. Bakes one sticker per
- *     component and leaves the remaining palettes to the (already interactive) theme switcher on the
- *     serve host. Measured against a nine-theme catalog this is the bigger lever, because the
- *     fan-out lives in the BASE entries rather than the variants.
+ *   - **per axis** — `modePriority: { "light": "required", "*": "deferred" }`. **Active today.** Bakes
+ *     one sticker per component and leaves the remaining palettes to the (already interactive) theme
+ *     switcher on the serve host. Measured against a nine-theme catalog this is the bigger lever,
+ *     because the fan-out lives in the BASE entries rather than the variants. Degrades safely: the
+ *     component keeps its untagged primary sticker in `components[]`, so the served catalog browses as
+ *     before with one fewer baked palette.
+ *   - **per entry** — `priority` on a component or one of its `variants`. **Recorded but not yet acted
+ *     on** — see [ENTRY_DEFERRAL_SERVED]. Once the serve host can route it, a wholly-deferred entry
+ *     names a `@Preview` function nothing else needs, so it can be dropped from the render itself (see
+ *     [renderFilterPatterns]) — real build time, not just a smaller bundle.
  *
  * Deferral is always explicit and always opt-in: the default stays `required`, so a spec that says
- * nothing behaves exactly as it did. It also always needs a live path (a carried live bundle or a
- * buildable `source`), or the deferred entries would just be coverage silently dropped from the
- * published sheet — the driver enforces that, and [validateSpec] mirrors it when the caller knows.
+ * nothing behaves exactly as it did. Deferral that TAKES EFFECT also needs a live path (a carried live
+ * bundle or a buildable `source`), or the deferred entries would just be coverage silently dropped
+ * from the published sheet — the driver enforces that, and `validateSpec` mirrors it when the caller
+ * knows. The requirement is keyed on the *effective* priority, so an inert entry-level annotation
+ * imposes nothing.
  *
  * Pure and dependency-free (node built-ins only, no `@design-parity/*`, no I/O) so it unit-tests
  * without an `npm ci`, like its sibling `catalog-variants.mjs` / `catalog-spec.mjs`.
