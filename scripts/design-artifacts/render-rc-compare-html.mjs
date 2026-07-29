@@ -41,6 +41,7 @@
  *       mismatchPct,         // 0..100, null when !rendered
  *       mismatchPx,          // integer, null when !rendered
  *       baked, rc, diff,     // out-relative image paths ('' when absent)
+ *       referenceBlank,      // true when the baked PNG is fully transparent — see below
  *
  *       embeddedRendered,    // false when the embedded player could not render it
  *       embeddedNote,        // optional reason when !embeddedRendered
@@ -54,6 +55,14 @@
  * The embedded fields are optional: a model without them (an older summary, or a
  * run where the embedded lane was skipped) renders the JS-only page unchanged,
  * with the embedded columns omitted entirely rather than shown empty.
+ *
+ * `referenceBlank` marks a preview whose baked PNG carries no opaque pixel at all
+ * (a capture that produced nothing). Both sides flatten onto the same neutral
+ * background before diffing, so a player that also draws nothing scores an exact
+ * 0.00% — a green "good" band for a comparison that never happened. Such rows are
+ * shown (the blank baked capture is itself the finding) but excluded from every
+ * mean and sorted with the unrenderable rows, and both score chips read
+ * `no reference` instead of a percentage.
  */
 
 function esc(s) {
@@ -68,29 +77,41 @@ export function hasEmbeddedLane(rows = []) {
   return rows.some((r) => r.embeddedRendered !== undefined || r.embedded);
 }
 
-/** Aggregate stats over the rows — mean mismatch across *rendered* rows, counts. */
+/**
+ * Aggregate stats over the rows — mean mismatch across *scored* rows, counts.
+ *
+ * A row whose baked PNG is fully transparent (`referenceBlank`) is rendered but **not scored**: with
+ * nothing in the reference, a player that draws nothing flattens to the same neutral background and
+ * scores a perfect 0.00%, which reads as a green "good" band for a comparison that never happened.
+ * Those rows are excluded from the mean and counted separately, so a catalog that bakes blanks can't
+ * inflate the parity numbers.
+ */
 export function summarizeRcCompare(rows = []) {
   const rendered = rows.filter((r) => r.rendered);
   const unsupported = rows.length - rendered.length;
+  const blankReference = rows.filter((r) => r.referenceBlank).length;
+  const scored = rendered.filter((r) => !r.referenceBlank);
   const meanPct =
-    rendered.length === 0
-      ? null
-      : rendered.reduce((s, r) => s + (r.mismatchPct ?? 0), 0) / rendered.length;
+    scored.length === 0 ? null : scored.reduce((s, r) => s + (r.mismatchPct ?? 0), 0) / scored.length;
 
   // Embedded lane is summarized independently: its render can succeed on a document the JS player
   // chokes on and vice versa, so counting them together would hide which player is behind.
   const embRendered = rows.filter((r) => r.embeddedRendered);
+  const embScored = embRendered.filter((r) => !r.referenceBlank);
   const embMeanPct =
-    embRendered.length === 0
+    embScored.length === 0
       ? null
-      : embRendered.reduce((s, r) => s + (r.embeddedMismatchPct ?? 0), 0) / embRendered.length;
+      : embScored.reduce((s, r) => s + (r.embeddedMismatchPct ?? 0), 0) / embScored.length;
 
   return {
     total: rows.length,
     rendered: rendered.length,
+    scored: scored.length,
+    blankReference,
     unsupported,
     meanPct,
     embeddedRendered: embRendered.length,
+    embeddedScored: embScored.length,
     embeddedUnsupported: hasEmbeddedLane(rows) ? rows.length - embRendered.length : 0,
     embeddedMeanPct: embMeanPct,
   };
@@ -102,6 +123,9 @@ export function summarizeRcCompare(rows = []) {
  * Returns null when neither player produced a render.
  */
 function worstPct(r) {
+  // An unscorable row has no percentage to sort on — it sinks with the unrenderable ones rather
+  // than sitting at the top of the table on a 0% it never earned.
+  if (r.referenceBlank) return null;
   const scores = [];
   if (r.rendered) scores.push(r.mismatchPct ?? 0);
   if (r.embeddedRendered) scores.push(r.embeddedMismatchPct ?? 0);
@@ -134,14 +158,24 @@ function cell(label, src, extraClass = "") {
   return `<figure class="cell ${extraClass}"><figcaption>${esc(label)}</figcaption>${body}</figure>`;
 }
 
-/** One player's score chip: `NN.NN%` + pixel count, or the reason it produced nothing. */
-function scoreBlock(label, rendered, pct, px, note) {
-  const text = rendered ? `${(pct ?? 0).toFixed(2)}%` : note || "no render";
+/**
+ * One player's score chip: `NN.NN%` + pixel count, or the reason it produced nothing.
+ *
+ * `referenceBlank` short-circuits both players: the baked PNG is empty, so there is no comparison to
+ * report and any number here would be a lie in either direction.
+ */
+function scoreBlock(label, rendered, pct, px, note, referenceBlank = false) {
+  const scorable = rendered && !referenceBlank;
+  const text = scorable
+    ? `${(pct ?? 0).toFixed(2)}%`
+    : referenceBlank
+      ? "no reference"
+      : note || "no render";
   const pxTxt =
-    rendered && px != null ? `<span class="px">${px.toLocaleString("en-US")} px</span>` : "";
+    scorable && px != null ? `<span class="px">${px.toLocaleString("en-US")} px</span>` : "";
   return `<div class="scoreline">
       <span class="scorelabel">${esc(label)}</span>
-      <span class="score ${band(rendered ? pct : null)}">${esc(text)}</span>
+      <span class="score ${band(scorable ? pct : null)}">${esc(text)}</span>
       ${pxTxt}
     </div>`;
 }
@@ -150,7 +184,7 @@ function rowHtml(r, withEmbedded) {
   const dims = r.width && r.height ? `<span class="dims">${r.width}×${r.height}</span>` : "";
   const anyRendered = r.rendered || r.embeddedRendered;
   const scores =
-    scoreBlock("js", r.rendered, r.mismatchPct, r.mismatchPx, r.note) +
+    scoreBlock("js", r.rendered, r.mismatchPct, r.mismatchPx, r.note, r.referenceBlank) +
     (withEmbedded
       ? scoreBlock(
           "embedded",
@@ -158,7 +192,11 @@ function rowHtml(r, withEmbedded) {
           r.embeddedMismatchPct,
           r.embeddedMismatchPx,
           r.embeddedNote,
+          r.referenceBlank,
         )
+      : "") +
+    (r.referenceBlank
+      ? `<div class="blanknote">baked PNG is fully transparent — nothing to compare against</div>`
       : "");
 
   const embeddedCells = withEmbedded
@@ -167,9 +205,12 @@ function rowHtml(r, withEmbedded) {
   <td>${cell("pixel diff", r.embeddedDiff, "diff")}</td>`
     : "";
 
-  return `<tr class="row ${anyRendered ? "rendered" : "unsupported"}" data-pct="${
-    r.rendered ? (r.mismatchPct ?? 0) : ""
-  }" data-embedded-pct="${r.embeddedRendered ? (r.embeddedMismatchPct ?? 0) : ""}">
+  const scorable = !r.referenceBlank;
+  return `<tr class="row ${anyRendered ? "rendered" : "unsupported"}${
+    r.referenceBlank ? " blank-reference" : ""
+  }" data-pct="${scorable && r.rendered ? (r.mismatchPct ?? 0) : ""}" data-embedded-pct="${
+    scorable && r.embeddedRendered ? (r.embeddedMismatchPct ?? 0) : ""
+  }">
   <th class="meta">
     <div class="name">${esc(r.name)}</div>
     ${r.group ? `<div class="group">${esc(r.group)}</div>` : ""}
@@ -194,12 +235,20 @@ export function renderRcCompareHtml(model, opts = {}) {
   const embMeanTxt =
     stats.embeddedMeanPct == null ? "n/a" : `${stats.embeddedMeanPct.toFixed(2)}%`;
 
+  // Blank references are called out once, not per lane — the reference is shared, so a blank one
+  // costs both players the same row.
+  const blankTxt = stats.blankReference
+    ? ` · <strong>${stats.blankReference}</strong> unscored (blank reference)`
+    : "";
+
   const summary =
-    `<strong>JS player:</strong> ${stats.rendered} rendered · mean mismatch <strong>${meanTxt}</strong>` +
+    `<strong>JS player:</strong> ${stats.scored} scored · mean mismatch <strong>${meanTxt}</strong>` +
     (stats.unsupported ? ` · ${stats.unsupported} not decodable` : "") +
+    blankTxt +
     (withEmbedded
-      ? `<br><strong>embedded player:</strong> ${stats.embeddedRendered} rendered · mean mismatch <strong>${embMeanTxt}</strong>` +
-        (stats.embeddedUnsupported ? ` · ${stats.embeddedUnsupported} not rendered` : "")
+      ? `<br><strong>embedded player:</strong> ${stats.embeddedScored} scored · mean mismatch <strong>${embMeanTxt}</strong>` +
+        (stats.embeddedUnsupported ? ` · ${stats.embeddedUnsupported} not rendered` : "") +
+        blankTxt
       : "");
 
   const head = withEmbedded
@@ -250,6 +299,7 @@ ${rows.map((r) => rowHtml(r, withEmbedded)).join("\n")}
   .score.na   { background:#555; color:#fff; }
   .px { display:inline-block; color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
   .dims { display:inline-block; margin-top:8px; color:var(--muted); font-size:12px; }
+  .blanknote { margin-top:6px; color:var(--muted); font-size:11px; line-height:1.3; }
   td { padding:12px 8px; vertical-align:top; }
   figure.cell { margin:0; }
   figcaption { font-size:11px; color:var(--muted); margin-bottom:4px; }
@@ -282,7 +332,9 @@ diverge wherever that difference shows.`
     : `The player is the vendored TypeScript <code>RC.RcdPlayer</code> on a <code>&lt;canvas&gt;</code>.`
 }
 Mismatch % is the fraction of pixels each diff flags; rows sort worst-match-first on the worse of the
-two players.</p>
+two players. A preview whose baked PNG is <strong>fully transparent</strong> is shown but not scored:
+with nothing in the reference, a player that draws nothing would score a perfect 0% — so those rows
+read <code>no reference</code> and stay out of the means.</p>
 <div class="wrap">
 ${body}
 </div>
