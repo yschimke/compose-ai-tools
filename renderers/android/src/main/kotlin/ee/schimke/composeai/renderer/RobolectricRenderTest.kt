@@ -546,7 +546,16 @@ abstract class RobolectricRenderTestBase(
           if (params.fontScale != 1.0f) fontScale(params.fontScale)
           if (params.uiMode != 0) uiMode(params.uiMode)
           params.locale?.let { locale(it) }
-          background(params.showBackground, params.backgroundColor)
+          // Resolve to a concrete ARGB rather than handing Roborazzi the raw
+          // (showBackground, backgroundColor) pair: its own default for
+          // `showBackground = true` with no colour is white, which is wrong for a
+          // night-mode preview. See [ee.schimke.composeai.data.render.PreviewBackground].
+          val backingArgb = resolveBackgroundColor(params).toArgb()
+          if (backingArgb == ee.schimke.composeai.data.render.PreviewBackground.TRANSPARENT_ARGB) {
+            background(false, 0L)
+          } else {
+            background(true, backingArgb.toLong() and 0xFFFFFFFFL)
+          }
           inspectionMode(inspectionMode)
         }
         .build()
@@ -1741,15 +1750,21 @@ abstract class RobolectricRenderTestBase(
     }
   }
 
+  /**
+   * Precedence and the light/dark default live in
+   * [ee.schimke.composeai.data.render.PreviewBackground] so both backends and both renderers agree;
+   * in particular `showBackground = true` on a `uiMode = UI_MODE_NIGHT_YES` preview is not white.
+   */
   private fun resolveBackgroundColor(
     params: RenderPreviewParams
   ): androidx.compose.ui.graphics.Color =
-    when {
-      params.backgroundColor != 0L ->
-        androidx.compose.ui.graphics.Color(params.backgroundColor.toInt())
-      params.showBackground -> androidx.compose.ui.graphics.Color.White
-      else -> androidx.compose.ui.graphics.Color.Transparent
-    }
+    androidx.compose.ui.graphics.Color(
+      ee.schimke.composeai.data.render.PreviewBackground.resolveArgbForUiMode(
+        showBackground = params.showBackground,
+        backgroundColor = params.backgroundColor,
+        uiMode = params.uiMode,
+      )
+    )
 
   companion object {
     /**

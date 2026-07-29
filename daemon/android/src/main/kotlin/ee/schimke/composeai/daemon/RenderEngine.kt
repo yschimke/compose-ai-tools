@@ -1771,13 +1771,20 @@ class RenderEngine(
   private fun argbHex(color: Color): String =
     "#${String.format(java.util.Locale.US, "%08X", color.toArgb())}"
 
+  /**
+   * Precedence and the light/dark default live in
+   * [ee.schimke.composeai.data.render.PreviewBackground] so both backends and both renderers agree;
+   * in particular `showBackground = true` on a dark preview is not white.
+   */
   private fun resolveBackgroundColor(spec: RenderSpec): Color =
-    when {
-      spec.clearBackground -> Color.Transparent
-      spec.backgroundColor != 0L -> Color(spec.backgroundColor.toInt())
-      spec.showBackground -> Color.White
-      else -> Color.Transparent
-    }
+    Color(
+      ee.schimke.composeai.data.render.PreviewBackground.resolveArgb(
+        showBackground = spec.showBackground,
+        backgroundColor = spec.backgroundColor,
+        night = spec.uiMode == RenderSpec.SpecUiMode.DARK,
+        clearBackground = spec.clearBackground,
+      )
+    )
 
   private fun pxToDp(px: Int, density: Float): Int {
     if (density <= 0f) return px

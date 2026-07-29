@@ -920,12 +920,17 @@ internal fun renderPreview(
         }
       }
       baseProviders {
+        // Precedence and the light/dark default live in
+        // [ee.schimke.composeai.data.render.PreviewBackground] so both backends and both renderers
+        // agree; in particular `showBackground = true` on a night preview is not white.
         val bgColor =
-          when {
-            backgroundColor != 0L -> Color(backgroundColor.toInt())
-            showBackground -> Color.White
-            else -> Color.Transparent
-          }
+          Color(
+            ee.schimke.composeai.data.render.PreviewBackground.resolveArgbForUiMode(
+              showBackground = showBackground,
+              backgroundColor = backgroundColor,
+              uiMode = uiMode,
+            )
+          )
         val body: @Composable () -> Unit = {
           // The AS-parity wrap-measure box (and its fixed-axis `fillMaxSize` counterpart) is shared
           // with the daemon's desktop RenderEngine via [ComposePreviewContentBox], so both size the

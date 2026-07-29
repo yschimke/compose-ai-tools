@@ -51,6 +51,8 @@ dependencies {
   // re-declare it here.
   implementation(project(":daemon:core"))
   implementation(project(":common-io"))
+  // PreviewBackground — the shared showBackground/backgroundColor/uiMode resolution.
+  implementation(project(":data-render-core"))
   implementation(project(":data-render-connector"))
   implementation(project(":data-history-connector"))
   implementation(project(":data-theme-connector"))

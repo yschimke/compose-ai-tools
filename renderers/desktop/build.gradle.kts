@@ -31,6 +31,8 @@ dependencies {
   // `ComposeUiTest`'s semantic owner directly.
   implementation(project(":data-scroll-core"))
   implementation(project(":common-io"))
+  // PreviewBackground — the shared showBackground/backgroundColor/uiMode resolution.
+  implementation(project(":data-render-core"))
   // `kind=LOTTIE` previews: DesktopRendererMain inflates a discovered Lottie asset via the
   // `LottiePreview` helper (brings Compottie + Compose foundation transitively).
   implementation(project(":lottie-preview-runtime"))
