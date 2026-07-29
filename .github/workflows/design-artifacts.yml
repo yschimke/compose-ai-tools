@@ -542,5 +542,11 @@ jobs:
       publish-live-bundle: true
       split-per-preview: true
       split-mode: full
+      # The only catalog here that ships `ir/<id>.rc`, and it already builds Android — so this is
+      # where the third rc-compare lane costs least and says most. Scoring the same document
+      # through both players is what makes a divergence attributable: a row where only the JS
+      # player is off is a JS-player bug, one where only the embedded player is off is an
+      # embedded-player bug. This catalog currently contains both kinds.
+      rc-embedded-lane: true
     secrets:
       buildfetch_ro_token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
