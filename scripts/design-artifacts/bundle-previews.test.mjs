@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { candidatePreviewBundle } from "./bundle-previews.mjs";
+import { candidatePreviewBundle, daemonPreviewIdsByFunction } from "./bundle-previews.mjs";
 
 const enc = (s) => new TextEncoder().encode(s);
 
@@ -64,4 +64,38 @@ test("no-op view when every preview has a PNG", () => {
 test("tolerates a bundle with no previews / no entries", () => {
   assert.deepEqual(candidatePreviewBundle({}).dropped, []);
   assert.deepEqual(candidatePreviewBundle({ previews: [{ id: "X" }] }).dropped, ["X"]);
+});
+
+test("daemonPreviewIdsByFunction groups every preview id under its function", () => {
+  const ids = daemonPreviewIdsByFunction([
+    {
+      previews: [
+        { id: "Filled_Light", functionName: "Filled" },
+        { id: "Filled_Dark", functionName: "Filled" },
+        { id: "Outlined_Light", functionName: "Outlined" },
+      ],
+    },
+    null,
+  ]);
+  assert.deepEqual(ids.get("Filled"), ["Filled_Light", "Filled_Dark"]);
+  assert.deepEqual(ids.get("Outlined"), ["Outlined_Light"]);
+});
+
+test("daemonPreviewIdsByFunction folds a supplement, primary winning on a repeated id", () => {
+  const ids = daemonPreviewIdsByFunction([
+    { previews: [{ id: "Shared", functionName: "Primary" }] },
+    {
+      previews: [
+        { id: "Shared", functionName: "Supplement" },
+        { id: "ExtraOnly", functionName: "Supplement" },
+      ],
+    },
+  ]);
+  assert.deepEqual(ids.get("Primary"), ["Shared"]);
+  assert.deepEqual(ids.get("Supplement"), ["ExtraOnly"]);
+});
+
+test("daemonPreviewIdsByFunction falls back to the id when a preview names no function", () => {
+  const ids = daemonPreviewIdsByFunction([{ previews: [{ id: "Bare" }] }]);
+  assert.deepEqual(ids.get("Bare"), ["Bare"]);
 });

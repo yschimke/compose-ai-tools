@@ -26,6 +26,32 @@
  * stay in the original bundle for the token pass (and layout wireframes / fonts manifest, which
  * iterate the full list) — only the candidate join sees the filtered view.
  */
+/**
+ * `functionName -> [daemon preview id, …]` across every bundle, in bundle order. Falsy entries are
+ * skipped so callers can pass `[bundle, extraBundle]` with no supplementary render; the first
+ * bundle to claim an id wins, matching the primary-is-authoritative fold everywhere else.
+ *
+ * The live lane for a DEFERRED catalog entry (issue #2950) keys off this: its preview was never
+ * rasterised, so it has no `image.previewId` to bridge from — but it is still listed in the
+ * bundle's `previews.json`, because the bundle task carries every selected preview and simply omits
+ * the PNG for one that didn't render. That listing is what makes a deferred entry addressable on
+ * the serve host instead of lost.
+ */
+export function daemonPreviewIdsByFunction(bundles) {
+  const out = new Map();
+  const seen = new Set();
+  for (const bundle of Array.isArray(bundles) ? bundles : [bundles]) {
+    if (!bundle) continue;
+    for (const preview of bundle.previews ?? []) {
+      if (seen.has(preview.id)) continue;
+      seen.add(preview.id);
+      const fn = preview.functionName ?? preview.id;
+      out.set(fn, [...(out.get(fn) ?? []), preview.id]);
+    }
+  }
+  return out;
+}
+
 export function candidatePreviewBundle(bundle) {
   const dropped = [];
   const previews = (bundle.previews ?? []).filter((preview) => {

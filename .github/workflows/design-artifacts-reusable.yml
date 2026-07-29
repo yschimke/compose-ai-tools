@@ -256,12 +256,15 @@ jobs:
       # module's @Preview functions BEFORE the (long) render, so a mistyped or
       # renamed name fails here in seconds instead of as a late "missing" entry.
       - name: Validate catalog spec
+        id: validate-spec
         env:
           SPEC: ${{ inputs.spec }}
           MODULE: ${{ inputs.module }}
           EXTRA_MODULE: ${{ inputs.extra-module }}
           PREVIEW_ANNOTATIONS: ${{ inputs.preview-annotations }}
           WORKDIR: ${{ inputs.working-directory }}
+          LIVE_BUNDLE: ${{ inputs.publish-live-bundle }}
+          LIVE_SOURCE: ${{ inputs.live-rerender-source }}
         run: |
           set -euo pipefail
           # Gradle path (":app", "a:b") → directory ("app", "a/b"), under the
@@ -277,7 +280,21 @@ jobs:
           # annotation module). Without them the scan finds nothing and every
           # entry fails — which reads as a broken spec, not a missing flag.
           for ann in $PREVIEW_ANNOTATIONS; do args+=(--preview-annotation "$ann"); done
-          node compose-ai-tools/scripts/design-artifacts/validate-catalog-spec.mjs "${args[@]}"
+          # Render priority (issue #2950): a spec may defer entries/modes to the live
+          # preview server. Tell the pre-flight whether this publish HAS a live path, so
+          # a deferral with no way to produce the deferred pixels fails in seconds here
+          # rather than at the end of the render.
+          if [ "$LIVE_BUNDLE" = "true" ] || [ "$LIVE_SOURCE" = "true" ]; then
+            args+=(--live-bundle)
+          else
+            args+=(--no-live-bundle)
+          fi
+          node compose-ai-tools/scripts/design-artifacts/validate-catalog-spec.mjs "${args[@]}" \
+            --render-filter-out "$GITHUB_WORKSPACE/render-filter.txt"
+          # The `--preview` patterns that render just the required entries. EMPTY for every
+          # spec that defers no entry — i.e. all of them today — in which case the render
+          # step below sees an empty property and renders everything, exactly as before.
+          echo "render-filter=$(cat "$GITHUB_WORKSPACE/render-filter.txt")" >> "$GITHUB_OUTPUT"
 
       # Stage bundled fallback fonts into fontconfig before any render, so a
       # desktop (Skiko) render resolves glyphs a preview's FontFamily doesn't
@@ -330,6 +347,17 @@ jobs:
         # compose-preview finds the Gradle root by walking up for gradlew, so a
         # monorepo of separate builds must render from the build's own dir.
         working-directory: ${{ inputs.working-directory || '.' }}
+        env:
+          # Render only the previews this catalog still needs baked, when its spec defers
+          # entries to the live preview server (issue #2950). Read by the render task as the
+          # `composePreview.filter` project property — Gradle sources project properties from
+          # ORG_GRADLE_PROJECT_* env vars, so this reaches `composePreviewRender` through
+          # `bundle pack` with no CLI flag. Empty ⇒ no filter ⇒ render everything.
+          #
+          # Scoped to the PRIMARY render on purpose: the patterns name preview functions from
+          # this catalog's spec, and the filter fails fast when it matches nothing — an extra
+          # module whose previews are all deferred would sink the render rather than skip it.
+          ORG_GRADLE_PROJECT_composePreview.filter: ${{ steps.validate-spec.outputs.render-filter }}
         run: |
           set -euo pipefail
           run() { if [ "${{ inputs.desktop-render }}" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
