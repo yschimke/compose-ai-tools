@@ -26,6 +26,10 @@
       "branch": "design-artifacts/*"
     },
     {
+      "repo": "yschimke/pocket-casts-android",
+      "branch": "design-artifacts/*"
+    },
+    {
       "repo": "joreilly/Confetti",
       "branch": "design-artifacts/*"
     },
