@@ -42,7 +42,7 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * The **control** for [RcEmbeddedRenderHarness]: rasterizes the same documents through the
  * `remote-player-view`-backed [RemoteDocumentPlayer] in an otherwise identical harness — same
- * Robolectric config, same density, same manual clock, same software-canvas capture.
+ * Robolectric config, same density, same `waitForIdle()` + software-canvas capture.
  *
  * This exists to make divergences *attributable*. A row where the embedded player disagrees with the
  * baked PNG has at least three possible causes:
@@ -94,8 +94,6 @@ class RcViewPlayerRenderHarness(private val entry: RcEmbeddedRenderHarness.Entry
   }
 
   private fun renderToBitmap(bytes: ByteArray): Bitmap {
-    composeRule.mainClock.autoAdvance = false
-
     composeRule.setContent {
       val density = LocalDensity.current
       Box(
@@ -114,7 +112,7 @@ class RcViewPlayerRenderHarness(private val entry: RcEmbeddedRenderHarness.Entry
       }
     }
 
-    repeat(FRAMES) { composeRule.mainClock.advanceTimeByFrame() }
+    composeRule.waitForIdle()
 
     val root = composeRule.activity.findViewById<ViewGroup>(android.R.id.content)
     root.measure(
@@ -131,7 +129,6 @@ class RcViewPlayerRenderHarness(private val entry: RcEmbeddedRenderHarness.Entry
   companion object {
     private const val INPUT_PROPERTY = "rc.embedded.input"
     private const val OUTPUT_PROPERTY = "rc.view.output"
-    private const val FRAMES = 4
 
     private fun inputDir(): File? =
       System.getProperty(INPUT_PROPERTY)?.let(::File)?.takeIf { it.isDirectory }

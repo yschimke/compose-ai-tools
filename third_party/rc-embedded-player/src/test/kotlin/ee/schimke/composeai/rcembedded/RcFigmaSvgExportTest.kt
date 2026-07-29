@@ -231,13 +231,13 @@ class RcFigmaSvgExportTest {
    * layout-inspector walk reflects over `LayoutNode.getZSortedChildren`, empty until a draw z-sorts
    * them), then runs the production capture + hybrid figma-svg export and reads the SVG back.
    *
-   * The frame PNG is drawn straight off the content view rather than through Roborazzi: `RcPlayer`
-   * animates off the frame clock and never reaches idle, so every wait-for-idle capture API times
-   * out — the same manual-clock + direct-draw workaround `RcEmbeddedRenderHarness` documents.
+   * The frame PNG is drawn straight off the content view rather than through `captureToImage()`,
+   * which under Robolectric times out waiting for a draw pass that never runs — see
+   * [RobolectricCaptureToImageProbeTest] and the note on [RcEmbeddedRenderHarness]. The composition
+   * still settles with `waitForIdle()`, the manual frame pumping having gone with #2945.
    */
   private fun export(name: String, doc: Doc, content: @Composable (ByteArray) -> Unit): Lane {
     val rootDir = Files.createTempDirectory("rc-figma-svg-$name").toFile()
-    composeRule.mainClock.autoAdvance = false
 
     val slotTables = mutableSetOf<CompositionData>()
     var density = 1f
@@ -254,7 +254,7 @@ class RcFigmaSvgExportTest {
         }
       }
     }
-    repeat(FRAMES) { composeRule.mainClock.advanceTimeByFrame() }
+    composeRule.waitForIdle()
 
     val view = composeRule.activity.findViewById<ViewGroup>(android.R.id.content)
     view.measure(
@@ -391,7 +391,6 @@ class RcFigmaSvgExportTest {
   private companion object {
     const val INPUT_PROPERTY = "rc.embedded.input"
     const val REPORT_PROPERTY = "rc.semantics.report"
-    const val FRAMES = 4
     const val FIXTURE = "rc-fixtures/TitleCardRemote-640x480.rc"
   }
 }
