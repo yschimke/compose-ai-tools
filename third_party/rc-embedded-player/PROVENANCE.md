@@ -152,6 +152,32 @@ revert to upstream verbatim.
   the move after a refresh rather than treating the diff as a conflict. Rationale under
   "Done: `state/` decoupled" below.
 
+### Behaviour delta: the frame loop, and the dead `autoUpdate` knob
+
+Unlike everything above, this one *is* a fix rather than a build-gap workaround, so it is worth
+reporting upstream on its own.
+
+- **The time loop requests frames through `withInfiniteAnimationFrameMillis`, not `withFrameMillis`**
+  (`RcPlayer.kt`). `RcPlayer` drives document time from a `LaunchedEffect` whose `while (true)` loop
+  only breaks when the document has no animations, no time dependency, no particles and no `wakeIn` —
+  i.e. for any animated or time-driven document it never returns. Requested through `withFrameMillis`
+  that is indistinguishable from ordinary pending recomposition work, so **the composition never
+  reaches idle**: `ComposeTestRule.waitForIdle()` blocks forever, and with it every wait-for-idle
+  capture API. That is exactly what Compose's `InfiniteAnimationPolicy` exists to make visible, and
+  `withInfiniteAnimationFrameMillis` is how you opt into it. Outside a test no policy is installed
+  and the call degrades to `withFrameMillis`, so production timing is unchanged — confirmed by
+  re-rendering the 24-document `remote-m3` lane and comparing by md5: **24 identical, 0 differing**.
+  `RcIdleProbeTest` pins the property by composing a real document and asserting `waitForIdle()`
+  returns at all.
+
+- **`autoUpdate` removed** from both `RcPlayer` overloads and from
+  `ExperimentalRemoteDocumentPlayer`. Upstream declares the parameter, defaults it to `true`, and
+  forwards it down the wrapper chain — but **no body ever reads it**. It is dead, and worse than
+  dead: it reads exactly like the knob that stops the frame loop, so a host trying to render a still
+  frame passes `autoUpdate = false`, gets no error, and still hangs. The render harnesses here were
+  written around that misunderstanding. With the loop fixed the knob has nothing left to mean, so it
+  goes rather than being wired up.
+
 ### Not a source delta, but worth knowing about the build
 
 The module carries **no resource table** and leaves `androidResources` at AGP 9's default (`false`

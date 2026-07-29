@@ -80,7 +80,6 @@ class RcSemanticsExtractionTest {
     val embedded = capture(width, height) {
       ExperimentalRemoteDocumentPlayer(
         document = remember { RemoteDocument(bytes) },
-        autoUpdate = false,
         modifier = Modifier.fillMaxSize(),
       )
     }
