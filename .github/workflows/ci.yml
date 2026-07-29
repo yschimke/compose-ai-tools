@@ -95,12 +95,23 @@ jobs:
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
       - name: Run unit tests
         run: ./gradlew :renderer-android:testDebugUnitTest
+      # `RcFigmaSvgExportTest` pins what a Remote Compose document exports as through each player —
+      # the only coverage of that path anywhere. It rides along here rather than in its own job
+      # because it asserts on the same `compose/figma-svg` producers the renderer tests above cover,
+      # so a change that breaks one usually breaks the other and they're worth failing together.
+      # This module is otherwise unreferenced by CI: every test task in this workflow is invoked
+      # per-module by name, there is no aggregate `check`, so without this line the test would run
+      # only on someone's laptop.
+      - name: Run RC figma-svg export tests
+        run: ./gradlew :third-party-rc-embedded-player:testDebugUnitTest
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: renderer-android-unit-test-results
-          path: renderers/android/build/reports/tests/
+          path: |
+            renderers/android/build/reports/tests/
+            third_party/rc-embedded-player/build/reports/tests/
 
   functional-tests:
     name: Plugin Functional Tests
