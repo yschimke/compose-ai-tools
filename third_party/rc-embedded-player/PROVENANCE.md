@@ -24,7 +24,8 @@ inside it. Vendoring is the only way to depend on it.
 
 ## What is vendored
 
-The player proper: the package root plus `layout/`, `modifier/`, and `state/` (42 files). Upstream's
+The player proper: the package root plus `layout/`, `modifier/`, and `state/` (42 upstream files,
+43 here — one was split in two, see "Done: `state/` decoupled" below). Upstream's
 `demos/`, `integration/previews/`, and the `androidx.wear.compose.remote.material3.previews` sample
 previews that live in the same source set are **not** vendored — they are demo/test scaffolding for
 the integration-test app, and they drag in Wear Material3 and `remote-creation-compose` capture.
@@ -98,6 +99,13 @@ revert to upstream verbatim.
   Worth reporting upstream on its own — any out-of-tree consumer following the documented
   downloadable-fonts pattern against the published artifact hits this, not just this player.
 
+- **`rememberRemoteBitmapAsState` moved to its own file** (`state/RcPlayerBitmapState.kt`, out of
+  `state/RcPlayerState.kt`). Not a behaviour change and not an upstream gap — a refactor in service
+  of the CMP split, recorded here because it is the one place the snapshot is no longer file-for-file
+  with upstream, so a refresh `diff -r` will flag both files. The function body is verbatim; re-apply
+  the move after a refresh rather than treating the diff as a conflict. Rationale under
+  "Done: `state/` decoupled" below.
+
 ### Not a source delta, but required to build
 
 `androidResources` has to be enabled explicitly in `build.gradle.kts` — AGP 9 defaults it to `false`
@@ -112,8 +120,8 @@ software-canvas ambiguity that made the shader finding hard to attribute (see th
 ### Measured surface
 
 **32 of the 42 vendored files reference nothing platform-specific** — no `android.*`, no
-`androidx.core.*`, no `player.core.platform.*`, no `ui.text.googlefonts`. They move as-is. The
-remaining 10, with what actually couples them:
+`androidx.core.*`, no `player.core.platform.*`, no `ui.text.googlefonts`. The remaining 10, with
+what actually couples them:
 
 | file | coupling |
 | --- | --- |
@@ -122,11 +130,67 @@ remaining 10, with what actually couples them:
 | `RcPlayer.kt` | `SuppressLint`, `PendingIntent`, `AndroidRemoteContext` |
 | `EmbeddedPlayerTypefaceResolver.kt` | `Typeface`, `Handler`, `Looper`, `Log`, `FontRequest`, `FontsContractCompat`, `AndroidRemoteContext`, `TypefaceResolver`, `FontInstance` |
 | `RcImageLoader.kt` | `Bitmap`, `drawable`, `content.res` |
-| `state/RcPlayerState.kt` | `Bitmap` |
+| `state/RcPlayerBitmapState.kt` | `Bitmap` (split out of `RcPlayerState.kt` — see below) |
 | `GraphContext.kt` | extends `AndroidRemoteContext` |
 | `RcPlayerParticles.kt` | `AndroidPaintContext` |
 | `RcPlayerTextLayout.kt` | `googlefonts.Font`, `googlefonts.GoogleFont` |
 | `DrawablePainter.kt` | `drawable.Drawable` — Android-only by definition, no jvm counterpart needed |
+
+#### 32/10 is a coupling *surface*, not a partition
+
+That table counts files by what they **import**. It does not describe a source-set split, and reading
+it as one is the mistake to avoid: a source set can only hold a file whose *callees* are also
+visible to it, and the 32 call into the 10 constantly. Following the references transitively — mark
+the 10 as `androidMain`, then repeatedly pull in anything referencing a declaration that lives
+there — the partition collapses to roughly **five** files in `jvmCommonMain`. The chains that do it,
+each verifiable by grep:
+
+| declaration | lives in (Android-coupled) | pulls in |
+| --- | --- | --- |
+| `rememberRemote*AsState` (14 helpers) | `state/RcPlayerState.kt` | 19 files outside `state/` |
+| `RcPlayerChildren` | `RcPlayer.kt` | 5 of the 8 `layout/` files |
+| `RcPlayerComponent` | `RcPlayer.kt` | `layout/RcPlayerStateLayout.kt` |
+| `executeOperations` | `RcPlayerDrawing.kt` | `RcPlayerCanvas.kt`, `RcPlayerModifiers.kt` |
+| `GraphContext` (extends `AndroidRemoteContext`) | `GraphContext.kt` | the state + expression path |
+| `RcImageLoader` (`Drawable`-typed) | `RcImageLoader.kt` | `layout/RcPlayerImageLayout.kt`, `RcPlayerCustom.kt` |
+
+So the unit of work is a **declaration**, not a file. Some of those splits are nearly free — the
+`rememberRemote*AsState` row was the largest single blocker and its whole Android coupling was *one*
+function (see the note below). Others are the `expect`/`actual` seams the sequencing already
+names — `GraphContext`/`RemoteContext`, image decode, the `Drawable`-typed loader — which means
+the original "step 1 needs no `expect`/`actual`" is only true for a `jvmCommonMain` of about five
+files. Anything larger pulls step 2 forward.
+
+#### A single android target cannot enforce the split
+
+Worth knowing before treating step 1 as done: with only the android target configured,
+`jvmCommonMain` is compiled *as part of the android compilation* and has the Android SDK on its
+classpath. Nothing rejects an `android.*` import that lands in "common" code — the separation is
+convention, not a constraint, until a second target exists to contradict it. The same is already
+true *today*, before any restructure: this is a plain android library, so a file decoupled by hand
+can be re-coupled by the next edit with nothing to notice.
+
+`RcSemanticsExtractionTest`'s neighbour `PlatformNeutralSourcesTest` is that missing constraint. It
+holds the list of files claimed ready for `jvmCommonMain` and fails if any of them imports one of
+the four prefixes. Each declaration split below adds its file to that list; when the restructure
+lands, the list is the move order, and the test retires once the `jvm` target enforces the same
+thing by compiling.
+
+#### Done: `state/` decoupled
+
+`state/RcPlayerState.kt` held all fourteen `rememberRemote*AsState` helpers *and* one Android-typed
+one, `rememberRemoteBitmapAsState` (`State<Bitmap?>`, decoding via `resolveBitmap`) — which coupled
+the entire file, and through it the 19 files above. That one function now lives in
+`state/RcPlayerBitmapState.kt`; `RcPlayerState.kt` no longer imports anything Android. The function
+body is verbatim and it had **no call sites** in the vendored subset (upstream API surface only), so
+this is a file move, not a behaviour change. The largest chain in the table above is cleared, and
+`RcPlayerState.kt` is now held that way by `PlatformNeutralSourcesTest` — along with
+`CoreDataAccessors.kt`, `CoreDataModel.kt` and `SnapshotRemoteComposeState.kt`, which were already
+platform-neutral as vendored and are pinned so they stay that way.
+
+Verified by compile and by the module's `check`. **Not** verified by a render: the rc-compare lane
+needs a staged catalog (see the sequencing note below), so the claim here is "no behaviour change by
+construction", not "the 24-document render is unchanged".
 
 ### The source-set shape is `jvmCommon`, not `common`
 
@@ -177,14 +241,31 @@ Android-only in a first cut rather than forcing a Skia `PaintContext` port.
 
 ### Sequencing
 
-1. Restructure to KMP with **only** the android target, moving the 32/10 split into
-   `jvmCommonMain`/`androidMain`. No `expect`/`actual` needed yet — `androidMain` sees
-   `jvmCommonMain` directly. Verify by re-running the 24-document render and confirming the numbers
-   are unchanged.
-2. Add the `jvm` target and the `expect`/`actual` seams, starting with `RemoteContext` and image
-   decode.
-3. Port text off framework `Paint`.
-4. Shaders last, after the Android-side shader divergence is understood.
+Revised after the measurement above: the original step 1 ("move the 32/10 split into
+`jvmCommonMain`/`androidMain`, no `expect`/`actual` needed") is not a pure source-set move, and as a
+single-target milestone it cannot be verified. It splits into 1a/1b.
 
-Step 1 is the safe, verifiable milestone: it is a pure source-set move whose success criterion is
-"the existing render output does not change".
+1. **1a — declaration splits, still a plain android library.** Peel the platform-neutral
+   declarations out of the coupled files so a `jvmCommonMain` worth having exists *before* the build
+   is restructured. Each split is behaviour-preserving and verified by a compile, so they land
+   independently and bisect cleanly. Highest-leverage first, by the table above: `state/` (**done**),
+   then `RcPlayerChildren`/`RcPlayerComponent`/`mapEasing` out of `RcPlayer.kt`, then the
+   bitmap-typed helpers out of `RcPlayerDrawing.kt` so `executeOperations`' dispatcher can follow.
+2. **1b — restructure to KMP, android target only,** moving the (now much larger) clean set into
+   `jvmCommonMain`. Ship it with the forbidden-import guard from above, since the target itself
+   enforces nothing. Two build-level unknowns to settle first, both about the module's existing
+   requirements rather than the sources: whether `com.android.kotlin.multiplatform.library` under
+   AGP 9 supports `androidResources` (the module carries its own resource table — the GMS font
+   certs) and Robolectric unit tests with merged resources (`RcEmbeddedRenderHarness`). If it does
+   not, 1b waits and 1a continues to be useful on its own.
+3. Add the `jvm` target and the `expect`/`actual` seams, starting with `RemoteContext`
+   (`GraphContext`'s `AndroidRemoteContext` base) and image decode. This is where the remaining
+   chains in the table are actually paid for, not step 1.
+4. Port text off framework `Paint`.
+5. Shaders last, after the Android-side shader divergence is understood.
+
+**On the success criterion.** "The existing render output does not change" is the right test for
+every step here, but it needs a staged catalog: `RcEmbeddedRenderHarness` skips unless
+`rc-compare.mjs --stage-embedded` has written `<id>.rc` + `manifest.json`, and no `.rc` fixtures are
+committed. So a compile-only check is what a working tree gives you; the render comparison is a CI /
+full-capture step, and a step-1a split should not be called verified on a compile alone.
