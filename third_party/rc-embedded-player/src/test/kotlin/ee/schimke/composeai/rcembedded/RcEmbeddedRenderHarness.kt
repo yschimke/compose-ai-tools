@@ -95,16 +95,21 @@ class RcEmbeddedRenderHarness(private val entry: Entry) {
     // A document the player cannot render is a *result*, not a reason to fail the run: the driver
     // turns a missing PNG plus this note into an "unrendered" row on the compare page, which is
     // exactly the signal worth surfacing.
+    val png = File(outputDir, "${entry.id}.png")
+    val err = File(outputDir, "${entry.id}.error")
+    // Clear both before rendering. Output directories get reused across runs, and a document that
+    // succeeded last time but fails now would otherwise leave its stale PNG in place — the driver
+    // checks for the PNG first, so it would diff last run's pixels and report them as a current
+    // render. That is precisely the stale-capture failure this harness already had once, in a form
+    // that survives across runs rather than within one.
+    png.delete()
+    err.delete()
+
     runCatching { renderToBitmap(File(inputDir, "${entry.id}.rc").readBytes()) }
       .onSuccess { bitmap ->
-        File(outputDir, "${entry.id}.png").outputStream().use {
-          bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
-        }
+        png.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
       }
-      .onFailure { t ->
-        File(outputDir, "${entry.id}.error")
-          .writeText("${t::class.java.simpleName}: ${t.message?.take(500)}")
-      }
+      .onFailure { t -> err.writeText("${t::class.java.simpleName}: ${t.message?.take(500)}") }
   }
 
   private fun renderToBitmap(bytes: ByteArray): Bitmap {

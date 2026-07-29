@@ -25,12 +25,12 @@
 // `RemoteDocumentPlayer` (the `remote-player-view` path `RemoteComposeIrReplay` uses today) we need
 // the sources in our own build.
 //
-// What it is: a pure-Compose interpreter for a `CoreDocument` — it walks the document's operation
+// What it is: a pure-Compose interpreter for a `CoreDocument`. It walks the document's operation
 // tree and emits Compose layout/draw nodes directly, where `remote-player-view`'s
-// `RemoteComposePlayer` is an Android `View` that paints to a framework `Canvas` and is bridged into
-// Compose via `AndroidView`. That difference is the whole point of the comparison lane: the embedded
-// player composes, measures, and draws with Compose's own primitives, so its output is what a host
-// embedding Remote Compose content *inside* a Compose tree actually sees.
+// `RemoteComposePlayer` is an Android `View` painting to a framework `Canvas`, bridged in via
+// `AndroidView`. That difference is the whole point of the comparison lane: this player composes,
+// measures, and draws with Compose's own primitives, so its output is what a host embedding Remote
+// Compose content *inside* a Compose tree actually sees.
 //
 // Android-library for now (`android.graphics.Paint`/`Typeface`/`RuntimeShader` on the text and
 // shader paths, `AndroidRemoteContext` for the platform `RemoteContext`). The CMP android/jvm split
@@ -61,10 +61,9 @@ android {
   }
 
   // AGP 9 defaults `androidResources` to false for library modules. The typeface resolver and the
-  // text-layout path both read `androidx.compose.ui.text.googlefonts.R.array
-  // .com_google_android_gms_fonts_certs` (the GMS font-provider certificates), and that dependency R
-  // class is only generated when resource processing is on — without this the two references fail to
-  // resolve.
+  // text-layout path both read the GMS font-provider certificates from the googlefonts `R` class,
+  // and a dependency `R` class is only generated when resource processing is on — without this the
+  // two references fail to resolve.
   buildFeatures { androidResources = true }
 
   // The render harness is a Robolectric test that inflates real Compose content, so it needs the
@@ -72,12 +71,12 @@ android {
   testOptions { unitTests { isIncludeAndroidResources = true } }
 
   // The player reaches `androidx.compose.remote.core.*` members marked `@RestrictTo(LIBRARY_GROUP)`
-  // — unavoidable for an out-of-tree copy of in-tree code. Upstream's own module disables the check.
+  // — unavoidable for an out-of-tree copy of in-tree code. Upstream's module disables it too.
   lint { disable += "RestrictedApi" }
 }
 
-// Hand the render harness its input/output directories. Gradle properties rather than ambient env so
-// a run is reproducible from the command line:
+// Hand the render harness its input/output directories. Gradle properties rather than ambient env,
+// so a run is reproducible from the command line:
 //
 //   ./gradlew :third-party-rc-embedded-player:testDebugUnitTest \
 //     -Prc.embedded.input=<dir with <id>.rc + manifest.json> -Prc.embedded.output=<dir>
@@ -92,8 +91,8 @@ tasks.withType<Test>().configureEach {
 }
 
 dependencies {
-  // Document model + operation tree. `remote-core` is a plain `java-library` upstream, which is what
-  // makes the planned jvm target of the CMP split viable at all.
+  // Document model + operation tree. `remote-core` is a plain `java-library` upstream, which is
+  // what makes the planned jvm target of the CMP split viable at all.
   api(libs.compose.remote.core)
   // `RemoteDocument`, `StateUpdater`, and `AndroidRemoteContext` (the platform `RemoteContext`).
   api(libs.compose.remote.player.core)
@@ -119,7 +118,7 @@ dependencies {
   implementation(libs.androidx.collection)
 
   // `RcEmbeddedRenderHarness` — rasterizes `.rc` documents through the player for the rc-compare
-  // lane. Robolectric with `@GraphicsMode(NATIVE)` is the stopgap until the CMP jvm target lets this
+  // lane. Robolectric with `@GraphicsMode(NATIVE)` is the stopgap until the CMP jvm target lets it
   // run on a plain JVM (see PROVENANCE.md).
   testImplementation(platform(libs.compose.bom.compat))
   testImplementation(libs.ui.test.junit4)
