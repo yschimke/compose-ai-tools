@@ -189,6 +189,27 @@ data class FigmaSvgBackgroundRaster(
   val top: Int,
   val right: Int,
   val bottom: Int,
+  /**
+   * Whether these pixels were cropped out of the composited frame (the default) or re-drawn in
+   * isolation from the node's own draw lambda ([LayoutInspectorNode.drawRaster], issue #2937).
+   *
+   * The distinction is an **opacity** one. A frame crop has every ancestor and local graphics-layer
+   * alpha already baked into it, so the emitter must not fade its group again — which is why a
+   * layer holding one splits its opacity across its parts instead of carrying it on the group. An
+   * isolated re-draw is taken from the modifier chain *below* those layers, so its alpha is not
+   * baked in and the ordinary group opacity is exactly right for it.
+   */
+  val fromFrame: Boolean = true,
+  /**
+   * Whether these pixels paint **over** the layer's own token shape rather than under it.
+   *
+   * Compose paints a modifier chain outside-in, so where the draw sits relative to the
+   * `background`/`border` the shape came from decides the order. `Modifier.background(red)
+   * .drawWithContent { blue(); drawContent() }` paints red *then* blue — emitting the capture as an
+   * ordinary background would put the red rect on top and hide the blue entirely. The reverse chain
+   * (`drawBehind { blue() }.background(red)`) really does paint blue first, and keeps the default.
+   */
+  val aboveShape: Boolean = false,
 ) {
   val width: Int
     get() = (right - left).coerceAtLeast(0)
@@ -205,6 +226,13 @@ data class FigmaSvgRasterTarget(
   val top: Int,
   val right: Int,
   val bottom: Int,
+  /**
+   * The PNG to write at [href], already captured — an isolated re-draw of the node's own draw
+   * lambda ([LayoutInspectorNode.drawRaster], issue #2937). Null for the ordinary target, whose
+   * pixels the producer still crops out of the rendered frame. A target that carries its own bytes
+   * needs no frame at all, so it survives the vector-only export.
+   */
+  val pngBase64: String? = null,
 )
 
 /**
@@ -796,7 +824,48 @@ data class FigmaSvgModel(
             FigmaSvgRasterTarget(nodeId, href, region.left, region.top, region.right, region.bottom)
           )
           FigmaSvgBackgroundRaster(href, region.left, region.top, region.right, region.bottom)
-        } else null
+        } else
+        // The isolated capture of the node's own draw (issue #2937) — the same `<image>` slot,
+        // filled from pixels the connector re-drew rather than cropped. It fills exactly the holes
+        // the branch above leaves: a node whose draw has children or text (the crop would bake
+        // them in and the vector children would then draw twice), and any node at all when there
+        // is no frame to crop from. Its pixels carry nothing but this node's own paint, so
+        // children stay editable on top of it.
+        //
+        // …except where that paint is *already* exported as vector. A Wear `CurvedLayout` /
+        // `TimeText` paints its runs through a draw modifier, and the export re-emits exactly
+        // those runs as `<textPath>` from [curvedTexts] — so laying the capture underneath would
+        // draw the clock twice, once as pixels and once as live text. The vector wins; the same
+        // rule the `vectorGraphic` tiers follow.
+        drawRaster
+            ?.takeIf { curvedTexts.isEmpty() }
+            ?.let { captured ->
+              val href = ctx.rasterHref(nodeId)
+              ctx.rasterTargets.add(
+                FigmaSvgRasterTarget(
+                  nodeId = nodeId,
+                  href = href,
+                  left = captured.left,
+                  top = captured.top,
+                  right = captured.right,
+                  bottom = captured.bottom,
+                  pngBase64 = captured.pngBase64,
+                )
+              )
+              FigmaSvgBackgroundRaster(
+                href = href,
+                left = captured.left,
+                top = captured.top,
+                right = captured.right,
+                bottom = captured.bottom,
+                fromFrame = false,
+                // Where the draw sits in the chain decides whether it lands over or under the token
+                // shape — an RC component carries both (a `BackgroundModifierOperation` lowers to
+                // `Modifier.background`, its draw-content ops to an inner `drawWithContent`), and
+                // defaulting to "under" would hide the capture behind the token rect.
+                aboveShape = drawPaintsOverTokenShape(),
+              )
+            }
       val fill = tokens?.backgroundColor?.let { argbToColor(it, ctx.colorNames) }
       // Gradients ride alongside the flat tokens: the shape below references them as SVG defs, so
       // a brush-painted container stays an editable vector layer (issue #2852).
@@ -1237,6 +1306,31 @@ data class FigmaSvgModel(
       name in DRAW_MODIFIERS && !placeholder
 
     /**
+     * True when the node's captured draw paints **over** the shape its container tokens describe.
+     *
+     * A modifier chain is painted outside-in, and [modifiers] is in that order, so the comparison
+     * is positional: a draw *after* the last `background`/`border` entry paints on top of it, a
+     * draw before it paints underneath. With no token-shape modifier on the chain there is no shape
+     * to order against and the capture stays a plain background.
+     */
+    private fun LayoutInspectorNode.drawPaintsOverTokenShape(): Boolean {
+      val firstDraw = modifiers.indexOfFirst { it.isCustomDraw() }
+      if (firstDraw < 0) return false
+      val lastShape = modifiers.indexOfLast { it.isTokenShapeModifier() }
+      return lastShape >= 0 && firstDraw > lastShape
+    }
+
+    /** The modifiers a layer's token-derived `<rect>`/`<path>` shape is resolved from. */
+    private fun LayoutInspectorModifier.isTokenShapeModifier(): Boolean {
+      val lower = name.lowercase()
+      return lower == "background" ||
+        lower.contains("backgroundelement") ||
+        lower == "border" ||
+        lower.contains("bordermodifier") ||
+        lower.contains("borderelement")
+    }
+
+    /**
      * The region the Canvas draw actually paints — the union of the draw modifiers' bounds, which
      * is tighter than the (padded) node box (`Spacer(padding).drawBehind`). Falls back to the node
      * bounds when a draw modifier carries none.
@@ -1461,18 +1555,25 @@ data class FigmaSvgModel(
     /** Union of every drawing layer's bounds (grouping-only layers don't constrain the canvas). */
     private fun FigmaSvgLayer.extent(): Extent? {
       var acc: Extent? = null
+      fun add(left: Int, top: Int, right: Int, bottom: Int) {
+        if (right <= left || bottom <= top) return
+        acc =
+          acc?.let {
+            Extent(
+              minOf(it.minX, left),
+              minOf(it.minY, top),
+              maxOf(it.maxX, right),
+              maxOf(it.maxY, bottom),
+            )
+          } ?: Extent(left, top, right, bottom)
+      }
       fun merge(l: FigmaSvgLayer) {
-        if (l.paints && l.width > 0 && l.height > 0) {
-          acc =
-            acc?.let {
-              Extent(
-                minOf(it.minX, l.left),
-                minOf(it.minY, l.top),
-                maxOf(it.maxX, l.right),
-                maxOf(it.maxY, l.bottom),
-              )
-            } ?: Extent(l.left, l.top, l.right, l.bottom)
-        }
+        if (l.paints) add(l.left, l.top, l.right, l.bottom)
+        // A background raster is drawn at its **own** bounds, which need not sit inside the layer
+        // box: a card's chrome is captured from a draw modifier that sits above the padding, so it
+        // is wider and taller than the padded content box the layer is placed at. Counting only the
+        // box would shrink-wrap the canvas over pixels the SVG really draws (issue #2937).
+        l.background?.let { add(it.left, it.top, it.right, it.bottom) }
         l.children.forEach(::merge)
       }
       merge(this)

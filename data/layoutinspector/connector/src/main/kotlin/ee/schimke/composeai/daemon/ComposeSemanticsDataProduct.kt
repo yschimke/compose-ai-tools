@@ -1084,6 +1084,23 @@ internal object ComposeLayoutInspector {
         ?: if (children.isEmpty())
           DrawCaptureExtractor.extract(modifiers, captureW, captureH, density)
         else null
+    // Whatever the two vector captures above couldn't read, re-drawn in isolation as pixels
+    // (issue #2937). Tier 3, deliberately last: an `ImageVector` or a recorded draw is editable
+    // vector and always wins, so this only fires for a draw with no flat-paint form at all — a
+    // transform, a shader, a bitmap, a native-canvas blit. Unlike the frame crop it holds no
+    // descendant pixels, so it is *not* restricted to childless nodes: a container that draws
+    // (every component the Remote Compose embedded player interprets) keeps its editable children
+    // over its own captured chrome.
+    // Curved runs are skipped for the same reason the export refuses to lay a capture under them: a
+    // `CurvedLayout`/`TimeText` paints through a draw modifier, and `curvedTexts` above already
+    // carries those runs as editable `<textPath>` geometry. Capturing here would spend an offscreen
+    // render on pixels the export must then discard.
+    val drawRaster =
+      if (vectorGraphic == null && curvedTexts.isEmpty()) {
+        DrawRasterCapture.capture(modifiers, density) { info ->
+          info.coordinates.boundsIn(rootCoords)
+        }
+      } else null
     return LayoutInspectorNode(
       nodeId = semanticsId?.toString() ?: identityId,
       component = ownComponent,
@@ -1122,6 +1139,7 @@ internal object ComposeLayoutInspector {
           sizeHeightPx = height,
           density = density,
         ),
+      drawRaster = drawRaster,
       transform = coordinates.scaleIn(rootCoords),
       children = children,
     )

@@ -91,7 +91,13 @@ object LayoutInspectorProduct {
   // `ImageVector` it's an unrepresented overlay (Jetsnack's blend-mode gradient icon tint) that has
   // to raster instead of exporting the untinted glyph. Additive — older entries decode with
   // `fromDrawCapture = false`, which is the `ImageVector` reading they all had.
-  const val SCHEMA_VERSION: Int = 10
+  // v11 (#2937): each node may carry a `drawRaster` — its own imperative draw re-invoked against an
+  // offscreen bitmap, as a base64 PNG plus the region it covers. Captured only when the draw could
+  // not be vectorised, so it is the *fallback* for a draw that reaches for a transform / shader /
+  // bitmap / native canvas (every component the Remote Compose embedded player interprets). Unlike
+  // a frame crop it holds no descendant pixels, so a container that draws can keep editable
+  // children over it. Additive — older entries decode with `drawRaster = null`.
+  const val SCHEMA_VERSION: Int = 11
   const val FILE: String = "layout-inspector.json"
 }
 
@@ -558,6 +564,14 @@ data class LayoutInspectorNode(
    */
   val placeholder: LayoutInspectorPlaceholder? = null,
   /**
+   * The pixels this node's own imperative draw painted, re-rendered in **isolation** — captured
+   * when [vectorGraphic] couldn't be (the draw used a transform, a shader, a bitmap, a native
+   * canvas). Null for the overwhelming majority of nodes (nothing draws imperatively, or the draw
+   * vectorised, or it painted nothing of its own). Additive (v10): older `layout-inspector.json`
+   * decodes with `drawRaster = null`. See [LayoutInspectorDrawRaster].
+   */
+  val drawRaster: LayoutInspectorDrawRaster? = null,
+  /**
    * The draw-time scale this node inherits from the `graphicsLayer`s above it, when it isn't the
    * identity — a Wear `TransformingLazyColumn` item shrunk toward the curved edge. [bounds] already
    * carries the scaled rect; this says the shrink is *real* so a consumer doesn't grow the node
@@ -603,6 +617,47 @@ data class LayoutInspectorPlaceholder(
   /** Shape descriptor (`"circle"` / `"cut"` / …) for a shape the corner fields can't express. */
   val shape: String? = null,
 )
+
+/**
+ * The pixels a node's own draw modifier painted, captured by **re-invoking its draw lambda against
+ * an offscreen bitmap** rather than by cropping them out of the composited frame.
+ *
+ * This is the fallback for a draw the `DrawCaptureExtractor` recorder can't turn into `<path>`s —
+ * anything that reaches for a transform, a clip, a shader, a bitmap or the native canvas. The
+ * Remote Compose embedded player is the motivating case (issue #2937): every component it
+ * interprets paints its background/shape through one `drawWithContent { executeOperations(…) }`,
+ * which uses `drawContext.canvas` directly, so the recorder aborts and the node's chrome used to
+ * vanish from the export entirely.
+ *
+ * Isolation is what makes this usable where the frame crop isn't. The frame carries *composited*
+ * pixels, so cropping a container's box bakes in its descendants — which is why the crop path is
+ * restricted to childless leaves, and why an RC card (a container that draws) fell through it. An
+ * isolated re-draw has no descendants in it by construction: [PNG_BASE64][pngBase64] holds only
+ * what this node's own modifier painted, so the export can lay it under the node's still-editable
+ * children without double-rendering anything. It also needs no frame at all, so the vector-only
+ * export gains the same chrome.
+ *
+ * The capture stops at the lambda's `drawContent()` call, so these pixels are strictly the
+ * *behind-the-content* pass. Anything a `drawWithContent` paints *over* its children (a scrim, a
+ * blend-mode tint) is deliberately not here — it would be wrong beneath them, and dropping it
+ * matches what the export did before.
+ */
+@Serializable
+data class LayoutInspectorDrawRaster(
+  /** Captured region in root-pixel space — the union of the node's draw modifiers' own bounds. */
+  val left: Int,
+  val top: Int,
+  val right: Int,
+  val bottom: Int,
+  /** The isolated re-draw as a base64 PNG, `right-left` × `bottom-top` px. */
+  val pngBase64: String,
+) {
+  val width: Int
+    get() = (right - left).coerceAtLeast(0)
+
+  val height: Int
+    get() = (bottom - top).coerceAtLeast(0)
+}
 
 /**
  * An editable vector graphic (an `ImageVector` an `Icon`/`Image` painted) captured off a node's
