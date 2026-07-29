@@ -223,7 +223,7 @@ internal object ModifierTokenResolver {
    * radial/sweep/shader brush, so those keep the raster fallback rather than being emitted as a
    * gradient they aren't.
    */
-  private fun linearGradient(
+  internal fun linearGradient(
     mod: Any,
     elements: Map<String, Any?>,
     widthPx: Int,
@@ -251,8 +251,14 @@ internal object ModifierTokenResolver {
       stops = stops,
       startX = (offsetAxis(start, 0, 0f) / w).coerceIn(0f, 1f),
       startY = (offsetAxis(start, 1, 0f) / h).coerceIn(0f, 1f),
+      // A non-finite endpoint component means "the far edge of the box" on *that* axis, so each
+      // one falls back to its own extent. `Brush.linearGradient(colors)` with no explicit
+      // endpoints stores `Offset.Infinite` — both axes infinite — which is the diagonal
+      // top-left → bottom-right gradient several samples use; falling back to 0 on Y flattened
+      // those to horizontal. `horizontalGradient`/`verticalGradient` leave the other axis finite
+      // at 0, so they are unaffected.
       endX = (offsetAxis(end, 0, w) / w).coerceIn(0f, 1f),
-      endY = (offsetAxis(end, 1, 0f) / h).coerceIn(0f, 1f),
+      endY = (offsetAxis(end, 1, h) / h).coerceIn(0f, 1f),
     )
   }
 

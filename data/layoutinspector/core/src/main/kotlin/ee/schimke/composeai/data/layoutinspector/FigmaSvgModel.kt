@@ -880,8 +880,12 @@ data class FigmaSvgModel(
         // single dp scaled into the render's px space — the width of a Material hairline outline —
         // when the border width wasn't captured. `coerceAtLeast(1.0)` keeps a visible hairline at
         // density < 1.
+        // A *gradient* border is a stroke too — it just resolved to a brush instead of a flat
+        // colour — so it takes the same captured width. Keying this on `stroke` alone left every
+        // brush ring at the 1px data-class default (Jetsnack's 2dp gradient ring drew as a
+        // hairline).
         strokeWidthPx =
-          if (stroke != null) {
+          if (stroke != null || strokeGradient != null) {
             val dp = tokens?.borderWidth?.removeSuffix("dp")?.toDoubleOrNull()
             ((dp?.let { it * ctx.density } ?: ctx.density.toDouble()) * scaleMean).coerceAtLeast(
               1.0
