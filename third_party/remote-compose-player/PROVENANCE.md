@@ -71,6 +71,27 @@ Local deltas over that snapshot (each also filed upstream):
   `readInt()` (same 4 bytes, so the stream stays aligned), matching what
   `CoreText` stores and decodes with `isNaNBits`/`intBitsToFloat`.
 
+- **Size-relative corner radii on `MODIFIER_ROUNDED_CLIP_RECT` (opcode 54)**
+  (`src/core/operations/layout/modifiers/ModifierOperations.ts`, with a guard in
+  `src/web/CanvasPaintContext.ts`). Each corner arrives as raw float32 bits that may be a
+  NaN-encoded variable reference: a *fixed* shape (`RemoteRoundedCornerShape(4.dp)`) writes a dp
+  literal, but a *size-relative* one — `RemoteCircleShape`, a 50% corner — writes an expression id
+  computed from the component's measured width and height. `RoundedClipRectModifier.read` used
+  `readFloat()`, which collapses that payload to a plain `NaN`; `ctx.roundRect` ignores a radius
+  list containing a non-finite value entirely, so the following `clip()` got an **empty path** —
+  and an empty clip hides everything drawn inside the component, not just its corners. A round
+  watch face therefore replayed as a completely blank canvas while parsing cleanly and emitting no
+  warning ([#2930](https://github.com/yschimke/compose-ai-tools/issues/2930)). The modifier now
+  keeps the raw bits and implements `VariableSupport` the way `PaddingModifier` does, so a
+  NaN-encoded corner is resolved against the context. The dp→px density scale is applied to
+  *literal* corners only: a variable corner is derived from the component's measured size, which
+  the engine already carries in generation pixels, so scaling it would double-apply the density.
+  `apply()` re-resolves before clipping, because a corner expressed over the component's own size
+  only has a value once that component has been measured. Independently, `roundedClipRect` now
+  sanitises its radii (non-finite → square, over-large → clamped to half the shorter side) so a
+  future unresolved corner degrades to a cosmetic difference rather than a blank component. Guarded
+  by `scripts/design-artifacts/rc-round-clip.test.mjs` against the committed round-clip fixture.
+
 - **Concrete font stacks for the generic families** (`src/web/CanvasPaintContext.ts`). The typeface
   id → CSS family mapping named only the generics (`sans-serif` / `serif` / `monospace`, with
   `DEFAULT` and every unrecognised id collapsing to `sans-serif`). Android resolves those families

@@ -5039,6 +5039,43 @@ var RC = (() => {
       this.mTopEnd = topEnd;
       this.mBottomStart = bottomStart;
       this.mBottomEnd = bottomEnd;
+      this.mTopStartValue = isNaNBits(topStart) ? 0 : intBitsToFloat(topStart);
+      this.mTopEndValue = isNaNBits(topEnd) ? 0 : intBitsToFloat(topEnd);
+      this.mBottomStartValue = isNaNBits(bottomStart) ? 0 : intBitsToFloat(bottomStart);
+      this.mBottomEndValue = isNaNBits(bottomEnd) ? 0 : intBitsToFloat(bottomEnd);
+    }
+    registerListening(context) {
+      if (isNaNBits(this.mTopStart)) context.listensTo(idFromBits(this.mTopStart), this);
+      if (isNaNBits(this.mTopEnd)) context.listensTo(idFromBits(this.mTopEnd), this);
+      if (isNaNBits(this.mBottomStart)) context.listensTo(idFromBits(this.mBottomStart), this);
+      if (isNaNBits(this.mBottomEnd)) context.listensTo(idFromBits(this.mBottomEnd), this);
+    }
+    updateVariables(context) {
+      const ts = this.resolve(context, this.mTopStart);
+      const te = this.resolve(context, this.mTopEnd);
+      const bs = this.resolve(context, this.mBottomStart);
+      const be = this.resolve(context, this.mBottomEnd);
+      this.mTopStartValue = ts;
+      this.mTopEndValue = te;
+      this.mBottomStartValue = bs;
+      this.mBottomEndValue = be;
+    }
+    /**
+     * A literal corner is authored in dp, so under DP density behavior AndroidX's
+     * `RoundedClipRectModifierOperation.paint` scales it by the doc density — replicate
+     * that so the clipped corners match the baked render at densities != 1. A *variable*
+     * corner is deliberately left alone: it is computed from the component's measured
+     * width/height, which the engine already carries in generation pixels, so scaling it
+     * would double-apply the density and over-round the shape.
+     */
+    resolve(context, bits) {
+      if (isNaNBits(bits)) return context.getFloat(idFromBits(bits));
+      let v = intBitsToFloat(bits);
+      if (context.getDensityBehavior() === DENSITY_BEHAVIOR_DP) {
+        const d = context.getDensity();
+        if (!Number.isNaN(d) && d > 0) v *= d;
+      }
+      return v;
     }
     setComponent(c) {
       this.mComponent = c;
@@ -5056,28 +5093,26 @@ var RC = (() => {
       const w = this.mLayoutW;
       const h = this.mLayoutH;
       if (w > 0 && h > 0) {
-        let ts = this.mTopStart, te = this.mTopEnd, bs = this.mBottomStart, be = this.mBottomEnd;
-        if (context.getDensityBehavior() === DENSITY_BEHAVIOR_DP) {
-          const d = context.getDensity();
-          if (!Number.isNaN(d) && d > 0) {
-            ts *= d;
-            te *= d;
-            bs *= d;
-            be *= d;
-          }
-        }
-        pc.roundedClipRect(w, h, ts, te, bs, be);
+        this.updateVariables(context);
+        pc.roundedClipRect(
+          w,
+          h,
+          this.mTopStartValue,
+          this.mTopEndValue,
+          this.mBottomStartValue,
+          this.mBottomEndValue
+        );
       }
     }
     deepToString(indent) {
-      return `${indent}RoundedClipRectModifier`;
+      return `${indent}RoundedClipRectModifier(${this.mTopStartValue}, ${this.mTopEndValue}, ${this.mBottomStartValue}, ${this.mBottomEndValue})`;
     }
     static read(buffer, operations) {
       operations.push(new _RoundedClipRectModifier(
-        buffer.readFloat(),
-        buffer.readFloat(),
-        buffer.readFloat(),
-        buffer.readFloat()
+        buffer.readInt(),
+        buffer.readInt(),
+        buffer.readInt(),
+        buffer.readInt()
       ));
     }
   };
@@ -18692,8 +18727,16 @@ void main() {
       this.ctx.clip(path);
     }
     roundedClipRect(width, height, topStart, topEnd, bottomStart, bottomEnd) {
+      const cap = Math.min(width, height) / 2;
+      const r = (v) => Number.isFinite(v) ? Math.min(Math.max(v, 0), cap) : 0;
       this.ctx.beginPath();
-      this.ctx.roundRect(0, 0, width, height, [topStart, topEnd, bottomEnd, bottomStart]);
+      this.ctx.roundRect(
+        0,
+        0,
+        width,
+        height,
+        [r(topStart), r(topEnd), r(bottomEnd), r(bottomStart)]
+      );
       this.ctx.clip();
     }
     startGraphicsLayer(w, h) {
