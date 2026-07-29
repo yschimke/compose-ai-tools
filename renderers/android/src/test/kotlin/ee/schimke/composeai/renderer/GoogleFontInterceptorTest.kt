@@ -1,6 +1,6 @@
 package ee.schimke.composeai.renderer
 
-import androidx.compose.ui.text.font.FontWeight
+import ee.schimke.composeai.fonts.google.GoogleFontKey
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

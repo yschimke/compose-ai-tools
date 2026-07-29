@@ -1,6 +1,6 @@
 package ee.schimke.composeai.renderer
 
-import androidx.compose.ui.text.font.FontWeight
+import ee.schimke.composeai.fonts.google.GoogleFontKey
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.PrintStream
@@ -41,7 +41,7 @@ class FontResolutionDiagnosticsTest {
   }
 
   private fun key(name: String, weight: Int = 400, italic: Boolean = false) =
-    GoogleFontKey(name, FontWeight(weight), italic)
+    GoogleFontKey(name, weight, italic)
 
   @Test
   fun `failOnFallback defaults to true and honours the opt-out`() {
