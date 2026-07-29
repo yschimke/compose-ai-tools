@@ -10,6 +10,11 @@
       "id": "android-samples",
       "heading": "android/compose-samples",
       "noun": "sample(s)"
+    },
+    {
+      "id": "pocket-casts",
+      "heading": "Automattic/pocket-casts-android",
+      "noun": "app(s)"
     }
   ],
   "catalogs": [
@@ -44,11 +49,24 @@
     {
       "system": "pocketcasts",
       "repo": "yschimke/pocket-casts-android",
-      "listed": true
+      "listed": true,
+      "group": "pocket-casts",
+      "attributionRepos": [
+        "Automattic/pocket-casts-android"
+      ]
     },
     {
       "system": "pocketcasts-wear",
       "repo": "yschimke/pocket-casts-android",
+      "listed": true,
+      "group": "pocket-casts",
+      "attributionRepos": [
+        "Automattic/pocket-casts-android"
+      ]
+    },
+    {
+      "system": "horologist",
+      "repo": "yschimke/horologist",
       "listed": true
     },
     {
