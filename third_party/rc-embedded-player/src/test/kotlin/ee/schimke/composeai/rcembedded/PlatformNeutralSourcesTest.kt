@@ -170,7 +170,9 @@ class PlatformNeutralSourcesTest {
      */
     val ANDROID_MAIN_DECLARATIONS =
       setOf(
-        // extends AndroidRemoteContext, and the composition local that hands it out
+        // No longer *imports* anything Android — it extends the neutral StoreBackedRemoteContext
+        // now — but it still holds an `RcImageLoader`, which is Drawable-typed. Import-clean and
+        // not yet movable are different things, and this is the difference.
         "GraphContext",
         "LocalGraphContext",
         // android.graphics.Bitmap / Rect / drawable on the canvas draw path
@@ -206,9 +208,16 @@ class PlatformNeutralSourcesTest {
       listOf(
         // Decoupled by moving `rememberRemoteBitmapAsState` to `state/RcPlayerBitmapState.kt`. Its
         // fourteen sibling helpers are referenced by 19 files outside `state/`, which makes this the
-        // highest-leverage file in the split. Still blocked on the `GraphContext` chain: the
-        // helpers read `LocalGraphContext` to resolve computed ids.
-        "state/RcPlayerState.kt"
+        // highest-leverage file in the split. Still blocked behind `GraphContext` — the helpers read
+        // `LocalGraphContext` to resolve computed ids.
+        "state/RcPlayerState.kt",
+        // Reparented from `AndroidRemoteContext` onto the neutral `StoreBackedRemoteContext`, which
+        // is what freed the state/expression path of any *platform* dependency. What still pins it
+        // is an ordinary in-package one: it holds an `RcImageLoader` (Drawable-typed). Seam that and
+        // both this and `RcPlayerState.kt` graduate together.
+        "GraphContext.kt",
+        // Declares the composition locals the state path reads, `LocalGraphContext` among them.
+        "RcPlayerCompositionLocals.kt",
       )
 
     /**
@@ -217,6 +226,13 @@ class PlatformNeutralSourcesTest {
      * the document data model, and the snapshot-backed state store are plain `remote-core` types.
      */
     val READY_FOR_JVM_COMMON =
-      listOf("CoreDataAccessors.kt", "CoreDataModel.kt", "SnapshotRemoteComposeState.kt")
+      listOf(
+        "CoreDataAccessors.kt",
+        "CoreDataModel.kt",
+        "SnapshotRemoteComposeState.kt",
+        // Written here rather than vendored: a platform-neutral `RemoteContext`, ported from
+        // `AndroidRemoteContext` minus its one Android method. It touches nothing but `remote-core`.
+        "StoreBackedRemoteContext.kt",
+      )
   }
 }

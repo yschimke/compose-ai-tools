@@ -111,6 +111,25 @@ revert to upstream verbatim.
   Worth reporting upstream on its own — any out-of-tree consumer following the documented
   downloadable-fonts pattern against the published artifact hits this, not just this player.
 
+- **`GraphContext` reparented off `AndroidRemoteContext`** (`GraphContext.kt`, plus the new
+  `StoreBackedRemoteContext.kt`). Upstream's `GraphContext` extends `AndroidRemoteContext`, which
+  pinned it — and through `LocalGraphContext`, the whole state/expression path — to Android for
+  behaviour it never used: it overrides every platform-bound member away (`loadBitmap`, `loadShader`
+  are empty bodies) and shares the store explicitly.
+
+  `StoreBackedRemoteContext` is a platform-neutral `RemoteContext` **ported from
+  `AndroidRemoteContext` at the pinned commit**, method for method, minus the one method that cannot
+  come along. That framing is deliberate: `GraphContext`'s leaf reads call `super.getFloat`/
+  `getText`/…, so a reimplementation that diverged would change every computed value — which is every
+  pixel. The bodies are upstream's, not ours. (`getText` reads via `getFromId`, not a typed getter —
+  exactly the sort of thing a from-signatures guess gets wrong.)
+
+  This is only viable because `AndroidRemoteContext` is barely an Android class: of its 63 methods,
+  **five** touch the platform, and four of those (`setAndroidContext`, `setBitmapLoader`,
+  `setTypefaceResolver`, `useCanvas`) are its own API rather than the `RemoteContext` contract. The
+  sole contract method that does is `loadBitmap` — which `GraphContext` already stubbed. Worth
+  reporting upstream alongside their issue #12: the split they describe is close to mechanical.
+
 - **`rememberRemoteBitmapAsState` moved to its own file** (`state/RcPlayerBitmapState.kt`, out of
   `state/RcPlayerState.kt`). Not a behaviour change and not an upstream gap — a refactor in service
   of the CMP split, recorded here because it is the one place the snapshot is no longer file-for-file
@@ -170,8 +189,8 @@ each verifiable by grep:
 | `RcPlayerChildren` | `RcPlayer.kt` | 5 of the 8 `layout/` files |
 | `RcPlayerComponent` | `RcPlayer.kt` | `layout/RcPlayerStateLayout.kt` |
 | `executeOperations` | `RcPlayerDrawing.kt` | `RcPlayerCanvas.kt`, `RcPlayerModifiers.kt` |
-| `GraphContext` (extends `AndroidRemoteContext`) | `GraphContext.kt` | the state + expression path |
-| `RcImageLoader` (`Drawable`-typed) | `RcImageLoader.kt` | `layout/RcPlayerImageLayout.kt`, `RcPlayerCustom.kt` |
+| ~~`GraphContext` (extends `AndroidRemoteContext`)~~ — **resolved**, see below | `GraphContext.kt` | the state + expression path |
+| `RcImageLoader` (`Drawable`-typed) | `RcImageLoader.kt` | `layout/RcPlayerImageLayout.kt`, `RcPlayerCustom.kt`, **`GraphContext.kt`** |
 
 So the unit of work is a **declaration**, not a file. Some of those splits are nearly free — the
 `rememberRemote*AsState` row was the largest single blocker and its whole Android coupling was *one*
@@ -285,15 +304,31 @@ single-target milestone it cannot be verified. It splits into 1a/1b.
 1. **1a — declaration splits, still a plain android library.** Peel the platform-neutral
    declarations out of the coupled files so a `jvmCommonMain` worth having exists *before* the build
    is restructured. Each split is behaviour-preserving and verified by a compile, so they land
-   independently and bisect cleanly. Order by the table above: `state/`'s Android *import* is gone
-   (**done**), but the chain it sits on runs through `GraphContext`, so that is the next one — split
-   the `RemoteContext` seam and the whole state + expression path graduates at once. Then
-   `RcPlayerChildren`/`RcPlayerComponent`/`mapEasing` out of `RcPlayer.kt`, then the bitmap-typed
-   helpers out of `RcPlayerDrawing.kt` so `executeOperations`' dispatcher can follow.
+   independently and bisect cleanly. Progress so far, in the order the table above implies:
 
-   Note this reorders against the original plan: `GraphContext` is the `RemoteContext` seam that was
-   step 2's first item, and it turns out to gate most of 1a. Splitting it early is what makes a
-   `jvmCommonMain` larger than a handful of files reachable at all.
+   - `state/`'s Android *import* — **done**, by splitting out `rememberRemoteBitmapAsState`.
+   - `GraphContext`'s `AndroidRemoteContext` base — **done**, via `StoreBackedRemoteContext`. This
+     was step 2's `RemoteContext` seam, pulled forward because it gated most of 1a; it turned out to
+     need no `expect`/`actual` at all, since `RemoteContext` is itself platform-neutral (42 abstract
+     members, not one naming an Android type — even `loadBitmap` takes a `byte[]`).
+   - **Next: `RcImageLoader`.** It is now the single thing pinning `GraphContext` (which holds one)
+     and therefore `RcPlayerState.kt` behind it. The interface is `Drawable`-typed; making it
+     generic over a platform image handle, or narrowing what `GraphContext` needs from it, graduates
+     the state + expression path in one move.
+   - Then `RcPlayerChildren`/`RcPlayerComponent`/`mapEasing` out of `RcPlayer.kt`, then the
+     bitmap-typed helpers out of `RcPlayerDrawing.kt` so `executeOperations`' dispatcher can follow.
+
+   **Import-clean and movable are different things**, and 1a keeps tripping over the difference —
+   `GraphContext` imports nothing Android yet still cannot move, because of an ordinary in-package
+   reference. `PlatformNeutralSourcesTest` tracks the two as separate lists for exactly this reason.
+
+   **Deferred deliberately** (niche surfaces the jvm target does not need in a first cut, each
+   isolated enough to postpone): **particles** — `RcPlayerParticles.kt` is the only
+   `AndroidPaintContext` user, so deferring it avoids a Skia `PaintContext` port entirely, at the
+   cost of a small seam where `RcPlayerPaint.kt`/`RcPlayerDrawing.kt` dispatch into it; **AGSL
+   shaders** (`RcPlayerPaint.kt`, `RcPlayer.kt`); and **downloadable fonts**
+   (`RcPlayerTextLayout.kt`). What is *not* deferrable is framework `Paint` and bitmaps — those are
+   the draw path itself.
 2. **1b — restructure to KMP, android target only,** moving the (now much larger) clean set into
    `jvmCommonMain`. Ship it with the forbidden-import guard from above, since the target itself
    enforces nothing. One build-level unknown left: whether `com.android.kotlin.multiplatform.library`
