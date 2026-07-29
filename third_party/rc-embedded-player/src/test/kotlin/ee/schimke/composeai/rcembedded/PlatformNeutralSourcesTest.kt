@@ -82,18 +82,50 @@ class PlatformNeutralSourcesTest {
   fun jvmCommonReadyFilesImportNothingThatStaysInAndroidMain() {
     val offenders = mutableListOf<String>()
     forEachDeclaredFile(READY_FOR_JVM_COMMON) { relative, imported, line ->
-      val simpleName = imported.substringAfterLast('.')
-      if (imported.startsWith(PLAYER_PACKAGE) && simpleName in ANDROID_MAIN_DECLARATIONS) {
-        offenders += "$relative: $line"
+      if (imported.startsWith(PLAYER_PACKAGE)) {
+        val simpleName = importedSimpleName(imported)
+        // A star-import of the player package drags in whatever stays in `androidMain` and offers
+        // no name to check, so it is refused rather than waved through.
+        if (simpleName == "*" || simpleName in ANDROID_MAIN_DECLARATIONS) {
+          offenders += "$relative: $line"
+        }
       }
     }
     assertEquals(
       "These files are declared ready for jvmCommonMain but import a declaration that stays in " +
-        "androidMain, which jvmCommonMain cannot see — the move would not compile. Split the " +
-        "declaration first, or move the file back to IMPORT_CLEAN.",
+        "androidMain (or star-import the package it lives in), which jvmCommonMain cannot see — " +
+        "the move would not compile. Split the declaration first, or move the file back to " +
+        "IMPORT_CLEAN.",
       emptyList<String>(),
       offenders,
     )
+  }
+
+  /**
+   * The declaration name an `import` line actually binds, ignoring any `as` alias.
+   *
+   * The alias is a local rename, not part of the declaration's identity — `import …embedded.Foo as
+   * Bar` still depends on `Foo`. Taking the simple name off the raw line would compare
+   * `"Foo as Bar"` and match nothing, so an aliased import of an `androidMain` declaration would
+   * slip past. Not hypothetical: this vendored tree already aliases imports off this very package
+   * (`…embedded.R as GoogleFontR` in two files).
+   */
+  private fun importedSimpleName(imported: String): String =
+    imported.substringBefore(" as ").trim().substringAfterLast('.')
+
+  @Test
+  fun importedSimpleNameIgnoresAliases() {
+    assertEquals("LocalGraphContext", importedSimpleName("$PLAYER_PACKAGE.LocalGraphContext"))
+    assertEquals(
+      "LocalGraphContext",
+      importedSimpleName("$PLAYER_PACKAGE.LocalGraphContext as PlayerGraphContext"),
+    )
+    // The real aliased import in the tree today.
+    assertEquals("R", importedSimpleName("$PLAYER_PACKAGE.R as GoogleFontR"))
+    // Star-imports surface as `*` so the caller can refuse them.
+    assertEquals("*", importedSimpleName("$PLAYER_PACKAGE.*"))
+    // A name merely containing "as" is not an alias.
+    assertEquals("CanvasOperations", importedSimpleName("$PLAYER_PACKAGE.CanvasOperations"))
   }
 
   /** Feeds every `import` line of each declared file to [block] as (relative path, FQN, raw line). */
