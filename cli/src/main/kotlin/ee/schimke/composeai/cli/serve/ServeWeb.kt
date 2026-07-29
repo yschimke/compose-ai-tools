@@ -329,6 +329,10 @@ object ServeWeb {
     .cp-modes-inputs { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
     /* Backend badge flips its accent green when a live lane drives the stage (see backendBadgeScript). */
     .cp-backend[data-live="true"] { background: rgba(30, 122, 52, 0.82); }
+    /* …and amber while that lane is still activating ("connecting…"), so the wait reads on the
+       preview itself rather than in the controls footer. Declared after the green rule so it wins
+       at equal specificity (a connecting live lane carries both attributes). */
+    .cp-backend[data-pending="true"] { background: rgba(138, 83, 0, 0.86); }
     /* Shared-document surfaces (POST /docs → GET /d/<id>): the drop zone on the upload page and the
        played-back document + its facts on the permalink page. Both reuse the card/stage chrome. */
     .cp-drop { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 720px;
@@ -1589,6 +1593,11 @@ object ServeWeb {
    * (always that), `SVG` for the vector snapshot lane, else the server-supplied `data-live-backend`
    * / `data-snapshot-backend` label, so the daemon's actual platform (desktop/JVM or Android) and
    * the snapshot renderer stay accurate.
+   *
+   * The badge doubles as the **activation** indicator: while the viewer carries `data-pending` (set
+   * by [viewerScript] when a live lane is coming up), the badge shows that label instead — `◌
+   * connecting…` on an amber accent — so the wait is visible on the preview rather than as small
+   * grey text under the controls, where it was easy to miss.
    */
   private fun backendBadgeScript(): String =
     """
@@ -1608,10 +1617,15 @@ object ServeWeb {
       }
       function refresh() {
         var mode = root.getAttribute("data-mode");
-        badge.textContent = label(mode);
+        // ◌ (an open circle) reads as "not yet painting", distinct from the ▶/▪ lane icons.
+        var pending = root.getAttribute("data-pending");
+        badge.textContent = pending ? "◌ " + pending : label(mode);
         badge.setAttribute("data-live", isLive(mode) ? "true" : "false");
+        if (pending) badge.setAttribute("data-pending", "true");
+        else badge.removeAttribute("data-pending");
       }
-      new MutationObserver(refresh).observe(root, { attributes: true, attributeFilter: ["data-mode"] });
+      new MutationObserver(refresh)
+        .observe(root, { attributes: true, attributeFilter: ["data-mode", "data-pending"] });
       refresh();
     })();
     """
@@ -3280,7 +3294,7 @@ object ServeWeb {
       </div>
       <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr>
         $navDrawer
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         <div class="cp-controls" id="cp-controls">
           <details class="cp-group" data-cp-group="appearance">
             <summary>Appearance</summary>
@@ -3485,7 +3499,15 @@ object ServeWeb {
       // Surface a mode-activation failure visibly, instead of leaving a stale frame that reads as a
       // (wrong) render. Every lane routes its failure here — a dead Live stream, a Wasm app that
       // never boots, a /render that errors — so "can't activate this mode" is never silent.
+      // Activation state for a lane that hasn't painted yet, surfaced on the stage's backend badge
+      // (see backendBadgeScript) instead of the controls footer — a "connecting…" nobody scrolls to
+      // isn't feedback. Pass null to clear.
+      function setPending(label) {
+        if (label) root.setAttribute("data-pending", label);
+        else root.removeAttribute("data-pending");
+      }
       function showModeError(msg) {
+        setPending(null);
         if (!errorBox) { status.textContent = msg; return; }
         errorBox.textContent = msg;
         errorBox.hidden = false;
@@ -3962,7 +3984,7 @@ object ServeWeb {
         positionOverlay(canvas);
         img.style.visibility = "hidden";
         canvas.hidden = false;
-        status.textContent = "connecting…";
+        setPending("connecting…");
         var proto = location.protocol === "https:" ? "wss:" : "ws:";
         // Request WebP frames (smaller; the browser decodes them via the data URL, and the daemon
         // downgrades to PNG when it can't encode WebP — each frame carries its actual codec).
@@ -3970,27 +3992,41 @@ object ServeWeb {
         // Track whether the stream ever delivered a frame: a close/error *before* the first frame is
         // a failed activation (surface it), whereas a close *after* frames is just a normal teardown.
         var liveGotFrame = false;
-        ws = new WebSocket(proto + "//" + location.host + base + "/ws/" +
+        // Hold the socket in a per-activation local as well as `ws`, and gate every callback on
+        // `ws === sock`. Toggling Live off and straight back on opens a replacement before the old
+        // socket's close event is delivered, and that stale callback would otherwise clear the NEW
+        // connection's pending badge (its own liveGotFrame is true, so it skips the error branch)
+        // and null out `ws` — orphaning the live socket the input/override senders reach for.
+        var sock = new WebSocket(proto + "//" + location.host + base + "/ws/" +
           encodeURIComponent(previewId) + "?" + (qs ? qs + "&codec=webp" : "codec=webp"));
-        ws.onopen = function () {
+        ws = sock;
+        sock.onopen = function () {
           // The connect URL seeds only query()'s fields — the display axes plus changed knobs — so
           // the live-only overlays (talkBack / touchOverlay) and anything toggled during the
           // connecting window aren't in it. Replay the full live override map once the socket is
           // ready so the daemon reflects the exact current control state, including an overlay
           // checked before onopen whose change event the readyState guard dropped.
-          ws.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
+          sock.send(JSON.stringify({ type: "setOverrides", overrides: liveOverrides() }));
         };
-        ws.onmessage = function (ev) {
+        sock.onmessage = function (ev) {
+          // A frame from a socket the viewer has already replaced is stale in both senses: it must
+          // not paint over the new lane's stage, nor report it as connected.
+          if (ws !== sock) return;
           var m;
           try { m = JSON.parse(ev.data); } catch (e) { return; }
-          if (m.type === "frame") { liveGotFrame = true; clearModeError(); drawFrame(m.dataBase64, m.codec); status.textContent = ""; }
+          if (m.type === "frame") { liveGotFrame = true; clearModeError(); drawFrame(m.dataBase64, m.codec); setPending(null); }
           else if (m.type === "error") { showModeError(m.message || "Live preview error."); }
         };
         // onerror always precedes onclose; let onclose decide (it carries the code/reason). Only
         // surface here if the socket somehow errors while already open+frame-less and never closes.
-        ws.onerror = function () { if (!liveGotFrame) status.textContent = "connecting…"; };
-        ws.onclose = function (ev) {
+        sock.onerror = function () { if (ws === sock && !liveGotFrame) setPending("connecting…"); };
+        sock.onclose = function (ev) {
+          // Not the current socket ⇒ a teardown the viewer already accounted for in closeStream()
+          // (which cleared pending and restored the snapshot). Leave the live lane's state alone.
+          if (ws !== sock) return;
           ws = null;
+          // The lane is done waiting either way — it painted, or it failed (showModeError below).
+          setPending(null);
           // Closed before any frame ⇒ the mode failed to activate. Drop the stale seeded snapshot
           // from the canvas so it can't masquerade as a live render, and surface why.
           if (!liveGotFrame && live && live.checked) {
@@ -4002,6 +4038,8 @@ object ServeWeb {
       }
       function closeStream() {
         root.setAttribute("data-mode", "snapshot");
+        // Toggling Live off mid-connect must not leave the badge stuck on "connecting…".
+        setPending(null);
         if (ws) { ws.close(); ws = null; }
         canvas.hidden = true;
         // Tear down the overlay: drop the absolute positioning and restore the snapshot img's slot.

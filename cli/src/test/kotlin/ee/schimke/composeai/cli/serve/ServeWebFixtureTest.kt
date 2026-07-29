@@ -2225,7 +2225,7 @@ class ServeWebFixtureTest {
     // was
     // still connecting (its change event dropped by the readyState guard) still reaches the daemon.
     assertTrue(
-      liveCatalogWasm.contains("ws.onopen = function () {"),
+      liveCatalogWasm.contains("sock.onopen = function () {"),
       "the live stream seeds the daemon with the current overrides once the socket opens",
     )
 
