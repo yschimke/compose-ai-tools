@@ -324,7 +324,7 @@ class ServeBundleStoreTest {
       ServeBundleStore(
         tempRoot(),
         register = { n, h -> registered[n] = h },
-        trust = TrustStore(keys = listOf(TrustedKey("ci", keys.publicKeyB64))),
+        trust = { TrustStore(keys = listOf(TrustedKey("ci", keys.publicKeyB64))) },
       )
     val result = store.add("signed", bytes, isSecurityChecked = true)
     assertEquals(ServeBundleStore.Result.Ok("signed", 1, "signature:ci"), result)

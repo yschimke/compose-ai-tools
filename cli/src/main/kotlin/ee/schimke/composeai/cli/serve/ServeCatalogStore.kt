@@ -38,7 +38,12 @@ import okhttp3.Request
 class ServeCatalogStore(
   private val root: File,
   private val register: (name: String, host: ServeBundleHost) -> Unit,
-  private val trust: TrustStore,
+  /**
+   * The producer-trust store, read **per fetch** rather than captured, so a producer added through
+   * the admin API (or hand-edited into producers.json) is in force for the next catalog load and
+   * the next branch refresh without a restart.
+   */
+  private val trust: () -> TrustStore,
   private val repo: String = DEFAULT_REPO,
   private val branchPrefix: String = DEFAULT_BRANCH_PREFIX,
   private val fetch: ((String) -> ByteArray?)? = null,
@@ -294,7 +299,7 @@ class ServeCatalogStore(
     val wasmRegistered = fetchWasmApp(catalog.webRender, base, dir, safe)
 
     val verdict =
-      if (trust.trustsBranch(repo, branch))
+      if (trust().trustsBranch(repo, branch))
         BundleVerifier.Verdict.Trusted(listOf(BundleVerifier.Basis.Branch(repo, branch)))
       else BundleVerifier.Verdict.Unverified("branch $repo@$branch is not trusted")
 
