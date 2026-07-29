@@ -88,9 +88,13 @@ Local deltas over that snapshot (each also filed upstream):
   the engine already carries in generation pixels, so scaling it would double-apply the density.
   `apply()` re-resolves before clipping, because a corner expressed over the component's own size
   only has a value once that component has been measured. Independently, `roundedClipRect` now
-  sanitises its radii (non-finite → square, over-large → clamped to half the shorter side) so a
-  future unresolved corner degrades to a cosmetic difference rather than a blank component. Guarded
-  by `scripts/design-artifacts/rc-round-clip.test.mjs` against the committed round-clip fixture.
+  sanitises the two radii Canvas cannot take — non-finite (ignored, hence the empty path) and
+  negative (throws, aborting the paint) both become a square corner — so a future unresolved corner
+  degrades to a cosmetic difference rather than a blank or missing component. Over-large radii are
+  passed through untouched: Canvas scales an *overlapping* set down proportionally by itself, and a
+  single large corner on an oblong rect is valid geometry that the embedded player also draws
+  unmodified. Guarded by `scripts/design-artifacts/rc-round-clip.test.mjs` against the committed
+  round-clip fixture.
 
 - **Concrete font stacks for the generic families** (`src/web/CanvasPaintContext.ts`). The typeface
   id → CSS family mapping named only the generics (`sans-serif` / `serif` / `monospace`, with

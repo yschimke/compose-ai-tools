@@ -1418,13 +1418,15 @@ export class CanvasPaintContext extends PaintContext {
 
     roundedClipRect(width: number, height: number, topStart: number, topEnd: number,
                     bottomStart: number, bottomEnd: number): void {
-        // `roundRect` silently ignores the whole call when any radius is non-finite, which
-        // leaves an empty path for `clip()` — and an empty clip hides every draw inside the
-        // component rather than merely losing its rounded corners. Sanitise instead: an
-        // unresolvable corner falls back to a square one, and an over-large corner is clamped
-        // the way Canvas would otherwise reject. Keeps a radius bug cosmetic (#2930).
-        const cap = Math.min(width, height) / 2;
-        const r = (v: number) => (Number.isFinite(v) ? Math.min(Math.max(v, 0), cap) : 0);
+        // `roundRect` silently ignores the whole call when a radius is non-finite — leaving `clip()`
+        // an empty path, which hides every draw inside the component rather than merely losing its
+        // rounded corners — and throws outright on a negative one, which aborts the paint. Sanitise
+        // just those two cases (unresolvable or negative → square corner) so a radius bug is cosmetic
+        // (#2930). Over-large radii are deliberately passed through: Canvas scales an *overlapping*
+        // set down proportionally on its own, and a single large corner on an oblong rect is valid
+        // geometry — clamping every corner to half the shorter side would rewrite shapes that
+        // render correctly today and that the embedded player draws unmodified.
+        const r = (v: number) => (Number.isFinite(v) && v > 0 ? v : 0);
         this.ctx.beginPath();
         this.ctx.roundRect(0, 0, width, height,
             [r(topStart), r(topEnd), r(bottomEnd), r(bottomStart)]);

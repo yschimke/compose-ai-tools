@@ -18727,8 +18727,7 @@ void main() {
       this.ctx.clip(path);
     }
     roundedClipRect(width, height, topStart, topEnd, bottomStart, bottomEnd) {
-      const cap = Math.min(width, height) / 2;
-      const r = (v) => Number.isFinite(v) ? Math.min(Math.max(v, 0), cap) : 0;
+      const r = (v) => Number.isFinite(v) && v > 0 ? v : 0;
       this.ctx.beginPath();
       this.ctx.roundRect(
         0,
