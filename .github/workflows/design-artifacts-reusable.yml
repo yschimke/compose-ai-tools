@@ -117,6 +117,11 @@ on:
         required: false
         type: boolean
         default: false
+      rc-embedded-lane:
+        description: "Add the embedded-player lane to rc-compare.html, making it a three-way page: baked PNG vs the vendored TypeScript RcdPlayer vs AndroidX's Compose-embedded RcPlayer. Off by default because it is the only part of this workflow that needs a Gradle/Android toolchain — it stages the bundle's ir/*.rc, renders them through :third-party-rc-embedded-player (Robolectric), and diffs the result. Requires an Android SDK on the runner; a runner without one (or a harness failure) degrades to the usual two-lane page rather than failing the render. No-op for a catalog that ships no ir/*.rc."
+        required: false
+        type: boolean
+        default: false
       stage-font-globs:
         description: 'Whitespace-separated repo-relative globs of font files (.ttf/.otf) to stage into fontconfig BEFORE rendering — for a desktop (Skiko) render that must resolve glyphs (CJK/Arabic/…) from a bundled face rather than a system fallback. Empty ⇒ no staging.'
         required: false
@@ -458,12 +463,43 @@ jobs:
             exit 0
           fi
           npx playwright install --with-deps chromium
+
+          PLAYER="$GITHUB_WORKSPACE/compose-ai-tools/cli/src/main/resources/rc-player/bundle.js"
+          EMBEDDED_ARGS=()
+
+          # Optional third lane (rc-embedded-lane). Three moves: stage the bundle's documents,
+          # render them through the vendored embedded player, then hand the driver the PNGs so it
+          # can diff and add the columns. Staging exits before Chromium is touched, so the extra
+          # driver invocation is cheap.
+          #
+          # Deliberately tolerant: the render this job exists to publish must not be lost because a
+          # Robolectric harness died or the runner has no Android SDK. Either way we log loudly and
+          # fall through to the two-lane page — the lane is an enrichment, not the product.
+          if [ "${{ inputs.rc-embedded-lane }}" = "true" ]; then
+            RC_IN="$RUNNER_TEMP/rc-embedded-in"
+            RC_OUT="$RUNNER_TEMP/rc-embedded-out"
+            rm -rf "$RC_IN" "$RC_OUT"
+            node rc-compare.mjs \
+              --bundle "$GITHUB_WORKSPACE/bundle.png" \
+              --player "$PLAYER" \
+              --out "$GITHUB_WORKSPACE/out" \
+              --stage-embedded "$RC_IN"
+            if (cd "$GITHUB_WORKSPACE/compose-ai-tools" && \
+                ./gradlew :third-party-rc-embedded-player:testDebugUnitTest --no-daemon \
+                  -Prc.embedded.input="$RC_IN" -Prc.embedded.output="$RC_OUT"); then
+              EMBEDDED_ARGS=(--embedded "$RC_OUT")
+            else
+              echo "::warning::embedded-player lane failed to render; publishing the two-lane rc-compare page"
+            fi
+          fi
+
           node rc-compare.mjs \
             --bundle "$GITHUB_WORKSPACE/bundle.png" \
-            --player "$GITHUB_WORKSPACE/compose-ai-tools/cli/src/main/resources/rc-player/bundle.js" \
+            --player "$PLAYER" \
             --out "$GITHUB_WORKSPACE/out" \
             --system "${{ inputs.system }}" \
-            --title "${{ inputs.system }}"
+            --title "${{ inputs.system }}" \
+            ${EMBEDDED_ARGS[@]+"${EMBEDDED_ARGS[@]}"}
 
       - name: Upload catalog bundle
         if: ${{ inputs.upload-out }}
