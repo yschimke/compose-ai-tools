@@ -240,8 +240,35 @@ docker run -d --restart always -p 8080:8080 \
 | `rollout.sh` | Poll loop / one-shot that pulls `preview` and rolls it via docker-rollout. |
 | `deploy-hook.sh` | Token-gated `POST /__hooks/rollout` webhook (the `hook` service) that runs `rollout.sh` on demand — instant roll on publish. |
 | `docker-rollout` | Vendored [docker-rollout](https://github.com/wowu/docker-rollout) CLI plugin (adds `docker rollout`). |
+| `prewarm-fonts.sh` + `test-prewarm-fonts.sh` | Bake the downloadable-font cache into the image at build time (see *Fonts* below), and its offline self-test (run by `ci.yml`). |
 | `setup.sh` | Install Docker + the docker-rollout plugin, write `.env`, pull + start. |
 | `env-migrations.sh` + `test-env-migrations.sh` | One-off `.env` rewrites `setup.sh` applies to an already-deployed box (currently: drop the legacy three-app `SERVE_CATALOGS` pin so the baked catalog default applies), and their tests. |
+
+## Fonts
+
+The Android renderer resolves `Font(DeviceFontFamilyName("roboto-flex"))` — the shape Wear
+Material3's type scale uses — by downloading the matching Google Fonts TTF and seeding it into
+Robolectric's system font map (`PixelSystemFontAliases`); Robolectric's own `/system/fonts` only
+carries a small AOSP subset. A slug it can't resolve falls back to plain Roboto **silently**.
+
+That is why the image bakes the faces rather than leaving them to a runtime fetch: it removes the
+first-render download, works with no egress to `fonts.googleapis.com`, and pins the live daemon to
+the same bytes CI rendered the catalog PNGs with — the live lane and the baked PNG of one preview
+should never show two different typefaces.
+
+- The `fonts` build stage runs `prewarm-fonts.sh` into `/opt/font-cache/fonts`, mirroring
+  `GoogleFontInterceptor`'s cache filenames and CSS2 query exactly. A family that won't resolve
+  **fails the build** — a silently font-less image would just reintroduce the drift.
+- `entrypoint.sh` copies anything missing into `~/.cache/composeai/fonts` on every boot. It has to
+  be a copy, not a `COPY` to that path: the cache is a named volume, and a volume only inherits
+  image content when first created, so a long-lived box would otherwise never see the baked faces.
+  Existing files are never overwritten.
+- **Licensing.** Baking redistributes font binaries, which the runtime fetch did not. Every baked
+  family is in the [google/fonts](https://github.com/google/fonts) corpus under OFL-1.1 or
+  Apache-2.0. **`Google Sans Flex` is deliberately not baked** — the CSS2 endpoint serves it, but it
+  is not in that repo under any license directory, so its redistribution terms are unclear. It still
+  works exactly as before (fetched at runtime on first use). Override `FONT_PREWARM_FAMILIES` at
+  build time to change the set.
 
 ## Notes / caveats
 

@@ -590,6 +590,11 @@ jobs:
       # fail silently in production (a delivery branch just stops regenerating).
       - name: Run design-artifacts scope-step tests
         run: scripts/design-artifacts/test-scope-step.sh
+      # Guards the preview-host image's baked font cache. Its failure mode is silent: a wrong
+      # cache filename or a skipped stage-2 range query leaves faces the renderer never finds, so
+      # the live daemon quietly falls back to Roboto and drifts from the baked catalog PNGs again.
+      - name: Run preview-image font-prewarm tests
+        run: deploy/image/test-prewarm-fonts.sh
       - name: Run daemon round-trip transport tests
         run: python3 .github/ci/test_daemon_roundtrip.py -v
       # The android-all cache-key script DELETES ~200 MB coordinate directories

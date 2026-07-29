@@ -4,6 +4,30 @@
 set -euo pipefail
 cd /project
 
+# Seed the downloadable-font cache from the faces baked into the image (see the Dockerfile's
+# `fonts` stage). `~/.cache/composeai/fonts` is a named volume, and a volume only inherits image
+# content when it is first created, so a box whose volume predates this change would otherwise
+# never get them — copying on every boot covers both cases. Existing files are never overwritten:
+# a face already in the cache is the one previous renders used, and replacing it mid-life would
+# shift text metrics under the baked catalog PNGs. Best-effort — the renderer still fetches on a
+# miss, exactly as it did before.
+FONT_CACHE_SRC="${FONT_CACHE_SRC:-/opt/font-cache/fonts}"
+FONT_CACHE_DST="${XDG_CACHE_HOME:-${HOME:-/root}/.cache}/composeai/fonts"
+if [[ -d "${FONT_CACHE_SRC}" ]]; then
+  if mkdir -p "${FONT_CACHE_DST}" 2>/dev/null; then
+    seeded=0
+    for f in "${FONT_CACHE_SRC}"/*.ttf; do
+      [[ -e "$f" ]] || continue
+      if [[ ! -s "${FONT_CACHE_DST}/$(basename "$f")" ]]; then
+        cp -p "$f" "${FONT_CACHE_DST}/" 2>/dev/null && seeded=$((seeded + 1)) || true
+      fi
+    done
+    [[ "${seeded}" -eq 0 ]] || echo "entrypoint: seeded ${seeded} baked font(s) into ${FONT_CACHE_DST}" >&2
+  else
+    echo "entrypoint: warn: could not create ${FONT_CACHE_DST}; fonts will be fetched at runtime" >&2
+  fi
+fi
+
 PORT="${PORT:-8080}"
 
 args=(serve --host 0.0.0.0 --port "${PORT}")
