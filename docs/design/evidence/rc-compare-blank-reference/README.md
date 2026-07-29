@@ -33,7 +33,7 @@ embedded **16.87%**, with `1 unscored (blank reference)` called out in the heade
 ## Regenerating
 
 Both pages come from the committed fixture, not from a catalog render — no bundle, no browser render
-lane, no ~90-minute catalog job:
+lane, no catalog job (those take 8–38 min depending on how many systems are in scope):
 
 ```sh
 node scripts/design-artifacts/rc-compare-fixture.mjs --out /tmp/fixture

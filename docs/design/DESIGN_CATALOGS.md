@@ -82,7 +82,9 @@ plus every Monday, at the tail of a release, and on demand via
 the systems whose inputs moved — the mapping lives in
 [`scope-systems.sh`](../../scripts/design-artifacts/scope-systems.sh) and is
 guarded by `test-scope-systems.sh` in CI — so a one-catalog change regenerates one
-branch rather than paying three ~90-minute renders.
+branch rather than paying for every system. Measured over the last 25 successful
+runs: a scoped push-triggered render is 8–29 min (median ~14); a full all-systems
+`workflow_dispatch` is 31–38 min.
 
 Renderer / plugin / CLI changes are deliberately **not** in that push trigger:
 they do change the rendered output, but they're touched by most merges, so the
