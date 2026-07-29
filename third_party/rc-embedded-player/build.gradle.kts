@@ -83,7 +83,8 @@ android {
 //
 // Absent either property the harness skips, so `check` stays green without a staged catalog.
 tasks.withType<Test>().configureEach {
-  for (key in listOf("rc.embedded.input", "rc.embedded.output", "rc.view.output")) {
+  for (key in
+    listOf("rc.embedded.input", "rc.embedded.output", "rc.view.output", "rc.semantics.report")) {
     (project.findProperty(key) as String?)?.let { systemProperty(key, it) }
   }
   // Robolectric's NATIVE graphics mode needs a real heap to rasterize into.
