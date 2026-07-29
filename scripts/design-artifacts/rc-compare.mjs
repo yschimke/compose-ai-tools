@@ -200,6 +200,58 @@ if (EMBEDDED) {
   }
 }
 
+/**
+ * Diff one document's embedded-player render against its baked PNG and emit the row's embedded
+ * fields. Returns `{}` when the lane wasn't requested, which is what keeps the page at its original
+ * four columns rather than showing empty ones.
+ *
+ * `baked` is already flattened onto the neutral background by the caller, so the embedded render is
+ * flattened the same way before diffing — otherwise a transparent-background render would score as
+ * a false match the same way the baked stickers would.
+ */
+function embeddedFor(id, baked, width, height) {
+  if (!EMBEDDED) return {};
+  const png = path.join(EMBEDDED, `${id}.png`);
+  if (!fs.existsSync(png)) {
+    return {
+      embeddedRendered: false,
+      // The harness writes `<id>.error` next to the PNGs; surface its reason rather than a generic
+      // "missing", so the page distinguishes "the player threw" from "never attempted".
+      embeddedNote:
+        embeddedErrors.get(id) ??
+        (fs.existsSync(path.join(EMBEDDED, `${id}.error`))
+          ? fs.readFileSync(path.join(EMBEDDED, `${id}.error`), "utf8").trim().slice(0, 200)
+          : "no embedded render"),
+      embeddedMismatchPct: null,
+      embeddedMismatchPx: null,
+      embedded: "",
+      embeddedDiff: "",
+    };
+  }
+  const emb = flattenOnto(PNG.sync.read(fs.readFileSync(png)), BG);
+  if (emb.width !== width || emb.height !== height) {
+    return {
+      embeddedRendered: false,
+      embeddedNote: `size ${emb.width}×${emb.height} ≠ baked ${width}×${height}`,
+      embeddedMismatchPct: null,
+      embeddedMismatchPx: null,
+      embedded: "",
+      embeddedDiff: "",
+    };
+  }
+  const diff = new PNG({ width, height });
+  const px = pixelmatch(baked.data, emb.data, diff.data, width, height, { threshold: THRESHOLD });
+  fs.writeFileSync(path.join(dirs.embedded, `${id}.png`), PNG.sync.write(emb));
+  fs.writeFileSync(path.join(dirs.embeddedDiff, `${id}.png`), PNG.sync.write(diff));
+  return {
+    embeddedRendered: true,
+    embeddedMismatchPct: (100 * px) / (width * height),
+    embeddedMismatchPx: px,
+    embedded: `rc-embedded/${id}.png`,
+    embeddedDiff: `rc-embedded-diff/${id}.png`,
+  };
+}
+
 const bundleJs = fs.readFileSync(PLAYER, "utf8");
 
 const browser = await chromium.launch({
@@ -257,6 +309,10 @@ for (const id of rcIds) {
   const name = id.split(".").pop();
   const truncated = pageWarnings.some((t) => /Unknown operation opcode/.test(t));
 
+  // Embedded lane, computed independently of whether the JS player managed this document — either
+  // player can render one the other chokes on, and the page scores them separately.
+  const embedded = embeddedFor(id, baked, width, height);
+
   if (result.error || truncated) {
     rows.push({
       id,
@@ -271,6 +327,7 @@ for (const id of rcIds) {
       baked: `rc-baked/${id}.png`,
       rc: "",
       diff: "",
+      ...embedded,
     });
     fs.writeFileSync(path.join(dirs.baked, `${id}.png`), PNG.sync.write(baked));
     console.log(`  ${name}: NOT RENDERED (${rows[rows.length - 1].note})`);
@@ -300,8 +357,17 @@ for (const id of rcIds) {
     baked: `rc-baked/${id}.png`,
     rc: `rc/${id}.png`,
     diff: `rc-diff/${id}.png`,
+    ...embedded,
   });
-  console.log(`  ${name}: ${mismatchPct.toFixed(2)}% (${mismatchPx} px, ${width}×${height})`);
+  const embNote =
+    embedded.embeddedRendered === undefined
+      ? ""
+      : embedded.embeddedRendered
+        ? `  |  embedded ${embedded.embeddedMismatchPct.toFixed(2)}%`
+        : `  |  embedded NOT RENDERED`;
+  console.log(
+    `  ${name}: ${mismatchPct.toFixed(2)}% (${mismatchPx} px, ${width}×${height})${embNote}`,
+  );
 }
 
 await browser.close();
@@ -325,6 +391,15 @@ fs.writeFileSync(
       meanMismatchPct: meanPct,
       threshold: THRESHOLD,
       theme: THEME,
+      embedded: EMBEDDED
+        ? {
+            rendered: rows.filter((r) => r.embeddedRendered).length,
+            meanMismatchPct: (() => {
+              const ok = rows.filter((r) => r.embeddedRendered);
+              return ok.length ? ok.reduce((s, r) => s + r.embeddedMismatchPct, 0) / ok.length : null;
+            })(),
+          }
+        : null,
       rows: rows.map((r) => ({
         id: r.id,
         rendered: r.rendered,
@@ -333,6 +408,10 @@ fs.writeFileSync(
         width: r.width,
         height: r.height,
         note: r.note ?? null,
+        embeddedRendered: r.embeddedRendered ?? null,
+        embeddedMismatchPct: r.embeddedMismatchPct ?? null,
+        embeddedMismatchPx: r.embeddedMismatchPx ?? null,
+        embeddedNote: r.embeddedNote ?? null,
       })),
     },
     null,
