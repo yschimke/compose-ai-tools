@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # Reconcile the image's SEED config onto a running preview server via its admin API.
 #
-# Why this exists: deploy/image/catalogs.json and deploy/image/trust/producers.json are
-# first-boot seeds. The entrypoint copies each to /config only when it is ABSENT and never
-# overwrites it again — deliberately, so an image roll can't stomp a runtime edit (see #2879 /
-# #2897). The consequence is that merging a new catalog or producer changes nothing on an
-# already-deployed box: the entries land in the image, the box keeps the config it already has,
-# and someone has to remember to POST them by hand. This closes that gap as part of publishing.
+# Why this exists: /config/catalogs.json and /config/producers.json are seeded on first boot and
+# never overwritten after — deliberately, so an image roll can't stomp a runtime edit (see #2879 /
+# #2897). The consequence is that adding a catalog or producer to a committed file changes nothing
+# on an already-deployed box: it keeps the config it already has, and someone has to remember to
+# POST the new entries by hand. This closes that gap as part of publishing.
 #
 # ADDITIVE ONLY. This never deletes and never rewrites an existing entry: an id already present
 # comes back 409 from the admin API, which is treated as success. So a producer or catalog an
@@ -28,8 +27,18 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-CATALOGS_FILE="${CATALOGS_FILE:-${REPO_ROOT}/deploy/image/catalogs.json}"
-TRUST_FILE="${TRUST_FILE:-${REPO_ROOT}/deploy/image/trust/producers.json}"
+
+# The DEPLOYMENT's config, not the image's generic seed. These are different things and conflating
+# them is what gave preview.coo.ee favoured-nation status: its 17 catalogs and 9 trusted producers
+# used to live in deploy/image/, so every adopter of the prebuilt image inherited them. The image
+# seed is now compose-m3 plus the one producer that publishes it; a deployment's own set lives in
+# its own directory and is applied from here.
+#
+# DEPLOY_CONFIG_DIR is what another adopter overrides — point it at your own directory with the
+# same two filenames and this script works unchanged against your box.
+DEPLOY_CONFIG_DIR="${DEPLOY_CONFIG_DIR:-${REPO_ROOT}/deploy/preview.coo.ee}"
+CATALOGS_FILE="${CATALOGS_FILE:-${DEPLOY_CONFIG_DIR}/catalogs.json}"
+TRUST_FILE="${TRUST_FILE:-${DEPLOY_CONFIG_DIR}/producers.json}"
 ADMIN_TOKEN_HEADER="X-Compose-Preview-Admin-Token"
 
 DRY_RUN=0

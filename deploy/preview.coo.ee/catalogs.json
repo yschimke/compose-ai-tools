@@ -1,0 +1,133 @@
+{
+  "_comment": "preview.coo.ee's PUBLISHED CATALOG SET \u2014 deployment config for one specific box, NOT image content. Kept out of deploy/image/ deliberately: baking it there made every adopter of the prebuilt image open on these catalogs (see the seed's comment). This file is applied to the box by .github/scripts/publish-config-to-box.sh after each image publish, additively over POST /admin/catalogs, so it never needs an image rebuild. Another deployment adopting the preview server keeps its own copy of this shape and points DEPLOY_CONFIG_DIR at it. Every entry's design-artifacts/<system> branch must be trusted by producers.json beside this file. cadence is listed:false \u2014 reachable at /cadence/ but off the front-page index.",
+  "groups": [
+    {
+      "id": "design-systems",
+      "heading": "Design Systems",
+      "noun": "design system(s)"
+    },
+    {
+      "id": "android-samples",
+      "heading": "android/compose-samples",
+      "noun": "sample(s)"
+    }
+  ],
+  "catalogs": [
+    {
+      "system": "compose-m3",
+      "repo": "yschimke/compose-ai-tools",
+      "listed": true,
+      "group": "design-systems"
+    },
+    {
+      "system": "wear-m3",
+      "repo": "yschimke/compose-ai-tools",
+      "listed": true,
+      "group": "design-systems"
+    },
+    {
+      "system": "remote-m3",
+      "repo": "yschimke/compose-ai-tools",
+      "listed": true,
+      "group": "design-systems"
+    },
+    {
+      "system": "meshcore-mobile",
+      "repo": "yschimke/meshcore-mobile",
+      "listed": true
+    },
+    {
+      "system": "homeassistant-remotecompose",
+      "repo": "yschimke/homeassistant-remotecompose",
+      "listed": true
+    },
+    {
+      "system": "pocketcasts",
+      "repo": "yschimke/pocket-casts-android",
+      "listed": true
+    },
+    {
+      "system": "pocketcasts-wear",
+      "repo": "yschimke/pocket-casts-android",
+      "listed": true
+    },
+    {
+      "system": "jetnews",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": [
+        "android/compose-samples"
+      ]
+    },
+    {
+      "system": "jetcaster",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": [
+        "android/compose-samples"
+      ]
+    },
+    {
+      "system": "jetcaster-wear",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": [
+        "android/compose-samples"
+      ]
+    },
+    {
+      "system": "jetchat",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": [
+        "android/compose-samples"
+      ]
+    },
+    {
+      "system": "jetsnack",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": [
+        "android/compose-samples"
+      ]
+    },
+    {
+      "system": "jetlagged",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": [
+        "android/compose-samples"
+      ]
+    },
+    {
+      "system": "reply",
+      "repo": "yschimke/compose-samples",
+      "listed": true,
+      "group": "android-samples",
+      "attributionRepos": [
+        "android/compose-samples"
+      ]
+    },
+    {
+      "system": "confetti-wear",
+      "repo": "joreilly/Confetti",
+      "listed": true
+    },
+    {
+      "system": "confetti-mobile",
+      "repo": "joreilly/Confetti",
+      "listed": true
+    },
+    {
+      "system": "cadence",
+      "repo": "yschimke/cadence",
+      "listed": false
+    }
+  ]
+}
