@@ -44,8 +44,11 @@ class ServeBundleStore(
    * Data tiers (the extracted `previews/<id>.png`) are served regardless — the verdict gates only
    * whether the operator would later re-render the bundle's executable Compose. Defaults to the
    * empty (fail-closed) store, so without `--trust-store` every upload is `unverified`.
+   *
+   * Read per upload rather than captured, so an admin-added producer applies to the next upload
+   * without a restart.
    */
-  private val trust: TrustStore = TrustStore.EMPTY,
+  private val trust: () -> TrustStore = { TrustStore.EMPTY },
 ) {
 
   sealed interface Result {
@@ -99,7 +102,7 @@ class ServeBundleStore(
     // Attribute the upload to a trusted producer if it carries a verifiable signature (origin trust
     // is for server-fetched catalogs, not client uploads, so no Origin here). The verdict travels
     // with the host for display; it never blocks serving the already-extracted data tiers.
-    val verdict = BundleVerifier.verify(zip, trust, origin)
+    val verdict = BundleVerifier.verify(zip, trust(), origin)
     val host = ServeBundleHost(dir, safe, verdict)
     register(safe, host)
     return Result.Ok(safe, host.previews.size, BundleVerifier.summary(verdict))

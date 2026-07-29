@@ -371,9 +371,15 @@ both keeps its config entry. Re-running [`deploy/image/setup.sh`](../deploy/imag
 the known legacy `SERVE_CATALOGS` override containing only `jetnews`, `jetchat`, and `jetlagged`, so
 older `preview.coo.ee` deployments fall back to the config file cleanly.
 
-### The catalog admin API
+### The admin API
 
-Setting `SERVE_ADMIN_TOKEN` enables three routes for publishing catalogs on a **running** server:
+Setting `SERVE_ADMIN_TOKEN` enables two admin surfaces on a **running** server: the catalog set and
+the producer-trust store. Both are needed for either to be useful — publishing a catalog whose
+producer isn't trusted just serves it as `unverified`.
+
+#### Catalogs
+
+Three routes for publishing catalogs:
 
 | Route | Does |
 |---|---|
@@ -393,17 +399,63 @@ it just won't come back). A registration fetches the branch **before** it's pers
 repo fails with `502` rather than leaving an unservable entry for every future boot to retry;
 malformed entries are `400` and re-publishing a served catalog is `409`.
 
+#### Trusted producers
+
+The trust store is config too, on the same volume (`/config/producers.json`). Without this, runtime
+catalog registration was only half a feature: you could publish a catalog in one HTTP call, but
+trusting its producer meant a code change, a release, an image publish and a roll — so the new
+catalog badged `unverified` until the image caught up.
+
+| Route | Does |
+|---|---|
+| `GET /admin/trust` | the trusted branches, pinned key ids, and CI identities |
+| `POST /admin/trust` | trust one producer — `{"kind":"branch"\|"key"\|"oidc", …}` |
+| `DELETE /admin/trust?kind=…` | stop trusting one — selectors ride the query string |
+
+```
+# trust a repo's delivery branches, then publish a catalog from one
+curl -H "X-Compose-Preview-Admin-Token: $SERVE_ADMIN_TOKEN" \
+     -d '{"kind":"branch","repo":"yschimke/horologist","branch":"design-artifacts/*"}' \
+     https://preview.coo.ee/admin/trust
+
+curl -H "X-Compose-Preview-Admin-Token: $SERVE_ADMIN_TOKEN" \
+     -d '{"system":"horologist","repo":"yschimke/horologist","listed":true}' \
+     https://preview.coo.ee/admin/catalogs
+
+# ...and to retire the producer again (the slash in owner/repo is why this is a query param)
+curl -X DELETE -H "X-Compose-Preview-Admin-Token: $SERVE_ADMIN_TOKEN" \
+     'https://preview.coo.ee/admin/trust?kind=branch&repo=yschimke%2Fhorologist&branch=design-artifacts%2F*'
+```
+
+Changes take effect on the **next** verification — the next catalog fetch or branch refresh — with
+no restart, and are written back to `producers.json` the same way catalog changes are written back to
+`catalogs.json` (same `warning` field when the write fails). `GET` lists pinned keys by id and name
+only; key material is never echoed back. Re-adding a producer is `409`, a malformed entry is `400`,
+and a repo pattern that matches every repository is refused outright.
+
+> **The admin token can grant code execution.** On a box with `SERVE_ALLOW_RENDER_TRUSTED` on (the
+> default), trust is not only a badge — it gates server-side re-render, so trusting a branch makes
+> that producer's Compose eligible to be built and executed on your box. Treat `SERVE_ADMIN_TOKEN`
+> like a deploy key, not a read token, and keep `SERVE_ALLOW_RENDER_TRUSTED=0` on any box where you
+> don't want that.
+
 The admin token is **separate from the browse token** on purpose — a `--public` box hands the browse
-URL to every visitor — and the routes aren't registered at all when it's unset, so a server that
+URL to every visitor — and neither surface is registered at all when it's unset, so a server that
 never opted in has no admin surface to find. A bad token gets the same `404` the browse gate uses.
 
-The prebuilt `deploy/image` **bakes a branch-trust store** at `/trust/producers.json` (trusting
-`design-artifacts/*` on `yschimke/compose-ai-tools`, `yschimke/meshcore-mobile`, and
-`yschimke/homeassistant-remotecompose`) and the entrypoint defaults `SERVE_TRUST_STORE` to
-it, so the published catalogs badge as `Trusted(Branch)` out of the box rather than `unverified`.
-Mount your own over that path (or set `SERVE_TRUST_STORE` to it) to pin different producers, or set
-`SERVE_TRUST_STORE=none` to run trustless. (Empty falls back to the baked default — use `none` to opt
-out — which also means a bare image pull self-heals a box without editing its compose.)
+#### Where the trust store lives
+
+The prebuilt `deploy/image` bakes a seed branch-trust store at `/trust/producers.json` (trusting
+`design-artifacts/*` on `yschimke/compose-ai-tools`, `yschimke/meshcore-mobile`,
+`yschimke/homeassistant-remotecompose` and friends). On first boot the entrypoint copies it to
+`/config/producers.json` on the `preview_config` volume and points `SERVE_TRUST_STORE` there; it is
+never overwritten again, so an operator edit — or a `POST /admin/trust` — survives every subsequent
+image roll. The published catalogs still badge as `Trusted(Branch)` out of the box.
+
+Set `SERVE_TRUST_STORE` to your own path to pin different producers, or `none` to run trustless.
+(Empty falls back to the default — use `none` to opt out — which also means a bare image pull
+self-heals a box without editing its compose.) If `/config` isn't writable the entrypoint falls back
+to serving the baked store read-only, and admin trust writes report themselves unpersisted.
 
 The catalog set is **not** baked the same way — see "The catalog set is config, not image content"
 above: the image ships it only as a first-boot seed, and the live copy lives on the `/config` volume

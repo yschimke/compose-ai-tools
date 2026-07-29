@@ -59,7 +59,7 @@ class ServeCatalogStoreTest {
     ServeCatalogStore(
       root = tempRoot(),
       register = { n, h -> registered[n] = h },
-      trust = trust,
+      trust = { trust },
       fetch = fetch,
       registerWasm = { s, d -> registeredWasm[s] = d },
     )
@@ -111,7 +111,7 @@ class ServeCatalogStoreTest {
       ServeCatalogStore(
         root = root,
         register = { n, h -> registered[n] = h },
-        trust = TrustStore.EMPTY,
+        trust = { TrustStore.EMPTY },
         fetch = fetch,
         registerWasm = { s, d -> registeredWasm[s] = d },
       )
@@ -188,7 +188,7 @@ class ServeCatalogStoreTest {
       ServeCatalogStore(
         root = root,
         register = { n, h -> registered[n] = h },
-        trust = TrustStore.EMPTY,
+        trust = { TrustStore.EMPTY },
         fetch = fetch,
         registerWasm = { s, d -> registeredWasm[s] = d },
       )
@@ -246,7 +246,7 @@ class ServeCatalogStoreTest {
       ServeCatalogStore(
         root = root,
         register = { n, h -> registered[n] = h },
-        trust = TrustStore.EMPTY,
+        trust = { TrustStore.EMPTY },
         fetch = fetch,
       )
 
@@ -315,7 +315,7 @@ class ServeCatalogStoreTest {
       ServeCatalogStore(
         root = root,
         register = { n, h -> registered[n] = h },
-        trust = TrustStore.EMPTY,
+        trust = { TrustStore.EMPTY },
         fetch = fetch,
         registerWasm = { s, d -> registeredWasm[s] = d },
       )
@@ -375,7 +375,7 @@ class ServeCatalogStoreTest {
       ServeCatalogStore(
         root = tempRoot(),
         register = { n, h -> registered[n] = h },
-        trust = trust,
+        trust = { trust },
         fetch = fetch,
         buildTrustedBundle = { _, _, _, alias, _, _ ->
           captured = alias
@@ -437,10 +437,11 @@ class ServeCatalogStoreTest {
       ServeCatalogStore(
         root = root,
         register = { n, h -> registered[n] = h },
-        trust =
+        trust = {
           TrustStore(
             branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
-          ),
+          )
+        },
         fetch = fetch,
         buildTrustedBundle = { _, _, _, alias, _, _ ->
           captured = alias
@@ -493,7 +494,7 @@ class ServeCatalogStoreTest {
       ServeCatalogStore(
         root = tempRoot(),
         register = { n, h -> registered[n] = h },
-        trust = trust,
+        trust = { trust },
         networkFetch = networkFetch,
         buildTrustedBundle = { _, _, _, _, _, _ ->
           builderCalled = true
@@ -554,7 +555,7 @@ class ServeCatalogStoreTest {
       ServeCatalogStore(
         root = root,
         register = { n, h -> registered[n] = h },
-        trust = trust,
+        trust = { trust },
         fetch = fetch,
         // Return false so the live builder yields and the baked static host is registered — that's
         // the host whose `remoteComposeDoc` serves the materialised `.rc`.
@@ -614,7 +615,7 @@ class ServeCatalogStoreTest {
       ServeCatalogStore(
         root = tempRoot(),
         register = { n, h -> registered[n] = h },
-        trust = trust,
+        trust = { trust },
         fetch = fetch,
         buildTrustedBundle = { _, _, _, _, _, fetcher ->
           fetchPerPreview = fetcher
@@ -675,7 +676,7 @@ class ServeCatalogStoreTest {
       ServeCatalogStore(
         root = tempRoot(),
         register = { n, h -> registered[n] = h },
-        trust = trust,
+        trust = { trust },
         fetch = fetch,
         buildTrustedBundle = { _, _, _, _, _, fetcher ->
           fetchPerPreview = fetcher
@@ -739,7 +740,7 @@ class ServeCatalogStoreTest {
       ServeCatalogStore(
         root = root,
         register = { n, h -> registered[n] = h },
-        trust = trust,
+        trust = { trust },
         fetch = fetch,
         buildTrustedBundle = { _, _, externalResourcesDir, _, _, _ ->
           capturedDir = externalResourcesDir
@@ -801,7 +802,7 @@ class ServeCatalogStoreTest {
       ServeCatalogStore(
         root = tempRoot(),
         register = { n, h -> registered[n] = h },
-        trust = trust,
+        trust = { trust },
         fetch = fetch,
         buildTrustedBundle = { _, _, _, _, _, _ ->
           builderCalled = true
@@ -876,7 +877,7 @@ class ServeCatalogStoreTest {
       ServeCatalogStore(
         root = root,
         register = { n, h -> registered[n] = h },
-        trust = trust,
+        trust = { trust },
         fetch = fetch,
         buildTrustedBundle = { _, _, externalResourcesDir, _, _, _ ->
           capturedDir = externalResourcesDir
@@ -951,7 +952,7 @@ class ServeCatalogStoreTest {
       ServeCatalogStore(
         root = tempRoot(),
         register = { n, h -> registered[n] = h },
-        trust = trust,
+        trust = { trust },
         fetch = { url ->
           urls += url
           fetcher()(url)
@@ -1044,7 +1045,7 @@ class ServeCatalogStoreTest {
     ServeCatalogStore(
         root = root,
         register = { n, h -> registered[n] = h },
-        trust = TrustStore.EMPTY,
+        trust = { TrustStore.EMPTY },
         fetch = wasmFetcher(catalog),
         registerWasm = { s, d -> registeredWasm[s] = d },
       )
@@ -1084,7 +1085,7 @@ class ServeCatalogStoreTest {
     ServeCatalogStore(
       root = tempRoot(),
       register = { n, h -> registered[n] = h },
-      trust = trust,
+      trust = { trust },
       fetch = { url ->
         when {
           url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.toByteArray()
