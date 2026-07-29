@@ -27,9 +27,13 @@ var RC = (() => {
     base64ToArrayBuffer: () => base64ToArrayBuffer,
     configureWebFonts: () => configureWebFonts,
     createPlayer: () => createPlayer,
+    cssFontStackFor: () => cssFontStackFor,
+    cssQuoted: () => cssQuoted,
     ensureWebFont: () => ensureWebFont,
     googleFontsUrl: () => googleFontsUrl,
+    namedFontStack: () => namedFontStack,
     parseFamily: () => parseFamily,
+    resetWebFonts: () => resetWebFonts,
     webFontsReady: () => webFontsReady
   });
 
@@ -4409,9 +4413,9 @@ var RC = (() => {
       let i = startIdx;
       const meta = arr[i++];
       const numColors = meta & 255;
-      const register2 = meta >> 16 & 65535;
+      const register = meta >> 16 & 65535;
       for (let j = 0; j < numColors; j++) {
-        if ((register2 & 1 << j) !== 0) {
+        if ((register & 1 << j) !== 0) {
           context.listensTo(arr[i], op);
         }
         i++;
@@ -4531,9 +4535,9 @@ var RC = (() => {
       const gradType = cmd >> 16 & 65535;
       const meta = arr[i++];
       const numColors = meta & 255;
-      const register2 = meta >> 16 & 65535;
+      const register = meta >> 16 & 65535;
       for (let j = 0; j < numColors; j++) {
-        if ((register2 & 1 << j) !== 0) {
+        if ((register & 1 << j) !== 0) {
           out[i] = fixColor(arr[i], context);
         }
         i++;
@@ -7445,18 +7449,18 @@ var RC = (() => {
     write(_buffer) {
     }
     registerListening(context) {
-      const register2 = (b) => {
+      const register = (b) => {
         if (isNaNBits(b)) context.listensTo(idFromBits(b), this);
       };
-      register2(this.mSrcLeft);
-      register2(this.mSrcTop);
-      register2(this.mSrcRight);
-      register2(this.mSrcBottom);
-      register2(this.mDstLeft);
-      register2(this.mDstTop);
-      register2(this.mDstRight);
-      register2(this.mDstBottom);
-      register2(this.mScaleFactor);
+      register(this.mSrcLeft);
+      register(this.mSrcTop);
+      register(this.mSrcRight);
+      register(this.mSrcBottom);
+      register(this.mDstLeft);
+      register(this.mDstTop);
+      register(this.mDstRight);
+      register(this.mDstBottom);
+      register(this.mScaleFactor);
     }
     updateVariables(context) {
       const resolve = (b) => isNaNBits(b) ? context.getFloat(idFromBits(b)) : intBitsToFloat(b);
@@ -17221,10 +17225,25 @@ void main() {
     }
     return { source: "local", name: trimmed };
   }
-  var registrations = /* @__PURE__ */ new Map();
+  var stylesheets = /* @__PURE__ */ new Map();
+  var variants = /* @__PURE__ */ new Map();
+  var done = /* @__PURE__ */ new Set();
+  var waiting = /* @__PURE__ */ new Map();
+  function variantKey(family, weight, italic) {
+    return `${family.toLowerCase()}|${weight}|${italic ? "i" : "n"}`;
+  }
+  function notify(key) {
+    done.add(key);
+    const listeners = waiting.get(key);
+    waiting.delete(key);
+    listeners?.forEach((fn) => fn());
+  }
   var failed = /* @__PURE__ */ new Set();
   function unquote(family) {
     return family.replace(/^["']|["']$/g, "");
+  }
+  function cssQuoted(family) {
+    return family.replace(/[\\"]/g, "\\$&");
   }
   function hasLocalFace(family) {
     const want = family.toLowerCase();
@@ -17244,44 +17263,63 @@ void main() {
       document.head.appendChild(link);
     });
   }
-  async function loadDeclaredFaces(family) {
-    const want = family.toLowerCase();
-    const faces = [];
-    document.fonts.forEach((face) => {
-      if (unquote(face.family).toLowerCase() === want) faces.push(face);
-    });
-    await Promise.all(faces.map((f) => f.load()));
-  }
-  async function register(family) {
-    if (!config.enabled) return;
-    if (typeof document === "undefined" || !document.fonts) return;
-    if (hasLocalFace(family)) return;
-    await loadStylesheet(googleFontsUrl(family));
-    await loadDeclaredFaces(family);
-  }
-  function ensureWebFont(family, onLoaded) {
+  function registerStylesheet(family) {
     const key = family.toLowerCase();
-    const existing = registrations.get(key);
+    const existing = stylesheets.get(key);
     if (existing) return existing;
-    const p = register(family).then(() => {
-      if (onLoaded) onLoaded();
-    }).catch((e) => {
-      if (!failed.has(key)) {
-        failed.add(key);
+    let p;
+    if (!config.enabled) {
+      p = Promise.resolve();
+    } else if (typeof document === "undefined" || !document.fonts) {
+      p = Promise.resolve();
+    } else if (hasLocalFace(family)) {
+      p = Promise.resolve();
+    } else {
+      p = loadStylesheet(googleFontsUrl(family));
+    }
+    stylesheets.set(key, p);
+    return p;
+  }
+  async function loadVariant(family, weight, italic) {
+    await registerStylesheet(family);
+    if (typeof document === "undefined" || !document.fonts) return;
+    await document.fonts.load(`${italic ? "italic " : ""}${weight} 16px "${cssQuoted(family)}"`);
+  }
+  function ensureWebFont(family, weight = 400, italic = false, onLoaded) {
+    const key = variantKey(family, weight, italic);
+    if (onLoaded && !done.has(key)) {
+      const set = waiting.get(key) ?? /* @__PURE__ */ new Set();
+      set.add(onLoaded);
+      waiting.set(key, set);
+    }
+    const existing = variants.get(key);
+    if (existing) return existing;
+    const p = loadVariant(family, weight, italic).catch((e) => {
+      const famKey = family.toLowerCase();
+      if (!failed.has(famKey)) {
+        failed.add(famKey);
         console.warn(`WebFonts: no web font for "${family}", using the fallback stack`, e);
       }
-    });
-    registrations.set(key, p);
+    }).then(() => notify(key));
+    variants.set(key, p);
     return p;
   }
   async function webFontsReady() {
-    let pending = [...registrations.values()];
+    let pending = [...variants.values()];
     while (pending.length > 0) {
       await Promise.all(pending);
-      const next = [...registrations.values()];
+      const next = [...variants.values()];
       if (next.length === pending.length) break;
       pending = next;
     }
+  }
+  function resetWebFonts() {
+    stylesheets.clear();
+    variants.clear();
+    done.clear();
+    waiting.clear();
+    failed.clear();
+    config = { enabled: true, baseUrl: DEFAULT_BASE_URL };
   }
 
   // src/web/CanvasPaintContext.ts
@@ -17305,7 +17343,7 @@ void main() {
     }
   }
   function namedFontStack(family) {
-    return `"${family.replace(/"/g, '\\"')}", ${cssFontStackFor(0)}`;
+    return `"${cssQuoted(family)}", ${cssFontStackFor(0)}`;
   }
   var _CanvasPaintContext = class _CanvasPaintContext extends PaintContext {
     constructor(context, canvas) {
@@ -17410,7 +17448,9 @@ void main() {
       if (!family) return cssFontStackFor(0);
       const { source, name } = parseFamily(family);
       if (!name) return cssFontStackFor(0);
-      if (source === "google") ensureWebFont(name, this.onFontLoaded ?? void 0);
+      if (source === "google") {
+        ensureWebFont(name, this.fontWeight, this.fontItalic, this.onFontLoaded ?? void 0);
+      }
       return namedFontStack(name);
     }
     // --- Bitmap cache ---

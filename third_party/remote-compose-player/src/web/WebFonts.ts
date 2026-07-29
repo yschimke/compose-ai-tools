@@ -90,14 +90,65 @@ export function parseFamily(family: string): { source: 'google' | 'local'; name:
     return { source: 'local', name: trimmed };
 }
 
-/** In-flight/settled registrations, keyed case-insensitively (CSS family names are ASCII-caseless). */
-const registrations = new Map<string, Promise<void>>();
+/**
+ * Stylesheet registrations, keyed case-insensitively (CSS family names are ASCII-caseless). One per
+ * family: the CSS response is small and declaring every weight costs nothing, because declaring a
+ * face does not fetch it.
+ */
+const stylesheets = new Map<string, Promise<void>>();
+
+/**
+ * Face loads, keyed `family|weight|style`. Separate from [stylesheets] because *fetching* is
+ * per-variant: a document that draws one regular label should pull Orbitron's regular face, not all
+ * six weights the family publishes.
+ */
+const variants = new Map<string, Promise<void>>();
+
+/** Variants that have finished, so a settled one is never re-announced. See [notify]. */
+const done = new Set<string>();
+
+/** Callbacks still waiting on a variant, by variant key. Cleared when it settles. */
+const waiting = new Map<string, Set<() => void>>();
+
+function variantKey(family: string, weight: number, italic: boolean): string {
+    return `${family.toLowerCase()}|${weight}|${italic ? 'i' : 'n'}`;
+}
+
+/**
+ * Run every callback waiting on [key], exactly once, and stop tracking it.
+ *
+ * One-shot is the whole point. Typeface resolution runs *per paint*, so `ensureWebFont` is called
+ * again on every frame that draws the family — re-announcing an already-settled variant would
+ * schedule a repaint from inside painting, which schedules another, forever. Equally, a caller that
+ * arrives while the fetch is in flight has to be recorded rather than dropped: with two players on a
+ * page, only the first would otherwise get its repaint, and a *static* document has no later frame
+ * to recover on, so the second canvas would sit in the fallback face permanently.
+ */
+function notify(key: string): void {
+    done.add(key);
+    const listeners = waiting.get(key);
+    waiting.delete(key);
+    listeners?.forEach((fn) => fn());
+}
 
 /** Families already reported as unavailable, so a 400 is logged once rather than per paint. */
 const failed = new Set<string>();
 
 function unquote(family: string): string {
     return family.replace(/^["']|["']$/g, '');
+}
+
+/**
+ * [family] escaped for use inside a double-quoted CSS string.
+ *
+ * Both `\` and `"` have to be escaped, and the backslash is not defensive boilerplate: escaping only
+ * the quote leaves a family ending in a backslash (`My Font\`) emitting `"My Font\"`, where the
+ * backslash escapes the *closing* quote so the string runs on and swallows the rest of the
+ * declaration. Family names are document data — arbitrary strings from the text table — not
+ * something we author.
+ */
+export function cssQuoted(family: string): string {
+    return family.replace(/[\\"]/g, '\\$&');
 }
 
 /**
@@ -127,57 +178,83 @@ function loadStylesheet(url: string): Promise<void> {
     });
 }
 
+/** Declare [family]'s faces on the page, once. Resolves having declared nothing when disabled. */
+function registerStylesheet(family: string): Promise<void> {
+    const key = family.toLowerCase();
+    const existing = stylesheets.get(key);
+    if (existing) return existing;
+    let p: Promise<void>;
+    if (!config.enabled) {
+        p = Promise.resolve();
+    } else if (typeof document === 'undefined' || !document.fonts) {
+        // The bundle also runs under node-canvas, where there is no document and no font registry;
+        // a named family there simply falls through to the fallback generic.
+        p = Promise.resolve();
+    } else if (hasLocalFace(family)) {
+        // The page already carries a vendored face for this family — faster and more faithful than
+        // the network copy, so it wins and no request is made.
+        p = Promise.resolve();
+    } else {
+        p = loadStylesheet(googleFontsUrl(family));
+    }
+    stylesheets.set(key, p);
+    return p;
+}
+
 /**
- * Force the faces the stylesheet just declared to actually load.
+ * Fetch the face for one (weight, style), and verify it arrived.
  *
  * `@font-face` is lazy and canvas does not drive it: `ctx.font` neither triggers a load nor waits
- * for one, and `document.fonts.ready` resolves while a declared face is still `unloaded`. Without
- * this the page reports the family, the shorthand names it, and the canvas still paints the
- * fallback. Loading the `FontFace` objects by identity (rather than guessing weights via
- * `document.fonts.load('400 16px …')`) covers exactly the faces the family really has.
+ * for one, and `document.fonts.ready` resolves while a declared face is still `unloaded` — so
+ * without an explicit load the page reports the family, the shorthand names it, and the canvas
+ * still paints the fallback.
+ *
+ * The load is asked for *by font shorthand* rather than by walking `document.fonts` and calling
+ * `.load()` on every face carrying this family. Both make the face paintable, but the shorthand
+ * routes through the browser's own CSS font matching and so fetches only the face that a request at
+ * this weight/style actually resolves to. Loading them all would pull every weight the family
+ * publishes — six files for Orbitron — to draw one regular label, and would hold `fontsReady()` open
+ * until the unused ones finished, which is exactly the wait a single-shot renderer is blocked on.
  */
-async function loadDeclaredFaces(family: string): Promise<void> {
-    const want = family.toLowerCase();
-    const faces: FontFace[] = [];
-    document.fonts.forEach((face: FontFace) => {
-        if (unquote(face.family).toLowerCase() === want) faces.push(face);
-    });
-    await Promise.all(faces.map((f) => f.load()));
-}
-
-async function register(family: string): Promise<void> {
-    if (!config.enabled) return;
-    // The bundle also runs under node-canvas, where there is no document and no font registry; a
-    // named family there simply falls through to the fallback generic.
+async function loadVariant(family: string, weight: number, italic: boolean): Promise<void> {
+    await registerStylesheet(family);
     if (typeof document === 'undefined' || !document.fonts) return;
-    if (hasLocalFace(family)) return;
-    await loadStylesheet(googleFontsUrl(family));
-    await loadDeclaredFaces(family);
+    await document.fonts.load(`${italic ? 'italic ' : ''}${weight} 16px "${cssQuoted(family)}"`);
 }
 
 /**
- * Register [family] if it isn't already, and run [onLoaded] once it is paintable.
+ * Make [family] paintable at [weight]/[italic], and run [onLoaded] once it is.
  *
- * Idempotent per family: the first call starts the work, later ones join the same promise. Never
- * rejects — a family Google doesn't serve is a document authored against a font we can't get, not a
- * player fault, and the CSS stack already carries a generic fallback for exactly that case.
- * [onLoaded] is how an interactive player repaints text that was first painted in the fallback.
+ * Idempotent per variant: the first call starts the work, later ones join it. Never rejects — a
+ * family Google doesn't serve is a document authored against a font we can't get, not a player
+ * fault, and the CSS stack already carries a generic fallback for exactly that case. [onLoaded] is
+ * how an interactive player repaints text that was first painted in the fallback; see [notify] for
+ * why it is recorded per caller and fired exactly once.
  */
-export function ensureWebFont(family: string, onLoaded?: () => void): Promise<void> {
-    const key = family.toLowerCase();
-    const existing = registrations.get(key);
+export function ensureWebFont(
+    family: string,
+    weight: number = 400,
+    italic: boolean = false,
+    onLoaded?: () => void,
+): Promise<void> {
+    const key = variantKey(family, weight, italic);
+    if (onLoaded && !done.has(key)) {
+        const set = waiting.get(key) ?? new Set<() => void>();
+        set.add(onLoaded);
+        waiting.set(key, set);
+    }
+    const existing = variants.get(key);
     if (existing) return existing;
-    const p = register(family)
-        .then(() => {
-            if (onLoaded) onLoaded();
-        })
+    const p = loadVariant(family, weight, italic)
         .catch((e) => {
-            if (!failed.has(key)) {
-                failed.add(key);
+            const famKey = family.toLowerCase();
+            if (!failed.has(famKey)) {
+                failed.add(famKey);
                 console.warn(`WebFonts: no web font for "${family}", using the fallback stack`, e);
             }
-        });
-    registrations.set(key, p);
+        })
+        .then(() => notify(key));
+    variants.set(key, p);
     return p;
 }
 
@@ -189,11 +266,11 @@ export function ensureWebFont(family: string, onLoaded?: () => void): Promise<vo
  * it keeps. An interactive player doesn't need it — it gets the repaint via `onLoaded`.
  */
 export async function webFontsReady(): Promise<void> {
-    // Re-read after awaiting: painting a frame can request a family we hadn't seen when we started.
-    let pending = [...registrations.values()];
+    // Re-read after awaiting: painting a frame can request a variant we hadn't seen when we started.
+    let pending = [...variants.values()];
     while (pending.length > 0) {
         await Promise.all(pending);
-        const next = [...registrations.values()];
+        const next = [...variants.values()];
         if (next.length === pending.length) break;
         pending = next;
     }
@@ -201,7 +278,10 @@ export async function webFontsReady(): Promise<void> {
 
 /** Drop all registration state. Tests only. */
 export function resetWebFonts(): void {
-    registrations.clear();
+    stylesheets.clear();
+    variants.clear();
+    done.clear();
+    waiting.clear();
     failed.clear();
     config = { enabled: true, baseUrl: DEFAULT_BASE_URL };
 }

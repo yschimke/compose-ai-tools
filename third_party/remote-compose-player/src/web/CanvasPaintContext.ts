@@ -6,7 +6,7 @@ import { isNaNBits, idFromBits, floatToRawIntBits } from '../core/operations/Uti
 import { transpileAgslToGlsl } from '../core/shader/AgslTranspiler';
 import { WebGLShaderRenderer } from './shader/WebGLShaderRenderer';
 import { RemoteComposeState } from '../core/RemoteComposeState';
-import { ensureWebFont, parseFamily } from './WebFonts';
+import { ensureWebFont, parseFamily, cssQuoted } from './WebFonts';
 import type { ShaderData } from '../core/operations/ShaderData';
 
 function argbToRgba(argb: number): string {
@@ -59,9 +59,13 @@ export function cssFontStackFor(fontType: number): string {
  * Quoted because this is fed to the canvas `font` shorthand, where a bare multi-word `Space Grotesk`
  * is a parse error that silently voids the entire assignment — leaving the previous font in place,
  * which reads as "the named family was ignored" rather than as the syntax error it is.
+ *
+ * `cssQuoted` escapes `\` as well as `"`; escaping only the quote would let a family ending in a
+ * backslash swallow the rest of the stack, which is the same silent-void failure the quoting exists
+ * to prevent.
  */
 export function namedFontStack(family: string): string {
-    return `"${family.replace(/"/g, '\\"')}", ${cssFontStackFor(0)}`;
+    return `"${cssQuoted(family)}", ${cssFontStackFor(0)}`;
 }
 
 export class CanvasPaintContext extends PaintContext {
@@ -190,7 +194,12 @@ export class CanvasPaintContext extends PaintContext {
         if (!family) return cssFontStackFor(0);
         const { source, name } = parseFamily(family);
         if (!name) return cssFontStackFor(0);
-        if (source === 'google') ensureWebFont(name, this.onFontLoaded ?? undefined);
+        // Only the weight/style this op actually asks for. `fontWeight`/`fontItalic` were decoded
+        // from the same operation a few lines up, so the request is exact rather than "every face
+        // the family publishes".
+        if (source === 'google') {
+            ensureWebFont(name, this.fontWeight, this.fontItalic, this.onFontLoaded ?? undefined);
+        }
         return namedFontStack(name);
     }
 

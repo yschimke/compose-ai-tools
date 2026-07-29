@@ -108,10 +108,18 @@ Local deltas over that snapshot (each also filed upstream):
     fall back. The enumerated `ital,wght@0,100;…;1,900` is accepted for variable and static families
     alike, and the API returns only the faces the family actually ships, so over-asking is free.
   - **`@font-face` is lazy and canvas does not drive it.** `ctx.font` neither triggers a load nor
-    waits for one, so the faces are loaded explicitly by identity off `document.fonts`. Note
-    `document.fonts.check()` is useless as an assertion here — it answers *true* for a family that
-    was never declared at all, so it cannot tell "registered" from "fell back"; the tests measure
-    text width instead.
+    waits for one, so the face is loaded explicitly. Note `document.fonts.check()` is useless as an
+    assertion here — it answers *true* for a family that was never declared at all, so it cannot tell
+    "registered" from "fell back"; the tests measure text width instead. The load is asked for *by
+    font shorthand*, for the (weight, style) the paint op actually carries, so the browser's own CSS
+    matching fetches just that face: the stylesheet declares every weight, but declaring is free and
+    fetching is not — pulling all six of Orbitron's to draw one regular label would also hold
+    `fontsReady()` open on faces nothing paints.
+  - **Callbacks are per waiter and fire once.** Resolution runs per *paint*, so a settled variant
+    must never re-announce — that would schedule a repaint from inside painting, forever — while a
+    caller that arrives mid-fetch must still be recorded: with two players on a page, dropping the
+    second leaves that canvas in the fallback permanently, since a static document has no later
+    frame to recover on.
   - **Resolution is synchronous but fetching is not.** Resolution happens mid-paint, so the stack
     names the family immediately and the face lands later: interactive players repaint via
     `onFontLoaded`, and single-shot renderers await `player.fontsReady()` *after* the first paint,

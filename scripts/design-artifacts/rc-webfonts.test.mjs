@@ -36,6 +36,8 @@ let browser;
 let server;
 let origin;
 let skip = false;
+/** Font-file routes the page actually requested, so over-fetching is a testable claim. */
+const fetched = [];
 
 before(async () => {
   try {
@@ -52,7 +54,9 @@ before(async () => {
   const font = fs.readFileSync(fontPath);
 
   // Stands in for the Google Fonts CSS API: same contract (a stylesheet of @font-face rules for the
-  // requested family), no network.
+  // requested family), no network. Two weights are declared off the same file so that "which faces
+  // were actually fetched" is observable — that is what distinguishes loading the requested variant
+  // from loading everything the family publishes.
   server = http.createServer((req, res) => {
     const route = req.url.split("?")[0];
     if (route === "/") {
@@ -61,10 +65,16 @@ before(async () => {
     } else if (route === "/css2") {
       res.writeHead(200, { "content-type": "text/css", "access-control-allow-origin": "*" });
       res.end(
-        `@font-face{font-family:'${FIXTURE_FAMILY}';font-style:normal;font-weight:400;` +
-          `font-display:block;src:url(${origin}/font.ttf) format('truetype');}`,
+        [400, 700]
+          .map(
+            (w) =>
+              `@font-face{font-family:'${FIXTURE_FAMILY}';font-style:normal;font-weight:${w};` +
+              `font-display:block;src:url(${origin}/font-${w}.ttf) format('truetype');}`,
+          )
+          .join(""),
       );
-    } else if (route === "/font.ttf") {
+    } else if (route === "/font-400.ttf" || route === "/font-700.ttf") {
+      fetched.push(route);
       res.writeHead(200, { "content-type": "font/ttf", "access-control-allow-origin": "*" });
       res.end(font);
     } else {
@@ -179,19 +189,96 @@ test("a named family registers and canvas then paints in it", async (t) => {
       await RC.webFontsReady();
       const faces = [];
       document.fonts.forEach((f) => {
-        if (f.family.replace(/^["']|["']$/g, "") === family) faces.push(f.status);
+        if (f.family.replace(/^["']|["']$/g, "") === family) faces.push(`${f.weight}:${f.status}`);
       });
-      return { before, after: measure(`400 32px ${stack}`), faces };
+      return { before, after: measure(`400 32px ${stack}`), faces: faces.sort() };
     },
     { base: `${origin}/css2`, family: FIXTURE_FAMILY },
   );
 
-  assert.deepEqual(r.faces, ["loaded"], "the declared face should be loaded, not merely declared");
+  // Both weights are *declared* — declaring costs nothing — but only the one asked for is loaded.
+  // "unloaded" for 700 is the assertion that the fetch stayed narrow; "loaded" for 400 is the
+  // assertion that a declared face was actually driven to load, which canvas never does by itself.
+  assert.deepEqual(r.faces, ["400:loaded", "700:unloaded"]);
   // The real assertion. `document.fonts.check()` is NOT usable here — it answers true for a family
   // that was never declared at all (the system is assumed able to supply it), so it cannot tell
   // "registered" from "fell back". Measuring the same string through the same stack can: before
   // registration it is Roboto's width, after it is Orbitron's.
   assert.notEqual(r.after, r.before, "text width should change once the real face is registered");
+});
+
+test("a family name is escaped for the font shorthand, backslashes included", async (t) => {
+  if (skip) return t.skip(skip);
+  const page = await playerPage();
+  const r = await page.evaluate(() => ({
+    quote: RC.cssQuoted('My "Font"'),
+    backslash: RC.cssQuoted("My Font\\"),
+    stack: RC.namedFontStack("My Font\\"),
+  }));
+  assert.equal(r.quote, 'My \\"Font\\"');
+  // The one that matters: escaping only the quote would emit `"My Font\"`, where the backslash
+  // escapes the *closing* quote — the string runs on, swallows the rest of the stack, and the whole
+  // `ctx.font` assignment is silently voided, which is precisely what the quoting exists to prevent.
+  assert.equal(r.backslash, "My Font\\\\");
+  assert.equal(r.stack, '"My Font\\\\", Roboto, sans-serif');
+
+  // And the escaped stack must still be a value the canvas shorthand accepts.
+  const applied = await page.evaluate(() => {
+    const c = document.createElement("canvas").getContext("2d");
+    c.font = `400 32px ${RC.namedFontStack("My Font\\")}`;
+    return c.font;
+  });
+  assert.ok(applied.includes("32px"), `shorthand was voided: ${applied}`);
+});
+
+test("only the requested weight is fetched, not every weight the family publishes", async (t) => {
+  if (skip) return t.skip(skip);
+  const page = await playerPage();
+  fetched.length = 0;
+  await page.evaluate(
+    async (base) => {
+      RC.resetWebFonts();
+      RC.configureWebFonts({ baseUrl: base });
+      await RC.ensureWebFont("Orbitron", 400, false);
+      await RC.webFontsReady();
+    },
+    `${origin}/css2`,
+  );
+  // The stylesheet declares 400 and 700; drawing a regular label must not drag the bold down with
+  // it. Declaring a face is free — fetching one is not, and it also holds fontsReady() open, which
+  // is the wait a single-shot renderer is blocked on.
+  assert.deepEqual(fetched, ["/font-400.ttf"]);
+});
+
+test("every player waiting on an in-flight face is repainted, and settled faces stop notifying", async (t) => {
+  if (skip) return t.skip(skip);
+  const page = await playerPage();
+  const r = await page.evaluate(
+    async (base) => {
+      RC.resetWebFonts();
+      RC.configureWebFonts({ baseUrl: base });
+      let a = 0, b = 0, late = 0;
+      // Two players asking for the same family before the first fetch settles. Dropping the second
+      // caller's callback would leave that canvas in the fallback forever: a static document has no
+      // later frame to recover on.
+      const p1 = RC.ensureWebFont("Orbitron", 400, false, () => a++);
+      const p2 = RC.ensureWebFont("Orbitron", 400, false, () => b++);
+      await Promise.all([p1, p2]);
+      await RC.webFontsReady();
+
+      // Resolution runs per paint, so this is what a later frame does. It must NOT fire: notifying
+      // a settled variant would schedule a repaint from inside painting, which paints, which
+      // notifies again — an endless repaint loop.
+      await RC.ensureWebFont("Orbitron", 400, false, () => late++);
+      await RC.webFontsReady();
+      return { a, b, late, sameShared: p1 === p2 };
+    },
+    `${origin}/css2`,
+  );
+  assert.equal(r.a, 1, "first waiter should be notified exactly once");
+  assert.equal(r.b, 1, "second waiter joining the in-flight fetch must also be notified");
+  assert.equal(r.late, 0, "a settled variant must not re-notify");
+  assert.equal(r.sameShared, true, "both callers should join one fetch, not start two");
 });
 
 test("a family that cannot be served degrades to the fallback instead of throwing", async (t) => {
