@@ -260,3 +260,31 @@ jobs:
           done
           echo "::error::preview.coo.ee did not converge to ${V} with a readable catalog status within ~10 min." >&2
           exit 1
+
+      # Push the image's SEED config onto the now-rolled box. catalogs.json and
+      # trust/producers.json are first-boot seeds — the entrypoint never overwrites an existing
+      # /config copy (deliberately, so a roll can't stomp a runtime edit), which means merging a
+      # new catalog or producer changed NOTHING on an already-deployed server and someone had to
+      # remember to POST it by hand. This closes that gap at the one moment the box is known to be
+      # running the matching image.
+      #
+      # Additive only: an id already present comes back 409 and is left alone, so anything added
+      # directly on the box survives. See the script header for the retire-vs-reseed trade-off.
+      #
+      # Best-effort and OPTIONAL, like the rollout notify above: it needs a SERVE_ADMIN_TOKEN
+      # secret matching the box's own, and does nothing without one. `if: always()` so a box that
+      # was slow to converge above still gets its config reconciled; `continue-on-error` so this
+      # can never fail a publish that already succeeded.
+      - name: Publish seed config to preview.coo.ee (best-effort)
+        if: always()
+        continue-on-error: true
+        env:
+          BASE_URL: ${{ vars.DEPLOY_BASE_URL || 'https://preview.coo.ee' }}
+          ADMIN_TOKEN: ${{ secrets.SERVE_ADMIN_TOKEN }}
+        run: |
+          set -u
+          if [ -z "${ADMIN_TOKEN}" ]; then
+            echo "no SERVE_ADMIN_TOKEN secret — skipping config reconcile (seed applies to new boxes only)."
+            exit 0
+          fi
+          bash .github/scripts/publish-config-to-box.sh

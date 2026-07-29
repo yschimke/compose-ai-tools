@@ -648,6 +648,11 @@ jobs:
       # are worth a gate rather than a manual check.
       - name: Run deploy .env migration tests
         run: ./deploy/image/test-env-migrations.sh
+      # The seed-config reconcile POSTs to a live server's admin API during publish, so its
+      # ordering (trust before catalogs) and payload-shape rules are gated rather than eyeballed —
+      # a dropped `listed: false` or `group` silently moves a card on the front page.
+      - name: Run publish-config reconcile tests
+        run: ./.github/scripts/test-publish-config-to-box.sh
 
   # VS Code extension tests — both the existing in-process Mocha suite and
   # the @vscode/test-electron integration tests. The latter download a
