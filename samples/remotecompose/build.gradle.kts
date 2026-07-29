@@ -63,6 +63,12 @@ dependencies {
   // editor's `renderNow.overrides.remoteCompose.namedValues` flips `rememberNamedRemoteString`
   // bindings without rebuilding the document.
   implementation(project(":data-remotecompose-connector"))
+  // The embedded player, on the *runtime* classpath. The connector declares it `compileOnly` (same
+  // as its alpha `compose-remote` deps), so a consumer that wants the embedded replay lane has to
+  // supply it — otherwise `RemoteComposeIrReplay`'s classloader gate never finds it and a
+  // `renderNow.overrides.remoteCompose.player = "embedded"` request silently falls back to the View
+  // player instead of doing what it was asked.
+  implementation(project(":third-party-rc-embedded-player"))
   debugImplementation(libs.compose.ui.tooling.prerelease)
 
   testImplementation(libs.junit)

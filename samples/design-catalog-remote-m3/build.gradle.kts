@@ -94,6 +94,12 @@ dependencies {
   // seeded overrides (the vanilla `composePreviewRenderAll` / weekly render) it is
   // byte-for-byte the same output as `RemotePreview`.
   implementation(project(":data-remotecompose-connector"))
+  // The embedded player, on the *runtime* classpath. The connector declares it `compileOnly` (same
+  // as its alpha `compose-remote` deps), so a consumer that wants the embedded replay lane has to
+  // supply it — otherwise `RemoteComposeIrReplay`'s classloader gate never finds it and a
+  // `renderNow.overrides.remoteCompose.player = "embedded"` request silently falls back to the View
+  // player instead of doing what it was asked.
+  implementation(project(":third-party-rc-embedded-player"))
   // The widget-container stickers (`WidgetContainerPreviews.kt`) render through this module's
   // `CapturingWearWidgetPreview` rather than upstream's `WearWidgetPreview`, so each one emits its
   // encoded RemoteCompose document as the render's `.rc` sidecar and the bundle packs it as the

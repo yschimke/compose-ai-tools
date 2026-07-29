@@ -56,6 +56,21 @@ const THRESHOLD = Number(arg("threshold", "0.1"));
 const THEME = arg("theme", "light");
 const EXEC = arg("chromium", process.env.RC_COMPARE_CHROMIUM || undefined);
 const FONTS = arg("fonts", DEFAULT_FONTS_DIR);
+// Embedded-player lane (`:third-party-rc-embedded-player`). Two halves, because the render itself
+// is a Gradle/Robolectric step that has no business living inside a Playwright driver:
+//
+//   --stage-embedded <dir>  write `<id>.rc` + `manifest.json` (id/width/height) for the harness
+//   --embedded <dir>        read `<id>.png` the harness produced, diff them, add the columns
+//
+// Run the two around the harness:
+//   node rc-compare.mjs … --stage-embedded /tmp/rc-in
+//   ./gradlew :third-party-rc-embedded-player:testDebugUnitTest \
+//     -Prc.embedded.input=/tmp/rc-in -Prc.embedded.output=/tmp/rc-out
+//   node rc-compare.mjs … --embedded /tmp/rc-out
+//
+// Omitting both keeps the JS-only page exactly as before.
+const STAGE_EMBEDDED = arg("stage-embedded");
+const EMBEDDED = arg("embedded");
 
 if (!BUNDLE || !PLAYER || !OUT) {
   console.error("rc-compare: --bundle, --player and --out are required");
@@ -142,8 +157,100 @@ const dirs = {
   rc: path.join(OUT, "rc"),
   baked: path.join(OUT, "rc-baked"),
   diff: path.join(OUT, "rc-diff"),
+  embedded: path.join(OUT, "rc-embedded"),
+  embeddedDiff: path.join(OUT, "rc-embedded-diff"),
 };
 for (const d of Object.values(dirs)) fs.mkdirSync(d, { recursive: true });
+
+/** PNG dimensions straight out of the IHDR — cheaper than decoding the whole image to size it. */
+function pngSize(buf) {
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
+// --stage-embedded: hand the Gradle harness its inputs and stop. The id→size mapping lives here
+// because this is the only place that has both the `ir/*.rc` entry and its baked PNG.
+if (STAGE_EMBEDDED) {
+  fs.mkdirSync(STAGE_EMBEDDED, { recursive: true });
+  const staged = [];
+  for (const id of rcIds) {
+    const pngName = `previews/${id}.png`;
+    if (!entries.has(pngName)) continue;
+    const { width, height } = pngSize(entries.get(pngName)());
+    fs.writeFileSync(path.join(STAGE_EMBEDDED, `${id}.rc`), entries.get(`ir/${id}.rc`)());
+    staged.push({ id, width, height });
+  }
+  fs.writeFileSync(
+    path.join(STAGE_EMBEDDED, "manifest.json"),
+    JSON.stringify(staged, null, 1),
+  );
+  console.log(`rc-compare: staged ${staged.length} document(s) for the embedded player in ${STAGE_EMBEDDED}`);
+  process.exit(0);
+}
+
+// --embedded: the harness records per-document failures rather than aborting, so a document it
+// could not render still gets a row — with the reason in place of a percentage.
+const embeddedErrors = new Map();
+if (EMBEDDED) {
+  const errorsFile = path.join(EMBEDDED, "errors.txt");
+  if (fs.existsSync(errorsFile)) {
+    for (const line of fs.readFileSync(errorsFile, "utf8").split("\n")) {
+      const [id, ...rest] = line.split("\t");
+      if (id && rest.length) embeddedErrors.set(id, rest.join("\t"));
+    }
+  }
+}
+
+/**
+ * Diff one document's embedded-player render against its baked PNG and emit the row's embedded
+ * fields. Returns `{}` when the lane wasn't requested, which is what keeps the page at its original
+ * four columns rather than showing empty ones.
+ *
+ * `baked` is already flattened onto the neutral background by the caller, so the embedded render is
+ * flattened the same way before diffing — otherwise a transparent-background render would score as
+ * a false match the same way the baked stickers would.
+ */
+function embeddedFor(id, baked, width, height) {
+  if (!EMBEDDED) return {};
+  const png = path.join(EMBEDDED, `${id}.png`);
+  if (!fs.existsSync(png)) {
+    return {
+      embeddedRendered: false,
+      // The harness writes `<id>.error` next to the PNGs; surface its reason rather than a generic
+      // "missing", so the page distinguishes "the player threw" from "never attempted".
+      embeddedNote:
+        embeddedErrors.get(id) ??
+        (fs.existsSync(path.join(EMBEDDED, `${id}.error`))
+          ? fs.readFileSync(path.join(EMBEDDED, `${id}.error`), "utf8").trim().slice(0, 200)
+          : "no embedded render"),
+      embeddedMismatchPct: null,
+      embeddedMismatchPx: null,
+      embedded: "",
+      embeddedDiff: "",
+    };
+  }
+  const emb = flattenOnto(PNG.sync.read(fs.readFileSync(png)), BG);
+  if (emb.width !== width || emb.height !== height) {
+    return {
+      embeddedRendered: false,
+      embeddedNote: `size ${emb.width}×${emb.height} ≠ baked ${width}×${height}`,
+      embeddedMismatchPct: null,
+      embeddedMismatchPx: null,
+      embedded: "",
+      embeddedDiff: "",
+    };
+  }
+  const diff = new PNG({ width, height });
+  const px = pixelmatch(baked.data, emb.data, diff.data, width, height, { threshold: THRESHOLD });
+  fs.writeFileSync(path.join(dirs.embedded, `${id}.png`), PNG.sync.write(emb));
+  fs.writeFileSync(path.join(dirs.embeddedDiff, `${id}.png`), PNG.sync.write(diff));
+  return {
+    embeddedRendered: true,
+    embeddedMismatchPct: (100 * px) / (width * height),
+    embeddedMismatchPx: px,
+    embedded: `rc-embedded/${id}.png`,
+    embeddedDiff: `rc-embedded-diff/${id}.png`,
+  };
+}
 
 const bundleJs = fs.readFileSync(PLAYER, "utf8");
 
@@ -208,6 +315,10 @@ for (const id of rcIds) {
   const name = id.split(".").pop();
   const truncated = pageWarnings.some((t) => /Unknown operation opcode/.test(t));
 
+  // Embedded lane, computed independently of whether the JS player managed this document — either
+  // player can render one the other chokes on, and the page scores them separately.
+  const embedded = embeddedFor(id, baked, width, height);
+
   if (result.error || truncated) {
     rows.push({
       id,
@@ -222,6 +333,7 @@ for (const id of rcIds) {
       baked: `rc-baked/${id}.png`,
       rc: "",
       diff: "",
+      ...embedded,
     });
     fs.writeFileSync(path.join(dirs.baked, `${id}.png`), PNG.sync.write(baked));
     console.log(`  ${name}: NOT RENDERED (${rows[rows.length - 1].note})`);
@@ -251,8 +363,17 @@ for (const id of rcIds) {
     baked: `rc-baked/${id}.png`,
     rc: `rc/${id}.png`,
     diff: `rc-diff/${id}.png`,
+    ...embedded,
   });
-  console.log(`  ${name}: ${mismatchPct.toFixed(2)}% (${mismatchPx} px, ${width}×${height})`);
+  const embNote =
+    embedded.embeddedRendered === undefined
+      ? ""
+      : embedded.embeddedRendered
+        ? `  |  embedded ${embedded.embeddedMismatchPct.toFixed(2)}%`
+        : `  |  embedded NOT RENDERED`;
+  console.log(
+    `  ${name}: ${mismatchPct.toFixed(2)}% (${mismatchPx} px, ${width}×${height})${embNote}`,
+  );
 }
 
 await browser.close();
@@ -276,6 +397,15 @@ fs.writeFileSync(
       meanMismatchPct: meanPct,
       threshold: THRESHOLD,
       theme: THEME,
+      embedded: EMBEDDED
+        ? {
+            rendered: rows.filter((r) => r.embeddedRendered).length,
+            meanMismatchPct: (() => {
+              const ok = rows.filter((r) => r.embeddedRendered);
+              return ok.length ? ok.reduce((s, r) => s + r.embeddedMismatchPct, 0) / ok.length : null;
+            })(),
+          }
+        : null,
       rows: rows.map((r) => ({
         id: r.id,
         rendered: r.rendered,
@@ -284,6 +414,10 @@ fs.writeFileSync(
         width: r.width,
         height: r.height,
         note: r.note ?? null,
+        embeddedRendered: r.embeddedRendered ?? null,
+        embeddedMismatchPct: r.embeddedMismatchPct ?? null,
+        embeddedMismatchPx: r.embeddedMismatchPx ?? null,
+        embeddedNote: r.embeddedNote ?? null,
       })),
     },
     null,

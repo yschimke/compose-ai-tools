@@ -120,6 +120,11 @@ dependencies {
   compileOnly(libs.compose.remote.player.compose)
   compileOnly(libs.compose.remote.player.core)
   compileOnly(libs.compose.remote.player.view)
+  // The embedded replay lane (`RemoteComposeIrReplay` → `ExperimentalRemoteDocumentPlayer`).
+  // `compileOnly` like the alpha players above: a consumer that doesn't ship the vendored player
+  // still loads this connector, and `isEmbeddedPlayerAvailable` gates the call site at runtime so
+  // selecting `player = embedded` there falls back to the view player instead of dying.
+  compileOnly(project(":third-party-rc-embedded-player"))
   testImplementation(libs.compose.remote.player.core)
 
   testImplementation(libs.junit)
