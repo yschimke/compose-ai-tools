@@ -3,7 +3,7 @@
 # `Kotlin version too new`, which fails the `Analyze (java-kotlin)` job as a configuration error
 # and leaves the repo's main language unscanned. Bump once the CodeQL bundle catches up (the
 # alternative, disabling Kotlin extraction, would trade away the scan itself).
-kotlin = "2.4.0"
+kotlin = "2.4.10"
 # Kotlin language/api floor for published modules. Set lower than `kotlin`
 # so consumers on an older Kotlin can still link against our artifacts —
 # tapmoc enforces this and fails the build if a transitive API dep raises
@@ -158,10 +158,10 @@ horologist = "0.7.15"
 compose-remote = "1.0.0-alpha15"
 # Matches what the `compose-bom-compat` Compose artifacts already resolve collection to; pinned
 # explicitly because `:third-party-rc-embedded-player` names `ObjectIntMap`/`IntObjectMap` directly.
-androidx-collection = "1.5.0"
+androidx-collection = "1.6.0"
 # `FontRequest` / `FontsContractCompat` — the downloadable-fonts provider API the vendored embedded
 # player's typeface resolver uses to service `google:` font prefixes.
-androidx-core = "1.15.0"
+androidx-core = "1.19.0"
 #    alpha08 does not exist: the whole `androidx.wear.compose.remote` group stops
 #    at alpha07 on Google Maven (remote-material3 / remote-core / remote-player all
 #    404), so #2823's bump made `:samples:design-catalog-remote-m3` unresolvable and
@@ -185,7 +185,7 @@ compose-ui-prerelease = "1.11.4"
 kotlinx-coroutines = "1.11.0"
 kotlinx-serialization = "1.11.0"
 mcp-kotlin-sdk = "0.14.0"
-okio = "3.17.0"
+okio = "3.18.0"
 fontbox = "3.0.8"
 junit = "4.13.2"
 truth = "1.4.5"
