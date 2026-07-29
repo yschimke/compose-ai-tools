@@ -53,6 +53,7 @@ import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.renderer.AccessibilityDataProducts
 import ee.schimke.composeai.renderer.FontFallbackException
 import ee.schimke.composeai.renderer.FontResolutionDiagnostics
+import ee.schimke.composeai.renderer.PixelSystemFontAliases
 import ee.schimke.composeai.renderer.RenderWarningsSidecar
 import ee.schimke.composeai.renderer.WearScrollSvgAssembler
 import ee.schimke.composeai.renderer.AccessibilityHierarchyContextKeys
@@ -378,6 +379,15 @@ class RenderEngine(
       .addActivityIfNotPresent(
         android.content.ComponentName(appContext.packageName, ComponentActivity::class.java.name)
       )
+
+    // Seed `Typeface.sSystemFontMap` with the Pixel-system-family aliases, exactly as
+    // `RobolectricRenderTest.renderDefault` does for the baked snapshot. Both tiers must seed:
+    // this is per-process state, and when only the batch renderer did it, every
+    // `Font(DeviceFontFamilyName("roboto-flex"), …)` — the shape Wear Material3's type scale uses —
+    // rendered as Roboto in serve's live stream while the baked PNG of the same preview showed
+    // Roboto Flex. Idempotent + process-cached, so only the first render in a sandbox pays for it.
+    // See [PixelSystemFontAliases].
+    PixelSystemFontAliases.seedSystemFonts()
 
     // v2 `createAndroidComposeRule` (compose-ui-test 1.11.0-alpha03+) is the
     // long-term replacement, but we share the renderer's `compose-bom-compat`
