@@ -15,6 +15,37 @@ function argbToRgba(argb: number): string {
     return `rgba(${r},${g},${b},${a.toFixed(3)})`;
 }
 
+/**
+ * CSS font stack for an Android typeface id (`0=DEFAULT, 1=SANS_SERIF, 2=SERIF, 3=MONOSPACE`).
+ *
+ * Each stack names the concrete face Android's own `fonts.xml` resolves the family to, then falls
+ * back to the CSS generic. That first name is what makes a browser render match the baked raster:
+ * Android's `DEFAULT`/`sans-serif` is **Roboto**, not whatever the host calls `sans-serif` (a
+ * headless Linux container typically answers DejaVu or Liberation). Naming only the generic — as
+ * this did before — guarantees a different typeface from the snapshot renderer for every string
+ * drawn, which reads as a permanent few-percent parity residual that no amount of layout work can
+ * close.
+ *
+ * The concrete names are only a *request*: a page that has not registered the faces falls straight
+ * through to the generic and renders exactly as it did before, so this is safe in viewers that ship
+ * no fonts. The parity harness (`scripts/design-artifacts/rc-compare.mjs --fonts`) registers them
+ * from the same vendored files the snapshot renderer rasterizes with, which is what turns the
+ * request into a match. Families are kept in sync with `FAMILY_FILES` in
+ * `scripts/design-artifacts/render-fonts-manifest.mjs`.
+ *
+ * Multi-word names are quoted because this is fed to the canvas `font` shorthand, where a bare
+ * `Noto Serif` is a parse error that silently voids the whole assignment.
+ */
+export function cssFontStackFor(fontType: number): string {
+    switch (fontType) {
+        case 2: return '"Noto Serif", serif';
+        case 3: return '"Droid Sans Mono", monospace';
+        // 1 = SANS_SERIF is Android's own name for the Roboto stack, so it and
+        // DEFAULT (0, and anything unrecognised) resolve to the same face.
+        default: return 'Roboto, sans-serif';
+    }
+}
+
 export class CanvasPaintContext extends PaintContext {
     private ctx: CanvasRenderingContext2D;
 
@@ -32,7 +63,7 @@ export class CanvasPaintContext extends PaintContext {
     private filterBitmap = true;
     private letterSpacing = 0;
     private gradientStyle: CanvasGradient | CanvasPattern | null = null;
-    private fontFamily = 'sans-serif';
+    private fontFamily = cssFontStackFor(0);
     private fontWeight = 400;
     private fontItalic = false;
     private colorFilterColor: string | null = null;
@@ -506,14 +537,7 @@ export class CanvasPaintContext extends PaintContext {
                     this.fontItalic = italic;
 
                     const fontType = arr[i++];
-                    // Map Android typeface IDs to CSS font families
-                    // 0=DEFAULT, 1=SANS_SERIF, 2=SERIF, 3=MONOSPACE
-                    switch (fontType) {
-                        case 1: this.fontFamily = 'sans-serif'; break;
-                        case 2: this.fontFamily = 'serif'; break;
-                        case 3: this.fontFamily = 'monospace'; break;
-                        default: this.fontFamily = 'sans-serif'; break;
-                    }
+                    this.fontFamily = cssFontStackFor(fontType);
                     this.setFont();
                     break;
                 }
@@ -620,7 +644,7 @@ export class CanvasPaintContext extends PaintContext {
         this.filterBitmap = true;
         this.letterSpacing = 0;
         this.gradientStyle = null;
-        this.fontFamily = 'sans-serif';
+        this.fontFamily = cssFontStackFor(0);
         this.fontWeight = 400;
         this.fontItalic = false;
         this.colorFilterColor = null;

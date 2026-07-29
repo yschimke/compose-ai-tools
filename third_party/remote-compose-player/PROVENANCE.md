@@ -71,6 +71,18 @@ Local deltas over that snapshot (each also filed upstream):
   `readInt()` (same 4 bytes, so the stream stays aligned), matching what
   `CoreText` stores and decodes with `isNaNBits`/`intBitsToFloat`.
 
+- **Concrete font stacks for the generic families** (`src/web/CanvasPaintContext.ts`). The typeface
+  id → CSS family mapping named only the generics (`sans-serif` / `serif` / `monospace`, with
+  `DEFAULT` and every unrecognised id collapsing to `sans-serif`). Android resolves those families
+  to specific faces — `DEFAULT` and `sans-serif` are **Roboto**, not whatever the host calls
+  `sans-serif` — so every string the player drew used a different typeface from the snapshot
+  renderer, which reads as a permanent few-percent parity residual that no layout fix can close.
+  `cssFontStackFor` now names the concrete face first and keeps the generic as the fallback, so a
+  page that registers the faces matches the baked raster and one that does not renders exactly as
+  before. Registering them is the harness's job (`scripts/design-artifacts/rc-fonts.mjs`), which
+  also owns the weight ranges: declared at discrete weights, a request for an in-between weight
+  (Wear M3 asks for 450) resolves upward to Medium and renders visibly too heavy.
+
 ## Building the browser bundle
 
 ```sh

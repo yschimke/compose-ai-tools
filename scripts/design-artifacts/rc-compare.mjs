@@ -21,7 +21,13 @@
  *
  * Usage:
  *   node rc-compare.mjs --bundle <bundle.png> --player <rc-player bundle.js> \
- *     --out <dir> [--system <id>] [--title <t>] [--threshold 0.1] [--theme light]
+ *     --out <dir> [--system <id>] [--title <t>] [--threshold 0.1] [--theme light] \
+ *     [--fonts <dir>]
+ *
+ * `--fonts` defaults to the vendored faces the snapshot renderer itself rasterizes with (see
+ * rc-fonts.mjs). Point it elsewhere to compare against a different font set, or at a
+ * non-existent path to fall back to the host's generic families — which renders every string in a
+ * substituted typeface and inflates the mismatch for anything containing text.
  *
  * The polyglot `bundle.png` is a PNG with a ZIP appended; we read the ZIP's
  * `ir/*.rc` + `previews/*.png` entries directly (no external unzip).
@@ -34,6 +40,7 @@ import pixelmatch from "pixelmatch";
 import { chromium } from "playwright";
 
 import { renderRcCompareHtml } from "./render-rc-compare-html.mjs";
+import { DEFAULT_FONTS_DIR, fontFaceCss, loadAndVerifyFonts } from "./rc-fonts.mjs";
 
 function arg(name, def = undefined) {
   const i = process.argv.indexOf(`--${name}`);
@@ -48,6 +55,7 @@ const TITLE = arg("title", SYSTEM);
 const THRESHOLD = Number(arg("threshold", "0.1"));
 const THEME = arg("theme", "light");
 const EXEC = arg("chromium", process.env.RC_COMPARE_CHROMIUM || undefined);
+const FONTS = arg("fonts", DEFAULT_FONTS_DIR);
 
 if (!BUNDLE || !PLAYER || !OUT) {
   console.error("rc-compare: --bundle, --player and --out are required");
@@ -149,7 +157,9 @@ const pageWarnings = [];
 page.on("console", (m) => {
   if (m.type() === "warning" || m.type() === "error") pageWarnings.push(m.text());
 });
-await page.setContent("<!doctype html><html><body></body></html>");
+const fontCss = fontFaceCss(FONTS);
+await page.setContent(`<!doctype html><html><head>${fontCss}</head><body></body></html>`);
+if (fontCss) await loadAndVerifyFonts(page);
 await page.addScriptTag({ content: bundleJs });
 
 const rows = [];
