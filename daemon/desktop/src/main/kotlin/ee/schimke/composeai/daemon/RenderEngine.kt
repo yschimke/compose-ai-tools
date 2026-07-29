@@ -35,6 +35,7 @@ import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.layoutinspector.ComposeFigmaSvgProduct
 import ee.schimke.composeai.data.render.PreviewBackends
+import ee.schimke.composeai.data.render.PreviewBackground
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.PreviewDeviceSpec
 import ee.schimke.composeai.data.render.extensions.ExtensionContextData
@@ -1411,15 +1412,21 @@ class RenderEngine(
 /**
  * The flat colour a render paints behind the composable: the per-render "crisp outline" override
  * first, then `@Preview(backgroundColor = …)`, then plain `@Preview(showBackground = true)`'s
- * white. [Color.Transparent] when the preview opted into none — the common component case.
+ * theme-shaped default. [Color.Transparent] when the preview opted into none — the common component
+ * case.
+ *
+ * Precedence and the light/dark default live in [PreviewBackground] so both backends and both
+ * renderers agree; in particular `showBackground = true` on a dark preview is not white.
  */
 internal fun previewBackgroundColor(spec: RenderSpec): Color =
-  when {
-    spec.clearBackground -> Color.Transparent
-    spec.backgroundColor != 0L -> Color(spec.backgroundColor.toInt())
-    spec.showBackground -> Color.White
-    else -> Color.Transparent
-  }
+  Color(
+    PreviewBackground.resolveArgb(
+      showBackground = spec.showBackground,
+      backgroundColor = spec.backgroundColor,
+      night = spec.uiMode == RenderSpec.SpecUiMode.DARK,
+      clearBackground = spec.clearBackground,
+    )
+  )
 
 /**
  * [previewBackgroundColor] as the `#AARRGGBB` string the data-product wire format uses, or null
