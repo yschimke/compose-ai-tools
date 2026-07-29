@@ -484,12 +484,22 @@ jobs:
               --player "$PLAYER" \
               --out "$GITHUB_WORKSPACE/out" \
               --stage-embedded "$RC_IN"
+            # `--rerun` because the harness's real output is the PNGs it writes to `RC_OUT`, and
+            # Gradle cannot see them: they are addressed by a system property, not declared as task
+            # outputs. On a persistent runner the second identical invocation is UP-TO-DATE, so the
+            # task "succeeds" having written nothing. Verified: a third identical run reports
+            # `testDebugUnitTest UP-TO-DATE` and leaves RC_OUT empty. Ephemeral GitHub runners never
+            # hit it, but `runs-on` is an input, so self-hosted callers would.
             if (cd "$GITHUB_WORKSPACE/compose-ai-tools" && \
-                ./gradlew :third-party-rc-embedded-player:testDebugUnitTest --no-daemon \
-                  -Prc.embedded.input="$RC_IN" -Prc.embedded.output="$RC_OUT"); then
+                ./gradlew :third-party-rc-embedded-player:testDebugUnitTest --no-daemon --rerun \
+                  -Prc.embedded.input="$RC_IN" -Prc.embedded.output="$RC_OUT") \
+               && [ -n "$(find "$RC_OUT" -maxdepth 1 -name '*.png' -print -quit 2>/dev/null)" ]; then
               EMBEDDED_ARGS=(--embedded "$RC_OUT")
             else
-              echo "::warning::embedded-player lane failed to render; publishing the two-lane rc-compare page"
+              # Belt and braces: the PNG check above is what actually decides, so any cause of an
+              # empty RC_OUT — a skipped task, a harness that died before writing, a wiped temp dir
+              # — falls back to the two-lane page instead of publishing a lane of empty cells.
+              echo "::warning::embedded-player lane produced no renders; publishing the two-lane rc-compare page"
             fi
           fi
 
