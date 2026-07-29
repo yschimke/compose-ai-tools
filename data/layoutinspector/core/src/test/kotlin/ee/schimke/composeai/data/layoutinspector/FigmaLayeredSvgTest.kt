@@ -551,6 +551,134 @@ class FigmaLayeredSvgTest {
     assertFalse(svg, svg.contains("""id="Box"""))
   }
 
+  private fun plusVector(fromDrawCapture: Boolean) =
+    LayoutInspectorVectorGraphic(
+      viewportWidth = 24f,
+      viewportHeight = 24f,
+      paths =
+        listOf(LayoutInspectorVectorPath(pathData = "M11 5h2v14h-2z", fillArgb = "#FF000000")),
+      fromDrawCapture = fromDrawCapture,
+    )
+
+  private fun tintModifier() =
+    LayoutInspectorModifier(name = "drawWithContent", properties = emptyMap())
+
+  private fun vectorNode(
+    vector: LayoutInspectorVectorGraphic,
+    modifiers: List<LayoutInspectorModifier>,
+  ) =
+    LayoutInspectorPayload(
+      LayoutInspectorNode(
+        nodeId = "icon",
+        component = "Icon",
+        bounds = LayoutInspectorBounds(0, 0, 24, 24),
+        size = LayoutInspectorSize(24, 24),
+        vectorGraphic = vector,
+        modifiers = modifiers,
+      )
+    )
+
+  /**
+   * Issue #2852: Jetsnack tints its gradient icons with `Modifier.drawWithContent { drawContent();
+   * drawRect(brush, blendMode = Plus/Darken) }`. A blend-mode composite over arbitrary content has
+   * no faithful SVG equivalent, and the export emitted the bare `ImageVector` — painting the
+   * untinted black glyph the PNG never shows. The node must raster so the tint survives.
+   */
+  @Test
+  fun anIconDrawnOverByABlendModeTintRastersInsteadOfLosingTheTint() {
+    val model =
+      FigmaSvgModel.from(
+        layout = vectorNode(plusVector(fromDrawCapture = false), listOf(tintModifier())),
+        captureCanvasDraws = true,
+      )
+
+    assertEquals(listOf("icon"), model.rasterTargets.map { it.nodeId })
+    val svg = FigmaLayeredSvg.render(model)
+    assertTrue("the untinted vector must not be emitted\n$svg", !svg.contains("M11 5h2v14h-2z"))
+  }
+
+  /**
+   * A detached / not-yet-placed vector (inside a subcomposed Button or TextField) reports
+   * `(0,0,0,0)` bounds, which `toLayer` reconstructs from its measured size. The overlay raster has
+   * to crop that recovered box — cropping the raw zero-area one yields the transparent 1×1
+   * fallback, i.e. the icon disappears instead of being preserved.
+   */
+  @Test
+  fun anOverDrawnIconWithRecoveredBoundsRastersAtItsRecoveredSize() {
+    val model =
+      FigmaSvgModel.from(
+        layout =
+          LayoutInspectorPayload(
+            LayoutInspectorNode(
+              nodeId = "root",
+              component = "Box",
+              bounds = LayoutInspectorBounds(0, 0, 24, 24),
+              size = LayoutInspectorSize(24, 24),
+              children =
+                listOf(
+                  LayoutInspectorNode(
+                    nodeId = "icon",
+                    component = "Icon",
+                    bounds = LayoutInspectorBounds(0, 0, 0, 0),
+                    size = LayoutInspectorSize(24, 24),
+                    vectorGraphic = plusVector(fromDrawCapture = false),
+                    modifiers = listOf(tintModifier()),
+                  )
+                ),
+            )
+          ),
+        captureCanvasDraws = true,
+      )
+
+    val target = model.rasterTargets.single { it.nodeId == "icon" }
+    assertTrue(
+      "the raster must cover the recovered box, not a zero-area one: $target",
+      target.right > target.left && target.bottom > target.top,
+    )
+  }
+
+  @Test
+  fun anIconWithNoOverDrawStaysAnEditableVector() {
+    val model =
+      FigmaSvgModel.from(
+        layout = vectorNode(plusVector(fromDrawCapture = false), emptyList()),
+        captureCanvasDraws = true,
+      )
+
+    assertTrue(model.rasterTargets.isEmpty())
+    assertTrue(FigmaLayeredSvg.render(model).contains("M11 5h2v14h-2z"))
+  }
+
+  /**
+   * The counterpart guard: when the paths were recorded *from* the draw lambda (a slider groove, a
+   * progress arc) the modifier is already fully represented by them, so rastering would throw away
+   * the editable capture the recorder just made.
+   */
+  @Test
+  fun aCapturedDrawKeepsItsVectorRatherThanRasteringItsOwnModifier() {
+    val model =
+      FigmaSvgModel.from(
+        layout = vectorNode(plusVector(fromDrawCapture = true), listOf(tintModifier())),
+        captureCanvasDraws = true,
+      )
+
+    assertTrue("a captured draw is its own vector", model.rasterTargets.isEmpty())
+    assertTrue(FigmaLayeredSvg.render(model).contains("M11 5h2v14h-2z"))
+  }
+
+  /** With no frame to crop from, the untinted vector still beats a broken `<image>` reference. */
+  @Test
+  fun withoutAFrameToCropTheOverDrawnIconKeepsItsVector() {
+    val model =
+      FigmaSvgModel.from(
+        layout = vectorNode(plusVector(fromDrawCapture = false), listOf(tintModifier())),
+        captureCanvasDraws = false,
+      )
+
+    assertTrue(model.rasterTargets.isEmpty())
+    assertTrue(FigmaLayeredSvg.render(model).contains("M11 5h2v14h-2z"))
+  }
+
   @Test
   fun inheritedDisplayNameIsNotUsedForOpaqueRasterMatching() {
     // Regression guard (#2469 follow-up): an IconButton's internal wrapper inherits the label

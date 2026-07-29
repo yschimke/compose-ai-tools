@@ -92,6 +92,9 @@ internal object DrawCaptureExtractor {
       viewportWidth = width.toFloat(),
       viewportHeight = height.toFloat(),
       paths = rec.paths.toList(),
+      // These paths *are* the draw modifier's output, so the export must not also treat that
+      // modifier as an unrepresented overlay and raster the node (issue #2852).
+      fromDrawCapture = true,
     )
   }
 
