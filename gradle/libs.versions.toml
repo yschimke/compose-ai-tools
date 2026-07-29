@@ -159,6 +159,9 @@ compose-remote = "1.0.0-alpha15"
 # Matches what the `compose-bom-compat` Compose artifacts already resolve collection to; pinned
 # explicitly because `:third-party-rc-embedded-player` names `ObjectIntMap`/`IntObjectMap` directly.
 androidx-collection = "1.5.0"
+# `FontRequest` / `FontsContractCompat` — the downloadable-fonts provider API the vendored embedded
+# player's typeface resolver uses to service `google:` font prefixes.
+androidx-core = "1.15.0"
 #    alpha08 does not exist: the whole `androidx.wear.compose.remote` group stops
 #    at alpha07 on Google Maven (remote-material3 / remote-core / remote-player all
 #    404), so #2823's bump made `:samples:design-catalog-remote-m3` unresolvable and
@@ -323,6 +326,7 @@ compose-remote-core = { module = "androidx.compose.remote:remote-core", version.
 # `ObjectIntMap` / `IntObjectMap` in the vendored embedded player's public signatures. Compose pulls
 # collection in transitively, but the player names the types directly so it declares them itself.
 androidx-collection = { module = "androidx.collection:collection", version.ref = "androidx-collection" }
+androidx-core = { module = "androidx.core:core", version.ref = "androidx-core" }
 wear-compose-remote-material3 = { module = "androidx.wear.compose.remote:remote-material3", version.ref = "wear-compose-remote" }
 glance-wear = { module = "androidx.glance.wear:wear", version.ref = "glance-wear" }
 glance-wear-core = { module = "androidx.glance.wear:wear-core", version.ref = "glance-wear" }

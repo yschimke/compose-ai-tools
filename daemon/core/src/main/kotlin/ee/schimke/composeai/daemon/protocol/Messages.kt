@@ -1040,7 +1040,38 @@ data class RemoteComposeOverride(
   val profile: RemoteComposeProfile? = null,
   val namedValues: Map<String, RemoteNamedValue> = emptyMap(),
   val acceptedHostActions: List<String>? = null,
+  /**
+   * Which player renders a bundle's captured `ir/*.rc` document on replay. Null keeps the default
+   * ([RemoteComposePlayerKind.VIEW]), so existing renders stay byte-identical. See
+   * [RemoteComposePlayerKind] for what actually differs between the two.
+   */
+  val player: RemoteComposePlayerKind? = null,
 )
+
+/**
+ * Which Remote Compose player draws a replayed document.
+ *
+ * The two are genuinely different renderers, not two skins over one engine, which is why a preview
+ * can look different under each:
+ *
+ * * [VIEW] — `androidx.compose.remote.player.compose.RemoteDocumentPlayer`, backed by
+ *   `remote-player-view`'s `RemoteComposePlayer`. That is an Android `View` painting into a
+ *   framework `Canvas`, bridged into the composition with `AndroidView`. This is the long-standing
+ *   default and what ships on device today.
+ * * [EMBEDDED] — the vendored AndroidX `RcPlayer` (`:third-party-rc-embedded-player`), which
+ *   interprets the document's operation tree into Compose layout and draw nodes directly. No
+ *   `View`, no framework `Canvas` hand-off. This is what a host embedding Remote Compose content
+ *   *inside* a Compose tree gets, and it is the lane `rc-compare` diffs as a third column.
+ *
+ * Selecting [EMBEDDED] on a backend that has no embedded player on its classpath falls back to
+ * [VIEW] rather than failing the render — the connector gates on classloader availability the same
+ * way `:daemon:android` gates the whole Remote Compose extension.
+ */
+@Serializable
+enum class RemoteComposePlayerKind {
+  @SerialName("view") VIEW,
+  @SerialName("embedded") EMBEDDED,
+}
 
 /**
  * Platform profile the remote document is compiled against. Mirrors

@@ -4,6 +4,7 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
+import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
 import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
 import ee.schimke.composeai.daemon.protocol.RemoteHostAction
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
@@ -16,7 +17,7 @@ import kotlinx.serialization.json.Json
 /**
  * Process-static state holder for the Remote Compose connector.
  *
- * Four responsibilities:
+ * Five responsibilities:
  *
  * 1. **Named-value map** — the effective name -> [RemoteNamedValue] map for the current render.
  *    Snapshot-state so user code reading a value through `LocalRemoteComposeHost.current
@@ -35,6 +36,10 @@ import kotlinx.serialization.json.Json
  *    [RemoteComposeOverride .acceptedHostActions], the controller only records actions whose
  *    `payload` is in the set. Null accepts everything. Lets a panel client constrain capture to
  *    events it actually wants surfaced without depending on remote-code-side filtering.
+ * 5. **Replay player** — which player [RemoteComposeIrReplay] uses to draw a bundle's captured
+ *    document: the default `remote-player-view`-backed `RemoteDocumentPlayer`, or the vendored
+ *    embedded `RcPlayer`. Read at replay time rather than passed as an argument because the daemon
+ *    reaches the replay composable reflectively through a fixed `(ByteArray)` signature.
  *
  * Reads happen only from inside [RemoteComposeOverrideExtension.AroundComposable] (and from
  * `RemoteComposeDataProductRegistry.onRender`), which observe the snapshot-state via Compose's
@@ -51,6 +56,13 @@ object RemoteComposeController {
   private val hostActionsState: MutableState<List<RemoteHostAction>> = mutableStateOf(emptyList())
 
   private val profileState: MutableState<RemoteComposeProfile?> = mutableStateOf(null)
+
+  /**
+   * Which player replays a bundle's captured document ([RemoteComposeIrReplay]). Null means the
+   * default — the `remote-player-view`-backed `RemoteDocumentPlayer` — so a render that never sets
+   * this is byte-identical to before the embedded lane existed.
+   */
+  private val playerState: MutableState<RemoteComposePlayerKind?> = mutableStateOf(null)
 
   // Editable named-value knobs the current render declared, keyed by name for dedup with first-seen
   // order preserved (a re-declaration during recomposition replaces the entry in place). Mirrors
@@ -88,6 +100,9 @@ object RemoteComposeController {
 
   val profile: State<RemoteComposeProfile?>
     get() = profileState
+
+  val player: State<RemoteComposePlayerKind?>
+    get() = playerState
 
   /**
    * Record an editable knob the preview just declared (via a `LocalRemoteComposeHost` named-value
@@ -217,6 +232,7 @@ object RemoteComposeController {
   fun set(override: RemoteComposeOverride?) {
     namedValuesState.value = override?.namedValues ?: emptyMap()
     profileState.value = override?.profile
+    playerState.value = override?.player
     acceptedActionPayloads = override?.acceptedHostActions?.toSet()
     listeners.toList().forEach { it() }
   }
@@ -243,6 +259,17 @@ object RemoteComposeController {
   fun setProfile(profile: RemoteComposeProfile?) {
     if (profileState.value == profile) return
     profileState.value = profile
+    listeners.toList().forEach { it() }
+  }
+
+  /**
+   * Replace just the replay player without touching named values, the profile, or the accept-list.
+   * Same merge-don't-replace semantics as [setProfile], so a viewer toggling between the view-backed
+   * and embedded players mid-session doesn't clear the state it seeded earlier.
+   */
+  fun setPlayer(player: RemoteComposePlayerKind?) {
+    if (playerState.value == player) return
+    playerState.value = player
     listeners.toList().forEach { it() }
   }
 
@@ -287,6 +314,7 @@ object RemoteComposeController {
     namedValuesState.value = emptyMap()
     hostActionsState.value = emptyList()
     profileState.value = null
+    playerState.value = null
     declarationsState.value = emptyMap()
     activePreviewId = null
     acceptedActionPayloads = null

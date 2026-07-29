@@ -56,10 +56,22 @@ dependencies {
   api(libs.compose.remote.player.core)
   // `ExperimentalRemotePlayerApi` opt-in marker only.
   implementation(libs.compose.remote.player.compose)
+  // `LambdaAction` / `PendingIntentAction` (the click-action types `RcPlayer` dispatches) and
+  // `CapturedDocument` (the `rememberRemoteDocument` capture result). The player *consumes* these
+  // creation-side types even though it never authors a document itself.
+  implementation(libs.compose.remote.creation.compose)
 
   implementation(platform(libs.compose.bom.compat))
   implementation(libs.compose.runtime)
   implementation(libs.compose.ui)
   implementation(libs.compose.foundation)
+  // `Text` in the text-layout path and `ripple` in `RippleModifier` — the player leans on Material3
+  // for those two rather than reimplementing them.
+  implementation(libs.compose.material3)
+  // Downloadable Google Fonts: `GoogleFont`, the `Font` factory, and the certs `R` class the
+  // typeface resolver hands to `FontRequest`.
+  implementation(libs.compose.ui.text.google.fonts)
+  // `FontRequest` / `FontsContractCompat` behind the resolver's `google:` font prefix.
+  implementation(libs.androidx.core)
   implementation(libs.androidx.collection)
 }
