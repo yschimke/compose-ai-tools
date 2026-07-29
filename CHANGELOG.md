@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.19.5](https://github.com/yschimke/compose-ai-tools/compare/v0.19.4...v0.19.5) (2026-07-29)
+
+
+### Features
+
+* **preview-image:** bake Google Sans Flex into the font cache ([#2912](https://github.com/yschimke/compose-ai-tools/issues/2912)) ([6c23f47](https://github.com/yschimke/compose-ai-tools/commit/6c23f47c9f49c8d0a39a41341549b937ddd158a0))
+* **rc-player:** render Remote Compose with the renderer's own typefaces ([#2908](https://github.com/yschimke/compose-ai-tools/issues/2908)) ([c499d87](https://github.com/yschimke/compose-ai-tools/commit/c499d87574624ab85daac52d5ccb7a4131809ade))
+* **serve:** make the published catalog set pure config ([#2897](https://github.com/yschimke/compose-ai-tools/issues/2897)) ([d8796af](https://github.com/yschimke/compose-ai-tools/commit/d8796afdafd528ac5e2781409003db5585c70247))
+* **serve:** surface the lane toggles and export links in the page ([#2917](https://github.com/yschimke/compose-ai-tools/issues/2917)) ([2eb6350](https://github.com/yschimke/compose-ai-tools/commit/2eb63502e6c5d8f5ebf69e4a5df1b58b19160efc))
+
+
+### Bug Fixes
+
+* **catalog:** route untagged stickers to the light annotation ([#2911](https://github.com/yschimke/compose-ai-tools/issues/2911)) ([38ebdd7](https://github.com/yschimke/compose-ai-tools/commit/38ebdd7e9588077502e172d583ab9c330e37b293))
+* **daemon:** carry themeProvider through the renderNow wire ([#2915](https://github.com/yschimke/compose-ai-tools/issues/2915)) ([c048c20](https://github.com/yschimke/compose-ai-tools/commit/c048c20ecee01d6fa144d35215db888b2c62c553))
+* **daemon:** match live-preview fonts to the baked PNG ([#2909](https://github.com/yschimke/compose-ai-tools/issues/2909)) ([b9c8f97](https://github.com/yschimke/compose-ai-tools/commit/b9c8f971824e854c8524b1ffcfa26d01a7ca425e))
+* **figma-svg:** embed the downloadable face the render resolved ([#2913](https://github.com/yschimke/compose-ai-tools/issues/2913)) ([da38afc](https://github.com/yschimke/compose-ai-tools/commit/da38afc5a9b2ab2758e144c5c74d3e360e2f9fab))
+* **figma-svg:** read alpha from lambda-form graphicsLayer blocks ([#2914](https://github.com/yschimke/compose-ai-tools/issues/2914)) ([dc692cc](https://github.com/yschimke/compose-ai-tools/commit/dc692cc2dfb8e556356027b6dd6309d0fa64c843))
+* **figma-svg:** unwrap delegating painters so Wear surfaces stay vectorised ([#2918](https://github.com/yschimke/compose-ai-tools/issues/2918)) ([d910f3d](https://github.com/yschimke/compose-ai-tools/commit/d910f3d42268db5549ca9417e135eb05ab8bd614))
+* **preview-harness:** resync the Wear capsule fixture and run renderer-android in CI ([#2910](https://github.com/yschimke/compose-ai-tools/issues/2910)) ([3cfb5f1](https://github.com/yschimke/compose-ai-tools/commit/3cfb5f1cb521a4223e899244b7fd906a4ce207f1))
+* **rc-player:** paint TEXT_LAYOUT (208) instead of silently dropping it ([#2905](https://github.com/yschimke/compose-ai-tools/issues/2905)) ([e42e4e2](https://github.com/yschimke/compose-ai-tools/commit/e42e4e2f4c540b21c49fe9e298eb0b1da751cfc4))
+
 ## [0.19.4](https://github.com/yschimke/compose-ai-tools/compare/v0.19.3...v0.19.4) (2026-07-28)
 
 
