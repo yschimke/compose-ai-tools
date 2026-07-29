@@ -134,7 +134,7 @@ object PixelSystemFontAliases {
    * about, but it is not a parity risk: both render tiers go through this identical path, so the
    * live daemon and the baked snapshot agree on the face either way.
    */
-  fun seedSystemFontMap(
+  internal fun seedSystemFontMap(
     cache: GoogleFontSource? = null,
     lookup: ((name: String, weight: Int, italic: Boolean) -> java.io.File?)? = null,
     systemFontMap: MutableMap<String, Typeface>? = systemFontMap(),
