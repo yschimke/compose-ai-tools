@@ -24,6 +24,8 @@ import java.util.concurrent.TimeUnit
  * the server keeps serving what it already has, exactly as today.
  *
  * @param entries the catalog branches to watch: `system` id + owning `repo` + full `branch` ref.
+ *   Evaluated per pass rather than captured, because the catalog set is runtime config: a catalog
+ *   published through the admin API starts being polled on the next tick, and a retired one stops.
  * @param reload re-fetch + re-register one system; the `store.load(system, sourceRepo = repo)`
  *   seam. Its boolean result is whether the reload succeeded (a failure keeps the old head so the
  *   next tick retries).
@@ -32,7 +34,7 @@ import java.util.concurrent.TimeUnit
  * @param intervalMillis poll cadence; the first tick fires one interval after [start].
  */
 internal class ServeCatalogRefresher(
-  private val entries: List<Entry>,
+  private val entries: () -> List<Entry>,
   private val reload: (system: String, repo: String) -> Boolean,
   private val intervalMillis: Long,
   private val headResolver: (repo: String, branch: String) -> String? = ::gitLsRemoteHead,
@@ -54,8 +56,8 @@ internal class ServeCatalogRefresher(
    * succeeds. Previously every configured head was seeded, permanently suppressing retries for an
    * initial fetch/parse failure until someone happened to publish a new commit.
    */
-  fun seedInitialHeads(systems: Set<String> = entries.mapTo(linkedSetOf()) { it.system }) {
-    for (e in entries) {
+  fun seedInitialHeads(systems: Set<String> = entries().mapTo(linkedSetOf()) { it.system }) {
+    for (e in entries()) {
       if (e.system in systems) {
         headResolver(e.repo, e.branch)?.let { lastHead[e.system] = it }
       }
@@ -80,7 +82,7 @@ internal class ServeCatalogRefresher(
    * deterministically.
    */
   fun tick() {
-    for (e in entries) checkOne(e)
+    for (e in entries()) checkOne(e)
   }
 
   private fun checkOne(e: Entry) {

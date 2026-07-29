@@ -24,7 +24,19 @@ class CatalogLoadTracker(
   private val clock: () -> Long = System::currentTimeMillis,
 ) {
   /** One configured catalog and where its delivery branch lives. */
-  data class Config(val system: String, val listed: Boolean, val repo: String, val branch: String)
+  data class Config(
+    val system: String,
+    val listed: Boolean,
+    val repo: String,
+    val branch: String,
+    /**
+     * The front-page section this catalog was published under ([ServeCatalogsConfig.Entry.group],
+     * resolved against the config's group table), or null when it declared none. Carried here
+     * because this tracker is the configured-catalog source of truth every consumer already reads —
+     * including the home index, which needs the grouping to be config rather than code.
+     */
+    val group: ServeWeb.HomeGroup? = null,
+  )
 
   /** Immutable snapshot of one catalog's current availability and latest attempt. */
   data class State(
@@ -43,11 +55,43 @@ class CatalogLoadTracker(
         }
   }
 
+  /**
+   * Configured order, mutable because the catalog set is now runtime config: the admin API
+   * ([ServeCatalogAdmin]) publishes and retires catalogs on a running server. Guarded by [lock] for
+   * ordering; [states] stays a concurrent map so the hot read paths (status, home index, refresh)
+   * never block on a registration.
+   */
+  private val lock = Any()
   private val ordered =
     configured
       .distinctBy { it.system }
       .also { require(it.size == configured.size) { "duplicate catalog system id" } }
+      .toMutableList()
   private val states = ConcurrentHashMap(ordered.associate { it.system to State(it) })
+
+  /**
+   * Publish a new catalog, appended after the already-configured ones. Returns false when
+   * [config]'s system is already tracked — re-publishing an existing id is the caller's conflict to
+   * report, not something to silently overwrite (it would drop the running catalog's load state).
+   */
+  fun add(config: Config): Boolean =
+    synchronized(lock) {
+      if (states.containsKey(config.system)) return false
+      states[config.system] = State(config)
+      ordered += config
+      true
+    }
+
+  /** Retire a catalog. Returns false when it wasn't configured. */
+  fun remove(system: String): Boolean =
+    synchronized(lock) {
+      if (states.remove(system) == null) return false
+      ordered.removeAll { it.system == system }
+      true
+    }
+
+  /** The configured entry for [system], or null when it isn't served here. */
+  fun configFor(system: String): Config? = states[system]?.config
 
   fun record(result: ServeCatalogStore.Result) {
     when (result) {
@@ -71,8 +115,13 @@ class CatalogLoadTracker(
     }
   }
 
-  /** Stable configured-order snapshot, safe to iterate without holding a lock. */
-  fun snapshot(): List<State> = ordered.map { states.getValue(it.system) }
+  /**
+   * Stable configured-order snapshot, safe to iterate without holding a lock. Taken under [lock] so
+   * a concurrent [add]/[remove] can't tear the ordering; an entry retired between the two reads is
+   * dropped rather than throwing.
+   */
+  fun snapshot(): List<State> =
+    synchronized(lock) { ordered.toList() }.mapNotNull { states[it.system] }
 
   /** Catalogs with a usable registered copy; used to seed only successful branch heads. */
   fun availableSystems(): Set<String> =
