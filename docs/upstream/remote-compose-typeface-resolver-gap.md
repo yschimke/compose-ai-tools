@@ -43,7 +43,12 @@ init = { player ->
 }
 ```
 
-never fires. And if it did, the `typefaceResolver` parameter would overwrite it one line later.
+never fires — `getTypefaceResolver()` is null here for the reason in §2 — and had the caller also
+passed the `typefaceResolver` parameter, it would have overwritten the result one line later.
+
+The ordering is a wrinkle rather than the root cause: give the getter a lazy default (see the
+proposal's Option A) and this shape starts working, provided the caller leaves the `typefaceResolver`
+parameter unset. The blocking problems are §2 and §3.
 
 ### 2. Reading the current resolver at any point
 

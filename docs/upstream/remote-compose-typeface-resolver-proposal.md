@@ -1,7 +1,7 @@
 # Proposal: make the stock `TypefaceResolver` reachable so callers can delegate
 
-Companion to `remote-compose-typeface-resolver-gap.md`. Three options, cheapest first. Any one of
-them unblocks the case; they are not mutually exclusive.
+Companion to `remote-compose-typeface-resolver-gap.md`. Three options, cheapest first. **Option A
+alone unblocks the reported case**; B and C are improvements on top, not prerequisites.
 
 ## Option A — give `AndroidRemoteContext` a lazy default (smallest change)
 
@@ -23,10 +23,23 @@ player.setTypefaceResolver(MyResolver(delegate = player.getTypefaceResolver()))
 ```
 
 **Pros:** a few lines; no new API surface; `AndroidPaintContext` can keep its own fallback for the
-case where the context is absent.
+case where the context is absent. Sufficient on its own, for direct `RemoteComposePlayer` users *and*
+for `RemoteDocumentPlayer` callers: leave the nullable `typefaceResolver` argument unset and install
+from `init`, at which point the trailing `typefaceResolver?.let(::setTypefaceResolver)` is a no-op and
+cannot overwrite what `init` set.
 
-**Cons:** on its own it is not enough for `RemoteDocumentPlayer` callers, because `init` still runs
-before `setTypefaceResolver` — see Option C. It works today for direct `RemoteComposePlayer` users.
+```kotlin
+RemoteDocumentPlayer(
+    document = document,
+    documentWidth = w,
+    documentHeight = h,
+    // typefaceResolver deliberately omitted — see below.
+    init = { player -> player.setTypefaceResolver(MyResolver(player.getTypefaceResolver())) },
+)
+```
+
+**Cons:** the working call has to *avoid* the declared `typefaceResolver` parameter and use `init`
+instead, which is the opposite of what the API's shape suggests. Option C removes that wrinkle.
 
 **Compatibility:** the getter's return type narrows from `@Nullable` to `@NonNull`. Source-compatible
 for Kotlin callers that already null-checked; worth confirming against the API-tracking rules.
@@ -53,8 +66,12 @@ public interface TypefaceResolver {
 **Pros:** the most expressive option and the one that scales to several independent contributors of
 font knowledge; a caller never has to reimplement anything it does not care about.
 
-**Cons:** changes an existing interface's nullability contract — a breaking change for anyone already
-implementing it.
+**Cons:** changes an existing interface's nullability contract. Note the break is on the **call**
+side, not the implementation side: an existing implementation that returns a non-null `FontInstance`
+remains a valid covariant override, and Java implementations are unaffected — but every caller must
+now handle `FontInstance?`, which in Kotlin is a compile error until updated. In practice the only
+in-tree caller is `AndroidPaintContext`; the exposure is to any downstream code that invokes a
+resolver directly.
 
 ## Option C — apply `typefaceResolver` before `init`
 
@@ -77,13 +94,16 @@ parameters the caller also passed.
 
 **Pros:** two moved lines; removes a surprising ordering dependency.
 
-**Cons:** behaviour change for anyone (unknowingly) relying on `init` running first.
+**Cons:** behaviour change for anyone (unknowingly) relying on `init` running first. On its own it
+fixes nothing for this report — with no lazy default there is still no stock resolver to wrap, so C
+is only worth doing alongside A.
 
 ## Suggested combination
 
-**A + C** is the smallest set that fixes the reported case: `getTypefaceResolver()` returns something
-to wrap, and `init` can wrap it without being overwritten. **B** is the better long-term shape if the
-interface can still take a breaking change at alpha.
+**A** is the minimum, and is sufficient by itself. **C** on top makes the fix discoverable, so the
+declared `typefaceResolver` parameter and `init` compose instead of the caller having to know that
+passing the parameter defeats wrapping. **B** is the better long-term shape if the interface can
+still take a source-breaking change to its callers at alpha.
 
 ## What a caller would then write
 
