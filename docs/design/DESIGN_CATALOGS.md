@@ -285,13 +285,13 @@ gap by scanning the module's Kotlin source directly (no Gradle build, no render)
   let the GIF travel in the bundle as its own artifact. `init-catalog-spec` skips
   these functions when scaffolding, and the validator's discovery line names them
   so you know why they're absent. When there is no static sibling to point at, the
-  entry can instead declare `"capture": "animated"` — see below.
+  entry can instead declare `"capture": "none"` — see below.
 
 The spec shape is described by
 [`scripts/design-artifacts/catalog.spec.schema.json`](../../scripts/design-artifacts/catalog.spec.schema.json)
 (referenced via `$schema` in each sample spec for editor validation).
 
-## Components with no static sticker (`capture: "animated"`)
+## Components with no static sticker (`capture: "none"`)
 
 Not every PNG-less preview announces itself in the source. A composable hosted in
 an `AndroidView` (say an HTML-rendering `TextView`) and a horologist
@@ -311,21 +311,28 @@ Declare the situation instead:
     {
       "componentId": "Screens/Watch list",
       "preview": "WatchListPreview",
-      "capture": "animated",
+      "capture": "none",
       "caption": "Scrolling watch list (no static frame — ScalingLazyColumn)"
     }
   ]
 }
 ```
 
-`"capture": "animated"` (component or variant; absent ⇒ `"static"`) keeps the
-entry in the inventory, excludes it from the candidate join like any other
-PNG-less preview, and stops it counting as a missing render — the export names it
-on every run instead:
+`"capture": "none"` (component or variant; absent ⇒ `"static"`) keeps the entry in
+the inventory, excludes it from the candidate join like any other PNG-less
+preview, and stops it counting as a missing render — the export names it on every
+run instead:
 
 ```text
-[pocketcasts-wear] declared non-static (capture: "animated"), no sticker exported for: Screens/Watch list
+[pocketcasts-wear] declared no sticker (capture: "none"), none exported for: Screens/Watch list
 ```
+
+The value names what the gate checks — this entry exports no sticker — not why.
+Only some of these previews are animated (a `ScalingLazyColumn` screen and an
+`AndroidView` host are perfectly still), and `"animated"` is deliberately left
+unused so a future mode that really does export a GIF can claim it. A mistyped
+`capture` is a validation error rather than a silent fall-through to `"static"`,
+which would sink the publish on the very entry it was meant to exempt.
 
 Unlike `--allow-incomplete`, this is per-component: every other entry keeps the
 strict gate. Use it only where the render genuinely produces no PNG — a spec entry

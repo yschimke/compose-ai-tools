@@ -1,4 +1,4 @@
-import { isAnimatedCapture } from "./capture-mode.mjs";
+import { exportsNoSticker } from "./capture-mode.mjs";
 
 /**
  * Fold a catalog spec component's `variants` onto its default render.
@@ -34,18 +34,18 @@ import { isAnimatedCapture } from "./capture-mode.mjs";
  *   the spec component (its `variants` drive the fold).
  * @param {Map<string, {images: Array<object>}>} byFunction rendered candidates
  *   keyed by `@Preview` function name.
- * @returns {{ideal: Array<object>, missing: string[], animated: string[]}} the
+ * @returns {{ideal: Array<object>, missing: string[], noSticker: string[]}} the
  *   merged image list, any variant previews that produced no render (as
  *   `"<componentId> [<label>]"` where the label is the variant's state and/or
  *   `k=v` props), so the caller's completeness gate can still refuse a
  *   half-rendered sticker, and — reported separately, NOT as missing — the
- *   render-less variants that declared `"capture": "animated"` (see
+ *   render-less variants that declared `"capture": "none"` (see
  *   capture-mode.mjs).
  */
 export function foldVariants(defaultImages, component, byFunction) {
   const ideal = [...defaultImages];
   const missing = [];
-  const animated = [];
+  const noSticker = [];
   const outputKeys = new Set();
   for (const image of defaultImages) {
     recordOutputKey(outputKeys, image, component.componentId);
@@ -53,10 +53,10 @@ export function foldVariants(defaultImages, component, byFunction) {
   for (const variant of component.variants ?? []) {
     const candidate = byFunction.get(variant.preview);
     if (!candidate || candidate.images.length === 0) {
-      // A variant that declares itself non-static has no sticker to fold in by design — record it
+      // A variant that declares `"capture": "none"` has no sticker to fold in by design — record it
       // so the export can say so, but keep it out of the completeness gate.
       const label = `${component.componentId} [${variantLabel(variant)}]`;
-      if (isAnimatedCapture(variant)) animated.push(label);
+      if (exportsNoSticker(variant)) noSticker.push(label);
       else missing.push(label);
       continue;
     }
@@ -69,7 +69,7 @@ export function foldVariants(defaultImages, component, byFunction) {
       ideal.push(tagged);
     }
   }
-  return { ideal, missing, animated };
+  return { ideal, missing, noSticker };
 }
 
 /**

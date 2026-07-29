@@ -23,7 +23,7 @@
  *     read separately via `catalogTokensFromBundle(bundle)` to export `themeTokens`.
  *   - previews that simply produce no still — an `AndroidView`-hosted composable, a horologist
  *     `ScalingLazyColumn` screen. Nothing in the annotations marks these, so a spec that catalogues
- *     one declares it with `"capture": "animated"` (see capture-mode.mjs / issue #2946); they are
+ *     one declares it with `"capture": "none"` (see capture-mode.mjs / issue #2946); they are
  *     dropped here like the rest, but don't count as a missing render.
  *
  * Because this returns a **clone** and never mutates `bundle.previews`, those catalog-token sheets

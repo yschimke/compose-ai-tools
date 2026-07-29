@@ -122,9 +122,9 @@
           "description": "One-line description shown under the sticker."
         },
         "capture": {
-          "enum": ["static", "animated"],
+          "enum": ["static", "none"],
           "default": "static",
-          "description": "How this component captures. `static` (the default) expects a `previews/<id>.png` sticker; a spec entry that renders none is a missing render and the strict publish gate refuses the whole system. `animated` DECLARES that this preview has no static sticker — an AndroidView-hosted composable, a horologist ScalingLazyColumn screen, or a GIF-only capture — so it is excluded from the candidate join without counting as missing, and the entry stays in the spec as the record that the coverage is non-static (put its group under `section: \"Animations\"` to keep it out of the component tabs). Use it only when the render genuinely produces no PNG; deleting the entry instead hides the gap."
+          "description": "What this component exports. `static` (the default) expects a `previews/<id>.png` sticker; a spec entry that renders none is a missing render and the strict publish gate refuses the whole system. `none` DECLARES that this preview exports no sticker — an AndroidView-hosted composable, a horologist ScalingLazyColumn screen, or a GIF-only capture — so it is excluded from the candidate join without counting as missing, and the entry stays in the spec as the record that the coverage is sticker-less (if the content is animated, put its group under `section: \"Animations\"` to keep it out of the component tabs). Use it only when the render genuinely produces no PNG; deleting the entry instead hides the gap."
         },
         "reference": {
           "type": "string",
@@ -166,9 +166,9 @@
         },
         "caption": { "type": "string" },
         "capture": {
-          "enum": ["static", "animated"],
+          "enum": ["static", "none"],
           "default": "static",
-          "description": "As on a component: `animated` declares that this variant render has no static PNG, so it is skipped in the fold without counting as a missing render."
+          "description": "As on a component: `none` declares that this variant render exports no static PNG, so it is skipped in the fold without counting as a missing render."
         },
         "state": {
           "type": "string",

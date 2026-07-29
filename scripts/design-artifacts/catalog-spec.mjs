@@ -10,7 +10,7 @@
 // run without `npm ci`. The CLI wrappers are validate-catalog-spec.mjs and
 // init-catalog-spec.mjs.
 
-import { CAPTURE_MODES, isAnimatedCapture } from "./capture-mode.mjs";
+import { CAPTURE_MODES, exportsNoSticker } from "./capture-mode.mjs";
 
 // The built-in Compose preview annotation. Any function annotated with it — or
 // with a *multipreview* annotation (an annotation class itself meta-annotated
@@ -463,7 +463,7 @@ export function closest(name, candidates) {
  *   that render no static `previews/<id>.png` (see [discoverPreviews]'s `pngLess`).
  *   Referencing one is an error: `candidatePreviewBundle()` drops it from the
  *   candidate join and the completeness gate then reports the component missing.
- *   An entry that declares `"capture": "animated"` is exempt — it has said so.
+ *   An entry that declares `"capture": "none"` is exempt — it has said so.
  * @returns {{ errors: string[], warnings: string[] }}
  */
 export function validateSpec(spec, opts = {}) {
@@ -507,8 +507,8 @@ export function validateSpec(spec, opts = {}) {
 
   const componentIds = new Map(); // componentId -> first path
   const previewToPaths = new Map(); // preview name -> [paths]
-  // The subset of the above whose referring entry did NOT declare `"capture": "animated"`. A
-  // PNG-less preview is only an error for those: an animated entry is *declaring* the absence.
+  // The subset of the above whose referring entry did NOT declare `"capture": "none"`. A PNG-less
+  // preview is only an error for those: a `"none"` entry is *declaring* the absence.
   const staticRefPaths = new Map(); // preview name -> [paths]
 
   spec.groups.forEach((group, gi) => {
@@ -536,7 +536,7 @@ export function validateSpec(spec, opts = {}) {
         errors.push(`${cp}.preview is required (an exact @Preview function name)`);
       } else {
         pushMulti(previewToPaths, comp.preview, cp);
-        if (!isAnimatedCapture(comp)) pushMulti(staticRefPaths, comp.preview, cp);
+        if (!exportsNoSticker(comp)) pushMulti(staticRefPaths, comp.preview, cp);
       }
       const variants = comp?.variants;
       if (variants !== undefined) {
@@ -567,7 +567,7 @@ export function validateSpec(spec, opts = {}) {
               errors.push(`${vp}.preview is required`);
             } else {
               pushMulti(previewToPaths, v.preview, vp);
-              if (!isAnimatedCapture(v)) pushMulti(staticRefPaths, v.preview, vp);
+              if (!exportsNoSticker(v)) pushMulti(staticRefPaths, v.preview, vp);
             }
             if (v?.state === undefined && v?.props === undefined && v?.theme === undefined) {
               errors.push(
@@ -607,16 +607,16 @@ export function validateSpec(spec, opts = {}) {
           `preview "${preview}" (${paths[0]}) matches no @Preview function in the scanned module${suffix}`,
         );
       } else if (pngLess.has(preview) && staticRefPaths.has(preview)) {
-        // Entries that declared `"capture": "animated"` are exempt — they have *said* the preview is
-        // non-static, which is exactly what this error asks for. Only the undeclared refs fail.
+        // Entries that declared `"capture": "none"` are exempt — they have *said* the preview exports
+        // no sticker, which is exactly what this error asks for. Only the undeclared refs fail.
         errors.push(
           `preview "${preview}" (${staticRefPaths.get(preview)[0]}) renders no static PNG — it is an ` +
             `animated/data-product capture (@AnimatedPreview, @FocusedPreview(gif = true), or ` +
             `@ScrollingPreview with only LONG/GIF modes). The catalog export drops PNG-less previews ` +
             `from the candidate join, so this entry would be reported missing by the completeness ` +
             `gate. Point it at a static @Preview function (a plain @Preview sibling of the animated ` +
-            `one works), or declare the entry \`"capture": "animated"\` to keep it in the spec as a ` +
-            `known non-static component.`,
+            `one works), or declare the entry \`"capture": "none"\` to keep it in the spec as a known ` +
+            `sticker-less component.`,
         );
       }
     }
