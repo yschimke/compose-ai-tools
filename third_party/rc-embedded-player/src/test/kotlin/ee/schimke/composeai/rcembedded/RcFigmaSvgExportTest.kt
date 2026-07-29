@@ -48,7 +48,6 @@ import ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload
 import java.io.File
 import java.nio.file.Files
 import kotlinx.serialization.json.Json
-import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -99,7 +98,10 @@ import org.robolectric.annotation.GraphicsMode
  * (251x110) rather than the document's (640x480). The report therefore prints the canvas size next
  * to the document size, so a regression in coverage is visible without re-deriving it.
  *
- * Skips unless a staged catalog is present (`rc.embedded.input`), like the render harnesses.
+ * Runs against a **committed 1 KB fixture** by default, so the coverage actually executes on a plain
+ * `check` — unlike the sibling render harnesses, which skip without `rc.embedded.input` because they
+ * rasterize a whole catalog. Setting `rc.embedded.input` still wins, so the same assertions can be
+ * swept over a staged catalog locally.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -110,9 +112,8 @@ class RcFigmaSvgExportTest {
 
   @Test
   fun embeddedPlayerExportsVectorContent() {
-    val doc = stagedDocument()
-    assumeTrue("no staged catalog — nothing to export", doc != null)
-    val lane = export("embedded", doc!!) { bytes ->
+    val doc = document()
+    val lane = export("embedded", doc) { bytes ->
       ExperimentalRemoteDocumentPlayer(
         document = remember { RemoteDocument(bytes) },
         autoUpdate = false,
@@ -134,9 +135,8 @@ class RcFigmaSvgExportTest {
 
   @Test
   fun viewPlayerExportsOneFlatRaster() {
-    val doc = stagedDocument()
-    assumeTrue("no staged catalog — nothing to export", doc != null)
-    val lane = export("view", doc!!) { bytes ->
+    val doc = document()
+    val lane = export("view", doc) { bytes ->
       val document = remember { RemoteDocument(bytes) }
       RemoteDocumentPlayer(
         document = document.document,
@@ -146,14 +146,28 @@ class RcFigmaSvgExportTest {
     }
     report(doc, lane)
 
+    // Pinned tightly, because this lane is the *control*: the embedded lane's result is only
+    // meaningful relative to "one flat raster covering the whole document". A weaker assertion
+    // (merely `images > 0`) would keep passing if the control drifted into several crops, grew
+    // vector layers of its own, or started cropping its canvas — and the comparison would quietly
+    // stop meaning what it says.
     assert(lane.svg.isNotEmpty()) { "the view lane wrote no compose-figma.svg at all" }
     assert(lane.texts == 0) {
       "the view lane surfaced ${lane.texts} <text> element(s) — the AndroidView bridge was " +
         "expected to be opaque:\n${lane.head()}"
     }
-    assert(lane.images > 0) {
-      "the view lane emitted no <image>, so it is not the flat-raster control this comparison " +
-        "assumes:\n${lane.head()}"
+    assert(lane.images == 1) {
+      "expected exactly one <image> from the opaque AndroidView, got ${lane.images} — the control " +
+        "is no longer a single flat raster:\n${lane.head()}"
+    }
+    assert(lane.paths == 0 && lane.rects == 0) {
+      "the view lane emitted drawn vector content (path=${lane.paths} rect=${lane.rects}); the " +
+        "raster crop was expected to be all of it:\n${lane.head()}"
+    }
+    val (w, h) = lane.canvas()
+    assert(w >= doc.width && h >= doc.height) {
+      "the view lane's canvas is ${w}x$h, smaller than the ${doc.width}x${doc.height} document — " +
+        "the control is expected to cover the whole frame, not shrink-wrap to its content"
     }
   }
 
@@ -295,6 +309,21 @@ class RcFigmaSvgExportTest {
     return payload?.let { walk(it.root) } ?: 0
   }
 
+  /**
+   * The document to export, preferring a staged catalog and otherwise falling back to the committed
+   * fixture — so this **always runs**, including on a plain `check` in CI.
+   *
+   * The sibling render harnesses legitimately skip without `rc.embedded.input`: they rasterize the
+   * whole catalog for the `rc-compare` page, which is inherently a bulk operation over artefacts too
+   * large to commit. This test isn't that. It pins one qualitative property of the export, one
+   * document is enough to pin it, and a document is 1 KB — so skipping without a staged catalog
+   * would mean the regression coverage silently never runs, which is the same as not having it.
+   *
+   * `rc.embedded.input` still wins when set, so the same assertions can be swept across a whole
+   * catalog locally without touching the fixture.
+   */
+  private fun document(): Doc = stagedDocument() ?: fixtureDocument()
+
   private fun stagedDocument(): Doc? {
     val dir =
       System.getProperty(INPUT_PROPERTY)?.let(::File)?.takeIf { it.isDirectory } ?: return null
@@ -310,10 +339,26 @@ class RcFigmaSvgExportTest {
     return Doc(pick.id, pick.width, pick.height, rc.readBytes())
   }
 
+  /**
+   * `TitleCardRemote` as the `design-catalog-remote-m3` sample bakes it — the same document a staged
+   * run picks, captured from `design-artifacts/remote-m3` and committed at 1 KB. Its size is in the
+   * filename because a `.rc` carries its own layout but not the frame it was captured for, and the
+   * export needs the frame to compare the canvas against.
+   */
+  private fun fixtureDocument(): Doc {
+    val bytes =
+      checkNotNull(javaClass.getResourceAsStream("/$FIXTURE")) {
+          "missing committed fixture $FIXTURE — this test must never silently skip"
+        }
+        .use { it.readBytes() }
+    return Doc(FIXTURE.substringAfterLast('/'), 640, 480, bytes)
+  }
+
   private companion object {
     const val INPUT_PROPERTY = "rc.embedded.input"
     const val REPORT_PROPERTY = "rc.semantics.report"
     const val FRAMES = 4
+    const val FIXTURE = "rc-fixtures/TitleCardRemote-640x480.rc"
   }
 }
 
