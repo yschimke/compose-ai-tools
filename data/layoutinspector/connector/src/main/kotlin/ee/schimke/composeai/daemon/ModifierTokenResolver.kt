@@ -174,21 +174,121 @@ internal object ModifierTokenResolver {
   }
 
   /**
-   * Effective alpha of one graphics-layer modifier. Lambda-based `graphicsLayer { … }` elements
-   * only expose the block itself, but their [ModifierInfo.coordinates] coordinator retains the
-   * evaluated `ReusableGraphicsLayerScope`; direct overloads may expose `alpha` on the element.
+   * Effective alpha of one graphics-layer modifier.
+   *
+   * Three shapes, probed in order of how much we can trust them:
+   * 1. The **named-parameter** overload (`graphicsLayer(alpha = 0f)`) keeps `alpha` as a real field
+   *    on the element, and the inspector also exposes it as a property.
+   * 2. The **lambda** overload (`graphicsLayer { alpha = … }`) keeps only the opaque block, so we
+   *    evaluate it ourselves against a recording scope ([evaluateLayerBlockAlpha]).
+   * 3. Only if neither answered, the coordinator's `graphicsLayerScope`.
+   *
+   * The ordering is the fix for issue #2853. Probing the coordinator *first* looked like it covered
+   * the lambda case, but `graphicsLayerScope` is a **shared static** on `NodeCoordinator` that
+   * Compose reuses for whichever layer it updated most recently — so it reports some other node's
+   * alpha, and for Jetchat's `RecordButton` (`graphicsLayer { alpha = containerAlpha.value }`, zero
+   * when idle) it read back 1 and the export drew an opaque blue circle the PNG doesn't have.
+   * Evaluating the block is per-node and exact, which is why it now runs before that fallback
+   * rather than after it.
    */
   internal fun graphicsLayerAlpha(info: ModifierInfo): Double? {
-    val scope = reflectedField(info.coordinates, "graphicsLayerScope")
     val effective =
-      scope?.let { reflectedFloat(it, "alpha") }
-        ?: reflectedFloat(info.modifier, "alpha")
+      reflectedFloat(info.modifier, "alpha")
         ?: (info.modifier as? InspectableValue)
           ?.inspectableElements
           ?.firstOrNull { it.name == "alpha" }
           ?.value
           ?.let(::floatValue)
+        ?: evaluateLayerBlockAlpha(info.modifier)
+        ?: reflectedField(info.coordinates, "graphicsLayerScope")?.let {
+          reflectedFloat(it, "alpha")
+        }
     return effective?.coerceIn(0f, 1f)?.toDouble()
+  }
+
+  /**
+   * Runs a lambda-form `graphicsLayer { … }` block against a recording scope and returns the alpha
+   * it assigned, or null when [modifier] carries no such block (or the block can't be run).
+   *
+   * The scope is a [java.lang.reflect.Proxy] over whatever interface the block expects rather than
+   * a hand-written `GraphicsLayerScope` implementation: that interface has gained members across
+   * Compose releases, and a proxy records the setters it actually sees while answering every other
+   * call with a type-appropriate default. So this keeps working when the interface grows.
+   *
+   * Re-running the block is safe and is what makes the value *current*: a `graphicsLayer` block is
+   * a series of property assignments, and reading the animation state it closes over gives exactly
+   * the alpha the frame was drawn with.
+   */
+  internal fun evaluateLayerBlockAlpha(modifier: Any): Float? {
+    val block = layerBlock(modifier) ?: return null
+    val recorded = HashMap<String, Any?>()
+    // The scope interface by name, not from the lambda's generic signature: a Kotlin lambda erases
+    // to a raw `Function1`, so there is no type argument to read back off it.
+    val iface =
+      runCatching {
+          Class.forName(
+            "androidx.compose.ui.graphics.GraphicsLayerScope",
+            false,
+            modifier.javaClass.classLoader,
+          )
+        }
+        .getOrNull()
+        ?.takeIf { it.isInterface } ?: return null
+    val scope =
+      runCatching {
+          java.lang.reflect.Proxy.newProxyInstance(iface.classLoader, arrayOf(iface)) { _, m, args
+            ->
+            val name = m.name
+            when {
+              name.startsWith("set") && args != null && args.size == 1 -> {
+                recorded[name.removePrefix("set").replaceFirstChar { it.lowercase() }] = args[0]
+                null
+              }
+              // Getters (and anything else) answer with a harmless default so a block that reads
+              // back a property it just set, or consults `density`, doesn't blow up mid-evaluation.
+              else -> defaultFor(m.returnType, name, recorded)
+            }
+          }
+        }
+        .getOrNull() ?: return null
+    @Suppress("UNCHECKED_CAST") val invoke = block as? Function1<Any?, Any?> ?: return null
+    runCatching { invoke(scope) }.getOrNull() ?: return null
+    return recorded["alpha"] as? Float
+  }
+
+  /** The `GraphicsLayerScope.() -> Unit` a lambda-form `graphicsLayer` element holds, if any. */
+  private fun layerBlock(modifier: Any): Any? =
+    generateSequence(modifier.javaClass as Class<*>?) { it.superclass }
+      .flatMap { it.declaredFields.asSequence() }
+      .firstOrNull { field ->
+        kotlin.jvm.functions.Function1::class.java.isAssignableFrom(field.type) &&
+          (field.name == "block" || field.name == "layerBlock")
+      }
+      ?.let { field ->
+        runCatching {
+            field.isAccessible = true
+            field.get(modifier)
+          }
+          .getOrNull()
+      }
+
+  /**
+   * A benign return value for a proxied scope call: whatever the block already assigned when it
+   * reads a property back, else the type's zero. `density`/`fontScale` answer 1 so a block that
+   * converts dp inside itself divides by something sane rather than zero.
+   */
+  private fun defaultFor(type: Class<*>, name: String, recorded: Map<String, Any?>): Any? {
+    val property = name.removePrefix("get").replaceFirstChar { it.lowercase() }
+    recorded[property]?.let {
+      return it
+    }
+    return when (type) {
+      java.lang.Float.TYPE -> if (property == "density" || property == "fontScale") 1f else 0f
+      java.lang.Boolean.TYPE -> false
+      java.lang.Integer.TYPE -> 0
+      java.lang.Long.TYPE -> 0L
+      else -> null
+    }
   }
 
   private fun reflectedFloat(instance: Any, name: String): Float? =
