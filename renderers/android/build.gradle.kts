@@ -44,6 +44,9 @@ android {
 
 dependencies {
   implementation(project(":common-io"))
+  // Google Fonts CSS-API + TTF cache, shared with the Remote Compose typeface resolver so both
+  // lanes resolve a family to the same file rather than to two drifting copies of the downloader.
+  api(project(":data-fonts-google"))
   // Google Fonts CSS/TTF fetch in GoogleFontInterceptor (replaces java.net.HttpURLConnection).
   implementation(libs.okhttp)
   // D2.2 — `AccessibilityChecker`, `AccessibilityOverlay`, and the

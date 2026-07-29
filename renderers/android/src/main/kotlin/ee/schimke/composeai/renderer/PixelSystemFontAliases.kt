@@ -1,7 +1,9 @@
 package ee.schimke.composeai.renderer
 
 import android.graphics.Typeface
-import androidx.compose.ui.text.font.FontWeight
+import ee.schimke.composeai.fonts.google.GoogleFontCache
+import ee.schimke.composeai.fonts.google.GoogleFontKey
+import ee.schimke.composeai.fonts.google.GoogleFontSource
 
 /**
  * Maps Android system-font family slugs (the names consumers pass to
@@ -149,7 +151,7 @@ object PixelSystemFontAliases {
       when {
         lookup != null -> lookup
         cache != null -> { n, w, i ->
-          cache.load(GoogleFontKey(n, FontWeight(w), i))
+          cache.load(GoogleFontKey(n, w, i))
         }
         else -> { n, w, i ->
           GoogleFontCacheAccess.load(n, w, i)

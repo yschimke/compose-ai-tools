@@ -367,6 +367,12 @@ include(":data-navigation-connector")
 
 project(":data-navigation-connector").projectDir = file("data/navigation/connector")
 
+// Google Fonts resolution + machine-local TTF cache. Shared by the Robolectric downloadable-font
+// shadow and the Remote Compose typeface resolver so both lanes resolve a family to the same file.
+include(":data-fonts-google")
+
+project(":data-fonts-google").projectDir = file("data/fonts/google")
+
 include(":data-render-core")
 
 project(":data-render-core").projectDir = file("data/render/core")

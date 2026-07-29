@@ -70,7 +70,7 @@ class ShadowFontsContractCompat {
         )
         return
       }
-      val file: File? = GoogleFontCacheAccess.load(key.name, key.weight.weight, key.italic)
+      val file: File? = GoogleFontCacheAccess.load(key.name, key.weight, key.italic)
       if (file == null) {
         // The cache couldn't produce a TTF (offline / no cache dir / failed download / no such
         // face). Record the fallback so the render loop can fail or warn on it — text would
@@ -85,7 +85,7 @@ class ShadowFontsContractCompat {
         return
       }
       val typeface =
-        runCatching { buildTypefaceFromFile(file, key.weight.weight, key.italic) }.getOrNull()
+        runCatching { buildTypefaceFromFile(file, key.weight, key.italic) }.getOrNull()
       if (typeface == null) {
         FontResolutionDiagnostics.recordFallback(
           key,
