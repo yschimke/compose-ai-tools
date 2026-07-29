@@ -17203,6 +17203,18 @@ void main() {
     const b = argb & 255;
     return `rgba(${r},${g},${b},${a.toFixed(3)})`;
   }
+  function cssFontStackFor(fontType) {
+    switch (fontType) {
+      case 2:
+        return '"Noto Serif", serif';
+      case 3:
+        return '"Droid Sans Mono", monospace';
+      // 1 = SANS_SERIF is Android's own name for the Roboto stack, so it and
+      // DEFAULT (0, and anything unrecognised) resolve to the same face.
+      default:
+        return "Roboto, sans-serif";
+    }
+  }
   var _CanvasPaintContext = class _CanvasPaintContext extends PaintContext {
     constructor(context, canvas) {
       super(context);
@@ -17221,7 +17233,7 @@ void main() {
       this.filterBitmap = true;
       this.letterSpacing = 0;
       this.gradientStyle = null;
-      this.fontFamily = "sans-serif";
+      this.fontFamily = cssFontStackFor(0);
       this.fontWeight = 400;
       this.fontItalic = false;
       this.colorFilterColor = null;
@@ -17661,20 +17673,7 @@ void main() {
             this.fontWeight = weight > 0 ? weight : 400;
             this.fontItalic = italic;
             const fontType = arr[i++];
-            switch (fontType) {
-              case 1:
-                this.fontFamily = "sans-serif";
-                break;
-              case 2:
-                this.fontFamily = "serif";
-                break;
-              case 3:
-                this.fontFamily = "monospace";
-                break;
-              default:
-                this.fontFamily = "sans-serif";
-                break;
-            }
+            this.fontFamily = cssFontStackFor(fontType);
             this.setFont();
             break;
           }
@@ -17771,7 +17770,7 @@ void main() {
       this.filterBitmap = true;
       this.letterSpacing = 0;
       this.gradientStyle = null;
-      this.fontFamily = "sans-serif";
+      this.fontFamily = cssFontStackFor(0);
       this.fontWeight = 400;
       this.fontItalic = false;
       this.colorFilterColor = null;
