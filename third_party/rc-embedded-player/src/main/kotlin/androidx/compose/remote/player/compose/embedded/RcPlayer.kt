@@ -31,6 +31,7 @@ import androidx.collection.IntObjectMap
 import androidx.collection.ObjectIntMap
 import androidx.collection.emptyIntObjectMap
 import androidx.collection.emptyObjectIntMap
+import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.remote.core.CoreDocument
@@ -91,7 +92,6 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.onPlaced
@@ -131,7 +131,6 @@ import kotlin.math.abs
 public fun RcPlayer(
     document: CoreDocument,
     modifier: Modifier = Modifier,
-    autoUpdate: Boolean = true,
     namedColorOverrides: ObjectIntMap<String> = emptyObjectIntMap(),
     imageLoader: RcImageLoader? = null,
     isShaderValid: (shaderSource: String) -> Boolean = { true },
@@ -299,10 +298,18 @@ public fun RcPlayer(
     // instead.
     val hasWakeIn = remember(document) { containsWakeIn(document.getOperationsReflection()) }
 
+    // `withInfiniteAnimationFrameMillis`, not `withFrameMillis`: this loop never terminates for an
+    // animated / time-driven document, which is precisely what Compose means by an *infinite*
+    // animation. Requesting frames through the infinite-animation channel routes them via the
+    // `InfiniteAnimationPolicy` in the coroutine context, so a host that needs the composition to
+    // reach idle can see through it. Under `ComposeTestRule` that is the difference between
+    // `waitForIdle()` returning and hanging forever; under `@Preview` inspection it is what lets
+    // tooling pause the animation instead of spinning. Outside a test the policy is absent and this
+    // degrades to exactly `withFrameMillis`, so production timing is unchanged.
     LaunchedEffect(document, hasAnimations, isTimeDependent, hasParticles, hasWakeIn) {
-        val startMillis = withFrameMillis { it }
+        val startMillis = withInfiniteAnimationFrameMillis { it }
         while (true) {
-            val frameMillis = withFrameMillis { it } - startMillis
+            val frameMillis = withInfiniteAnimationFrameMillis { it } - startMillis
             // Pure time ticker. Updating currentTimeMillisState is the *only* per-frame work: every
             // reactive path keys off it. Expression display flows through the GraphContext
             // derivedStateOf graph and the float/int/color resolvers (which read this state for
@@ -476,7 +483,6 @@ public fun RcPlayer(
 public fun RcPlayer(
     capturedDocument: CapturedDocument,
     modifier: Modifier = Modifier,
-    autoUpdate: Boolean = true,
     namedColorOverrides: ObjectIntMap<String> = emptyObjectIntMap(),
     imageLoader: RcImageLoader? = null,
     isShaderValid: (shaderSource: String) -> Boolean = { true },
@@ -496,7 +502,6 @@ public fun RcPlayer(
     RcPlayer(
         document = coreDoc,
         modifier = modifier,
-        autoUpdate = autoUpdate,
         namedColorOverrides = namedColorOverrides,
         imageLoader = imageLoader,
         isShaderValid = isShaderValid,

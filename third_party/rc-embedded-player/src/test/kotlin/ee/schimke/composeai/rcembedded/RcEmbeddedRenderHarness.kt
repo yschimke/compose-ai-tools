@@ -133,7 +133,6 @@ class RcEmbeddedRenderHarness(private val entry: Entry) {
         ExperimentalRemoteDocumentPlayer(
           document = document,
           // A still comparison against a still baked PNG.
-          autoUpdate = false,
           modifier = Modifier.fillMaxSize(),
         )
       }

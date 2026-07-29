@@ -125,7 +125,6 @@ class RcFigmaSvgExportTest {
     val lane = export("embedded", doc) { bytes ->
       ExperimentalRemoteDocumentPlayer(
         document = remember { RemoteDocument(bytes) },
-        autoUpdate = false,
         modifier = Modifier.fillMaxSize(),
       )
     }
