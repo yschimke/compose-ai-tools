@@ -108,7 +108,14 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
     val file = dir.resolve("robolectric.properties")
     // `shadows=` registers our GoogleFont shadow globally for every test
     // in this package. See [ShadowFontsContractCompat].
-    val shadowsLine = "shadows=ee.schimke.composeai.renderer.ShadowFontsContractCompat"
+    // `ShadowAsyncImagePainter` forces coil 2's `AsyncImagePainter.isPreview` to false so a
+    // preview render actually loads the image instead of painting a null placeholder (issue
+    // #2952). Shadowing a non-Android library class needs its package instrumented, hence the
+    // `instrumentedPackages` line below — both are inert when the consumer has no coil.
+    val shadowsLine =
+      "shadows=ee.schimke.composeai.renderer.ShadowFontsContractCompat," +
+        "ee.schimke.composeai.renderer.ShadowAsyncImagePainter"
+    val instrumentedPackagesLine = "instrumentedPackages=coil.compose"
     // `sdk=` and `graphicsMode=` live here (not on `@Config`/`@GraphicsMode`
     // on `RobolectricRenderTestBase`) to avoid JUnit's `AnnotationParser`
     // resolving `@Config.application()`'s `android.app.Application` default
@@ -125,6 +132,7 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
             |$sdkLine
             |$graphicsLine
             |$shadowsLine
+            |$instrumentedPackagesLine
             |"""
           .trimMargin()
       } else {
@@ -138,6 +146,7 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
             |$sdkLine
             |$graphicsLine
             |$shadowsLine
+            |$instrumentedPackagesLine
             |"""
           .trimMargin()
       }
