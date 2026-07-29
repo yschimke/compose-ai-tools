@@ -34,6 +34,11 @@ class ServeCatalogLiveHostTest {
     private val svgNotFound: Boolean = false,
     override val declaredThemes: List<ServeTheme> = emptyList(),
     override val gesturesRenderable: Boolean = false,
+    /**
+     * Ids this host lists but has no pixels for (a catalog's deferred previews) — `render` reports
+     * `NotFound` for them, exactly as the real baked host does.
+     */
+    override val liveOnlyPreviewIds: Set<String> = emptySet(),
   ) : ServeHost {
     override val label: String = tag
     override val canApplyOverrides: Boolean = streaming
@@ -46,6 +51,7 @@ class ServeCatalogLiveHostTest {
     override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
       lastRenderId = previewId
       lastRenderOverrides = overrides
+      if (previewId in liveOnlyPreviewIds) return RenderOutcome.NotFound
       return RenderOutcome.Ok("$tag:$previewId".encodeToByteArray())
     }
 
@@ -603,5 +609,48 @@ class ServeCatalogLiveHostTest {
         perPreviewStreamCount = { 3 },
       )
     assertEquals(4, composite.activeStreamCount())
+  }
+
+  @Test
+  fun `a live-only (deferred) preview renders through the daemon even with no override`() {
+    // A deferred preview has NO baked PNG — the baked host lists it (so it has a card, a route and
+    // its place in the grid) but every render must reach the daemon, including the plain
+    // override-free browse that keeps ordinary catalog previews on baked pixels.
+    val deferredId = "button-filled__ideal__default__light"
+    val deferredDaemonId = "FilledButton_Light"
+    val baked =
+      RecordingHost(
+        previews = listOf(ServePreview(catalogId, catalogId), ServePreview(deferredId, deferredId)),
+        tag = "baked",
+        // The baked host has no pixels for the live-only id; a fallback would 404 the card.
+        liveOnlyPreviewIds = setOf(deferredId),
+      )
+    val live =
+      RecordingHost(
+        previews =
+          listOf(
+            ServePreview(daemonId, daemonId),
+            ServePreview(deferredDaemonId, deferredDaemonId),
+          ),
+        tag = "live",
+        streaming = true,
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        mapOf(catalogId to daemonId, deferredId to deferredDaemonId),
+        live,
+        baked,
+      )
+
+    // The composite advertises which ids are live-only, so the viewer can badge the card.
+    assertEquals(setOf(deferredId), composite.liveOnlyPreviewIds)
+    val out = composite.render(deferredId, PreviewOverrides()) as RenderOutcome.Ok
+    assertEquals("live:$deferredDaemonId", out.png.decodeToString())
+    assertEquals(deferredDaemonId, live.lastRenderId)
+    // …while an ordinary catalog preview still browses baked (no daemon wake).
+    live.lastRenderId = null
+    val baked1 = composite.render(catalogId, PreviewOverrides()) as RenderOutcome.Ok
+    assertEquals("baked:$catalogId", baked1.png.decodeToString())
+    assertNull(live.lastRenderId)
   }
 }

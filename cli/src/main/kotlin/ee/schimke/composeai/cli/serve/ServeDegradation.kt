@@ -34,6 +34,27 @@ data class ServeDegradation(val code: String, val detail: String) {
      */
     const val UNVERIFIED_NO_RERENDER = "unverified-no-rerender"
 
+    /**
+     * The catalog declares live-only (`deferred[]`) coverage this session can't produce: those
+     * previews have no baked PNG by design, and without a live daemon there is nothing to render
+     * them from — so they are omitted from the grid rather than shown as broken cards. The count
+     * rides in [detail] so a visitor knows the sheet is thinner than the catalog claims.
+     */
+    const val DEFERRED_NOT_SERVED = "deferred-not-served"
+
+    /**
+     * [count] live-only previews hidden because this session has no live lane. Paired with
+     * whichever reason explains the missing live lane (no live bundle / unverified / bundle
+     * unavailable).
+     */
+    fun deferredNotServed(count: Int): ServeDegradation =
+      ServeDegradation(
+        DEFERRED_NOT_SERVED,
+        "$count preview(s) in this catalog are published live-only (rendered on demand rather " +
+          "than baked), and this session has no live render lane — they're hidden rather than " +
+          "shown as broken images.",
+      )
+
     /** A baked-only catalog with no live bundle on its delivery branch. */
     fun catalogBakedOnly(): ServeDegradation =
       ServeDegradation(

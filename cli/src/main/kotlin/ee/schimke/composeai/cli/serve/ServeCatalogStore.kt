@@ -127,6 +127,10 @@ class ServeCatalogStore(
    * Images with no `previewId` (Android-only variants, older catalogs) are skipped — they have no
    * live lane. Later duplicates keep the first mapping (the theme/state variants are distinct ids,
    * so collisions shouldn't arise).
+   *
+   * The catalog's live-only [Catalog.deferred] records are aliased the same way. They have no baked
+   * PNG at all, so the alias isn't an enhancement for them — it is the ONLY way they can be served,
+   * and the store registers them only where this mapping exists.
    */
   private fun previewAliasFor(catalog: Catalog): Map<String, String> {
     val alias = LinkedHashMap<String, String>()
@@ -136,7 +140,26 @@ class ServeCatalogStore(
         alias.putIfAbsent(previewIdFor(image.path), daemonId)
       }
     }
+    for (record in catalog.deferred) {
+      val id = deferredPreviewIdOf(record) ?: continue
+      alias.putIfAbsent(id, record.daemonId ?: continue)
+    }
     return alias
+  }
+
+  /**
+   * The route-safe preview id a [Deferred] record would be served under, or null when it can't be
+   * served: no recorded `path` (an older catalog, or one whose export detected naming drift), a
+   * path outside `images/` or attempting traversal (same containment check the baked images get —
+   * the branch is trusted, but a garbled catalog must not mint odd ids), or no daemon twin to
+   * render it.
+   */
+  private fun deferredPreviewIdOf(record: Deferred): String? {
+    val path = record.path?.takeIf { it.isNotBlank() } ?: return null
+    if (!path.startsWith("$IMAGES_DIR/") || !path.endsWith(".png")) return null
+    if (".." in path.split("/")) return null
+    if (record.daemonId == null) return null
+    return previewIdFor(path)
   }
 
   /**
@@ -271,6 +294,32 @@ class ServeCatalogStore(
       return Result.Failed(system, "catalog had no usable images")
     }
 
+    // Live-only (deferred) coverage: previews the catalog declares but ships no PNG for, to be
+    // rendered on demand. Their variant metadata is written into the SAME manifest as the baked
+    // previews — so a live-only card lands in its tab/group, folds onto its component alongside the
+    // baked states, and orders after the baked previews rather than jumping to the front — but the
+    // ids themselves are handed to the host separately, and only where a live lane exists to render
+    // them (see the `bakedFallback` call sites). An id that duplicates a baked preview is dropped:
+    // the baked pixels win.
+    val deferredIds = LinkedHashSet<String>()
+    for (record in catalog.deferred) {
+      if (deferredIds.size >= maxImages) break
+      val id = deferredPreviewIdOf(record) ?: continue
+      if (variants.containsKey(id) || File(previewsDir, "$id.png").isFile) continue
+      if (!deferredIds.add(id)) continue
+      val section = record.section?.takeIf { it.isNotBlank() }
+      val group = record.group?.takeIf { it.isNotBlank() }
+      variants[id] =
+        VariantMeta(
+          state = record.state,
+          theme = record.theme,
+          props = record.props?.takeIf { it.isNotEmpty() },
+          section = section,
+          group = group,
+          order = if (section != null || group != null) count + deferredIds.size - 1 else null,
+        )
+    }
+
     // Write the state/theme manifest into the staged previews dir *before* the atomic swap, so a
     // reader never sees a `dir` whose `variants.json` disagrees with its images. Absent when no
     // render carried state/theme (a plain catalog) — the host then treats every preview as default.
@@ -313,38 +362,45 @@ class ServeCatalogStore(
     // registry can rebuild it on each resume of a live session.
     // [degradations] explains why the session is snapshot-only (surfaced by the viewer +
     // /api/previews). It is EMPTY when this baked host merely *fronts* a live daemon (the live
-    // builders below call `bakedFallback(emptyList())` — that session isn't degraded); it is
+    // builders below call `bakedFallback(emptyList(), …)` — that session isn't degraded); it is
     // populated only at the terminal registration, where the baked host IS the session.
-    val bakedFallback: (List<ServeDegradation>) -> ServeBundleHost = { degradations ->
-      ServeBundleHost(
-        dir,
-        safe,
-        verdict,
-        title = catalog.title?.takeIf { it.isNotBlank() },
-        subtitle =
-          catalog.library.filter { it.isNotBlank() }.take(2).joinToString(" · ").ifBlank { null },
-        // Declared presentation hints (stage surface + hero preview), so the front door / grid read
-        // the system's own choice instead of inferring it.
-        stageSurface = catalog.display?.surface?.takeIf { it.isNotBlank() },
-        declaredHero = catalog.display?.hero?.takeIf { it.isNotBlank() },
-        figmaDir = figmaDir,
-        provenance =
-          ServeWeb.CatalogProvenance(
-            repo = repo,
-            branch = branch,
-            generatedAt = catalog.generatedAt?.takeIf { it.isNotBlank() },
-            // `renderer` is `compose-preview <version>`; show just the version.
-            toolVersion =
-              catalog.renderer
-                ?.takeIf { it.isNotBlank() }
-                ?.removePrefix("compose-preview")
-                ?.trim()
-                ?.ifBlank { null },
-            designParityVersion = catalog.designParity?.takeIf { it.isNotBlank() },
-          ),
-        degradations = degradations,
-      )
-    }
+    // [liveOnly] carries the catalog's deferred (live-only) ids — passed ONLY by the live builders
+    // below, which front this host with a daemon that can actually render them. The terminal
+    // baked-only registration passes none, so a session with no live lane simply doesn't list them
+    // (and says why, via a `deferred-not-served` degradation) instead of showing broken cards.
+    val bakedFallback: (List<ServeDegradation>, List<String>) -> ServeBundleHost =
+      { degradations, liveOnly ->
+        ServeBundleHost(
+          dir,
+          safe,
+          verdict,
+          title = catalog.title?.takeIf { it.isNotBlank() },
+          subtitle =
+            catalog.library.filter { it.isNotBlank() }.take(2).joinToString(" · ").ifBlank { null },
+          // Declared presentation hints (stage surface + hero preview), so the front door / grid
+          // read
+          // the system's own choice instead of inferring it.
+          stageSurface = catalog.display?.surface?.takeIf { it.isNotBlank() },
+          declaredHero = catalog.display?.hero?.takeIf { it.isNotBlank() },
+          figmaDir = figmaDir,
+          provenance =
+            ServeWeb.CatalogProvenance(
+              repo = repo,
+              branch = branch,
+              generatedAt = catalog.generatedAt?.takeIf { it.isNotBlank() },
+              // `renderer` is `compose-preview <version>`; show just the version.
+              toolVersion =
+                catalog.renderer
+                  ?.takeIf { it.isNotBlank() }
+                  ?.removePrefix("compose-preview")
+                  ?.trim()
+                  ?.ifBlank { null },
+              designParityVersion = catalog.designParity?.takeIf { it.isNotBlank() },
+            ),
+          degradations = degradations,
+          liveOnly = liveOnly,
+        )
+      }
 
     // The catalog-id → daemon-preview-id bridge: a live daemon knows previews by their
     // function-based
@@ -418,7 +474,7 @@ class ServeCatalogStore(
                   bundleFile,
                   res.dir,
                   classBackedAlias,
-                  { bakedFallback(emptyList()) },
+                  { bakedFallback(emptyList(), deferredIds.toList()) },
                   fetchPerPreview,
                 )
             ) {
@@ -457,7 +513,7 @@ class ServeCatalogStore(
           safe,
           CatalogSource(src.repo, src.ref, src.module),
           alias,
-          { bakedFallback(emptyList()) },
+          { bakedFallback(emptyList(), deferredIds.toList()) },
         )
     ) {
       return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live)")
@@ -474,19 +530,28 @@ class ServeCatalogStore(
     // an
     // unverified catalog that DID declare a live lane (trust is the blocker) > the plain "no live
     // bundle published" case (meshcore's app catalog, remote-m3, …).
+    // Recorded whenever the catalog declares live-only coverage this terminal (no server-side
+    // daemon) registration can't produce: those previews are omitted rather than listed as cards
+    // whose every request 404s, and this is what tells the visitor the sheet is thinner than the
+    // catalog claims. It rides even on a Wasm-backed session — the in-browser tier renders the
+    // catalog's previews, not the ones that were never baked into it.
+    val deferredNote =
+      deferredIds.takeIf { it.isNotEmpty() }?.let { ServeDegradation.deferredNotServed(it.size) }
     val degradations =
-      if (wasmRegistered) emptyList()
+      if (wasmRegistered) listOfNotNull(deferredNote)
       else
-        listOf(
+        listOfNotNull(
           liveBundleFallback
             ?: when {
               verdict is BundleVerifier.Verdict.Unverified &&
                 (liveBundle != null || (src != null && src.module.isNotBlank())) ->
                 ServeDegradation.unverifiedNoRerender()
               else -> ServeDegradation.catalogBakedOnly()
-            }
+            },
+          deferredNote,
         )
-    val host = bakedFallback(degradations)
+    // Same reasoning as the degradation: a session with no live lane lists no live-only previews.
+    val host = bakedFallback(degradations, emptyList())
     register(safe, host)
     return Result.Ok(safe, host.previews.size, BundleVerifier.summary(verdict))
   }
@@ -913,7 +978,56 @@ class ServeCatalogStore(
      * trusted server-side re-render: no Gradle build, no worktree.
      */
     val liveBundle: LiveBundle? = null,
+    /**
+     * Live-only coverage: the entries and image axes the spec declared `priority: "deferred"` (or
+     * thinned out of the palette with `modePriority`), which CI deliberately did NOT rasterise —
+     * recorded here rather than in `components[].images` so no consumer of the baked sticker set is
+     * handed an image with no pixels. See [Deferred] for how the server serves them.
+     */
+    val deferred: List<Deferred> = emptyList(),
   )
+
+  /**
+   * One `catalog.json` `deferred[]` record: a preview the catalog declares but publishes **no baked
+   * PNG** for, to be rendered on demand by a live host instead.
+   *
+   * [path] is the `images/…` path the sticker WOULD have been written to, recorded by the exporter
+   * (`catalog-image-path.mjs`) so the server and the published catalog agree on one id namespace —
+   * [previewIdFor] flattens it into exactly the route a baked sticker would have had, which is what
+   * makes flipping an entry between `required` and `deferred` invisible to its URL. [previewId] is
+   * the daemon preview that renders it, resolved per-annotation by the exporter the same way a
+   * baked image's is; [previewIds] is its `@Preview` function's full id list, kept as a fallback
+   * for a catalog published before the per-annotation resolve existed (used only when unambiguous).
+   *
+   * The axes ([state] / [theme] / [props]) and placement ([section] / [group]) ride along so a
+   * live-only card sits in the right tab, group and state switcher — the same `variants.json`
+   * metadata a baked preview carries.
+   *
+   * A record with no [path], or none of [previewId]/[previewIds], is skipped: without a route it
+   * has no id, and without a daemon twin nothing could ever render it.
+   */
+  @Serializable
+  private data class Deferred(
+    val path: String? = null,
+    val previewId: String? = null,
+    val previewIds: List<String> = emptyList(),
+    val componentId: String? = null,
+    val section: String? = null,
+    val group: String? = null,
+    val state: String? = null,
+    val theme: String? = null,
+    val props: JsonObject? = null,
+    /** Why it was deferred (`entry` / `variant` / `mode`) — carried for diagnostics. */
+    val reason: String? = null,
+  ) {
+    /** The daemon preview to render this record through, or null when it has no live twin. */
+    val daemonId: String?
+      get() =
+        previewId?.takeIf { it.isNotBlank() }
+          // An older catalog carries only the function's id list; take it only when the function
+          // produced exactly one preview, since anything else would be a guess between annotations.
+          ?: previewIds.singleOrNull()?.takeIf { it.isNotBlank() }
+  }
 
   /**
    * `catalog.json`'s `display`: how the system wants to be presented — the stage [surface] its
