@@ -185,6 +185,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push
+        id: push
         uses: docker/build-push-action@v7
         with:
           context: deploy/image
@@ -260,3 +261,48 @@ jobs:
           done
           echo "::error::preview.coo.ee did not converge to ${V} with a readable catalog status within ~10 min." >&2
           exit 1
+
+      # Push the DEPLOYMENT's config onto the now-rolled box. /config/catalogs.json and
+      # /config/producers.json are seeded on first boot and never overwritten after (deliberately,
+      # so a roll can't stomp a runtime edit), which means adding a catalog or producer to a
+      # committed file changed NOTHING on an already-deployed server and someone had to remember to
+      # POST it by hand. This closes that gap at the one moment the box is known to be running the
+      # matching image.
+      #
+      # Note the source is deploy/<deployment>/, NOT the image's seed: the image bakes only
+      # compose-m3 and the single producer that publishes it, so an operator adopting the prebuilt
+      # image doesn't inherit this deployment's catalogs or its trust relationships. Another
+      # deployment sets DEPLOY_CONFIG_DIR (+ DEPLOY_BASE_URL) to its own and reuses this verbatim.
+      #
+      # Additive only: an id already present comes back 409 and is left alone, so anything added
+      # directly on the box survives. See the script header for the retire-vs-reseed trade-off.
+      #
+      # Best-effort and OPTIONAL, like the rollout notify above: it needs a SERVE_ADMIN_TOKEN
+      # secret matching the box's own, and does nothing without one. `continue-on-error` so this
+      # can never fail a publish that already succeeded.
+      #
+      # The condition is `steps.push.outcome == 'success'`, NOT a bare `always()`. A bare always()
+      # would also fire when the build or the GHCR push failed, pushing this tag's seed config at a
+      # box still running the OLD image — publishing catalogs whose image was never deployed, which
+      # inverts the whole point of doing this after the roll. Keying on the push step keeps the one
+      # case always() was for (the convergence check above timed out, but the image IS on GHCR and
+      # the box will roll on its next poll) while dropping the case that was never intended.
+      - name: Publish deployment config to the preview box (best-effort)
+        if: always() && steps.push.outcome == 'success'
+        continue-on-error: true
+        env:
+          BASE_URL: ${{ vars.DEPLOY_BASE_URL || 'https://preview.coo.ee' }}
+          DEPLOY_CONFIG_DIR: ${{ vars.DEPLOY_CONFIG_DIR || 'deploy/preview.coo.ee' }}
+          ADMIN_TOKEN: ${{ secrets.SERVE_ADMIN_TOKEN }}
+        run: |
+          set -u
+          if [ -z "${ADMIN_TOKEN}" ]; then
+            echo "no SERVE_ADMIN_TOKEN secret — skipping config reconcile (nothing to push)."
+            exit 0
+          fi
+          if [ ! -d "${DEPLOY_CONFIG_DIR}" ]; then
+            echo "no ${DEPLOY_CONFIG_DIR} — skipping config reconcile (no deployment config in this repo)."
+            exit 0
+          fi
+          DEPLOY_CONFIG_DIR="$(cd "${DEPLOY_CONFIG_DIR}" && pwd)" \
+            bash .github/scripts/publish-config-to-box.sh
