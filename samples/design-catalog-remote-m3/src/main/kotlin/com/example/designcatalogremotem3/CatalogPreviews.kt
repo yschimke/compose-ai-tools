@@ -28,6 +28,7 @@ import ee.schimke.composeai.daemon.rememberOverridableRemoteFloat
 import ee.schimke.composeai.daemon.rememberOverridableRemoteString
 import androidx.compose.remote.creation.compose.state.rf
 import androidx.compose.remote.creation.compose.state.rs
+import androidx.compose.remote.creation.compose.text.RemoteFontFamily
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -392,6 +393,29 @@ fun TruncatedTextRemote() = RemoteSticker {
     maxLines = 2,
     overflow = TextOverflow.Ellipsis,
   )
+}
+
+// The text primitive carrying a *named* font family rather than one of the four generic
+// typefaces — the Remote parallel of the compose-m3 catalog's `text-branded` specimen, which says
+// `namedFontFamily("Orbitron")` for the same reason. This is the only sticker in any catalog whose
+// `.rc` document names a family, and it exists to keep that path rendered and diffed: a named family
+// reaches the player as a *text id*, not a name, so it is resolved by a code path no other document
+// exercises.
+//
+// `google:` namespaces the name as a Google Fonts family — `RemoteFontFamily.Named` carries an
+// opaque string, so the prefix is what tells both render lanes where the face comes from rather than
+// leaving them to guess from the name. Orbitron because the catalog already vendors its faces
+// (`role: "named"` in the fonts manifest), so the snapshot renderer resolves it locally while the
+// browser fetches the same family, and the parity page compares like with like.
+@CatalogRemoteModes
+@Composable
+fun BrandedTextRemote() = RemoteSticker {
+  // Short copy because Orbitron is a wide face and the frame is only 200dp. Note this does not
+  // fully avoid clipping in the browser lane, and cannot: the document carries geometry the
+  // *authoring* renderer measured, and that renderer resolves this family to Roboto today, so the
+  // player draws a wider face into a box measured for a narrower one. That clip is the renderer gap
+  // showing through, not a player bug — it closes when the snapshot lane resolves the family too.
+  RemoteText("Orbitron".rs, fontFamily = RemoteFontFamily.Named("google:Orbitron"))
 }
 
 // NOTE: `RemoteTimeText` is intentionally NOT catalogued. It draws the time as

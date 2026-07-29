@@ -4,6 +4,7 @@ import { WireBuffer } from '../core/WireBuffer';
 import { CoreDocument } from '../core/CoreDocument';
 import { RemoteComposeBuffer } from '../core/RemoteComposeBuffer';
 import { CanvasPaintContext } from './CanvasPaintContext';
+import { configureWebFonts, webFontsReady } from './WebFonts';
 import { WebRemoteContext } from './WebRemoteContext';
 import { ContextMode, RemoteContext } from '../core/RemoteContext';
 import { Header } from '../core/operations/Header';
@@ -158,6 +159,9 @@ export class RcdPlayer {
 
         // Create contexts
         this.paintContext = new CanvasPaintContext(null as any, this.ctx);
+        // A named family is fetched from the network mid-paint, so the first frame that uses one
+        // paints in the fallback face. Repaint when it lands.
+        this.paintContext.onFontLoaded = () => this.scheduleRepaint();
         this.remoteContext = new WebRemoteContext(this.paintContext);
 
         // Wire up
@@ -259,6 +263,18 @@ export class RcdPlayer {
         }
     }
 
+    /**
+     * Resolves once every named font family this document has asked for is paintable.
+     *
+     * Only a single-shot renderer needs this — it has no later frame in which a face could appear,
+     * so it must `await player.fontsReady()` between the first paint (which is what *discovers* the
+     * families) and the frame it keeps. Interactive players get the same effect from the repaint the
+     * player schedules when a face lands.
+     */
+    fontsReady(): Promise<void> {
+        return webFontsReady();
+    }
+
     resize(newWidth: number, newHeight: number): void {
         this.canvas.width = newWidth;
         this.canvas.height = newHeight;
@@ -328,6 +344,10 @@ export class RcdPlayer {
 import { createPlayer, RcPlayerElement, base64ToArrayBuffer } from './RcPlayerElement';
 export { createPlayer, RcPlayerElement, base64ToArrayBuffer };
 export type { RcPlayerOptions, RcPlayerHandle } from './RcPlayerElement';
+// Named-family web fonts. `configureWebFonts` is the switch an embedder needs: a webview whose CSP
+// forbids the font origins, or a hermetic CI lane, turns it off and renders the fallback stack.
+export { configureWebFonts, webFontsReady, googleFontsUrl, ensureWebFont, parseFamily, GOOGLE_PREFIX } from './WebFonts';
+export type { WebFontConfig } from './WebFonts';
 
 // Auto-initialize if running in browser
 if (typeof window !== 'undefined') {
