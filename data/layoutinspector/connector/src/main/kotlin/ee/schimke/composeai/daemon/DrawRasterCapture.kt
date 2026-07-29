@@ -79,20 +79,36 @@ internal object DrawRasterCapture {
       if (ModifierTokenResolver.isPlaceholderElement(info.modifier)) return@mapNotNull null
       val lambda = DrawCaptureExtractor.drawLambda(info.modifier) ?: return@mapNotNull null
       val bounds = boundsOf(info)?.takeIf { it.right > it.left && it.bottom > it.top }
-      bounds?.let { it to lambda }
+      bounds?.let {
+        val (localWidth, localHeight) = localSizeOf(info, it)
+        Draw(it, localWidth, localHeight, lambda)
+      }
     }
     if (draws.isEmpty()) return null
 
-    val left = draws.minOf { it.first.left }
-    val top = draws.minOf { it.first.top }
-    val right = draws.maxOf { it.first.right }
-    val bottom = draws.maxOf { it.first.bottom }
-    val width = right - left
-    val height = bottom - top
+    val left = draws.minOf { it.bounds.left }
+    val top = draws.minOf { it.bounds.top }
+    val right = draws.maxOf { it.bounds.right }
+    val bottom = draws.maxOf { it.bounds.bottom }
+    if (right <= left || bottom <= top) return null
+
+    // The lambda draws in the node's **local** coordinates, but the bounds above are root-space —
+    // already shrunk by any `graphicsLayer` scale between here and the root (a Wear
+    // `TransformingLazyColumn` item near the curved edge, issue #2615). Rendering at the root size
+    // would shrink size-relative geometry while leaving absolute lengths (`10.dp.toPx()`, a native
+    // corner radius) at full size, so the two would disagree. Render at local resolution instead,
+    // and let the `<image>` — emitted at the root bounds — scale the whole bitmap uniformly, so
+    // every part of the draw scales by exactly the factor the render applied. Identity scale (the
+    // overwhelmingly common case) makes this a no-op.
+    val scaleX = draws.first().scaleX
+    val scaleY = draws.first().scaleY
+    val width = Math.round((right - left) / scaleX)
+    val height = Math.round((bottom - top) / scaleY)
     if (width <= 0 || height <= 0 || width.toLong() * height > MAX_PIXELS) return null
 
     val pixels =
-      runCatching { render(draws, left, top, width, height, density) }.getOrNull() ?: return null
+      runCatching { render(draws, left, top, scaleX, scaleY, width, height, density) }.getOrNull()
+        ?: return null
     if (pixels.none { (it ushr 24) != 0 }) return null
     val png = runCatching { encodePng(pixels, width, height) }.getOrNull() ?: return null
     return LayoutInspectorDrawRaster(
@@ -104,11 +120,41 @@ internal object DrawRasterCapture {
     )
   }
 
+  /**
+   * One draw modifier to replay: where it lands ([bounds], root px) and how big it draws
+   * ([localWidth] × [localHeight], its own px). The two differ by exactly the `graphicsLayer` scale
+   * inherited from the node's ancestors.
+   */
+  private class Draw(
+    val bounds: LayoutInspectorBounds,
+    val localWidth: Int,
+    val localHeight: Int,
+    val lambda: DrawScope.() -> Unit,
+  ) {
+    val scaleX: Float = (bounds.right - bounds.left).toFloat() / localWidth
+    val scaleY: Float = (bounds.bottom - bounds.top).toFloat() / localHeight
+  }
+
+  /**
+   * The modifier's size in its **own** coordinate space. Falls back to the root-space [bounds] when
+   * the coordinates can't be read, which yields scale 1 — the same answer an unscaled node gives,
+   * and the conservative one for a scaled node whose transform we couldn't measure.
+   */
+  private fun localSizeOf(info: ModifierInfo, bounds: LayoutInspectorBounds): Pair<Int, Int> {
+    val size = runCatching { info.coordinates.size }.getOrNull()
+    val w = size?.width?.takeIf { it > 0 }
+    val h = size?.height?.takeIf { it > 0 }
+    if (w != null && h != null) return w to h
+    return (bounds.right - bounds.left) to (bounds.bottom - bounds.top)
+  }
+
   /** Draws every lambda into one union-sized bitmap and reads it back as ARGB pixels. */
   private fun render(
-    draws: List<Pair<LayoutInspectorBounds, DrawScope.() -> Unit>>,
+    draws: List<Draw>,
     left: Int,
     top: Int,
+    scaleX: Float,
+    scaleY: Float,
     width: Int,
     height: Int,
     density: Float,
@@ -121,14 +167,15 @@ internal object DrawRasterCapture {
     val scratch = Canvas(ImageBitmap(1, 1))
     val scope = CanvasDrawScope()
     val densityScope = Density(density)
-    for ((bounds, lambda) in draws) {
-      val dx = (bounds.left - left).toFloat()
-      val dy = (bounds.top - top).toFloat()
-      val size =
-        Size((bounds.right - bounds.left).toFloat(), (bounds.bottom - bounds.top).toFloat())
+    for (draw in draws) {
+      // Offsets are root-space distances, so they divide back into the bitmap's local space too.
+      val dx = (draw.bounds.left - left) / scaleX
+      val dy = (draw.bounds.top - top) / scaleY
+      val size = Size(draw.localWidth.toFloat(), draw.localHeight.toFloat())
       canvas.save()
       canvas.translate(dx, dy)
       scope.draw(densityScope, LayoutDirection.Ltr, canvas, size) {
+        val lambda = draw.lambda
         IsolatedContentDrawScope(this, scratch).lambda()
       }
       canvas.restore()

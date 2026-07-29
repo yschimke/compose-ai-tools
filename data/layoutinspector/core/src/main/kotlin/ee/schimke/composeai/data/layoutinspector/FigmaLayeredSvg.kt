@@ -195,8 +195,16 @@ object FigmaLayeredSvg {
     // A captured Canvas-draw background (`Modifier.drawBehind {…}`) paints first, beneath the
     // layer's own shape/text and its children — matching draw order, so the editable vector layers
     // sit on top of the rasterised background.
-    layer.background?.let { bg ->
-      sb.append(indent).append("  ").append(backgroundImage(bg)).append('\n')
+    //
+    // Unless the chain says otherwise: a capture taken from a draw modifier *inside* the
+    // `background`/`border` it shares a node with is painted after that shape by Compose, so it is
+    // held back and emitted over the shape instead (still under the text and children, which are
+    // inside both). Either way it goes out exactly once.
+    val rasterOverShape = layer.background?.takeIf { it.aboveShape }
+    if (rasterOverShape == null) {
+      layer.background?.let { bg ->
+        sb.append(indent).append("  ").append(backgroundImage(bg)).append('\n')
+      }
     }
     if (containsRaster) {
       // A group containing a final-frame crop cannot carry inherited opacity without fading that
@@ -207,6 +215,9 @@ object FigmaLayeredSvg {
         appendOpacityGroup(sb, indent + "  ", outerOpacity) {
           sb.append(indent).append("    ").append(shape(layer, gradientSeq)).append('\n')
         }
+      }
+      rasterOverShape?.let {
+        sb.append(indent).append("  ").append(backgroundImage(it)).append('\n')
       }
       val contentOpacity = outerOpacity * layer.contentOpacity
       if (layer.text != null || layer.curvedTexts.isNotEmpty()) {
@@ -229,6 +240,9 @@ object FigmaLayeredSvg {
     } else {
       if (layer.paintsShape()) {
         sb.append(indent).append("  ").append(shape(layer, gradientSeq)).append('\n')
+      }
+      rasterOverShape?.let {
+        sb.append(indent).append("  ").append(backgroundImage(it)).append('\n')
       }
       val hasInnerContent =
         layer.text != null || layer.curvedTexts.isNotEmpty() || layer.children.isNotEmpty()

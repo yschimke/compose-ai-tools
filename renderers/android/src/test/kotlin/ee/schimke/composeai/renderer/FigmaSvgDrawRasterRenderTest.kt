@@ -15,6 +15,7 @@ import androidx.compose.runtime.tooling.LocalInspectionTables
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -27,6 +28,7 @@ import ee.schimke.composeai.daemon.LayoutInspectorDataProducer
 import ee.schimke.composeai.data.render.PreviewContext
 import java.io.File
 import java.nio.file.Files
+import javax.imageio.ImageIO
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -126,6 +128,34 @@ class FigmaSvgDrawRasterRenderTest {
     assertTrue(
       "the captured PNG is written in vector-only mode too",
       File(rootDir, "native-card-vector-only/figma-raster").listFiles().orEmpty().isNotEmpty(),
+    )
+  }
+
+  @Test
+  fun `a scaled node captures at its own resolution and is placed at the scaled bounds`() {
+    // Under a `graphicsLayer` scale the node's placed bounds are already shrunk, but its draw
+    // lambda still runs in the node's own coordinates. Replaying it at the shrunk size would scale
+    // size-relative geometry while leaving absolute lengths (the 12px corner radius here) alone.
+    // So the capture is taken at local resolution and the `<image>` carries the scaled bounds —
+    // the renderer applies the one uniform scale to all of it.
+    val svg =
+      exportSvg("scaled-card", withFrame = true) {
+        Box(Modifier.size(80.dp).graphicsLayer(scaleX = 0.5f, scaleY = 0.5f).nativeCard()) {
+          Text("Hi")
+        }
+      }
+
+    val raster = File(rootDir, "scaled-card/figma-raster").listFiles().orEmpty().single()
+    val png = ImageIO.read(raster)
+    val placed =
+      Regex("""<image[^>]*\bwidth="(\d+)"[^>]*\bheight="(\d+)"""").find(svg)?.groupValues
+    assertTrue("the capture is emitted as an <image>:\n$svg", placed != null)
+    val placedWidth = placed!![1].toInt()
+    // The bitmap holds the node's own 80px box; the `<image>` places it in the scaled ~40px slot.
+    assertEquals("captured at local resolution", 80, png.width)
+    assertTrue(
+      "placed at the scaled bounds, got width=$placedWidth:\n$svg",
+      placedWidth in 38..42,
     )
   }
 

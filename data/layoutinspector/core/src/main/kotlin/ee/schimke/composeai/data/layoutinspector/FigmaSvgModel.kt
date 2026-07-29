@@ -200,6 +200,16 @@ data class FigmaSvgBackgroundRaster(
    * baked in and the ordinary group opacity is exactly right for it.
    */
   val fromFrame: Boolean = true,
+  /**
+   * Whether these pixels paint **over** the layer's own token shape rather than under it.
+   *
+   * Compose paints a modifier chain outside-in, so where the draw sits relative to the
+   * `background`/`border` the shape came from decides the order. `Modifier.background(red)
+   * .drawWithContent { blue(); drawContent() }` paints red *then* blue — emitting the capture as an
+   * ordinary background would put the red rect on top and hide the blue entirely. The reverse chain
+   * (`drawBehind { blue() }.background(red)`) really does paint blue first, and keeps the default.
+   */
+  val aboveShape: Boolean = false,
 ) {
   val width: Int
     get() = (right - left).coerceAtLeast(0)
@@ -849,6 +859,11 @@ data class FigmaSvgModel(
                 right = captured.right,
                 bottom = captured.bottom,
                 fromFrame = false,
+                // Where the draw sits in the chain decides whether it lands over or under the token
+                // shape — an RC component carries both (a `BackgroundModifierOperation` lowers to
+                // `Modifier.background`, its draw-content ops to an inner `drawWithContent`), and
+                // defaulting to "under" would hide the capture behind the token rect.
+                aboveShape = drawPaintsOverTokenShape(),
               )
             }
       val fill = tokens?.backgroundColor?.let { argbToColor(it, ctx.colorNames) }
@@ -1289,6 +1304,31 @@ data class FigmaSvgModel(
 
     private fun LayoutInspectorModifier.isCustomDraw(): Boolean =
       name in DRAW_MODIFIERS && !placeholder
+
+    /**
+     * True when the node's captured draw paints **over** the shape its container tokens describe.
+     *
+     * A modifier chain is painted outside-in, and [modifiers] is in that order, so the comparison
+     * is positional: a draw *after* the last `background`/`border` entry paints on top of it, a
+     * draw before it paints underneath. With no token-shape modifier on the chain there is no shape
+     * to order against and the capture stays a plain background.
+     */
+    private fun LayoutInspectorNode.drawPaintsOverTokenShape(): Boolean {
+      val firstDraw = modifiers.indexOfFirst { it.isCustomDraw() }
+      if (firstDraw < 0) return false
+      val lastShape = modifiers.indexOfLast { it.isTokenShapeModifier() }
+      return lastShape >= 0 && firstDraw > lastShape
+    }
+
+    /** The modifiers a layer's token-derived `<rect>`/`<path>` shape is resolved from. */
+    private fun LayoutInspectorModifier.isTokenShapeModifier(): Boolean {
+      val lower = name.lowercase()
+      return lower == "background" ||
+        lower.contains("backgroundelement") ||
+        lower == "border" ||
+        lower.contains("bordermodifier") ||
+        lower.contains("borderelement")
+    }
 
     /**
      * The region the Canvas draw actually paints — the union of the draw modifiers' bounds, which

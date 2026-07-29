@@ -150,6 +150,90 @@ class FigmaSvgDrawRasterTest {
   }
 
   @Test
+  fun aDrawInsideTheBackgroundPaintsOverTheTokenShape() {
+    // `Modifier.background(red).drawWithContent { blue(); drawContent() }` — Compose paints the
+    // outer red first, then the inner blue. Emitting the capture as a plain background would put
+    // the red `<rect>` on top and hide the blue art completely.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "card-2",
+        component = "Box",
+        bounds = bounds(0, 0, 100, 40),
+        size = LayoutInspectorSize(100, 40),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(name = "background", bounds = bounds(0, 0, 100, 40)),
+            LayoutInspectorModifier(name = "drawWithContent", bounds = bounds(0, 0, 100, 40)),
+          ),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FFFF0000"),
+        drawRaster =
+          LayoutInspectorDrawRaster(left = 0, top = 0, right = 100, bottom = 40, pngBase64 = png),
+        children =
+          listOf(
+            LayoutInspectorNode(
+              nodeId = "label-2",
+              component = "Text",
+              bounds = bounds(8, 8, 92, 32),
+              size = LayoutInspectorSize(84, 24),
+            )
+          ),
+      )
+    val m = model(node, captureCanvasDraws = true)
+    assertTrue("the capture paints over the token shape", m.root.background!!.aboveShape)
+    // …and the emitter honours it: the `<image>` follows the `<rect>` rather than preceding it.
+    val svg = FigmaLayeredSvg.render(m)
+    assertTrue("both are emitted:\n$svg", svg.contains("<rect") && svg.contains("<image "))
+    assertTrue(
+      "the raster is drawn after the shape:\n$svg",
+      svg.indexOf("<image ") > svg.indexOf("<rect"),
+    )
+  }
+
+  @Test
+  fun aDrawOutsideTheBackgroundStaysUnderTheTokenShape() {
+    // The reverse chain (`drawBehind { blue() }.background(red)`) really does paint blue first.
+    val node =
+      LayoutInspectorNode(
+        nodeId = "card-3",
+        component = "Box",
+        bounds = bounds(0, 0, 100, 40),
+        size = LayoutInspectorSize(100, 40),
+        modifiers =
+          listOf(
+            LayoutInspectorModifier(name = "drawBehind", bounds = bounds(0, 0, 100, 40)),
+            LayoutInspectorModifier(name = "background", bounds = bounds(0, 0, 100, 40)),
+          ),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FFFF0000"),
+        drawRaster =
+          LayoutInspectorDrawRaster(left = 0, top = 0, right = 100, bottom = 40, pngBase64 = png),
+        children =
+          listOf(
+            LayoutInspectorNode(
+              nodeId = "label-3",
+              component = "Text",
+              bounds = bounds(8, 8, 92, 32),
+              size = LayoutInspectorSize(84, 24),
+            )
+          ),
+      )
+    val m = model(node, captureCanvasDraws = true)
+    assertFalse("an outer draw stays a plain background", m.root.background!!.aboveShape)
+    val svg = FigmaLayeredSvg.render(m)
+    assertTrue(
+      "the raster is drawn before the shape:\n$svg",
+      svg.indexOf("<image ") < svg.indexOf("<rect"),
+    )
+  }
+
+  @Test
+  fun aCaptureWithNoTokenShapeToOrderAgainstStaysAPlainBackground() {
+    // The RC card: a draw and no `background`/`border` on the chain, so there is nothing to order
+    // against and the capture keeps the default position beneath the layer's content.
+    val m = model(capturedContainer(), captureCanvasDraws = true)
+    assertFalse(m.root.background!!.aboveShape)
+  }
+
+  @Test
   fun theFrameCropStillWinsOnALeafSoExistingBehaviourIsUnchanged() {
     // A childless, text-less draw node in hybrid mode is the frame-crop path's own case. It keeps
     // it: those pixels are the composited truth for a leaf, and nothing about them double-renders.
