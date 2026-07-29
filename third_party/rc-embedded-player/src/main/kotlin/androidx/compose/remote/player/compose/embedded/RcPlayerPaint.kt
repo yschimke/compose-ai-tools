@@ -34,11 +34,13 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ImageShader
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontStyle
 
@@ -141,14 +143,6 @@ internal fun mapTileMode(mode: Int): TileMode =
         1 -> TileMode.Repeated
         2 -> TileMode.Mirror
         else -> TileMode.Clamp
-    }
-
-/** Maps a packed tile-mode index to a framework [Shader.TileMode]. */
-private fun nativeTileMode(index: Int): Shader.TileMode =
-    when (index) {
-        1 -> Shader.TileMode.REPEAT
-        2 -> Shader.TileMode.MIRROR
-        else -> Shader.TileMode.CLAMP
     }
 
 /** Wraps a framework [Shader] as a Compose [Brush] for the DrawScope paint path. */
@@ -362,12 +356,15 @@ internal fun updatePaintFromBundle(
                 i++ // filter/maxAnisotropy word (filtering managed by Compose; consumed to stay
                 // synced)
                 val bitmap = resolveBitmap(remoteContext, bitmapId)
+                // `ImageShader` is the multiplatform equivalent of a framework `BitmapShader`, and
+                // it takes the Compose `TileMode` the file already maps for every other path — so
+                // this needs neither `android.graphics` nor the parallel `nativeTileMode` table.
                 val shader =
                     bitmap?.let {
-                        BitmapShader(
-                            it,
-                            nativeTileMode(tileModes and 0xF),
-                            nativeTileMode((tileModes shr 16) and 0xF),
+                        ImageShader(
+                            it.asImageBitmap(),
+                            mapTileMode(tileModes and 0xF),
+                            mapTileMode((tileModes shr 16) and 0xF),
                         )
                     }
                 paintState.nativeShader = shader
