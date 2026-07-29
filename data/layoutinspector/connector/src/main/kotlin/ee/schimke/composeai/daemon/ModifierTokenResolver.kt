@@ -481,33 +481,48 @@ internal object ModifierTokenResolver {
       // the pixels exactly, so those stop the descent. Inert bookkeeping (a cached
       // `intrinsicSize`, a measured extent) doesn't change the paint and is allowed through.
       if (own.any { altersPaint(it) }) return current
-      val delegates = own.filter {
+      val painterFields = own.filter {
         isPainterType(it.type) && it.type.name != current.javaClass.name
       }
-      // Two painters: which one is the fill would be a guess, so leave it alone as well.
+      // Two painters: which one is the fill would be a guess, so leave it alone as well. A local
+      // or anonymous painter that *captures* another painter (an overlay drawn by its `onDraw`)
+      // holds it in a compiler-generated field, so captures count here too — otherwise a captured
+      // second painter would be invisible and the one declared delegate would be reported as the
+      // fill even though the capture changes what is drawn.
+      if (painterFields.size != 1) return current
+      // The delegate itself is a declared field, though: a capture is never the thing the wrapper
+      // forwards to.
       val next =
-        delegates.singleOrNull()?.let { field ->
-          runCatching {
-              field.isAccessible = true
-              field.get(current)
-            }
-            .getOrNull()
-        } ?: return current
+        painterFields
+          .single()
+          .takeUnless { it.isSynthetic }
+          ?.let { field ->
+            runCatching {
+                field.isAccessible = true
+                field.get(current)
+              }
+              .getOrNull()
+          } ?: return current
       current = next
     }
     return current
   }
 
   /**
-   * A painter's own instance state: the fields declared below `Painter` in its hierarchy. Skips
-   * `Painter`'s own bookkeeping (its cached paint, layout direction and the like) and the
-   * static/synthetic fields Kotlin emits, none of which say anything about what a painter draws.
+   * A painter's own instance state: the fields declared below `Painter` in its hierarchy, skipping
+   * `Painter`'s own bookkeeping (its cached paint, layout direction and the like).
+   *
+   * Compiler-generated fields are **kept**. A local or anonymous painter holds whatever it captured
+   * in a synthetic field, and a captured `Painter` or `ColorFilter` affects the pixels exactly as
+   * much as a declared one does — filtering synthetics out would hide that state from both the
+   * paint-altering check and the ambiguity check. Only statics are dropped, since they are shared
+   * class state rather than this instance's.
    */
   private fun ownFields(type: Class<*>): List<Field> =
     generateSequence(type as Class<*>?) { it.superclass }
       .takeWhile { it.name != "androidx.compose.ui.graphics.painter.Painter" }
       .flatMap { it.declaredFields.asSequence() }
-      .filterNot { it.isSynthetic || Modifier.isStatic(it.modifiers) }
+      .filterNot { Modifier.isStatic(it.modifiers) }
       .toList()
 
   /**

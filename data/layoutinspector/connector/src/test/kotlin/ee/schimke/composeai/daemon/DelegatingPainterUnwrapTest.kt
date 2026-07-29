@@ -108,6 +108,28 @@ class DelegatingPainterUnwrapTest {
     assertNull(resolve(painter))
   }
 
+  /**
+   * A painter that forwards to one painter and draws a second one it *captured*. Kotlin keeps a
+   * capture in a compiler-generated field, so a scan that skipped those would see a single clean
+   * delegate and report its colour — while the overlay it draws on top is what the render actually
+   * shows.
+   */
+  private fun capturingPainter(delegate: Painter, overlay: Painter): Painter =
+    object : Painter() {
+      override val intrinsicSize: Size = Size.Unspecified
+
+      override fun DrawScope.onDraw() {
+        with(delegate) { draw(size) }
+        with(overlay) { draw(size) }
+      }
+    }
+
+  @Test
+  fun `a captured second painter still counts as ambiguous`() {
+    val painter = capturingPainter(ColorPainter(Color(0xFF112233)), ColorPainter(Color(0xFF445566)))
+    assertNull("a captured overlay changes the pixels and must not be ignored", resolve(painter))
+  }
+
   @Test
   fun `extra state anywhere in the chain stops the descent`() {
     val painter = WrappingPainter(TintingPainter(ColorPainter(Color(0xFF112233)), tint = 0L))
