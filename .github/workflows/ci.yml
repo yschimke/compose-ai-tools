@@ -72,6 +72,36 @@ jobs:
           name: unit-test-results
           path: gradle-plugin/build/reports/tests/
 
+  renderer-android-tests:
+    # `:renderer-android:test` is documented in docs/AGENTS.md but had no CI leg, so its suite —
+    # including `WearScrollSvgGrowthTest`'s drift guard over the committed
+    # `serve-wear-scroll-long-capsule.html` page fixture — could only fail on someone's laptop.
+    # That guard is what stops `vscode-preview-diff` screenshotting a stale capsule after a
+    # figma-svg export change, so it has to run on PRs, where the export changes land.
+    name: Renderer Android Unit Tests
+    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          # Only resolve the write token on trusted main-branch push builds — on a pull_request
+          # this expression (evaluated from the base ci.yml, not the PR head) yields '' so the
+          # write token is never placed in a PR job's environment.
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
+      - name: Run unit tests
+        run: ./gradlew :renderer-android:testDebugUnitTest
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: renderer-android-unit-test-results
+          path: renderers/android/build/reports/tests/
+
   functional-tests:
     name: Plugin Functional Tests
     if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
@@ -590,6 +620,11 @@ jobs:
       # fail silently in production (a delivery branch just stops regenerating).
       - name: Run design-artifacts scope-step tests
         run: scripts/design-artifacts/test-scope-step.sh
+      # Guards the preview-host image's baked font cache. Its failure mode is silent: a wrong
+      # cache filename or a skipped stage-2 range query leaves faces the renderer never finds, so
+      # the live daemon quietly falls back to Roboto and drifts from the baked catalog PNGs again.
+      - name: Run preview-image font-prewarm tests
+        run: deploy/image/test-prewarm-fonts.sh
       - name: Run daemon round-trip transport tests
         run: python3 .github/ci/test_daemon_roundtrip.py -v
       # The android-all cache-key script DELETES ~200 MB coordinate directories

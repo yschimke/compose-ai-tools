@@ -534,6 +534,17 @@ stays baked-PNG on either box.)
 > bundle regenerated to carry the `android/` resources (catalog auto-refresh). `compose-m3` carried
 > `previewId` already; `remote-m3` stays baked-PNG — it publishes no runnable bundle.
 
+> **Font parity with the baked PNG.** A live daemon must resolve fonts the same way the render that
+> baked the PNG did, or the same preview shows two typefaces depending on which lane you're viewing.
+> Two things make that hold, both needed: the daemon seeds the Pixel system-font aliases
+> (`PixelSystemFontAliases`, so `Font(DeviceFontFamilyName("roboto-flex"))` — Wear Material3's type
+> scale — resolves to Roboto Flex rather than silently falling back to Roboto), and the host has
+> those faces available. The prebuilt `deploy/image` bakes them into the image so neither depends on
+> runtime egress to `fonts.googleapis.com` (see [deploy/image/README.md](../deploy/image/README.md)
+> § *Fonts*). On a host that has neither the baked cache nor egress, the daemon logs the unseeded
+> slugs once per process and renders those families in Roboto — non-fatal, but visibly different from
+> the PNG.
+
 ### Bounding the live tier — `--live-seats` / `SERVE_LIVE_SEATS`
 
 Each live (daemon-backed) stream holds a JVM Compose render session, so on a constrained box a burst

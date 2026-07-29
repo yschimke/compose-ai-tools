@@ -140,6 +140,37 @@ RUN set -eu; \
     fi
 
 # ---------------------------------------------------------------------------
+# Stage 1b: prewarm the downloadable-font cache.
+#
+# The Android renderer resolves `Font(DeviceFontFamilyName("roboto-flex"))` — Wear Material3's type
+# scale — by downloading the Google Fonts TTF and seeding it into Robolectric's system font map
+# (`PixelSystemFontAliases`). Unresolved slugs fall back to plain Roboto SILENTLY, which is what
+# made the live daemon's text differ from the baked catalog PNG on the preview host. Baking the
+# faces removes the runtime download entirely: no first-render latency, no dependency on egress to
+# fonts.googleapis.com, and the same bytes CI rendered the PNGs with.
+#
+# LICENSING — this stage REDISTRIBUTES font binaries in a published image, which is a different act
+# from the runtime fetch it replaces. All but one family below are in the google/fonts open corpus
+# under OFL-1.1 or Apache-2.0, which permit redistribution. `Google Sans Flex` is the exception: the
+# CSS2 endpoint serves it, but it is in no license directory of that repo, so its terms can't be
+# read off the corpus. It is baked here because the project owner confirmed redistribution is
+# cleared for this deployment — if you fork this image, that clearance is NOT inherited, so re-check
+# it or drop the family from FONT_PREWARM_FAMILIES. Dropping it only forgoes the baked copy; the
+# renderer still fetches it at runtime, exactly as every family did before this stage existed.
+#
+# The list mirrors `PixelSystemFontAliases.ALIASES`; extend both together.
+# ---------------------------------------------------------------------------
+FROM base AS fonts
+COPY prewarm-fonts.sh /usr/local/bin/prewarm-fonts.sh
+ARG FONT_PREWARM_FAMILIES="Roboto|Roboto Flex|Google Sans Flex|Noto Sans|Noto Serif|Noto Sans Mono|Cutive Mono|Coming Soon|Dancing Script|Carrois Gothic SC"
+# `IFS='|'` + an unquoted expansion is how the pipe-separated list becomes one argument per family;
+# family names contain spaces, so splitting on whitespace would be wrong.
+RUN set -eu; \
+    chmod +x /usr/local/bin/prewarm-fonts.sh; \
+    IFS='|'; \
+    /usr/local/bin/prewarm-fonts.sh /opt/font-cache/fonts ${FONT_PREWARM_FAMILIES}
+
+# ---------------------------------------------------------------------------
 # Stage 2: runtime.
 # ---------------------------------------------------------------------------
 FROM base AS runtime
@@ -213,6 +244,13 @@ COPY trust/ /trust/
 # /admin/catalogs — and an image pull never overwrites it. Mount /config on a volume
 # so it outlives the container.
 COPY catalogs.json /etc/compose-preview/catalogs.default.json
+
+# Baked downloadable-font cache (see the `fonts` stage). Deliberately NOT written straight to
+# `~/.cache/composeai/fonts`: that path is a named volume (docker-compose.yml `preview_cache`), and
+# a volume only inherits image content when it is FIRST created — an existing box that has been
+# running since before this change would never see the baked faces. entrypoint.sh copies the
+# missing ones across on every boot instead, which covers both fresh and long-lived volumes.
+COPY --from=fonts /opt/font-cache/fonts /opt/font-cache/fonts
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

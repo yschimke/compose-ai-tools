@@ -891,7 +891,7 @@ abstract class RobolectricRenderTestBase(
     // so the first preview pays the download cost once per session and
     // every subsequent preview hits the warm map. See
     // [PixelSystemFontAliases].
-    PixelSystemFontAliases.seedSystemFontMap()
+    PixelSystemFontAliases.seedSystemFonts()
 
     // When the consumer ships `emoji2-bundled`, initialise EmojiCompat with its bundled config so
     // emoji route through the app's own version-pinned NotoColorEmoji rather than the platform

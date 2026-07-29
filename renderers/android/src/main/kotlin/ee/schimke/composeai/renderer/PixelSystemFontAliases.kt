@@ -40,8 +40,18 @@ import androidx.compose.ui.text.font.FontWeight
  *
  * Unknown slugs pass through untouched — `Font(DeviceFontFamilyName("weird"))` falls through to
  * Robolectric's real lookup and stays as `Typeface.DEFAULT`.
+ *
+ * ## Both renderers must seed
+ *
+ * Seeding is per-process state, so EVERY process that rasterises previews has to do it or the two
+ * tiers disagree. The batch/snapshot renderer seeds in [RobolectricRenderTest.renderDefault]; the
+ * **daemon** (`RenderEngine`, which drives `serve`'s live lane) seeds via [seedSystemFonts]. When
+ * only one of them did, a `DeviceFontFamilyName` family rendered as Roboto in the live stream and
+ * as the real face in the baked PNG — a silent typeface change between the two views of the same
+ * preview, with no warning on either side (unlike the downloadable-`GoogleFont` path, which fails
+ * the preview outright). That's why [seedSystemFonts] is public: the daemon lives in another module.
  */
-internal object PixelSystemFontAliases {
+object PixelSystemFontAliases {
 
   /**
    * Ordered pairs of (system-font slug, Google Fonts display name). Seeded from Pixel 8/9
@@ -79,19 +89,52 @@ internal object PixelSystemFontAliases {
   fun resolve(slug: String): String? = ALIASES[slug.lowercase()]
 
   /**
+   * Public entry point for [seedSystemFontMap] — same behaviour, no internal types in the
+   * signature, so the daemon module (`RenderEngine`) can seed the same aliases the batch renderer
+   * does. Returns the slugs now present in the system font map.
+   *
+   * A slug that can't be resolved (cold cache with no egress, offline mode, a family the CSS
+   * endpoint no longer serves) is reported through [warn] **once per process** rather than passing
+   * silently: an unseeded `roboto-flex` means every `DeviceFontFamilyName("roboto-flex")` in the
+   * render falls back to Roboto, which is a visible typeface change and the exact drift this
+   * function exists to prevent. It is deliberately NOT fatal — unlike a downloadable `GoogleFont`,
+   * a device-family miss is what a real device without that family would do too, and failing the
+   * render would take down previews that never asked for the family in the first place.
+   */
+  fun seedSystemFonts(warn: (String) -> Unit = { System.err.println(it) }): List<String> {
+    val seeded = seedSystemFontMap()
+    val missing = ALIASES.keys - seeded.toSet()
+    if (missing.isNotEmpty() && unseededWarned.compareAndSet(false, true)) {
+      warn(
+        "compose-preview: system font aliases not seeded: ${missing.joinToString(", ")}. " +
+          "`Font(DeviceFontFamilyName(<slug>))` for these renders as Roboto instead of the real " +
+          "face. Warm the font cache (composeai.fonts.cacheDir) or allow egress to " +
+          "fonts.googleapis.com + fonts.gstatic.com."
+      )
+    }
+    return seeded
+  }
+
+  /** Guards the one-shot [seedSystemFonts] warning so a per-render call doesn't spam the log. */
+  private val unseededWarned = java.util.concurrent.atomic.AtomicBoolean(false)
+
+  /**
    * Seed `Typeface.sSystemFontMap` with cached TTFs for every entry in [ALIASES] that [cache] can
    * resolve. Idempotent — repeated calls skip slugs already present.
    *
    * Returns the list of slugs successfully seeded. Empty list when [cache] is unavailable (e.g.
    * `composeai.fonts.cacheDir` unset) or when every downloadable font is missing in offline mode.
    *
-   * The seeding weight is picked to give Compose's `nativeCreateFromTypefaceWithExactStyle` the
-   * broadest downstream surface: for variable families we download the wght-range variant (via the
-   * range CSS URL) so the resulting TTF carries the full `wght 100..1000` axis. For static families
-   * we download the regular weight — `Typeface.create(tf, weight, italic)` then applies synthesis
-   * for off-400 weights the same way it would on-device.
+   * Seeding always asks for weight 400, and takes whatever [GoogleFontCache] resolves that to.
+   * Note that for a variable family this is the family's **static 400 instance**, not the
+   * axis-covering variable TTF: `downloadFromGoogleFonts` only falls back to the `wght@100..1000`
+   * range query when the exact-weight query carried no TTF url, and for Roboto Flex / Google Sans
+   * Flex the exact-weight query *does* answer. `Typeface.create(tf, weight, italic)` then synthesises
+   * off-400 weights, the same as it would for a static family. That's a fidelity limit worth knowing
+   * about, but it is not a parity risk: both render tiers go through this identical path, so the
+   * live daemon and the baked snapshot agree on the face either way.
    */
-  fun seedSystemFontMap(
+  internal fun seedSystemFontMap(
     cache: GoogleFontSource? = null,
     lookup: ((name: String, weight: Int, italic: Boolean) -> java.io.File?)? = null,
     systemFontMap: MutableMap<String, Typeface>? = systemFontMap(),
