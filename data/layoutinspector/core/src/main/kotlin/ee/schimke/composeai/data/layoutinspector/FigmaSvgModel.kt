@@ -662,7 +662,7 @@ data class FigmaSvgModel(
       // the recorder just made. Hybrid mode only — with no frame to crop from, the untinted vector
       // still beats a broken `<image>` reference.
       if (ctx.captureCanvasDraws && vectorGraphic?.fromDrawCapture == false && hasCustomDraw()) {
-        val region = drawnOverlayRegion()
+        val region = drawnOverlayRegion(bounds)
         val href = ctx.rasterHref(nodeId)
         ctx.rasterTargets.add(
           FigmaSvgRasterTarget(nodeId, href, region.left, region.top, region.right, region.bottom)
@@ -1233,14 +1233,24 @@ data class FigmaSvgModel(
      * — the icon underneath still has to be inside the crop, and a tint pass that reports no bounds
      * covers the whole node.
      */
-    private fun LayoutInspectorNode.drawnOverlayRegion(): LayoutInspectorBounds {
+    private fun LayoutInspectorNode.drawnOverlayRegion(
+      nodeBounds: LayoutInspectorBounds
+    ): LayoutInspectorBounds {
+      // [nodeBounds], not this node's raw `bounds`: a detached or not-yet-placed node (a vector
+      // inside a subcomposed Button/TextField) reports `(0,0,0,0)`, which `toLayer` has already
+      // reconstructed from its measured size. Reading the raw field back would crop a zero-sized
+      // region and the layer would come back as the transparent 1×1 fallback.
       val drawn = modifiers.filter { it.isCustomDraw() }.mapNotNull { it.bounds }
-      if (drawn.isEmpty()) return bounds
+      if (drawn.isEmpty()) return nodeBounds
+      // A draw modifier's own bounds are subject to the same detachment, so an empty one can't be
+      // allowed to drag the union back to the origin.
+      val placed = drawn.filter { it.right > it.left && it.bottom > it.top }
+      if (placed.isEmpty()) return nodeBounds
       return LayoutInspectorBounds(
-        left = minOf(bounds.left, drawn.minOf { it.left }),
-        top = minOf(bounds.top, drawn.minOf { it.top }),
-        right = maxOf(bounds.right, drawn.maxOf { it.right }),
-        bottom = maxOf(bounds.bottom, drawn.maxOf { it.bottom }),
+        left = minOf(nodeBounds.left, placed.minOf { it.left }),
+        top = minOf(nodeBounds.top, placed.minOf { it.top }),
+        right = maxOf(nodeBounds.right, placed.maxOf { it.right }),
+        bottom = maxOf(nodeBounds.bottom, placed.maxOf { it.bottom }),
       )
     }
 

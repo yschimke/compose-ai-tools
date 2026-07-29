@@ -597,6 +597,46 @@ class FigmaLayeredSvgTest {
     assertTrue("the untinted vector must not be emitted\n$svg", !svg.contains("M11 5h2v14h-2z"))
   }
 
+  /**
+   * A detached / not-yet-placed vector (inside a subcomposed Button or TextField) reports
+   * `(0,0,0,0)` bounds, which `toLayer` reconstructs from its measured size. The overlay raster has
+   * to crop that recovered box — cropping the raw zero-area one yields the transparent 1×1
+   * fallback, i.e. the icon disappears instead of being preserved.
+   */
+  @Test
+  fun anOverDrawnIconWithRecoveredBoundsRastersAtItsRecoveredSize() {
+    val model =
+      FigmaSvgModel.from(
+        layout =
+          LayoutInspectorPayload(
+            LayoutInspectorNode(
+              nodeId = "root",
+              component = "Box",
+              bounds = LayoutInspectorBounds(0, 0, 24, 24),
+              size = LayoutInspectorSize(24, 24),
+              children =
+                listOf(
+                  LayoutInspectorNode(
+                    nodeId = "icon",
+                    component = "Icon",
+                    bounds = LayoutInspectorBounds(0, 0, 0, 0),
+                    size = LayoutInspectorSize(24, 24),
+                    vectorGraphic = plusVector(fromDrawCapture = false),
+                    modifiers = listOf(tintModifier()),
+                  )
+                ),
+            )
+          ),
+        captureCanvasDraws = true,
+      )
+
+    val target = model.rasterTargets.single { it.nodeId == "icon" }
+    assertTrue(
+      "the raster must cover the recovered box, not a zero-area one: $target",
+      target.right > target.left && target.bottom > target.top,
+    )
+  }
+
   @Test
   fun anIconWithNoOverDrawStaysAnEditableVector() {
     val model =
