@@ -1117,6 +1117,18 @@ class JsonRpcServer(
           minHeightPx = overrides.minHeightPx,
           maxWidthPx = overrides.maxWidthPx,
           maxHeightPx = overrides.maxHeightPx,
+          // `themeProvider` rides the bag so `renderNow.overrides.themeProvider` reaches the
+          // renderer, which reads `spec.overrides.themeProvider` in `InvokeWithOptionalWrapper` to
+          // wrap the preview in an app-declared `@ThemeCatalog` / `@WearThemeCatalog`
+          // `PreviewWrapperProvider`. It is renderer-read rather than planner-read, but it has no
+          // typed wire token of its own, so without a slot here the one-shot `renderNow` path
+          // dropped it silently: every `?themeProvider=` render on the preview server came back
+          // with
+          // the preview's declared wrapper (the theme chips redrew identical pixels). The live
+          // `stream/start` path carries it separately as
+          // `InteractiveCommand.Start.themeProviderFqn`
+          // and was unaffected.
+          themeProvider = overrides.themeProvider,
         )
       if (
         extensionBag.material3Theme != null ||
@@ -1128,7 +1140,8 @@ class JsonRpcServer(
           extensionBag.minWidthPx != null ||
           extensionBag.minHeightPx != null ||
           extensionBag.maxWidthPx != null ||
-          extensionBag.maxHeightPx != null
+          extensionBag.maxHeightPx != null ||
+          !extensionBag.themeProvider.isNullOrBlank()
       ) {
         if (isNotEmpty()) append(';')
         append("overrides=")
