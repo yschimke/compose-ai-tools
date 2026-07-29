@@ -131,4 +131,9 @@ dependencies {
   // `remote-player-view`-backed `RemoteDocumentPlayer` in an identical harness, so a divergence can
   // be attributed to the embedded player rather than to software-canvas rasterization.
   testImplementation(libs.compose.remote.player.view)
+  // `RcFigmaSvgExportTest` — runs the production `compose/figma-svg` export over each player's
+  // captured tree, so it needs the producers themselves (`ComposeSemanticsDataProducer`,
+  // `LayoutInspectorDataProducer`, `ComposeFigmaSvgDataProducer`). The connector `api`-exposes
+  // `:data-layoutinspector-core`, which carries the payload DTOs the test walks.
+  testImplementation(project(":data-layoutinspector-connector"))
 }
