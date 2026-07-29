@@ -39,9 +39,6 @@ import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.googlefonts.Font as GoogleFontFactory
 import androidx.compose.ui.text.googlefonts.GoogleFont
-// LOCAL DELTA (compose-ai-tools): the certs array is vendored into this module — the published
-// ui-text-google-fonts AAR ships an empty resource table. See PROVENANCE.md.
-import androidx.compose.remote.player.compose.embedded.R as GoogleFontR
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -231,7 +228,7 @@ private val GmsFontProvider =
     GoogleFont.Provider(
         providerAuthority = "com.google.android.gms.fonts",
         providerPackage = "com.google.android.gms",
-        certificates = GoogleFontR.array.com_google_android_gms_fonts_certs,
+        certificates = GmsFontProviderCertificates,
     )
 
 private fun resolveFontFamily(

@@ -40,7 +40,8 @@ holds for the three kinds of file here:
 
 - the vendored player sources, which keep upstream's header verbatim — a refresh must not strip it,
   and the local-delta comments below sit *inside* those files rather than replacing their headers;
-- `src/main/res/values/font_certs.xml`, copied verbatim from androidx with its own 2022 header;
+- `GmsFontProviderCertificates.kt`, whose certificate strings are copied out of an androidx resource
+  file (Apache-2.0, same as everything else here) and which carries the header for that reason;
 - the files written here (`build.gradle.kts`, `src/test/.../RcEmbeddedRenderHarness.kt`), which carry
   the same header because they exist only to build and exercise AOSP-derived code in an AOSP package.
 
@@ -86,15 +87,26 @@ androidx tree against the published alphas".
 Neither delta is on the draw path. If a future alpha exposes the two action types, both blocks
 revert to upstream verbatim.
 
-- **GMS font-provider certificates vendored locally** (`src/main/res/values/font_certs.xml`, and the
-  `GoogleFontR` import in `EmbeddedPlayerTypefaceResolver.kt` + `RcPlayerTextLayout.kt` repointed
-  from `androidx.compose.ui.text.googlefonts.R` to this module's own `R`). Upstream reads
-  `com_google_android_gms_fonts_certs` off the google-fonts library's `R`, but the **published**
-  `androidx.compose.ui:ui-text-google-fonts` AAR ships an empty `<resources/>` and a zero-byte
-  `R.txt` — that array lives only in the library's `src/androidTest/res`, so it never reaches a
-  consumer. The file is copied verbatim from
-  `compose/ui/ui-text-google-fonts/src/androidTest/res/values/font_certs.xml` at the pinned commit
-  (same Apache-2.0 source). Behaviour is unchanged: same certificates, same provider.
+- **GMS font-provider certificates inlined as source** (`GmsFontProviderCertificates.kt`; the
+  `GoogleFontR` import is gone from `EmbeddedPlayerTypefaceResolver.kt` and `RcPlayerTextLayout.kt`).
+  Upstream reads `com_google_android_gms_fonts_certs` off the google-fonts library's `R`, but the
+  **published** `androidx.compose.ui:ui-text-google-fonts` AAR ships an empty `<resources/>` and a
+  zero-byte `R.txt` — that array lives only in the library's `src/androidTest/res`, so it never
+  reaches a consumer.
+
+  Both consumers take the certificates directly as `List<List<ByteArray>>` — `GoogleFont.Provider`
+  and `FontRequest` each carry that constructor beside the resource-id one — so no resource table is
+  needed to supply them. The base64 strings are the verbatim contents of the `_dev` / `_prod` arrays
+  from `compose/ui/ui-text-google-fonts/src/androidTest/res/values/font_certs.xml` at the pinned
+  commit (same Apache-2.0 source), with the XML's line-wrapping whitespace removed; they are
+  generated from that file rather than transcribed. Behaviour is unchanged: same certificates, same
+  provider, same bytes.
+
+  This replaces an earlier delta that vendored `font_certs.xml` into this module. That worked, but
+  it obliged the module to carry a resource table for two constants — which meant
+  `androidResources = true`, which in turn made the KMP restructure depend on whether the KMP-Android
+  library plugin supports resource processing. Inlining removes the question rather than answering
+  it.
 
   Worth reporting upstream on its own — any out-of-tree consumer following the documented
   downloadable-fonts pattern against the published artifact hits this, not just this player.
@@ -106,10 +118,17 @@ revert to upstream verbatim.
   the move after a refresh rather than treating the diff as a conflict. Rationale under
   "Done: `state/` decoupled" below.
 
-### Not a source delta, but required to build
+### Not a source delta, but worth knowing about the build
 
-`androidResources` has to be enabled explicitly in `build.gradle.kts` — AGP 9 defaults it to `false`
-for library modules, and the module now carries its own resource table (the certs above).
+The module carries **no resource table** and leaves `androidResources` at AGP 9's default (`false`
+for libraries). It briefly needed it enabled, when the font certificates lived in a vendored
+`font_certs.xml`; inlining them as source removed the only resource this module ever had. Do not
+re-enable it without a reason — an empty resource table is one of the two things that made the KMP
+restructure uncertain.
+
+`testOptions { unitTests { isIncludeAndroidResources = true } }` stays, and is unrelated: that puts
+the *dependencies'* merged resources (Compose's own themes) on the unit-test classpath, which the
+Robolectric render harness needs to inflate real Compose content.
 
 ## Planned: CMP android/jvm
 
@@ -277,11 +296,11 @@ single-target milestone it cannot be verified. It splits into 1a/1b.
    `jvmCommonMain` larger than a handful of files reachable at all.
 2. **1b — restructure to KMP, android target only,** moving the (now much larger) clean set into
    `jvmCommonMain`. Ship it with the forbidden-import guard from above, since the target itself
-   enforces nothing. Two build-level unknowns to settle first, both about the module's existing
-   requirements rather than the sources: whether `com.android.kotlin.multiplatform.library` under
-   AGP 9 supports `androidResources` (the module carries its own resource table — the GMS font
-   certs) and Robolectric unit tests with merged resources (`RcEmbeddedRenderHarness`). If it does
-   not, 1b waits and 1a continues to be useful on its own.
+   enforces nothing. One build-level unknown left: whether `com.android.kotlin.multiplatform.library`
+   under AGP 9 supports Robolectric unit tests with the dependencies' merged resources, which
+   `RcEmbeddedRenderHarness` needs to inflate Compose content. The other unknown — resource
+   *processing* for the module's own table — is **gone**: the font certificates are source constants
+   now, the module owns no resources, and `androidResources` is back at its default.
 3. Add the `jvm` target and the `expect`/`actual` seams, starting with `RemoteContext`
    (`GraphContext`'s `AndroidRemoteContext` base) and image decode. This is where the remaining
    chains in the table are actually paid for, not step 1.
