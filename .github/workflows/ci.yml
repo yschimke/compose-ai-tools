@@ -72,6 +72,36 @@ jobs:
           name: unit-test-results
           path: gradle-plugin/build/reports/tests/
 
+  renderer-android-tests:
+    # `:renderer-android:test` is documented in docs/AGENTS.md but had no CI leg, so its suite —
+    # including `WearScrollSvgGrowthTest`'s drift guard over the committed
+    # `serve-wear-scroll-long-capsule.html` page fixture — could only fail on someone's laptop.
+    # That guard is what stops `vscode-preview-diff` screenshotting a stale capsule after a
+    # figma-svg export change, so it has to run on PRs, where the export changes land.
+    name: Renderer Android Unit Tests
+    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/buildfetch-cache
+        with:
+          # Only resolve the write token on trusted main-branch push builds — on a pull_request
+          # this expression (evaluated from the base ci.yml, not the PR head) yields '' so the
+          # write token is never placed in a PR job's environment.
+          rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
+          ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
+      - name: Run unit tests
+        run: ./gradlew :renderer-android:testDebugUnitTest
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: renderer-android-unit-test-results
+          path: renderers/android/build/reports/tests/
+
   functional-tests:
     name: Plugin Functional Tests
     if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
