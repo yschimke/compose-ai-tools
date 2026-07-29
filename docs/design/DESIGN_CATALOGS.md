@@ -329,19 +329,37 @@ letting a catalog explicitly opt the long tail out.
 
 What each form actually saves:
 
-- **Per entry** (`priority` on a component or variant) — a `@Preview` function that
-  *nothing required* points at is dropped from the render itself. The pre-flight
-  emits the `--preview` patterns for the remaining required functions
-  (`--render-filter-out <file>`), and the reusable workflow feeds them to the render
-  as `ORG_GRADLE_PROJECT_composePreview.filter`. Empty for a spec that defers no
-  entry, so the render set is unchanged for every catalog today.
-- **Per axis** (`modePriority`) — thins what is *published*: the deferred palettes
-  are not written to `images/`, not exported as `figma/*.svg`, and not carried into
-  the Figma import. It does not currently shrink the render, because the fan-out it
-  removes lives *inside* one `@Preview` function (a multipreview member or a
-  `@PreviewParameter` row) and the renderer's filter selects whole functions. A
-  per-variant render filter is the follow-up that would make this a build-time win
-  too.
+- **Per axis** (`modePriority`) — **usable now.** Thins what is *published*: the
+  deferred palettes are not written to `images/`, not exported as `figma/*.svg`, and
+  not carried into the Figma import. Every component stays in `catalog.json`'s
+  `components[]` with its untagged primary sticker, so the served catalog browses as
+  before with one fewer baked palette. It does not yet shrink the *render*, because
+  the fan-out it removes lives *inside* one `@Preview` function (a multipreview
+  member or a `@PreviewParameter` row) and the renderer's filter selects whole
+  functions — [#2966](https://github.com/yschimke/compose-ai-tools/issues/2966) adds
+  the per-preview-id filter that makes it a build-time win too.
+- **Per entry** (`priority` on a component or variant) — **authorable now, inert
+  until [#2965](https://github.com/yschimke/compose-ai-tools/issues/2965).** A
+  wholly-deferred entry has no `images[]` record, and `ServeCatalogStore` builds
+  both its registration and its catalog-id → daemon-id alias from
+  `components[].images` alone (it never decodes `deferred[]`), so acting on the
+  deferral today would make the entry *absent* from `serve --catalogs` rather than
+  rendered on demand.
+
+  So the annotation is currently honoured as `required`: the entry renders and bakes
+  exactly as it would without it, the published catalog is unchanged, and the driver
+  logs a warning naming the entries whose deferral is recorded but not yet acted on.
+  A spec can therefore be annotated ahead of the server without either being blocked
+  or quietly losing coverage. One constant — `ENTRY_DEFERRAL_SERVED` in
+  [`catalog-priority.mjs`](../../scripts/design-artifacts/catalog-priority.mjs) —
+  drives every consumer, so the render set and the published set can't disagree
+  about which entries are baked; flipping it is the last step of #2965.
+
+  The render-time half is already built behind that switch: the pre-flight emits the
+  `--preview` patterns for the still-required functions (`--render-filter-out
+  <file>`), and both design-artifacts workflows feed them to the render as
+  `ORG_GRADLE_PROJECT_composePreview.filter`. A function is only droppable when
+  **nothing required points at it** — two entries can name the same `@Preview`.
 
 Caveats worth knowing before reaching for it:
 

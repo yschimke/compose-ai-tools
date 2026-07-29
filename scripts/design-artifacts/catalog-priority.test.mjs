@@ -4,8 +4,11 @@ import assert from "node:assert/strict";
 import {
   DEFERRED,
   REQUIRED,
+  ENTRY_DEFERRAL_SERVED,
+  declaredEntryDeferrals,
   deferralPlan,
   deferredModes,
+  effectivePriority,
   entryPriority,
   isImageDeferred,
   modePriority,
@@ -62,6 +65,40 @@ test("deferredModes expands the wildcard over declared modes", () => {
   assert.deepEqual(deferredModes(spec([])), []);
 });
 
+test("effectivePriority keeps entry deferral inert until the serve host can route it", () => {
+  // #2965: `ServeCatalogStore` registers and aliases from `components[].images` alone, so honouring
+  // an entry deferral today would drop the entry from the served catalog. Declared value is still
+  // reported; the effective one is what every decision point uses.
+  const deferredEntry = { componentId: "A", preview: "Alpha", priority: "deferred" };
+  assert.equal(entryPriority(deferredEntry), DEFERRED, "the declared value is preserved");
+  assert.equal(
+    effectivePriority(deferredEntry),
+    ENTRY_DEFERRAL_SERVED ? DEFERRED : REQUIRED,
+    "the effective value follows the serve-side switch",
+  );
+});
+
+test("declaredEntryDeferrals names the annotations that are recorded but not acted on", () => {
+  const s = spec([
+    { componentId: "A", preview: "Alpha" },
+    { componentId: "B", preview: "Beta", priority: "deferred" },
+    {
+      componentId: "C",
+      preview: "Gamma",
+      variants: [{ preview: "GammaOff", state: "off", priority: "deferred" }],
+    },
+  ]);
+  const ignored = declaredEntryDeferrals(s);
+  if (ENTRY_DEFERRAL_SERVED) {
+    assert.deepEqual(ignored, [], "nothing is ignored once the serve host can route it");
+  } else {
+    assert.deepEqual(ignored, [
+      { componentId: "B", preview: "Beta", kind: "entry" },
+      { componentId: "C", preview: "GammaOff", kind: "variant" },
+    ]);
+  }
+});
+
 test("previewNamesByPriority only defers a function nothing required points at", () => {
   const { required, deferred } = previewNamesByPriority(
     spec([
@@ -79,8 +116,15 @@ test("previewNamesByPriority only defers a function nothing required points at",
       },
     ]),
   );
-  assert.deepEqual(required, ["Alpha", "Delta", "DeltaPressed"]);
-  assert.deepEqual(deferred, ["Beta", "DeltaDisabled"]);
+  if (ENTRY_DEFERRAL_SERVED) {
+    assert.deepEqual(required, ["Alpha", "Delta", "DeltaPressed"]);
+    // "Alpha" is required by componentId A even though C defers it, so it must still render.
+    assert.deepEqual(deferred, ["Beta", "DeltaDisabled"]);
+  } else {
+    // Inert: every declared entry deferral reads as required, so nothing is droppable.
+    assert.deepEqual(required, ["Alpha", "Beta", "Delta", "DeltaDisabled", "DeltaPressed"]);
+    assert.deepEqual(deferred, []);
+  }
 });
 
 test("renderFilterPatterns is empty when nothing is deferred, and positive when it is", () => {
@@ -103,7 +147,9 @@ test("renderFilterPatterns is empty when nothing is deferred, and positive when 
         { componentId: "B", preview: "Beta", priority: "deferred" },
       ]),
     ),
-    ["Alpha"],
+    // No filter while entry deferral is inert — the driver still bakes "Beta", so dropping it from
+    // the render would leave a required entry with no PNG. The two MUST agree.
+    ENTRY_DEFERRAL_SERVED ? ["Alpha"] : [],
   );
 });
 
@@ -143,22 +189,33 @@ test("splitDeferredVariants folds out the deferred variants", () => {
     ],
   };
   const { component: trimmed, deferredVariants } = splitDeferredVariants(component);
-  assert.deepEqual(
-    trimmed.variants.map((v) => v.preview),
-    ["P"],
-  );
-  assert.deepEqual(
-    deferredVariants.map((v) => v.preview),
-    ["D"],
-  );
+  if (ENTRY_DEFERRAL_SERVED) {
+    assert.deepEqual(
+      trimmed.variants.map((v) => v.preview),
+      ["P"],
+    );
+    assert.deepEqual(
+      deferredVariants.map((v) => v.preview),
+      ["D"],
+    );
+  } else {
+    assert.deepEqual(
+      trimmed.variants.map((v) => v.preview),
+      ["P", "D"],
+      "inert: the deferred variant is still folded and baked",
+    );
+    assert.deepEqual(deferredVariants, []);
+  }
   assert.equal(component.variants.length, 2, "the input spec is not mutated");
 });
 
 test("specDefersAnything sees entries, variants and modes", () => {
   assert.equal(specDefersAnything(spec([{ componentId: "A", preview: "Alpha" }])), false);
+  // Entry/variant deferral only counts once it takes effect — the live-path requirement it gates
+  // must not block a publish for a deferral that is currently inert.
   assert.equal(
     specDefersAnything(spec([{ componentId: "A", preview: "Alpha", priority: "deferred" }])),
-    true,
+    ENTRY_DEFERRAL_SERVED,
   );
   assert.equal(
     specDefersAnything(
@@ -170,7 +227,7 @@ test("specDefersAnything sees entries, variants and modes", () => {
         },
       ]),
     ),
-    true,
+    ENTRY_DEFERRAL_SERVED,
   );
   assert.equal(
     specDefersAnything(spec([], { modes: ["light", "dark"], modePriority: { "*": "deferred" } })),
@@ -193,12 +250,26 @@ test("deferralPlan summarises what a spec defers", () => {
       { modes: ["light", "dark"], modePriority: { light: "required", dark: "deferred" } },
     ),
   );
-  assert.equal(plan.entries, 1);
-  assert.equal(plan.variants, 1);
   assert.deepEqual(plan.modes, ["dark"]);
-  assert.deepEqual(plan.deferredPreviews, ["Beta", "GammaOff"]);
-  assert.deepEqual(plan.renderFilter, ["Alpha", "Gamma"]);
+  // The mode axis is active today, so the plan always reports the deferral; the entry counts and the
+  // render filter follow the serve-side switch.
   assert.equal(plan.defersAnything, true);
+  if (ENTRY_DEFERRAL_SERVED) {
+    assert.equal(plan.entries, 1);
+    assert.equal(plan.variants, 1);
+    assert.deepEqual(plan.deferredPreviews, ["Beta", "GammaOff"]);
+    assert.deepEqual(plan.renderFilter, ["Alpha", "Gamma"]);
+    assert.deepEqual(plan.ignoredEntryDeferrals, []);
+  } else {
+    assert.equal(plan.entries, 0);
+    assert.equal(plan.variants, 0);
+    assert.deepEqual(plan.deferredPreviews, []);
+    assert.deepEqual(plan.renderFilter, []);
+    assert.deepEqual(
+      plan.ignoredEntryDeferrals.map((d) => d.preview),
+      ["Beta", "GammaOff"],
+    );
+  }
 });
 
 test("previewForImage resolves a variant's sticker back to the variant's own @Preview", () => {
