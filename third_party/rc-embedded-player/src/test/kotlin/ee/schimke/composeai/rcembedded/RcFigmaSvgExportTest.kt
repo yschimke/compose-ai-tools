@@ -89,14 +89,23 @@ import org.robolectric.annotation.GraphicsMode
  * Density is pinned to `xhdpi` (2.0) because the catalogs capture at dpi 320 and the documents bake
  * dp->px at that factor; rendering at another density re-lays-out the document.
  *
- * **What a run against `design-artifacts/remote-m3`'s `TitleCardRemote` showed** (kept here because
- * the numbers qualify the claim rather than merely confirm it): the embedded lane exported 2
- * `<text>` and 0 `<image>` over 10 layout nodes; the view lane exported 0 `<text>` and exactly 1
- * full-bleed `<image>` over 3 nodes. So the text half of the claim holds outright. What the
- * embedded lane did **not** produce is any non-text drawing — 0 `<path>`, 0 `<rect>` — so the card's
- * background and shapes are absent and the exported canvas shrinks to the text's own extent
- * (251x110) rather than the document's (640x480). The report therefore prints the canvas size next
- * to the document size, so a regression in coverage is visible without re-deriving it.
+ * **What a run against `design-artifacts/remote-m3`'s `TitleCardRemote` shows** (kept here because
+ * the numbers qualify the claim rather than merely confirm it). The embedded lane exports 2 `<text>`
+ * over 10 layout nodes; the view lane exports 0 `<text>` and exactly 1 full-bleed `<image>` over 3
+ * nodes — so the text half of the claim holds outright.
+ *
+ * The other half is issue #2937 and is what the `drawnContent` assertion below pins. The card's
+ * background is painted by one `drawWithContent { executeOperations(…) }` on the component's own
+ * modifier chain, driving the native canvas; that reaches neither the token model (it is no
+ * `Modifier.background`) nor the draw *recorder* (which aborts on `drawContext.canvas`). Nor could
+ * the hybrid frame crop take it: that is restricted to childless leaves, and this node has the
+ * card's text under it. So the lane used to export `path=0 rect=0 image=0` — the card's shape and
+ * fill simply absent, the canvas shrink-wrapped to the text's own extent (251x110). It now carries
+ * the chrome as an isolated re-draw: `image=1` at the drawn region (640x174 at y=153), with both
+ * `<text>` runs still editable on top of it and the canvas grown to cover it.
+ *
+ * The report prints the canvas size next to the document size, so a regression in coverage stays
+ * visible without re-deriving it.
  *
  * Runs against a **committed 1 KB fixture** by default, so the coverage actually executes on a plain
  * `check` — unlike the sibling render harnesses, which skip without `rc.embedded.input` because they
@@ -130,6 +139,26 @@ class RcFigmaSvgExportTest {
     assert(lane.elements > lane.images + 1) {
       "the embedded lane's SVG is essentially just raster crops (${lane.images} <image> of " +
         "${lane.elements} elements):\n${lane.head()}"
+    }
+    // Issue #2937: text alone was never enough. The document's *drawn* content — the card's fill and
+    // shape — has to reach the SVG too, or the export is a cropped fragment that loses everything
+    // that isn't a string (a gradient sticker exported as invisible white text on transparent).
+    assert(lane.paths + lane.rects + lane.images > 0) {
+      "the embedded lane exported no drawn content at all (path=${lane.paths} rect=${lane.rects} " +
+        "image=${lane.images}) — the document's fills and shapes are missing:\n${lane.head()}"
+    }
+    // …and it must not have bought that back by collapsing to a raster: an isolated capture sits
+    // *under* the still-editable text, where a frame crop of the same node would have replaced it.
+    assert(lane.texts > 0 && lane.svg.indexOf("<image") < lane.svg.indexOf("<text")) {
+      "the drawn chrome must be exported beneath the editable text, not instead of it:\n" +
+        lane.head()
+    }
+    // The canvas has to cover what is drawn. It used to shrink-wrap to the text runs, cropping the
+    // card out of its own export and leaving a negative translate to compensate.
+    val (w, h) = lane.canvas()
+    assert(w >= doc.width) {
+      "the exported canvas is ${w}x$h — narrower than the ${doc.width}px document, so the drawn " +
+        "card is clipped out of its own SVG:\n${lane.head()}"
     }
   }
 
@@ -261,6 +290,12 @@ class RcFigmaSvgExportTest {
       frameImage = framePng,
     )
     val svg = File(rootDir, "$name/compose-figma.svg").takeIf { it.isFile }?.readText().orEmpty()
+    // Keep the whole export (SVG + its `figma-raster/` sidecars) beside the report when one is
+    // asked for: reading element counts tells you *that* a lane changed, opening the SVG tells you
+    // what it now looks like — which is the evidence a coverage claim like #2937's rests on.
+    System.getProperty(REPORT_PROPERTY)?.let { report ->
+      File(rootDir, name).copyRecursively(File("$report.$name.export"), overwrite = true)
+    }
 
     return Lane(
       name = name,

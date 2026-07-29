@@ -90,7 +90,9 @@ object ComposeFigmaSvgDataProducer {
         rasterComponents =
           if (frame != null) FigmaSvgModel.DEFAULT_RASTER_COMPONENTS else emptySet(),
         // Hybrid mode also crops Canvas-drawn chrome (progress track, slider groove) the token
-        // export can't see — only when a frame PNG exists to crop those pixels from.
+        // export can't see — only when a frame PNG exists to crop those pixels from. A node whose
+        // draw the connector already captured in isolation (`drawRaster`, issue #2937) is exported
+        // either way: those pixels come with the payload, not out of the frame.
         captureCanvasDraws = frame != null,
         // A round Wear device screen was masked to its inscribed circle by Roborazzi's device crop;
         // mask the export to the same circle so its square full-frame background doesn't paint the
@@ -148,8 +150,12 @@ object ComposeFigmaSvgDataProducer {
       }
     fileSystem.write(previewDir.resolve(FILE_SVG).path.toPath()) { writeUtf8(svg) }
     writeFontWarnings(previewDir, unnamed, named, fileSystem)
-    if (frame != null && model.rasterTargets.isNotEmpty()) {
-      writeRasters(previewDir, frame, model.rasterTargets, fileSystem)
+    // A target that carries its own bytes was captured by re-drawing the node, so it is written
+    // whether or not a frame exists; the rest are still cropped out of the frame.
+    val (captured, cropped) = model.rasterTargets.partition { it.pngBase64 != null }
+    writeCapturedRasters(previewDir, captured, fileSystem)
+    if (frame != null && cropped.isNotEmpty()) {
+      writeRasters(previewDir, frame, cropped, fileSystem)
     }
   }
 
@@ -427,6 +433,26 @@ object ComposeFigmaSvgDataProducer {
         // Leave the placeholder unwritten rather than fail the whole export; better a single
         // dangling ref than no SVG. In practice write only fails on IO the caller controls.
       }
+    }
+  }
+
+  /**
+   * Writes the rasters the connector already captured — an isolated re-draw of a node's own draw
+   * lambda ([FigmaSvgRasterTarget.pngBase64], issue #2937) — to the hrefs their `<image>`s
+   * reference. No frame is consulted: these pixels are the node's own paint, not a crop of the
+   * composited render, which is exactly why a container that draws can carry one. A malformed
+   * payload degrades the single placeholder rather than stranding the SVG, matching [writeRasters].
+   */
+  private fun writeCapturedRasters(
+    previewDir: File,
+    targets: List<FigmaSvgRasterTarget>,
+    fileSystem: FileSystem,
+  ) {
+    for (target in targets) {
+      val bytes =
+        runCatching { Base64.getDecoder().decode(target.pngBase64) }.getOrNull() ?: continue
+      val dest = previewDir.resolve(target.href).also { it.parentFile?.mkdirs() }
+      runCatching { fileSystem.write(dest.path.toPath()) { write(bytes) } }
     }
   }
 

@@ -302,8 +302,14 @@ object FigmaLayeredSvg {
     sb.append(indent).append("</g>\n")
   }
 
+  /**
+   * True when this subtree holds pixels taken from the composited frame, whose alpha is therefore
+   * already baked in. An isolated re-draw ([FigmaSvgBackgroundRaster.fromFrame] `= false`) is
+   * deliberately not counted: it was captured below the graphics layers, so it wants the ordinary
+   * group opacity like any vector layer.
+   */
   private fun FigmaSvgLayer.containsCapturedRaster(): Boolean =
-    raster != null || background != null || children.any { it.containsCapturedRaster() }
+    raster != null || background?.fromFrame == true || children.any { it.containsCapturedRaster() }
 
   /**
    * A Wear curved-text run (a `TimeText` clock) as an SVG `<textPath>` on its baseline arc. The

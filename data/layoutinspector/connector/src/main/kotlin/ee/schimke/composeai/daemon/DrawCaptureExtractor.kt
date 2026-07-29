@@ -102,9 +102,16 @@ internal object DrawCaptureExtractor {
    * The `DrawScope.() -> Unit` a draw modifier paints with — from its [InspectableValue] projection
    * first, else a reflected `Function1` backing field. `drawWithCache`'s `onBuildDrawCache` returns
    * a `DrawResult` rather than being a draw lambda, so it isn't re-invokable here and is skipped.
+   *
+   * Shared with [DrawRasterCapture], which re-invokes the same lambdas against an offscreen bitmap
+   * when this recorder can't represent what they draw: one reader means the two captures can never
+   * disagree about which modifiers on a chain are draws.
+   *
+   * A `drawWithContent`'s lambda is really a `ContentDrawScope.() -> Unit`; the declared type is
+   * the common supertype both callers can invoke, and both pass a `ContentDrawScope` receiver.
    */
   @Suppress("UNCHECKED_CAST")
-  private fun drawLambda(modifier: Any): (DrawScope.() -> Unit)? {
+  internal fun drawLambda(modifier: Any): (DrawScope.() -> Unit)? {
     val inspectable = modifier as? InspectableValue
     val name = inspectable?.nameFallback ?: modifier.javaClass.simpleName
     val looksLikeDraw =
