@@ -44,10 +44,15 @@ import org.junit.Test
  *    those, not this test.
  *
  * So [IMPORT_CLEAN] is the weaker claim ("the decoupling done to this file has not regressed") and
- * [READY_FOR_JVM_COMMON] is the stronger one ("this file can move"). Keeping them apart matters:
- * `state/RcPlayerState.kt` is import-clean but reads `LocalGraphContext`, whose type extends
- * `AndroidRemoteContext`, so it cannot move until that chain is split. Listing it as ready would
- * certify a move that will not compile.
+ * [READY_FOR_JVM_COMMON] is the stronger one ("this file can move"). Keeping them apart matters —
+ * `GraphContext` spent a while import-clean but still unmovable, because it held a `Drawable`-typed
+ * `RcImageLoader`; listing it as ready then would have certified a move that could not compile.
+ *
+ * **This test is now the fast check, not the real one.** `:third-party-rc-embedded-player-jvm`
+ * compiles every [READY_FOR_JVM_COMMON] file against Compose Desktop, which settles the question by
+ * construction — a file that isn't really neutral fails to build there. What this test still buys is
+ * speed and a precise message, plus [IMPORT_CLEAN] coverage for files not yet pulled into that
+ * module. [readyFilesAreActuallyCompiledForTheJvm] keeps the two from drifting apart.
  */
 class PlatformNeutralSourcesTest {
 
@@ -128,6 +133,37 @@ class PlatformNeutralSourcesTest {
     assertEquals("CanvasOperations", importedSimpleName("$PLAYER_PACKAGE.CanvasOperations"))
   }
 
+  /**
+   * Every file claimed ready must actually be compiled for the JVM by
+   * `:third-party-rc-embedded-player-jvm`.
+   *
+   * Without this the two lists drift, and they drift in the dangerous direction: a file added here
+   * but not there reads as "verified for the jvm target" while nothing has ever built it off
+   * Android. The build file's list is the source of truth precisely because a wrong entry there
+   * fails a compile rather than a scan.
+   */
+  @Test
+  fun readyFilesAreActuallyCompiledForTheJvm() {
+    // Walk up rather than count `..` segments — the same reason `playerSourceRoot` does.
+    var dir: File? = playerSourceRoot()
+    var buildFile: File? = null
+    while (dir != null && buildFile == null) {
+      val candidate = File(dir, "rc-embedded-player-jvm/build.gradle.kts")
+      if (candidate.isFile) buildFile = candidate
+      dir = dir.parentFile
+    }
+    assertTrue("could not locate the jvm module's build file by walking up", buildFile != null)
+    val declared = buildFile!!.readText()
+    val missing = READY_FOR_JVM_COMMON.filterNot { declared.contains("$PLAYER_PATH/$it") }
+    assertEquals(
+      "Declared ready for jvmCommonMain but not in :third-party-rc-embedded-player-jvm's " +
+        "sharedPlayerSources, so nothing has ever compiled them off Android. Add them there — and " +
+        "if they don't compile, they aren't ready.",
+      emptyList<String>(),
+      missing,
+    )
+  }
+
   /** Feeds every `import` line of each declared file to [block] as (relative path, FQN, raw line). */
   private fun forEachDeclaredFile(
     files: List<String>,
@@ -162,6 +198,7 @@ class PlatformNeutralSourcesTest {
 
   private companion object {
     const val PLAYER_PACKAGE = "androidx.compose.remote.player.compose.embedded"
+    val PLAYER_PATH = PLAYER_PACKAGE.replace('.', '/')
 
     /**
      * Declarations that stay in `androidMain` — they name an Android type in their signature or
@@ -170,11 +207,6 @@ class PlatformNeutralSourcesTest {
      */
     val ANDROID_MAIN_DECLARATIONS =
       setOf(
-        // No longer *imports* anything Android — it extends the neutral StoreBackedRemoteContext
-        // now — but it still holds an `RcImageLoader`, which is Drawable-typed. Import-clean and
-        // not yet movable are different things, and this is the difference.
-        "GraphContext",
-        "LocalGraphContext",
         // android.graphics.Bitmap / Rect / drawable on the canvas draw path
         "executeOperations",
         "resolveBitmap",
@@ -204,21 +236,7 @@ class PlatformNeutralSourcesTest {
      * Import-clean, but still referencing something that stays in `androidMain`, so not yet movable.
      * These are here to hold decoupling work that has already been done against regression.
      */
-    val IMPORT_CLEAN =
-      listOf(
-        // Decoupled by moving `rememberRemoteBitmapAsState` to `state/RcPlayerBitmapState.kt`. Its
-        // fourteen sibling helpers are referenced by 19 files outside `state/`, which makes this the
-        // highest-leverage file in the split. Still blocked behind `GraphContext` — the helpers read
-        // `LocalGraphContext` to resolve computed ids.
-        "state/RcPlayerState.kt",
-        // Reparented from `AndroidRemoteContext` onto the neutral `StoreBackedRemoteContext`, which
-        // is what freed the state/expression path of any *platform* dependency. What still pins it
-        // is an ordinary in-package one: it holds an `RcImageLoader` (Drawable-typed). Seam that and
-        // both this and `RcPlayerState.kt` graduate together.
-        "GraphContext.kt",
-        // Declares the composition locals the state path reads, `LocalGraphContext` among them.
-        "RcPlayerCompositionLocals.kt",
-      )
+    val IMPORT_CLEAN = listOf<String>()
 
     /**
      * Import-clean *and* free of cross-package references into `androidMain` — these are the files
@@ -233,6 +251,12 @@ class PlatformNeutralSourcesTest {
         // Written here rather than vendored: a platform-neutral `RemoteContext`, ported from
         // `AndroidRemoteContext` minus its one Android method. It touches nothing but `remote-core`.
         "StoreBackedRemoteContext.kt",
+        "RcImageSource.kt",
+        "GraphContext.kt",
+        "RcPlayerCompositionLocals.kt",
+        "RcPlayerEasing.kt",
+        "state/RcPlayerState.kt",
+        "state/RcPlayerExpression.kt",
       )
   }
 }

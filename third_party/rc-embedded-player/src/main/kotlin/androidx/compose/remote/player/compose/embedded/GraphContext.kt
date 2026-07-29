@@ -86,7 +86,8 @@ internal class GraphContext(
      * isn't a composable, so can't read [LocalRcImageLoader]) needs it to resolve document image
      * draws through the same pluggable loader the composable Image layout uses.
      */
-    internal var imageLoader: RcImageLoader? = null
+    /** Carried for the draw path, never called here — see [RcImageSource]. */
+    internal var imageLoader: RcImageSource? = null
 
     // Capture bookkeeping is per-thread: `derivedStateOf` may be evaluated on whichever thread
     // reads

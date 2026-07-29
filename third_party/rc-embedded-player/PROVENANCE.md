@@ -130,6 +130,21 @@ revert to upstream verbatim.
   sole contract method that does is `loadBitmap` — which `GraphContext` already stubbed. Worth
   reporting upstream alongside their issue #12: the split they describe is close to mechanical.
 
+- **`RcImageSource` extracted, and `mapEasing` split out of `RcPlayer.kt`** (`RcImageSource.kt`,
+  `RcPlayerEasing.kt`). Two small deltas with the same shape: a neutral declaration was living inside
+  an Android-coupled one, so everything that touched it inherited coupling it never used.
+
+  `RcImageSource` is an **empty** supertype of `RcImageLoader`. `GraphContext` only ever *carried* a
+  loader — `RcPlayer` sets one, the canvas draw path reads it back — so it now carries the neutral
+  type, and the single site that actually loads casts back to `RcImageLoader`. Narrowing rather than
+  generalising is the point: the interface has no members, so nothing pretends image decode is
+  platform-neutral. `mapEasing` is a six-line `when` from a core easing constant to a Compose one,
+  whose only caller is the expression evaluator; leaving it in `RcPlayer.kt` pinned that whole
+  evaluator to `SuppressLint`/`PendingIntent`.
+
+  Together these are what let `GraphContext`, `RcPlayerState.kt` and `RcPlayerExpression.kt` compile
+  for the jvm target — see "Done: it runs on the desktop JVM" below.
+
 - **`rememberRemoteBitmapAsState` moved to its own file** (`state/RcPlayerBitmapState.kt`, out of
   `state/RcPlayerState.kt`). Not a behaviour change and not an upstream gap — a refactor in service
   of the CMP split, recorded here because it is the one place the snapshot is no longer file-for-file
@@ -248,6 +263,35 @@ Verified by compile and by the module's `check`. **Not** verified by a render: t
 needs a staged catalog (see the sequencing note below), so the claim here is "no behaviour change by
 construction", not "the 24-document render is unchanged".
 
+#### Done: it runs on the desktop JVM
+
+`:third-party-rc-embedded-player-jvm` compiles the neutral subset of this module's sources against
+**Compose Desktop** and runs them on a plain JVM — no Android, no Robolectric. `DesktopRemoteContextTest`
+exercises the value layer there: float/int/colour/text round-trips through the shared store, and —
+the one that actually matters — that a store read registers with Compose's snapshot system, without
+which `GraphContext`'s whole `derivedStateOf` design would silently degrade to "never invalidates".
+
+The sources are **shared by path, not copied**: the jvm module adds the Android module's
+`src/main/kotlin` as a source directory and names an explicit file list. So there is one copy of each
+file, and no possibility of the two drifting.
+
+This inverts what `PlatformNeutralSourcesTest` is for. The scan was standing in for a missing
+compiler; now the compiler is here, and a file that isn't really neutral fails to build rather than
+passing a source scan. The test remains as the fast check with the precise message, and
+`readyFilesAreActuallyCompiledForTheJvm` ties its `READY_FOR_JVM_COMMON` list to the build file's, so
+a file cannot be claimed ready without something having actually compiled it off Android.
+
+**What runs, and what doesn't.** The value/expression layer runs: the store, the neutral
+`RemoteContext`, `GraphContext`, the `rememberRemote*AsState` family, and the expression/animation
+evaluator. The draw path does not exist here — that is `RcPlayerPaint`/`RcPlayerDrawing` and the rest
+of the sequencing below. Ten of the module's files still import Android; nine did before this, so the
+remaining work is the draw path, not the value layer.
+
+**This also makes 1b optional rather than blocking.** A separate jvm module was chosen precisely
+because converting the Android module to KMP still has an unsettled risk (Robolectric under the
+KMP-Android plugin), and nothing here needs that resolved. If the conversion happens, this module's
+file list is the migration order; if it never does, the desktop lane still works.
+
 ### The source-set shape is `jvmCommon`, not `common`
 
 `remote-core` — the document and operation model the player reads throughout — is a plain
@@ -311,12 +355,15 @@ single-target milestone it cannot be verified. It splits into 1a/1b.
      was step 2's `RemoteContext` seam, pulled forward because it gated most of 1a; it turned out to
      need no `expect`/`actual` at all, since `RemoteContext` is itself platform-neutral (42 abstract
      members, not one naming an Android type — even `loadBitmap` takes a `byte[]`).
-   - **Next: `RcImageLoader`.** It is now the single thing pinning `GraphContext` (which holds one)
-     and therefore `RcPlayerState.kt` behind it. The interface is `Drawable`-typed; making it
-     generic over a platform image handle, or narrowing what `GraphContext` needs from it, graduates
-     the state + expression path in one move.
-   - Then `RcPlayerChildren`/`RcPlayerComponent`/`mapEasing` out of `RcPlayer.kt`, then the
+   - `RcImageLoader` pinning `GraphContext` — **done**, via the empty `RcImageSource` supertype.
+     `GraphContext` only ever *carried* a loader, so it now carries the neutral type and the one
+     site that loads casts back. Narrowing beat generalising here: the interface has no members, so
+     nothing pretends image decode is platform-neutral.
+   - `mapEasing` out of `RcPlayer.kt` — **done** (`RcPlayerEasing.kt`), which is what let
+     `RcPlayerExpression.kt` and `RcPlayerState.kt` compile for the jvm target.
+   - **Next: the draw path.** `RcPlayerChildren`/`RcPlayerComponent` out of `RcPlayer.kt`, then the
      bitmap-typed helpers out of `RcPlayerDrawing.kt` so `executeOperations`' dispatcher can follow.
+     This is the large remaining piece and where the deferrals below start to matter.
 
    **Import-clean and movable are different things**, and 1a keeps tripping over the difference —
    `GraphContext` imports nothing Android yet still cannot move, because of an ordinary in-package
