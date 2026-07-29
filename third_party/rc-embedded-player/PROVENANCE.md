@@ -47,7 +47,42 @@ See the `rc-embedded` column of the catalogs' `rc-compare.html` for the current 
 the baked PNG. Local deltas over the upstream snapshot are listed here as they are made, each with
 the upstream tracking issue it was reported under.
 
-_(none yet — initial snapshot)_
+Each delta below is a **build-against-published-alpha** gap, not a rendering fix: upstream compiles
+this player against the in-tree `remote-creation-compose`, where these symbols are public and
+present. They are grouped in the tracking issue as "the embedded player cannot be built outside the
+androidx tree against the published alphas".
+
+- **Named-action dispatch for `LambdaAction` / `PendingIntentAction` dropped** (`RcPlayer.kt`, the
+  `LocalRemoteNamedActionHandler` block). `LambdaAction` does not exist in
+  `remote-creation-compose:1.0.0-alpha15`, and `PendingIntentAction` is `internal` there, so
+  `parseId` is not callable from outside the module. The handler now forwards straight to
+  `onNamedAction`. Both paths are *interactive click dispatch*; the render lane never fires an
+  action, so nothing the comparison measures is affected.
+- **`CapturedDocument` lambda/pending-intent forwarding dropped** (`RcPlayer.kt`, the
+  `CapturedDocument` overload). `CapturedDocument` in alpha15 carries neither a `lambdas` nor a
+  `pendingIntents` property. Same reasoning; that overload is for live capture, which this vendored
+  copy does not use.
+
+Neither delta is on the draw path. If a future alpha exposes the two action types, both blocks
+revert to upstream verbatim.
+
+- **GMS font-provider certificates vendored locally** (`src/main/res/values/font_certs.xml`, and the
+  `GoogleFontR` import in `EmbeddedPlayerTypefaceResolver.kt` + `RcPlayerTextLayout.kt` repointed
+  from `androidx.compose.ui.text.googlefonts.R` to this module's own `R`). Upstream reads
+  `com_google_android_gms_fonts_certs` off the google-fonts library's `R`, but the **published**
+  `androidx.compose.ui:ui-text-google-fonts` AAR ships an empty `<resources/>` and a zero-byte
+  `R.txt` — that array lives only in the library's `src/androidTest/res`, so it never reaches a
+  consumer. The file is copied verbatim from
+  `compose/ui/ui-text-google-fonts/src/androidTest/res/values/font_certs.xml` at the pinned commit
+  (same Apache-2.0 source). Behaviour is unchanged: same certificates, same provider.
+
+  Worth reporting upstream on its own — any out-of-tree consumer following the documented
+  downloadable-fonts pattern against the published artifact hits this, not just this player.
+
+### Not a source delta, but required to build
+
+`androidResources` has to be enabled explicitly in `build.gradle.kts` — AGP 9 defaults it to `false`
+for library modules, and the module now carries its own resource table (the certs above).
 
 ## Planned: CMP android/jvm
 

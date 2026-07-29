@@ -43,6 +43,13 @@ android {
     aarMetadata { minCompileSdk = 36 }
   }
 
+  // AGP 9 defaults `androidResources` to false for library modules. The typeface resolver and the
+  // text-layout path both read `androidx.compose.ui.text.googlefonts.R.array
+  // .com_google_android_gms_fonts_certs` (the GMS font-provider certificates), and that dependency R
+  // class is only generated when resource processing is on — without this the two references fail to
+  // resolve.
+  buildFeatures { androidResources = true }
+
   // The player reaches `androidx.compose.remote.core.*` members marked `@RestrictTo(LIBRARY_GROUP)`
   // — unavoidable for an out-of-tree copy of in-tree code. Upstream's own module disables the check.
   lint { disable += "RestrictedApi" }
