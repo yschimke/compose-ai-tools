@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.19.6](https://github.com/yschimke/compose-ai-tools/compare/v0.19.5...v0.19.6) (2026-07-29)
+
+
+### Features
+
+* **rc-embedded:** vendor AndroidX's embedded RC player as a third rc-compare lane ([#2929](https://github.com/yschimke/compose-ai-tools/issues/2929)) ([975061d](https://github.com/yschimke/compose-ai-tools/commit/975061d8ccbf6d4b4ad6ef5f92b6db632f1f0837))
+* **rc-player:** resolve named font families and serve them from Google Fonts ([#2919](https://github.com/yschimke/compose-ai-tools/issues/2919)) ([aafa243](https://github.com/yschimke/compose-ai-tools/commit/aafa24396bb97517afe309c848c5f0d2b9e5c493))
+* **serve:** show live "connecting…" on the preview badge ([#2921](https://github.com/yschimke/compose-ai-tools/issues/2921)) ([c672bdf](https://github.com/yschimke/compose-ai-tools/commit/c672bdf3ddff550fd030a1ec380c9b37f173dcb7))
+
+
+### Bug Fixes
+
+* **figma-svg:** emit brush fills and borders as real SVG gradients ([#2916](https://github.com/yschimke/compose-ai-tools/issues/2916)) ([81930cc](https://github.com/yschimke/compose-ai-tools/commit/81930cc601491d1deb9908590cec05f18fb5a4b0))
+* **figma-svg:** only unwrap painters that alter nothing about the paint ([#2920](https://github.com/yschimke/compose-ai-tools/issues/2920)) ([27c1cf2](https://github.com/yschimke/compose-ai-tools/commit/27c1cf234d6bec30927c6bbb774d22613102f509))
+* **figma-svg:** raster an icon a blend-mode tint draws over ([#2924](https://github.com/yschimke/compose-ai-tools/issues/2924)) ([806195d](https://github.com/yschimke/compose-ai-tools/commit/806195deb13ed36491586b594a2f72608fe874f0))
+* **figma-svg:** stop squashing a clipped vector to its drawn box ([#2926](https://github.com/yschimke/compose-ai-tools/issues/2926)) ([009018b](https://github.com/yschimke/compose-ai-tools/commit/009018b71b29f8fbcab80f8d906456a7c4f9c727))
+* **render:** showBackground respects the preview's night uiMode ([#2922](https://github.com/yschimke/compose-ai-tools/issues/2922)) ([79a45bd](https://github.com/yschimke/compose-ai-tools/commit/79a45bd13a053a20d50dc2cffc9247b795bf2031))
+* **serve:** reject a themeProvider the catalog never declared ([#2923](https://github.com/yschimke/compose-ai-tools/issues/2923)) ([32c2055](https://github.com/yschimke/compose-ai-tools/commit/32c2055ea7f2da7993f505b75baf9f0c2e891ad9))
+
 ## [0.19.5](https://github.com/yschimke/compose-ai-tools/compare/v0.19.4...v0.19.5) (2026-07-29)
 
 
