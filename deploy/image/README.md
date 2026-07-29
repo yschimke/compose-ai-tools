@@ -266,12 +266,14 @@ should never show two different typefaces.
   *its* cache, not this host), so an entry left by an earlier runtime fetch is unknown-provenance
   and an upgrade must be able to correct it. Replacement is temp + `mv`, before serve starts.
   Faces the image doesn't ship are left alone.
-- **Licensing.** Baking redistributes font binaries, which the runtime fetch did not. Every baked
-  family is in the [google/fonts](https://github.com/google/fonts) corpus under OFL-1.1 or
-  Apache-2.0. **`Google Sans Flex` is deliberately not baked** — the CSS2 endpoint serves it, but it
-  is not in that repo under any license directory, so its redistribution terms are unclear. It still
-  works exactly as before (fetched at runtime on first use). Override `FONT_PREWARM_FAMILIES` at
-  build time to change the set.
+- **Licensing.** Baking redistributes font binaries, which the runtime fetch did not. All baked
+  families except one are in the [google/fonts](https://github.com/google/fonts) corpus under
+  OFL-1.1 or Apache-2.0. **`Google Sans Flex` is the exception** — the CSS2 endpoint serves it, but
+  it is in no license directory of that repo, so its terms can't be read off the corpus; it is baked
+  because the project owner confirmed redistribution is cleared for this deployment. **A fork does
+  not inherit that clearance** — re-check it, or drop the family from `FONT_PREWARM_FAMILIES`.
+  Dropping it only forgoes the baked copy; the renderer still fetches it at runtime, as every family
+  did before this stage existed. Override `FONT_PREWARM_FAMILIES` at build time to change the set.
 
 ## Notes / caveats
 
