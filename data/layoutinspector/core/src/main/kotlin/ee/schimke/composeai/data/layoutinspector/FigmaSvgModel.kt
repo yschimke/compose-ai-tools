@@ -141,6 +141,18 @@ data class FigmaSvgVector(
   val layoutWidth: Int,
   val layoutHeight: Int,
   val fillBounds: Boolean = false,
+  /**
+   * The node's captured draw-time `graphicsLayer` scale (`LayoutInspectorNode.transform`), 1 when
+   * it declared none.
+   *
+   * This is what separates a genuinely squashed vector from a merely *clipped* one. `bounds` alone
+   * can't: a node measured 24×24 and drawn into a 12×3 rect looks identical whether an ancestor
+   * scaled it or an animating container clipped it, and inferring a scale from that ratio squashed
+   * Jetsnack's square FAB icon to `scale(0.49 0.13)` (issue #2853). The capture states which it is,
+   * so the export stops guessing.
+   */
+  val scaleX: Double = 1.0,
+  val scaleY: Double = 1.0,
   val paths: List<FigmaSvgVectorPath>,
 )
 
@@ -549,6 +561,8 @@ data class FigmaSvgModel(
       layoutWidth: Int,
       layoutHeight: Int,
       fillBounds: Boolean,
+      scaleX: Double = 1.0,
+      scaleY: Double = 1.0,
     ): FigmaSvgVector? {
       if (viewportWidth <= 0f || viewportHeight <= 0f) return null
       val emittable =
@@ -575,6 +589,8 @@ data class FigmaSvgModel(
           layoutWidth = layoutWidth,
           layoutHeight = layoutHeight,
           fillBounds = fillBounds,
+          scaleX = scaleX,
+          scaleY = scaleY,
           paths = emittable,
         )
     }
@@ -683,6 +699,8 @@ data class FigmaSvgModel(
           layoutWidth = size.width,
           layoutHeight = size.height,
           fillBounds = hasFillBoundsContentScale(),
+          scaleX = transform?.scaleX?.toDouble() ?: 1.0,
+          scaleY = transform?.scaleY?.toDouble() ?: 1.0,
         )
         ?.let { vec ->
           return FigmaSvgLayer(

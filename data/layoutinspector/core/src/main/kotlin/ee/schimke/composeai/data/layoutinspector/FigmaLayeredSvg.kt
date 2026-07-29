@@ -488,15 +488,21 @@ object FigmaLayeredSvg {
       scaleX = if (vec.viewportWidth > 0f) layer.width / vec.viewportWidth.toDouble() else 1.0
       scaleY = if (vec.viewportHeight > 0f) layer.height / vec.viewportHeight.toDouble() else 1.0
     } else {
+      // Fit the vector's own viewport into its layout slot, uniformly — an icon keeps its aspect
+      // ratio.
       val layoutScale =
         minOf(
           layoutWidth / vec.viewportWidth.toDouble(),
           layoutHeight / vec.viewportHeight.toDouble(),
         )
-      val placedScaleX = if (layoutWidth > 0.0) layer.width / layoutWidth else 1.0
-      val placedScaleY = if (layoutHeight > 0.0) layer.height / layoutHeight else 1.0
-      scaleX = layoutScale * placedScaleX
-      scaleY = layoutScale * placedScaleY
+      // Then apply the node's *captured* draw-time scale, not the ratio of its drawn box to its
+      // layout slot. Those two disagree whenever a node is clipped rather than scaled, and the
+      // ratio reading squashed a square icon in an animating container to `scale(0.49 0.13)`
+      // (issue #2853): Jetsnack's FAB shrinks the box it draws its icon into, but the icon itself
+      // is never distorted — it's cropped, and it stays square right up to the point it vanishes.
+      // A real non-uniform layer scale still reads correctly, because the capture reports it.
+      scaleX = layoutScale * vec.scaleX
+      scaleY = layoutScale * vec.scaleY
     }
     val fittedWidth = vec.viewportWidth.toDouble() * scaleX
     val fittedHeight = vec.viewportHeight.toDouble() * scaleY

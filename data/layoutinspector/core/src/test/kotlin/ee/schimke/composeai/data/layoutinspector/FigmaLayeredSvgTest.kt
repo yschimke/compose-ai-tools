@@ -341,12 +341,16 @@ class FigmaLayeredSvgTest {
 
   @Test
   fun vectorRetainsAnExplicitNonuniformLayoutTransform() {
+    // "Explicit" is the captured `transform`: the node really is drawn through a
+    // `graphicsLayer(scaleX = 2f)`, so the vector is stretched to match. The bounds agree with
+    // that scale (24 × 2 = 48 wide), but it's the transform — not the bounds ratio — that decides.
     val node =
       LayoutInspectorNode(
         nodeId = "icon",
         component = "Icon",
         bounds = bounds(10, 20, 58, 44),
         size = LayoutInspectorSize(24, 24),
+        transform = LayoutInspectorTransform(scaleX = 2f, scaleY = 1f),
         vectorGraphic =
           LayoutInspectorVectorGraphic(
             viewportWidth = 24f,
@@ -364,6 +368,71 @@ class FigmaLayeredSvgTest {
     val svg = render(node)
 
     assertTrue(svg, svg.contains("""transform="translate(10 20) scale(2 1)""""))
+  }
+
+  /**
+   * Issue #2853: Jetsnack's `Profile/Animating FAB content` draws a square icon into a box the
+   * animation has shrunk — the icon is *clipped*, never distorted. Inferring a scale from the ratio
+   * of drawn box to layout slot squashed it to `scale(0.49 0.13)`; with no captured `transform`
+   * there is no draw-time scale to apply, so it must stay square.
+   */
+  @Test
+  fun aClippedVectorStaysSquareInsteadOfBeingSquashedToItsDrawnBox() {
+    val node =
+      LayoutInspectorNode(
+        nodeId = "icon",
+        component = "Icon",
+        // 24×24 measured, drawn into ~12×3 by the animating container. No `transform`: nothing
+        // scaled it.
+        bounds = bounds(10, 20, 22, 23),
+        size = LayoutInspectorSize(24, 24),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L24,0 L24,24 L0,24 Z",
+                  fillArgb = "#FF000000",
+                )
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertTrue("the icon must stay square\n$svg", svg.contains("""scale(1 1)"""))
+    assertFalse("the drawn-box ratio must not become a scale\n$svg", svg.contains("scale(0.5 0.13"))
+  }
+
+  /**
+   * A uniformly shrunk node (Wear's curved-edge transform, #2615) still scales with its capture.
+   */
+  @Test
+  fun aUniformlyScaledVectorFollowsItsCapturedTransform() {
+    val node =
+      LayoutInspectorNode(
+        nodeId = "icon",
+        component = "Icon",
+        bounds = bounds(0, 0, 12, 12),
+        size = LayoutInspectorSize(24, 24),
+        transform = LayoutInspectorTransform(scaleX = 0.5f, scaleY = 0.5f),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L24,0 L24,24 L0,24 Z",
+                  fillArgb = "#FF000000",
+                )
+              ),
+          ),
+      )
+
+    assertTrue(render(node).contains("""scale(0.5 0.5)"""))
   }
 
   @Test
