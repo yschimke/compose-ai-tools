@@ -171,10 +171,23 @@ true *today*, before any restructure: this is a plain android library, so a file
 can be re-coupled by the next edit with nothing to notice.
 
 `RcSemanticsExtractionTest`'s neighbour `PlatformNeutralSourcesTest` is that missing constraint. It
-holds the list of files claimed ready for `jvmCommonMain` and fails if any of them imports one of
-the four prefixes. Each declaration split below adds its file to that list; when the restructure
-lands, the list is the move order, and the test retires once the `jvm` target enforces the same
-thing by compiling.
+keeps two lists, because moving a file needs two things and they are worth not conflating:
+
+- **`IMPORT_CLEAN`** — the file imports no Android platform API. This is what a declaration split
+  buys, and the list exists so a later edit can't quietly undo one.
+- **`READY_FOR_JVM_COMMON`** — additionally, the file imports nothing that stays in `androidMain`,
+  which `jvmCommonMain` would not be able to see. Only these can actually move.
+
+Import-freedom alone does **not** make a file movable, and `state/RcPlayerState.kt` is the case in
+point: it is import-clean after the split below, but its helpers read `LocalGraphContext`, whose type
+extends `AndroidRemoteContext`. It graduates when the `GraphContext` chain in the table above is
+split — which is the same thing that unblocks the rest of the state path.
+
+The second check works on imports, so it catches *cross-package* references only: the player splits
+into `embedded`, `embedded.layout`, `embedded.modifier` and `embedded.state`, so a file in a
+sub-package must import what it uses from the root package. References within the root package need
+no import and this test cannot see them — the chain table above is the record for those. The whole
+test retires once a `jvm` target enforces both halves by compiling.
 
 #### Done: `state/` decoupled
 
@@ -183,10 +196,15 @@ one, `rememberRemoteBitmapAsState` (`State<Bitmap?>`, decoding via `resolveBitma
 the entire file, and through it the 19 files above. That one function now lives in
 `state/RcPlayerBitmapState.kt`; `RcPlayerState.kt` no longer imports anything Android. The function
 body is verbatim and it had **no call sites** in the vendored subset (upstream API surface only), so
-this is a file move, not a behaviour change. The largest chain in the table above is cleared, and
-`RcPlayerState.kt` is now held that way by `PlatformNeutralSourcesTest` — along with
-`CoreDataAccessors.kt`, `CoreDataModel.kt` and `SnapshotRemoteComposeState.kt`, which were already
-platform-neutral as vendored and are pinned so they stay that way.
+this is a file move, not a behaviour change. `RcPlayerState.kt` is now held import-clean by
+`PlatformNeutralSourcesTest`, and `CoreDataAccessors.kt` / `CoreDataModel.kt` /
+`SnapshotRemoteComposeState.kt` — already platform-neutral as vendored — are pinned as genuinely
+movable.
+
+This clears the *import* half of the largest chain, not the whole chain: the fourteen helpers still
+read `LocalGraphContext`, so `state/` moves when `GraphContext` is split, not before. What the split
+buys now is that the 19 dependent files are no longer blocked on an `android.graphics.Bitmap` import
+that had nothing to do with them.
 
 Verified by compile and by the module's `check`. **Not** verified by a render: the rc-compare lane
 needs a staged catalog (see the sequencing note below), so the claim here is "no behaviour change by
@@ -248,9 +266,15 @@ single-target milestone it cannot be verified. It splits into 1a/1b.
 1. **1a — declaration splits, still a plain android library.** Peel the platform-neutral
    declarations out of the coupled files so a `jvmCommonMain` worth having exists *before* the build
    is restructured. Each split is behaviour-preserving and verified by a compile, so they land
-   independently and bisect cleanly. Highest-leverage first, by the table above: `state/` (**done**),
-   then `RcPlayerChildren`/`RcPlayerComponent`/`mapEasing` out of `RcPlayer.kt`, then the
-   bitmap-typed helpers out of `RcPlayerDrawing.kt` so `executeOperations`' dispatcher can follow.
+   independently and bisect cleanly. Order by the table above: `state/`'s Android *import* is gone
+   (**done**), but the chain it sits on runs through `GraphContext`, so that is the next one — split
+   the `RemoteContext` seam and the whole state + expression path graduates at once. Then
+   `RcPlayerChildren`/`RcPlayerComponent`/`mapEasing` out of `RcPlayer.kt`, then the bitmap-typed
+   helpers out of `RcPlayerDrawing.kt` so `executeOperations`' dispatcher can follow.
+
+   Note this reorders against the original plan: `GraphContext` is the `RemoteContext` seam that was
+   step 2's first item, and it turns out to gate most of 1a. Splitting it early is what makes a
+   `jvmCommonMain` larger than a handful of files reachable at all.
 2. **1b — restructure to KMP, android target only,** moving the (now much larger) clean set into
    `jvmCommonMain`. Ship it with the forbidden-import guard from above, since the target itself
    enforces nothing. Two build-level unknowns to settle first, both about the module's existing
