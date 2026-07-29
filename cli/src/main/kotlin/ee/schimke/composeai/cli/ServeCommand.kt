@@ -5,6 +5,7 @@ import ee.schimke.composeai.cli.serve.CatalogLoadTracker
 import ee.schimke.composeai.cli.serve.DaemonStartupLog
 import ee.schimke.composeai.cli.serve.GitWorktrees
 import ee.schimke.composeai.cli.serve.GradleRevisionBuilder
+import ee.schimke.composeai.cli.serve.MutableTrustStore
 import ee.schimke.composeai.cli.serve.RenderOutcome
 import ee.schimke.composeai.cli.serve.ServeBundle
 import ee.schimke.composeai.cli.serve.ServeBundleDaemon
@@ -30,6 +31,8 @@ import ee.schimke.composeai.cli.serve.ServeSessionFactory
 import ee.schimke.composeai.cli.serve.ServeSessionRegistry
 import ee.schimke.composeai.cli.serve.ServeSessionState
 import ee.schimke.composeai.cli.serve.ServeStartupBundles
+import ee.schimke.composeai.cli.serve.ServeTrustAdmin
+import ee.schimke.composeai.cli.serve.ServeTrustStoreFile
 import ee.schimke.composeai.cli.serve.ServeUrls
 import ee.schimke.composeai.cli.serve.ServeWeb
 import ee.schimke.composeai.cli.serve.TrustStore
@@ -247,8 +250,27 @@ class ServeCommand(args: List<String>) : Command(args) {
    */
   private val trustStorePath: String? = args.flagValue("--trust-store")
 
-  /** Resolved once, reused by the upload store and the catalog store. */
-  private val resolvedTrust: TrustStore by lazy { loadTrustStore() }
+  /**
+   * The live producer-trust store, shared by the upload store, the catalog store, and the trust
+   * admin. Was a `by lazy` snapshot read once at startup, which meant an edit to producers.json —
+   * or an admin change — needed a restart to take effect; consumers now read through this holder on
+   * every verification instead.
+   */
+  private val trustStore: MutableTrustStore by lazy {
+    MutableTrustStore(loadTrustStore(), source = trustStoreFile)
+  }
+
+  /**
+   * The running branch poller, when there is one. Held so a trust revocation can invalidate the
+   * remembered branch heads of the catalogs it just retired ([retireNewlyUntrusted]); the refresher
+   * is built before the server and reaches it only as a closeable, so there's no other handle.
+   */
+  @Volatile private var activeRefresher: ServeCatalogRefresher? = null
+
+  /** The producers.json document backing [trustStore], when `--trust-store` names one. */
+  private val trustStoreFile: ServeTrustStoreFile? by lazy {
+    trustStorePath?.let { ServeTrustStoreFile(File(it).absolutePath.toPath()) }
+  }
 
   /**
    * Design systems to serve from their published `design-artifacts/<system>` branches (`--catalogs
@@ -288,10 +310,13 @@ class ServeCommand(args: List<String>) : Command(args) {
       ?.let { ServeCatalogsConfigFile(it.toPath()) }
 
   /**
-   * Shared secret for the runtime catalog-admin routes (`--admin-token`; env `SERVE_ADMIN_TOKEN`).
-   * Absent ⇒ `/admin/catalogs` isn't registered at all, so a server that didn't opt in has no admin
-   * surface. Deliberately distinct from the browse token: a `--public` box hands that one out to
-   * every visitor.
+   * Shared secret for the runtime admin routes (`--admin-token`; env `SERVE_ADMIN_TOKEN`) — both
+   * `/admin/catalogs` and `/admin/trust`. Absent ⇒ neither is registered at all, so a server that
+   * didn't opt in has no admin surface. Deliberately distinct from the browse token: a `--public`
+   * box hands that one out to every visitor.
+   *
+   * On a server running `--allow-render-trusted`, treat this as a code-execution credential:
+   * `/admin/trust` can make a producer's Compose eligible for server-side re-render here.
    */
   private val adminToken: String? = args.flagValue("--admin-token")?.takeIf { it.isNotBlank() }
 
@@ -620,6 +645,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         ?.also {
           it.seedInitialHeads(catalogReg.loads.availableSystems())
           it.start()
+          activeRefresher = it
         }
     // Runtime ingestion (--accept-bundles): clients POST a bundle (or a ?url= to one) and it's
     // registered as a pinned session. Unpacked under a temp dir for this server's lifetime.
@@ -681,6 +707,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         ?.also {
           it.seedInitialHeads(catalogReg.loads.availableSystems())
           it.start()
+          activeRefresher = it
         }
     val bundleStore = if (acceptBundles) openUploadStore(registry) else null
 
@@ -808,7 +835,7 @@ class ServeCommand(args: List<String>) : Command(args) {
       root = uploads,
       register = { id, bundleHost -> registry.register(id, host = bundleHost, pinned = true) },
       allowedHosts = acceptBundlesFrom,
-      trust = resolvedTrust,
+      trust = { trustStore.get() },
     )
   }
 
@@ -886,6 +913,25 @@ class ServeCommand(args: List<String>) : Command(args) {
       } else {
         null
       }
+    // Runtime producer-trust administration. Needs only the admin token: unlike the catalog admin
+    // there's nothing to fetch, and a box with no trust store yet is exactly the one that most
+    // needs
+    // to be able to add its first producer without an image rebuild.
+    val trustAdmin =
+      if (adminToken != null) {
+        ServeTrustAdmin(
+          store = trustStore,
+          file = trustStoreFile,
+          // Revoking trust must retire what that trust was already buying. Each affected catalog's
+          // session (and its live daemon, via unregister) is dropped and its tracker row marked
+          // failed, so the branch refresher re-fetches it and it comes back re-verified — as
+          // `unverified`, serving baked data tiers only, instead of keeping a stale Trusted
+          // verdict.
+          onRevoke = { updated -> retireNewlyUntrusted(updated, catalogLoads, registry) },
+        )
+      } else {
+        null
+      }
     val server =
       ServeHttpServer(
         host = host,
@@ -908,9 +954,17 @@ class ServeCommand(args: List<String>) : Command(args) {
         catalogRefreshSeconds = catalogRefreshSeconds,
         acceptBundlesEnabled = acceptBundles,
         catalogAdmin = catalogAdmin,
+        trustAdmin = trustAdmin,
         adminToken = adminToken,
         docStore = openDocStore(),
       )
+    if (trustAdmin != null) {
+      System.err.println(
+        "serve: trust admin API enabled at /admin/trust" +
+          (trustStoreFile?.let { " (persisting to ${it.displayPath})" }
+            ?: " (runtime only — pass --trust-store to persist)")
+      )
+    }
     if (catalogAdmin != null) {
       System.err.println(
         "serve: catalog admin API enabled at /admin/catalogs" +
@@ -1085,7 +1139,7 @@ class ServeCommand(args: List<String>) : Command(args) {
       ServeBundleStore(
         root = File(root, "baked").apply { mkdirs() },
         register = { id, host -> registry.register(id, host = host, pinned = true) },
-        trust = resolvedTrust,
+        trust = { trustStore.get() },
       )
     val registered = mutableListOf<String>()
     for (spec in bundleSpecs) {
@@ -1097,7 +1151,7 @@ class ServeCommand(args: List<String>) : Command(args) {
       // (harmless — an untrusted-branch origin just adds no basis).
       val origins = ServeStartupBundles.candidateOrigins(spec.source)
       val origin =
-        origins.firstOrNull { resolvedTrust.trustsBranch(it.repo, it.branch) }
+        origins.firstOrNull { trustStore.get().trustsBranch(it.repo, it.branch) }
           ?: origins.firstOrNull()
       val bundleFile = File(root, "${spec.name}.bundle")
       try {
@@ -1106,7 +1160,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         System.err.println("serve: bundle ${spec.name} could not be staged (${e.message})")
         continue
       }
-      val verdict = BundleVerifier.verify(bundleFile, resolvedTrust, origin)
+      val verdict = BundleVerifier.verify(bundleFile, trustStore.get(), origin)
       // Live lane: Trusted + operator opt-in. A desktop bundle materialises a daemon straight from
       // the bundle (no build); a non-desktop/foreign/empty bundle returns null → falls to baked.
       if (allowRenderTrusted && verdict is BundleVerifier.Verdict.Trusted) {
@@ -1219,7 +1273,7 @@ class ServeCommand(args: List<String>) : Command(args) {
       ServeCatalogStore(
         root = dir,
         register = { id, host -> registry.register(id, host = host, pinned = true) },
-        trust = resolvedTrust,
+        trust = { trustStore.get() },
         repo = catalogRepo,
         branchPrefix = catalogBranchPrefix,
         registerWasm = { system, wasmDir ->
@@ -1530,6 +1584,42 @@ class ServeCommand(args: List<String>) : Command(args) {
   }
 
   /**
+   * Drop every registered catalog whose source branch [updated] no longer trusts.
+   *
+   * Called after a trust revocation. Unregistering closes the session's host, which is what takes
+   * down a live daemon started under the old verdict; marking the tracker row failed is what gets
+   * the catalog re-fetched — [ServeCatalogRefresher] skips a reload while the branch SHA is
+   * unchanged, so a revoked-but-still-loaded catalog would otherwise keep serving as `Trusted`
+   * until its branch moved or the box restarted.
+   */
+  private fun retireNewlyUntrusted(
+    updated: TrustStore,
+    tracker: CatalogLoadTracker?,
+    registry: ServeSessionRegistry,
+  ) {
+    val loads = tracker ?: return
+    val retired = mutableListOf<String>()
+    for (state in loads.snapshot()) {
+      val repo = state.config.repo
+      val branch = state.config.branch
+      if (updated.trustsBranch(repo, branch)) continue
+      // Only a catalog that actually loaded under the old trust needs tearing down; a pending or
+      // already-failed row has nothing serving to revoke.
+      if (!state.available) continue
+      registry.unregister(state.config.system)
+      loads.recordFailure(state.config.system, "producer trust revoked; awaiting re-verification")
+      retired += state.config.system
+      System.err.println(
+        "serve: retired ${state.config.system} — $repo@$branch is no longer trusted"
+      )
+    }
+    // Clear the remembered branch heads so the next refresh pass re-fetches these instead of
+    // short-circuiting on an unchanged SHA — without this the teardown would be undone only by a
+    // branch move or a restart.
+    if (retired.isNotEmpty()) activeRefresher?.forgetHeads(retired)
+  }
+
+  /**
    * Load the `--trust-store` JSON, or the empty fail-closed store when the flag is absent. A bad
    * path or unparseable file is a hard error: a public operator who *meant* to pin trusted
    * producers shouldn't silently fall back to trusting nothing (or, worse, think they configured it
@@ -1539,6 +1629,14 @@ class ServeCommand(args: List<String>) : Command(args) {
     val path = trustStorePath ?: return TrustStore.EMPTY
     val f = File(path)
     if (!f.isFile) {
+      // With the trust admin armed, an absent file is a legitimate starting state: the operator is
+      // about to create it through `POST /admin/trust`. Without it, a missing file is still fatal —
+      // silently trusting nothing is exactly the failure the hard exit exists to prevent.
+      if (adminToken != null) {
+        System.err.println("serve: --trust-store ${f.path} does not exist yet; starting with no")
+        System.err.println("serve: trusted producers (add them via POST /admin/trust)")
+        return TrustStore.EMPTY
+      }
       System.err.println("serve: --trust-store not found: ${f.path}")
       exitProcess(1)
     }
@@ -1781,12 +1879,18 @@ class ServeCommand(args: List<String>) : Command(args) {
                           "attributionRepos"), so an id like compose-m3 can't buy a section. Entries
                           here come first; --catalogs / --catalogs-unlisted add to them.
         --admin-token <value>
-                          Enable the runtime catalog-admin API and gate it with this secret:
-                          GET /admin/catalogs, POST /admin/catalogs (a catalogs.json entry as the
-                          body), DELETE /admin/catalogs/<system>. Mutations are applied live AND
-                          written back to --catalogs-file, so they survive a restart. Separate from
-                          --token on purpose (a --public box hands that one to every visitor);
-                          omitted = the admin routes don't exist at all.
+                          Enable the runtime admin API and gate it with this secret. Two surfaces:
+                          the catalog set — GET /admin/catalogs, POST /admin/catalogs (a
+                          catalogs.json entry as the body), DELETE /admin/catalogs/<system> — and
+                          the producer-trust store — GET /admin/trust, POST /admin/trust
+                          ({"kind":"branch"|"key"|"oidc",…}), DELETE /admin/trust?kind=&repo=…
+                          (selectors ride the query string so an owner/repo needn't be escaped).
+                          Mutations are applied live AND written back to --catalogs-file /
+                          --trust-store, so they survive a restart. Separate from --token on purpose
+                          (a --public box hands that one to every visitor); omitted = the admin
+                          routes don't exist at all. NB with --allow-render-trusted this token can
+                          grant server-side execution, since trusting a branch makes that
+                          producer's Compose eligible for re-render here.
         --catalog-repo <owner/repo>
                           Default repo the catalogs are fetched from (default
                           yschimke/compose-ai-tools); per-entry @<owner>/<repo> overrides it.

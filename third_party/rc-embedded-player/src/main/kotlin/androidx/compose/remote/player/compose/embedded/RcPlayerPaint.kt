@@ -40,9 +40,9 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -94,21 +94,30 @@ internal class ComposeLocalPaint {
 
     /** The fill color with the paint's [alpha] folded into its alpha channel. */
     fun effectiveColor(): Color = Color(color).let { it.copy(alpha = it.alpha * alpha) }
-
 }
 
 /**
  * The Compose [TextStyle] this paint state describes — colour or brush, size, weight, style, family
  * and fill/stroke.
  *
- * Shared by every text op so they cannot drift: `DrawText` and `DrawTextAnchored` previously built
- * this inline and via a framework `Paint` respectively, which is exactly how two text paths end up
- * rendering differently.
+ * Extracted verbatim from `DrawText`'s inline construction in `RcPlayerDrawing.kt`, which is still
+ * its only caller: same generic-family mapping, same `FontFamily.Default` fallback, same upstream
+ * TODO. Purely a move — the arithmetic and every branch are unchanged.
  *
- * [family] is passed in rather than derived from [fontFamily] here: resolving a *named* family
- * reaches downloadable fonts, which is platform-bound. See `resolvePaintFontFamily`.
+ * Note this is *not* how the other three canvas text ops style themselves. They go through the
+ * framework `Paint` in `RcPlayerTextPlatform.kt`, which resolves named and downloadable families
+ * that this mapping drops on the floor. Unifying them means teaching this builder that resolution,
+ * not pointing the native ops at it — see PROVENANCE.md.
  */
-internal fun ComposeLocalPaint.toTextStyle(density: Density, family: FontFamily): TextStyle {
+internal fun ComposeLocalPaint.toTextStyle(density: Density): TextStyle {
+    // TODO: Support proper font family resolution (see aosp/4187117)
+    val family =
+        when (fontFamily) {
+            1 -> FontFamily.SansSerif
+            2 -> FontFamily.Serif
+            3 -> FontFamily.Monospace
+            else -> FontFamily.Default
+        }
     val drawStyle =
         if (isStroke)
             Stroke(

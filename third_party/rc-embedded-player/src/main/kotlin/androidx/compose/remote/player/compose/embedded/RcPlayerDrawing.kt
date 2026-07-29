@@ -72,14 +72,14 @@ import androidx.compose.remote.player.compose.utils.getPath
 import androidx.compose.remote.player.compose.utils.getTweenPath
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect as ComposeRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Matrix
+import androidx.compose.ui.graphics.Path as ComposePath
 import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.geometry.Rect as ComposeRect
-import androidx.compose.ui.graphics.Path as ComposePath
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -689,17 +689,9 @@ internal fun DrawScope.executeOperations(
                     val text = full.substring(start, end)
                     val x = resolveFloat(op.mX, op.mOutX, read)
                     val y = resolveFloat(op.mY, op.mOutY, read)
-                    // textMeasurer is non-null. Style comes from the shared builder so this
-                    // and DrawTextAnchored cannot drift apart.
+                    // textMeasurer is non-null
                     val textLayoutResult =
-                        textMeasurer.measure(
-                            text = text,
-                            style =
-                                paintState.toTextStyle(
-                                    this,
-                                    resolvePaintFontFamily(paintState, read),
-                                ),
-                        )
+                        textMeasurer.measure(text = text, style = paintState.toTextStyle(this))
 
                     // Assuming y is baseline
                     val baseline = textLayoutResult.getLineBaseline(0)
@@ -739,8 +731,9 @@ internal fun DrawScope.executeOperations(
                 if (full != null && !paintState.textSize.isNaN()) {
                     val flags = data.flags
                     val baseline = (flags and DrawTextAnchored.BASELINE_RELATIVE) != 0
-                    // Anchoring is defined against *ink* bounds; only the measurement is
-                    // platform-specific, the arithmetic below and the draw are not.
+                    // Measure and draw both go through the platform seam — see
+                    // `RcPlayerTextPlatform.kt`. They must use the same text engine and the same
+                    // resolved typeface, or the anchoring below places glyphs it didn't measure.
                     val bounds = measureTextInkBounds(full, paintState, read)
                     val outX = data.x
                     val outY = data.y
@@ -758,21 +751,7 @@ internal fun DrawScope.executeOperations(
                                 (0f - textHeight) * (1f - outPanY) / 2f +
                                 (if (baseline) textHeight / 2f else -bounds.top)
                         }
-                    // (x, y) is the text origin (baseline-left); Compose positions the layout box,
-                    // so shift up by the baseline exactly as the plain DrawText path does.
-                    val anchoredLayout =
-                        textMeasurer.measure(
-                            text = full,
-                            style =
-                                paintState.toTextStyle(
-                                    this,
-                                    resolvePaintFontFamily(paintState, read),
-                                ),
-                        )
-                    drawText(
-                        textLayoutResult = anchoredLayout,
-                        topLeft = Offset(x, y - anchoredLayout.getLineBaseline(0)),
-                    )
+                    drawTextAtOriginPlatform(full, x, y, paintState, read)
                 }
             }
             is DrawBitmapScaled -> {

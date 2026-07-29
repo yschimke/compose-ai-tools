@@ -62,6 +62,15 @@ import org.robolectric.annotation.GraphicsMode
  * plain JVM through Compose Desktop's Skia backend with no Android runtime. Until then
  * `@GraphicsMode(NATIVE)` gives real pixels.
  *
+ * **Why the capture still draws the view by hand.** Every harness here settles with `waitForIdle()`
+ * now that the player's frame loop lets the composition reach idle ([RcIdleProbeTest]), but the
+ * rasterization itself stays a direct `View.draw(Canvas(bitmap))` rather than `captureToImage()`.
+ * That is a Robolectric limit, not a player one: `captureToImage()` calls `forceRedraw`, which waits
+ * on a `ViewTreeObserver.OnDrawListener` Robolectric never fires, and times out after 2s for *any*
+ * content — [RobolectricCaptureToImageProbeTest] pins that with a bare `Box` and no player at all.
+ * When that probe starts failing, Robolectric has grown the draw pass and this can become a
+ * `captureToImage()`.
+ *
  * Density is pinned: the catalogs capture at dpi 320, so documents carry dp->px factors for density
  * 2.0 (a 200dp preview bakes to 400px). `xhdpi` is that density — rendering at another one
  * re-lays-out the document and every row would diff on geometry instead of renderer behaviour.
@@ -113,12 +122,6 @@ class RcEmbeddedRenderHarness(private val entry: Entry) {
   }
 
   private fun renderToBitmap(bytes: ByteArray): Bitmap {
-    // The player animates off the frame clock and only breaks its loop for a fully static document,
-    // so the composition never reaches idle and every Compose test API that waits for idle times
-    // out. Driving the clock manually avoids that, and makes the capture deterministic — an
-    // auto-advancing clock would sample time-driven content at an arbitrary moment.
-    composeRule.mainClock.autoAdvance = false
-
     composeRule.setContent {
       val density = LocalDensity.current
       Box(
@@ -138,7 +141,10 @@ class RcEmbeddedRenderHarness(private val entry: Entry) {
       }
     }
 
-    repeat(FRAMES) { composeRule.mainClock.advanceTimeByFrame() }
+    // The player's frame loop used to keep the composition busy forever, so this harness pumped a
+    // fixed number of frames off a manually driven clock. #2945 fixed that, so settling is now just
+    // `waitForIdle()` and the render is whatever the document itself came to rest at.
+    composeRule.waitForIdle()
 
     val root = composeRule.activity.findViewById<ViewGroup>(android.R.id.content)
     // Force measure/layout at the document's exact size before drawing, so the draw can't land at
@@ -157,9 +163,6 @@ class RcEmbeddedRenderHarness(private val entry: Entry) {
   companion object {
     private const val INPUT_PROPERTY = "rc.embedded.input"
     private const val OUTPUT_PROPERTY = "rc.embedded.output"
-
-    /** Recompose, lay out, and let the player's frame loop settle time-driven state. */
-    private const val FRAMES = 4
 
     private fun inputDir(): File? =
       System.getProperty(INPUT_PROPERTY)?.let(::File)?.takeIf { it.isDirectory }

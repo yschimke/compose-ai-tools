@@ -33,6 +33,12 @@
       "description": "Informational: the theme modes the sticker sheet covers (e.g. [\"light\", \"dark\"]).",
       "items": { "type": "string" }
     },
+    "modePriority": {
+      "type": "object",
+      "description": "Per-axis render priority for the theme modes: which palettes must be baked into the published bundle and which the preview server produces on demand. Keys are mode names from `modes` plus the `*` wildcard; values are \"required\" (default) or \"deferred\". e.g. { \"light\": \"required\", \"*\": \"deferred\" } bakes one sticker per component and leaves the rest to the serve host's theme switcher. Only stickers that NAME a theme can be deferred, so a component always keeps its primary render. Requires a live path (publish-live-bundle or a buildable `source`) — the export refuses to publish deferred coverage a serve host could not re-render.",
+      "propertyNames": { "minLength": 1 },
+      "additionalProperties": { "$ref": "#/definitions/priority" }
+    },
     "breakpoints": {
       "type": "array",
       "description": "Informational: the width breakpoints the sticker sheet documents.",
@@ -81,6 +87,10 @@
     }
   },
   "definitions": {
+    "priority": {
+      "enum": ["required", "deferred"],
+      "description": "Whether this entry must be baked into the published bundle (\"required\", the default — rendered, joined, and subject to the strict completeness gate) or may be produced on demand by the preview server (\"deferred\" — recorded in catalog.json as live-only, not rendered in CI, and not counted as a missing render or missing-semantics failure). Deferral needs a live path (publish-live-bundle or a buildable `source`); static consumers (images/, figma/*.svg, the Figma import) only carry required entries, which is why the default stays \"required\"."
+    },
     "group": {
       "type": "object",
       "required": ["name", "components"],
@@ -141,6 +151,7 @@
           "type": "string",
           "description": "Optional Code Connect override: the source location (path or URL) for `component`."
         },
+        "priority": { "$ref": "#/definitions/priority" },
         "variants": {
           "type": "array",
           "description": "Extra state/content renders folded onto this sticker; each is its own @Preview.",
@@ -160,6 +171,7 @@
           "description": "EXACT @Preview function name for this variant render."
         },
         "caption": { "type": "string" },
+        "priority": { "$ref": "#/definitions/priority" },
         "state": {
           "type": "string",
           "description": "The interaction/state this variant shows (pressed, keyboard-focus, disabled, off, …)."

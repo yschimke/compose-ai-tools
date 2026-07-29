@@ -231,7 +231,7 @@ private val GmsFontProvider =
         certificates = GmsFontProviderCertificates,
     )
 
-internal fun resolveFontFamily(
+private fun resolveFontFamily(
     fontFamilyType: Int,
     fontName: String?,
     fontWeight: FontWeight,

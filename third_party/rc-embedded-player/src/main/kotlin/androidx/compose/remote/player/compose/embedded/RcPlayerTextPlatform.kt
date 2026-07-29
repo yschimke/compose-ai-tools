@@ -24,35 +24,35 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.text.font.FontStyle
 
 /*
- * The two text operations that cannot be expressed with Compose's multiplatform text APIs, gathered
- * in one place so the rest of the draw path doesn't have to name `android.graphics`.
+ * Every place the canvas text path reaches for `android.graphics`, gathered behind four functions so
+ * the rest of the draw path doesn't have to name the platform.
  *
- * Splitting these out is what removes `android.graphics.Paint` from `RcPlayerPaint.kt` and
- * `android.graphics.Rect` from `RcPlayerDrawing.kt`: those files now describe *what* to draw, and
- * only this one knows how the platform measures and lays out glyphs. See the CMP section of
- * PROVENANCE.md.
+ * This is a *seam*, not a port. The bodies below are the same framework calls the ops made inline
+ * before, moved here unchanged — `Paint.getTextBounds`, `Paint.measureText`, `Canvas.drawText`,
+ * `Canvas.drawTextOnPath`. Android keeps drawing text exactly as it did; what changes is that
+ * `RcPlayerDrawing.kt` and `RcPlayerPaint.kt` no longer mention `android.graphics`, so a jvm sibling
+ * of *this file alone* is what the draw path needs to run off Android.
  *
- * When the draw path grows a desktop counterpart, this file is the seam: a jvm sibling supplies the
- * same two functions over Skia (`org.jetbrains.skia.Font.measureText` and manual glyph placement
- * along a path), and nothing else in the draw path changes.
+ * That sibling replicates these four over skiko (`org.jetbrains.skia.Font` for both measurements,
+ * `Canvas.drawString` for the origin draw, and manual `PathMeasure` glyph placement for
+ * text-on-path) and is judged against Android's output. Choosing skiko over Compose's own
+ * multiplatform text APIs is the point: `DrawTextAnchored` anchors against *ink* bounds and reads
+ * `left`/`top` directly (mirroring `DrawTextAnchored.getHorizontalOffset`/`getVerticalOffset` in
+ * remote-core), while Compose exposes layout bounds — side bearings and line spacing included — so
+ * substituting them would shift every anchored string. See the CMP section of PROVENANCE.md.
  */
 
 /**
- * Tight ink bounds of [text] — the box the glyphs actually mark, relative to the text origin
+ * Tight ink bounds of a string — the box the glyphs actually mark, relative to the text origin
  * (baseline at y=0, pen start at x=0). Left/top are frequently negative.
  *
- * This is *not* the layout box. `DrawTextAnchored`'s positioning is defined in terms of ink bounds
- * (it mirrors `DrawTextAnchored.getHorizontalOffset`/`getVerticalOffset` in remote-core, which
- * measures the same way), and it reads `left` and `top` directly. Substituting Compose's layout
- * bounds — which include side bearings and line spacing — would silently shift every anchored
- * string rather than port it, so the measurement stays platform-specific while the anchoring
- * arithmetic that consumes it does not.
+ * A neutral carrier for `android.graphics.Rect`, so the anchoring arithmetic that consumes it (in
+ * `RcPlayerDrawing.kt`) names no platform type. Deliberately not `androidx.compose.ui.geometry.Rect`:
+ * that would invite reading it as a layout box, which is a different measurement.
  */
 internal class TextInkBounds(
     val left: Float,
@@ -71,7 +71,10 @@ internal class TextInkBounds(
  * Builds a framework [Paint] for the text ops from the current paint state: anti-aliased, the
  * effective colour, the text size, and a typeface derived from font weight/style.
  *
- * Moved here from `ComposeLocalPaint` so the paint-state class itself names no Android type.
+ * Moved here from `ComposeLocalPaint` unchanged, so the paint-state class itself names no Android
+ * type. Note it resolves *named* families through [EmbeddedPlayerTypefaceResolver] (`device:` /
+ * `google:` prefixes included) — richer than the generics-only mapping `toTextStyle` uses for
+ * `DrawText`, and the reason measurement and drawing must both go through this one function.
  */
 private fun ComposeLocalPaint.toNativeTextPaint(context: RemoteContext): Paint {
     val resolver = EmbeddedPlayerTypefaceResolver(context)
@@ -101,34 +104,6 @@ private fun ComposeLocalPaint.toNativeTextPaint(context: RemoteContext): Paint {
     }
 }
 
-/**
- * The Compose [FontFamily] for the current paint state, resolved the same way
- * [toNativeTextPaint] picks a typeface: generics 0..3 by index, anything else as a *named* family
- * looked up in the document's text table (`device:` / `google:` prefixes included).
- *
- * This exists so measurement and drawing cannot disagree. `toTextStyle` used to map every id
- * outside 0..3 to `FontFamily.Default` while the measurement path resolved the real name — so a
- * document naming a font measured with one face and drew with another, which misplaces anchored
- * text as well as changing the glyphs. Resolution is platform-bound (it reaches downloadable
- * fonts), so it lives here with the other text platform hooks.
- */
-internal fun resolvePaintFontFamily(
-    paintState: ComposeLocalPaint,
-    context: RemoteContext,
-): FontFamily {
-    val familyType = paintState.fontFamily
-    val name = if (familyType in 0..3) null else context.getText(familyType)
-    return resolveFontFamily(
-        fontFamilyType = familyType,
-        fontName = name,
-        fontWeight = FontWeight(paintState.fontWeight),
-        fontStyle = paintState.fontStyle,
-        fontAxis = null,
-        fontAxisValues = null,
-        context = context,
-    )
-}
-
 /** Measures [text]'s ink bounds with the platform's text engine. */
 internal fun measureTextInkBounds(
     text: String,
@@ -145,7 +120,7 @@ internal fun measureTextInkBounds(
     )
 }
 
-/** Advance width of [text] with the platform's text engine (Skia's `Font.measureText` on jvm). */
+/** Advance width of [text] with the platform's text engine. */
 internal fun measureTextWidth(
     text: String,
     paintState: ComposeLocalPaint,
@@ -153,9 +128,22 @@ internal fun measureTextWidth(
 ): Float = paintState.toNativeTextPaint(context).measureText(text)
 
 /**
+ * Draws [text] with its origin at ([x], [y]) — pen start and baseline, the same convention
+ * [measureTextInkBounds] measures against.
+ */
+internal fun DrawScope.drawTextAtOriginPlatform(
+    text: String,
+    x: Float,
+    y: Float,
+    paintState: ComposeLocalPaint,
+    context: RemoteContext,
+) {
+    drawContext.canvas.nativeCanvas.drawText(text, x, y, paintState.toNativeTextPaint(context))
+}
+
+/**
  * Lays [text] along [path]. Compose has no multiplatform equivalent — neither `DrawScope` nor
- * `TextMeasurer` can place glyphs along a path — so this drops to the framework canvas. On a Skia
- * backend the counterpart is manual glyph placement via `PathMeasure`.
+ * `TextMeasurer` can place glyphs along a path.
  */
 internal fun DrawScope.drawTextOnPathPlatform(
     text: String,

@@ -136,7 +136,6 @@ class RcSemanticsExtractionTest {
   private data class Captured(val nodes: Int, val texts: List<String>)
 
   private fun capture(width: Int, height: Int, content: @Composable () -> Unit): Captured {
-    composeRule.mainClock.autoAdvance = false
     composeRule.setContent {
       val density = LocalDensity.current
       Box(
@@ -145,7 +144,7 @@ class RcSemanticsExtractionTest {
         content()
       }
     }
-    repeat(4) { composeRule.mainClock.advanceTimeByFrame() }
+    composeRule.waitForIdle()
 
     val texts = mutableListOf<String>()
     var count = 0

@@ -37,10 +37,17 @@ import org.robolectric.annotation.GraphicsMode
  *
  * `RcPlayer` drives time from a `LaunchedEffect` that never returns for an animated or time-driven
  * document. Requested through `withFrameMillis` that is indistinguishable from ordinary pending
- * work, so `waitForIdle()` blocks forever and every wait-for-idle capture API times out — which is
- * why the render harnesses drive `mainClock` by hand and draw the view directly. Requested through
- * `withInfiniteAnimationFrameMillis` it goes via the `InfiniteAnimationPolicy` the test framework
- * installs, and idle is reachable.
+ * work, so `waitForIdle()` blocks forever and every wait-for-idle capture API times out. Requested
+ * through `withInfiniteAnimationFrameMillis` it goes via the `InfiniteAnimationPolicy` the test
+ * framework installs, and idle is reachable.
+ *
+ * This is load-bearing, not merely a property worth recording: [RcEmbeddedRenderHarness],
+ * [RcViewPlayerRenderHarness], [RcSemanticsExtractionTest] and [RcFigmaSvgExportTest] all settle on
+ * `waitForIdle()` now. They used to disable the clock and pump a fixed number of frames precisely
+ * because they couldn't; a regression here takes all four out with it.
+ *
+ * Their *capture* is still a direct `View.draw(Canvas(bitmap))` — that half is Robolectric's, not
+ * the player's, and [RobolectricCaptureToImageProbeTest] holds the receipt.
  *
  * This asserts the property directly: compose a real document and call `waitForIdle()`. If the loop
  * regresses to `withFrameMillis` this test hangs and the suite times out rather than failing
