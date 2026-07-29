@@ -1,7 +1,7 @@
 package ee.schimke.composeai.renderer
 
 import android.graphics.Typeface
-import androidx.compose.ui.text.font.FontWeight
+import ee.schimke.composeai.fonts.google.GoogleFontKey
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -163,7 +163,7 @@ class PixelSystemFontAliasesTest {
     // which is identical to the GoogleFont("Roboto Flex") cache entry —
     // so the two entry points share bytes instead of double-downloading.
     val systemAliasFile =
-      GoogleFontKey(name = "Roboto Flex", weight = FontWeight(400), italic = false).fileName()
+      GoogleFontKey(name = "Roboto Flex", weight = 400, italic = false).fileName()
     assertEquals("roboto-flex-400.ttf", systemAliasFile)
   }
 
