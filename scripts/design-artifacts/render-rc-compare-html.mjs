@@ -15,19 +15,45 @@
  * string emitter over the driver's result model, so it stays unit-testable with
  * a hand-built model and never touches a browser or the filesystem.
  *
+ * Two players are compared against the same baked PNG, each with its own diff
+ * and its own mismatch %:
+ *
+ * * **JS player** — the vendored TypeScript `RC.RcdPlayer` on a `<canvas>`, the
+ *   browser render lane.
+ * * **embedded player** — the vendored AndroidX `RcPlayer`
+ *   (`:third-party-rc-embedded-player`), a pure-Compose interpreter of the same
+ *   document. This is the lane that differs from `remote-player-view`'s
+ *   `RemoteComposePlayer` (an Android `View` painting to a framework `Canvas`),
+ *   so it shows what a host embedding RC content *inside* a Compose tree gets.
+ *
+ * A row is kept even when only one of the two players could render it — the
+ * per-player `rendered` flags are independent, and a player that could not
+ * decode the document shows its note in place of a percentage.
+ *
  * Model shape (produced by rc-compare.mjs):
  *   {
  *     system, title,
  *     rows: [{
  *       id, name, group,
  *       width, height,
- *       rendered,            // false when the player could not decode the doc
+ *       rendered,            // false when the JS player could not decode the doc
  *       note,                // optional reason when !rendered
  *       mismatchPct,         // 0..100, null when !rendered
  *       mismatchPx,          // integer, null when !rendered
  *       baked, rc, diff,     // out-relative image paths ('' when absent)
+ *
+ *       embeddedRendered,    // false when the embedded player could not render it
+ *       embeddedNote,        // optional reason when !embeddedRendered
+ *       embeddedMismatchPct, // 0..100, null when !embeddedRendered
+ *       embeddedMismatchPx,  // integer, null when !embeddedRendered
+ *       embedded,            // out-relative path to the embedded render ('' when absent)
+ *       embeddedDiff,        // out-relative path to its diff ('' when absent)
  *     }],
  *   }
+ *
+ * The embedded fields are optional: a model without them (an older summary, or a
+ * run where the embedded lane was skipped) renders the JS-only page unchanged,
+ * with the embedded columns omitted entirely rather than shown empty.
  */
 
 function esc(s) {
@@ -35,6 +61,11 @@ function esc(s) {
     /[&<>"']/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
   );
+}
+
+/** True when any row carries an embedded-player result, i.e. the lane ran at all. */
+export function hasEmbeddedLane(rows = []) {
+  return rows.some((r) => r.embeddedRendered !== undefined || r.embedded);
 }
 
 /** Aggregate stats over the rows — mean mismatch across *rendered* rows, counts. */
@@ -45,14 +76,45 @@ export function summarizeRcCompare(rows = []) {
     rendered.length === 0
       ? null
       : rendered.reduce((s, r) => s + (r.mismatchPct ?? 0), 0) / rendered.length;
-  return { total: rows.length, rendered: rendered.length, unsupported, meanPct };
+
+  // Embedded lane is summarized independently: its render can succeed on a document the JS player
+  // chokes on and vice versa, so counting them together would hide which player is behind.
+  const embRendered = rows.filter((r) => r.embeddedRendered);
+  const embMeanPct =
+    embRendered.length === 0
+      ? null
+      : embRendered.reduce((s, r) => s + (r.embeddedMismatchPct ?? 0), 0) / embRendered.length;
+
+  return {
+    total: rows.length,
+    rendered: rendered.length,
+    unsupported,
+    meanPct,
+    embeddedRendered: embRendered.length,
+    embeddedUnsupported: hasEmbeddedLane(rows) ? rows.length - embRendered.length : 0,
+    embeddedMeanPct: embMeanPct,
+  };
 }
 
-/** Sort worst-match-first; unrenderable rows sink to the bottom, then by name. */
+/**
+ * Worst score on a row — the *worse* of the two players when both ran, so a row where only the
+ * embedded lane diverges still sorts to the top rather than hiding behind a clean JS render.
+ * Returns null when neither player produced a render.
+ */
+function worstPct(r) {
+  const scores = [];
+  if (r.rendered) scores.push(r.mismatchPct ?? 0);
+  if (r.embeddedRendered) scores.push(r.embeddedMismatchPct ?? 0);
+  return scores.length ? Math.max(...scores) : null;
+}
+
+/** Sort worst-match-first; rows no player could render sink to the bottom, then by name. */
 function sortRows(rows) {
   return [...rows].sort((a, b) => {
-    if (a.rendered !== b.rendered) return a.rendered ? -1 : 1;
-    if (a.rendered) return (b.mismatchPct ?? 0) - (a.mismatchPct ?? 0);
+    const aw = worstPct(a);
+    const bw = worstPct(b);
+    if ((aw == null) !== (bw == null)) return aw == null ? 1 : -1;
+    if (aw != null) return bw - aw;
     return String(a.name).localeCompare(String(b.name));
   });
 }
@@ -72,25 +134,51 @@ function cell(label, src, extraClass = "") {
   return `<figure class="cell ${extraClass}"><figcaption>${esc(label)}</figcaption>${body}</figure>`;
 }
 
-function rowHtml(r) {
-  const pct = r.rendered ? `${(r.mismatchPct ?? 0).toFixed(2)}%` : (r.note || "no client render");
-  const px =
-    r.rendered && r.mismatchPx != null
-      ? `<span class="px">${r.mismatchPx.toLocaleString("en-US")} px</span>`
-      : "";
+/** One player's score chip: `NN.NN%` + pixel count, or the reason it produced nothing. */
+function scoreBlock(label, rendered, pct, px, note) {
+  const text = rendered ? `${(pct ?? 0).toFixed(2)}%` : note || "no render";
+  const pxTxt =
+    rendered && px != null ? `<span class="px">${px.toLocaleString("en-US")} px</span>` : "";
+  return `<div class="scoreline">
+      <span class="scorelabel">${esc(label)}</span>
+      <span class="score ${band(rendered ? pct : null)}">${esc(text)}</span>
+      ${pxTxt}
+    </div>`;
+}
+
+function rowHtml(r, withEmbedded) {
   const dims = r.width && r.height ? `<span class="dims">${r.width}×${r.height}</span>` : "";
-  return `<tr class="row ${r.rendered ? "rendered" : "unsupported"}" data-pct="${
+  const anyRendered = r.rendered || r.embeddedRendered;
+  const scores =
+    scoreBlock("js", r.rendered, r.mismatchPct, r.mismatchPx, r.note) +
+    (withEmbedded
+      ? scoreBlock(
+          "embedded",
+          r.embeddedRendered,
+          r.embeddedMismatchPct,
+          r.embeddedMismatchPx,
+          r.embeddedNote,
+        )
+      : "");
+
+  const embeddedCells = withEmbedded
+    ? `
+  <td>${cell("RC · embedded player", r.embedded, "rc")}</td>
+  <td>${cell("pixel diff", r.embeddedDiff, "diff")}</td>`
+    : "";
+
+  return `<tr class="row ${anyRendered ? "rendered" : "unsupported"}" data-pct="${
     r.rendered ? (r.mismatchPct ?? 0) : ""
-  }">
+  }" data-embedded-pct="${r.embeddedRendered ? (r.embeddedMismatchPct ?? 0) : ""}">
   <th class="meta">
     <div class="name">${esc(r.name)}</div>
     ${r.group ? `<div class="group">${esc(r.group)}</div>` : ""}
-    <div class="score ${band(r.rendered ? r.mismatchPct : null)}">${esc(pct)}</div>
-    ${px} ${dims}
+    ${scores}
+    ${dims}
   </th>
   <td>${cell("baked PNG", r.baked)}</td>
   <td>${cell("RC · JS player", r.rc, "rc")}</td>
-  <td>${cell("pixel diff", r.diff, "diff")}</td>
+  <td>${cell("pixel diff", r.diff, "diff")}</td>${embeddedCells}
 </tr>`;
 }
 
@@ -102,19 +190,29 @@ export function renderRcCompareHtml(model, opts = {}) {
   const meanTxt = stats.meanPct == null ? "n/a" : `${stats.meanPct.toFixed(2)}%`;
   const genNote = opts.generatedNote ? `<span class="note">${esc(opts.generatedNote)}</span>` : "";
 
+  const withEmbedded = hasEmbeddedLane(model.rows ?? []);
+  const embMeanTxt =
+    stats.embeddedMeanPct == null ? "n/a" : `${stats.embeddedMeanPct.toFixed(2)}%`;
+
   const summary =
-    `<strong>${stats.rendered}</strong> rendered · mean mismatch <strong>${meanTxt}</strong>` +
-    (stats.unsupported
-      ? ` · <strong>${stats.unsupported}</strong> not decodable by the JS player`
+    `<strong>JS player:</strong> ${stats.rendered} rendered · mean mismatch <strong>${meanTxt}</strong>` +
+    (stats.unsupported ? ` · ${stats.unsupported} not decodable` : "") +
+    (withEmbedded
+      ? `<br><strong>embedded player:</strong> ${stats.embeddedRendered} rendered · mean mismatch <strong>${embMeanTxt}</strong>` +
+        (stats.embeddedUnsupported ? ` · ${stats.embeddedUnsupported} not rendered` : "")
       : "");
+
+  const head = withEmbedded
+    ? `<tr><th>preview</th><th>baked PNG</th><th>RC · JS player</th><th>pixel diff</th><th>RC · embedded player</th><th>pixel diff</th></tr>`
+    : `<tr><th>preview</th><th>baked PNG</th><th>RC · JS player</th><th>pixel diff</th></tr>`;
 
   const body =
     rows.length === 0
       ? `<p class="empty">This catalog ships no Remote Compose documents (<code>ir/*.rc</code>), so there is nothing to compare.</p>`
       : `<table class="grid">
-  <thead><tr><th>preview</th><th>baked PNG</th><th>RC · JS player</th><th>pixel diff</th></tr></thead>
+  <thead>${head}</thead>
   <tbody>
-${rows.map(rowHtml).join("\n")}
+${rows.map((r) => rowHtml(r, withEmbedded)).join("\n")}
   </tbody>
 </table>`;
 
@@ -123,7 +221,7 @@ ${rows.map(rowHtml).join("\n")}
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title)} — PNG vs Remote Compose (JS player)</title>
+<title>${esc(title)} — PNG vs Remote Compose${withEmbedded ? " (JS + embedded players)" : " (JS player)"}</title>
 <style>
   :root { color-scheme: light dark; --bg:#fff; --fg:#111; --muted:#666; --line:#e2e2e2; --card:#fafafa; }
   @media (prefers-color-scheme: dark) {
@@ -140,16 +238,18 @@ ${rows.map(rowHtml).join("\n")}
   table.grid { border-collapse:collapse; width:100%; min-width:720px; }
   thead th { text-align:left; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding:12px 8px; border-bottom:1px solid var(--line); position:sticky; top:64px; background:var(--bg); }
   tbody tr { border-bottom:1px solid var(--line); }
-  th.meta { text-align:left; vertical-align:top; padding:12px 8px; width:180px; }
+  th.meta { text-align:left; vertical-align:top; padding:12px 8px; width:200px; }
   .name { font-weight:600; word-break:break-word; }
   .group { color:var(--muted); font-size:12px; margin-top:2px; }
-  .score { display:inline-block; margin-top:8px; padding:2px 8px; border-radius:999px; font-variant-numeric:tabular-nums; font-weight:600; }
+  .scoreline { margin-top:8px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .scorelabel { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.04em; min-width:56px; }
+  .score { display:inline-block; padding:2px 8px; border-radius:999px; font-variant-numeric:tabular-nums; font-weight:600; }
   .score.good { background:#1a7f37; color:#fff; }
   .score.ok   { background:#9a6700; color:#fff; }
   .score.bad  { background:#b32424; color:#fff; }
   .score.na   { background:#555; color:#fff; }
-  .px { display:inline-block; margin-top:6px; color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
-  .dims { display:inline-block; margin-top:6px; margin-left:6px; color:var(--muted); font-size:12px; }
+  .px { display:inline-block; color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+  .dims { display:inline-block; margin-top:8px; color:var(--muted); font-size:12px; }
   td { padding:12px 8px; vertical-align:top; }
   figure.cell { margin:0; }
   figcaption { font-size:11px; color:var(--muted); margin-bottom:4px; }
@@ -164,14 +264,25 @@ ${rows.map(rowHtml).join("\n")}
 </head>
 <body>
 <header>
-  <h1>${esc(title)} — PNG vs Remote Compose <span style="font-weight:400;color:var(--muted)">(client-side JS player)</span></h1>
+  <h1>${esc(title)} — PNG vs Remote Compose <span style="font-weight:400;color:var(--muted)">(${
+    withEmbedded ? "JS + embedded players" : "client-side JS player"
+  })</span></h1>
   <div class="summary">${summary}</div>
   ${genNote}
 </header>
 <p class="lede">Each preview's baked <strong>PNG</strong> (the offline Robolectric/Skiko render) next to the
-same <code>ir/*.rc</code> document <strong>rendered client-side</strong> by the vendored TypeScript
-<code>RC.RcdPlayer</code> on a <code>&lt;canvas&gt;</code>, and their per-pixel diff. Mismatch % is the
-fraction of pixels the diff flags; rows sort worst-match-first.</p>
+same <code>ir/*.rc</code> document as each player renders it, with a per-pixel diff after each.
+${
+  withEmbedded
+    ? `The <strong>JS player</strong> is the vendored TypeScript <code>RC.RcdPlayer</code> on a
+<code>&lt;canvas&gt;</code>; the <strong>embedded player</strong> is AndroidX's
+<code>RcPlayer</code>, which interprets the document into Compose layout and draw nodes rather than
+painting into an Android <code>View</code> the way <code>remote-player-view</code> does — so the two
+diverge wherever that difference shows.`
+    : `The player is the vendored TypeScript <code>RC.RcdPlayer</code> on a <code>&lt;canvas&gt;</code>.`
+}
+Mismatch % is the fraction of pixels each diff flags; rows sort worst-match-first on the worse of the
+two players.</p>
 <div class="wrap">
 ${body}
 </div>

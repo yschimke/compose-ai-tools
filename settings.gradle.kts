@@ -542,6 +542,15 @@ project(":data-permissions-connector").projectDir = file("data/permissions/conne
 // `:samples:remotecompose`); the connector ships its alpha-API deps as `compileOnly` so daemon
 // modules at compileSdk 36 can still consume the AAR. The Compose API surface (composition local,
 // data product, override planner) registers on `:daemon:android` only.
+// Vendored snapshot of AndroidX's experimental Compose *embedded* Remote Compose player
+// (`RcPlayer`). Upstream ships it only as sources inside an integration-test application, so there
+// is no artifact to depend on — see `third_party/rc-embedded-player/PROVENANCE.md`. It backs the
+// `embedded` render lane that `RemoteComposeIrReplay` can select instead of the `remote-player-view`
+// -backed `RemoteDocumentPlayer`.
+include(":third-party-rc-embedded-player")
+
+project(":third-party-rc-embedded-player").projectDir = file("third_party/rc-embedded-player")
+
 include(":data-remotecompose-core")
 
 project(":data-remotecompose-core").projectDir = file("data/remotecompose/core")

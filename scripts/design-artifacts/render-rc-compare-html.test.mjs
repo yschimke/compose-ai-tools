@@ -9,7 +9,28 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { renderRcCompareHtml, summarizeRcCompare } from "./render-rc-compare-html.mjs";
+import { hasEmbeddedLane, renderRcCompareHtml, summarizeRcCompare } from "./render-rc-compare-html.mjs";
+
+/** The same model with an embedded-player result on every row — the two-player page. */
+function withEmbedded(base) {
+  const emb = {
+    // clean in JS, badly off in the embedded player: exercises independent scoring + sorting
+    TextRemoteButton: { embeddedRendered: true, embeddedMismatchPct: 41.5, embeddedMismatchPx: 114_318 },
+    // the reverse: the JS player is the bad one here
+    ShaderGradientSticker: { embeddedRendered: true, embeddedMismatchPct: 1.2, embeddedMismatchPx: 3_307 },
+    // JS could not decode it; the embedded player could
+    Undecodable: { embeddedRendered: true, embeddedMismatchPct: 8, embeddedMismatchPx: 22_050 },
+  };
+  return {
+    ...base,
+    rows: base.rows.map((r) => ({
+      ...r,
+      ...emb[r.name],
+      embedded: `rc-embedded/${r.id}.png`,
+      embeddedDiff: `rc-embedded-diff/${r.id}.png`,
+    })),
+  };
+}
 
 const model = {
   system: "remote-m3",
@@ -81,7 +102,16 @@ test("the page is a self-contained document with the three-column header", () =>
   assert.match(html, /pixel diff/);
   // summary line reflects the counts
   assert.match(html, /mean mismatch <strong>38\.15%<\/strong>/);
-  assert.match(html, /not decodable by the JS player/);
+  assert.match(html, /1 not decodable/);
+});
+
+test("a model with no embedded results renders the JS-only page — no empty embedded columns", () => {
+  const html = renderRcCompareHtml(model);
+  assert.equal(hasEmbeddedLane(model.rows), false);
+  assert.doesNotMatch(html, /RC · embedded player/);
+  assert.doesNotMatch(html, /embedded player:<\/strong>/);
+  // exactly the original four columns
+  assert.match(html, /<thead><tr><th>preview<\/th><th>baked PNG<\/th><th>RC · JS player<\/th><th>pixel diff<\/th><\/tr><\/thead>/);
 });
 
 test("rows sort worst-match-first, and unrenderable rows sink to the bottom", () => {
@@ -103,6 +133,47 @@ test("an unrenderable row shows its note instead of a percentage and omits the r
   const html = renderRcCompareHtml(model);
   assert.match(html, /player could not decode the document/);
   assert.doesNotMatch(html, /src="rc\/pkg\.CatalogPreviewsKt\.Undecodable\.png"/);
+});
+
+test("the embedded lane adds two columns and its own summary line", () => {
+  const html = renderRcCompareHtml(withEmbedded(model));
+  assert.match(html, /RC · embedded player/);
+  assert.match(html, /<strong>embedded player:<\/strong>/);
+  // both players keep their own score chip on every row
+  assert.match(html, /<span class="scorelabel">js<\/span>/);
+  assert.match(html, /<span class="scorelabel">embedded<\/span>/);
+});
+
+test("each player is summarized independently — one lane's failures don't touch the other's mean", () => {
+  const s = summarizeRcCompare(withEmbedded(model).rows);
+  // JS side is unchanged by the embedded results
+  assert.equal(s.rendered, 2);
+  assert.equal(s.unsupported, 1);
+  assert.ok(Math.abs(s.meanPct - 38.15) < 1e-9);
+  // embedded rendered all three, including the one the JS player could not decode
+  assert.equal(s.embeddedRendered, 3);
+  assert.equal(s.embeddedUnsupported, 0);
+  assert.ok(Math.abs(s.embeddedMeanPct - (41.5 + 1.2 + 8) / 3) < 1e-9);
+});
+
+test("rows sort on the worse of the two players, so an embedded-only regression still surfaces", () => {
+  const html = renderRcCompareHtml(withEmbedded(model));
+  const iText = html.indexOf("TextRemoteButton");
+  const iShader = html.indexOf("ShaderGradientSticker");
+  // TextRemoteButton is 0% in JS but 41.5% embedded; ShaderGradientSticker is 76.3% in JS.
+  // 76.3 still beats 41.5, so Shader stays first — but Text must now outrank the 8% row.
+  const iUndecodable = html.indexOf("Undecodable");
+  assert.ok(iShader < iText, "76.3% (js) sorts above 41.5% (embedded)");
+  assert.ok(iText < iUndecodable, "41.5% (embedded) sorts above 8% (embedded)");
+});
+
+test("a row no player rendered sinks below every row either player rendered", () => {
+  const rows = [
+    { name: "Dead", rendered: false, embeddedRendered: false },
+    { name: "EmbeddedOnly", rendered: false, embeddedRendered: true, embeddedMismatchPct: 0.5 },
+  ];
+  const html = renderRcCompareHtml({ system: "s", title: "t", rows });
+  assert.ok(html.indexOf("EmbeddedOnly") < html.indexOf("Dead"));
 });
 
 test("an empty catalog renders the no-RC-docs notice, not a table", () => {
