@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 261 preview(s) across 20 module(s) · 39 error(s) · 4 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/main`. 263 preview(s) across 20 module(s) · 39 error(s) · 4 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -14,6 +14,18 @@ Browse inline; image URLs are pinned to the commit SHA on the baseline branch so
 |--:|---|---|---|---|
 | 1 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
 | 2 | INFO | TextSizeCheck | com.android.internal.widget.NotificationActionListLayout #actions | Consider modifying the LayoutParams to allow for text expansion. |
+
+### `AsyncImageArtworkPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/AsyncImageArtworkPreview_Async_Image_Artwork.a11y.png" width="400" />
+
+_No findings._
+
+### `AsyncImageUnreachablePreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/AsyncImageUnreachablePreview_Async_Image_Unreachable.png" width="400" />
+
+_No findings._
 
 ### `BadButtonPreview`
 

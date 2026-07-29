@@ -164,6 +164,26 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "AsyncImageArtworkPreview_Async_Image_Artwork.a11y.png",
+      "cleanBasename": "AsyncImageArtworkPreview_Async_Image_Artwork.png",
+      "findings": [],
+      "functionName": "AsyncImageArtworkPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.AsyncImagePreviewsKt.AsyncImageArtworkPreview_Async Image Artwork",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AsyncImagePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "AsyncImageUnreachablePreview_Async_Image_Unreachable.png",
+      "findings": [],
+      "functionName": "AsyncImageUnreachablePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.AsyncImagePreviewsKt.AsyncImageUnreachablePreview_Async Image Unreachable",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AsyncImagePreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "BadButtonPreview_Bad_Button.a11y.png",
       "cleanBasename": "BadButtonPreview_Bad_Button.png",
       "findings": [
