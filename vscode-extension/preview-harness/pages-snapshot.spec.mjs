@@ -33,6 +33,29 @@ const pagesDir = resolve(harnessDir, "fixtures", "pages");
 const renderPlaceholder = resolve(pagesDir, "_render-placeholder.png");
 const IMAGE_LANES = ["**/render/**", "**/hero/**"];
 
+// Runtime *states* of a page fixture that the committed HTML can't express on its own, captured as
+// extra shots so they're diffed on every PR like any other fixture. Each entry names a base
+// fixture, a filename suffix, and a mutation applied in-page just before the screenshot.
+//
+// `connecting` covers the viewer's live-lane activation badge: `openStream()` sets `data-pending`
+// on `.cp-viewer` while the WebSocket comes up and the backend badge shows `◌ connecting…` (amber)
+// instead of the lane label. There's no daemon in the harness, so we set the attribute the same way
+// the viewer JS does and let the page's own `MutationObserver` paint the badge — the badge text and
+// accent under test are produced by the real `backendBadgeScript`, not faked here.
+const FIXTURE_STATES = [
+    {
+        fixture: "serve-viewer",
+        suffix: "connecting",
+        apply: async (page) => {
+            await page.evaluate(() => {
+                const root = document.querySelector(".cp-viewer");
+                root.setAttribute("data-mode", "live");
+                root.setAttribute("data-pending", "connecting…");
+            });
+        },
+    },
+];
+
 /** Page fixtures = `fixtures/pages/*.html`, honouring the `HARNESS_FIXTURE` narrow. */
 function listPageFixtures() {
     const only = process.env.HARNESS_FIXTURE;
@@ -73,6 +96,19 @@ for (const fixture of listPageFixtures()) {
                 fullPage: true,
                 animations: "disabled",
             });
+
+            // Extra runtime states of this same fixture, shot from the already-loaded page.
+            for (const state of FIXTURE_STATES.filter((s) => s.fixture === fixture)) {
+                await state.apply(page);
+                await page.screenshot({
+                    path: resolve(
+                        outDir,
+                        `${fixture}-${state.suffix}.${theme}.png`,
+                    ),
+                    fullPage: true,
+                    animations: "disabled",
+                });
+            }
         });
     }
 }
