@@ -278,7 +278,16 @@ jobs:
       # errors (duplicate componentId, malformed variant) fail here too. Uses only
       # node built-ins (no npm deps). Coverage warnings don't fail the job.
       - name: Validate catalog spec
-        run: node scripts/design-artifacts/validate-catalog-spec.mjs --spec "${{ matrix.spec }}"
+        id: validate-spec
+        run: |
+          set -euo pipefail
+          node scripts/design-artifacts/validate-catalog-spec.mjs --spec "${{ matrix.spec }}" \
+            --render-filter-out "$GITHUB_WORKSPACE/render-filter.txt"
+          # Render priority (issue #2950): the `--preview` patterns that render just the
+          # entries this spec still needs baked. EMPTY unless the spec marks entries
+          # `priority: "deferred"` — no catalog here does today, so the render set is
+          # unchanged. Consumed by the render step below.
+          echo "render-filter=$(cat "$GITHUB_WORKSPACE/render-filter.txt")" >> "$GITHUB_OUTPUT"
 
       # Published previews pin their preview-runtimes to a RELEASED version
       # (`composeaiReleasedRuntimeVersion`, bumped by release-please on each release). Sonatype →
@@ -334,6 +343,12 @@ jobs:
           # Force Mesa's software GL path (no GPU on the runner) for the desktop
           # Skiko render; inert for the Robolectric (Android) catalog rows.
           LIBGL_ALWAYS_SOFTWARE: '1'
+          # Render only what this catalog still needs baked, when its spec defers entries
+          # to the live preview server (issue #2950). Gradle sources project properties
+          # from ORG_GRADLE_PROJECT_*, so this reaches `composePreviewRender` through
+          # `bundle pack` with no CLI flag. Empty ⇒ no filter ⇒ render everything, which
+          # is what every catalog here gets today.
+          ORG_GRADLE_PROJECT_composePreview.filter: ${{ steps.validate-spec.outputs.render-filter }}
         run: |
           set -euo pipefail
           # Run under a virtual framebuffer so the Skiko desktop daemon has a

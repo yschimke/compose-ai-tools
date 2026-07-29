@@ -11,7 +11,7 @@
 //
 // Exit 0 when there are no errors (warnings don't fail); 1 on errors or bad args.
 
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 
 import {
@@ -20,6 +20,7 @@ import {
   hasCatalogAnnotations,
   validateSpec,
 } from "./catalog-spec.mjs";
+import { deferralPlan } from "./catalog-priority.mjs";
 import { resolveSourceDirs, collectKotlinSources } from "./catalog-spec-io.mjs";
 
 const { values } = parseArgs({
@@ -34,6 +35,19 @@ const { values } = parseArgs({
     "preview-annotation": { type: "string", multiple: true },
     // Skip Kotlin discovery; run structural checks only.
     "no-scan": { type: "boolean", default: false },
+    // Whether the publish this spec feeds has a live path (a carried live bundle or a buildable
+    // source) the serve host can re-render deferred entries from. `--no-live-bundle` rejects every
+    // `priority: "deferred"` here instead of at the end of the render (issue #2950). Omitted stays
+    // lenient — the pre-flight can't see how the publish will be invoked. Two flags rather than one
+    // negatable boolean because `parseArgs` has no `--no-` negation: an unknown `--no-live-bundle`
+    // would throw instead of meaning "false".
+    "live-bundle": { type: "boolean", default: false },
+    "no-live-bundle": { type: "boolean", default: false },
+    // Write the `--preview` / `-PcomposePreview.filter` patterns that render just this catalog's
+    // required entries to <path> (comma-separated, no trailing newline). Empty file when the spec
+    // defers no entry, which means "render everything" — so a caller can pass the contents straight
+    // through unconditionally.
+    "render-filter-out": { type: "string" },
     json: { type: "boolean", default: false },
     help: { type: "boolean", default: false },
   },
@@ -41,7 +55,9 @@ const { values } = parseArgs({
 
 if (values.help) {
   console.log(
-    "usage: validate-catalog-spec --spec <catalog.spec.json> [--module-dir <dir> | --src <dir>…] [--preview-annotation <Name>…] [--no-scan] [--json]",
+    "usage: validate-catalog-spec --spec <catalog.spec.json> [--module-dir <dir> | --src <dir>…] " +
+      "[--preview-annotation <Name>…] [--no-scan] [--live-bundle|--no-live-bundle] " +
+      "[--render-filter-out <file>] [--json]",
   );
   process.exit(0);
 }
@@ -80,11 +96,27 @@ if (!values["no-scan"]) {
   }
 }
 
+// `--live-bundle` / `--no-live-bundle` are mutually exclusive; leaving both off keeps the check
+// lenient (undefined), which is what every caller that doesn't know the publish flags wants.
+if (values["live-bundle"] && values["no-live-bundle"]) {
+  fail("--live-bundle and --no-live-bundle are mutually exclusive");
+}
+const liveBundle = values["live-bundle"] ? true : values["no-live-bundle"] ? false : undefined;
+
 const { errors, warnings } = validateSpec(spec, {
   ...(knownPreviews ? { knownPreviews, pngLessPreviews } : {}),
   ...(knownComponentIds ? { knownComponentIds } : {}),
   ...(annotatedInventory !== undefined ? { annotatedInventory } : {}),
+  ...(liveBundle !== undefined ? { liveBundle } : {}),
 });
+
+// The render filter this spec's priorities imply, for the caller's render step. Written even when
+// validation fails so a caller that inspects the file isn't left with a stale one from a prior run;
+// empty content means "render everything", the behaviour of every spec that defers nothing.
+const plan = deferralPlan(spec);
+if (values["render-filter-out"]) {
+  await writeFile(values["render-filter-out"], plan.renderFilter.join(","), "utf8");
+}
 
 if (values.json) {
   console.log(
@@ -94,6 +126,7 @@ if (values.json) {
         scannedDirs,
         discoveredPreviews: knownPreviews ? knownPreviews.length : null,
         pngLessPreviews,
+        priority: plan,
         errors,
         warnings,
         ok: errors.length === 0,
@@ -113,6 +146,15 @@ if (values.json) {
   } else {
     console.log(
       "No module scanned — structural checks only. Pass --module-dir/--src (or set spec.module) to resolve preview names.",
+    );
+  }
+  if (plan.defersAnything) {
+    console.log(
+      `Render priority: ${plan.entries} deferred entry/entries, ${plan.variants} deferred ` +
+        `variant(s), deferred mode(s): ${plan.modes.length > 0 ? plan.modes.join(", ") : "none"}.` +
+        (plan.renderFilter.length > 0
+          ? ` Render filter: ${plan.renderFilter.length} required @Preview function(s).`
+          : " No @Preview function is wholly deferred, so the render set is unchanged."),
     );
   }
   for (const w of warnings) console.log(`  warning: ${w}`);

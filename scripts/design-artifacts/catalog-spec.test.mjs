@@ -547,3 +547,116 @@ test("discoverPreviews ignores a manualClockOptions array with no stops", () => 
   `;
   assert.deepEqual(discoverPreviews([src]).pngLess, ["EmptyClockStops"]);
 });
+
+// --- render priority (issue #2950) -------------------------------------------------------------
+
+/** A minimal, otherwise-valid spec with the given components in one group. */
+function prioritySpec(components, extra = {}) {
+  return {
+    system: "demo",
+    title: "Demo",
+    groups: [{ name: "Components", components }],
+    ...extra,
+  };
+}
+
+test("validateSpec accepts priority on components and variants", () => {
+  const { errors } = validateSpec(
+    prioritySpec([
+      { componentId: "A", preview: "Alpha", priority: "required" },
+      { componentId: "B", preview: "Beta", priority: "deferred" },
+      {
+        componentId: "C",
+        preview: "Gamma",
+        variants: [{ preview: "GammaOff", state: "off", priority: "deferred" }],
+      },
+    ]),
+  );
+  assert.deepEqual(errors, []);
+});
+
+test("validateSpec rejects an unrecognised priority value", () => {
+  // Deliberately an error: `entryPriority` reads anything unknown as `required`, so a typo would
+  // otherwise silently bake the entry and look like the deferral saved nothing.
+  const { errors } = validateSpec(
+    prioritySpec([{ componentId: "A", preview: "Alpha", priority: "optional" }]),
+  );
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /priority must be one of "required", "deferred"/);
+});
+
+test("validateSpec rejects an unrecognised priority on a variant", () => {
+  const { errors } = validateSpec(
+    prioritySpec([
+      { componentId: "A", preview: "Alpha", variants: [{ preview: "X", state: "off", priority: "later" }] },
+    ]),
+  );
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /variants\[0\]\.priority must be one of/);
+});
+
+test("validateSpec checks modePriority shape and values", () => {
+  assert.match(
+    validateSpec(prioritySpec([], { modePriority: ["light"] })).errors[0],
+    /`modePriority` must be an object/,
+  );
+  assert.match(
+    validateSpec(
+      prioritySpec([{ componentId: "A", preview: "Alpha" }], { modePriority: { dark: "maybe" } }),
+    ).errors[0],
+    /modePriority\["dark"\] must be one of/,
+  );
+});
+
+test("validateSpec warns about a modePriority mode the spec never declares", () => {
+  const { warnings } = validateSpec(
+    prioritySpec([{ componentId: "A", preview: "Alpha" }], {
+      modes: ["light", "dark"],
+      modePriority: { drak: "deferred" },
+    }),
+  );
+  assert.ok(warnings.some((w) => /names mode\(s\) not in `modes`: drak/.test(w)));
+});
+
+test("validateSpec warns when modePriority defers every declared mode", () => {
+  const { warnings, errors } = validateSpec(
+    prioritySpec([{ componentId: "A", preview: "Alpha" }], {
+      modes: ["light", "dark"],
+      modePriority: { "*": "deferred" },
+    }),
+  );
+  assert.deepEqual(errors, []);
+  assert.ok(warnings.some((w) => /defers every declared mode/.test(w)));
+});
+
+test("validateSpec rejects deferral when the publish has no live path", () => {
+  const spec = prioritySpec([
+    { componentId: "A", preview: "Alpha" },
+    { componentId: "B", preview: "Beta", priority: "deferred" },
+  ]);
+  const { errors } = validateSpec(spec, { liveBundle: false });
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /no live path/);
+  // With a live path, and with the option omitted entirely (the lenient default), it passes.
+  assert.deepEqual(validateSpec(spec, { liveBundle: true }).errors, []);
+  assert.deepEqual(validateSpec(spec).errors, []);
+});
+
+test("validateSpec still resolves a deferred entry's preview name against the module", () => {
+  // A deferred entry is rendered by the serve host from the same module, so a name that matches
+  // nothing is just as broken — it simply breaks on a viewer's request instead of in CI.
+  const { errors } = validateSpec(
+    prioritySpec([{ componentId: "A", preview: "Ghost", priority: "deferred" }]),
+    { knownPreviews: ["Alpha"] },
+  );
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /preview "Ghost" .* matches no @Preview function/);
+});
+
+test("validateSpec accepts modePriority on a cover-sheet spec with no groups", () => {
+  const { errors } = validateSpec(
+    { system: "demo", title: "Demo", modes: ["light", "dark"], modePriority: { dark: "deferred" } },
+    { liveBundle: true },
+  );
+  assert.deepEqual(errors, []);
+});
