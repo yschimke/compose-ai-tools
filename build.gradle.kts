@@ -90,6 +90,10 @@ val androidFunctionalTestPublishTargets =
     // The renderer + data modules read/write files through Okio's `:common-io` (its file-IO
     // foundation), so it's part of the closure the synthetic project must resolve from mavenLocal.
     ":common-io",
+    // Downloadable-font resolution, an `api` dep of `:renderer-android` — so it is in the published
+    // metadata the synthetic consumer resolves, and the development version exists nowhere but
+    // mavenLocal.
+    ":data-fonts-google",
   )
 
 tasks.register("functionalTestWithAndroid") {
