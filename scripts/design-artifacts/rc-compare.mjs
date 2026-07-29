@@ -56,6 +56,21 @@ const THRESHOLD = Number(arg("threshold", "0.1"));
 const THEME = arg("theme", "light");
 const EXEC = arg("chromium", process.env.RC_COMPARE_CHROMIUM || undefined);
 const FONTS = arg("fonts", DEFAULT_FONTS_DIR);
+// Embedded-player lane (`:third-party-rc-embedded-player`). Two halves, because the render itself
+// is a Gradle/Robolectric step that has no business living inside a Playwright driver:
+//
+//   --stage-embedded <dir>  write `<id>.rc` + `manifest.json` (id/width/height) for the harness
+//   --embedded <dir>        read `<id>.png` the harness produced, diff them, add the columns
+//
+// Run the two around the harness:
+//   node rc-compare.mjs … --stage-embedded /tmp/rc-in
+//   ./gradlew :third-party-rc-embedded-player:testDebugUnitTest \
+//     -Prc.embedded.input=/tmp/rc-in -Prc.embedded.output=/tmp/rc-out
+//   node rc-compare.mjs … --embedded /tmp/rc-out
+//
+// Omitting both keeps the JS-only page exactly as before.
+const STAGE_EMBEDDED = arg("stage-embedded");
+const EMBEDDED = arg("embedded");
 
 if (!BUNDLE || !PLAYER || !OUT) {
   console.error("rc-compare: --bundle, --player and --out are required");
@@ -142,8 +157,48 @@ const dirs = {
   rc: path.join(OUT, "rc"),
   baked: path.join(OUT, "rc-baked"),
   diff: path.join(OUT, "rc-diff"),
+  embedded: path.join(OUT, "rc-embedded"),
+  embeddedDiff: path.join(OUT, "rc-embedded-diff"),
 };
 for (const d of Object.values(dirs)) fs.mkdirSync(d, { recursive: true });
+
+/** PNG dimensions straight out of the IHDR — cheaper than decoding the whole image to size it. */
+function pngSize(buf) {
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
+// --stage-embedded: hand the Gradle harness its inputs and stop. The id→size mapping lives here
+// because this is the only place that has both the `ir/*.rc` entry and its baked PNG.
+if (STAGE_EMBEDDED) {
+  fs.mkdirSync(STAGE_EMBEDDED, { recursive: true });
+  const staged = [];
+  for (const id of rcIds) {
+    const pngName = `previews/${id}.png`;
+    if (!entries.has(pngName)) continue;
+    const { width, height } = pngSize(entries.get(pngName)());
+    fs.writeFileSync(path.join(STAGE_EMBEDDED, `${id}.rc`), entries.get(`ir/${id}.rc`)());
+    staged.push({ id, width, height });
+  }
+  fs.writeFileSync(
+    path.join(STAGE_EMBEDDED, "manifest.json"),
+    JSON.stringify(staged, null, 1),
+  );
+  console.log(`rc-compare: staged ${staged.length} document(s) for the embedded player in ${STAGE_EMBEDDED}`);
+  process.exit(0);
+}
+
+// --embedded: the harness records per-document failures rather than aborting, so a document it
+// could not render still gets a row — with the reason in place of a percentage.
+const embeddedErrors = new Map();
+if (EMBEDDED) {
+  const errorsFile = path.join(EMBEDDED, "errors.txt");
+  if (fs.existsSync(errorsFile)) {
+    for (const line of fs.readFileSync(errorsFile, "utf8").split("\n")) {
+      const [id, ...rest] = line.split("\t");
+      if (id && rest.length) embeddedErrors.set(id, rest.join("\t"));
+    }
+  }
+}
 
 const bundleJs = fs.readFileSync(PLAYER, "utf8");
 
