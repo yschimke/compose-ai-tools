@@ -291,6 +291,73 @@ The spec shape is described by
 [`scripts/design-artifacts/catalog.spec.schema.json`](../../scripts/design-artifacts/catalog.spec.schema.json)
 (referenced via `$schema` in each sample spec for editor validation).
 
+### Render priority: deferring the long tail to the live server
+
+A catalog that publishes with a live path — `publish-live-bundle: true` (the bundle
+carries the classpath to re-render any preview on the serve host) or a buildable
+`source` (`live-rerender-source`) — doesn't have to bake *every* sticker in CI. A
+spec can mark coverage **deferred**: recorded in `catalog.json` as live-only, not
+rasterised, and not counted as a missing render or missing-semantics failure.
+
+```jsonc
+{
+  "componentId": "Buttons/Row button",
+  "preview": "RowButtonLightPreview",          // priority: required (default)
+  "variants": [
+    { "preview": "RowButtonDisabledPreview", "state": "disabled", "priority": "deferred" }
+  ]
+}
+```
+
+and per axis, which is the bigger lever for a catalog whose previews fan out over
+several themes:
+
+```jsonc
+"modes": ["light", "dark"],
+"modePriority": { "light": "required", "*": "deferred" }
+```
+
+- `required` (the default, and what every spec that says nothing gets) — rendered,
+  joined, and subject to the strict completeness gate exactly as before.
+- `deferred` — recorded in `catalog.json` under a top-level `deferred[]` array with
+  its `@Preview` name and the daemon `previewIds` its function produces, so a
+  `serve --catalogs --allow-render-trusted` host can produce it on request.
+
+Why not just `--allow-incomplete`: that flag is all-or-nothing, so turning it on to
+tolerate a known-absent sticker also lets a genuinely broken *required* render
+publish unnoticed. Priority keeps the gate strict over the core inventory while
+letting a catalog explicitly opt the long tail out.
+
+What each form actually saves:
+
+- **Per entry** (`priority` on a component or variant) — a `@Preview` function that
+  *nothing required* points at is dropped from the render itself. The pre-flight
+  emits the `--preview` patterns for the remaining required functions
+  (`--render-filter-out <file>`), and the reusable workflow feeds them to the render
+  as `ORG_GRADLE_PROJECT_composePreview.filter`. Empty for a spec that defers no
+  entry, so the render set is unchanged for every catalog today.
+- **Per axis** (`modePriority`) — thins what is *published*: the deferred palettes
+  are not written to `images/`, not exported as `figma/*.svg`, and not carried into
+  the Figma import. It does not currently shrink the render, because the fan-out it
+  removes lives *inside* one `@Preview` function (a multipreview member or a
+  `@PreviewParameter` row) and the renderer's filter selects whole functions. A
+  per-variant render filter is the follow-up that would make this a build-time win
+  too.
+
+Caveats worth knowing before reaching for it:
+
+- **A live path is required.** Deferring with neither `--publish-live-bundle` nor
+  `--source-module` is refused by the driver (and by the pre-flight, when the
+  workflow tells it which applies) — otherwise it isn't a cheaper build, it is
+  coverage silently missing from the published sheet.
+- **Static consumers see less.** `images/`, `figma/*.svg` and the Figma import carry
+  only required entries. That's why the default stays `required` and deferral is
+  always explicit.
+- **The primary sticker is never deferrable by mode.** Only a render that *names* a
+  theme is eligible, so every published component keeps baked pixels. A component
+  whose every render is mode-deferred is treated as a misconfiguration and fails the
+  gate rather than publishing with no pixels.
+
 ## Components with no static sticker (`capture: "none"`)
 
 Not every PNG-less preview announces itself in the source. A composable hosted in
@@ -338,7 +405,12 @@ Unlike `--allow-incomplete`, this is per-component: every other entry keeps the
 strict gate. Use it only where the render genuinely produces no PNG — a spec entry
 that *should* have rendered and didn't is exactly what the gate exists to catch.
 
-## Adding a component
+This is a different axis from **render priority** above, and they answer different
+questions. `priority: "deferred"` says *don't bake this one in CI — the live server
+can render it on demand*, and needs a live path to be legal. `capture: "none"` says
+*nothing can render this to a PNG at all*, live path or not. A deferred entry is
+still coverage the sheet can produce; a `"none"` entry is a recorded gap.
+
 
 1. Author a `@Composable` wrapped in the module's sticker theme, annotated with
    `@CatalogModes` (and extra `@Preview`s for states / breakpoints). Full-screen

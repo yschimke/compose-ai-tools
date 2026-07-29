@@ -167,6 +167,15 @@ class ServeHttpServer(
    */
   private val catalogAdmin: ServeCatalogAdmin? = null,
   /**
+   * Runtime producer-trust administration ([ServeTrustAdmin]) — adding and removing trusted
+   * branches / keys / CI identities without an image rebuild. Gated by the same [adminToken] as
+   * [catalogAdmin]; null ⇒ the `/admin/trust` routes are **not registered at all**.
+   *
+   * Note this token is more powerful than it looks on a box running `--allow-render-trusted`:
+   * trusting a branch there makes that producer's Compose eligible for server-side execution.
+   */
+  private val trustAdmin: ServeTrustAdmin? = null,
+  /**
    * Shared secret for the `/admin/catalogs` routes (`--admin-token`). Separate from the browsing
    * [token] on purpose: a public box hands its browse URL to everyone, so admin needs its own
    * credential and must stay gated even when [isPublic] is set. Null/blank ⇒ no admin routes, so a
@@ -240,6 +249,9 @@ class ServeHttpServer(
    * who never set a token gets no admin surface, not an open one.
    */
   private val adminEnabled: Boolean = catalogAdmin != null && !adminToken.isNullOrBlank()
+
+  /** As [adminEnabled], for the `/admin/trust` routes. Same token, separately supplied admin. */
+  private val trustAdminEnabled: Boolean = trustAdmin != null && !adminToken.isNullOrBlank()
 
   private val server: EmbeddedServer<*, *> =
     embeddedServer(CIO, host = host, port = port) {
@@ -447,6 +459,38 @@ class ServeHttpServer(
             val system = call.parameters["system"].orEmpty()
             val result = withContext(Dispatchers.IO) { admin.unregister(system) }
             respondAdminResult(result)
+          }
+        }
+
+        // Runtime producer-trust administration. The trust store is operator config on the same
+        // volume as catalogs.json, so a producer can be trusted on a running box — which is what
+        // makes runtime catalog registration useful at all: without it a catalog published via
+        // `POST /admin/catalogs` serves, but badges `unverified` until an image rebuild ships a new
+        // baked trust store. Removal is by the same discriminated entry shape as addition, with the
+        // selector fields (`repo`, `keyId`, `identity`) carried as query parameters so an
+        // `<owner>/<repo>` pattern needn't be path-escaped.
+        if (trustAdminEnabled) {
+          val admin = trustAdmin!!
+          get("/admin/trust") {
+            if (rejectBadAdminToken()) return@get
+            respondAdminTrust(admin)
+          }
+          post("/admin/trust") {
+            if (rejectBadAdminToken()) return@post
+            handleAdminTrustAdd(admin)
+          }
+          delete("/admin/trust") {
+            if (rejectBadAdminToken()) return@delete
+            val q = call.request.queryParameters
+            val entry =
+              AdminTrustEntry(
+                kind = q["kind"] ?: "branch",
+                repo = q["repo"],
+                branch = q["branch"],
+                keyId = q["keyId"],
+                identity = q["identity"],
+              )
+            respondAdminTrustResult(withContext(Dispatchers.IO) { admin.remove(entry) })
           }
         }
 
@@ -934,6 +978,64 @@ class ServeHttpServer(
           "catalog ${result.system} not published: ${result.reason}",
           status = HttpStatusCode.BadGateway,
         )
+    }
+  }
+
+  /**
+   * `GET /admin/trust`: the producers currently trusted.
+   *
+   * Pinned public keys are listed by id and name only — the key material itself is in the
+   * operator's producers.json and there's no reason to echo it back over the network.
+   */
+  private suspend fun RoutingContext.respondAdminTrust(admin: ServeTrustAdmin) {
+    val store = withContext(Dispatchers.IO) { admin.list() }
+    call.respondText(
+      JSON.encodeToString(
+        AdminTrustResponse.serializer(),
+        AdminTrustResponse(
+          branches = store.branches.map { AdminTrustBranchDto(it.repo, it.branch) },
+          keys = store.keys.map { AdminTrustKeyDto(it.keyId, it.name) },
+          oidc = store.oidc.map { it.identity },
+        ),
+      ),
+      ContentType.Application.Json,
+    )
+  }
+
+  /** `POST /admin/trust`: trust one producer from an [AdminTrustEntry] JSON body. */
+  private suspend fun RoutingContext.handleAdminTrustAdd(admin: ServeTrustAdmin) {
+    val body =
+      withContext(Dispatchers.IO) {
+        call.receiveStream().use { readCapped(it, MAX_ADMIN_BODY_BYTES) }
+      }
+    if (body == null) {
+      call.respondText("request body too large", status = HttpStatusCode.PayloadTooLarge)
+      return
+    }
+    val entry =
+      runCatching { JSON.decodeFromString(AdminTrustEntry.serializer(), body.decodeToString()) }
+        .getOrElse {
+          call.respondText("invalid trust entry: ${it.message}", status = HttpStatusCode.BadRequest)
+          return
+        }
+    respondAdminTrustResult(withContext(Dispatchers.IO) { admin.add(entry) })
+  }
+
+  /** Map a [ServeTrustAdmin.Result] onto its HTTP status + JSON body. */
+  private suspend fun RoutingContext.respondAdminTrustResult(result: ServeTrustAdmin.Result) {
+    when (result) {
+      is ServeTrustAdmin.Result.Ok ->
+        call.respondText(
+          JSON.encodeToString(
+            AdminTrustResult.serializer(),
+            AdminTrustResult(producer = result.summary, status = "ok", warning = result.warning),
+          ),
+          ContentType.Application.Json,
+        )
+      is ServeTrustAdmin.Result.Invalid ->
+        call.respondText(result.reason, status = HttpStatusCode.BadRequest)
+      is ServeTrustAdmin.Result.Conflict ->
+        call.respondText(result.reason, status = HttpStatusCode.Conflict)
     }
   }
 
@@ -2642,6 +2744,35 @@ private data class AdminCatalogsResponse(
 private data class AdminCatalogResult(
   val schema: String = "compose-preview-serve/admin-catalog/v1",
   val system: String,
+  val status: String,
+  val warning: String? = null,
+)
+
+/** One trusted branch on `GET /admin/trust`. */
+@Serializable private data class AdminTrustBranchDto(val repo: String, val branch: String)
+
+/**
+ * One pinned key on `GET /admin/trust` — id and label only. The key material stays in the
+ * operator's producers.json rather than being echoed back over the network.
+ */
+@Serializable private data class AdminTrustKeyDto(val keyId: String, val name: String? = null)
+
+@Serializable
+private data class AdminTrustResponse(
+  val schema: String = "compose-preview-serve/admin-trust/v1",
+  val branches: List<AdminTrustBranchDto> = emptyList(),
+  val keys: List<AdminTrustKeyDto> = emptyList(),
+  val oidc: List<String> = emptyList(),
+)
+
+/**
+ * The result of a trust mutation. [warning] is set when the change is in force on the running
+ * server but couldn't be written back to producers.json — it will not survive a restart.
+ */
+@Serializable
+private data class AdminTrustResult(
+  val schema: String = "compose-preview-serve/admin-trust-result/v1",
+  val producer: String,
   val status: String,
   val warning: String? = null,
 )

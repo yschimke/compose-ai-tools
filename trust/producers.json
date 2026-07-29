@@ -28,6 +28,14 @@
     {
       "repo": "yschimke/compose-samples",
       "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "yschimke/horologist",
+      "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "yschimke/pocket-casts-android",
+      "branch": "design-artifacts/*"
     }
   ],
   "oidc": [

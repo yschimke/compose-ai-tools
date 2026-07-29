@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.cli.BundleSigning
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -90,6 +91,15 @@ class ServeAdminRoutingTest {
    */
   private val wasmCatalogs = java.util.concurrent.ConcurrentHashMap<String, File>()
 
+  /**
+   * The live trust store + its admin, wired the way `serve` wires them. Starts empty so a test can
+   * observe the whole point of the feature: a producer trusted over HTTP is in force on the running
+   * server, without the image rebuild the baked trust store used to require.
+   */
+  private val trustStoreFile = ServeTrustStoreFile("/config/producers.json".toPath(), fs)
+  private val trust = MutableTrustStore()
+  private val trustAdmin = ServeTrustAdmin(trust, trustStoreFile, onLog = {})
+
   private val server: ServeHttpServer by lazy {
     registry.register("compose-m3", host = bundle("compose-m3"), pinned = true)
     tracker.recordSuccess("compose-m3")
@@ -104,6 +114,7 @@ class ServeAdminRoutingTest {
         catalogSessions = listOf("compose-m3"),
         catalogLoads = tracker,
         catalogAdmin = admin,
+        trustAdmin = trustAdmin,
         adminToken = adminToken,
         wasmCatalogs = wasmCatalogs,
       )
@@ -246,5 +257,90 @@ class ServeAdminRoutingTest {
     assertFalse(send("/admin/catalogs").second.contains("\"system\":\"temp\""))
     // Retiring it twice is a conflict — the second call has nothing to retire.
     assertEquals(409, send("/admin/catalogs/temp", method = "DELETE").first)
+  }
+
+  // --- producer trust ----------------------------------------------------------------------------
+
+  @Test
+  fun `the trust routes are gated by the admin token even on a public server`() {
+    assertEquals(404, send("/admin/trust", token = null).first)
+    assertEquals(404, send("/admin/trust", token = "wrong").first)
+    assertEquals(404, send("/admin/trust", method = "POST", body = "{}", token = null).first)
+    assertEquals(200, send("/admin/trust").first)
+  }
+
+  @Test
+  fun `trusting a branch takes effect on the running server and persists`() {
+    val body = """{"kind":"branch","repo":"yschimke/horologist","branch":"design-artifacts/*"}"""
+
+    val (code, response) = send("/admin/trust", method = "POST", body = body)
+
+    assertEquals(200, code, response)
+    assertTrue(response.contains("\"status\":\"ok\""), response)
+    // The whole point: no image rebuild, no restart — the next catalog fetch sees this.
+    assertTrue(trust.get().trustsBranch("yschimke/horologist", "design-artifacts/horologist"))
+    assertTrue(trustStoreFile.load().trustsBranch("yschimke/horologist", "design-artifacts/x"))
+    assertTrue(send("/admin/trust").second.contains("yschimke/horologist"))
+  }
+
+  @Test
+  fun `an untrusted branch stays untrusted until it is added`() {
+    assertFalse(trust.get().trustsBranch("yschimke/horologist", "design-artifacts/horologist"))
+    assertFalse(send("/admin/trust").second.contains("yschimke/horologist"))
+  }
+
+  @Test
+  fun `a match-everything repo pattern is rejected over HTTP`() {
+    val (code, _) =
+      send("/admin/trust", method = "POST", body = """{"kind":"branch","repo":"*/*"}""")
+
+    assertEquals(400, code)
+    assertTrue(trust.get().branches.isEmpty())
+  }
+
+  @Test
+  fun `an unknown trust kind is a bad request`() {
+    assertEquals(400, send("/admin/trust", method = "POST", body = """{"kind":"banana"}""").first)
+  }
+
+  @Test
+  fun `a producer can be retired by query parameter`() {
+    send(
+      "/admin/trust",
+      method = "POST",
+      body = """{"kind":"branch","repo":"yschimke/horologist","branch":"design-artifacts/*"}""",
+    )
+    assertTrue(trust.get().trustsBranch("yschimke/horologist", "design-artifacts/horologist"))
+
+    // The repo slug carries a slash, which is why the selector rides the query string.
+    val (code, _) =
+      send(
+        "/admin/trust?kind=branch&repo=yschimke%2Fhorologist&branch=design-artifacts%2F*",
+        method = "DELETE",
+      )
+
+    assertEquals(200, code)
+    assertFalse(trust.get().trustsBranch("yschimke/horologist", "design-artifacts/horologist"))
+    // Retiring it twice is a conflict.
+    assertEquals(
+      409,
+      send(
+          "/admin/trust?kind=branch&repo=yschimke%2Fhorologist&branch=design-artifacts%2F*",
+          method = "DELETE",
+        )
+        .first,
+    )
+  }
+
+  @Test
+  fun `pinned key material is never echoed back by the list route`() {
+    val keys = BundleSigning.generateKeyPair()
+    val body = """{"kind":"key","keyId":"ci","name":"CI","publicKey":"${keys.publicKeyB64}"}"""
+    assertEquals(200, send("/admin/trust", method = "POST", body = body).first)
+
+    val listed = send("/admin/trust").second
+
+    assertTrue(listed.contains("\"keyId\":\"ci\""), listed)
+    assertFalse(listed.contains(keys.publicKeyB64), "public key material must not be echoed back")
   }
 }

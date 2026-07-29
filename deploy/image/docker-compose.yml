@@ -40,20 +40,27 @@ services:
       # (docker compose exec preview vi /config/catalogs.json, then restart) or POST to
       # /admin/catalogs to publish a catalog — no image rebuild, no compose edit.
       SERVE_CATALOGS_FILE: "${SERVE_CATALOGS_FILE:-}"
-      # Runtime catalog admin (GET/POST /admin/catalogs, DELETE /admin/catalogs/<system>).
+      # Runtime admin, gating BOTH surfaces: the catalog set (GET/POST /admin/catalogs, DELETE
+      # /admin/catalogs/<system>) and the producer-trust store (GET/POST/DELETE /admin/trust).
       # Set a strong secret in .env to enable; unset (default) means the routes don't exist.
       # It is NOT the browse token — a public box gives that one to every visitor.
+      #
+      # On a box with SERVE_ALLOW_RENDER_TRUSTED on (the default), this token is effectively a
+      # code-execution credential: trusting a branch makes that producer's Compose eligible for
+      # server-side re-render here. Treat it like a deploy key, not a read token.
       SERVE_ADMIN_TOKEN: "${SERVE_ADMIN_TOKEN:-}"
       # Optional ADDITIONS to that file, for one extra catalog without editing config:
       # <system>@<owner>/<repo>, comma-separated. Empty (the default) = the file decides.
       SERVE_CATALOGS: "${SERVE_CATALOGS:-}"
       SERVE_CATALOGS_UNLISTED: "${SERVE_CATALOGS_UNLISTED:-}"
-      # The image bakes a branch-trust store at /trust/producers.json and the
-      # entrypoint defaults to it, so the published design-artifacts catalogs badge
-      # as Trusted(Branch) out of the box — leave this unset. Set your own path to
-      # pin different producers (mount it via volumes below), or the literal `none`
-      # to run trustless. (Empty is NOT trustless — it falls back to the baked
-      # default; use `none`.)
+      # The producer-trust store is config, like catalogs.json: it lives on the
+      # `preview_config` volume at /config/producers.json, seeded on first boot from the
+      # store baked at /trust/producers.json and never overwritten again — so the published
+      # design-artifacts catalogs badge as Trusted(Branch) out of the box, AND a producer
+      # added later (by editing that file, or POSTing to /admin/trust) survives image rolls
+      # without a rebuild. Leave this unset. Set your own path to pin different producers
+      # (mount it via volumes below), or the literal `none` to run trustless. (Empty is NOT
+      # trustless — it falls back to the default; use `none`.)
       SERVE_TRUST_STORE: "${SERVE_TRUST_STORE:-}"
       # Unused in public mode; required only when SERVE_PUBLIC=0.
       SERVE_TOKEN: "${SERVE_TOKEN:-}"
@@ -104,6 +111,7 @@ services:
       # file is absent, so an edit here — or a POST to /admin/catalogs, which rewrites the
       # same file — survives every subsequent pull. Bind-mount a host path instead
       # (`- ./catalogs.json:/config/catalogs.json`) to keep it in version control.
+      # The same volume carries producers.json (the trust store) for the same reasons.
       - preview_config:/config
     # To also pin your OWN producers, mount a trust store over the baked one and keep
     # SERVE_TRUST_STORE pointing at it:
@@ -252,8 +260,9 @@ volumes:
   # image rolls so a freshly-rolled replica reuses them instead of re-downloading. See the
   # `preview` service's volumes block for why the baked android-all / ~/.m2 are excluded.
   preview_cache:
-  # The operator's catalogs.json — the published catalog set, kept outside the image so it
-  # survives image rolls and can be edited (or POSTed to /admin/catalogs) without a rebuild.
+  # The operator's catalogs.json + producers.json — the published catalog set and the trusted
+  # producers, kept outside the image so they survive image rolls and can be edited (or POSTed
+  # to /admin/catalogs / /admin/trust) without a rebuild.
   preview_config:
   caddy_data:
   caddy_config:

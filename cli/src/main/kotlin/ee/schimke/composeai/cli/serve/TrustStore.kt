@@ -52,6 +52,20 @@ data class TrustStore(
   companion object {
     private val json = Json { ignoreUnknownKeys = true }
 
+    /**
+     * Writer JSON. Distinct from [json] because rewriting the operator's producers.json has
+     * different needs from reading it: the file stays hand-editable, so it's pretty-printed, and
+     * defaults are written out rather than elided (a [TrustedBranch] that defaults `branch` to `*`
+     * must say so on disk — an operator reading back a bare `{"repo": …}` would have no way to see
+     * that it trusts every branch).
+     */
+    private val writerJson = Json {
+      ignoreUnknownKeys = true
+      prettyPrint = true
+      prettyPrintIndent = "  "
+      encodeDefaults = true
+    }
+
     /** The empty, fail-closed store — trusts nothing. */
     val EMPTY = TrustStore()
 
@@ -59,6 +73,50 @@ data class TrustStore(
       json.decodeFromString(serializer(), file.readText(Charsets.UTF_8))
 
     fun parse(text: String): TrustStore = json.decodeFromString(serializer(), text)
+
+    fun encode(store: TrustStore): String = writerJson.encodeToString(serializer(), store) + "\n"
+
+    /**
+     * Producer patterns are globs, so this is deliberately looser than a catalog repo slug — but
+     * still a slug alphabet, because a pattern with a newline or a space is a typo that would
+     * silently never match.
+     */
+    private val REPO_PATTERN_RE = Regex("[A-Za-z0-9._*-]{1,64}/[A-Za-z0-9._*-]{1,64}")
+    private val BRANCH_PATTERN_RE = Regex("[A-Za-z0-9._*/-]{1,128}")
+
+    /**
+     * Why [branch] is unusable as a trust entry, or null when it's well-formed.
+     *
+     * A repo pattern whose every non-slash character is a wildcard is rejected outright. Branch
+     * trust is not only a badge — with `--allow-render-trusted` it gates server-side execution of
+     * the producer's Compose — so a match-everything pattern would hand code execution to any repo
+     * on GitHub. There is no legitimate use for it, and the failure mode is bad enough that a typo
+     * shouldn't be able to reach it.
+     */
+    fun validateBranch(branch: TrustedBranch): String? =
+      when {
+        !REPO_PATTERN_RE.matches(branch.repo) -> "invalid repo pattern '${branch.repo}'"
+        !BRANCH_PATTERN_RE.matches(branch.branch) -> "invalid branch pattern '${branch.branch}'"
+        branch.repo.replace("/", "").all { it == '*' } ->
+          "repo pattern '${branch.repo}' matches every repository; name an owner"
+        else -> null
+      }
+
+    /**
+     * Why [key] is unusable, or null when it's well-formed (and its public key actually parses).
+     */
+    fun validateKey(key: TrustedKey): String? =
+      when {
+        key.keyId.isBlank() -> "key entry needs a keyId"
+        key.publicKey.isBlank() -> "key '${key.keyId}' needs a publicKey"
+        runCatching { BundleSigning.parsePublicKey(key.publicKey) }.isFailure ->
+          "key '${key.keyId}' has an unparseable publicKey"
+        else -> null
+      }
+
+    /** Why [identity] is unusable, or null when it's well-formed. */
+    fun validateIdentity(identity: TrustedIdentity): String? =
+      if (identity.identity.isBlank()) "oidc entry needs an identity" else null
 
     /**
      * Glob match supporting `*` (any run of chars, including `/`) — enough for `repo`/`branch`/

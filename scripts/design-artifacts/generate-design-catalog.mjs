@@ -46,6 +46,15 @@ import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 
 import { foldVariants } from "./catalog-variants.mjs";
 import {
+  DEFERRED,
+  deferralPlan,
+  entryPriority,
+  previewForImage,
+  specDefersAnything,
+  splitDeferredImages,
+  splitDeferredVariants,
+} from "./catalog-priority.mjs";
+import {
   applyGroupOrder,
   inventoryFromPreviews,
   mergeCatalogGroups,
@@ -71,7 +80,10 @@ import {
   buildFontsManifest,
   fontsPayloadsFromBundle,
 } from "./render-fonts-manifest.mjs";
-import { candidatePreviewBundle } from "./bundle-previews.mjs";
+import {
+  candidatePreviewBundle,
+  daemonPreviewIdsByFunction,
+} from "./bundle-previews.mjs";
 import { exportsNoSticker } from "./capture-mode.mjs";
 import { bridgeLivePreviewIds } from "./bridge-live-preview-ids.mjs";
 import { applySpecSections } from "./apply-spec-sections.mjs";
@@ -338,8 +350,42 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
   const missing = [];
   const noSticker = [];
   const withoutSemantics = [];
+  // Live-only coverage: entries and image axes the spec deferred (issue #2950). Recorded so
+  // catalog.json still declares them — they are not lost coverage, just not rasterised here — and
+  // deliberately kept OUT of `missing` / `withoutSemantics`, which is the whole point: the gate
+  // stays strict over the required inventory instead of being switched off wholesale with
+  // `--allow-incomplete`.
+  const deferred = [];
   for (const group of spec.groups) {
-    for (const component of group.components) {
+    for (const specComponent of group.components) {
+      // A wholly-deferred entry is never rendered (its `@Preview` may not even have been packed
+      // with a PNG), so it short-circuits before the candidate lookup — reporting it missing is
+      // exactly the false failure this feature exists to remove.
+      if (entryPriority(specComponent) === DEFERRED) {
+        deferred.push({
+          componentId: specComponent.componentId,
+          group: group.name,
+          ...(group.section !== undefined ? { section: group.section } : {}),
+          ...(specComponent.caption !== undefined ? { caption: specComponent.caption } : {}),
+          preview: specComponent.preview,
+          reason: "entry",
+        });
+        continue;
+      }
+      // Fold only the REQUIRED variants; each deferred one is recorded live-only instead of being
+      // looked up (and then reported missing) below.
+      const { component, deferredVariants } = splitDeferredVariants(specComponent);
+      for (const variant of deferredVariants) {
+        deferred.push({
+          componentId: component.componentId,
+          group: group.name,
+          preview: variant.preview,
+          reason: "variant",
+          ...(variant.state !== undefined ? { state: variant.state } : {}),
+          ...(variant.props !== undefined ? { props: variant.props } : {}),
+          ...(variant.theme !== undefined ? { theme: variant.theme } : {}),
+        });
+      }
       const candidate = byFunction.get(component.preview);
       if (!candidate || candidate.images.length === 0) {
         // `"capture": "none"` is the spec's way of declaring a preview that has no static sticker to
@@ -364,10 +410,34 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
       } = foldVariants(candidate.images, component, byFunction);
       missing.push(...missingVariants);
       noSticker.push(...noStickerVariants);
+      // Thin the palette fan-out per `modePriority`: a themed sticker whose mode is deferred is
+      // dropped from the baked set (so no PNG is written and the Figma/static kit stays lean) and
+      // recorded live-only. Only stickers that NAME a theme are eligible, so every component keeps
+      // its untagged primary render.
+      const { baked, deferred: deferredImages } = splitDeferredImages(ideal, spec);
+      for (const image of deferredImages) {
+        deferred.push({
+          componentId: component.componentId,
+          group: group.name,
+          preview: previewForImage(component, image),
+          reason: "mode",
+          theme: image.theme,
+          ...(image.state !== undefined ? { state: image.state } : {}),
+          ...(image.props !== undefined ? { props: image.props } : {}),
+          ...(image.size !== undefined ? { size: image.size } : {}),
+        });
+      }
+      if (baked.length === 0) {
+        // Every one of this component's renders was mode-deferred — it would publish as a
+        // component with no pixels at all. That is a misconfiguration (a `modePriority` that
+        // defers the mode a component renders in exclusively), not a deferral, so fail it.
+        missing.push(component.componentId);
+        continue;
+      }
       const source = {
         componentId: component.componentId,
         group: group.name,
-        ideal,
+        ideal: baked,
       };
       // A group may declare a top-level `section` (the tab the preview server
       // buckets it under: Themes / Components / Screens / Animations / …). It sits
@@ -396,7 +466,7 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
   };
 
   const catalog = buildCatalog(meta, sources, opts.themeTokens);
-  return { catalog, missing, noSticker, withoutSemantics };
+  return { catalog, missing, noSticker, withoutSemantics, deferred };
 }
 // --- end vendored join --------------------------------------------------------
 
@@ -593,7 +663,34 @@ function designParityVersion() {
   }
 }
 
-const { catalog, missing, noSticker, withoutSemantics } =
+// Render priority needs a live path or it isn't a cheaper build — it is coverage quietly missing
+// from the published sheet. A deferred entry only resolves where the serve host can re-render it:
+// a carried live bundle (`--publish-live-bundle`) or a buildable `source` (`--source-module`,
+// which a `--allow-render-trusted` box builds). Refuse here rather than publish a thinner catalog
+// than the spec describes. Mirrored (leniently, since it can't know the publish flags) by
+// `validateSpec`'s `liveBundle` option in the build-free pre-flight.
+if (specDefersAnything(spec) && !values["publish-live-bundle"] && !values["source-module"]) {
+  console.error(
+    `[${spec.system}] this spec defers coverage (\`priority: "deferred"\` / \`modePriority\`) but ` +
+      `neither --publish-live-bundle nor --source-module was passed — the deferred entries would ` +
+      `simply be absent from the published catalog, with no live path to produce them. Publish ` +
+      `with a live bundle or a buildable source, or drop the deferral from catalog.spec.json.`,
+  );
+  process.exit(1);
+}
+if (specDefersAnything(spec)) {
+  const plan = deferralPlan(spec);
+  console.log(
+    `[${spec.system}] render priority: ${plan.entries} deferred entry/entries, ` +
+      `${plan.variants} deferred variant(s), deferred mode(s): ` +
+      `${plan.modes.length > 0 ? plan.modes.join(", ") : "none"}` +
+      (plan.deferredPreviews.length > 0
+        ? `; @Preview function(s) droppable from the render: ${plan.deferredPreviews.join(", ")}`
+        : ""),
+  );
+}
+
+const { catalog, missing, noSticker, withoutSemantics, deferred } =
   catalogFromCandidates(candidates, spec, {
     ...(values.renderer ? { renderer: values.renderer } : {}),
     ...(designParityVersion() ? { designParity: designParityVersion() } : {}),
@@ -624,6 +721,19 @@ if (noSticker.length > 0) {
 if (withoutSemantics.length > 0) {
   console.warn(
     `[${spec.system}] no semantics for: ${withoutSemantics.join(", ")}`,
+  );
+}
+if (deferred.length > 0) {
+  const byReason = deferred.reduce((acc, d) => {
+    acc[d.reason] = (acc[d.reason] ?? 0) + 1;
+    return acc;
+  }, {});
+  console.log(
+    `[${spec.system}] ${deferred.length} deferred (live-only) render(s): ` +
+      Object.entries(byReason)
+        .map(([reason, n]) => `${n} by ${reason}`)
+        .join(", ") +
+      ` — recorded in catalog.json, not baked and not counted against the completeness gate`,
   );
 }
 if (
@@ -832,6 +942,20 @@ if (values["publish-live-bundle"]) {
   if (spec.display) manifest.display = spec.display;
   if (webRender) manifest.webRender = webRender;
   if (liveBundle) manifest.liveBundle = liveBundle;
+  // Deferred (live-only) coverage, recorded alongside the baked components rather than inside
+  // `components[].images` — an image with no `path` would reach every consumer that assumes
+  // `images[]` is the baked sticker set (index.html, compare.html, matches.html, the per-variant
+  // figma-svg emit, the Figma import). A sibling array declares the coverage without pretending
+  // those pixels exist. Each record carries the daemon preview id(s) its `@Preview` function
+  // produces, so a `serve --allow-render-trusted` host can render it on request: the previews are
+  // in the bundle's `previews.json` whether or not CI rasterised them.
+  if (deferred.length > 0) {
+    const idsByFunction = daemonPreviewIdsByFunction([bundle, extraBundle]);
+    manifest.deferred = deferred.map((record) => {
+      const ids = idsByFunction.get(record.preview) ?? [];
+      return ids.length > 0 ? { ...record, previewIds: ids } : record;
+    });
+  }
   // Buildable source for trusted server-side re-render (opt-in consumer side).
   if (values["source-module"]) {
     manifest.source = {

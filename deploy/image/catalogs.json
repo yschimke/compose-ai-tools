@@ -41,6 +41,16 @@
       "listed": true
     },
     {
+      "system": "pocketcasts",
+      "repo": "yschimke/pocket-casts-android",
+      "listed": true
+    },
+    {
+      "system": "pocketcasts-wear",
+      "repo": "yschimke/pocket-casts-android",
+      "listed": true
+    },
+    {
       "system": "jetnews",
       "repo": "yschimke/compose-samples",
       "listed": true,

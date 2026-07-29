@@ -107,14 +107,44 @@ fi
 # gated by its own secret — never the browse token, which a public box hands to every visitor.
 # Unset (the default) means the admin routes don't exist at all.
 [[ -n "${SERVE_ADMIN_TOKEN:-}" ]] && args+=(--admin-token "${SERVE_ADMIN_TOKEN}")
-# Default to the baked branch-trust store so the published design-artifacts catalogs
-# badge as Trusted(Branch) out of the box. `:=` fills it when SERVE_TRUST_STORE is
-# unset OR empty (an older host compose passes ""), so a bare image pull self-heals a
-# box without editing compose. Override with your own path to pin different
-# producers, or the literal `none` to run trustless (catalogs then show Unverified).
+# The producer-trust store is CONFIG, on the same /config volume as catalogs.json — for the
+# same reason. It used to live only in the image, which meant trusting a new producer needed a
+# code change, a release and an image publish, while a *catalog* could be published at runtime in
+# one HTTP call. That asymmetry made runtime catalog registration close to useless: the catalog
+# served, but badged `unverified` until the image caught up.
+#
+# The image still carries the seed (/trust/producers.json) and it is copied to the volume on
+# first boot only, never overwritten — so an operator edit, or a POST to /admin/trust (which
+# rewrites this same file), survives every subsequent image roll. Falls back to serving the
+# baked file read-only when /config isn't writable, exactly like the catalogs seed.
+# `:=` fills it when SERVE_TRUST_STORE is unset OR empty (an older host compose passes ""), so a
+# bare image pull self-heals a box without editing compose. Override with your own path to pin
+# different producers, or the literal `none` to run trustless (catalogs then show Unverified).
 # NB opt-out is `none`, not empty — empty deliberately falls back to the default.
-: "${SERVE_TRUST_STORE:=/trust/producers.json}"
-[[ "${SERVE_TRUST_STORE}" != "none" ]] && args+=(--trust-store "${SERVE_TRUST_STORE}")
+#
+# Seeding applies ONLY to the default path. An operator who names their own SERVE_TRUST_STORE and
+# whose file is missing — a typo, an unmounted secret, a broken deploy — must NOT silently get the
+# image's allowlist instead: with SERVE_ALLOW_RENDER_TRUSTED=1 that would execute producers they
+# never configured. For an explicit override the file has to already be there, and a missing one
+# keeps the old hard failure (the CLI exits non-zero on an absent --trust-store).
+serve_trust_store_defaulted=0
+[[ -z "${SERVE_TRUST_STORE:-}" ]] && serve_trust_store_defaulted=1
+: "${SERVE_TRUST_STORE:=/config/producers.json}"
+if [[ "${SERVE_TRUST_STORE}" != "none" ]]; then
+  if [[ "${serve_trust_store_defaulted}" == 1 && ! -f "${SERVE_TRUST_STORE}" &&
+    -f /trust/producers.json ]]; then
+    if mkdir -p "$(dirname "${SERVE_TRUST_STORE}")" 2>/dev/null &&
+      cp /trust/producers.json "${SERVE_TRUST_STORE}" 2>/dev/null; then
+      echo "entrypoint: seeded ${SERVE_TRUST_STORE} from the image default" >&2
+    else
+      # Read-only /config (or a bind mount pointing somewhere unwritable): serve the baked store
+      # rather than refusing to start. Admin trust writes will report themselves unpersisted.
+      echo "entrypoint: ${SERVE_TRUST_STORE} not writable — using the baked trust store" >&2
+      SERVE_TRUST_STORE=/trust/producers.json
+    fi
+  fi
+  args+=(--trust-store "${SERVE_TRUST_STORE}")
+fi
 [[ -n "${SERVE_WASM_DIR:-}" ]] && args+=(--wasm-dir "${SERVE_WASM_DIR}")
 # Trusted server-side re-render — ON by default, and cheap: for a Trusted catalog
 # that carries an executable `liveBundle` (the desktop CMP `compose-m3` does), serve

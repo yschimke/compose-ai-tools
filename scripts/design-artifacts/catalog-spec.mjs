@@ -11,6 +11,13 @@
 // init-catalog-spec.mjs.
 
 import { CAPTURE_MODES, exportsNoSticker } from "./capture-mode.mjs";
+import {
+  DEFERRED,
+  MODE_WILDCARD,
+  PRIORITIES,
+  modePriority as modePriorityOf,
+  specDefersAnything,
+} from "./catalog-priority.mjs";
 
 // The built-in Compose preview annotation. Any function annotated with it — or
 // with a *multipreview* annotation (an annotation class itself meta-annotated
@@ -464,6 +471,12 @@ export function closest(name, candidates) {
  *   Referencing one is an error: `candidatePreviewBundle()` drops it from the
  *   candidate join and the completeness gate then reports the component missing.
  *   An entry that declares `"capture": "none"` is exempt — it has said so.
+ * @param {boolean} [opts.liveBundle]  Whether the publish has a live path (a carried
+ *   live bundle or a buildable `source`) the serve host can re-render deferred entries
+ *   from. `false` rejects every `priority: "deferred"` — deferring without one is not a
+ *   cheaper build, it is coverage silently dropped from the published sheet. Omitted
+ *   (the structural-only CLI path, which can't know how the publish will be invoked)
+ *   stays lenient; the driver enforces it for real at export time.
  * @returns {{ errors: string[], warnings: string[] }}
  */
 export function validateSpec(spec, opts = {}) {
@@ -478,6 +491,17 @@ export function validateSpec(spec, opts = {}) {
   }
   if (typeof spec.title !== "string" || spec.title.length === 0) {
     errors.push("`title` is required (the human-readable catalog name)");
+  }
+  // Render priority (issue #2950). Checked before `groups` so a cover-sheet-only spec's
+  // `modePriority` is validated too, and so a bad value is reported once rather than per entry.
+  errors.push(...modePriorityErrors(spec));
+  warnings.push(...modePriorityWarnings(spec));
+  if (opts.liveBundle === false && specDefersAnything(spec)) {
+    errors.push(
+      "this spec defers coverage (`priority: \"deferred\"` / `modePriority`) but the publish has no " +
+        "live path — a deferred entry is only resolvable where the serve host can re-render it. " +
+        "Publish with --publish-live-bundle (or a buildable --source-module), or drop the deferral.",
+    );
   }
   // `groups` is optional: a catalog can supply its whole component inventory from
   // `@CatalogComponent` / `@CatalogVariant` annotations (compose-ai-tools' catalog-annotations)
@@ -535,9 +559,13 @@ export function validateSpec(spec, opts = {}) {
       if (typeof comp?.preview !== "string" || comp.preview.length === 0) {
         errors.push(`${cp}.preview is required (an exact @Preview function name)`);
       } else {
+        // Deferred entries stay in the resolution set on purpose: the serve host renders them from
+        // the same module, so a `preview` that matches no @Preview function is just as broken when
+        // it is deferred — it is simply broken later, on a viewer's request, instead of in CI.
         pushMulti(previewToPaths, comp.preview, cp);
         if (!exportsNoSticker(comp)) pushMulti(staticRefPaths, comp.preview, cp);
       }
+      errors.push(...priorityErrors(comp, cp));
       const variants = comp?.variants;
       if (variants !== undefined) {
         if (!Array.isArray(variants)) {
@@ -552,6 +580,7 @@ export function validateSpec(spec, opts = {}) {
               "props",
               "theme",
               "capture",
+              "priority",
             ]);
             for (const key of Object.keys(v ?? {})) {
               if (!allowedKeys.has(key)) {
@@ -577,6 +606,7 @@ export function validateSpec(spec, opts = {}) {
             if (v?.theme !== undefined && v.theme !== "light" && v.theme !== "dark") {
               errors.push(`${vp}.theme must be "light" or "dark" when present`);
             }
+            errors.push(...priorityErrors(v, vp));
           });
         }
       }
@@ -678,6 +708,72 @@ function captureErrors(entry, path) {
     ];
   }
   return [];
+}
+
+/**
+ * Reject a `priority` that isn't one of the documented values. Deliberately an ERROR rather than a
+ * lenient fallback: `entryPriority` reads anything unrecognised as `required`, so a typo
+ * (`"defered"`, `"optional"`) would otherwise bake the entry and look like the deferral simply
+ * didn't save anything — the confusing failure this check exists to prevent.
+ */
+function priorityErrors(entry, path) {
+  const value = entry?.priority;
+  if (value === undefined) return [];
+  if (typeof value === "string" && PRIORITIES.includes(value)) return [];
+  return [
+    `${path}.priority must be one of ${PRIORITIES.map((p) => `"${p}"`).join(", ")} ` +
+      `(got ${JSON.stringify(value)})`,
+  ];
+}
+
+/** Structural checks for the `modePriority` axis table. */
+function modePriorityErrors(spec) {
+  const table = spec?.modePriority;
+  if (table === undefined) return [];
+  if (typeof table !== "object" || table === null || Array.isArray(table)) {
+    return ['`modePriority` must be an object mapping mode name (or "*") to a priority'];
+  }
+  const errors = [];
+  for (const [mode, value] of Object.entries(table)) {
+    if (typeof value !== "string" || !PRIORITIES.includes(value)) {
+      errors.push(
+        `modePriority["${mode}"] must be one of ${PRIORITIES.map((p) => `"${p}"`).join(", ")} ` +
+          `(got ${JSON.stringify(value)})`,
+      );
+    }
+  }
+  return errors;
+}
+
+/**
+ * Soft checks for `modePriority`: a table naming a mode the spec doesn't declare is usually a typo,
+ * and a table that defers *every* declared mode leaves only the untagged primary sticker baked —
+ * legal (that IS the "one sticker per component" configuration) but worth saying out loud.
+ */
+function modePriorityWarnings(spec) {
+  const table = spec?.modePriority;
+  if (!table || typeof table !== "object" || Array.isArray(table)) return [];
+  const declared = (spec?.modes ?? []).filter((m) => typeof m === "string");
+  const warnings = [];
+  if (declared.length > 0) {
+    const unknown = Object.keys(table).filter(
+      (mode) => mode !== MODE_WILDCARD && !declared.includes(mode),
+    );
+    if (unknown.length > 0) {
+      warnings.push(
+        `modePriority names mode(s) not in \`modes\`: ${unknown.join(", ")} — ` +
+          `declared modes are ${declared.join(", ")}`,
+      );
+    }
+    const kept = declared.filter((mode) => modePriorityOf(spec, mode) !== DEFERRED);
+    if (kept.length === 0) {
+      warnings.push(
+        "modePriority defers every declared mode — only each component's untagged primary sticker " +
+          "will be baked, and every themed palette comes from the live preview server",
+      );
+    }
+  }
+  return warnings;
 }
 
 /** Normalise an optional array-or-Set option to a Set, or null when absent. */
