@@ -159,8 +159,20 @@ function pickVariantId(candidates, image, widthForSize) {
   let bestScore = -Infinity;
   for (const candidate of candidates) {
     let score = 0;
-    if (wantNight !== null && candidate.night !== null) {
-      score += candidate.night === wantNight ? 2 : -2;
+    if (wantNight !== null) {
+      if (candidate.night !== null) score += candidate.night === wantNight ? 2 : -2;
+    } else if (candidate.night === true) {
+      // A sticker that names NO theme is the catalog's default one — its path is
+      // `ideal__default__compact`, with no theme segment, precisely because light IS the default
+      // (only the dark sibling gets tagged). Treating that as "unconstrained" let it tie with the
+      // dark annotation and take whichever the bundle listed first, which is how Jetsnack's
+      // Snack/Card and Search/Categories kept shipping the DARK vector against a light PNG after
+      // the first pass at #2883. Same shape as the font-scale preference below: absent means
+      // "prefer the untagged annotation", scored ±1 so it breaks the tie without ever outvoting a
+      // matching width or an explicit theme.
+      score -= 1;
+    } else {
+      score += 1;
     }
     if (wantWidth !== null && candidate.widthDp !== null) {
       score += candidate.widthDp === wantWidth ? 2 : -2;

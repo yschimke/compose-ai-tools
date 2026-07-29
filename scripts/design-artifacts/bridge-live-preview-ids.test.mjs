@@ -780,3 +780,94 @@ test("an explicit fontScale of 1 matches an annotation that omits it", () => {
     "app.FeedKt.FeedScreenPreview_default",
   );
 });
+
+test("an untagged (default) sticker takes the light annotation, not the dark one", () => {
+  // Reopened #2883. Jetsnack tags only its DARK stickers — the light one's path is
+  // `ideal__default__compact`, with no theme segment — so `image.theme` is undefined for it. The
+  // first pass scored an absent theme as "unconstrained", which let the light sticker tie with the
+  // dark annotation and take whichever the bundle listed first. With the dark preview listed
+  // first (as here), every light sticker shipped the dark vector against a light PNG.
+  const spec = {
+    system: "jetsnack",
+    groups: [
+      {
+        components: [
+          { componentId: "Snack/Card", preview: "SnackCardPreview", variants: [] },
+        ],
+      },
+    ],
+  };
+  const bundle = {
+    previews: [
+      // Dark deliberately first — that ordering is what the tie resolved to before.
+      {
+        id: "app.SnackKt.SnackCardPreview_dark",
+        functionName: "SnackCardPreview",
+        params: { widthDp: 412, uiMode: 0x20 },
+      },
+      {
+        id: "app.SnackKt.SnackCardPreview",
+        functionName: "SnackCardPreview",
+        params: { widthDp: 412 },
+      },
+    ],
+  };
+  const manifest = {
+    system: "jetsnack",
+    components: [
+      {
+        componentId: "Snack/Card",
+        images: [{ state: "default" }, { state: "default", theme: "dark" }],
+      },
+    ],
+  };
+
+  bridgeLivePreviewIds(manifest, spec, bundle, new Set());
+
+  assert.deepEqual(
+    manifest.components[0].images.map((i) => i.previewId),
+    ["app.SnackKt.SnackCardPreview", "app.SnackKt.SnackCardPreview_dark"],
+  );
+});
+
+test("an un-themed catalog is unaffected by the untagged-sticker preference", () => {
+  // wear-m3 / remote-m3 carry no theme on either side: the stickers are untagged AND the daemon
+  // ids don't end in light/dark, so every candidate scores the same +1 and the first still wins.
+  // This pins that the fix above can't disturb the state-variant catalogs.
+  const spec = {
+    system: "wear-m3",
+    groups: [
+      {
+        components: [
+          {
+            componentId: "Button/Filled",
+            preview: "FilledButton",
+            variants: [{ state: "pressed", preview: "ButtonPressed" }],
+          },
+        ],
+      },
+    ],
+  };
+  const bundle = {
+    previews: [
+      { id: "pkg.CatalogKt.FilledButton", functionName: "FilledButton" },
+      { id: "pkg.CatalogKt.ButtonPressed", functionName: "ButtonPressed" },
+    ],
+  };
+  const manifest = {
+    system: "wear-m3",
+    components: [
+      {
+        componentId: "Button/Filled",
+        images: [{ state: "default" }, { state: "pressed" }],
+      },
+    ],
+  };
+
+  bridgeLivePreviewIds(manifest, spec, bundle, new Set());
+
+  assert.deepEqual(
+    manifest.components[0].images.map((i) => i.previewId),
+    ["pkg.CatalogKt.FilledButton", "pkg.CatalogKt.ButtonPressed"],
+  );
+});
