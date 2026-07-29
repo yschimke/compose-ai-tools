@@ -24,7 +24,9 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.toArgb
 
 /*
@@ -97,6 +99,34 @@ private fun ComposeLocalPaint.toNativeTextPaint(context: RemoteContext): Paint {
         textSize = this@toNativeTextPaint.textSize
         typeface = fontInstance.getTypeface()
     }
+}
+
+/**
+ * The Compose [FontFamily] for the current paint state, resolved the same way
+ * [toNativeTextPaint] picks a typeface: generics 0..3 by index, anything else as a *named* family
+ * looked up in the document's text table (`device:` / `google:` prefixes included).
+ *
+ * This exists so measurement and drawing cannot disagree. `toTextStyle` used to map every id
+ * outside 0..3 to `FontFamily.Default` while the measurement path resolved the real name — so a
+ * document naming a font measured with one face and drew with another, which misplaces anchored
+ * text as well as changing the glyphs. Resolution is platform-bound (it reaches downloadable
+ * fonts), so it lives here with the other text platform hooks.
+ */
+internal fun resolvePaintFontFamily(
+    paintState: ComposeLocalPaint,
+    context: RemoteContext,
+): FontFamily {
+    val familyType = paintState.fontFamily
+    val name = if (familyType in 0..3) null else context.getText(familyType)
+    return resolveFontFamily(
+        fontFamilyType = familyType,
+        fontName = name,
+        fontWeight = FontWeight(paintState.fontWeight),
+        fontStyle = paintState.fontStyle,
+        fontAxis = null,
+        fontAxisValues = null,
+        context = context,
+    )
 }
 
 /** Measures [text]'s ink bounds with the platform's text engine. */

@@ -692,7 +692,14 @@ internal fun DrawScope.executeOperations(
                     // textMeasurer is non-null. Style comes from the shared builder so this
                     // and DrawTextAnchored cannot drift apart.
                     val textLayoutResult =
-                        textMeasurer.measure(text = text, style = paintState.toTextStyle(this))
+                        textMeasurer.measure(
+                            text = text,
+                            style =
+                                paintState.toTextStyle(
+                                    this,
+                                    resolvePaintFontFamily(paintState, read),
+                                ),
+                        )
 
                     // Assuming y is baseline
                     val baseline = textLayoutResult.getLineBaseline(0)
@@ -754,7 +761,14 @@ internal fun DrawScope.executeOperations(
                     // (x, y) is the text origin (baseline-left); Compose positions the layout box,
                     // so shift up by the baseline exactly as the plain DrawText path does.
                     val anchoredLayout =
-                        textMeasurer.measure(text = full, style = paintState.toTextStyle(this))
+                        textMeasurer.measure(
+                            text = full,
+                            style =
+                                paintState.toTextStyle(
+                                    this,
+                                    resolvePaintFontFamily(paintState, read),
+                                ),
+                        )
                     drawText(
                         textLayoutResult = anchoredLayout,
                         topLeft = Offset(x, y - anchoredLayout.getLineBaseline(0)),

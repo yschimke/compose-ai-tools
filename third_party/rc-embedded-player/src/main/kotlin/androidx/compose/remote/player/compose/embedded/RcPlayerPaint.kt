@@ -104,8 +104,11 @@ internal class ComposeLocalPaint {
  * Shared by every text op so they cannot drift: `DrawText` and `DrawTextAnchored` previously built
  * this inline and via a framework `Paint` respectively, which is exactly how two text paths end up
  * rendering differently.
+ *
+ * [family] is passed in rather than derived from [fontFamily] here: resolving a *named* family
+ * reaches downloadable fonts, which is platform-bound. See `resolvePaintFontFamily`.
  */
-internal fun ComposeLocalPaint.toTextStyle(density: Density): TextStyle {
+internal fun ComposeLocalPaint.toTextStyle(density: Density, family: FontFamily): TextStyle {
     val drawStyle =
         if (isStroke)
             Stroke(
@@ -115,13 +118,6 @@ internal fun ComposeLocalPaint.toTextStyle(density: Density): TextStyle {
             )
         else Fill
     val size = with(density) { textSize.toSp() }
-    val family =
-        when (fontFamily) {
-            1 -> FontFamily.SansSerif
-            2 -> FontFamily.Serif
-            3 -> FontFamily.Monospace
-            else -> FontFamily.Default
-        }
     return if (brush != null) {
         TextStyle(
             brush = brush,
