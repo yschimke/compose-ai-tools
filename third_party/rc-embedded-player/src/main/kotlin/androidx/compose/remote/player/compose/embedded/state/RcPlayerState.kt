@@ -18,7 +18,6 @@
 
 package androidx.compose.remote.player.compose.embedded.state
 
-import android.graphics.Bitmap
 import androidx.compose.remote.core.RemoteContext
 import androidx.compose.remote.core.VariableSupport
 import androidx.compose.remote.core.operations.Utils
@@ -30,7 +29,6 @@ import androidx.compose.remote.player.compose.embedded.LocalRemoteContext
 import androidx.compose.remote.player.compose.embedded.getFloatExpressionsReflection
 import androidx.compose.remote.player.compose.embedded.getRemoteContextReflection
 import androidx.compose.remote.player.compose.embedded.getVariableIdReflection
-import androidx.compose.remote.player.compose.embedded.resolveBitmap
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.MutableState
@@ -203,20 +201,6 @@ internal fun rememberRemoteColorAsState(id: Int): State<Color> {
     }
     // Plain variable: reactive read of the snapshot-backed color store.
     return remember(document, id) { derivedStateOf { Color(context.getColor(id)) } }
-}
-
-@Composable
-internal fun rememberRemoteBitmapAsState(id: Int): State<Bitmap?> {
-    val document = LocalCoreDocument.current
-    val remoteContext = LocalRemoteContext.current
-    // Lazy decode: an Image component composing here is the "drawn" trigger. Decode once in a keyed
-    // remember (the snapshot write happens here, outside the derived read), then track the
-    // snapshot-backed data store so a later host swap of the bitmap recomposes — no listener
-    // bridge.
-    remember(document, id) { resolveBitmap(remoteContext, id) }
-    return remember(document, id) {
-        derivedStateOf { remoteContext.mRemoteComposeState.getFromId(id) as? Bitmap }
-    }
 }
 
 @Composable
