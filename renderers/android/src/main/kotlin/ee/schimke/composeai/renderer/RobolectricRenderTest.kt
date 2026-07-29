@@ -621,6 +621,9 @@ abstract class RobolectricRenderTestBase(
     // Arm the per-preview downloadable-font tracker so a face that falls back to Roboto during THIS
     // render is attributed to this preview (drained right after the render below).
     FontResolutionDiagnostics.beginPreview()
+    // Same for coil: arm the per-preview image-load tracker so a request that fails or is still in
+    // flight at capture time is attributed to THIS preview (drained right after the render below).
+    CoilLoadDiagnostics.beginPreview()
     try {
       if (params.kind == PreviewKind.ACTIVITY || params.kind == PreviewKind.APP_TOUR) {
         // App-level previews: no composition to host — the real activity owns its content.
@@ -658,7 +661,10 @@ abstract class RobolectricRenderTestBase(
       if (fontFallbacks.isNotEmpty() && FontResolutionDiagnostics.failOnFallback) {
         throw FontFallbackException(fontFallbacks)
       }
-      RenderWarningsSidecar.writeOrDelete(pngFile, fontFallbacks)
+      // Coil requests that didn't resolve are never fatal — a blank image is a legitimate thing to
+      // capture (an offline/empty state), and the renderer can't conjure bytes the sandbox can't
+      // reach. They ride in the same warnings sidecar so the blank is diagnosable.
+      RenderWarningsSidecar.writeOrDelete(pngFile, fontFallbacks, CoilLoadDiagnostics.drainPreview())
       // Render succeeded: if the preview's flavour captured an IR, write it beside the PNG as
       // the `renders/<stem>.<ext>` sidecar `BundlePreviewTask.resolvePreviewIr` packs.
       writeIrSidecar(pngFile, preview.id)
@@ -976,6 +982,13 @@ abstract class RobolectricRenderTestBase(
           // emitted bytecode naturally targets their runtime.
           val bg = resolveBackgroundColor(params).toArgb()
           rule.runOnUiThread { rule.activity.window.decorView.setBackgroundColor(bg) }
+          // Swap coil's singleton `ImageLoader` for one whose dispatchers are the immediate main
+          // dispatcher, so `AsyncImage` resolves INLINE during the composition below instead of
+          // on a `Dispatchers.IO` pool nothing here drives — otherwise the painter never gets a
+          // result, reports no intrinsic size, and a `ContentScale.FillWidth` image eats the whole
+          // frame (issue #2952). Idempotent and a no-op when the consumer has no coil; must run
+          // before `setContent` because `AsyncImagePainter` starts its load from `onRemembered`.
+          CoilPreviewSupport.installIfPresent(rule.activity)
           // Mirror Compose's system long-screenshot signal so composables
           // can suppress transient UI (e.g. Wear's `ScreenScaffold` scroll
           // indicator) by reading `LocalScrollCaptureInProgress.current`.
@@ -1124,6 +1137,13 @@ abstract class RobolectricRenderTestBase(
                 // therefore absent) whenever XR isn't on the preview's classpath, which is the
                 // overwhelmingly common case. See [OfflineXrSession].
                 OfflineXrSession.providedValue(rule.activity)?.let(::add)
+                // coil 3 short-circuits into a placeholder-only branch while
+                // `LocalInspectionMode` is true (the AS-parity default), which is what leaves an
+                // `AsyncImage` blank AND intrinsic-size-less. It exposes
+                // `LocalAsyncImagePreviewHandler` to override that branch, so hand it one that
+                // runs the real request. Null for coil 2 (no such hook — see
+                // [ShadowAsyncImagePainter]) and for the common no-coil consumer. Issue #2952.
+                CoilPreviewSupport.previewHandlerProvidedValue()?.let(::add)
               }
               .toTypedArray()
           // `showSystemUi = true` on a phone-shape preview wraps the

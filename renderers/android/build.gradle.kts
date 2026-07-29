@@ -115,6 +115,20 @@ dependencies {
   // already have `androidx.glance:glance-appwidget` on their compile classpath, which then flows
   // onto the test classpath via the discovery → render fanout.
   compileOnly(libs.glance.appwidget)
+  // Coil — `CoilPreviewSupport` swaps the singleton `ImageLoader` for an inline-dispatcher one so
+  // `AsyncImage` resolves before the capture instead of leaving a blank, layout-collapsing hole
+  // (issue #2952). Both majors are `compileOnly`: they are separate package trees (`coil.*` vs
+  // `coil3.*`), a consumer has at most one of them, and neither should be dragged onto the
+  // classpath of the (overwhelmingly common) consumer with no coil at all. The installers are
+  // reached through `Class.forName` behind a marker-class probe, so the coil-typed bytecode is
+  // never even loaded unless the consumer's own coil is on the render classpath.
+  compileOnly(libs.coil2.compose)
+  compileOnly(libs.coil3.compose)
+  // Both installers' unit tests drive the real coil APIs (build a loader, execute a request off a
+  // `ByteArray`, assert it resolved inline). Coil 2 is the runtime the tests link against — coil 3
+  // classes are only probed for absence, since the two majors can't both own the singleton in one
+  // JVM.
+  testImplementation(libs.coil2.compose)
   // Soft-keyboard (IME) connector. Owns `KeyboardController` (state) and
   // `KeyboardOverrideExtension`
   // (the `AroundComposable` that installs the shadow `LocalSoftwareKeyboardController` and overlays
