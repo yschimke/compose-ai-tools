@@ -60,14 +60,15 @@ android {
     aarMetadata { minCompileSdk = 36 }
   }
 
-  // AGP 9 defaults `androidResources` to false for library modules. The typeface resolver and the
-  // text-layout path both read the GMS font-provider certificates from the googlefonts `R` class,
-  // and a dependency `R` class is only generated when resource processing is on — without this the
-  // two references fail to resolve.
-  buildFeatures { androidResources = true }
+  // No `androidResources` here, deliberately: this module owns no resource table. The GMS
+  // font-provider certificates used to come from a vendored `font_certs.xml` read through an `R`
+  // class, which forced resource processing on (AGP 9 defaults it off for libraries). They are now
+  // source constants — see `GmsFontProviderCertificates.kt` — so nothing needs an `R`. Keeping it
+  // off means the CMP restructure can adopt the KMP-Android library plugin without first settling
+  // whether that plugin supports resource processing (see PROVENANCE.md).
 
   // The render harness is a Robolectric test that inflates real Compose content, so it needs the
-  // library's merged resources on the unit-test classpath.
+  // *dependencies'* merged resources (Compose's own themes) on the unit-test classpath.
   testOptions { unitTests { isIncludeAndroidResources = true } }
 
   // The player reaches `androidx.compose.remote.core.*` members marked `@RestrictTo(LIBRARY_GROUP)`
@@ -111,8 +112,9 @@ dependencies {
   // `Text` in the text-layout path and `ripple` in `RippleModifier` — the player leans on Material3
   // for those two rather than reimplementing them.
   implementation(libs.compose.material3)
-  // Downloadable Google Fonts: `GoogleFont`, the `Font` factory, and the certs `R` class the
-  // typeface resolver hands to `FontRequest`.
+  // Downloadable Google Fonts: `GoogleFont` and the `Font` factory. Only the classes — the
+  // certificates this artifact's resource table was supposed to carry are source constants here,
+  // because the published AAR ships an empty one.
   implementation(libs.compose.ui.text.google.fonts)
   // `FontRequest` / `FontsContractCompat` behind the resolver's `google:` font prefix.
   implementation(libs.androidx.core)

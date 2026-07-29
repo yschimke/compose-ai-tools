@@ -26,9 +26,6 @@ import androidx.compose.remote.core.RemoteContext
 import androidx.compose.remote.player.core.platform.AndroidRemoteContext
 import androidx.compose.remote.player.core.platform.FontInstance
 import androidx.compose.remote.player.core.platform.TypefaceResolver
-// LOCAL DELTA (compose-ai-tools): the certs array is vendored into this module — the published
-// ui-text-google-fonts AAR ships an empty resource table. See PROVENANCE.md.
-import androidx.compose.remote.player.compose.embedded.R as GoogleFontR
 import androidx.core.provider.FontRequest
 import androidx.core.provider.FontsContractCompat
 
@@ -88,7 +85,7 @@ internal class EmbeddedPlayerTypefaceResolver(private val remoteContext: RemoteC
                         "com.google.android.gms.fonts",
                         "com.google.android.gms",
                         query,
-                        GoogleFontR.array.com_google_android_gms_fonts_certs,
+                        GmsFontProviderCertificates,
                     )
 
                 val callback =
