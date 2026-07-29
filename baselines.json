@@ -444,7 +444,7 @@
     "functionName": "FontWrapperShowcasePreview",
     "module": "samples:android",
     "renderBasename": "FontWrapperShowcasePreview_Dark.png",
-    "sha256": "ff5facc1d296c487d6ff42e5664ffb435277e01595198fb80617b2cf794db585",
+    "sha256": "34a0fa412a91e1dc71bdd89af26ec481b303efe1cd5a4654e96138cbd00dab72",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/FontPreviewShowcase.kt"
   },
   "samples:android/com.example.sampleandroid.FontPreviewShowcaseKt.FontWrapperShowcasePreview_Light": {
@@ -1590,6 +1590,22 @@
     "renderBasename": "RuntimeShaderGradientBlobPreview_Runtime_Shader_Gradient_Blob.png",
     "sha256": "6cc4aae724129b4f04900588489c2d0bdeb6496e0e4844d87922eed1771b02f5",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/ShaderPreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.ShowBackgroundNightPreviewsKt.ShowBackgroundNoSurfacePreview_Day": {
+    "captureLabel": "",
+    "functionName": "ShowBackgroundNoSurfacePreview",
+    "module": "samples:cmp",
+    "renderBasename": "ShowBackgroundNoSurfacePreview_Day.png",
+    "sha256": "101c3cfbea73d2c3337203e6d09af4d1e559db70cbdca1992a8a873e5e72560a",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/ShowBackgroundNightPreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.ShowBackgroundNightPreviewsKt.ShowBackgroundNoSurfacePreview_Night": {
+    "captureLabel": "",
+    "functionName": "ShowBackgroundNoSurfacePreview",
+    "module": "samples:cmp",
+    "renderBasename": "ShowBackgroundNoSurfacePreview_Night.png",
+    "sha256": "d8a6575265701cc186d8bf1eeb5f32be6e9d4e80a68c65465ec480c2bc6316c7",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/ShowBackgroundNightPreviews.kt"
   },
   "samples:cmp/com.example.samplecmp.SvgPreviewsKt.SvgBadgePreview": {
     "captureLabel": "",
@@ -3348,7 +3364,7 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "4894efeb548deb8e9074068f891ddd4a3c9901e2e5482960eebaa1dbf8e65cca",
+    "sha256": "094df53da2ad611cb769f7a7e381c83ac0dbee764bc2060d387be804c6c5ba23",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round": {
@@ -3356,7 +3372,7 @@
     "functionName": "ActivityListMotionLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListMotionLongPreview_Devices_Large_Round_SCROLL_long.png",
-    "sha256": "4894efeb548deb8e9074068f891ddd4a3c9901e2e5482960eebaa1dbf8e65cca",
+    "sha256": "094df53da2ad611cb769f7a7e381c83ac0dbee764bc2060d387be804c6c5ba23",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round#1": {

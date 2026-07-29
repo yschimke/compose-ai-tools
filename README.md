@@ -233,6 +233,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `ShaderRenderEffectPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort.png" width="150" /> |
 | `RuntimeShaderAnimatedBlobPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/RuntimeShaderAnimatedBlobPreview_Runtime_Shader_Animated_Blob.gif" width="150" /> |
 | `RuntimeShaderGradientBlobPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/RuntimeShaderGradientBlobPreview_Runtime_Shader_Gradient_Blob.png" width="150" /> |
+| `ShowBackgroundNoSurfacePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ShowBackgroundNoSurfacePreview_Day.png" width="150" /> |
+| `ShowBackgroundNoSurfacePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ShowBackgroundNoSurfacePreview_Night.png" width="150" /> |
 | `SvgBadgePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/SvgBadgePreview.png" width="150" /> |
 | `SvgStarTintedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/SvgStarTintedPreview.png" width="150" /> |
 | `lottie/spin.json` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/lottie__lottie_spin.png" width="150" /> |
