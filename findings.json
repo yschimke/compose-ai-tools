@@ -403,14 +403,14 @@
       "cleanBasename": "DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase.png",
       "findings": [
         {
-          "boundsInScreen": "42,231,631,294",
+          "boundsInScreen": "42,231,616,294",
           "level": "INFO",
           "message": "This non-clickable item's speakable text: \"The quick brown fox (700)\" is identical to that of 3 other item(s).",
           "type": "DuplicateSpeakableTextCheck",
           "viewDescription": "android.widget.TextView"
         },
         {
-          "boundsInScreen": "42,168,620,231",
+          "boundsInScreen": "42,168,616,231",
           "level": "INFO",
           "message": "This non-clickable item's speakable text: \"The quick brown fox (400)\" is identical to that of 4 other item(s).",
           "type": "DuplicateSpeakableTextCheck",
