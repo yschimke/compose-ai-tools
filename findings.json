@@ -1942,24 +1942,6 @@
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
-      "annotatedBasename": "BrandedTextRemote_width_200dp_height_200dp_dpi_320.a11y.png",
-      "cleanBasename": "BrandedTextRemote_width_200dp_height_200dp_dpi_320.png",
-      "findings": [
-        {
-          "boundsInScreen": "0,0,400,400",
-          "level": "ERROR",
-          "message": "This item may not have a label readable by screen readers.",
-          "type": "SpeakableTextPresentCheck",
-          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
-        }
-      ],
-      "functionName": "BrandedTextRemote",
-      "module": "design-catalog-remote-m3",
-      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.BrandedTextRemote_width=200dp,height=200dp,dpi=320",
-      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
-      "variant": "spec:width=200dp,height=200dp,dpi=320"
-    },
-    {
       "annotatedBasename": "ButtonGroupRemote_width_320dp_height_240dp_dpi_320.a11y.png",
       "cleanBasename": "ButtonGroupRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
