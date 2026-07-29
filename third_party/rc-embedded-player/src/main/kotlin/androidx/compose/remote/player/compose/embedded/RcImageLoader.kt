@@ -47,7 +47,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
  * composable and the canvas observe the same value, and so an async completion updates both.
  */
 @Stable
-public fun interface RcImageLoader {
+public fun interface RcImageLoader : RcImageSource {
     /** A reactive holder for the [Drawable] of [bitmapId]; `null` until/unless one is available. */
     public fun loadImage(bitmapId: Int): State<Drawable?>
 }

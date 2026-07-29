@@ -135,7 +135,7 @@ internal fun resolveCanvasBitmap(
     remoteContext: RemoteContext,
     id: Int,
 ): Bitmap? {
-    val loaded = graph?.imageLoader?.loadImage(id)?.value
+    val loaded = (graph?.imageLoader as? RcImageLoader)?.loadImage(id)?.value
     if (loaded is BitmapDrawable) return loaded.bitmap
     return resolveBitmap(remoteContext, id)
 }

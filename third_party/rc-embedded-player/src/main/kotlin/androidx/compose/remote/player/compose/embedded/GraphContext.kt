@@ -25,7 +25,6 @@ import androidx.compose.remote.core.VariableSupport
 import androidx.compose.remote.core.operations.FloatExpression
 import androidx.compose.remote.core.operations.ShaderData
 import androidx.compose.remote.core.operations.utilities.ArrayAccess
-import androidx.compose.remote.player.core.platform.AndroidRemoteContext
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 
@@ -49,17 +48,19 @@ import androidx.compose.runtime.derivedStateOf
  * handled by save/restore.
  *
  * Conceptually this is a [androidx.compose.remote.core.RemoteReadContext] (a value view) that
- * captures the one write an op makes as its result. It still extends [AndroidRemoteContext] only
- * because the op contract (`apply`/`updateVariables`) takes the concrete `RemoteContext`; once that
- * contract is split onto the read/write interfaces (issue #12), this collapses to a lightweight
- * `RemoteReadContext` + capture sink with no platform subclass.
+ * captures the one write an op makes as its result. It extends [StoreBackedRemoteContext] — a
+ * platform-neutral `RemoteContext` — only because the op contract (`apply`/`updateVariables`) takes
+ * the concrete `RemoteContext`; once that contract is split onto the read/write interfaces
+ * (issue #12), this collapses to a lightweight `RemoteReadContext` + capture sink with no base at
+ * all. Upstream extends `AndroidRemoteContext` here, which pinned this class — and the whole
+ * state/expression path reaching it via `LocalGraphContext` — to Android for no reason it uses.
  */
 internal class GraphContext(
     private val realState: SnapshotRemoteComposeState,
     private val computedOps: Map<Int, Operation>,
     private val timeMillis: State<Float>,
     clock: RemoteClock,
-) : AndroidRemoteContext(clock) {
+) : StoreBackedRemoteContext(clock) {
 
     init {
         // Share the leaf store so collections/objects/paths and plain variables resolve against the
@@ -85,7 +86,8 @@ internal class GraphContext(
      * isn't a composable, so can't read [LocalRcImageLoader]) needs it to resolve document image
      * draws through the same pluggable loader the composable Image layout uses.
      */
-    internal var imageLoader: RcImageLoader? = null
+    /** Carried for the draw path, never called here — see [RcImageSource]. */
+    internal var imageLoader: RcImageSource? = null
 
     // Capture bookkeeping is per-thread: `derivedStateOf` may be evaluated on whichever thread
     // reads

@@ -557,6 +557,16 @@ include(":third-party-rc-embedded-player")
 
 project(":third-party-rc-embedded-player").projectDir = file("third_party/rc-embedded-player")
 
+// The desktop half of the same player: a plain Kotlin/JVM module that compiles the *platform-neutral
+// subset* of the module above against Compose Desktop instead of the Android artifacts. It shares
+// those sources by path rather than copying them, so there is one copy of each file. This is what
+// makes "platform-neutral" a compiled fact rather than a claim — see the CMP section of
+// `third_party/rc-embedded-player/PROVENANCE.md`.
+include(":third-party-rc-embedded-player-jvm")
+
+project(":third-party-rc-embedded-player-jvm").projectDir =
+  file("third_party/rc-embedded-player-jvm")
+
 include(":data-remotecompose-core")
 
 project(":data-remotecompose-core").projectDir = file("data/remotecompose/core")

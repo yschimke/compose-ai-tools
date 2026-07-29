@@ -31,11 +31,6 @@ import androidx.collection.IntObjectMap
 import androidx.collection.ObjectIntMap
 import androidx.collection.emptyIntObjectMap
 import androidx.collection.emptyObjectIntMap
-import androidx.compose.animation.core.Easing as ComposeEasing
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.remote.core.CoreDocument
@@ -75,7 +70,6 @@ import androidx.compose.remote.core.operations.layout.managers.TextLayout
 import androidx.compose.remote.core.operations.layout.modifiers.ComponentVisibilityOperation
 import androidx.compose.remote.core.operations.utilities.AnimatedFloatExpression
 import androidx.compose.remote.core.operations.utilities.NanMap
-import androidx.compose.remote.core.operations.utilities.easing.Easing as RemoteEasing
 import androidx.compose.remote.creation.compose.capture.CapturedDocument
 import androidx.compose.remote.player.compose.ExperimentalRemotePlayerApi
 import androidx.compose.remote.player.compose.embedded.layout.RcPlayerBox
@@ -745,12 +739,3 @@ private fun findComponent(operations: Collection<Operation>, id: Int): Component
     return null
 }
 
-internal fun mapEasing(type: Int): ComposeEasing {
-    return when (type) {
-        RemoteEasing.CUBIC_LINEAR -> LinearEasing
-        RemoteEasing.CUBIC_STANDARD -> FastOutSlowInEasing
-        RemoteEasing.CUBIC_ACCELERATE -> FastOutLinearInEasing
-        RemoteEasing.CUBIC_DECELERATE -> LinearOutSlowInEasing
-        else -> LinearEasing
-    }
-}
