@@ -352,134 +352,134 @@
     "serve-viewer-catalog-knobs.dark.png": {
       "fixture": "serve-viewer-catalog-knobs",
       "theme": "dark",
-      "sha256": "111cc65836419da7cd83ecdb19bf3ee5fd0b8d1ccd240d528042f7338237f665",
-      "size": 59818
+      "sha256": "715fcaf9a318c08277a06249644921835b5a35b23ad2c54aa3f35cb2df27740f",
+      "size": 64050
     },
     "serve-viewer-catalog-knobs.light.png": {
       "fixture": "serve-viewer-catalog-knobs",
       "theme": "light",
-      "sha256": "8b687b1f5825d4d5e07d9f820e18bfaa60231bd0943bc99c2124b656a6f982dc",
-      "size": 59826
+      "sha256": "663c4b5a6d875322f084a60923e8f8e198d4c17735b5cd67c6c3f91a99b5e83a",
+      "size": 64159
     },
     "serve-viewer-focus.dark.png": {
       "fixture": "serve-viewer-focus",
       "theme": "dark",
-      "sha256": "4782545a429051d6ab76bfd07625b184b2918fdbc1e36869f265addb3a078f7b",
-      "size": 42047
+      "sha256": "a8b5b3806475f7ed9ca5af42090ae5668ba0a94f293ef9769fbcbe1cd54756e5",
+      "size": 44458
     },
     "serve-viewer-focus.light.png": {
       "fixture": "serve-viewer-focus",
       "theme": "light",
-      "sha256": "1a083cee9cd789f1769f16462d1a67b828a9799c1a9f0197fefd3d4e04f9f6c9",
-      "size": 42203
+      "sha256": "c0d8ee012ee76edaff6632c91452025ddaab7dfcfb606b83f66ffa637206bc25",
+      "size": 44637
     },
     "serve-viewer-gestures.dark.png": {
       "fixture": "serve-viewer-gestures",
       "theme": "dark",
-      "sha256": "3dc2f967d141a5cfd09e6ac1865605e59e6cbd566413a3e1aa614e0a3a49aec3",
-      "size": 42355
+      "sha256": "f767a956afb4c381b26d8a5cd1ecd6bcaa18eaf2d7b429ac20681c7669cabee2",
+      "size": 44704
     },
     "serve-viewer-gestures.light.png": {
       "fixture": "serve-viewer-gestures",
       "theme": "light",
-      "sha256": "97212eaaaf3828dae69671def94d1cf501bea30e56867a23ade03c0d8cc2df6b",
-      "size": 42514
+      "sha256": "ffb67da20caddf71501552956da611a021528c1a253ac585a04688f9e273e385",
+      "size": 44686
     },
     "serve-viewer-nav-collapsed.dark.png": {
       "fixture": "serve-viewer-nav-collapsed",
       "theme": "dark",
-      "sha256": "93efefd9016257ad8055eb1b55cc6d7c74d497dc4316f22eacc8cf635e55d53a",
-      "size": 61481
+      "sha256": "fa62c37178ed550e8dd19bbb49891f8e0a5e93b291a7730b7800b0e9193c69f4",
+      "size": 64225
     },
     "serve-viewer-nav-collapsed.light.png": {
       "fixture": "serve-viewer-nav-collapsed",
       "theme": "light",
-      "sha256": "4310727fb3686d2fd0697668a844aa60874a3e56d6b35c5b5893b8ed95fa9946",
-      "size": 61563
+      "sha256": "43788fd34e2bcdd37408419d1660d1cc77ab144e19195f4bf86ff84558b51668",
+      "size": 64350
     },
     "serve-viewer-path.dark.png": {
       "fixture": "serve-viewer-path",
       "theme": "dark",
-      "sha256": "bb810b2e62e94dd9f60894b3bd6d2a56de5625c609adfcdb02a909363b33d56e",
-      "size": 56204
+      "sha256": "415ff64844be0782f5bcf228b0b8955f9d8e9852e5377673de6b5af480ad1626",
+      "size": 58941
     },
     "serve-viewer-path.light.png": {
       "fixture": "serve-viewer-path",
       "theme": "light",
-      "sha256": "97c82a5f0cfbf4c13fb4ca7209a56f7bd9353ce533a0c906de7bbbab04bfdd90",
-      "size": 56514
+      "sha256": "774aaf10bdd27b00c23bd8b2ce5ac8dc6cb4d76eae78ca4346ba299f959b2afd",
+      "size": 59099
     },
     "serve-viewer-states.dark.png": {
       "fixture": "serve-viewer-states",
       "theme": "dark",
-      "sha256": "74a9f9ddcbc6ad2ce66fdefa9f092be24df80ea96f3200727468c5ac19386efd",
-      "size": 60910
+      "sha256": "33c7dfc463ced7dd597138b500745e75843e0797b1d91c5217ae56fe4a3d435c",
+      "size": 63701
     },
     "serve-viewer-states.light.png": {
       "fixture": "serve-viewer-states",
       "theme": "light",
-      "sha256": "42bc3015bf648045fb7e60aa25cb4c4d06777308774b73c169180670bcf54905",
-      "size": 61023
+      "sha256": "fea250b0186fc23964adfd8880b69e1ef13cbe95b6291159c19adf536def0b20",
+      "size": 63837
     },
     "serve-viewer-themes.dark.png": {
       "fixture": "serve-viewer-themes",
       "theme": "dark",
-      "sha256": "75cb529a6d00910c678f94a845ea169ea58b3232961c36761dbc43612a61447a",
-      "size": 40031
+      "sha256": "47be307e6712aa8b72b91b2a8559a7029aa332c54f5a3961801a848d2282f983",
+      "size": 42347
     },
     "serve-viewer-themes.light.png": {
       "fixture": "serve-viewer-themes",
       "theme": "light",
-      "sha256": "36bc9b3f672ceb6342fdce12c9efd6e02b6e811e39c8d9fd356451a025e2c318",
-      "size": 40165
+      "sha256": "2e010c8c6d6a97b86568b6bf08296d46c4433d1d0a25040b2a77a7611e9f0ae9",
+      "size": 42504
     },
     "serve-viewer-variants.dark.png": {
       "fixture": "serve-viewer-variants",
       "theme": "dark",
-      "sha256": "3382cfe95e317f627489b22b655ddeef43b04982d9ff2c69984d83fcf0d0bcd2",
-      "size": 59506
+      "sha256": "c82819fe3ee57ef324401cd06c22acf192ae6a5298e710dec1be9be20667e4fa",
+      "size": 62366
     },
     "serve-viewer-variants.light.png": {
       "fixture": "serve-viewer-variants",
       "theme": "light",
-      "sha256": "12037c0382208596f49b4ab3aa23f78867b938755e1566db125bd067dbac766b",
-      "size": 59596
+      "sha256": "00f79a5cce6c7e227af9eb34643dad6dcb7a76b373bb46f228764c6720f078f9",
+      "size": 62475
     },
     "serve-viewer-wasm-live.dark.png": {
       "fixture": "serve-viewer-wasm-live",
       "theme": "dark",
-      "sha256": "0dbdd385ab57822b4841f508075da9973f99265b9544e7cf4f6d2c40b008eaed",
-      "size": 63217
+      "sha256": "e70262b49cbd0704ee3e0539919698795e50ed3820217033eb2807bf483ff06d",
+      "size": 64621
     },
     "serve-viewer-wasm-live.light.png": {
       "fixture": "serve-viewer-wasm-live",
       "theme": "light",
-      "sha256": "ee9dea8299041f247cc72572b5049d94f6eb07a05ae9b48ceb3af3b2be66290c",
-      "size": 63419
+      "sha256": "00de3aefd276ab3d681d35f94b9c3725e948267b8c0a6da9ae5039add3f6e4eb",
+      "size": 64995
     },
     "serve-viewer-wasm.dark.png": {
       "fixture": "serve-viewer-wasm",
       "theme": "dark",
-      "sha256": "e10d8a4625bcea87f31f25e16f977f26949c16733663431765d740d6a89c41e8",
-      "size": 59060
+      "sha256": "60beaedf33166db840a678968410c4b95dabdeb45664188a3b15566d5ad54194",
+      "size": 60657
     },
     "serve-viewer-wasm.light.png": {
       "fixture": "serve-viewer-wasm",
       "theme": "light",
-      "sha256": "35240497511b7c2f0df8ec12d6bfe6ad342b6e11cfcf7eed0bb994c2f27a154e",
-      "size": 59518
+      "sha256": "5244da6163ac00725954543e71b39a51df30ffd57df5ae31e4dd543dfd9ca961",
+      "size": 61001
     },
     "serve-viewer.dark.png": {
       "fixture": "serve-viewer",
       "theme": "dark",
-      "sha256": "e28e788d5b3ed1121fad24dac19ada2208f79b94a21a2e29678b3eb0bbb58ca1",
-      "size": 52926
+      "sha256": "4c024b44680029de5207428d154e8c3974b26e1a988b1ce73cb97bac03f103bc",
+      "size": 55222
     },
     "serve-viewer.light.png": {
       "fixture": "serve-viewer",
       "theme": "light",
-      "sha256": "9be85675f5a9bb1c226c879fc155ede0cea860fb6015ea0079baa13ac60f2968",
-      "size": 53222
+      "sha256": "8f1b85c7c059d3f4cf2a63debd72fdb7348b7145f0dc5369f1c635f660a71a6a",
+      "size": 55424
     },
     "serve-wear-scroll-long-capsule.dark.png": {
       "fixture": "serve-wear-scroll-long-capsule",
