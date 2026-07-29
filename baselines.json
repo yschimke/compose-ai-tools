@@ -361,6 +361,18 @@
       "sha256": "663c4b5a6d875322f084a60923e8f8e198d4c17735b5cd67c6c3f91a99b5e83a",
       "size": 64159
     },
+    "serve-viewer-connecting.dark.png": {
+      "fixture": "serve-viewer-connecting",
+      "theme": "dark",
+      "sha256": "d044a5951e96cd87b8e09f28c8eaa74304ceff6d0829b9850b976e344d2e7d30",
+      "size": 55489
+    },
+    "serve-viewer-connecting.light.png": {
+      "fixture": "serve-viewer-connecting",
+      "theme": "light",
+      "sha256": "dab4ab7deafa9d6cbc1c052cb1d9f1081fafcf7f075a041dbe3cbef4f1cf48a1",
+      "size": 55455
+    },
     "serve-viewer-focus.dark.png": {
       "fixture": "serve-viewer-focus",
       "theme": "dark",
