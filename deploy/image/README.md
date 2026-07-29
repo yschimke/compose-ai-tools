@@ -259,10 +259,13 @@ should never show two different typefaces.
 - The `fonts` build stage runs `prewarm-fonts.sh` into `/opt/font-cache/fonts`, mirroring
   `GoogleFontInterceptor`'s cache filenames and CSS2 query exactly. A family that won't resolve
   **fails the build** — a silently font-less image would just reintroduce the drift.
-- `entrypoint.sh` copies anything missing into `~/.cache/composeai/fonts` on every boot. It has to
+- `entrypoint.sh` installs the baked faces into `~/.cache/composeai/fonts` on every boot. It has to
   be a copy, not a `COPY` to that path: the cache is a named volume, and a volume only inherits
-  image content when first created, so a long-lived box would otherwise never see the baked faces.
-  Existing files are never overwritten.
+  image content when first created, so a long-lived box would otherwise never see them. The baked
+  bytes win on a mismatch — the volume's copy has no authority (the PNGs are rendered in CI from
+  *its* cache, not this host), so an entry left by an earlier runtime fetch is unknown-provenance
+  and an upgrade must be able to correct it. Replacement is temp + `mv`, before serve starts.
+  Faces the image doesn't ship are left alone.
 - **Licensing.** Baking redistributes font binaries, which the runtime fetch did not. Every baked
   family is in the [google/fonts](https://github.com/google/fonts) corpus under OFL-1.1 or
   Apache-2.0. **`Google Sans Flex` is deliberately not baked** — the CSS2 endpoint serves it, but it

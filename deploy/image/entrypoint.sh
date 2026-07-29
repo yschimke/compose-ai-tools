@@ -6,23 +6,44 @@ cd /project
 
 # Seed the downloadable-font cache from the faces baked into the image (see the Dockerfile's
 # `fonts` stage). `~/.cache/composeai/fonts` is a named volume, and a volume only inherits image
-# content when it is first created, so a box whose volume predates this change would otherwise
-# never get them — copying on every boot covers both cases. Existing files are never overwritten:
-# a face already in the cache is the one previous renders used, and replacing it mid-life would
-# shift text metrics under the baked catalog PNGs. Best-effort — the renderer still fetches on a
-# miss, exactly as it did before.
+# content when it is FIRST created, so a box whose volume predates this change would otherwise
+# never get them — copying on every boot covers both cases.
+#
+# The BAKED bytes win on a mismatch. The volume's copy has no authority: the catalog PNGs are
+# rendered in CI from ITS font cache, never from this host, so an entry left here by an earlier
+# runtime fetch is of unknown provenance and may already differ from what the PNG was rendered
+# with. The baked set is the deterministic, release-pinned one, so on a long-lived box an upgrade
+# has to be able to correct a drifted entry — otherwise the first stale fetch sticks forever.
+# Replacement is via temp + `mv` so a torn copy is never visible to a render, and it happens before
+# serve starts, so no daemon is holding the old typeface.
+#
+# Faces the image doesn't ship (e.g. a runtime-fetched Google Sans Flex) are left alone.
+# Best-effort throughout — the renderer still fetches on a miss, exactly as it did before.
 FONT_CACHE_SRC="${FONT_CACHE_SRC:-/opt/font-cache/fonts}"
 FONT_CACHE_DST="${XDG_CACHE_HOME:-${HOME:-/root}/.cache}/composeai/fonts"
 if [[ -d "${FONT_CACHE_SRC}" ]]; then
   if mkdir -p "${FONT_CACHE_DST}" 2>/dev/null; then
     seeded=0
+    refreshed=0
     for f in "${FONT_CACHE_SRC}"/*.ttf; do
       [[ -e "$f" ]] || continue
-      if [[ ! -s "${FONT_CACHE_DST}/$(basename "$f")" ]]; then
-        cp -p "$f" "${FONT_CACHE_DST}/" 2>/dev/null && seeded=$((seeded + 1)) || true
+      dst="${FONT_CACHE_DST}/$(basename "$f")"
+      if [[ -s "${dst}" ]]; then
+        cmp -s "$f" "${dst}" && continue
+        action=refreshed
+      else
+        action=seeded
+      fi
+      if cp -p "$f" "${dst}.tmp" 2>/dev/null && mv -f "${dst}.tmp" "${dst}" 2>/dev/null; then
+        [[ "${action}" == "seeded" ]] && seeded=$((seeded + 1)) || refreshed=$((refreshed + 1))
+      else
+        rm -f "${dst}.tmp" 2>/dev/null || true
+        echo "entrypoint: warn: could not install baked font $(basename "$f")" >&2
       fi
     done
-    [[ "${seeded}" -eq 0 ]] || echo "entrypoint: seeded ${seeded} baked font(s) into ${FONT_CACHE_DST}" >&2
+    if [[ "${seeded}" -gt 0 || "${refreshed}" -gt 0 ]]; then
+      echo "entrypoint: baked fonts → ${FONT_CACHE_DST} (${seeded} new, ${refreshed} refreshed)" >&2
+    fi
   else
     echo "entrypoint: warn: could not create ${FONT_CACHE_DST}; fonts will be fetched at runtime" >&2
   fi
