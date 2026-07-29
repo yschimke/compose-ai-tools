@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.19.7](https://github.com/yschimke/compose-ai-tools/compare/v0.19.6...v0.19.7) (2026-07-29)
+
+
+### Features
+
+* **design-artifacts:** opt-in embedded-player lane for rc-compare ([#2939](https://github.com/yschimke/compose-ai-tools/issues/2939)) ([473da70](https://github.com/yschimke/compose-ai-tools/commit/473da70e1317ad0e157153108d4aa46cea263701))
+* **design-artifacts:** per-entry / per-axis render priority for catalog specs ([#2959](https://github.com/yschimke/compose-ai-tools/issues/2959)) ([ddf3413](https://github.com/yschimke/compose-ai-tools/commit/ddf34138fea0349b76fc4705afc776c9c77a54d2))
+* **figma-svg:** export a node's own imperative draw by re-invoking it offscreen ([#2944](https://github.com/yschimke/compose-ai-tools/issues/2944)) ([eaa0729](https://github.com/yschimke/compose-ai-tools/commit/eaa0729c8215d5dbafe5eeb088bc348f6c6c9785))
+* **rc-embedded:** run the player's value layer on the desktop JVM ([#2943](https://github.com/yschimke/compose-ai-tools/issues/2943)) ([26c4e29](https://github.com/yschimke/compose-ai-tools/commit/26c4e29505fc58f145f4de5e05065d99751ce020))
+* **serve:** make the producer-trust store pure config with an admin API ([#2961](https://github.com/yschimke/compose-ai-tools/issues/2961)) ([aee444b](https://github.com/yschimke/compose-ai-tools/commit/aee444bf5eec16a3ff542b4877f751b69a1a7ae8))
+* **serve:** publish the pocketcasts and pocketcasts-wear catalogs ([#2962](https://github.com/yschimke/compose-ai-tools/issues/2962)) ([4c502c1](https://github.com/yschimke/compose-ai-tools/commit/4c502c151893790fdc5fdf64d6daabf555539295))
+* **trust:** trust yschimke/horologist design-artifacts branches ([#2953](https://github.com/yschimke/compose-ai-tools/issues/2953)) ([b896b3e](https://github.com/yschimke/compose-ai-tools/commit/b896b3e8097c85275f253dbd235a3604a79302af))
+
+
+### Bug Fixes
+
+* **rc-compare:** don't score a preview whose baked reference is blank ([#2933](https://github.com/yschimke/compose-ai-tools/issues/2933)) ([17b46be](https://github.com/yschimke/compose-ai-tools/commit/17b46bee65fe25883d2eeb30d34db123cf4cc9db))
+* **rc-embedded-player:** let the composition reach idle, drop dead autoUpdate ([#2945](https://github.com/yschimke/compose-ai-tools/issues/2945)) ([5056931](https://github.com/yschimke/compose-ai-tools/commit/50569312b24c86e69b0b6ad403dd9a50c93e930d))
+* **rc-embedded:** stop the guard certifying a file that can't move yet ([#2936](https://github.com/yschimke/compose-ai-tools/issues/2936)) ([62997bc](https://github.com/yschimke/compose-ai-tools/commit/62997bc224209ac3150e60e4f79cb37fdad33d75))
+
 ## [0.19.6](https://github.com/yschimke/compose-ai-tools/compare/v0.19.5...v0.19.6) (2026-07-29)
 
 
