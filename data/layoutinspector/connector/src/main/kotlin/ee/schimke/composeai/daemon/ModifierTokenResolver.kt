@@ -449,6 +449,55 @@ internal object ModifierTokenResolver {
   }
 
   /**
+   * Follows a delegating painter down to the concrete painter it ultimately draws, by looking for a
+   * single field that is itself a `Painter`. Returns [painter] unchanged when it delegates to
+   * nothing (the common case) — so a real `ColorPainter`, `BitmapPainter` or `VectorPainter` is
+   * handed back as-is and classified normally by the caller.
+   *
+   * A wrapper carrying **more than one** painter field is left alone: which one is the fill is a
+   * guess, and guessing wrong would paint the container in the wrong colour — worse than the raster
+   * fallback. Depth is bounded so a self-referential painter can't spin.
+   */
+  private fun unwrapDelegatingPainter(painter: Any): Any {
+    var current = painter
+    repeat(MAX_PAINTER_UNWRAP_DEPTH) {
+      if (current.javaClass.simpleName == "ColorPainter") return current
+      val delegates =
+        generateSequence(current.javaClass as Class<*>?) { it.superclass }
+          .flatMap { it.declaredFields.asSequence() }
+          .filter { field ->
+            field.type.name != current.javaClass.name && isPainterType(field.type)
+          }
+          .toList()
+      val next =
+        delegates.singleOrNull()?.let { field ->
+          runCatching {
+              field.isAccessible = true
+              field.get(current)
+            }
+            .getOrNull()
+        } ?: return current
+      current = next
+    }
+    return current
+  }
+
+  /** True when [type] is (or extends) Compose's `Painter`. */
+  private fun isPainterType(type: Class<*>): Boolean =
+    generateSequence(type as Class<*>?) { it.superclass }
+      .any { it.name == "androidx.compose.ui.graphics.painter.Painter" }
+
+  /** Bound on [unwrapDelegatingPainter]'s descent; real wrappers nest one or two deep. */
+  private const val MAX_PAINTER_UNWRAP_DEPTH = 4
+
+  /**
+   * Test seam for [painterColorHex]'s painter half: resolves the flat fill a `Modifier.paint`
+   * painter would contribute, with no modifier element map to fall back on.
+   */
+  internal fun painterFillHexForTest(painter: Any): String? =
+    painterColorHex(mapOf("painter" to painter), Any())
+
+  /**
    * Resolves a painter-based container fill (`Modifier.paint(painter, alpha, colorFilter)`) as ARGB
    * hex. Only a solid [androidx.compose.ui.graphics.painter.ColorPainter] yields a colour — the
    * fill Wear M3 surfaces apply for their container — while bitmap / vector / gradient painters (an
@@ -516,7 +565,15 @@ internal object ModifierTokenResolver {
           }
           .getOrNull() ?: return null
       } else {
-        painter
+        // Any *other* delegating painter is unwrapped structurally rather than by name (issue
+        // #2615). Wear's scaling list wraps a surface's fill in more than one shape depending on
+        // the component — a `FilledIconButton` or a transformed `SurfaceTransformation` card does
+        // not necessarily arrive as `BackgroundPainter` — and each unrecognised wrapper collapsed
+        // its whole container to a raster, taking the editable subtree with it: exactly the
+        // "transformed surfaces absent, reduced to isolated raster/icon leaves" symptom. Following
+        // a single painter-typed field down to a `ColorPainter` recovers the flat fill without
+        // needing to know the wrapper's class.
+        unwrapDelegatingPainter(painter)
       }
     if (fillPainter.javaClass.simpleName != "ColorPainter") return null
     val baseArgb =
