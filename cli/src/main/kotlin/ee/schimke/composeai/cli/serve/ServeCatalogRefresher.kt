@@ -64,6 +64,19 @@ internal class ServeCatalogRefresher(
     }
   }
 
+  /**
+   * Forget the recorded head for [systems], so the next [tick] re-fetches them even though their
+   * branch hasn't moved.
+   *
+   * The SHA short-circuit in [checkOne] is what makes polling cheap, but it also means a catalog
+   * can only be re-verified when its branch changes. Revoking a producer's trust has to re-verify
+   * *now* — otherwise the revoked catalog keeps whatever verdict it loaded with, potentially
+   * indefinitely.
+   */
+  fun forgetHeads(systems: Collection<String>) {
+    for (system in systems) lastHead.remove(system)
+  }
+
   /** Start the daemon poller. Idempotent-safe to call once after [seedInitialHeads]. */
   fun start() {
     exec.scheduleWithFixedDelay(

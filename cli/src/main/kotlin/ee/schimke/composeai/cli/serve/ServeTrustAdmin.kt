@@ -56,10 +56,41 @@ class ServeTrustStoreFile(
  * restart. Reads are lock-free through the `@Volatile` reference; writers serialise in
  * [ServeTrustAdmin].
  */
-class MutableTrustStore(initial: TrustStore = TrustStore.EMPTY) {
+class MutableTrustStore(
+  initial: TrustStore = TrustStore.EMPTY,
+  /**
+   * The backing document, when there is one. Given a [source], [get] also picks up an operator's
+   * **direct** edit to producers.json — without it, a hand-edit would sit unnoticed until the next
+   * admin call or a restart, which is exactly the staleness this class exists to remove.
+   */
+  private val source: ServeTrustStoreFile? = null,
+  private val onLog: (String) -> Unit = { System.err.println(it) },
+) {
   @Volatile private var current: TrustStore = initial
 
-  fun get(): TrustStore = current
+  /**
+   * The trust store as of now, re-read from [source] on every call.
+   *
+   * Deliberately not mtime-gated. Filesystem timestamp granularity is coarse enough that two writes
+   * inside the same tick are indistinguishable, so a "has it changed?" check can silently miss an
+   * edit — the exact staleness this exists to remove. Re-parsing instead is affordable because a
+   * verification is *rare and expensive*: it accompanies a catalog branch fetch or the hashing of
+   * an uploaded bundle, next to which reading a few KB of JSON does not register.
+   */
+  fun get(): TrustStore {
+    val file = source ?: return current
+    // Only a successfully parsed, present file replaces what's in force. A malformed or truncated
+    // edit — or a deleted file — keeps the last good store rather than dropping to EMPTY: failing
+    // closed here would silently un-trust every catalog on the box mid-flight over a half-saved
+    // write. The admin API separately refuses to *write* over an unreadable document, so stale
+    // state can't be laundered back onto disk.
+    if (file.exists()) {
+      runCatching { file.load() }
+        .onSuccess { current = it }
+        .onFailure { onLog("serve: ignoring unreadable ${file.displayPath}: ${it.message}") }
+    }
+    return current
+  }
 
   fun set(store: TrustStore) {
     current = store
@@ -109,6 +140,14 @@ class ServeTrustAdmin(
   private val store: MutableTrustStore,
   /** The operator's producers.json; null ⇒ changes are runtime-only and don't survive a restart. */
   private val file: ServeTrustStoreFile?,
+  /**
+   * Called with the reduced store after trust is **removed**, so the caller can retire anything
+   * that was already trusted under the old one. Revocation that only affects future verifications
+   * isn't revocation: a loaded catalog keeps its `Trusted` verdict (and any live daemon) in the
+   * session registry, and the branch refresher skips a reload while the branch SHA is unchanged —
+   * so without this the producer stays executable until its branch moves or the box restarts.
+   */
+  private val onRevoke: (TrustStore) -> Unit = {},
   private val onLog: (String) -> Unit = { System.err.println(it) },
 ) {
   /**
@@ -229,11 +268,25 @@ class ServeTrustAdmin(
    */
   private fun mutate(summary: String, edit: (TrustStore) -> TrustStore?): Result =
     synchronized(lock) {
-      val onDisk = file?.let { runCatching { it.load() }.getOrNull() }
-      val current = onDisk ?: store.get()
+      val target = file
+      // An UNREADABLE existing document aborts the mutation instead of falling back to the cached
+      // store. Swallowing the parse error and saving would replace a half-written or malformed
+      // producers.json with stale state plus this edit — silently resurrecting entries the operator
+      // was in the middle of removing, which is the opposite of the hand-edit rule below. An ABSENT
+      // file is different and fine: there's nothing to lose, so it reads as the empty store.
+      val current =
+        if (target == null) store.get()
+        else
+          runCatching { target.load() }
+            .getOrElse { e ->
+              onLog("serve: refusing to rewrite unreadable ${target.displayPath}: ${e.message}")
+              return Result.Invalid(
+                "trust store ${target.displayPath} is present but unreadable " +
+                  "(${e.message ?: "parse failed"}); fix or remove it before editing trust"
+              )
+            }
       val updated = edit(current) ?: return Result.Conflict("$summary: no change")
       store.set(updated)
-      val target = file
       val warning =
         if (target == null) "not persisted: no trust store file is configured"
         else
@@ -243,6 +296,19 @@ class ServeTrustAdmin(
               "not persisted: ${e.message ?: "write failed"}"
             }
       onLog("serve: trust $summary updated via admin API")
+      // Anything that was trusted only under the old store has to be retired now, not at the next
+      // branch move. Runs inside the lock so a concurrent add can't re-trust mid-teardown; failures
+      // are logged rather than thrown, since the trust change itself has already taken effect.
+      if (isReduction(current, updated)) {
+        runCatching { onRevoke(updated) }
+          .onFailure { onLog("serve: revocation cleanup after $summary failed: ${it.message}") }
+      }
       Result.Ok(summary, warning)
     }
+
+  /** True when [updated] trusts strictly less than [before] — i.e. this was a revocation. */
+  private fun isReduction(before: TrustStore, updated: TrustStore): Boolean =
+    updated.branches.size < before.branches.size ||
+      updated.keys.size < before.keys.size ||
+      updated.oidc.size < before.oidc.size
 }

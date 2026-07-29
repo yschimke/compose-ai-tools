@@ -168,6 +168,93 @@ class ServeTrustAdminTest {
   }
 
   @Test
+  fun `a direct file edit is picked up without an admin call or a restart`() {
+    val fs = FakeFileSystem()
+    fs.createDirectories("/config".toPath())
+    val file = ServeTrustStoreFile("/config/producers.json".toPath(), fs)
+    file.save(TrustStore(branches = listOf(TrustedBranch("a/one", "design-artifacts/*"))))
+    val store = MutableTrustStore(file.load(), source = file, onLog = {})
+    assertFalse(store.get().trustsBranch("b/two", "design-artifacts/x"))
+
+    // The operator edits the mounted producers.json by hand. No admin call, no restart.
+    file.save(
+      TrustStore(
+        branches =
+          listOf(
+            TrustedBranch("a/one", "design-artifacts/*"),
+            TrustedBranch("b/two", "design-artifacts/*"),
+          )
+      )
+    )
+
+    assertTrue(store.get().trustsBranch("b/two", "design-artifacts/x"))
+  }
+
+  @Test
+  fun `an unreadable file keeps the last good store rather than un-trusting everything`() {
+    val fs = FakeFileSystem()
+    fs.createDirectories("/config".toPath())
+    val path = "/config/producers.json".toPath()
+    val file = ServeTrustStoreFile(path, fs)
+    file.save(TrustStore(branches = listOf(TrustedBranch("a/one", "design-artifacts/*"))))
+    val store = MutableTrustStore(file.load(), source = file, onLog = {})
+
+    // A half-written edit. Dropping to EMPTY here would un-trust every catalog on the box
+    // mid-flight.
+    fs.write(path) { writeUtf8("{ not json") }
+
+    assertTrue(store.get().trustsBranch("a/one", "design-artifacts/x"))
+  }
+
+  @Test
+  fun `an admin mutation refuses to rewrite an unreadable trust document`() {
+    val fs = FakeFileSystem()
+    fs.createDirectories("/config".toPath())
+    val path = "/config/producers.json".toPath()
+    val file = ServeTrustStoreFile(path, fs)
+    file.save(TrustStore(branches = listOf(TrustedBranch("a/one", "design-artifacts/*"))))
+    val admin = ServeTrustAdmin(MutableTrustStore(file.load()), file, onLog = {})
+    fs.write(path) { writeUtf8("{ truncated") }
+
+    val result = admin.add(AdminTrustEntry(kind = "branch", repo = "b/two"))
+
+    // Saving over it would resurrect stale entries the operator may be mid-way through removing.
+    assertTrue(result is ServeTrustAdmin.Result.Invalid, result.toString())
+    assertEquals("{ truncated", fs.read(path) { readUtf8() }, "the bad file must be left alone")
+  }
+
+  @Test
+  fun `revoking trust fires the revocation hook with the reduced store`() {
+    val (_, _, file) =
+      fixture(TrustStore(branches = listOf(TrustedBranch("a/one", "design-artifacts/*"))))
+    val revoked = mutableListOf<TrustStore>()
+    val admin =
+      ServeTrustAdmin(
+        MutableTrustStore(file.load()),
+        file,
+        onRevoke = { revoked += it },
+        onLog = {},
+      )
+
+    admin.remove(AdminTrustEntry(kind = "branch", repo = "a/one", branch = "design-artifacts/*"))
+
+    assertEquals(1, revoked.size, "a removal must trigger cleanup of what that trust was buying")
+    assertFalse(revoked.single().trustsBranch("a/one", "design-artifacts/x"))
+  }
+
+  @Test
+  fun `adding trust does not fire the revocation hook`() {
+    val (_, _, file) = fixture()
+    var fired = 0
+    val admin =
+      ServeTrustAdmin(MutableTrustStore(file.load()), file, onRevoke = { fired++ }, onLog = {})
+
+    admin.add(AdminTrustEntry(kind = "branch", repo = "a/one", branch = "design-artifacts/*"))
+
+    assertEquals(0, fired)
+  }
+
+  @Test
   fun `concurrent additions all survive in the trust file`() {
     val (admin, _, file) = fixture()
     val threads =

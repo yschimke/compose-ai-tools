@@ -256,7 +256,16 @@ class ServeCommand(args: List<String>) : Command(args) {
    * or an admin change — needed a restart to take effect; consumers now read through this holder on
    * every verification instead.
    */
-  private val trustStore: MutableTrustStore by lazy { MutableTrustStore(loadTrustStore()) }
+  private val trustStore: MutableTrustStore by lazy {
+    MutableTrustStore(loadTrustStore(), source = trustStoreFile)
+  }
+
+  /**
+   * The running branch poller, when there is one. Held so a trust revocation can invalidate the
+   * remembered branch heads of the catalogs it just retired ([retireNewlyUntrusted]); the refresher
+   * is built before the server and reaches it only as a closeable, so there's no other handle.
+   */
+  @Volatile private var activeRefresher: ServeCatalogRefresher? = null
 
   /** The producers.json document backing [trustStore], when `--trust-store` names one. */
   private val trustStoreFile: ServeTrustStoreFile? by lazy {
@@ -636,6 +645,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         ?.also {
           it.seedInitialHeads(catalogReg.loads.availableSystems())
           it.start()
+          activeRefresher = it
         }
     // Runtime ingestion (--accept-bundles): clients POST a bundle (or a ?url= to one) and it's
     // registered as a pinned session. Unpacked under a temp dir for this server's lifetime.
@@ -697,6 +707,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         ?.also {
           it.seedInitialHeads(catalogReg.loads.availableSystems())
           it.start()
+          activeRefresher = it
         }
     val bundleStore = if (acceptBundles) openUploadStore(registry) else null
 
@@ -906,7 +917,21 @@ class ServeCommand(args: List<String>) : Command(args) {
     // there's nothing to fetch, and a box with no trust store yet is exactly the one that most
     // needs
     // to be able to add its first producer without an image rebuild.
-    val trustAdmin = if (adminToken != null) ServeTrustAdmin(trustStore, trustStoreFile) else null
+    val trustAdmin =
+      if (adminToken != null) {
+        ServeTrustAdmin(
+          store = trustStore,
+          file = trustStoreFile,
+          // Revoking trust must retire what that trust was already buying. Each affected catalog's
+          // session (and its live daemon, via unregister) is dropped and its tracker row marked
+          // failed, so the branch refresher re-fetches it and it comes back re-verified — as
+          // `unverified`, serving baked data tiers only, instead of keeping a stale Trusted
+          // verdict.
+          onRevoke = { updated -> retireNewlyUntrusted(updated, catalogLoads, registry) },
+        )
+      } else {
+        null
+      }
     val server =
       ServeHttpServer(
         host = host,
@@ -1556,6 +1581,42 @@ class ServeCommand(args: List<String>) : Command(args) {
         "(?session=$system)"
     )
     return true
+  }
+
+  /**
+   * Drop every registered catalog whose source branch [updated] no longer trusts.
+   *
+   * Called after a trust revocation. Unregistering closes the session's host, which is what takes
+   * down a live daemon started under the old verdict; marking the tracker row failed is what gets
+   * the catalog re-fetched — [ServeCatalogRefresher] skips a reload while the branch SHA is
+   * unchanged, so a revoked-but-still-loaded catalog would otherwise keep serving as `Trusted`
+   * until its branch moved or the box restarted.
+   */
+  private fun retireNewlyUntrusted(
+    updated: TrustStore,
+    tracker: CatalogLoadTracker?,
+    registry: ServeSessionRegistry,
+  ) {
+    val loads = tracker ?: return
+    val retired = mutableListOf<String>()
+    for (state in loads.snapshot()) {
+      val repo = state.config.repo
+      val branch = state.config.branch
+      if (updated.trustsBranch(repo, branch)) continue
+      // Only a catalog that actually loaded under the old trust needs tearing down; a pending or
+      // already-failed row has nothing serving to revoke.
+      if (!state.available) continue
+      registry.unregister(state.config.system)
+      loads.recordFailure(state.config.system, "producer trust revoked; awaiting re-verification")
+      retired += state.config.system
+      System.err.println(
+        "serve: retired ${state.config.system} — $repo@$branch is no longer trusted"
+      )
+    }
+    // Clear the remembered branch heads so the next refresh pass re-fetches these instead of
+    // short-circuiting on an unchanged SHA — without this the teardown would be undone only by a
+    // branch move or a restart.
+    if (retired.isNotEmpty()) activeRefresher?.forgetHeads(retired)
   }
 
   /**

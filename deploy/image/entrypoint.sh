@@ -121,17 +121,26 @@ fi
 # bare image pull self-heals a box without editing compose. Override with your own path to pin
 # different producers, or the literal `none` to run trustless (catalogs then show Unverified).
 # NB opt-out is `none`, not empty — empty deliberately falls back to the default.
+#
+# Seeding applies ONLY to the default path. An operator who names their own SERVE_TRUST_STORE and
+# whose file is missing — a typo, an unmounted secret, a broken deploy — must NOT silently get the
+# image's allowlist instead: with SERVE_ALLOW_RENDER_TRUSTED=1 that would execute producers they
+# never configured. For an explicit override the file has to already be there, and a missing one
+# keeps the old hard failure (the CLI exits non-zero on an absent --trust-store).
+serve_trust_store_defaulted=0
+[[ -z "${SERVE_TRUST_STORE:-}" ]] && serve_trust_store_defaulted=1
 : "${SERVE_TRUST_STORE:=/config/producers.json}"
 if [[ "${SERVE_TRUST_STORE}" != "none" ]]; then
-  if [[ ! -f "${SERVE_TRUST_STORE}" && -f /trust/producers.json ]]; then
+  if [[ "${serve_trust_store_defaulted}" == 1 && ! -f "${SERVE_TRUST_STORE}" &&
+    -f /trust/producers.json ]]; then
     if mkdir -p "$(dirname "${SERVE_TRUST_STORE}")" 2>/dev/null &&
       cp /trust/producers.json "${SERVE_TRUST_STORE}" 2>/dev/null; then
       echo "entrypoint: seeded ${SERVE_TRUST_STORE} from the image default" >&2
     else
       # Read-only /config (or a bind mount pointing somewhere unwritable): serve the baked store
       # rather than refusing to start. Admin trust writes will report themselves unpersisted.
-      SERVE_TRUST_STORE=/trust/producers.json
       echo "entrypoint: ${SERVE_TRUST_STORE} not writable — using the baked trust store" >&2
+      SERVE_TRUST_STORE=/trust/producers.json
     fi
   fi
   args+=(--trust-store "${SERVE_TRUST_STORE}")

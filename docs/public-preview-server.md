@@ -433,6 +433,18 @@ no restart, and are written back to `producers.json` the same way catalog change
 only; key material is never echoed back. Re-adding a producer is `409`, a malformed entry is `400`,
 and a repo pattern that matches every repository is refused outright.
 
+Editing `producers.json` directly works the same way: the file is re-read on each verification, so a
+hand-edit needs no admin call and no restart. A malformed or truncated edit is ignored with a log
+line and the last good allowlist stays in force — failing closed there would un-trust every catalog
+on the box over a half-saved write. Conversely an admin mutation **refuses** to run against a file
+that exists but won't parse (`400`), rather than overwriting it with cached state plus the edit.
+
+**Revoking trust revokes it now.** A successful removal retires every catalog whose branch the
+reduced store no longer trusts: the session is unregistered (which tears down any live daemon started
+under the old verdict) and its branch head forgotten, so the next refresh pass re-fetches and
+re-verifies it instead of short-circuiting on an unchanged SHA. Without that, a revoked producer
+would keep serving as `Trusted` until its branch happened to move.
+
 > **The admin token can grant code execution.** On a box with `SERVE_ALLOW_RENDER_TRUSTED` on (the
 > default), trust is not only a badge — it gates server-side re-render, so trusting a branch makes
 > that producer's Compose eligible to be built and executed on your box. Treat `SERVE_ADMIN_TOKEN`
@@ -456,6 +468,11 @@ Set `SERVE_TRUST_STORE` to your own path to pin different producers, or `none` t
 (Empty falls back to the default — use `none` to opt out — which also means a bare image pull
 self-heals a box without editing its compose.) If `/config` isn't writable the entrypoint falls back
 to serving the baked store read-only, and admin trust writes report themselves unpersisted.
+
+Seeding applies **only** to the default path. If you name your own `SERVE_TRUST_STORE` and the file
+isn't there — a typo, an unmounted secret, a broken deploy — the entrypoint does *not* substitute the
+image's allowlist; with server-side re-render on, that would execute producers you never configured.
+An explicit override has to exist, and a missing one keeps the old hard failure.
 
 The catalog set is **not** baked the same way — see "The catalog set is config, not image content"
 above: the image ships it only as a first-boot seed, and the live copy lives on the `/config` volume
