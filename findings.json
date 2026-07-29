@@ -1484,6 +1484,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "ShowBackgroundNoSurfacePreview_Day.a11y.png",
+      "cleanBasename": "ShowBackgroundNoSurfacePreview_Day.png",
+      "findings": [],
+      "functionName": "ShowBackgroundNoSurfacePreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.ShowBackgroundNightPreviewsKt.ShowBackgroundNoSurfacePreview_Day",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/ShowBackgroundNightPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "SvgBadgePreview.a11y.png",
       "cleanBasename": "SvgBadgePreview.png",
       "findings": [],
