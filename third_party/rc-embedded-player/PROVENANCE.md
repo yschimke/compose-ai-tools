@@ -32,6 +32,25 @@ the integration-test app, and they drag in Wear Material3 and `remote-creation-c
 Package names are kept verbatim (`androidx.compose.remote.player.compose.embedded`) so refreshing
 the snapshot against a newer androidx checkout is a plain `diff -r` with no rename noise.
 
+## Copyright
+
+**Every source file in this module carries the AOSP Apache-2.0 header, without exception.** That
+holds for the three kinds of file here:
+
+- the vendored player sources, which keep upstream's header verbatim — a refresh must not strip it,
+  and the local-delta comments below sit *inside* those files rather than replacing their headers;
+- `src/main/res/values/font_certs.xml`, copied verbatim from androidx with its own 2022 header;
+- the files written here (`build.gradle.kts`, `src/test/.../RcEmbeddedRenderHarness.kt`), which carry
+  the same header because they exist only to build and exercise AOSP-derived code in an AOSP package.
+
+Check before committing a refresh:
+
+```sh
+for f in $(find src -type f \( -name '*.kt' -o -name '*.xml' \)) build.gradle.kts; do
+  head -6 "$f" | grep -q 'The Android Open Source Project' || echo "MISSING: $f"
+done
+```
+
 ## Version skew
 
 Upstream builds this player against the **in-tree** `remote-core` / `remote-player-core`. We build
