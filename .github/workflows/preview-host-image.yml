@@ -185,6 +185,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push
+        id: push
         uses: docker/build-push-action@v7
         with:
           context: deploy/image
@@ -272,11 +273,17 @@ jobs:
       # directly on the box survives. See the script header for the retire-vs-reseed trade-off.
       #
       # Best-effort and OPTIONAL, like the rollout notify above: it needs a SERVE_ADMIN_TOKEN
-      # secret matching the box's own, and does nothing without one. `if: always()` so a box that
-      # was slow to converge above still gets its config reconciled; `continue-on-error` so this
+      # secret matching the box's own, and does nothing without one. `continue-on-error` so this
       # can never fail a publish that already succeeded.
+      #
+      # The condition is `steps.push.outcome == 'success'`, NOT a bare `always()`. A bare always()
+      # would also fire when the build or the GHCR push failed, pushing this tag's seed config at a
+      # box still running the OLD image — publishing catalogs whose image was never deployed, which
+      # inverts the whole point of doing this after the roll. Keying on the push step keeps the one
+      # case always() was for (the convergence check above timed out, but the image IS on GHCR and
+      # the box will roll on its next poll) while dropping the case that was never intended.
       - name: Publish seed config to preview.coo.ee (best-effort)
-        if: always()
+        if: always() && steps.push.outcome == 'success'
         continue-on-error: true
         env:
           BASE_URL: ${{ vars.DEPLOY_BASE_URL || 'https://preview.coo.ee' }}

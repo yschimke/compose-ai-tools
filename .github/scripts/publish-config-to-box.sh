@@ -40,6 +40,12 @@ if [[ "${DRY_RUN}" == 0 ]]; then
   : "${ADMIN_TOKEN:?ADMIN_TOKEN required}"
 fi
 
+# Entries the server refused. A rejected entry means the box is NOT serving something the seed
+# says it should, which is the exact condition this script exists to prevent — so it ends in a
+# non-zero exit (the workflow step is continue-on-error, so the publish still succeeds, but the
+# step goes red and the log carries an ::error:: instead of a warning nobody reads).
+rejected=0
+
 # POST one JSON body to an admin path. 200 = applied, 409 = already there (both fine), 404 =
 # the routes don't exist on this server (no --admin-token, or an image predating them) — which is
 # reported once and treated as "nothing to do" rather than a failure, since a box that never opted
@@ -50,11 +56,14 @@ post() {
     echo "POST ${path} ${body}"
     return 0
   fi
-  local code
-  code=$(curl -sS -o /dev/null -w '%{http_code}' -m 30 \
+  local response code payload
+  # Body AND status: a 400's body carries WHY, and the reason changes what the operator has to do.
+  response=$(curl -sS -w $'\n%{http_code}' -m 30 \
     -X POST -H "${ADMIN_TOKEN_HEADER}: ${ADMIN_TOKEN}" \
     -H 'Content-Type: application/json' \
-    -d "${body}" "${BASE_URL}${path}" 2>/dev/null || echo 000)
+    -d "${body}" "${BASE_URL}${path}" 2>/dev/null || printf '\n000')
+  code="${response##*$'\n'}"
+  payload="${response%$'\n'*}"
   case "${code}" in
     200 | 201) echo "  ${label}: applied" ;;
     409) echo "  ${label}: already present" ;;
@@ -62,7 +71,23 @@ post() {
       echo "::warning::${BASE_URL}${path} returned 404 — admin API not enabled on this box; skipping config reconcile."
       return 2
       ;;
-    *) echo "::warning::${label}: HTTP ${code} (continuing)" ;;
+    400)
+      rejected=$((rejected + 1))
+      # The one 400 that is a *structural* gap rather than a bad payload: there is no admin route
+      # for front-page groups (only /admin/catalogs and /admin/trust), so a catalog claiming a
+      # group the box's own /config/catalogs.json doesn't define is rejected and cannot be fixed
+      # from here. Say so explicitly — the previous version warned and moved on, leaving the
+      # catalog silently unpublished.
+      if [[ "${payload}" == *"unknown group"* ]]; then
+        echo "::error::${label}: ${payload}. Groups are not reconcilable over the admin API — add the group to the box's /config/catalogs.json (\`docker compose exec preview vi /config/catalogs.json\` then restart), or drop the group claim from the seed entry."
+      else
+        echo "::error::${label}: rejected (HTTP 400) — ${payload}"
+      fi
+      ;;
+    *)
+      rejected=$((rejected + 1))
+      echo "::error::${label}: HTTP ${code} — ${payload}"
+      ;;
   esac
   return 0
 }
@@ -96,4 +121,8 @@ while IFS= read -r entry; do
   }
 done < <(jq -c '.catalogs // [] | .[]' "${CATALOGS_FILE}")
 
+if [[ "${rejected}" -gt 0 ]]; then
+  echo "::error::${rejected} seed entr(y|ies) were rejected — the box is not serving everything the committed config declares." >&2
+  exit 1
+fi
 echo "Config reconcile complete."
