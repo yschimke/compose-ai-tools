@@ -1041,8 +1041,8 @@ data class RemoteComposeOverride(
   val namedValues: Map<String, RemoteNamedValue> = emptyMap(),
   val acceptedHostActions: List<String>? = null,
   /**
-   * Which player renders a bundle's captured `ir/<id>.rc` document on replay. Null keeps the default
-   * ([RemoteComposePlayerKind.VIEW]), so existing renders stay byte-identical. See
+   * Which player renders a bundle's captured `ir/<id>.rc` document on replay. Null keeps the
+   * default ([RemoteComposePlayerKind.VIEW]), so existing renders stay byte-identical. See
    * [RemoteComposePlayerKind] for what actually differs between the two.
    */
   val player: RemoteComposePlayerKind? = null,
