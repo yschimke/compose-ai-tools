@@ -85,7 +85,13 @@ object LayoutInspectorProduct {
   // item shrunk toward the curved edge). `bounds` already carries the scaled rect; `transform` says
   // the shrink is real, so a consumer doesn't grow the node back to its measured `size`. Additive —
   // older entries decode with `transform = null`.
-  const val SCHEMA_VERSION: Int = 9
+  // v10 (#2852): a `vectorGraphic` says whether its paths came from the node's own draw lambda
+  // (`fromDrawCapture`) or from an `ImageVector`. The export needs the distinction to read a draw
+  // modifier on a vector node: for a captured draw the modifier *is* those paths, while on an
+  // `ImageVector` it's an unrepresented overlay (Jetsnack's blend-mode gradient icon tint) that has
+  // to raster instead of exporting the untinted glyph. Additive — older entries decode with
+  // `fromDrawCapture = false`, which is the `ImageVector` reading they all had.
+  const val SCHEMA_VERSION: Int = 10
   const val FILE: String = "layout-inspector.json"
 }
 
@@ -611,6 +617,18 @@ data class LayoutInspectorVectorGraphic(
   val viewportWidth: Float,
   val viewportHeight: Float,
   val paths: List<LayoutInspectorVectorPath>,
+  /**
+   * True when these paths were recorded from the node's own imperative draw lambda (the
+   * `DrawCaptureExtractor` path: a slider groove, a progress arc) rather than reflected off an
+   * `ImageVector` painter.
+   *
+   * The export needs the distinction to know what a draw modifier on the same node means. For a
+   * captured draw the modifier *is* these paths, and everything it painted is already represented.
+   * For an `ImageVector` the draw modifier is a separate overlay that nothing here accounts for —
+   * Jetsnack tints its icons with `drawWithContent { drawContent(); drawRect(brush, blendMode) }` —
+   * so the layer has to raster instead of emitting the untinted icon (issue #2852).
+   */
+  val fromDrawCapture: Boolean = false,
 )
 
 /**

@@ -651,6 +651,33 @@ data class FigmaSvgModel(
       // below. Placed before the raster branch so a vector-backed icon never rasterises; a
       // bitmap-backed one (no `vectorGraphic`) falls through and rasters as before. An empty/
       // gradient-only capture yields null and also falls through.
+      // …unless something draws *over* that icon which the vector model doesn't represent. Jetsnack
+      // tints its gradient icons with `Modifier.drawWithContent { drawContent(); drawRect(brush,
+      // blendMode = Plus/Darken) }`; a blend-mode composite over arbitrary content has no faithful
+      // SVG equivalent, and emitting the bare `ImageVector` painted the untinted (black) glyph the
+      // PNG never shows. Raster the node so the tint survives (issue #2852).
+      //
+      // Only for an `ImageVector`: when the paths were recorded *from* the draw lambda the modifier
+      // is already fully represented by them, and rastering would throw away the editable capture
+      // the recorder just made. Hybrid mode only — with no frame to crop from, the untinted vector
+      // still beats a broken `<image>` reference.
+      if (ctx.captureCanvasDraws && vectorGraphic?.fromDrawCapture == false && hasCustomDraw()) {
+        val region = drawnOverlayRegion()
+        val href = ctx.rasterHref(nodeId)
+        ctx.rasterTargets.add(
+          FigmaSvgRasterTarget(nodeId, href, region.left, region.top, region.right, region.bottom)
+        )
+        return FigmaSvgLayer(
+          name = layerName(),
+          left = region.left,
+          top = region.top,
+          right = region.right,
+          bottom = region.bottom,
+          raster = FigmaSvgRaster(href),
+          opacity = opacity,
+          contentOpacity = contentOpacity,
+        )
+      }
       vectorGraphic
         ?.toFigmaSvgVector(
           layoutWidth = size.width,
@@ -1197,6 +1224,23 @@ data class FigmaSvgModel(
         top = drawn.minOf { it.top },
         right = drawn.maxOf { it.right },
         bottom = drawn.maxOf { it.bottom },
+      )
+    }
+
+    /**
+     * The region an over-drawing modifier covers on a vector node: the union of the node box and
+     * the draw modifiers' own bounds. Unlike [drawnRegion] this never *shrinks* to the draw bounds
+     * — the icon underneath still has to be inside the crop, and a tint pass that reports no bounds
+     * covers the whole node.
+     */
+    private fun LayoutInspectorNode.drawnOverlayRegion(): LayoutInspectorBounds {
+      val drawn = modifiers.filter { it.isCustomDraw() }.mapNotNull { it.bounds }
+      if (drawn.isEmpty()) return bounds
+      return LayoutInspectorBounds(
+        left = minOf(bounds.left, drawn.minOf { it.left }),
+        top = minOf(bounds.top, drawn.minOf { it.top }),
+        right = maxOf(bounds.right, drawn.maxOf { it.right }),
+        bottom = maxOf(bounds.bottom, drawn.maxOf { it.bottom }),
       )
     }
 
