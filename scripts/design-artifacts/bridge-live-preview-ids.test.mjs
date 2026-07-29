@@ -1006,3 +1006,55 @@ test("a deferred record whose @Preview function isn't in the bundle stays unmapp
   );
   assert.deepEqual(out, [{ componentId: "Ghost", preview: "NotBuilt" }]);
 });
+
+test("a font-scale fan-out is recovered instead of collapsing onto the unscaled annotation", () => {
+  // Two annotations differing ONLY by fontScale share a theme and a size, so without the scale in
+  // the identity the large-text sticker would be deduped away and its live-only route never
+  // published. The recovered value is spelled as the exporter spells it (`2` → `2.0`), so the route
+  // matches the one the same annotation would have produced baked.
+  const bundle = {
+    previews: [
+      { id: "Filled_Light", functionName: "Filled" },
+      { id: "Filled_Light_2x", functionName: "Filled", params: { fontScale: 2 } },
+    ],
+  };
+  const out = expandDeferredRecords(
+    [{ componentId: "Button/Filled", preview: "Filled", reason: "entry" }],
+    { system: "compose-m3", groups: [] },
+    bundle,
+  );
+  assert.deepEqual(
+    out.map((r) => [r.props?.fontScale, r.previewId]),
+    [
+      [undefined, "Filled_Light"],
+      ["2.0", "Filled_Light_2x"],
+    ],
+  );
+});
+
+test("a record that already names a font scale selects that annotation, keeping its spelling", () => {
+  // A props variant the spec declared: the record must route to the SCALED annotation (not the
+  // function's first), and keep the author's own spelling so the path is theirs, not a re-format.
+  const bundle = {
+    previews: [
+      { id: "Filled_Light", functionName: "Filled" },
+      { id: "Filled_Light_2x", functionName: "Filled", params: { fontScale: 2 } },
+    ],
+  };
+  const out = expandDeferredRecords(
+    [
+      {
+        componentId: "Button/Filled",
+        preview: "Filled",
+        reason: "variant",
+        props: { fontScale: "2.0" },
+      },
+    ],
+    { system: "compose-m3", groups: [] },
+    bundle,
+  );
+  assert.deepEqual(
+    out.map((r) => [r.props.fontScale, r.previewId]),
+    [["2.0", "Filled_Light_2x"]],
+  );
+});

@@ -301,23 +301,50 @@ export function expandDeferredRecords(deferred, spec, bundles) {
       out.push(daemonId ? { ...record, previewId: daemonId } : { ...record });
       continue;
     }
+    // Font scale is the third recoverable axis, and the one with no dedicated record field — the
+    // exporter expresses it as a `props` entry. A record that already names one (a props variant the
+    // spec declared) SELECTS among the annotations rather than expanding over them; a record that
+    // names none RECOVERS each annotation's own scale. Without that, a function's large-text
+    // annotation shares its unscaled sibling's theme and size, so the key below would call the two
+    // one sticker and the large-text live-only route would never be published at all.
+    const wantedScale = requestedFontScale(record?.props);
+    const scaled =
+      wantedScale === null ? candidates : candidates.filter((c) => c.fontScale === wantedScale);
+    const pool = scaled.length > 0 ? scaled : candidates;
     const seen = new Set();
-    for (const candidate of candidates) {
+    for (const candidate of pool) {
       const theme =
         candidate.night === true ? "dark" : candidate.night === false ? "light" : undefined;
       const size = record?.size ?? sizeForWidth(candidate.widthDp);
-      const key = `${theme ?? ""} ${size ?? ""}`;
+      // Only a RECOVERED scale becomes props; a record that named its own keeps it verbatim, so the
+      // spec's exact spelling ("1.5x", "2.0") is what reaches the path.
+      const scale = wantedScale === null ? candidate.fontScale : null;
+      const key = [theme ?? "", size ?? "", scale ?? ""].join("\u0000");
       if (seen.has(key)) continue;
       seen.add(key);
       out.push({
         ...record,
         ...(theme ? { theme } : {}),
         ...(size ? { size } : {}),
+        ...(scale != null
+          ? { props: { ...(record?.props ?? {}), fontScale: formatFontScale(scale) } }
+          : {}),
         previewId: candidate.id,
       });
     }
   }
   return out;
+}
+
+/**
+ * A recovered `@Preview(fontScale = …)` as the exporter spells it in a path segment. The annotation
+ * carries a number (`2`), while a spec-declared props variant carries the string the author wrote
+ * (`"2.0"`) — and it is that string the baked sticker's `…__fontscale-2.0.png` name comes from. So a
+ * whole number is written back with one decimal place, keeping a recovered route identical to the
+ * one the same annotation would have published had it been baked.
+ */
+function formatFontScale(value) {
+  return Number.isInteger(value) ? value.toFixed(1) : String(value);
 }
 
 /**

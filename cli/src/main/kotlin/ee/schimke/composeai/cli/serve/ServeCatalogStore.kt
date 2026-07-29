@@ -240,6 +240,9 @@ class ServeCatalogStore(
     val previewsDir = File(staging, "previews")
     val previewsRoot = previewsDir.canonicalFile.toPath()
     var count = 0
+    // How many baked images the catalog DECLARES (before any fetch) — see the check after the
+    // loops.
+    var declaredImages = 0
     // The component slugs whose baked figma-svg to fetch (a slug is the preview id up to `__`).
     val slugs = LinkedHashSet<String>()
     // Per-preview state/theme, carried to the host via `previews/variants.json` so the grid can
@@ -260,6 +263,10 @@ class ServeCatalogStore(
         // containment check costs nothing and guards a compromised/garbled catalog.
         val segments = path.split("/")
         if (!path.startsWith("$IMAGES_DIR/") || !path.endsWith(".png") || ".." in segments) continue
+        // Counted BEFORE the fetch: it's what the catalog claims to publish, which is how the
+        // completeness check below tells "this catalog bakes nothing" (legal, all-deferred) apart
+        // from "this catalog bakes things and none of them fetched" (an outage — must not swap).
+        declaredImages++
         val bytes = runCatching { fetchCatalogAsset(base + path) }.getOrNull() ?: continue
         val id = previewIdFor(path)
         val target = File(previewsDir, "$id.png")
@@ -289,11 +296,6 @@ class ServeCatalogStore(
         count++
       }
     }
-    if (count == 0) {
-      staging.deleteRecursively()
-      return Result.Failed(system, "catalog had no usable images")
-    }
-
     // Live-only (deferred) coverage: previews the catalog declares but ships no PNG for, to be
     // rendered on demand. Their variant metadata is written into the SAME manifest as the baked
     // previews — so a live-only card lands in its tab/group, folds onto its component alongside the
@@ -320,12 +322,31 @@ class ServeCatalogStore(
         )
     }
 
+    // Nothing to serve? Distinguish the two ways that happens, because only one is a failure:
+    //
+    //   - the catalog DECLARED baked images and none of them fetched — a transient outage (or a
+    //     broken branch). Fail, leaving the currently-served `dir` untouched; that is exactly what
+    //     the staging dance above exists for.
+    //   - the catalog declares no baked images at all and its coverage is wholly live-only (every
+    //     entry `priority: "deferred"`). That is a legal, if unusual, publish, and rejecting it
+    // here
+    //     would make the deferred lane unusable for the catalog that leans on it hardest. Let it
+    //     through: the live builders below register the deferred ids, and a session with no live
+    //     lane still lands on the terminal baked host — which then serves an empty (but explained,
+    //     via `deferred-not-served`) sheet rather than a 404.
+    if (count == 0 && (declaredImages > 0 || deferredIds.isEmpty())) {
+      staging.deleteRecursively()
+      return Result.Failed(system, "catalog had no usable images")
+    }
+
     // Write the state/theme manifest into the staged previews dir *before* the atomic swap, so a
     // reader never sees a `dir` whose `variants.json` disagrees with its images. Absent when no
     // render carried state/theme (a plain catalog) — the host then treats every preview as default.
     if (variants.isNotEmpty()) {
       val manifest =
         json.encodeToString(MapSerializer(String.serializer(), VariantMeta.serializer()), variants)
+      // A wholly-deferred catalog wrote no PNG, so the staged previews dir may not exist yet.
+      previewsDir.mkdirs()
       File(previewsDir, VARIANTS_FILE).writeText(manifest)
     }
 
@@ -478,7 +499,11 @@ class ServeCatalogStore(
                   fetchPerPreview,
                 )
             ) {
-              return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live bundle)")
+              return Result.Ok(
+                safe,
+                count + deferredIds.size,
+                "${BundleVerifier.summary(verdict)} (live bundle)",
+              )
             }
             // Declared + fetched + rehydrated, but the builder didn't stand a daemon up — most
             // often
@@ -516,7 +541,7 @@ class ServeCatalogStore(
           { bakedFallback(emptyList(), deferredIds.toList()) },
         )
     ) {
-      return Result.Ok(safe, count, "${BundleVerifier.summary(verdict)} (live)")
+      return Result.Ok(safe, count + deferredIds.size, "${BundleVerifier.summary(verdict)} (live)")
     }
 
     // Terminal: no server-side live lane stood up, so register the baked host AND record why it's

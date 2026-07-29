@@ -1312,4 +1312,74 @@ class ServeCatalogStoreTest {
     assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
     assertEquals("Chip_Only", alias["chip__ideal__default"])
   }
+
+  @Test
+  fun `a wholly-deferred catalog loads through its live lane`() {
+    // Every entry `priority: "deferred"` ⇒ the export publishes a catalog with NO baked images and
+    // only `deferred[]`. The empty-images guard must not reject that: it exists to protect a
+    // healthy catalog from an image outage, not to refuse the publish that leans hardest on the
+    // deferred lane.
+    val json =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+       "components":[],
+       "deferred":[
+         {"componentId":"Button/Filled","reason":"entry","theme":"light",
+          "path":"images/button-filled/ideal__default__light.png",
+          "preview":"FilledButton","previewId":"FilledButton_Light"}]}
+      """
+        .trimIndent()
+    var fronted: ServeHost? = null
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trustedBranches },
+        fetch = deferredFetcher(json),
+        buildTrustedBundle = { _, _, _, _, bakedFallback, _ ->
+          fronted = bakedFallback()
+          true
+        },
+      )
+    val result = store.load("compose-m3")
+
+    assertEquals(
+      ServeCatalogStore.Result.Ok(
+        "compose-m3",
+        1,
+        "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3 (live bundle)",
+      ),
+      result,
+    )
+    val host = fronted as ServeBundleHost
+    assertEquals(listOf("button-filled__ideal__default__light"), host.previews.map { it.id })
+    assertEquals(host.previews.map { it.id }.toSet(), host.liveOnlyPreviewIds)
+    // The variant metadata still round-trips even though no PNG was written (the staged previews
+    // dir has to be created for the manifest alone).
+    assertEquals("light", host.previews.single().theme)
+  }
+
+  @Test
+  fun `an image outage is still a failure even when the catalog defers coverage`() {
+    // The mirror of the test above: this catalog DECLARES a baked image, so zero fetched images is
+    // an outage — the deferred records must not talk the store into swapping in an empty catalog
+    // over the healthy one it is already serving.
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> deferredJson.toByteArray()
+        url.endsWith("bundle/compose-m3-bundle.png") -> byteArrayOf(1, 2, 3)
+        else -> null // every image 404s
+      }
+    }
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trustedBranches },
+        fetch = fetch,
+        buildTrustedBundle = { _, _, _, _, _, _ -> true },
+      )
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Failed)
+  }
 }
