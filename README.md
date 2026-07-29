@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 259 preview(s) across 20 module(s) · 38 error(s) · 4 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/main`. 260 preview(s) across 20 module(s) · 39 error(s) · 4 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1044,6 +1044,14 @@ _No findings._
 ### `AppCardRemote` · `spec:width=320dp,height=240dp,dpi=320`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-remote-m3/AppCardRemote_width_320dp_height_240dp_dpi_320.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
+
+### `BrandedTextRemote` · `spec:width=200dp,height=200dp,dpi=320`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/design-catalog-remote-m3/BrandedTextRemote_width_200dp_height_200dp_dpi_320.a11y.png" width="400" />
 
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
