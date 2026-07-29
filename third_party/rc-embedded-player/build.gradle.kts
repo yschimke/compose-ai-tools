@@ -84,7 +84,7 @@ android {
 //
 // Absent either property the harness skips, so `check` stays green without a staged catalog.
 tasks.withType<Test>().configureEach {
-  for (key in listOf("rc.embedded.input", "rc.embedded.output")) {
+  for (key in listOf("rc.embedded.input", "rc.embedded.output", "rc.view.output")) {
     (project.findProperty(key) as String?)?.let { systemProperty(key, it) }
   }
   // Robolectric's NATIVE graphics mode needs a real heap to rasterize into.
@@ -127,4 +127,8 @@ dependencies {
   testImplementation(libs.robolectric)
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.serialization.json)
+  // `RcViewPlayerRenderHarness` — the control lane. Renders the same documents through the
+  // `remote-player-view`-backed `RemoteDocumentPlayer` in an identical harness, so a divergence can
+  // be attributed to the embedded player rather than to software-canvas rasterization.
+  testImplementation(libs.compose.remote.player.view)
 }
