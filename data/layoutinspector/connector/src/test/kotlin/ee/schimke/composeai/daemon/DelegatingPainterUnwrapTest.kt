@@ -1,10 +1,15 @@
 package ee.schimke.composeai.daemon
 
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -21,15 +26,44 @@ import org.junit.Test
  */
 class DelegatingPainterUnwrapTest {
 
-  /** A painter that delegates its drawing to exactly one other painter. */
+  /** A painter that delegates its drawing to exactly one other painter, and holds nothing else. */
   private class WrappingPainter(@JvmField val delegate: Painter) : Painter() {
+    override val intrinsicSize: Size = delegate.intrinsicSize
+
+    override fun DrawScope.onDraw() {
+      with(delegate) { draw(size) }
+    }
+  }
+
+  /** A wrapper holding two painters — which one is the fill is a guess, so it must not resolve. */
+  private class AmbiguousPainter(@JvmField val a: Painter, @JvmField val b: Painter) : Painter() {
     override val intrinsicSize: Size = Size.Unspecified
 
     override fun DrawScope.onDraw() = Unit
   }
 
-  /** A wrapper holding two painters — which one is the fill is a guess, so it must not resolve. */
-  private class AmbiguousPainter(@JvmField val a: Painter, @JvmField val b: Painter) : Painter() {
+  /**
+   * A wrapper that also re-tints what it forwards. The inner colour is *not* what the render
+   * painted, so recovering it would draw the container in the wrong colour.
+   */
+  private class TintingPainter(@JvmField val delegate: Painter, @JvmField val tint: Long) :
+    Painter() {
+    override val intrinsicSize: Size = Size.Unspecified
+
+    override fun DrawScope.onDraw() = Unit
+  }
+
+  /**
+   * A minimal [Shape] — this module is deliberately foundation-free, so no `RoundedCornerShape`.
+   */
+  private object BoxShape : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density) =
+      Outline.Rectangle(Rect(0f, 0f, size.width, size.height))
+  }
+
+  /** A wrapper that clips what it forwards to its own shape. */
+  private class ShapingPainter(@JvmField val delegate: Painter, @JvmField val outline: Shape) :
+    Painter() {
     override val intrinsicSize: Size = Size.Unspecified
 
     override fun DrawScope.onDraw() = Unit
@@ -58,6 +92,48 @@ class DelegatingPainterUnwrapTest {
   fun `a wrapper with two painter fields is left for the raster fallback`() {
     val painter = AmbiguousPainter(ColorPainter(Color(0xFF112233)), ColorPainter(Color(0xFF445566)))
     assertNull("ambiguous delegate must not be guessed at", resolve(painter))
+  }
+
+  @Test
+  fun `a wrapper carrying paint-altering state is left for the raster fallback`() {
+    val painter = TintingPainter(ColorPainter(Color(0xFF112233)), tint = 0x7F000000L)
+    assertNull("a re-tinting wrapper's inner colour is not what the render drew", resolve(painter))
+  }
+
+  @Test
+  fun `a wrapper that clips to its own shape is left for the raster fallback`() {
+    // The type-based half of the check: a `Shape` field is a paint concept with a real type, so
+    // it's caught without relying on the field's name.
+    val painter = ShapingPainter(ColorPainter(Color(0xFF112233)), BoxShape)
+    assertNull(resolve(painter))
+  }
+
+  /**
+   * A painter that forwards to one painter and draws a second one it *captured*. Kotlin keeps a
+   * capture in a compiler-generated field, so a scan that skipped those would see a single clean
+   * delegate and report its colour — while the overlay it draws on top is what the render actually
+   * shows.
+   */
+  private fun capturingPainter(delegate: Painter, overlay: Painter): Painter =
+    object : Painter() {
+      override val intrinsicSize: Size = Size.Unspecified
+
+      override fun DrawScope.onDraw() {
+        with(delegate) { draw(size) }
+        with(overlay) { draw(size) }
+      }
+    }
+
+  @Test
+  fun `a captured second painter still counts as ambiguous`() {
+    val painter = capturingPainter(ColorPainter(Color(0xFF112233)), ColorPainter(Color(0xFF445566)))
+    assertNull("a captured overlay changes the pixels and must not be ignored", resolve(painter))
+  }
+
+  @Test
+  fun `extra state anywhere in the chain stops the descent`() {
+    val painter = WrappingPainter(TintingPainter(ColorPainter(Color(0xFF112233)), tint = 0L))
+    assertNull(resolve(painter))
   }
 
   @Test

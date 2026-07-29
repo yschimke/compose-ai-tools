@@ -7,6 +7,8 @@ import androidx.compose.ui.layout.ModifierInfo
 import androidx.compose.ui.platform.InspectableValue
 import androidx.compose.ui.unit.Dp
 import ee.schimke.composeai.data.layoutinspector.PlaceholderModifiers
+import java.lang.reflect.Field
+import java.lang.reflect.Modifier
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -454,33 +456,110 @@ internal object ModifierTokenResolver {
    * nothing (the common case) — so a real `ColorPainter`, `BitmapPainter` or `VectorPainter` is
    * handed back as-is and classified normally by the caller.
    *
-   * A wrapper carrying **more than one** painter field is left alone: which one is the fill is a
-   * guess, and guessing wrong would paint the container in the wrong colour — worse than the raster
-   * fallback. Depth is bounded so a self-referential painter can't spin.
+   * Only a **pure pass-through** wrapper is followed: one whose sole piece of own state is that
+   * delegate painter. A wrapper that also holds a shape, a `ColorFilter`, a `Brush`, a
+   * `BorderStroke`, an alpha — or a second painter, where which one is the fill would be a guess —
+   * is left alone, because each of those changes what the render actually painted and a flat fill
+   * recovered past them would be a rectangle in the wrong colour. Wrong colours are worse than the
+   * raster fallback, which reproduces the pixels exactly.
+   *
+   * Reflection can see a painter's *state* but not its `onDraw`, so this cannot prove a wrapper
+   * forwards its delegate — a stateless painter that draws something else entirely would still be
+   * followed. That residue is accepted: a painter whose only field is another painter and which
+   * then ignores it is not a shape any Compose library ships. Depth is bounded so a
+   * self-referential painter can't spin.
    */
   private fun unwrapDelegatingPainter(painter: Any): Any {
     var current = painter
     repeat(MAX_PAINTER_UNWRAP_DEPTH) {
       if (current.javaClass.simpleName == "ColorPainter") return current
-      val delegates =
-        generateSequence(current.javaClass as Class<*>?) { it.superclass }
-          .flatMap { it.declaredFields.asSequence() }
-          .filter { field ->
-            field.type.name != current.javaClass.name && isPainterType(field.type)
-          }
-          .toList()
+      val own = ownFields(current.javaClass)
+      // A wrapper that also holds paint-altering state — a shape to clip with, a
+      // `ColorFilter`/`Brush` to re-tint with, a `BorderStroke`, an alpha — does not paint what
+      // its delegate paints, so a flat fill recovered past it would be a rectangle in a colour
+      // the render never drew. Wrong colours are worse than the raster fallback, which reproduces
+      // the pixels exactly, so those stop the descent. Inert bookkeeping (a cached
+      // `intrinsicSize`, a measured extent) doesn't change the paint and is allowed through.
+      if (own.any { altersPaint(it) }) return current
+      val painterFields = own.filter {
+        isPainterType(it.type) && it.type.name != current.javaClass.name
+      }
+      // Two painters: which one is the fill would be a guess, so leave it alone as well. A local
+      // or anonymous painter that *captures* another painter (an overlay drawn by its `onDraw`)
+      // holds it in a compiler-generated field, so captures count here too — otherwise a captured
+      // second painter would be invisible and the one declared delegate would be reported as the
+      // fill even though the capture changes what is drawn.
+      if (painterFields.size != 1) return current
+      // The delegate itself is a declared field, though: a capture is never the thing the wrapper
+      // forwards to.
       val next =
-        delegates.singleOrNull()?.let { field ->
-          runCatching {
-              field.isAccessible = true
-              field.get(current)
-            }
-            .getOrNull()
-        } ?: return current
+        painterFields
+          .single()
+          .takeUnless { it.isSynthetic }
+          ?.let { field ->
+            runCatching {
+                field.isAccessible = true
+                field.get(current)
+              }
+              .getOrNull()
+          } ?: return current
       current = next
     }
     return current
   }
+
+  /**
+   * A painter's own instance state: the fields declared below `Painter` in its hierarchy, skipping
+   * `Painter`'s own bookkeeping (its cached paint, layout direction and the like).
+   *
+   * Compiler-generated fields are **kept**. A local or anonymous painter holds whatever it captured
+   * in a synthetic field, and a captured `Painter` or `ColorFilter` affects the pixels exactly as
+   * much as a declared one does — filtering synthetics out would hide that state from both the
+   * paint-altering check and the ambiguity check. Only statics are dropped, since they are shared
+   * class state rather than this instance's.
+   */
+  private fun ownFields(type: Class<*>): List<Field> =
+    generateSequence(type as Class<*>?) { it.superclass }
+      .takeWhile { it.name != "androidx.compose.ui.graphics.painter.Painter" }
+      .flatMap { it.declaredFields.asSequence() }
+      .filterNot { Modifier.isStatic(it.modifiers) }
+      .toList()
+
+  /**
+   * True when [field] is state that changes what a painter puts on screen relative to what it
+   * delegates to.
+   *
+   * Detected two ways, because Compose spells these both as objects and as inlined value classes:
+   * by *type* for the paint concepts that have one (`Brush`, `ColorFilter`, `Shape`, …), and by
+   * *name* for the scalars that don't — a `Color` and a `Size` are both an inlined `long`, so only
+   * the name distinguishes a tint from a cached extent.
+   */
+  private fun altersPaint(field: Field): Boolean {
+    if (supertypes(field.type).any { it in PAINT_ALTERING_TYPES }) return true
+    val name = field.name.lowercase(Locale.US)
+    return PAINT_KNOB_NAMES.any { name.contains(it) }
+  }
+
+  /** [type] and every class/interface it inherits from, by binary name. */
+  private fun supertypes(type: Class<*>): Sequence<String> = sequence {
+    yield(type.name)
+    type.superclass?.let { yieldAll(supertypes(it)) }
+    type.interfaces.forEach { yieldAll(supertypes(it)) }
+  }
+
+  private val PAINT_ALTERING_TYPES =
+    setOf(
+      "androidx.compose.ui.graphics.Brush",
+      "androidx.compose.ui.graphics.ColorFilter",
+      "androidx.compose.ui.graphics.ColorProducer",
+      "androidx.compose.ui.graphics.Outline",
+      "androidx.compose.ui.graphics.Paint",
+      "androidx.compose.ui.graphics.Shape",
+      "androidx.compose.foundation.BorderStroke",
+    )
+
+  private val PAINT_KNOB_NAMES =
+    listOf("alpha", "opacity", "tint", "color", "colour", "filter", "brush", "shape", "border")
 
   /** True when [type] is (or extends) Compose's `Painter`. */
   private fun isPainterType(type: Class<*>): Boolean =
