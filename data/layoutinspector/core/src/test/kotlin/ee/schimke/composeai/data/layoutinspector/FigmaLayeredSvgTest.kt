@@ -118,6 +118,102 @@ class FigmaLayeredSvgTest {
     assertFalse(svg, svg.contains("scale(2 0.5)"))
   }
 
+  /**
+   * Issue #2852: Jetsnack's gradient-tinted icon button rings itself with `border(width,
+   * Brush.linearGradient(...), CircleShape)`. The brush resolved to no flat colour, so the ring
+   * vanished from the export entirely — a nearly-black circle against a PNG showing a
+   * cyan-to-purple border. The captured gradient is now emitted as a real `<linearGradient>` def
+   * the stroke references, so it survives *and* stays editable in Figma.
+   */
+  @Test
+  fun aGradientBorderIsEmittedAsALinearGradientStroke() {
+    val node =
+      layoutNode(
+        "IconButton",
+        0,
+        0,
+        48,
+        48,
+        tokens =
+          ComposeSemanticsTokens(
+            shape = "circle",
+            borderWidth = "2.0dp",
+            borderGradient =
+              LayoutInspectorGradient(
+                colors = listOf("#FF00FFFF", "#FF7B1FA2"),
+                startX = 0f,
+                startY = 0f,
+                endX = 1f,
+                endY = 1f,
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertWellFormedXml(svg)
+    assertTrue(svg, svg.contains("<linearGradient"))
+    assertTrue("first stop", svg.contains("""stop-color="#00FFFF""""))
+    assertTrue("second stop", svg.contains("""stop-color="#7B1FA2""""))
+    assertTrue("diagonal", svg.contains("""x2="1""") && svg.contains("""y2="1""""))
+    assertTrue("the stroke references the def", svg.contains("""stroke="url(#gs-"""))
+    // Evenly spaced by default, as Compose does when the brush declares no stops.
+    assertTrue(svg, svg.contains("""offset="0""""))
+    assertTrue(svg, svg.contains("""offset="1""""))
+  }
+
+  @Test
+  fun aGradientBackgroundIsEmittedAsALinearGradientFill() {
+    val node =
+      layoutNode(
+        "Ramp",
+        0,
+        0,
+        100,
+        20,
+        tokens =
+          ComposeSemanticsTokens(
+            backgroundGradient =
+              LayoutInspectorGradient(
+                colors = listOf("#FFFF0000", "#8000FF00"),
+                stops = listOf(0f, 0.75f),
+              )
+          ),
+      )
+
+    val svg = render(node)
+
+    assertWellFormedXml(svg)
+    assertTrue("the fill references the def", svg.contains("""fill="url(#gf-"""))
+    assertTrue("explicit stop position is kept", svg.contains("""offset="0.75""""))
+    // A translucent stop keeps its alpha as stop-opacity rather than losing it in the hex.
+    assertTrue(svg, svg.contains("""stop-opacity="0.5"""))
+  }
+
+  @Test
+  fun aLayerWithBothGradientsGetsTwoDistinctDefs() {
+    val node =
+      layoutNode(
+        "Chip",
+        0,
+        0,
+        60,
+        24,
+        tokens =
+          ComposeSemanticsTokens(
+            backgroundGradient = LayoutInspectorGradient(colors = listOf("#FF111111", "#FF222222")),
+            borderGradient = LayoutInspectorGradient(colors = listOf("#FF333333", "#FF444444")),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertWellFormedXml(svg)
+    assertEquals("one def per gradient", 2, Regex("<linearGradient").findAll(svg).count())
+    assertTrue(svg, svg.contains("""fill="url(#gf-"""))
+    assertTrue(svg, svg.contains("""stroke="url(#gs-"""))
+  }
+
   @Test
   fun vectorRetainsAnExplicitNonuniformLayoutTransform() {
     val node =

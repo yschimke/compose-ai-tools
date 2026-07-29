@@ -249,6 +249,14 @@ data class FigmaSvgLayer(
    * its drop shadow instead of reading as a flat fill against the render.
    */
   val elevationPx: Double = 0.0,
+  /**
+   * A linear gradient this layer's shape is filled with, instead of the flat [fill] (issue #2852).
+   * Emitted as an SVG `<linearGradient>` def the shape references, so it stays editable in Figma
+   * rather than being flattened into a raster.
+   */
+  val fillGradient: LayoutInspectorGradient? = null,
+  /** The stroke counterpart of [fillGradient] — a `Modifier.border(width, brush, shape)` ring. */
+  val strokeGradient: LayoutInspectorGradient? = null,
   /** Alpha from `graphicsLayer`s outside this layer's own drawing modifiers. */
   val opacity: Double = 1.0,
   /** Alpha from `graphicsLayer`s inside this layer's own drawing modifiers. */
@@ -271,6 +279,8 @@ data class FigmaSvgLayer(
     get() =
       fill != null ||
         stroke != null ||
+        fillGradient != null ||
+        strokeGradient != null ||
         text != null ||
         raster != null ||
         vector != null ||
@@ -685,7 +695,12 @@ data class FigmaSvgModel(
       // complete layer is deliberate for brush containers with text/children: a background-only
       // crop is unavailable, and keeping editable descendants would draw them twice.
       if (
-        ctx.captureCanvasDraws && tokens?.backgroundColor == null && hasUnvectorizablePaintFill()
+        ctx.captureCanvasDraws &&
+          tokens?.backgroundColor == null &&
+          // A brush we *could* read is emitted as a real `<linearGradient>`; only an unparseable
+          // one (radial / sweep / shader / an image painter) still needs the frame crop (#2852).
+          tokens?.backgroundGradient == null &&
+          hasUnvectorizablePaintFill()
       ) {
         val region = paintFillRegion()
         val href = ctx.rasterHref(nodeId)
@@ -731,6 +746,10 @@ data class FigmaSvgModel(
           FigmaSvgBackgroundRaster(href, region.left, region.top, region.right, region.bottom)
         } else null
       val fill = tokens?.backgroundColor?.let { argbToColor(it, ctx.colorNames) }
+      // Gradients ride alongside the flat tokens: the shape below references them as SVG defs, so
+      // a brush-painted container stays an editable vector layer (issue #2852).
+      val fillGradient = tokens?.backgroundGradient
+      val strokeGradient = tokens?.borderGradient
       // A fully-transparent border (a `Switch` on-track carries `borderColor` at alpha 0) is no
       // border — dropping it keeps the stroke off *and* avoids the stroke-inset shrinking the fill
       // for an outline that never paints.
@@ -853,6 +872,8 @@ data class FigmaSvgModel(
         right = drawRight,
         bottom = drawBottom,
         fill = fill,
+        fillGradient = fillGradient,
+        strokeGradient = strokeGradient,
         stroke = stroke,
         // Stroke width: use the captured `Modifier.border` width (dp × density) when present, so a
         // 2dp outline (an off-state `Switch` track) isn't drawn as a 1dp hairline. Fall back to a
