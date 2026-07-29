@@ -1194,6 +1194,11 @@ class RenderEngine(
           val clazz = Class.forName(spec.className, true, classLoader)
           val composableMethod = clazz.getDeclaredComposableMethod(spec.functionName)
           val bgArgb = resolveBackgroundColor(spec).toArgb()
+          // Coil-backed images: same install as `render`'s main body, repeated here because
+          // `render` returns INTO this scenario before reaching that call — a direct scroll /
+          // figma-svg-long request in a fresh sandbox would otherwise still be on the async
+          // loader. Idempotent and a no-op without coil. Issue #2952.
+          CoilPreviewSupport.installIfPresent(rule.activity)
           val heightDp = pxToDp(spec.heightPx, spec.density)
           // Match the batch renderer's per-mode reduce-motion contract: a stitched LONG still
           // always flattens Wear `TransformingLazyColumn` scaling (mid-scale items baked into
@@ -1210,6 +1215,9 @@ class RenderEngine(
             val provided =
               buildList {
                   add(LocalInspectionMode provides false)
+                  // coil 3 needs its preview handler here too — these scenario paths have
+                  // their own `setContent` and don't go through `render`'s local list. #2952
+                  CoilPreviewSupport.previewHandlerProvidedValue()?.let(::add)
                   ee.schimke.composeai.renderer.LocaleCompositionLocals
                     .providedValue(LocalConfiguration.current, classLoader)
                     ?.let(::add)
@@ -1372,6 +1380,11 @@ class RenderEngine(
               runCatching { it.asMethod().isAccessible = true }
             }
           val bgArgb = resolveBackgroundColor(spec).toArgb()
+          // Coil-backed images: same install as `render`'s main body, repeated here because
+          // `render` returns INTO this scenario before reaching that call — a direct scroll /
+          // figma-svg-long request in a fresh sandbox would otherwise still be on the async
+          // loader. Idempotent and a no-op without coil. Issue #2952.
+          CoilPreviewSupport.installIfPresent(rule.activity)
           // Flatten Wear edge-scaling so the stitched items stack at natural size (same knob the
           // raster LONG path and the grow-tall probe use); no-op provider when not a Wear app.
           val reduceMotionLocal =
@@ -1380,6 +1393,9 @@ class RenderEngine(
             val provided =
               buildList {
                   add(LocalInspectionMode provides (spec.inspectionMode ?: true))
+                  // coil 3 needs its preview handler here too — these scenario paths have
+                  // their own `setContent` and don't go through `render`'s local list. #2952
+                  CoilPreviewSupport.previewHandlerProvidedValue()?.let(::add)
                   ee.schimke.composeai.renderer.LocaleCompositionLocals
                     .providedValue(LocalConfiguration.current, classLoader)
                     ?.let(::add)
@@ -1690,6 +1706,11 @@ class RenderEngine(
               runCatching { it.asMethod().isAccessible = true }
             }
           val bgArgb = resolveBackgroundColor(spec).toArgb()
+          // Coil-backed images: same install as `render`'s main body, repeated here because
+          // `render` returns INTO this scenario before reaching that call — a direct scroll /
+          // figma-svg-long request in a fresh sandbox would otherwise still be on the async
+          // loader. Idempotent and a no-op without coil. Issue #2952.
+          CoilPreviewSupport.installIfPresent(rule.activity)
           // This probe only runs for `figma-svg-long`, so a round device here is always the Wear
           // scroll scenario: measure with `LocalReduceMotion = true` so the content height reflects
           // the FLATTENED (unscaled) list the final render produces — measuring the scaled layout
@@ -1706,6 +1727,9 @@ class RenderEngine(
                   // final SVG render re-enters `render` in the non-a11y path, i.e.
                   // `spec.inspectionMode ?: true`.
                   add(LocalInspectionMode provides (spec.inspectionMode ?: true))
+                  // coil 3 needs its preview handler here too — these scenario paths have
+                  // their own `setContent` and don't go through `render`'s local list. #2952
+                  CoilPreviewSupport.previewHandlerProvidedValue()?.let(::add)
                   ee.schimke.composeai.renderer.LocaleCompositionLocals
                     .providedValue(LocalConfiguration.current, classLoader)
                     ?.let(::add)

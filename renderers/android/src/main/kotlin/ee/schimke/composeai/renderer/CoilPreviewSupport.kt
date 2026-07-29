@@ -86,12 +86,17 @@ object CoilPreviewSupport {
    */
   const val ENABLED_PROPERTY: String = "composeai.coil.previewLoader"
 
-  /** The installer for whichever coil major is on the classpath, or null when coil is absent. */
-  private val installer: CoilPreviewInstaller? by lazy { detectInstaller() }
+  /**
+   * One installer per coil major present on the classpath — usually zero or one, but **both** when
+   * a consumer is mid-migration and still has coil 2 on the graph while new screens use coil 3.
+   * Each major owns its own singleton, so installing only the first one found would leave the
+   * other's `AsyncImage`s capturing blank.
+   */
+  private val installers: List<CoilPreviewInstaller> by lazy { detectInstallers() }
 
   private var installed = false
 
-  /** Whether a coil major was detected and the preview loader is in force. */
+  /** Whether at least one coil major was detected and its preview loader is in force. */
   val active: Boolean
     get() = installed
 
@@ -100,28 +105,32 @@ object CoilPreviewSupport {
     get() = System.getProperty(ENABLED_PROPERTY)?.toBooleanStrictOrNull() ?: true
 
   /**
-   * Install the preview `ImageLoader` if coil is on the classpath. Idempotent and cheap to call
-   * before every preview — the swap happens once per process and later calls are a boolean check.
+   * Install the preview `ImageLoader` for **every** coil major on the classpath. Idempotent and
+   * cheap to call before every preview — the swap happens once per process and later calls are a
+   * boolean check.
    *
-   * Best-effort by construction: any failure (an unexpected coil version whose builder lost a
-   * method, a consumer loader that throws from `newBuilder()`) degrades to "coil renders the way it
-   * did before" and prints one stderr line, rather than failing the preview.
+   * Failures are per-major and best-effort: an unexpected coil version whose builder lost a method,
+   * or a consumer loader that throws from `newBuilder()`, degrades that major to "renders the way
+   * it did before" and prints one stderr line, without failing the preview or blocking the other
+   * major from installing.
    */
   fun installIfPresent(context: Context) {
     if (installed || !enabled) return
-    val target = installer ?: return
-    try {
-      target.install(context)
-      installed = true
-      System.err.println(
-        "ComposeAiCoil: installed a synchronous preview ImageLoader (${target.description}) so " +
-          "coil-backed images resolve before capture"
-      )
-    } catch (failure: Throwable) {
-      System.err.println(
-        "ComposeAiCoil: could not install the preview ImageLoader (${target.description}): " +
-          "${failure.message}; coil-backed images may capture blank"
-      )
+    if (installers.isEmpty()) return
+    installers.forEach { target ->
+      try {
+        target.install(context)
+        installed = true
+        System.err.println(
+          "ComposeAiCoil: installed a synchronous preview ImageLoader (${target.description}) so " +
+            "coil-backed images resolve before capture"
+        )
+      } catch (failure: Throwable) {
+        System.err.println(
+          "ComposeAiCoil: could not install the preview ImageLoader (${target.description}): " +
+            "${failure.message}; coil-backed images may capture blank"
+        )
+      }
     }
   }
 
@@ -133,31 +142,40 @@ object CoilPreviewSupport {
    * Only **coil 3** returns a value: it routes its inspection-mode branch through
    * `LocalAsyncImagePreviewHandler`, a public hook designed for exactly this, and the renderer
    * hands it a handler that runs the real request. Coil 2 has no such hook and is handled at the
-   * bytecode level instead — see [ShadowAsyncImagePainter].
+   * bytecode level instead — see [ShadowAsyncImagePainter]. So on a mid-migration classpath with
+   * both majors installed, this still yields exactly one entry (coil 3's) and coil 2 is covered by
+   * the shadow, which is why taking the first non-null is correct rather than lossy.
    *
    * Mirrors [OfflineXrSession.providedValue]'s shape so the call site stays a one-liner.
    */
   fun previewHandlerProvidedValue(): ProvidedValue<*>? =
-    if (!enabled) null else runCatching { installer?.previewHandlerProvidedValue() }.getOrNull()
+    if (!enabled) null
+    else
+      installers.firstNotNullOfOrNull { installer ->
+        runCatching { installer.previewHandlerProvidedValue() }.getOrNull()
+      }
 
-  /** Restore the consumer's original singleton loader. Tests and the daemon's teardown path. */
+  /** Restore each consumer's original singleton loader. Tests and the daemon's teardown path. */
   fun restore() {
     if (!installed) return
     installed = false
-    runCatching { installer?.restore() }
+    installers.forEach { runCatching { it.restore() } }
   }
 
   /**
-   * Probe for coil 2 then coil 3. Marker classes are the singleton holders rather than
+   * One installer per coil major actually present — both when a consumer is mid-migration and has
+   * coil 2 and coil 3 on the graph at once. Marker classes are the singleton holders rather than
    * `AsyncImage`, because a consumer can depend on `coil-base` / `coil3-core` without the Compose
    * artifact and still hit this through their own painter.
    */
-  private fun detectInstaller(): CoilPreviewInstaller? =
-    loadInstaller("coil.Coil", "ee.schimke.composeai.renderer.Coil2PreviewInstaller")
-      ?: loadInstaller(
+  private fun detectInstallers(): List<CoilPreviewInstaller> =
+    listOfNotNull(
+      loadInstaller("coil.Coil", "ee.schimke.composeai.renderer.Coil2PreviewInstaller"),
+      loadInstaller(
         "coil3.SingletonImageLoader",
         "ee.schimke.composeai.renderer.Coil3PreviewInstaller",
-      )
+      ),
+    )
 
   /**
    * Reflectively instantiate [installerClass] only once [markerClass] proves the matching coil
