@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# Self-test for publish-config-to-box.sh, run by CI on every PR.
+#
+# Drives the --dry-run seam so the rules that actually matter are pinned without a server:
+#   1. trust is reconciled BEFORE catalogs (a catalog published ahead of its producer would
+#      register as `unverified` and stay that way until its branch moved);
+#   2. the declared entry shape survives — `listed: false` and `group` are not dropped, since
+#      either being lost silently changes where a card renders;
+#   3. null/absent optional fields are omitted rather than sent as JSON null.
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+UNDER_TEST="${SCRIPT_DIR}/publish-config-to-box.sh"
+tmp="$(mktemp -d)"
+trap 'rm -rf "${tmp}"' EXIT
+
+failures=0
+fail() {
+  echo "FAIL: $1" >&2
+  failures=$((failures + 1))
+}
+
+cat > "${tmp}/producers.json" <<'JSON'
+{
+  "branches": [
+    { "repo": "yschimke/compose-ai-tools", "branch": "design-artifacts/*" },
+    { "repo": "yschimke/pocket-casts-android", "branch": "design-artifacts/*" }
+  ]
+}
+JSON
+
+cat > "${tmp}/catalogs.json" <<'JSON'
+{
+  "groups": [{ "id": "ds", "heading": "Design Systems" }],
+  "catalogs": [
+    { "system": "compose-m3", "repo": "yschimke/compose-ai-tools", "listed": true, "group": "ds" },
+    { "system": "cadence", "repo": "yschimke/cadence", "listed": false },
+    { "system": "jetnews", "repo": "yschimke/compose-samples", "listed": true,
+      "attributionRepos": ["android/compose-samples"] }
+  ]
+}
+JSON
+
+out=$(BASE_URL=https://example.invalid \
+  TRUST_FILE="${tmp}/producers.json" \
+  CATALOGS_FILE="${tmp}/catalogs.json" \
+  bash "${UNDER_TEST}" --dry-run)
+
+# 1. ordering: every /admin/trust POST precedes every /admin/catalogs POST.
+last_trust=$(printf '%s\n' "${out}" | grep -n 'POST /admin/trust' | tail -1 | cut -d: -f1)
+first_catalog=$(printf '%s\n' "${out}" | grep -n 'POST /admin/catalogs' | head -1 | cut -d: -f1)
+if [[ -z "${last_trust}" || -z "${first_catalog}" ]]; then
+  fail "expected both trust and catalog POSTs; got:\n${out}"
+elif [[ "${last_trust}" -ge "${first_catalog}" ]]; then
+  fail "trust must be reconciled before catalogs (last trust line ${last_trust}, first catalog line ${first_catalog})"
+fi
+
+# 2. both producers are sent, with their branch globs intact.
+for repo in yschimke/compose-ai-tools yschimke/pocket-casts-android; do
+  printf '%s' "${out}" | grep -q "\"repo\":\"${repo}\",\"branch\":\"design-artifacts/\*\"" ||
+    fail "missing trust POST for ${repo}"
+done
+
+# 3. an unlisted catalog stays unlisted.
+printf '%s' "${out}" | grep -q '"system":"cadence".*"listed":false' ||
+  fail "cadence must be POSTed with listed:false"
+
+# 4. a group claim survives.
+printf '%s' "${out}" | grep -q '"system":"compose-m3".*"group":"ds"' ||
+  fail "compose-m3 must keep its group claim"
+
+# 5. attributionRepos survives (it's what lets a fork-served catalog keep its upstream section).
+printf '%s' "${out}" | grep -q '"attributionRepos":\["android/compose-samples"\]' ||
+  fail "jetnews must keep its attributionRepos"
+
+# 6. absent optionals are omitted, not sent as null.
+printf '%s' "${out}" | grep -q 'null' &&
+  fail "no request body should contain a JSON null: ${out}"
+
+# 7. every catalog in the file is covered — a silently-skipped entry is the failure mode this
+#    whole script exists to prevent.
+for system in compose-m3 cadence jetnews; do
+  printf '%s' "${out}" | grep -q "\"system\":\"${system}\"" ||
+    fail "missing catalog POST for ${system}"
+done
+
+if [[ "${failures}" -gt 0 ]]; then
+  echo "${failures} check(s) failed" >&2
+  exit 1
+fi
+echo "publish-config-to-box: all checks passed"

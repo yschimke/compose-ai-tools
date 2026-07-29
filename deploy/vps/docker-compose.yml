@@ -32,11 +32,13 @@ services:
       # Trusted(Branch)). Bind-mounted below from the repo, so publishing a catalog is a file
       # edit + restart — not a compose edit. cadence is declared `listed: false` there:
       # reachable at /cadence/ but kept off the front-page index.
+      # Bind-mounted below from deploy/preview.coo.ee (this box runs that deployment's set). An
+      # adopter points these at their own directory — the image's own seed is compose-m3 only.
       SERVE_CATALOGS_FILE: "${SERVE_CATALOGS_FILE:-/config/catalogs.json}"
       # Optional additions to that file (<system>@<owner>/<repo>, comma-separated).
       SERVE_CATALOGS: "${SERVE_CATALOGS:-}"
       SERVE_CATALOGS_UNLISTED: "${SERVE_CATALOGS_UNLISTED:-}"
-      SERVE_TRUST_STORE: "${SERVE_TRUST_STORE:-trust/producers.json}"
+      SERVE_TRUST_STORE: "${SERVE_TRUST_STORE:-/config/producers.json}"
       SERVE_WASM_DIR: "${SERVE_WASM_DIR:-compose-m3=samples/cmp-wasm-catalog/build/wasmDist}"
       # Live (daemon-backed) server-side re-render. Now that compose-m3 is a
       # Compose Multiplatform (desktop) catalog, this desktop-only box CAN build
@@ -54,10 +56,13 @@ services:
       SERVE_TOKEN: "${SERVE_TOKEN:-}"
       PORT: "8080"
     volumes:
-      # The published catalog set, kept in version control and mounted read-only (this box
-      # doesn't run the admin API, so nothing needs to write it back). Shared with the
-      # prebuilt-image profile so both boxes publish the same catalogs from one file.
-      - ../image/catalogs.json:/config/catalogs.json:ro
+      # This DEPLOYMENT's published set + trusted producers, kept in version control and mounted
+      # read-only (this box doesn't run the admin API, so nothing needs to write them back).
+      # Deliberately deploy/preview.coo.ee/, not deploy/image/: the latter is the generic seed an
+      # adopter of the prebuilt image inherits, and it carries compose-m3 only so nobody starts out
+      # serving — or trusting — another project's repos.
+      - ../preview.coo.ee/catalogs.json:/config/catalogs.json:ro
+      - ../preview.coo.ee/producers.json:/config/producers.json:ro
     expose:
       - "8080"
     # One warm Desktop daemon fits comfortably in a few GB; this cap just keeps a

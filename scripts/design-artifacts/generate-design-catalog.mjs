@@ -84,6 +84,7 @@ import {
   candidatePreviewBundle,
   daemonPreviewIdsByFunction,
 } from "./bundle-previews.mjs";
+import { exportsNoSticker } from "./capture-mode.mjs";
 import { bridgeLivePreviewIds } from "./bridge-live-preview-ids.mjs";
 import { applySpecSections } from "./apply-spec-sections.mjs";
 import { applySpecBreakpoints } from "./catalog-breakpoints.mjs";
@@ -330,7 +331,9 @@ function mergeDesignTokens(base, extra) {
  * the candidate whose preview function name equals its `preview`; a function's
  * theme/size variants are folded into one component, missing previews are
  * reported rather than dropped, and rendered-but-semantics-less components are
- * flagged so the completeness gate can refuse to publish.
+ * flagged so the completeness gate can refuse to publish. An entry that declares
+ * `"capture": "none"` and rendered no static sticker is reported on the separate
+ * `noSticker` list instead of `missing` — a declared, non-blocking gap.
  */
 function catalogFromCandidates(candidates, spec, opts = {}) {
   const byFunction = new Map();
@@ -345,6 +348,7 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
 
   const sources = [];
   const missing = [];
+  const noSticker = [];
   const withoutSemantics = [];
   // Live-only coverage: entries and image axes the spec deferred (issue #2950). Recorded so
   // catalog.json still declares them — they are not lost coverage, just not rasterised here — and
@@ -384,7 +388,12 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
       }
       const candidate = byFunction.get(component.preview);
       if (!candidate || candidate.images.length === 0) {
-        missing.push(component.componentId);
+        // `"capture": "none"` is the spec's way of declaring a preview that has no static sticker to
+        // join on (an `AndroidView`-hosted composable, a scrolling GIF, …). The entry is still absent
+        // from the sheet, but it is a DECLARED absence — reported separately so the completeness gate
+        // doesn't sink the publish over it. See capture-mode.mjs / issue #2946.
+        if (exportsNoSticker(component)) noSticker.push(component.componentId);
+        else missing.push(component.componentId);
         continue;
       }
       if (!hasSemantics(candidate))
@@ -394,12 +403,13 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
       // variant's render is appended re-tagged with its `state` so the single-
       // component view can show them as secondary previews. A variant preview that
       // didn't render is reported as missing so the completeness gate still fires.
-      const { ideal, missing: missingVariants } = foldVariants(
-        candidate.images,
-        component,
-        byFunction,
-      );
+      const {
+        ideal,
+        missing: missingVariants,
+        noSticker: noStickerVariants,
+      } = foldVariants(candidate.images, component, byFunction);
       missing.push(...missingVariants);
+      noSticker.push(...noStickerVariants);
       // Thin the palette fan-out per `modePriority`: a themed sticker whose mode is deferred is
       // dropped from the baked set (so no PNG is written and the Figma/static kit stays lean) and
       // recorded live-only. Only stickers that NAME a theme are eligible, so every component keeps
@@ -456,7 +466,7 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
   };
 
   const catalog = buildCatalog(meta, sources, opts.themeTokens);
-  return { catalog, missing, withoutSemantics, deferred };
+  return { catalog, missing, noSticker, withoutSemantics, deferred };
 }
 // --- end vendored join --------------------------------------------------------
 
@@ -680,15 +690,12 @@ if (specDefersAnything(spec)) {
   );
 }
 
-const { catalog, missing, withoutSemantics, deferred } = catalogFromCandidates(
-  candidates,
-  spec,
-  {
+const { catalog, missing, noSticker, withoutSemantics, deferred } =
+  catalogFromCandidates(candidates, spec, {
     ...(values.renderer ? { renderer: values.renderer } : {}),
     ...(designParityVersion() ? { designParity: designParityVersion() } : {}),
     ...(themeTokens ? { themeTokens } : {}),
-  },
-);
+  });
 
 // Completeness gate: `bundle pack --with-semantics` is best-effort and exits 0
 // even when the daemon never started or captured zero semantics. For a scheduled
@@ -697,6 +704,19 @@ const { catalog, missing, withoutSemantics, deferred } = catalogFromCandidates(
 // so a transient failure can't clobber a good branch. `--allow-incomplete` opts out.
 if (missing.length > 0) {
   console.warn(`[${spec.system}] missing renders for: ${missing.join(", ")}`);
+  console.warn(
+    `[${spec.system}] a component that legitimately has no static sticker (an AndroidView-hosted ` +
+      `composable, a scrolling GIF, …) can declare \`"capture": "none"\` in the spec — it is then ` +
+      `reported as a declared sticker-less entry instead of a missing render.`,
+  );
+}
+// Declared sticker-less entries: excluded from the sticker sheet by design, but named on every run so
+// the coverage gap stays visible rather than disappearing with the spec entry.
+if (noSticker.length > 0) {
+  console.warn(
+    `[${spec.system}] declared no sticker (capture: "none"), none exported for: ` +
+      noSticker.join(", "),
+  );
 }
 if (withoutSemantics.length > 0) {
   console.warn(

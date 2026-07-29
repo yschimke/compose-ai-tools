@@ -1,40 +1,8 @@
 {
-  "_comment": "Trust store baked into the prebuilt preview-host image so a public deploy badges the published design-system catalogs as Trusted(Branch) out of the box, instead of Unverified. Branch (origin) trust only \u2014 the image carries no signing key, and branch trust is exactly what the --catalogs fetch needs: a catalog the server itself pulled from one of these branches is trusted by TLS origin, no per-bundle crypto. SERVE_TRUST_STORE defaults to this file (deploy/image/docker-compose.yml); override it, or mount your own at /trust/producers.json, to pin different producers. See docs/public-preview-server.md.",
+  "_comment": "GENERIC SEED trust store for the prebuilt preview-host image. Baked to /trust/producers.json and copied to /config/producers.json on FIRST BOOT ONLY (see deploy/image/entrypoint.sh), so this is the trust an operator adopting the image inherits — which is why it lists exactly ONE producer: the repo publishing compose-m3, the only catalog in the generic seed beside it. It used to list nine repos (meshcore-mobile, compose-samples, joreilly/Confetti, cadence, …), so every adopter silently inherited trust relationships with projects they have nothing to do with; on a box running the default SERVE_ALLOW_RENDER_TRUSTED=1 that is not just a badge but eligibility for server-side execution. Those producers now live in deploy/preview.coo.ee/producers.json and reach that box via POST /admin/trust. Branch (origin) trust only — the image carries no signing key, and branch trust is what the --catalogs fetch needs: a catalog the server itself pulled from one of these branches is trusted by TLS origin, no per-bundle crypto. Add your own producers by POSTing to /admin/trust, editing /config/producers.json, or mounting your own file over /trust/producers.json. Empty = trust nothing (fail-closed). Docs: docs/public-preview-server.md.",
   "branches": [
     {
       "repo": "yschimke/compose-ai-tools",
-      "branch": "design-artifacts/*"
-    },
-    {
-      "repo": "yschimke/meshcore-mobile",
-      "branch": "design-artifacts/*"
-    },
-    {
-      "repo": "yschimke/homeassistant-remotecompose",
-      "branch": "design-artifacts/*"
-    },
-    {
-      "repo": "yschimke/cadence",
-      "branch": "design-artifacts/*"
-    },
-    {
-      "repo": "yschimke/compose-samples",
-      "branch": "design-artifacts/*"
-    },
-    {
-      "repo": "yschimke/horologist",
-      "branch": "design-artifacts/*"
-    },
-    {
-      "repo": "yschimke/pocket-casts-android",
-      "branch": "design-artifacts/*"
-    },
-    {
-      "repo": "joreilly/Confetti",
-      "branch": "design-artifacts/*"
-    },
-    {
-      "repo": "yschimke/Confetti",
       "branch": "design-artifacts/*"
     }
   ]

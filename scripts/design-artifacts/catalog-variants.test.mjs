@@ -45,6 +45,24 @@ test("foldVariants reports a variant whose preview did not render", () => {
   assert.equal(ideal.length, 1); // just the default
 });
 
+test("foldVariants reports a render-less `capture: none` variant separately, not as missing", () => {
+  const { ideal, missing, noSticker } = foldVariants(
+    [img("default", "light")],
+    {
+      componentId: "Screens/Watch list",
+      variants: [
+        { state: "scrolling", preview: "WatchListScrolling", capture: "none" },
+        { state: "focused", preview: "WatchListFocused" },
+      ],
+    },
+    new Map(),
+  );
+  // The undeclared one still sinks the completeness gate; the declared one is only recorded.
+  assert.deepEqual(missing, ["Screens/Watch list [focused]"]);
+  assert.deepEqual(noSticker, ["Screens/Watch list [scrolling]"]);
+  assert.equal(ideal.length, 1); // just the default
+});
+
 test("foldVariants is a no-op for a component without variants", () => {
   const defaults = [img("default", "light")];
   const { ideal, missing } = foldVariants(defaults, { componentId: "X" }, new Map());

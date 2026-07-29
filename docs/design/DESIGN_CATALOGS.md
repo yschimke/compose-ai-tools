@@ -284,7 +284,8 @@ gap by scanning the module's Kotlin source directly (no Gradle build, no render)
   reports the component missing. Catalogue a static `@Preview` sibling instead and
   let the GIF travel in the bundle as its own artifact. `init-catalog-spec` skips
   these functions when scaffolding, and the validator's discovery line names them
-  so you know why they're absent.
+  so you know why they're absent. When there is no static sibling to point at, the
+  entry can instead declare `"capture": "none"` — see below.
 
 The spec shape is described by
 [`scripts/design-artifacts/catalog.spec.schema.json`](../../scripts/design-artifacts/catalog.spec.schema.json)
@@ -357,7 +358,59 @@ Caveats worth knowing before reaching for it:
   whose every render is mode-deferred is treated as a misconfiguration and fails the
   gate rather than publishing with no pixels.
 
-## Adding a component
+## Components with no static sticker (`capture: "none"`)
+
+Not every PNG-less preview announces itself in the source. A composable hosted in
+an `AndroidView` (say an HTML-rendering `TextView`) and a horologist
+`ScalingLazyColumn` screen are both written as a plain `@Preview` and still land
+without a `previews/<id>.png` — so the candidate join drops them and the
+completeness gate reports them as **missing renders**, refusing to publish the
+whole system. Deleting the entry publishes, but the sticker sheet then silently
+under-represents the design system.
+
+Declare the situation instead:
+
+```json
+{
+  "name": "Screens",
+  "section": "Animations",
+  "components": [
+    {
+      "componentId": "Screens/Watch list",
+      "preview": "WatchListPreview",
+      "capture": "none",
+      "caption": "Scrolling watch list (no static frame — ScalingLazyColumn)"
+    }
+  ]
+}
+```
+
+`"capture": "none"` (component or variant; absent ⇒ `"static"`) keeps the entry in
+the inventory, excludes it from the candidate join like any other PNG-less
+preview, and stops it counting as a missing render — the export names it on every
+run instead:
+
+```text
+[pocketcasts-wear] declared no sticker (capture: "none"), none exported for: Screens/Watch list
+```
+
+The value names what the gate checks — this entry exports no sticker — not why.
+Only some of these previews are animated (a `ScalingLazyColumn` screen and an
+`AndroidView` host are perfectly still), and `"animated"` is deliberately left
+unused so a future mode that really does export a GIF can claim it. A mistyped
+`capture` is a validation error rather than a silent fall-through to `"static"`,
+which would sink the publish on the very entry it was meant to exempt.
+
+Unlike `--allow-incomplete`, this is per-component: every other entry keeps the
+strict gate. Use it only where the render genuinely produces no PNG — a spec entry
+that *should* have rendered and didn't is exactly what the gate exists to catch.
+
+This is a different axis from **render priority** above, and they answer different
+questions. `priority: "deferred"` says *don't bake this one in CI — the live server
+can render it on demand*, and needs a live path to be legal. `capture: "none"` says
+*nothing can render this to a PNG at all*, live path or not. A deferred entry is
+still coverage the sheet can produce; a `"none"` entry is a recorded gap.
+
 
 1. Author a `@Composable` wrapped in the module's sticker theme, annotated with
    `@CatalogModes` (and extra `@Preview`s for states / breakpoints). Full-screen
