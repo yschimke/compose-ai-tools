@@ -508,6 +508,81 @@ class RenderEngineTest {
   }
 
   @Test
+  fun figmaSvgDrawsAPaddedIconAtItsPaintedSize() {
+    // Issue #2853, the padded icon in an embedded container: Jetchat's `InputSelectorButton` is
+    // `IconButton { Icon(modifier = Modifier.padding(8.dp).size(56.dp)) }` and its `RecordButton` is
+    // `Icon(modifier = Modifier.sizeIn(minWidth = 56.dp).padding(18.dp))`. Either way the padding
+    // ahead of the painter insets the box the glyph is drawn into, so fitting the vector to the
+    // node's own box drew every glyph at its button's size — the oversized action icons and
+    // microphone of `Conversation/Input`.
+    //
+    // Asserted against the render: each glyph the SVG emits must land on pixels the PNG actually
+    // painted white, not on the dark background beside them.
+    val outputDir = tempFolder.newFolder("renders-padded-icon")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost()
+    host.start()
+    try {
+      val result =
+        host.submit(
+          RenderRequest.Render(
+            payload =
+              "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+                "functionName=IconButtonRowInputBar;" +
+                "widthPx=240;heightPx=64;density=1.0;" +
+                "showBackground=true;outputBaseName=padded-icon"
+          ),
+          timeoutMs = 120_000,
+        )
+
+      val svg =
+        outputDir.parentFile!!
+          .resolve("data")
+          .resolve("padded-icon")
+          .resolve("compose-figma.svg")
+          .readText()
+      // Each glyph rides in `translate(x y) scale(s s)` and paints the viewport's 2..22 square.
+      val groups =
+        Regex("""translate\(([-0-9.]+) ([-0-9.]+)\) scale\(([0-9.]+) ([0-9.]+)\)""")
+          .findAll(svg)
+          .map { m -> m.groupValues.drop(1).map { it.toDouble() } }
+          .toList()
+      assertTrue("each icon must emit a vector group, got ${groups.size}:\n$svg", groups.size >= 2)
+
+      val png = ImageIO.read(File(result.pngPath!!))
+      for (g in groups) {
+        val (x, y, sx, sy) = listOf(g[0], g[1], g[2], g[3])
+        assertEquals("a square glyph must stay square", sx, sy, 0.01)
+        val left = x + 2 * sx
+        val top = y + 2 * sy
+        val side = 20 * sx
+        val probes =
+          listOf(
+            left + side / 2 to top + side / 2,
+            left + 2 to top + 2,
+            left + side - 2 to top + side - 2,
+          )
+        for ((px, py) in probes) {
+          assertTrue(
+            "the SVG places a glyph outside the render ($px,$py in ${png.width}×${png.height})",
+            px >= 0 && py >= 0 && px < png.width && py < png.height,
+          )
+          val rgb = png.getRGB(px.toInt(), py.toInt())
+          val bright = ((rgb shr 16 and 0xFF) + (rgb shr 8 and 0xFF) + (rgb and 0xFF)) / 3
+          assertTrue(
+            "the render must paint the glyph where the SVG places it " +
+              "(probe $px,$py in a ${side}px glyph at $left,$top was $bright/255)",
+            bright > 128,
+          )
+        }
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun figmaSvgFadesAnAlphaZeroRecordButtonEmbeddedInAnInputBar() {
     // Issue #2853, the embedded alpha-zero clipped background: the recording circle is faded to
     // `alpha = 0` through a `graphicsLayer` lambda block over a visible mic. The export must carry
