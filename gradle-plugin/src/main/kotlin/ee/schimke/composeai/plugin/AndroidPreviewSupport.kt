@@ -1740,16 +1740,35 @@ internal object AndroidPreviewSupport {
         } ?: RenderClasspathDuplicates.MODE_WARN
     // Exact file → `group:name:version` map for the duplicate guard, covering every configuration
     // that can put a module artifact on a render classpath. Lazy: nothing resolves here.
+    //
+    // **One map per consumer classpath, and only configurations that classpath actually resolves.**
+    // The map is read with `.get()` from a `doFirst`, which resolves the artifacts of every
+    // configuration folded into it. A configuration that is NOT on the reading task's own
+    // `classpath` contributes no task dependency, so when its artifacts come from a project in the
+    // same build — `project(":daemon:android")`, whose consumable jar is produced by
+    // `:daemon:android:createFullJarDebug` — Gradle refuses the read with `Querying the mapped
+    // value of provider(java.util.Set) before task ':daemon:android:createFullJarDebug' has
+    // completed is not supported`, and only when the producer happens not to have run yet for some
+    // other reason (so it presents as an intermittent whole-render failure, not a reliable one).
+    // Hence the split: the render `Test` tasks read [renderArtifactCoordinates] (built from the
+    // configurations `buildTestClasspath` resolves for them), and the daemon-descriptor task reads
+    // [daemonArtifactCoordinates], which swaps in the daemon config it — and only it — puts on its
+    // classpath. Adding a configuration here that the reading task's classpath doesn't carry
+    // reintroduces the failure.
     val renderArtifactCoordinates =
       AndroidPreviewClasspath.buildArtifactCoordinates(
         project = project,
+        configurations = listOfNotNull(rendererConfig, testConfig, screenshotTestRuntimeConfig),
+      )
+    // The daemon descriptor task's classpath resolves `daemonRendererConfig` in place of
+    // `rendererConfig` (it extends it, so one resolution covers both — see the `classpath.from`
+    // below), which is what makes `:daemon:android`'s jar a dependency of that task and this read
+    // legal there.
+    val daemonArtifactCoordinates =
+      AndroidPreviewClasspath.buildArtifactCoordinates(
+        project = project,
         configurations =
-          listOfNotNull(
-            rendererConfig,
-            daemonRendererConfig,
-            testConfig,
-            screenshotTestRuntimeConfig,
-          ),
+          listOfNotNull(daemonRendererConfig, testConfig, screenshotTestRuntimeConfig),
       )
     val resolvedClasspath =
       AndroidPreviewClasspath.buildTestClasspath(
@@ -2829,13 +2848,15 @@ internal object AndroidPreviewSupport {
       // a duplicate surviving in the AGP extras — or introduced by a future daemon-only addition —
       // invisible to both the warning and `composePreview.classpathDuplicates=fail`. Runs before
       // the descriptor is written, so a `fail` build never emits a descriptor the daemon would
-      // then launch from.
+      // then launch from. Reads the DAEMON-scoped coordinate map — this is the one task whose
+      // classpath resolves `daemonRendererConfig`, so it's the one task allowed to resolve that
+      // config's artifacts (see [renderArtifactCoordinates]).
       doFirst {
         RenderClasspathDuplicates.check(
           this,
           classpath.files,
           classpathDuplicatesMode,
-          renderArtifactCoordinates.get(),
+          daemonArtifactCoordinates.get(),
         )
       }
       // Static JVM open flags from the shared helper, plus the
