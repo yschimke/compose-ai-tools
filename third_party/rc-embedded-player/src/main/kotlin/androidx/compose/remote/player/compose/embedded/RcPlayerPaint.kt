@@ -363,10 +363,19 @@ internal fun updatePaintFromBundle(
             }
             PaintBundle.GRADIENT -> {
                 val gradientType = (cmd shr 16)
-                var len = array[i++] and 0xFF // colors count
+                val meta = array[i++]
+                var len = meta and 0xFF // colors count
+                // The meta word's high 16 bits are a bitmask of which stops are colour-*id*
+                // references rather than literal ARGB ints — a named/overridable stop such as
+                // `ShaderGradientSticker`'s live-recolourable middle colour. The core resolves those
+                // into its mOutArray, but this player reads the raw mArray and resolves refs inline
+                // (as the COLOR_ID path does), so an unresolved stop otherwise reaches `Color(...)`
+                // as raw ref bits and renders as a transparent/garbage band.
+                val register = (meta shr 16) and 0xFFFF
                 val colors = IntArray(len)
                 for (j in 0 until len) {
-                    colors[j] = array[i++]
+                    val word = array[i++]
+                    colors[j] = if ((register and (1 shl j)) != 0) read.getColor(word) else word
                 }
                 len = array[i++] // stops count
                 val stops = FloatArray(len)

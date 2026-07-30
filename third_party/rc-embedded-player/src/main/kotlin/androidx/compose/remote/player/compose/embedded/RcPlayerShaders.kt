@@ -40,9 +40,9 @@ import androidx.compose.ui.graphics.Shader
  * even though it is a typealias for `android.graphics.Shader` here — so a jvm/desktop file supplying
  * the same two functions over skiko's SkSL `RuntimeEffect` is a drop-in replacement for this one,
  * with no change to the shared caller. This file holds the Android AGSL implementation; the desktop
- * counterpart is deliberately deferred (issue #2954): the embedded player's shader output already
- * diverges from the View player *on Android* (~89% on `ShaderGradientSticker` in the rc-compare
- * lane), and that wants understanding before the same path is used as a desktop baseline.
+ * counterpart is deliberately deferred (issue #2954), pending a runtime-shader preview to baseline
+ * it against — the catalog's `ShaderGradientSticker`, despite the name, is a plain gradient fill
+ * (`PaintBundle.GRADIENT`) that never reaches this seam, not an AGSL `RuntimeShader`.
  */
 
 /**
