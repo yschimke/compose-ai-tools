@@ -55,6 +55,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import java.io.ByteArrayInputStream
@@ -137,7 +138,12 @@ internal fun RcPlayerJvm(document: CoreDocument, modifier: Modifier = Modifier) 
   val clock: RemoteClock =
     remember(document) { document.clock.takeUnless { it is SystemClock } ?: RemoteClock.SYSTEM }
 
-  val remoteContext = remember(document) { initDrawContext(document, clock) }
+  // Mirror Android `RcPlayer`, which reads `LocalDensity.current` and seeds it onto the context.
+  // `ImageComposeScene` sets `LocalDensity` to the requested render density, so this forwards that
+  // density (and the platform font scale) into context init below.
+  val density = LocalDensity.current
+  val remoteContext =
+    remember(document) { initDrawContext(document, clock, density.density, density.fontScale) }
 
   // Static capture: no frame loop. The time state is still provided so time-reading resolvers have
   // a value to read (0), matching a document settled at t=0.
@@ -177,7 +183,12 @@ internal fun RcPlayerJvm(document: CoreDocument, modifier: Modifier = Modifier) 
  * `RcPlayer`'s `remember(document)` init block, over a [JvmRemoteContext] instead of an
  * `AndroidRemoteContext` and without the framework typeface resolver / choreographer.
  */
-private fun initDrawContext(document: CoreDocument, clock: RemoteClock): JvmRemoteContext =
+private fun initDrawContext(
+  document: CoreDocument,
+  clock: RemoteClock,
+  density: Float,
+  fontScale: Float,
+): JvmRemoteContext =
   JvmRemoteContext(clock = clock).also { context ->
     // Back the document's reactive scalar state with Compose snapshot state, so variables
     // resolve reactively; swap before initializeContext propagates document state onto the
@@ -186,6 +197,14 @@ private fun initDrawContext(document: CoreDocument, clock: RemoteClock): JvmRemo
       document.setRemoteComposeState(SnapshotRemoteComposeState())
       document.recollectCollectionsReflection()
     }
+    // Seed the density built-ins before initializeContext, exactly as the Android player does: a
+    // document reading `ID_DENSITY` / `ID_FONT_SIZE` (e.g. a dp→px expression or default text
+    // sizing)
+    // must resolve at the render density, not the store default, or a density-driven layout would
+    // diff on geometry against the requested (xhdpi) size.
+    context.loadFloat(RemoteContext.ID_FONT_SIZE, 14f * fontScale * density)
+    context.loadFloat(RemoteContext.ID_DENSITY, density)
+    context.density = density
     document.initializeContext(context)
 
     // Register each bitmap's metadata (id + declared size) WITHOUT decoding pixels; the decode
