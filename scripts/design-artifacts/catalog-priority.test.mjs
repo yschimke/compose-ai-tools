@@ -216,6 +216,11 @@ test("defersEveryPreview flags an all-deferred catalog and nothing else (#2993)"
   );
   // An empty catalog defers nothing.
   assert.equal(defersEveryPreview(spec([])), false);
+  // Tolerant of malformed structure — a non-array `groups` / `components` can't throw here; the shape
+  // error is validateSpec's job to report (#2993).
+  assert.doesNotThrow(() => defersEveryPreview({ groups: {} }));
+  assert.equal(defersEveryPreview({ groups: {} }), false);
+  assert.equal(defersEveryPreview({ groups: [{ name: "G", components: {} }] }), false);
 });
 
 test("splitDeferredImages keeps the untagged sticker and drops deferred themes", () => {

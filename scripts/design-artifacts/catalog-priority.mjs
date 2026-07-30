@@ -134,11 +134,19 @@ export function isImageDeferred(spec, image) {
   return modePriority(spec, image?.theme) === DEFERRED;
 }
 
-/** Every component entry in the spec, with its group, flattened. */
+/**
+ * Every component entry in the spec, with its group, flattened. Tolerant of a malformed spec — a
+ * non-array `groups`, or a group whose `components` isn't an array — so the pure priority readers
+ * (`previewNamesByPriority`, `specDefersAnything`, `defersEveryPreview`, `deferralPlan`) can run on a
+ * structurally-invalid spec without throwing. `validateSpec` reports the shape error separately; this
+ * must not pre-empt it with a `TypeError`.
+ */
 function components(spec) {
-  return (spec?.groups ?? []).flatMap((group) =>
-    (group?.components ?? []).map((component) => ({ group, component })),
-  );
+  const groups = Array.isArray(spec?.groups) ? spec.groups : [];
+  return groups.flatMap((group) => {
+    const entries = Array.isArray(group?.components) ? group.components : [];
+    return entries.map((component) => ({ group, component }));
+  });
 }
 
 /**
@@ -218,6 +226,13 @@ export function previewNamesByPriority(spec) {
  * exactly the specs that would otherwise empty the filter through deferral. Mode-level deferral
  * can't trigger it — it never empties the preview list — and a catalog that defers nothing is the
  * ordinary render-all case, also not flagged.
+ *
+ * Reflects only the spec's OWN `groups`, which is all the pre-flight render filter sees too. A hybrid
+ * catalog can leave its required entries in `@CatalogComponent` annotations and place only deferred
+ * overrides in `spec.groups`; those annotation entries are merged in as `required` by the driver
+ * (`mergeCatalogGroups`), so such a spec is not truly all-deferred. The caller must therefore only act
+ * on a `true` here when the spec's groups are known to be the complete inventory — `validateSpec`
+ * gates on `annotatedInventory === false` for exactly that reason.
  */
 export function defersEveryPreview(spec) {
   const { required, deferred } = previewNamesByPriority(spec);
