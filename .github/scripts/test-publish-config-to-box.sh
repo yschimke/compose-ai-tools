@@ -96,6 +96,52 @@ for system in compose-m3 cadence jetnews; do
     fail "missing catalog POST for ${system}"
 done
 
+# 8. A box missing ONE route must not lose the other sections. This is the regression that
+#    silently dropped a newly-added catalog on the 0.19.8 publish: the box was mid-roll and still
+#    answering as an older image, /admin/groups 404'd, and the whole run aborted before catalogs.
+#    Driven through a stubbed curl so no server is involved.
+shim="${tmp}/bin"
+mkdir -p "${shim}"
+cat > "${shim}/curl" <<'SH'
+#!/usr/bin/env bash
+# An older box: /admin/trust and /admin/catalogs exist, /admin/groups does not.
+for a in "$@"; do
+  case "$a" in
+    */admin/groups) printf 'not found\n404'; exit 0 ;;
+    */admin/catalogs) printf 'ok\n200'; exit 0 ;;
+    */admin/trust) printf 'ok\n200'; exit 0 ;;
+  esac
+done
+printf 'ok\n200'
+SH
+chmod +x "${shim}/curl"
+
+partial=$(PATH="${shim}:${PATH}" BASE_URL=https://example.invalid ADMIN_TOKEN=t \
+  TRUST_FILE="${tmp}/producers.json" CATALOGS_FILE="${tmp}/catalogs.json" \
+  bash "${UNDER_TEST}" 2>&1)
+
+printf '%s' "${partial}" | grep -q 'catalog compose-m3: applied' ||
+  fail "a missing /admin/groups must NOT stop catalogs being published:\n${partial}"
+printf '%s' "${partial}" | grep -q 'catalog cadence: applied' ||
+  fail "every catalog must still be attempted when groups are unavailable:\n${partial}"
+printf '%s' "${partial}" | grep -q 'front-page groups were not reconciled' ||
+  fail "skipping groups must be reported, not silent:\n${partial}"
+
+# 9. A 404 on /admin/trust — the oldest route — genuinely does mean the admin API is off, so it
+#    should stop early rather than emit one warning per entry.
+cat > "${shim}/curl" <<'SH'
+#!/usr/bin/env bash
+printf 'not found\n404'
+SH
+chmod +x "${shim}/curl"
+off=$(PATH="${shim}:${PATH}" BASE_URL=https://example.invalid ADMIN_TOKEN=t \
+  TRUST_FILE="${tmp}/producers.json" CATALOGS_FILE="${tmp}/catalogs.json" \
+  bash "${UNDER_TEST}" 2>&1)
+printf '%s' "${off}" | grep -q 'admin API not enabled' ||
+  fail "a 404 on /admin/trust should report the admin API as off:\n${off}"
+[[ $(printf '%s\n' "${off}" | grep -c 'returned 404') -le 1 ]] ||
+  fail "an admin-off box should warn once, not per entry:\n${off}"
+
 if [[ "${failures}" -gt 0 ]]; then
   echo "${failures} check(s) failed" >&2
   exit 1

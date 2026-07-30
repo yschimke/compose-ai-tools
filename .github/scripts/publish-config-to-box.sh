@@ -55,10 +55,18 @@ fi
 # step goes red and the log carries an ::error:: instead of a warning nobody reads).
 rejected=0
 
+# Sections skipped because the box lacks the route (an older image, e.g. one still mid-roll).
+groups_skipped=0
+catalogs_skipped=0
+
 # POST one JSON body to an admin path. 200 = applied, 409 = already there (both fine), 404 =
-# the routes don't exist on this server (no --admin-token, or an image predating them) — which is
-# reported once and treated as "nothing to do" rather than a failure, since a box that never opted
-# in to the admin API is a legitimate deployment.
+# that ROUTE doesn't exist on this box — returned as 2 so the caller can skip just its own section.
+#
+# A 404 is per-route, NOT "the admin API is off". This bit for real on the 0.19.8 publish: the box
+# was still rolling and answered as 0.19.7, which has /admin/trust but not the newer /admin/groups.
+# The groups 404 was treated as a global "admin not enabled" and aborted the run before the catalogs
+# loop, so a newly-added catalog (horologist) was silently never published. A missing groups route
+# only means catalogs land ungrouped — no reason to skip them.
 post() {
   local path="$1" body="$2" label="$3"
   if [[ "${DRY_RUN}" == 1 ]]; then
@@ -77,7 +85,7 @@ post() {
     200 | 201) echo "  ${label}: applied" ;;
     409) echo "  ${label}: already present" ;;
     404)
-      echo "::warning::${BASE_URL}${path} returned 404 — admin API not enabled on this box; skipping config reconcile."
+      echo "::warning::${path} returned 404 — route not available on this box; skipping the rest of this section."
       return 2
       ;;
     400)
@@ -110,8 +118,13 @@ while IFS= read -r entry; do
     "$(jq -cn --arg r "${repo}" --arg b "${branch}" \
       '{kind:"branch", repo:$r, branch:$b}')" \
     "branch ${repo}@${branch}" || {
-    # 404 from the first call means the whole surface is missing; don't hammer it per entry.
-    [[ $? == 2 ]] && exit 0
+    # /admin/trust is the oldest of the three routes, so a 404 HERE really does mean the admin API
+    # is off (no --admin-token, or a wrong token — both answer 404 by design). Nothing downstream
+    # can work, so stop rather than emit the same warning for every group and catalog.
+    if [[ $? == 2 ]]; then
+      echo "::warning::/admin/trust is unavailable — admin API not enabled on this box (or the token does not match); skipping the whole reconcile."
+      exit 0
+    fi
   }
 done < <(jq -c '.branches // [] | .[]' "${TRUST_FILE}")
 
@@ -123,7 +136,13 @@ while IFS= read -r group; do
   [[ -n "${group}" ]] || continue
   id=$(printf '%s' "${group}" | jq -r '.id')
   post /admin/groups "${group}" "group ${id}" || {
-    [[ $? == 2 ]] && exit 0
+    # Route missing (a box predating /admin/groups, e.g. one still mid-roll on an older image).
+    # Catalogs are still worth publishing — they just land under the owner-repo fallback heading
+    # until a later run can group them. Skipping them here is what silently lost horologist.
+    if [[ $? == 2 ]]; then
+      groups_skipped=1
+      break
+    fi
   }
 done < <(jq -c '.groups // [] | .[]' "${CATALOGS_FILE}")
 
@@ -136,9 +155,20 @@ while IFS= read -r entry; do
   body=$(printf '%s' "${entry}" | jq -c '{system, repo, listed, group, attributionRepos}
     | with_entries(select(.value != null))')
   post /admin/catalogs "${body}" "catalog ${system}" || {
-    [[ $? == 2 ]] && exit 0
+    if [[ $? == 2 ]]; then
+      catalogs_skipped=1
+      break
+    fi
   }
 done < <(jq -c '.catalogs // [] | .[]' "${CATALOGS_FILE}")
+
+if [[ "${groups_skipped}" == 1 ]]; then
+  echo "::warning::front-page groups were not reconciled — this box predates /admin/groups. Catalogs are published ungrouped; the next publish against a newer image will group them."
+fi
+if [[ "${catalogs_skipped}" == 1 ]]; then
+  echo "::error::catalogs were not reconciled — /admin/catalogs is unavailable on this box."
+  rejected=$((rejected + 1))
+fi
 
 if [[ "${rejected}" -gt 0 ]]; then
   echo "::error::${rejected} seed entr(y|ies) were rejected — the box is not serving everything the committed config declares." >&2
