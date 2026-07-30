@@ -136,6 +136,41 @@ export function modePriority(spec, mode) {
 }
 
 /**
+ * The declared mode a **daemon preview id** renders in, or null when the id names none.
+ *
+ * The theme fan-out lives inside one `@Preview` function — a multipreview member (`@CatalogModes` →
+ * `Foo_Light` / `Foo_Dark`) or one of several `@Preview` annotations — and the mode's name is the
+ * only trace of
+ * it on the id, appended as a trailing segment. So this reads that segment back and resolves it
+ * against the modes the spec declares, which is what lets the render-side id filter (issue #2966)
+ * skip a deferred palette instead of merely leaving it out of the publish.
+ *
+ * Matched case-insensitively (`modes: ["light"]` vs the annotation's `name = "Light"`), longest mode
+ * first so `dark` can't shadow a declared `highContrastDark`, and only at a segment boundary — the
+ * mode must be the whole id, follow a separator (`_`, `-`, `.`, space), or start at an upper-case
+ * letter (`FooLight`). Without the boundary rule a mode named `on` would match `ButtonSwitchOn`'s
+ * unrelated tail and silently defer a required render.
+ */
+export function modeOfPreviewId(id, modes) {
+  const text = String(id ?? "");
+  if (text.length === 0) return null;
+  const declared = (modes ?? [])
+    .filter((m) => typeof m === "string" && m.length > 0)
+    .sort((a, b) => b.length - a.length);
+  const lower = text.toLowerCase();
+  for (const mode of declared) {
+    const suffix = mode.toLowerCase();
+    if (!lower.endsWith(suffix)) continue;
+    const start = text.length - suffix.length;
+    if (start === 0) return mode;
+    const before = text[start - 1];
+    const boundary = /[^A-Za-z0-9]/.test(before) || /[A-Z]/.test(text[start]);
+    if (boundary) return mode;
+  }
+  return null;
+}
+
+/**
  * Whether a rendered image's mode is deferred. Only an image that *names* a theme can be deferred:
  * the untagged sticker is the component's primary render (the one the grid shows and the Figma
  * import carries), so `modePriority` can thin the palette fan-out without ever leaving a component
@@ -226,9 +261,12 @@ export function previewNamesByPriority(spec) {
  * deferred entry may then be rasterised anyway, costing time but never correctness: the export keys
  * deferral off the spec, not off whether a PNG happens to exist.
  *
- * Mode-level deferral contributes nothing here. The fan-out it thins lives *inside* one `@Preview`
- * function (a multipreview member or a `@PreviewParameter` row), and the render filter selects whole
- * functions — so `modePriority` currently thins what is published, not what is rendered.
+ * Mode-level deferral contributes nothing here, and can't: the fan-out it thins lives *inside* one
+ * `@Preview` function (a multipreview member, or one of several `@Preview` annotations), and this
+ * filter selects
+ * whole functions. The mode axis is skipped by the sibling **id** filter instead — see
+ * `deferred-preview-ids.mjs`, which needs the discovered ids and therefore runs after discovery
+ * rather than in the build-free pre-flight (issue #2966).
  */
 export function renderFilterPatterns(spec) {
   const { required, deferred } = previewNamesByPriority(spec);

@@ -126,6 +126,18 @@ class BundleCommand(args: List<String>) : Command(args) {
 
       Pack flags:
         --id <preview-id>   Preview to include. Repeatable. First is the cover. Default: all.
+        --exclude-preview-id <id|glob>
+                            Skip rendering (and semantics-capturing) previews whose discovered id
+                            matches. Repeatable and comma-separated; '*'/'?' globs or a plain
+                            substring, matching composePreviewRender --exclude-preview-id.
+                            Unlike --id (which selects whole previews to PACK) this thins the RENDER
+                            of one function's multipreview / multi-annotation fan-out — a design
+                            catalog deferring a palette to its live server passes the deferred ids
+                            here. Excluded previews stay listed in the bundle (addressable, just
+                            without a baked PNG). Forwarded to Gradle as
+                            -PcomposePreview.idExclude; also read from the
+                            ORG_GRADLE_PROJECT_composePreview.idExclude env var when the flag is
+                            absent, so an env-only setup thins the semantics pass too.
         --per-preview       Emit one valid single-preview bundle per preview (<out-dir>/<id>.png)
                             instead of a single sheet — the addressable-preview unit, each openable /
                             re-renderable on its own. Renders once, then packs each (minimized to its
@@ -212,6 +224,15 @@ private class PackSubcommand(private val args: List<String>) {
       .map { it.trim() }
       .filter { it.isNotEmpty() }
 
+  /**
+   * `--exclude-preview-id` patterns (issue #2966) — the previews this pack must NOT render or
+   * semantics-capture. Falls back to the `ORG_GRADLE_PROJECT_composePreview.idExclude` env var so a
+   * caller that only sets the env var (the way the design-artifacts workflow passes the name filter
+   * through to `composePreviewRender`) still gets the semantics pass thinned, which the env var
+   * alone cannot do — the CLI, not Gradle, drives that capture.
+   */
+  private val excludePreviewIds: List<String> = PackPreviewIdExclusions.fromArgs(args)
+
   fun run() {
     if (perPreview) {
       runPerPreview()
@@ -247,6 +268,15 @@ private class PackSubcommand(private val args: List<String>) {
             val gradleArgs = buildList {
               if (ids.isNotEmpty())
                 add("-PbundlePreviewIds=${ids.joinToString(",") { encodePreviewId(it) }}")
+              // Thin the RENDER itself (issue #2966): `composePreviewRender` reads this as the
+              // `--exclude-preview-id` convention. Passed explicitly rather than relying on the
+              // inherited env var so `--exclude-preview-id` works from any shell, and so the
+              // patterns the semantics pass below skips are provably the same ones the render did.
+              if (excludePreviewIds.isNotEmpty())
+                add(
+                  "-P${PackPreviewIdExclusions.GRADLE_PROPERTY}=" +
+                    excludePreviewIds.joinToString(",")
+                )
               if (embedDeps) add("-PbundleEmbedDeps=true")
               if (includeDataExtensions) add("-PbundleIncludeDataExtensions=true")
               add("-PbundleOutput=${resolvedOutput.absolutePath}")
@@ -548,6 +578,27 @@ private class PackSubcommand(private val args: List<String>) {
     fun <V> Map<String, V>.keyedByBundleId(): Map<String, V> = entries.associate { (raw, v) ->
       (bundleIdByRaw[raw] ?: raw) to v
     }
+    // The other half of the deferral saving (issue #2966): this capture is a daemon render per
+    // preview, so filtering only `composePreviewRender` would leave the axis cost here untouched.
+    // Excluded previews stay listed in the bundle (they must, to stay addressable on the serve host
+    // — see #2965) and simply carry no semantics/layout/figma-svg sidecar, exactly as they carry no
+    // PNG.
+    val captureIds = PackPreviewIdExclusions.retain(rawIds, excludePreviewIds)
+    val excludedFromCapture = rawIds.size - captureIds.size
+    if (excludedFromCapture > 0) {
+      System.err.println(
+        "bundle pack: --with-semantics skipping $excludedFromCapture excluded preview(s) " +
+          "(--exclude-preview-id); ${captureIds.size} to capture."
+      )
+    }
+    if (captureIds.isEmpty()) {
+      System.err.println(
+        "bundle pack: --exclude-preview-id excluded every preview from the semantics capture; " +
+          "bundle written without previews/<id>$BUNDLE_SEMANTICS_SUFFIX."
+      )
+      return null
+    }
+    val captureCount = captureIds.size
     val fetcher =
       DaemonSemanticsFetcher(
         onLog = { System.err.println("[daemon semantics] $it") },
@@ -557,7 +608,7 @@ private class PackSubcommand(private val args: List<String>) {
       fetcher.fetch(
         projectDir = target.projectDir,
         moduleName = target.gradlePath,
-        previewIds = rawIds,
+        previewIds = captureIds,
       )
     when (outcome) {
       is DaemonSemanticsFetcher.Outcome.Ok -> {
@@ -569,7 +620,7 @@ private class PackSubcommand(private val args: List<String>) {
           return null
         }
         val written = injectSemanticsIntoBundle(bundleFile, outcome.semanticsById.keyedByBundleId())
-        val missing = previewIds.size - written
+        val missing = captureCount - written
         // The layout-inspector tree rides alongside the semantics blob (best-effort): a preview
         // that produced a tree gets `previews/<id>.layout.json` so a consumer can build slot-level
         // redlines/wireframes. Injected after semantics so its byte count is reflected too.
@@ -588,23 +639,23 @@ private class PackSubcommand(private val args: List<String>) {
         val figmaRasterWritten =
           injectFigmaRasterIntoBundle(bundleFile, outcome.figmaRasterById.keyedByBundleId())
         val semanticsLine =
-          "  semantics:     $written / ${previewIds.size} preview(s) carried as " +
+          "  semantics:     $written / $captureCount preview(s) carried as " +
             "previews/<id>$BUNDLE_SEMANTICS_SUFFIX" +
             if (missing > 0) " ($missing without a captured tree)" else ""
         val extraLines = buildString {
           if (layoutWritten > 0)
             append(
-              "\n  layout:        $layoutWritten / ${previewIds.size} preview(s) carried " +
+              "\n  layout:        $layoutWritten / $captureCount preview(s) carried " +
                 "as previews/<id>$BUNDLE_LAYOUT_SUFFIX"
             )
           if (fontsWritten > 0)
             append(
-              "\n  fonts:         $fontsWritten / ${previewIds.size} preview(s) carried " +
+              "\n  fonts:         $fontsWritten / $captureCount preview(s) carried " +
                 "as previews/<id>$BUNDLE_FONTS_SUFFIX"
             )
           if (figmaSvgWritten > 0)
             append(
-              "\n  figma-svg:     $figmaSvgWritten / ${previewIds.size} preview(s) carried " +
+              "\n  figma-svg:     $figmaSvgWritten / $captureCount preview(s) carried " +
                 "as previews/<id>$BUNDLE_FIGMA_SVG_SUFFIX"
             )
           if (figmaRasterWritten > 0)

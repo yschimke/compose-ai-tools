@@ -30,6 +30,7 @@ internal object CliFlags {
       "--module",
       "--filter",
       "--id",
+      "--exclude-preview-id",
       "--output",
       "--timeout",
       "--plugin-version",
