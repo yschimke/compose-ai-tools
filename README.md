@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 263 preview(s) across 20 module(s) · 39 error(s) · 4 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/main`. 265 preview(s) across 20 module(s) · 39 error(s) · 4 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -132,6 +132,12 @@ _No findings._
 |--:|---|---|---|---|
 | 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "The quick brown fox (700)" is identical to that of 3 other item(s). |
 | 2 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "The quick brown fox (400)" is identical to that of 4 other item(s). |
+
+### `DividerShowBackgroundDarkPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/DividerShowBackgroundDarkPreview_Divider_Dark.png" width="400" />
+
+_No findings._
 
 ### `EmojiCompatComparisonPreview`
 
@@ -606,6 +612,12 @@ _No findings._
 _No findings._
 
 ## android-library
+
+### `HtmlShowNotesPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android-library/HtmlShowNotesPreview_HTML_show_notes.a11y.png" width="400" />
+
+_No findings._
 
 ### `LibraryBoxPreview`
 

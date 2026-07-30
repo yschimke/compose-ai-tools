@@ -91,6 +91,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "HtmlShowNotesPreview_HTML_show_notes.a11y.png",
+      "cleanBasename": "HtmlShowNotesPreview_HTML_show_notes.png",
+      "findings": [],
+      "functionName": "HtmlShowNotesPreview",
+      "module": "android-library",
+      "previewId": "com.example.samplelibrary.AndroidViewPreviewsKt.HtmlShowNotesPreview_HTML show notes",
+      "sourceFile": "src/main/kotlin/com/example/samplelibrary/AndroidViewPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "LibraryBoxPreview_Library_Box.a11y.png",
       "cleanBasename": "LibraryBoxPreview_Library_Box.png",
       "findings": [],
@@ -441,6 +451,16 @@
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewsKt.DeviceFontFamilyShowcasePreview_Device Font Family Showcase",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "DividerShowBackgroundDarkPreview_Divider_Dark.png",
+      "findings": [],
+      "functionName": "DividerShowBackgroundDarkPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.DividerShowBackgroundPreviewsKt.DividerShowBackgroundDarkPreview_Divider Dark",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/DividerShowBackgroundPreviews.kt",
       "variant": ""
     },
     {
