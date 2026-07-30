@@ -74,47 +74,6 @@ object GoogleFontFiles {
     val file = File(dir, GoogleFontKey(family, weight, italic).fileName())
     return file.takeIf { it.isFile && it.length() > 0 }
   }
-
-  /**
-   * The cached TTF whose weight is closest to [weight] for the same `(family, italic)`, or null when
-   * this family resolved no face at all. Prefers the exact weight; falls back to the nearest cached
-   * weight (issue #2906).
-   *
-   * The requested *text* weight and the weight the render actually resolved to are frequently
-   * different faces. A family that declares a single `Font(GoogleFont("Lato"))` — the JetLagged
-   * shape — carries only its default (400) face, so text set at `FontWeight(600)` draws that 400
-   * face synthetically bolded, and the renderer's downloadable cache holds `lato-400.ttf`, never
-   * `lato-600.ttf`. Reconstructing the cache filename from the requested 600 therefore missed, the
-   * export found no file to embed, and the SVG fell back to a bare `sans-serif` family with no
-   * `@font-face`. Matching the nearest cached weight instead embeds the real face the raster drew —
-   * the same best-effort weight matching Compose and the Google Fonts provider already do. Never
-   * downloads, for the same reason [cached] doesn't: a family with nothing cached wasn't drawn with
-   * a downloadable face either.
-   */
-  fun cachedNearest(family: String, weight: Int, italic: Boolean): File? {
-    cached(family, weight, italic)?.let { return it }
-    val dir =
-      System.getProperty("composeai.fonts.cacheDir")?.takeIf { it.isNotBlank() }?.let(::File)
-        ?: return null
-    val prefix = "${GoogleFontKey.slugify(family)}-"
-    // The italic marker is part of the filename suffix, so a non-italic request that ends in ".ttf"
-    // also textually matches an italic file — but its middle segment ("400-italic") then fails to
-    // parse as an int and is dropped, keeping the two styles from bleeding into each other.
-    val suffix = if (italic) "-italic.ttf" else ".ttf"
-    return (dir.listFiles() ?: return null)
-      .asSequence()
-      .filter {
-        it.isFile &&
-          it.length() > 0 &&
-          it.name.startsWith(prefix) &&
-          it.name.endsWith(suffix)
-      }
-      .mapNotNull { file ->
-        file.name.removePrefix(prefix).removeSuffix(suffix).toIntOrNull()?.let { w -> file to w }
-      }
-      .minByOrNull { (_, cachedWeight) -> kotlin.math.abs(cachedWeight - weight) }
-      ?.first
-  }
 }
 
 /**

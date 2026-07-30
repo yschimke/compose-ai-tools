@@ -24,21 +24,23 @@ import org.junit.rules.TemporaryFolder
  *
  * The JetLagged shape reproduced by [JetLaggedHeadingText]: a single `Font(GoogleFont("Lato"))`
  * declared at its default weight, drawn at a heavier heading weight the family never declares a face
- * for, so the export asks the recovery for `("Lato", <heading weight>)` while the downloadable cache
- * only holds the face at another weight — the mismatch that made the old exact-weight lookup miss
- * and drop the `@font-face` entirely.
+ * for. The downloadable provider is requested at — and the cache holds — the *declared face* weight,
+ * while the export's `<text>` asks about the *heading* weight, so the recovery has to bridge the two
+ * by the matched face rather than by reconstructing the heading weight's filename. The old
+ * exact-weight lookup couldn't, so it dropped the `@font-face` entirely.
  *
  * The warmed face is a distinctive stand-in TTF (Orbitron — the assertions read its real family out
- * of the bytes exactly as the export does, so the test never depends on which stand-in warms it).
- * It is warmed at a weight *offset* from both the requested and heading weights, on purpose: the
- * daemon's Robolectric tier (SDK 35 / JDK 17) can't build a file-backed downloadable `Typeface`
- * (that only works on the catalog render tier, SDK 36 / JDK 21), so warming the exact requested
- * weight would crash the sandbox render rather than exercise the export. Warming an offset weight
- * lets the provider miss and fall back to the platform face for the *pixels* while the resolved TTF
- * stays on disk for the export's nearest-weight recovery — the code path #2906 fixes. The heading
- * weight ([FontWeight.Medium]) is kept below Compose's fake-bold threshold (600) so the fallback
- * typeface never triggers the same sandbox synthesis NPE. Pixel fidelity of the real downloadable
- * face at its literal weight is covered by the catalog render pipeline.
+ * of the bytes exactly as the export does, so the test never depends on which stand-in warms it). It
+ * is warmed at the declared face weight the provider actually requests and caches, so the recovery
+ * embeds the exact face the render resolved — never a nearby weight the shared cache happens to hold
+ * but this render never drew.
+ *
+ * This test cannot be executed in the daemon's Robolectric unit tier (SDK 35 / JDK 17): building a
+ * file-backed downloadable `Typeface` there NPEs, and the pre-existing sibling
+ * [FigmaSvgDownloadableFontFamilyTest] fails identically in the same sandbox — a limitation of that
+ * tier's Robolectric graphics, not of the export. It renders on the catalog tier (SDK 36 / JDK 21).
+ * The heading weight ([FontWeight.Medium]) is kept below Compose's fake-bold threshold (600) so the
+ * resolved face is drawn straight, matching what the `@font-face` embeds.
  */
 class FigmaSvgDownloadableFontEmbedTest {
 
@@ -48,11 +50,12 @@ class FigmaSvgDownloadableFontEmbedTest {
   fun `figma svg embeds the downloadable face recovered for a non-default heading weight`() {
     val outputDir = tempFolder.newFolder("renders")
     val cacheDir = tempFolder.newFolder("font-cache")
-    // Warm the downloadable cache with a real face keyed to a weight the export's requested heading
-    // weight (500) has to *match by nearness*, not exactly — the render-side recovery's job (issue
-    // #2906). The stand-in bytes carry a real family name the export reads back and names `<text>`.
+    // Warm the downloadable cache at the *declared face* weight (400) the provider requests and
+    // caches — the face the render resolves. The heading draws at 500, so the export asks about 500
+    // and the recovery has to bridge it to this 400 file via the matched face (issue #2906). The
+    // stand-in bytes carry a real family name the export reads back and names `<text>` after.
     val faceBytes = readFixtureFont()
-    File(cacheDir, GoogleFontKey("Lato", 700, false).fileName()).writeBytes(faceBytes)
+    File(cacheDir, GoogleFontKey("Lato", 400, false).fileName()).writeBytes(faceBytes)
     val embeddedFamily = awtFamilyOf(faceBytes)
 
     val priors =
@@ -64,9 +67,8 @@ class FigmaSvgDownloadableFontEmbedTest {
         // resolver must not reach the network, so the only way an `@font-face` can appear is the
         // render-side recovery embedding the cached TTF.
         "composeai.fonts.offline" to "true",
-        // The provider requests the default face weight, which isn't the warmed 700, so it falls
-        // back for the pixels (the sandbox can't build the file-backed face — see the class KDoc).
-        // Keep that fallback a warning, not a render failure, so the assertion is on the SVG.
+        // On the render tier the warmed face resolves cleanly, so no fallback is expected; keep any
+        // stray fallback a warning rather than a render failure so the assertion stays on the SVG.
         "composeai.fonts.failOnFallback" to "false",
         "composeai.svg.embedFonts" to "true",
       )

@@ -178,17 +178,27 @@ class FontResolverRecorder(private val context: Context? = null) {
   ) {
     if (GOOGLE_FONT_LABEL.find(fontLabel(font)) == null) return
     if (FigmaResourceFonts.pathFor(family, weight, italic) != null) return
-    // The nearest cached face, not the exact requested weight: a family that declares a single
-    // `Font(GoogleFont("Lato"))` (the JetLagged shape) carries only its default face, so text set
-    // at a heavier `FontWeight` draws that face synthetically bolded and the cache holds only the
-    // default weight. Looking up the requested weight exactly missed, nothing was registered, and
-    // the export fell back to a bare `sans-serif` with no `@font-face` (issue #2906). Registering
-    // the nearest resolved face under the requested weight embeds the real face the raster drew.
+    // Look the cache up by the matched *face's* own declared weight/style — what the downloadable
+    // provider actually requested and cached — not by the requested text [weight]. A family that
+    // declares a single `Font(GoogleFont("Lato"))` (the JetLagged shape) carries only its default
+    // face, so text set at a heavier `FontWeight` draws that default face (synthetically bolded) and
+    // the cache holds it under the default weight, never the heading weight; keying off the matched
+    // face finds that exact file while keying off the requested weight missed and dropped the
+    // `@font-face` (issue #2906). Keying off the matched face — rather than any nearby cache entry —
+    // also refuses to embed an unrelated weight the shared cross-project cache happens to hold but
+    // this render never drew: a cache miss here means the face fell back, so embed nothing and let
+    // the export degrade to match the raster.
     val file =
       runCatching {
-          ee.schimke.composeai.renderer.GoogleFontFiles.cachedNearest(family, weight, italic)
+          ee.schimke.composeai.renderer.GoogleFontFiles.cached(
+            family,
+            font.weight.weight,
+            styleName(font.style) == "italic",
+          )
         }
         .getOrNull() ?: return
+    // Register under the *requested* text weight/style (what the export's `<text>` asks about),
+    // pointing at the exact file the matched face resolved to.
     FigmaResourceFonts.register(family, weight, italic, file.absolutePath)
   }
 
