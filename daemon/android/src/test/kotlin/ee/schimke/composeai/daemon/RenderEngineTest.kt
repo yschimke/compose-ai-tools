@@ -508,6 +508,88 @@ class RenderEngineTest {
   }
 
   @Test
+  fun figmaSvgFadesAnAlphaZeroRecordButtonEmbeddedInAnInputBar() {
+    // Issue #2853, the embedded alpha-zero clipped background: the recording circle is faded to
+    // `alpha = 0` through a `graphicsLayer` lambda block over a visible mic. The export must carry
+    // that evaluated layer alpha onto the group (opacity 0) and keep the mic as an editable path,
+    // rather than leaking an opaque blue circle the PNG never shows.
+    val outputDir = tempFolder.newFolder("renders-record-button")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost()
+    host.start()
+    try {
+      host.submit(
+        RenderRequest.Render(
+          payload =
+            "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+              "functionName=AlphaZeroRecordButton;" +
+              "widthPx=200;heightPx=56;density=1.0;" +
+              "showBackground=true;outputBaseName=record-button"
+        ),
+        timeoutMs = 120_000,
+      )
+
+      val svg =
+        outputDir.parentFile!!
+          .resolve("data")
+          .resolve("record-button")
+          .resolve("compose-figma.svg")
+          .readText()
+      assertTrue("the alpha-zero recording circle must be faded out", svg.contains("""opacity="0""""))
+      assertTrue("the microphone must remain an editable path", svg.contains("<path "))
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun figmaSvgKeepsAScaledVectorSquareInAnAnimatedLayout() {
+    // Issue #2853, the embedded distorted vector: a square create icon scaled through a graphics
+    // layer (Jetchat's `Profile/Animating FAB content`). Its captured scale is already baked into
+    // the drawn bounds, so the export must fit the vector to those bounds once — a uniform scale for
+    // a square icon — never multiplying a layout-slot fit by the captured scale again.
+    val outputDir = tempFolder.newFolder("renders-animated-fab")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost()
+    host.start()
+    try {
+      host.submit(
+        RenderRequest.Render(
+          payload =
+            "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+              "functionName=VectorIconInAnimatedLayout;" +
+              "widthPx=96;heightPx=96;density=1.0;" +
+              "showBackground=true;outputBaseName=animated-fab"
+        ),
+        timeoutMs = 120_000,
+      )
+
+      val svg =
+        outputDir.parentFile!!
+          .resolve("data")
+          .resolve("animated-fab")
+          .resolve("compose-figma.svg")
+          .readText()
+      assertTrue("the create icon must remain an editable path", svg.contains("<path "))
+
+      val scales =
+        Regex("""scale\(([-0-9.]+) ([-0-9.]+)\)""")
+          .findAll(svg)
+          .map { it.groupValues[1].toDouble() to it.groupValues[2].toDouble() }
+          .toList()
+      assertTrue("the scaled vector must emit a scale transform", scales.isNotEmpty())
+      assertTrue(
+        "a square icon must stay square (uniform scale), never squashed or double-counted: $scales",
+        scales.all { (x, y) -> abs(x - y) < 0.01 },
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun figmaSvgLongRenderModeProducesFullPageSvg() {
     // Parity with the desktop backend: the `figma-svg-long` render mode grows the viewport until a
     // virtualised LazyColumn composes every row, sizes to content, and writes the full-page SVG to

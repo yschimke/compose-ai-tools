@@ -6,14 +6,18 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -25,11 +29,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -119,6 +128,125 @@ fun FidelityCardPreview() {
         Text(text = "harness card", style = MaterialTheme.typography.bodyMedium)
         Box(modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.primary))
       }
+    }
+  }
+}
+
+/**
+ * Desktop mirror of the Android `AlphaZeroRecordButton` fidelity fixture (issue #2853): a recording
+ * circle faded to `alpha = 0` through a `graphicsLayer` lambda block, over a visible vector mic in
+ * an input-bar row. Same FQN + function name as the Android copy so one harness scenario resolves
+ * on either backend; the desktop backend is the one that rasterises the SVG and scores fidelity.
+ */
+@Composable
+fun AlphaZeroRecordButton() {
+  val mic =
+    ImageVector.Builder(
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+      )
+      .apply {
+        path(fill = SolidColor(Color.White)) {
+          moveTo(12f, 3f)
+          lineTo(15f, 3f)
+          lineTo(15f, 13f)
+          lineTo(12f, 13f)
+          close()
+        }
+      }
+      .build()
+
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFF1F1F1F))) {
+    Row(
+      modifier = Modifier.fillMaxSize().padding(8.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      // A stand-in for the input field the record button sits beside (kept text-free so the fixture
+      // renders without a downloadable font under Robolectric on the Android backend).
+      Box(
+        modifier =
+          Modifier.testTag("input-field")
+            .width(120.dp)
+            .height(24.dp)
+            .background(Color(0xFF3A3A3A), RoundedCornerShape(12.dp))
+      )
+      Box(modifier = Modifier.width(8.dp).height(1.dp))
+      Box(contentAlignment = Alignment.Center) {
+        Box(
+          modifier =
+            Modifier.testTag("record-circle")
+              .size(40.dp)
+              .graphicsLayer {
+                alpha = 0f
+                scaleX = 0.8f
+                scaleY = 0.8f
+              }
+              .background(Color(0xFF2962FF), RoundedCornerShape(20.dp))
+        )
+        Icon(
+          imageVector = mic,
+          contentDescription = "record",
+          tint = Color.White,
+          modifier = Modifier.testTag("record-mic").size(24.dp),
+        )
+      }
+    }
+  }
+}
+
+/**
+ * Desktop mirror of the Android `VectorIconInAnimatedLayout` fidelity fixture (issue #2853): a
+ * square create icon scaled through a graphics layer, as in Jetchat's `Profile/Animating FAB
+ * content`. The export must fit the vector to its drawn bounds once and keep it square, not
+ * double-count the captured scale.
+ */
+@Composable
+fun VectorIconInAnimatedLayout() {
+  val create =
+    ImageVector.Builder(
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+      )
+      .apply {
+        path(fill = SolidColor(Color.White)) {
+          moveTo(11f, 5f)
+          lineTo(13f, 5f)
+          lineTo(13f, 11f)
+          lineTo(19f, 11f)
+          lineTo(19f, 13f)
+          lineTo(13f, 13f)
+          lineTo(13f, 19f)
+          lineTo(11f, 19f)
+          lineTo(11f, 13f)
+          lineTo(5f, 13f)
+          lineTo(5f, 11f)
+          lineTo(11f, 11f)
+          close()
+        }
+      }
+      .build()
+
+  Box(
+    modifier = Modifier.fillMaxSize().background(Color(0xFF6200EE)),
+    contentAlignment = Alignment.Center,
+  ) {
+    Box(
+      modifier =
+        Modifier.testTag("fab-content").graphicsLayer {
+          scaleX = 1.5f
+          scaleY = 1.5f
+        }
+    ) {
+      Icon(
+        imageVector = create,
+        contentDescription = "create",
+        tint = Color.White,
+        modifier = Modifier.testTag("create-icon").size(24.dp),
+      )
     }
   }
 }

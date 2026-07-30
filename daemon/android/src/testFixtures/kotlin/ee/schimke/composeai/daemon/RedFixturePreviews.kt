@@ -272,6 +272,130 @@ fun GraphicsLayerAndWideVector() {
   }
 }
 
+/**
+ * Android end-to-end fidelity fixture for #2853, the alpha-zero clipped background: Jetchat's
+ * `Composer/Record button` authors its recording circle with
+ * `graphicsLayer { alpha = containerAlpha.value; scaleX = scale; scaleY = scale }`, and idle it
+ * evaluates to `alpha = 0`, so the PNG shows only the microphone. The circle here is faded exactly
+ * that way — through the lambda block, over a visible vector mic — so the export must carry the
+ * evaluated layer alpha onto the group and drop the opaque circle, rather than leaking it as an
+ * opaque fill. Embedding it in an input-bar `Row` matches the container the regression appeared in.
+ */
+@Composable
+fun AlphaZeroRecordButton() {
+  val mic =
+    ImageVector.Builder(
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+      )
+      .apply {
+        path(fill = SolidColor(Color.White)) {
+          moveTo(12f, 3f)
+          lineTo(15f, 3f)
+          lineTo(15f, 13f)
+          lineTo(12f, 13f)
+          close()
+        }
+      }
+      .build()
+
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFF1F1F1F))) {
+    Row(
+      modifier = Modifier.fillMaxSize().padding(8.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      // A stand-in for the input field the record button sits beside (kept text-free so the fixture
+      // renders without a downloadable font under Robolectric).
+      Box(
+        modifier =
+          Modifier.testTag("input-field")
+            .width(120.dp)
+            .height(24.dp)
+            .background(Color(0xFF3A3A3A), RoundedCornerShape(12.dp))
+      )
+      Box(modifier = Modifier.width(8.dp).height(1.dp))
+      Box(contentAlignment = Alignment.Center) {
+        Box(
+          modifier =
+            Modifier.testTag("record-circle")
+              .size(40.dp)
+              .graphicsLayer {
+                alpha = 0f
+                scaleX = 0.8f
+                scaleY = 0.8f
+              }
+              .background(Color(0xFF2962FF), RoundedCornerShape(20.dp))
+        )
+        Icon(
+          imageVector = mic,
+          contentDescription = "record",
+          tint = Color.White,
+          modifier = Modifier.testTag("record-mic").size(24.dp),
+        )
+      }
+    }
+  }
+}
+
+/**
+ * Android end-to-end fidelity fixture for #2853, a vector icon inside a custom animated layout:
+ * Jetchat's `Profile/Animating FAB content` scales its create icon through a graphics layer as the
+ * FAB expands. The captured draw-time scale is already baked into the icon's drawn bounds, so the
+ * export must fit the vector to those bounds *once* (keeping the square icon square) rather than
+ * multiplying a layout-slot fit by the captured scale again — the double-count that blew an embedded
+ * mic group up from `scale(2.62)` to `scale(6.54)`.
+ */
+@Composable
+fun VectorIconInAnimatedLayout() {
+  val create =
+    ImageVector.Builder(
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+      )
+      .apply {
+        path(fill = SolidColor(Color.White)) {
+          moveTo(11f, 5f)
+          lineTo(13f, 5f)
+          lineTo(13f, 11f)
+          lineTo(19f, 11f)
+          lineTo(19f, 13f)
+          lineTo(13f, 13f)
+          lineTo(13f, 19f)
+          lineTo(11f, 19f)
+          lineTo(11f, 13f)
+          lineTo(5f, 13f)
+          lineTo(5f, 11f)
+          lineTo(11f, 11f)
+          close()
+        }
+      }
+      .build()
+
+  Box(
+    modifier = Modifier.fillMaxSize().background(Color(0xFF6200EE)),
+    contentAlignment = Alignment.Center,
+  ) {
+    Box(
+      modifier =
+        Modifier.testTag("fab-content").graphicsLayer {
+          scaleX = 1.5f
+          scaleY = 1.5f
+        }
+    ) {
+      Icon(
+        imageVector = create,
+        contentDescription = "create",
+        tint = Color.White,
+        modifier = Modifier.testTag("create-icon").size(24.dp),
+      )
+    }
+  }
+}
+
 @Composable
 fun ThemedPrimarySquare() {
   MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF123456))) {

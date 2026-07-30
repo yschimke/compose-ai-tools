@@ -467,6 +467,82 @@ class FigmaLayeredSvgTest {
     assertTrue(render(node).contains("""scale(0.5 0.5)"""))
   }
 
+  /**
+   * Issue #2853, the embedded-container regression: a captured graphics-layer scale is measured
+   * through the root coordinates, so it is already baked into the node's drawn `bounds` — and, when
+   * the container also scales the node's *measured* slot, into its `size`. Fitting the layout slot
+   * (`size / viewport`) and then multiplying by the captured `transform` again double-counts the
+   * scale: an embedded Jetchat mic group blew up from `scale(2.62)` to `scale(6.54)` that way. The
+   * fit must come from the drawn bounds alone, uniformly.
+   */
+  @Test
+  fun aScaledVectorFitsItsDrawnBoundsInsteadOfDoubleCountingTheTransform() {
+    val node =
+      LayoutInspectorNode(
+        nodeId = "icon",
+        component = "Icon",
+        // A 24-unit icon drawn at 2.5×: the container scaled both the drawn bounds and the measured
+        // slot to 60, and `transform` reports the same 2.5 the coordinate mapping measured.
+        bounds = bounds(0, 0, 60, 60),
+        size = LayoutInspectorSize(60, 60),
+        transform = LayoutInspectorTransform(scaleX = 2.5f, scaleY = 2.5f),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L24,0 L24,24 L0,24 Z",
+                  fillArgb = "#FF000000",
+                )
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertTrue("fits the drawn bounds once\n$svg", svg.contains("""scale(2.5 2.5)"""))
+    assertFalse("must not double-count the captured scale\n$svg", svg.contains("scale(6.25"))
+  }
+
+  /**
+   * Issue #2853: a *uniform* graphics-layer scale on a square icon in a **non-square** layout slot
+   * must keep its aspect ratio. A 24×24 icon in a 48×24 slot at 0.5× has 24×12 drawn bounds;
+   * reading each axis straight off those bounds would emit `scale(1 0.5)` and squash the icon. The
+   * uniform transform is the signal that the two axes should stay equal — fit the viewport
+   * uniformly into the drawn bounds instead, `scale(0.5 0.5)`.
+   */
+  @Test
+  fun aUniformlyScaledVectorInANonSquareSlotKeepsItsAspectRatio() {
+    val node =
+      LayoutInspectorNode(
+        nodeId = "icon",
+        component = "Icon",
+        // 48×24 slot drawn at 0.5× → 24×12 bounds. The transform is uniform (0.5, 0.5).
+        bounds = bounds(0, 0, 24, 12),
+        size = LayoutInspectorSize(48, 24),
+        transform = LayoutInspectorTransform(scaleX = 0.5f, scaleY = 0.5f),
+        vectorGraphic =
+          LayoutInspectorVectorGraphic(
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+            paths =
+              listOf(
+                LayoutInspectorVectorPath(
+                  pathData = "M0,0 L24,0 L24,24 L0,24 Z",
+                  fillArgb = "#FF000000",
+                )
+              ),
+          ),
+      )
+
+    val svg = render(node)
+
+    assertTrue("the icon must keep its aspect ratio\n$svg", svg.contains("""scale(0.5 0.5)"""))
+    assertFalse("a square icon must not be squashed\n$svg", svg.contains("scale(1 0.5)"))
+  }
+
   @Test
   fun vectorHonorsExplicitFillBoundsContentScale() {
     val node =

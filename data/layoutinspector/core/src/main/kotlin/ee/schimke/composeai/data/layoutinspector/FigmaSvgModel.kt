@@ -884,13 +884,19 @@ data class FigmaSvgModel(
         // is no frame to crop from. Its pixels carry nothing but this node's own paint, so
         // children stay editable on top of it.
         //
-        // …except where that paint is *already* exported as vector. A Wear `CurvedLayout` /
+        // …except where that paint is *already* exported as live text. A Wear `CurvedLayout` /
         // `TimeText` paints its runs through a draw modifier, and the export re-emits exactly
         // those runs as `<textPath>` from [curvedTexts] — so laying the capture underneath would
-        // draw the clock twice, once as pixels and once as live text. The vector wins; the same
-        // rule the `vectorGraphic` tiers follow.
+        // draw the clock twice, once as pixels and once as live text. The same hazard applies to a
+        // node whose own draw includes its straight text (a Jetchat `Conversation/Input` field):
+        // the isolated re-draw bakes the text into its pixels while the export still emits the live
+        // `<text>` from [textByNodeId], visibly doubling "Message #composers" (issue #2853). In
+        // both cases the live text wins and the raster is dropped — the same rule the
+        // `vectorGraphic` tiers follow. A drawn *container* whose text lives on child nodes keeps
+        // its background: its own `textByNodeId` entry is null, so the capture rides underneath the
+        // still-editable children.
         drawRaster
-            ?.takeIf { curvedTexts.isEmpty() }
+            ?.takeIf { curvedTexts.isEmpty() && ctx.textByNodeId[nodeId] == null }
             ?.let { captured ->
               val href = ctx.rasterHref(nodeId)
               ctx.rasterTargets.add(
