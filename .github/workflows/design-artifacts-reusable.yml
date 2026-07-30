@@ -290,11 +290,41 @@ jobs:
             args+=(--no-live-bundle)
           fi
           node compose-ai-tools/scripts/design-artifacts/validate-catalog-spec.mjs "${args[@]}" \
-            --render-filter-out "$GITHUB_WORKSPACE/render-filter.txt"
+            --render-filter-out "$GITHUB_WORKSPACE/render-filter.txt" \
+            --deferred-modes-out "$GITHUB_WORKSPACE/deferred-modes.txt"
           # The `--preview` patterns that render just the required entries. EMPTY for every
           # spec that defers no entry — i.e. all of them today — in which case the render
           # step below sees an empty property and renders everything, exactly as before.
           echo "render-filter=$(cat "$GITHUB_WORKSPACE/render-filter.txt")" >> "$GITHUB_OUTPUT"
+          # The deferred MODE names. Only the gate for the discovery step below (issue #2966):
+          # the mode axis is skipped per preview ID, and the ids only exist after discovery, so
+          # the extra Gradle invocation is worth paying only when a mode is actually deferred.
+          echo "deferred-modes=$(cat "$GITHUB_WORKSPACE/deferred-modes.txt")" >> "$GITHUB_OUTPUT"
+
+      # Per-mode render filter (issue #2966). `modePriority` thins a fan-out that lives INSIDE one
+      # `@Preview` function, so unlike the entry-level filter above it can't be expressed as function
+      # names — it needs the discovered preview ids (`FilledButton_Dark`, a `@PreviewParameter` row).
+      # `compose-preview list --json` runs `composePreviewDiscover` to get them; that compile is
+      # shared with the render below (same Gradle build, warm caches), so the extra invocation costs
+      # discovery, not a second compile. Skipped entirely when the spec defers no mode, which is the
+      # state of every catalog that hasn't opted in.
+      - name: Derive per-mode render exclusions
+        id: mode-filter
+        if: ${{ steps.validate-spec.outputs.deferred-modes != '' }}
+        working-directory: ${{ inputs.working-directory || '.' }}
+        env:
+          SPEC: ${{ inputs.spec }}
+        run: |
+          set -euo pipefail
+          compose-preview list --json --module "${{ inputs.module }}" \
+            > "$GITHUB_WORKSPACE/discovered-previews.json"
+          node "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/deferred-preview-ids.mjs" \
+            --spec "$GITHUB_WORKSPACE/$SPEC" \
+            --previews "$GITHUB_WORKSPACE/discovered-previews.json" \
+            --out "$GITHUB_WORKSPACE/mode-filter.txt"
+          # Exclusion polarity: a pattern that matches nothing renders MORE, never less, so a spec
+          # that has drifted ahead of the code wastes time instead of dropping a sticker.
+          echo "exclude-ids=$(cat "$GITHUB_WORKSPACE/mode-filter.txt")" >> "$GITHUB_OUTPUT"
 
       # Stage bundled fallback fonts into fontconfig before any render, so a
       # desktop (Skiko) render resolves glyphs a preview's FontFamily doesn't
@@ -358,12 +388,19 @@ jobs:
           # this catalog's spec, and the filter fails fast when it matches nothing — an extra
           # module whose previews are all deferred would sink the render rather than skip it.
           ORG_GRADLE_PROJECT_composePreview.filter: ${{ steps.validate-spec.outputs.render-filter }}
+          # Per-mode exclusions (issue #2966), as a CLI flag rather than an env var because the
+          # SEMANTICS capture is driven by the CLI itself, not by Gradle: an env var would thin the
+          # render and leave that pass at full width, which is half the axis saving. The flag does
+          # both — it forwards `-PcomposePreview.idExclude` to the render and skips the same ids in
+          # the daemon capture. Empty ⇒ the flag is omitted ⇒ render + capture everything.
+          EXCLUDE_PREVIEW_IDS: ${{ steps.mode-filter.outputs.exclude-ids }}
         run: |
           set -euo pipefail
           run() { if [ "${{ inputs.desktop-render }}" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
           embed=(); if [ "${{ inputs.embed-deps }}" = "true" ]; then embed=(--embed-deps); fi
+          exclude=(); if [ -n "${EXCLUDE_PREVIEW_IDS:-}" ]; then exclude=(--exclude-preview-id "$EXCLUDE_PREVIEW_IDS"); fi
           run compose-preview bundle pack --module "${{ inputs.module }}" --with-semantics \
-            "${embed[@]}" -o "$GITHUB_WORKSPACE/bundle.png" --timeout 600
+            "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" --timeout 600
 
       - name: Render extra module
         if: ${{ inputs.extra-module != '' }}

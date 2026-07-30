@@ -50,6 +50,8 @@ import {
   declaredEntryDeferrals,
   deferralPlan,
   effectivePriority,
+  modeOfPreviewId,
+  modePriority,
   previewForImage,
   specDefersAnything,
   splitDeferredImages,
@@ -279,6 +281,25 @@ function functionOf(candidate) {
   return candidate.functionName ?? candidate.componentId;
 }
 
+/**
+ * Identity of one deferred sticker across every axis a `deferred[]` record can carry, so a
+ * recovered-from-the-bundle record (issue #2966) is deduped against the image-derived one for the
+ * SAME sticker and not against a sibling variant that merely shares its mode. `props` is
+ * key-sorted so two equal prop sets always produce the same key.
+ */
+function deferralAxisKey(theme, state, props, size) {
+  const propsPart = props
+    ? Object.entries(props)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => `${k}=${v}`)
+        .join(",")
+    : "";
+  // NUL-joined (like `bridge-live-preview-ids`' `variantKey`) so a state or prop value that
+  // contains the separator can never make two different stickers collide on one key.
+  const NUL = String.fromCharCode(0);
+  return [theme ?? "", state ?? "", propsPart, size ?? ""].join(NUL);
+}
+
 /** A semantics tree carries real signal (not the empty `{ root: {} }` fallback). */
 function hasSemantics(candidate) {
   const tree = candidate.semantics;
@@ -434,6 +455,54 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
           ...(image.props !== undefined ? { props: image.props } : {}),
           ...(image.size !== undefined ? { size: image.size } : {}),
         });
+      }
+      // Modes whose render was SKIPPED, not merely un-published (issue #2966). Once the render
+      // filter drops a deferred palette, its images never reach the candidate join (the join only
+      // sees previews that produced a PNG), so `splitDeferredImages` above has nothing to record and
+      // the coverage would vanish from `catalog.json` instead of being declared live-only. Recover it
+      // from the bundle's full preview list, which carries every SELECTED preview whether or not CI
+      // rasterised it — the same listing the live lane resolves against. Deduped against the modes
+      // already accounted for, so an unfiltered render (a local generate, say) records each once.
+      //
+      // Keyed by the FULL axis tuple, not by mode alone, and walked over the component's own
+      // `@Preview` plus each REQUIRED variant's: a required state/props variant whose function also
+      // fans out by mode has its deferred-mode ids excluded from the render too, and recording only
+      // the base function's would drop that variant's `state`/`props` from the declaration (a record
+      // an unfiltered run produced via `splitDeferredImages`). Deferred variants are already recorded
+      // above, so they are deliberately not revisited here.
+      const seenAxes = new Set(
+        [...deferredImages, ...baked]
+          .filter((image) => image.theme)
+          .map((image) => deferralAxisKey(image.theme, image.state, image.props, image.size)),
+      );
+      const modeSources = [
+        { preview: component.preview },
+        ...(component.variants ?? []).map((v) => ({
+          preview: v.preview,
+          state: v.state,
+          props: v.props,
+          size: v.size,
+        })),
+      ];
+      for (const source of modeSources) {
+        if (!source.preview) continue;
+        for (const previewId of opts.previewIdsByFunction?.get(source.preview) ?? []) {
+          const mode = modeOfPreviewId(previewId, spec.modes);
+          if (!mode || modePriority(spec, mode) !== DEFERRED) continue;
+          const key = deferralAxisKey(mode, source.state, source.props, source.size);
+          if (seenAxes.has(key)) continue;
+          seenAxes.add(key);
+          deferred.push({
+            componentId: component.componentId,
+            group: group.name,
+            preview: source.preview,
+            reason: "mode",
+            theme: mode,
+            ...(source.state !== undefined ? { state: source.state } : {}),
+            ...(source.props !== undefined ? { props: source.props } : {}),
+            ...(source.size !== undefined ? { size: source.size } : {}),
+          });
+        }
       }
       if (baked.length === 0) {
         // Every one of this component's renders was mode-deferred — it would publish as a
@@ -703,6 +772,10 @@ const { catalog, missing, noSticker, withoutSemantics, deferred } =
     ...(values.renderer ? { renderer: values.renderer } : {}),
     ...(designParityVersion() ? { designParity: designParityVersion() } : {}),
     ...(themeTokens ? { themeTokens } : {}),
+    // Every daemon preview id per function, from the bundles' FULL preview lists — including the
+    // deferred palettes whose render was skipped (#2966), which is how their live-only coverage still
+    // gets declared even though no image of them exists to fold.
+    previewIdsByFunction: daemonPreviewIdsByFunction([bundle, extraBundle]),
   });
 
 // Completeness gate: `bundle pack --with-semantics` is best-effort and exits 0

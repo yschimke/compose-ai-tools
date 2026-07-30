@@ -282,12 +282,35 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/design-artifacts/validate-catalog-spec.mjs --spec "${{ matrix.spec }}" \
-            --render-filter-out "$GITHUB_WORKSPACE/render-filter.txt"
+            --render-filter-out "$GITHUB_WORKSPACE/render-filter.txt" \
+            --deferred-modes-out "$GITHUB_WORKSPACE/deferred-modes.txt"
           # Render priority (issue #2950): the `--preview` patterns that render just the
           # entries this spec still needs baked. EMPTY unless the spec marks entries
           # `priority: "deferred"` — no catalog here does today, so the render set is
           # unchanged. Consumed by the render step below.
           echo "render-filter=$(cat "$GITHUB_WORKSPACE/render-filter.txt")" >> "$GITHUB_OUTPUT"
+          # Gate for the per-mode exclusion step below (issue #2966): that one needs discovered
+          # preview ids, so it costs an extra Gradle invocation and only runs when a mode is
+          # actually deferred.
+          echo "deferred-modes=$(cat "$GITHUB_WORKSPACE/deferred-modes.txt")" >> "$GITHUB_OUTPUT"
+
+      # Per-mode render exclusions (issue #2966). `modePriority` thins the palette fan-out INSIDE one
+      # `@Preview` function, so it can't be named as function patterns like the entry-level filter
+      # above — it needs the discovered ids (`FilledButton_Dark`). `compose-preview list --json` runs
+      # `composePreviewDiscover` for them; the compile it does is shared with the render below, so the
+      # extra invocation costs discovery rather than a second build. Skipped when nothing is deferred.
+      - name: Derive per-mode render exclusions
+        id: mode-filter
+        if: ${{ steps.validate-spec.outputs.deferred-modes != '' }}
+        run: |
+          set -euo pipefail
+          compose-preview list --json --module "${{ matrix.module }}" \
+            > "$GITHUB_WORKSPACE/discovered-previews.json"
+          node scripts/design-artifacts/deferred-preview-ids.mjs \
+            --spec "${{ matrix.spec }}" \
+            --previews "$GITHUB_WORKSPACE/discovered-previews.json" \
+            --out "$GITHUB_WORKSPACE/mode-filter.txt"
+          echo "exclude-ids=$(cat "$GITHUB_WORKSPACE/mode-filter.txt")" >> "$GITHUB_OUTPUT"
 
       # Published previews pin their preview-runtimes to a RELEASED version
       # (`composeaiReleasedRuntimeVersion`, bumped by release-please on each release). Sonatype →
@@ -349,6 +372,11 @@ jobs:
           # `bundle pack` with no CLI flag. Empty ⇒ no filter ⇒ render everything, which
           # is what every catalog here gets today.
           ORG_GRADLE_PROJECT_composePreview.filter: ${{ steps.validate-spec.outputs.render-filter }}
+          # Per-mode exclusions (issue #2966). Passed as a CLI flag, not an env var, because it must
+          # also thin the CLI-driven `--with-semantics` capture — filtering only the Gradle render
+          # would leave that (per-preview daemon) pass at full width. Empty ⇒ flag omitted ⇒
+          # everything renders, which is what every catalog here gets today.
+          EXCLUDE_PREVIEW_IDS: ${{ steps.mode-filter.outputs.exclude-ids }}
         run: |
           set -euo pipefail
           # Run under a virtual framebuffer so the Skiko desktop daemon has a
@@ -359,9 +387,10 @@ jobs:
           # `composeaiUseReleasedRuntimes` gate (job env) + `composeaiReleasedRuntimeVersion`
           # (gradle.properties, release-please-managed); the "Wait for released preview-runtimes"
           # step above guarantees that version is resolvable on Central before we render.
+          exclude=(); if [ -n "${EXCLUDE_PREVIEW_IDS:-}" ]; then exclude=(--exclude-preview-id "$EXCLUDE_PREVIEW_IDS"); fi
           xvfb-run -a -s "-screen 0 2000x1400x24" \
             compose-preview bundle pack --module "$MODULE" --with-semantics \
-              -o "$GITHUB_WORKSPACE/$SYSTEM-bundle.png"
+              "${exclude[@]}" -o "$GITHUB_WORKSPACE/$SYSTEM-bundle.png"
 
       # Android-only supplement (Robolectric): render the previews that need androidx
       # material3 APIs with no CMP equivalent (the inset focus ring). Robolectric
