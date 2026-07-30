@@ -419,11 +419,13 @@ Caveats worth knowing before reaching for it:
   once the renderer enumerates them. So there is no id to exclude, and the derivation emits
   the deferred **mode names** instead (`--rows-out` → `bundle pack --exclude-preview-row` →
   `-PcomposePreview.rowExclude`), which the renderer matches case-insensitively against the
-  label it puts in `<stem>_<label>.png`. A mode that *does* appear in an id stays with the id
-  filter, which is exact; only modes with no id become labels. Because labels are matched
-  module-wide, an unrelated parameterized preview whose row is labelled like a deferred mode
-  loses that row — the completeness gate then fails the publish for that component, which is
-  the loud outcome, and the renderer never empties a preview's rows.
+  label it puts in `<stem>_<label>.png`. The choice is made **per function**: a deferred mode
+  becomes a label when some spec-referenced *parameterized* function has no id carrying it, so
+  a catalog whose modes are all visible as ids gets no labels at all, while a mixed one still
+  gets the label its provider-backed component needs. Because labels are then matched
+  module-wide inside the render, an unrelated parameterized preview whose row is labelled like
+  a deferred mode loses that row — the completeness gate then fails the publish for that
+  component, which is the loud outcome, and the renderer never empties a preview's rows.
 - **An Android/Robolectric catalog gets the publish saving but not the render saving**
   (`design-catalog-wear-m3`, `design-catalog-remote-m3`): that `composePreviewRender` is a
   `Test` task reading the manifest directly and honours none of these filters — the same

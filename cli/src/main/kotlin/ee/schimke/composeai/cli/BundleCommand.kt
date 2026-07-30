@@ -441,6 +441,22 @@ private class PackSubcommand(private val args: List<String>) {
             outDir.mkdirs()
 
             val sharedArgs = buildList {
+              // The render filters ride the shared render too, not just the single-sheet path
+              // above:
+              // `--per-preview` runs `composePreviewRender` once and packs each result, so leaving
+              // them off here would accept the flags and then render every excluded preview/row
+              // anyway. `--id` still selects which previews get *packed*; these thin what is
+              // *drawn*.
+              if (excludePreviewIds.isNotEmpty())
+                add(
+                  "-P${PackPreviewIdExclusions.GRADLE_PROPERTY}=" +
+                    excludePreviewIds.joinToString(",")
+                )
+              if (excludePreviewRows.isNotEmpty())
+                add(
+                  "-P${PackPreviewIdExclusions.ROW_GRADLE_PROPERTY}=" +
+                    excludePreviewRows.joinToString(",")
+                )
               if (embedDeps) add("-PbundleEmbedDeps=true")
               if (includeDataExtensions) add("-PbundleIncludeDataExtensions=true")
             }

@@ -30,7 +30,14 @@ const spec = {
   ],
 };
 
-const preview = (id, functionName) => ({ id, functionName });
+const preview = (id, functionName) => ({ id, functionName, params: {} });
+
+/** A discovered preview whose function takes a `@PreviewParameter` provider. */
+const parameterized = (id, functionName) => ({
+  id,
+  functionName,
+  params: { previewParameterProviderClassName: "com.example.ThemeProvider" },
+});
 
 test("modeOfPreviewId reads the trailing mode segment case-insensitively", () => {
   const modes = ["light", "dark"];
@@ -155,29 +162,60 @@ test("ids are unique and sorted", () => {
   ]);
 });
 
-test("a mode with no discovered id is emitted as a row label", () => {
-  // The `@PreviewParameter` shape: one discovered preview for the whole palette fan-out, so neither
-  // `dark` nor `highContrastDark` appears in an id and no id-level exclusion can name them.
-  const previews = [preview("FilledButtonPreview", "FilledButtonPreview")];
+test("a parameterized function's deferred modes become row labels", () => {
+  // One discovered preview for the whole palette fan-out, so neither `dark` nor `highContrastDark`
+  // appears in an id and no id-level exclusion can name them.
+  const previews = [parameterized("FilledButtonPreview", "FilledButtonPreview")];
   const { ids, rows } = deferredPreviewIds(spec, previews);
   assert.deepEqual(ids, []);
   assert.deepEqual(rows, ["dark", "highContrastDark"]);
 });
 
-test("a mode visible as an id is left to the id filter, not duplicated as a row", () => {
+test("a multipreview-only catalog emits no row labels", () => {
+  // Every mode is visible as an id and nothing is parameterized: the id filter is exact, so the
+  // wider label tool is never reached for.
   const previews = [
     preview("FilledButtonPreview_Light", "FilledButtonPreview"),
     preview("FilledButtonPreview_Dark", "FilledButtonPreview"),
   ];
   const { ids, rows } = deferredPreviewIds(spec, previews);
   assert.deepEqual(ids, ["FilledButtonPreview_Dark"]);
-  // `dark` resolved to an id; only `highContrastDark` (which didn't) becomes a row label.
-  assert.deepEqual(rows, ["highContrastDark"]);
+  assert.deepEqual(rows, []);
+});
+
+test("a mixed catalog keeps the label a parameterized function still needs", () => {
+  // The regression this rule exists for: `dark` IS visible on the multipreview function, but the
+  // parameterized one renders its Dark row regardless — a module-wide "seen as an id" test would
+  // suppress the label and leave that row rendering.
+  const previews = [
+    preview("FilledButtonPreview_Light", "FilledButtonPreview"),
+    preview("FilledButtonPreview_Dark", "FilledButtonPreview"),
+    parameterized("OutlinedButtonPreview", "OutlinedButtonPreview"),
+  ];
+  const { ids, rows } = deferredPreviewIds(spec, previews);
+  assert.deepEqual(ids, ["FilledButtonPreview_Dark"]);
+  assert.deepEqual(rows, ["dark", "highContrastDark"]);
+});
+
+test("a parameterized function already covered by ids needs no label", () => {
+  const previews = [
+    parameterized("FilledButtonPreview_Light", "FilledButtonPreview"),
+    parameterized("FilledButtonPreview_Dark", "FilledButtonPreview"),
+    parameterized("FilledButtonPreview_HighContrastDark", "FilledButtonPreview"),
+  ];
+  assert.deepEqual(deferredPreviewIds(spec, previews).rows, []);
+});
+
+test("a payload with no params at all treats every function as a candidate", () => {
+  // An older or brief listing can't answer "is this parameterized?" — fall back to the wider set
+  // rather than silently emitting nothing.
+  const previews = [{ id: "FilledButtonPreview", functionName: "FilledButtonPreview" }];
+  assert.deepEqual(deferredPreviewIds(spec, previews).rows, ["dark", "highContrastDark"]);
 });
 
 test("a spec that defers no mode emits no row labels", () => {
   const strict = { ...spec, modePriority: undefined };
-  const previews = [preview("FilledButtonPreview", "FilledButtonPreview")];
+  const previews = [parameterized("FilledButtonPreview", "FilledButtonPreview")];
   assert.deepEqual(deferredPreviewIds(strict, previews).rows, []);
 });
 
