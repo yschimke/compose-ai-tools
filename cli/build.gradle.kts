@@ -82,6 +82,20 @@ val composePreviewDaemonDesktop =
     isCanBeConsumed = false
   }
 
+// Sidecar configuration carrying the desktop/JVM embedded Remote Compose player
+// (`:third-party-rc-embedded-player-jvm`). `compose-preview serve` spawns its `RcJvmRenderMain` as
+// a one-shot subprocess to render a captured `ir/<id>.rc` to PNG for the viewer's cmp-jvm chip —
+// the same subprocess-only isolation as the desktop daemon. Deliberately does NOT bundle Compose
+// Multiplatform / Skiko: the subprocess classpath joins `lib-rcjvm/*` + `lib-daemon-desktop/*` at
+// launch, and the daemon sidecar already carries the per-OS Compose + Skiko stack. Resolved into
+// `cli/build/install/compose-preview/lib-rcjvm/`, located at runtime via `APP_HOME/lib-rcjvm/` (or
+// `-Dcomposeai.cli.libRcjvmDir`).
+val composePreviewRcJvm =
+  configurations.create("composePreviewRcJvm") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+  }
+
 // Sidecar configuration carrying the Android (Robolectric) daemon module (`:daemon:android`).
 // Same subprocess-only isolation as the desktop daemon above — never on the CLI's own classpath,
 // only loaded by the JVM that `compose-preview bundle daemon` spawns for an `backend="android"`
@@ -225,6 +239,12 @@ dependencies {
   // at launch time, and the renderer sidecar already carries the per-OS Compose stack.
   add("composePreviewDaemonDesktop", project(":daemon:desktop"))
 
+  // `compose-preview serve` ships the desktop/JVM embedded Remote Compose player in `lib-rcjvm/`
+  // for the cmp-jvm chip's one-shot render subprocess. Subprocess-only isolation; the Compose +
+  // Skiko runtime is not bundled here (the subprocess joins `lib-rcjvm/*` +
+  // `lib-daemon-desktop/*`).
+  add("composePreviewRcJvm", project(":third-party-rc-embedded-player-jvm"))
+
   // `compose-preview bundle daemon` ships the Android (Robolectric) daemon in
   // `lib-daemon-android/`. This resolves `:daemon:android`'s `daemonHarnessClasspathFile`
   // descriptor (a text file of runtime jar paths) — see the configuration KDoc above — never the
@@ -269,6 +289,34 @@ val stageDaemonDesktopLibs =
     description = "Stages :daemon:desktop runtime artifacts, renaming filename collisions."
     destinationDir = layout.buildDirectory.dir("staged-daemon-desktop-libs").get().asFile
     val artifactsProvider = composePreviewDaemonDesktop.incoming.artifacts.resolvedArtifacts
+    from(artifactsProvider.map { it.map(ResolvedArtifactResult::getFile) })
+    val nameByPath = artifactsProvider.map { resolved ->
+      val counts = resolved.groupingBy { it.file.name }.eachCount()
+      resolved.associate { artifact ->
+        val original = artifact.file.name
+        val mapped =
+          if (counts.getValue(original) > 1) {
+            val id = artifact.id.componentIdentifier
+            if (id is ModuleComponentIdentifier) "${id.module}-${id.version}.jar" else original
+          } else original
+        artifact.file.absolutePath to mapped
+      }
+    }
+    inputs.property("nameByPath", nameByPath)
+    eachFile {
+      val mapped = nameByPath.get()[file.absolutePath]
+      if (mapped != null) name = mapped
+    }
+  }
+
+// Stage the JVM embedded player's runtime artifacts for `lib-rcjvm/`, disambiguating any colliding
+// `library-desktop-<version>.jar` filenames by Maven `module-version.jar` — same reasoning as
+// [stageDaemonDesktopLibs].
+val stageRcJvmLibs =
+  tasks.register<Sync>("stageRcJvmLibs") {
+    description = "Stages :third-party-rc-embedded-player-jvm runtime artifacts for lib-rcjvm/."
+    destinationDir = layout.buildDirectory.dir("staged-rcjvm-libs").get().asFile
+    val artifactsProvider = composePreviewRcJvm.incoming.artifacts.resolvedArtifacts
     from(artifactsProvider.map { it.map(ResolvedArtifactResult::getFile) })
     val nameByPath = artifactsProvider.map { resolved ->
       val counts = resolved.groupingBy { it.file.name }.eachCount()
@@ -363,6 +411,7 @@ distributions {
     contents {
       into("lib-renderer") { from(composePreviewRenderer) }
       into("lib-daemon-desktop") { from(stageDaemonDesktopLibs) }
+      into("lib-rcjvm") { from(stageRcJvmLibs) }
       into("lib-bta") { from(stageBtaLibs) }
     }
   }

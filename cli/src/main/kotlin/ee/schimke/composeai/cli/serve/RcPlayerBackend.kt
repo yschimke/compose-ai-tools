@@ -19,13 +19,16 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
  *   which interprets the document's operation tree into Compose layout/draw nodes directly, driven
  *   server-side via [RemoteComposePlayerKind.EMBEDDED].
  * * [CMP_JVM] — the same embedded player over Skiko/Desktop
- *   (`:third-party-rc-embedded-player-jvm`). The draw path now exists: the module renders a
- *   captured `.rc` to PNG on a plain JVM (`renderRemoteDocumentToPng`, verified by
- *   `RcJvmRendererTest` and the `rc-compare` cmp-jvm lane). What is not yet wired is a **serve
- *   render path** for it — the daemon protocol carries no JVM player kind, and the cli's render
- *   runtimes are subprocess-isolated, so lighting this chip needs either an in-process render in
- *   the cli or a desktop-daemon render lane (see the module's `PROVENANCE.md`). Until that lands
- *   [playerKind] stays null and no host enables it, so the viewer shows it as a disabled option.
+ *   (`:third-party-rc-embedded-player-jvm`), rendered **server-side** by [RcJvmServerRenderer]: it
+ *   spawns the module's `RcJvmRenderMain` as a one-shot subprocess off the CLI install's
+ *   `lib-rcjvm`
+ *     + `lib-daemon-desktop` sidecars (Compose Desktop + Skiko kept out of the CLI's own
+ *       classpath). Unlike [JAVA] / [CMP_ANDROID] it does **not** ride the daemon
+ *       `remoteCompose.player` override — [playerKind] stays null and [ServeHttpServer] renders it
+ *       directly from the captured `.rc` — so a host enables it (via [ServeHost.supportsCmpJvm])
+ *       whenever it carries the document, can size a render for it, and the sidecar is installed.
+ *       Where the sidecar is absent (a headless host, or a build that didn't stage it) the chip
+ *       stays disabled, exactly as before this lane existed.
  *
  * The viewer always renders every entry as a chip and enables the subset a host reports through
  * [ServeHost.enabledRcPlayersFor]; the rest are shown disabled. [wire] is the stable id used both

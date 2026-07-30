@@ -254,6 +254,10 @@ class ServeCatalogLiveHost(
    */
   override fun remoteComposeDoc(previewId: String): ByteArray? = baked.remoteComposeDoc(previewId)
 
+  /** The cmp-jvm render spec (baked size + density) comes from the baked bundle, like the doc. */
+  override fun remoteComposeRenderSpec(previewId: String): RcJvmRenderSpec? =
+    baked.remoteComposeRenderSpec(previewId)
+
   /** The daemon lane honours the RC player override when the carried daemon is Android-backed. */
   override val remoteComposePlayerSelectable: Boolean = live.remoteComposePlayerSelectable
 
@@ -263,7 +267,8 @@ class ServeCatalogLiveHost(
    * [RcPlayerBackend.JAVA] / [RcPlayerBackend.CMP_ANDROID] lanes when this Remote Compose preview
    * has a daemon twin ([canRenderOverridesFor]) on a backend that honours the player override
    * ([remoteComposePlayerSelectable]). A preview with no `.rc` doc is not Remote Compose, so it
-   * gets no selector at all. [RcPlayerBackend.CMP_JVM] is never enabled (no Skiko draw path yet).
+   * gets no selector at all. [RcPlayerBackend.CMP_JVM] joins when the isolated desktop player is
+   * installed and the baked bundle can size a render for it ([supportsCmpJvm]).
    */
   override fun enabledRcPlayersFor(previewId: String): List<RcPlayerBackend> {
     if (!hasRemoteComposeDoc(previewId)) return emptyList()
@@ -273,6 +278,7 @@ class ServeCatalogLiveHost(
         add(RcPlayerBackend.JAVA)
         add(RcPlayerBackend.CMP_ANDROID)
       }
+      if (supportsCmpJvm(previewId)) add(RcPlayerBackend.CMP_JVM)
     }
   }
 

@@ -2115,6 +2115,15 @@ class ServeHttpServer(
         }
         return@withLeasedSession
       }
+      // The cmp-jvm lane renders the captured document server-side with the embedded desktop player
+      // (an isolated subprocess), not through the daemon — so, like the `.rc` lane above, it
+      // short-circuits ahead of the daemon override parse and renders the base document (the
+      // browser
+      // JS lane is the one that layers live knob edits; cmp-jvm shows the captured doc).
+      if (call.request.queryParameters["rcPlayer"]?.lowercase() == RcPlayerBackend.CMP_JVM.wire) {
+        renderCmpJvmResponse(renderHost, previewId)
+        return@withLeasedSession
+      }
       // Forward the fixed render axes plus any dynamic override params (`knob.<key>=…` knobs and
       // `rc.<name>=…` Remote Compose seeds, neither in SUPPORTED_KEYS) so a live knob / Remote
       // Compose edit reaches ServeOverrides.parse instead of being silently dropped.
@@ -2219,6 +2228,58 @@ class ServeHttpServer(
           }
         }
       }
+    }
+  }
+
+  /**
+   * cmp-jvm lane of [handleRender]: render the captured document with the embedded desktop player
+   * in an isolated subprocess and respond the PNG. Load-shed through the same [renderSemaphore] as
+   * the daemon PNG lane. 404 when the preview carries no captured doc / render spec; 503 when the
+   * desktop player sidecar isn't installed or the queue is saturated; 500 when the player could not
+   * draw it.
+   */
+  private suspend fun RoutingContext.renderCmpJvmResponse(
+    renderHost: ServeHost,
+    previewId: String,
+  ) {
+    val doc = renderHost.remoteComposeDoc(previewId)
+    val spec = renderHost.remoteComposeRenderSpec(previewId)
+    if (doc == null || spec == null) {
+      call.respondText("no cmp-jvm render for this preview", status = HttpStatusCode.NotFound)
+      return
+    }
+    val result =
+      withContext(Dispatchers.IO) {
+        if (!renderSemaphore.tryAcquire(RENDER_QUEUE_WAIT_SECONDS, TimeUnit.SECONDS)) {
+          null
+        } else {
+          try {
+            RcJvmServerRenderer.render(doc, spec)
+          } finally {
+            renderSemaphore.release()
+          }
+        }
+      }
+    when (result) {
+      null -> {
+        call.response.headers.append(HttpHeaders.RetryAfter, "2")
+        call.respondText(
+          "render queue saturated; retry shortly",
+          status = HttpStatusCode.ServiceUnavailable,
+        )
+      }
+      is RcJvmServerRenderer.RenderResult.Ok -> {
+        call.response.headers.append(HttpHeaders.CacheControl, DYNAMIC_RESOURCE_CACHE_CONTROL)
+        call.respondBytes(result.png, ContentType.Image.PNG)
+      }
+      is RcJvmServerRenderer.RenderResult.Unavailable -> {
+        // The chip is only offered when the sidecar is present, so this is a torn-down install
+        // rather than a user error; a retryable 503 with the search paths beats a hard 500.
+        call.response.headers.append(HttpHeaders.RetryAfter, "5")
+        call.respondText(result.reason, status = HttpStatusCode.ServiceUnavailable)
+      }
+      is RcJvmServerRenderer.RenderResult.Failed ->
+        call.respondText(result.reason, status = HttpStatusCode.InternalServerError)
     }
   }
 
