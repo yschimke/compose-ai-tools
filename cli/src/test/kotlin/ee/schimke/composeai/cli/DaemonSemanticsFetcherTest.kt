@@ -249,6 +249,41 @@ class DaemonSemanticsFetcherTest {
   }
 
   @Test
+  fun `render timeout is an inactivity window, not a batch-wide budget`() {
+    // Issue #2948: a wide catalog (a component library fanning out across many themes) renders far
+    // more previews than fit inside a single `--timeout`, yet each individual render still lands
+    // quickly. The daemon here completes one render every 20ms across 15 previews (~300ms total),
+    // well past the 150ms window — but never idle for that long. Every semantics sidecar must still
+    // be collected: the old batch-wide budget cut the batch off mid-flight and silently dropped
+    // roughly a third of the catalog's semantics.
+    val projectDir = newTempFolder("semantics-inactivity")
+    writeDescriptor(projectDir)
+
+    val ids = (1..15).map { "Preview$it" }
+    val produced = ids.associateWith { """{"root":{"nodeId":"$it","boundsInRoot":"0,0,4,8"}}""" }
+    val logs = mutableListOf<String>()
+    val fetcher =
+      DaemonSemanticsFetcher(
+        factory = FakeFactory(produced = produced, staggerMs = 20),
+        onLog = { logs += it },
+        renderTimeout = 150.milliseconds,
+      )
+
+    val outcome = fetcher.fetch(projectDir = projectDir, moduleName = "sample", previewIds = ids)
+
+    assertTrue(outcome is DaemonSemanticsFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    assertEquals(
+      ids.toSet(),
+      outcome.semanticsById.keys,
+      "every render lands within the inactivity window, so no semantics may be dropped; logs: $logs",
+    )
+    assertTrue(
+      logs.none { "timed out" in it },
+      "steady progress must not trip the inactivity timeout, got: $logs",
+    )
+  }
+
+  @Test
   fun `missing descriptor returns DescriptorMissing`() {
     val projectDir = newTempFolder("semantics-no-descriptor")
     val fetcher = DaemonSemanticsFetcher(factory = FakeFactory(emptyMap()))
@@ -291,6 +326,7 @@ class DaemonSemanticsFetcherTest {
     private val fontsProduced: Map<String, String> = emptyMap(),
     private val failedIds: Map<String, String> = emptyMap(),
     private val silentIds: Set<String> = emptySet(),
+    private val staggerMs: Long = 0,
   ) : RenderSessionFactory {
     override val backendKind: RenderSessionBackend = RenderSessionBackend.Subprocess
 
@@ -301,6 +337,7 @@ class DaemonSemanticsFetcherTest {
         fontsProduced = fontsProduced,
         failedIds = failedIds,
         silentIds = silentIds,
+        staggerMs = staggerMs,
         dataRoot = File(config.workspaceRoot, "build/compose-previews/data"),
       )
   }
@@ -326,6 +363,7 @@ class DaemonSemanticsFetcherTest {
     private val fontsProduced: Map<String, String> = emptyMap(),
     private val failedIds: Map<String, String> = emptyMap(),
     private val silentIds: Set<String> = emptySet(),
+    private val staggerMs: Long = 0,
   ) : RenderSession {
     private val listeners = java.util.concurrent.CopyOnWriteArrayList<NotificationListener>()
 
@@ -359,38 +397,55 @@ class DaemonSemanticsFetcherTest {
       overrides: PreviewOverrides?,
       timeout: kotlin.time.Duration,
     ): RenderNowResult {
-      for (id in previewIds) {
-        val failure = failedIds[id]
-        if (failure != null) {
-          // A render whose composition throws emits `renderFailed` and *no* `renderFinished` — the
-          // daemon owes exactly one terminal event per queued render.
-          val params =
-            kotlinx.serialization.json.buildJsonObject {
-              put("id", id)
-              putJsonObject("error") { put("message", failure) }
+      // With a stagger, model the real daemon: `renderNow` only queues and acks, then the terminal
+      // notifications land one at a time on a background thread as each render actually completes.
+      // This lets a test drive the total render past the fetcher's inactivity window while keeping
+      // each individual gap inside it (issue #2948).
+      if (staggerMs > 0) {
+        Thread {
+            for (id in previewIds) {
+              Thread.sleep(staggerMs)
+              emitTerminal(id)
             }
-          listeners.forEach { it.onNotification("renderFailed", params) }
-          continue
-        }
-        if (id in silentIds) continue
-        produced[id]?.let { content ->
-          val dir = File(dataRoot, id).also { it.mkdirs() }
-          File(dir, "compose-semantics.json").writeText(content)
-        }
-        fontsProduced[id]?.let { content ->
-          val dir = File(dataRoot, id).also { it.mkdirs() }
-          File(dir, "fonts-used.json").writeText(content)
-        }
-        // Emit renderFinished for every remaining id — including ones that wrote no sidecar — so
-        // the fetcher's wait completes rather than timing out.
+          }
+          .apply { isDaemon = true }
+          .start()
+        return RenderNowResult(queued = previewIds, rejected = emptyList())
+      }
+      for (id in previewIds) emitTerminal(id)
+      return RenderNowResult(queued = previewIds, rejected = emptyList())
+    }
+
+    private fun emitTerminal(id: String) {
+      val failure = failedIds[id]
+      if (failure != null) {
+        // A render whose composition throws emits `renderFailed` and *no* `renderFinished` — the
+        // daemon owes exactly one terminal event per queued render.
         val params =
           kotlinx.serialization.json.buildJsonObject {
             put("id", id)
-            put("pngPath", "$id.png")
+            putJsonObject("error") { put("message", failure) }
           }
-        listeners.forEach { it.onNotification("renderFinished", params) }
+        listeners.forEach { it.onNotification("renderFailed", params) }
+        return
       }
-      return RenderNowResult(queued = previewIds, rejected = emptyList())
+      if (id in silentIds) return
+      produced[id]?.let { content ->
+        val dir = File(dataRoot, id).also { it.mkdirs() }
+        File(dir, "compose-semantics.json").writeText(content)
+      }
+      fontsProduced[id]?.let { content ->
+        val dir = File(dataRoot, id).also { it.mkdirs() }
+        File(dir, "fonts-used.json").writeText(content)
+      }
+      // Emit renderFinished for every remaining id — including ones that wrote no sidecar — so
+      // the fetcher's wait completes rather than timing out.
+      val params =
+        kotlinx.serialization.json.buildJsonObject {
+          put("id", id)
+          put("pngPath", "$id.png")
+        }
+      listeners.forEach { it.onNotification("renderFinished", params) }
     }
 
     override fun fetchData(

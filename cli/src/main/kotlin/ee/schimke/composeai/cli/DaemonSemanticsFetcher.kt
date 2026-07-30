@@ -12,7 +12,7 @@ import ee.schimke.composeai.render.session.RenderSessionFactory
 import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CountDownLatch
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -37,6 +37,11 @@ import okio.Path.Companion.toPath
  *
  * @param factory pluggable render-session factory; defaults to the subprocess backend. Test
  *   scaffolding can inject a fake by constructing a custom [RenderSessionFactory].
+ * @param renderTimeout the *inactivity* budget for the semantics render (issue #2948): how long to
+ *   keep waiting after the **last** render completed before concluding the daemon has stalled. It
+ *   is deliberately not a batch-wide deadline — a wide catalog's full render can legitimately
+ *   outlast any single value here, and it still finishes as long as renders keep landing within the
+ *   window.
  */
 internal class DaemonSemanticsFetcher(
   private val factory: RenderSessionFactory = SubprocessRenderSessions,
@@ -101,13 +106,16 @@ internal class DaemonSemanticsFetcher(
       }
 
       val pending = ConcurrentHashMap.newKeySet<String>().apply { addAll(previewIds) }
-      val latch = CountDownLatch(previewIds.size)
+      // Each terminal event offers one token here, so the wait below wakes on *every* completed
+      // render rather than only when the whole batch is done — that's what lets the deadline be an
+      // inactivity budget instead of a batch-wide one (issue #2948).
+      val progress = LinkedBlockingQueue<Unit>()
       live
         .onNotification { method, params ->
           val failed = method == "renderFailed"
           if ((method != "renderFinished" && !failed) || params == null) return@onNotification
           val id = params["id"]?.jsonPrimitive?.contentOrNull ?: return@onNotification
-          // Count down on either terminal event for a pending id — the daemon owes exactly one
+          // Signal progress on either terminal event for a pending id — the daemon owes exactly one
           // (`renderFinished` OR `renderFailed`) per queued render, and a render whose composition
           // throws emits only the latter. Waiting on `renderFinished` alone meant one broken
           // preview burned the ENTIRE batch budget: a Glance composable reached through the plain
@@ -122,7 +130,7 @@ internal class DaemonSemanticsFetcher(
                 ?: "daemon reported renderFailed"
             onLog("render failed for '$id': $reason")
           }
-          if (pending.remove(id)) latch.countDown()
+          if (pending.remove(id)) progress.offer(Unit)
         }
         .use {
           val ack =
@@ -139,13 +147,27 @@ internal class DaemonSemanticsFetcher(
           // Rejected ids will never emit renderFinished — stop waiting on them.
           ack?.rejected?.forEach { rejected ->
             onLog("render rejected for '${rejected.id}': ${rejected.reason}")
-            if (pending.remove(rejected.id)) latch.countDown()
+            if (pending.remove(rejected.id)) progress.offer(Unit)
           }
-          val finished = latch.await(renderTimeout.inWholeMilliseconds, TimeUnit.MILLISECONDS)
-          if (!finished) {
-            onLog(
-              "timed out after $renderTimeout waiting for renders: " + pending.joinToString(",")
-            )
+          // Wait for every queued render to reach a terminal event. `renderTimeout` is an
+          // *inactivity* deadline, not a batch-wide one (issue #2948, #2857): it resets each time a
+          // render completes, so a wide catalog — a component library fanning out across many
+          // themes — whose full render legitimately outlasts any single `--timeout` still finishes
+          // as long as the daemon keeps making progress. Each individual render still lands
+          // quickly;
+          // only a genuine stall (no render completing at all for the whole window) trips the
+          // timeout. The old batch-wide `--timeout`-length budget silently dropped a third of a
+          // large catalog's semantics once the total render time crossed it.
+          val timeoutMs = renderTimeout.inWholeMilliseconds
+          while (pending.isNotEmpty()) {
+            val signalled = progress.poll(timeoutMs, TimeUnit.MILLISECONDS)
+            if (signalled == null) {
+              onLog(
+                "timed out after $renderTimeout with no render progress; still waiting on: " +
+                  pending.joinToString(",")
+              )
+              break
+            }
           }
         }
 
@@ -253,7 +275,10 @@ internal class DaemonSemanticsFetcher(
     /** RPC ack budget for the (fast, queue-only) `renderNow` call itself. */
     val RENDER_ACK_TIMEOUT = 60.seconds
 
-    /** Default used by callers that do not expose a command timeout. */
+    /**
+     * Default inactivity window used by callers that do not expose a command timeout — the gap a
+     * single render may take before the daemon is presumed stalled, not a whole-batch budget.
+     */
     val DEFAULT_RENDER_TIMEOUT = 300.seconds
   }
 }
