@@ -47,9 +47,8 @@ import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 import { foldVariants } from "./catalog-variants.mjs";
 import {
   DEFERRED,
-  declaredEntryDeferrals,
   deferralPlan,
-  effectivePriority,
+  entryPriority,
   modeOfPreviewId,
   modePriority,
   previewForImage,
@@ -390,7 +389,7 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
       // A wholly-deferred entry is never rendered (its `@Preview` may not even have been packed
       // with a PNG), so it short-circuits before the candidate lookup — reporting it missing is
       // exactly the false failure this feature exists to remove.
-      if (effectivePriority(specComponent) === DEFERRED) {
+      if (entryPriority(specComponent) === DEFERRED) {
         deferred.push({
           componentId: specComponent.componentId,
           group: group.name,
@@ -818,32 +817,6 @@ if (deferred.length > 0) {
   );
 }
 
-// Entry-level deferral is declared-but-inert until the serve host can route it (#2965) — see
-// `ENTRY_DEFERRAL_SERVED`. `entryPriority` still reports what the spec asked for, but every decision
-// point (the join above, the variant split, the render filter) reads `effectivePriority`, which
-// currently answers `required` — so these entries render and bake exactly as they would without the
-// annotation, and the published catalog is byte-for-byte what it was before.
-//
-// Inert rather than either extreme, on purpose. Refusing the publish would block a catalog for
-// annotating ahead of the server; honouring the deferral would quietly drop the entry from the
-// served sheet, because `ServeCatalogStore` registers and aliases from `components[].images` alone
-// and never decodes `deferred[]`. Neither is a good trade for a gap we're tracking. Say so loudly
-// instead, so the gap is visible in the build log rather than a surprise when the render bill
-// doesn't drop.
-const ignoredDeferrals = declaredEntryDeferrals(spec);
-if (ignoredDeferrals.length > 0) {
-  const shown = [...new Set(ignoredDeferrals.map((d) => d.componentId))].slice(0, 8).join(", ");
-  const more = ignoredDeferrals.length > 8 ? `, +${ignoredDeferrals.length - 8} more` : "";
-  console.warn(
-    `[${spec.system}] ${ignoredDeferrals.length} entry/variant-level \`priority: "deferred"\` ` +
-      `annotation(s) are RECORDED BUT NOT YET ACTED ON — rendered and baked as \`required\` for ` +
-      `now: ${shown}${more}. The preview server does not read catalog.json's \`deferred[]\` yet, so ` +
-      `honouring them would drop these entries from \`serve --catalogs\` instead of rendering them ` +
-      `on demand. They start deferring (and dropping out of the render) when the serve-side lane ` +
-      `lands — https://github.com/yschimke/compose-ai-tools/issues/2965. \`modePriority\` is ` +
-      `unaffected and takes effect today.`,
-  );
-}
 if (
   !values["allow-incomplete"] &&
   (missing.length > 0 || withoutSemantics.length > 0)

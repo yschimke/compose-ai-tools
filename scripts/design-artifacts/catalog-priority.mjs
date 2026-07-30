@@ -11,26 +11,26 @@
  *     the serve host, which re-renders it from the carried live bundle / buildable source); it is
  *     simply not rasterised in CI.
  *
- * Two forms, because they buy different things — and, right now, because only one of them takes
- * effect:
+ * Two forms, because they buy different things:
  *
- *   - **per axis** — `modePriority: { "light": "required", "*": "deferred" }`. **Active today.** Bakes
- *     one sticker per component and leaves the remaining palettes to the (already interactive) theme
- *     switcher on the serve host. Measured against a nine-theme catalog this is the bigger lever,
- *     because the fan-out lives in the BASE entries rather than the variants. Degrades safely: the
- *     component keeps its untagged primary sticker in `components[]`, so the served catalog browses as
- *     before with one fewer baked palette.
- *   - **per entry** — `priority` on a component or one of its `variants`. **Recorded but not yet acted
- *     on** — see [ENTRY_DEFERRAL_SERVED]. Once the serve host can route it, a wholly-deferred entry
- *     names a `@Preview` function nothing else needs, so it can be dropped from the render itself (see
- *     [renderFilterPatterns]) — real build time, not just a smaller bundle.
+ *   - **per axis** — `modePriority: { "light": "required", "*": "deferred" }`. Bakes one sticker per
+ *     component and leaves the remaining palettes to the (already interactive) theme switcher on the
+ *     serve host. Measured against a nine-theme catalog this is the bigger lever, because the fan-out
+ *     lives in the BASE entries rather than the variants. Degrades safely: the component keeps its
+ *     untagged primary sticker in `components[]`, so the served catalog browses as before with one
+ *     fewer baked palette. The mode axis is skipped at render time by the **id** filter (#2966).
+ *   - **per entry** — `priority` on a component or one of its `variants`. A wholly-deferred entry names
+ *     a `@Preview` function nothing else needs, so it is dropped from the render itself (see
+ *     [renderFilterPatterns]) — real build time, not just a smaller bundle. Such an entry has no
+ *     `images[]` record at all, so it reaches a viewer only through the serve host's live lane
+ *     (`catalog.json` `deferred[]` → `ServeCatalogStore`, compose-ai-tools#2965).
  *
  * Deferral is always explicit and always opt-in: the default stays `required`, so a spec that says
- * nothing behaves exactly as it did. Deferral that TAKES EFFECT also needs a live path (a carried live
- * bundle or a buildable `source`), or the deferred entries would just be coverage silently dropped
- * from the published sheet — the driver enforces that, and `validateSpec` mirrors it when the caller
- * knows. The requirement is keyed on the *effective* priority, so an inert entry-level annotation
- * imposes nothing.
+ * nothing behaves exactly as it did. Deferral needs a live path (a carried live bundle or a buildable
+ * `source`), or the deferred entries would just be coverage silently dropped from the published
+ * sheet — the driver enforces that, and `validateSpec` mirrors it when the caller knows. A server with
+ * no live path still degrades explicably rather than showing broken cards: it reports
+ * `deferred-not-served` and omits them.
  *
  * Pure and dependency-free (node built-ins only, no `@design-parity/*`, no I/O) so it unit-tests
  * without an `npm ci`, like its sibling `catalog-variants.mjs` / `catalog-spec.mjs`.
@@ -46,80 +46,16 @@ export const PRIORITIES = Object.freeze([REQUIRED, DEFERRED]);
 export const MODE_WILDCARD = "*";
 
 /**
- * Whether the preview server can serve an ENTRY-level deferral yet.
- *
- * `false` until compose-ai-tools#2965 lands. `ServeCatalogStore` builds both its preview
- * registration and its catalog-id → daemon-id alias from `components[].images` alone — it doesn't
- * decode the `deferred[]` records — so a wholly-deferred entry or variant, which has no `images[]`
- * record at all, would be *absent* from `serve --catalogs` rather than rendered on demand.
- *
- * While it is `false` the declared deferral is honoured as `required`: the entry renders and bakes
- * exactly as it would without the annotation. That is deliberately the *inert* reading rather than
- * either extreme — refusing the publish would block a catalog for annotating ahead of the server,
- * and honouring the deferral would quietly drop the entry from the served sheet. A spec can be
- * authored now, causes no change in the meantime, and starts actually deferring when this flips.
- * The gap is reported by [declaredEntryDeferrals] so it can't go unnoticed.
- *
- * ONE switch drives every consumer — [effectivePriority] below, and through it the render filter,
- * the variant split and the driver's join — so the render set and the published set can never
- * disagree about which entries are baked. Flipping it to `true` is the last step of #2965.
- *
- * The AXIS form (`modePriority`) is unaffected and active today: a mode-deferred image leaves its
- * component in `components[]` with the untagged primary sticker, so the served catalog browses as
- * before with one fewer baked palette — a reduction the catalog asked for, not a missing entry.
- */
-export const ENTRY_DEFERRAL_SERVED = false;
-
-/**
- * The priority a component / variant entry **declares**, defaulting to `required`.
+ * The priority a component / variant entry declares, defaulting to `required`.
  * An unrecognised value also reads as `required` — validation rejects it up front, and failing
  * *closed* (bake it) is the safe reading if one ever slips through.
  *
- * This is the authored value, for validation and reporting. Everything that decides whether an
- * entry is actually rendered/baked must use [effectivePriority] instead.
+ * This one reader is what every decision point uses — the driver's join, the variant split,
+ * [specDefersAnything] and the render-filter derivation — so the render set and the published set
+ * can't disagree about which entries are baked.
  */
 export function entryPriority(entry) {
   return entry?.priority === DEFERRED ? DEFERRED : REQUIRED;
-}
-
-/**
- * The priority an entry is actually treated with: its declared value once the serve host can route
- * a deferred entry, else `required` (see [ENTRY_DEFERRAL_SERVED]).
- */
-export function effectivePriority(entry) {
-  return ENTRY_DEFERRAL_SERVED ? entryPriority(entry) : REQUIRED;
-}
-
-/**
- * Entries and variants whose declared `priority: "deferred"` is currently being ignored because the
- * serve host can't route it yet. Empty once [ENTRY_DEFERRAL_SERVED] flips. The driver logs these so
- * a catalog author sees that the annotation is recorded but not yet acted on — a tracked gap rather
- * than a silent one.
- *
- * @returns {Array<{componentId: string, preview: string, kind: "entry"|"variant"}>}
- */
-export function declaredEntryDeferrals(spec) {
-  if (ENTRY_DEFERRAL_SERVED) return [];
-  const out = [];
-  for (const { component } of components(spec)) {
-    if (entryPriority(component) === DEFERRED) {
-      out.push({
-        componentId: component.componentId,
-        preview: component.preview,
-        kind: "entry",
-      });
-    }
-    for (const variant of component?.variants ?? []) {
-      if (entryPriority(variant) === DEFERRED) {
-        out.push({
-          componentId: component.componentId,
-          preview: variant.preview,
-          kind: "variant",
-        });
-      }
-    }
-  }
-  return out;
 }
 
 /**
@@ -188,17 +124,15 @@ function components(spec) {
 }
 
 /**
- * True when the spec defers anything that actually takes effect — a mode, or (once the serve host
- * can route it) an entry or variant. Deliberately keyed on the EFFECTIVE priority: this gates the
- * live-path requirement, and demanding a live bundle for a deferral that is currently inert would
- * block a publish for no benefit.
+ * True when the spec defers anything at all — a mode, an entry or a variant. This is what gates the
+ * live-path requirement, since anything deferred is coverage the published bundle no longer carries.
  */
 export function specDefersAnything(spec) {
   if (deferredModes(spec).length > 0) return true;
   return components(spec).some(
     ({ component }) =>
-      effectivePriority(component) === DEFERRED ||
-      (component?.variants ?? []).some((v) => effectivePriority(v) === DEFERRED),
+      entryPriority(component) === DEFERRED ||
+      (component?.variants ?? []).some((v) => entryPriority(v) === DEFERRED),
   );
 }
 
@@ -234,14 +168,13 @@ export function previewNamesByPriority(spec) {
     if (typeof preview !== "string" || preview.length === 0) return;
     (priority === DEFERRED ? deferred : required).add(preview);
   };
-  // EFFECTIVE priority, so the render filter can never drop a preview the driver is still going to
-  // bake — the failure that would leave a "required" entry with no PNG and trip the completeness
-  // gate. While [ENTRY_DEFERRAL_SERVED] is false nothing is deferred, so `deferred` comes back empty
-  // and [renderFilterPatterns] returns no filter at all.
+  // Same [entryPriority] reader the driver's join uses, so the render filter can never drop a preview
+  // the driver is still going to bake — the failure that would leave a "required" entry with no PNG
+  // and trip the completeness gate.
   for (const { component } of components(spec)) {
-    note(component?.preview, effectivePriority(component));
+    note(component?.preview, entryPriority(component));
     for (const variant of component?.variants ?? []) {
-      note(variant?.preview, effectivePriority(variant));
+      note(variant?.preview, entryPriority(variant));
     }
   }
   for (const name of required) deferred.delete(name);
@@ -299,10 +232,10 @@ export function splitDeferredImages(images, spec) {
  */
 export function splitDeferredVariants(component) {
   const variants = component?.variants ?? [];
-  const deferredVariants = variants.filter((v) => effectivePriority(v) === DEFERRED);
+  const deferredVariants = variants.filter((v) => entryPriority(v) === DEFERRED);
   if (deferredVariants.length === 0) return { component, deferredVariants: [] };
   return {
-    component: { ...component, variants: variants.filter((v) => effectivePriority(v) === REQUIRED) },
+    component: { ...component, variants: variants.filter((v) => entryPriority(v) === REQUIRED) },
     deferredVariants,
   };
 }
@@ -341,9 +274,9 @@ export function deferralPlan(spec) {
   let entries = 0;
   let variants = 0;
   for (const { component } of components(spec)) {
-    if (effectivePriority(component) === DEFERRED) entries += 1;
+    if (entryPriority(component) === DEFERRED) entries += 1;
     for (const variant of component?.variants ?? []) {
-      if (effectivePriority(variant) === DEFERRED) variants += 1;
+      if (entryPriority(variant) === DEFERRED) variants += 1;
     }
   }
   const { required, deferred } = previewNamesByPriority(spec);
@@ -355,8 +288,5 @@ export function deferralPlan(spec) {
     requiredPreviews: required,
     renderFilter: renderFilterPatterns(spec),
     defersAnything: specDefersAnything(spec),
-    // Declared-but-inert entry deferrals, so the pre-flight's `--json` surfaces the tracked gap
-    // alongside the effective counts above.
-    ignoredEntryDeferrals: declaredEntryDeferrals(spec),
   };
 }

@@ -706,10 +706,9 @@ test("validateSpec warns when modePriority defers every declared mode", () => {
   assert.ok(warnings.some((w) => /defers every declared mode/.test(w)));
 });
 
-test("validateSpec rejects deferral when the publish has no live path", () => {
-  // Keyed on the AXIS form, which is what actually takes effect today. `modePriority` genuinely
-  // thins the published set, so publishing it without a live path would drop coverage no serve host
-  // could produce.
+test("validateSpec rejects axis deferral when the publish has no live path", () => {
+  // `modePriority` genuinely thins the published set, so publishing it without a live path would drop
+  // coverage no serve host could produce.
   const spec = prioritySpec([{ componentId: "A", preview: "Alpha" }], {
     modes: ["light", "dark"],
     modePriority: { light: "required", dark: "deferred" },
@@ -722,14 +721,27 @@ test("validateSpec rejects deferral when the publish has no live path", () => {
   assert.deepEqual(validateSpec(spec).errors, []);
 });
 
-test("validateSpec does not demand a live path for a deferral that is currently inert", () => {
-  // Entry-level deferral is recorded but not acted on until the serve host can route it (#2965), so
-  // requiring `--publish-live-bundle` for it would block a publish for no benefit.
+test("validateSpec rejects entry deferral when the publish has no live path", () => {
+  // An entry-deferred component has no `images[]` record at all, so the live lane
+  // (`catalog.json` `deferred[]` → `ServeCatalogStore`, #2965) is the ONLY way a viewer reaches it.
+  // Without a live path it is coverage dropped outright, which is the one thing deferral must not be.
   const spec = prioritySpec([
     { componentId: "A", preview: "Alpha" },
     { componentId: "B", preview: "Beta", priority: "deferred" },
   ]);
-  assert.deepEqual(validateSpec(spec, { liveBundle: false }).errors, []);
+  const { errors } = validateSpec(spec, { liveBundle: false });
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /no live path/);
+  assert.deepEqual(validateSpec(spec, { liveBundle: true }).errors, []);
+  // A variant-level deferral is the same trade, and gated the same way.
+  const variantSpec = prioritySpec([
+    {
+      componentId: "A",
+      preview: "Alpha",
+      variants: [{ preview: "AlphaOff", state: "off", priority: "deferred" }],
+    },
+  ]);
+  assert.match(validateSpec(variantSpec, { liveBundle: false }).errors[0], /no live path/);
 });
 
 test("validateSpec still resolves a deferred entry's preview name against the module", () => {
