@@ -158,6 +158,16 @@ kotlin {
 // captured document the Android embedded lane does — the only way its output is comparable.
 sourceSets["test"].resources.srcDir("../rc-embedded-player/src/test/resources")
 
+// Forward the rc-compare jvm lane's staging properties to the test worker, mirroring the Android
+// module's `rc.embedded.*` forwarding. `RcJvmRenderHarness` reads `<id>.rc` + `manifest.json` from
+// `rc.jvm.input` and writes `<id>.png` to `rc.jvm.output`; the `rc-compare.mjs --embedded-jvm` lane
+// diffs those against the baked PNG, the same shape as the embedded (Android) lane.
+tasks.withType<Test>().configureEach {
+  for (key in listOf("rc.jvm.input", "rc.jvm.output")) {
+    (project.findProperty(key) as String?)?.let { systemProperty(key, it) }
+  }
+}
+
 // The shared sources are AOSP-formatted (4-space) and must stay a verbatim snapshot, so they are
 // exempt from this repo's Google-style ktfmt — same as in the Android module, where AGP's source
 // sets happen not to be picked up at all. This also covers `jvmPlayerSources`, which is not
@@ -184,6 +194,9 @@ dependencies {
   implementation(libs.androidx.collection)
 
   testImplementation(libs.junit)
+  // Manifest parsing for the rc-compare jvm render harness (RcJvmRenderHarness) — parsed via the
+  // runtime `Json` API, so no serialization compiler plugin is needed.
+  testImplementation(libs.kotlinx.serialization.json)
 
   // `compose.foundation` brings skiko's *API* jar, which is all the jvm text seam needs to compile
   // against — but calling into Skia needs the platform's `libskiko` too, and that ships in a
