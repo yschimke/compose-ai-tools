@@ -416,6 +416,29 @@ it just won't come back). A registration fetches the branch **before** it's pers
 repo fails with `502` rather than leaving an unservable entry for every future boot to retry;
 malformed entries are `400` and re-publishing a served catalog is `409`.
 
+#### Front-page groups
+
+| Route | Does |
+|---|---|
+| `GET /admin/groups` | the sections a catalog entry may claim |
+| `POST /admin/groups` | define a section, or restyle one that exists — `{"id","heading","noun"}` |
+| `DELETE /admin/groups/<id>` | delete it; its catalogs fall back to their owner heading |
+
+Defining a section also **re-resolves the claims of catalogs already registered**. That matters
+because a catalog's placement is resolved once, at registration, into a snapshot — so without this,
+defining a section after its catalogs were published would collect nothing, and the cards would sit
+under the owner fallback until a restart.
+
+For the same reason `POST /admin/catalogs` on an id that's already published **converges its
+listing** rather than refusing: re-posting an entry whose `group` or `listed` has changed updates it
+in place, with no re-fetch and no dropped load state. Re-posting an *unchanged* entry is still `409`,
+so a duplicate stays visible, and a changed `repo` is still refused — that decides what bytes get
+served, so re-pointing a catalog is a retire plus a publish.
+
+Groups were the last part of the catalog config with no runtime path: a section could only be added
+by editing the box's `catalogs.json` and restarting, and a catalog claiming an undefined one was
+rejected outright — which meant a committed config genuinely could not converge. It can now.
+
 #### Trusted producers
 
 The trust store is config too, on the same volume (`/config/producers.json`). Without this, runtime

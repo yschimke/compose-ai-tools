@@ -1885,6 +1885,10 @@ class ServeCommand(args: List<String>) : Command(args) {
                           the producer-trust store — GET /admin/trust, POST /admin/trust
                           ({"kind":"branch"|"key"|"oidc",…}), DELETE /admin/trust?kind=&repo=…
                           (selectors ride the query string so an owner/repo needn't be escaped).
+                          the front-page sections — GET /admin/groups, POST /admin/groups
+                          ({"id","heading","noun"}), DELETE /admin/groups/<id>. Defining a section
+                          also regroups catalogs already registered, and re-POSTing a published
+                          catalog converges its listing (group / listed) in place.
                           Mutations are applied live AND written back to --catalogs-file /
                           --trust-store, so they survive a restart. Separate from --token on purpose
                           (a --public box hands that one to every visitor); omitted = the admin

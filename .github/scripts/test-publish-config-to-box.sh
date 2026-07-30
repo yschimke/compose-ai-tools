@@ -46,14 +46,26 @@ out=$(BASE_URL=https://example.invalid \
   CATALOGS_FILE="${tmp}/catalogs.json" \
   bash "${UNDER_TEST}" --dry-run)
 
-# 1. ordering: every /admin/trust POST precedes every /admin/catalogs POST.
+# 1. ordering: trust, then groups, then catalogs. Both hops matter — a catalog posted before its
+#    producer is trusted registers `unverified`; one posted before its section exists is rejected
+#    outright as an unknown group.
 last_trust=$(printf '%s\n' "${out}" | grep -n 'POST /admin/trust' | tail -1 | cut -d: -f1)
+first_group=$(printf '%s\n' "${out}" | grep -n 'POST /admin/groups' | head -1 | cut -d: -f1)
+last_group=$(printf '%s\n' "${out}" | grep -n 'POST /admin/groups' | tail -1 | cut -d: -f1)
 first_catalog=$(printf '%s\n' "${out}" | grep -n 'POST /admin/catalogs' | head -1 | cut -d: -f1)
-if [[ -z "${last_trust}" || -z "${first_catalog}" ]]; then
-  fail "expected both trust and catalog POSTs; got:\n${out}"
-elif [[ "${last_trust}" -ge "${first_catalog}" ]]; then
-  fail "trust must be reconciled before catalogs (last trust line ${last_trust}, first catalog line ${first_catalog})"
+if [[ -z "${last_trust}" || -z "${first_group}" || -z "${first_catalog}" ]]; then
+  fail "expected trust, group and catalog POSTs; got:\n${out}"
+else
+  [[ "${last_trust}" -lt "${first_group}" ]] ||
+    fail "trust must precede groups (last trust ${last_trust}, first group ${first_group})"
+  [[ "${last_group}" -lt "${first_catalog}" ]] ||
+    fail "groups must precede catalogs (last group ${last_group}, first catalog ${first_catalog})"
 fi
+
+# 1b. the group's heading and noun reach the wire intact — a dropped heading would silently rename
+#     a front-page section.
+printf '%s' "${out}" | grep -q '"id":"ds".*"heading":"Design Systems"' ||
+  fail "group ds must be POSTed with its heading"
 
 # 2. both producers are sent, with their branch globs intact.
 for repo in yschimke/compose-ai-tools yschimke/pocket-casts-android; do

@@ -82,13 +82,11 @@ post() {
       ;;
     400)
       rejected=$((rejected + 1))
-      # The one 400 that is a *structural* gap rather than a bad payload: there is no admin route
-      # for front-page groups (only /admin/catalogs and /admin/trust), so a catalog claiming a
-      # group the box's own /config/catalogs.json doesn't define is rejected and cannot be fixed
-      # from here. Say so explicitly — the previous version warned and moved on, leaving the
-      # catalog silently unpublished.
+      # `unknown group` should now be unreachable: the group loop above defines every section before
+      # any catalog claims one. If it still happens, the group POST silently failed or the box
+      # predates /admin/groups — worth saying rather than a generic "rejected".
       if [[ "${payload}" == *"unknown group"* ]]; then
-        echo "::error::${label}: ${payload}. Groups are not reconcilable over the admin API — add the group to the box's /config/catalogs.json (\`docker compose exec preview vi /config/catalogs.json\` then restart), or drop the group claim from the seed entry."
+        echo "::error::${label}: ${payload}. Groups are reconciled first, so this means the /admin/groups POST did not take — check the group lines above, or whether this box predates the route."
       else
         echo "::error::${label}: rejected (HTTP 400) — ${payload}"
       fi
@@ -116,6 +114,18 @@ while IFS= read -r entry; do
     [[ $? == 2 ]] && exit 0
   }
 done < <(jq -c '.branches // [] | .[]' "${TRUST_FILE}")
+
+# Groups BEFORE catalogs, for the same reason trust comes before both: a catalog claiming a section
+# the server hasn't been told about is rejected outright, and until /admin/groups existed that
+# rejection was unfixable from here.
+echo "Reconciling front-page groups from ${CATALOGS_FILE#"${REPO_ROOT}/"}"
+while IFS= read -r group; do
+  [[ -n "${group}" ]] || continue
+  id=$(printf '%s' "${group}" | jq -r '.id')
+  post /admin/groups "${group}" "group ${id}" || {
+    [[ $? == 2 ]] && exit 0
+  }
+done < <(jq -c '.groups // [] | .[]' "${CATALOGS_FILE}")
 
 echo "Reconciling catalogs from ${CATALOGS_FILE#"${REPO_ROOT}/"}"
 while IFS= read -r entry; do

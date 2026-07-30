@@ -125,6 +125,25 @@ data class ServeCatalogsConfig(
     fun encode(config: ServeCatalogsConfig): String =
       JSON.encodeToString(serializer(), config) + "\n"
 
+    /**
+     * A group id is referenced by catalog entries and never appears in a URL, so it only needs to
+     * be a stable slug. The heading and noun ARE rendered, so they're length-capped — they reach
+     * the page HTML-escaped ([ServeWeb.section]), but an operator pasting a novel into a heading
+     * should get told, not silently produce an unreadable front page.
+     */
+    private val GROUP_ID_RE = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+
+    /** Why [group] is unusable as a front-page section, or null when it's well-formed. */
+    fun validateGroup(group: Group): String? =
+      when {
+        !GROUP_ID_RE.matches(group.id) -> "invalid group id '${group.id}'"
+        group.heading.isBlank() -> "group '${group.id}' needs a heading"
+        group.heading.length > 120 -> "group '${group.id}' heading is too long (max 120)"
+        group.noun.isBlank() -> "group '${group.id}' needs a noun"
+        group.noun.length > 60 -> "group '${group.id}' noun is too long (max 60)"
+        else -> null
+      }
+
     /** Why [entry] is unusable, or null when it's well-formed. */
     fun validateEntry(entry: Entry): String? =
       when {
