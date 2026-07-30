@@ -750,6 +750,15 @@ jobs:
         with:
           cache-provider: basic
 
+      # The android-all cache key carries the current UTC year-month (see the
+      # keys below) so entries rotate monthly instead of accumulating forever.
+      # Actions expressions have no date function, so resolve it once here into
+      # the job env — the early Restore and the late always() Save both read it,
+      # so a run always keys restore and save to the same month.
+      - name: Resolve android-all cache month
+        if: matrix.render || matrix.render_xr || matrix.daemon
+        run: echo "ANDROID_ALL_CACHE_MONTH=$(date -u +%Y-%m)" >> "$GITHUB_ENV"
+
       # Robolectric's instrumented `android-all` runtime (~150-250 MB) is fetched
       # at RUN time by Robolectric's own Maven resolver into ~/.m2/repository —
       # not by Gradle — so setup-gradle's cache doesn't cover it and every render
@@ -765,6 +774,13 @@ jobs:
       # dead jar forever. (A `github.run_id` key like the font cache uses would
       # be simpler, but at this size it would save a fresh quarter-gig per cell
       # per run and evict everything else in the repo's 10 GB budget.)
+      #
+      # The key is additionally namespaced by UTC year-month (`ANDROID_ALL_CACHE_MONTH`,
+      # resolved above): each month opens a fresh key prefix, so a coordinate that
+      # stops being fetched — after a `robolectric` bump, or a cell being retired —
+      # falls out of the active month's prefix and LRU-evicts instead of lingering
+      # in the budget indefinitely. The cost is one cold ~200 MB fetch per cell on
+      # its first run of a new month; every run after that hits the month's entry.
       #
       # Keyed PER CELL (`matrix.slug`), not globally. Cells don't all want the
       # same coordinate: the SDK Robolectric synthesizes depends on the cell's
@@ -784,9 +800,9 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.m2/repository/org/robolectric/android-all-instrumented
-          key: android-all-instrumented-${{ runner.os }}-${{ matrix.slug }}-
+          key: android-all-instrumented-${{ runner.os }}-${{ matrix.slug }}-${{ env.ANDROID_ALL_CACHE_MONTH }}-
           restore-keys: |
-            android-all-instrumented-${{ runner.os }}-${{ matrix.slug }}-
+            android-all-instrumented-${{ runner.os }}-${{ matrix.slug }}-${{ env.ANDROID_ALL_CACHE_MONTH }}-
 
       # A truncated jar restored from cache is worse than no cache at all:
       # Robolectric's MavenArtifactFetcher skips its download when the target
@@ -1426,7 +1442,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.m2/repository/org/robolectric/android-all-instrumented
-          key: android-all-instrumented-${{ runner.os }}-${{ matrix.slug }}-${{ steps.android-all.outputs.coordinate }}
+          key: android-all-instrumented-${{ runner.os }}-${{ matrix.slug }}-${{ env.ANDROID_ALL_CACHE_MONTH }}-${{ steps.android-all.outputs.coordinate }}
 
   agp8-min:
     # Consumes build-plugin's bundle, so it rides the same change-scope gate:
@@ -1478,14 +1494,19 @@ jobs:
       # Own key namespace for the same reason the matrix keys per cell: this
       # fixture pins `composePreview.sdkVersion = 35` to stay inside JDK 17's
       # Robolectric window, so its coordinate is its own and must not share an
-      # entry with cells that resolve a different SDK.
+      # entry with cells that resolve a different SDK. The UTC year-month is in
+      # the key too, so this entry rotates monthly like the matrix's — see that
+      # job's "Resolve android-all cache month" step for the rationale.
+      - name: Resolve android-all cache month
+        run: echo "ANDROID_ALL_CACHE_MONTH=$(date -u +%Y-%m)" >> "$GITHUB_ENV"
+
       - name: Restore Robolectric android-all cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.m2/repository/org/robolectric/android-all-instrumented
-          key: android-all-instrumented-${{ runner.os }}-agp8-min-
+          key: android-all-instrumented-${{ runner.os }}-agp8-min-${{ env.ANDROID_ALL_CACHE_MONTH }}-
           restore-keys: |
-            android-all-instrumented-${{ runner.os }}-agp8-min-
+            android-all-instrumented-${{ runner.os }}-agp8-min-${{ env.ANDROID_ALL_CACHE_MONTH }}-
 
       - name: Drop corrupt android-all jars
         run: |
@@ -1757,7 +1778,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.m2/repository/org/robolectric/android-all-instrumented
-          key: android-all-instrumented-${{ runner.os }}-agp8-min-${{ steps.android-all.outputs.coordinate }}
+          key: android-all-instrumented-${{ runner.os }}-agp8-min-${{ env.ANDROID_ALL_CACHE_MONTH }}-${{ steps.android-all.outputs.coordinate }}
 
   publish-previews:
     name: Publish integration preview branches
