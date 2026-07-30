@@ -193,9 +193,17 @@ we mount the shim at the versioned path the frontend emits.
 
 Request body is `{ args, files: [{ name, text, publicId }], confType }`; the
 `confType` selects the mode ([§3](#3-the-three-modes--three-permalink-targets)).
-Response reuses the upstream shape (`{ errors, text, exception, … }`) with two
-**additive** fields — `image` (first-frame `data:` PNG) and `previewToken` — that
-the upstream frontend ignores and ours surfaces.
+
+The response carries the diagnostics in **both** shapes so neither client is
+second-class. Our own frontend reads a flat `diagnostics` list (`PlaygroundDiagnostic`);
+a stock `kotlin-playground` frontend reads `errors` — and that field is **not** a
+renamed flat list, it's upstream's **map keyed by file name** whose entries nest
+their position under `interval: { start, end }`, with an uppercase `severity`. So
+`errors` is a genuine *projection* of the same diagnostics (`PlaygroundErrorsWire`),
+not an alias — a straight `diagnostics` → `errors` rename would look compatible
+while rendering nothing in the stock editor. On top of that the response adds two
+fields the upstream frontend ignores and ours surfaces: `image` (first-frame
+`data:` PNG) and `previewToken`.
 
 > **On reusing the frontend at all.** Implementing this contract is what keeps a
 > stock editor an option; it is not a commitment to ship theirs. `kotlin-playground`
