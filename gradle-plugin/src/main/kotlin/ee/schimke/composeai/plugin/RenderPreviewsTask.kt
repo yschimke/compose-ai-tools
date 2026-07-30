@@ -81,13 +81,12 @@ abstract class RenderPreviewsTask : DefaultTask() {
    * Matching (glob `*`/`?` or substring) lives in [PreviewNameFilter.matchesId]. `@Input` so a
    * filter change re-runs the render.
    *
-   * **Scope: this task only, i.e. the desktop/JVM render backend.** On an Android module
-   * `composePreviewRender` is a Robolectric `Test` task registered by [AndroidPreviewSupport],
-   * which reads none of these properties — so neither this nor [previewIdExcludes] (nor the
-   * pre-existing [previewFilters]) narrows an Android render. They are inert there rather than
-   * wrong: an absent filter means "render everything", the historical behaviour. Extending the
-   * Robolectric path is tracked separately; until then a catalog's render-time saving from a filter
-   * only lands on a desktop/CMP module.
+   * **Applies to this desktop/JVM task**; the Android Robolectric render honours the same three
+   * filters via its own path (issue #2977). On an Android module `composePreviewRender` is a
+   * `RobolectricRenderTask` registered by [AndroidPreviewSupport] that forwards these filters
+   * (sourced from the same `composePreview.*` property conventions) to the render JVM as
+   * `composeai.preview.*` system properties, where `PreviewFilter` applies the same matching. So a
+   * catalog's render-time saving from a filter now lands on both backends.
    */
   @get:Input abstract val previewIdFilters: ListProperty<String>
 

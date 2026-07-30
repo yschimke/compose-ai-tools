@@ -48,6 +48,7 @@ import ee.schimke.composeai.daemon.protocol.LauncherResizeOrder
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetSize
 import ee.schimke.composeai.data.render.PreviewAnimationContext
+import ee.schimke.composeai.data.render.PreviewFilter
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionFrameContext
 import ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass
@@ -118,6 +119,25 @@ object PreviewManifestLoader {
     if (!file.exists()) return emptyList()
 
     val manifest = json.decodeFromString<RenderManifest>(file.readText())
+    // Name / id / id-exclude filters (issues #2066 / #2966 / #2977) — the same `--preview` /
+    // `--preview-id` / `--exclude-preview-id` selection the desktop `RenderPreviewsTask` applies,
+    // forwarded here as system properties by the Android `composePreviewRender` task so a filter
+    // actually narrows a Robolectric render (before #2977 it was inert on this backend). Applied to
+    // the discovered entries FIRST, before the XR/Lottie/SVG drop and any `@PreviewParameter`
+    // expansion, so the fail-fast "available previews" list spans everything discovered and the
+    // id filter selects the same multipreview-member ids the desktop path sees. The FULL
+    // `manifest.previews` is still what `deleteStaleFanoutFiles` protects below, so a filtered-out
+    // preview keeps its existing PNG on disk exactly as it does on desktop.
+    val selected =
+      PreviewFilter.select(
+        items = manifest.previews,
+        nameFilters = PreviewFilter.patternsFrom(PreviewFilter.NAME_FILTER_PROPERTY),
+        idFilters = PreviewFilter.patternsFrom(PreviewFilter.ID_FILTER_PROPERTY),
+        idExcludes = PreviewFilter.patternsFrom(PreviewFilter.ID_EXCLUDE_PROPERTY),
+        functionName = { it.functionName },
+        className = { it.className },
+        id = { it.id },
+      )
     // Expand `@PreviewParameter` providers into one row per value BEFORE
     // sharding, so one preview's values never span multiple shards — each
     // (preview, value) row carries an already-suffixed id / renderOutput
@@ -133,7 +153,7 @@ object PreviewManifestLoader {
     // (`composePreviewRenderSvg`) via Skia's `loadSvgPainter` — Robolectric has no SVG decoder.
     // Drop all three before any expansion so they never reach `strategyFor`.
     val expandedByEntry =
-      manifest.previews
+      selected
         .filter {
           it.params.kind != PreviewKind.XR_SUBSPACE &&
             it.params.kind != PreviewKind.LOTTIE &&

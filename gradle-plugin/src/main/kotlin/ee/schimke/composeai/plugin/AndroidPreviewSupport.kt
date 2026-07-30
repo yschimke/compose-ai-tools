@@ -1900,9 +1900,23 @@ internal object AndroidPreviewSupport {
       )
 
     val renderTask =
-      project.tasks.register("composePreviewRender", Test::class.java) {
+      project.tasks.register("composePreviewRender", RobolectricRenderTask::class.java) {
         group = "compose preview"
         description = "Render Android previews via Robolectric"
+        // Preview filters (issues #2066 / #2966 / #2977). Conventions from the same Gradle
+        // properties the desktop task uses; the `--preview` / `--preview-id` /
+        // `--exclude-preview-id` options on this task override them. Forwarded to the render JVM as
+        // `composeai.preview.*` system properties below, where `PreviewFilter` applies them.
+        previewFilters.convention(ComposePreviewTasks.previewFilterProperty(project))
+        previewIdFilters.convention(ComposePreviewTasks.previewIdFilterProperty(project))
+        previewIdExcludes.convention(ComposePreviewTasks.previewIdExcludeProperty(project))
+        jvmArgumentProviders.add(
+          PreviewFilterSystemPropsProvider(
+            nameFilters = previewFilters,
+            idFilters = previewIdFilters,
+            idExcludes = previewIdExcludes,
+          )
+        )
         // Bail fast (with remediation) when the gate passed via project-deps tier but the
         // resolved runtime classpath doesn't actually reach a preview-tooling coord (issue #1549).
         // Null when direct tooling was found (validator wasn't registered — nothing to depend on).
@@ -2070,8 +2084,16 @@ internal object AndroidPreviewSupport {
         // apply, so a `tier=fast` re-run with no input changes is a
         // no-op and the renders dir stays as-is. Full-tier runs cache
         // normally.
-        outputs.cacheIf("composePreviewRender caches tier=full runs only") {
-          tierProvider.get().equals("full", ignoreCase = true)
+        //
+        // A filtered run (`--preview` / `--preview-id` / `--exclude-preview-id`) is partial for the
+        // same reason (issue #2977): it renders only the named subset and leaves every other
+        // (possibly stale) PNG in place, so storing that mixed directory could restore an unrelated
+        // stale render on a clean checkout. Mirrors the desktop `RenderPreviewsTask.cacheIf` gate.
+        outputs.cacheIf("composePreviewRender caches full, unfiltered runs only") {
+          tierProvider.get().equals("full", ignoreCase = true) &&
+            previewFilters.getOrElse(emptyList()).none { it.isNotBlank() } &&
+            previewIdFilters.getOrElse(emptyList()).none { it.isNotBlank() } &&
+            previewIdExcludes.getOrElse(emptyList()).none { it.isNotBlank() }
         }
         // The PNG files are written to `rendersDirectory` via the
         // `composeai.render.outputDir` system property, not through any
@@ -2202,6 +2224,13 @@ internal object AndroidPreviewSupport {
         systemProperty("composeai.resources.manifest", resourcesManifestPath.get())
         systemProperty("composeai.resources.outputDir", resourcesRendersOutputDir.get())
 
+        // No preview-filter forwarding here (issue #2977): resource previews are XML assets in a
+        // separate manifest with no `@Preview` function, and this task owns a single shared
+        // `resource-render-errors.json` sidecar keyed across the whole set — a filtered (partial)
+        // run would overwrite it and erase diagnostics for the skipped resources. Resources always
+        // render in full; the composable render is where a filter narrows the output. See
+        // `ResourcePreviewRenderTest`.
+
         outputs.dir(resourcesRendersSubtree).withPropertyName("resourcesRendersDir")
 
         // Same #1243 guard as composePreviewRender above — the resource render task
@@ -2303,6 +2332,25 @@ internal object AndroidPreviewSupport {
         systemProperty("roborazzi.test.record", "true")
         systemProperty("composeai.render.manifest", manifestFile.get())
         systemProperty("composeai.render.outputDir", rendersDir.get())
+
+        // Same `--preview` / `--preview-id` / `--exclude-preview-id` selection the composable
+        // render
+        // honours (issue #2977), forwarded as `composeai.preview.*` — XR previews are ordinary
+        // `@Preview` composables, so `XrSubspaceRenderTest` filters them by name/id exactly like
+        // the
+        // image render. Property conventions only (the CLI options live on `composePreviewRender`).
+        jvmArgumentProviders.add(
+          PreviewFilterSystemPropsProvider(
+            nameFilters = ComposePreviewTasks.previewFilterProperty(project),
+            idFilters = ComposePreviewTasks.previewIdFilterProperty(project),
+            idExcludes = ComposePreviewTasks.previewIdExcludeProperty(project),
+          )
+        )
+        outputs.cacheIf("composePreviewRenderXr caches unfiltered runs only") {
+          ComposePreviewTasks.previewFilterProperty(project).get().none { it.isNotBlank() } &&
+            ComposePreviewTasks.previewIdFilterProperty(project).get().none { it.isNotBlank() } &&
+            ComposePreviewTasks.previewIdExcludeProperty(project).get().none { it.isNotBlank() }
+        }
 
         outputs.dir(rendersDirectory).withPropertyName("xrRendersDir")
 
@@ -2469,6 +2517,15 @@ internal object AndroidPreviewSupport {
         tier.set(resolveTier(project))
         displayFilterFilters.set(resolveDisplayFilterFilters(project))
         deviceFrameDevice.set(resolveDeviceFrameDevice(project))
+        // Honour the same `--preview` / `--preview-id` / `--exclude-preview-id` selection (issue
+        // #2977) so a filtered Android workflow doesn't render every Lottie asset. This is a
+        // `RenderPreviewsTask`, which applies the name/id filter over the FULL manifest before the
+        // `includeKinds` restriction below — so a filter naming a non-Lottie preview matches in the
+        // manifest (no fail-fast) and is simply dropped by the kind filter, while a global typo
+        // still fails fast. Conventions only; the CLI options live on `composePreviewRender`.
+        previewFilters.convention(ComposePreviewTasks.previewFilterProperty(project))
+        previewIdFilters.convention(ComposePreviewTasks.previewIdFilterProperty(project))
+        previewIdExcludes.convention(ComposePreviewTasks.previewIdExcludeProperty(project))
         includeKinds.add(PreviewKind.LOTTIE.name)
         // Lazy artifact view (not the raw `Configuration`) so the @Classpath collection stays
         // config-cache serializable — same rationale as the desktop validate guards (issue #1796).
@@ -2507,6 +2564,12 @@ internal object AndroidPreviewSupport {
         tier.set(resolveTier(project))
         displayFilterFilters.set(resolveDisplayFilterFilters(project))
         deviceFrameDevice.set(resolveDeviceFrameDevice(project))
+        // Honour the preview filters (issue #2977), same as the Lottie task above — filter over the
+        // full manifest, then restrict to `kind=SVG`, so filtered Android workflows don't render
+        // every SVG asset. Conventions only.
+        previewFilters.convention(ComposePreviewTasks.previewFilterProperty(project))
+        previewIdFilters.convention(ComposePreviewTasks.previewIdFilterProperty(project))
+        previewIdExcludes.convention(ComposePreviewTasks.previewIdExcludeProperty(project))
         includeKinds.add(PreviewKind.SVG.name)
         renderClasspath.from(svgRendererConfig.incoming.artifactView {}.files)
         renderClasspath.from(androidLottieResourceDirs(project))
@@ -3061,6 +3124,34 @@ internal object AndroidPreviewSupport {
     @get:org.gradle.api.tasks.Input val tier: org.gradle.api.provider.Provider<String>
   ) : org.gradle.process.CommandLineArgumentProvider {
     override fun asArguments(): Iterable<String> = listOf("-Dcomposeai.render.tier=${tier.get()}")
+  }
+
+  /**
+   * Forwards the `--preview` / `--preview-id` / `--exclude-preview-id` selection to the Robolectric
+   * render JVM as the `composeai.preview.*` system properties `PreviewFilter` reads (issue #2977).
+   * Lazy `@Input` providers so a filter change re-runs the render without invalidating the
+   * configuration cache more than the underlying `composePreview.*` property already does; an empty
+   * list emits no argument ("render everything").
+   *
+   * The property names are the wire contract with the renderer-side
+   * `ee.schimke.composeai.data.render.PreviewFilter` constants (`NAME_FILTER_PROPERTY` etc.) — the
+   * plugin can't depend on the renderer module, so they're duplicated here and must stay in sync.
+   */
+  internal class PreviewFilterSystemPropsProvider(
+    @get:org.gradle.api.tasks.Input val nameFilters: org.gradle.api.provider.Provider<List<String>>,
+    @get:org.gradle.api.tasks.Input val idFilters: org.gradle.api.provider.Provider<List<String>>,
+    @get:org.gradle.api.tasks.Input val idExcludes: org.gradle.api.provider.Provider<List<String>>,
+  ) : org.gradle.process.CommandLineArgumentProvider {
+    override fun asArguments(): Iterable<String> = buildList {
+      arg("composeai.preview.filter", nameFilters.getOrElse(emptyList()))
+      arg("composeai.preview.idFilter", idFilters.getOrElse(emptyList()))
+      arg("composeai.preview.idExclude", idExcludes.getOrElse(emptyList()))
+    }
+
+    private fun MutableList<String>.arg(property: String, values: List<String>) {
+      val cleaned = values.map(String::trim).filter(String::isNotEmpty)
+      if (cleaned.isNotEmpty()) add("-D$property=${cleaned.joinToString(",")}")
+    }
   }
 
   /**

@@ -59,6 +59,14 @@ class ResourcePreviewRenderTest {
     val outputRoot = File(outputDirPath)
     outputRoot.mkdirs()
 
+    // The `--preview` / `--preview-id` / `--exclude-preview-id` filters (issue #2977) are
+    // deliberately NOT applied here. Resource previews are XML assets in a separate manifest
+    // (`resources.json`) with no `@Preview` function, and this render owns a single shared
+    // `resource-render-errors.json` sidecar keyed across the whole set — a partial (filtered) run
+    // would overwrite it and erase diagnostics for the resources it skipped. The image render
+    // (which sees every `@Preview` kind) is where a filter narrows the render; resources always
+    // render in full, matching the historical behaviour.
+
     val context = ApplicationProvider.getApplicationContext<android.content.Context>()
     val packageName = context.packageName
 

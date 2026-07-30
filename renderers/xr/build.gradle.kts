@@ -51,6 +51,13 @@ dependencies {
   // The SpatialScene wire DTO the recorder emits.
   api(project(":preview-data-api"))
 
+  // `PreviewFilter` — the shared renderer-side `--preview` / `--preview-id` /
+  // `--exclude-preview-id` selector, so an XR render honours the same filters as the image render
+  // (issue #2977). Pure-JVM + kotlinx-serialization-json (already on this module's classpath), so
+  // it
+  // doesn't drag anything new onto the render runtime.
+  implementation(project(":data-render-core"))
+
   // `XrSubspaceRenderer` projects each panel's semantics via the daemon-side connector's
   // `ComposeSemanticsDataProducer.buildPayload` (single-sourcing the `compose/semantics`
   // projection). `compileOnly` keeps it off this module's published POM — the plugin adds it to the
