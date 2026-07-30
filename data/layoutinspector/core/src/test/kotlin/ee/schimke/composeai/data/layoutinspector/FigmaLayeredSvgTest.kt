@@ -2258,6 +2258,141 @@ class FigmaLayeredSvgTest {
     )
   }
 
+  /**
+   * Issue #2974: a dark `@Preview(showBackground = true)` whose only drawn child is a thin divider
+   * centred in a taller fixed-size `Box` sized the background rect to the *divider* bounds, so most
+   * of the SVG stayed transparent while the PNG filled the whole crop. When the render's frame size
+   * is known, the background must cover that whole crop, not the shrink-wrapped drawn content.
+   */
+  @Test
+  fun aThinChildDoesNotShrinkWrapTheShowBackgroundFillWhenTheFrameSizeIsKnown() {
+    // Root Box is 263×26; the only painting child is a 1dp divider centred vertically.
+    val layout =
+      layoutNode(
+        "Box",
+        0,
+        0,
+        263,
+        26,
+        children =
+          listOf(
+            layoutNode(
+              "JetsnackDivider",
+              0,
+              12,
+              263,
+              14,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#1FFFFFFF"),
+            )
+          ),
+      )
+    val model =
+      FigmaSvgModel.from(
+        layout = LayoutInspectorPayload(layout),
+        deviceBackground = "#FF1C1B1F",
+        frameWidthPx = 263,
+        frameHeightPx = 26,
+      )
+    val rect = model.backgroundRect
+    assertNotNull("a maskless preview gets a frame rect to fill", rect)
+    assertEquals("background fills the full crop width", 0, rect!!.x)
+    assertEquals("background fills the full crop height", 0, rect.y)
+    assertEquals(263, rect.width)
+    assertEquals(26, rect.height)
+    // The canvas must contain the full background crop, not shrink-wrap to the thin divider.
+    assertEquals(263 + FigmaSvgModel.DEFAULT_PADDING * 2, model.width)
+    assertEquals(26 + FigmaSvgModel.DEFAULT_PADDING * 2, model.height)
+    val svg = FigmaLayeredSvg.render(model)
+    assertWellFormedXml(svg)
+    assertTrue(
+      "the full-crop dark background rect is emitted",
+      svg.contains("""<rect x="0" y="0" width="263" height="26" fill="#1C1B1F""""),
+    )
+  }
+
+  /**
+   * Without a known frame size (the vector-only path — e.g. #2884's synthetic model) the background
+   * still sizes from the drawn-content extent, so that regression guard keeps holding.
+   */
+  @Test
+  fun withNoFrameSizeTheShowBackgroundFillStillSizesFromTheDrawnExtent() {
+    val layout =
+      layoutNode(
+        "Screen",
+        0,
+        0,
+        100,
+        60,
+        children =
+          listOf(
+            layoutNode(
+              "Box",
+              10,
+              10,
+              90,
+              50,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+            )
+          ),
+      )
+    val model =
+      FigmaSvgModel.from(layout = LayoutInspectorPayload(layout), deviceBackground = "#FF000000")
+    val rect = model.backgroundRect
+    assertNotNull(rect)
+    assertEquals(10, rect!!.x)
+    assertEquals(10, rect.y)
+    assertEquals(80, rect.width)
+    assertEquals(40, rect.height)
+  }
+
+  /**
+   * Follow-up to #2974: when the SVG retains drawing beyond the captured frame (a card's chrome
+   * wider than its box, a scroll item past its parent edge), the exported canvas grows to include
+   * it — so the background must grow with it, not stop at the frame crop. Otherwise the retained
+   * content renders over transparency, whereas in the live render it sat on the window background.
+   */
+  @Test
+  fun aShowBackgroundFillCoversContentRetainedBeyondTheFrame() {
+    val layout =
+      layoutNode(
+        "Box",
+        0,
+        0,
+        100,
+        26,
+        children =
+          listOf(
+            // A drawing layer that extends past the 100×26 captured frame (to 120×40).
+            layoutNode(
+              "Chrome",
+              0,
+              0,
+              120,
+              40,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+            )
+          ),
+      )
+    val model =
+      FigmaSvgModel.from(
+        layout = LayoutInspectorPayload(layout),
+        deviceBackground = "#FF1C1B1F",
+        frameWidthPx = 100,
+        frameHeightPx = 26,
+      )
+    val rect = model.backgroundRect
+    assertNotNull(rect)
+    // Background spans the full retained extent (120×40), not just the 100×26 frame, so the
+    // retained chrome sits on the backing colour rather than over transparency.
+    assertEquals(0, rect!!.x)
+    assertEquals(0, rect.y)
+    assertEquals(120, rect.width)
+    assertEquals(40, rect.height)
+    // And the canvas contains it (extent + padding on each side).
+    assertEquals(120 + FigmaSvgModel.DEFAULT_PADDING * 2, model.width)
+    assertEquals(40 + FigmaSvgModel.DEFAULT_PADDING * 2, model.height)
+  }
+
   @Test
   fun aRoundDeviceStillPaintsItsBackgroundAsTheMaskShapeNotARect() {
     val layout = layoutNode("Screen", 0, 0, 384, 384)
