@@ -2,6 +2,7 @@ package ee.schimke.composeai.data.layoutinspector
 
 import java.util.IdentityHashMap
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -525,17 +526,28 @@ object FigmaLayeredSvg {
         val placedScaleY = if (layoutHeight > 0.0) layer.height / layoutHeight else 1.0
         scaleX = layoutScale * placedScaleX
         scaleY = layoutScale * placedScaleY
+      } else if (
+        abs(vec.scaleX - 1.0) > VECTOR_SCALE_EPSILON || abs(vec.scaleY - 1.0) > VECTOR_SCALE_EPSILON
+      ) {
+        // The node carries a captured draw-time graphics-layer scale (issue #2853). The connector
+        // measures that scale through the root coordinates, so it is *already baked into the drawn*
+        // `bounds` — re-deriving the fit as `layoutScale * vec.scaleX` (a layout-slot fit times the
+        // scale) double-counts it whenever the measured slot is itself scaled. That double-count
+        // blew an embedded Jetchat mic group up from `scale(2.62)` to `scale(6.54)`. A *present*
+        // transform means the node was genuinely scaled (not clipped — a clip leaves no captured
+        // scale and falls through below), so the drawn bounds carry the real per-axis scale
+        // directly: fit the vector into its drawn bounds and read the scale straight off them,
+        // which also preserves a legitimately non-uniform layer scale.
+        scaleX = if (vec.viewportWidth > 0f) layer.width / vec.viewportWidth.toDouble() else 1.0
+        scaleY = if (vec.viewportHeight > 0f) layer.height / vec.viewportHeight.toDouble() else 1.0
       } else {
-        // An `ImageVector`'s viewport is the icon's own space, so after fitting it to the layout
-        // slot the only thing left to apply is the node's *captured* draw-time scale — not the
-        // ratio of its drawn box to that slot. Those two disagree whenever a node is clipped
-        // rather than scaled, and the ratio reading squashed a square icon in an animating
-        // container to `scale(0.49 0.13)` (issue #2853): Jetsnack's FAB shrinks the box it draws
-        // its icon into, but the icon is never distorted — it's cropped, and stays square right up
-        // to the point it vanishes. A real non-uniform layer scale still reads correctly, because
-        // the capture reports it.
-        scaleX = layoutScale * vec.scaleX
-        scaleY = layoutScale * vec.scaleY
+        // Identity transform: nothing scaled the node, so any gap between its drawn box and its
+        // layout slot is a *clip*, not a scale. Fit the layout slot — never the ratio of the drawn
+        // box, which squashed a square icon in an animating container to `scale(0.49 0.13)` (issue
+        // #2853): Jetsnack's FAB shrinks the box it draws its icon into, but the icon is never
+        // distorted — it's cropped, and stays square right up to the point it vanishes.
+        scaleX = layoutScale
+        scaleY = layoutScale
       }
     }
     val fittedWidth = vec.viewportWidth.toDouble() * scaleX
@@ -859,6 +871,9 @@ object FigmaLayeredSvg {
   // it; the baseline then sits [ASCENT]·em below the top of that font box. Approximations, not the
   // exact resolved face metrics — but close enough that the SVG text lands within a pixel of the
   // render (the fidelity harness confirms it), and a designer nudges it in Figma regardless.
+  /** A captured graphics-layer scale within this of 1.0 counts as the identity (no scale). */
+  private const val VECTOR_SCALE_EPSILON = 0.001
+
   private const val ASCENT_EM = 0.93
   private const val FONT_BOX_EM = 1.17
 

@@ -252,4 +252,47 @@ class FigmaSvgDrawRasterTest {
     assertTrue("cropped from the frame, not from the payload", m.root.background!!.fromFrame)
     assertNull(m.rasterTargets.single().pngBase64)
   }
+
+  /**
+   * Issue #2853, the embedded-container regression: a node whose own draw includes its straight
+   * text (a Jetchat `Conversation/Input` field) carries a `drawRaster` whose pixels already bake in
+   * that text — while the export still emits the live `<text>`, visibly doubling
+   * "Message #composers". The live text wins: the isolated raster is dropped, exactly as a
+   * curved-text node already drops it.
+   */
+  @Test
+  fun aDrawRasterIsDroppedUnderANodesOwnLiveTextInsteadOfDoublingIt() {
+    val input =
+      LayoutInspectorNode(
+        nodeId = "input-1",
+        component = "BasicTextField",
+        bounds = bounds(0, 0, 240, 48),
+        size = LayoutInspectorSize(240, 48),
+        modifiers =
+          listOf(LayoutInspectorModifier(name = "drawWithContent", bounds = bounds(0, 0, 240, 48))),
+        drawRaster =
+          LayoutInspectorDrawRaster(left = 0, top = 0, right = 240, bottom = 48, pngBase64 = png),
+      )
+    val m =
+      FigmaSvgModel.from(
+        layout = LayoutInspectorPayload(input),
+        semantics =
+          ComposeSemanticsPayload(
+            ComposeSemanticsNode(
+              nodeId = "sem",
+              boundsInRoot = "0,0,240,48",
+              text = "Message #composers",
+            )
+          ),
+        captureCanvasDraws = true,
+      )
+
+    assertNull("no isolated raster laid under the node's own live text", m.root.background)
+    assertTrue("nothing was rastered for it", m.rasterTargets.isEmpty())
+    assertNotNull("the text stays editable", m.root.text)
+    assertEquals("Message #composers", m.root.text!!.content)
+    val svg = FigmaLayeredSvg.render(m)
+    assertTrue("no <image> to double the text", !svg.contains("<image"))
+    assertEquals("the string appears exactly once", 1, svg.split(">Message #composers<").size - 1)
+  }
 }

@@ -332,6 +332,83 @@ class RenderEngineTest {
   }
 
   @Test
+  fun figmaSvgFidelityScoresAlphaZeroRecordButton() {
+    // Issue #2853 end-to-end: a real render of the alpha-zero record button (a recording circle
+    // faded to alpha 0 over a mic, in an input-bar row) must produce a fidelity composite + score.
+    // The score guards the whole render→SVG→raster path for the alpha-zero clipped background — a
+    // leaked opaque circle would drag it down.
+    assertFidelityScored(
+      functionName = "AlphaZeroRecordButton",
+      widthPx = 200,
+      heightPx = 56,
+      baseName = "fidelity-record-button",
+    )
+  }
+
+  @Test
+  fun figmaSvgFidelityScoresAnimatedLayoutVector() {
+    // Issue #2853 end-to-end: a square create icon scaled through a graphics layer (Jetchat's
+    // animating FAB). The score guards the render→SVG→raster path for a scaled vector — the
+    // double-counted `scale(6.54)` blow-up would misplace the icon and drag it down.
+    assertFidelityScored(
+      functionName = "VectorIconInAnimatedLayout",
+      widthPx = 96,
+      heightPx = 96,
+      baseName = "fidelity-animated-fab",
+    )
+  }
+
+  private fun assertFidelityScored(
+    functionName: String,
+    widthPx: Int,
+    heightPx: Int,
+    baseName: String,
+  ) {
+    System.setProperty("composeai.figma.fidelity", "true")
+    val outputDir = tempFolder.newFolder("renders-$baseName")
+    val dataDir = tempFolder.newFolder("data-$baseName")
+    val engine = RenderEngine(outputDir = outputDir, dataDir = dataDir)
+    val host = DesktopHost(engine = engine)
+    host.start()
+    try {
+      host.submit(
+        RenderRequest.Render(
+          payload =
+            "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+              "functionName=$functionName;" +
+              "widthPx=$widthPx;heightPx=$heightPx;density=1.0;" +
+              "showBackground=true;" +
+              "outputBaseName=$baseName"
+        ),
+        timeoutMs = 60_000,
+      )
+
+      val previewDir = File(dataDir, baseName)
+      val composite = File(previewDir, FigmaSvgFidelity.FILE_COMPOSITE)
+      val scoreFile = File(previewDir, FigmaSvgFidelity.FILE_SCORE)
+      assertTrue(
+        "fidelity composite must be produced: ${composite.absolutePath}",
+        composite.exists(),
+      )
+      assertTrue(
+        "fidelity score sidecar must be produced: ${scoreFile.absolutePath}",
+        scoreFile.exists(),
+      )
+
+      val scoreJson = scoreFile.readText()
+      val score = Regex("\"score\":([0-9.]+)").find(scoreJson)?.groupValues?.get(1)?.toDouble()
+      assertNotNull("score must parse: $scoreJson", score)
+      assertTrue(
+        "score must be a real fraction in (0,1], was $score",
+        score!! > 0.0 && score <= 1.0,
+      )
+    } finally {
+      host.shutdown()
+      System.clearProperty("composeai.figma.fidelity")
+    }
+  }
+
+  @Test
   fun privateComposableRendersToValidPng() {
     // Regression: Kotlin `private fun` previews compile to JVM-private static methods. The daemon
     // resolves them via `getDeclaredComposableMethod` but the reflective `invoke` threw
