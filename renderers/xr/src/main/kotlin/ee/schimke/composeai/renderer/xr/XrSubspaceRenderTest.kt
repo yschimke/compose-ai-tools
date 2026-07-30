@@ -2,6 +2,7 @@ package ee.schimke.composeai.renderer.xr
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import ee.schimke.composeai.data.render.PreviewFilter
 import java.io.File
 import org.junit.Rule
 import org.junit.Test
@@ -59,7 +60,19 @@ public class XrSubspaceRenderTest(private val preview: XrManifestReader.XrPrevie
     @ParameterizedRobolectricTestRunner.Parameters(name = "{0}")
     public fun previews(): List<XrManifestReader.XrPreview> {
       val manifest = System.getProperty(MANIFEST_PROP) ?: return emptyList()
-      return XrManifestReader.xrPreviews(File(manifest))
+      // Same `--preview` / `--preview-id` / `--exclude-preview-id` selection the image render
+      // honours (issue #2977) — XR previews are ordinary `@Preview` composables with a
+      // name/class/id, forwarded here by `composePreviewRenderXr` as the `composeai.preview.*`
+      // system properties.
+      return PreviewFilter.select(
+        items = XrManifestReader.xrPreviews(File(manifest)),
+        nameFilters = PreviewFilter.patternsFrom(PreviewFilter.NAME_FILTER_PROPERTY),
+        idFilters = PreviewFilter.patternsFrom(PreviewFilter.ID_FILTER_PROPERTY),
+        idExcludes = PreviewFilter.patternsFrom(PreviewFilter.ID_EXCLUDE_PROPERTY),
+        functionName = { it.functionName },
+        className = { it.className },
+        id = { it.id },
+      )
     }
 
     /** Make a preview id safe to use as a directory name. */

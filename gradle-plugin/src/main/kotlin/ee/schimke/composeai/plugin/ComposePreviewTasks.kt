@@ -1306,12 +1306,13 @@ internal object ComposePreviewTasks {
    * pack` with no CLI flag. Lazy through `project.providers` so reading it doesn't invalidate the
    * configuration cache when the property flips between runs.
    *
-   * Wired only onto the DESKTOP `composePreviewRender` ([RenderPreviewsTask]). On an Android module
-   * that task name is a Robolectric `Test` task registered by [AndroidPreviewSupport], which reads
-   * neither this nor [previewFilterProperty] — so a filter is INERT on an Android render (it
-   * renders everything, the historical behaviour) rather than wrong. Extending the Robolectric path
-   * is tracked separately; until then a catalog's render-time saving only lands on a desktop/CMP
-   * module.
+   * Wired onto BOTH backends: the DESKTOP `composePreviewRender` ([RenderPreviewsTask]) applies it
+   * directly, and the Android Robolectric `Test` task ([RobolectricRenderTask], registered by
+   * [AndroidPreviewSupport]) forwards it — with [previewFilterProperty] and
+   * [previewIdExcludeProperty] — to the render JVM as the `composeai.preview.*` system properties
+   * `PreviewFilter` reads, so the same filter narrows an Android render too (issue #2977).
+   * Before #2977 it reached only desktop, leaving a catalog's render-time saving stranded on the
+   * Android modules where several catalogs actually live.
    */
   internal fun previewIdFilterProperty(project: Project): Provider<List<String>> =
     project.providers
@@ -1326,8 +1327,8 @@ internal object ComposePreviewTasks {
    * carry no theme suffix, so the deferral is expressed as what to skip.
    *
    * Set by the design-artifacts pipeline as `ORG_GRADLE_PROJECT_composePreview.idExclude` so it
-   * reaches `composePreviewRender` through `bundle pack` with no CLI flag — on a desktop module.
-   * Inert on an Android render for the reason given on [previewIdFilterProperty].
+   * reaches `composePreviewRender` through `bundle pack` with no CLI flag — on either backend now
+   * (issue #2977); see [previewIdFilterProperty] for how it reaches the Android render.
    */
   internal fun previewIdExcludeProperty(project: Project): Provider<List<String>> =
     project.providers

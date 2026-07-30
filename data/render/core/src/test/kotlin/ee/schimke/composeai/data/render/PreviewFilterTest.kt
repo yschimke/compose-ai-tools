@@ -1,0 +1,156 @@
+package ee.schimke.composeai.data.render
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+/**
+ * Behavioural tests for the renderer-side [PreviewFilter]. Mirrors the plugin's
+ * `PreviewNameFilterTest` in `:preview-discovery` — the two matchers must stay identical (see the
+ * class KDoc), so the same cases exercised there are exercised here.
+ */
+class PreviewFilterTest {
+
+  private data class Row(val id: String, val functionName: String, val className: String)
+
+  private fun rows(vararg r: Row) = r.toList()
+
+  private fun select(
+    items: List<Row>,
+    name: List<String> = emptyList(),
+    id: List<String> = emptyList(),
+    exclude: List<String> = emptyList(),
+  ): List<Row> =
+    PreviewFilter.select(
+      items = items,
+      nameFilters = name,
+      idFilters = id,
+      idExcludes = exclude,
+      functionName = { it.functionName },
+      className = { it.className },
+      id = { it.id },
+    )
+
+  // --- matches (name / FQN) ---------------------------------------------------------------------
+
+  @Test
+  fun emptyPatternsMatchEverything() {
+    assertTrue(PreviewFilter.matches(emptyList(), "FooPreview", "com.example.FooKt"))
+    assertTrue(PreviewFilter.matchesId(emptyList(), "anything"))
+  }
+
+  @Test
+  fun blankPatternsAreIgnored() {
+    assertTrue(PreviewFilter.matches(listOf("  ", ""), "FooPreview", "com.example.FooKt"))
+  }
+
+  @Test
+  fun plainPatternMatchesSimpleNameSubstringAndEquality() {
+    assertTrue(PreviewFilter.matches(listOf("FooPreview"), "FooPreview", "com.example.FooKt"))
+    assertTrue(PreviewFilter.matches(listOf("Foo"), "FooPreview", "com.example.FooKt"))
+    assertFalse(PreviewFilter.matches(listOf("Bar"), "FooPreview", "com.example.FooKt"))
+  }
+
+  @Test
+  fun plainPatternMatchesFullyQualifiedName() {
+    assertTrue(
+      PreviewFilter.matches(listOf("com.example.FooPreview"), "FooPreview", "com.example.FooKt")
+    )
+  }
+
+  @Test
+  fun fqNameUsesPackageNotSyntheticHolderClass() {
+    assertEquals("com.example.FooPreview", PreviewFilter.fqName("com.example.FooKt", "FooPreview"))
+    assertEquals("FooPreview", PreviewFilter.fqName("FooKt", "FooPreview"))
+  }
+
+  @Test
+  fun globAnchorsAndTreatsDotAsLiteral() {
+    assertTrue(PreviewFilter.matches(listOf("*Preview"), "FooPreview", "com.example.FooKt"))
+    assertTrue(PreviewFilter.matches(listOf("Foo*"), "FooPreview", "com.example.FooKt"))
+    assertTrue(PreviewFilter.matches(listOf("com.example.*"), "FooPreview", "com.example.FooKt"))
+    // A glob is a full anchored match, not a substring: "Foo" alone does not match "FooPreview".
+    assertFalse(PreviewFilter.matches(listOf("Fo?"), "FooPreview", "com.example.FooKt"))
+    assertTrue(PreviewFilter.matches(listOf("Fo?Preview"), "FooPreview", "com.example.FooKt"))
+    // The '.' in the pattern is literal, so it can't match an arbitrary char.
+    assertFalse(
+      PreviewFilter.matches(listOf("comXexample.FooPreview"), "FooPreview", "com.example.FooKt")
+    )
+  }
+
+  @Test
+  fun matchingIsCaseSensitive() {
+    assertFalse(PreviewFilter.matches(listOf("foopreview"), "FooPreview", "com.example.FooKt"))
+  }
+
+  // --- select composition -----------------------------------------------------------------------
+
+  @Test
+  fun nameThenIdThenExcludeCompose() {
+    val items =
+      rows(
+        Row("Foo_Light", "Foo", "com.example.FooKt"),
+        Row("Foo_Dark", "Foo", "com.example.FooKt"),
+        Row("Bar_Light", "Bar", "com.example.BarKt"),
+      )
+    // name keeps Foo's two members; id narrows to the light one.
+    assertEquals(
+      listOf("Foo_Light"),
+      select(items, name = listOf("Foo"), id = listOf("*_Light")).map { it.id },
+    )
+    // exclude drops dark members across the board.
+    assertEquals(
+      listOf("Foo_Light", "Bar_Light"),
+      select(items, exclude = listOf("*_Dark")).map { it.id },
+    )
+  }
+
+  @Test
+  fun noFilterReturnsEverythingUnchanged() {
+    val items = rows(Row("a", "A", "p.AKt"), Row("b", "B", "p.BKt"))
+    assertEquals(items, select(items))
+  }
+
+  // --- fail-fast --------------------------------------------------------------------------------
+
+  @Test
+  fun nameFilterMatchingNothingThrowsWithAvailableList() {
+    val items = rows(Row("Foo_Light", "Foo", "com.example.FooKt"))
+    val e = assertFailsWith<IllegalStateException> { select(items, name = listOf("Nope")) }
+    assertTrue(e.message!!.contains("--preview matched no previews"))
+    assertTrue(e.message!!.contains("com.example.Foo"))
+  }
+
+  @Test
+  fun idFilterMatchingNothingThrows() {
+    val items = rows(Row("Foo_Light", "Foo", "com.example.FooKt"))
+    assertFailsWith<IllegalStateException> { select(items, id = listOf("*_Dark")) }
+  }
+
+  @Test
+  fun excludeRemovingEverythingThrows() {
+    val items = rows(Row("Foo_Dark", "Foo", "com.example.FooKt"))
+    assertFailsWith<IllegalStateException> { select(items, exclude = listOf("*_Dark")) }
+  }
+
+  @Test
+  fun excludeMatchingNothingIsANoOp() {
+    val items = rows(Row("Foo_Light", "Foo", "com.example.FooKt"))
+    assertEquals(listOf("Foo_Light"), select(items, exclude = listOf("*_Dark")).map { it.id })
+  }
+
+  // --- system-property parsing ------------------------------------------------------------------
+
+  @Test
+  fun patternsFromSplitsTrimsAndDropsBlanks() {
+    val read = mapOf("k" to " A , B ,, C ")::get
+    assertEquals(listOf("A", "B", "C"), PreviewFilter.patternsFrom("k", read))
+  }
+
+  @Test
+  fun patternsFromAbsentPropertyIsEmpty() {
+    assertEquals(emptyList(), PreviewFilter.patternsFrom("missing") { null })
+  }
+}

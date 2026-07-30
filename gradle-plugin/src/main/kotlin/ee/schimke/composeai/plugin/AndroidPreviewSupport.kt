@@ -1900,9 +1900,23 @@ internal object AndroidPreviewSupport {
       )
 
     val renderTask =
-      project.tasks.register("composePreviewRender", Test::class.java) {
+      project.tasks.register("composePreviewRender", RobolectricRenderTask::class.java) {
         group = "compose preview"
         description = "Render Android previews via Robolectric"
+        // Preview filters (issues #2066 / #2966 / #2977). Conventions from the same Gradle
+        // properties the desktop task uses; the `--preview` / `--preview-id` /
+        // `--exclude-preview-id` options on this task override them. Forwarded to the render JVM as
+        // `composeai.preview.*` system properties below, where `PreviewFilter` applies them.
+        previewFilters.convention(ComposePreviewTasks.previewFilterProperty(project))
+        previewIdFilters.convention(ComposePreviewTasks.previewIdFilterProperty(project))
+        previewIdExcludes.convention(ComposePreviewTasks.previewIdExcludeProperty(project))
+        jvmArgumentProviders.add(
+          PreviewFilterSystemPropsProvider(
+            nameFilters = previewFilters,
+            idFilters = previewIdFilters,
+            idExcludes = previewIdExcludes,
+          )
+        )
         // Bail fast (with remediation) when the gate passed via project-deps tier but the
         // resolved runtime classpath doesn't actually reach a preview-tooling coord (issue #1549).
         // Null when direct tooling was found (validator wasn't registered — nothing to depend on).
@@ -2065,8 +2079,16 @@ internal object AndroidPreviewSupport {
         // apply, so a `tier=fast` re-run with no input changes is a
         // no-op and the renders dir stays as-is. Full-tier runs cache
         // normally.
-        outputs.cacheIf("composePreviewRender caches tier=full runs only") {
-          tierProvider.get().equals("full", ignoreCase = true)
+        //
+        // A filtered run (`--preview` / `--preview-id` / `--exclude-preview-id`) is partial for the
+        // same reason (issue #2977): it renders only the named subset and leaves every other
+        // (possibly stale) PNG in place, so storing that mixed directory could restore an unrelated
+        // stale render on a clean checkout. Mirrors the desktop `RenderPreviewsTask.cacheIf` gate.
+        outputs.cacheIf("composePreviewRender caches full, unfiltered runs only") {
+          tierProvider.get().equals("full", ignoreCase = true) &&
+            previewFilters.getOrElse(emptyList()).none { it.isNotBlank() } &&
+            previewIdFilters.getOrElse(emptyList()).none { it.isNotBlank() } &&
+            previewIdExcludes.getOrElse(emptyList()).none { it.isNotBlank() }
         }
         // The PNG files are written to `rendersDirectory` via the
         // `composeai.render.outputDir` system property, not through any
@@ -2197,6 +2219,30 @@ internal object AndroidPreviewSupport {
         systemProperty("composeai.resources.manifest", resourcesManifestPath.get())
         systemProperty("composeai.resources.outputDir", resourcesRendersOutputDir.get())
 
+        // Same `--preview` / `--preview-id` / `--exclude-preview-id` selection the composable
+        // render
+        // honours (issue #2977), forwarded as `composeai.preview.*`. A resource preview has no
+        // function/class name, so `ResourcePreviewRenderTest` matches all three against the
+        // resource
+        // id (`<type>/<name>`). Property conventions only — the sibling render tasks don't carry
+        // the
+        // CLI options themselves (only `composePreviewRender` does).
+        jvmArgumentProviders.add(
+          PreviewFilterSystemPropsProvider(
+            nameFilters = ComposePreviewTasks.previewFilterProperty(project),
+            idFilters = ComposePreviewTasks.previewIdFilterProperty(project),
+            idExcludes = ComposePreviewTasks.previewIdExcludeProperty(project),
+          )
+        )
+        // A filtered run writes only the named subset, so don't cache a partial
+        // `renders/resources/`
+        // set (same reasoning as `composePreviewRender`).
+        outputs.cacheIf("composePreviewRenderAndroidResources caches unfiltered runs only") {
+          ComposePreviewTasks.previewFilterProperty(project).get().none { it.isNotBlank() } &&
+            ComposePreviewTasks.previewIdFilterProperty(project).get().none { it.isNotBlank() } &&
+            ComposePreviewTasks.previewIdExcludeProperty(project).get().none { it.isNotBlank() }
+        }
+
         outputs.dir(resourcesRendersSubtree).withPropertyName("resourcesRendersDir")
 
         // Same #1243 guard as composePreviewRender above — the resource render task
@@ -2298,6 +2344,25 @@ internal object AndroidPreviewSupport {
         systemProperty("roborazzi.test.record", "true")
         systemProperty("composeai.render.manifest", manifestFile.get())
         systemProperty("composeai.render.outputDir", rendersDir.get())
+
+        // Same `--preview` / `--preview-id` / `--exclude-preview-id` selection the composable
+        // render
+        // honours (issue #2977), forwarded as `composeai.preview.*` — XR previews are ordinary
+        // `@Preview` composables, so `XrSubspaceRenderTest` filters them by name/id exactly like
+        // the
+        // image render. Property conventions only (the CLI options live on `composePreviewRender`).
+        jvmArgumentProviders.add(
+          PreviewFilterSystemPropsProvider(
+            nameFilters = ComposePreviewTasks.previewFilterProperty(project),
+            idFilters = ComposePreviewTasks.previewIdFilterProperty(project),
+            idExcludes = ComposePreviewTasks.previewIdExcludeProperty(project),
+          )
+        )
+        outputs.cacheIf("composePreviewRenderXr caches unfiltered runs only") {
+          ComposePreviewTasks.previewFilterProperty(project).get().none { it.isNotBlank() } &&
+            ComposePreviewTasks.previewIdFilterProperty(project).get().none { it.isNotBlank() } &&
+            ComposePreviewTasks.previewIdExcludeProperty(project).get().none { it.isNotBlank() }
+        }
 
         outputs.dir(rendersDirectory).withPropertyName("xrRendersDir")
 
@@ -3049,6 +3114,34 @@ internal object AndroidPreviewSupport {
     @get:org.gradle.api.tasks.Input val tier: org.gradle.api.provider.Provider<String>
   ) : org.gradle.process.CommandLineArgumentProvider {
     override fun asArguments(): Iterable<String> = listOf("-Dcomposeai.render.tier=${tier.get()}")
+  }
+
+  /**
+   * Forwards the `--preview` / `--preview-id` / `--exclude-preview-id` selection to the Robolectric
+   * render JVM as the `composeai.preview.*` system properties `PreviewFilter` reads (issue #2977).
+   * Lazy `@Input` providers so a filter change re-runs the render without invalidating the
+   * configuration cache more than the underlying `composePreview.*` property already does; an empty
+   * list emits no argument ("render everything").
+   *
+   * The property names are the wire contract with the renderer-side
+   * `ee.schimke.composeai.data.render.PreviewFilter` constants (`NAME_FILTER_PROPERTY` etc.) — the
+   * plugin can't depend on the renderer module, so they're duplicated here and must stay in sync.
+   */
+  internal class PreviewFilterSystemPropsProvider(
+    @get:org.gradle.api.tasks.Input val nameFilters: org.gradle.api.provider.Provider<List<String>>,
+    @get:org.gradle.api.tasks.Input val idFilters: org.gradle.api.provider.Provider<List<String>>,
+    @get:org.gradle.api.tasks.Input val idExcludes: org.gradle.api.provider.Provider<List<String>>,
+  ) : org.gradle.process.CommandLineArgumentProvider {
+    override fun asArguments(): Iterable<String> = buildList {
+      arg("composeai.preview.filter", nameFilters.getOrElse(emptyList()))
+      arg("composeai.preview.idFilter", idFilters.getOrElse(emptyList()))
+      arg("composeai.preview.idExclude", idExcludes.getOrElse(emptyList()))
+    }
+
+    private fun MutableList<String>.arg(property: String, values: List<String>) {
+      val cleaned = values.map(String::trim).filter(String::isNotEmpty)
+      if (cleaned.isNotEmpty()) add("-D$property=${cleaned.joinToString(",")}")
+    }
   }
 
   /**

@@ -13,6 +13,7 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.NinePatchDrawable
 import androidx.core.content.ContextCompat
 import androidx.test.core.app.ApplicationProvider
+import ee.schimke.composeai.data.render.PreviewFilter
 import ee.schimke.composeai.scroll.ScrollGifEncoder
 import java.awt.Graphics2D
 import java.awt.image.BufferedImage
@@ -59,6 +60,24 @@ class ResourcePreviewRenderTest {
     val outputRoot = File(outputDirPath)
     outputRoot.mkdirs()
 
+    // Preview filters (issue #2977). A resource preview is an XML asset, not a `@Preview` function,
+    // so it has an id (`<type>/<name>`, e.g. `drawable/ic_foo`) but no function/class name — the
+    // filters therefore match against that id (both the `--preview` name pattern and the
+    // `--preview-id` / `--exclude-preview-id` id patterns). Forwarded by the
+    // `composePreviewRenderAndroidResources` task as the same `composeai.preview.*` system
+    // properties. A filtered-out resource keeps its previously-rendered PNG on disk (the loop below
+    // simply doesn't revisit it), matching the composable render's behaviour.
+    val resources =
+      PreviewFilter.select(
+        items = manifest.resources,
+        nameFilters = PreviewFilter.patternsFrom(PreviewFilter.NAME_FILTER_PROPERTY),
+        idFilters = PreviewFilter.patternsFrom(PreviewFilter.ID_FILTER_PROPERTY),
+        idExcludes = PreviewFilter.patternsFrom(PreviewFilter.ID_EXCLUDE_PROPERTY),
+        functionName = { it.id },
+        className = { "" },
+        id = { it.id },
+      )
+
     val context = ApplicationProvider.getApplicationContext<android.content.Context>()
     val packageName = context.packageName
 
@@ -68,7 +87,7 @@ class ResourcePreviewRenderTest {
     // `resource-render-errors.json` sidecar in the bundle, so the reason survives past the CI log and
     // can be surfaced later (CLI / preview server / VS Code) rather than being invisible.
     val errors = mutableListOf<RenderErrorEntry>()
-    for (preview in manifest.resources) {
+    for (preview in resources) {
       val (resType, resName) = preview.id.split('/', limit = 2).let { it[0] to it[1] }
       val resId = context.resources.getIdentifier(resName, resType, packageName)
       if (resId == 0) {
