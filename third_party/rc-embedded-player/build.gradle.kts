@@ -38,7 +38,10 @@
 
 plugins {
   id("composeai.base-conventions")
-  id("composeai.android-conventions")
+  // Published for TESTING only — see `composeAiMavenPublishing` below. This is a vendored AOSP
+  // snapshot, not a supported API; the coordinates exist so the embedded render lane can be pulled
+  // as an artifact. `composeai.maven-publishing` also applies `composeai.android-conventions`.
+  id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
@@ -74,6 +77,26 @@ android {
   // The player reaches `androidx.compose.remote.core.*` members marked `@RestrictTo(LIBRARY_GROUP)`
   // — unavoidable for an out-of-tree copy of in-tree code. Upstream's module disables it too.
   lint { disable += "RestrictedApi" }
+}
+
+// Published under the compose-ai-tools group (`ee.schimke.composeai`, set by the convention plugin)
+// deliberately, NOT under `androidx.*` — that package name is only the vendored code's namespace,
+// kept verbatim so a snapshot refresh stays a plain `diff -r` (see PROVENANCE.md). This is a
+// testing
+// artifact for the embedded render lane, not a library intended for external consumption; the POM's
+// Apache-2.0 license and the retained AOSP source headers keep the vendored snapshot compliant.
+composeAiMavenPublishing {
+  coordinates(
+    artifactId = "third-party-rc-embedded-player",
+    displayName = "Compose Preview — Embedded Remote Compose Player (vendored, testing)",
+    description =
+      "Vendored snapshot of AndroidX's experimental Compose embedded Remote Compose player " +
+        "(RcPlayer), lifted from an androidx integration-test app that publishes no artifact of its " +
+        "own. Backs the embedded render/compare lane in compose-ai-tools. Published under " +
+        "ee.schimke.composeai for testing only — not a supported API and not intended for external " +
+        "use.",
+  )
+  inceptionYear.set("2026")
 }
 
 // Hand the render harness its input/output directories. Gradle properties rather than ambient env,
