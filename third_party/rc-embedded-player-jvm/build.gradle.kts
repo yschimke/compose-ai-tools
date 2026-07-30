@@ -81,6 +81,10 @@ val sharedPlayerSources =
     "androidx/compose/remote/player/compose/embedded/RcPlayerCanvas.kt",
     "androidx/compose/remote/player/compose/embedded/RcPlayerModifiers.kt",
     "androidx/compose/remote/player/compose/embedded/RcPlayerDensity.kt",
+    // Custom (host-extension) components: schemas, the property reader, the plugin registry, and
+    // the
+    // dispatch leaf. All neutral Compose + remote-core — the host supplies the actual rendering.
+    "androidx/compose/remote/player/compose/embedded/RcPlayerCustom.kt",
     // Per-layout composables (the neutral ones; text/image/custom get jvm siblings, see below).
     "androidx/compose/remote/player/compose/embedded/layout/RcPlayerBoxLayout.kt",
     "androidx/compose/remote/player/compose/embedded/layout/RcPlayerColumnLayout.kt",
@@ -126,6 +130,18 @@ val jvmPlayerSources =
     "androidx/compose/remote/player/compose/embedded/RcPlayerImagePlatformJvm.kt",
     "androidx/compose/remote/player/compose/embedded/RcPlayerShadersJvm.kt",
     "androidx/compose/remote/player/compose/embedded/RcPlayerParticlesJvm.kt",
+    // Vendored path utilities the draw path calls (core PathData -> Compose Path). Neutral upstream
+    // source that ships only inside the `remote-player-compose` AAR a kotlin(jvm) module can't
+    // consume, so it's vendored here; FloatsToPath swaps the conic op to skiko. See those files.
+    "androidx/compose/remote/player/compose/utils/PathUtils.kt",
+    "androidx/compose/remote/player/compose/utils/FloatsToPath.kt",
+    // jvm halves of the two per-layout composables whose Android originals name framework types:
+    // the
+    // text seam (google:/device: fonts -> nearest standard family) and the image layout (the
+    // `Drawable` host loader -> the embedded `ImageBitmap` decode). Different filenames from their
+    // Android siblings so the per-relative-path `include` can't pull both in. See those files.
+    "androidx/compose/remote/player/compose/embedded/RcPlayerTextLayoutJvm.kt",
+    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerImageLayoutJvm.kt",
   )
 
 kotlin {
@@ -157,6 +173,10 @@ dependencies {
   // Compose Desktop, not the Android artifacts — the point of this module.
   @Suppress("DEPRECATION") implementation(compose.runtime)
   @Suppress("DEPRECATION") implementation(compose.foundation)
+  // Material3 (desktop) for the ripple modifier; androidx.collection for the layout maps — both
+  // multiplatform, matching what the Android module pulls in.
+  @Suppress("DEPRECATION") implementation(compose.material3)
+  implementation(libs.androidx.collection)
 
   testImplementation(libs.junit)
 
