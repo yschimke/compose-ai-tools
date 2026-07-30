@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.19.9](https://github.com/yschimke/compose-ai-tools/compare/v0.19.8...v0.19.9) (2026-07-30)
+
+
+### Features
+
+* **design-artifacts:** act on entry-level render priority now the serve host routes it ([#2987](https://github.com/yschimke/compose-ai-tools/issues/2987)) ([7c84f58](https://github.com/yschimke/compose-ai-tools/commit/7c84f5802080ba4eae2418c39c4139475683e716))
+* **design-artifacts:** drive the per-preview-id filter from modePriority end to end ([#2980](https://github.com/yschimke/compose-ai-tools/issues/2980)) ([a51d18d](https://github.com/yschimke/compose-ai-tools/commit/a51d18dab5fcbcfd979b91b5cb0008fc4653dbee))
+* **plugin:** forward preview filters to the Android/Robolectric render path ([#2994](https://github.com/yschimke/compose-ai-tools/issues/2994)) ([e77598d](https://github.com/yschimke/compose-ai-tools/commit/e77598d2c4dd5a2be132d6e2d5c612cc4ec54b20))
+* **plugin:** honour @PreviewParameter row exclusions on the Robolectric render too ([#3001](https://github.com/yschimke/compose-ai-tools/issues/3001)) ([f3e605f](https://github.com/yschimke/compose-ai-tools/commit/f3e605f483abdca18e752dc1940899f460c71e8c))
+* **plugin:** skip @PreviewParameter rows by label so a provider-supplied mode axis can defer ([#2992](https://github.com/yschimke/compose-ai-tools/issues/2992)) ([b730c12](https://github.com/yschimke/compose-ai-tools/commit/b730c12159943abb6758671a460d74d59e2ce752))
+* **rc-embedded-jvm:** add JvmRemoteContext with a skiko bitmap decode ([#3012](https://github.com/yschimke/compose-ai-tools/issues/3012)) ([98b3838](https://github.com/yschimke/compose-ai-tools/commit/98b38381ae73b1a6e5e1dda5e1eb49dfba9d6add))
+* **render:** let a module name the Android theme previews are hosted under ([#2995](https://github.com/yschimke/compose-ai-tools/issues/2995)) ([6358882](https://github.com/yschimke/compose-ai-tools/commit/63588820c65339c1f66821d57619465aa6beb0d1))
+* **serve:** per-preview Remote Compose backend selector (js / java / cmp-android / cmp-jvm) ([#2999](https://github.com/yschimke/compose-ai-tools/issues/2999)) ([73506dd](https://github.com/yschimke/compose-ai-tools/commit/73506ddc5d53efef8403c14e637975bd5f30cc66))
+* **serve:** playground preview-token store and REST DTOs ([#2989](https://github.com/yschimke/compose-ai-tools/issues/2989)) ([f627a2b](https://github.com/yschimke/compose-ai-tools/commit/f627a2b8171e42ef1ed93f01c1849f6983565f9d))
+* **serve:** project playground diagnostics into the stock kotlin-playground errors map ([#3000](https://github.com/yschimke/compose-ai-tools/issues/3000)) ([ec77840](https://github.com/yschimke/compose-ai-tools/commit/ec778407d058a19003ccff17eb66bd1cb44b32b1))
+* **serve:** resolve a catalog liveBundle into a playground compile classpath ([#3008](https://github.com/yschimke/compose-ai-tools/issues/3008)) ([b410a65](https://github.com/yschimke/compose-ai-tools/commit/b410a650fb4813e0f1de44de9b627b3d3bf8643e))
+* **serve:** Stage-1 playground compile orchestrator ([#3004](https://github.com/yschimke/compose-ai-tools/issues/3004)) ([d86d19c](https://github.com/yschimke/compose-ai-tools/commit/d86d19c62172958b9dbe651db55ffe411d683f5f))
+* **serve:** the playground — compile a snippet against a catalog's components ([#3010](https://github.com/yschimke/compose-ai-tools/issues/3010)) ([f56ac70](https://github.com/yschimke/compose-ai-tools/commit/f56ac70712b9d01c12faab8f2575894f3f05e154))
+
+
+### Bug Fixes
+
+* **cli:** keep a build failure's reason when it isn't a decorated Gradle cause ([#3003](https://github.com/yschimke/compose-ai-tools/issues/3003)) ([902c220](https://github.com/yschimke/compose-ai-tools/commit/902c220f8c2ab3d3d27a4ffa99fa199ccb6a80fe))
+* **daemon:** degrade missing drawables read via getDrawableForDensity to a placeholder ([#2990](https://github.com/yschimke/compose-ai-tools/issues/2990)) ([6d9d700](https://github.com/yschimke/compose-ai-tools/commit/6d9d700f64c5bc7f5773c45bcea485b6bedb939d))
+* **deploy:** don't abandon the config reconcile when one admin route is missing ([#2983](https://github.com/yschimke/compose-ai-tools/issues/2983)) ([9abc027](https://github.com/yschimke/compose-ai-tools/commit/9abc0272f2c9b354a28e4c84f19c928d9dbdf143))
+* **design-artifacts:** defer a component's variants with it, so a mixed entry can't drop coverage ([#2991](https://github.com/yschimke/compose-ai-tools/issues/2991)) ([87ee1d2](https://github.com/yschimke/compose-ai-tools/commit/87ee1d24a82e8540fe37ef943e4b1db780ecc1ef))
+* **figma-svg:** embed downloadable GoogleFont faces resolved at a non-default weight ([#2996](https://github.com/yschimke/compose-ai-tools/issues/2996)) ([c59bfad](https://github.com/yschimke/compose-ai-tools/commit/c59bfad8488a8e126c1787d2a2e6719822df31e6))
+* **figma-svg:** fill showBackground across the full crop, not the thinnest child ([#2998](https://github.com/yschimke/compose-ai-tools/issues/2998)) ([32167d4](https://github.com/yschimke/compose-ai-tools/commit/32167d4512814f0bd42508bd7c33cde08b389678))
+* **figma-svg:** fit a scaled vector to its drawn bounds and drop a raster under live text ([#3006](https://github.com/yschimke/compose-ai-tools/issues/3006)) ([920ac84](https://github.com/yschimke/compose-ai-tools/commit/920ac8427ad45e5bb7d147eddd15dc667c653545))
+* **figma-svg:** keep a padded control's gradient ring on the inner box ([#2852](https://github.com/yschimke/compose-ai-tools/issues/2852)) ([#2997](https://github.com/yschimke/compose-ai-tools/issues/2997)) ([372fa9e](https://github.com/yschimke/compose-ai-tools/commit/372fa9ee16537bbbd0e86bf888f48754ebe1f76d))
+* **plugin:** scope the render duplicate-guard coordinate map to each task's own classpath ([#3002](https://github.com/yschimke/compose-ai-tools/issues/3002)) ([eb2e4d6](https://github.com/yschimke/compose-ai-tools/commit/eb2e4d6df6cb94e95c68fa0a4aeeea0d9d249568))
+* **plugin:** stop the XR render's cacheIf capturing Project ([#3007](https://github.com/yschimke/compose-ai-tools/issues/3007)) ([2c7459d](https://github.com/yschimke/compose-ai-tools/commit/2c7459deba5afe6f807b5a423d2ccd825acd9628))
+* **preview-diff:** guard preview/resource removals against partial renders ([#2985](https://github.com/yschimke/compose-ai-tools/issues/2985)) ([c7047f9](https://github.com/yschimke/compose-ai-tools/commit/c7047f9818a8c28e9e3509be97af05cdca16df45))
+
 ## [0.19.8](https://github.com/yschimke/compose-ai-tools/compare/v0.19.7...v0.19.8) (2026-07-30)
 
 
