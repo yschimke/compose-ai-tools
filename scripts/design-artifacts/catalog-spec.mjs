@@ -17,6 +17,7 @@ import {
   PRIORITIES,
   modePriority as modePriorityOf,
   specDefersAnything,
+  defersEveryPreview,
 } from "./catalog-priority.mjs";
 
 // The built-in Compose preview annotation. Any function annotated with it — or
@@ -501,6 +502,19 @@ export function validateSpec(spec, opts = {}) {
       "this spec defers coverage (`priority: \"deferred\"` / `modePriority`) but the publish has no " +
         "live path — a deferred entry is only resolvable where the serve host can re-render it. " +
         "Publish with --publish-live-bundle (or a buildable --source-module), or drop the deferral.",
+    );
+  }
+  // An all-deferred catalog (issue #2993): every referenced preview is deferred, so the render
+  // filter would be empty — which both design-artifacts workflows read as "render everything", the
+  // exact opposite of what deferral asks for, while the published bundle carries no baked sticker at
+  // all. Rejected here rather than served by a render-none sentinel, matching the positive-list
+  // philosophy: a catalog must keep at least one entry required.
+  if (defersEveryPreview(spec)) {
+    errors.push(
+      "this catalog defers every entry (`priority: \"deferred\"`) — no `required` preview is left, so " +
+        "the render filter would be empty and both workflows would read that as *render everything* " +
+        "instead of skipping the deferred renders, while the published bundle would carry no baked " +
+        "stickers. Keep at least one entry `required`.",
     );
   }
   // `groups` is optional: a catalog can supply its whole component inventory from

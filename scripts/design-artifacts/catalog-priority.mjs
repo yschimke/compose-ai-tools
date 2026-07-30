@@ -200,10 +200,40 @@ export function previewNamesByPriority(spec) {
 }
 
 /**
+ * True when the spec defers every preview it references — at least one entry (or variant) is
+ * deferred and NOT ONE required preview is left over. This is the degenerate config issue #2993
+ * rejects.
+ *
+ * `renderFilterPatterns` can only say "render exactly these functions" (a non-empty list) or, with
+ * an empty list, "render everything" — it has no way to say "render nothing". So an all-deferred
+ * catalog collapses to an empty filter that both workflows read as *render all*, rasterising the
+ * whole sheet precisely where deferral should have saved the most, while the published bundle
+ * carries no baked stickers at all. Rather than plumb a render-none sentinel through the pre-flight
+ * and both workflows for a config that publishes an empty sticker sheet, the validator rejects it:
+ * a catalog must keep at least one `required` preview, matching the positive-list philosophy on
+ * [renderFilterPatterns] — name what must render, so a spec that would render nothing (or everything
+ * by accident) fails loudly.
+ *
+ * Keyed off the same [previewNamesByPriority] split the render filter derives from, so it flags
+ * exactly the specs that would otherwise empty the filter through deferral. Mode-level deferral
+ * can't trigger it — it never empties the preview list — and a catalog that defers nothing is the
+ * ordinary render-all case, also not flagged.
+ */
+export function defersEveryPreview(spec) {
+  const { required, deferred } = previewNamesByPriority(spec);
+  return deferred.length > 0 && required.length === 0;
+}
+
+/**
  * The `--preview` / `-PcomposePreview.filter` patterns that render just the entries this catalog
  * still needs baked — i.e. the required preview functions, once at least one function is wholly
  * deferred. Empty when the spec defers no entry, which is the signal to render everything (the
  * historical behaviour, and what every catalog without `priority` gets).
+ *
+ * The other way to reach an empty list — a spec that defers EVERY preview, leaving nothing required
+ * — would be read as render-all too, inverting the saving (issue #2993). That case never reaches a
+ * real render: `validateSpec` rejects it up front (see [defersEveryPreview]), so the only empty this
+ * returns in practice is the genuine "nothing deferred" one.
  *
  * Deliberately a POSITIVE list rather than an exclusion: the renderer's filter fails fast when it
  * matches nothing, so naming what must render turns a stale spec into a loud failure instead of a

@@ -744,11 +744,46 @@ test("validateSpec rejects entry deferral when the publish has no live path", ()
   assert.match(validateSpec(variantSpec, { liveBundle: false }).errors[0], /no live path/);
 });
 
+test("validateSpec rejects an all-deferred catalog (#2993)", () => {
+  // Every entry deferred → the render filter would be empty → both workflows read that as
+  // render-everything, and the published bundle carries no baked stickers. Rejected structurally,
+  // independent of the live-path gate (so it fires even on the lenient default path).
+  const spec = prioritySpec([
+    { componentId: "A", preview: "Alpha", priority: "deferred" },
+    { componentId: "B", preview: "Beta", priority: "deferred" },
+  ]);
+  assert.match(validateSpec(spec).errors[0], /defers every entry/);
+  // Still rejected with a live path present — an empty sticker sheet is wrong regardless.
+  assert.match(validateSpec(spec, { liveBundle: true }).errors[0], /defers every entry/);
+  // A component whose only variants are deferred inherits the deferral, so it is all-deferred too
+  // (the case #2991 widened). Live path present, so the no-live-path gate stays quiet.
+  const inherited = prioritySpec([
+    {
+      componentId: "A",
+      preview: "Alpha",
+      priority: "deferred",
+      variants: [{ preview: "AlphaOff", state: "off" }],
+    },
+  ]);
+  assert.match(validateSpec(inherited, { liveBundle: true }).errors[0], /defers every entry/);
+  // One required entry left is enough — no all-deferred error.
+  const mixed = prioritySpec([
+    { componentId: "A", preview: "Alpha" },
+    { componentId: "B", preview: "Beta", priority: "deferred" },
+  ]);
+  assert.ok(!validateSpec(mixed, { liveBundle: true }).errors.some((e) => /defers every entry/.test(e)));
+});
+
 test("validateSpec still resolves a deferred entry's preview name against the module", () => {
   // A deferred entry is rendered by the serve host from the same module, so a name that matches
   // nothing is just as broken — it simply breaks on a viewer's request instead of in CI.
   const { errors } = validateSpec(
-    prioritySpec([{ componentId: "A", preview: "Ghost", priority: "deferred" }]),
+    prioritySpec([
+      // A required sibling so the catalog isn't all-deferred (that is its own error, #2993) —
+      // this test isolates the deferred entry's name resolution.
+      { componentId: "Z", preview: "Alpha" },
+      { componentId: "A", preview: "Ghost", priority: "deferred" },
+    ]),
     { knownPreviews: ["Alpha"] },
   );
   assert.equal(errors.length, 1);
