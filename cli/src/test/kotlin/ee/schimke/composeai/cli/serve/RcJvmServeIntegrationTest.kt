@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -78,6 +79,31 @@ class RcJvmServeIntegrationTest {
   fun `render spec is null for a preview with no captured document`() {
     val host = ServeBundleHost(bundle(120, 80, 3.0f, withDoc = false), label = "b")
     assertNull(host.remoteComposeRenderSpec("Foo"))
+  }
+
+  @Test
+  fun `rc star seeds parse leniently by kind, skipping malformed values`() {
+    val seeds =
+      ServeOverrides.rcNamedValueSeeds(
+        mapOf(
+          "rc.label" to "Hello", // bare → string
+          "rc.progress" to "float:0.5",
+          "rc.iconSize" to "dp:48",
+          "rc.count" to "int:3",
+          "rc.on" to "bool:true",
+          "rc.tint" to "color:#FF00FF00",
+          "rc.bad" to "float:notanumber", // malformed → skipped
+          "knob.x" to "1", // not an rc. seed → ignored
+        )
+      )
+    assertEquals(RemoteNamedValue.StringValue("Hello"), seeds["label"])
+    assertEquals(RemoteNamedValue.FloatValue(0.5f), seeds["progress"])
+    assertEquals(RemoteNamedValue.DpValue(48f), seeds["iconSize"])
+    assertEquals(RemoteNamedValue.IntValue(3), seeds["count"])
+    assertEquals(RemoteNamedValue.BooleanValue(true), seeds["on"])
+    assertEquals(RemoteNamedValue.ColorValue("#FF00FF00"), seeds["tint"])
+    assertFalse("bad" in seeds)
+    assertFalse("x" in seeds)
   }
 
   @Test
