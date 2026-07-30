@@ -3,6 +3,7 @@ package ee.schimke.composeai.daemon
 import android.content.res.Resources
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -60,6 +61,27 @@ class PlaceholderFallbackResourcesTest {
   fun `a resolvable framework color is returned untouched`() {
     val real = base.getColor(android.R.color.white, null)
     assertEquals(real, fallback.getColor(android.R.color.white, null))
+  }
+
+  @Test
+  fun `a missing drawable id falls back to a placeholder instead of throwing`() {
+    // `getDrawable(id[, theme])` is the plain entry `Resources.getDrawable` funnels through.
+    assertNotNull(fallback.getDrawable(missingId, null))
+    @Suppress("DEPRECATION") assertNotNull(fallback.getDrawable(missingId))
+  }
+
+  @Test
+  fun `a missing drawable id read via getDrawableForDensity also falls back`() {
+    // Regression for issue #2976: a density-aware caller (image loaders, RemoteViews / ImageView
+    // inflation, `ResourcesCompat.getDrawableForDensity`) reaches `ResourcesImpl.loadDrawable`
+    // without funnelling through the plain `getDrawable`, so guarding only the latter let the miss
+    // abort the whole render (`NotFoundException: Drawable …/splash_background with resource ID …`).
+    @Suppress("DEPRECATION")
+    assertNotNull("2-arg density variant must degrade to a placeholder", fallback.getDrawableForDensity(missingId, 160))
+    assertNotNull(
+      "3-arg density+theme variant must degrade to a placeholder",
+      fallback.getDrawableForDensity(missingId, 160, null),
+    )
   }
 
   @Test
