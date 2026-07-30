@@ -80,6 +80,7 @@ test("previewNamesByPriority only defers a function nothing required points at",
     ]),
   );
   assert.deepEqual(required, ["Alpha", "Delta", "DeltaPressed"]);
+  // "Alpha" is required by componentId A even though C defers it, so it must still render.
   assert.deepEqual(deferred, ["Beta", "DeltaDisabled"]);
 });
 
@@ -103,6 +104,8 @@ test("renderFilterPatterns is empty when nothing is deferred, and positive when 
         { componentId: "B", preview: "Beta", priority: "deferred" },
       ]),
     ),
+    // Positive list: render what is still required. The driver drops "Beta" from the publish too, so
+    // the render set and the published set agree — the invariant this whole module exists to keep.
     ["Alpha"],
   );
 });
@@ -193,12 +196,12 @@ test("deferralPlan summarises what a spec defers", () => {
       { modes: ["light", "dark"], modePriority: { light: "required", dark: "deferred" } },
     ),
   );
+  assert.deepEqual(plan.modes, ["dark"]);
+  assert.equal(plan.defersAnything, true);
   assert.equal(plan.entries, 1);
   assert.equal(plan.variants, 1);
-  assert.deepEqual(plan.modes, ["dark"]);
   assert.deepEqual(plan.deferredPreviews, ["Beta", "GammaOff"]);
   assert.deepEqual(plan.renderFilter, ["Alpha", "Gamma"]);
-  assert.equal(plan.defersAnything, true);
 });
 
 test("previewForImage resolves a variant's sticker back to the variant's own @Preview", () => {

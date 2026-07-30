@@ -114,6 +114,16 @@ open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(tes
     if (poolWorkerIndex != null) {
       builder.doNotAcquireClass("composeai.sandbox.uniq.Runner${System.identityHashCode(this)}")
     }
+    // Coil 2's `AsyncImagePainter` lives in a plain library package, which Robolectric does NOT
+    // instrument by default — and an uninstrumented class can't be shadowed. Instrument it so
+    // [ee.schimke.composeai.renderer.ShadowAsyncImagePainter] (registered in `getExtraShadows`
+    // below) can force `isPreview` off and let coil-backed previews actually load their images
+    // (issue #2952). The Gradle `composePreviewRender` path gets the equivalent from the
+    // `instrumentedPackages=coil.compose` line in its generated `robolectric.properties`. Inert
+    // when the consumer has no coil: there is simply nothing in that package to instrument.
+    if (isCoil2Available(javaClass.classLoader)) {
+      builder.addInstrumentedPackage("coil.compose")
+    }
     // B2.0: optional user-package exclusion. Empty when sysprop is unset; existing in-process
     // tests that rely on the default sandbox-classpath path are unaffected.
     val raw = System.getProperty("composeai.daemon.userClassPackages")
@@ -190,6 +200,14 @@ open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(tes
     // (`composeai.fonts.cacheDir`) / a live fetch, and a genuinely unresolvable face is recorded for
     // `RenderEngine`'s fatal-on-fallback gate instead of vanishing.
     shadows += ShadowFontsContractCompat::class.java
+    // Coil 2 preview-branch shadow. Gated on coil 2 actually being on the classpath purely to keep
+    // the sandbox's instrumentation config honest — the shadow itself declares its target by
+    // `className`, so unlike the Wear shadows above it carries no unresolvable symbolic links and
+    // could not throw here. Pairs with the `addInstrumentedPackage("coil.compose")` call in
+    // `createClassLoaderConfig`; both are needed for the shadow to take effect. See issue #2952.
+    if (isCoil2Available(javaClass.classLoader)) {
+      shadows += ee.schimke.composeai.renderer.ShadowAsyncImagePainter::class.java
+    }
     return shadows.toTypedArray()
   }
 }
@@ -228,6 +246,25 @@ internal fun isWearGestureAvailable(loader: ClassLoader?): Boolean {
       false,
       effective,
     )
+    true
+  } catch (_: ClassNotFoundException) {
+    false
+  } catch (_: NoClassDefFoundError) {
+    false
+  }
+}
+
+/**
+ * Returns `true` when coil 2's Compose integration (`coil.compose.AsyncImagePainter`) is on the
+ * supplied classloader. Gates the `coil.compose` instrumentation + shadow registration that make
+ * coil-backed previews resolve instead of painting a null placeholder — see
+ * [ee.schimke.composeai.renderer.ShadowAsyncImagePainter]. Coil 3 needs neither (it exposes
+ * `LocalAsyncImagePreviewHandler` as a supported hook), so only the 2.x package is probed.
+ */
+internal fun isCoil2Available(loader: ClassLoader?): Boolean {
+  val effective = loader ?: ClassLoader.getSystemClassLoader() ?: return false
+  return try {
+    Class.forName("coil.compose.AsyncImagePainter", false, effective)
     true
   } catch (_: ClassNotFoundException) {
     false

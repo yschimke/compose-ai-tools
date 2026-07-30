@@ -48,6 +48,11 @@ const { values } = parseArgs({
     // defers no entry, which means "render everything" — so a caller can pass the contents straight
     // through unconditionally.
     "render-filter-out": { type: "string" },
+    // Write the deferred MODE names to <path> (comma-separated, no trailing newline). Empty when the
+    // spec defers no mode. The render-side counterpart needs exact preview ids, which only discovery
+    // knows (issue #2966), so a caller uses this as the cheap "is the extra discovery run worth it?"
+    // gate before running `compose-preview list --json` + `deferred-preview-ids.mjs`.
+    "deferred-modes-out": { type: "string" },
     json: { type: "boolean", default: false },
     help: { type: "boolean", default: false },
   },
@@ -57,7 +62,7 @@ if (values.help) {
   console.log(
     "usage: validate-catalog-spec --spec <catalog.spec.json> [--module-dir <dir> | --src <dir>…] " +
       "[--preview-annotation <Name>…] [--no-scan] [--live-bundle|--no-live-bundle] " +
-      "[--render-filter-out <file>] [--json]",
+      "[--render-filter-out <file>] [--deferred-modes-out <file>] [--json]",
   );
   process.exit(0);
 }
@@ -116,6 +121,9 @@ const { errors, warnings } = validateSpec(spec, {
 const plan = deferralPlan(spec);
 if (values["render-filter-out"]) {
   await writeFile(values["render-filter-out"], plan.renderFilter.join(","), "utf8");
+}
+if (values["deferred-modes-out"]) {
+  await writeFile(values["deferred-modes-out"], plan.modes.join(","), "utf8");
 }
 
 if (values.json) {

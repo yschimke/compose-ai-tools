@@ -259,6 +259,152 @@ class ServeAdminRoutingTest {
     assertEquals(409, send("/admin/catalogs/temp", method = "DELETE").first)
   }
 
+  // --- front-page groups -------------------------------------------------------------------------
+
+  @Test
+  fun `the group routes are gated by the admin token even on a public server`() {
+    assertEquals(404, send("/admin/groups", token = null).first)
+    assertEquals(404, send("/admin/groups", token = "wrong").first)
+    assertEquals(200, send("/admin/groups").first)
+  }
+
+  @Test
+  fun `a group defined after its catalogs still collects them`() {
+    // The whole reason /admin/groups exists. Publish first, ungrouped...
+    send(
+      "/admin/catalogs",
+      method = "POST",
+      body = """{"system":"pocketcasts","repo":"someorg/pocket-casts-android"}""",
+    )
+    assertEquals(null, tracker.configFor("pocketcasts")?.group)
+
+    // ...then define the section and re-post the entry claiming it.
+    val group =
+      """{"id":"pocket-casts","heading":"Automattic/pocket-casts-android","noun":"app(s)"}"""
+    assertEquals(200, send("/admin/groups", method = "POST", body = group).first)
+    val (code, _) =
+      send(
+        "/admin/catalogs",
+        method = "POST",
+        body =
+          """{"system":"pocketcasts","repo":"someorg/pocket-casts-android","group":"pocket-casts"}""",
+      )
+
+    // Converged in place: no re-fetch, no retire, and the card moves.
+    assertEquals(200, code)
+    assertEquals(
+      "Automattic/pocket-casts-android",
+      tracker.configFor("pocketcasts")?.group?.heading,
+    )
+  }
+
+  @Test
+  fun `defining a group regroups an already-claiming catalog with no second post`() {
+    // A catalog whose config entry ALREADY claims a group the server doesn't know yet: rejected on
+    // publish, so publish it plain, persist the claim, then define the group.
+    send(
+      "/admin/catalogs",
+      method = "POST",
+      body = """{"system":"newcat","repo":"someorg/newcat"}""",
+    )
+    configFile.save(
+      configFile
+        .load()
+        .withEntry(
+          ServeCatalogsConfig.Entry(system = "newcat", repo = "someorg/newcat", group = "later")
+        )
+    )
+
+    val (code, _) =
+      send(
+        "/admin/groups",
+        method = "POST",
+        body = """{"id":"later","heading":"Defined Later","noun":"thing(s)"}""",
+      )
+
+    assertEquals(200, code)
+    assertEquals("Defined Later", tracker.configFor("newcat")?.group?.heading)
+  }
+
+  @Test
+  fun `removing a group drops its catalogs back to the owner fallback`() {
+    send(
+      "/admin/groups",
+      method = "POST",
+      body = """{"id":"ds2","heading":"Temporary","noun":"thing(s)"}""",
+    )
+    send(
+      "/admin/catalogs",
+      method = "POST",
+      body = """{"system":"grouped","repo":"someorg/grouped","group":"ds2"}""",
+    )
+    assertEquals("Temporary", tracker.configFor("grouped")?.group?.heading)
+
+    assertEquals(200, send("/admin/groups/ds2", method = "DELETE").first)
+
+    assertEquals(null, tracker.configFor("grouped")?.group)
+    assertFalse(send("/admin/groups").second.contains("Temporary"))
+  }
+
+  @Test
+  fun `an unchanged group is a conflict and an unknown one cannot be removed`() {
+    val body = """{"id":"dupe","heading":"Dupe","noun":"x"}"""
+    assertEquals(200, send("/admin/groups", method = "POST", body = body).first)
+    assertEquals(409, send("/admin/groups", method = "POST", body = body).first)
+    assertEquals(409, send("/admin/groups/nosuch", method = "DELETE").first)
+  }
+
+  @Test
+  fun `a group heading can be restyled without touching its catalogs`() {
+    send("/admin/groups", method = "POST", body = """{"id":"ds3","heading":"Before","noun":"x"}""")
+    send(
+      "/admin/catalogs",
+      method = "POST",
+      body = """{"system":"restyled","repo":"someorg/restyled","group":"ds3"}""",
+    )
+
+    assertEquals(
+      200,
+      send("/admin/groups", method = "POST", body = """{"id":"ds3","heading":"After","noun":"x"}""")
+        .first,
+    )
+
+    assertEquals("After", tracker.configFor("restyled")?.group?.heading)
+    assertEquals("loaded", tracker.snapshot().first { it.config.system == "restyled" }.loadState)
+  }
+
+  @Test
+  fun `a malformed group is refused`() {
+    assertEquals(
+      400,
+      send("/admin/groups", method = "POST", body = """{"id":"bad id","heading":"H"}""").first,
+    )
+    assertEquals(
+      400,
+      send("/admin/groups", method = "POST", body = """{"id":"ok","heading":""}""").first,
+    )
+  }
+
+  @Test
+  fun `re-publishing an unchanged catalog is still a conflict`() {
+    val body = """{"system":"same","repo":"someorg/same","listed":true}"""
+    assertEquals(200, send("/admin/catalogs", method = "POST", body = body).first)
+    // Convergence must not turn a genuine duplicate into a silent success.
+    assertEquals(409, send("/admin/catalogs", method = "POST", body = body).first)
+  }
+
+  @Test
+  fun `re-publishing from a different repo is refused rather than silently re-pointed`() {
+    send("/admin/catalogs", method = "POST", body = """{"system":"moved","repo":"someorg/one"}""")
+
+    val (code, msg) =
+      send("/admin/catalogs", method = "POST", body = """{"system":"moved","repo":"someorg/two"}""")
+
+    assertEquals(409, code)
+    assertTrue(msg.contains("retire"), msg)
+    assertEquals("someorg/one", tracker.configFor("moved")?.repo)
+  }
+
   // --- producer trust ----------------------------------------------------------------------------
 
   @Test

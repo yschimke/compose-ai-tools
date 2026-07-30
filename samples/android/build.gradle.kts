@@ -71,6 +71,12 @@ dependencies {
   testImplementation(libs.compose.ui.tooling.preview.wrapper)
   implementation(libs.compose.foundation)
   implementation(libs.activity.compose)
+  // Coil 2 — `AsyncImagePreviews.kt` is the regression fixture for issue #2952 (coil-backed
+  // images captured blank because the load never completed before the capture). The consumer
+  // declares coil exactly as any app would; nothing preview-specific is added, which is the
+  // point — `CoilPreviewSupport` in `:renderer-android` swaps the singleton `ImageLoader` at
+  // render time so no production code has to be restructured to be previewable.
+  implementation(libs.coil2.compose)
   // NavHost-based sample (`NavHostPreview.kt`) exercises the daemon's
   // `data/navigation` data product (Intent + back-pressed snapshot) and the
   // `navigation.*` script-event surface end-to-end. The library's public

@@ -71,6 +71,65 @@ class ServeCatalogAdmin(
   /** The currently configured catalogs, in front-page order. */
   fun list(): List<CatalogLoadTracker.State> = tracker.snapshot()
 
+  /** The front-page sections a catalog entry may claim. */
+  fun listGroups(): List<ServeCatalogsConfig.Group> = groups
+
+  /**
+   * Define [group], or update the heading/noun of one that already exists.
+   *
+   * Groups used to be the one part of the catalog config with no runtime path at all: adding a
+   * section meant editing the box's `catalogs.json` and restarting, and a catalog claiming a
+   * section the server didn't know about was rejected outright. That made a committed config
+   * genuinely unable to converge — the gap flagged on #2967.
+   */
+  fun upsertGroup(group: ServeCatalogsConfig.Group): Result {
+    ServeCatalogsConfig.validateGroup(group)?.let {
+      return Result.Invalid(it)
+    }
+    if (groups.any { it == group }) {
+      return Result.Conflict("group '${group.id}' is already defined identically")
+    }
+    val warning = persist { it.withGroup(group) }
+    // Re-resolve the claims of catalogs ALREADY registered: a section defined after its catalogs
+    // were published must still collect them, or defining it does nothing visible.
+    val moved = reapplyGroupClaims()
+    onLog("serve: group ${group.id} defined via admin API (regrouped $moved catalog(s))")
+    return Result.Ok(group.id, warning)
+  }
+
+  /** Delete group [id]. Catalogs claiming it fall back to their source repo's owner heading. */
+  fun removeGroup(id: String): Result {
+    if (groups.none { it.id == id }) {
+      return Result.Conflict("group '$id' is not defined here")
+    }
+    val warning = persist { it.withoutGroup(id) }
+    val moved = reapplyGroupClaims()
+    onLog("serve: group $id removed via admin API (regrouped $moved catalog(s))")
+    return Result.Ok(id, warning)
+  }
+
+  /**
+   * Re-resolve every registered catalog's front-page placement against the current group table and
+   * the persisted entry that declares it. Returns how many changed.
+   *
+   * Reads the entries from the config file rather than the tracker, because the tracker holds the
+   * *resolved* [ServeWeb.HomeGroup] and not the `group` id that produced it — so the declared claim
+   * only survives on disk. A catalog with no config entry (a `--catalogs` flag addition, say)
+   * declares no group and is left alone.
+   */
+  private fun reapplyGroupClaims(): Int {
+    val declared = configFile?.let { runCatching { it.load() }.getOrNull() } ?: return 0
+    val table = groups
+    var changed = 0
+    for (entry in declared.catalogs) {
+      val current = tracker.configFor(entry.system) ?: continue
+      val resolved = homeGroup(entry, current.repo, table)
+      if (current.group == resolved && current.listed == entry.listed) continue
+      if (tracker.relist(entry.system, listed = entry.listed, group = resolved)) changed++
+    }
+    return changed
+  }
+
   /**
    * Publish [entry]. The catalog is fetched before it's persisted, so a typo'd repo fails loudly
    * instead of leaving an unservable entry in the config for every future boot to retry.
@@ -85,10 +144,29 @@ class ServeCatalogAdmin(
     if (entry.group != null && declared.none { g -> g.id == entry.group }) {
       return Result.Invalid("unknown group '${entry.group}'")
     }
-    if (tracker.configFor(entry.system) != null) {
-      return Result.Conflict("catalog '${entry.system}' is already published")
-    }
     val repo = entry.repo?.takeIf { it.isNotBlank() } ?: defaultRepo
+    // Already published? Converge its LISTING rather than refusing outright. A flat conflict here
+    // is
+    // what made a committed config unable to catch up with a running box: re-posting an entry whose
+    // group or listed flag had changed was rejected, so the box kept its original placement
+    // forever.
+    // The content is untouched — no re-fetch, no dropped load state — and a repo change is still
+    // refused, since that decides what bytes get served (retire and re-publish for that).
+    tracker.configFor(entry.system)?.let { current ->
+      if (current.repo != repo) {
+        return Result.Conflict(
+          "catalog '${entry.system}' is published from ${current.repo}; retire it before " +
+            "re-publishing from $repo"
+        )
+      }
+      val resolved = homeGroup(entry, repo, declared)
+      if (current.group == resolved && current.listed == entry.listed) {
+        return Result.Conflict("catalog '${entry.system}' is already published")
+      }
+      tracker.relist(entry.system, listed = entry.listed, group = resolved)
+      onLog("serve: catalog ${entry.system} listing updated via admin API")
+      return Result.Ok(entry.system, persist { it.withEntry(entry.copy(repo = repo)) })
+    }
     val config = configOf(entry, repo, declared)
     if (!tracker.add(config)) {
       return Result.Conflict("catalog '${entry.system}' is already published")
@@ -170,6 +248,22 @@ class ServeCatalogAdmin(
     }
   }
 }
+
+/** This config with [group] added, or replacing a same-id group, preserving section order. */
+internal fun ServeCatalogsConfig.withGroup(group: ServeCatalogsConfig.Group): ServeCatalogsConfig {
+  val known = groups.any { it.id == group.id }
+  val updated = if (known) groups.map { if (it.id == group.id) group else it } else groups + group
+  return copy(groups = updated)
+}
+
+/**
+ * This config with group [id] removed. Entries claiming it are left declaring it: an unknown group
+ * id is already a tolerated condition ([ServeCatalogsConfig.problems] reports it, and the card
+ * falls back to its owner heading), and silently rewriting an operator's catalog entries because a
+ * section was deleted would lose the claim they'd have to retype if the group came back.
+ */
+internal fun ServeCatalogsConfig.withoutGroup(id: String): ServeCatalogsConfig =
+  copy(groups = groups.filterNot { it.id == id })
 
 /** This config with [entry] added (or replacing a same-system entry), preserving order. */
 internal fun ServeCatalogsConfig.withEntry(entry: ServeCatalogsConfig.Entry): ServeCatalogsConfig {

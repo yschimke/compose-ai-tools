@@ -35,6 +35,19 @@ class GenerateRobolectricPropertiesTaskTest {
   }
 
   @Test
+  fun `the coil preview shadow is registered with its package instrumented`() {
+    // Both lines are load-bearing together: the shadow can only replace
+    // `AsyncImagePainter.setPreview$…` if Robolectric instruments `coil.compose` (it isn't an
+    // Android SDK package, so it isn't instrumented by default). Dropping either one silently
+    // reverts coil-backed previews to capturing blank — see issue #2952.
+    listOf(false, true).forEach { useConsumerApplication ->
+      val body = generate(useConsumerApplication, override = null, compileSdk = 36)
+      assertThat(body).contains("ee.schimke.composeai.renderer.ShadowAsyncImagePainter")
+      assertThat(body).contains("instrumentedPackages=coil.compose")
+    }
+  }
+
+  @Test
   fun `useConsumerApplication drops application line but keeps sdk graphicsMode shadows`() {
     val body = generate(useConsumerApplication = true, override = null, compileSdk = 36)
     assertThat(body).contains("sdk=36")

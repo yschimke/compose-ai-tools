@@ -49,6 +49,8 @@ import {
   DEFERRED,
   deferralPlan,
   entryPriority,
+  modeOfPreviewId,
+  modePriority,
   previewForImage,
   specDefersAnything,
   splitDeferredImages,
@@ -85,7 +87,14 @@ import {
   daemonPreviewIdsByFunction,
 } from "./bundle-previews.mjs";
 import { exportsNoSticker } from "./capture-mode.mjs";
-import { bridgeLivePreviewIds } from "./bridge-live-preview-ids.mjs";
+import {
+  bridgeLivePreviewIds,
+  expandDeferredRecords,
+} from "./bridge-live-preview-ids.mjs";
+import {
+  catalogImagePath,
+  derivationMismatches,
+} from "./catalog-image-path.mjs";
 import { applySpecSections } from "./apply-spec-sections.mjs";
 import { applySpecBreakpoints } from "./catalog-breakpoints.mjs";
 
@@ -271,6 +280,25 @@ function functionOf(candidate) {
   return candidate.functionName ?? candidate.componentId;
 }
 
+/**
+ * Identity of one deferred sticker across every axis a `deferred[]` record can carry, so a
+ * recovered-from-the-bundle record (issue #2966) is deduped against the image-derived one for the
+ * SAME sticker and not against a sibling variant that merely shares its mode. `props` is
+ * key-sorted so two equal prop sets always produce the same key.
+ */
+function deferralAxisKey(theme, state, props, size) {
+  const propsPart = props
+    ? Object.entries(props)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => `${k}=${v}`)
+        .join(",")
+    : "";
+  // NUL-joined (like `bridge-live-preview-ids`' `variantKey`) so a state or prop value that
+  // contains the separator can never make two different stickers collide on one key.
+  const NUL = String.fromCharCode(0);
+  return [theme ?? "", state ?? "", propsPart, size ?? ""].join(NUL);
+}
+
 /** A semantics tree carries real signal (not the empty `{ root: {} }` fallback). */
 function hasSemantics(candidate) {
   const tree = candidate.semantics;
@@ -426,6 +454,54 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
           ...(image.props !== undefined ? { props: image.props } : {}),
           ...(image.size !== undefined ? { size: image.size } : {}),
         });
+      }
+      // Modes whose render was SKIPPED, not merely un-published (issue #2966). Once the render
+      // filter drops a deferred palette, its images never reach the candidate join (the join only
+      // sees previews that produced a PNG), so `splitDeferredImages` above has nothing to record and
+      // the coverage would vanish from `catalog.json` instead of being declared live-only. Recover it
+      // from the bundle's full preview list, which carries every SELECTED preview whether or not CI
+      // rasterised it — the same listing the live lane resolves against. Deduped against the modes
+      // already accounted for, so an unfiltered render (a local generate, say) records each once.
+      //
+      // Keyed by the FULL axis tuple, not by mode alone, and walked over the component's own
+      // `@Preview` plus each REQUIRED variant's: a required state/props variant whose function also
+      // fans out by mode has its deferred-mode ids excluded from the render too, and recording only
+      // the base function's would drop that variant's `state`/`props` from the declaration (a record
+      // an unfiltered run produced via `splitDeferredImages`). Deferred variants are already recorded
+      // above, so they are deliberately not revisited here.
+      const seenAxes = new Set(
+        [...deferredImages, ...baked]
+          .filter((image) => image.theme)
+          .map((image) => deferralAxisKey(image.theme, image.state, image.props, image.size)),
+      );
+      const modeSources = [
+        { preview: component.preview },
+        ...(component.variants ?? []).map((v) => ({
+          preview: v.preview,
+          state: v.state,
+          props: v.props,
+          size: v.size,
+        })),
+      ];
+      for (const source of modeSources) {
+        if (!source.preview) continue;
+        for (const previewId of opts.previewIdsByFunction?.get(source.preview) ?? []) {
+          const mode = modeOfPreviewId(previewId, spec.modes);
+          if (!mode || modePriority(spec, mode) !== DEFERRED) continue;
+          const key = deferralAxisKey(mode, source.state, source.props, source.size);
+          if (seenAxes.has(key)) continue;
+          seenAxes.add(key);
+          deferred.push({
+            componentId: component.componentId,
+            group: group.name,
+            preview: source.preview,
+            reason: "mode",
+            theme: mode,
+            ...(source.state !== undefined ? { state: source.state } : {}),
+            ...(source.props !== undefined ? { props: source.props } : {}),
+            ...(source.size !== undefined ? { size: source.size } : {}),
+          });
+        }
       }
       if (baked.length === 0) {
         // Every one of this component's renders was mode-deferred — it would publish as a
@@ -695,6 +771,10 @@ const { catalog, missing, noSticker, withoutSemantics, deferred } =
     ...(values.renderer ? { renderer: values.renderer } : {}),
     ...(designParityVersion() ? { designParity: designParityVersion() } : {}),
     ...(themeTokens ? { themeTokens } : {}),
+    // Every daemon preview id per function, from the bundles' FULL preview lists — including the
+    // deferred palettes whose render was skipped (#2966), which is how their live-only coverage still
+    // gets declared even though no image of them exists to fold.
+    previewIdsByFunction: daemonPreviewIdsByFunction([bundle, extraBundle]),
   });
 
 // Completeness gate: `bundle pack --with-semantics` is best-effort and exits 0
@@ -736,6 +816,7 @@ if (deferred.length > 0) {
       ` — recorded in catalog.json, not baked and not counted against the completeness gate`,
   );
 }
+
 if (
   !values["allow-incomplete"] &&
   (missing.length > 0 || withoutSemantics.length > 0)
@@ -949,12 +1030,54 @@ if (values["publish-live-bundle"]) {
   // those pixels exist. Each record carries the daemon preview id(s) its `@Preview` function
   // produces, so a `serve --allow-render-trusted` host can render it on request: the previews are
   // in the bundle's `previews.json` whether or not CI rasterised them.
+  //
+  // Two more fields make the record *addressable* (issue #2965), which is what gives a deferred
+  // entry a live lane on the serve host rather than leaving it declared-but-unreachable:
+  //
+  //   - `path` — the `images/…` path this sticker WOULD have been written to. The published route
+  //     ids are `previewIdFor(image.path)`, so recording the path here (rather than making the
+  //     server re-derive the exporter's naming scheme) keeps one id namespace, and means flipping an
+  //     entry between `required` and `deferred` never moves its URL. Guarded against drift below.
+  //   - `previewId` — the ONE daemon preview this record renders through. An entry- or
+  //     variant-deferred spec record names no axes (nothing rendered, so nothing recorded that its
+  //     function would have produced a light AND a dark sticker), so `expandDeferredRecords` splits
+  //     it into one record per `@Preview` annotation and recovers each one's theme/size. A
+  //     mode-deferred record already names its theme and stays 1:1. `previewIds` stays, as the
+  //     function's full list, for a consumer that wants the wider view.
   if (deferred.length > 0) {
     const idsByFunction = daemonPreviewIdsByFunction([bundle, extraBundle]);
-    manifest.deferred = deferred.map((record) => {
+    // Drift guard: re-derive every BAKED image's path and compare against what `buildCatalog`
+    // actually wrote. A mismatch means the exporter's naming has moved out from under
+    // `catalogImagePath`, so the derived deferred paths would point at routes no sticker will ever
+    // occupy — publish the records without a `path` (the serve host then skips them, as it does for
+    // any older catalog) rather than publish wrong ones, and say so loudly.
+    const mismatches = derivationMismatches(manifest);
+    if (mismatches.length > 0) {
+      const [first] = mismatches;
+      console.warn(
+        `[${spec.system}] catalog image naming has drifted from catalogImagePath ` +
+          `(${mismatches.length} of the baked images disagree; e.g. expected ` +
+          `${first.expected}, exporter wrote ${first.actual}) — publishing the deferred records ` +
+          `WITHOUT a route path, so the preview server will skip them until the derivation is ` +
+          `updated to match.`,
+      );
+    }
+    const records = expandDeferredRecords(deferred, spec, [bundle, extraBundle]);
+    manifest.deferred = records.map((record) => {
       const ids = idsByFunction.get(record.preview) ?? [];
-      return ids.length > 0 ? { ...record, previewIds: ids } : record;
+      return {
+        ...record,
+        ...(mismatches.length === 0
+          ? { path: catalogImagePath(record.componentId, record) }
+          : {}),
+        ...(ids.length > 0 ? { previewIds: ids } : {}),
+      };
     });
+    const addressable = manifest.deferred.filter((r) => r.path && r.previewId).length;
+    console.log(
+      `[${spec.system}] ${addressable}/${manifest.deferred.length} deferred record(s) carry a ` +
+        `route + daemon preview id (the live-only lane a trusted serve host registers them under)`,
+    );
   }
   // Buildable source for trusted server-side re-render (opt-in consumer side).
   if (values["source-module"]) {

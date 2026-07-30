@@ -395,16 +395,68 @@ export class PaddingModifier extends Operation implements VariableSupport {
 }
 
 // ── MODIFIER_ROUNDED_CLIP_RECT (54): FLOAT topStart, FLOAT topEnd, FLOAT bottomStart, FLOAT bottomEnd
-export class RoundedClipRectModifier extends Operation {
+//
+// Each corner arrives as raw float32 bits that may be a NaN-encoded variable
+// reference rather than a literal: a *fixed* shape (`RemoteRoundedCornerShape(4.dp)`)
+// writes a dp literal, but a *size-relative* one — `RemoteCircleShape`, i.e. a 50%
+// corner — writes an expression id computed from the component's measured width and
+// height. Reading those bits as a float yields NaN, and `ctx.roundRect` ignores a
+// non-finite radius list entirely, leaving an empty path for the following `clip()`
+// — which clips away *everything drawn inside the component*, not just the corners.
+// That is why the round watch screen rendered as a blank canvas (#2930).
+export class RoundedClipRectModifier extends Operation implements VariableSupport {
     static readonly OP_CODE = 54;
+    // Corners as raw float32 int bits (may be NaN-encoded variable refs).
     private mTopStart: number; private mTopEnd: number;
     private mBottomStart: number; private mBottomEnd: number;
+    // Resolved pixel radii, re-derived on every updateVariables pass.
+    mTopStartValue: number; mTopEndValue: number;
+    mBottomStartValue: number; mBottomEndValue: number;
     private mLayoutW = 0; private mLayoutH = 0;
     private mComponent: any = null;
     constructor(topStart: number, topEnd: number, bottomStart: number, bottomEnd: number) {
         super();
         this.mTopStart = topStart; this.mTopEnd = topEnd;
         this.mBottomStart = bottomStart; this.mBottomEnd = bottomEnd;
+        this.mTopStartValue = isNaNBits(topStart) ? 0 : intBitsToFloat(topStart);
+        this.mTopEndValue = isNaNBits(topEnd) ? 0 : intBitsToFloat(topEnd);
+        this.mBottomStartValue = isNaNBits(bottomStart) ? 0 : intBitsToFloat(bottomStart);
+        this.mBottomEndValue = isNaNBits(bottomEnd) ? 0 : intBitsToFloat(bottomEnd);
+    }
+    registerListening(context: RemoteContext): void {
+        if (isNaNBits(this.mTopStart)) context.listensTo(idFromBits(this.mTopStart), this);
+        if (isNaNBits(this.mTopEnd)) context.listensTo(idFromBits(this.mTopEnd), this);
+        if (isNaNBits(this.mBottomStart)) context.listensTo(idFromBits(this.mBottomStart), this);
+        if (isNaNBits(this.mBottomEnd)) context.listensTo(idFromBits(this.mBottomEnd), this);
+    }
+    updateVariables(context: RemoteContext): void {
+        // Re-derive every corner from its raw bits each call (NaN → variable lookup,
+        // else the literal float) so the density scaling below stays idempotent across
+        // the repeated updateVariables passes the engine runs — same shape as
+        // PaddingModifier above.
+        const ts = this.resolve(context, this.mTopStart);
+        const te = this.resolve(context, this.mTopEnd);
+        const bs = this.resolve(context, this.mBottomStart);
+        const be = this.resolve(context, this.mBottomEnd);
+        this.mTopStartValue = ts; this.mTopEndValue = te;
+        this.mBottomStartValue = bs; this.mBottomEndValue = be;
+    }
+    /**
+     * A literal corner is authored in dp, so under DP density behavior AndroidX's
+     * `RoundedClipRectModifierOperation.paint` scales it by the doc density — replicate
+     * that so the clipped corners match the baked render at densities != 1. A *variable*
+     * corner is deliberately left alone: it is computed from the component's measured
+     * width/height, which the engine already carries in generation pixels, so scaling it
+     * would double-apply the density and over-round the shape.
+     */
+    private resolve(context: RemoteContext, bits: number): number {
+        if (isNaNBits(bits)) return context.getFloat(idFromBits(bits));
+        let v = intBitsToFloat(bits);
+        if (context.getDensityBehavior() === DENSITY_BEHAVIOR_DP) {
+            const d = context.getDensity();
+            if (!Number.isNaN(d) && d > 0) v *= d;
+        }
+        return v;
     }
     setComponent(c: any): void { this.mComponent = c; }
     layoutDecorator(w: number, h: number): void { this.mLayoutW = w; this.mLayoutH = h; }
@@ -416,22 +468,23 @@ export class RoundedClipRectModifier extends Operation {
         const w = this.mLayoutW;
         const h = this.mLayoutH;
         if (w > 0 && h > 0) {
-            // Corner radii are authored in dp. Under DP density behavior AndroidX's
-            // RoundedClipRectModifierOperation.paint scales each corner by the doc
-            // density (local copies, so it stays idempotent) — replicate it so the
-            // clipped corners match the baked render at densities != 1.
-            let ts = this.mTopStart, te = this.mTopEnd, bs = this.mBottomStart, be = this.mBottomEnd;
-            if (context.getDensityBehavior() === DENSITY_BEHAVIOR_DP) {
-                const d = context.getDensity();
-                if (!Number.isNaN(d) && d > 0) { ts *= d; te *= d; bs *= d; be *= d; }
-            }
-            pc.roundedClipRect(w, h, ts, te, bs, be);
+            // Resolve here too: a modifier whose corner is an expression over the
+            // component's own size only gets its final value once the component has been
+            // measured, which happens after the data pass that ran updateVariables.
+            this.updateVariables(context);
+            pc.roundedClipRect(w, h, this.mTopStartValue, this.mTopEndValue,
+                this.mBottomStartValue, this.mBottomEndValue);
         }
     }
-    deepToString(indent: string): string { return `${indent}RoundedClipRectModifier`; }
+    deepToString(indent: string): string {
+        return `${indent}RoundedClipRectModifier(${this.mTopStartValue}, ${this.mTopEndValue}, ` +
+            `${this.mBottomStartValue}, ${this.mBottomEndValue})`;
+    }
     static read(buffer: WireBuffer, operations: Operation[]): void {
+        // readInt, not readFloat: the raw bits are kept so a NaN-encoded variable
+        // reference survives to be resolved against the context.
         operations.push(new RoundedClipRectModifier(
-            buffer.readFloat(), buffer.readFloat(), buffer.readFloat(), buffer.readFloat()));
+            buffer.readInt(), buffer.readInt(), buffer.readInt(), buffer.readInt()));
     }
 }
 

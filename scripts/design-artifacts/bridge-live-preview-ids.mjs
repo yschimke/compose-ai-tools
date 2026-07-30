@@ -211,6 +211,143 @@ function requestedFontScale(props) {
 }
 
 /**
+ * Every daemon preview a function produced, in bundle order, as [variantIdentity] records — the
+ * candidate pool [pickVariantId] routes a sticker's axes against. Earlier bundles win on a repeated
+ * id, matching `figmaSvgByFunctions`' fold: the primary render is the authority and a supplement
+ * only contributes previews the primary doesn't have. Falsy entries are skipped so callers can pass
+ * `[bundle, extraBundle]` with no extra render.
+ *
+ * Keeping the whole list per function — rather than the first id, which is what shipped one vector
+ * to every variant of a multi-annotation screen (#2883) — is what lets each sticker reach its own
+ * render.
+ */
+function previewsByFunction(bundles, allPreviewIds = new Set()) {
+  const previewsByFn = new Map();
+  for (const bundle of Array.isArray(bundles) ? bundles : [bundles]) {
+    if (!bundle) continue;
+    for (const preview of bundle.previews ?? []) {
+      if (allPreviewIds.has(preview.id)) continue;
+      allPreviewIds.add(preview.id);
+      const fn = preview.functionName ?? preview.id;
+      const list = previewsByFn.get(fn) ?? [];
+      list.push(variantIdentity(preview));
+      previewsByFn.set(fn, list);
+    }
+  }
+  return previewsByFn;
+}
+
+/**
+ * `size` → the width the spec's breakpoints declare for it, so a sticker's size axis can be compared
+ * against a candidate's `@Preview(widthDp = …)`. Yields null for a spec with no breakpoints, in
+ * which case the size axis simply doesn't constrain the pick.
+ */
+function widthForSizeOf(spec) {
+  const widthBySize = new Map(
+    (spec?.breakpoints ?? [])
+      .filter((b) => typeof b?.size === "string" && typeof b?.widthDp === "number")
+      .map((b) => [b.size, b.widthDp]),
+  );
+  return (size) => (size == null ? null : (widthBySize.get(size) ?? null));
+}
+
+/** The breakpoint `size` a candidate's `@Preview(widthDp = …)` renders, or undefined. */
+function sizeForWidthOf(spec) {
+  const sizeByWidth = new Map(
+    (spec?.breakpoints ?? [])
+      .filter((b) => typeof b?.size === "string" && typeof b?.widthDp === "number")
+      .map((b) => [b.widthDp, b.size]),
+  );
+  return (widthDp) => (widthDp == null ? undefined : sizeByWidth.get(widthDp));
+}
+
+/**
+ * Resolve the **deferred** (live-only) records to concrete, per-annotation stickers — the id each
+ * would have been rendered under, and the daemon preview that renders it live.
+ *
+ * A deferred record names the `@Preview` function it came from, but not always the axes the sticker
+ * would have carried, and the two differ by how the deferral was declared:
+ *
+ *   - **mode** deferral names its `theme` already (the export resolved it per rendered image), so
+ *     the record maps 1:1 onto the annotation [pickVariantId] selects for those axes;
+ *   - **entry** / **variant** deferral names none — the render never happened, so nothing recorded
+ *     that the function would have produced a light AND a dark sticker (or one per breakpoint). The
+ *     axes are recovered here from the function's `@Preview` annotations themselves ([variantIdentity]
+ *     already reads `uiMode` / `widthDp` / the id suffix), expanding ONE spec record into one record
+ *     per annotation so an entry-deferred component gets the same set of live-only cards the baked
+ *     sheet would have shown.
+ *
+ * Records are returned as fresh objects (the input is not mutated), each carrying `previewId` when a
+ * daemon twin was found. A record whose function isn't in any bundle is returned as-is with no
+ * `previewId` — nothing can render it, so the serve host skips it rather than registering a card
+ * that would 404. Two annotations that recover the SAME axes collapse to one record (the exporter
+ * would have named them one path); first listed wins.
+ */
+export function expandDeferredRecords(deferred, spec, bundles) {
+  const previewsByFn = previewsByFunction(bundles);
+  const widthForSize = widthForSizeOf(spec);
+  const sizeForWidth = sizeForWidthOf(spec);
+  const out = [];
+  for (const record of deferred ?? []) {
+    const candidates = previewsByFn.get(record?.preview) ?? [];
+    if (candidates.length === 0) {
+      out.push({ ...record });
+      continue;
+    }
+    // Axes already known (a mode deferral), or a single-annotation function: one record, routed to
+    // the annotation those axes select — exactly a baked sticker's resolution.
+    if (record?.theme || candidates.length === 1) {
+      const daemonId = pickVariantId(candidates, record ?? {}, widthForSize);
+      out.push(daemonId ? { ...record, previewId: daemonId } : { ...record });
+      continue;
+    }
+    // Font scale is the third recoverable axis, and the one with no dedicated record field — the
+    // exporter expresses it as a `props` entry. A record that already names one (a props variant the
+    // spec declared) SELECTS among the annotations rather than expanding over them; a record that
+    // names none RECOVERS each annotation's own scale. Without that, a function's large-text
+    // annotation shares its unscaled sibling's theme and size, so the key below would call the two
+    // one sticker and the large-text live-only route would never be published at all.
+    const wantedScale = requestedFontScale(record?.props);
+    const scaled =
+      wantedScale === null ? candidates : candidates.filter((c) => c.fontScale === wantedScale);
+    const pool = scaled.length > 0 ? scaled : candidates;
+    const seen = new Set();
+    for (const candidate of pool) {
+      const theme =
+        candidate.night === true ? "dark" : candidate.night === false ? "light" : undefined;
+      const size = record?.size ?? sizeForWidth(candidate.widthDp);
+      // Only a RECOVERED scale becomes props; a record that named its own keeps it verbatim, so the
+      // spec's exact spelling ("1.5x", "2.0") is what reaches the path.
+      const scale = wantedScale === null ? candidate.fontScale : null;
+      const key = [theme ?? "", size ?? "", scale ?? ""].join("\u0000");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        ...record,
+        ...(theme ? { theme } : {}),
+        ...(size ? { size } : {}),
+        ...(scale != null
+          ? { props: { ...(record?.props ?? {}), fontScale: formatFontScale(scale) } }
+          : {}),
+        previewId: candidate.id,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * A recovered `@Preview(fontScale = …)` as the exporter spells it in a path segment. The annotation
+ * carries a number (`2`), while a spec-declared props variant carries the string the author wrote
+ * (`"2.0"`) — and it is that string the baked sticker's `…__fontscale-2.0.png` name comes from. So a
+ * whole number is written back with one decimal place, keeping a recovered route identical to the
+ * one the same annotation would have published had it been baked.
+ */
+function formatFontScale(value) {
+  return Number.isInteger(value) ? value.toFixed(1) : String(value);
+}
+
+/**
  * [bundles] is every bundle whose previews can back this catalog — the primary render plus any
  * `--extra-renders` supplement — mirroring how `figmaSvgByFunctions` folds them. A single bundle
  * is accepted too, so existing callers keep working.
@@ -255,40 +392,12 @@ export function bridgeLivePreviewIds(
       }
     }
   }
-  // Every daemon preview a function produced, in bundle order, with the variant identity of the
-  // `@Preview` annotation behind it. Keeping the whole list — rather than the first id per
-  // function, which is what shipped one vector to every variant of a multi-annotation screen
-  // (#2883) — is what lets `pickVariantId` route each sticker to its own render.
-  const previewsByFn = new Map();
   // Every preview id in the bundle, so the `@OverrideVariant` fallback below can confirm a
-  // reconstructed `<baseId>_VARIANT_<state>` id actually rendered before routing to it.
+  // reconstructed `<baseId>_VARIANT_<state>` id actually rendered before routing to it — filled in
+  // as `previewsByFunction` folds the bundles.
   const allPreviewIds = new Set();
-  // Earlier bundles win, matching `figmaSvgByFunctions`' fold: the primary render is the
-  // authority, and a supplement only contributes previews the primary doesn't have. Falsy
-  // entries are skipped so callers can pass `[bundle, extraBundle]` with no extra render.
-  for (const bundle of Array.isArray(bundles) ? bundles : [bundles]) {
-    if (!bundle) continue;
-    for (const preview of bundle.previews ?? []) {
-      if (allPreviewIds.has(preview.id)) continue;
-      allPreviewIds.add(preview.id);
-      const fn = preview.functionName ?? preview.id;
-      const list = previewsByFn.get(fn) ?? [];
-      list.push(variantIdentity(preview));
-      previewsByFn.set(fn, list);
-    }
-  }
-  // `size` → the width the spec's breakpoints declare for it, so a sticker's size axis can be
-  // compared against a candidate's `@Preview(widthDp = …)`. Empty for a spec with no breakpoints,
-  // in which case the size axis simply doesn't constrain the pick.
-  const widthBySize = new Map(
-    (spec.breakpoints ?? [])
-      .filter(
-        (b) => typeof b?.size === "string" && typeof b?.widthDp === "number",
-      )
-      .map((b) => [b.size, b.widthDp]),
-  );
-  const widthForSize = (size) =>
-    size == null ? null : (widthBySize.get(size) ?? null);
+  const previewsByFn = previewsByFunction(bundles, allPreviewIds);
+  const widthForSize = widthForSizeOf(spec);
   let mapped = 0;
   for (const component of manifest.components ?? []) {
     for (const image of component.images ?? []) {

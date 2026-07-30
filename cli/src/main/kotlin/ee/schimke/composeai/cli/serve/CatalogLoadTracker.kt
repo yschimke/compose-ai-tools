@@ -82,6 +82,32 @@ class CatalogLoadTracker(
       true
     }
 
+  /**
+   * Replace [system]'s **listing** metadata — where it appears, not where it comes from — keeping
+   * its load state and its registered content untouched. Returns false when it isn't tracked.
+   *
+   * Needed because a catalog's front-page placement is resolved once, at registration, into a
+   * [ServeWeb.HomeGroup] snapshot. So a group defined *after* a catalog was published would never
+   * reach it: the group table would gain the entry while the already-registered catalog kept `group
+   * = null` and stayed under the owner fallback. [ServeCatalogAdmin] calls this to re-resolve every
+   * claim whenever the group table changes, which is what makes a group edit take effect without a
+   * restart or a re-fetch.
+   *
+   * Deliberately cannot change [Config.repo] or [Config.branch] — those decide what bytes get
+   * served, and changing them behind a live registration would leave the served content disagreeing
+   * with its own provenance (and its trust verdict). Re-pointing a catalog is a retire plus a
+   * publish.
+   */
+  fun relist(system: String, listed: Boolean, group: ServeWeb.HomeGroup?): Boolean =
+    synchronized(lock) {
+      val existing = states[system] ?: return false
+      val updated = existing.config.copy(listed = listed, group = group)
+      states[system] = existing.copy(config = updated)
+      val at = ordered.indexOfFirst { it.system == system }
+      if (at >= 0) ordered[at] = updated
+      true
+    }
+
   /** Retire a catalog. Returns false when it wasn't configured. */
   fun remove(system: String): Boolean =
     synchronized(lock) {

@@ -1136,4 +1136,250 @@ class ServeCatalogStoreTest {
       "fall back to the static host when the build is refused",
     )
   }
+
+  // --- deferred (live-only) coverage — issue #2965 ----------------------------------------------
+
+  /**
+   * A catalog that bakes the dark sticker and defers the light one (a `modePriority` thinning),
+   * declaring a liveBundle so a trusted server can render the deferred entry on demand.
+   */
+  private val deferredJson =
+    """
+    {"schema":"design-parity-catalog/v1","system":"compose-m3",
+     "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+     "components":[{"componentId":"Button/Filled","section":"Components","group":"Buttons",
+       "images":[
+         {"path":"images/button-filled/ideal__default__dark.png","state":"default","theme":"dark","previewId":"FilledButton_Dark"}]}],
+     "deferred":[
+       {"componentId":"Button/Filled","section":"Components","group":"Buttons","reason":"mode",
+        "path":"images/button-filled/ideal__default__light.png","state":"default","theme":"light",
+        "preview":"FilledButton","previewId":"FilledButton_Light",
+        "previewIds":["FilledButton_Light","FilledButton_Dark"]}]}
+    """
+      .trimIndent()
+
+  private val trustedBranches =
+    TrustStore(branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*")))
+
+  private fun deferredFetcher(json: String = deferredJson): (String) -> ByteArray? = { url ->
+    when {
+      url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> json.toByteArray()
+      url.endsWith("bundle/compose-m3-bundle.png") -> byteArrayOf(1, 2, 3)
+      url.contains("bundle/previews/") -> null
+      url.endsWith(".png") -> png()
+      else -> null
+    }
+  }
+
+  @Test
+  fun `a deferred record is aliased and registered as a live-only preview under the live lane`() {
+    // The whole point of #2965: a deferred entry ships no PNG, so it can only be served where a
+    // live daemon can produce it — the baked host the live builder fronts lists it, aliases it to
+    // its daemon twin, and marks it live-only so the composite always routes it to the daemon.
+    var alias: Map<String, String> = emptyMap()
+    var fronted: ServeHost? = null
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trustedBranches },
+        fetch = deferredFetcher(),
+        buildTrustedBundle = { _, _, _, a, bakedFallback, _ ->
+          alias = a
+          fronted = bakedFallback()
+          true
+        },
+      )
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    val deferredId = "button-filled__ideal__default__light"
+    // The route id is derived from the path the sticker WOULD have had, so it is exactly the id a
+    // baked light variant would have been published under — deferring an entry never moves its URL.
+    assertEquals(
+      mapOf(
+        "button-filled__ideal__default__dark" to "FilledButton_Dark",
+        deferredId to "FilledButton_Light",
+      ),
+      alias,
+    )
+    val host = fronted as ServeBundleHost
+    assertEquals(setOf(deferredId), host.liveOnlyPreviewIds)
+    assertEquals(
+      setOf("button-filled__ideal__default__dark", deferredId),
+      host.previews.map { it.id }.toSet(),
+    )
+    // It carries the same variant metadata a baked preview would, so it lands in the right tab and
+    // group and folds onto the component's card instead of floating loose.
+    val preview = host.previews.single { it.id == deferredId }
+    assertEquals("light", preview.theme)
+    assertEquals("default", preview.state)
+    assertEquals("Components" to "Buttons", preview.section to preview.group)
+    // …and no baked PNG was invented for it.
+    assertEquals(RenderOutcome.NotFound, host.render(deferredId, PreviewOverrides()))
+  }
+
+  @Test
+  fun `a baked-only session hides the deferred previews and records why`() {
+    // Fail-soft (issue #2965 point 5): with no live lane there is nothing to render a deferred
+    // preview from, so it is omitted rather than listed as a card whose every request 404s — and
+    // the session says so, next to the reason it has no live lane at all.
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trustedBranches },
+        fetch = deferredFetcher(),
+        // The builder declines (e.g. --allow-render-trusted off), so the baked host is terminal.
+        buildTrustedBundle = { _, _, _, _, _, _ -> false },
+      )
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    val host = registered.getValue("compose-m3")
+    assertEquals(listOf("button-filled__ideal__default__dark"), host.previews.map { it.id })
+    assertTrue(host.liveOnlyPreviewIds.isEmpty())
+    assertTrue(
+      ServeDegradation.DEFERRED_NOT_SERVED in host.degradations.map { it.code },
+      "the hidden live-only previews are explained: ${host.degradations}",
+    )
+  }
+
+  @Test
+  fun `deferred records with no route or no daemon twin are skipped`() {
+    // Three unusable records: no `path` (an older catalog, or one whose export detected naming
+    // drift), a traversing path, and one with no daemon preview to render it. None may reach the
+    // alias or the host.
+    val json =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+       "components":[{"componentId":"Button/Filled","images":[
+         {"path":"images/button-filled/ideal__default__dark.png","theme":"dark","previewId":"FilledButton_Dark"}]}],
+       "deferred":[
+         {"componentId":"A","preview":"A","previewId":"A_Light"},
+         {"componentId":"B","preview":"B","path":"images/../../etc/passwd.png","previewId":"B_Light"},
+         {"componentId":"C","preview":"C","path":"images/c/ideal__default__light.png",
+          "previewIds":["C_Light","C_Dark"]}]}
+      """
+        .trimIndent()
+    var alias: Map<String, String> = emptyMap()
+    var fronted: ServeHost? = null
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trustedBranches },
+        fetch = deferredFetcher(json),
+        buildTrustedBundle = { _, _, _, a, bakedFallback, _ ->
+          alias = a
+          fronted = bakedFallback()
+          true
+        },
+      )
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    assertEquals(mapOf("button-filled__ideal__default__dark" to "FilledButton_Dark"), alias)
+    assertTrue((fronted as ServeBundleHost).liveOnlyPreviewIds.isEmpty())
+  }
+
+  @Test
+  fun `an ambiguity-free single previewId is enough for an older catalog's deferred record`() {
+    // Before the exporter resolved a record's own annotation it recorded only the function's id
+    // list. One id is unambiguous, so it still serves; more than one would be a guess (covered
+    // above) and is skipped.
+    val json =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+       "components":[{"componentId":"Button/Filled","images":[
+         {"path":"images/button-filled/ideal__default__dark.png","theme":"dark","previewId":"FilledButton_Dark"}]}],
+       "deferred":[
+         {"componentId":"Chip","preview":"Chip","path":"images/chip/ideal__default.png",
+          "previewIds":["Chip_Only"]}]}
+      """
+        .trimIndent()
+    var alias: Map<String, String> = emptyMap()
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trustedBranches },
+        fetch = deferredFetcher(json),
+        buildTrustedBundle = { _, _, _, a, _, _ ->
+          alias = a
+          true
+        },
+      )
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    assertEquals("Chip_Only", alias["chip__ideal__default"])
+  }
+
+  @Test
+  fun `a wholly-deferred catalog loads through its live lane`() {
+    // Every entry `priority: "deferred"` ⇒ the export publishes a catalog with NO baked images and
+    // only `deferred[]`. The empty-images guard must not reject that: it exists to protect a
+    // healthy catalog from an image outage, not to refuse the publish that leans hardest on the
+    // deferred lane.
+    val json =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+       "components":[],
+       "deferred":[
+         {"componentId":"Button/Filled","reason":"entry","theme":"light",
+          "path":"images/button-filled/ideal__default__light.png",
+          "preview":"FilledButton","previewId":"FilledButton_Light"}]}
+      """
+        .trimIndent()
+    var fronted: ServeHost? = null
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trustedBranches },
+        fetch = deferredFetcher(json),
+        buildTrustedBundle = { _, _, _, _, bakedFallback, _ ->
+          fronted = bakedFallback()
+          true
+        },
+      )
+    val result = store.load("compose-m3")
+
+    assertEquals(
+      ServeCatalogStore.Result.Ok(
+        "compose-m3",
+        1,
+        "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3 (live bundle)",
+      ),
+      result,
+    )
+    val host = fronted as ServeBundleHost
+    assertEquals(listOf("button-filled__ideal__default__light"), host.previews.map { it.id })
+    assertEquals(host.previews.map { it.id }.toSet(), host.liveOnlyPreviewIds)
+    // The variant metadata still round-trips even though no PNG was written (the staged previews
+    // dir has to be created for the manifest alone).
+    assertEquals("light", host.previews.single().theme)
+  }
+
+  @Test
+  fun `an image outage is still a failure even when the catalog defers coverage`() {
+    // The mirror of the test above: this catalog DECLARES a baked image, so zero fetched images is
+    // an outage — the deferred records must not talk the store into swapping in an empty catalog
+    // over the healthy one it is already serving.
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> deferredJson.toByteArray()
+        url.endsWith("bundle/compose-m3-bundle.png") -> byteArrayOf(1, 2, 3)
+        else -> null // every image 404s
+      }
+    }
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trustedBranches },
+        fetch = fetch,
+        buildTrustedBundle = { _, _, _, _, _, _ -> true },
+      )
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Failed)
+  }
 }

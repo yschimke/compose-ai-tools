@@ -81,7 +81,7 @@ If you'd rather wire it into your build explicitly, the plugin is on
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
-    id("ee.schimke.composeai.preview") version "0.19.7"
+    id("ee.schimke.composeai.preview") version "0.19.8"
 }
 ```
 <!-- x-release-please-end -->
@@ -98,6 +98,23 @@ can't poison the run:
 ./gradlew :desktopApp:composePreviewRender --preview '*ExportHelpDialogPreview'
 # or, as a Gradle property: -PcomposePreview.filter='*ExportHelpDialogPreview'
 ```
+
+`--preview` selects whole `@Preview` **functions**. To skip one member of a
+function's fan-out — a multipreview member, or one of several `@Preview`
+annotations, which share a function name but have distinct ids — exclude it by id
+instead:
+
+```sh
+./gradlew :desktopApp:composePreviewRender --exclude-preview-id '*_Dark'
+# or, as a Gradle property: -PcomposePreview.idExclude='*_Dark'
+```
+
+Ids take the same pattern syntax as `--preview` (a `*`/`?` glob, or a plain
+substring). `--preview-id` is the positive form ("render only these"); prefer
+`--exclude-preview-id` when you're deferring part of a fan-out, since a stale
+pattern then renders too much rather than dropping a preview you wanted. Either
+way a filtered run is never stored in the build cache, since its render directory
+is only part of the module's output.
 
 (Android modules render previews through a Robolectric test task; the `--preview`
 filter there is tracked as a follow-up.)

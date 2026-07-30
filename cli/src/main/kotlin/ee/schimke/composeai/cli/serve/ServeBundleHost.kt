@@ -74,6 +74,18 @@ class ServeBundleHost(
    * degraded). Surfaced by the viewer banner + `/api/previews`. See [ServeDegradation].
    */
   override val degradations: List<ServeDegradation> = emptyList(),
+  /**
+   * Catalog previews to list that have **no baked PNG on disk** — the `catalog.json` `deferred[]`
+   * records, which CI declared live-only instead of rasterising (issue #2965). Supplied by
+   * [ServeCatalogStore] ONLY for the baked host that fronts a live daemon, so each of these ids has
+   * a daemon twin that renders it on request; the terminally-registered baked-only host gets none
+   * (a card whose every render 404s is worse than an absent one). They join [previews] with their
+   * `previews/variants.json` metadata like any other catalog preview — so they sit in the right
+   * tab, group and order — and are re-exposed as [liveOnlyPreviewIds] for the live composite's
+   * routing. [render] still returns [RenderOutcome.NotFound] for them: this host has no pixels, and
+   * it is the composite's job to reach the daemon.
+   */
+  liveOnly: List<String> = emptyList(),
   private val fileSystem: FileSystem = SystemFileSystem,
 ) : ServeHost {
 
@@ -91,13 +103,26 @@ class ServeBundleHost(
    */
   private val variantMeta: Map<String, ServeCatalogStore.VariantMeta> = readVariantMeta()
 
+  /**
+   * The live-only ids this host lists, minus any that turned out to have a baked PNG after all (a
+   * catalog that both baked and deferred the same route — belt and braces: the baked pixels win, so
+   * the id keeps its ordinary snapshot lane).
+   */
+  override val liveOnlyPreviewIds: Set<String> =
+    liveOnly.filterTo(LinkedHashSet()) {
+      it.isNotBlank() && !File(previewsDir, "$it$PNG_SUFFIX").isFile
+    }
+
   override val previews: List<ServePreview> =
     // Walk recursively: a preview id may contain '/', stored as a nested `previews/<id>.png`. Ids
     // are reconstructed relative to `previews/` with '/' separators (matching the bundle layout).
-    previewsDir
-      .walkTopDown()
-      .filter { it.isFile && it.name.endsWith(PNG_SUFFIX) }
-      .map { it.relativeTo(previewsDir).invariantSeparatorsPath.removeSuffix(PNG_SUFFIX) }
+    // The live-only (deferred) ids carry no file, so they're appended to the walk before sorting —
+    // from there they're indistinguishable from a baked preview except that `render` finds no PNG.
+    (previewsDir
+        .walkTopDown()
+        .filter { it.isFile && it.name.endsWith(PNG_SUFFIX) }
+        .map { it.relativeTo(previewsDir).invariantSeparatorsPath.removeSuffix(PNG_SUFFIX) }
+        .toList() + liveOnlyPreviewIds)
       .sorted()
       .map { id ->
         val meta = variantMeta[id]

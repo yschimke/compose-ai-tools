@@ -460,6 +460,25 @@ class ServeHttpServer(
             val result = withContext(Dispatchers.IO) { admin.unregister(system) }
             respondAdminResult(result)
           }
+          // Front-page sections. The last part of the catalog config with no runtime path: a
+          // section
+          // could only be added by editing the box's catalogs.json and restarting, and a catalog
+          // claiming an undefined one was rejected — so a committed config could not converge.
+          // Defining a section also re-resolves the claims of catalogs ALREADY registered, or
+          // defining it would collect nothing.
+          get("/admin/groups") {
+            if (rejectBadAdminToken()) return@get
+            respondAdminGroups(admin)
+          }
+          post("/admin/groups") {
+            if (rejectBadAdminToken()) return@post
+            handleAdminGroupUpsert(admin)
+          }
+          delete("/admin/groups/{id}") {
+            if (rejectBadAdminToken()) return@delete
+            val id = call.parameters["id"].orEmpty()
+            respondAdminResult(withContext(Dispatchers.IO) { admin.removeGroup(id) })
+          }
         }
 
         // Runtime producer-trust administration. The trust store is operator config on the same
@@ -979,6 +998,39 @@ class ServeHttpServer(
           status = HttpStatusCode.BadGateway,
         )
     }
+  }
+
+  /** `GET /admin/groups`: the front-page sections a catalog entry may claim. */
+  private suspend fun RoutingContext.respondAdminGroups(admin: ServeCatalogAdmin) {
+    val groups = withContext(Dispatchers.IO) { admin.listGroups() }
+    call.respondText(
+      JSON.encodeToString(
+        AdminGroupsResponse.serializer(),
+        AdminGroupsResponse(groups = groups.map { AdminGroupDto(it.id, it.heading, it.noun) }),
+      ),
+      ContentType.Application.Json,
+    )
+  }
+
+  /** `POST /admin/groups`: define a section, or restyle one that exists. */
+  private suspend fun RoutingContext.handleAdminGroupUpsert(admin: ServeCatalogAdmin) {
+    val body =
+      withContext(Dispatchers.IO) {
+        call.receiveStream().use { readCapped(it, MAX_ADMIN_BODY_BYTES) }
+      }
+    if (body == null) {
+      call.respondText("request body too large", status = HttpStatusCode.PayloadTooLarge)
+      return
+    }
+    val group =
+      runCatching {
+          JSON.decodeFromString(ServeCatalogsConfig.Group.serializer(), body.decodeToString())
+        }
+        .getOrElse {
+          call.respondText("invalid group: ${it.message}", status = HttpStatusCode.BadRequest)
+          return
+        }
+    respondAdminResult(withContext(Dispatchers.IO) { admin.upsertGroup(group) })
   }
 
   /**
@@ -1689,6 +1741,7 @@ class ServeHttpServer(
                 modes = p.modes.map { it.wire },
                 overrides = p.overrides,
                 remoteComposeKnobs = p.remoteComposeKnobs,
+                liveOnly = p.id in renderHost.liveOnlyPreviewIds,
               )
             },
         )
@@ -2712,6 +2765,13 @@ private data class PreviewDto(
    * them). Additive since `compose-preview-serve/v2`.
    */
   val remoteComposeKnobs: List<RemoteComposeKnobDeclaration> = emptyList(),
+  /**
+   * True when this preview is **live-only**: the catalog declares it (`deferred[]`) but publishes
+   * no baked PNG for it, so every render is produced on demand by the session's live daemon. A
+   * client can badge it and expect a slower, daemon-backed first render; false (the default) is
+   * every ordinary baked preview. Additive since `compose-preview-serve/v2`.
+   */
+  val liveOnly: Boolean = false,
 )
 
 /** One configured catalog on `GET /admin/catalogs`: its config plus its latest load outcome. */
@@ -2746,6 +2806,16 @@ private data class AdminCatalogResult(
   val system: String,
   val status: String,
   val warning: String? = null,
+)
+
+/** One front-page section on `GET /admin/groups`. */
+@Serializable
+private data class AdminGroupDto(val id: String, val heading: String, val noun: String)
+
+@Serializable
+private data class AdminGroupsResponse(
+  val schema: String = "compose-preview-serve/admin-groups/v1",
+  val groups: List<AdminGroupDto> = emptyList(),
 )
 
 /** One trusted branch on `GET /admin/trust`. */

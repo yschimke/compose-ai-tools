@@ -13,18 +13,24 @@
  *
  * Two forms, because they buy different things:
  *
- *   - **per entry** — `priority` on a component or one of its `variants`. A wholly-deferred entry
- *     names a `@Preview` function nothing else needs, so it can be dropped from the render itself
- *     (see [renderFilterPatterns]) — real build time, not just a smaller bundle.
  *   - **per axis** — `modePriority: { "light": "required", "*": "deferred" }`. Bakes one sticker per
  *     component and leaves the remaining palettes to the (already interactive) theme switcher on the
- *     serve host. Measured against a nine-theme catalog this is the bigger lever, because the
- *     fan-out lives in the BASE entries rather than the variants.
+ *     serve host. Measured against a nine-theme catalog this is the bigger lever, because the fan-out
+ *     lives in the BASE entries rather than the variants. Degrades safely: the component keeps its
+ *     untagged primary sticker in `components[]`, so the served catalog browses as before with one
+ *     fewer baked palette. The mode axis is skipped at render time by the **id** filter (#2966).
+ *   - **per entry** — `priority` on a component or one of its `variants`. A wholly-deferred entry names
+ *     a `@Preview` function nothing else needs, so it is dropped from the render itself (see
+ *     [renderFilterPatterns]) — real build time, not just a smaller bundle. Such an entry has no
+ *     `images[]` record at all, so it reaches a viewer only through the serve host's live lane
+ *     (`catalog.json` `deferred[]` → `ServeCatalogStore`, compose-ai-tools#2965).
  *
  * Deferral is always explicit and always opt-in: the default stays `required`, so a spec that says
- * nothing behaves exactly as it did. It also always needs a live path (a carried live bundle or a
- * buildable `source`), or the deferred entries would just be coverage silently dropped from the
- * published sheet — the driver enforces that, and [validateSpec] mirrors it when the caller knows.
+ * nothing behaves exactly as it did. Deferral needs a live path (a carried live bundle or a buildable
+ * `source`), or the deferred entries would just be coverage silently dropped from the published
+ * sheet — the driver enforces that, and `validateSpec` mirrors it when the caller knows. A server with
+ * no live path still degrades explicably rather than showing broken cards: it reports
+ * `deferred-not-served` and omits them.
  *
  * Pure and dependency-free (node built-ins only, no `@design-parity/*`, no I/O) so it unit-tests
  * without an `npm ci`, like its sibling `catalog-variants.mjs` / `catalog-spec.mjs`.
@@ -43,6 +49,10 @@ export const MODE_WILDCARD = "*";
  * The priority a component / variant entry declares, defaulting to `required`.
  * An unrecognised value also reads as `required` — validation rejects it up front, and failing
  * *closed* (bake it) is the safe reading if one ever slips through.
+ *
+ * This one reader is what every decision point uses — the driver's join, the variant split,
+ * [specDefersAnything] and the render-filter derivation — so the render set and the published set
+ * can't disagree about which entries are baked.
  */
 export function entryPriority(entry) {
   return entry?.priority === DEFERRED ? DEFERRED : REQUIRED;
@@ -62,6 +72,41 @@ export function modePriority(spec, mode) {
 }
 
 /**
+ * The declared mode a **daemon preview id** renders in, or null when the id names none.
+ *
+ * The theme fan-out lives inside one `@Preview` function — a multipreview member (`@CatalogModes` →
+ * `Foo_Light` / `Foo_Dark`) or one of several `@Preview` annotations — and the mode's name is the
+ * only trace of
+ * it on the id, appended as a trailing segment. So this reads that segment back and resolves it
+ * against the modes the spec declares, which is what lets the render-side id filter (issue #2966)
+ * skip a deferred palette instead of merely leaving it out of the publish.
+ *
+ * Matched case-insensitively (`modes: ["light"]` vs the annotation's `name = "Light"`), longest mode
+ * first so `dark` can't shadow a declared `highContrastDark`, and only at a segment boundary — the
+ * mode must be the whole id, follow a separator (`_`, `-`, `.`, space), or start at an upper-case
+ * letter (`FooLight`). Without the boundary rule a mode named `on` would match `ButtonSwitchOn`'s
+ * unrelated tail and silently defer a required render.
+ */
+export function modeOfPreviewId(id, modes) {
+  const text = String(id ?? "");
+  if (text.length === 0) return null;
+  const declared = (modes ?? [])
+    .filter((m) => typeof m === "string" && m.length > 0)
+    .sort((a, b) => b.length - a.length);
+  const lower = text.toLowerCase();
+  for (const mode of declared) {
+    const suffix = mode.toLowerCase();
+    if (!lower.endsWith(suffix)) continue;
+    const start = text.length - suffix.length;
+    if (start === 0) return mode;
+    const before = text[start - 1];
+    const boundary = /[^A-Za-z0-9]/.test(before) || /[A-Z]/.test(text[start]);
+    if (boundary) return mode;
+  }
+  return null;
+}
+
+/**
  * Whether a rendered image's mode is deferred. Only an image that *names* a theme can be deferred:
  * the untagged sticker is the component's primary render (the one the grid shows and the Figma
  * import carries), so `modePriority` can thin the palette fan-out without ever leaving a component
@@ -78,7 +123,10 @@ function components(spec) {
   );
 }
 
-/** True when the spec defers anything at all — an entry, a variant, or a mode. */
+/**
+ * True when the spec defers anything at all — a mode, an entry or a variant. This is what gates the
+ * live-path requirement, since anything deferred is coverage the published bundle no longer carries.
+ */
 export function specDefersAnything(spec) {
   if (deferredModes(spec).length > 0) return true;
   return components(spec).some(
@@ -120,6 +168,9 @@ export function previewNamesByPriority(spec) {
     if (typeof preview !== "string" || preview.length === 0) return;
     (priority === DEFERRED ? deferred : required).add(preview);
   };
+  // Same [entryPriority] reader the driver's join uses, so the render filter can never drop a preview
+  // the driver is still going to bake — the failure that would leave a "required" entry with no PNG
+  // and trip the completeness gate.
   for (const { component } of components(spec)) {
     note(component?.preview, entryPriority(component));
     for (const variant of component?.variants ?? []) {
@@ -143,9 +194,12 @@ export function previewNamesByPriority(spec) {
  * deferred entry may then be rasterised anyway, costing time but never correctness: the export keys
  * deferral off the spec, not off whether a PNG happens to exist.
  *
- * Mode-level deferral contributes nothing here. The fan-out it thins lives *inside* one `@Preview`
- * function (a multipreview member or a `@PreviewParameter` row), and the render filter selects whole
- * functions — so `modePriority` currently thins what is published, not what is rendered.
+ * Mode-level deferral contributes nothing here, and can't: the fan-out it thins lives *inside* one
+ * `@Preview` function (a multipreview member, or one of several `@Preview` annotations), and this
+ * filter selects
+ * whole functions. The mode axis is skipped by the sibling **id** filter instead — see
+ * `deferred-preview-ids.mjs`, which needs the discovered ids and therefore runs after discovery
+ * rather than in the build-free pre-flight (issue #2966).
  */
 export function renderFilterPatterns(spec) {
   const { required, deferred } = previewNamesByPriority(spec);

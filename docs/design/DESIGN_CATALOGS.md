@@ -323,6 +323,31 @@ several themes:
   its `@Preview` name and the daemon `previewIds` its function produces, so a
   `serve --catalogs --allow-render-trusted` host can produce it on request.
 
+Each `deferred[]` record is **addressable**, which is what makes the on-demand path
+real rather than declarative:
+
+- `path` — the `images/…` path the sticker *would* have been written to, derived by
+  [`catalog-image-path.mjs`](../../scripts/design-artifacts/catalog-image-path.mjs).
+  The serve routes are `previewIdFor(image.path)`, so recording the path (rather than
+  having the server re-derive the exporter's naming) keeps one id namespace and means
+  flipping an entry between `required` and `deferred` never moves its URL. The export
+  re-derives every *baked* image's path on each run and compares: if the naming ever
+  drifts, it says so and publishes the records without a `path` (the server then
+  skips them) rather than pointing them at routes no sticker will occupy.
+- `previewId` — the one daemon preview that renders it. An entry- or variant-level
+  deferral names no axes (nothing rendered, so nothing recorded that its function
+  produces a light *and* a dark sticker), so the export expands one spec record into
+  one record per `@Preview` annotation, recovering each one's theme/size.
+
+`ServeCatalogStore` reads them back: each record joins the catalog-id → daemon-id
+alias and is registered as a **live-only preview** — a card in its proper tab, group
+and state switcher, whose every render (not just an override-bearing one) routes to
+the daemon, since there is no baked PNG to replay. Live-only previews are registered
+**only** where a live lane stood up. A session serving baked PNGs only — no
+`liveBundle`, an unverified catalog, `--allow-render-trusted` off — omits them and
+records a `deferred-not-served` degradation saying how many are hidden, rather than
+listing cards whose every request 404s.
+
 Why not just `--allow-incomplete`: that flag is all-or-nothing, so turning it on to
 tolerate a known-absent sticker also lets a genuinely broken *required* render
 publish unnoticed. Priority keeps the gate strict over the core inventory while
@@ -330,19 +355,41 @@ letting a catalog explicitly opt the long tail out.
 
 What each form actually saves:
 
-- **Per entry** (`priority` on a component or variant) — a `@Preview` function that
-  *nothing required* points at is dropped from the render itself. The pre-flight
-  emits the `--preview` patterns for the remaining required functions
-  (`--render-filter-out <file>`), and the reusable workflow feeds them to the render
-  as `ORG_GRADLE_PROJECT_composePreview.filter`. Empty for a spec that defers no
-  entry, so the render set is unchanged for every catalog today.
-- **Per axis** (`modePriority`) — thins what is *published*: the deferred palettes
-  are not written to `images/`, not exported as `figma/*.svg`, and not carried into
-  the Figma import. It does not currently shrink the render, because the fan-out it
-  removes lives *inside* one `@Preview` function (a multipreview member or a
-  `@PreviewParameter` row) and the renderer's filter selects whole functions. A
-  per-variant render filter is the follow-up that would make this a build-time win
-  too.
+- **Per axis** (`modePriority`) — **usable now, and now a build-time win too.** Thins
+  what is *published*: the deferred palettes are not written to `images/`, not exported
+  as `figma/*.svg`, and not carried into the Figma import. Every component stays in
+  `catalog.json`'s `components[]` with its untagged primary sticker, so the served
+  catalog browses as before with one fewer baked palette. They are also **not rendered
+  and not semantics-captured**: the fan-out lives *inside* one `@Preview` function (a
+  multipreview member, or one of several `@Preview` annotations), so naming functions
+  can't express it and the skip is per preview **id** — `composePreviewRender
+  --exclude-preview-id` / `-PcomposePreview.idExclude`, plus `bundle pack
+  --exclude-preview-id`, which forwards the patterns to the render *and* skips the same
+  ids in the CLI-driven daemon semantics pass. Ids only exist after discovery, so both
+  design-artifacts workflows run `compose-preview list --json` first and derive them with
+  [`deferred-preview-ids.mjs`](../../scripts/design-artifacts/deferred-preview-ids.mjs);
+  that extra Gradle invocation is gated on the spec actually deferring a mode, and its
+  compile is shared with the render that follows. Measured against a nine-theme catalog
+  this is the bigger lever: deferring every palette beyond the primary drops ~59% of
+  renders, versus ~37% for deferring all variants.
+- **Per entry** (`priority` on a component or variant) — **usable now**, since
+  [#2965](https://github.com/yschimke/compose-ai-tools/issues/2965) gave the deferred
+  records a live lane. A wholly-deferred entry has no `images[]` record at all, so it
+  reaches a viewer only through that lane: the export writes it to `catalog.json`'s
+  top-level `deferred[]` (with the `path` it *would* have baked, so the route id is the
+  same either way), and `ServeCatalogStore` decodes those records — aliasing each to its
+  daemon `previewId` and registering it with no baked PNG. A session with **no** live
+  lane hides them and says why (`deferred-not-served`) rather than showing broken cards.
+
+  It is also the form that saves whole renders, not just published bytes: the pre-flight
+  emits the `--preview` patterns for the still-required functions (`--render-filter-out
+  <file>`), and both design-artifacts workflows feed them to the render as
+  `ORG_GRADLE_PROJECT_composePreview.filter`. A function is only droppable when
+  **nothing required points at it** — two entries can name the same `@Preview`. One
+  reader — `entryPriority` in
+  [`catalog-priority.mjs`](../../scripts/design-artifacts/catalog-priority.mjs) — drives
+  every consumer (the join, the variant split, the render filter), so the render set and
+  the published set can't disagree about which entries are baked.
 
 Caveats worth knowing before reaching for it:
 
@@ -352,11 +399,29 @@ Caveats worth knowing before reaching for it:
   coverage silently missing from the published sheet.
 - **Static consumers see less.** `images/`, `figma/*.svg` and the Figma import carry
   only required entries. That's why the default stays `required` and deferral is
-  always explicit.
+  always explicit. A *baked-only* serve session is a static consumer too: it hides
+  the deferred previews (and says so — see `deferred-not-served` above), so the
+  deferred sheet is only whole on a host with a live lane.
 - **The primary sticker is never deferrable by mode.** Only a render that *names* a
   theme is eligible, so every published component keeps baked pixels. A component
   whose every render is mode-deferred is treated as a misconfiguration and fails the
-  gate rather than publishing with no pixels.
+  gate rather than publishing with no pixels. The render-side filter mirrors that: a
+  function whose *every* discovered id resolves to a deferred mode keeps all of them
+  (and says so in the log), so a bad `modePriority` surfaces as a gate failure rather
+  than as a component silently rendered away.
+- **Two shapes get the publish saving but not the render saving** (both still correct, just
+  not cheaper to build). A mode axis supplied by a **`@PreviewParameter` provider** has no
+  per-row id to skip: discovery emits one entry for the parameterized function and the
+  renderer expands the rows itself. And an **Android/Robolectric** catalog
+  (`design-catalog-wear-m3`, `design-catalog-remote-m3`) renders through a `Test` task that
+  reads the manifest directly and honours neither the id filter nor `--preview` — the same
+  backend gap #2066 left open for the name filter. The `--with-semantics` saving *does* land
+  there, since the CLI drives that pass. Wiring the Robolectric path is the follow-up.
+- **A skipped render is still declared.** Deferred previews stay listed in the bundle's
+  `previews.json` — the bundle task carries every selected preview and simply omits the
+  PNG for one that didn't render — which is what keeps them addressable on the serve
+  host's live lane. `catalog.json`'s `deferred[]` records the mode-deferred coverage from
+  that listing, so the declaration doesn't disappear along with the pixels.
 
 ## Components with no static sticker (`capture: "none"`)
 

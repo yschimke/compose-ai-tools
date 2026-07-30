@@ -71,6 +71,73 @@ abstract class RenderPreviewsTask : DefaultTask() {
   }
 
   /**
+   * Preview **id** filter (issue #2966) — narrows the render to individual members of a `@Preview`
+   * function's fan-out, which [previewFilters] cannot: a multipreview member / `@PreviewParameter`
+   * row has its own `id` but shares its `functionName`. Applied AFTER the name filter, so the two
+   * compose. Empty (the default) renders every preview the name filter kept.
+   *
+   * Populated from the repeatable `--preview-id` task option (see [setPreviewIdFilterOption]) or,
+   * as a convention, from the `composePreview.idFilter` Gradle property wired at registration.
+   * Matching (glob `*`/`?` or substring) lives in [PreviewNameFilter.matchesId]. `@Input` so a
+   * filter change re-runs the render.
+   *
+   * **Scope: this task only, i.e. the desktop/JVM render backend.** On an Android module
+   * `composePreviewRender` is a Robolectric `Test` task registered by [AndroidPreviewSupport],
+   * which reads none of these properties — so neither this nor [previewIdExcludes] (nor the
+   * pre-existing [previewFilters]) narrows an Android render. They are inert there rather than
+   * wrong: an absent filter means "render everything", the historical behaviour. Extending the
+   * Robolectric path is tracked separately; until then a catalog's render-time saving from a filter
+   * only lands on a desktop/CMP module.
+   */
+  @get:Input abstract val previewIdFilters: ListProperty<String>
+
+  /**
+   * Backs the repeatable `--preview-id` CLI option. Setting it overrides the
+   * `composePreview.idFilter` convention rather than merging with it, matching how `--preview`
+   * relates to `composePreview.filter`.
+   */
+  @Option(
+    option = "preview-id",
+    description =
+      "Render only previews whose discovered id matches this pattern (repeatable; supports " +
+        "'*'/'?' globs or a plain substring). Selects individual members of a multipreview / " +
+        "@PreviewParameter fan-out, which --preview cannot. Applied after --preview. No match " +
+        "fails the task. Overrides -PcomposePreview.idFilter.",
+  )
+  fun setPreviewIdFilterOption(values: List<String>) {
+    previewIdFilters.set(values)
+  }
+
+  /**
+   * Preview **id** exclusions (issue #2966) — drops individual fan-out members, keeping everything
+   * else. The polarity a *deferral* needs, and not interchangeable with [previewIdFilters]:
+   *
+   * A catalog that bakes one palette per component and defers the rest can't express that as a
+   * positive filter, because the ids it wants are not a matchable set. `*_light` would keep the
+   * light members but also drop every preview whose id carries no theme suffix at all — the
+   * untagged primary stickers, i.e. most of the catalog. `--exclude-preview-id *_dark` says what it
+   * means.
+   *
+   * Exclusion also fails safe under a stale spec: a pattern that matches nothing renders *more*
+   * than intended (a wasted render, caught by the publish), where a positive filter that matches
+   * nothing renders none. Applied after [previewIdFilters]. Empty (the default) excludes nothing.
+   */
+  @get:Input abstract val previewIdExcludes: ListProperty<String>
+
+  /** Backs the repeatable `--exclude-preview-id` CLI option; overrides the property convention. */
+  @Option(
+    option = "exclude-preview-id",
+    description =
+      "Skip previews whose discovered id matches this pattern (repeatable; '*'/'?' globs or a " +
+        "plain substring), rendering everything else. The polarity a deferred catalog palette " +
+        "needs. Applied after --preview-id. Excluding every preview fails the task. Overrides " +
+        "-PcomposePreview.idExclude.",
+  )
+  fun setPreviewIdExcludeOption(values: List<String>) {
+    previewIdExcludes.set(values)
+  }
+
+  /**
    * Render-tier filter. When `"fast"` the desktop path skips any preview whose representative
    * capture is heavier than [HEAVY_COST_THRESHOLD] (TOP / static stay in; LONG / GIF / animated
    * fall out). Default `"full"` keeps the historical behaviour (every preview rendered).
@@ -129,6 +196,10 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // Empty default = "render every preview". The plugin registration overrides this convention
     // with the `composePreview.filter` Gradle property; a `--preview` option overrides both.
     previewFilters.convention(emptyList())
+    // Same story one axis down: empty = "render every preview the name filter kept". Overridden at
+    // registration with the `composePreview.idFilter` property; `--preview-id` overrides both.
+    previewIdFilters.convention(emptyList())
+    previewIdExcludes.convention(emptyList())
     // Caching is intentionally gated on `tier=full` AND an empty `--preview` filter — a run is only
     // cacheable when its `outputDir` is the module's *complete* render set. A `tier=fast` run
     // writes
@@ -142,9 +213,18 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // filtered inputs (issue #2066 review). Up-to-date checks still apply, so a re-run with no
     // input
     // changes is a no-op and the renders directory stays as-is regardless of tier or filter.
+    // An id filter is partial for exactly the same reason a name filter is — it renders a subset
+    // and
+    // leaves every other (possibly stale) PNG in place — so it disqualifies caching too. Missing
+    // this
+    // would let a one-palette catalog render be stored and later restored as if it were the
+    // module's
+    // complete set.
     outputs.cacheIf("composePreviewRender caches full, unfiltered runs only") {
       tier.get().equals("full", ignoreCase = true) &&
-        previewFilters.getOrElse(emptyList()).none { it.isNotBlank() }
+        previewFilters.getOrElse(emptyList()).none { it.isNotBlank() } &&
+        previewIdFilters.getOrElse(emptyList()).none { it.isNotBlank() } &&
+        previewIdExcludes.getOrElse(emptyList()).none { it.isNotBlank() }
     }
   }
 
@@ -162,6 +242,16 @@ abstract class RenderPreviewsTask : DefaultTask() {
     val nameFiltered =
       selectNamedPreviews(rawManifest.previews, previewFilters.getOrElse(emptyList()))
 
+    // Id filter (issue #2966) — narrows to individual fan-out members within the functions the name
+    // filter kept, which is the granularity a catalog's per-theme `modePriority` needs to skip the
+    // renders it isn't going to publish. Runs immediately after the name filter so both are applied
+    // before tier/kind/catalog filtering, and so `--preview Foo --preview-id *_Light` composes.
+    val idFiltered =
+      excludePreviewIds(
+        selectPreviewIds(nameFiltered, previewIdFilters.getOrElse(emptyList())),
+        previewIdExcludes.getOrElse(emptyList()),
+      )
+
     // Tier filter — drop previews whose representative capture is heavy
     // when running in `fast` mode. The desktop path renders just the
     // first capture per preview, so the decision is per-preview rather
@@ -172,9 +262,9 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // with its badge.
     val isFastTier = tier.get().equals("fast", ignoreCase = true)
     val tierFiltered =
-      if (!isFastTier) nameFiltered
+      if (!isFastTier) idFiltered
       else
-        nameFiltered.filter {
+        idFiltered.filter {
           val firstCost = it.captures.firstOrNull()?.cost ?: STATIC_COST
           !isHeavyCost(firstCost)
         }
@@ -211,7 +301,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     renderWithCompose(manifest, rawManifest, outDir)
 
     val tierTag =
-      if (isFastTier) " (fast tier; ${nameFiltered.size - manifest.previews.size} heavy skipped)"
+      if (isFastTier) " (fast tier; ${idFiltered.size - manifest.previews.size} heavy skipped)"
       else ""
     logger.lifecycle("Rendered ${manifest.previews.size} preview(s)$tierTag")
   }
@@ -521,6 +611,84 @@ internal fun selectNamedPreviews(
         }
       }
     }
+  )
+}
+
+/**
+ * Narrows [previews] to those whose **id** matches [filters] (issue #2966) — the per-fan-out-member
+ * counterpart of [selectNamedPreviews].
+ *
+ * Exists because the name filter can't reach inside a `@Preview` function. A multipreview member or
+ * a `@PreviewParameter` row is its own [PreviewInfo] with a distinct `id` (`FilledButton_Light` /
+ * `FilledButton_Dark`) but the same `functionName`, so a name filter keeps or drops all of them
+ * together. A design catalog that bakes one palette per component and leaves the rest to the live
+ * preview server (`modePriority` in `catalog.spec.json`) needs exactly this granularity to skip the
+ * renders it isn't publishing — without it that deferral shrinks the published bundle but not the
+ * build.
+ *
+ * Same select-or-fail policy as [selectNamedPreviews], and for the same reason: a filter that
+ * matches nothing is a typo or a stale spec, and rendering zero previews silently would surface
+ * much later as a bundle full of missing stickers. Both filters compose — the name filter runs
+ * first, so `--preview Foo --preview-id *_Light` means "Foo's light member".
+ */
+internal fun selectPreviewIds(
+  previews: List<PreviewInfo>,
+  filters: List<String>,
+): List<PreviewInfo> {
+  val cleaned = filters.map(String::trim).filter(String::isNotEmpty)
+  if (cleaned.isEmpty()) return previews
+
+  val matched = previews.filter { PreviewNameFilter.matchesId(cleaned, it.id) }
+  if (matched.isNotEmpty()) return matched
+
+  val available = previews.map { it.id }.distinct().sorted()
+  throw GradleException(
+    buildString {
+      append("composePreviewRender --preview-id matched no previews for ")
+      append(cleaned.joinToString(", ") { "'$it'" })
+      append(".")
+      if (available.isEmpty()) {
+        append(" This module has no discovered previews — run composePreviewDiscover to confirm.")
+      } else {
+        append(" Available preview ids:")
+        available.take(MAX_SUGGESTED_PREVIEW_NAMES).forEach { append("\n  ").append(it) }
+        val more = available.size - MAX_SUGGESTED_PREVIEW_NAMES
+        if (more > 0) {
+          append("\n  … and ")
+          append(more)
+          append(" more (run composePreviewDiscover for the full list).")
+        }
+      }
+    }
+  )
+}
+
+/**
+ * Drops previews whose **id** matches [excludes], keeping the rest (issue #2966).
+ *
+ * The deferral polarity — see [RenderPreviewsTask.previewIdExcludes] for why a positive filter
+ * can't express "bake one palette per component, defer the others": the ids to keep aren't a
+ * matchable set, because the untagged primary stickers carry no theme suffix to match on.
+ *
+ * A pattern matching nothing is a no-op on purpose (it renders more than intended, which the
+ * publish catches, rather than less). Excluding *everything* still throws: the render would write
+ * no PNGs at all and the pack that follows would produce a catalog of missing stickers, which is
+ * precisely the silent failure the select-or-fail policy exists to prevent.
+ */
+internal fun excludePreviewIds(
+  previews: List<PreviewInfo>,
+  excludes: List<String>,
+): List<PreviewInfo> {
+  val cleaned = excludes.map(String::trim).filter(String::isNotEmpty)
+  if (cleaned.isEmpty() || previews.isEmpty()) return previews
+
+  val kept = previews.filterNot { PreviewNameFilter.matchesId(cleaned, it.id) }
+  if (kept.isNotEmpty()) return kept
+
+  throw GradleException(
+    "composePreviewRender --exclude-preview-id excluded every one of the ${previews.size} " +
+      "preview(s) for ${cleaned.joinToString(", ") { "'$it'" }} — nothing would render. Narrow the " +
+      "pattern; a render with no outputs packs a bundle of missing stickers."
   )
 }
 

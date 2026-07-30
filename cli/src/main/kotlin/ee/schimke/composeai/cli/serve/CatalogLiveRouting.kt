@@ -32,6 +32,22 @@ internal object CatalogLiveRouting {
   }
 
   /**
+   * [daemonIdForOverrideRender], extended with the session's **live-only** ids
+   * ([ServeHost.liveOnlyPreviewIds] — the catalog's deferred previews, published with no baked
+   * PNG). Those have nothing to replay, so for them even an override-free browse must go to the
+   * daemon; every other id keeps the baked-unless-the-override-demands-otherwise routing that makes
+   * browsing instant.
+   */
+  fun daemonIdForRender(
+    previewId: String,
+    overrides: PreviewOverrides,
+    alias: Map<String, String>,
+    liveOnly: Set<String>,
+  ): String? =
+    if (previewId in liveOnly) alias[previewId]
+    else daemonIdForOverrideRender(previewId, overrides, alias)
+
+  /**
    * Whether [o] would change pixels vs the preview's baked sticker, so the render must go to the
    * daemon rather than replay the baked PNG. The baked variant already encodes its **theme** (the
    * `…__light` / `…__dark` id segment) and every other axis at its discovery-time default, so a

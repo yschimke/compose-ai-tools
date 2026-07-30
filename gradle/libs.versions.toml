@@ -238,6 +238,14 @@ okhttp = "5.4.0"
 # `_composeai._tcp` service the mobile/wear clients browse for. No slf4j dep (uses java.util.logging),
 # so it doesn't perturb the strict slf4j pin in :cli.
 jmdns = "3.6.3"
+# Coil — image loading. `compileOnly` in `:renderer-android` (see `CoilPreviewSupport`), which
+# swaps the singleton `ImageLoader` for an inline-dispatcher one so `AsyncImage` resolves before a
+# preview is captured (issue #2952). Both majors are pinned because they are separate,
+# non-overlapping package trees (`coil.*` vs `coil3.*`) and a consumer may be on either; we compile
+# against both and pick at runtime. Versions here only bound what the renderer *compiles* against —
+# the consumer's own coil is what runs, and the builder APIs we touch are stable across each major.
+coil2 = "2.7.0"
+coil3 = "3.4.0"
 
 [libraries]
 # Ktor HTTP client (OkHttp engine) — backs the `:cli` / `:bundle-viewer` bundle downloader. Same
@@ -256,6 +264,12 @@ ktor-server-cio = { module = "io.ktor:ktor-server-cio", version.ref = "ktor" }
 ktor-server-websockets = { module = "io.ktor:ktor-server-websockets", version.ref = "ktor" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 jmdns = { module = "org.jmdns:jmdns", version.ref = "jmdns" }
+# Coil 2 / coil 3 — see the version comments above. `coil-compose` (not `coil-base`) because the
+# `:samples:android` fixture renders a real `AsyncImage`; the renderer itself only needs the
+# `ImageLoader` / `EventListener` surface from the base artifact, which `coil-compose` brings in.
+coil2-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil2" }
+coil3-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil3" }
+coil3-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil3" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }
 compose-bom-stable = { module = "androidx.compose:compose-bom", version.ref = "compose-bom-stable" }

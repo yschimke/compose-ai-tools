@@ -360,10 +360,27 @@ samples, fetched from preview branches in the `yschimke/compose-samples` fork, a
 `android/compose-samples`). So serving a third-party catalog under the id `compose-m3` can't make it
 read as an official design system.
 
-The image carries the standard set only as a **seed** ([`deploy/image/catalogs.json`](../deploy/image/catalogs.json)
-→ `/etc/compose-preview/catalogs.default.json`), copied to `/config/catalogs.json` on first boot when
-that file doesn't exist. After that the operator's copy wins and an image pull never touches it. A
-bare `docker run` with an empty volume still comes up serving the standard catalogs.
+### Image seed vs deployment config
+
+Two different things, kept in two different places on purpose:
+
+| | Lives in | Is |
+|---|---|---|
+| **Image seed** | [`deploy/image/catalogs.json`](../deploy/image/catalogs.json) + [`deploy/image/trust/producers.json`](../deploy/image/trust/producers.json) | Baked into the image; copied to `/config/…` on **first boot only**. What an operator adopting the prebuilt image starts with. |
+| **Deployment config** | `deploy/<deployment>/catalogs.json` + `producers.json` (e.g. [`deploy/preview.coo.ee/`](../deploy/preview.coo.ee)) | One box's published set. Applied over the admin API after each publish; never baked. |
+
+The seed carries **`compose-m3` only**, plus the single producer that publishes it — enough that a
+bare `docker compose up -d` shows something real, and nothing that presumes a relationship with any
+other project. It used to carry preview.coo.ee's full 17-catalog set and nine trusted producers,
+which meant every adopter's front page opened on someone else's apps and inherited trust in repos
+they had nothing to do with. On a box running the default `SERVE_ALLOW_RENDER_TRUSTED=1` that second
+part isn't cosmetic — trust is eligibility for server-side execution.
+
+So: publishing a catalog on **your** server is editing your own `/config/catalogs.json`, POSTing to
+`/admin/catalogs`, or bind-mounting your own file — never waiting on this repo. Running the same
+CI-side reconcile for your own box is `DEPLOY_CONFIG_DIR` + `DEPLOY_BASE_URL` pointing at yours.
+
+After first boot the operator's `/config` copy always wins and an image pull never touches it.
 
 `SERVE_CATALOGS` / `SERVE_CATALOGS_UNLISTED` still work as **additions** (`<system>@<owner>/<repo>`,
 comma-separated) for a box that wants one extra catalog without editing config; a system named in
@@ -398,6 +415,29 @@ response carries a `warning` when the config file couldn't be written (the catal
 it just won't come back). A registration fetches the branch **before** it's persisted, so a typo'd
 repo fails with `502` rather than leaving an unservable entry for every future boot to retry;
 malformed entries are `400` and re-publishing a served catalog is `409`.
+
+#### Front-page groups
+
+| Route | Does |
+|---|---|
+| `GET /admin/groups` | the sections a catalog entry may claim |
+| `POST /admin/groups` | define a section, or restyle one that exists — `{"id","heading","noun"}` |
+| `DELETE /admin/groups/<id>` | delete it; its catalogs fall back to their owner heading |
+
+Defining a section also **re-resolves the claims of catalogs already registered**. That matters
+because a catalog's placement is resolved once, at registration, into a snapshot — so without this,
+defining a section after its catalogs were published would collect nothing, and the cards would sit
+under the owner fallback until a restart.
+
+For the same reason `POST /admin/catalogs` on an id that's already published **converges its
+listing** rather than refusing: re-posting an entry whose `group` or `listed` has changed updates it
+in place, with no re-fetch and no dropped load state. Re-posting an *unchanged* entry is still `409`,
+so a duplicate stays visible, and a changed `repo` is still refused — that decides what bytes get
+served, so re-pointing a catalog is a retire plus a publish.
+
+Groups were the last part of the catalog config with no runtime path: a section could only be added
+by editing the box's `catalogs.json` and restarting, and a catalog claiming an undefined one was
+rejected outright — which meant a committed config genuinely could not converge. It can now.
 
 #### Trusted producers
 
@@ -457,12 +497,12 @@ never opted in has no admin surface to find. A bad token gets the same `404` the
 
 #### Where the trust store lives
 
-The prebuilt `deploy/image` bakes a seed branch-trust store at `/trust/producers.json` (trusting
-`design-artifacts/*` on `yschimke/compose-ai-tools`, `yschimke/meshcore-mobile`,
-`yschimke/homeassistant-remotecompose` and friends). On first boot the entrypoint copies it to
-`/config/producers.json` on the `preview_config` volume and points `SERVE_TRUST_STORE` there; it is
-never overwritten again, so an operator edit — or a `POST /admin/trust` — survives every subsequent
-image roll. The published catalogs still badge as `Trusted(Branch)` out of the box.
+The prebuilt `deploy/image` bakes a seed branch-trust store at `/trust/producers.json` trusting
+`design-artifacts/*` on **`yschimke/compose-ai-tools` and nothing else** — the one producer needed by
+`compose-m3`, the only catalog in the matching seed. Adopting the image deliberately does not hand you
+trust in anyone else's repos. On first boot the entrypoint copies it to `/config/producers.json` on
+the `preview_config` volume and points `SERVE_TRUST_STORE` there; it is never overwritten again, so an
+operator edit — or a `POST /admin/trust` — survives every subsequent image roll.
 
 Set `SERVE_TRUST_STORE` to your own path to pin different producers, or `none` to run trustless.
 (Empty falls back to the default — use `none` to opt out — which also means a bare image pull
@@ -474,11 +514,9 @@ isn't there — a typo, an unmounted secret, a broken deploy — the entrypoint 
 image's allowlist; with server-side re-render on, that would execute producers you never configured.
 An explicit override has to exist, and a missing one keeps the old hard failure.
 
-The catalog set is **not** baked the same way — see "The catalog set is config, not image content"
-above: the image ships it only as a first-boot seed, and the live copy lives on the `/config` volume
-where an operator edit or an admin-API call owns it. The `deploy/vps` from-source path mounts the
-same [`deploy/image/catalogs.json`](../deploy/image/catalogs.json) read-only, so both boxes publish
-one file's worth of catalogs.
+The catalog set works identically — see "Image seed vs deployment config" above. The `deploy/vps`
+from-source path mounts [`deploy/preview.coo.ee/`](../deploy/preview.coo.ee)'s pair read-only rather
+than the image seed, because that box runs *that deployment's* set; an adopter mounts their own.
 
 | | [`deploy/vps`](../deploy/vps) (from source) | [`deploy/image`](../deploy/image) (prebuilt) |
 |---|---|---|

@@ -7,8 +7,8 @@
 
 function __compose_preview_needs_command
     set -l cmd (commandline -opc)
-    set -l valued_flags --module --filter --id --output --timeout --plugin-version \
-        --fail-on --desc --branch --remote --pr-number --message \
+    set -l valued_flags --module --filter --id --exclude-preview-id --output --timeout \
+        --plugin-version --fail-on --desc --branch --remote --pr-number --message \
         --with-extension --with --project --antigravity-config --codex-config \
         --replicas-per-daemon
     set -l i 2
@@ -31,8 +31,8 @@ end
 
 function __compose_preview_command
     set -l cmd (commandline -opc)
-    set -l valued_flags --module --filter --id --output --timeout --plugin-version \
-        --fail-on --desc --branch --remote --pr-number --message \
+    set -l valued_flags --module --filter --id --exclude-preview-id --output --timeout \
+        --plugin-version --fail-on --desc --branch --remote --pr-number --message \
         --with-extension --with --project --antigravity-config --codex-config \
         --replicas-per-daemon
     set -l i 2
@@ -284,6 +284,9 @@ complete -c compose-preview -x -n '__compose_preview_using_bundle_sub pack' \
 complete -c compose-preview -x -n '__compose_preview_using_bundle_sub pack' \
     -l id -a '(__compose_preview_bundle_pack_ids)' \
     -d 'Preview id to include (repeatable; first is cover)'
+complete -c compose-preview -x -n '__compose_preview_using_bundle_sub pack' \
+    -l exclude-preview-id -a '(__compose_preview_bundle_pack_ids)' \
+    -d 'Preview id (or glob) to skip rendering + semantics (repeatable)'
 complete -c compose-preview -F -n '__compose_preview_using_bundle_sub pack' \
     -l output -s o -d 'Output .png polyglot path'
 complete -c compose-preview -f -n '__compose_preview_using_bundle_sub pack' \
