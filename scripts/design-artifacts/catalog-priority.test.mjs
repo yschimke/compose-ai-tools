@@ -7,6 +7,7 @@ import {
   deferralPlan,
   deferredModes,
   entryPriority,
+  variantPriority,
   isImageDeferred,
   modePriority,
   previewForImage,
@@ -60,6 +61,54 @@ test("deferredModes expands the wildcard over declared modes", () => {
   // A wildcard with no `modes` list to expand over still reports as deferring.
   assert.deepEqual(deferredModes(spec([], { modePriority: { "*": "deferred" } })), ["*"]);
   assert.deepEqual(deferredModes(spec([])), []);
+});
+
+test("variantPriority inherits a deferred component, so a mixed component can't leak coverage", () => {
+  const deferredComponent = { componentId: "A", preview: "Alpha", priority: "deferred" };
+  const requiredComponent = { componentId: "B", preview: "Beta" };
+  // A variant left at the `required` default under a deferred component is deferred WITH it. The
+  // driver short-circuits a deferred component before folding variants, so treating this one as
+  // required would render it and then neither bake it nor record it anywhere.
+  assert.equal(variantPriority(deferredComponent, { preview: "AlphaOff", state: "off" }), DEFERRED);
+  assert.equal(
+    variantPriority(deferredComponent, { preview: "AlphaOn", state: "on", priority: "required" }),
+    DEFERRED,
+    "an explicit `required` under a deferred component does not resurrect it",
+  );
+  // The useful direction still works: a required component with one deferred variant.
+  assert.equal(variantPriority(requiredComponent, { preview: "BetaOff", state: "off" }), REQUIRED);
+  assert.equal(
+    variantPriority(requiredComponent, { preview: "BetaOff", state: "off", priority: "deferred" }),
+    DEFERRED,
+  );
+});
+
+test("a deferred component's variants stay out of the render filter", () => {
+  // The invariant: what the filter renders and what the driver bakes must agree. A variant of a
+  // deferred component is baked by nothing, so its function must not be kept alive here either.
+  const s = spec([
+    { componentId: "A", preview: "Alpha" },
+    {
+      componentId: "B",
+      preview: "Beta",
+      priority: "deferred",
+      variants: [{ preview: "BetaOff", state: "off" }],
+    },
+  ]);
+  const { required, deferred } = previewNamesByPriority(s);
+  assert.deepEqual(required, ["Alpha"]);
+  assert.deepEqual(deferred, ["Beta", "BetaOff"]);
+  assert.deepEqual(renderFilterPatterns(s), ["Alpha"]);
+  // splitDeferredVariants agrees, for a caller that reaches it with a deferred component.
+  const { deferredVariants } = splitDeferredVariants(s.groups[0].components[1]);
+  assert.deepEqual(
+    deferredVariants.map((v) => v.preview),
+    ["BetaOff"],
+  );
+  // And the plan counts it, so the pre-flight reports the variant rather than only the entry.
+  const plan = deferralPlan(s);
+  assert.equal(plan.entries, 1);
+  assert.equal(plan.variants, 1);
 });
 
 test("previewNamesByPriority only defers a function nothing required points at", () => {

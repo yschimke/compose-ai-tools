@@ -44,7 +44,7 @@ import {
 } from "@design-parity/candidate";
 import { buildCatalog, writeCatalog } from "@design-parity/catalog-export";
 
-import { foldVariants } from "./catalog-variants.mjs";
+import { foldVariants, variantLabel } from "./catalog-variants.mjs";
 import {
   DEFERRED,
   deferralPlan,
@@ -390,14 +390,47 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
       // with a PNG), so it short-circuits before the candidate lookup — reporting it missing is
       // exactly the false failure this feature exists to remove.
       if (entryPriority(specComponent) === DEFERRED) {
-        deferred.push({
-          componentId: specComponent.componentId,
-          group: group.name,
-          ...(group.section !== undefined ? { section: group.section } : {}),
-          ...(specComponent.caption !== undefined ? { caption: specComponent.caption } : {}),
-          preview: specComponent.preview,
-          reason: "entry",
-        });
+        // `"capture": "none"` outranks deferral, for both the entry and its variants below. The two
+        // axes answer different questions — deferral picks the LANE (bake now vs. render on the serve
+        // host), `capture` says the preview yields no sticker on ANY lane — so a declared-uncapturable
+        // preview has nothing for the live lane to serve either. Recording it live-only would invent
+        // a card for coverage the spec says doesn't render, and the required path already classifies
+        // the identical entry as `noSticker` (foldVariants); the two must agree.
+        if (exportsNoSticker(specComponent)) {
+          noSticker.push(specComponent.componentId);
+        } else {
+          deferred.push({
+            componentId: specComponent.componentId,
+            group: group.name,
+            ...(group.section !== undefined ? { section: group.section } : {}),
+            ...(specComponent.caption !== undefined ? { caption: specComponent.caption } : {}),
+            preview: specComponent.preview,
+            reason: "entry",
+          });
+        }
+        // Its variants are deferred with it (`variantPriority` inherits), and each needs its OWN
+        // record: a variant's sticker is normally folded onto the component's images, and there is no
+        // `components[]` entry left to fold onto. Recording them here is what keeps them reachable on
+        // the live lane instead of dropping out of the publish unnoticed — the short-circuit below
+        // means nothing else in this loop will see them.
+        for (const variant of specComponent.variants ?? []) {
+          if (exportsNoSticker(variant)) {
+            // Same label shape `foldVariants` uses for the required path, from the same helper, so a
+            // reader can't tell from the report which lane the entry took.
+            noSticker.push(`${specComponent.componentId} [${variantLabel(variant)}]`);
+            continue;
+          }
+          deferred.push({
+            componentId: specComponent.componentId,
+            group: group.name,
+            ...(group.section !== undefined ? { section: group.section } : {}),
+            preview: variant.preview,
+            reason: "variant",
+            ...(variant.state !== undefined ? { state: variant.state } : {}),
+            ...(variant.props !== undefined ? { props: variant.props } : {}),
+            ...(variant.theme !== undefined ? { theme: variant.theme } : {}),
+          });
+        }
         continue;
       }
       // Fold only the REQUIRED variants; each deferred one is recorded live-only instead of being

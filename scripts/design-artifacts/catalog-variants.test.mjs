@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { foldVariants } from "./catalog-variants.mjs";
+import { foldVariants, variantLabel } from "./catalog-variants.mjs";
 import { renderIndexHtml } from "./render-index-html.mjs";
 
 const img = (state, theme) => ({ state, theme, uri: "x", width: 100, height: 40 });
@@ -262,4 +262,14 @@ test("a content-axis (props) variant never wins the hero and is labelled in the 
   // The chip counts it as a variant (not a "state"), and the zoom view labels the axis.
   assert.match(html, /class="statechip"[^>]*>\+1 variant</);
   assert.match(html, /<figcaption>content=icon\+label<\/figcaption>/);
+});
+
+test("variantLabel is the shared label shape both lanes report noSticker under", () => {
+  // Exported because the driver's deferred branch reports `capture: "none"` variants as noSticker
+  // too, and must produce a label indistinguishable from the one foldVariants writes here — a
+  // reader of the report shouldn't be able to tell which lane the entry took.
+  assert.equal(variantLabel({ preview: "P", state: "off" }), "off");
+  assert.equal(variantLabel({ preview: "P", state: "on", props: { size: "sm" } }), "on, size=sm");
+  assert.equal(variantLabel({ preview: "P", theme: "dark" }), "dark");
+  assert.equal(variantLabel({ preview: "P" }), "P", "falls back to the preview name");
 });

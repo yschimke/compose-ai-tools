@@ -59,6 +59,24 @@ export function entryPriority(entry) {
 }
 
 /**
+ * The priority of one `variants` entry, which **inherits its component's deferral**: a variant of a
+ * deferred component is deferred whatever it says, because a variant's sticker is folded onto the
+ * component's images and there is no `components[]` record left to fold it onto.
+ *
+ * Without the inheritance a mixed-priority component loses coverage silently: the driver
+ * short-circuits a deferred component before reaching its variants, so a variant left at the
+ * `required` default would be rendered (the render filter keeps its function), then neither baked,
+ * nor recorded in `deferred[]`, nor reported by the completeness gate. Inheriting instead keeps it
+ * addressable through the live lane, which is what deferral means everywhere else.
+ *
+ * A variant can still be deferred on its own while its component stays required — that direction is
+ * the useful one, and it is what [splitDeferredVariants] folds out.
+ */
+export function variantPriority(component, variant) {
+  return entryPriority(component) === DEFERRED ? DEFERRED : entryPriority(variant);
+}
+
+/**
  * The priority the spec declares for one mode (theme) of the sticker sheet, from `modePriority`:
  * an exact key wins, then the `*` wildcard, then the `required` default.
  */
@@ -132,7 +150,7 @@ export function specDefersAnything(spec) {
   return components(spec).some(
     ({ component }) =>
       entryPriority(component) === DEFERRED ||
-      (component?.variants ?? []).some((v) => entryPriority(v) === DEFERRED),
+      (component?.variants ?? []).some((v) => variantPriority(component, v) === DEFERRED),
   );
 }
 
@@ -174,7 +192,7 @@ export function previewNamesByPriority(spec) {
   for (const { component } of components(spec)) {
     note(component?.preview, entryPriority(component));
     for (const variant of component?.variants ?? []) {
-      note(variant?.preview, entryPriority(variant));
+      note(variant?.preview, variantPriority(component, variant));
     }
   }
   for (const name of required) deferred.delete(name);
@@ -232,10 +250,13 @@ export function splitDeferredImages(images, spec) {
  */
 export function splitDeferredVariants(component) {
   const variants = component?.variants ?? [];
-  const deferredVariants = variants.filter((v) => entryPriority(v) === DEFERRED);
+  const deferredVariants = variants.filter((v) => variantPriority(component, v) === DEFERRED);
   if (deferredVariants.length === 0) return { component, deferredVariants: [] };
   return {
-    component: { ...component, variants: variants.filter((v) => entryPriority(v) === REQUIRED) },
+    component: {
+      ...component,
+      variants: variants.filter((v) => variantPriority(component, v) === REQUIRED),
+    },
     deferredVariants,
   };
 }
@@ -276,7 +297,7 @@ export function deferralPlan(spec) {
   for (const { component } of components(spec)) {
     if (entryPriority(component) === DEFERRED) entries += 1;
     for (const variant of component?.variants ?? []) {
-      if (entryPriority(variant) === DEFERRED) variants += 1;
+      if (variantPriority(component, variant) === DEFERRED) variants += 1;
     }
   }
   const { required, deferred } = previewNamesByPriority(spec);

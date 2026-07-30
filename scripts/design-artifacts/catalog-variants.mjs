@@ -98,7 +98,7 @@ function recordOutputKey(seen, image, componentId) {
 }
 
 /** A short label for a variant, for the missing-render report: its state, props and/or theme. */
-function variantLabel(variant) {
+export function variantLabel(variant) {
   const parts = [
     ...(variant.state ? [variant.state] : []),
     ...Object.entries(variant.props ?? {}).map(([k, v]) => `${k}=${v}`),
