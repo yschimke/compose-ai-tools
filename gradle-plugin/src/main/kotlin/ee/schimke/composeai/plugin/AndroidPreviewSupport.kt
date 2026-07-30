@@ -2296,6 +2296,19 @@ internal object AndroidPreviewSupport {
     // `XR_SUBSPACE` itself, and writes `scene.json` per preview under `renders/`. Opt-in via
     // `composePreview.enableXrPreviews` (see the renderer-config gate above) — registered only when
     // the consumer asked for XR, so non-XR consumers don't get the task (or its deps) at all.
+    // Read at configuration time so the `outputs.cacheIf` spec below closes over these
+    // **Providers**
+    // and not over `project`. A `cacheIf` spec is serialised into the configuration-cache entry, so
+    // calling `ComposePreviewTasks.previewFilterProperty(project)` inside it captures
+    // `DefaultProject` and fails the whole build with `cannot serialize object of type
+    // 'org.gradle.api.internal.project.DefaultProject' … not supported with the configuration
+    // cache` — which sank every render, not just XR ones, because storing the entry fails the build
+    // (issue #2994's gate, fixed here). The sibling `composePreviewRender` gate reads its own task
+    // properties and was never affected.
+    val xrFilterPatterns = ComposePreviewTasks.previewFilterProperty(project)
+    val xrIdFilterPatterns = ComposePreviewTasks.previewIdFilterProperty(project)
+    val xrIdExcludePatterns = ComposePreviewTasks.previewIdExcludeProperty(project)
+    val xrRowExcludePatterns = ComposePreviewTasks.previewRowExcludeProperty(project)
     if (xrPreviewsEnabled)
       project.tasks.register("composePreviewRenderXr", Test::class.java) {
         group = "compose preview"
@@ -2385,10 +2398,10 @@ internal object AndroidPreviewSupport {
         // sibling that shares its directory has to refuse too, or the gate leaks through the back
         // door.
         outputs.cacheIf("composePreviewRenderXr caches unfiltered runs only") {
-          ComposePreviewTasks.previewFilterProperty(project).get().none { it.isNotBlank() } &&
-            ComposePreviewTasks.previewIdFilterProperty(project).get().none { it.isNotBlank() } &&
-            ComposePreviewTasks.previewIdExcludeProperty(project).get().none { it.isNotBlank() } &&
-            ComposePreviewTasks.previewRowExcludeProperty(project).get().none { it.isNotBlank() }
+          xrFilterPatterns.get().none { it.isNotBlank() } &&
+            xrIdFilterPatterns.get().none { it.isNotBlank() } &&
+            xrIdExcludePatterns.get().none { it.isNotBlank() } &&
+            xrRowExcludePatterns.get().none { it.isNotBlank() }
         }
 
         outputs.dir(rendersDirectory).withPropertyName("xrRendersDir")
