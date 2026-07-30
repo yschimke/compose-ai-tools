@@ -88,6 +88,29 @@ data class PlaygroundDiagnostic(
   val endCh: Int? = null,
 )
 
+/** A CodeMirror position in the stock `errors`-map shape (0-based line + char). */
+@Serializable data class PlaygroundPosition(val line: Int, val ch: Int)
+
+/** A `[start, end)` span in the stock `errors`-map shape. */
+@Serializable
+data class PlaygroundInterval(val start: PlaygroundPosition, val end: PlaygroundPosition)
+
+/**
+ * One diagnostic in the **stock `kotlin-compiler-server`** `errors`-map shape — the wire form a
+ * stock `kotlin-playground` frontend reads to draw inline squiggles. Distinct from
+ * [PlaygroundDiagnostic] (our flat internal shape): the stock frontend iterates the `errors` map
+ * per file and reads `error.interval.start`, so the position must be **nested** under `interval`,
+ * and `severity` is the upstream uppercase spelling (`ERROR`/`WARNING`). [PlaygroundErrorsWire]
+ * projects our diagnostics into this shape.
+ */
+@Serializable
+data class PlaygroundStockError(
+  val interval: PlaygroundInterval,
+  val message: String,
+  val severity: String,
+  val className: String,
+)
+
 /**
  * The Stage-1 result.
  *
@@ -96,10 +119,16 @@ data class PlaygroundDiagnostic(
  * Stage-2 session. On a compile error: [diagnostics] carries the errors and **no** token is minted
  * ([previewToken] stays null). [exception] is reserved for a server-side failure that isn't a user
  * compile error (e.g. the render subprocess died).
+ *
+ * [errors] is the **same** diagnostics projected into the stock `kotlin-compiler-server` wire shape
+ * (a map keyed by file name → [PlaygroundStockError]s with nested `interval` positions), so an
+ * unmodified `kotlin-playground` frontend can render inline squiggles. Our own frontend reads the
+ * richer [diagnostics] instead; both are populated, so neither client is second-class.
  */
 @Serializable
 data class PlaygroundRunResponse(
   val diagnostics: List<PlaygroundDiagnostic> = emptyList(),
+  val errors: Map<String, List<PlaygroundStockError>> = emptyMap(),
   val text: String = "",
   val exception: String? = null,
   val image: String? = null,
