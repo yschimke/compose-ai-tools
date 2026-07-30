@@ -2257,13 +2257,23 @@ class ServeHttpServer(
       call.respondText("no cmp-jvm render for this preview", status = HttpStatusCode.NotFound)
       return
     }
+    // Apply the live `rc.<name>=…` knob edits the viewer sends, leniently parsed (a malformed seed
+    // drops to the authored default rather than failing the render) — the server-side counterpart
+    // of
+    // the JS lane's in-browser knob application.
+    val seeds =
+      ServeOverrides.rcNamedValueSeeds(
+        call.request.queryParameters.entries().associate { (key, values) ->
+          key to (values.firstOrNull() ?: "")
+        }
+      )
     val result =
       withContext(Dispatchers.IO) {
         if (!renderSemaphore.tryAcquire(RENDER_QUEUE_WAIT_SECONDS, TimeUnit.SECONDS)) {
           null
         } else {
           try {
-            RcJvmServerRenderer.render(doc, spec)
+            RcJvmServerRenderer.render(doc, spec, seeds)
           } finally {
             renderSemaphore.release()
           }

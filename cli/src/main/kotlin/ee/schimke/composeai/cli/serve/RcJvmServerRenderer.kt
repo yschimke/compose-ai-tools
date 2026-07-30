@@ -18,7 +18,9 @@ package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.cli.bundleSidecarSearchDescription
 import ee.schimke.composeai.cli.locateBundleSidecarJars
+import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import java.io.File
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 /**
@@ -62,16 +64,22 @@ internal object RcJvmServerRenderer {
       "${bundleSidecarSearchDescription("lib-daemon-desktop")})"
 
   /**
-   * Render [docBytes] to a PNG at [spec]'s pixel size and density, or null when the subprocess is
-   * unavailable, times out, or the player could not draw the document (it prints the reason to
-   * stderr, surfaced in [RenderResult.Failed]).
+   * Render [docBytes] to a PNG at [spec]'s pixel size and density, applying any [seeds] (the serve
+   * `rc.<name>=…` knob edits) on top of the document's authored defaults, or null when the
+   * subprocess is unavailable, times out, or the player could not draw the document (it prints the
+   * reason to stderr, surfaced in [RenderResult.Failed]).
    */
-  fun render(docBytes: ByteArray, spec: RcJvmRenderSpec): RenderResult {
+  fun render(
+    docBytes: ByteArray,
+    spec: RcJvmRenderSpec,
+    seeds: Map<String, RemoteNamedValue> = emptyMap(),
+  ): RenderResult {
     val cp = classpath()
     if (cp.isEmpty()) return RenderResult.Unavailable(unavailableReason())
 
     val input = File.createTempFile("rcjvm-in-", ".rc")
     val output = File.createTempFile("rcjvm-out-", ".png")
+    val seedsFile = writeSeedsFile(seeds)
     try {
       input.writeBytes(docBytes)
       output.delete() // the subprocess creates it; absence after the run signals failure
@@ -95,6 +103,10 @@ internal object RcJvmServerRenderer {
         add(spec.heightPx.toString())
         add("--density")
         add(spec.density.toString())
+        if (seedsFile != null) {
+          add("--seeds")
+          add(seedsFile.absolutePath)
+        }
       }
 
       val process =
@@ -135,7 +147,48 @@ internal object RcJvmServerRenderer {
     } finally {
       input.delete()
       output.delete()
+      seedsFile?.delete()
     }
+  }
+
+  /**
+   * Serialize [seeds] to the line-based file `RcJvmRenderMain` reads (`<kind> <base64Name>
+   * <value>`, kind ∈ str/float/int/color), or null when there is nothing to seed. Normalizes the
+   * wire types the jvm player does not need to distinguish — `dp` collapses to float and `bool` to
+   * int, matching the daemon's `applyConnectorOverrides` — and drops a colour whose `#AARRGGBB`
+   * string won't parse.
+   */
+  private fun writeSeedsFile(seeds: Map<String, RemoteNamedValue>): File? {
+    if (seeds.isEmpty()) return null
+    val b64 = Base64.getEncoder()
+    fun enc(s: String) = b64.encodeToString(s.toByteArray(Charsets.UTF_8))
+    val lines = seeds.mapNotNull { (name, value) ->
+      val n = enc(name)
+      when (value) {
+        is RemoteNamedValue.StringValue -> "str $n ${enc(value.value)}"
+        is RemoteNamedValue.FloatValue -> "float $n ${value.value}"
+        is RemoteNamedValue.DpValue -> "float $n ${value.value}"
+        is RemoteNamedValue.IntValue -> "int $n ${value.value}"
+        is RemoteNamedValue.BooleanValue -> "int $n ${if (value.value) 1 else 0}"
+        is RemoteNamedValue.ColorValue -> rcColorToArgb(value.argb)?.let { "color $n $it" }
+      }
+    }
+    if (lines.isEmpty()) return null
+    return File.createTempFile("rcjvm-seeds-", ".txt").also {
+      it.writeText(lines.joinToString("\n"))
+    }
+  }
+
+  /**
+   * Parse an rc colour string to an ARGB int, matching the JS lane's `parseRcColor`: strip a
+   * leading `#` (or URL-encoded `%23`), treat a 6-digit `#RRGGBB` as **opaque** (prepend `FF` —
+   * without it a six-digit value becomes `0x00RRGGBB`, fully transparent), and accept only a
+   * resulting 8 hex digits. Null when it won't parse.
+   */
+  internal fun rcColorToArgb(raw: String): Int? {
+    val hex = raw.removePrefix("%23").removePrefix("#")
+    val opaque = if (hex.length == 6) "FF$hex" else hex
+    return opaque.takeIf { it.length == 8 }?.toLongOrNull(16)?.toInt()
   }
 
   private fun javaBin(): String {

@@ -52,7 +52,7 @@ fun main(args: Array<String>) {
   if (input == null || output == null || width == null || height == null) {
     System.err.println(
       "usage: RcJvmRenderMain --input <doc.rc> --output <out.png> --width <px> --height <px> " +
-        "[--density <f>]"
+        "[--density <f>] [--seeds <file>]"
     )
     exitProcess(2)
   }
@@ -69,9 +69,19 @@ fun main(args: Array<String>) {
       exitProcess(3)
     }
 
+  val seeds =
+    try {
+      opts[ARG_SEEDS]?.let { readSeeds(File(it)) } ?: emptyMap()
+    } catch (e: Exception) {
+      // A malformed seed file must not fail the whole render — fall back to the base document, the
+      // same posture as an unsupported op. The reason is logged for the caller's failure tail.
+      System.err.println("ignoring unreadable seed file ${opts[ARG_SEEDS]}: ${e.message}")
+      emptyMap()
+    }
+
   val png =
     try {
-      renderRemoteDocumentToPng(bytes, width, height, density)
+      renderRemoteDocumentToPng(bytes, width, height, density, seeds)
     } catch (t: Throwable) {
       // Any render failure — a malformed document, a missing native, an unsupported op — is
       // reported
@@ -94,7 +104,37 @@ private const val ARG_OUTPUT = "--output"
 private const val ARG_WIDTH = "--width"
 private const val ARG_HEIGHT = "--height"
 private const val ARG_DENSITY = "--density"
+private const val ARG_SEEDS = "--seeds"
 private const val DEFAULT_DENSITY = 2f
+
+/**
+ * Read the knob-seed file the serve side wrote: one seed per line, space-separated `<kind>
+ * <base64Name> <value>`, where `kind` is `str` / `float` / `int` / `color`. The name is base64 (it
+ * may contain any character); for `str` the value is base64 too, for the numeric kinds it is a
+ * plain decimal (`color` is a decimal ARGB int). Unknown kinds / malformed lines are skipped.
+ */
+private fun readSeeds(file: File): Map<String, RcSeed> {
+  val decoder = java.util.Base64.getDecoder()
+  fun decode(s: String) = String(decoder.decode(s), Charsets.UTF_8)
+  val seeds = LinkedHashMap<String, RcSeed>()
+  file.readLines().forEach { line ->
+    if (line.isBlank()) return@forEach
+    val parts = line.split(' ')
+    if (parts.size < 3) return@forEach
+    val (kind, nameB64, rawValue) = Triple(parts[0], parts[1], parts[2])
+    val name = decode(nameB64)
+    val seed =
+      when (kind) {
+        "str" -> RcSeed.StringValue(decode(rawValue))
+        "float" -> rawValue.toFloatOrNull()?.let { RcSeed.FloatValue(it) }
+        "int" -> rawValue.toIntOrNull()?.let { RcSeed.IntValue(it) }
+        "color" -> rawValue.toIntOrNull()?.let { RcSeed.ColorValue(it) }
+        else -> null
+      }
+    if (seed != null) seeds[name] = seed
+  }
+  return seeds
+}
 
 /**
  * Parse `--flag value` pairs; unknown or dangling flags are ignored (the caller controls the argv).

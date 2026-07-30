@@ -145,6 +145,39 @@ object ServeOverrides {
     key in SUPPORTED_KEYS || key.startsWith(KNOB_PREFIX) || key.startsWith(RC_NAMED_PREFIX)
 
   /**
+   * The Remote Compose `rc.<name>=<value>` seeds in [params], parsed **leniently** — a malformed
+   * typed value is skipped rather than failing. Used by the cmp-jvm render lane, which renders the
+   * captured document server-side and is best-effort (a bad seed drops to the authored default
+   * rather than 400ing the whole render). The strict counterpart lives inline in [parse], which
+   * returns [OverrideParse.Invalid] for the daemon lanes. Both read the same `<kind>:` grammar
+   * ([RC_KNOWN_KINDS], default `string`).
+   */
+  fun rcNamedValueSeeds(params: Map<String, String>): Map<String, RemoteNamedValue> {
+    val seeds = mutableMapOf<String, RemoteNamedValue>()
+    for ((rawKey, raw) in params) {
+      if (!rawKey.startsWith(RC_NAMED_PREFIX)) continue
+      val name = rawKey.removePrefix(RC_NAMED_PREFIX)
+      if (name.isBlank() || raw.isBlank()) continue
+      val sep = raw.indexOf(':')
+      val kind = if (sep > 0) raw.substring(0, sep).takeIf { it in RC_KNOWN_KINDS } else null
+      val value = if (kind != null) raw.substring(sep + 1) else raw
+      val seed =
+        when (kind ?: "string") {
+          "string" -> RemoteNamedValue.StringValue(value)
+          "int" -> value.toIntOrNull()?.let { RemoteNamedValue.IntValue(it) }
+          "float" -> value.toFloatOrNull()?.let { RemoteNamedValue.FloatValue(it) }
+          "dp" -> value.toFloatOrNull()?.let { RemoteNamedValue.DpValue(it) }
+          "bool" ->
+            RemoteNamedValue.BooleanValue(value.equals("true", ignoreCase = true) || value == "1")
+          "color" -> RemoteNamedValue.ColorValue(value)
+          else -> null
+        }
+      if (seed != null) seeds[name] = seed
+    }
+    return seeds
+  }
+
+  /**
    * The `<kind>` tags an explicit `knob.<key>=<kind>:<value>` may carry (legacy /
    * declaration-less).
    */

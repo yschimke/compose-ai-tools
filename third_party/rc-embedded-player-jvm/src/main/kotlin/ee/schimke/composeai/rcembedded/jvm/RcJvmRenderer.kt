@@ -103,11 +103,12 @@ public fun renderRemoteDocumentToPng(
   widthPx: Int,
   heightPx: Int,
   density: Float = 2f,
+  seeds: Map<String, RcSeed> = emptyMap(),
 ): ByteArray {
   val scene =
     ImageComposeScene(width = widthPx, height = heightPx, density = Density(density)) {
       val document = remember(bytes) { parseDocument(bytes) }
-      RcPlayerJvm(document, Modifier.fillMaxSize())
+      RcPlayerJvm(document, Modifier.fillMaxSize(), seeds)
     }
   try {
     val image = scene.render()
@@ -134,7 +135,11 @@ internal fun parseDocument(bytes: ByteArray): CoreDocument =
  * static-document subset of Android `RcPlayer` — see the file header.
  */
 @Composable
-internal fun RcPlayerJvm(document: CoreDocument, modifier: Modifier = Modifier) {
+internal fun RcPlayerJvm(
+  document: CoreDocument,
+  modifier: Modifier = Modifier,
+  seeds: Map<String, RcSeed> = emptyMap(),
+) {
   val clock: RemoteClock =
     remember(document) { document.clock.takeUnless { it is SystemClock } ?: RemoteClock.SYSTEM }
 
@@ -143,7 +148,9 @@ internal fun RcPlayerJvm(document: CoreDocument, modifier: Modifier = Modifier) 
   // density (and the platform font scale) into context init below.
   val density = LocalDensity.current
   val remoteContext =
-    remember(document) { initDrawContext(document, clock, density.density, density.fontScale) }
+    remember(document) {
+      initDrawContext(document, clock, density.density, density.fontScale, seeds)
+    }
 
   // Static capture: no frame loop. The time state is still provided so time-reading resolvers have
   // a value to read (0), matching a document settled at t=0.
@@ -188,6 +195,7 @@ private fun initDrawContext(
   clock: RemoteClock,
   density: Float,
   fontScale: Float,
+  seeds: Map<String, RcSeed>,
 ): JvmRemoteContext =
   JvmRemoteContext(clock = clock).also { context ->
     // Back the document's reactive scalar state with Compose snapshot state, so variables
@@ -235,10 +243,53 @@ private fun initDrawContext(
     collectConstants(document.getOperationsReflection(), constantOps)
     document.applyOperationsReflection(context, constantOps)
 
+    // Host knob edits (the serve `rc.<name>=…` seeds), applied on top of the authored defaults just
+    // loaded — exactly where Android `RcPlayer` applies its `namedColorOverrides` (RcPlayer.kt), so
+    // a
+    // seeded value wins over the constant and the draw resolves it.
+    applySeeds(context, seeds)
+
     val dataOps = ArrayList<Operation>()
     document.rootLayoutComponent?.getData(dataOps, true)
     document.applyOperationsReflection(context, dataOps)
   }
+
+/**
+ * A named-value knob seed applied on top of a document's authored defaults — the jvm counterpart of
+ * the serve `rc.<name>=…` overrides. Kept neutral (no daemon-protocol types): [RcJvmRenderMain]
+ * decodes its CLI seed file into these, and the serve side encodes the daemon's
+ * `RemoteComposeOverride.namedValues` into that file. `dp` collapses to [FloatValue] and `bool` to
+ * [IntValue] on the writer side (matching the daemon's apply table), so only four leaf types
+ * arrive.
+ */
+public sealed interface RcSeed {
+  public data class StringValue(val value: String) : RcSeed
+
+  public data class FloatValue(val value: Float) : RcSeed
+
+  public data class IntValue(val value: Int) : RcSeed
+
+  public data class ColorValue(val argb: Int) : RcSeed
+}
+
+/**
+ * Apply [seeds] as named-value overrides on [context], the jvm counterpart of the daemon's
+ * `applyConnectorOverrides`: it targets the embedded player's `RemoteContext` named-override family
+ * (the same setters the Android `RcPlayer` uses for its colour overrides) instead of a
+ * `StateUpdater`. Names are USER-qualified when unprefixed, matching how author knobs
+ * (`rememberNamedRemote*`) register and how `RcPlayer` qualifies its overrides.
+ */
+private fun applySeeds(context: JvmRemoteContext, seeds: Map<String, RcSeed>) {
+  seeds.forEach { (name, seed) ->
+    val qualified = if (name.contains(':')) name else "USER:$name"
+    when (seed) {
+      is RcSeed.StringValue -> context.setNamedStringOverride(qualified, seed.value)
+      is RcSeed.FloatValue -> context.setNamedFloatOverride(qualified, seed.value)
+      is RcSeed.IntValue -> context.setNamedIntegerOverride(qualified, seed.value)
+      is RcSeed.ColorValue -> context.setNamedColorOverride(qualified, seed.argb)
+    }
+  }
+}
 
 /** Collect every [BitmapData] in the op tree. Mirrors `RcPlayer.kt`'s private `findBitmaps`. */
 private fun findBitmaps(operations: Collection<Operation>, list: MutableList<BitmapData>) {
