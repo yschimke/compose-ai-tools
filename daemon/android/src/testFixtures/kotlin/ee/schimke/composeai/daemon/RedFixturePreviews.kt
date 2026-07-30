@@ -54,6 +54,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.tooling.preview.PreviewParameter
+import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -731,4 +734,28 @@ fun LazyColumnListPreview() {
       }
     }
   }
+}
+
+/**
+ * `@PreviewParameter` regression fixture (issue #3027).
+ *
+ * The daemon used to resolve every preview with the parameterless
+ * `getDeclaredComposableMethod(functionName)` lookup, which matches only `foo(Composer, int)`. This
+ * preview compiles to `ThemedTintedSquare(long, Composer, int)`, so resolution threw
+ * `NoSuchMethodException` before composition started — no PNG, no semantics, just an `.error.json`.
+ * That took out 27 previews in one real consumer module, including the two `Summary*` previews the
+ * issue was filed against.
+ *
+ * Two values on purpose: the daemon renders one frame per preview id, so it must invoke the
+ * **first** one ([SquareTintProvider] green), never the second. A regression that silently picks the
+ * wrong value fails the pixel assertion rather than passing on "something rendered".
+ */
+class SquareTintProvider : PreviewParameterProvider<Long> {
+  override val values = sequenceOf(0xFF43A047L, 0xFF1E88E5L)
+}
+
+@Preview
+@Composable
+fun ThemedTintedSquare(@PreviewParameter(SquareTintProvider::class) tint: Long) {
+  Box(modifier = Modifier.fillMaxSize().background(Color(tint)))
 }

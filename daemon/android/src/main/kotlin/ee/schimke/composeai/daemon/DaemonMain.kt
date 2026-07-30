@@ -840,6 +840,9 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
     orientation = defaults.orientation,
     kind = params.kind ?: defaults.kind,
     wrapperClassName = params.wrapperClassName ?: defaults.wrapperClassName,
+    previewParameterProviderClassName =
+      params.previewParameterProviderClassName ?: defaults.previewParameterProviderClassName,
+    previewParameterLimit = params.previewParameterLimit ?: defaults.previewParameterLimit,
     overrides = bakedOverrides,
   )
 }

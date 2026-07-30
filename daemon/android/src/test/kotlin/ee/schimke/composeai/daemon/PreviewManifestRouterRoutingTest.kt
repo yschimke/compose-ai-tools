@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -52,6 +53,67 @@ class PreviewManifestRouterRoutingTest {
         "payload=$routed",
       routed.contains("wrapperClassName=com.example.RemotePreviewWrapper"),
     )
+  }
+
+  @Test
+  fun `routePayload forwards the PreviewParameter provider from nested params`() {
+    // Issue #3027: the provider FQN is the only thing that lets the render body resolve a
+    // parameterized preview's `(<T>, Composer, int)` overload — `@PreviewParameter` has BINARY
+    // retention, so the sandbox can't recover it by reflecting on the composable. Without this
+    // token every such preview died on `getDeclaredComposableMethod` with NoSuchMethodException.
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "themed",
+              className = "com.example.PreviewsKt",
+              functionName = "ThemedPreview",
+              params =
+                PreviewParamsEntry(
+                  widthDp = 100,
+                  heightDp = 100,
+                  previewParameterProviderClassName = "com.example.ThemeProvider",
+                  previewParameterLimit = 3,
+                ),
+            )
+          )
+      )
+
+    val routed = PreviewManifestRouter(manifest = manifest).routePayload("previewId=themed")
+
+    assertTrue(
+      "routed payload must carry the provider FQN. payload=$routed",
+      routed.contains("previewParameterProvider=com.example.ThemeProvider"),
+    )
+    assertTrue(
+      "a non-default limit rides along too. payload=$routed",
+      routed.contains("previewParameterLimit=3"),
+    )
+    val spec = RenderSpec.parseFromPayloadOrNull(routed)
+    assertEquals("com.example.ThemeProvider", spec!!.previewParameterProviderClassName)
+    assertEquals(3, spec.previewParameterLimit)
+  }
+
+  @Test
+  fun `routePayload omits the provider token for an ordinary preview`() {
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "plain",
+              className = "com.example.PreviewsKt",
+              functionName = "Plain",
+              params = PreviewParamsEntry(widthDp = 100, heightDp = 100),
+            )
+          )
+      )
+
+    val routed = PreviewManifestRouter(manifest = manifest).routePayload("previewId=plain")
+
+    assertFalse(routed.contains("previewParameterProvider="))
+    assertEquals(null, RenderSpec.parseFromPayloadOrNull(routed)!!.previewParameterProviderClassName)
   }
 
   @Test

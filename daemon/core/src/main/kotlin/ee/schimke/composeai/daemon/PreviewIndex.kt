@@ -222,6 +222,16 @@ data class PreviewParamsDto(
    * `RenderSpec.wrapperClassName` for the render body.
    */
   val wrapperClassName: String? = null,
+  /**
+   * FQN of the `PreviewParameterProvider` from `@PreviewParameter(SomeProvider::class)`, plus its
+   * `limit`, when the source preview declares one. Same discovery-time class-file read as
+   * [wrapperClassName] (this annotation is `AnnotationRetention.BINARY` too, so runtime reflection
+   * can't see it). The render body resolves the preview's parameterized overload from it and
+   * invokes it with the provider's first value; without it a parameterized preview fails resolution
+   * with `NoSuchMethodException` and produces no render (issue #3027).
+   */
+  val previewParameterProviderClassName: String? = null,
+  val previewParameterLimit: Int? = null,
 )
 
 /**

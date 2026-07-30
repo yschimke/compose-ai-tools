@@ -249,6 +249,10 @@ dependencies {
   "testFixturesImplementation"(libs.compose.foundation)
   "testFixturesImplementation"(libs.compose.material3)
   "testFixturesImplementation"(libs.compose.ui)
+  // `ThemedTintedSquare` carries a real `@PreviewParameter(SquareTintProvider::class)` so
+  // `previewParameterPreviewRendersFirstProviderValue` exercises the exact annotation shape a
+  // consumer writes (issue #3027) rather than a stand-in with a bare parameter.
+  "testFixturesImplementation"(libs.compose.ui.tooling.preview)
   // `BrandedDownloadableText` builds a `Font(GoogleFont("Orbitron"), …)` family so
   // `FigmaSvgDownloadableFontFamilyTest` can prove the export names the branded face rather than
   // collapsing to Roboto — the exact shape a consumer's production typography uses.
