@@ -97,6 +97,13 @@ object ServeOverrides {
       // it. The per-name seeds ride the dynamic `rc.<name>=…` prefix ([RC_NAMED_PREFIX]), like the
       // `knob.` knobs.
       "rcProfile",
+      // Remote Compose render backend (the viewer's per-preview backend selector). Selects which
+      // *server-side* player draws the replayed `ir/<id>.rc` document: `java`/`view` →
+      // `RemoteComposePlayerKind.VIEW`, `cmp-android`/`embedded` → `EMBEDDED`. The client-side `js`
+      // canvas lane and the not-yet-renderable `cmp-jvm` lane never ride this param (js replays the
+      // doc in-browser; cmp-jvm has no draw path), so those values are rejected. Daemon-only +
+      // Android-only — a desktop/static session has no Remote Compose runtime and ignores it.
+      "rcPlayer",
     )
 
   /**
@@ -530,6 +537,21 @@ object ServeOverrides {
         }
     }
 
+    // Remote Compose render backend (`rcPlayer=<backend>`). Maps a server-side backend id onto the
+    // daemon's `RemoteComposePlayerKind` (`java`/`view` → VIEW, `cmp-android`/`embedded` →
+    // EMBEDDED).
+    // The client-side `js` canvas and the not-yet-renderable `cmp-jvm` lane never ride the PNG
+    // render param, so those (and any other value) are a hard Invalid rather than a silent default.
+    val rcPlayer =
+      params["rcPlayer"]
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          RcPlayerBackend.serverSideFromParam(it)?.playerKind
+            ?: return OverrideParse.Invalid(
+              "rcPlayer must be one of java/view or cmp-android/embedded, got '$it'"
+            )
+        }
+
     val themeProvider = params["themeProvider"]?.takeIf { it.isNotBlank() }
     if (themeProvider != null && declaredThemeFqns != null && themeProvider !in declaredThemeFqns) {
       return OverrideParse.Invalid(
@@ -547,8 +569,9 @@ object ServeOverrides {
     // so
     // an rc-free render carries no `remoteCompose` payload (identical wire shape to before).
     val remoteCompose: RemoteComposeOverride? =
-      if (rcProfile == null && rcNamedValues.isEmpty()) null
-      else RemoteComposeOverride(profile = rcProfile, namedValues = rcNamedValues)
+      if (rcProfile == null && rcNamedValues.isEmpty() && rcPlayer == null) null
+      else
+        RemoteComposeOverride(profile = rcProfile, namedValues = rcNamedValues, player = rcPlayer)
 
     return OverrideParse.Ok(
       PreviewOverrides(
@@ -619,6 +642,9 @@ object ServeOverrides {
       // re-render. Named values sorted for order-independence; the value/profile toStrings are
       // stable. acceptedHostActions is never set from the serve query path, so it is omitted.
       append("|rcProfile=").append(o.remoteCompose?.profile)
+      // The render backend participates so switching the RC player (java ⇄ cmp-android) re-renders
+      // rather than serving the prior backend's cached pixels under a shared key.
+      append("|rcPlayer=").append(o.remoteCompose?.player)
       append("|rc=")
       o.remoteCompose?.namedValues?.toSortedMap()?.forEach { (k, v) ->
         append(k).append('=').append(v).append(';')

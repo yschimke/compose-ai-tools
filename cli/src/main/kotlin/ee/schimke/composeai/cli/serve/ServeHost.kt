@@ -165,6 +165,35 @@ interface ServeHost : AutoCloseable {
   fun hasRemoteComposeDoc(previewId: String): Boolean = remoteComposeDoc(previewId) != null
 
   /**
+   * The Remote Compose render backends the viewer may offer for [previewId] as **enabled** options
+   * — the subset of the fixed [RcPlayerBackend.UNIVERSE] this host can actually produce pixels
+   * through. The viewer renders every backend as a chip and enables the ones returned here; the
+   * rest (e.g. [RcPlayerBackend.CMP_JVM], whose Skiko draw path isn't ported) are shown disabled,
+   * so a planned lane is visible without pretending it works.
+   *
+   * Empty for a non–Remote Compose preview (the viewer then shows no backend selector at all).
+   * Defaults to the client-side [RcPlayerBackend.JS] lane whenever [hasRemoteComposeDoc] is true —
+   * the in-browser player needs only the `.rc` bytes, so any host that carries the document
+   * supports it. A daemon-backed Android host ([ServeRenderHost]) adds the server-side
+   * [RcPlayerBackend.JAVA] / [RcPlayerBackend.CMP_ANDROID] lanes (they ride
+   * `remoteCompose.player`).
+   */
+  fun enabledRcPlayersFor(previewId: String): List<RcPlayerBackend> =
+    if (hasRemoteComposeDoc(previewId)) listOf(RcPlayerBackend.JS) else emptyList()
+
+  /**
+   * Whether this host's live render lane honours the Remote Compose **player** override
+   * (`remoteCompose.player`) — i.e. a daemon carrying the Android Remote Compose runtime, the only
+   * backend where selecting the server-side VIEW ([RcPlayerBackend.JAVA]) vs EMBEDDED
+   * ([RcPlayerBackend.CMP_ANDROID]) player actually changes pixels. The desktop backend has no
+   * Remote Compose runtime and silently ignores it; a static bundle has no daemon at all. Gates
+   * whether [enabledRcPlayersFor] offers the server-side lanes, so the viewer never shows a backend
+   * chip that would re-render to the same image. Defaults false.
+   */
+  val remoteComposePlayerSelectable: Boolean
+    get() = false
+
+  /**
    * Render [previewId] at [overrides] and return its figma-svg export, or [SvgOutcome.NotFound]
    * when this host can't produce SVG. Defaults to `NotFound`: only the daemon-backed
    * [ServeRenderHost] overrides this — a static [ServeBundleHost] has no daemon to export one.

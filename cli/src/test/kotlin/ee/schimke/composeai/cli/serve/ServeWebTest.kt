@@ -288,4 +288,71 @@ class ServeWebTest {
       "document title is escaped exactly once",
     )
   }
+
+  @Test
+  fun `the rc backend selector renders every backend with the unavailable ones disabled`() {
+    // A Remote Compose preview on an Android daemon: js (client canvas) + java + cmp-android are
+    // enabled; cmp-jvm is always present-but-disabled (no Skiko draw path yet).
+    val preview = ServePreview(id = "widget.Chip", label = "chip")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/remote-m3",
+        siblings = listOf(preview),
+        hasRemoteComposeDoc = true,
+        enabledRcPlayers = listOf("js", "java", "cmp-android"),
+      )
+
+    assertTrue(html.contains("id=\"cp-rc-backends\""), "selector rendered")
+    // Every universe entry appears as a chip.
+    for (wire in listOf("js", "java", "cmp-android", "cmp-jvm")) {
+      assertTrue(html.contains("data-rc-backend=\"$wire\""), "chip for $wire present")
+    }
+    // Java is the seeded default (the server-side snapshot player).
+    assertTrue(html.contains("data-default=\"java\""), "java is the default backend")
+    // cmp-jvm is the disabled chip; the enabled ones are not.
+    val jvmChip = Regex("<button[^>]*data-rc-backend=\"cmp-jvm\"[^>]*>").find(html)?.value ?: ""
+    assertTrue(jvmChip.contains(" disabled"), "cmp-jvm chip is disabled: '$jvmChip'")
+    val androidChip =
+      Regex("<button[^>]*data-rc-backend=\"cmp-android\"[^>]*>").find(html)?.value ?: ""
+    assertFalse(androidChip.contains(" disabled"), "cmp-android chip is enabled: '$androidChip'")
+  }
+
+  @Test
+  fun `a js-only host disables the server-side backend chips`() {
+    // A static bundle carries the `.rc` doc (js works client-side) but has no daemon, so the
+    // server-side java / cmp-android lanes are disabled alongside the never-available cmp-jvm.
+    val preview = ServePreview(id = "widget.Chip", label = "chip")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/remote-m3",
+        siblings = listOf(preview),
+        hasRemoteComposeDoc = true,
+        enabledRcPlayers = listOf("js"),
+      )
+
+    assertTrue(html.contains("data-default=\"js\""), "js is the default when it is the only lane")
+    for (wire in listOf("java", "cmp-android", "cmp-jvm")) {
+      val chip = Regex("<button[^>]*data-rc-backend=\"$wire\"[^>]*>").find(html)?.value ?: ""
+      assertTrue(chip.contains(" disabled"), "$wire chip disabled on a js-only host: '$chip'")
+    }
+    val jsChip = Regex("<button[^>]*data-rc-backend=\"js\"[^>]*>").find(html)?.value ?: ""
+    assertFalse(jsChip.contains(" disabled"), "js chip enabled: '$jsChip'")
+  }
+
+  @Test
+  fun `a non-rc preview renders no backend selector`() {
+    val preview = ServePreview(id = "plain.Button", label = "button")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/compose-m3",
+        siblings = listOf(preview),
+      )
+    assertFalse(html.contains("id=\"cp-rc-backends\""), "no selector for a non-rc preview")
+  }
 }

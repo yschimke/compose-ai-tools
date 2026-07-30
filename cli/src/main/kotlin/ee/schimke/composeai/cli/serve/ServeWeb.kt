@@ -315,6 +315,12 @@ object ServeWeb {
     .cp-live-dot { width: 9px; height: 9px; border-radius: 50%; background: #b9b9c6; flex: none; }
     .cp-live-toggle[aria-pressed="true"] .cp-live-dot { background: #1e9c3f;
       box-shadow: 0 0 0 3px rgba(30, 156, 63, 0.2); }
+    /* The Remote Compose backend selector: a segmented row of .cp-live-toggle chips (js / java /
+       cmp-android / cmp-jvm) sharing one visual group. */
+    .cp-rc-backends { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .cp-rc-backends-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em;
+      text-transform: uppercase; color: #8a8a92; }
+    .cp-rc-backend { padding: 5px 11px; }
     .cp-mode-hint { font-size: 0.72rem; color: #6b6b70; }
     /* The SVG format toggle sits beside the Live toggle (only when the session can export SVG).
        It swaps the static snapshot between the raster PNG and the resolution-independent vector
@@ -2919,6 +2925,17 @@ object ServeWeb {
      * stay daemon-routed).
      */
     hasRemoteComposeDoc: Boolean = false,
+    /**
+     * The Remote Compose render backends the viewer may offer for this preview as a per-preview
+     * **backend selector** — the [RcPlayerBackend.wire] ids the host reports via
+     * [ServeHost.enabledRcPlayersFor]. Non-empty for a Remote Compose preview: the viewer renders
+     * one chip per [RcPlayerBackend.UNIVERSE] entry, enables those in this list, and disables the
+     * rest (`cmp-jvm` is always disabled until its Skiko draw path lands). The `js` chip drives the
+     * client-side `<canvas>` lane (so [hasRemoteComposeDoc] is what carries the doc for it), while
+     * `java` / `cmp-android` re-render server-side via the `rcPlayer=<wire>` render param. Empty ⇒
+     * no selector at all (not a Remote Compose preview).
+     */
+    enabledRcPlayers: List<String> = emptyList(),
     wasmSrc: String? = null,
     /**
      * Whether the Wasm iframe may run with `allow-same-origin` (real origin) rather than the
@@ -3070,13 +3087,47 @@ object ServeWeb {
       if (hasRemoteComposeDoc)
         "<input type=\"radio\" name=\"cp-mode\" value=\"rc\" id=\"cp-rc-toggle\" tabindex=\"-1\">"
       else ""
-    val rcToggleBtn =
-      if (hasRemoteComposeDoc)
-        "<button type=\"button\" id=\"cp-rc-btn\" class=\"cp-live-toggle\" aria-pressed=\"false\" " +
-          "title=\"Render this component's Remote Compose document in your browser\">" +
-          "<span class=\"cp-live-dot\" aria-hidden=\"true\"></span><span>RC (browser)</span>" +
-          "</button>"
-      else ""
+    // The Remote Compose backend selector (#cp-rc-backends): one chip per RcPlayerBackend.UNIVERSE,
+    // enabled for those the host reports in [enabledRcPlayers] and disabled otherwise. It replaces
+    // the former single "RC (browser)" button — the `js` chip drives the same in-browser canvas
+    // lane (setMode("rc")), while `java` / `cmp-android` re-render the PNG server-side via
+    // `rcPlayer=<wire>`. `cmp-jvm` is present-but-disabled until its Skiko draw path lands.
+    // Rendered
+    // only for a Remote Compose preview (a non-empty enabled set). `data-default` seeds the
+    // initially-current chip: the server-side `java` player when it's available (the default
+    // snapshot lane), else the client `js` canvas.
+    val rcBackendSelector =
+      if (enabledRcPlayers.isEmpty()) ""
+      else {
+        val enabled = enabledRcPlayers.toSet()
+        val defaultBackend =
+          when {
+            RcPlayerBackend.JAVA.wire in enabled -> RcPlayerBackend.JAVA.wire
+            RcPlayerBackend.JS.wire in enabled -> RcPlayerBackend.JS.wire
+            else -> enabled.first()
+          }
+        val chips =
+          RcPlayerBackend.UNIVERSE.joinToString("") { backend ->
+            val on = backend.wire in enabled
+            val disabledAttr = if (on) "" else " disabled"
+            val title =
+              when {
+                on ->
+                  "Render this component's Remote Compose document with the ${backend.label} player"
+                backend == RcPlayerBackend.CMP_JVM ->
+                  "CMP JVM player — not available yet (its Skiko draw path isn't implemented)"
+                else -> "${backend.label} player — not available for this session"
+              }
+            "<button type=\"button\" class=\"cp-live-toggle cp-rc-backend\" " +
+              "data-rc-backend=\"${backend.wire}\" aria-pressed=\"false\"$disabledAttr " +
+              "title=\"${WebEscaping.htmlEscape(title)}\">" +
+              "<span class=\"cp-live-dot\" aria-hidden=\"true\"></span>" +
+              "<span>${WebEscaping.htmlEscape(backend.label)}</span></button>"
+          }
+        "<span class=\"cp-rc-backends\" id=\"cp-rc-backends\" role=\"group\" " +
+          "aria-label=\"Remote Compose renderer\" data-default=\"$defaultBackend\">" +
+          "<span class=\"cp-rc-backends-label\">RC:</span>$chips</span>"
+      }
     val deviceOptions =
       COMMON_DEVICES.joinToString("\n") { (value, name) ->
         val v = WebEscaping.htmlEscape(value)
@@ -3411,7 +3462,7 @@ object ServeWeb {
             <span id="cp-live-toggle-label">Live preview</span>
           </button>
           $wasmToggleBtn
-          $rcToggleBtn
+          $rcBackendSelector
           $svgFmtToggle
           <span class="cp-mode-hint" id="cp-mode-hint"></span>
           <!-- The mode radios the transport JS drives; visually removed (the toggle above is the
@@ -3681,6 +3732,18 @@ object ServeWeb {
         if (gc && !gc.disabled && gc.checked) o["gestures"] = "true";
         return o;
       }
+      // RC backend selector state (the #cp-rc-backends chips). `rcPlayerBackend` is the current pick
+      // and `rcPlayerPicked` gates whether it rides the render URL — so page load stays on the
+      // instant default snapshot until the visitor actually chooses a server-side backend.
+      var rcBackendsEl = document.getElementById("cp-rc-backends");
+      var rcPlayerBackend = rcBackendsEl ? (rcBackendsEl.getAttribute("data-default") || "") : "";
+      var rcPlayerPicked = false;
+      // Reconcile the backend chips' pressed state with the active lane. Hoisted (the real impl is
+      // assigned in the selector block below) so the common mode-transition path (enterMode) can
+      // call it whenever the viewer leaves a lane through ANY control — not only a chip click — so
+      // the JS chip can't stay pressed after e.g. Live/Wasm/SVG takes over the stage. A no-op stub
+      // for a non-Remote-Compose preview (no selector present).
+      var syncRcBackendChips = function () {};
       function query() {
         var o = overrides();
         // Public routes are open, so a page that arrived without a token stays token-free — only
@@ -3730,6 +3793,14 @@ object ServeWeb {
         // knob; omitted when unchecked so the URL stays on the baked snapshot.
         var gc = document.getElementById("cp-gestures");
         if (gc && !gc.disabled && gc.checked) parts.push("gestures=true");
+        // Remote Compose render backend: a server-side player pick (java / cmp-android) rides the
+        // render as rcPlayer=<wire>. Emitted only once the visitor picks a backend (rcPlayerPicked)
+        // and only for a server-side lane — the js canvas replays the doc in-browser (no server
+        // render) and cmp-jvm can't render, so neither sends the param, and an unpicked default
+        // stays on the instant baked snapshot.
+        if (rcPlayerPicked && (rcPlayerBackend === "java" || rcPlayerBackend === "cmp-android")) {
+          parts.push("rcPlayer=" + encodeURIComponent(rcPlayerBackend));
+        }
         return parts.join("&");
       }
       // "Full page (scroll)" appends `scroll=long` — but only to the SVG lane (the raster PNG has no
@@ -4457,6 +4528,9 @@ object ServeWeb {
         syncOverlayToggles();
         syncServerControls();
         updateLiveToggle();
+        // Every lane transition passes through here, so the backend chips are re-reconciled whether
+        // the viewer entered/left the JS canvas via a chip or via Live/Wasm/SVG/snapshot controls.
+        syncRcBackendChips();
         // Render the static lane AFTER syncServerControls() has reconciled the daemon-only controls
         // for the new lane. Returning from Wasm this re-enables the `.cp-rc-knob` inputs first, so
         // query() includes an rc.* value edited before the Wasm detour in the first snapshot render
@@ -4619,6 +4693,57 @@ object ServeWeb {
         rcBtn.addEventListener("click", function () {
           if (rcActive()) { setMode("png"); } else { setMode("rc"); }
         });
+      }
+      // ---- RC backend selector -----------------------------------------------------------------
+      // Chips choose which Remote Compose player draws the stage: `js` (the in-browser canvas lane,
+      // via setMode("rc")), or a server-side player (`java` / `cmp-android`) that re-renders the PNG
+      // with rcPlayer=<wire> (see query()). `cmp-jvm` is rendered disabled (no Skiko draw path yet).
+      // The pressed chip tracks the active backend and stays in sync with the js canvas toggle.
+      if (rcBackendsEl) {
+        var rcChips = rcBackendsEl.querySelectorAll(".cp-rc-backend[data-rc-backend]");
+        var rcDefaultBackend = rcBackendsEl.getAttribute("data-default") || "";
+        // Assign the hoisted stub with the real reconciler (see the declaration before query()).
+        syncRcBackendChips = function () {
+          // The js lane wins the "current" marker whenever its canvas is active; otherwise it's the
+          // picked server backend, or the default until the visitor picks one. Any OTHER active lane
+          // (Live / Wasm) means no server backend is on screen, so no chip is marked current.
+          var active =
+            rcActive() ? "js"
+            : anyLiveActive() ? ""
+            : (rcPlayerPicked ? rcPlayerBackend : rcDefaultBackend);
+          Array.prototype.forEach.call(rcChips, function (c) {
+            var on = c.getAttribute("data-rc-backend") === active;
+            c.setAttribute("aria-pressed", on ? "true" : "false");
+          });
+        };
+        function pickRcBackend(w) {
+          if (w === "js") {
+            // The client canvas lane. Leave the server pick untouched so returning to a server
+            // backend restores it. setMode("rc") (via enterMode) closes any Live/Wasm lane, opens the
+            // canvas, and re-syncs the chips; if the canvas is already up there's nothing to do but
+            // reconcile the marker.
+            rcPlayerPicked = false;
+            if (!rcActive()) setMode("rc");
+            else syncRcBackendChips();
+          } else {
+            // A server-side backend. Record the pick FIRST so the single static-lane render carries
+            // rcPlayer=<wire>, then transition to the static snapshot exactly once for EVERY other
+            // lane — js canvas, Live, or Wasm. setMode("png") → enterMode("png") closes them all,
+            // renders the snapshot once (no racing double render), and re-syncs the chips. Without
+            // this a pick made while Live/Wasm was active only reloaded the hidden <img> and left the
+            // interactive renderer on screen under a pressed chip.
+            rcPlayerBackend = w;
+            rcPlayerPicked = true;
+            setMode("png");
+          }
+        }
+        Array.prototype.forEach.call(rcChips, function (c) {
+          if (c.disabled) return;
+          c.addEventListener("click", function () {
+            pickRcBackend(c.getAttribute("data-rc-backend"));
+          });
+        });
+        syncRcBackendChips();
       }
       // Keep the live canvas overlay tracking the snapshot's slot when the page reflows (the Wasm
       // overlay has its own resize hook below; this covers a live session with no Wasm app).

@@ -292,6 +292,12 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-live-dot { width: 9px; height: 9px; border-radius: 50%; background: #b9b9c6; flex: none; }
 .cp-live-toggle[aria-pressed="true"] .cp-live-dot { background: #1e9c3f;
   box-shadow: 0 0 0 3px rgba(30, 156, 63, 0.2); }
+/* The Remote Compose backend selector: a segmented row of .cp-live-toggle chips (js / java /
+   cmp-android / cmp-jvm) sharing one visual group. */
+.cp-rc-backends { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cp-rc-backends-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em;
+  text-transform: uppercase; color: #8a8a92; }
+.cp-rc-backend { padding: 5px 11px; }
 .cp-mode-hint { font-size: 0.72rem; color: #6b6b70; }
 /* The SVG format toggle sits beside the Live toggle (only when the session can export SVG).
    It swaps the static snapshot between the raster PNG and the resolution-independent vector

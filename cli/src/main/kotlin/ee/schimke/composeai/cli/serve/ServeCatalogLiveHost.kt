@@ -254,6 +254,28 @@ class ServeCatalogLiveHost(
    */
   override fun remoteComposeDoc(previewId: String): ByteArray? = baked.remoteComposeDoc(previewId)
 
+  /** The daemon lane honours the RC player override when the carried daemon is Android-backed. */
+  override val remoteComposePlayerSelectable: Boolean = live.remoteComposePlayerSelectable
+
+  /**
+   * The RC backend selector unions the two lanes: the client-side [RcPlayerBackend.JS] canvas
+   * whenever the baked bundle carries the `.rc` document, plus the server-side
+   * [RcPlayerBackend.JAVA] / [RcPlayerBackend.CMP_ANDROID] lanes when this Remote Compose preview
+   * has a daemon twin ([canRenderOverridesFor]) on a backend that honours the player override
+   * ([remoteComposePlayerSelectable]). A preview with no `.rc` doc is not Remote Compose, so it
+   * gets no selector at all. [RcPlayerBackend.CMP_JVM] is never enabled (no Skiko draw path yet).
+   */
+  override fun enabledRcPlayersFor(previewId: String): List<RcPlayerBackend> {
+    if (!hasRemoteComposeDoc(previewId)) return emptyList()
+    return buildList {
+      add(RcPlayerBackend.JS)
+      if (canRenderOverridesFor(previewId) && remoteComposePlayerSelectable) {
+        add(RcPlayerBackend.JAVA)
+        add(RcPlayerBackend.CMP_ANDROID)
+      }
+    }
+  }
+
   /**
    * The daemon-backed host to route a mapped [daemonId] to: the per-preview daemon if
    * [perPreviewResolve] resolves one (the default lane, exercised routinely), else the monolithic
