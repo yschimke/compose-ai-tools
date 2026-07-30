@@ -2354,10 +2354,22 @@ internal object AndroidPreviewSupport {
             rowExcludes = ComposePreviewTasks.previewRowExcludeProperty(project),
           )
         )
+        // The row filter joins the gate even though it can't change what this task renders: XR has
+        // no
+        // `@PreviewParameter` fan-out. What matters is the OUTPUT — this task declares the whole
+        // shared `rendersDirectory` below, so under a row-filtered run it would happily store a
+        // snapshot containing the excluded rows' stale PNGs (left there by whatever ran last,
+        // exactly
+        // as the image render intends) and a clean machine would later restore them for the same
+        // filtered key. `composePreviewRender` refuses to cache such a run for that very reason;
+        // the
+        // sibling that shares its directory has to refuse too, or the gate leaks through the back
+        // door.
         outputs.cacheIf("composePreviewRenderXr caches unfiltered runs only") {
           ComposePreviewTasks.previewFilterProperty(project).get().none { it.isNotBlank() } &&
             ComposePreviewTasks.previewIdFilterProperty(project).get().none { it.isNotBlank() } &&
-            ComposePreviewTasks.previewIdExcludeProperty(project).get().none { it.isNotBlank() }
+            ComposePreviewTasks.previewIdExcludeProperty(project).get().none { it.isNotBlank() } &&
+            ComposePreviewTasks.previewRowExcludeProperty(project).get().none { it.isNotBlank() }
         }
 
         outputs.dir(rendersDirectory).withPropertyName("xrRendersDir")
