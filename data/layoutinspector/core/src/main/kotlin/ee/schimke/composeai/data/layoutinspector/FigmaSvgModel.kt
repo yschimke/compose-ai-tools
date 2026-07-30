@@ -485,6 +485,13 @@ data class FigmaSvgModel(
      *   token-driven vector export can't see — e.g. a `LinearProgressIndicator`/`Slider` track
      *   drawn into a bare `Spacer`) is emitted as an `<image>` crop of that drawn region instead of
      *   vanishing. Off in vector-only mode (no frame to crop from).
+     * @param frameWidthPx the captured frame PNG's pixel width, in the same root-pixel space the
+     *   bounds live in. Supplied alongside a [deviceBackground] so a maskless `showBackground`
+     *   preview fills its whole crop — the render paints the background across the entire window
+     *   and crops top-left, so the PNG size is exactly the background area, even when the only
+     *   drawn child is thinner/shorter than the root (issue #2974). Null (the vector-only /
+     *   no-frame path) falls back to sizing the background from the drawn-content extent.
+     * @param frameHeightPx the captured frame PNG's pixel height; see [frameWidthPx].
      */
     fun from(
       layout: LayoutInspectorPayload,
@@ -499,6 +506,8 @@ data class FigmaSvgModel(
       roundClip: Boolean = false,
       capsuleClip: Boolean = false,
       deviceBackground: String? = null,
+      frameWidthPx: Int? = null,
+      frameHeightPx: Int? = null,
     ): FigmaSvgModel {
       val textByNodeId =
         semantics?.let { assignTextToLayers(layout.root, it, density, fontScale) } ?: emptyMap()
@@ -533,10 +542,44 @@ data class FigmaSvgModel(
       // canvas extent to the frame — otherwise the square/tall full-frame background paints the
       // corners the render leaves transparent. No drawing layer (a tree of pure grouping nodes) → a
       // minimal padding-square canvas, matching the wireframe's empty-tree convention.
-      val extent =
+      val contentExtent =
         if (clip != null || capsule != null)
           Extent(frame.left, frame.top, frame.right, frame.bottom)
         else rootLayer.extent() ?: Extent(0, 0, 0, 0)
+      val deviceBgResolved = deviceBackground?.let { argbToColor(it, names) }
+      // The captured frame PNG's pixel size is the exact area a maskless `showBackground` preview
+      // fills: the render paints the background across the whole window and crops top-left, so
+      // every
+      // pixel of the crop is that colour. The drawn-content extent alone can be smaller — a 1dp
+      // divider centred in a taller fixed-size Box (issue #2974) leaves the extent thin, stranding
+      // most of the background as transparency. Anchor a frame-sized rect at the root origin (the
+      // crop is top-left from the window, whose origin is the root node) so the background — and
+      // the
+      // canvas that must contain it — cover the full crop. Skipped for masked device frames (they
+      // paint the mask shape) and when no frame size is known (the vector-only path keeps the
+      // extent-based sizing, e.g. #2884's synthetic model).
+      val backgroundFrame =
+        if (
+          deviceBgResolved != null &&
+            clip == null &&
+            capsule == null &&
+            frameWidthPx != null &&
+            frameHeightPx != null &&
+            frameWidthPx > 0 &&
+            frameHeightPx > 0
+        )
+          Extent(frame.left, frame.top, frame.left + frameWidthPx, frame.top + frameHeightPx)
+        else null
+      // The canvas has to contain both the drawn content and the background crop.
+      val extent =
+        backgroundFrame?.let {
+          Extent(
+            minOf(contentExtent.minX, it.minX),
+            minOf(contentExtent.minY, it.minY),
+            maxOf(contentExtent.maxX, it.maxX),
+            maxOf(contentExtent.maxY, it.maxY),
+          )
+        } ?: contentExtent
       // A preview that opted into a background paints it behind the whole tree as the bottom
       // layer. A device frame (round or capsule mask) paints it in the mask shape, so a Wear
       // device export reads as a solid face with light chrome legible while the corners outside
@@ -545,20 +588,18 @@ data class FigmaSvgModel(
       // rect instead; before this it painted nothing, so the SVG was transparent where the PNG was
       // opaque. Previews that pass no `deviceBackground` (the default, and every preview that
       // didn't declare `showBackground`) still export background-free.
-      val deviceBg = deviceBackground?.let { argbToColor(it, names) }
-      // Sized from the canvas extent rather than the root node's bounds: a wrap-content preview
-      // measures inside a generous sandbox frame (400×800 dp) and the PNG is cropped back to the
-      // composable's intrinsic size, so the background the viewer sees covers the *cropped* area.
-      // Using the raw frame here would paint the sandbox.
+      val deviceBg = deviceBgResolved
+      // Prefer the frame crop when its size is known (issue #2974) — that is exactly the area the
+      // PNG fills, so a thin/short child no longer shrink-wraps the fill to itself. Without a frame
+      // size, fall back to the drawn-content extent: a wrap-content preview measures inside a
+      // generous sandbox frame (400×800 dp) and the PNG is cropped back to the composable's
+      // intrinsic size, so the background the viewer sees covers the *cropped* area — using the raw
+      // root-node frame there would paint the sandbox.
       val backgroundRect =
-        if (deviceBg != null && clip == null && capsule == null)
-          FigmaSvgRect(
-            x = extent.minX,
-            y = extent.minY,
-            width = extent.maxX - extent.minX,
-            height = extent.maxY - extent.minY,
-          )
-        else null
+        if (deviceBg != null && clip == null && capsule == null) {
+          val r = backgroundFrame ?: contentExtent
+          FigmaSvgRect(x = r.minX, y = r.minY, width = r.maxX - r.minX, height = r.maxY - r.minY)
+        } else null
       return FigmaSvgModel(
         root = rootLayer,
         minX = extent.minX,

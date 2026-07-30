@@ -80,6 +80,10 @@ object ComposeFigmaSvgDataProducer {
   ) {
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
     val frame = frameImage?.takeIf { it.exists() }
+    // The frame PNG's pixel size is the exact area a maskless `showBackground` preview fills, so
+    // hand it to the model — a thin/short child no longer shrink-wraps the background to itself
+    // (issue #2974). Read via ImageIO's header (no full decode) through the injected FileSystem.
+    val frameSize = frame?.let { readImageSize(it, fileSystem) }
     val model =
       FigmaSvgModel.from(
         layout = layout,
@@ -87,6 +91,8 @@ object ComposeFigmaSvgDataProducer {
         colorNames = colorNames,
         density = density,
         fontScale = fontScale,
+        frameWidthPx = frameSize?.first,
+        frameHeightPx = frameSize?.second,
         rasterComponents =
           if (frame != null) FigmaSvgModel.DEFAULT_RASTER_COMPONENTS else emptySet(),
         // Hybrid mode also crops Canvas-drawn chrome (progress track, slider groove) the token
@@ -470,6 +476,29 @@ object ComposeFigmaSvgDataProducer {
   }
 
   private fun transparentPixel(): BufferedImage = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB)
+
+  /**
+   * The `(width, height)` in pixels of the image at [file], read via `ImageIO`'s reader header
+   * without decoding the pixels; null on any read/parse failure so a missing size degrades to the
+   * extent-based background sizing rather than stranding the SVG. Bytes come through the injected
+   * [fileSystem] so a fake/in-memory filesystem is honoured (docs/AGENTS.md).
+   */
+  private fun readImageSize(file: File, fileSystem: FileSystem): Pair<Int, Int>? =
+    runCatching {
+        val bytes = fileSystem.read(file.path.toPath()) { readByteArray() }
+        ImageIO.createImageInputStream(ByteArrayInputStream(bytes)).use { stream ->
+          val readers = ImageIO.getImageReaders(stream)
+          if (!readers.hasNext()) return@runCatching null
+          val reader = readers.next()
+          try {
+            reader.input = stream
+            reader.getWidth(reader.minIndex) to reader.getHeight(reader.minIndex)
+          } finally {
+            reader.dispose()
+          }
+        }
+      }
+      .getOrNull()
 }
 
 /**
