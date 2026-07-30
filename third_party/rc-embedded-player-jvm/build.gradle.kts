@@ -73,6 +73,37 @@ val sharedPlayerSources =
     // ink-bounds carrier they return. Neutral values, so both halves share this one rather than
     // agreeing on two copies of it.
     "androidx/compose/remote/player/compose/embedded/RcPlayerTextPaintSpec.kt",
+    // ---- the draw path (import-clean via the text + image seams) --------------------------------
+    // The op interpreter and paint decoder, plus the component-tree dispatch split out of RcPlayer.
+    "androidx/compose/remote/player/compose/embedded/RcPlayerDrawing.kt",
+    "androidx/compose/remote/player/compose/embedded/RcPlayerPaint.kt",
+    "androidx/compose/remote/player/compose/embedded/RcPlayerDispatch.kt",
+    "androidx/compose/remote/player/compose/embedded/RcPlayerCanvas.kt",
+    "androidx/compose/remote/player/compose/embedded/RcPlayerModifiers.kt",
+    "androidx/compose/remote/player/compose/embedded/RcPlayerDensity.kt",
+    // Per-layout composables (the neutral ones; text/image/custom get jvm siblings, see below).
+    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerBoxLayout.kt",
+    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerColumnLayout.kt",
+    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerRowLayout.kt",
+    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerFitBoxLayout.kt",
+    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerStateLayout.kt",
+    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerCollapsibleLayout.kt",
+    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerLayoutAlignment.kt",
+    // Component modifiers — all neutral Compose modifier factories.
+    "androidx/compose/remote/player/compose/embedded/modifier/AlignByModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/BackgroundModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/BorderModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/ClickModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/ClipModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/GraphicsLayerModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/HeightModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/MarqueeModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/OffsetModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/PaddingModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/RippleModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/ScrollModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/WidthModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/ZIndexModifier.kt",
   )
 
 /**
@@ -90,6 +121,11 @@ val jvmPlayerSources =
     // The jvm draw RemoteContext — StoreBackedRemoteContext + a skiko `loadBitmap` decode, the one
     // platform-bound member of the contract. Written here, so it names skiko rather than the SDK.
     "androidx/compose/remote/player/compose/embedded/JvmRemoteContext.kt",
+    // jvm halves of the three Android-only draw seams the shared draw path calls: image decode over
+    // skiko, and no-op stubs for the deferred AGSL shaders and particles.
+    "androidx/compose/remote/player/compose/embedded/RcPlayerImagePlatformJvm.kt",
+    "androidx/compose/remote/player/compose/embedded/RcPlayerShadersJvm.kt",
+    "androidx/compose/remote/player/compose/embedded/RcPlayerParticlesJvm.kt",
   )
 
 kotlin {
