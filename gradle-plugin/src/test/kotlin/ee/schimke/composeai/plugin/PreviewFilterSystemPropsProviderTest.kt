@@ -24,6 +24,7 @@ class PreviewFilterSystemPropsProviderTest {
           nameFilters = list("Foo", "Bar"),
           idFilters = list("*_Light"),
           idExcludes = list("*_Dark"),
+          rowExcludes = list("Dark", "ExtraDark"),
         )
         .asArguments()
         .toList()
@@ -33,6 +34,7 @@ class PreviewFilterSystemPropsProviderTest {
         "-Dcomposeai.preview.filter=Foo,Bar",
         "-Dcomposeai.preview.idFilter=*_Light",
         "-Dcomposeai.preview.idExclude=*_Dark",
+        "-Dcomposeai.preview.rowExclude=Dark,ExtraDark",
       )
   }
 
@@ -43,6 +45,7 @@ class PreviewFilterSystemPropsProviderTest {
           nameFilters = list(),
           idFilters = list(),
           idExcludes = list(),
+          rowExcludes = list(),
         )
         .asArguments()
         .toList()
@@ -57,10 +60,29 @@ class PreviewFilterSystemPropsProviderTest {
           nameFilters = list(" Foo ", "", "  "),
           idFilters = list(),
           idExcludes = list(),
+          rowExcludes = list(),
         )
         .asArguments()
         .toList()
 
     assertThat(args).containsExactly("-Dcomposeai.preview.filter=Foo")
+  }
+
+  @Test
+  fun `the row axis travels on its own property`() {
+    // It must not be folded into the id patterns: the id filters run over discovered entries, where
+    // a
+    // parameterized preview has no per-row id, so only a label can name one of its rows (#2966).
+    val args =
+      AndroidPreviewSupport.PreviewFilterSystemPropsProvider(
+          nameFilters = list(),
+          idFilters = list(),
+          idExcludes = list(),
+          rowExcludes = list("Dark", " ExtraDark "),
+        )
+        .asArguments()
+        .toList()
+
+    assertThat(args).containsExactly("-Dcomposeai.preview.rowExclude=Dark,ExtraDark")
   }
 }

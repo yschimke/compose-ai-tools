@@ -34,6 +34,9 @@ object PreviewFilter {
   /** System property carrying the comma-separated `--exclude-preview-id` id patterns. */
   const val ID_EXCLUDE_PROPERTY: String = "composeai.preview.idExclude"
 
+  /** System property carrying the comma-separated `--exclude-preview-row` label patterns. */
+  const val ROW_EXCLUDE_PROPERTY: String = "composeai.preview.rowExclude"
+
   /**
    * Reads one of the comma-separated pattern system properties into a cleaned list: split on `,`,
    * trimmed, blanks dropped. Absent / blank → an empty list ("no filter"). The same comma-separated
@@ -239,4 +242,46 @@ object PreviewFilter {
     flushLiteral()
     return Regex(out.toString())
   }
+
+  /**
+   * The indices of [suffixes] whose `@PreviewParameter` row should render, in order.
+   *
+   * The row axis is separate from the id filters above because the ids they match are the
+   * **discovered** ones: a parameterized function is one entry in `previews.json` (discovery reads
+   * bytecode and can't instantiate a provider), and its rows only exist once the render JVM has
+   * enumerated the values and labelled them. So a design system whose palettes come from a provider
+   * — the shape behind #2966's measurement — can only be thinned here, by label.
+   *
+   * [suffixes] are the per-row suffixes the renderer computed (`"_Dark"`, or `"_PARAM_3"` for a
+   * value that couldn't be labelled); the leading `_` is stripped before matching, so a caller
+   * writes `--exclude-preview-row Dark`, matching the filename they see. Matching is
+   * **case-insensitive** — deliberately unlike [matchesId], since a label comes from user data
+   * (`"Dark"`) while the pattern is usually a design spec's own spelling (`"dark"`), and widening
+   * an exclusion is safe where widening a positive filter would not be.
+   *
+   * Two rules keep it from ever costing coverage silently, mirroring the desktop renderer's
+   * `PreviewRowFilter`:
+   * - a preview with no fan-out (a single empty suffix) is never filtered — it has no rows, so a
+   *   row pattern must not be able to delete its only render;
+   * - if every row matches, none is skipped: a preview that rendered nothing would publish as a
+   *   component with no pixels, which is a misconfigured exclusion rather than a deferral.
+   */
+  fun keptRowIndices(suffixes: List<String>, patterns: List<String>): List<Int> {
+    val all = suffixes.indices.toList()
+    val cleaned = patterns.map(String::trim).filter(String::isNotEmpty)
+    if (cleaned.isEmpty()) return all
+    if (suffixes.size == 1 && suffixes[0].isEmpty()) return all
+    val kept = all.filterNot { matchesRowLabel(cleaned, suffixes[it].removePrefix("_")) }
+    return if (kept.isEmpty()) all else kept
+  }
+
+  /**
+   * True when a row [label] matches one of [patterns] — glob when it has `*`/`?`, else equality.
+   */
+  fun matchesRowLabel(patterns: Collection<String>, label: String): Boolean =
+    patterns.map(String::trim).filter(String::isNotEmpty).any { pattern ->
+      if (pattern.any { it == '*' || it == '?' })
+        Regex(globToRegex(pattern).pattern, RegexOption.IGNORE_CASE).matches(label)
+      else label.equals(pattern, ignoreCase = true)
+    }
 }

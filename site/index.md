@@ -129,9 +129,10 @@ function as a single preview. Those are skipped by **label** — the token in
 A row exclusion never empties a preview's rows: if every row matches, they all
 render, so nothing can silently produce a preview with no pixels.
 
-(Android modules render previews through a Robolectric test task, which reads none
-of these filters — tracked in
-[#2977](https://github.com/yschimke/compose-ai-tools/issues/2977).)
+All four filters work on both backends. An Android module renders through a
+Robolectric test task rather than this desktop one, and it reads the same options
+and the same `composePreview.*` properties — `#2977` closed the gap where they were
+desktop-only.
 
 Requirements and CI recipes live on the [Install page](./install/).
 

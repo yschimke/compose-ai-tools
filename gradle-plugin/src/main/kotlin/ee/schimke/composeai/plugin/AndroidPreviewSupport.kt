@@ -1925,15 +1925,19 @@ internal object AndroidPreviewSupport {
         // Preview filters (issues #2066 / #2966 / #2977). Conventions from the same Gradle
         // properties the desktop task uses; the `--preview` / `--preview-id` /
         // `--exclude-preview-id` options on this task override them. Forwarded to the render JVM as
-        // `composeai.preview.*` system properties below, where `PreviewFilter` applies them.
+        // `composeai.preview.*` system properties below, where `PreviewFilter` applies them. The
+        // `--exclude-preview-row` axis rides along: this backend expands `@PreviewParameter` rows
+        // itself, so it needs the same label filter the desktop renderer got.
         previewFilters.convention(ComposePreviewTasks.previewFilterProperty(project))
         previewIdFilters.convention(ComposePreviewTasks.previewIdFilterProperty(project))
         previewIdExcludes.convention(ComposePreviewTasks.previewIdExcludeProperty(project))
+        previewRowExcludes.convention(ComposePreviewTasks.previewRowExcludeProperty(project))
         jvmArgumentProviders.add(
           PreviewFilterSystemPropsProvider(
             nameFilters = previewFilters,
             idFilters = previewIdFilters,
             idExcludes = previewIdExcludes,
+            rowExcludes = previewRowExcludes,
           )
         )
         // Bail fast (with remediation) when the gate passed via project-deps tier but the
@@ -2112,7 +2116,8 @@ internal object AndroidPreviewSupport {
           tierProvider.get().equals("full", ignoreCase = true) &&
             previewFilters.getOrElse(emptyList()).none { it.isNotBlank() } &&
             previewIdFilters.getOrElse(emptyList()).none { it.isNotBlank() } &&
-            previewIdExcludes.getOrElse(emptyList()).none { it.isNotBlank() }
+            previewIdExcludes.getOrElse(emptyList()).none { it.isNotBlank() } &&
+            previewRowExcludes.getOrElse(emptyList()).none { it.isNotBlank() }
         }
         // The PNG files are written to `rendersDirectory` via the
         // `composeai.render.outputDir` system property, not through any
@@ -2363,12 +2368,27 @@ internal object AndroidPreviewSupport {
             nameFilters = ComposePreviewTasks.previewFilterProperty(project),
             idFilters = ComposePreviewTasks.previewIdFilterProperty(project),
             idExcludes = ComposePreviewTasks.previewIdExcludeProperty(project),
+            // Forwarded for uniformity; the XR subspace render has no `@PreviewParameter` fan-out
+            // to thin, so it is inert there rather than meaningful.
+            rowExcludes = ComposePreviewTasks.previewRowExcludeProperty(project),
           )
         )
+        // The row filter joins the gate even though it can't change what this task renders: XR has
+        // no
+        // `@PreviewParameter` fan-out. What matters is the OUTPUT — this task declares the whole
+        // shared `rendersDirectory` below, so under a row-filtered run it would happily store a
+        // snapshot containing the excluded rows' stale PNGs (left there by whatever ran last,
+        // exactly
+        // as the image render intends) and a clean machine would later restore them for the same
+        // filtered key. `composePreviewRender` refuses to cache such a run for that very reason;
+        // the
+        // sibling that shares its directory has to refuse too, or the gate leaks through the back
+        // door.
         outputs.cacheIf("composePreviewRenderXr caches unfiltered runs only") {
           ComposePreviewTasks.previewFilterProperty(project).get().none { it.isNotBlank() } &&
             ComposePreviewTasks.previewIdFilterProperty(project).get().none { it.isNotBlank() } &&
-            ComposePreviewTasks.previewIdExcludeProperty(project).get().none { it.isNotBlank() }
+            ComposePreviewTasks.previewIdExcludeProperty(project).get().none { it.isNotBlank() } &&
+            ComposePreviewTasks.previewRowExcludeProperty(project).get().none { it.isNotBlank() }
         }
 
         outputs.dir(rendersDirectory).withPropertyName("xrRendersDir")
@@ -3148,11 +3168,11 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Forwards the `--preview` / `--preview-id` / `--exclude-preview-id` selection to the Robolectric
-   * render JVM as the `composeai.preview.*` system properties `PreviewFilter` reads (issue #2977).
-   * Lazy `@Input` providers so a filter change re-runs the render without invalidating the
-   * configuration cache more than the underlying `composePreview.*` property already does; an empty
-   * list emits no argument ("render everything").
+   * Forwards the `--preview` / `--preview-id` / `--exclude-preview-id` / `--exclude-preview-row`
+   * selection to the Robolectric render JVM as the `composeai.preview.*` system properties
+   * `PreviewFilter` reads (issue #2977). Lazy `@Input` providers so a filter change re-runs the
+   * render without invalidating the configuration cache more than the underlying `composePreview.*`
+   * property already does; an empty list emits no argument ("render everything").
    *
    * The property names are the wire contract with the renderer-side
    * `ee.schimke.composeai.data.render.PreviewFilter` constants (`NAME_FILTER_PROPERTY` etc.) — the
@@ -3162,11 +3182,16 @@ internal object AndroidPreviewSupport {
     @get:org.gradle.api.tasks.Input val nameFilters: org.gradle.api.provider.Provider<List<String>>,
     @get:org.gradle.api.tasks.Input val idFilters: org.gradle.api.provider.Provider<List<String>>,
     @get:org.gradle.api.tasks.Input val idExcludes: org.gradle.api.provider.Provider<List<String>>,
+    @get:org.gradle.api.tasks.Input val rowExcludes: org.gradle.api.provider.Provider<List<String>>,
   ) : org.gradle.process.CommandLineArgumentProvider {
     override fun asArguments(): Iterable<String> = buildList {
       arg("composeai.preview.filter", nameFilters.getOrElse(emptyList()))
       arg("composeai.preview.idFilter", idFilters.getOrElse(emptyList()))
       arg("composeai.preview.idExclude", idExcludes.getOrElse(emptyList()))
+      // The `@PreviewParameter` row axis. It has to travel separately from the id patterns because
+      // this backend, like the desktop one, applies the id filters to DISCOVERED entries — before
+      // `expandParameterProvider` mints the per-row ids — so an id pattern can never name a row.
+      arg("composeai.preview.rowExclude", rowExcludes.getOrElse(emptyList()))
     }
 
     private fun MutableList<String>.arg(property: String, values: List<String>) {

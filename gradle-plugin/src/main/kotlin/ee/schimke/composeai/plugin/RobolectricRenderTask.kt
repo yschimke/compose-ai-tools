@@ -8,11 +8,11 @@ import org.gradle.api.tasks.testing.Test
 /**
  * The Android `composePreviewRender` task — a Robolectric [Test] that renders `@Preview`s inside
  * the test JVM — subtyped only so it can carry the same `--preview` / `--preview-id` /
- * `--exclude-preview-id` command-line options the desktop [RenderPreviewsTask] exposes
- * (issues #2066 / #2966 / #2977). A plain `Test` can't declare `@Option`s, and before #2977 those
- * options (and their `composePreview.filter` / `.idFilter` / `.idExclude` property conventions)
- * reached only the desktop backend, so `:app:composePreviewRender --preview Foo` was inert on an
- * Android module.
+ * `--exclude-preview-id` / `--exclude-preview-row` command-line options the desktop
+ * [RenderPreviewsTask] exposes (issues #2066 / #2966 / #2977). A plain `Test` can't declare
+ * `@Option`s, and before #2977 those options (and their `composePreview.filter` / `.idFilter` /
+ * `.idExclude` property conventions) reached only the desktop backend, so
+ * `:app:composePreviewRender --preview Foo` was inert on an Android module.
  *
  * The three list properties are the single source of truth: [AndroidPreviewSupport] sets their
  * conventions from the matching Gradle properties, forwards them to the Robolectric render JVM as
@@ -70,5 +70,28 @@ abstract class RobolectricRenderTask : Test() {
   )
   fun setPreviewIdExcludeOption(values: List<String>) {
     previewIdExcludes.set(values)
+  }
+
+  /**
+   * `--exclude-preview-row` label patterns (repeatable). Convention: `composePreview.rowExclude`.
+   *
+   * The one axis the id patterns above can't express on either backend: the id filters run over
+   * DISCOVERED entries, and a `@PreviewParameter` provider's rows don't exist until
+   * `expandParameterProvider` enumerates them inside this render JVM. Matched against the row's
+   * label — the token in `<stem>_<label>.png` — case-insensitively, and never allowed to empty a
+   * preview's row set. Mirrors the desktop task's `previewRowExcludes`.
+   */
+  @get:Input abstract val previewRowExcludes: ListProperty<String>
+
+  @Option(
+    option = "exclude-preview-row",
+    description =
+      "Skip @PreviewParameter rows whose label matches this pattern (repeatable; '*'/'?' globs or " +
+        "an exact label, case-insensitive), rendering the rest. Addresses one row of a " +
+        "parameterized preview, which --exclude-preview-id cannot. Never empties a preview's rows. " +
+        "Overrides -PcomposePreview.rowExclude.",
+  )
+  fun setPreviewRowExcludeOption(values: List<String>) {
+    previewRowExcludes.set(values)
   }
 }

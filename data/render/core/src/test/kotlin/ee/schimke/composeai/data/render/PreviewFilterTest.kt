@@ -184,4 +184,69 @@ class PreviewFilterTest {
   fun patternsFromAbsentPropertyIsEmpty() {
     assertEquals(emptyList(), PreviewFilter.patternsFrom("missing") { null })
   }
+
+  // --- @PreviewParameter row exclusions ---------------------------------------------------------
+
+  /** What `PreviewParameterLabels.suffixesFor` hands the Robolectric expansion for four values. */
+  private val rowSuffixes = listOf("_Amber", "_Crimson", "_Teal", "_Violet")
+
+  @Test
+  fun keptRowIndicesWithNoPatternsKeepsEveryRow() {
+    assertEquals(listOf(0, 1, 2, 3), PreviewFilter.keptRowIndices(rowSuffixes, emptyList()))
+    assertEquals(listOf(0, 1, 2, 3), PreviewFilter.keptRowIndices(rowSuffixes, listOf(" ", "")))
+  }
+
+  @Test
+  fun keptRowIndicesDropsAnExactLabel() {
+    assertEquals(listOf(0, 2, 3), PreviewFilter.keptRowIndices(rowSuffixes, listOf("Crimson")))
+  }
+
+  @Test
+  fun keptRowIndicesMatchesLabelsCaseInsensitively() {
+    // The motivating case: a spec says `modePriority: { dark: deferred }` while the provider value
+    // labels itself `Dark`. Unlike `matchesId`, the row axis folds case.
+    assertEquals(listOf(0, 1, 3), PreviewFilter.keptRowIndices(rowSuffixes, listOf("teal")))
+  }
+
+  @Test
+  fun keptRowIndicesMatchesGlobs() {
+    assertEquals(listOf(1, 3), PreviewFilter.keptRowIndices(rowSuffixes, listOf("?ea*", "Amber")))
+    // Anchored: a bare substring is not a glob and must not match.
+    assertEquals(listOf(0, 1, 2, 3), PreviewFilter.keptRowIndices(rowSuffixes, listOf("mber")))
+  }
+
+  @Test
+  fun keptRowIndicesIgnoresTheLeadingUnderscore() {
+    // A caller writes what they read off the filename (`Foo_Crimson.png` -> `Crimson`).
+    assertEquals(listOf(0, 1, 2, 3), PreviewFilter.keptRowIndices(rowSuffixes, listOf("_Crimson")))
+  }
+
+  @Test
+  fun keptRowIndicesNeverEmptiesTheRowSet() {
+    // A preview that rendered nothing would publish as a component with no pixels — a misconfigured
+    // exclusion, not a deferral. Same never-empty rule the desktop renderer applies.
+    assertEquals(listOf(0, 1, 2, 3), PreviewFilter.keptRowIndices(rowSuffixes, listOf("*")))
+  }
+
+  @Test
+  fun keptRowIndicesLeavesAnUnparameterizedPreviewAlone() {
+    // The single empty suffix means "no fan-out": no rows, so a row pattern must not delete its
+    // only
+    // render.
+    assertEquals(listOf(0), PreviewFilter.keptRowIndices(listOf(""), listOf("*")))
+    assertEquals(listOf(0), PreviewFilter.keptRowIndices(listOf(""), listOf("Dark")))
+  }
+
+  @Test
+  fun keptRowIndicesAddressesUnlabelledRowsByIndexForm() {
+    assertEquals(
+      listOf(0),
+      PreviewFilter.keptRowIndices(listOf("_PARAM_0", "_PARAM_1"), listOf("PARAM_1")),
+    )
+  }
+
+  @Test
+  fun rowExcludePropertyIsTheWireContractWithThePlugin() {
+    assertEquals("composeai.preview.rowExclude", PreviewFilter.ROW_EXCLUDE_PROPERTY)
+  }
 }
