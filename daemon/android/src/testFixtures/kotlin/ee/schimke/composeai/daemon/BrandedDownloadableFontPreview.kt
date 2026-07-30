@@ -83,6 +83,34 @@ fun BrandedDownloadableText() {
   }
 }
 
+/**
+ * The JetLagged shape (issue #2906): a single `Font(GoogleFont("Lato"))` declared at its default
+ * weight, drawn in a heading at a heavier weight the family never declares a face for. The
+ * downloadable provider is therefore requested at the default weight while the `<text>` — and so the
+ * `compose/figma-svg` export — asks about the heading weight, the mismatch that made the export's
+ * old exact-weight recovery miss and drop the `@font-face` for Lato entirely.
+ *
+ * The heading weight is [FontWeight.Medium] (500) rather than JetLagged's literal 600 for a sandbox
+ * reason, not a product one: Compose applies fake-bold synthesis at weight >= 600, and the daemon's
+ * Robolectric tier (SDK 35 / JDK 17) NPEs synthesising the fallback typeface — a limitation of the
+ * unit-test sandbox, not the export. 500 is still a non-default weight with no declared face, so it
+ * drives the identical export-weight-not-in-cache recovery path the fix adds; the literal-600 pixel
+ * case is covered by the catalog render tier (SDK 36 / JDK 21).
+ */
+private val LatoFontFamily: FontFamily = FontFamily(brandedFont("Lato", FontWeight.Normal))
+
+@Composable
+fun JetLaggedHeadingText() {
+  Box(modifier = Modifier.fillMaxSize().background(Color.White)) {
+    Text(
+      text = "AVE TIME IN BED",
+      color = Color.Black,
+      style =
+        TextStyle(fontFamily = LatoFontFamily, fontWeight = FontWeight.Medium, fontSize = 16.sp),
+    )
+  }
+}
+
 @Composable
 fun BrandedThemeTypographyText() {
   val base = Typography()

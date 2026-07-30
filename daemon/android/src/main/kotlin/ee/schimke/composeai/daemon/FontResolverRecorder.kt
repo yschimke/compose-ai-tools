@@ -178,9 +178,15 @@ class FontResolverRecorder(private val context: Context? = null) {
   ) {
     if (GOOGLE_FONT_LABEL.find(fontLabel(font)) == null) return
     if (FigmaResourceFonts.pathFor(family, weight, italic) != null) return
+    // The nearest cached face, not the exact requested weight: a family that declares a single
+    // `Font(GoogleFont("Lato"))` (the JetLagged shape) carries only its default face, so text set
+    // at a heavier `FontWeight` draws that face synthetically bolded and the cache holds only the
+    // default weight. Looking up the requested weight exactly missed, nothing was registered, and
+    // the export fell back to a bare `sans-serif` with no `@font-face` (issue #2906). Registering
+    // the nearest resolved face under the requested weight embeds the real face the raster drew.
     val file =
       runCatching {
-          ee.schimke.composeai.renderer.GoogleFontFiles.cached(family, weight, italic)
+          ee.schimke.composeai.renderer.GoogleFontFiles.cachedNearest(family, weight, italic)
         }
         .getOrNull() ?: return
     FigmaResourceFonts.register(family, weight, italic, file.absolutePath)
