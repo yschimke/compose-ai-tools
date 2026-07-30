@@ -42,6 +42,11 @@ on:
         description: 'Gradle module path to render (e.g. ":app").'
         required: true
         type: string
+      ref:
+        description: 'Git ref of the CALLING repo to check out and render (branch, tag or SHA). Empty ⇒ the ref that triggered the caller — the normal push/PR case. Set this when the trigger cannot imply the right ref: a `schedule` run only fires for a workflow on the default branch and checks out that branch, so a catalog living on a side branch (e.g. `previews`) needs `ref: previews` here or the render finds no catalog.spec.json (issue #2963).'
+        required: false
+        type: string
+        default: ''
       extra-module:
         description: 'Optional second module folded in via --extra-renders (previews override same-named functions in the primary render).'
         required: false
@@ -203,6 +208,10 @@ jobs:
       - name: Check out the calling repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Empty ⇒ checkout's default (the triggering ref), unchanged for push/PR
+          # callers; a caller can pass `ref` to render a specific branch, which a
+          # scheduled run needs to reach a catalog that lives off the default branch.
+          ref: ${{ inputs.ref }}
           persist-credentials: false
 
       - name: Set up JDK 21
