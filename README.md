@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/pr`. 261 preview(s) across 20 module(s) · 39 error(s) · 4 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/pr`. 253 preview(s) across 17 module(s) · 38 error(s) · 4 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -14,6 +14,18 @@ Browse inline; image URLs are pinned to the commit SHA on the baseline branch so
 |--:|---|---|---|---|
 | 1 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
 | 2 | INFO | TextSizeCheck | com.android.internal.widget.NotificationActionListLayout #actions | Consider modifying the LayoutParams to allow for text expansion. |
+
+### `AsyncImageArtworkPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/AsyncImageArtworkPreview_Async_Image_Artwork.a11y.png" width="400" />
+
+_No findings._
+
+### `AsyncImageUnreachablePreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/AsyncImageUnreachablePreview_Async_Image_Unreachable.png" width="400" />
+
+_No findings._
 
 ### `BadButtonPreview`
 
@@ -120,6 +132,12 @@ _No findings._
 |--:|---|---|---|---|
 | 1 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "The quick brown fox (700)" is identical to that of 3 other item(s). |
 | 2 | INFO | DuplicateSpeakableTextCheck | android.widget.TextView | This non-clickable item's speakable text: "The quick brown fox (400)" is identical to that of 4 other item(s). |
+
+### `DividerShowBackgroundDarkPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/DividerShowBackgroundDarkPreview_Divider_Dark.png" width="400" />
+
+_No findings._
 
 ### `EmojiCompatComparisonPreview`
 
@@ -594,6 +612,12 @@ _No findings._
 _No findings._
 
 ## android-library
+
+### `HtmlShowNotesPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android-library/HtmlShowNotesPreview_HTML_show_notes.a11y.png" width="400" />
+
+_No findings._
 
 ### `LibraryBoxPreview`
 
@@ -1659,81 +1683,5 @@ _No findings._
 ### `SettingsMainScreenLongPreview` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear/com.example.samplewear.PreviewsKt.SettingsMainScreenLongPreview_Devices - Large Round.a11y.png" width="400" />
-
-_No findings._
-
-## wear-widget
-
-### `ImageWidgetFixedPreview`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/wear-widget/ImageWidgetFixedPreview_Image_Widget_Fixed.a11y.png" width="400" />
-
-| # | Level | Rule | Element | Message |
-|--:|---|---|---|---|
-| 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
-
-### `ImageWidgetSquircleLargePreview`
-
-_No findings._
-
-### `ImageWidgetSquirclePreview`
-
-_No findings._
-
-## xr-glimmer
-
-### `FocusableMenu` · `spec:width=960,height=720,dpi=160`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-glimmer/FocusableMenu_Glimmer_Input.a11y.png" width="400" />
-
-_No findings._
-
-### `GlimmerListItemDefault` · `spec:width=960,height=720,dpi=160`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-glimmer/GlimmerListItemDefault_Glimmer_Default.a11y.png" width="400" />
-
-_No findings._
-
-### `GlimmerListItemFocused` · `spec:width=960,height=720,dpi=160`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-glimmer/GlimmerListItemFocused_Glimmer_Focused.a11y.png" width="400" />
-
-_No findings._
-
-### `GlimmerListItemPressed` · `spec:width=960,height=720,dpi=160`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-glimmer/GlimmerListItemPressed_Glimmer_Pressed.a11y.png" width="400" />
-
-_No findings._
-
-### `GlimmerListPressedWalk` · `spec:width=960,height=720,dpi=160`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk_FOCUS_0.a11y.png" width="400" />
-
-_No findings._
-
-### `NowPlayingCard` · `spec:width=960,height=720,dpi=160`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-glimmer/NowPlayingCard_Glimmer_Busy.a11y.png" width="400" />
-
-_No findings._
-
-## xr-spatial
-
-### `NowPlayingPanelPreview` · `spec:width=1280,height=720,dpi=160`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-spatial/NowPlayingPanelPreview_Panel_Content.a11y.png" width="400" />
-
-_No findings._
-
-### `OrbiterControlsPreview` · `spec:width=1280,height=720,dpi=160`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-spatial/OrbiterControlsPreview_Orbiter_TopControls.png" width="400" />
-
-_No findings._
-
-### `SpatialElevationPreview` · `spec:width=1280,height=720,dpi=160`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-spatial/SpatialElevationPreview_SpatialElevation_Panel.a11y.png" width="400" />
 
 _No findings._
