@@ -528,6 +528,37 @@ because converting the Android module to KMP still has an unsettled risk (Robole
 KMP-Android plugin), and nothing here needs that resolved. If the conversion happens, this module's
 file list is the migration order; if it never does, the desktop lane still works.
 
+#### Done: the whole draw path runs on the desktop JVM, and renders a document to PNG
+
+The draw path now compiles and runs off Android end to end. `:third-party-rc-embedded-player-jvm`
+shares the entire op interpreter / paint decoder / component-tree dispatch (`RcPlayerDrawing.kt`,
+`RcPlayerPaint.kt`, `RcPlayerDispatch.kt`, `RcPlayerCanvas.kt`, the modifiers, and every layout
+composable) and answers the three Android-only draw seams with jvm siblings: image decode over skiko
+(`RcPlayerImagePlatformJvm.kt`, reading back the `ImageBitmap` the jvm draw context caches), the text
+layout composables (`RcPlayerTextLayoutJvm.kt` — font families resolve to the nearest standard family,
+the documented parity limit), the image layout composable (`layout/RcPlayerImageLayoutJvm.kt` — the
+embedded `ImageBitmap` decode in place of the `Drawable` host loader), and no-op stubs for the
+deferred AGSL shaders and particles. The two path utilities the draw path calls (`PathUtils.kt`,
+`FloatsToPath.kt`) are vendored from the `remote-player-compose` AAR a `kotlin("jvm")` module cannot
+consume, with the one Android-only op (conic) swapped to skiko. `RcPlayerCustom.kt` turned out fully
+neutral and joined the shared list directly.
+
+On top of that, **`RcJvmRenderer.kt`** (`ee/…/rcembedded/jvm`) is the desktop render entry point:
+`renderRemoteDocumentToPng(bytes, w, h, density)` parses a captured `.rc` into a `CoreDocument`,
+stands it up on a `JvmRemoteContext` — a line-for-line mirror of the neutral half of the Android
+`RcPlayer`'s `remember(document)` init, minus the framework typeface resolver / choreographer / action
+handlers a still capture never exercises — builds the `GraphContext`, provides the composition locals
+the shared dispatch reads, and drives `RcPlayerRootLayoutComponent` / `RcPlayerRawDocument` through an
+`ImageComposeScene` to PNG. `RcJvmRendererTest` rasterizes the shared `TitleCardRemote-640x480.rc`
+fixture (the same captured document the Android embedded lane renders) and asserts a decodable,
+non-blank PNG of the requested size; like the other skiko tests it needs the natives and skips loudly
+without them. Verified locally against skiko: the whole embedded draw path produces a correct preview
+off Android.
+
+This closes the sequencing's step 3 draw half. What remains is wiring the renderer into a delivery
+surface (the `compose-preview serve` `cmp-jvm` chip and/or an `rc-compare` jvm lane), not any missing
+player capability.
+
 ### The source-set shape is `jvmCommon`, not `common`
 
 `remote-core` — the document and operation model the player reads throughout — is a plain
