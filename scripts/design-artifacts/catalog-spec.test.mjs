@@ -707,16 +707,29 @@ test("validateSpec warns when modePriority defers every declared mode", () => {
 });
 
 test("validateSpec rejects deferral when the publish has no live path", () => {
-  const spec = prioritySpec([
-    { componentId: "A", preview: "Alpha" },
-    { componentId: "B", preview: "Beta", priority: "deferred" },
-  ]);
+  // Keyed on the AXIS form, which is what actually takes effect today. `modePriority` genuinely
+  // thins the published set, so publishing it without a live path would drop coverage no serve host
+  // could produce.
+  const spec = prioritySpec([{ componentId: "A", preview: "Alpha" }], {
+    modes: ["light", "dark"],
+    modePriority: { light: "required", dark: "deferred" },
+  });
   const { errors } = validateSpec(spec, { liveBundle: false });
   assert.equal(errors.length, 1);
   assert.match(errors[0], /no live path/);
   // With a live path, and with the option omitted entirely (the lenient default), it passes.
   assert.deepEqual(validateSpec(spec, { liveBundle: true }).errors, []);
   assert.deepEqual(validateSpec(spec).errors, []);
+});
+
+test("validateSpec does not demand a live path for a deferral that is currently inert", () => {
+  // Entry-level deferral is recorded but not acted on until the serve host can route it (#2965), so
+  // requiring `--publish-live-bundle` for it would block a publish for no benefit.
+  const spec = prioritySpec([
+    { componentId: "A", preview: "Alpha" },
+    { componentId: "B", preview: "Beta", priority: "deferred" },
+  ]);
+  assert.deepEqual(validateSpec(spec, { liveBundle: false }).errors, []);
 });
 
 test("validateSpec still resolves a deferred entry's preview name against the module", () => {

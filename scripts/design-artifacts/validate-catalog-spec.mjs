@@ -157,6 +157,23 @@ if (values.json) {
           : " No @Preview function is wholly deferred, so the render set is unchanged."),
     );
   }
+  // The tracked gap: entry-level deferral is recorded but not yet acted on (#2965). Reported here as
+  // well as by the driver so an author sees it in the fast pre-flight, not only after a long render.
+  if (plan.ignoredEntryDeferrals.length > 0) {
+    const shown = plan.ignoredEntryDeferrals
+      .slice(0, 8)
+      .map((d) => `${d.componentId} (${d.kind})`)
+      .join(", ");
+    const more =
+      plan.ignoredEntryDeferrals.length > 8
+        ? `, +${plan.ignoredEntryDeferrals.length - 8} more`
+        : "";
+    console.log(
+      `  note:    ${plan.ignoredEntryDeferrals.length} entry/variant \`priority: "deferred"\` ` +
+        `annotation(s) are recorded but NOT yet acted on — rendered and baked as \`required\` until ` +
+        `the preview server can route them (compose-ai-tools#2965): ${shown}${more}`,
+    );
+  }
   for (const w of warnings) console.log(`  warning: ${w}`);
   for (const e of errors) console.log(`  error:   ${e}`);
   console.log(
