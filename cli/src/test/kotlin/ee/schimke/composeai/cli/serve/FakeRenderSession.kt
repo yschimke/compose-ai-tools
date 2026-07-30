@@ -96,6 +96,12 @@ internal class FakeRenderSession(
    * without it (the ids come back in [ExtensionsEnableResult.unknown]).
    */
   private val figmaSvgAvailable: Boolean = true,
+  /**
+   * Stubs [fetchData] for kinds this fake doesn't model natively (e.g.
+   * `compose/remotecompose-doc`). Consulted first; a non-null return short-circuits the built-in
+   * figma-svg / semantics handling.
+   */
+  private val fetchDataHook: ((previewId: String, kind: String) -> DataFetchResult?)? = null,
 ) : RenderSession {
   val renderCount = AtomicInteger(0)
 
@@ -296,6 +302,9 @@ internal class FakeRenderSession(
     params: JsonElement?,
     timeout: kotlin.time.Duration,
   ): DataFetchResult {
+    fetchDataHook?.invoke(previewId, kind)?.let {
+      return it
+    }
     if (kind == ComposeFigmaSvgProduct.KIND) {
       val file = File(renderRoot, "$previewId/${ComposeFigmaSvgProduct.FILE_SVG}")
       return DataFetchResult(

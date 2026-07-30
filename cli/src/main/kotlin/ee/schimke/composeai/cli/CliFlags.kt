@@ -64,6 +64,7 @@ internal object CliFlags {
       "--accept-docs-from",
       "--doc-ttl",
       "--playground-bundle",
+      "--playground-android-bundle",
       "--extra-maven-repos",
       "--trust-store",
       "--catalogs",

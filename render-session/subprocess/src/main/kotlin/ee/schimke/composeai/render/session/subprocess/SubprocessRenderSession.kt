@@ -88,10 +88,22 @@ object SubprocessRenderSessions : RenderSessionFactory {
    * schema version and field names stay owned by the module that owns [DaemonLaunchDescriptor].
    *
    * @param daemonClasspath absolute paths of every jar on the daemon subprocess classpath.
-   * @param classesDir directory holding the bundle's extracted `classes/app.jar` contents.
+   * @param classesDir directory holding the bundle's extracted `classes/app.jar` contents; also the
+   *   default single entry of [userClasspath] when the caller doesn't pass a fuller one.
    * @param previewsJson the bundle's extracted `previews.json` discovery manifest.
    * @param workspaceRoot a scratch directory used as the daemon's working directory + workspace id.
    * @param modulePath informational module label surfaced in diagnostics (defaults to the bundle).
+   * @param jvmArgs JVM args for the daemon subprocess. Defaults to the desktop set
+   *   (`--enable-native-access=ALL-UNNAMED`); an Android/Robolectric caller passes
+   *   `AndroidBundleLaunch().jvmArgs()` (which adds the `--add-opens` set JDK 17+ Robolectric
+   *   needs).
+   * @param extraSystemProperties merged over the base daemon sysprops (last-wins). An
+   *   Android/Robolectric caller passes `AndroidBundleLaunch().robolectricSystemProperties()`.
+   * @param userClasspath the child-loaded user classpath (`composeai.daemon.userClassDirs`, a
+   *   `File.pathSeparator`-joined list of dirs **and** jars — the same shape the Gradle plugin's
+   *   launch emits). Defaults to just [classesDir] (a bundle already carries its deps on
+   *   [daemonClasspath]); a playground snippet passes its full compile classpath so the catalog's
+   *   library jars reach the render.
    */
   fun openBundleDaemon(
     daemonClasspath: List<String>,
@@ -100,6 +112,9 @@ object SubprocessRenderSessions : RenderSessionFactory {
     workspaceRoot: File,
     modulePath: String = ":bundle",
     initializeTimeout: Duration = 60.seconds,
+    jvmArgs: List<String> = listOf("--enable-native-access=ALL-UNNAMED"),
+    extraSystemProperties: Map<String, String> = emptyMap(),
+    userClasspath: List<String> = listOf(classesDir.absolutePath),
     factory: DaemonClientFactory = SubprocessDaemonClientFactory(),
   ): RenderSession {
     require(daemonClasspath.isNotEmpty()) { "daemonClasspath must not be empty" }
@@ -114,10 +129,10 @@ object SubprocessRenderSessions : RenderSessionFactory {
         mainClass = DESKTOP_DAEMON_MAIN_CLASS,
         javaLauncher = null,
         classpath = daemonClasspath,
-        jvmArgs = listOf("--enable-native-access=ALL-UNNAMED"),
+        jvmArgs = jvmArgs,
         systemProperties =
           mapOf(
-            "composeai.daemon.userClassDirs" to classesDir.absolutePath,
+            "composeai.daemon.userClassDirs" to userClasspath.joinToString(File.pathSeparator),
             "composeai.daemon.previewsJsonPath" to previewsJson.absolutePath,
             // Set the render-output dir so DaemonMain.dataRoot is non-null and the file-based data
             // products (compose/figma-svg + -long, semantics, wireframe, …) register — otherwise a
@@ -125,7 +140,7 @@ object SubprocessRenderSessions : RenderSessionFactory {
             // `<root>/data` (where the registry + the RenderEngine producer both resolve) then sits
             // inside this session's tree. Mirrors ServeBundleDaemon.materialize.
             "composeai.render.outputDir" to File(canonicalRoot, "renders").absolutePath,
-          ),
+          ) + extraSystemProperties,
         workingDirectory = canonicalRoot.absolutePath,
         manifestPath = previewsJson.absolutePath,
       )

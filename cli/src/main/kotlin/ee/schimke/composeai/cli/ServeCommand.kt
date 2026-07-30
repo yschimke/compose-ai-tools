@@ -11,6 +11,7 @@ import ee.schimke.composeai.cli.serve.PlaygroundCatalogClasspath
 import ee.schimke.composeai.cli.serve.PlaygroundCompileService
 import ee.schimke.composeai.cli.serve.PlaygroundMode
 import ee.schimke.composeai.cli.serve.PlaygroundPreviewDiscoverer
+import ee.schimke.composeai.cli.serve.PlaygroundRcCaptureService
 import ee.schimke.composeai.cli.serve.PlaygroundTokenStore
 import ee.schimke.composeai.cli.serve.RenderOutcome
 import ee.schimke.composeai.cli.serve.ServeBundle
@@ -46,6 +47,7 @@ import ee.schimke.composeai.cli.serve.declaredThemesFromPreviews
 import ee.schimke.composeai.cli.serve.detectedFeaturesOf
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.render.session.RenderSessionException
+import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -239,6 +241,15 @@ class ServeCommand(args: List<String>) : Command(args) {
    * compile runs **user-supplied code** in-process). See docs/design/PLAYGROUND.md.
    */
   private val playgroundBundlePath: String? = args.flagValue("--playground-bundle")
+
+  /**
+   * `--playground-android-bundle <path>`: enable the playground's **Android / Remote Compose**
+   * compile lane, resolving its classpath from this Android catalog liveBundle. Snippets sent with
+   * `confType=remote-compose` compile against it, render on the Robolectric daemon, and their
+   * captured `.rc` is published as a `/d/<id>` permalink (needs the `lib-daemon-android` sidecar +
+   * `android.jar` + the `/d/` document store). Refused under `--public` like `--playground-bundle`.
+   */
+  private val playgroundAndroidBundlePath: String? = args.flagValue("--playground-android-bundle")
 
   /**
    * Extra remote Maven repository base URLs the live-daemon classpath resolver may fetch from, on
@@ -842,29 +853,28 @@ class ServeCommand(args: List<String>) : Command(args) {
    * server" model forbids (docs/design/PLAYGROUND.md § isolation). Fail-soft: any missing piece
    * (bundle unresolvable, no `lib-bta/`) logs why and disables the lane rather than aborting serve.
    */
-  private fun openPlaygroundService(): PlaygroundCompileService? {
-    val bundlePath = playgroundBundlePath ?: return null
+  private fun openPlaygroundService(docStore: ServeDocStore?): PlaygroundCompileService? {
+    val cmpBundle = playgroundBundlePath
+    val androidBundle = playgroundAndroidBundlePath
+    if (cmpBundle == null && androidBundle == null) return null
     if (public) {
       System.err.println(
-        "serve: --playground-bundle is refused under --public — it compiles and runs user-supplied " +
-          "code in-process. Omit --public to enable the playground."
+        "serve: --playground-bundle / --playground-android-bundle are refused under --public — they " +
+          "compile and run user-supplied code in-process. Omit --public to enable the playground."
       )
       return null
     }
     val workRoot = java.nio.file.Files.createTempDirectory("compose-playground").toFile()
-    val classpath =
-      PlaygroundCatalogClasspath.resolve(
-        bundleFile = java.io.File(bundlePath),
-        destDir = java.io.File(workRoot, "catalog"),
-        system = "playground",
-        onLog = { System.err.println("serve playground: $it") },
-      )
-    if (classpath == null) {
-      System.err.println(
-        "serve: --playground-bundle could not resolve a classpath from $bundlePath; playground disabled."
-      )
+
+    val cmpClasspath = cmpBundle?.let { resolvePlaygroundClasspath(it, workRoot, "cmp") }
+    val androidClasspath = androidBundle?.let {
+      resolvePlaygroundClasspath(it, workRoot, "android")
+    }
+    if (cmpClasspath == null && androidClasspath == null) {
+      System.err.println("serve: playground resolved no compile classpath; playground disabled.")
       return null
     }
+
     val compiler = PlaygroundBtaCompiler.fromInstall(java.io.File(workRoot, "bta-ic").toPath())
     if (compiler == null) {
       System.err.println(
@@ -873,18 +883,127 @@ class ServeCommand(args: List<String>) : Command(args) {
       )
       return null
     }
+
+    // Remote-compose mode needs the Android compile classpath, the Robolectric daemon sidecar, and
+    // a
+    // `/d/` document store to publish into. Absent any of the three it stays unavailable while CMP
+    // is
+    // unaffected.
+    val rcCapture =
+      if (androidClasspath != null) buildPlaygroundRcCaptureService(workRoot, docStore) else null
+
     System.err.println(
-      "serve: playground enabled (POST /api/1/compiler/run) — CMP snippets compile against $bundlePath"
+      "serve: playground enabled (POST /api/1/compiler/run) — " +
+        listOfNotNull(
+            cmpClasspath?.let { "cmp✓" },
+            androidClasspath?.let { "android✓" },
+            rcCapture?.let { "remote-compose✓" },
+          )
+          .joinToString(" ")
     )
+
     val snippetCounter = java.util.concurrent.atomic.AtomicLong()
     return PlaygroundCompileService(
-      catalogClasspath = { mode -> if (mode == PlaygroundMode.CMP) classpath else null },
+      catalogClasspath = { mode ->
+        when (mode) {
+          PlaygroundMode.CMP -> cmpClasspath
+          PlaygroundMode.ANDROID,
+          PlaygroundMode.REMOTE_COMPOSE -> androidClasspath
+        }
+      },
       compiler = compiler,
       discoverer = PlaygroundPreviewDiscoverer(),
       tokenStore = PlaygroundTokenStore(),
       newWorkDir = {
         java.io.File(workRoot, "snippet-${snippetCounter.incrementAndGet()}").absolutePath.toPath()
       },
+      captureRemoteDocument = { snippet -> rcCapture?.capture(snippet) },
+      publishRemoteDocument = { name, bytes, checked ->
+        (docStore?.add(name, bytes, isSecurityChecked = checked) as? ServeDocStore.Result.Ok)
+          ?.doc
+          ?.path
+      },
+    )
+  }
+
+  /** Resolve a playground compile classpath from a catalog liveBundle; null (logged) on failure. */
+  private fun resolvePlaygroundClasspath(
+    bundlePath: String,
+    workRoot: java.io.File,
+    system: String,
+  ): PlaygroundCompileService.Classpath? {
+    val classpath =
+      PlaygroundCatalogClasspath.resolve(
+        bundleFile = java.io.File(bundlePath),
+        destDir = java.io.File(workRoot, "catalog-$system"),
+        system = "playground-$system",
+        onLog = { System.err.println("serve playground: $it") },
+      )
+    if (classpath == null) {
+      System.err.println(
+        "serve: playground could not resolve a $system classpath from $bundlePath; that mode disabled."
+      )
+    }
+    return classpath
+  }
+
+  /**
+   * Assemble the Android/Robolectric capture backend for the playground's remote-compose mode — the
+   * `lib-daemon-android` sidecar + `android.jar` on the daemon classpath, the Robolectric
+   * jvmArgs/sysprops, and a subprocess `openBundleDaemon` opener. Mirrors [ServeBundleDaemon]'s
+   * `androidBundleDaemonLaunch`. Returns null (logging why) when the sidecar, `android.jar`, or the
+   * `/d/` document store is missing — remote-compose then reports unavailable rather than compiling
+   * to a dead end.
+   */
+  private fun buildPlaygroundRcCaptureService(
+    workRoot: java.io.File,
+    docStore: ServeDocStore?,
+  ): PlaygroundRcCaptureService? {
+    if (docStore == null) {
+      System.err.println(
+        "serve: playground remote-compose mode needs the /d/ document store — enable it with " +
+          "--docs. Remote-compose mode disabled."
+      )
+      return null
+    }
+    val daemonJars = locateBundleSidecarJars("lib-daemon-android")
+    if (daemonJars.isEmpty()) {
+      System.err.println(
+        "serve: playground remote-compose mode needs the Android daemon sidecar " +
+          "(lib-daemon-android/), which ships separately as " +
+          "compose-preview-android-daemon-<version>.zip; unpack it and set " +
+          "-Dcomposeai.cli.libDaemonAndroidDir=<dir>/lib-daemon-android. Remote-compose disabled."
+      )
+      return null
+    }
+    val androidJar =
+      AndroidBundleLaunch.resolveAndroidJar(localPropertiesFile = null)
+        ?: run {
+          System.err.println(
+            "serve: playground remote-compose mode needs android.jar — set ANDROID_HOME / " +
+              "ANDROID_SDK_ROOT. Remote-compose mode disabled."
+          )
+          return null
+        }
+    val launch = AndroidBundleLaunch()
+    val daemonClasspath = (daemonJars + listOf(androidJar)).map { it.absolutePath }
+    val jvmArgs = launch.jvmArgs()
+    val sysprops = launch.robolectricSystemProperties()
+    val captureCounter = java.util.concurrent.atomic.AtomicLong()
+    return PlaygroundRcCaptureService(
+      openSession = { classesDir, previewsJson, workspaceRoot, userClasspath ->
+        SubprocessRenderSessions.openBundleDaemon(
+          daemonClasspath = daemonClasspath,
+          classesDir = classesDir,
+          previewsJson = previewsJson,
+          workspaceRoot = workspaceRoot,
+          modulePath = ":playground",
+          jvmArgs = jvmArgs,
+          extraSystemProperties = sysprops,
+          userClasspath = userClasspath,
+        )
+      },
+      newWorkDir = { java.io.File(workRoot, "rc-capture-${captureCounter.incrementAndGet()}") },
     )
   }
 
@@ -999,6 +1118,9 @@ class ServeCommand(args: List<String>) : Command(args) {
       } else {
         null
       }
+    // Resolved once so the playground's remote-compose lane publishes into the SAME store the `/d/`
+    // route serves from — otherwise a minted `/d/<id>` link wouldn't resolve.
+    val docStore = openDocStore()
     val server =
       ServeHttpServer(
         host = host,
@@ -1023,8 +1145,8 @@ class ServeCommand(args: List<String>) : Command(args) {
         catalogAdmin = catalogAdmin,
         trustAdmin = trustAdmin,
         adminToken = adminToken,
-        docStore = openDocStore(),
-        playgroundService = openPlaygroundService(),
+        docStore = docStore,
+        playgroundService = openPlaygroundService(docStore),
       )
     if (trustAdmin != null) {
       System.err.println(
