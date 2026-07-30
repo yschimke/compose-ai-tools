@@ -83,4 +83,13 @@ object IrSidecarChannel {
 
   /** Drain (read + remove) the IR captured for [previewId] during the just-finished render. */
   fun consume(previewId: String): IrCapture? = pending.remove(previewId)
+
+  /**
+   * Read the IR captured for [previewId] **without** removing it. Lets a consumer inspect a
+   * capture's [IrCapture.format] before deciding whether it owns it — a format-specific drainer
+   * (e.g. the daemon's Remote Compose data product) peeks first and only [consume]s when the format
+   * matches, so it never swallows another format's capture (a protolayout tile) that a different
+   * consumer is due to drain.
+   */
+  fun peek(previewId: String): IrCapture? = pending[previewId]
 }

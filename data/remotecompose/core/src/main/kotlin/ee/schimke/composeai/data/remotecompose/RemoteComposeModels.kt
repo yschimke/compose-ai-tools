@@ -22,6 +22,31 @@ object RemoteComposeProduct {
 }
 
 /**
+ * Stable identity of the `compose/remotecompose-doc` data product — the **document** a preview
+ * drew, distinct from the editable-knob state of [RemoteComposeProduct]. Where
+ * `compose/remotecompose` carries the named-value / host-action / knob surface, this carries the
+ * serialized Remote Compose document (`.rc`) the live render just captured (via
+ * `IrSidecarChannel`), so a client can take the bytes the composition produced instead of a
+ * pre-packed replay. The playground's remote-compose mode fetches this after a render to publish
+ * the document as a `/d/<id>` permalink.
+ *
+ * Kept in this alpha-free core module (beside [RemoteComposeProduct]) so a client can depend on the
+ * payload schema without the daemon-side registry or the `androidx.compose.remote.*` artifacts.
+ */
+object RemoteComposeDocumentProduct {
+  const val KIND: String = "compose/remotecompose-doc"
+  const val SCHEMA_VERSION: Int = 1
+}
+
+/**
+ * Wire-shape returned by `data/fetch?kind=compose/remotecompose-doc`: the serialized Remote Compose
+ * document (`.rc`) captured during the latest render, Base64-encoded (the `data/fetch` transport is
+ * JSON, so the raw bytes ride as text). [documentBase64] decodes to the exact `.rc` byte stream the
+ * vendored player consumes — the same bytes a bundle's `ir/<id>.rc` sidecar would carry.
+ */
+@Serializable data class RemoteComposeDocumentPayload(val documentBase64: String)
+
+/**
  * One editable Remote Compose named-value knob a preview declared during its render — the auto-
  * capture counterpart of a plain-Compose `compose/overrides`
  * [ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration]. A knob is declared whenever

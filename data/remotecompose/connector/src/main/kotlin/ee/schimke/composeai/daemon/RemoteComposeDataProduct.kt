@@ -23,9 +23,12 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
 import ee.schimke.composeai.daemon.protocol.RemoteHostAction
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
+import ee.schimke.composeai.data.remotecompose.RemoteComposeDocumentPayload
+import ee.schimke.composeai.data.remotecompose.RemoteComposeDocumentProduct
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposePayload
 import ee.schimke.composeai.data.remotecompose.RemoteComposeProduct
+import ee.schimke.composeai.data.render.IrSidecarChannel
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.DataExtension
 import ee.schimke.composeai.data.render.extensions.DataExtensionCapability
@@ -36,6 +39,7 @@ import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
 import ee.schimke.composeai.data.render.extensions.compose.AroundComposableHook
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionComposeContext
+import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -322,6 +326,7 @@ class RemoteComposePreviewOverrideExtension : DataExtension<PreviewOverrides> {
  */
 class RemoteComposeDataProductRegistry : DataProductRegistry {
   private val latestPayloads = ConcurrentHashMap<String, RemoteComposePayload>()
+  private val latestDocuments = ConcurrentHashMap<String, ByteArray>()
 
   override val capabilities: List<DataProductCapability> =
     listOf(
@@ -336,7 +341,17 @@ class RemoteComposeDataProductRegistry : DataProductRegistry {
         // (where the panel observes via `data/subscribe` rather than re-asking the dispatcher to
         // queue an extra render).
         requiresRerender = false,
-      )
+      ),
+      // The captured document (`.rc`). Fetching it needs no re-render — it's the byte stream the
+      // just-finished render already produced; a client fetches it once and takes the bytes.
+      DataProductCapability(
+        kind = DOC_KIND,
+        schemaVersion = DOC_SCHEMA_VERSION,
+        transport = DataProductTransport.INLINE,
+        attachable = true,
+        fetchable = true,
+        requiresRerender = false,
+      ),
     )
 
   fun capture(previewId: String?, payload: RemoteComposePayload) {
@@ -349,33 +364,81 @@ class RemoteComposeDataProductRegistry : DataProductRegistry {
     latestPayloads.remove(previewId)
   }
 
+  /**
+   * Drain this render's captured Remote Compose document (`.rc`) off [IrSidecarChannel] and hold it
+   * for a later `compose/remotecompose-doc` fetch. Runs on every render (from [onRender]), before
+   * the knob-state logic, so the document is captured even when the preview declared no editable
+   * knobs. [IrSidecarChannel.peek] first, then [IrSidecarChannel.consume] **only** when the format
+   * is Remote Compose — so a protolayout capture waiting for its own drainer is left untouched.
+   *
+   * Daemon-only: [onRender] is invoked exclusively by `JsonRpcServer` on the live render path, never
+   * by the batch renderer (which drains the channel itself via `RobolectricRenderTest.writeIrSidecar`
+   * to write the bundle's `ir/<id>.rc` sidecar), so this never competes with bundle capture.
+   */
+  private fun captureDocument(previewId: String) {
+    val capture = IrSidecarChannel.peek(previewId)
+    if (capture != null && capture.format == IrSidecarChannel.FORMAT_REMOTECOMPOSE) {
+      latestDocuments[previewId] = capture.bytes
+      IrSidecarChannel.consume(previewId)
+    } else {
+      latestDocuments.remove(previewId)
+    }
+  }
+
   override fun fetch(
     previewId: String,
     kind: String,
     params: JsonElement?,
     inline: Boolean,
   ): DataProductRegistry.Outcome {
-    if (kind != KIND) return DataProductRegistry.Outcome.Unknown
-    val payload = latestPayloads[previewId] ?: return DataProductRegistry.Outcome.NotAvailable
-    return DataProductRegistry.Outcome.Ok(
-      DataFetchResult(
-        kind = KIND,
-        schemaVersion = SCHEMA_VERSION,
-        payload = json.encodeToJsonElement(RemoteComposePayload.serializer(), payload),
-      )
-    )
+    return when (kind) {
+      KIND -> {
+        val payload = latestPayloads[previewId] ?: return DataProductRegistry.Outcome.NotAvailable
+        DataProductRegistry.Outcome.Ok(
+          DataFetchResult(
+            kind = KIND,
+            schemaVersion = SCHEMA_VERSION,
+            payload = json.encodeToJsonElement(RemoteComposePayload.serializer(), payload),
+          )
+        )
+      }
+      DOC_KIND -> {
+        val bytes = latestDocuments[previewId] ?: return DataProductRegistry.Outcome.NotAvailable
+        DataProductRegistry.Outcome.Ok(
+          DataFetchResult(
+            kind = DOC_KIND,
+            schemaVersion = DOC_SCHEMA_VERSION,
+            payload = json.encodeToJsonElement(documentPayloadSerializer, documentPayload(bytes)),
+          )
+        )
+      }
+      else -> DataProductRegistry.Outcome.Unknown
+    }
   }
 
   override fun attachmentsFor(previewId: String, kinds: Set<String>): List<DataProductAttachment> {
-    if (KIND !in kinds) return emptyList()
-    val payload = latestPayloads[previewId] ?: return emptyList()
-    return listOf(
-      DataProductAttachment(
-        kind = KIND,
-        schemaVersion = SCHEMA_VERSION,
-        payload = json.encodeToJsonElement(RemoteComposePayload.serializer(), payload),
-      )
-    )
+    val out = mutableListOf<DataProductAttachment>()
+    if (KIND in kinds) {
+      latestPayloads[previewId]?.let { payload ->
+        out +=
+          DataProductAttachment(
+            kind = KIND,
+            schemaVersion = SCHEMA_VERSION,
+            payload = json.encodeToJsonElement(RemoteComposePayload.serializer(), payload),
+          )
+      }
+    }
+    if (DOC_KIND in kinds) {
+      latestDocuments[previewId]?.let { bytes ->
+        out +=
+          DataProductAttachment(
+            kind = DOC_KIND,
+            schemaVersion = DOC_SCHEMA_VERSION,
+            payload = json.encodeToJsonElement(documentPayloadSerializer, documentPayload(bytes)),
+          )
+      }
+    }
+    return out
   }
 
   override fun onRender(previewId: String, result: RenderResult) {
@@ -388,6 +451,9 @@ class RemoteComposeDataProductRegistry : DataProductRegistry {
     overrides: PreviewOverrides?,
     previewContext: PreviewContext?,
   ) {
+    // Independent of the knob state below — a preview can emit a document while declaring no knobs.
+    captureDocument(previewId)
+
     val namedValues = RemoteComposeController.namedValues.value
     val hostActions = RemoteComposeController.hostActions.value
     val profile = RemoteComposeController.profile.value
@@ -477,9 +543,18 @@ class RemoteComposeDataProductRegistry : DataProductRegistry {
     }
   }
 
+  private fun documentPayload(bytes: ByteArray): RemoteComposeDocumentPayload =
+    RemoteComposeDocumentPayload(documentBase64 = Base64.getEncoder().encodeToString(bytes))
+
   companion object {
     const val KIND: String = RemoteComposeProduct.KIND
     const val SCHEMA_VERSION: Int = RemoteComposeProduct.SCHEMA_VERSION
+
+    /** The captured-document facet — see [RemoteComposeDocumentProduct]. */
+    const val DOC_KIND: String = RemoteComposeDocumentProduct.KIND
+    const val DOC_SCHEMA_VERSION: Int = RemoteComposeDocumentProduct.SCHEMA_VERSION
+
+    private val documentPayloadSerializer = RemoteComposeDocumentPayload.serializer()
 
     private val json = Json {
       encodeDefaults = true
