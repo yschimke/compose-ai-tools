@@ -6,6 +6,12 @@ import ee.schimke.composeai.cli.serve.DaemonStartupLog
 import ee.schimke.composeai.cli.serve.GitWorktrees
 import ee.schimke.composeai.cli.serve.GradleRevisionBuilder
 import ee.schimke.composeai.cli.serve.MutableTrustStore
+import ee.schimke.composeai.cli.serve.PlaygroundBtaCompiler
+import ee.schimke.composeai.cli.serve.PlaygroundCatalogClasspath
+import ee.schimke.composeai.cli.serve.PlaygroundCompileService
+import ee.schimke.composeai.cli.serve.PlaygroundMode
+import ee.schimke.composeai.cli.serve.PlaygroundPreviewDiscoverer
+import ee.schimke.composeai.cli.serve.PlaygroundTokenStore
 import ee.schimke.composeai.cli.serve.RenderOutcome
 import ee.schimke.composeai.cli.serve.ServeBundle
 import ee.schimke.composeai.cli.serve.ServeBundleDaemon
@@ -226,6 +232,13 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val acceptDocsFrom: List<String> =
     args.flagValue("--accept-docs-from")?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
       ?: emptyList()
+
+  /**
+   * `--playground-bundle <path>`: enable the playground lane (`POST /api/{v}/compiler/run`),
+   * resolving the CMP compile classpath from this catalog liveBundle. Refused under `--public` (the
+   * compile runs **user-supplied code** in-process). See docs/design/PLAYGROUND.md.
+   */
+  private val playgroundBundlePath: String? = args.flagValue("--playground-bundle")
 
   /**
    * Extra remote Maven repository base URLs the live-daemon classpath resolver may fetch from, on
@@ -821,6 +834,60 @@ class ServeCommand(args: List<String>) : Command(args) {
     return ServeDocStore(ttlSeconds = docTtlSeconds, allowedHosts = acceptDocsFrom)
   }
 
+  /**
+   * Build the `--playground-bundle` compile service, or null when not opted in. Resolves the CMP
+   * compile classpath from the catalog liveBundle once at startup and wires the in-process BTA
+   * compiler from the CLI install's `lib-bta/`. **Refused under `--public`**: the compile runs
+   * user-supplied code in-process, which the public server's "never run untrusted code on the
+   * server" model forbids (docs/design/PLAYGROUND.md § isolation). Fail-soft: any missing piece
+   * (bundle unresolvable, no `lib-bta/`) logs why and disables the lane rather than aborting serve.
+   */
+  private fun openPlaygroundService(): PlaygroundCompileService? {
+    val bundlePath = playgroundBundlePath ?: return null
+    if (public) {
+      System.err.println(
+        "serve: --playground-bundle is refused under --public — it compiles and runs user-supplied " +
+          "code in-process. Omit --public to enable the playground."
+      )
+      return null
+    }
+    val workRoot = java.nio.file.Files.createTempDirectory("compose-playground").toFile()
+    val classpath =
+      PlaygroundCatalogClasspath.resolve(
+        bundleFile = java.io.File(bundlePath),
+        destDir = java.io.File(workRoot, "catalog"),
+        system = "playground",
+        onLog = { System.err.println("serve playground: $it") },
+      )
+    if (classpath == null) {
+      System.err.println(
+        "serve: --playground-bundle could not resolve a classpath from $bundlePath; playground disabled."
+      )
+      return null
+    }
+    val compiler = PlaygroundBtaCompiler.fromInstall(java.io.File(workRoot, "bta-ic").toPath())
+    if (compiler == null) {
+      System.err.println(
+        "serve: playground compiler unavailable — no lib-bta/ in the CLI install (run from an " +
+          "installed distribution). Playground disabled."
+      )
+      return null
+    }
+    System.err.println(
+      "serve: playground enabled (POST /api/1/compiler/run) — CMP snippets compile against $bundlePath"
+    )
+    val snippetCounter = java.util.concurrent.atomic.AtomicLong()
+    return PlaygroundCompileService(
+      catalogClasspath = { mode -> if (mode == PlaygroundMode.CMP) classpath else null },
+      compiler = compiler,
+      discoverer = PlaygroundPreviewDiscoverer(),
+      tokenStore = PlaygroundTokenStore(),
+      newWorkDir = {
+        java.io.File(workRoot, "snippet-${snippetCounter.incrementAndGet()}").absolutePath.toPath()
+      },
+    )
+  }
+
   /** Build the `--accept-bundles` upload store (temp-dir backed), wired to [registry]. */
   private fun openUploadStore(registry: ServeSessionRegistry): ServeBundleStore {
     val uploads =
@@ -957,6 +1024,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         trustAdmin = trustAdmin,
         adminToken = adminToken,
         docStore = openDocStore(),
+        playgroundService = openPlaygroundService(),
       )
     if (trustAdmin != null) {
       System.err.println(

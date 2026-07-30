@@ -189,6 +189,15 @@ class ServeHttpServer(
    * short-lived link, not a preview session.
    */
   private val docStore: ServeDocStore? = null,
+  /**
+   * When non-null, enables the **playground** lane: `POST /api/{version}/compiler/run` compiles a
+   * snippet against a catalog classpath and returns diagnostics + an expiring preview token.
+   * Supplied by `--playground-bundle`. Because the compile runs **user-supplied code** in-process,
+   * this lane is never enabled under `--public` — the CLI refuses the combination (see
+   * `ServeCommand`). See
+   * [docs/design/PLAYGROUND.md](../../../../../../../../docs/design/PLAYGROUND.md).
+   */
+  private val playgroundService: PlaygroundCompileService? = null,
 ) {
   /** The actual bound port — may differ from the requested one if it was taken (auto-picked). */
   val port: Int = pickPort(host, requestedPort, portRange)
@@ -377,6 +386,16 @@ class ServeHttpServer(
           // per-format. Ungated + CORS-open like `/rc-player/bundle.js` (generic client code, no
           // session data).
           get("/doc-player/{format}/bundle.js") { handleDocPlayer() }
+        }
+
+        // The playground lane (`--playground-bundle`): compile a snippet against a catalog
+        // classpath
+        // and return diagnostics + an expiring preview token. The frontend inserts a `{version}`
+        // path segment (e.g. `/api/1/compiler/run`) which we capture and ignore. The constant
+        // `/api`
+        // first segment outscores the `/{system}` catch-all. Never registered under `--public`.
+        playgroundService?.let { svc ->
+          post("/api/{version}/compiler/run") { handlePlaygroundRun(svc) }
         }
 
         // Shared/public mode ingestion: a client contributes a pre-rendered bundle (upload the zip
@@ -742,6 +761,44 @@ class ServeHttpServer(
       is ServeDocStore.Result.Failed ->
         call.respondText(result.reason, status = HttpStatusCode.BadRequest)
     }
+  }
+
+  /**
+   * `POST /api/{version}/compiler/run`: compile a playground snippet and return the Stage-1 result
+   * — diagnostics (both our shape and the stock `errors` map) plus, on a clean compile, an expiring
+   * preview token. Token-gated; the compile runs **user-supplied code** in-process, which is why
+   * the CLI refuses to enable this lane under `--public`. `isSecurityChecked = true`: the route
+   * cleared its token gate (`rejectBadToken`); the service still bounds the work (size cap, token
+   * TTL/caps).
+   */
+  private suspend fun RoutingContext.handlePlaygroundRun(service: PlaygroundCompileService) {
+    if (rejectBadToken()) return
+    val body =
+      withContext(Dispatchers.IO) {
+        call.receiveStream().use { readCapped(it, MAX_PLAYGROUND_BYTES) }
+      }
+        ?: run {
+          call.respondText(
+            "playground request exceeds ${MAX_PLAYGROUND_BYTES / 1024}KB",
+            status = HttpStatusCode.PayloadTooLarge,
+          )
+          return
+        }
+    val request =
+      try {
+        JSON.decodeFromString(PlaygroundRunRequest.serializer(), body.decodeToString())
+      } catch (e: Exception) {
+        call.respondText(
+          "invalid playground request: ${e.message}",
+          status = HttpStatusCode.BadRequest,
+        )
+        return
+      }
+    val response = withContext(Dispatchers.IO) { service.run(request, isSecurityChecked = true) }
+    call.respondText(
+      JSON.encodeToString(PlaygroundRunResponse.serializer(), response),
+      ContentType.Application.Json,
+    )
   }
 
   /** `GET /d/{id}`: the permalink page. An expired (or unknown) id is a styled 404, not a hint. */
@@ -2450,6 +2507,9 @@ class ServeHttpServer(
 
     /** Max accepted upload-body size for `POST /docs` (matches the document store's own cap). */
     private val MAX_DOC_BYTES: Long = ServeDocStore.DEFAULT_MAX_DOC_BYTES.toLong()
+
+    /** Max accepted body size for `POST /api/{v}/compiler/run` — a snippet is small. */
+    private val MAX_PLAYGROUND_BYTES: Long = 256L * 1024
 
     /** `1234567` → `1.2 MB`; the size line on a document page. */
     internal fun humanBytes(bytes: Int): String =
