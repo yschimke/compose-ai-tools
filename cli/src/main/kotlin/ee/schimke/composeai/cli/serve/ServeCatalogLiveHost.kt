@@ -96,6 +96,13 @@ class ServeCatalogLiveHost(
    */
   override val previews: List<ServePreview> = mergeDeclaredKnobs(baked.previews, live.previews)
 
+  /**
+   * The baked host's live-only (deferred) ids — previews it lists with no PNG behind them, which
+   * the catalog publishes for on-demand render. Carried through so the routing below sends them to
+   * the daemon on every request (there is nothing to replay) and `/api/previews` can badge them.
+   */
+  override val liveOnlyPreviewIds: Set<String> = baked.liveOnlyPreviewIds
+
   // ── Non-blocking cold start ────────────────────────────────────────────────────────────────────
   // The no-override SVG lane prefers the daemon's per-variant vector over the baked per-slug one
   // (the #2448 fix). But a daemon's FIRST render can be slow — a desktop/Skiko daemon warms in
@@ -223,6 +230,10 @@ class ServeCatalogLiveHost(
   override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
     val daemonId =
       daemonIdForOverrideRender(previewId, overrides) ?: return baked.render(previewId, overrides)
+    // A live-only (deferred) preview has NO baked PNG to fall back to — the daemon is its only
+    // lane, so it must be awaited even cold and its outcome returned as-is. Everything below is the
+    // baked-first routing, which such an id can't use.
+    if (previewId in liveOnlyPreviewIds) return liveHostFor(daemonId).render(daemonId, overrides)
     // Only await the daemon when it's warm and free. A cold Android render can take minutes, and
     // blocking the browse — and the HTTP render slot it holds — on it is what saturates the whole
     // server. A not-yet-warm daemon serves baked now and warms in the background; a warm daemon
@@ -304,7 +315,7 @@ class ServeCatalogLiveHost(
    * re-render" decision is identical across the two trusted-catalog live hosts.
    */
   private fun daemonIdForOverrideRender(previewId: String, overrides: PreviewOverrides): String? =
-    CatalogLiveRouting.daemonIdForOverrideRender(previewId, overrides, alias)
+    CatalogLiveRouting.daemonIdForRender(previewId, overrides, alias, liveOnlyPreviewIds)
 
   /** Live streaming is available only for aliased ids; others have no stream (snapshot only). */
   override fun subscribeStream(

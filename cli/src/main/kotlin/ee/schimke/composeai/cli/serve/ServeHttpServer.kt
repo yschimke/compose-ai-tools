@@ -1741,6 +1741,7 @@ class ServeHttpServer(
                 modes = p.modes.map { it.wire },
                 overrides = p.overrides,
                 remoteComposeKnobs = p.remoteComposeKnobs,
+                liveOnly = p.id in renderHost.liveOnlyPreviewIds,
               )
             },
         )
@@ -2764,6 +2765,13 @@ private data class PreviewDto(
    * them). Additive since `compose-preview-serve/v2`.
    */
   val remoteComposeKnobs: List<RemoteComposeKnobDeclaration> = emptyList(),
+  /**
+   * True when this preview is **live-only**: the catalog declares it (`deferred[]`) but publishes
+   * no baked PNG for it, so every render is produced on demand by the session's live daemon. A
+   * client can badge it and expect a slower, daemon-backed first render; false (the default) is
+   * every ordinary baked preview. Additive since `compose-preview-serve/v2`.
+   */
+  val liveOnly: Boolean = false,
 )
 
 /** One configured catalog on `GET /admin/catalogs`: its config plus its latest load outcome. */

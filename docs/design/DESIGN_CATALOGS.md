@@ -323,6 +323,31 @@ several themes:
   its `@Preview` name and the daemon `previewIds` its function produces, so a
   `serve --catalogs --allow-render-trusted` host can produce it on request.
 
+Each `deferred[]` record is **addressable**, which is what makes the on-demand path
+real rather than declarative:
+
+- `path` — the `images/…` path the sticker *would* have been written to, derived by
+  [`catalog-image-path.mjs`](../../scripts/design-artifacts/catalog-image-path.mjs).
+  The serve routes are `previewIdFor(image.path)`, so recording the path (rather than
+  having the server re-derive the exporter's naming) keeps one id namespace and means
+  flipping an entry between `required` and `deferred` never moves its URL. The export
+  re-derives every *baked* image's path on each run and compares: if the naming ever
+  drifts, it says so and publishes the records without a `path` (the server then
+  skips them) rather than pointing them at routes no sticker will occupy.
+- `previewId` — the one daemon preview that renders it. An entry- or variant-level
+  deferral names no axes (nothing rendered, so nothing recorded that its function
+  produces a light *and* a dark sticker), so the export expands one spec record into
+  one record per `@Preview` annotation, recovering each one's theme/size.
+
+`ServeCatalogStore` reads them back: each record joins the catalog-id → daemon-id
+alias and is registered as a **live-only preview** — a card in its proper tab, group
+and state switcher, whose every render (not just an override-bearing one) routes to
+the daemon, since there is no baked PNG to replay. Live-only previews are registered
+**only** where a live lane stood up. A session serving baked PNGs only — no
+`liveBundle`, an unverified catalog, `--allow-render-trusted` off — omits them and
+records a `deferred-not-served` degradation saying how many are hidden, rather than
+listing cards whose every request 404s.
+
 Why not just `--allow-incomplete`: that flag is all-or-nothing, so turning it on to
 tolerate a known-absent sticker also lets a genuinely broken *required* render
 publish unnoticed. Priority keeps the gate strict over the core inventory while
@@ -370,7 +395,9 @@ Caveats worth knowing before reaching for it:
   coverage silently missing from the published sheet.
 - **Static consumers see less.** `images/`, `figma/*.svg` and the Figma import carry
   only required entries. That's why the default stays `required` and deferral is
-  always explicit.
+  always explicit. A *baked-only* serve session is a static consumer too: it hides
+  the deferred previews (and says so — see `deferred-not-served` above), so the
+  deferred sheet is only whole on a host with a live lane.
 - **The primary sticker is never deferrable by mode.** Only a render that *names* a
   theme is eligible, so every published component keeps baked pixels. A component
   whose every render is mode-deferred is treated as a misconfiguration and fails the

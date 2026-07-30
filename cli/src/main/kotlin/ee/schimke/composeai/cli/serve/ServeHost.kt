@@ -41,6 +41,21 @@ interface ServeHost : AutoCloseable {
   val degradations: List<ServeDegradation>
     get() = emptyList()
 
+  /**
+   * The previews this session lists that have **no baked pixels** — the catalog's `deferred[]`
+   * records (issue #2965): coverage a spec declared `priority: "deferred"` (or thinned out of the
+   * palette with `modePriority`), which CI deliberately didn't rasterise. They are registered only
+   * when the session has a live lane to produce them on request, so an id in here always has a
+   * daemon twin; a baked-only session omits them entirely rather than showing a card that can only
+   * render a broken image.
+   *
+   * The live composites read this to route such an id to the daemon even for an override-free
+   * browse (there is no baked PNG to replay — see [CatalogLiveRouting.daemonIdForRender]), and the
+   * viewer can badge the card as live-only. Empty for every ordinary session.
+   */
+  val liveOnlyPreviewIds: Set<String>
+    get() = emptySet()
+
   /** Human label for the tenant (module Gradle path, `module@rev`, or a bundle name). */
   val label: String
 

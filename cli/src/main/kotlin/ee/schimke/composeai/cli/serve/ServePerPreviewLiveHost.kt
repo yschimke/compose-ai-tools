@@ -87,6 +87,13 @@ class ServePerPreviewLiveHost(
   override val label: String = baked.label
 
   /**
+   * The baked host's live-only (deferred) ids — listed previews with no PNG behind them, published
+   * for on-demand render. Their requests always route to a per-preview daemon: there is no baked
+   * sticker to replay. Mirrors [ServeCatalogLiveHost.liveOnlyPreviewIds].
+   */
+  override val liveOnlyPreviewIds: Set<String> = baked.liveOnlyPreviewIds
+
+  /**
    * Snapshots stay static (baked PNGs) so browsing is instant — the live lane is opt-in per edit.
    */
   override val canApplyOverrides: Boolean = false
@@ -119,9 +126,14 @@ class ServePerPreviewLiveHost(
    */
   override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
     val daemonId =
-      CatalogLiveRouting.daemonIdForOverrideRender(previewId, overrides, alias)
+      CatalogLiveRouting.daemonIdForRender(previewId, overrides, alias, liveOnlyPreviewIds)
         ?: return baked.render(previewId, overrides)
-    val live = resolveLive(daemonId) ?: return baked.render(previewId, overrides)
+    val live =
+      resolveLive(daemonId)
+        // A live-only (deferred) preview has no baked PNG to fall back to, so an unresolvable
+        // daemon is a genuine miss rather than a quiet downgrade to the baked sticker.
+        ?: return if (previewId in liveOnlyPreviewIds) RenderOutcome.NotFound
+        else baked.render(previewId, overrides)
     return live.render(daemonId, overrides)
   }
 
@@ -132,7 +144,8 @@ class ServePerPreviewLiveHost(
    * a mapped id fall back to its daemon.
    */
   override fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
-    CatalogLiveRouting.daemonIdForOverrideRender(previewId, overrides, alias)?.let { daemonId ->
+    CatalogLiveRouting.daemonIdForRender(previewId, overrides, alias, liveOnlyPreviewIds)?.let {
+      daemonId ->
       resolveLive(daemonId)?.let {
         return it.renderSvg(daemonId, overrides)
       }

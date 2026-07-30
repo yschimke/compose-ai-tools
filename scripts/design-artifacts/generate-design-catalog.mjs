@@ -86,7 +86,14 @@ import {
   daemonPreviewIdsByFunction,
 } from "./bundle-previews.mjs";
 import { exportsNoSticker } from "./capture-mode.mjs";
-import { bridgeLivePreviewIds } from "./bridge-live-preview-ids.mjs";
+import {
+  bridgeLivePreviewIds,
+  expandDeferredRecords,
+} from "./bridge-live-preview-ids.mjs";
+import {
+  catalogImagePath,
+  derivationMismatches,
+} from "./catalog-image-path.mjs";
 import { applySpecSections } from "./apply-spec-sections.mjs";
 import { applySpecBreakpoints } from "./catalog-breakpoints.mjs";
 
@@ -977,12 +984,54 @@ if (values["publish-live-bundle"]) {
   // those pixels exist. Each record carries the daemon preview id(s) its `@Preview` function
   // produces, so a `serve --allow-render-trusted` host can render it on request: the previews are
   // in the bundle's `previews.json` whether or not CI rasterised them.
+  //
+  // Two more fields make the record *addressable* (issue #2965), which is what gives a deferred
+  // entry a live lane on the serve host rather than leaving it declared-but-unreachable:
+  //
+  //   - `path` — the `images/…` path this sticker WOULD have been written to. The published route
+  //     ids are `previewIdFor(image.path)`, so recording the path here (rather than making the
+  //     server re-derive the exporter's naming scheme) keeps one id namespace, and means flipping an
+  //     entry between `required` and `deferred` never moves its URL. Guarded against drift below.
+  //   - `previewId` — the ONE daemon preview this record renders through. An entry- or
+  //     variant-deferred spec record names no axes (nothing rendered, so nothing recorded that its
+  //     function would have produced a light AND a dark sticker), so `expandDeferredRecords` splits
+  //     it into one record per `@Preview` annotation and recovers each one's theme/size. A
+  //     mode-deferred record already names its theme and stays 1:1. `previewIds` stays, as the
+  //     function's full list, for a consumer that wants the wider view.
   if (deferred.length > 0) {
     const idsByFunction = daemonPreviewIdsByFunction([bundle, extraBundle]);
-    manifest.deferred = deferred.map((record) => {
+    // Drift guard: re-derive every BAKED image's path and compare against what `buildCatalog`
+    // actually wrote. A mismatch means the exporter's naming has moved out from under
+    // `catalogImagePath`, so the derived deferred paths would point at routes no sticker will ever
+    // occupy — publish the records without a `path` (the serve host then skips them, as it does for
+    // any older catalog) rather than publish wrong ones, and say so loudly.
+    const mismatches = derivationMismatches(manifest);
+    if (mismatches.length > 0) {
+      const [first] = mismatches;
+      console.warn(
+        `[${spec.system}] catalog image naming has drifted from catalogImagePath ` +
+          `(${mismatches.length} of the baked images disagree; e.g. expected ` +
+          `${first.expected}, exporter wrote ${first.actual}) — publishing the deferred records ` +
+          `WITHOUT a route path, so the preview server will skip them until the derivation is ` +
+          `updated to match.`,
+      );
+    }
+    const records = expandDeferredRecords(deferred, spec, [bundle, extraBundle]);
+    manifest.deferred = records.map((record) => {
       const ids = idsByFunction.get(record.preview) ?? [];
-      return ids.length > 0 ? { ...record, previewIds: ids } : record;
+      return {
+        ...record,
+        ...(mismatches.length === 0
+          ? { path: catalogImagePath(record.componentId, record) }
+          : {}),
+        ...(ids.length > 0 ? { previewIds: ids } : {}),
+      };
     });
+    const addressable = manifest.deferred.filter((r) => r.path && r.previewId).length;
+    console.log(
+      `[${spec.system}] ${addressable}/${manifest.deferred.length} deferred record(s) carry a ` +
+        `route + daemon preview id (the live-only lane a trusted serve host registers them under)`,
+    );
   }
   // Buildable source for trusted server-side re-render (opt-in consumer side).
   if (values["source-module"]) {

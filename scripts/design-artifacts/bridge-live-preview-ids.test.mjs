@@ -11,7 +11,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { bridgeLivePreviewIds } from "./bridge-live-preview-ids.mjs";
+import {
+  bridgeLivePreviewIds,
+  expandDeferredRecords,
+} from "./bridge-live-preview-ids.mjs";
 
 /** previewId by image state, for one single-component manifest. */
 function mapped(manifest) {
@@ -869,5 +872,189 @@ test("an un-themed catalog is unaffected by the untagged-sticker preference", ()
   assert.deepEqual(
     manifest.components[0].images.map((i) => i.previewId),
     ["pkg.CatalogKt.FilledButton", "pkg.CatalogKt.ButtonPressed"],
+  );
+});
+
+// --- deferred (live-only) records -------------------------------------------------------------
+
+test("a mode-deferred record resolves the annotation its theme names, not the first id", () => {
+  // The whole point of resolving per record: `FilledButton` renders Light and Dark, and a
+  // mode-deferred dark record must reach the DARK daemon preview — handing it the function's first
+  // id would make the live-only card render light pixels under a `…__dark` route.
+  const spec = { system: "compose-m3", groups: [] };
+  const bundle = {
+    previews: [
+      { id: "FilledButton_Light", functionName: "FilledButton" },
+      { id: "FilledButton_Dark", functionName: "FilledButton" },
+    ],
+  };
+  const deferred = [
+    { componentId: "Button/Filled", preview: "FilledButton", reason: "mode", theme: "dark" },
+    { componentId: "Button/Filled", preview: "FilledButton", reason: "mode", theme: "light" },
+  ];
+
+  const out = expandDeferredRecords(deferred, spec, [bundle, null]);
+
+  assert.deepEqual(
+    out.map((r) => [r.theme, r.previewId]),
+    [
+      ["dark", "FilledButton_Dark"],
+      ["light", "FilledButton_Light"],
+    ],
+  );
+  assert.equal(deferred[0].previewId, undefined, "the input records are not mutated");
+});
+
+test("an entry-deferred record expands to one record per annotation, recovering the theme", () => {
+  // An entry deferral never rendered, so nothing recorded that its function produces a light AND a
+  // dark sticker. Recovering that from the annotations is what gives the served catalog the same
+  // set of cards it would have had baked — one per published route.
+  const bundle = {
+    previews: [
+      { id: "FilledButton_Light", functionName: "FilledButton" },
+      { id: "FilledButton_Dark", functionName: "FilledButton" },
+    ],
+  };
+  const out = expandDeferredRecords(
+    [{ componentId: "Button/Filled", preview: "FilledButton", reason: "entry" }],
+    { system: "compose-m3", groups: [] },
+    bundle,
+  );
+
+  assert.deepEqual(
+    out.map((r) => [r.theme, r.previewId]),
+    [
+      ["light", "FilledButton_Light"],
+      ["dark", "FilledButton_Dark"],
+    ],
+  );
+});
+
+test("an un-themed catalog's entry deferral stays one un-themed record", () => {
+  // wear-m3 / remote-m3 carry no theme on either side, so there is no fan-out to recover and the
+  // record keeps the axis-less identity the exporter would have named (`ideal__default`).
+  const out = expandDeferredRecords(
+    [{ componentId: "Button/Filled", preview: "FilledButton", reason: "entry" }],
+    { system: "wear-m3", groups: [] },
+    { previews: [{ id: "pkg.CatalogKt.FilledButton", functionName: "FilledButton" }] },
+  );
+  assert.deepEqual(out, [
+    {
+      componentId: "Button/Filled",
+      preview: "FilledButton",
+      reason: "entry",
+      previewId: "pkg.CatalogKt.FilledButton",
+    },
+  ]);
+});
+
+test("a size fan-out is recovered from the annotations' widthDp via the spec breakpoints", () => {
+  const spec = {
+    system: "meshcore",
+    groups: [],
+    breakpoints: [
+      { size: "compact", widthDp: 360 },
+      { size: "expanded", widthDp: 840 },
+    ],
+  };
+  const bundle = {
+    previews: [
+      { id: "Scaffold_Compact", functionName: "Scaffold", params: { widthDp: 360 } },
+      { id: "Scaffold_Expanded", functionName: "Scaffold", params: { widthDp: 840 } },
+    ],
+  };
+  const out = expandDeferredRecords(
+    [{ componentId: "Template/Scaffold", preview: "Scaffold", reason: "entry" }],
+    spec,
+    bundle,
+  );
+  assert.deepEqual(
+    out.map((r) => [r.size, r.previewId]),
+    [
+      ["compact", "Scaffold_Compact"],
+      ["expanded", "Scaffold_Expanded"],
+    ],
+  );
+});
+
+test("annotations that recover the same axes collapse to one record", () => {
+  // Two annotations the exporter would have named the same path (the `@OverrideVariant` synthetic
+  // shares its base's function and theme) must not produce two cards on one route.
+  const out = expandDeferredRecords(
+    [{ componentId: "Switch/On", preview: "SwitchOn", reason: "entry" }],
+    { system: "wear-m3", groups: [] },
+    {
+      previews: [
+        { id: "SwitchOn", functionName: "SwitchOn" },
+        { id: "SwitchOn_VARIANT_off", functionName: "SwitchOn" },
+      ],
+    },
+  );
+  assert.deepEqual(
+    out.map((r) => r.previewId),
+    ["SwitchOn"],
+  );
+});
+
+test("a deferred record whose @Preview function isn't in the bundle stays unmapped", () => {
+  // Nothing to run ⇒ no live lane; the serve host skips such a record rather than registering a
+  // card that could never render.
+  const out = expandDeferredRecords(
+    [{ componentId: "Ghost", preview: "NotBuilt" }],
+    { groups: [] },
+    { previews: [] },
+  );
+  assert.deepEqual(out, [{ componentId: "Ghost", preview: "NotBuilt" }]);
+});
+
+test("a font-scale fan-out is recovered instead of collapsing onto the unscaled annotation", () => {
+  // Two annotations differing ONLY by fontScale share a theme and a size, so without the scale in
+  // the identity the large-text sticker would be deduped away and its live-only route never
+  // published. The recovered value is spelled as the exporter spells it (`2` → `2.0`), so the route
+  // matches the one the same annotation would have produced baked.
+  const bundle = {
+    previews: [
+      { id: "Filled_Light", functionName: "Filled" },
+      { id: "Filled_Light_2x", functionName: "Filled", params: { fontScale: 2 } },
+    ],
+  };
+  const out = expandDeferredRecords(
+    [{ componentId: "Button/Filled", preview: "Filled", reason: "entry" }],
+    { system: "compose-m3", groups: [] },
+    bundle,
+  );
+  assert.deepEqual(
+    out.map((r) => [r.props?.fontScale, r.previewId]),
+    [
+      [undefined, "Filled_Light"],
+      ["2.0", "Filled_Light_2x"],
+    ],
+  );
+});
+
+test("a record that already names a font scale selects that annotation, keeping its spelling", () => {
+  // A props variant the spec declared: the record must route to the SCALED annotation (not the
+  // function's first), and keep the author's own spelling so the path is theirs, not a re-format.
+  const bundle = {
+    previews: [
+      { id: "Filled_Light", functionName: "Filled" },
+      { id: "Filled_Light_2x", functionName: "Filled", params: { fontScale: 2 } },
+    ],
+  };
+  const out = expandDeferredRecords(
+    [
+      {
+        componentId: "Button/Filled",
+        preview: "Filled",
+        reason: "variant",
+        props: { fontScale: "2.0" },
+      },
+    ],
+    { system: "compose-m3", groups: [] },
+    bundle,
+  );
+  assert.deepEqual(
+    out.map((r) => [r.props.fontScale, r.previewId]),
+    [["2.0", "Filled_Light_2x"]],
   );
 });
