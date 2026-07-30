@@ -7,10 +7,19 @@ import {
     kindSupportsLiveMode,
     mimeFor,
     parseBounds,
+    previewSourceTarget,
     sanitizeId,
     shortDevice,
+    writeNavDataset,
 } from "../webview/preview/cardData";
-import type { Capture, PreviewInfo } from "../types";
+import type { Capture, PreviewInfo, PreviewTarget } from "../types";
+
+const componentTarget: PreviewTarget = {
+    className: "com.example.HomeScreenKt",
+    functionName: "HomeScreen",
+    sourceFile: "src/main/kotlin/com/example/HomeScreen.kt",
+    confidence: "HIGH",
+};
 
 const baseCapture: Capture = {
     advanceTimeMillis: null,
@@ -212,11 +221,89 @@ describe("buildVariantLabel", () => {
     });
 });
 
+describe("previewSourceTarget", () => {
+    it("falls back to the preview function when no target is inferred", () => {
+        assert.deepStrictEqual(
+            previewSourceTarget(
+                preview({
+                    sourceFile: "src/main/kotlin/com/example/Previews.kt",
+                }),
+            ),
+            {
+                className: "com.example.PreviewsKt",
+                functionName: "MyPreview",
+                sourceFile: "src/main/kotlin/com/example/Previews.kt",
+                isComponent: false,
+            },
+        );
+    });
+
+    it("points at the inferred component when a target exists", () => {
+        assert.deepStrictEqual(
+            previewSourceTarget(preview({ targets: [componentTarget] })),
+            {
+                className: "com.example.HomeScreenKt",
+                functionName: "HomeScreen",
+                sourceFile: "src/main/kotlin/com/example/HomeScreen.kt",
+                isComponent: true,
+            },
+        );
+    });
+
+    it("uses the most-confident target (first entry)", () => {
+        const second: PreviewTarget = {
+            className: "com.example.OtherKt",
+            functionName: "Other",
+            sourceFile: "src/main/kotlin/com/example/Other.kt",
+            confidence: "LOW",
+        };
+        assert.strictEqual(
+            previewSourceTarget(preview({ targets: [componentTarget, second] }))
+                .functionName,
+            "HomeScreen",
+        );
+    });
+});
+
+describe("writeNavDataset", () => {
+    it("stamps the inferred component target and its sourceFile", () => {
+        const card = { dataset: {} } as unknown as HTMLElement;
+        writeNavDataset(card, preview({ targets: [componentTarget] }));
+        assert.deepStrictEqual(
+            { ...card.dataset },
+            {
+                navClassName: "com.example.HomeScreenKt",
+                navFunction: "HomeScreen",
+                navSourceFile: "src/main/kotlin/com/example/HomeScreen.kt",
+            },
+        );
+    });
+
+    it("clears a stale navSourceFile when the new destination has none", () => {
+        // Simulates a reseed of the same card onto a preview that lost its
+        // sourceFile — the old value must not linger.
+        const card = {
+            dataset: { navSourceFile: "src/old/Stale.kt" },
+        } as unknown as HTMLElement;
+        writeNavDataset(card, preview());
+        assert.strictEqual(card.dataset.navSourceFile, undefined);
+        assert.strictEqual(card.dataset.navClassName, "com.example.PreviewsKt");
+        assert.strictEqual(card.dataset.navFunction, "MyPreview");
+    });
+});
+
 describe("buildTooltip", () => {
     it("starts with `Open source: <FQN>`", () => {
         assert.match(
             buildTooltip(preview()),
             /^Open source: com\.example\.PreviewsKt\.MyPreview/,
+        );
+    });
+
+    it("says `Open component: <target FQN>` when a target is inferred", () => {
+        assert.match(
+            buildTooltip(preview({ targets: [componentTarget] })),
+            /^Open component: com\.example\.HomeScreenKt\.HomeScreen/,
         );
     });
 

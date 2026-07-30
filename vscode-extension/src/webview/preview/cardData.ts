@@ -116,11 +116,72 @@ export function isWearPreview(p: PreviewInfo): boolean {
 }
 
 /**
- * Hover tooltip for the card title button — `Open source: <FQN>`,
- * followed by a `·`-separated digest of the preview's parameters.
+ * Where the card title should navigate to. A `@Preview` is usually a thin
+ * wrapper around a real component, and discovery infers that component into
+ * [PreviewInfo.targets] (most-confident first — see `PreviewTargetInference`).
+ * When a target is known we point navigation at the *component's* source rather
+ * than the preview stub, which is what a developer clicking a preview expects
+ * ("take me to the thing I'm looking at"). Falls back to the preview function's
+ * own coordinates when no target cleared discovery's confidence threshold.
+ *
+ * [sourceFile] is the manifest-provided, module-relative path — authoritative
+ * for resolving the file, and carried alongside so the host doesn't have to
+ * reconstruct it from the class name (which breaks for files whose name differs
+ * from the class). [isComponent] is `true` when the destination is an inferred
+ * target rather than the preview itself; the tooltip uses it for wording.
+ */
+export interface PreviewSourceTarget {
+    className: string;
+    functionName: string;
+    sourceFile: string | null;
+    isComponent: boolean;
+}
+
+export function previewSourceTarget(p: PreviewInfo): PreviewSourceTarget {
+    const target = p.targets && p.targets.length > 0 ? p.targets[0] : null;
+    if (target) {
+        return {
+            className: target.className,
+            functionName: target.functionName,
+            sourceFile: target.sourceFile,
+            isComponent: true,
+        };
+    }
+    return {
+        className: p.className,
+        functionName: p.functionName,
+        sourceFile: p.sourceFile,
+        isComponent: false,
+    };
+}
+
+/**
+ * Stamp the title's navigation destination onto the card's dataset so the
+ * click handler reads it fresh at click time. Called on initial build and on
+ * every manifest reseed (`refreshCardMetadata`), so a reused card whose inferred
+ * target changed navigates to the new component — matching the reseeded tooltip
+ * — rather than the one captured when the handler was first attached.
+ */
+export function writeNavDataset(card: HTMLElement, p: PreviewInfo): void {
+    const nav = previewSourceTarget(p);
+    card.dataset.navClassName = nav.className;
+    card.dataset.navFunction = nav.functionName;
+    if (nav.sourceFile) {
+        card.dataset.navSourceFile = nav.sourceFile;
+    } else {
+        delete card.dataset.navSourceFile;
+    }
+}
+
+/**
+ * Hover tooltip for the card title button — `Open source: <FQN>` (or
+ * `Open component: <FQN>` when the title navigates to an inferred target
+ * composable), followed by a `·`-separated digest of the preview's parameters.
  */
 export function buildTooltip(p: PreviewInfo): string {
-    const base = "Open source: " + p.className + "." + p.functionName;
+    const nav = previewSourceTarget(p);
+    const verb = nav.isComponent ? "Open component: " : "Open source: ";
+    const base = verb + nav.className + "." + nav.functionName;
     const parts: string[] = [];
     if (p.params.name) parts.push(p.params.name);
     if (p.params.device) parts.push(p.params.device);

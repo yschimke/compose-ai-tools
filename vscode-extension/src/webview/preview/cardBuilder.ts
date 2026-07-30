@@ -28,6 +28,7 @@ import {
     isAnimatedPreview,
     isWearPreview,
     sanitizeId,
+    writeNavDataset,
 } from "./cardData";
 import type { DiffOverlayConfig } from "./diffOverlay";
 import type { InspectorRenderer } from "./applyA11yUpdate";
@@ -227,11 +228,23 @@ export function populatePreviewCard(
     title.textContent =
         p.functionName + (p.params.name ? " — " + p.params.name : "");
     title.title = buildTooltip(p);
+    // Navigate to the component the preview renders when discovery inferred one
+    // (targets[0]), else the preview function itself. The destination is stamped
+    // onto the card's dataset (see writeNavDataset) and read back at click time
+    // — a manifest reseed that changes the inferred target for the same preview
+    // id restamps it via refreshCardMetadata, so the tooltip and the click can't
+    // drift out of sync. `sourceFile` is the manifest's authoritative
+    // module-relative path; the host resolves the file from it (scoped to the
+    // preview's owning module) and only falls back to the class-derived path
+    // when it is absent.
+    writeNavDataset(card, p);
     title.addEventListener("click", () => {
         config.vscode.postMessage({
             command: "openFile",
-            className: p.className,
-            functionName: p.functionName,
+            className: card.dataset.navClassName || p.className,
+            functionName: card.dataset.navFunction || p.functionName,
+            sourceFile: card.dataset.navSourceFile || undefined,
+            previewId: card.dataset.previewId || undefined,
         });
     });
     titleRow.appendChild(title);

@@ -5778,9 +5778,28 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             );
             break;
         }
-        case "openFile":
-            openPreviewSource(msg.className, msg.functionName);
+        case "openFile": {
+            // Resolve the destination under the preview's owning module first,
+            // so a module-relative source path that also exists in a sibling
+            // module can't open the wrong module's file.
+            let moduleDirAbs: string | undefined;
+            if (msg.previewId && gradleService) {
+                const mod = previewModuleIndex.get(msg.previewId);
+                if (mod) {
+                    moduleDirAbs = path.join(
+                        gradleService.workspaceRoot,
+                        mod.projectDir,
+                    );
+                }
+            }
+            openPreviewSource(
+                msg.className,
+                msg.functionName,
+                msg.sourceFile,
+                moduleDirAbs,
+            );
             break;
+        }
         case "selectModule":
             selectedModule = msg.value || null;
             logInfo(`[panel] module selected: ${selectedModule ?? "<none>"}`);
@@ -8271,21 +8290,83 @@ function emptyStateMessage(activeFile: string | undefined): string {
     return "No @Preview functions in this file.";
 }
 
-async function openPreviewSource(className: string, functionName: string) {
+/**
+ * Resolve the source file for a preview/component the user clicked. Prefers the
+ * manifest's [sourceFile] — a module-relative path (`src/main/kotlin/…/Foo.kt`)
+ * that unambiguously identifies the file even when its name differs from the
+ * compiled class (multiple classes per file, `@JvmName`, etc.).
+ *
+ * Resolution order:
+ *  1. [sourceFile] under [moduleDirAbs] (the preview's owning module) — exact,
+ *     so a module-relative path that also exists in a sibling module resolves to
+ *     the right module's file rather than whichever the workspace glob hits
+ *     first.
+ *  2. [sourceFile] workspace-wide — covers a target composable that genuinely
+ *     lives in another module (its `sourceFile` is relative to *its* module).
+ *  3. Class-derived path (`com.example.FooKt` → `com/example/Foo.kt`) for older
+ *     manifests that don't carry a `sourceFile`, or when the recorded path no
+ *     longer exists on disk.
+ *
+ * The `build` output tree is excluded from every glob so a stale generated copy
+ * never wins over the real source.
+ */
+async function resolvePreviewSourceUri(
+    className: string,
+    sourceFile?: string,
+    moduleDirAbs?: string,
+): Promise<vscode.Uri | null> {
+    if (sourceFile) {
+        const normalized = sourceFile.replace(/\\/g, "/").replace(/^\.\/+/, "");
+        if (moduleDirAbs) {
+            const scoped = await vscode.workspace.findFiles(
+                new vscode.RelativePattern(
+                    vscode.Uri.file(moduleDirAbs),
+                    normalized,
+                ),
+                "**/build/**",
+                1,
+            );
+            if (scoped.length > 0) {
+                return scoped[0];
+            }
+        }
+        const hits = await vscode.workspace.findFiles(
+            `**/${normalized}`,
+            "**/build/**",
+            1,
+        );
+        if (hits.length > 0) {
+            return hits[0];
+        }
+    }
     const classFile = className.replace(/Kt$/, "").replace(/\./g, "/") + ".kt";
-    const files = await vscode.workspace.findFiles(
+    const hits = await vscode.workspace.findFiles(
         `**/${classFile}`,
         "**/build/**",
         1,
     );
-    if (files.length === 0) {
+    return hits.length > 0 ? hits[0] : null;
+}
+
+async function openPreviewSource(
+    className: string,
+    functionName: string,
+    sourceFile?: string,
+    moduleDirAbs?: string,
+) {
+    const uri = await resolvePreviewSourceUri(
+        className,
+        sourceFile,
+        moduleDirAbs,
+    );
+    if (!uri) {
         vscode.window.showWarningMessage(
             `Could not find source for ${className}.${functionName}`,
         );
         return;
     }
 
-    const doc = await vscode.workspace.openTextDocument(files[0]);
+    const doc = await vscode.workspace.openTextDocument(uri);
     const editor = await vscode.window.showTextDocument(doc);
 
     const text = doc.getText();
