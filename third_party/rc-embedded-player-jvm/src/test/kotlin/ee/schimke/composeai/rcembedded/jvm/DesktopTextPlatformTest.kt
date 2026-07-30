@@ -250,6 +250,70 @@ class DesktopTextPlatformTest {
     assertTrue("glyphs should rise above the baseline, got top=${painted.top}", painted.top < 100f)
   }
 
+  /**
+   * The run is **shaped**, not just mapped code-point-to-glyph.
+   *
+   * `AV` is a classic negative-kerning pair. A shaper applies the font's kern/GPOS table, so the
+   * pair measures *narrower* than the two glyphs measured apart; without shaping the two are
+   * exactly equal, because each glyph contributes its own untouched advance. So this is a crisp
+   * discriminator rather than a tolerance check — and it is the test that fails against
+   * `Font.measureTextWidth`, the obvious one-line counterpart to Android's `Paint.measureText`.
+   */
+  @Test
+  fun shapesAKernedPairTighterThanTheSumOfItsParts() {
+    val context = newContext()
+    val pair = measureTextWidth("AV", spec(textSize = 64f), context)
+    val apart =
+      measureTextWidth("A", spec(textSize = 64f), context) +
+        measureTextWidth("V", spec(textSize = 64f), context)
+    assertTrue(
+      "the shaped pair ($pair) should be narrower than its glyphs measured separately ($apart) — " +
+        "equal means the run was never shaped and the font's kerning was skipped",
+      pair < apart,
+    )
+  }
+
+  /**
+   * Text the selected face cannot render **falls back** to a face that can.
+   *
+   * With fallback, CJK resolves to a CJK face and each ideograph is full-width — about one em.
+   * Without it, every character becomes the default face's missing-glyph box, which is markedly
+   * narrower. The threshold sits between the two, so this discriminates rather than merely
+   * asserting "non-zero", and it is what fails against a bare `SkFont`, which does no fallback
+   * where Android's Minikin does.
+   *
+   * Skipped where the host has no CJK face at all — then there is nothing to fall back *to*, and
+   * the test would be asserting the font configuration rather than the code.
+   */
+  @Test
+  fun fallsBackToAFaceThatHasTheGlyphs() {
+    val context = newContext()
+    val size = 32f
+    Assume.assumeTrue(
+      "no CJK face on this host, so there is nothing for fallback to find",
+      org.jetbrains.skia.FontMgr.default.matchFamilyStyleCharacter(
+        null,
+        org.jetbrains.skia.FontStyle.NORMAL,
+        emptyArray(),
+        "日".codePointAt(0),
+      ) != null,
+    )
+    val cjk = measureTextWidth("日本語", spec(textSize = size), context)
+    assertTrue(
+      "three ideographs at ${size}px measured $cjk — too narrow to be real glyphs, so they were " +
+        "almost certainly missing-glyph boxes in a Latin face rather than a fallback face's glyphs",
+      cjk > 2.4f * size,
+    )
+    // And they must actually mark pixels, not just reserve advance.
+    val painted =
+      paintedBounds { drawTextAtOriginPlatform("日本語", 20f, 100f, spec(textSize = size), context) }
+        ?: error("fallback text drew nothing")
+    assertTrue(
+      "fallback text should be about as wide as it measured, got $painted",
+      painted.width > 2f * size,
+    )
+  }
+
   @Test
   fun everyFamilyIdProducesAUsableFace() {
     val context = newContext()

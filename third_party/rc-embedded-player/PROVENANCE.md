@@ -352,18 +352,42 @@ construction", not "the 24-document render is unchanged".
 #### Done: the canvas text seam has both halves
 
 `:third-party-rc-embedded-player-jvm` now carries **`RcPlayerTextPlatformJvm.kt`** — the same four
-functions over skiko, so the seam is implemented on both sides rather than declared on one. Three are
-close to direct swaps: `Font.measureText` for `Paint.getTextBounds` (Skia unions the positioned glyph
-bounds, the same construction, though it does not round out to whole pixels the way Android's integer
-`Rect` out-param does), `Font.measureTextWidth` for `Paint.measureText`, and `Canvas.drawString` for
-`Canvas.drawText` — same pen-start-and-baseline origin.
+functions over skiko, so the seam is implemented on both sides rather than declared on one.
+
+**Everything goes through the shaper, not through `SkFont` directly**, and that is the single most
+important decision in the file. `Font.measureText` / `Canvas.drawString` are the obvious one-line
+counterparts to `Paint.getTextBounds` / `Canvas.drawText`, and they are wrong for anything but plain
+Latin: they map code points to glyphs in one typeface with no shaping, so kerning and ligatures are
+skipped, Arabic and Indic come out unjoined, RTL is not reordered, and anything the face lacks becomes
+missing-glyph boxes instead of falling back. Android's `Canvas.drawText` does all of it (Minikin
+shapes and falls back), so the direct calls would not be a *metrics* difference of the kind recorded
+below — they would be visibly wrong text, and **invisibly** wrong here, since measurement and drawing
+would agree with each other while both disagreed with Android. So the seam's own cross-checks would
+have stayed green. `Shaper.make(FontMgr)` (HarfBuzz + ICU bidi, fallback through the font manager)
+supplies `TextBlob.tightBounds` for ink bounds, `TextLine.width` for the advance, and the blob itself
+for the origin draw. One wrinkle worth knowing: a shaped blob's origin is *not* its baseline — `shape`
+puts the first baseline an ascent below the offset it is given — so both sides correct by
+`TextBlob.firstBaseline`, which is what keeps measure and draw on the same origin.
 
 `drawTextOnPath` is the one with no counterpart call, and it is built on Skia's own primitive for the
 job rather than hand-rolled: a `TextBlob` of per-glyph `RSXform`s (rotate + translate), which is what
 the framework assembles internally too, so the placement is computed here but the drawing is still one
-Skia call. It reproduces the framework's behaviour — each glyph centred half an advance along the
-path and rotated to the tangent there, `hOffset` along and `vOffset` perpendicular, glyphs past the
+Skia call per face. It reproduces the framework's behaviour — each glyph centred half an advance along
+the path and rotated to the tangent there, `hOffset` along and `vOffset` perpendicular, glyphs past the
 end dropped and the run continuing onto the next contour of a multi-contour path.
+
+It is also the **one place the seam is not fully shaped**, and the reason is mechanical rather than
+principled. Placing glyphs individually needs each glyph's *font*, which the flattened
+`TextLine`/`TextBlob` views do not expose; the API that does is skiko's `RunHandler` callback, and
+that path **segfaults** — a use-after-free inside skiko's own ICU run iterator, reproducible with a
+minimal handler and unrelated to this code. (`RunInfo.font` is also only borrowed for the callback,
+so it needs `makeWithSize` to copy — worth knowing if anyone retries this.) So glyphs on a path are
+resolved per character *with* fallback (glyph id 0 means the face cannot draw it, which is the signal
+to ask the font manager for one that can) but without cross-character shaping. Drawing from a
+flattened shaped line instead would silently draw fallback ids against the primary face, which
+renders unrelated glyphs — worse than the missing kerning. Curved text is where this matters least,
+since per-glyph rotation dominates sub-pixel kerning, but it is a real gap and wants a follow-up once
+skiko's handler is usable.
 
 Font resolution mirrors `EmbeddedPlayerTypefaceResolver` branch for branch, with two documented
 divergences. `google:` is a `FontsContractCompat` download on Android and has no JVM equivalent, so
@@ -379,7 +403,11 @@ at all.
 the font stacks differ across the seam so any pinned width would pin the host's fonts, and the
 strongest test is that measured ink bounds predict where the drawn glyphs actually land — which is
 exactly the invariant `DrawTextAnchored` rests on, and the one a face mismatch would break while
-every other test still passed. **It needs skiko's natives**, which means the per-OS
+every other test still passed. Two of the eighteen exist specifically to catch the unshaped
+implementation described above, and they discriminate rather than tolerate: a kerned pair (`AV`)
+must measure *narrower* than its glyphs do apart — exactly equal is the signature of no shaping —
+and a CJK string must measure about an em per ideograph rather than the much narrower
+missing-glyph box. **It needs skiko's natives**, which means the per-OS
 `skiko-awt-runtime-*` artifact (pulled in as `testRuntimeOnly(compose.desktop.currentOs)`) *and* a
 loadable GL library — `libskiko` links it even for raster-only drawing. Where that is missing the
 class skips loudly rather than failing sixteen times; if you see that message the environment needs
@@ -468,7 +496,12 @@ Android-only in a first cut rather than forcing a Skia `PaintContext` port.
   *Android* (89% on `ShaderGradientSticker`), so that wants fixing before it is used as a jvm
   baseline.
 - **Downloadable fonts.** `google:`-prefixed fonts go through `FontRequest`/`FontsContractCompat`,
-  which is Android-only. The jvm target needs either a bundled-font path or an explicit unsupported.
+  which is Android-only. The jvm side substitutes a local face rather than fetching, so such a
+  document renders in the wrong face rather than failing — see the seam section above.
+- **Shaping on a path.** Three of the four seam functions shape through HarfBuzz with fallback; the
+  text-on-path one resolves glyphs per character instead, so cross-character kerning and joining are
+  not applied along a path. Blocked on a skiko crash rather than on design — details in the seam
+  section above.
 
 ### Sequencing
 

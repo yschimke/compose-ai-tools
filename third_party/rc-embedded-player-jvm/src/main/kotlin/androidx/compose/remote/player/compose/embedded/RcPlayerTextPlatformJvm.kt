@@ -27,9 +27,12 @@ import org.jetbrains.skia.FontSlant
 import org.jetbrains.skia.FontStyle
 import org.jetbrains.skia.FontWidth
 import org.jetbrains.skia.PathMeasure
+import org.jetbrains.skia.Point
 import org.jetbrains.skia.RSXform
 import org.jetbrains.skia.TextBlob
 import org.jetbrains.skia.Typeface
+import org.jetbrains.skia.shaper.Shaper
+import org.jetbrains.skia.shaper.ShapingOptions
 import org.jetbrains.skia.Paint as SkiaPaint
 
 /*
@@ -130,34 +133,101 @@ private fun TextPaintSpec.toSkiaPaint(): SkiaPaint =
         color = argbColor
     }
 
+/*
+ * ---------------------------------------------------------------------------------------------
+ * Shaping
+ *
+ * All four functions go through the shaper rather than through `SkFont` directly, and that is not
+ * incidental — it is what makes them comparable to the Android half at all.
+ *
+ * `Font.measureText` / `Canvas.drawString` are the obvious one-line counterparts to
+ * `Paint.getTextBounds` / `Canvas.drawText`, and they are wrong for anything but plain Latin. They
+ * map code points to glyphs in *one* typeface and apply no shaping, so:
+ *
+ *   - kerning pairs, ligatures and contextual forms are missed, since those are GPOS/GSUB features
+ *     that only a shaper applies;
+ *   - Arabic and Indic text comes out unjoined, with no reordering or mark positioning;
+ *   - RTL runs are not reordered into visual order;
+ *   - anything the selected face lacks — CJK or emoji on a Latin default — becomes missing-glyph
+ *     boxes instead of falling back to a face that has it.
+ *
+ * Android's `Canvas.drawText` does all of that (Minikin shapes and falls back), so using the direct
+ * calls would not be a metrics difference of the kind PROVENANCE.md records as a parity limit; it
+ * would be visibly wrong text. Worse, it would be *invisibly* wrong here: measurement and drawing
+ * would agree with each other while both disagreed with Android, so the seam's own cross-checks would
+ * stay green. `shapesAKernedPairTighterThanTheSumOfItsParts` and
+ * `fallsBackToAFaceThatHasTheGlyphs` in `DesktopTextPlatformTest` are aimed exactly there.
+ *
+ * `Shaper.make(FontMgr)` is HarfBuzz with ICU bidi, and the `ShapingOptions` carry the `FontMgr` the
+ * fallback runs against. A shaper is built per call, matching the Android half, which likewise builds
+ * a fresh `Paint` and typeface resolver per call.
+ * ---------------------------------------------------------------------------------------------
+ */
+
+/** Skia's "this face has no glyph for that character" id. */
+private const val NOTDEF: Short = 0
+
+/** Shaping options that enable font fallback through [FontMgr.default]. */
+private val SHAPING_OPTIONS = ShapingOptions.DEFAULT.withFontMgr(FontMgr.default)
+
+/**
+ * Shapes [text] into a [TextBlob] — HarfBuzz shaping, ICU bidi, and fallback across faces.
+ *
+ * Null for empty text, and for anything the shaper declines to lay out.
+ *
+ * Note the blob's own origin is **not** the baseline: `shape` places the first baseline an ascent
+ * below the offset it is given, so callers correct by [TextBlob.firstBaseline] to get back to the
+ * pen-and-baseline origin the seam is defined in terms of.
+ */
+private fun shapeToBlob(text: String, spec: TextPaintSpec, context: RemoteContext): TextBlob? {
+    if (text.isEmpty()) return null
+    return Shaper.make(FontMgr.default).use { shaper ->
+        shaper.shape(text, spec.toSkiaFont(context), SHAPING_OPTIONS, Float.MAX_VALUE, Point(0f, 0f))
+    }
+}
+
 /**
  * Measures [text]'s ink bounds with the platform's text engine.
  *
- * `Font.measureText` is Skia's `SkFont::measureText`, which unions the positioned glyph bounds —
- * the same construction `android.graphics.Paint.getTextBounds` performs. Android rounds the result
- * out to whole pixels (its out-param is an integer `Rect`); this does not, so bounds here can be
- * fractionally tighter. That is a sub-pixel difference in the anchoring arithmetic, not a different
- * measurement.
+ * `TextBlob.tightBounds` is the union of the positioned glyph outlines — the same construction
+ * `android.graphics.Paint.getTextBounds` performs, over the same shaped glyphs. Android rounds the
+ * result out to whole pixels (its out-param is an integer `Rect`); this does not, so bounds here can
+ * be fractionally tighter. That is a sub-pixel difference in the anchoring arithmetic, not a
+ * different measurement.
  */
 internal fun measureTextInkBounds(
     text: String,
     spec: TextPaintSpec,
     context: RemoteContext,
 ): TextInkBounds {
-    val bounds = spec.toSkiaFont(context).measureText(text, spec.toSkiaPaint())
-    return TextInkBounds(bounds.left, bounds.top, bounds.right, bounds.bottom)
+    val blob = shapeToBlob(text, spec, context) ?: return TextInkBounds(0f, 0f, 0f, 0f)
+    return blob.use {
+        val bounds = it.tightBounds
+        // Back to a baseline-relative box, which is what the anchoring arithmetic expects and why
+        // `top` comes out negative for ordinary text.
+        val baseline = it.firstBaseline
+        TextInkBounds(bounds.left, bounds.top - baseline, bounds.right, bounds.bottom - baseline)
+    }
 }
 
-/** Advance width of [text] with the platform's text engine. */
-internal fun measureTextWidth(text: String, spec: TextPaintSpec, context: RemoteContext): Float =
-    spec.toSkiaFont(context).measureTextWidth(text, spec.toSkiaPaint())
+/**
+ * Advance width of [text] with the platform's text engine — the shaped advance, so a kerned pair
+ * measures narrower than its glyphs do apart.
+ */
+internal fun measureTextWidth(text: String, spec: TextPaintSpec, context: RemoteContext): Float {
+    if (text.isEmpty()) return 0f
+    return Shaper.make(FontMgr.default).use { shaper ->
+        shaper.shapeLine(text, spec.toSkiaFont(context), SHAPING_OPTIONS).use { it.width }
+    }
+}
 
 /**
  * Draws [text] with its origin at ([x], [y]) — pen start and baseline, the same convention
  * [measureTextInkBounds] measures against.
  *
- * `Canvas.drawString` takes exactly that origin, so this is the one of the four that is a direct
- * swap for its framework call.
+ * Drawn from the same shaped run the measurement above is taken from, which is what makes the two
+ * agree; see the shaping note for why `Canvas.drawString` is not used despite matching the framework
+ * call one-for-one.
  */
 internal fun DrawScope.drawTextAtOriginPlatform(
     text: String,
@@ -166,13 +236,59 @@ internal fun DrawScope.drawTextAtOriginPlatform(
     spec: TextPaintSpec,
     context: RemoteContext,
 ) {
-    drawContext.canvas.nativeCanvas.drawString(
-        text,
-        x,
-        y,
-        spec.toSkiaFont(context),
-        spec.toSkiaPaint(),
-    )
+    val blob = shapeToBlob(text, spec, context) ?: return
+    blob.use {
+        // The blob's first baseline sits an ascent below its own origin, so shifting up by that puts
+        // the baseline on `y` — the same origin `measureTextInkBounds` reports against.
+        drawContext.canvas.nativeCanvas.drawTextBlob(it, x, y - it.firstBaseline, spec.toSkiaPaint())
+    }
+}
+
+/** One glyph bound for a path: which face draws it, its id in that face, and its advance. */
+private class PathGlyph(val font: Font, val glyph: Short, val advance: Float)
+
+/**
+ * Resolves [text] to per-glyph (face, id, advance) triples, falling back per character to a face that
+ * has the character when [spec]'s own face does not.
+ *
+ * Glyph id 0 is `.notdef` — how Skia reports "this face cannot draw this" — which is the signal to
+ * ask the font manager for one that can. That check is the whole of the fallback: with it, CJK in a
+ * Latin document renders; without it, every such character is a hollow box.
+ *
+ * See [drawTextOnPathPlatform] for why this is per-character rather than from a shaped run.
+ */
+private fun resolveGlyphsForPath(
+    text: String,
+    spec: TextPaintSpec,
+    context: RemoteContext,
+): List<PathGlyph> {
+    val primary = spec.toSkiaFont(context)
+    val style =
+        FontStyle(
+            spec.fontWeight,
+            FontWidth.NORMAL,
+            if (spec.italic) FontSlant.ITALIC else FontSlant.UPRIGHT,
+        )
+    val resolved = mutableListOf<PathGlyph>()
+    var offset = 0
+    while (offset < text.length) {
+        val codePoint = text.codePointAt(offset)
+        val chars = String(Character.toChars(codePoint))
+        offset += chars.length
+        var font = primary
+        if (primary.getStringGlyphs(chars).firstOrNull() == NOTDEF) {
+            val fallback =
+                FontMgr.default.matchFamilyStyleCharacter(null, style, emptyArray(), codePoint)
+            if (fallback != null) font = Font(fallback, spec.textSize)
+        }
+        val ids = font.getStringGlyphs(chars)
+        if (ids.isEmpty()) continue
+        val widths = font.getWidths(ids)
+        for (i in ids.indices) {
+            resolved.add(PathGlyph(font, ids[i], widths[i]))
+        }
+    }
+    return resolved
 }
 
 /**
@@ -192,8 +308,20 @@ internal fun DrawScope.drawTextAtOriginPlatform(
  * - a glyph whose centre falls past the end of the path continues onto the next contour of a
  *   multi-contour path, and is dropped once the contours run out.
  *
- * Advances come from [Font.getWidths] over the whole shaped run, so they carry the run's kerning
- * rather than being re-measured per glyph in isolation.
+ * Each glyph is drawn against the face it was **resolved from**, which is why the placement is
+ * emitted as one `RSXform` blob per font rather than one for the whole string: a blob carries a
+ * single font, so a string that fell back would otherwise draw its fallback glyph ids against the
+ * wrong face — which renders as unrelated glyphs, worse than a missing one.
+ *
+ * **The one place the seam is not fully shaped.** Glyphs here are resolved per character (with
+ * fallback) rather than from a shaped run, so cross-character shaping — kerning pairs, ligatures,
+ * joined Arabic forms, mark repositioning — is not applied along a path, though it is for the other
+ * three functions. The reason is mechanical, not principled: reconstructing per-glyph *fonts* from a
+ * shaped run needs skiko's `RunHandler` callback, and that path segfaults (a use-after-free inside
+ * skiko's own ICU run iterator, reproducible with a minimal handler and nothing to do with this
+ * code). Placing glyphs from a flattened shaped line instead would silently draw fallback ids against
+ * the primary face, which is the worse failure. Tracked as a follow-up; curved text is where this
+ * matters least, since per-glyph rotation dominates sub-pixel kerning.
  */
 internal fun DrawScope.drawTextOnPathPlatform(
     text: String,
@@ -204,10 +332,6 @@ internal fun DrawScope.drawTextOnPathPlatform(
     context: RemoteContext,
 ) {
     if (text.isEmpty()) return
-    val font = spec.toSkiaFont(context)
-    val glyphs = font.getStringGlyphs(text)
-    if (glyphs.isEmpty()) return
-    val advances = font.getWidths(glyphs)
 
     val measure = PathMeasure(path.asSkiaPath(), false)
     var contourLength = measure.length
@@ -215,9 +339,14 @@ internal fun DrawScope.drawTextOnPathPlatform(
     // stepping contours would not find one.
     if (contourLength <= 0f) return
 
-    val placedGlyphs = ShortArray(glyphs.size)
-    val xforms = arrayOfNulls<RSXform>(glyphs.size)
-    var placed = 0
+    val resolved = resolveGlyphsForPath(text, spec, context)
+    if (resolved.isEmpty()) return
+    val fonts = resolved.map { it.font }
+    val glyphs = resolved.map { it.glyph }
+    val advances = resolved.map { it.advance }
+
+    // One placement list per font, so each becomes its own blob drawn with that font.
+    val placements = LinkedHashMap<Font, MutableList<Pair<Short, RSXform>>>()
     var distance = hOffset
     var index = 0
     while (index < glyphs.size) {
@@ -243,26 +372,29 @@ internal fun DrawScope.drawTextOnPathPlatform(
             // perpendicular, which in that basis is (-ssin, scos).
             val scos = tangent.x
             val ssin = tangent.y
-            xforms[placed] =
+            val xform =
                 RSXform(
                     scos,
                     ssin,
                     position.x - scos * advance / 2f - ssin * vOffset,
                     position.y - ssin * advance / 2f + scos * vOffset,
                 )
-            placedGlyphs[placed] = glyphs[index]
-            placed++
+            placements.getOrPut(fonts[index]) { mutableListOf() }.add(glyphs[index] to xform)
         }
         distance += advance
         index++
     }
-    if (placed == 0) return
 
-    val blob =
-        TextBlob.makeFromRSXform(
-            placedGlyphs.copyOf(placed),
-            Array(placed) { xforms[it]!! },
-            font,
-        ) ?: return
-    blob.use { drawContext.canvas.nativeCanvas.drawTextBlob(it, 0f, 0f, spec.toSkiaPaint()) }
+    val canvas = drawContext.canvas.nativeCanvas
+    val paint = spec.toSkiaPaint()
+    for ((font, placed) in placements) {
+        if (placed.isEmpty()) continue
+        val blob =
+            TextBlob.makeFromRSXform(
+                ShortArray(placed.size) { placed[it].first },
+                Array(placed.size) { placed[it].second },
+                font,
+            ) ?: continue
+        blob.use { canvas.drawTextBlob(it, 0f, 0f, paint) }
+    }
 }
