@@ -209,8 +209,12 @@ class PlatformNeutralSourcesTest {
       setOf(
         // android.graphics.Bitmap / Rect / drawable on the canvas draw path
         "executeOperations",
+        // The image seam (RcPlayerImagePlatform.kt) — framework Bitmap decode/lookup/offscreen; its
+        // ImageBitmap projections are what the draw path calls, but the file itself stays androidMain.
         "resolveBitmap",
-        "resolveCanvasBitmap",
+        "resolveImage",
+        "resolveCanvasImage",
+        "prepareOffscreenTarget",
         "rememberRemoteBitmapAsState",
         // framework android.graphics.Paint + RuntimeShader
         "ComposeLocalPaint",
@@ -239,7 +243,16 @@ class PlatformNeutralSourcesTest {
      * Import-clean, but still referencing something that stays in `androidMain`, so not yet movable.
      * These are here to hold decoupling work that has already been done against regression.
      */
-    val IMPORT_CLEAN = listOf<String>()
+    val IMPORT_CLEAN =
+      listOf(
+        // The draw path's two shared files: import-clean once framework Paint (text seam) and
+        // framework Bitmap (image seam, RcPlayerImagePlatform.kt) moved out. Not yet movable — they
+        // call the image seam's `resolveImage`/`resolveCanvasImage`/`prepareOffscreenTarget` in-
+        // package, which stay in androidMain — so they hold here to keep an `android.*` import from
+        // silently creeping back before the jvm draw context lands.
+        "RcPlayerDrawing.kt",
+        "RcPlayerPaint.kt",
+      )
 
     /**
      * Import-clean *and* free of cross-package references into `androidMain` — these are the files
