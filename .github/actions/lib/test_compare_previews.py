@@ -1080,6 +1080,85 @@ class ScopedCompareTest(unittest.TestCase):
         self.assertEqual(baselines["app/X"]["module"], "app")
 
 
+class PartialRenderGuardTest(unittest.TestCase):
+    """A render that produces far fewer entries than the baseline is far more
+    likely truncated than a PR that deleted that many previews. The comparator
+    must suppress the Removed section and warn loudly instead of reporting
+    e.g. `Removed (315 variants)` on a PR that deleted nothing (issue #2949)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def _run(self, current_payload, baselines_payload, scope: str | None = None) -> str:
+        cli_path = self.tmp / "cli.json"
+        cli_path.write_text(json.dumps(current_payload))
+        bl_path = self.tmp / "baselines.json"
+        bl_path.write_text(json.dumps(baselines_payload))
+
+        import io
+        import contextlib
+        from types import SimpleNamespace
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cp.cmd_compare(SimpleNamespace(
+                cli_json=str(cli_path),
+                baselines=str(bl_path),
+                repo="owner/repo",
+                base_ref="deadbeef",
+                head_ref="cafef00d",
+                scope_modules=scope,
+            ))
+        return buf.getvalue()
+
+    @staticmethod
+    def _baselines(n: int) -> dict:
+        return {f"app/P{i}": {"sha256": "s", "functionName": f"Fn{i}", "module": "app"}
+                for i in range(n)}
+
+    def test_truncated_render_warns_instead_of_removing(self):
+        # Baseline has 12 in-scope previews; this run produced only 2 — the
+        # other 10 are missing because the render was truncated, not deleted.
+        out = self._run(
+            {"previews": [
+                _entry(id="P0", module="app", function="Fn0", sha="s", png="/p0.png"),
+                _entry(id="P1", module="app", function="Fn1", sha="s", png="/p1.png"),
+            ]},
+            self._baselines(12),
+        )
+        self.assertNotIn("### Removed", out)
+        self.assertIn("[!CAUTION]", out)
+        self.assertIn("10 are missing", out)
+        self.assertIn("not** reported as Removed", out)
+        # Never collapses to the no-op sentinel — the warning must post.
+        self.assertNotIn("No visual changes detected.", out)
+
+    def test_genuine_single_deletion_still_reports_removed(self):
+        # Baseline of 12; 11 rendered, 1 genuinely deleted — well under the
+        # partial-render threshold, so the Removed section stands.
+        current = [
+            _entry(id=f"P{i}", module="app", function=f"Fn{i}", sha="s", png=f"/p{i}.png")
+            for i in range(11)
+        ]
+        out = self._run({"previews": current}, self._baselines(12))
+        self.assertIn("### Removed (1 variant(s))", out)
+        self.assertIn("~`Fn11`~", out)
+        self.assertNotIn("[!CAUTION]", out)
+
+    def test_small_baseline_does_not_trip_the_guard(self):
+        # A tiny module deleting its only two previews is a legitimate 100%
+        # removal that must still surface as Removed, not a false partial-render
+        # warning — the guard has an absolute floor below which it never fires.
+        out = self._run(
+            {"previews": [_entry(id="P0", module="app", function="Fn0", sha="s", png="/p0.png")]},
+            {f"app/P{i}": {"sha256": "s", "functionName": f"Fn{i}", "module": "app"}
+             for i in range(3)},
+        )
+        self.assertIn("### Removed", out)
+        self.assertNotIn("[!CAUTION]", out)
+
+
 class MultiCaptureLoadTest(unittest.TestCase):
     """`@ScrollingPreview(modes = [TOP, END])` / time fan-out: one preview
     must surface as one row per capture so each PNG shows up in the diff."""
@@ -1932,7 +2011,8 @@ class CompareResourcesTests(unittest.TestCase):
     def _write_envelope(self, *resources: dict) -> None:
         self.cli_json.write_text(json.dumps(_resource_envelope(*resources)))
 
-    def _run(self, base_ref: str = "deadbeef", head_ref: str = "cafef00d") -> str:
+    def _run(self, base_ref: str = "deadbeef", head_ref: str = "cafef00d",
+             scope: str | None = None) -> str:
         import io, contextlib
         from types import SimpleNamespace
         buf = io.StringIO()
@@ -1943,6 +2023,7 @@ class CompareResourcesTests(unittest.TestCase):
                 repo="owner/repo",
                 base_ref=base_ref,
                 head_ref=head_ref,
+                scope_modules=scope,
             ))
         return buf.getvalue()
 
@@ -2051,6 +2132,95 @@ class CompareResourcesTests(unittest.TestCase):
         out = self._run()
         self.assertEqual(out, "",
                          "Comment should append nothing when no diff was detected.")
+
+    def test_out_of_scope_resource_baselines_are_not_removed(self) -> None:
+        # Render scoped to `app`; the `wear` resource baseline was never
+        # rendered this run, so it must not surface as removed. The resource
+        # path had no scope guard at all before #2949 — every out-of-scope
+        # resource baseline was reported removed on any change-scoped run.
+        png = self._stage_png("ic_logo_xhdpi.png", b"NEW")
+        self._write_envelope(_resource_entry(
+            id="drawable/ic_logo", module="app",
+            captures=[_resource_capture(
+                render_output="renders/resources/drawable/ic_logo_xhdpi.png",
+                png_path=str(png), sha256="NEW-SHA", qualifiers="xhdpi",
+            )],
+        ))
+        self.baselines.write_text(json.dumps({
+            "app::drawable/ic_logo::renders/resources/drawable/ic_logo_xhdpi.png": {
+                "sha256": "OLD-SHA",
+                "module": "app",
+                "renderBasename": "resources/drawable/ic_logo_xhdpi.png",
+            },
+            "wear::drawable/watch_face::renders/resources/drawable/watch_face_xhdpi.png": {
+                "sha256": "WEAR-SHA",
+                "module": "wear",
+                "resourceId": "drawable/watch_face",
+                "renderBasename": "resources/drawable/watch_face_xhdpi.png",
+            },
+        }))
+        out = self._run(scope="app")
+        self.assertIn("### Changed", out)
+        self.assertNotIn("### Removed", out)
+        self.assertNotIn("watch_face", out)
+
+    def test_out_of_scope_module_parsed_from_key_when_field_absent(self) -> None:
+        # Pre-`module`-field resource baselines encode the module only in the
+        # `<module>::<id>::<basename>` key — scope filtering must work off it.
+        self._write_envelope()  # nothing rendered this run
+        self.baselines.write_text(json.dumps({
+            "wear::drawable/watch_face::renders/resources/drawable/watch_face_xhdpi.png": {
+                "sha256": "WEAR-SHA",
+                "renderBasename": "resources/drawable/watch_face_xhdpi.png",
+            },
+        }))
+        out = self._run(scope="app")
+        # `wear` is out of scope and carries no `module` field — parsed from
+        # the key, filtered out, and the run has nothing to say.
+        self.assertEqual(out, "")
+
+    def test_in_scope_resource_deletion_still_reported(self) -> None:
+        # A resource genuinely deleted inside a scoped module must still show
+        # as removed — scope filtering only spares out-of-scope baselines.
+        self._write_envelope()  # the drawable was deleted, nothing rendered
+        self.baselines.write_text(json.dumps({
+            "app::drawable/gone::renders/resources/drawable/gone_xhdpi.png": {
+                "sha256": "abc",
+                "module": "app",
+                "resourceId": "drawable/gone",
+                "renderBasename": "resources/drawable/gone_xhdpi.png",
+            },
+        }))
+        out = self._run(scope="app")
+        self.assertIn("### Removed", out)
+        self.assertIn("~`drawable/gone`~", out)
+
+    def test_truncated_resource_render_warns_instead_of_removing(self) -> None:
+        # Baseline has 12 in-scope resource captures; this run produced only
+        # one — the other 11 are missing because the render was truncated, not
+        # because 11 resources were deleted. Warn loudly, don't report Removed.
+        png = self._stage_png("res0_xhdpi.png", b"NEW")
+        self._write_envelope(_resource_entry(
+            id="drawable/res0", module="app",
+            captures=[_resource_capture(
+                render_output="renders/resources/drawable/res0_xhdpi.png",
+                png_path=str(png), sha256="NEW-SHA", qualifiers="xhdpi",
+            )],
+        ))
+        self.baselines.write_text(json.dumps({
+            f"app::drawable/res{i}::renders/resources/drawable/res{i}_xhdpi.png": {
+                "sha256": "OLD" if i == 0 else "s",
+                "module": "app",
+                "resourceId": f"drawable/res{i}",
+                "renderBasename": f"resources/drawable/res{i}_xhdpi.png",
+            }
+            for i in range(12)
+        }))
+        out = self._run()
+        self.assertNotIn("### Removed", out)
+        self.assertIn("[!CAUTION]", out)
+        self.assertIn("11 are missing", out)
+        self.assertIn("resource capture(s)", out)
 
 
 class LoadBaselinesTest(unittest.TestCase):

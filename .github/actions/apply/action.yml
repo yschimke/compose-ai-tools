@@ -842,6 +842,7 @@ runs:
         REPO: ${{ github.repository }}
         BASELINE_BRANCH: 'compose-preview/main'
         RESOURCE_HEAD_BRANCH: 'compose-preview/resources/pr'
+        SCOPE_MODULES: ${{ steps.scope.outputs.modules }}
       run: |
         set -euo pipefail
         if [ ! -f _resources.json ]; then
@@ -856,6 +857,14 @@ runs:
         [ -z "$RESOURCE_BASE_REF" ] && RESOURCE_BASE_REF="$BASE_REF"
         RESOURCE_HEAD_REF=$(cat _resource_head_sha 2>/dev/null || echo "")
         [ -z "$RESOURCE_HEAD_REF" ] && RESOURCE_HEAD_REF="$RESOURCE_HEAD_BRANCH"
+
+        # Change-scoped runs rendered a module subset — tell the comparator so
+        # out-of-scope resource baselines read as unchanged, not removed.
+        SCOPE_ARGS=()
+        if [ -n "${SCOPE_MODULES:-}" ] && [ "$SCOPE_MODULES" != "full" ]; then
+          SCOPE_ARGS=(--scope-modules "$SCOPE_MODULES")
+        fi
+
         python3 "$ACTION_PATH/../lib/compare-previews.py" compare-resources \
           _resources.json \
           --baselines _baselines/resource-baselines.json \
@@ -863,6 +872,7 @@ runs:
           --repo "$REPO" \
           --base-ref "$RESOURCE_BASE_REF" \
           --head-ref "$RESOURCE_HEAD_REF" \
+          "${SCOPE_ARGS[@]}" \
           > _comment_body_resources.md
 
     - name: Post or update compose PR comment
