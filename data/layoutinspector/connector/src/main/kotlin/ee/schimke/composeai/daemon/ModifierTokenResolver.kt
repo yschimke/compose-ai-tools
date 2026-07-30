@@ -56,6 +56,12 @@ internal object ModifierTokenResolver {
     var cornerRadiusPx: String? = null
     var shape: String? = null
     var padding: ComposeSemanticsInsets? = null
+    var paintInset: ComposeSemanticsInsets? = null
+    // Compose modifier order is outer→inner. A `padding` seen before any paint modifier
+    // (`background`/`paint`/`border`/a shape-bearing `clip`) insets the box those modifiers draw
+    // into, so its value is recorded as [paintInset]; a padding after the first paint (which pads
+    // content, not paint) is not. Flipped by the paint branches below (issue #2852).
+    var sawPaint = false
     var elevation: String? = null
     var minWidth: String? = null
     var minHeight: String? = null
@@ -86,12 +92,15 @@ internal object ModifierTokenResolver {
         }
       }
 
-      if (backgroundColor == null && (name == "background" || simpleName == "BackgroundElement")) {
-        backgroundColor = backgroundColorHex(mod, elements, inspectable?.valueOverride)
-        // A brush background resolves no flat colour; capture the gradient itself so the export
-        // emits a real `<linearGradient>` instead of rastering the whole layer (issue #2852).
-        if (backgroundColor == null && backgroundGradient == null) {
-          backgroundGradient = linearGradient(mod, elements, sizeWidthPx, sizeHeightPx)
+      if (name == "background" || simpleName == "BackgroundElement") {
+        sawPaint = true
+        if (backgroundColor == null) {
+          backgroundColor = backgroundColorHex(mod, elements, inspectable?.valueOverride)
+          // A brush background resolves no flat colour; capture the gradient itself so the export
+          // emits a real `<linearGradient>` instead of rastering the whole layer (issue #2852).
+          if (backgroundColor == null && backgroundGradient == null) {
+            backgroundGradient = linearGradient(mod, elements, sizeWidthPx, sizeHeightPx)
+          }
         }
       }
       // `Modifier.paint(painter)` with a solid `ColorPainter` — Wear M3's `Button`/`Card`/
@@ -101,8 +110,9 @@ internal object ModifierTokenResolver {
       // match misses every wear container fill and the token-driven figma-svg export drops it. Read
       // the `ColorPainter`'s colour as the fill; bitmap/vector painters (an `Image`/`Icon`'s art)
       // stay unresolved so they keep to the raster path (issue #1985).
-      if (backgroundColor == null && (name == "paint" || simpleName == "PainterElement")) {
-        backgroundColor = painterColorHex(elements, mod)
+      if (name == "paint" || simpleName == "PainterElement") {
+        sawPaint = true
+        if (backgroundColor == null) backgroundColor = painterColorHex(elements, mod)
       }
       // `Modifier.defaultMinSize(minWidth, minHeight)` — an M3 `Badge` measures its background at
       // this min box even when its narrow content is placed smaller, so the figma-svg export grows
@@ -116,18 +126,25 @@ internal object ModifierTokenResolver {
       // `Modifier.border` carries the outline colour `Surface`/`Card`/dividers apply — a role
       // colour
       // (`outline` / `outlineVariant`) a plain `Modifier.background` never sees (issue #1908).
-      if (borderColor == null && (name == "border" || simpleName.startsWith("BorderModifier"))) {
-        borderColor = borderColorHex(mod, elements)
-        borderWidth = borderWidthDp(mod, elements)
-        // Jetsnack's gradient-tinted icon button rings itself with
-        // `border(width, Brush.linearGradient(...), CircleShape)`. Before this the brush resolved
-        // to no colour and the ring vanished from the export entirely (issue #2852).
-        if (borderColor == null && borderGradient == null) {
-          borderGradient = linearGradient(mod, elements, sizeWidthPx, sizeHeightPx)
+      if (name == "border" || simpleName.startsWith("BorderModifier")) {
+        sawPaint = true
+        if (borderColor == null) {
+          borderColor = borderColorHex(mod, elements)
+          borderWidth = borderWidthDp(mod, elements)
+          // Jetsnack's gradient-tinted icon button rings itself with
+          // `border(width, Brush.linearGradient(...), CircleShape)`. Before this the brush resolved
+          // to no colour and the ring vanished from the export entirely (issue #2852).
+          if (borderColor == null && borderGradient == null) {
+            borderGradient = linearGradient(mod, elements, sizeWidthPx, sizeHeightPx)
+          }
         }
       }
-      if (padding == null && (name == "padding" || simpleName.startsWith("PaddingElement"))) {
-        padding = paddingInsets(mod, elements, inspectable?.valueOverride)
+      if (name == "padding" || simpleName.startsWith("PaddingElement")) {
+        val insets = paddingInsets(mod, elements, inspectable?.valueOverride)
+        if (padding == null) padding = insets
+        // Leading padding (before any paint modifier) insets the drawn shape; record the first one
+        // so `padding(4.dp).clip(…).border(…).background(…)` draws inside the padded box (#2852).
+        if (!sawPaint && paintInset == null) paintInset = insets
       }
       // Shape comes from any shape-bearing modifier: `background(color, shape)`, `clip(shape)`
       // (which Compose routes through `graphicsLayer`), or `border(..., shape)`. A plain rectangle
@@ -146,6 +163,9 @@ internal object ModifierTokenResolver {
         if (PlaceholderModifiers.isPlaceholderModifier(name, simpleName)) null
         else shapeOf(mod, elements)
       if (nodeShape != null) {
+        // A shape-bearing `clip`/`background`/`border` is a paint modifier, so a padding after it
+        // no longer insets the drawn shape (issue #2852).
+        sawPaint = true
         val effectiveShape = nodeShape.effectiveCornerShape()
         if (cornerRadius == null) cornerRadius = effectiveShape.cornerRadiusWire(minSidePx, density)
         // A `RoundedCornerShape(<px>f)` has no dp `cornerRadius`; capture its raw-pixel radii so
@@ -186,6 +206,7 @@ internal object ModifierTokenResolver {
         shape = shape,
         gap = gap,
         padding = padding,
+        paintInset = paintInset,
         elevation = elevation,
         opacity = opacity.takeIf { it < 0.999 },
         backgroundGradient = backgroundGradient,

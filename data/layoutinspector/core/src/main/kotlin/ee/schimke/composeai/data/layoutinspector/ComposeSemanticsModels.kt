@@ -453,6 +453,17 @@ data class ComposeSemanticsTokens(
   /** Resolved padding from `Modifier.padding`, in dp per edge. */
   val padding: ComposeSemanticsInsets? = null,
   /**
+   * The **leading** padding — a `Modifier.padding` that sits *before* the node's own paint
+   * modifiers (`clip` / `background` / `border` / `paint`) in the chain, in dp per edge. Compose
+   * applies such padding first, so the shape, fill, and border draw inside the padded box, not the
+   * node's outer bounds. The figma-svg export insets the drawn shape by this amount so an
+   * expressive `padding(4.dp).clip(CircleShape).border(brush, CircleShape).background(…)` control
+   * (Jetsnack's gradient-tinted icon button) rings the inner control instead of the padded root
+   * (issue #2852). Trailing padding — `background().padding()` — is *not* recorded here: it insets
+   * the content, not the paint, and is handled by the measured-size growth heuristic instead.
+   */
+  val paintInset: ComposeSemanticsInsets? = null,
+  /**
    * Resolved shadow elevation in dp from a `Modifier.graphicsLayer { shadowElevation = … }` (what
    * `Surface`/`Card`/`FloatingActionButton` use to cast a Material drop shadow), e.g. `"6.0dp"`.
    * Null when the node casts no shadow. The figma-svg export turns this into an SVG `feDropShadow`

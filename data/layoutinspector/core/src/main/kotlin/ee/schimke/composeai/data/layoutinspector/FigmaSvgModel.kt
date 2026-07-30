@@ -925,6 +925,14 @@ data class FigmaSvgModel(
       // compressed placement, and neighbouring items overlapped into one merged blob (issue #2615).
       val boundsW = bounds.right - bounds.left
       val boundsH = bounds.bottom - bounds.top
+      // A node whose paint modifiers sit *after* a `Modifier.padding`
+      // (`padding(4.dp).clip(…).border(…).background(…)` — Jetsnack's gradient-tinted icon button)
+      // draws its shape in the padded box, which is exactly the node's placed `bounds`. But its
+      // measured `size` still spans the padding, so the growth heuristic below would inflate the
+      // ring back out to the padded root (the 85×85-vs-63×63 defect). Suppress the growth for such
+      // a
+      // node so the ring stays on the inner control it actually rings (issue #2852).
+      val paddedPaint = tokens?.paintInset != null
       val minWidthPx =
         tokens?.minWidth?.removeSuffix("dp")?.toDoubleOrNull()?.let { it * ctx.density * scaleX }
       val minHeightPx =
@@ -943,7 +951,8 @@ data class FigmaSvgModel(
       val drawW = maxOf(boundsW, minWidthPx?.roundToInt() ?: 0, measuredW)
       val drawH = maxOf(boundsH, minHeightPx?.roundToInt() ?: 0, measuredH)
       val expand =
-        (fill != null || stroke != null) &&
+        !paddedPaint &&
+          (fill != null || stroke != null) &&
           ctx.textByNodeId[nodeId] == null &&
           (drawW > boundsW || drawH > boundsH)
       // Center the grown shape on the placed bounds, then pull the whole rectangle back inside the
