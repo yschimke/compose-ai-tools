@@ -535,11 +535,26 @@ object FigmaLayeredSvg {
         // scale) double-counts it whenever the measured slot is itself scaled. That double-count
         // blew an embedded Jetchat mic group up from `scale(2.62)` to `scale(6.54)`. A *present*
         // transform means the node was genuinely scaled (not clipped — a clip leaves no captured
-        // scale and falls through below), so the drawn bounds carry the real per-axis scale
-        // directly: fit the vector into its drawn bounds and read the scale straight off them,
-        // which also preserves a legitimately non-uniform layer scale.
-        scaleX = if (vec.viewportWidth > 0f) layer.width / vec.viewportWidth.toDouble() else 1.0
-        scaleY = if (vec.viewportHeight > 0f) layer.height / vec.viewportHeight.toDouble() else 1.0
+        // scale and falls through below), so the fit comes off the drawn bounds instead of the
+        // slot, avoiding the double-count.
+        val boundsScaleX =
+          if (vec.viewportWidth > 0f) layer.width / vec.viewportWidth.toDouble() else 1.0
+        val boundsScaleY =
+          if (vec.viewportHeight > 0f) layer.height / vec.viewportHeight.toDouble() else 1.0
+        if (abs(vec.scaleX - vec.scaleY) > VECTOR_SCALE_EPSILON) {
+          // A genuinely *non-uniform* layer scale: the two drawn axes really do differ, so read
+          // each straight off its bounds.
+          scaleX = boundsScaleX
+          scaleY = boundsScaleY
+        } else {
+          // A *uniform* layer scale: keep the viewport's aspect ratio by fitting it uniformly into
+          // the drawn bounds. Reading each axis independently would squash a square icon sitting in
+          // a non-square layout slot — a 24×24 icon in a 48×24 slot at 0.5× has 24×12 drawn bounds,
+          // which must stay `scale(0.5 0.5)`, not become `scale(1 0.5)`.
+          val uniform = minOf(boundsScaleX, boundsScaleY)
+          scaleX = uniform
+          scaleY = uniform
+        }
       } else {
         // Identity transform: nothing scaled the node, so any gap between its drawn box and its
         // layout slot is a *clip*, not a scale. Fit the layout slot — never the ratio of the drawn
