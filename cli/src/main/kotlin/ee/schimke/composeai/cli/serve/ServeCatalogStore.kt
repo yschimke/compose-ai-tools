@@ -256,6 +256,7 @@ class ServeCatalogStore(
       // section + group), so the tabbed landing can bucket + sub-head + order them.
       val section = component.section?.takeIf { it.isNotBlank() }
       val group = component.group?.takeIf { it.isNotBlank() }
+      val componentSourceFile = component.sourceFile?.takeIf { it.isNotBlank() }
       for (image in component.images) {
         if (count >= maxImages) break
         val path = image.path
@@ -282,7 +283,13 @@ class ServeCatalogStore(
         // A catalog with neither state/theme nor a section records nothing and stays a flat grid.
         val hasSectionInfo = section != null || group != null
         val props = image.props?.takeIf { it.isNotEmpty() }
-        if (image.state != null || image.theme != null || props != null || hasSectionInfo) {
+        if (
+          image.state != null ||
+            image.theme != null ||
+            props != null ||
+            hasSectionInfo ||
+            componentSourceFile != null
+        ) {
           variants[id] =
             VariantMeta(
               state = image.state,
@@ -291,6 +298,7 @@ class ServeCatalogStore(
               section = section,
               group = group,
               order = if (hasSectionInfo) count else null,
+              sourceFile = componentSourceFile,
             )
         }
         count++
@@ -418,6 +426,13 @@ class ServeCatalogStore(
                   ?.ifBlank { null },
               designParityVersion = catalog.designParity?.takeIf { it.isNotBlank() },
             ),
+          // The catalog's SOURCE (repo/ref/module of the Kotlin) — distinct from the delivery
+          // provenance above — so the viewer can link a preview to its source. Requires a real
+          // repo + ref; module may be blank (then the link omits the module prefix).
+          catalogSource =
+            catalog.source
+              ?.takeIf { it.repo.isNotBlank() && it.ref.isNotBlank() }
+              ?.let { ServeWeb.CatalogSource(it.repo, it.ref, it.module) },
           degradations = degradations,
           liveOnly = liveOnly,
         )
@@ -1079,6 +1094,13 @@ class ServeCatalogStore(
     val section: String? = null,
     /** Sub-heading group within a [section] (e.g. `"Buttons"`, `"Contacts"`). */
     val group: String? = null,
+    /**
+     * Module-relative source path of the `@Preview` this component renders (`src/main/kotlin/…`),
+     * stamped by the design-artifacts export (`apply-source-files.mjs`) from discovery's
+     * `previews.json`. Carried into `previews/variants.json` so the viewer can link the preview to
+     * its source on GitHub. Null for an older catalog that predates the export change.
+     */
+    val sourceFile: String? = null,
   )
 
   @Serializable
@@ -1139,6 +1161,13 @@ class ServeCatalogStore(
     val section: String? = null,
     val group: String? = null,
     val order: Int? = null,
+    /**
+     * Module-relative source path of the preview's `@Preview` function (from the catalog
+     * component's [Component.sourceFile]). Shared by every image of a component. Read back by
+     * [ServeBundleHost] to populate `ServePreview.sourceFile` so the viewer can build a GitHub
+     * source link. Null for a catalog with no recorded source (older export) or a deferred record.
+     */
+    val sourceFile: String? = null,
   )
 
   /**

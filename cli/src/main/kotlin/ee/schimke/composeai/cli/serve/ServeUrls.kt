@@ -91,24 +91,30 @@ object ServeUrls {
   }
 
   /**
-   * GitHub blob URL for a preview's source file: `https://github.com/<repo>/blob/<branch>/<path>`.
-   * [repo] is `owner/name`; [branch] is the delivery/source branch (may itself contain `/`, e.g.
-   * `design-artifacts/compose-m3` — a valid ref path, same shape the provenance tree link already
-   * relies on); [sourceFile] is the module-relative path recorded in the manifest.
+   * GitHub blob URL for a preview's source file:
+   * `https://github.com/<repo>/blob/<ref>/<module>/<sourceFile>`. [repo] is `owner/name`; [ref] is
+   * the **source** branch/tag/sha the catalog was built from (its `catalog.json` `source.ref`, NOT
+   * the `design-artifacts/<system>` delivery branch, which carries generated assets rather than
+   * Kotlin); [module] is the source module subdirectory (`source.module`, e.g.
+   * `samples/design-catalog-compose-m3`), joined ahead of the module-relative [sourceFile] that
+   * discovery recorded.
    *
-   * Returns null when any component is missing/blank, so a caller can `?.let` the link into
-   * existence only when it actually resolves (a local session with no provenance, or a preview with
-   * no recorded source, then renders no link). The [sourceFile] path is percent-encoded per segment
-   * so `/` separators survive while spaces and other unsafe characters are escaped; [repo] and
-   * [branch] are passed through verbatim to match the existing provenance links.
+   * Returns null when [repo], [ref], or [sourceFile] is missing/blank, so a caller can `?.let` the
+   * link into existence only when it resolves. [module] is optional (a source with no module
+   * subdirectory links `blob/<ref>/<sourceFile>` directly). The joined `<module>/<sourceFile>` path
+   * is percent-encoded per segment so `/` separators survive while spaces and other unsafe
+   * characters are escaped; [repo] and [ref] are passed through verbatim (a `/`-bearing ref is a
+   * valid blob path, matching the existing provenance links).
    */
-  fun githubBlobUrl(repo: String?, branch: String?, sourceFile: String?): String? {
+  fun githubBlobUrl(repo: String?, ref: String?, module: String?, sourceFile: String?): String? {
     val r = repo?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-    val b = branch?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-    val path =
+    val f = ref?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val rel =
       sourceFile?.replace('\\', '/')?.trim()?.trim('/')?.takeIf { it.isNotEmpty() } ?: return null
+    val mod = module?.replace('\\', '/')?.trim()?.trim('/')?.takeIf { it.isNotEmpty() }
+    val path = if (mod != null) "$mod/$rel" else rel
     val encoded = path.split('/').joinToString("/") { WebEscaping.urlEncodeSegment(it) }
-    return "https://github.com/$r/blob/$b/$encoded"
+    return "https://github.com/$r/blob/$f/$encoded"
   }
 
   /**

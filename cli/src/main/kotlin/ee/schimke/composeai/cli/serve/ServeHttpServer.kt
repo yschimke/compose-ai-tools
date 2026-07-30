@@ -2074,12 +2074,14 @@ class ServeHttpServer(
           // catalog-level reason (no live bundle, unverified, …) alongside the per-control note.
           degradations = renderHost.degradations,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = imageUrl),
-          // Per-preview: link the preview to its source file on GitHub when the session carries
-          // delivery provenance (repo + branch) and the manifest recorded a source path. A local /
-          // unprovenanced session yields null → no link.
+          // Per-preview: link the preview to its source file on GitHub, built from the catalog's
+          // SOURCE (repo/ref/module of the Kotlin — NOT the delivery branch) joined with the
+          // preview's module-relative sourceFile. Null when the session has no catalog source or
+          // the
+          // preview recorded no path ⇒ no link.
           sourceHref =
-            catalogBundleHost(renderHost)?.provenance?.let { prov ->
-              ServeUrls.githubBlobUrl(prov.repo, prov.branch, preview.sourceFile)
+            catalogBundleHost(renderHost)?.catalogSource?.let { src ->
+              ServeUrls.githubBlobUrl(src.repo, src.ref, src.module, preview.sourceFile)
             },
         ),
         ContentType.Text.Html,

@@ -68,6 +68,14 @@ class ServeBundleHost(
    */
   val provenance: ServeWeb.CatalogProvenance? = null,
   /**
+   * The catalog's **source** (repo/ref/module of the Kotlin), from `catalog.json`'s `source` — set
+   * by [ServeCatalogStore]. Distinct from [provenance] (the delivery branch): this is what the
+   * viewer builds a per-preview GitHub source link from, joining `module` + the preview's
+   * module-relative `sourceFile`. Null for a plain uploaded bundle or a catalog that declared no
+   * source.
+   */
+  val catalogSource: ServeWeb.CatalogSource? = null,
+  /**
    * Why this session is snapshot-only, when it is — populated by [ServeCatalogStore] for the baked
    * host it terminally registers (e.g. a catalog with no `liveBundle`), and left empty for a plain
    * uploaded bundle or for the baked host that merely *fronts* a live daemon (that session isn't
@@ -104,12 +112,12 @@ class ServeBundleHost(
   private val variantMeta: Map<String, ServeCatalogStore.VariantMeta> = readVariantMeta()
 
   /**
-   * Per-preview `id → module-relative sourceFile`, read from the bundle's `previews.json` manifest.
-   * Empty when the bundle carries no manifest (a bare `previews/`-only WebEmbed) or its entries
-   * recorded no source path. Feeds [ServePreview.sourceFile] so the viewer can link a preview to
-   * its source on GitHub when the session carries delivery provenance. Best-effort: an unreadable /
-   * malformed manifest degrades to empty rather than failing the host (matching [readVariantMeta] /
-   * [declaredThemes]).
+   * Per-preview `id → module-relative sourceFile`. A **catalog** carries this on each
+   * `previews/variants.json` entry ([ServeCatalogStore.VariantMeta.sourceFile]); a plain **uploaded
+   * bundle** may instead carry a root `previews.json` manifest. We read the variants map first (the
+   * catalog path this feature targets) and fall back to `previews.json` for ids it didn't cover, so
+   * both session shapes resolve. Empty when neither source records a path. Feeds
+   * [ServePreview.sourceFile].
    */
   private val sourceFilesById: Map<String, String> = readSourceFiles()
 
@@ -200,22 +208,35 @@ class ServeBundleHost(
   }
 
   /**
-   * Best-effort read of `id → sourceFile` from the bundle's `previews.json`. Mirrors
-   * [declaredThemes] (same manifest, same fail-soft): absent / unreadable manifest → empty map;
-   * entries without a `sourceFile` are dropped, so `sourceFilesById[id]` is null for them and no
-   * source link renders.
+   * Best-effort read of `id → sourceFile`. Prefers the catalog's `previews/variants.json` (each
+   * [ServeCatalogStore.VariantMeta.sourceFile], already parsed into [variantMeta]), then falls back
+   * to a root `previews.json` manifest for any id the variants map didn't cover (the plain uploaded
+   * bundle path). Fail-soft like [declaredThemes]: an absent / unreadable `previews.json` just
+   * contributes nothing; entries without a `sourceFile` are dropped so `sourceFilesById[id]` is
+   * null and no source link renders.
    */
   private fun readSourceFiles(): Map<String, String> {
-    val previewsJson = File(bundleDir, PREVIEWS_JSON).toOkioPath()
-    if (!fileSystem.exists(previewsJson)) return emptyMap()
-    return try {
-      val text = fileSystem.read(previewsJson) { readUtf8() }
-      val manifest =
-        OVERRIDES_JSON.decodeFromString(ee.schimke.composeai.cli.PreviewManifest.serializer(), text)
-      manifest.previews.mapNotNull { p -> p.sourceFile?.let { p.id to it } }.toMap()
-    } catch (e: Exception) {
-      emptyMap()
+    val out = LinkedHashMap<String, String>()
+    for ((id, meta) in variantMeta) {
+      meta.sourceFile?.takeIf { it.isNotBlank() }?.let { out[id] = it }
     }
+    val previewsJson = File(bundleDir, PREVIEWS_JSON).toOkioPath()
+    if (fileSystem.exists(previewsJson)) {
+      try {
+        val text = fileSystem.read(previewsJson) { readUtf8() }
+        val manifest =
+          OVERRIDES_JSON.decodeFromString(
+            ee.schimke.composeai.cli.PreviewManifest.serializer(),
+            text,
+          )
+        for (p in manifest.previews) {
+          if (p.id !in out) p.sourceFile?.takeIf { it.isNotBlank() }?.let { out[p.id] = it }
+        }
+      } catch (e: Exception) {
+        // Leave whatever the variants map already contributed.
+      }
+    }
+    return out
   }
 
   /**

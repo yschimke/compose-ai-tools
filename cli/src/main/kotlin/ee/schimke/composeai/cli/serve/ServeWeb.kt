@@ -690,6 +690,15 @@ object ServeWeb {
   )
 
   /**
+   * The **source** a catalog was built from — `catalog.json`'s `source = {repo, ref, module}` — as
+   * opposed to the delivery [CatalogProvenance] (the `design-artifacts/<system>` branch that
+   * carries the generated assets). This is the repo/ref/module of the actual Kotlin, so it's what a
+   * per-preview "source" link must point at: `blob/<ref>/<module>/<sourceFile>`. Null for a plain
+   * uploaded bundle or a catalog that declared no source.
+   */
+  data class CatalogSource(val repo: String, val ref: String, val module: String)
+
+  /**
    * "2026-07-17T12:34:56.789Z" → "2026-07-17 12:34 UTC"; anything unparseable is shown verbatim.
    */
   private fun prettyDate(iso: String): String {

@@ -488,12 +488,24 @@ class ServeWebFixtureTest {
       )
     val viewer =
       ServeWeb.viewerPage(
-        previews.first { it.id.endsWith("ProfileScreenPreview") },
+        previews
+          .first { it.id.endsWith("ProfileScreenPreview") }
+          .copy(sourceFile = "src/main/kotlin/com/example/ProfileScreen.kt"),
         token,
         trust = "unverified",
         // The full preview list feeds the left-hand component nav drawer (default closed) so the
         // harness captures its chrome alongside the default-open overrides drawer.
         siblings = previews,
+        // A resolved GitHub source link (catalog source repo/ref/module + the preview's
+        // sourceFile),
+        // so the golden captures the per-preview "source" link under the title.
+        sourceHref =
+          ServeUrls.githubBlobUrl(
+            "yschimke/compose-ai-tools",
+            "design-artifacts-source",
+            "samples/design-catalog-compose-m3",
+            "src/main/kotlin/com/example/ProfileScreen.kt",
+          ),
       )
     // A second viewer carrying the in-browser Wasm tier, so the harness captures the "Run in
     // browser (Wasm)" toggle + iframe seam a CMP catalog session shows.

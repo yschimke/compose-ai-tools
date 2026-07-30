@@ -77,39 +77,50 @@ class ServeUrlsTest {
   }
 
   @Test
-  fun `github blob url builds a source link, per-segment encoded`() {
+  fun `github blob url joins repo ref module and source path, per-segment encoded`() {
+    // The module (catalog source subdir) is prefixed ahead of the module-relative sourceFile.
     assertEquals(
       "https://github.com/yschimke/compose-ai-tools/blob/main/" +
-        "samples/android/src/main/kotlin/com/example/Home.kt",
+        "samples/design-catalog-compose-m3/src/main/kotlin/com/example/Home.kt",
       ServeUrls.githubBlobUrl(
         "yschimke/compose-ai-tools",
         "main",
-        "samples/android/src/main/kotlin/com/example/Home.kt",
+        "samples/design-catalog-compose-m3",
+        "src/main/kotlin/com/example/Home.kt",
       ),
     )
-    // A multi-segment delivery branch is a valid ref path (matches the provenance tree link shape).
+    // A `/`-bearing ref (tag/branch) is a valid blob path.
     assertEquals(
-      "https://github.com/o/r/blob/design-artifacts/compose-m3/src/main/kotlin/A.kt",
-      ServeUrls.githubBlobUrl("o/r", "design-artifacts/compose-m3", "src/main/kotlin/A.kt"),
+      "https://github.com/o/r/blob/release/1.0/mod/src/main/A.kt",
+      ServeUrls.githubBlobUrl("o/r", "release/1.0", "mod", "src/main/A.kt"),
+    )
+    // No module ⇒ the source path is linked directly under the ref.
+    assertEquals(
+      "https://github.com/o/r/blob/main/src/main/A.kt",
+      ServeUrls.githubBlobUrl("o/r", "main", null, "src/main/A.kt"),
+    )
+    assertEquals(
+      "https://github.com/o/r/blob/main/src/main/A.kt",
+      ServeUrls.githubBlobUrl("o/r", "main", "  ", "src/main/A.kt"),
     )
     // '/' separators survive; spaces and unsafe chars in a segment are percent-encoded.
     assertEquals(
-      "https://github.com/o/r/blob/main/src/My%20Screen.kt",
-      ServeUrls.githubBlobUrl("o/r", "main", "src/My Screen.kt"),
+      "https://github.com/o/r/blob/main/mod/src/My%20Screen.kt",
+      ServeUrls.githubBlobUrl("o/r", "main", "mod", "src/My Screen.kt"),
     )
-    // Backslashes normalize and a leading slash is trimmed.
+    // Backslashes normalize and leading/trailing slashes on module + path are trimmed.
     assertEquals(
-      "https://github.com/o/r/blob/main/src/main/A.kt",
-      ServeUrls.githubBlobUrl("o/r", "main", "\\src\\main\\A.kt"),
+      "https://github.com/o/r/blob/main/mod/src/main/A.kt",
+      ServeUrls.githubBlobUrl("o/r", "main", "/mod/", "\\src\\main\\A.kt"),
     )
   }
 
   @Test
-  fun `github blob url is null when any part is missing`() {
-    assertEquals(null, ServeUrls.githubBlobUrl(null, "main", "src/A.kt"))
-    assertEquals(null, ServeUrls.githubBlobUrl("o/r", null, "src/A.kt"))
-    assertEquals(null, ServeUrls.githubBlobUrl("o/r", "main", null))
-    assertEquals(null, ServeUrls.githubBlobUrl("o/r", "main", "   "))
-    assertEquals(null, ServeUrls.githubBlobUrl("", "main", "src/A.kt"))
+  fun `github blob url is null when repo, ref, or source is missing`() {
+    assertEquals(null, ServeUrls.githubBlobUrl(null, "main", "mod", "src/A.kt"))
+    assertEquals(null, ServeUrls.githubBlobUrl("o/r", null, "mod", "src/A.kt"))
+    assertEquals(null, ServeUrls.githubBlobUrl("o/r", "main", "mod", null))
+    assertEquals(null, ServeUrls.githubBlobUrl("o/r", "main", "mod", "   "))
+    assertEquals(null, ServeUrls.githubBlobUrl("", "main", "mod", "src/A.kt"))
   }
 }
