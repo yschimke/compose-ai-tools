@@ -429,11 +429,14 @@ Caveats worth knowing before reaching for it:
   module-wide inside the render, an unrelated parameterized preview whose row is labelled like
   a deferred mode loses that row — the completeness gate then fails the publish for that
   component, which is the loud outcome, and the renderer never empties a preview's rows.
-- **An Android/Robolectric catalog gets the publish saving but not the render saving**
-  (`design-catalog-wear-m3`, `design-catalog-remote-m3`): that `composePreviewRender` is a
-  `Test` task reading the manifest directly and honours none of these filters — the same
-  backend gap #2066 left open for the name filter, tracked in #2977. The `--with-semantics`
-  saving *does* land there, since the CLI drives that pass.
+- **Both backends now honour every axis.** An Android/Robolectric catalog
+  (`design-catalog-wear-m3`, `design-catalog-remote-m3`, and the `pocket-casts` catalogs whose
+  nine palettes come from a provider) renders through a `RobolectricRenderTask` that reads the
+  same `composePreview.*` properties and forwards them into the render JVM as
+  `composeai.preview.*`, where the shared `PreviewFilter` applies them — the entry filter and
+  the id filters per #2977, and the row labels alongside them, since that renderer expands its
+  own `@PreviewParameter` rows. So the measured axis saving lands on the backend it was measured
+  on.
 - **A skipped render is still declared.** Deferred previews stay listed in the bundle's
   `previews.json` — the bundle task carries every selected preview and simply omits the
   PNG for one that didn't render — which is what keeps them addressable on the serve

@@ -170,7 +170,9 @@ object PreviewManifestLoader {
                 emptyList()
               }
         }
-    val expanded = expandedByEntry.flatMap { it.second }
+    // Excluded rows stay in `expandedByEntry` (the stale-fan-out sweep needs them in its expected
+    // set, see PreviewRow.excludedRow) but never reach sharding or the renderer.
+    val expanded = expandedByEntry.flatMap { it.second }.filterNot { it.excludedRow }
     // Tier filter (set by the plugin via TierSystemPropProvider). When
     // `fast`, drop heavyweight captures and annotation-sourced data
     // products. Heavy outputs keep their previous files on disk and stay
@@ -210,7 +212,18 @@ object PreviewManifestLoader {
     return ours.map { arrayOf<Any>(it.entry, it.previewArgs) }
   }
 
-  internal data class PreviewRow(val entry: RenderPreviewEntry, val previewArgs: List<Any?>)
+  /**
+   * One (preview, `@PreviewParameter` value) row. [excludedRow] marks a row the row filter dropped
+   * (`--exclude-preview-row`): it is NOT rendered, but it stays in the expanded list so
+   * [deleteStaleFanoutFiles]' expected-name set still covers its output — otherwise the sweep would
+   * delete the very PNG the filter exists to avoid re-rendering, which is the opposite of how a
+   * filtered-out preview behaves.
+   */
+  internal data class PreviewRow(
+    val entry: RenderPreviewEntry,
+    val previewArgs: List<Any?>,
+    val excludedRow: Boolean = false,
+  )
 
   /**
    * LPT (Longest-Processing-Time-first) bin-packing of preview rows onto `shardCount` shards by
@@ -296,9 +309,25 @@ object PreviewManifestLoader {
     // Provider loaded cleanly this run — drop any stale base error card a prior failed run left at
     // the unsuffixed output path, so a now-fixed provider doesn't keep haunting the panel.
     providerErrorOutputFile(entry)?.let { RenderErrorSidecar.deleteStale(it) }
-    val suffixes = PreviewParameterLabels.suffixesFor(values)
+    val allSuffixes = PreviewParameterLabels.suffixesFor(values)
+    // Row filter (`--exclude-preview-row` → `composeai.preview.rowExclude`). Applied here, after
+    // labelling: the id filters above ran over the DISCOVERED entries, where this parameterized
+    // preview is a single row with no per-value id, so a label is the only handle on one value. The
+    // stale fan-out cleanup below still keys on the FULL row set, so a skipped row keeps its previous
+    // PNG on disk exactly as a filtered-out preview does.
+    val keptRows =
+      PreviewFilter.keptRowIndices(
+        allSuffixes,
+        PreviewFilter.patternsFrom(PreviewFilter.ROW_EXCLUDE_PROPERTY),
+      )
+    if (keptRows.size < allSuffixes.size) {
+      System.err.println(
+        "@PreviewParameter on '${entry.id}': skipping ${allSuffixes.size - keptRows.size} of " +
+          "${allSuffixes.size} row(s) excluded by ${PreviewFilter.ROW_EXCLUDE_PROPERTY}"
+      )
+    }
     val rows = values.mapIndexed { idx, value ->
-      val paramSuffix = suffixes[idx]
+      val paramSuffix = allSuffixes[idx]
       val newCaptures =
         entry.captures.map { c ->
           c.copy(renderOutput = insertBeforeExtension(c.renderOutput, paramSuffix))
@@ -311,6 +340,7 @@ object PreviewManifestLoader {
       PreviewRow(
         entry.copy(id = newId, captures = newCaptures, dataProducts = newProducts),
         listOf(value),
+        excludedRow = idx !in keptRows,
       )
     }
     return rows
