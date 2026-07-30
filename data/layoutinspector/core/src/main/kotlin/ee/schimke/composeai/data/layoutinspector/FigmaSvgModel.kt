@@ -589,17 +589,28 @@ data class FigmaSvgModel(
       // opaque. Previews that pass no `deviceBackground` (the default, and every preview that
       // didn't declare `showBackground`) still export background-free.
       val deviceBg = deviceBgResolved
-      // Prefer the frame crop when its size is known (issue #2974) — that is exactly the area the
-      // PNG fills, so a thin/short child no longer shrink-wraps the fill to itself. Without a frame
-      // size, fall back to the drawn-content extent: a wrap-content preview measures inside a
-      // generous sandbox frame (400×800 dp) and the PNG is cropped back to the composable's
-      // intrinsic size, so the background the viewer sees covers the *cropped* area — using the raw
-      // root-node frame there would paint the sandbox.
+      // Paint the background across the full exported canvas [extent], which already unions the
+      // drawn-content extent with the frame crop:
+      //  - the frame crop grows it to the whole cropped area a thin/short child would otherwise
+      //    shrink-wrap the fill away from (issue #2974), and
+      //  - any drawing the SVG deliberately retains beyond the captured viewport (a card's chrome
+      //    wider than its box, #2937; a scroll item past its parent edge) sat on the window
+      //    background in the live render, so it must sit on the background here too rather than
+      // over
+      //    transparency.
+      // With no frame size [extent] is just the drawn-content extent, so a wrap-content preview
+      // (measured inside a generous 400×800 dp sandbox, PNG cropped back to intrinsic size) still
+      // fills only the cropped area rather than the sandbox, and the #2884 maskless path is
+      // unchanged.
       val backgroundRect =
-        if (deviceBg != null && clip == null && capsule == null) {
-          val r = backgroundFrame ?: contentExtent
-          FigmaSvgRect(x = r.minX, y = r.minY, width = r.maxX - r.minX, height = r.maxY - r.minY)
-        } else null
+        if (deviceBg != null && clip == null && capsule == null)
+          FigmaSvgRect(
+            x = extent.minX,
+            y = extent.minY,
+            width = extent.maxX - extent.minX,
+            height = extent.maxY - extent.minY,
+          )
+        else null
       return FigmaSvgModel(
         root = rootLayer,
         minX = extent.minX,

@@ -2345,6 +2345,54 @@ class FigmaLayeredSvgTest {
     assertEquals(40, rect.height)
   }
 
+  /**
+   * Follow-up to #2974: when the SVG retains drawing beyond the captured frame (a card's chrome
+   * wider than its box, a scroll item past its parent edge), the exported canvas grows to include
+   * it — so the background must grow with it, not stop at the frame crop. Otherwise the retained
+   * content renders over transparency, whereas in the live render it sat on the window background.
+   */
+  @Test
+  fun aShowBackgroundFillCoversContentRetainedBeyondTheFrame() {
+    val layout =
+      layoutNode(
+        "Box",
+        0,
+        0,
+        100,
+        26,
+        children =
+          listOf(
+            // A drawing layer that extends past the 100×26 captured frame (to 120×40).
+            layoutNode(
+              "Chrome",
+              0,
+              0,
+              120,
+              40,
+              tokens = ComposeSemanticsTokens(backgroundColor = "#FF6750A4"),
+            )
+          ),
+      )
+    val model =
+      FigmaSvgModel.from(
+        layout = LayoutInspectorPayload(layout),
+        deviceBackground = "#FF1C1B1F",
+        frameWidthPx = 100,
+        frameHeightPx = 26,
+      )
+    val rect = model.backgroundRect
+    assertNotNull(rect)
+    // Background spans the full retained extent (120×40), not just the 100×26 frame, so the
+    // retained chrome sits on the backing colour rather than over transparency.
+    assertEquals(0, rect!!.x)
+    assertEquals(0, rect.y)
+    assertEquals(120, rect.width)
+    assertEquals(40, rect.height)
+    // And the canvas contains it (extent + padding on each side).
+    assertEquals(120 + FigmaSvgModel.DEFAULT_PADDING * 2, model.width)
+    assertEquals(40 + FigmaSvgModel.DEFAULT_PADDING * 2, model.height)
+  }
+
   @Test
   fun aRoundDeviceStillPaintsItsBackgroundAsTheMaskShapeNotARect() {
     val layout = layoutNode("Screen", 0, 0, 384, 384)
