@@ -398,6 +398,23 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
           preview: specComponent.preview,
           reason: "entry",
         });
+        // Its variants are deferred with it (`variantPriority` inherits), and each needs its OWN
+        // record: a variant's sticker is normally folded onto the component's images, and there is no
+        // `components[]` entry left to fold onto. Recording them here is what keeps them reachable on
+        // the live lane instead of dropping out of the publish unnoticed — the short-circuit below
+        // means nothing else in this loop will see them.
+        for (const variant of specComponent.variants ?? []) {
+          deferred.push({
+            componentId: specComponent.componentId,
+            group: group.name,
+            ...(group.section !== undefined ? { section: group.section } : {}),
+            preview: variant.preview,
+            reason: "variant",
+            ...(variant.state !== undefined ? { state: variant.state } : {}),
+            ...(variant.props !== undefined ? { props: variant.props } : {}),
+            ...(variant.theme !== undefined ? { theme: variant.theme } : {}),
+          });
+        }
         continue;
       }
       // Fold only the REQUIRED variants; each deferred one is recorded live-only instead of being

@@ -391,6 +391,13 @@ What each form actually saves:
   every consumer (the join, the variant split, the render filter), so the render set and
   the published set can't disagree about which entries are baked.
 
+  **Deferring a component defers its `variants` with it** (`variantPriority`), whatever
+  they say — each gets its own `deferred[]` record so it stays live-routable. A variant's
+  sticker is normally *folded onto* its component's images, so once the component is
+  deferred there is no `components[]` entry left to fold onto: a variant left at the
+  `required` default would be rendered and then neither baked nor recorded anywhere. The
+  useful direction — a required component with one deferred variant — works as written.
+
 Caveats worth knowing before reaching for it:
 
 - **A live path is required.** Deferring with neither `--publish-live-bundle` nor
