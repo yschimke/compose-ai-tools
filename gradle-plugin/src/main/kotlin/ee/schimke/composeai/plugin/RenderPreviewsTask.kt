@@ -137,6 +137,40 @@ abstract class RenderPreviewsTask : DefaultTask() {
   }
 
   /**
+   * `@PreviewParameter` **row** exclusions, by label — the one fan-out the id filters above cannot
+   * reach.
+   *
+   * Discovery emits ONE `PreviewInfo` per parameterized function (it reads bytecode, so it can't
+   * instantiate a provider to learn the values), and the rows only exist once the renderer has
+   * enumerated them and `PreviewParameterLabels` has named each `<stem>_<label>.png`. So no id
+   * pattern can name a row — which is why a design system whose theme axis is a `@PreviewParameter`
+   * provider (nine palettes on one provider, the shape behind #2966's measurement) still rendered
+   * every palette after `--exclude-preview-id` landed.
+   *
+   * Forwarded to the render subprocess as `composeai.preview.rowExclude` and applied by
+   * `PreviewRowFilter`: exclusion polarity like the id filter, matched case-insensitively (a label
+   * is user data — `"Dark"` — while the pattern is usually a spec's own spelling, `"dark"`), and
+   * never allowed to empty a preview's row set. Empty (the default) renders every row.
+   *
+   * Desktop-only, like the filters above (see [previewIdFilters]); the Android/Robolectric renderer
+   * expands its own rows and reads none of these — issue #2977.
+   */
+  @get:Input abstract val previewRowExcludes: ListProperty<String>
+
+  /** Backs the repeatable `--exclude-preview-row` CLI option; overrides the property convention. */
+  @Option(
+    option = "exclude-preview-row",
+    description =
+      "Skip @PreviewParameter rows whose label matches this pattern (repeatable; '*'/'?' globs or " +
+        "an exact label, case-insensitive), rendering the rest. Addresses one row of a " +
+        "parameterized preview, which --exclude-preview-id cannot. Never empties a preview's rows. " +
+        "Overrides -PcomposePreview.rowExclude.",
+  )
+  fun setPreviewRowExcludeOption(values: List<String>) {
+    previewRowExcludes.set(values)
+  }
+
+  /**
    * Render-tier filter. When `"fast"` the desktop path skips any preview whose representative
    * capture is heavier than [HEAVY_COST_THRESHOLD] (TOP / static stay in; LONG / GIF / animated
    * fall out). Default `"full"` keeps the historical behaviour (every preview rendered).
@@ -199,6 +233,9 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // registration with the `composePreview.idFilter` property; `--preview-id` overrides both.
     previewIdFilters.convention(emptyList())
     previewIdExcludes.convention(emptyList())
+    // And one axis further down again: empty = "render every row of every parameterized preview".
+    // Overridden at registration with `composePreview.rowExclude`; `--exclude-preview-row` wins.
+    previewRowExcludes.convention(emptyList())
     // Caching is intentionally gated on `tier=full` AND an empty `--preview` filter — a run is only
     // cacheable when its `outputDir` is the module's *complete* render set. A `tier=fast` run
     // writes
@@ -219,11 +256,14 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // would let a one-palette catalog render be stored and later restored as if it were the
     // module's
     // complete set.
+    // A row exclusion is the same kind of partial one level finer: the excluded rows' PNGs stay on
+    // disk from whatever ran last, so `outputDir` again isn't this module's complete render set.
     outputs.cacheIf("composePreviewRender caches full, unfiltered runs only") {
       tier.get().equals("full", ignoreCase = true) &&
         previewFilters.getOrElse(emptyList()).none { it.isNotBlank() } &&
         previewIdFilters.getOrElse(emptyList()).none { it.isNotBlank() } &&
-        previewIdExcludes.getOrElse(emptyList()).none { it.isNotBlank() }
+        previewIdExcludes.getOrElse(emptyList()).none { it.isNotBlank() } &&
+        previewRowExcludes.getOrElse(emptyList()).none { it.isNotBlank() }
     }
   }
 
@@ -449,6 +489,20 @@ abstract class RenderPreviewsTask : DefaultTask() {
       // composite the render into a device-art bezel (reading the cache the task action filled).
       // Empty string disables it (DeviceFrameConfig treats blank as "off").
       systemProperty("composeai.deviceframe.device", deviceFrameDevice.get())
+      // Forward the `@PreviewParameter` row exclusions so `PreviewRowFilter` can drop fan-out
+      // members
+      // by label — the rows don't exist until the subprocess has enumerated the provider, so this
+      // is
+      // the only place the filter can be applied. Set only when non-empty, keeping the render JVM's
+      // command line (and therefore every unfiltered run's inputs) exactly as it was.
+      previewRowExcludes
+        .getOrElse(emptyList())
+        .filter { it.isNotBlank() }
+        .let { rows ->
+          if (rows.isNotEmpty()) {
+            systemProperty("composeai.preview.rowExclude", rows.joinToString(","))
+          }
+        }
       if (deviceFrameDevice.get().isNotBlank()) {
         systemProperty(
           "composeai.deviceframe.cacheDir",

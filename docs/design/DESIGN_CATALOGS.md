@@ -409,14 +409,24 @@ Caveats worth knowing before reaching for it:
   function whose *every* discovered id resolves to a deferred mode keeps all of them
   (and says so in the log), so a bad `modePriority` surfaces as a gate failure rather
   than as a component silently rendered away.
-- **Two shapes get the publish saving but not the render saving** (both still correct, just
-  not cheaper to build). A mode axis supplied by a **`@PreviewParameter` provider** has no
-  per-row id to skip: discovery emits one entry for the parameterized function and the
-  renderer expands the rows itself. And an **Android/Robolectric** catalog
-  (`design-catalog-wear-m3`, `design-catalog-remote-m3`) renders through a `Test` task that
-  reads the manifest directly and honours neither the id filter nor `--preview` — the same
-  backend gap #2066 left open for the name filter. The `--with-semantics` saving *does* land
-  there, since the CLI drives that pass. Wiring the Robolectric path is the follow-up.
+- **A `@PreviewParameter` mode axis is skipped by label, not by id.** When the palettes come
+  from a provider rather than a multipreview, discovery emits ONE entry for the parameterized
+  function — it reads bytecode and can't instantiate the provider — and the rows only exist
+  once the renderer enumerates them. So there is no id to exclude, and the derivation emits
+  the deferred **mode names** instead (`--rows-out` → `bundle pack --exclude-preview-row` →
+  `-PcomposePreview.rowExclude`), which the renderer matches case-insensitively against the
+  label it puts in `<stem>_<label>.png`. The choice is made **per function**: a deferred mode
+  becomes a label when some spec-referenced *parameterized* function has no id carrying it, so
+  a catalog whose modes are all visible as ids gets no labels at all, while a mixed one still
+  gets the label its provider-backed component needs. Because labels are then matched
+  module-wide inside the render, an unrelated parameterized preview whose row is labelled like
+  a deferred mode loses that row — the completeness gate then fails the publish for that
+  component, which is the loud outcome, and the renderer never empties a preview's rows.
+- **An Android/Robolectric catalog gets the publish saving but not the render saving**
+  (`design-catalog-wear-m3`, `design-catalog-remote-m3`): that `composePreviewRender` is a
+  `Test` task reading the manifest directly and honours none of these filters — the same
+  backend gap #2066 left open for the name filter, tracked in #2977. The `--with-semantics`
+  saving *does* land there, since the CLI drives that pass.
 - **A skipped render is still declared.** Deferred previews stay listed in the bundle's
   `previews.json` — the bundle task carries every selected preview and simply omits the
   PNG for one that didn't render — which is what keeps them addressable on the serve

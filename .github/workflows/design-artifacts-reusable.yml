@@ -321,10 +321,14 @@ jobs:
           node "$GITHUB_WORKSPACE/compose-ai-tools/scripts/design-artifacts/deferred-preview-ids.mjs" \
             --spec "$GITHUB_WORKSPACE/$SPEC" \
             --previews "$GITHUB_WORKSPACE/discovered-previews.json" \
-            --out "$GITHUB_WORKSPACE/mode-filter.txt"
+            --out "$GITHUB_WORKSPACE/mode-filter.txt" \
+            --rows-out "$GITHUB_WORKSPACE/mode-filter-rows.txt"
           # Exclusion polarity: a pattern that matches nothing renders MORE, never less, so a spec
           # that has drifted ahead of the code wastes time instead of dropping a sticker.
           echo "exclude-ids=$(cat "$GITHUB_WORKSPACE/mode-filter.txt")" >> "$GITHUB_OUTPUT"
+          # A mode that carries no discovered id is a @PreviewParameter row axis: discovery never
+          # sees those rows (the renderer expands the provider), so they're skipped by LABEL instead.
+          echo "exclude-rows=$(cat "$GITHUB_WORKSPACE/mode-filter-rows.txt")" >> "$GITHUB_OUTPUT"
 
       # Stage bundled fallback fonts into fontconfig before any render, so a
       # desktop (Skiko) render resolves glyphs a preview's FontFamily doesn't
@@ -394,11 +398,13 @@ jobs:
           # both — it forwards `-PcomposePreview.idExclude` to the render and skips the same ids in
           # the daemon capture. Empty ⇒ the flag is omitted ⇒ render + capture everything.
           EXCLUDE_PREVIEW_IDS: ${{ steps.mode-filter.outputs.exclude-ids }}
+          EXCLUDE_PREVIEW_ROWS: ${{ steps.mode-filter.outputs.exclude-rows }}
         run: |
           set -euo pipefail
           run() { if [ "${{ inputs.desktop-render }}" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
           embed=(); if [ "${{ inputs.embed-deps }}" = "true" ]; then embed=(--embed-deps); fi
           exclude=(); if [ -n "${EXCLUDE_PREVIEW_IDS:-}" ]; then exclude=(--exclude-preview-id "$EXCLUDE_PREVIEW_IDS"); fi
+          if [ -n "${EXCLUDE_PREVIEW_ROWS:-}" ]; then exclude+=(--exclude-preview-row "$EXCLUDE_PREVIEW_ROWS"); fi
           run compose-preview bundle pack --module "${{ inputs.module }}" --with-semantics \
             "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" --timeout 600
 

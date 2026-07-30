@@ -261,6 +261,10 @@ internal object ComposePreviewTasks {
         // #2966); the repeatable `--preview-id` CLI option overrides it.
         previewIdFilters.convention(previewIdFilterProperty(project))
         previewIdExcludes.convention(previewIdExcludeProperty(project))
+        // `composePreview.rowExclude` — the `@PreviewParameter` row axis, forwarded to the render
+        // subprocess as a system property since the rows only exist once the provider is
+        // enumerated.
+        previewRowExcludes.convention(previewRowExcludeProperty(project))
         displayFilterFilters.set(AndroidPreviewSupport.resolveDisplayFilterFilters(project))
         deviceFrameDevice.set(AndroidPreviewSupport.resolveDeviceFrameDevice(project))
         renderClasspath.from(sourceClassDirs)
@@ -1338,6 +1342,23 @@ internal object ComposePreviewTasks {
   internal fun previewIdExcludeProperty(project: Project): Provider<List<String>> =
     project.providers
       .gradleProperty("composePreview.idExclude")
+      .map { v -> v.split(",").map(String::trim).filter(String::isNotEmpty) }
+      .orElse(emptyList())
+
+  /**
+   * `Provider<List<String>>` for the `composePreview.rowExclude` Gradle property — the
+   * `--exclude-preview-row` form, which skips `@PreviewParameter` rows by **label**.
+   *
+   * The axis the id filters can't express: discovery never sees the rows (it can't instantiate a
+   * provider), so a catalog whose palettes come from a `@PreviewParameter` provider had no way to
+   * stop rendering the ones it defers. Set by the design-artifacts pipeline as
+   * `ORG_GRADLE_PROJECT_composePreview.rowExclude`, so it reaches `composePreviewRender` through
+   * `bundle pack` with no CLI flag — on a desktop module. Inert on an Android render for the reason
+   * given on [previewIdFilterProperty].
+   */
+  internal fun previewRowExcludeProperty(project: Project): Provider<List<String>> =
+    project.providers
+      .gradleProperty("composePreview.rowExclude")
       .map { v -> v.split(",").map(String::trim).filter(String::isNotEmpty) }
       .orElse(emptyList())
 

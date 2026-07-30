@@ -37,9 +37,34 @@ internal object PackPreviewIdExclusions {
    * paying for the full semantics pass. An explicit flag wins outright rather than merging, so a
    * command line can narrow an inherited environment.
    */
-  fun fromArgs(args: List<String>, env: (String) -> String? = System::getenv): List<String> {
-    val flagValues = args.flagValuesAll("--exclude-preview-id")
-    val raw = if (flagValues.isNotEmpty()) flagValues else listOfNotNull(env(ENV_VAR))
+  fun fromArgs(args: List<String>, env: (String) -> String? = System::getenv): List<String> =
+    patternsFor(args, "--exclude-preview-id", ENV_VAR, env)
+
+  /** The Gradle property carrying `@PreviewParameter` **row** label exclusions. */
+  const val ROW_GRADLE_PROPERTY = "composePreview.rowExclude"
+
+  /** Env form of [ROW_GRADLE_PROPERTY]. */
+  const val ROW_ENV_VAR = "ORG_GRADLE_PROJECT_$ROW_GRADLE_PROPERTY"
+
+  /**
+   * `--exclude-preview-row` labels, same flag-then-env resolution as [fromArgs].
+   *
+   * These are forwarded to the render and nowhere else: unlike an id exclusion, a row exclusion
+   * needs no matching skip in the semantics pass, because that capture is driven per *preview* over
+   * the daemon — a parameterized preview yields one capture whatever its provider fans out to, so
+   * there is no per-row cost there to save.
+   */
+  fun rowsFromArgs(args: List<String>, env: (String) -> String? = System::getenv): List<String> =
+    patternsFor(args, "--exclude-preview-row", ROW_ENV_VAR, env)
+
+  private fun patternsFor(
+    args: List<String>,
+    flag: String,
+    envVar: String,
+    env: (String) -> String?,
+  ): List<String> {
+    val flagValues = args.flagValuesAll(flag)
+    val raw = if (flagValues.isNotEmpty()) flagValues else listOfNotNull(env(envVar))
     return raw.flatMap { it.split(',') }.map { it.trim() }.filter { it.isNotEmpty() }
   }
 

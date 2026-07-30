@@ -55,6 +55,32 @@ class PackPreviewIdExclusionsTest {
     assertEquals("ORG_GRADLE_PROJECT_composePreview.idExclude", PackPreviewIdExclusions.ENV_VAR)
   }
 
+  @Test
+  fun `row labels come from their own flag and env var`() {
+    val args =
+      listOf("--exclude-preview-row", "Dark, ExtraDark", "--exclude-preview-id", "Foo_Dark")
+    assertEquals(listOf("Dark", "ExtraDark"), PackPreviewIdExclusions.rowsFromArgs(args, noEnv))
+    // The two axes are independent: an id pattern never lands in the row list, or a pack would skip
+    // rows it was only asked to skip whole previews for.
+    assertEquals(listOf("Foo_Dark"), PackPreviewIdExclusions.fromArgs(args, noEnv))
+  }
+
+  @Test
+  fun `row labels fall back to the row env var only`() {
+    val env = { name: String ->
+      when (name) {
+        PackPreviewIdExclusions.ROW_ENV_VAR -> "Dark"
+        PackPreviewIdExclusions.ENV_VAR -> "Foo_Dark"
+        else -> null
+      }
+    }
+    assertEquals(listOf("Dark"), PackPreviewIdExclusions.rowsFromArgs(listOf("pack"), env))
+    assertEquals(
+      "ORG_GRADLE_PROJECT_composePreview.rowExclude",
+      PackPreviewIdExclusions.ROW_ENV_VAR,
+    )
+  }
+
   private val ids = listOf("Foo_Light", "Foo_Dark", "FooLarge_Dark", "Bar_Light")
 
   @Test

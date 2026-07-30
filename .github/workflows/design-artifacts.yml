@@ -309,8 +309,12 @@ jobs:
           node scripts/design-artifacts/deferred-preview-ids.mjs \
             --spec "${{ matrix.spec }}" \
             --previews "$GITHUB_WORKSPACE/discovered-previews.json" \
-            --out "$GITHUB_WORKSPACE/mode-filter.txt"
+            --out "$GITHUB_WORKSPACE/mode-filter.txt" \
+            --rows-out "$GITHUB_WORKSPACE/mode-filter-rows.txt"
           echo "exclude-ids=$(cat "$GITHUB_WORKSPACE/mode-filter.txt")" >> "$GITHUB_OUTPUT"
+          # Modes that carry no discovered id are a @PreviewParameter row axis — skipped by label
+          # inside the render instead, since discovery never sees those rows.
+          echo "exclude-rows=$(cat "$GITHUB_WORKSPACE/mode-filter-rows.txt")" >> "$GITHUB_OUTPUT"
 
       # Published previews pin their preview-runtimes to a RELEASED version
       # (`composeaiReleasedRuntimeVersion`, bumped by release-please on each release). Sonatype →
@@ -377,6 +381,7 @@ jobs:
           # would leave that (per-preview daemon) pass at full width. Empty ⇒ flag omitted ⇒
           # everything renders, which is what every catalog here gets today.
           EXCLUDE_PREVIEW_IDS: ${{ steps.mode-filter.outputs.exclude-ids }}
+          EXCLUDE_PREVIEW_ROWS: ${{ steps.mode-filter.outputs.exclude-rows }}
         run: |
           set -euo pipefail
           # Run under a virtual framebuffer so the Skiko desktop daemon has a
@@ -388,6 +393,7 @@ jobs:
           # (gradle.properties, release-please-managed); the "Wait for released preview-runtimes"
           # step above guarantees that version is resolvable on Central before we render.
           exclude=(); if [ -n "${EXCLUDE_PREVIEW_IDS:-}" ]; then exclude=(--exclude-preview-id "$EXCLUDE_PREVIEW_IDS"); fi
+          if [ -n "${EXCLUDE_PREVIEW_ROWS:-}" ]; then exclude+=(--exclude-preview-row "$EXCLUDE_PREVIEW_ROWS"); fi
           xvfb-run -a -s "-screen 0 2000x1400x24" \
             compose-preview bundle pack --module "$MODULE" --with-semantics \
               "${exclude[@]}" -o "$GITHUB_WORKSPACE/$SYSTEM-bundle.png"
