@@ -6,12 +6,19 @@
  * then reports anything the spec named but the join dropped as a **missing render**, refusing to
  * publish the whole system.
  *
- * Some ordinary previews legitimately produce no static PNG, and — unlike the annotation-driven
- * cases (`@AnimatedPreview`, `@FocusedPreview(gif = true)`, `@ScrollingPreview` LONG/GIF) — nothing
- * in the source says so: an `AndroidView`-hosted composable and a horologist `ScalingLazyColumn`
- * screen are both written as a plain `@Preview` and still land PNG-less (issue #2946). Before this
- * axis existed the only way to publish was to delete the entry, which silently dropped real coverage
- * from the sticker sheet.
+ * Some ordinary previews produce no static PNG, and — unlike the annotation-driven cases
+ * (`@AnimatedPreview`, `@FocusedPreview(gif = true)`, `@ScrollingPreview` LONG/GIF) — nothing in the
+ * source says so (issue #2946). Before this axis existed the only way to publish was to delete the
+ * entry, which silently dropped real coverage from the sticker sheet.
+ *
+ * A caution learned the hard way while diagnosing #2957: this bucket is *not* a taxonomy of preview
+ * shapes. The previews that motivated it were assumed to be "`AndroidView`-hosted" and "horologist
+ * `ScalingLazyColumn`" cases, and neither guess survived reading the render log — every one of them
+ * had simply **failed to render**, for three unrelated reasons (an app-owned `?attr/…` a library
+ * module's host activity couldn't resolve; `hiltViewModel()` in a preview; a composable-method
+ * lookup miss). A PNG-less preview is a symptom, not a diagnosis: check the render's
+ * `<png>.error.json` before concluding anything about it, and prefer fixing the render over
+ * declaring `capture: "none"`.
  *
  * `"capture": "none"` is the declaration: the entry stays in the spec (so the gap is recorded where
  * the inventory lives), it is excluded from the candidate join like any other PNG-less preview, but

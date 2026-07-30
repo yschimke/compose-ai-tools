@@ -16,6 +16,19 @@ composePreview {
   // Pin Robolectric to SDK 35; see the matching block in `:samples:android` for the JDK 17
   // toolchain rationale (Robolectric SDK 36 requires JDK 21+).
   sdkVersion.set(35)
+
+  // Issue #2957. `HtmlShowNotesPreview` is a plain `@Preview` whose body is an `AndroidView`
+  // hosting a `TextView` styled through the app-owned `?attr/sampleBodyTextAppearance`. A library
+  // module's merged manifest declares no `<application android:theme>`, so without naming a theme
+  // here the preview host activity runs under the platform default, the attribute resolves to
+  // nothing, and inflation throws `UnsupportedOperationException: Failed to resolve attribute at
+  // index N` — which aborts the render, so the preview emits no PNG at all rather than a broken
+  // one. This is the library-module counterpart of what an application module gets for free.
+  hostTheme.set("@style/Theme.SampleLibrary")
+
+  // `AndroidViewHtmlTextPixelTest` reads a PNG out of `build/compose-previews/renders/`, so chain
+  // the unit-test task behind `composePreviewRenderAll`.
+  renderBeforeUnitTests.set(true)
 }
 
 android {
@@ -24,6 +37,11 @@ android {
   buildFeatures { compose = true }
 
   testOptions { unitTests.all { it.jvmArgs("-Xmx2048m") } }
+}
+
+dependencies {
+  testImplementation(libs.junit)
+  testImplementation(libs.truth)
 }
 
 dependencies {

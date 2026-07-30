@@ -422,6 +422,10 @@ class RenderEngine(
             // the frame under `ContentScale.FillWidth` (issue #2952). Idempotent, no-op without
             // coil, and must precede every `setContent` below — `AsyncImagePainter` kicks its load
             // off from `onRemembered`. Mirrors `RobolectricRenderTest`'s install point.
+            // Host activity gets the consumer's `<application android:theme>` before any
+            // platform View inflates — an `AndroidView` resolving an app-owned `?attr/…`
+            // otherwise aborts the render. See [PreviewHostTheme]; mirrors the batch renderer.
+            ee.schimke.composeai.renderer.PreviewHostTheme.applyTo(rule.activity)
             CoilPreviewSupport.installIfPresent(rule.activity)
             // Always-on data extensions (fonts, resources, i18n recorders + post-capture
             // writers) — built per render so each extension owns its own recorder lifecycle.
@@ -1198,6 +1202,10 @@ class RenderEngine(
           // `render` returns INTO this scenario before reaching that call — a direct scroll /
           // figma-svg-long request in a fresh sandbox would otherwise still be on the async
           // loader. Idempotent and a no-op without coil. Issue #2952.
+          // Host activity gets the consumer's `<application android:theme>` before any
+          // platform View inflates — an `AndroidView` resolving an app-owned `?attr/…`
+          // otherwise aborts the render. See [PreviewHostTheme]; mirrors the batch renderer.
+          ee.schimke.composeai.renderer.PreviewHostTheme.applyTo(rule.activity)
           CoilPreviewSupport.installIfPresent(rule.activity)
           val heightDp = pxToDp(spec.heightPx, spec.density)
           // Match the batch renderer's per-mode reduce-motion contract: a stitched LONG still
@@ -1384,6 +1392,10 @@ class RenderEngine(
           // `render` returns INTO this scenario before reaching that call — a direct scroll /
           // figma-svg-long request in a fresh sandbox would otherwise still be on the async
           // loader. Idempotent and a no-op without coil. Issue #2952.
+          // Host activity gets the consumer's `<application android:theme>` before any
+          // platform View inflates — an `AndroidView` resolving an app-owned `?attr/…`
+          // otherwise aborts the render. See [PreviewHostTheme]; mirrors the batch renderer.
+          ee.schimke.composeai.renderer.PreviewHostTheme.applyTo(rule.activity)
           CoilPreviewSupport.installIfPresent(rule.activity)
           // Flatten Wear edge-scaling so the stitched items stack at natural size (same knob the
           // raster LONG path and the grow-tall probe use); no-op provider when not a Wear app.
@@ -1710,6 +1722,10 @@ class RenderEngine(
           // `render` returns INTO this scenario before reaching that call — a direct scroll /
           // figma-svg-long request in a fresh sandbox would otherwise still be on the async
           // loader. Idempotent and a no-op without coil. Issue #2952.
+          // Host activity gets the consumer's `<application android:theme>` before any
+          // platform View inflates — an `AndroidView` resolving an app-owned `?attr/…`
+          // otherwise aborts the render. See [PreviewHostTheme]; mirrors the batch renderer.
+          ee.schimke.composeai.renderer.PreviewHostTheme.applyTo(rule.activity)
           CoilPreviewSupport.installIfPresent(rule.activity)
           // This probe only runs for `figma-svg-long`, so a round device here is always the Wear
           // scroll scenario: measure with `LocalReduceMotion = true` so the content height reflects

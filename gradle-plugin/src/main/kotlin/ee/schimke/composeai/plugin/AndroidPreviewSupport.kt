@@ -2004,6 +2004,10 @@ internal object AndroidPreviewSupport {
         // (or `-PcomposePreview.fontsFailOnFallback=false`) on the Gradle invocation actually
         // reaches the forked render JVM — the property is read there, not on the Gradle JVM.
         val fontsFailOnFallback = composeAiFontsFailOnFallback(project)
+        // The Android theme the preview host activity runs under. Only a library module needs to
+        // set it (an app module inherits `<application android:theme>`); forwarded here because
+        // `PreviewHostTheme` reads it in the forked render JVM, not on the Gradle JVM.
+        val hostTheme = composeAiHostTheme(project, extension)
         // Static system properties (Robolectric modes + the path-bearing composeai.*
         // values) live in [AndroidPreviewClasspath.buildSystemProperties] so the
         // preview daemon can replay the same set when launching its own JVM. The
@@ -2016,6 +2020,7 @@ internal object AndroidPreviewSupport {
             fontsOffline = fontsOffline.get(),
             svgEmbedFonts = svgEmbedFonts.get(),
             fontsFailOnFallback = fontsFailOnFallback.get(),
+            hostTheme = hostTheme.get(),
           )
           .forEach { (k, v) -> systemProperty(k, v) }
 

@@ -981,7 +981,16 @@ abstract class RobolectricRenderTestBase(
           // compose-compiler (the consumer's), so the consumer's
           // emitted bytecode naturally targets their runtime.
           val bg = resolveBackgroundColor(params).toArgb()
-          rule.runOnUiThread { rule.activity.window.decorView.setBackgroundColor(bg) }
+          rule.runOnUiThread {
+            // Give the host activity the consumer's `<application android:theme>` before anything
+            // inflates a platform View. Without it an `AndroidView` whose content resolves an
+            // app-owned `?attr/…` dies with `UnsupportedOperationException: Failed to resolve
+            // attribute …` and takes the whole render (and therefore the PNG) with it. See
+            // [PreviewHostTheme]. Applied *before* the background paint below so a theme's
+            // `android:windowBackground` can't survive into the capture.
+            PreviewHostTheme.applyTo(rule.activity)
+            rule.activity.window.decorView.setBackgroundColor(bg)
+          }
           // Swap coil's singleton `ImageLoader` for one whose dispatchers are the immediate main
           // dispatcher, so `AsyncImage` resolves INLINE during the composition below instead of
           // on a `Dispatchers.IO` pool nothing here drives — otherwise the painter never gets a

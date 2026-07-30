@@ -388,6 +388,7 @@ internal object AndroidPreviewClasspath {
     fontsOffline: String,
     svgEmbedFonts: String = "true",
     fontsFailOnFallback: String = "true",
+    hostTheme: String = "",
   ): Map<String, String> =
     linkedMapOf(
       // Belt-and-braces for the graphics/looper modes. Config now
@@ -442,6 +443,13 @@ internal object AndroidPreviewClasspath {
       // set on the Gradle invocation never reaches the JVM that reads it and the opt-out is
       // unreachable.
       "composeai.fonts.failOnFallback" to fontsFailOnFallback,
+      // The Android theme the preview host activity runs under, e.g. `@style/Theme.Foo`. Read in
+      // the forked render / daemon JVM by `PreviewHostTheme`, which is what lets an `AndroidView`
+      // preview resolve app-owned `?attr/…` references. Empty by default: an application module
+      // inherits `<application android:theme>` without any configuration, and only a **library**
+      // module — which has no application theme to inherit — needs to name one. Forwarded even
+      // when blank so the property's presence isn't a second thing to keep in sync.
+      "composeai.render.hostTheme" to hostTheme,
     )
 }
 
@@ -496,3 +504,28 @@ internal fun composeAiFontsFailOnFallback(
     .systemProperty("composeai.fonts.failOnFallback")
     .orElse(project.providers.gradleProperty("composePreview.fontsFailOnFallback"))
     .orElse("true")
+
+/**
+ * The resolved value to forward as the render / daemon JVM's `composeai.render.hostTheme` — the
+ * Android theme the preview host activity runs under (see
+ * `ee.schimke.composeai.renderer.PreviewHostTheme`). Accepts `@style/Theme.Foo`,
+ * `com.example:style/Theme.Foo`, or a bare `Theme.Foo`.
+ *
+ * Sourced from `-Dcomposeai.render.hostTheme` first (the documented flag, matching the renderer),
+ * then `-PcomposePreview.hostTheme`, then the module's `composePreview.hostTheme` DSL value (the
+ * durable declaration — the two command-line forms are per-run overrides), else empty — an
+ * **application** module already inherits `<application android:theme>` with no configuration at
+ * all, so the default has to be "don't override". A **library** module has no application theme to
+ * inherit, which is where naming one turns an `AndroidView` preview that resolves app-owned
+ * `?attr/…` from a hard render failure into a rendered PNG. Mirrors [composeAiSvgEmbedFonts] /
+ * [composeAiFontsFailOnFallback].
+ */
+internal fun composeAiHostTheme(
+  project: Project,
+  extension: PreviewExtension? = null,
+): org.gradle.api.provider.Provider<String> =
+  project.providers
+    .systemProperty("composeai.render.hostTheme")
+    .orElse(project.providers.gradleProperty("composePreview.hostTheme"))
+    .let { if (extension != null) it.orElse(extension.hostTheme) else it }
+    .orElse("")
