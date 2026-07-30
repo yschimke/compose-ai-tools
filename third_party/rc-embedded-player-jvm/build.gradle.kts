@@ -153,6 +153,11 @@ kotlin {
   }
 }
 
+// Share the Android module's `.rc` test fixtures (e.g. `rc-fixtures/TitleCardRemote-640x480.rc`)
+// rather than duplicating the binaries, so the jvm render harness test rasterizes the *same*
+// captured document the Android embedded lane does — the only way its output is comparable.
+sourceSets["test"].resources.srcDir("../rc-embedded-player/src/test/resources")
+
 // The shared sources are AOSP-formatted (4-space) and must stay a verbatim snapshot, so they are
 // exempt from this repo's Google-style ktfmt — same as in the Android module, where AGP's source
 // sets happen not to be picked up at all. This also covers `jvmPlayerSources`, which is not
