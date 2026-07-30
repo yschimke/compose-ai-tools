@@ -478,6 +478,15 @@ data class ComposeSemanticsTokens(
   val opacity: Double? = null,
 )
 
+/**
+ * True when at least one edge is a positive length — a padding that actually insets the box. A
+ * `padding(0.dp)` resolves to an all-`"0.0dp"` inset that changes no geometry, so it must not count
+ * as a paint-insetting padding (it would otherwise suppress the growth heuristic for a Wear control
+ * whose chain merely contains `padding(0.dp)`) (issue #2852).
+ */
+fun ComposeSemanticsInsets.insetsPaint(): Boolean =
+  listOf(start, top, end, bottom).any { (it?.removeSuffix("dp")?.toDoubleOrNull() ?: 0.0) > 0.0 }
+
 /** Per-edge insets in dp (`"16.0dp"`), as resolved from `Modifier.padding` (issue #1897). */
 @Serializable
 data class ComposeSemanticsInsets(

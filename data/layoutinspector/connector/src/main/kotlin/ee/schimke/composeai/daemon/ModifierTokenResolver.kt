@@ -8,6 +8,7 @@ import androidx.compose.ui.platform.InspectableValue
 import androidx.compose.ui.unit.Dp
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorGradient
 import ee.schimke.composeai.data.layoutinspector.PlaceholderModifiers
+import ee.schimke.composeai.data.layoutinspector.insetsPaint
 import java.lang.reflect.Field
 import java.lang.reflect.Modifier
 import java.util.Locale
@@ -143,8 +144,10 @@ internal object ModifierTokenResolver {
         val insets = paddingInsets(mod, elements, inspectable?.valueOverride)
         if (padding == null) padding = insets
         // Leading padding (before any paint modifier) insets the drawn shape; record the first one
-        // so `padding(4.dp).clip(…).border(…).background(…)` draws inside the padded box (#2852).
-        if (!sawPaint && paintInset == null) paintInset = insets
+        // so `padding(4.dp).clip(…).border(…).background(…)` draws inside the padded box. A
+        // `padding(0.dp)` changes no geometry, so it must not count — otherwise it would suppress
+        // the growth heuristic for a node that still needs it (#2852).
+        if (!sawPaint && paintInset == null && insets?.insetsPaint() == true) paintInset = insets
       }
       // Shape comes from any shape-bearing modifier: `background(color, shape)`, `clip(shape)`
       // (which Compose routes through `graphicsLayer`), or `border(..., shape)`. A plain rectangle

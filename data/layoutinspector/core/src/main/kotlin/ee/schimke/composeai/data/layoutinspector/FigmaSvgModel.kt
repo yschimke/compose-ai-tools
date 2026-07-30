@@ -932,7 +932,7 @@ data class FigmaSvgModel(
       // ring back out to the padded root (the 85×85-vs-63×63 defect). Suppress the growth for such
       // a
       // node so the ring stays on the inner control it actually rings (issue #2852).
-      val paddedPaint = tokens?.paintInset != null
+      val paddedPaint = tokens?.paintInset?.insetsPaint() == true
       val minWidthPx =
         tokens?.minWidth?.removeSuffix("dp")?.toDoubleOrNull()?.let { it * ctx.density * scaleX }
       val minHeightPx =

@@ -79,4 +79,16 @@ class FigmaSvgPaintInsetTest {
     assertEquals(85, r.right - r.left)
     assertEquals(85, r.bottom - r.top)
   }
+
+  @Test
+  fun aZeroLeadingPaddingDoesNotSuppressGrowth() {
+    // `padding(0.dp)` resolves to an all-"0.0dp" inset that changes no geometry; it must not be
+    // treated as a paint-insetting padding, or a node whose chain merely contains `padding(0.dp)`
+    // would lose the growth heuristic it still needs.
+    val zero =
+      ComposeSemanticsInsets(start = "0.0dp", top = "0.0dp", end = "0.0dp", bottom = "0.0dp")
+    val r = ring(zero)
+    assertEquals(85, r.right - r.left)
+    assertEquals(85, r.bottom - r.top)
+  }
 }
