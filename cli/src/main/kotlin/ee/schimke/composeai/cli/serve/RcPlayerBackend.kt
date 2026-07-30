@@ -19,13 +19,16 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
  *   which interprets the document's operation tree into Compose layout/draw nodes directly, driven
  *   server-side via [RemoteComposePlayerKind.EMBEDDED].
  * * [CMP_JVM] — the same embedded player over Skiko/Desktop
- *   (`:third-party-rc-embedded-player-jvm`). The draw path now exists: the module renders a
- *   captured `.rc` to PNG on a plain JVM (`renderRemoteDocumentToPng`, verified by
- *   `RcJvmRendererTest` and the `rc-compare` cmp-jvm lane). What is not yet wired is a **serve
- *   render path** for it — the daemon protocol carries no JVM player kind, and the cli's render
- *   runtimes are subprocess-isolated, so lighting this chip needs either an in-process render in
- *   the cli or a desktop-daemon render lane (see the module's `PROVENANCE.md`). Until that lands
- *   [playerKind] stays null and no host enables it, so the viewer shows it as a disabled option.
+ *   (`:third-party-rc-embedded-player-jvm`), rendered **server-side** by [RcJvmServerRenderer]: it
+ *   spawns the module's `RcJvmRenderMain` as a one-shot subprocess off the CLI install's
+ *   `lib-rcjvm`
+ *     + `lib-daemon-desktop` sidecars (Compose Desktop + Skiko kept out of the CLI's own
+ *       classpath). Unlike [JAVA] / [CMP_ANDROID] it does **not** ride the daemon
+ *       `remoteCompose.player` override — [playerKind] stays null and [ServeHttpServer] renders it
+ *       directly from the captured `.rc` — so a host enables it (via [ServeHost.supportsCmpJvm])
+ *       whenever it carries the document, can size a render for it, and the sidecar is installed.
+ *       Where the sidecar is absent (a headless host, or a build that didn't stage it) the chip
+ *       stays disabled, exactly as before this lane existed.
  *
  * The viewer always renders every entry as a chip and enables the subset a host reports through
  * [ServeHost.enabledRcPlayersFor]; the rest are shown disabled. [wire] is the stable id used both
@@ -37,9 +40,11 @@ enum class RcPlayerBackend(
   /** Short human label for the selector chip. */
   val label: String,
   /**
-   * The daemon player kind a **server-side** backend renders through, or null for the client-side
-   * [JS] lane and the not-yet-renderable [CMP_JVM] lane. Drives [ServeOverrides]'s mapping of the
-   * `rcPlayer=` param onto [ee.schimke.composeai.daemon.protocol.RemoteComposeOverride.player].
+   * The daemon player kind a **server-side** backend renders through, or null for the lanes that
+   * don't ride the daemon `remoteCompose.player` override: the client-side [JS] lane and the
+   * [CMP_JVM] lane (which renders in its own isolated subprocess, see [RcJvmServerRenderer]).
+   * Drives [ServeOverrides]'s mapping of the `rcPlayer=` param onto
+   * [ee.schimke.composeai.daemon.protocol.RemoteComposeOverride.player].
    */
   val playerKind: RemoteComposePlayerKind?,
   /**
@@ -66,11 +71,12 @@ enum class RcPlayerBackend(
       wire?.lowercase()?.let { v -> entries.firstOrNull { it.wire == v } }
 
     /**
-     * The server-side backend a `rcPlayer=` render param selects, or null when [raw] names no
-     * *server-side* backend. Accepts the backend [wire] ids (`java`, `cmp-android`) and the
-     * daemon-native player-kind spellings (`view`, `embedded`) as aliases, so a link can be written
-     * either way. A client-side / unavailable value (`js`, `cmp-jvm`) yields null — those never
-     * ride the PNG lane — which the parser turns into a hard error rather than a silent default.
+     * The server-side backend a `rcPlayer=` render param selects **through the daemon**, or null
+     * otherwise. Accepts the backend [wire] ids (`java`, `cmp-android`) and the daemon-native
+     * player-kind spellings (`view`, `embedded`) as aliases, so a link can be written either way.
+     * `js` (client-side) and `cmp-jvm` yield null: `js` replays in-browser, and `cmp-jvm` renders
+     * in its own subprocess lane ([ServeHttpServer] handles `rcPlayer=cmp-jvm` directly), so
+     * neither rides the daemon override this maps.
      */
     fun serverSideFromParam(raw: String): RcPlayerBackend? =
       when (raw.lowercase()) {

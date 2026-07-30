@@ -285,6 +285,53 @@ class ServeBundleHost(
     return fileSystem.exists(File(irDir, "$previewId$RC_SUFFIX").toOkioPath())
   }
 
+  // Per-preview render params (dp size + density) from the bundle's `previews.json`, used to size a
+  // cmp-jvm render to match the baked capture. Empty when the bundle carries no manifest.
+  private val rcRenderParams: Map<String, ee.schimke.composeai.cli.PreviewParams> by lazy {
+    val previewsJson = File(bundleDir, PREVIEWS_JSON).toOkioPath()
+    if (!fileSystem.exists(previewsJson)) return@lazy emptyMap()
+    try {
+      val text = fileSystem.read(previewsJson) { readUtf8() }
+      OVERRIDES_JSON.decodeFromString(ee.schimke.composeai.cli.PreviewManifest.serializer(), text)
+        .previews
+        .associate { it.id to it.params }
+    } catch (e: Exception) {
+      emptyMap()
+    }
+  }
+
+  // The cmp-jvm render is sized to the baked PNG's exact pixel dimensions — so the desktop-player
+  // PNG lands at the same size the viewer shows the baked / View-player lane at — with the density
+  // the capture used (from `previews.json`, else the renderer default). Null when the preview has
+  // no
+  // captured doc or no baked PNG to size against.
+  override fun remoteComposeRenderSpec(previewId: String): RcJvmRenderSpec? {
+    if (!hasRemoteComposeDoc(previewId)) return null
+    val (widthPx, heightPx) = readPngSize(File(previewsDir, "$previewId$PNG_SUFFIX")) ?: return null
+    val density = rcRenderParams[previewId]?.density ?: DEFAULT_RENDER_DENSITY
+    return RcJvmRenderSpec(widthPx, heightPx, density)
+  }
+
+  /** Read a PNG's pixel dimensions from its IHDR without decoding the image; null if unreadable. */
+  private fun readPngSize(pngFile: File): Pair<Int, Int>? {
+    val path = pngFile.toOkioPath()
+    if (!fileSystem.exists(path)) return null
+    return try {
+      val header = fileSystem.read(path) { readByteArray(24) }
+      // 8-byte PNG signature, 4-byte IHDR length, 4-byte "IHDR", then width + height, big-endian.
+      fun be(off: Int): Int =
+        ((header[off].toInt() and 0xff) shl 24) or
+          ((header[off + 1].toInt() and 0xff) shl 16) or
+          ((header[off + 2].toInt() and 0xff) shl 8) or
+          (header[off + 3].toInt() and 0xff)
+      val w = be(16)
+      val h = be(20)
+      if (w > 0 && h > 0) w to h else null
+    } catch (e: Exception) {
+      null
+    }
+  }
+
   /**
    * Serve the baked `compose/figma-svg` export for [previewId] from the catalog's [figmaDir], with
    * its hybrid raster crops inlined so the SVG is self-contained. The SVG is per component **slug**
@@ -414,6 +461,11 @@ class ServeBundleHost(
   companion object {
     private const val PREVIEWS_SUBDIR = "previews"
     private const val PNG_SUFFIX = ".png"
+
+    // Fallback render density for a cmp-jvm render when `previews.json` declares none — the desktop
+    // renderer's own default (a 200dp preview bakes to 525px), so an unspecified preview still
+    // renders at the density its baked PNG was captured with.
+    private const val DEFAULT_RENDER_DENSITY = 2.625f
     /** Bytes of a PNG needed to read its IHDR width/height (8 sig + 4 len + 4 tag + 4 + 4). */
     private const val PNG_HEADER_BYTES = 24L
     private const val SVG_SUFFIX = ".svg"

@@ -165,6 +165,25 @@ interface ServeHost : AutoCloseable {
   fun hasRemoteComposeDoc(previewId: String): Boolean = remoteComposeDoc(previewId) != null
 
   /**
+   * The pixel size and density a **cmp-jvm** render of [previewId] should use — matched to the
+   * baked View-player capture so the desktop-player PNG lands at the same size the viewer shows the
+   * other lanes at. Null when this host cannot supply one (no captured doc, or size metadata
+   * missing), in which case the cmp-jvm chip stays disabled. Only a bundle/catalog host that
+   * carries both the `ir/<id>.rc` sidecar and the baked `previews/<id>.png` returns a spec.
+   */
+  fun remoteComposeRenderSpec(previewId: String): RcJvmRenderSpec? = null
+
+  /**
+   * Whether the server-side **cmp-jvm** lane can render [previewId]: the host carries the captured
+   * document and a render spec, and the isolated desktop-player subprocess is installed
+   * ([RcJvmServerRenderer.isAvailable]). Hosts fold this into [enabledRcPlayersFor].
+   */
+  fun supportsCmpJvm(previewId: String): Boolean =
+    hasRemoteComposeDoc(previewId) &&
+      remoteComposeRenderSpec(previewId) != null &&
+      RcJvmServerRenderer.isAvailable()
+
+  /**
    * The Remote Compose render backends the viewer may offer for [previewId] as **enabled** options
    * — the subset of the fixed [RcPlayerBackend.UNIVERSE] this host can actually produce pixels
    * through. The viewer renders every backend as a chip and enables the ones returned here; the
@@ -179,7 +198,16 @@ interface ServeHost : AutoCloseable {
    * `remoteCompose.player`).
    */
   fun enabledRcPlayersFor(previewId: String): List<RcPlayerBackend> =
-    if (hasRemoteComposeDoc(previewId)) listOf(RcPlayerBackend.JS) else emptyList()
+    if (hasRemoteComposeDoc(previewId)) {
+      buildList {
+        add(RcPlayerBackend.JS)
+        // The desktop embedded player renders the same `.rc` server-side via an isolated
+        // subprocess; enable it wherever the sidecar player is installed and a render spec exists.
+        if (supportsCmpJvm(previewId)) add(RcPlayerBackend.CMP_JVM)
+      }
+    } else {
+      emptyList()
+    }
 
   /**
    * Whether this host's live render lane honours the Remote Compose **player** override
