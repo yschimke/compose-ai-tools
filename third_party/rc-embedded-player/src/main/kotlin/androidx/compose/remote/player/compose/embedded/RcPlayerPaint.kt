@@ -33,7 +33,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
@@ -46,7 +45,8 @@ import androidx.compose.ui.unit.Density
 /*
  * Paint state + PaintBundle decoding for the embedded player's canvas draw path. Splits the paint
  * concerns (ComposeLocalPaint, stroke/blend/tile mappers, shader-brush builders, updatePaintFromBundle)
- * out of RcPlayerDrawing. Shares the snapshot store via the passed RemoteContext and resolveBitmap.
+ * out of RcPlayerDrawing. Shares the snapshot store via the passed RemoteContext, and reads bitmap
+ * textures through the image seam (`resolveImage`, in `RcPlayerImagePlatform.kt`).
  */
 
 internal class ComposeLocalPaint {
@@ -323,14 +323,16 @@ internal fun updatePaintFromBundle(
                 val tileModes = array[i++]
                 i++ // filter/maxAnisotropy word (filtering managed by Compose; consumed to stay
                 // synced)
-                val bitmap = resolveBitmap(remoteContext, bitmapId)
+                val image = resolveImage(remoteContext, bitmapId)
                 // `ImageShader` is the multiplatform equivalent of a framework `BitmapShader`, and
                 // it takes the Compose `TileMode` the file already maps for every other path — so
                 // this needs neither `android.graphics` nor the parallel `nativeTileMode` table.
+                // The image seam hands back an `ImageBitmap` directly (the decode + framework
+                // `Bitmap` stay in `RcPlayerImagePlatform.kt`), so there is nothing to convert here.
                 val shader =
-                    bitmap?.let {
+                    image?.let {
                         ImageShader(
-                            it.asImageBitmap(),
+                            it,
                             mapTileMode(tileModes and 0xF),
                             mapTileMode((tileModes shr 16) and 0xF),
                         )

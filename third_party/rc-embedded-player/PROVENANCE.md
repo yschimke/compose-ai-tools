@@ -210,6 +210,32 @@ revert to upstream verbatim.
   player *on Android* (~89% on `ShaderGradientSticker` in the rc-compare lane), and that wants
   understanding before the path is used as a desktop baseline (sequencing step 5).
 
+- **Bitmap decode/blit gathered behind a platform seam** (`RcPlayerImagePlatform.kt`, plus the
+  `resolveImage`/`resolveCanvasImage`/`prepareOffscreenTarget` calls in `RcPlayerDrawing.kt` and the
+  `TEXTURE` path of `RcPlayerPaint.kt`). The draw path reached `android.graphics.Bitmap` inline in
+  three shapes: `resolveBitmap`/`resolveCanvasBitmap` returned a framework `Bitmap` that the blit ops
+  (`DrawBitmap`/`DrawBitmapScaled`/`DrawBitmapInt`, the three bitmap-font ops) converted with
+  `asImageBitmap()`; the `DrawToBitmap` offscreen target did the mutable-copy + `eraseColor` +
+  `Canvas(target.asImageBitmap())` dance; and `RcPlayerPaint`'s `TEXTURE` path wrapped the decode in
+  an `ImageShader`.
+
+  Those framework touches now live in one written-here file — `resolveImage`, `resolveCanvasImage`,
+  `prepareOffscreenTarget`, with the framework `resolveBitmap` kept `internal` alongside them. **This
+  is a move, not a port: the bodies are the same decode/lookup/copy, so Android's pixels are
+  unchanged.** The seam hands back Compose's multiplatform `ImageBitmap` (the type every draw-path
+  caller already converted to), so `RcPlayerDrawing.kt` and `RcPlayerPaint.kt` no longer name
+  `android.graphics` at all — with framework `Paint` already gone via the text seam, the draw path's
+  two shared files are now import-clean. A jvm sibling of *this file alone* (over skiko
+  `org.jetbrains.skia.Image`, plus a jvm draw context whose `loadBitmap` decodes) is what the image
+  half of the draw path needs off Android.
+
+  `resolveBitmap` stays framework-typed and `internal` because the surfaces that still genuinely need
+  a `Bitmap` — the AGSL `BitmapShader` (`RcPlayerShaders.kt`), the reactive
+  `rememberRemoteBitmapAsState` (`state/RcPlayerBitmapState.kt`), and the host `RcImageLoader` — are
+  all Android-only anyway (the `Drawable`-typed loader and the AGSL seam are separately deferred). The
+  seam deliberately does **not** try to make those portable; it removes `android.graphics` from the
+  two files that are otherwise ready to compile off Android.
+
 - **`RcImageSource` extracted, and `mapEasing` split out of `RcPlayer.kt`** (`RcImageSource.kt`,
   `RcPlayerEasing.kt`). Two small deltas with the same shape: a neutral declaration was living inside
   an Android-coupled one, so everything that touched it inherited coupling it never used.
@@ -285,9 +311,9 @@ what actually couples them:
 
 | file | coupling |
 | --- | --- |
-| `RcPlayerPaint.kt` | none via import — the runtime-shader APIs moved to `RcPlayerShaders.kt` and framework `Paint` is gone (text ported); it stays in androidMain only through the in-package `resolveBitmap` it calls on the TEXTURE path |
+| `RcPlayerPaint.kt` | none via import — runtime shaders moved to `RcPlayerShaders.kt`, framework `Paint` gone (text ported), and the `TEXTURE` bitmap now comes back from the image seam as an `ImageBitmap`; it stays in androidMain only through the in-package `resolveImage` it calls (an Android-only seam file today) |
 | `RcPlayerShaders.kt` | `RuntimeShader`, `BitmapShader`, `Matrix`, `Build` (the AGSL seam, split out of `RcPlayerPaint.kt`) |
-| `RcPlayerDrawing.kt` | `Bitmap`, `drawable` (was also `Rect` + the native canvas) |
+| `RcPlayerDrawing.kt` | none via import — `Bitmap`/`drawable`/the native canvas are gone (text + image seams); it stays in androidMain only through the in-package `resolveImage`/`resolveCanvasImage`/`prepareOffscreenTarget` it calls |
 | `RcPlayer.kt` | `SuppressLint`, `PendingIntent`, `AndroidRemoteContext` |
 | `EmbeddedPlayerTypefaceResolver.kt` | `Typeface`, `Handler`, `Looper`, `Log`, `FontRequest`, `FontsContractCompat`, `AndroidRemoteContext`, `TypefaceResolver`, `FontInstance` |
 | `RcImageLoader.kt` | `Bitmap`, `drawable`, `content.res` |
@@ -559,9 +585,17 @@ single-target milestone it cannot be verified. It splits into 1a/1b.
      seam, not a port: Android's text output is unchanged. **Both halves now exist** — the skiko
      sibling is written and tested against a real raster, so step 4 below is spent early and text is
      no longer on the critical path.
-   - **Next: the draw path.** `RcPlayerChildren`/`RcPlayerComponent` out of `RcPlayer.kt`, then the
-     bitmap-typed helpers out of `RcPlayerDrawing.kt` so `executeOperations`' dispatcher can follow.
-     This is the large remaining piece and where the deferrals below start to matter.
+   - The draw path's framework `Bitmap` — **done** (`RcPlayerImagePlatform.kt`), which is what
+     removed `android.graphics` from `RcPlayerDrawing.kt` and `RcPlayerPaint.kt`. A seam, not a port:
+     Android's pixels are unchanged. The *Android* half is written; the skiko sibling waits on a jvm
+     draw context (whose `loadBitmap` decodes via `org.jetbrains.skia.Image`), which is step 3's
+     `JvmRemoteContext` — so unlike the text seam, the image seam's jvm half is paced by the context,
+     not ready ahead of it.
+   - **Next: the draw dispatcher.** `RcPlayerChildren`/`RcPlayerComponent` out of `RcPlayer.kt` (to
+     shed its `AndroidRemoteContext`/`PendingIntent` coupling), then add the now-import-clean
+     `RcPlayerDrawing.kt` / `RcPlayerPaint.kt` / `RcPlayerCanvas.kt` / `RcPlayerModifiers.kt` /
+     `RcPlayerDensity.kt` and the neutral `layout/**` + `modifier/**` to the jvm source list once
+     their callees resolve. This is the large remaining piece and where the deferrals below matter.
 
    **Import-clean and movable are different things**, and 1a keeps tripping over the difference —
    `GraphContext` imports nothing Android yet still cannot move, because of an ordinary in-package

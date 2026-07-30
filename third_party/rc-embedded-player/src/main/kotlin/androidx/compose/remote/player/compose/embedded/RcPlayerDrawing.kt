@@ -18,8 +18,6 @@
 
 package androidx.compose.remote.player.compose.embedded
 
-import android.graphics.Bitmap
-import android.graphics.drawable.BitmapDrawable
 import androidx.compose.remote.core.Operation
 import androidx.compose.remote.core.PaintOperation
 import androidx.compose.remote.core.RemoteContext
@@ -79,7 +77,6 @@ import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Matrix
 import androidx.compose.ui.graphics.Path as ComposePath
 import androidx.compose.ui.graphics.PathMeasure
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -96,45 +93,6 @@ private fun derefId(rawId: Int, context: RemoteContext): Int =
     } else {
         rawId and PaintOperation.VALUE_MASK
     }
-
-/**
- * Returns the decoded [Bitmap] for [id], decoding it on first use (lazy bitmap loading).
- *
- * The embedded player registers each [BitmapData]'s metadata at setup (via `putObject`, so declared
- * width/height stay available to `ImageAttribute` without a decode) but defers the costly pixel
- * decode until the bitmap is actually needed — when it is drawn, or when its Image component first
- * composes. The decoded bitmap is cached in the state's data map (`getFromId`), so later lookups
- * are cheap. Returns null if there is no bitmap or metadata for the id.
- */
-internal fun resolveBitmap(remoteContext: RemoteContext, id: Int): Bitmap? {
-    val cached = remoteContext.mRemoteComposeState.getFromId(id)
-    if (cached is Bitmap) return cached
-    // Not decoded yet: find the registered BitmapData and decode it now (apply = putObject +
-    // loadBitmap, which caches the decoded Bitmap under the id).
-    val data = remoteContext.mRemoteComposeState.getObject(id) as? BitmapData ?: return null
-    data.apply(remoteContext)
-    return remoteContext.mRemoteComposeState.getFromId(id) as? Bitmap
-}
-
-/**
- * Resolves a document image draw to a [Bitmap] through the pluggable [RcImageLoader] (on [graph]),
- * falling back to the embedded decode ([resolveBitmap]). Reading the loader's `State` here
- * registers the draw as an observer, so a host's asynchronously-loaded image re-runs the draw when
- * it arrives.
- *
- * The canvas blit ops need a [Bitmap] (for src/dst sub-rect blitting), so only a [BitmapDrawable]
- * from the loader is used directly; any other host [android.graphics.drawable.Drawable] falls back
- * to the embedded bitmap. (The composable Image layout, by contrast, can render any Drawable.)
- */
-internal fun resolveCanvasBitmap(
-    graph: GraphContext?,
-    remoteContext: RemoteContext,
-    id: Int,
-): Bitmap? {
-    val loaded = (graph?.imageLoader as? RcImageLoader)?.loadImage(id)?.value
-    if (loaded is BitmapDrawable) return loaded.bitmap
-    return resolveBitmap(remoteContext, id)
-}
 
 /** Backstop on [LoopOperation] iterations so a malformed bound can't hang the draw thread. */
 private const val MAX_LOOP_ITERATIONS = 100_000
@@ -553,9 +511,9 @@ internal fun DrawScope.executeOperations(
                 val right = resolveFloat(data.right, data.outputRight, read)
                 val bottom = resolveFloat(data.bottom, data.outputBottom, read)
 
-                val bitmap = resolveCanvasBitmap(graph, remoteContext, data.id)
+                val bitmap = resolveCanvasImage(graph, remoteContext,data.id)
                 if (bitmap != null) {
-                    val image = bitmap.asImageBitmap()
+                    val image = bitmap
                     val dstW = right - left
                     val dstH = bottom - top
                     if (dstW > 0f && dstH > 0f) {
@@ -773,7 +731,7 @@ internal fun DrawScope.executeOperations(
                     } else {
                         data.imageId and PaintOperation.VALUE_MASK
                     }
-                val bitmap = resolveCanvasBitmap(graph, remoteContext, imageId)
+                val bitmap = resolveCanvasImage(graph, remoteContext,imageId)
                 if (bitmap != null) {
                     val srcLeft = resolveFloat(data.srcLeft, data.outSrcLeft, read)
                     val srcTop = resolveFloat(data.srcTop, data.outSrcTop, read)
@@ -801,7 +759,7 @@ internal fun DrawScope.executeOperations(
                     drawContext.canvas.save()
                     drawContext.canvas.clipRect(dstLeft, dstTop, dstRight, dstBottom)
                     drawImage(
-                        image = bitmap.asImageBitmap(),
+                        image = bitmap,
                         srcOffset = IntOffset(srcLeft.toInt(), srcTop.toInt()),
                         srcSize =
                             IntSize((srcRight - srcLeft).toInt(), (srcBottom - srcTop).toInt()),
@@ -828,7 +786,7 @@ internal fun DrawScope.executeOperations(
                 // indirection. Mirrors DrawBitmapInt.paint() (the int-coordinate bitmap blit).
                 val data = op.readData()
                 val imageId = derefId(data.imageId, read)
-                val bitmap = resolveCanvasBitmap(graph, remoteContext, imageId)
+                val bitmap = resolveCanvasImage(graph, remoteContext,imageId)
                 if (bitmap != null) {
                     val srcLeft = data.srcLeft
                     val srcTop = data.srcTop
@@ -842,7 +800,7 @@ internal fun DrawScope.executeOperations(
                     val dstH = dstBottom - dstTop
                     if (dstW > 0 && dstH > 0) {
                         drawImage(
-                            image = bitmap.asImageBitmap(),
+                            image = bitmap,
                             srcOffset = IntOffset(srcLeft, srcTop),
                             srcSize = IntSize(srcRight - srcLeft, srcBottom - srcTop),
                             dstOffset = IntOffset(dstLeft, dstTop),
@@ -916,25 +874,18 @@ internal fun DrawScope.executeOperations(
                 if (bitmapId == 0) {
                     drawContext.canvas = mainCanvas!!
                 } else {
-                    val stored = resolveBitmap(remoteContext, bitmapId)
-                    if (stored != null) {
-                        // The target must be a mutable bitmap to back a Canvas. Decoded document
-                        // bitmaps are immutable, so draw into a mutable copy and store it back
-                        // under
-                        // the same id, so a later DRAW_BITMAP of this id reads the rendered
-                        // content.
-                        val target =
-                            if (stored.isMutable) {
-                                stored
-                            } else {
-                                stored.copy(Bitmap.Config.ARGB_8888, true).also {
-                                    remoteContext.mRemoteComposeState.cacheData(bitmapId, it)
-                                }
-                            }
-                        if ((mode and DrawToBitmap.MODE_NO_INITIALIZE) == 0) {
-                            target.eraseColor(color)
-                        }
-                        drawContext.canvas = Canvas(target.asImageBitmap())
+                    // The mutable-copy + erase dance lives in the image seam so this op names no
+                    // framework bitmap; it hands back the ImageBitmap view to point the canvas at
+                    // (null when the id has no bitmap — leave the on-screen canvas in place).
+                    val target =
+                        prepareOffscreenTarget(
+                            remoteContext,
+                            bitmapId,
+                            color,
+                            initialize = (mode and DrawToBitmap.MODE_NO_INITIALIZE) == 0,
+                        )
+                    if (target != null) {
+                        drawContext.canvas = Canvas(target)
                     }
                 }
             }
@@ -1048,12 +999,12 @@ internal fun DrawScope.executeOperations(
                         }
                         xPos += glyph.mMarginLeft
                         kerning?.get(prevGlyph + glyph.mChars)?.let { xPos += it }
-                        val glyphBitmap = resolveBitmap(remoteContext, glyph.mBitmapId)
+                        val glyphBitmap = resolveImage(remoteContext, glyph.mBitmapId)
                         if (
                             glyphBitmap != null && glyph.mBitmapWidth > 0 && glyph.mBitmapHeight > 0
                         ) {
                             drawImage(
-                                image = glyphBitmap.asImageBitmap(),
+                                image = glyphBitmap,
                                 srcOffset = IntOffset.Zero,
                                 srcSize = IntSize(glyphBitmap.width, glyphBitmap.height),
                                 dstOffset = IntOffset(xPos.toInt(), (y + glyph.mMarginTop).toInt()),
@@ -1140,12 +1091,12 @@ internal fun DrawScope.executeOperations(
                         }
                         xPos += glyph.mMarginLeft
                         kerning?.get(prevGlyph + glyph.mChars)?.let { xPos += it }
-                        val glyphBitmap = resolveBitmap(remoteContext, glyph.mBitmapId)
+                        val glyphBitmap = resolveImage(remoteContext, glyph.mBitmapId)
                         if (
                             glyphBitmap != null && glyph.mBitmapWidth > 0 && glyph.mBitmapHeight > 0
                         ) {
                             drawImage(
-                                image = glyphBitmap.asImageBitmap(),
+                                image = glyphBitmap,
                                 srcOffset = IntOffset.Zero,
                                 srcSize = IntSize(glyphBitmap.width, glyphBitmap.height),
                                 dstOffset =
@@ -1239,7 +1190,7 @@ internal fun DrawScope.executeOperations(
                             kerning?.get(prevGlyph + glyph.mChars)?.let { progress += it }
                             val halfGlyphWidth = 0.5f * glyph.mBitmapWidth
                             val fraction = (progress + halfGlyphWidth) / width
-                            val glyphBitmap = resolveBitmap(remoteContext, glyph.mBitmapId)
+                            val glyphBitmap = resolveImage(remoteContext, glyph.mBitmapId)
                             if (
                                 glyphBitmap != null &&
                                     glyph.mBitmapWidth > 0 &&
@@ -1267,7 +1218,7 @@ internal fun DrawScope.executeOperations(
                                     scale(scaleX, scaleY, pivot = Offset.Zero)
                                 }) {
                                     drawImage(
-                                        image = glyphBitmap.asImageBitmap(),
+                                        image = glyphBitmap,
                                         alpha = paintState.alpha,
                                     )
                                 }
