@@ -79,13 +79,20 @@ class BtaCompileSession(
     compileClasspath: List<Path>,
     outputDir: Path,
     compilerPlugins: List<CompilerPlugin> = emptyList(),
+    /**
+     * When non-null, BTA's diagnostic stream is routed through this collector for the call (same
+     * role as [compileIncremental]'s listener). A non-incremental compile does **not** snapshot the
+     * classpath, so — unlike [compileIncremental] — it accepts **directory** classpath entries (an
+     * extracted `classes/` dir), which is what the playground's catalog classpath leads with.
+     */
+    diagnosticListener: KotlinLogger? = null,
   ): List<Path> {
     outputDir.toFile().mkdirs()
     val jvm = toolchains.getToolchain<JvmPlatformToolchain>()
     toolchains.createBuildSession().use { session ->
       val builder = jvm.jvmCompilationOperationBuilder(sources, outputDir)
       configureCompilerArgs(builder.compilerArguments, compileClasspath, compilerPlugins)
-      executeOrThrow(session, builder.build())
+      executeOrThrow(session, builder.build(), diagnosticListener ?: logger)
     }
     return collectClassFiles(outputDir)
   }

@@ -10,7 +10,6 @@ import java.io.File
 import java.nio.file.Path as NioPath
 import okio.Path
 import org.jetbrains.kotlin.buildtools.api.ExperimentalBuildToolsApi
-import org.jetbrains.kotlin.buildtools.api.SourcesChanges
 import org.jetbrains.kotlin.buildtools.api.arguments.CompilerPlugin
 import org.jetbrains.kotlin.buildtools.api.arguments.CompilerPluginOption
 
@@ -37,25 +36,36 @@ class PlaygroundBtaCompiler(
   private val moduleName: String = "playground",
 ) : PlaygroundCompileService.Compiler {
 
+  // One session per compiler instance, retained across requests: its lazily-loaded toolchain pays
+  // the BTA-impl bootstrap once (not per request), and BtaCompileSession serializes concurrent
+  // compiles internally, so there's no per-request lock/cache race. Built lazily so constructing
+  // the
+  // compiler (e.g. probing availability) doesn't force the ~5 s toolchain load.
+  private val session by lazy {
+    BtaCompileSession(
+      implClasspath = btaImplJars,
+      icWorkingDir = icWorkingDir,
+      moduleName = moduleName,
+    )
+  }
+  private val compilerPlugins by lazy { composeCompilerPlugins(compilerPluginJars) }
+
   override fun compile(
     sources: List<Path>,
     classpath: List<Path>,
     outputDir: Path,
   ): List<PlaygroundDiagnostic> {
-    val session =
-      BtaCompileSession(
-        implClasspath = btaImplJars,
-        icWorkingDir = icWorkingDir,
-        moduleName = moduleName,
-      )
     val collector = DiagnosticCollector()
     return try {
-      session.compileIncremental(
+      // Non-incremental on purpose: a playground compiles a *fresh* snippet against a stable
+      // catalog classpath, so IC's per-entry classpath snapshotting is pure overhead — and it would
+      // throw on the catalog's leading `classes/` **directory** entry (it treats every entry as a
+      // JAR). The non-incremental path accepts directory entries and needs no icWorkingDir writes.
+      session.compile(
         sources = sources.map { it.toNioPath() },
         compileClasspath = classpath.map { it.toNioPath() },
         outputDir = outputDir.toNioPath(),
-        compilerPlugins = composeCompilerPlugins(compilerPluginJars),
-        sourcesChanges = SourcesChanges.ToBeCalculated,
+        compilerPlugins = compilerPlugins,
         diagnosticListener = collector,
       )
       // A clean compile: DiagnosticCollector only captures errors, so success yields no
