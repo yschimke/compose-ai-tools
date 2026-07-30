@@ -312,6 +312,14 @@ data class FigmaSvgLayer(
    * `<textPath>` along its baseline arc. Empty for the common straight-text/no-text case.
    */
   val curvedTexts: List<LayoutInspectorCurvedText> = emptyList(),
+  /**
+   * True when this layer carries a `Modifier.clip(shape)` that masks its children to its own box +
+   * corner shape ([cornerRadiiPx] / [circle] / [cut]). A child placed beyond the box — Jetsnack
+   * Search/Categories' minimum-size image under `.clip(CategoryShape)` — is clipped to the rounded
+   * box instead of overflowing, and does not grow the exported canvas (issue #2852). Independent of
+   * [paints]: a clip-only node draws no fill of its own but still masks its subtree.
+   */
+  val clipChildren: Boolean = false,
   val children: List<FigmaSvgLayer> = emptyList(),
 ) {
   val width: Int
@@ -1091,6 +1099,7 @@ data class FigmaSvgModel(
         opacity = opacity,
         contentOpacity = contentOpacity,
         curvedTexts = curvedTexts,
+        clipChildren = tokens?.clipsContent == true,
         children = children.map { it.toLayer(ctx, bounds) },
       )
     }
@@ -1619,31 +1628,51 @@ data class FigmaSvgModel(
 
     private data class Extent(val minX: Int, val minY: Int, val maxX: Int, val maxY: Int)
 
-    /** Union of every drawing layer's bounds (grouping-only layers don't constrain the canvas). */
+    /**
+     * Union of every drawing layer's bounds (grouping-only layers don't constrain the canvas).
+     *
+     * A `Modifier.clip` ancestor ([FigmaSvgLayer.clipChildren]) masks its subtree to its own box,
+     * so a descendant is counted only within that clip — a child intentionally placed beyond the
+     * clip (Jetsnack Search/Categories' minimum-size image under `.clip(CategoryShape)`) no longer
+     * grows the canvas past the clipped viewport the render shows (issue #2852). The clip narrows
+     * as it nests (intersection of every clipping ancestor); a node's own draws are held to its
+     * *ancestor* clips, not its own, which it fills to the edge of.
+     */
     private fun FigmaSvgLayer.extent(): Extent? {
       var acc: Extent? = null
-      fun add(left: Int, top: Int, right: Int, bottom: Int) {
-        if (right <= left || bottom <= top) return
+      fun add(left: Int, top: Int, right: Int, bottom: Int, clip: Extent?) {
+        val l = clip?.let { maxOf(left, it.minX) } ?: left
+        val t = clip?.let { maxOf(top, it.minY) } ?: top
+        val r = clip?.let { minOf(right, it.maxX) } ?: right
+        val b = clip?.let { minOf(bottom, it.maxY) } ?: bottom
+        if (r <= l || b <= t) return
         acc =
           acc?.let {
-            Extent(
-              minOf(it.minX, left),
-              minOf(it.minY, top),
-              maxOf(it.maxX, right),
-              maxOf(it.maxY, bottom),
-            )
-          } ?: Extent(left, top, right, bottom)
+            Extent(minOf(it.minX, l), minOf(it.minY, t), maxOf(it.maxX, r), maxOf(it.maxY, b))
+          } ?: Extent(l, t, r, b)
       }
-      fun merge(l: FigmaSvgLayer) {
-        if (l.paints) add(l.left, l.top, l.right, l.bottom)
+      fun merge(l: FigmaSvgLayer, clip: Extent?) {
+        if (l.paints) add(l.left, l.top, l.right, l.bottom, clip)
         // A background raster is drawn at its **own** bounds, which need not sit inside the layer
         // box: a card's chrome is captured from a draw modifier that sits above the padding, so it
         // is wider and taller than the padded content box the layer is placed at. Counting only the
         // box would shrink-wrap the canvas over pixels the SVG really draws (issue #2937).
-        l.background?.let { add(it.left, it.top, it.right, it.bottom) }
-        l.children.forEach(::merge)
+        l.background?.let { add(it.left, it.top, it.right, it.bottom, clip) }
+        val childClip =
+          if (l.clipChildren) {
+            val box = Extent(l.left, l.top, l.right, l.bottom)
+            clip?.let {
+              Extent(
+                maxOf(it.minX, box.minX),
+                maxOf(it.minY, box.minY),
+                minOf(it.maxX, box.maxX),
+                minOf(it.maxY, box.maxY),
+              )
+            } ?: box
+          } else clip
+        l.children.forEach { merge(it, childClip) }
       }
-      merge(this)
+      merge(this, null)
       return acc
     }
 
