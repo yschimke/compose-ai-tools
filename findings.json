@@ -265,7 +265,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text.a11y.png",
       "cleanBasename": "",
       "findings": [],
       "functionName": "BodyTextPreview",
@@ -978,7 +978,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "com.example.sampleandroid.PreviewParameterPreviewsKt.PrivateProviderBadgePreview_Private Provider Badge.a11y.png",
       "cleanBasename": "",
       "findings": [],
       "functionName": "PrivateProviderBadgePreview",
@@ -1274,7 +1274,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "com.example.sampleandroid.PreviewParameterPreviewsKt.UserCardPreview_User Card.a11y.png",
       "cleanBasename": "",
       "findings": [],
       "functionName": "UserCardPreview",
@@ -2848,6 +2848,60 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "ImageWidgetFixedPreview_Image_Widget_Fixed.a11y.png",
+      "cleanBasename": "ImageWidgetFixedPreview_Image_Widget_Fixed.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,567,196",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "ImageWidgetFixedPreview",
+      "module": "wear-widget",
+      "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetFixedPreview_Image Widget Fixed",
+      "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquircleLargePreview_Image Widget Squircle Large.a11y.png",
+      "cleanBasename": "",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,364,224",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "ImageWidgetSquircleLargePreview",
+      "module": "wear-widget",
+      "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquircleLargePreview_Image Widget Squircle Large",
+      "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle.a11y.png",
+      "cleanBasename": "",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,364,152",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "ImageWidgetSquirclePreview",
+      "module": "wear-widget",
+      "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle",
+      "sourceFile": "src/main/kotlin/com/example/wearwidget/WearWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "ActivityListFontScalesPreview_Fonts_Large.a11y.png",
       "cleanBasename": "ActivityListFontScalesPreview_Fonts_Large.png",
       "findings": [],
@@ -3137,6 +3191,96 @@
       "previewId": "com.example.samplewear.PreviewsKt.SettingsMainScreenLongPreview_Devices - Large Round",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "FocusableMenu_Glimmer_Input.a11y.png",
+      "cleanBasename": "FocusableMenu_Glimmer_Input.png",
+      "findings": [],
+      "functionName": "FocusableMenu",
+      "module": "xr-glimmer",
+      "previewId": "com.example.samplexrglimmer.GlimmerPreviewsKt.FocusableMenu_Glimmer \u00b7 Input",
+      "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerPreviews.kt",
+      "variant": "spec:width=960,height=720,dpi=160"
+    },
+    {
+      "annotatedBasename": "GlimmerListItemDefault_Glimmer_Default.a11y.png",
+      "cleanBasename": "GlimmerListItemDefault_Glimmer_Default.png",
+      "findings": [],
+      "functionName": "GlimmerListItemDefault",
+      "module": "xr-glimmer",
+      "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemDefault_Glimmer \u00b7 Default",
+      "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
+      "variant": "spec:width=960,height=720,dpi=160"
+    },
+    {
+      "annotatedBasename": "GlimmerListItemFocused_Glimmer_Focused.a11y.png",
+      "cleanBasename": "GlimmerListItemFocused_Glimmer_Focused.png",
+      "findings": [],
+      "functionName": "GlimmerListItemFocused",
+      "module": "xr-glimmer",
+      "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemFocused_Glimmer \u00b7 Focused",
+      "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
+      "variant": "spec:width=960,height=720,dpi=160"
+    },
+    {
+      "annotatedBasename": "GlimmerListItemPressed_Glimmer_Pressed.a11y.png",
+      "cleanBasename": "GlimmerListItemPressed_Glimmer_Pressed.png",
+      "findings": [],
+      "functionName": "GlimmerListItemPressed",
+      "module": "xr-glimmer",
+      "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemPressed_Glimmer \u00b7 Pressed",
+      "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
+      "variant": "spec:width=960,height=720,dpi=160"
+    },
+    {
+      "annotatedBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk_FOCUS_0.a11y.png",
+      "cleanBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk_FOCUS_0.png",
+      "findings": [],
+      "functionName": "GlimmerListPressedWalk",
+      "module": "xr-glimmer",
+      "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer \u00b7 Pressed Walk",
+      "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
+      "variant": "spec:width=960,height=720,dpi=160"
+    },
+    {
+      "annotatedBasename": "NowPlayingCard_Glimmer_Busy.a11y.png",
+      "cleanBasename": "NowPlayingCard_Glimmer_Busy.png",
+      "findings": [],
+      "functionName": "NowPlayingCard",
+      "module": "xr-glimmer",
+      "previewId": "com.example.samplexrglimmer.GlimmerPreviewsKt.NowPlayingCard_Glimmer \u00b7 Busy",
+      "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerPreviews.kt",
+      "variant": "spec:width=960,height=720,dpi=160"
+    },
+    {
+      "annotatedBasename": "NowPlayingPanelPreview_Panel_Content.a11y.png",
+      "cleanBasename": "NowPlayingPanelPreview_Panel_Content.png",
+      "findings": [],
+      "functionName": "NowPlayingPanelPreview",
+      "module": "xr-spatial",
+      "previewId": "com.example.samplexrspatial.SpatialPreviewsKt.NowPlayingPanelPreview_Panel \u00b7 Content",
+      "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialPreviews.kt",
+      "variant": "spec:width=1280,height=720,dpi=160"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "OrbiterControlsPreview_Orbiter_TopControls.png",
+      "findings": [],
+      "functionName": "OrbiterControlsPreview",
+      "module": "xr-spatial",
+      "previewId": "com.example.samplexrspatial.SpatialPreviewsKt.OrbiterControlsPreview_Orbiter \u00b7 TopControls",
+      "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialPreviews.kt",
+      "variant": "spec:width=1280,height=720,dpi=160"
+    },
+    {
+      "annotatedBasename": "SpatialElevationPreview_SpatialElevation_Panel.a11y.png",
+      "cleanBasename": "SpatialElevationPreview_SpatialElevation_Panel.png",
+      "findings": [],
+      "functionName": "SpatialElevationPreview",
+      "module": "xr-spatial",
+      "previewId": "com.example.samplexrspatial.SpatialPreviewsKt.SpatialElevationPreview_SpatialElevation \u00b7 Panel",
+      "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialPreviews.kt",
+      "variant": "spec:width=1280,height=720,dpi=160"
     },
     {
       "annotatedBasename": "",
