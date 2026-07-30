@@ -443,13 +443,22 @@ jobs:
           key: composeai-fonts-${{ runner.os }}-${{ inputs.system }}-${{ github.run_id }}
 
       - name: Generate importable catalog
+        env:
+          # The ref actually rendered (see "Check out the calling repo"). Empty ⇒ the
+          # triggering ref. The live-rerender source metadata and Code Connect links must
+          # name the branch the catalog was rendered FROM, not the event ref — for a
+          # scheduled caller that passed `ref: previews` those differ, and recording the
+          # event ref (a default branch with no catalog) would point live re-render at a
+          # revision the catalog doesn't exist on (issue #2963).
+          RENDERED_REF: ${{ inputs.ref }}
         run: |
           set -euo pipefail
           extra=()
           if [ -n "${{ inputs.extra-module }}" ]; then extra=(--extra-renders "$GITHUB_WORKSPACE/extra-bundle.png"); fi
           source_args=()
           if [ "${{ inputs.live-rerender-source }}" = "true" ]; then
-            source_args=(--source-repo "${GITHUB_REPOSITORY}" --source-ref "${GITHUB_REF_NAME}" --source-module "${{ inputs.module }}")
+            source_ref="${RENDERED_REF:-$GITHUB_REF_NAME}"
+            source_args=(--source-repo "${GITHUB_REPOSITORY}" --source-ref "${source_ref}" --source-module "${{ inputs.module }}")
           fi
           incomplete=()
           if [ "${{ inputs.allow-incomplete }}" = "true" ]; then incomplete=(--allow-incomplete); fi
