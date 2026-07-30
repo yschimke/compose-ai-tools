@@ -1031,6 +1031,12 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   var rcBackendsEl = document.getElementById("cp-rc-backends");
   var rcPlayerBackend = rcBackendsEl ? (rcBackendsEl.getAttribute("data-default") || "") : "";
   var rcPlayerPicked = false;
+  // Reconcile the backend chips' pressed state with the active lane. Hoisted (the real impl is
+  // assigned in the selector block below) so the common mode-transition path (enterMode) can
+  // call it whenever the viewer leaves a lane through ANY control — not only a chip click — so
+  // the JS chip can't stay pressed after e.g. Live/Wasm/SVG takes over the stage. A no-op stub
+  // for a non-Remote-Compose preview (no selector present).
+  var syncRcBackendChips = function () {};
   function query() {
     var o = overrides();
     // Public routes are open, so a page that arrived without a token stays token-free — only
@@ -1815,6 +1821,9 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     syncOverlayToggles();
     syncServerControls();
     updateLiveToggle();
+    // Every lane transition passes through here, so the backend chips are re-reconciled whether
+    // the viewer entered/left the JS canvas via a chip or via Live/Wasm/SVG/snapshot controls.
+    syncRcBackendChips();
     // Render the static lane AFTER syncServerControls() has reconciled the daemon-only controls
     // for the new lane. Returning from Wasm this re-enables the `.cp-rc-knob` inputs first, so
     // query() includes an rc.* value edited before the Wasm detour in the first snapshot render
@@ -1986,29 +1995,40 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   if (rcBackendsEl) {
     var rcChips = rcBackendsEl.querySelectorAll(".cp-rc-backend[data-rc-backend]");
     var rcDefaultBackend = rcBackendsEl.getAttribute("data-default") || "";
-    function syncRcBackendChips() {
+    // Assign the hoisted stub with the real reconciler (see the declaration before query()).
+    syncRcBackendChips = function () {
       // The js lane wins the "current" marker whenever its canvas is active; otherwise it's the
-      // picked server backend, or the default until the visitor picks one.
-      var active = rcActive() ? "js" : (rcPlayerPicked ? rcPlayerBackend : rcDefaultBackend);
+      // picked server backend, or the default until the visitor picks one. Any OTHER active lane
+      // (Live / Wasm) means no server backend is on screen, so no chip is marked current.
+      var active =
+        rcActive() ? "js"
+        : anyLiveActive() ? ""
+        : (rcPlayerPicked ? rcPlayerBackend : rcDefaultBackend);
       Array.prototype.forEach.call(rcChips, function (c) {
         var on = c.getAttribute("data-rc-backend") === active;
         c.setAttribute("aria-pressed", on ? "true" : "false");
       });
-    }
+    };
     function pickRcBackend(w) {
       if (w === "js") {
         // The client canvas lane. Leave the server pick untouched so returning to a server
-        // backend restores it; activating the canvas is the existing rc mode.
+        // backend restores it. setMode("rc") (via enterMode) closes any Live/Wasm lane, opens the
+        // canvas, and re-syncs the chips; if the canvas is already up there's nothing to do but
+        // reconcile the marker.
         rcPlayerPicked = false;
         if (!rcActive()) setMode("rc");
+        else syncRcBackendChips();
       } else {
-        // A server-side backend: leave the canvas lane if active, record the pick, re-render.
-        if (rcActive()) setMode("png");
+        // A server-side backend. Record the pick FIRST so the single static-lane render carries
+        // rcPlayer=<wire>, then transition to the static snapshot exactly once for EVERY other
+        // lane — js canvas, Live, or Wasm. setMode("png") → enterMode("png") closes them all,
+        // renders the snapshot once (no racing double render), and re-syncs the chips. Without
+        // this a pick made while Live/Wasm was active only reloaded the hidden <img> and left the
+        // interactive renderer on screen under a pressed chip.
         rcPlayerBackend = w;
         rcPlayerPicked = true;
-        refreshSnapshot();
+        setMode("png");
       }
-      syncRcBackendChips();
     }
     Array.prototype.forEach.call(rcChips, function (c) {
       if (c.disabled) return;
