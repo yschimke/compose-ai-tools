@@ -120,6 +120,57 @@ class ActionableFailureLinesTest {
   }
 
   @Test
+  fun `a starred bullet inside the message does not end the block`() {
+    // A task's own `GradleException` text may contain unindented `* ` bullets, which Gradle prints
+    // at column zero inside the block. Treating one as a section header would drop everything after
+    // it and reproduce the truncation this filter exists to prevent (Codex review on #3003).
+    val captured =
+      """
+      * What went wrong:
+      Execution failed for task ':app:composePreviewRenderAll'.
+      Previews declared in the manifest with no PNG:
+      * com.example.FooKt.Bar
+      * com.example.FooKt.Baz
+      Re-run with --preview to render one of them on its own.
+      * Try:
+      > Run with --stacktrace option to get the stack trace.
+      """
+        .trimIndent()
+
+    assertEquals(
+      listOf(
+        "* What went wrong:",
+        "Execution failed for task ':app:composePreviewRenderAll'.",
+        "Previews declared in the manifest with no PNG:",
+        "* com.example.FooKt.Bar",
+        "* com.example.FooKt.Baz",
+        "Re-run with --preview to render one of them on its own.",
+        "* Try:",
+        "> Run with --stacktrace option to get the stack trace.",
+      ),
+      actionableFailureLines(captured),
+    )
+  }
+
+  @Test
+  fun `every Gradle section header closes the block`() {
+    val captured =
+      """
+      * What went wrong:
+      The reason.
+      * Exception is:
+      org.gradle.api.GradleException: The reason.
+      """
+        .trimIndent()
+
+    // `* Exception is:` is a real header, so the stack-trace prose under it stays out.
+    assertEquals(
+      listOf("* What went wrong:", "The reason.", "* Exception is:"),
+      actionableFailureLines(captured),
+    )
+  }
+
+  @Test
   fun `empty input yields nothing`() {
     assertEquals(emptyList<String>(), actionableFailureLines(""))
   }

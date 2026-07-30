@@ -459,18 +459,33 @@ private fun Throwable.causeMessages(): List<String> {
  *
  * Blank lines inside the block are dropped so the section stays tight (Gradle puts one before the
  * next header).
+ *
+ * The block ends at the next entry of [GRADLE_FAILURE_SECTIONS], not at the next line that merely
+ * starts with `* `: a task's `GradleException` message is free to contain its own unindented `* `
+ * bullets, and treating one of those as a section header would drop the rest of the reason —
+ * exactly the truncation this function exists to prevent (Codex review on #3003). Such a bullet is
+ * still printed, it just doesn't close the block.
  */
 internal fun actionableFailureLines(captured: String): List<String> {
   var inWhatWentWrong = false
   return captured.lines().filter { line ->
-    val header = line.startsWith("* ")
-    if (header) inWhatWentWrong = line.contains("What went wrong")
+    val header = GRADLE_FAILURE_SECTIONS.any { line.startsWith(it) }
+    if (header) inWhatWentWrong = line.startsWith("* What went wrong:")
     header ||
       (inWhatWentWrong && line.isNotBlank()) ||
       line.contains("error:", ignoreCase = true) ||
       line.contains("FAILURE:") ||
       line.contains("not found") ||
       line.startsWith("e: ") ||
-      line.startsWith("> ")
+      line.startsWith("> ") ||
+      line.startsWith("* ")
   }
 }
+
+/**
+ * The section headers Gradle's console failure report emits, each at column zero. Used to decide
+ * where a `* What went wrong:` block ends — see [actionableFailureLines]. `* Get more help at …` is
+ * the one that doesn't end in a colon, so these are matched as prefixes rather than by shape.
+ */
+private val GRADLE_FAILURE_SECTIONS =
+  listOf("* Where:", "* What went wrong:", "* Try:", "* Exception is:", "* Get more help at")
