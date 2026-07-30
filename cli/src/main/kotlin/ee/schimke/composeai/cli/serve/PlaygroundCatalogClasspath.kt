@@ -83,7 +83,7 @@ object PlaygroundCatalogClasspath {
 
     val libJars = BundleReader.extractEmbeddedLibs(zipBytes, libsDir, fileSystem)
     val mavenCoords = manifest.classpath.filterIsInstance<BundleReader.ClasspathEntry.Maven>()
-    val resolvedJars =
+    val resolutions =
       CoordinateResolver(
           warn = { onLog("playground $system: $it") },
           networkEnabled = if (offline) false else CoordinateResolver.defaultNetworkEnabled(),
@@ -92,9 +92,33 @@ object PlaygroundCatalogClasspath {
               extraMavenRepos.filter { it.isNotBlank() },
         )
         .resolveAll(mavenCoords)
-        .mapNotNull { it.file }
+    val resolvedJars = requireAllResolved(system, resolutions, onLog) ?: return null
 
     return assemble(system, classesDir, libJars, resolvedJars)
+  }
+
+  /**
+   * Every declared coordinate must resolve, or the compile classpath is **incomplete** and the mode
+   * is reported unavailable (return null). Unlike the live-daemon path — which tolerates a partial
+   * classpath and falls back to baked PNGs — a playground compile against a missing catalog library
+   * would surface a misleading `unresolved reference` to the user instead of the honest
+   * mode-unavailable response. So fail closed: log the misses and refuse the whole classpath rather
+   * than assembling a partial one. Returns the resolved jars when every coordinate resolved.
+   */
+  internal fun requireAllResolved(
+    system: String,
+    resolutions: List<CoordinateResolver.Resolution>,
+    onLog: (String) -> Unit,
+  ): List<File>? {
+    val unresolved = resolutions.filter { it.file == null }
+    if (unresolved.isNotEmpty()) {
+      onLog(
+        "playground $system: ${unresolved.size} unresolved dependency coordinate(s), mode " +
+          "unavailable: ${unresolved.joinToString { it.coordinate.toString() }}"
+      )
+      return null
+    }
+    return resolutions.mapNotNull { it.file }
   }
 
   /**
