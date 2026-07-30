@@ -31,6 +31,8 @@ class PlaygroundCompileServiceTest {
     },
     discover: (Path, List<Path>) -> List<String> = { _, _ -> listOf("com.example.SnippetPreview") },
     render: (PlaygroundTokenStore.PlaygroundSnippet) -> ByteArray? = { null },
+    capture: (PlaygroundTokenStore.PlaygroundSnippet) -> ByteArray? = { null },
+    publish: (String, ByteArray, Boolean) -> String? = { _, _, _ -> null },
   ) =
     PlaygroundCompileService(
       catalogClasspath = classpathFor,
@@ -40,6 +42,8 @@ class PlaygroundCompileServiceTest {
       newWorkDir = { "/work/run${++workDirs}".toPath() },
       fileSystem = fs,
       renderFirstFrame = render,
+      captureRemoteDocument = capture,
+      publishRemoteDocument = publish,
     )
 
   private fun request(
@@ -161,6 +165,87 @@ class PlaygroundCompileServiceTest {
     val svc = service(render = { byteArrayOf(1, 2, 3) })
     val resp = svc.run(request(), isSecurityChecked = true)
     assertEquals("data:image/png;base64,AQID", resp.image)
+  }
+
+  @Test
+  fun `a remote-compose snippet publishes a document permalink and mints no token`() {
+    var publishedName: String? = null
+    var publishedChecked: Boolean? = null
+    val svc =
+      service(
+        capture = { byteArrayOf(9, 8, 7) },
+        publish = { name, bytes, checked ->
+          publishedName = name
+          publishedChecked = checked
+          assertEquals(listOf<Byte>(9, 8, 7), bytes.toList(), "the captured bytes reach the store")
+          "/d/doc123"
+        },
+      )
+
+    val resp = svc.run(request(confType = "remote-compose"), isSecurityChecked = true)
+
+    assertEquals("/d/doc123", resp.documentUrl)
+    assertNull(resp.previewToken, "RC returns a document, not a live-session token")
+    assertNull(resp.exception)
+    assertTrue(tokenStore.snapshot().isEmpty(), "no token is minted on the RC path")
+    assertFalse(
+      fs.exists("/work/run1".toPath()),
+      "RC needs no live session, so the work dir is released",
+    )
+    // The label is the preview's simple name, `.rc`-suffixed; the audit marker is forwarded.
+    assertEquals("SnippetPreview.rc", publishedName)
+    assertEquals(true, publishedChecked)
+  }
+
+  @Test
+  fun `a remote-compose snippet that emits no document is a user error with no token and cleanup`() {
+    // publish would succeed if reached — proving the failure is the absent capture, not the store.
+    val svc = service(capture = { null }, publish = { _, _, _ -> "/d/never" })
+
+    val resp = svc.run(request(confType = "remote-compose"), isSecurityChecked = true)
+
+    assertNull(resp.documentUrl)
+    assertNull(resp.previewToken)
+    assertNotNull(resp.exception)
+    assertTrue(resp.exception!!.contains("RemoteDocument"))
+    assertTrue(tokenStore.snapshot().isEmpty())
+    assertFalse(fs.exists("/work/run1".toPath()), "a capture-less RC run deletes its own work dir")
+  }
+
+  @Test
+  fun `a captured document the store refuses returns an exception, no token, and cleanup`() {
+    val svc = service(capture = { byteArrayOf(1) }, publish = { _, _, _ -> null })
+
+    val resp = svc.run(request(confType = "remote-compose"), isSecurityChecked = true)
+
+    assertNull(resp.documentUrl)
+    assertNull(resp.previewToken)
+    assertNotNull(resp.exception)
+    assertTrue(resp.exception!!.contains("not accepted"))
+    assertTrue(tokenStore.snapshot().isEmpty())
+    assertFalse(fs.exists("/work/run1".toPath()))
+  }
+
+  @Test
+  fun `the live modes never invoke the RC capture or publish seams`() {
+    var touched = false
+    val svc =
+      service(
+        capture = {
+          touched = true
+          byteArrayOf(1)
+        },
+        publish = { _, _, _ ->
+          touched = true
+          "/d/x"
+        },
+      )
+
+    val resp = svc.run(request(confType = "compose-cmp"), isSecurityChecked = true)
+
+    assertNotNull(resp.previewToken, "CMP still takes the token path")
+    assertNull(resp.documentUrl)
+    assertFalse(touched, "the RC seams are inert for a live-session mode")
   }
 
   @Test

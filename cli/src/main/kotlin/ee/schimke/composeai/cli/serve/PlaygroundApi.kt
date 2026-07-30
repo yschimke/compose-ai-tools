@@ -120,6 +120,11 @@ data class PlaygroundStockError(
  * ([previewToken] stays null). [exception] is reserved for a server-side failure that isn't a user
  * compile error (e.g. the render subprocess died).
  *
+ * [documentUrl] is the [PlaygroundMode.REMOTE_COMPOSE] terminal instead of a token: the snippet's
+ * captured `.rc` document is published as an expiring `/d/<id>` permalink the browser plays
+ * client-side (PLAYGROUND.md §3). A run yields **either** a [previewToken] (the live CMP/Android
+ * modes) **or** a [documentUrl] (RC) — never both — and [previewToken] stays null on the RC path.
+ *
  * [errors] is the **same** diagnostics projected into the stock `kotlin-compiler-server` wire shape
  * (a map keyed by file name → [PlaygroundStockError]s with nested `interval` positions), so an
  * unmodified `kotlin-playground` frontend can render inline squiggles. Our own frontend reads the
@@ -134,4 +139,5 @@ data class PlaygroundRunResponse(
   val image: String? = null,
   val previewToken: String? = null,
   val previewUrl: String? = null,
+  val documentUrl: String? = null,
 )
