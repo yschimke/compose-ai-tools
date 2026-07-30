@@ -654,6 +654,34 @@ jobs:
       - name: Run publish-config reconcile tests
         run: ./.github/scripts/test-publish-config-to-box.sh
 
+  # The design-artifacts driver's own `node --test` suite, including the browser tests that drive the
+  # built Remote Compose player bundle (`cli/src/main/resources/rc-player/bundle.js`) in headless
+  # Chromium. Those tests existed but nothing ran them, which is how a player bug that renders a
+  # whole document as a blank canvas reached a published catalog unnoticed (#2930): the pixels are
+  # the only signal — the document parses and warns about nothing — and the weekly render is the
+  # only place anyone was looking. They self-skip when playwright or a browser is unavailable, so
+  # the browser install is what makes them actually assert.
+  design-artifacts-driver-tests:
+    name: Design Artifacts Driver Tests
+    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Install driver dependencies
+        working-directory: scripts/design-artifacts
+        run: npm ci
+      - name: Install Chromium
+        working-directory: scripts/design-artifacts
+        run: npx playwright install --with-deps chromium
+      - name: Run driver tests
+        working-directory: scripts/design-artifacts
+        run: npm test
+
   # VS Code extension tests — both the existing in-process Mocha suite and
   # the @vscode/test-electron integration tests. The latter download a
   # headless VS Code into ~/.vscode-test/, install the local fake
