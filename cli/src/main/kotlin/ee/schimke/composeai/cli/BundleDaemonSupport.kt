@@ -132,6 +132,7 @@ private fun bundleSidecarSysprop(sidecarName: String): String =
     "lib-daemon-desktop" -> "composeai.cli.libDaemonDesktopDir"
     "lib-daemon-android" -> "composeai.cli.libDaemonAndroidDir"
     "lib-renderer" -> "composeai.cli.libRendererDir"
+    "lib-rcjvm" -> "composeai.cli.libRcjvmDir"
     "lib-bta" -> "composeai.cli.libBtaDir"
     else -> "composeai.cli.${sidecarName.replace('-', '.')}Dir"
   }

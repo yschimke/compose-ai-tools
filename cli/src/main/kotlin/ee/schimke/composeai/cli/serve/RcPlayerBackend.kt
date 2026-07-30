@@ -40,9 +40,11 @@ enum class RcPlayerBackend(
   /** Short human label for the selector chip. */
   val label: String,
   /**
-   * The daemon player kind a **server-side** backend renders through, or null for the client-side
-   * [JS] lane and the not-yet-renderable [CMP_JVM] lane. Drives [ServeOverrides]'s mapping of the
-   * `rcPlayer=` param onto [ee.schimke.composeai.daemon.protocol.RemoteComposeOverride.player].
+   * The daemon player kind a **server-side** backend renders through, or null for the lanes that
+   * don't ride the daemon `remoteCompose.player` override: the client-side [JS] lane and the
+   * [CMP_JVM] lane (which renders in its own isolated subprocess, see [RcJvmServerRenderer]).
+   * Drives [ServeOverrides]'s mapping of the `rcPlayer=` param onto
+   * [ee.schimke.composeai.daemon.protocol.RemoteComposeOverride.player].
    */
   val playerKind: RemoteComposePlayerKind?,
   /**
@@ -69,11 +71,12 @@ enum class RcPlayerBackend(
       wire?.lowercase()?.let { v -> entries.firstOrNull { it.wire == v } }
 
     /**
-     * The server-side backend a `rcPlayer=` render param selects, or null when [raw] names no
-     * *server-side* backend. Accepts the backend [wire] ids (`java`, `cmp-android`) and the
-     * daemon-native player-kind spellings (`view`, `embedded`) as aliases, so a link can be written
-     * either way. A client-side / unavailable value (`js`, `cmp-jvm`) yields null — those never
-     * ride the PNG lane — which the parser turns into a hard error rather than a silent default.
+     * The server-side backend a `rcPlayer=` render param selects **through the daemon**, or null
+     * otherwise. Accepts the backend [wire] ids (`java`, `cmp-android`) and the daemon-native
+     * player-kind spellings (`view`, `embedded`) as aliases, so a link can be written either way.
+     * `js` (client-side) and `cmp-jvm` yield null: `js` replays in-browser, and `cmp-jvm` renders
+     * in its own subprocess lane ([ServeHttpServer] handles `rcPlayer=cmp-jvm` directly), so
+     * neither rides the daemon override this maps.
      */
     fun serverSideFromParam(raw: String): RcPlayerBackend? =
       when (raw.lowercase()) {
