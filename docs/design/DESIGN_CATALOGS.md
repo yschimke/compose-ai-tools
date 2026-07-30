@@ -372,28 +372,24 @@ What each form actually saves:
   compile is shared with the render that follows. Measured against a nine-theme catalog
   this is the bigger lever: deferring every palette beyond the primary drops ~59% of
   renders, versus ~37% for deferring all variants.
-- **Per entry** (`priority` on a component or variant) — **authorable now, inert
-  until [#2965](https://github.com/yschimke/compose-ai-tools/issues/2965).** A
-  wholly-deferred entry has no `images[]` record, and `ServeCatalogStore` builds
-  both its registration and its catalog-id → daemon-id alias from
-  `components[].images` alone (it never decodes `deferred[]`), so acting on the
-  deferral today would make the entry *absent* from `serve --catalogs` rather than
-  rendered on demand.
+- **Per entry** (`priority` on a component or variant) — **usable now**, since
+  [#2965](https://github.com/yschimke/compose-ai-tools/issues/2965) gave the deferred
+  records a live lane. A wholly-deferred entry has no `images[]` record at all, so it
+  reaches a viewer only through that lane: the export writes it to `catalog.json`'s
+  top-level `deferred[]` (with the `path` it *would* have baked, so the route id is the
+  same either way), and `ServeCatalogStore` decodes those records — aliasing each to its
+  daemon `previewId` and registering it with no baked PNG. A session with **no** live
+  lane hides them and says why (`deferred-not-served`) rather than showing broken cards.
 
-  So the annotation is currently honoured as `required`: the entry renders and bakes
-  exactly as it would without it, the published catalog is unchanged, and the driver
-  logs a warning naming the entries whose deferral is recorded but not yet acted on.
-  A spec can therefore be annotated ahead of the server without either being blocked
-  or quietly losing coverage. One constant — `ENTRY_DEFERRAL_SERVED` in
-  [`catalog-priority.mjs`](../../scripts/design-artifacts/catalog-priority.mjs) —
-  drives every consumer, so the render set and the published set can't disagree
-  about which entries are baked; flipping it is the last step of #2965.
-
-  The render-time half is already built behind that switch: the pre-flight emits the
-  `--preview` patterns for the still-required functions (`--render-filter-out
+  It is also the form that saves whole renders, not just published bytes: the pre-flight
+  emits the `--preview` patterns for the still-required functions (`--render-filter-out
   <file>`), and both design-artifacts workflows feed them to the render as
   `ORG_GRADLE_PROJECT_composePreview.filter`. A function is only droppable when
-  **nothing required points at it** — two entries can name the same `@Preview`.
+  **nothing required points at it** — two entries can name the same `@Preview`. One
+  reader — `entryPriority` in
+  [`catalog-priority.mjs`](../../scripts/design-artifacts/catalog-priority.mjs) — drives
+  every consumer (the join, the variant split, the render filter), so the render set and
+  the published set can't disagree about which entries are baked.
 
 Caveats worth knowing before reaching for it:
 
