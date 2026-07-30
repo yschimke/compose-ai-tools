@@ -750,59 +750,65 @@ jobs:
         with:
           cache-provider: basic
 
-      # The android-all cache key carries the current UTC year-month (see the
-      # keys below) so entries rotate monthly instead of accumulating forever.
-      # Actions expressions have no date function, so resolve it once here into
-      # the job env — the early Restore and the late always() Save both read it,
-      # so a run always keys restore and save to the same month.
-      - name: Resolve android-all cache month
+      # The local Maven repo (~/.m2/repository) cache key carries the current UTC
+      # year-month (see the keys below) so entries rotate monthly instead of
+      # accumulating forever. Actions expressions have no date function, so
+      # resolve it once here into the job env — the early Restore and the late
+      # always() Save both read it, so a run always keys restore and save to the
+      # same month.
+      - name: Resolve local Maven (.m2) cache month
         if: matrix.render || matrix.render_xr || matrix.daemon
-        run: echo "ANDROID_ALL_CACHE_MONTH=$(date -u +%Y-%m)" >> "$GITHUB_ENV"
+        run: echo "M2_CACHE_MONTH=$(date -u +%Y-%m)" >> "$GITHUB_ENV"
 
-      # Robolectric's instrumented `android-all` runtime (~150-250 MB) is fetched
-      # at RUN time by Robolectric's own Maven resolver into ~/.m2/repository —
-      # not by Gradle — so setup-gradle's cache doesn't cover it and every render
-      # / daemon cell re-downloads it from Maven Central. That download is the
-      # cold half of the daemon's ~141s boot on this leg;
-      # `deploy/image/Dockerfile` prefetches the same coordinate into the image
-      # for exactly this reason.
+      # Cache the WHOLE local Maven repo (~/.m2/repository), not just one
+      # coordinate. Robolectric's own Maven resolver fetches its instrumented
+      # `android-all` runtime (~150-250 MB — the dominant entry) AND its other
+      # runtime artifacts into ~/.m2 at RUN time — not via Gradle, so
+      # setup-gradle's cache covers none of it and every render / daemon cell
+      # re-downloads them from Maven Central. That download is the cold half of
+      # the daemon's ~141s boot on this leg; `deploy/image/Dockerfile` prefetches
+      # the android-all coordinate into the image for exactly this reason.
       #
       # The exact key is deliberately unmatchable — restore always falls through
-      # to the prefix, picking up the most recent saved entry whatever coordinate
-      # it holds. The save step below re-keys on the coordinate actually on disk,
-      # so a `robolectric` bump heals itself instead of pinning the cache to a
-      # dead jar forever. (A `github.run_id` key like the font cache uses would
-      # be simpler, but at this size it would save a fresh quarter-gig per cell
-      # per run and evict everything else in the repo's 10 GB budget.)
+      # to the prefix, picking up the most recent saved entry. The save step
+      # below re-keys on the `android-all` coordinate actually on disk (the
+      # dominant, version-bearing artifact in the tree), so a `robolectric` bump
+      # heals itself instead of pinning the cache to a dead tree forever. (A
+      # `github.run_id` key like the font cache uses would be simpler, but at this
+      # size it would save a fresh quarter-gig-plus per cell per run and evict
+      # everything else in the repo's 10 GB budget.)
       #
-      # The key is additionally namespaced by UTC year-month (`ANDROID_ALL_CACHE_MONTH`,
-      # resolved above): each month opens a fresh key prefix, so a coordinate that
-      # stops being fetched — after a `robolectric` bump, or a cell being retired —
-      # falls out of the active month's prefix and LRU-evicts instead of lingering
-      # in the budget indefinitely. The cost is one cold ~200 MB fetch per cell on
-      # its first run of a new month; every run after that hits the month's entry.
+      # The key is additionally namespaced by UTC year-month (`M2_CACHE_MONTH`,
+      # resolved above): each month opens a fresh key prefix, so a cell's entry —
+      # after a `robolectric` bump, or the cell being retired — falls out of the
+      # active month's prefix and LRU-evicts instead of lingering in the budget
+      # indefinitely. The cost is one cold fetch per cell on its first run of a
+      # new month; every run after that hits the month's entry. Because the tree
+      # is keyed on the android-all coordinate, a third-party artifact newly
+      # resolved mid-month isn't folded in until the next month or a coordinate
+      # bump — an accepted trade for an immutable, size-bounded entry.
       #
-      # Keyed PER CELL (`matrix.slug`), not globally. Cells don't all want the
-      # same coordinate: the SDK Robolectric synthesizes depends on the cell's
-      # JDK and any `composePreview.sdkVersion` pin (docs/SDK_COMPATIBILITY.md —
-      # JDK 17 clamps where JDK 21 doesn't, and `jetstream-xr` runs 21 while the
-      # rest run 17). Under one shared prefix those cells would ping-pong: each
-      # restores whichever coordinate was saved most recently, downloads the one
-      # it actually needs, and then cannot save — cache keys are immutable, so
-      # the entry for its own coordinate already exists and is never refreshed.
-      # Every cell would pay the full download every run, plus a pointless
-      # restore and upload. Per-cell keys give each one a stable coordinate.
-      # Deliberately no global restore-keys fallback either: seeding a new cell
-      # from a foreign coordinate costs a quarter-gig restore and still needs the
-      # real download.
-      - name: Restore Robolectric android-all cache
+      # Keyed PER CELL (`matrix.slug`), not globally. Cells don't all resolve the
+      # same android-all coordinate: the SDK Robolectric synthesizes depends on
+      # the cell's JDK and any `composePreview.sdkVersion` pin
+      # (docs/SDK_COMPATIBILITY.md — JDK 17 clamps where JDK 21 doesn't, and
+      # `jetstream-xr` runs 21 while the rest run 17). Under one shared prefix
+      # those cells would ping-pong: each restores whichever tree was saved most
+      # recently, downloads the coordinate it actually needs, and then cannot
+      # save — cache keys are immutable, so the entry for its own coordinate
+      # already exists and is never refreshed. Every cell would pay the full
+      # download every run, plus a pointless restore and upload. Per-cell keys
+      # give each one a stable coordinate. Deliberately no global restore-keys
+      # fallback either: seeding a new cell from a foreign tree costs a
+      # quarter-gig restore and still needs the real download.
+      - name: Restore local Maven (.m2) cache
         if: matrix.render || matrix.render_xr || matrix.daemon
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.m2/repository/org/robolectric/android-all-instrumented
-          key: android-all-instrumented-${{ runner.os }}-${{ matrix.slug }}-${{ env.ANDROID_ALL_CACHE_MONTH }}-
+          path: ~/.m2/repository
+          key: m2-repo-${{ runner.os }}-${{ matrix.slug }}-${{ env.M2_CACHE_MONTH }}-
           restore-keys: |
-            android-all-instrumented-${{ runner.os }}-${{ matrix.slug }}-${{ env.ANDROID_ALL_CACHE_MONTH }}-
+            m2-repo-${{ runner.os }}-${{ matrix.slug }}-${{ env.M2_CACHE_MONTH }}-
 
       # A truncated jar restored from cache is worse than no cache at all:
       # Robolectric's MavenArtifactFetcher skips its download when the target
@@ -1436,13 +1442,13 @@ jobs:
       # warm instead of downloading a quarter-gig again to fail the same way.
       # Saving an already-present key logs a warning and is not fatal, which is
       # the steady state here: only the first cell to finish actually uploads.
-      - name: Save Robolectric android-all cache
+      - name: Save local Maven (.m2) cache
         if: always() && steps.android-all.outputs.coordinate != ''
         continue-on-error: true
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.m2/repository/org/robolectric/android-all-instrumented
-          key: android-all-instrumented-${{ runner.os }}-${{ matrix.slug }}-${{ env.ANDROID_ALL_CACHE_MONTH }}-${{ steps.android-all.outputs.coordinate }}
+          path: ~/.m2/repository
+          key: m2-repo-${{ runner.os }}-${{ matrix.slug }}-${{ env.M2_CACHE_MONTH }}-${{ steps.android-all.outputs.coordinate }}
 
   agp8-min:
     # Consumes build-plugin's bundle, so it rides the same change-scope gate:
@@ -1487,26 +1493,28 @@ jobs:
       # Phase 1/3 below run `composePreviewRender`, which boots a Robolectric
       # sandbox and so pays the same ~150-250 MB `android-all` fetch the
       # integration matrix does. Same restore/prune/save shape as the matrix
-      # job — see the rationale on its "Restore Robolectric android-all cache"
-      # step. Kept inline rather than factored into a composite action because
-      # the matrix job has no checkout of this repo and so can't call one.
+      # job — caches the whole local Maven repo (~/.m2/repository), keyed on the
+      # dominant android-all coordinate; see the rationale on its "Restore local
+      # Maven (.m2) cache" step. Kept inline rather than factored into a
+      # composite action because the matrix job has no checkout of this repo and
+      # so can't call one.
       #
       # Own key namespace for the same reason the matrix keys per cell: this
       # fixture pins `composePreview.sdkVersion = 35` to stay inside JDK 17's
       # Robolectric window, so its coordinate is its own and must not share an
       # entry with cells that resolve a different SDK. The UTC year-month is in
       # the key too, so this entry rotates monthly like the matrix's — see that
-      # job's "Resolve android-all cache month" step for the rationale.
-      - name: Resolve android-all cache month
-        run: echo "ANDROID_ALL_CACHE_MONTH=$(date -u +%Y-%m)" >> "$GITHUB_ENV"
+      # job's "Resolve local Maven (.m2) cache month" step for the rationale.
+      - name: Resolve local Maven (.m2) cache month
+        run: echo "M2_CACHE_MONTH=$(date -u +%Y-%m)" >> "$GITHUB_ENV"
 
-      - name: Restore Robolectric android-all cache
+      - name: Restore local Maven (.m2) cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.m2/repository/org/robolectric/android-all-instrumented
-          key: android-all-instrumented-${{ runner.os }}-agp8-min-${{ env.ANDROID_ALL_CACHE_MONTH }}-
+          path: ~/.m2/repository
+          key: m2-repo-${{ runner.os }}-agp8-min-${{ env.M2_CACHE_MONTH }}-
           restore-keys: |
-            android-all-instrumented-${{ runner.os }}-agp8-min-${{ env.ANDROID_ALL_CACHE_MONTH }}-
+            m2-repo-${{ runner.os }}-agp8-min-${{ env.M2_CACHE_MONTH }}-
 
       - name: Drop corrupt android-all jars
         run: |
@@ -1772,13 +1780,13 @@ jobs:
             echo "coordinate=" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Save Robolectric android-all cache
+      - name: Save local Maven (.m2) cache
         if: always() && steps.android-all.outputs.coordinate != ''
         continue-on-error: true
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.m2/repository/org/robolectric/android-all-instrumented
-          key: android-all-instrumented-${{ runner.os }}-agp8-min-${{ env.ANDROID_ALL_CACHE_MONTH }}-${{ steps.android-all.outputs.coordinate }}
+          path: ~/.m2/repository
+          key: m2-repo-${{ runner.os }}-agp8-min-${{ env.M2_CACHE_MONTH }}-${{ steps.android-all.outputs.coordinate }}
 
   publish-previews:
     name: Publish integration preview branches
