@@ -78,13 +78,16 @@ class PlaygroundCompileService(
     val classpath =
       catalogClasspath(mode) ?: return failure("mode ${mode.name} is not available on this host")
 
-    val workDir = newWorkDir()
+    var workDir: Path? = null
     return try {
+      workDir = newWorkDir()
       compileAndMint(request, files, mode, classpath, workDir, isSecurityChecked)
     } catch (t: Throwable) {
-      // Any unexpected failure past workDir creation must not strand the temp dir — the token store
-      // only owns dirs it accepted, so an aborted run cleans up its own.
-      cleanup(workDir)
+      // Any failure — including newWorkDir() itself throwing on a full/unwritable temp volume —
+      // returns the JSON exception contract rather than escaping as a throwable. cleanup runs only
+      // once a path exists; the token store owns a dir only after it accepts one, so an aborted run
+      // clears its own.
+      workDir?.let { cleanup(it) }
       failure("playground compile failed: ${t.message ?: t.javaClass.simpleName}")
     }
   }
@@ -182,14 +185,21 @@ class PlaygroundCompileService(
       return "$base.kt"
     }
 
-    /** Ensure the name is unique within a run, appending `_<n>` before `.kt` on collision. */
-    private fun uniqueName(name: String, used: MutableSet<String>): String {
-      if (used.add(name)) return name
+    /**
+     * Ensure the name is unique within a run, appending `_<n>` before `.kt` on collision. Collision
+     * keys are **case-folded**: a case-insensitive target FS (Windows, default macOS) maps `A.kt`
+     * and `a.kt` to the same file, so two case-only-distinct names must be disambiguated or the
+     * second write silently overwrites the first while both paths still reach the compiler. Folding
+     * is universally safe — on a case-sensitive FS it only ever renames a name that would otherwise
+     * have been kept, never causing an overwrite.
+     */
+    private fun uniqueName(name: String, usedLowercase: MutableSet<String>): String {
+      if (usedLowercase.add(name.lowercase())) return name
       val stem = name.removeSuffix(".kt")
       var i = 1
       while (true) {
         val candidate = "${stem}_$i.kt"
-        if (used.add(candidate)) return candidate
+        if (usedLowercase.add(candidate.lowercase())) return candidate
         i++
       }
     }

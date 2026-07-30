@@ -193,4 +193,46 @@ class PlaygroundCompileServiceTest {
       "colliding names are disambiguated",
     )
   }
+
+  @Test
+  fun `case-only-distinct names are disambiguated so a case-insensitive FS can't overwrite`() {
+    var staged: List<Path>? = null
+    val svc =
+      service(
+        compile = { s, _, _ ->
+          staged = s
+          emptyList()
+        }
+      )
+    svc.run(
+      PlaygroundRunRequest(
+        files = listOf(PlaygroundFile("A.kt", "fun a(){}"), PlaygroundFile("a.kt", "fun b(){}")),
+        confType = "compose-cmp",
+      ),
+      isSecurityChecked = true,
+    )
+    assertEquals(listOf("A.kt", "a_1.kt"), staged!!.map { it.name })
+  }
+
+  @Test
+  fun `a work-dir allocation failure returns the JSON contract, not a throw`() {
+    val svc =
+      PlaygroundCompileService(
+        catalogClasspath = { cmpClasspath },
+        compiler = PlaygroundCompileService.Compiler { _, _, _ -> emptyList() },
+        discoverer = PlaygroundCompileService.PreviewDiscoverer { _, _ -> listOf("x") },
+        tokenStore = tokenStore,
+        newWorkDir = { throw java.io.IOException("no space left on device") },
+        fileSystem = fs,
+      )
+
+    val resp = svc.run(request(), isSecurityChecked = true)
+
+    assertNotNull(
+      resp.exception,
+      "a temp-volume failure is the JSON contract, not an escaped throw",
+    )
+    assertNull(resp.previewToken)
+    assertTrue(tokenStore.snapshot().isEmpty())
+  }
 }
