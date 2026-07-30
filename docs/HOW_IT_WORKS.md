@@ -88,6 +88,34 @@ composePreview {
 }
 ```
 
+### `hostTheme` — the Android theme previews are hosted under
+
+Previews render inside a bare `ComponentActivity`. Compose doesn't read the
+platform theme, so this rarely matters — until a preview hosts an `AndroidView`.
+A platform `View` resolves its default style through *theme attributes*, and an
+app-owned one (`?attr/primaryText` inside a `TextAppearance`, say) that the host
+activity's theme doesn't define throws
+`UnsupportedOperationException: Failed to resolve attribute at index N` at
+inflation. That escapes composition, so the render aborts and the preview
+produces **no PNG at all** — the render writes a `<png>.error.json` instead.
+
+An **application** module needs no configuration: the host activity inherits
+`<application android:theme="…">` from the merged manifest. A **library** module
+has no application theme to inherit, so name one:
+
+```kotlin
+composePreview {
+    hostTheme.set("@style/Theme.MyDesignSystem")
+}
+```
+
+Also accepts `com.example:style/Theme.Foo` or a bare `Theme.Foo`. Override for a
+single run with `-PcomposePreview.hostTheme=…` or `-Dcomposeai.render.hostTheme=…`.
+A name that resolves to nothing logs a warning and leaves the platform default in
+place rather than failing the build. Android Studio's preview pane has a theme
+picker for the same reason; this is its build-time equivalent. See
+[`samples/android-library`](../samples/android-library) for a worked fixture.
+
 When `enabled = false`, the plugin skips registering the preview tasks
 (`composePreviewDiscover` / render / daemon-start) but still writes the
 `build/compose-previews/applied.json` marker (carrying `enabled: false`). The

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A design-system library's theme and one app-owned colour attribute — the shape behind issue #2957.
+
+  Modelled directly on the reported failure. Pocket Casts' `HtmlText` calls
+  `TextView.setTextAppearance(R.style.H50)`, and `H50` is a `TextAppearance.AppCompat` child whose
+  only app-specific item is `<item name="android:textColor">?attr/primary_text_01</item>`.
+  `TextAppearance.SampleLibrary.Body` below is the same shape.
+
+  Why a *colour* attribute specifically: an unresolved `?attr/…` in a plain reference slot degrades
+  quietly (`TypedArray.getResourceId` returns 0 and the View skips it), but `getColorStateList`
+  refuses to guess and throws `UnsupportedOperationException: Failed to resolve attribute at index N`.
+  That exception escapes composition and aborts the whole render, so the preview writes no PNG at
+  all — which is how a real consumer's `AndroidView` surface got dropped from the design-artifacts
+  candidate join as "no static PNG".
+
+  A library module's merged manifest has no `<application android:theme>`, so the preview host
+  activity has nothing to inherit and falls back to the platform default, which has never heard of
+  `sampleBodyTextColor`. `composePreview { hostTheme.set("@style/Theme.SampleLibrary") }` in
+  build.gradle.kts is the fix: the renderer's `PreviewHostTheme` resolves that name against this
+  module's resources and applies the theme to the host activity — the same job Android Studio's
+  preview theme picker does.
+-->
+<resources>
+
+  <!-- App-owned colour attribute: only `Theme.SampleLibrary` below gives it a value. -->
+  <attr name="sampleBodyTextColor" format="color" />
+
+  <style name="TextAppearance.SampleLibrary.Body" parent="@android:style/TextAppearance.Material.Body1">
+    <item name="android:textColor">?attr/sampleBodyTextColor</item>
+    <item name="android:textSize">14sp</item>
+    <item name="android:lineSpacingExtra">4sp</item>
+  </style>
+
+  <style name="Theme.SampleLibrary" parent="@android:style/Theme.Material.Light.NoActionBar">
+    <item name="sampleBodyTextColor">#FF1B1B1F</item>
+  </style>
+
+</resources>

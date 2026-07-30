@@ -2462,7 +2462,13 @@ open class RobolectricHost(
           @OptIn(com.github.takahirom.roborazzi.ExperimentalRoborazziApi::class)
           override fun evaluate() {
             rule.mainClock.autoAdvance = false
-            rule.runOnUiThread { rule.activity.window.decorView.setBackgroundColor(backgroundArgb) }
+            rule.runOnUiThread {
+              // Same host-activity theming the batch renderer and `RenderEngine` apply, so a live
+              // interactive session hosting an `AndroidView` resolves the consumer's app-owned
+              // `?attr/…` instead of dying at inflation. See [PreviewHostTheme].
+              ee.schimke.composeai.renderer.PreviewHostTheme.applyTo(rule.activity)
+              rule.activity.window.decorView.setBackgroundColor(backgroundArgb)
+            }
             val setupTrace =
               PerfettoTraceDataProducer.recorder(start.outputBaseName, backend = "android-live")
             // `preview.reload` reload counter — wrapping `key(...)` reads `intValue`, so

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Hosted by `HtmlShowNotes`'s `AndroidView`. The style reference itself always resolves; what needs
+  the app theme is the `?attr/sampleBodyTextColor` *inside* it, which the `TextView` resolves as a
+  colour when it applies the text appearance. See res/values/library_theme.xml.
+-->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/sample_html_text"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:textAppearance="@style/TextAppearance.SampleLibrary.Body" />

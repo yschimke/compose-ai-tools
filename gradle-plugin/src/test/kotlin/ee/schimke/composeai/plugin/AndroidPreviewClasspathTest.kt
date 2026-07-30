@@ -158,6 +158,34 @@ class AndroidPreviewClasspathTest {
       .containsEntry("composeai.fonts.failOnFallback", "true")
   }
 
+  @Test
+  fun `buildSystemProperties forwards the preview host theme into the render jvm`() {
+    // `PreviewHostTheme` reads `composeai.render.hostTheme` in the forked render / daemon JVM. If
+    // this map doesn't carry it, a library module's `composePreview.hostTheme` never reaches the
+    // JVM that applies it and its `AndroidView` previews keep failing to render (issue #2957).
+    assertThat(
+        AndroidPreviewClasspath.buildSystemProperties(
+          manifestPath = "m.json",
+          rendersDir = "renders",
+          fontsCacheDir = "cache",
+          fontsOffline = "false",
+          hostTheme = "@style/Theme.Foo",
+        )
+      )
+      .containsEntry("composeai.render.hostTheme", "@style/Theme.Foo")
+    // Empty when the consumer names nothing — an application module inherits
+    // `<application android:theme>` and must not have it overridden.
+    assertThat(
+        AndroidPreviewClasspath.buildSystemProperties(
+          manifestPath = "m.json",
+          rendersDir = "renders",
+          fontsCacheDir = "cache",
+          fontsOffline = "false",
+        )
+      )
+      .containsEntry("composeai.render.hostTheme", "")
+  }
+
   private fun writeAndroidJar(file: File) {
     writeJar(file, mapOf("android/app/Application.class" to ByteArray(16)))
   }

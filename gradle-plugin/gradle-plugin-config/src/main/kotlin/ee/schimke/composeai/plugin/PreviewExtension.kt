@@ -25,6 +25,27 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    */
   val sdkVersion: Property<Int> = objects.property(Int::class.java)
 
+  /**
+   * The Android theme the preview host activity runs under, e.g. `"@style/Theme.Foo"` (also accepts
+   * `"com.example:style/Theme.Foo"` or a bare `"Theme.Foo"`).
+   *
+   * Leave it unset in an **application** module: the host activity already inherits
+   * `<application android:theme>` from the merged manifest, which is what makes an `AndroidView`
+   * preview resolve app-owned `?attr/…` references.
+   *
+   * Set it in a **library** module whose previews host platform views. A library's merged manifest
+   * has no `<application android:theme>` to inherit, so the host activity falls back to the
+   * platform default — and a `TextView` styled through, say, `?attr/primaryText` then dies at
+   * inflation with `UnsupportedOperationException: Failed to resolve attribute at index N`, which
+   * aborts the render and leaves the preview with no PNG at all (issue #2957). The renderer can't
+   * guess which of a design system's themes to use, so name one here; Android Studio's preview pane
+   * has a theme picker for the same reason.
+   *
+   * Override for a single run with `-PcomposePreview.hostTheme=@style/Theme.Foo` (or
+   * `-Dcomposeai.render.hostTheme=…`), which takes precedence over this value.
+   */
+  val hostTheme: Property<String> = objects.property(String::class.java)
+
   val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 
   /**
