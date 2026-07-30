@@ -170,16 +170,25 @@ internal object RcJvmServerRenderer {
         is RemoteNamedValue.DpValue -> "float $n ${value.value}"
         is RemoteNamedValue.IntValue -> "int $n ${value.value}"
         is RemoteNamedValue.BooleanValue -> "int $n ${if (value.value) 1 else 0}"
-        is RemoteNamedValue.ColorValue -> {
-          val argb = value.argb.removePrefix("#").toLongOrNull(16)?.toInt()
-          if (argb != null) "color $n $argb" else null
-        }
+        is RemoteNamedValue.ColorValue -> rcColorToArgb(value.argb)?.let { "color $n $it" }
       }
     }
     if (lines.isEmpty()) return null
     return File.createTempFile("rcjvm-seeds-", ".txt").also {
       it.writeText(lines.joinToString("\n"))
     }
+  }
+
+  /**
+   * Parse an rc colour string to an ARGB int, matching the JS lane's `parseRcColor`: strip a
+   * leading `#` (or URL-encoded `%23`), treat a 6-digit `#RRGGBB` as **opaque** (prepend `FF` —
+   * without it a six-digit value becomes `0x00RRGGBB`, fully transparent), and accept only a
+   * resulting 8 hex digits. Null when it won't parse.
+   */
+  internal fun rcColorToArgb(raw: String): Int? {
+    val hex = raw.removePrefix("%23").removePrefix("#")
+    val opaque = if (hex.length == 6) "FF$hex" else hex
+    return opaque.takeIf { it.length == 8 }?.toLongOrNull(16)?.toInt()
   }
 
   private fun javaBin(): String {
