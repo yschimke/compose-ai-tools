@@ -693,6 +693,12 @@ data class FigmaSvgModel(
     private fun LayoutInspectorNode.toLayer(
       ctx: BuildContext,
       parentBounds: LayoutInspectorBounds? = null,
+      /**
+       * The box of the nearest ancestor that actually clips its children (a `Modifier.clip`), or
+       * null when nothing above this node clips. Pixels outside it cannot be in the frame, which is
+       * what makes it — and not the immediate parent's box — the bound a raster crop can't exceed.
+       */
+      clipBounds: LayoutInspectorBounds? = null,
     ): FigmaSvgLayer {
       // Recover a usable rect for a node whose captured `bounds` collapsed to a zero-area box. The
       // Android/Wear layout inspector reports (0,0,0,0) for a node whose `LayoutCoordinates` were
@@ -773,7 +779,7 @@ data class FigmaSvgModel(
       // the recorder just made. Hybrid mode only — with no frame to crop from, the untinted vector
       // still beats a broken `<image>` reference.
       if (ctx.captureCanvasDraws && vectorGraphic?.fromDrawCapture == false && hasCustomDraw()) {
-        val region = drawnOverlayRegion(bounds, parentBounds)
+        val region = drawnOverlayRegion(bounds, clipBounds)
         val href = ctx.rasterHref(nodeId)
         ctx.rasterTargets.add(
           FigmaSvgRasterTarget(nodeId, href, region.left, region.top, region.right, region.bottom)
@@ -1112,7 +1118,16 @@ data class FigmaSvgModel(
         contentOpacity = contentOpacity,
         curvedTexts = curvedTexts,
         clipChildren = tokens?.clipsContent == true,
-        children = children.map { it.toLayer(ctx, bounds) },
+        children =
+          children.map {
+            // A `Modifier.clip` here becomes the clip box its subtree inherits; nested clips
+            // intersect. Without one the subtree keeps whatever (if anything) clipped it above —
+            // an ordinary container does NOT clip, and a child overflowing it still draws.
+            val childClip =
+              if (tokens?.clipsContent == true) intersectOrNull(bounds, clipBounds) ?: bounds
+              else clipBounds
+            it.toLayer(ctx, bounds, childClip)
+          },
       )
     }
 
@@ -1481,17 +1496,22 @@ data class FigmaSvgModel(
      * — the icon underneath still has to be inside the crop, and a tint pass that reports no bounds
      * covers the whole node.
      *
-     * It never grows past [parentBounds] either. The union is a crop taken out of the rendered
-     * frame, so a draw modifier reporting a rect outside the layer that owns it (a detached
-     * coordinate, a node whose ancestors' transform the capture didn't apply) would mint an
-     * `<image>` of frame pixels that belong to something else — the detached white tiles Jetsnack's
-     * `Screens/App shell` and `Snack/Detail` grew to the right of and below their UI, which also
-     * expand the exported canvas because the document extent is the union of its layers
-     * (issue #2853). A crop can only ever be as large as the box its owner was placed in.
+     * It never grows past [clipBounds] either — the box of the nearest ancestor that actually clips
+     * its children. The union is a crop taken out of the rendered frame, so a draw modifier
+     * reporting a rect beyond what its clip admits (a detached coordinate, a node whose ancestors'
+     * transform the capture didn't apply) would mint an `<image>` of frame pixels that belong to
+     * something else — the detached white tiles Jetsnack's `Screens/App shell` and `Snack/Detail`
+     * grew to the right of and below their UI, which also expand the exported canvas because the
+     * document extent is the union of its layers (issue #2853).
+     *
+     * Only a *clipping* ancestor bounds it. An ordinary container does not clip, and a child
+     * overflowing one really is drawn past its edge (`FigmaSvgChildClipTest`'s unclipped case), so
+     * the immediate parent's box is not a limit — clamping to that would truncate a crop whose
+     * pixels are genuinely in the frame.
      */
     private fun LayoutInspectorNode.drawnOverlayRegion(
       nodeBounds: LayoutInspectorBounds,
-      parentBounds: LayoutInspectorBounds? = null,
+      clipBounds: LayoutInspectorBounds? = null,
     ): LayoutInspectorBounds {
       // [nodeBounds], not this node's raw `bounds`: a detached or not-yet-placed node (a vector
       // inside a subcomposed Button/TextField) reports `(0,0,0,0)`, which `toLayer` has already
@@ -1510,19 +1530,28 @@ data class FigmaSvgModel(
           right = maxOf(nodeBounds.right, placed.maxOf { it.right }),
           bottom = maxOf(nodeBounds.bottom, placed.maxOf { it.bottom }),
         )
-      val parent = parentBounds ?: return union
-      if (parent.right <= parent.left || parent.bottom <= parent.top) return union
-      val clamped =
+      // A node placed entirely outside its clip leaves nothing to clamp to, so `intersectOrNull`
+      // comes back null; keep the node's own box rather than emitting an inverted rect.
+      return intersectOrNull(union, clipBounds) ?: union
+    }
+
+    /**
+     * [a] ∩ [b], or [a] itself when [b] is absent or degenerate. Null when the two don't overlap at
+     * all, so a caller can tell "clamped" from "nothing left".
+     */
+    private fun intersectOrNull(
+      a: LayoutInspectorBounds,
+      b: LayoutInspectorBounds?,
+    ): LayoutInspectorBounds? {
+      if (b == null || b.right <= b.left || b.bottom <= b.top) return a
+      val out =
         LayoutInspectorBounds(
-          left = union.left.coerceAtLeast(parent.left),
-          top = union.top.coerceAtLeast(parent.top),
-          right = union.right.coerceAtMost(parent.right),
-          bottom = union.bottom.coerceAtMost(parent.bottom),
+          left = maxOf(a.left, b.left),
+          top = maxOf(a.top, b.top),
+          right = minOf(a.right, b.right),
+          bottom = minOf(a.bottom, b.bottom),
         )
-      // A node placed entirely outside its parent leaves nothing to clamp to; keep the node's own
-      // box rather than emitting an inverted rect.
-      return if (clamped.right > clamped.left && clamped.bottom > clamped.top) clamped
-      else nodeBounds
+      return out.takeIf { it.right > it.left && it.bottom > it.top }
     }
 
     private fun LayoutInspectorNode.layerName(): String =
