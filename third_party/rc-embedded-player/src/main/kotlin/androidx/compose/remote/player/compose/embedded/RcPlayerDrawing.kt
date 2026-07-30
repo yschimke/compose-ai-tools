@@ -714,7 +714,14 @@ internal fun DrawScope.executeOperations(
                     val vOffset = data.vOffset
                     val path = remoteContext.mRemoteComposeState.getPath(pathId, 0f, 1f)
                     // No multiplatform equivalent — see `drawTextOnPathPlatform`.
-                    drawTextOnPathPlatform(full, path, hOffset, vOffset, paintState, read)
+                    drawTextOnPathPlatform(
+                        full,
+                        path,
+                        hOffset,
+                        vOffset,
+                        paintState.toTextPaintSpec(),
+                        read,
+                    )
                 }
             }
             is DrawTextAnchored -> {
@@ -733,8 +740,10 @@ internal fun DrawScope.executeOperations(
                     val baseline = (flags and DrawTextAnchored.BASELINE_RELATIVE) != 0
                     // Measure and draw both go through the platform seam — see
                     // `RcPlayerTextPlatform.kt`. They must use the same text engine and the same
-                    // resolved typeface, or the anchoring below places glyphs it didn't measure.
-                    val bounds = measureTextInkBounds(full, paintState, read)
+                    // resolved typeface, or the anchoring below places glyphs it didn't measure, so
+                    // one spec is built here and handed to both rather than derived twice.
+                    val spec = paintState.toTextPaintSpec()
+                    val bounds = measureTextInkBounds(full, spec, read)
                     val outX = data.x
                     val outY = data.y
                     val outPanX = data.panX
@@ -751,7 +760,7 @@ internal fun DrawScope.executeOperations(
                                 (0f - textHeight) * (1f - outPanY) / 2f +
                                 (if (baseline) textHeight / 2f else -bounds.top)
                         }
-                    drawTextAtOriginPlatform(full, x, y, paintState, read)
+                    drawTextAtOriginPlatform(full, x, y, spec, read)
                 }
             }
             is DrawBitmapScaled -> {
@@ -947,7 +956,11 @@ internal fun DrawScope.executeOperations(
                     val warpRadiusOffset = data.warpRadiusOffset
                     val alignment = data.alignment
                     val placement = data.placement
-                    val textWidth = measureTextWidth(full, paintState, read)
+                    // One spec for the measure and the draw below — the arc is sized from the
+                    // measurement, so a different typeface between the two would lay the string
+                    // along an arc cut for a different width.
+                    val spec = paintState.toTextPaintSpec()
+                    val textWidth = measureTextWidth(full, spec, read)
                     val finalRadius = radius + warpRadiusOffset
                     val clockwise = placement == DrawTextOnCircle.Placement.OUTSIDE
                     var sweepDegrees =
@@ -985,7 +998,7 @@ internal fun DrawScope.executeOperations(
                                 sweepDegrees,
                             )
                         }
-                    drawTextOnPathPlatform(full, textPath, 0f, 0f, paintState, read)
+                    drawTextOnPathPlatform(full, textPath, 0f, 0f, spec, read)
                 }
             }
             is DrawBitmapFontText -> {

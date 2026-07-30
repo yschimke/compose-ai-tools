@@ -104,6 +104,75 @@ jobs:
       # only on someone's laptop.
       - name: Run RC figma-svg export tests
         run: ./gradlew :third-party-rc-embedded-player:testDebugUnitTest
+      # `:third-party-rc-embedded-player-jvm` was in the same position the note above describes, only
+      # worse: not merely untested by CI but entirely unreferenced, so neither its tests nor even its
+      # *compile* ran anywhere but a laptop. That module is the whole claim that the shared player
+      # sources are platform-neutral — a file that isn't really neutral is supposed to fail to build
+      # there — and a claim nothing on CI evaluates is not a claim.
+      #
+      # `check`, not `test`: compiling is half the point, and the module's ktfmt legs come along.
+      # It rides in this job because it shares the sources with the leg above, so the two fail
+      # together when a shared file changes.
+      # Two things `DesktopTextPlatformTest` needs from the host, both usually already there.
+      #
+      # A loadable GL library: skiko's native library links one even for the raster-only drawing the
+      # test does. The runner image normally carries libglvnd already — the jobs in this repo that
+      # need *real* GL install the drivers (`libgl1-mesa-dri`, `libglx-mesa0`) on top of it.
+      #
+      # A CJK face: `fallsBackToAFaceThatHasTheGlyphs` asserts that text the Latin default cannot
+      # render falls back to a face that can, which needs such a face to exist. It skips itself
+      # otherwise, and a skipped discriminator is not much use — it is one of the two tests standing
+      # between this seam and silently unshaped, un-fallen-back text.
+      - name: Ensure fonts and a GL library for skiko
+        run: |
+          packages=""
+          if ! ldconfig -p | grep -q 'libGL\.so\.1'; then packages="$packages libgl1"; fi
+          # `fc-match` always answers, so compare the family it lands on: a CJK request resolving to
+          # DejaVu means nothing on this host actually has the glyphs.
+          if ! fc-match --format='%{family}' 'WenQuanYi Zen Hei' 2>/dev/null | grep -qi 'wenquanyi\|noto sans cjk\|droid sans fallback'; then
+            packages="$packages fonts-wqy-zenhei"
+          fi
+          if [ -n "$packages" ]; then
+            echo "installing:$packages"
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends $packages
+            fc-cache -f > /dev/null
+          fi
+      - name: Run desktop (jvm) player tests
+        run: ./gradlew :third-party-rc-embedded-player-jvm:check
+      # `DesktopTextPlatformTest` skips its whole class when skiko's natives cannot load, and a skip
+      # still reports green — so a runner image that quietly dropped libGL would turn the jvm text
+      # seam's only verification into eighteen no-ops without failing anything. This turns that into a
+      # build failure. It reads the JUnit XML rather than grepping stderr because the counts are
+      # unambiguous.
+      #
+      # The bar is "did the class run", not "did every test run": individual tests may legitimately
+      # skip on a host that lacks a font they need, and failing on that would make the build hostage
+      # to the runner image's font list. A skip count is still printed, because a *rising* one is
+      # worth noticing even when it isn't fatal.
+      - name: Fail if the skiko text tests did not execute
+        run: |
+          set -euo pipefail
+          xml='third_party/rc-embedded-player-jvm/build/test-results/test/TEST-ee.schimke.composeai.rcembedded.jvm.DesktopTextPlatformTest.xml'
+          if [ ! -f "$xml" ]; then
+            echo "::error::$xml is missing — DesktopTextPlatformTest did not run at all."
+            exit 1
+          fi
+          # Attributes are on one <testsuite> line; take the first match so a nested one can't fool it.
+          tests=$(grep -o 'tests="[0-9]*"' "$xml" | head -1 | tr -dc 0-9)
+          skipped=$(grep -o 'skipped="[0-9]*"' "$xml" | head -1 | tr -dc 0-9)
+          echo "DesktopTextPlatformTest: ${tests} tests, ${skipped} skipped"
+          if [ "${tests:-0}" -eq 0 ] || [ "${skipped:-0}" -ge "${tests:-0}" ]; then
+            echo "::error::The skiko text seam tests did not execute (tests=${tests}," \
+                 "skipped=${skipped}) — the whole class skipped, which means skiko's natives failed" \
+                 "to load. This runner needs a GL library (libgl1 on Ubuntu). See" \
+                 "DesktopTextPlatformTest's KDoc."
+            exit 1
+          fi
+          if [ "${skipped:-0}" -ne 0 ]; then
+            echo "::warning::${skipped} of ${tests} skiko text tests skipped — a host-capability" \
+                 "skip (a missing font), not a failure, but check it is the one you expect."
+          fi
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -112,6 +181,7 @@ jobs:
           path: |
             renderers/android/build/reports/tests/
             third_party/rc-embedded-player/build/reports/tests/
+            third_party/rc-embedded-player-jvm/build/reports/tests/
 
   functional-tests:
     name: Plugin Functional Tests
