@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.19.8](https://github.com/yschimke/compose-ai-tools/compare/v0.19.7...v0.19.8) (2026-07-30)
+
+
+### Features
+
+* **design-artifacts:** let a spec declare a sticker-less component with capture: "none" ([#2956](https://github.com/yschimke/compose-ai-tools/issues/2956)) ([09dd981](https://github.com/yschimke/compose-ai-tools/commit/09dd981c86ae1766d4159024db6589ddc8ce29d8))
+* **plugin:** per-preview-id render filter, so a deferred catalog palette skips its render ([#2973](https://github.com/yschimke/compose-ai-tools/issues/2973)) ([8a5c2df](https://github.com/yschimke/compose-ai-tools/commit/8a5c2dffb6083b6fcd728ab4954c2a1374951db0))
+* **rc-embedded:** implement the canvas text seam's jvm half over skiko ([#2982](https://github.com/yschimke/compose-ai-tools/issues/2982)) ([234fa6a](https://github.com/yschimke/compose-ai-tools/commit/234fa6acf7aebe15a7cc201717e4fde3bcdd8294))
+* **serve:** add /admin/groups so front-page sections are runtime config too ([#2981](https://github.com/yschimke/compose-ai-tools/issues/2981)) ([2611c9a](https://github.com/yschimke/compose-ai-tools/commit/2611c9a39fe9cbb9cec2ca409d11babab13820f0))
+* **serve:** give catalog.json `deferred[]` entries a live lane ([#2979](https://github.com/yschimke/compose-ai-tools/issues/2979)) ([efd291f](https://github.com/yschimke/compose-ai-tools/commit/efd291f89b9cffc086ed2650f4310cc5ffec6802))
+* **serve:** publish horologist, attribute pocketcasts to Automattic ([#2975](https://github.com/yschimke/compose-ai-tools/issues/2975)) ([3177236](https://github.com/yschimke/compose-ai-tools/commit/31772361a370e91c682eea0db59977de7fe7a597))
+
+
+### Bug Fixes
+
+* **design-artifacts:** make entry-level deferral inert until the serve host can route it ([#2972](https://github.com/yschimke/compose-ai-tools/issues/2972)) ([9357462](https://github.com/yschimke/compose-ai-tools/commit/935746294e35c102c8cad78b22e5377cf4b6e387))
+* **rc-player:** resolve size-relative corner radii on MODIFIER_ROUNDED_CLIP_RECT ([#2978](https://github.com/yschimke/compose-ai-tools/issues/2978)) ([bcc48f6](https://github.com/yschimke/compose-ai-tools/commit/bcc48f630f49118bdb0d4bae620ef0f7655b502c))
+* **renderer-android:** resolve coil AsyncImage during preview renders ([#2971](https://github.com/yschimke/compose-ai-tools/issues/2971)) ([e4b4392](https://github.com/yschimke/compose-ai-tools/commit/e4b43928b5277bcb1b78ab03d04755e47859525c))
+
 ## [0.19.7](https://github.com/yschimke/compose-ai-tools/compare/v0.19.6...v0.19.7) (2026-07-29)
 
 
