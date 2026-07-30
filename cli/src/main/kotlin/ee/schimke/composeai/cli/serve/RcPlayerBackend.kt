@@ -19,11 +19,13 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
  *   which interprets the document's operation tree into Compose layout/draw nodes directly, driven
  *   server-side via [RemoteComposePlayerKind.EMBEDDED].
  * * [CMP_JVM] — the same embedded player over Skiko/Desktop
- *   (`:third-party-rc-embedded-player-jvm`). **Not renderable yet**: only the player's
- *   value/expression layer is ported to plain-JVM; the draw path does not exist (see the module's
- *   `PROVENANCE.md` and `DesktopRemoteContextTest`). It is part of the fixed universe so the viewer
- *   can show it as a disabled option that lights up automatically once the Skiko draw path lands —
- *   [playerKind] is null and no host enables it.
+ *   (`:third-party-rc-embedded-player-jvm`). The draw path now exists: the module renders a
+ *   captured `.rc` to PNG on a plain JVM (`renderRemoteDocumentToPng`, verified by
+ *   `RcJvmRendererTest` and the `rc-compare` cmp-jvm lane). What is not yet wired is a **serve
+ *   render path** for it — the daemon protocol carries no JVM player kind, and the cli's render
+ *   runtimes are subprocess-isolated, so lighting this chip needs either an in-process render in
+ *   the cli or a desktop-daemon render lane (see the module's `PROVENANCE.md`). Until that lands
+ *   [playerKind] stays null and no host enables it, so the viewer shows it as a disabled option.
  *
  * The viewer always renders every entry as a chip and enables the subset a host reports through
  * [ServeHost.enabledRcPlayersFor]; the rest are shown disabled. [wire] is the stable id used both
