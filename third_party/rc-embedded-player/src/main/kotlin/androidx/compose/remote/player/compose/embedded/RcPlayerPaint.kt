@@ -18,15 +18,8 @@
 
 package androidx.compose.remote.player.compose.embedded
 
-import android.graphics.BitmapShader
-import android.graphics.Matrix
 import android.graphics.Paint
-import android.graphics.RuntimeShader
-import android.graphics.Shader
-import android.os.Build
 import androidx.compose.remote.core.RemoteContext
-import androidx.compose.remote.core.operations.ShaderData
-import androidx.compose.remote.core.operations.Utils
 import androidx.compose.remote.core.operations.paint.PaintBundle
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -35,6 +28,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageShader
+import androidx.compose.ui.graphics.Shader
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
@@ -151,79 +145,10 @@ private fun nativeShaderBrush(shader: Shader): Brush =
         override fun createShader(size: Size): Shader = shader
     }
 
-/**
- * Builds the AGSL [android.graphics.RuntimeShader] for a PaintBundle `SHADER` op (from a
- * [ShaderData], with its float/int/bitmap uniforms applied), mirroring the View player's
- * `AndroidPaintContext.setShader`. Returns null — for id 0, a missing [ShaderData] or shader text,
- * or below API 33 (RuntimeShader is API 33+); the caller then falls back to the solid color. The
- * caller wraps it as a Compose [Brush] (and keeps it for SHADER_MATRIX).
- */
-private fun buildRuntimeShader(shaderId: Int, remoteContext: RemoteContext): Shader? {
-    if (shaderId == 0) return null
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
-    val data = remoteContext.mRemoteComposeState.getFromId(shaderId) as? ShaderData ?: return null
-    val text = remoteContext.getText(data.shaderTextId) ?: return null
-    // A shader that fails to compile or bind its uniforms (e.g. malformed AGSL, or a runtime that
-    // doesn't fully support RuntimeShader such as a host without GPU shader compilation) must not
-    // crash the whole document draw — fall back to no shader so the rest of the frame still
-    // renders.
-    return try {
-        val shader = RuntimeShader(text)
-        for (name in data.uniformFloatNames) {
-            shader.setFloatUniform(name, data.getUniformFloats(name))
-        }
-        for (name in data.uniformIntegerNames) {
-            shader.setIntUniform(name, data.getUniformInts(name))
-        }
-        for (name in data.uniformBitmapNames) {
-            val bitmap = resolveBitmap(remoteContext, data.getUniformBitmapId(name))
-            if (bitmap != null) {
-                shader.setInputShader(
-                    name,
-                    BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP),
-                )
-            }
-        }
-        shader
-    } catch (e: RuntimeException) {
-        null
-    }
-}
-
-/**
- * Applies a PaintBundle `SHADER_MATRIX` op: sets a local matrix on the current shader. [matrixWord]
- * is the NaN-encoded id (as raw bits) of a [MatrixAccess] object; id 0 clears the local matrix.
- * Mirrors the View player's `AndroidPaintContext.setShaderMatrix`.
- */
-private fun applyShaderMatrix(paintState: ComposeLocalPaint, matrixWord: Int, read: RemoteContext) {
-    val shader = paintState.nativeShader ?: return
-    val id = Utils.idFromNan(Float.fromBits(matrixWord))
-    if (id == 0) {
-        shader.setLocalMatrix(null)
-        return
-    }
-    val matrix = read.getObject(id) as? androidx.compose.remote.core.MatrixAccess ?: return
-    val values = matrix.get()
-    // MatrixAccess.to3x3: a 4x4 (16) collapses to the 3x3 (9) android Matrix layout; a 9 is as-is.
-    val m3x3 =
-        when (values.size) {
-            9 -> values
-            16 ->
-                floatArrayOf(
-                    values[0],
-                    values[1],
-                    values[3],
-                    values[4],
-                    values[5],
-                    values[7],
-                    values[8],
-                    values[9],
-                    values[15],
-                )
-            else -> return
-        }
-    shader.setLocalMatrix(Matrix().apply { setValues(m3x3) })
-}
+// The AGSL runtime-shader seam — `buildRuntimeShader` and `applyShaderMatrix` — lives in
+// RcPlayerShaders.kt, the one platform-specific file of this paint path (see issue #2954). Its
+// signatures are the multiplatform `androidx.compose.ui.graphics.Shader`, so a jvm/desktop skiko
+// implementation drops in without touching this shared decoder.
 
 internal fun mapBlendMode(mode: Int): androidx.compose.ui.graphics.BlendMode =
     when (mode) {

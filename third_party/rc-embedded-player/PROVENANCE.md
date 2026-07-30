@@ -25,7 +25,8 @@ inside it. Vendoring is the only way to depend on it.
 ## What is vendored
 
 The player proper: the package root plus `layout/`, `modifier/`, and `state/` (42 upstream files,
-43 here — one was split in two, see "Done: `state/` decoupled" below). Upstream's
+44 here — two local splits, `state/RcPlayerBitmapState.kt` and `RcPlayerShaders.kt`, each noted
+under "Local modifications" below). Upstream's
 `demos/`, `integration/previews/`, and the `androidx.wear.compose.remote.material3.previews` sample
 previews that live in the same source set are **not** vendored — they are demo/test scaffolding for
 the integration-test app, and they drag in Wear Material3 and `remote-creation-compose` capture.
@@ -138,8 +139,32 @@ revert to upstream verbatim.
   `asImageBitmap()`.
 
   Behaviour-preserving: same tile modes, same image, still wrapped as a `ShaderBrush`. Note the
-  *other* `BitmapShader` in this file stays — it binds a bitmap uniform inside `buildRuntimeShader`,
-  so it belongs to the AGSL path, which is deferred (issue #2954).
+  *other* `BitmapShader` — the one binding a bitmap uniform inside `buildRuntimeShader` — belongs to
+  the AGSL path, which now lives in its own seam file (`RcPlayerShaders.kt`, next entry), not in
+  `RcPlayerPaint.kt`.
+
+- **AGSL runtime shaders isolated behind a platform seam** (`RcPlayerShaders.kt`, split out of
+  `RcPlayerPaint.kt`; issue #2954). The paint decoder's `SHADER` and `SHADER_MATRIX` paths were the
+  one part of it that cannot become a single multiplatform implementation: `RuntimeShader` (AGSL),
+  the bitmap-uniform `BitmapShader`, `android.graphics.Matrix` for the local matrix, and the API-33
+  `Build` guard have no portable Compose equivalent — desktop Compose exposes SkSL `RuntimeEffect`
+  through skiko, a different shading language *and* uniform-binding API.
+
+  So the two functions that touch them, `buildRuntimeShader(shaderId, remoteContext): Shader?` and
+  `applyShaderMatrix(paintState, matrixWord, read)`, move verbatim into `RcPlayerShaders.kt` and the
+  rest of `RcPlayerPaint.kt` — brushes, tile modes, blend modes, colour filters, images — is left
+  expressed in multiplatform Compose graphics. The seam's signatures are the multiplatform
+  `androidx.compose.ui.graphics.Shader` (a typealias for `android.graphics.Shader` here), so a
+  jvm/desktop file supplying the same two functions over skiko is a drop-in with no change to the
+  shared decoder. `RcPlayerPaint.kt` no longer imports `RuntimeShader`, `BitmapShader`, `Matrix` or
+  `os.Build`; its remaining Android coupling is the framework `Paint` on the text path (a separate,
+  later step — see the sequencing).
+
+  Behaviour-preserving on Android: the bodies are the same code with the same call sites, verified
+  by compile. The Android AGSL implementation is all this file carries; the desktop counterpart is
+  **still deferred**, because the embedded player's shader output already diverges from the View
+  player *on Android* (~89% on `ShaderGradientSticker` in the rc-compare lane), and that wants
+  understanding before the path is used as a desktop baseline (sequencing step 5).
 
 - **`RcImageSource` extracted, and `mapEasing` split out of `RcPlayer.kt`** (`RcImageSource.kt`,
   `RcPlayerEasing.kt`). Two small deltas with the same shape: a neutral declaration was living inside
@@ -210,12 +235,14 @@ software-canvas ambiguity that made the shader finding hard to attribute (see th
 ### Measured surface
 
 **32 of the 42 vendored files reference nothing platform-specific** — no `android.*`, no
-`androidx.core.*`, no `player.core.platform.*`, no `ui.text.googlefonts`. The remaining 10, with
+`androidx.core.*`, no `player.core.platform.*`, no `ui.text.googlefonts`. The remaining 10 (plus the
+two written-here Android-only splits, `state/RcPlayerBitmapState.kt` and `RcPlayerShaders.kt`), with
 what actually couples them:
 
 | file | coupling |
 | --- | --- |
-| `RcPlayerPaint.kt` | `Paint`, `RuntimeShader`, `BitmapShader`, `Shader`, `Matrix`, `Build` |
+| `RcPlayerPaint.kt` | `Paint` (the runtime-shader coupling moved to `RcPlayerShaders.kt`) |
+| `RcPlayerShaders.kt` | `RuntimeShader`, `BitmapShader`, `Matrix`, `Build` (the AGSL seam, split out of `RcPlayerPaint.kt`) |
 | `RcPlayerDrawing.kt` | `Bitmap`, `Rect`, `drawable` |
 | `RcPlayer.kt` | `SuppressLint`, `PendingIntent`, `AndroidRemoteContext` |
 | `EmbeddedPlayerTypefaceResolver.kt` | `Typeface`, `Handler`, `Looper`, `Log`, `FontRequest`, `FontsContractCompat`, `AndroidRemoteContext`, `TypefaceResolver`, `FontInstance` |
@@ -410,7 +437,9 @@ single-target milestone it cannot be verified. It splits into 1a/1b.
    isolated enough to postpone): **particles** — `RcPlayerParticles.kt` is the only
    `AndroidPaintContext` user, so deferring it avoids a Skia `PaintContext` port entirely, at the
    cost of a small seam where `RcPlayerPaint.kt`/`RcPlayerDrawing.kt` dispatch into it; **AGSL
-   shaders** (`RcPlayerPaint.kt`, `RcPlayer.kt`, tracked as issue #2954); and **downloadable fonts**
+   shaders** (now behind their own seam file `RcPlayerShaders.kt` — see the shader-seam delta under
+   "Local modifications" — so the shared paint decoder no longer holds any runtime-shader coupling;
+   the desktop `actual` is what stays deferred, issue #2954); and **downloadable fonts**
    (`RcPlayerTextLayout.kt`). What is *not* deferrable is framework `Paint` and bitmaps — those are
    the draw path itself.
 2. **1b — restructure to KMP, android target only,** moving the (now much larger) clean set into
@@ -424,7 +453,10 @@ single-target milestone it cannot be verified. It splits into 1a/1b.
    (`GraphContext`'s `AndroidRemoteContext` base) and image decode. This is where the remaining
    chains in the table are actually paid for, not step 1.
 4. Port text off framework `Paint`.
-5. Shaders last, after the Android-side shader divergence is understood.
+5. Shaders last, after the Android-side shader divergence is understood. The **seam** is already in
+   place — `RcPlayerShaders.kt` isolates the two AGSL functions behind a portable
+   `androidx.compose.ui.graphics.Shader` signature (issue #2954) — so what remains at this step is
+   the desktop skiko `RuntimeEffect` *body*, not the extraction.
 
 **On the success criterion.** "The existing render output does not change" is the right test for
 every step here, but it needs a staged catalog: `RcEmbeddedRenderHarness` skips unless
