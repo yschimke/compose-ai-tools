@@ -127,6 +127,11 @@ on:
         required: false
         type: boolean
         default: false
+      rc-embedded-jvm-lane:
+        description: "Add the cmp-jvm desktop-player lane to rc-compare.html — one extra compact column (render + folded diff) rendering the bundle's ir/*.rc through :third-party-rc-embedded-player-jvm (Compose Desktop / Skiko, offscreen). Independent of rc-embedded-lane: either or both can run, and staging happens once for whichever is on. Needs libGL + xvfb (installed by the desktop-render deps step, which also fires on this input). Same tolerance as the Robolectric lane: a harness failure or empty output degrades to a page without the cmp-jvm column rather than failing the render. No-op for a catalog that ships no ir/*.rc."
+        required: false
+        type: boolean
+        default: false
       stage-font-globs:
         description: 'Whitespace-separated repo-relative globs of font files (.ttf/.otf) to stage into fontconfig BEFORE rendering — for a desktop (Skiko) render that must resolve glyphs (CJK/Arabic/…) from a bundled face rather than a system fallback. Empty ⇒ no staging.'
         required: false
@@ -355,8 +360,10 @@ jobs:
           fc-cache -f "$HOME/.local/share/fonts" >/dev/null
 
       # CMP desktop (Skiko) links libGL; install Mesa's software GL + a font stack.
+      # Also needed by the rc-compare cmp-jvm lane, whose player is the same Skiko stack
+      # even when the primary render is Android/Robolectric (remote-m3: desktop-render=false).
       - name: Install desktop (Skiko) render deps
-        if: ${{ inputs.desktop-render }}
+        if: ${{ inputs.desktop-render || inputs.rc-embedded-jvm-lane }}
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -556,23 +563,30 @@ jobs:
           PLAYER="$GITHUB_WORKSPACE/compose-ai-tools/cli/src/main/resources/rc-player/bundle.js"
           EMBEDDED_ARGS=()
 
-          # Optional third lane (rc-embedded-lane). Three moves: stage the bundle's documents,
-          # render them through the vendored embedded player, then hand the driver the PNGs so it
-          # can diff and add the columns. Staging exits before Chromium is touched, so the extra
-          # driver invocation is cheap.
+          # Optional embedded-player lanes. Both render the SAME staged ir/*.rc: the Robolectric
+          # lane (rc-embedded-lane) through AndroidX's Compose-embedded RcPlayer, and the cmp-jvm
+          # lane (rc-embedded-jvm-lane) through Compose Desktop / Skiko. Staging is shared: it runs
+          # once if EITHER lane is on, then each lane's Gradle harness reads $RC_IN and writes its
+          # own PNG dir, which the final driver invocation diffs into extra columns. Staging exits
+          # before Chromium is touched, so the extra driver invocation is cheap.
           #
           # Deliberately tolerant: the render this job exists to publish must not be lost because a
-          # Robolectric harness died or the runner has no Android SDK. Either way we log loudly and
-          # fall through to the two-lane page — the lane is an enrichment, not the product.
-          if [ "${{ inputs.rc-embedded-lane }}" = "true" ]; then
+          # harness died or the runner lacks a toolchain. Either lane logs loudly and falls through
+          # to a page without its column — the lanes are enrichment, not the product.
+          if [ "${{ inputs.rc-embedded-lane }}" = "true" ] || [ "${{ inputs.rc-embedded-jvm-lane }}" = "true" ]; then
             RC_IN="$RUNNER_TEMP/rc-embedded-in"
-            RC_OUT="$RUNNER_TEMP/rc-embedded-out"
-            rm -rf "$RC_IN" "$RC_OUT"
+            rm -rf "$RC_IN"
             node rc-compare.mjs \
               --bundle "$GITHUB_WORKSPACE/bundle.png" \
               --player "$PLAYER" \
               --out "$GITHUB_WORKSPACE/out" \
               --stage-embedded "$RC_IN"
+          fi
+
+          # Robolectric (Android) embedded lane.
+          if [ "${{ inputs.rc-embedded-lane }}" = "true" ]; then
+            RC_OUT="$RUNNER_TEMP/rc-embedded-out"
+            rm -rf "$RC_OUT"
             # `--rerun` because the harness's real output is the PNGs it writes to `RC_OUT`, and
             # Gradle cannot see them: they are addressed by a system property, not declared as task
             # outputs. On a persistent runner the second identical invocation is UP-TO-DATE, so the
@@ -583,12 +597,29 @@ jobs:
                 ./gradlew :third-party-rc-embedded-player:testDebugUnitTest --no-daemon --rerun \
                   -Prc.embedded.input="$RC_IN" -Prc.embedded.output="$RC_OUT") \
                && [ -n "$(find "$RC_OUT" -maxdepth 1 -name '*.png' -print -quit 2>/dev/null)" ]; then
-              EMBEDDED_ARGS=(--embedded "$RC_OUT")
+              EMBEDDED_ARGS+=(--embedded "$RC_OUT")
             else
               # Belt and braces: the PNG check above is what actually decides, so any cause of an
               # empty RC_OUT — a skipped task, a harness that died before writing, a wiped temp dir
-              # — falls back to the two-lane page instead of publishing a lane of empty cells.
-              echo "::warning::embedded-player lane produced no renders; publishing the two-lane rc-compare page"
+              # — falls back to a page without the column instead of publishing empty cells.
+              echo "::warning::embedded-player lane produced no renders; publishing rc-compare without the embedded column"
+            fi
+          fi
+
+          # cmp-jvm (Compose Desktop / Skiko) embedded lane. Same three moves, different harness:
+          # the jvm player links libGL and draws offscreen, so its Gradle test runs under xvfb-run
+          # (libGL + xvfb come from the desktop-render deps step, which fires on this input too).
+          if [ "${{ inputs.rc-embedded-jvm-lane }}" = "true" ]; then
+            RC_JVM_OUT="$RUNNER_TEMP/rc-embedded-jvm-out"
+            rm -rf "$RC_JVM_OUT"
+            if (cd "$GITHUB_WORKSPACE/compose-ai-tools" && \
+                xvfb-run -a -s "-screen 0 2000x1400x24" \
+                  ./gradlew :third-party-rc-embedded-player-jvm:test --no-daemon --rerun \
+                    -Prc.jvm.input="$RC_IN" -Prc.jvm.output="$RC_JVM_OUT") \
+               && [ -n "$(find "$RC_JVM_OUT" -maxdepth 1 -name '*.png' -print -quit 2>/dev/null)" ]; then
+              EMBEDDED_ARGS+=(--embedded-jvm "$RC_JVM_OUT")
+            else
+              echo "::warning::cmp-jvm player lane produced no renders; publishing rc-compare without the cmp-jvm column"
             fi
           fi
 

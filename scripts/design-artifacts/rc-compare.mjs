@@ -72,6 +72,10 @@ const FONTS = arg("fonts", DEFAULT_FONTS_DIR);
 // Omitting both keeps the JS-only page exactly as before.
 const STAGE_EMBEDDED = arg("stage-embedded");
 const EMBEDDED = arg("embedded");
+// The cmp-jvm (desktop Skiko embedded player) lane. It reuses the same staged inputs as the
+// embedded lane (`--stage-embedded` writes `<id>.rc` + `manifest.json` that both harnesses read), so
+// there is no separate stage flag — only a separate output dir to read PNGs back from.
+const EMBEDDED_JVM = arg("embedded-jvm");
 
 if (!BUNDLE || !PLAYER || !OUT) {
   console.error("rc-compare: --bundle, --player and --out are required");
@@ -141,6 +145,8 @@ const dirs = {
   diff: path.join(OUT, "rc-diff"),
   embedded: path.join(OUT, "rc-embedded"),
   embeddedDiff: path.join(OUT, "rc-embedded-diff"),
+  embeddedJvm: path.join(OUT, "rc-embedded-jvm"),
+  embeddedJvmDiff: path.join(OUT, "rc-embedded-jvm-diff"),
 };
 for (const d of Object.values(dirs)) fs.mkdirSync(d, { recursive: true });
 
@@ -178,6 +184,17 @@ if (EMBEDDED) {
     for (const line of fs.readFileSync(errorsFile, "utf8").split("\n")) {
       const [id, ...rest] = line.split("\t");
       if (id && rest.length) embeddedErrors.set(id, rest.join("\t"));
+    }
+  }
+}
+
+const embeddedJvmErrors = new Map();
+if (EMBEDDED_JVM) {
+  const errorsFile = path.join(EMBEDDED_JVM, "errors.txt");
+  if (fs.existsSync(errorsFile)) {
+    for (const line of fs.readFileSync(errorsFile, "utf8").split("\n")) {
+      const [id, ...rest] = line.split("\t");
+      if (id && rest.length) embeddedJvmErrors.set(id, rest.join("\t"));
     }
   }
 }
@@ -234,6 +251,54 @@ function embeddedFor(id, baked, width, height, referenceBlank) {
     embeddedMismatchPx: referenceBlank ? null : px,
     embedded: `rc-embedded/${id}.png`,
     embeddedDiff: `rc-embedded-diff/${id}.png`,
+  };
+}
+
+/**
+ * The cmp-jvm (desktop Skiko embedded player) counterpart of {@link embeddedFor}: diff its render
+ * against the baked PNG and emit the row's `embeddedJvm*` fields. Same shape and same
+ * `{}`-when-not-requested gate, so the cmp-jvm column only appears when the lane ran. The player is
+ * the *same* embedded interpreter as the Android lane, run off Android over Skiko — so this is a
+ * second view of embedded parity, not a fourth renderer.
+ */
+function embeddedJvmFor(id, baked, width, height, referenceBlank) {
+  if (!EMBEDDED_JVM) return {};
+  const png = path.join(EMBEDDED_JVM, `${id}.png`);
+  if (!fs.existsSync(png)) {
+    return {
+      embeddedJvmRendered: false,
+      embeddedJvmNote:
+        embeddedJvmErrors.get(id) ??
+        (fs.existsSync(path.join(EMBEDDED_JVM, `${id}.error`))
+          ? fs.readFileSync(path.join(EMBEDDED_JVM, `${id}.error`), "utf8").trim().slice(0, 200)
+          : "no cmp-jvm render"),
+      embeddedJvmMismatchPct: null,
+      embeddedJvmMismatchPx: null,
+      embeddedJvm: "",
+      embeddedJvmDiff: "",
+    };
+  }
+  const emb = flattenOnto(PNG.sync.read(fs.readFileSync(png)), BG);
+  if (emb.width !== width || emb.height !== height) {
+    return {
+      embeddedJvmRendered: false,
+      embeddedJvmNote: `size ${emb.width}×${emb.height} ≠ baked ${width}×${height}`,
+      embeddedJvmMismatchPct: null,
+      embeddedJvmMismatchPx: null,
+      embeddedJvm: "",
+      embeddedJvmDiff: "",
+    };
+  }
+  const diff = new PNG({ width, height });
+  const px = pixelmatch(baked.data, emb.data, diff.data, width, height, { threshold: THRESHOLD });
+  fs.writeFileSync(path.join(dirs.embeddedJvm, `${id}.png`), PNG.sync.write(emb));
+  fs.writeFileSync(path.join(dirs.embeddedJvmDiff, `${id}.png`), PNG.sync.write(diff));
+  return {
+    embeddedJvmRendered: true,
+    embeddedJvmMismatchPct: referenceBlank ? null : (100 * px) / (width * height),
+    embeddedJvmMismatchPx: referenceBlank ? null : px,
+    embeddedJvm: `rc-embedded-jvm/${id}.png`,
+    embeddedJvmDiff: `rc-embedded-jvm-diff/${id}.png`,
   };
 }
 
@@ -306,6 +371,7 @@ for (const id of rcIds) {
   // Embedded lane, computed independently of whether the JS player managed this document — either
   // player can render one the other chokes on, and the page scores them separately.
   const embedded = embeddedFor(id, baked, width, height, referenceBlank);
+  const embeddedJvm = embeddedJvmFor(id, baked, width, height, referenceBlank);
 
   if (result.error || truncated) {
     rows.push({
@@ -323,6 +389,7 @@ for (const id of rcIds) {
       diff: "",
       referenceBlank,
       ...embedded,
+      ...embeddedJvm,
     });
     fs.writeFileSync(path.join(dirs.baked, `${id}.png`), PNG.sync.write(baked));
     console.log(`  ${name}: NOT RENDERED (${rows[rows.length - 1].note})`);
@@ -354,6 +421,7 @@ for (const id of rcIds) {
     diff: `rc-diff/${id}.png`,
     referenceBlank,
     ...embedded,
+    ...embeddedJvm,
   });
   if (referenceBlank) {
     // Worth a line of its own: a blank baked capture is a catalog bug, and it is exactly the case
@@ -367,8 +435,14 @@ for (const id of rcIds) {
       : embedded.embeddedRendered
         ? `  |  embedded ${embedded.embeddedMismatchPct.toFixed(2)}%`
         : `  |  embedded NOT RENDERED`;
+  const embJvmNote =
+    embeddedJvm.embeddedJvmRendered === undefined
+      ? ""
+      : embeddedJvm.embeddedJvmRendered
+        ? `  |  cmp-jvm ${embeddedJvm.embeddedJvmMismatchPct.toFixed(2)}%`
+        : `  |  cmp-jvm NOT RENDERED`;
   console.log(
-    `  ${name}: ${mismatchPct.toFixed(2)}% (${mismatchPx} px, ${width}×${height})${embNote}`,
+    `  ${name}: ${mismatchPct.toFixed(2)}% (${mismatchPx} px, ${width}×${height})${embNote}${embJvmNote}`,
   );
 }
 
@@ -408,6 +482,18 @@ fs.writeFileSync(
             })(),
           }
         : null,
+      embeddedJvm: EMBEDDED_JVM
+        ? {
+            rendered: rows.filter((r) => r.embeddedJvmRendered).length,
+            scored: rows.filter((r) => r.embeddedJvmRendered && !r.referenceBlank).length,
+            meanMismatchPct: (() => {
+              const ok = rows.filter((r) => r.embeddedJvmRendered && !r.referenceBlank);
+              return ok.length
+                ? ok.reduce((s, r) => s + r.embeddedJvmMismatchPct, 0) / ok.length
+                : null;
+            })(),
+          }
+        : null,
       rows: rows.map((r) => ({
         id: r.id,
         rendered: r.rendered,
@@ -421,6 +507,10 @@ fs.writeFileSync(
         embeddedMismatchPct: r.embeddedMismatchPct ?? null,
         embeddedMismatchPx: r.embeddedMismatchPx ?? null,
         embeddedNote: r.embeddedNote ?? null,
+        embeddedJvmRendered: r.embeddedJvmRendered ?? null,
+        embeddedJvmMismatchPct: r.embeddedJvmMismatchPct ?? null,
+        embeddedJvmMismatchPx: r.embeddedJvmMismatchPx ?? null,
+        embeddedJvmNote: r.embeddedJvmNote ?? null,
       })),
     },
     null,
