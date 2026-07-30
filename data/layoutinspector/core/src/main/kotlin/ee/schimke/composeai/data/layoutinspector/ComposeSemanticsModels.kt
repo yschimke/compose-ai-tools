@@ -43,7 +43,9 @@ object ComposeSemanticsProduct {
   // their UTF-16 start/end offsets. This preserves the paragraph face across AnnotatedString runs
   // while retaining explicit per-span overrides (for example Karla body text with a monospace code
   // span). Additive; older entries decode with `spans = null` and line offsets unset.
-  const val SCHEMA_VERSION: Int = 10
+  // v11 (#2852): the mirrored `tokens` may carry `clipsContent` — the node has a
+  // `Modifier.clip(shape)` masking its children. Additive; older entries decode it as null.
+  const val SCHEMA_VERSION: Int = 11
   const val FILE: String = "compose-semantics.json"
 }
 
@@ -97,7 +99,12 @@ object LayoutInspectorProduct {
   // bitmap / native canvas (every component the Remote Compose embedded player interprets). Unlike
   // a frame crop it holds no descendant pixels, so a container that draws can keep editable
   // children over it. Additive — older entries decode with `drawRaster = null`.
-  const val SCHEMA_VERSION: Int = 11
+  // v12 (#2852): `tokens` may carry `clipsContent` — the node has a `Modifier.clip(shape)` that
+  // masks its children to its shape. Distinct from the paint-shape tokens (a `background(color,
+  // shape)` rounds its own fill but doesn't clip an overflowing child); the figma-svg export turns
+  // it into an SVG `clipPath` so a child placed beyond the clip is masked instead of overflowing.
+  // Additive — older entries decode with `clipsContent = null`.
+  const val SCHEMA_VERSION: Int = 12
   const val FILE: String = "layout-inspector.json"
 }
 
@@ -476,6 +483,17 @@ data class ComposeSemanticsTokens(
    * exporter applies this value to the layer group. Null is the common fully-opaque case.
    */
   val opacity: Double? = null,
+  /**
+   * True when the node carries a `Modifier.clip(shape)` (a `graphicsLayer` with `clip = true`),
+   * which masks the node's own draws **and its children** to the node's shape. Distinct from the
+   * shape tokens above, which describe what a `background`/`border` *paints*: a plain
+   * `background(color, shape)` rounds its fill but does **not** clip an overflowing child, whereas
+   * `clip(shape)` does. The figma-svg export turns this into an SVG `clipPath` on the node's group
+   * so a child placed beyond the clip (Jetsnack Search/Categories' minimum-size image under
+   * `.clip(CategoryShape)`) is masked to the rounded box instead of overflowing and growing the
+   * canvas (issue #2852).
+   */
+  val clipsContent: Boolean? = null,
 )
 
 /**

@@ -152,6 +152,8 @@ object FigmaLayeredSvg {
     curveSeq: IntArray = intArrayOf(0),
     // Gradient def ids, assigned once for the whole tree so a shape's `url(#…)` always resolves.
     gradientSeq: Map<FigmaSvgLayer, Int> = emptyMap(),
+    // Monotonic counter for `Modifier.clip` `<clipPath>` ids, threaded so every mask is unique.
+    clipSeq: IntArray = intArrayOf(0),
   ) {
     val indent = "  ".repeat(depth)
     // An opaque layer is a leaf `<image>` — the background-free raster stands in for a subtree the
@@ -184,8 +186,19 @@ object FigmaLayeredSvg {
     val containsRaster = layer.containsCapturedRaster()
     val outerOpacity = inheritedOpacity * layer.opacity
     val namedGroupOpacity = if (containsRaster) 1.0 else outerOpacity
+    // A `Modifier.clip` layer whose subtree actually overflows its box masks its children to its
+    // own
+    // shape, so an intentionally-oversized child (Jetsnack Search/Categories' image under
+    // `.clip(CategoryShape)`) is clipped to the rounded box instead of bleeding past it (issue
+    // #2852). Only emitted on genuine overflow — a clip whose children all sit inside changes no
+    // pixels, so the common case keeps its clip-path-free group and stays byte-for-byte unchanged.
+    val clipId = if (layer.clipChildren && layer.overflowsClip()) "clip-${clipSeq[0]++}" else null
+    if (clipId != null) {
+      sb.append(indent).append(clipPathDef(layer, clipId)).append('\n')
+    }
+    val clipAttr = clipId?.let { """ clip-path="url(#$it)"""" } ?: ""
     sb.append(
-      """$indent<g id="${escapeAttr(layer.name)}"$dataToken$filterAttr${opacityAttr(namedGroupOpacity)}>"""
+      """$indent<g id="${escapeAttr(layer.name)}"$dataToken$filterAttr$clipAttr${opacityAttr(namedGroupOpacity)}>"""
     )
     sb.append('\n')
     if (options.annotateTokens && tokenName != null) {
@@ -236,6 +249,7 @@ object FigmaLayeredSvg {
           inheritedOpacity = contentOpacity,
           curveSeq = curveSeq,
           gradientSeq = gradientSeq,
+          clipSeq = clipSeq,
         )
       }
     } else {
@@ -264,6 +278,7 @@ object FigmaLayeredSvg {
             inheritedOpacity = 1.0,
             curveSeq = curveSeq,
             gradientSeq = gradientSeq,
+            clipSeq = clipSeq,
           )
         }
         sb.append(indent).append("  </g>\n")
@@ -279,6 +294,7 @@ object FigmaLayeredSvg {
             inheritedOpacity = 1.0,
             curveSeq = curveSeq,
             gradientSeq = gradientSeq,
+            clipSeq = clipSeq,
           )
         }
       }
@@ -691,6 +707,52 @@ object FigmaLayeredSvg {
   }
 
   /**
+   * True when some descendant that draws pixels extends beyond this (clipping) layer's box — the
+   * only case a `Modifier.clip` actually removes anything the export would otherwise show. A
+   * one-pixel slop absorbs the sub-pixel rounding of placed bounds so a child sitting flush at the
+   * edge isn't treated as overflowing (and clipped a hair short of the render).
+   */
+  private fun FigmaSvgLayer.overflowsClip(): Boolean {
+    fun beyond(l: Int, t: Int, r: Int, b: Int): Boolean =
+      l < left - CLIP_OVERFLOW_SLOP ||
+        t < top - CLIP_OVERFLOW_SLOP ||
+        r > right + CLIP_OVERFLOW_SLOP ||
+        b > bottom + CLIP_OVERFLOW_SLOP
+
+    fun scan(l: FigmaSvgLayer): Boolean {
+      if (l !== this) {
+        if (l.paintsShape() || l.text != null || l.raster != null || l.vector != null) {
+          if (beyond(l.left, l.top, l.right, l.bottom)) return true
+        }
+        l.background?.let { if (beyond(it.left, it.top, it.right, it.bottom)) return true }
+      }
+      return l.children.any(::scan)
+    }
+    return children.any(::scan)
+  }
+
+  /**
+   * The `<clipPath>` def for a `Modifier.clip` layer, its shape matching the drawn box + corners.
+   */
+  private fun clipPathDef(layer: FigmaSvgLayer, id: String): String =
+    """<clipPath id="$id">${clipShapeElement(layer)}</clipPath>"""
+
+  /** The bare shape element (`<rect>`/rounded `<rect>`/`<path>`) inside a clipPath, no paint. */
+  private fun clipShapeElement(layer: FigmaSvgLayer): String {
+    val radii = effectiveRadii(layer)
+    return when {
+      radii == null ->
+        """<rect x="${layer.left}" y="${layer.top}" width="${layer.width}" height="${layer.height}"/>"""
+      layer.cut -> """<path d="${cornerRectPath(layer, radii, cut = true)}"/>"""
+      radii.distinct().size == 1 -> {
+        val r = fmt(radii[0])
+        """<rect x="${layer.left}" y="${layer.top}" width="${layer.width}" height="${layer.height}" rx="$r" ry="$r"/>"""
+      }
+      else -> """<path d="${cornerRectPath(layer, radii, cut = false)}"/>"""
+    }
+  }
+
+  /**
    * A rectangle path with independent corner sizes (top-left, top-right, bottom-right,
    * bottom-left), each clamped to half the shorter side so overlapping corners don't invert the
    * path. Each corner is an arc (rounded) or — when [cut] — a straight chamfer segment between the
@@ -888,6 +950,13 @@ object FigmaLayeredSvg {
   // render (the fidelity harness confirms it), and a designer nudges it in Figma regardless.
   /** A captured graphics-layer scale within this of 1.0 counts as the identity (no scale). */
   private const val VECTOR_SCALE_EPSILON = 0.001
+
+  /**
+   * A descendant this many px beyond a `Modifier.clip` layer's box counts as overflow worth
+   * emitting a `<clipPath>` for — below it the gap is sub-pixel placement rounding, not a child the
+   * render actually clipped.
+   */
+  private const val CLIP_OVERFLOW_SLOP = 1
 
   private const val ASCENT_EM = 0.93
   private const val FONT_BOX_EM = 1.17

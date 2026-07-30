@@ -63,6 +63,9 @@ internal object ModifierTokenResolver {
     // into, so its value is recorded as [paintInset]; a padding after the first paint (which pads
     // content, not paint) is not. Flipped by the paint branches below (issue #2852).
     var sawPaint = false
+    // A `Modifier.clip(shape)` (a `graphicsLayer` with `clip = true`) masks the node's children to
+    // its shape, unlike a `background(color, shape)` that only rounds its own fill (issue #2852).
+    var clipsContent = false
     var elevation: String? = null
     var minWidth: String? = null
     var minHeight: String? = null
@@ -86,6 +89,10 @@ internal object ModifierTokenResolver {
       // — a clip and the shadow). Skipped when zero (a clip-only graphicsLayer).
       if (name == "graphicsLayer" || simpleName.contains("GraphicsLayer")) {
         graphicsLayerAlpha(info)?.let { opacity *= it }
+        // `Modifier.clip(shape)` lowers to `graphicsLayer(shape, clip = true)`; the `clip` flag is
+        // what tells a rounded/circle container to mask an overflowing child rather than let it
+        // bleed past (issue #2852). A shadow/alpha-only graphicsLayer keeps `clip = false`.
+        if (!clipsContent && graphicsLayerClips(mod, elements)) clipsContent = true
         shadowElevationDp(mod, elements, density)?.let { dp ->
           if (elevation == null || dp > (elevation.removeSuffix("dp").toDoubleOrNull() ?: 0.0)) {
             elevation = "${dp}dp"
@@ -194,7 +201,8 @@ internal object ModifierTokenResolver {
         backgroundGradient == null &&
         borderGradient == null &&
         minWidth == null &&
-        minHeight == null
+        minHeight == null &&
+        !clipsContent
     )
       null
     else
@@ -214,7 +222,25 @@ internal object ModifierTokenResolver {
         opacity = opacity.takeIf { it < 0.999 },
         backgroundGradient = backgroundGradient,
         borderGradient = borderGradient,
+        clipsContent = clipsContent.takeIf { it },
       )
+  }
+
+  /**
+   * Whether a `graphicsLayer` element clips its content — `true` for the `graphicsLayer(shape, clip
+   * = true)` a `Modifier.clip(shape)` lowers to. Reads the inspector `clip` element first, then
+   * reflects the element's backing `clip` boolean field (the desktop/skiko build doesn't always
+   * populate inspector info; issue #2852). A lambda-form `graphicsLayer { … }` carries no static
+   * `clip` field and reads `false`, which is correct — it doesn't clip.
+   */
+  private fun graphicsLayerClips(mod: Any, elements: Map<String, Any?>): Boolean {
+    (elements["clip"] as? Boolean)?.let {
+      return it
+    }
+    return runCatching {
+        mod.javaClass.getDeclaredField("clip").apply { isAccessible = true }.getBoolean(mod)
+      }
+      .getOrNull() ?: false
   }
 
   /**
