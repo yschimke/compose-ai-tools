@@ -11,6 +11,11 @@ import okio.Path
  * token that Stage 2 redeems into a live session. Compile errors return diagnostics and **no**
  * token.
  *
+ * [PlaygroundMode.REMOTE_COMPOSE] is the exception to the token model: instead of a live session it
+ * captures the snippet's `.rc` document and publishes it as an expiring `/d/<id>` permalink
+ * ([remoteComposeResult]), returning a [PlaygroundRunResponse.documentUrl] and no token — the
+ * document plays client-side, so the server keeps no daemon for it (PLAYGROUND.md §3).
+ *
  * Every collaborator that touches the daemon, the compiler, or the catalog is an **injected seam**,
  * so the orchestration (staging, gating, cleanup, token minting, response shaping) is unit-testable
  * without a real BTA classloader or a running daemon — the same split
@@ -40,6 +45,21 @@ class PlaygroundCompileService(
   private val fileSystem: FileSystem = FileSystem.SYSTEM,
   /** Optional first-frame render; returns PNG bytes or null. Defaults to no image (wired later). */
   private val renderFirstFrame: (PlaygroundTokenStore.PlaygroundSnippet) -> ByteArray? = { null },
+  /**
+   * [PlaygroundMode.REMOTE_COMPOSE] capture: run the compiled snippet's `@Preview` under the
+   * RC-capable render and return the serialized `.rc` document bytes, or null when the snippet
+   * emitted none (a non-RC `@Preview`) or no capture engine is wired here. Like [renderFirstFrame],
+   * defaults to no capture — the production Robolectric capture subprocess is wired later.
+   */
+  private val captureRemoteDocument: (PlaygroundTokenStore.PlaygroundSnippet) -> ByteArray? = {
+    null
+  },
+  /**
+   * Publishes captured `.rc` bytes to a document store and returns the `/d/<id>` permalink, or null
+   * when no store is available (or it refused the bytes). The `Boolean` is the [isSecurityChecked]
+   * audit marker forwarded from [run], matching [ServeDocStore.add]. Defaults to no publisher.
+   */
+  private val publishRemoteDocument: (String, ByteArray, Boolean) -> String? = { _, _, _ -> null },
 ) {
 
   /**
@@ -135,6 +155,11 @@ class PlaygroundCompileService(
         moduleName = classpath.moduleName,
         previewId = previews.first(),
       )
+
+    if (mode == PlaygroundMode.REMOTE_COMPOSE) {
+      return remoteComposeResult(snippet, diagnostics, workDir, isSecurityChecked)
+    }
+
     val image = renderFirstFrame(snippet)?.let(::toDataUri)
     // From here the token owns workDir; do NOT cleanup on this path.
     val token = tokenStore.add(snippet, isSecurityChecked = isSecurityChecked)
@@ -146,6 +171,50 @@ class PlaygroundCompileService(
       previewUrl = token.path,
     )
   }
+
+  /**
+   * The [PlaygroundMode.REMOTE_COMPOSE] terminal: capture the snippet's `.rc` document and hand it
+   * to the document store as an expiring `/d/<id>` permalink. Unlike the live CMP/Android modes, RC
+   * needs no daemon session — the document, not a session, is the deliverable (PLAYGROUND.md §3).
+   * So the work dir is released as soon as the one-shot capture is done and **no** token is minted;
+   * a snippet that emits no document, or a store that refuses the bytes, is a clean failure with
+   * neither a token nor a permalink.
+   */
+  private fun remoteComposeResult(
+    snippet: PlaygroundTokenStore.PlaygroundSnippet,
+    diagnostics: List<PlaygroundDiagnostic>,
+    workDir: Path,
+    isSecurityChecked: Boolean,
+  ): PlaygroundRunResponse {
+    val errors = PlaygroundErrorsWire.project(diagnostics)
+    val bytes = captureRemoteDocument(snippet)
+    // The capture reads the compiled classes, then RC is done with them — it never stands up a live
+    // session — so the work dir goes now regardless of what the capture produced.
+    cleanup(workDir)
+    if (bytes == null) {
+      return PlaygroundRunResponse(
+        diagnostics = diagnostics,
+        errors = errors,
+        exception =
+          "no Remote Compose document was captured — a remote-compose snippet must declare an " +
+            "@Preview that emits a RemoteDocument",
+      )
+    }
+    val url =
+      publishRemoteDocument(documentLabel(snippet), bytes, isSecurityChecked)
+        ?: return PlaygroundRunResponse(
+          diagnostics = diagnostics,
+          errors = errors,
+          exception = "remote-compose documents are not accepted on this host",
+        )
+    return PlaygroundRunResponse(diagnostics = diagnostics, errors = errors, documentUrl = url)
+  }
+
+  /**
+   * A short, human label for the published document — the preview's simple name, `.rc`-suffixed.
+   */
+  private fun documentLabel(snippet: PlaygroundTokenStore.PlaygroundSnippet): String =
+    snippet.previewId.substringAfterLast('.').ifBlank { "snippet" } + ".rc"
 
   /**
    * Write each file to [srcDir] under a safe, unique `.kt` name; return the staged source paths.
