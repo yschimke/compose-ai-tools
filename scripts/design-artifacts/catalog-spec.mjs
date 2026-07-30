@@ -17,6 +17,7 @@ import {
   PRIORITIES,
   modePriority as modePriorityOf,
   specDefersAnything,
+  defersEveryPreview,
 } from "./catalog-priority.mjs";
 
 // The built-in Compose preview annotation. Any function annotated with it — or
@@ -477,6 +478,12 @@ export function closest(name, candidates) {
  *   cheaper build, it is coverage silently dropped from the published sheet. Omitted
  *   (the structural-only CLI path, which can't know how the publish will be invoked)
  *   stays lenient; the driver enforces it for real at export time.
+ * @param {boolean} [opts.annotatedInventory]  Whether the module supplies catalog entries via
+ *   `@CatalogComponent` annotations (see [hasCatalogAnnotations]). `false` (scanned, none found)
+ *   means `spec.groups` is the whole inventory, which unlocks two checks that need that certainty:
+ *   a `groups`-less spec is rejected as empty, and an all-deferred spec is rejected (issue #2993).
+ *   Omitted (no module scan) stays lenient so a hybrid annotation-plus-spec catalog isn't
+ *   wrongly rejected.
  * @returns {{ errors: string[], warnings: string[] }}
  */
 export function validateSpec(spec, opts = {}) {
@@ -501,6 +508,27 @@ export function validateSpec(spec, opts = {}) {
       "this spec defers coverage (`priority: \"deferred\"` / `modePriority`) but the publish has no " +
         "live path — a deferred entry is only resolvable where the serve host can re-render it. " +
         "Publish with --publish-live-bundle (or a buildable --source-module), or drop the deferral.",
+    );
+  }
+  // An all-deferred catalog (issue #2993): every referenced preview is deferred, so the render
+  // filter would be empty — which both design-artifacts workflows read as "render everything", the
+  // exact opposite of what deferral asks for, while the published bundle carries no baked sticker at
+  // all. Rejected here rather than served by a render-none sentinel, matching the positive-list
+  // philosophy: a catalog must keep at least one entry required.
+  //
+  // Only fires when the spec's `groups` are known to be the complete inventory — `annotatedInventory
+  // === false` means the module was scanned and declares no `@CatalogComponent`. A hybrid catalog can
+  // carry its required entries as annotations and place only deferred overrides in `spec.groups`; the
+  // driver merges those annotation entries in as `required` (`mergeCatalogGroups`), so it is not truly
+  // all-deferred, and an empty pre-flight filter correctly renders the annotation-supplied ones. When
+  // the caller can't tell (`annotatedInventory` undefined — the structural-only path), stay lenient,
+  // the same bargain the `groups`-omitted and `liveBundle` checks make.
+  if (opts.annotatedInventory === false && defersEveryPreview(spec)) {
+    errors.push(
+      "this catalog defers every entry (`priority: \"deferred\"`) — no `required` preview is left, so " +
+        "the render filter would be empty and both workflows would read that as *render everything* " +
+        "instead of skipping the deferred renders, while the published bundle would carry no baked " +
+        "stickers. Keep at least one entry `required`.",
     );
   }
   // `groups` is optional: a catalog can supply its whole component inventory from

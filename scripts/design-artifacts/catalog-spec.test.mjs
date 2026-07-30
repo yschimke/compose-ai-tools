@@ -744,6 +744,77 @@ test("validateSpec rejects entry deferral when the publish has no live path", ()
   assert.match(validateSpec(variantSpec, { liveBundle: false }).errors[0], /no live path/);
 });
 
+test("validateSpec rejects an all-deferred catalog once it knows groups is the whole inventory (#2993)", () => {
+  // Every entry deferred → the render filter would be empty → both workflows read that as
+  // render-everything, and the published bundle carries no baked stickers. Fires only when the
+  // module was scanned and has no @CatalogComponent (`annotatedInventory: false`), i.e. `groups` is
+  // the complete inventory.
+  const spec = prioritySpec([
+    { componentId: "A", preview: "Alpha", priority: "deferred" },
+    { componentId: "B", preview: "Beta", priority: "deferred" },
+  ]);
+  assert.match(validateSpec(spec, { annotatedInventory: false }).errors[0], /defers every entry/);
+  // Still rejected with a live path present — an empty sticker sheet is wrong regardless.
+  assert.match(
+    validateSpec(spec, { annotatedInventory: false, liveBundle: true }).errors[0],
+    /defers every entry/,
+  );
+  // A component whose only variants are deferred inherits the deferral, so it is all-deferred too
+  // (the case #2991 widened). Live path present, so the no-live-path gate stays quiet.
+  const inherited = prioritySpec([
+    {
+      componentId: "A",
+      preview: "Alpha",
+      priority: "deferred",
+      variants: [{ preview: "AlphaOff", state: "off" }],
+    },
+  ]);
+  assert.match(
+    validateSpec(inherited, { annotatedInventory: false, liveBundle: true }).errors[0],
+    /defers every entry/,
+  );
+  // One required entry left is enough — no all-deferred error.
+  const mixed = prioritySpec([
+    { componentId: "A", preview: "Alpha" },
+    { componentId: "B", preview: "Beta", priority: "deferred" },
+  ]);
+  assert.ok(
+    !validateSpec(mixed, { annotatedInventory: false, liveBundle: true }).errors.some((e) =>
+      /defers every entry/.test(e),
+    ),
+  );
+});
+
+test("validateSpec does not flag an all-deferred spec that may have annotation-supplied required entries (#2993)", () => {
+  // A hybrid catalog can leave its required entries in @CatalogComponent annotations and place only
+  // deferred overrides in `spec.groups`; the driver merges those in as `required`. So when the caller
+  // can't rule that out — `annotatedInventory` is `true` or unknown — the all-deferred check must stay
+  // quiet, or it blocks a supported config before rendering.
+  const spec = prioritySpec(
+    [{ componentId: "A", preview: "Alpha", priority: "deferred" }],
+    // A live path so the no-live-path gate doesn't fire and mask what we're asserting.
+  );
+  assert.ok(
+    !validateSpec(spec, { annotatedInventory: true, liveBundle: true }).errors.some((e) =>
+      /defers every entry/.test(e),
+    ),
+    "annotation inventory present → not all-deferred",
+  );
+  assert.ok(
+    !validateSpec(spec, { liveBundle: true }).errors.some((e) => /defers every entry/.test(e)),
+    "annotation state unknown → stay lenient",
+  );
+});
+
+test("validateSpec reports the groups-shape error, not a TypeError, on malformed groups (#2993)", () => {
+  // The all-deferred predicate walks `groups`; a non-array `groups` (or a group whose `components`
+  // isn't an array) must not throw before the structural shape check reports it.
+  assert.doesNotThrow(() => validateSpec({ system: "s", title: "t", groups: {} }, { annotatedInventory: false }));
+  const { errors } = validateSpec({ system: "s", title: "t", groups: {} }, { annotatedInventory: false });
+  assert.ok(errors.some((e) => /`groups`, when present, must be a non-empty array/.test(e)));
+  assert.ok(!errors.some((e) => /defers every entry/.test(e)));
+});
+
 test("validateSpec still resolves a deferred entry's preview name against the module", () => {
   // A deferred entry is rendered by the serve host from the same module, so a name that matches
   // nothing is just as broken — it simply breaks on a viewer's request instead of in CI.

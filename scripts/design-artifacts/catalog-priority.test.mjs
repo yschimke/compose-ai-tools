@@ -13,6 +13,7 @@ import {
   previewForImage,
   previewNamesByPriority,
   renderFilterPatterns,
+  defersEveryPreview,
   specDefersAnything,
   splitDeferredImages,
   splitDeferredVariants,
@@ -157,6 +158,69 @@ test("renderFilterPatterns is empty when nothing is deferred, and positive when 
     // the render set and the published set agree — the invariant this whole module exists to keep.
     ["Alpha"],
   );
+});
+
+test("defersEveryPreview flags an all-deferred catalog and nothing else (#2993)", () => {
+  // The degenerate case: every entry deferred, no required preview left. This is the empty filter
+  // that both workflows would read as render-all.
+  assert.equal(
+    defersEveryPreview(spec([{ componentId: "A", preview: "Alpha", priority: "deferred" }])),
+    true,
+  );
+  // A variant of a deferred component inherits deferral, so an all-deferred-with-variants catalog is
+  // caught too (the case #2991 widened).
+  assert.equal(
+    defersEveryPreview(
+      spec([
+        {
+          componentId: "A",
+          preview: "Alpha",
+          priority: "deferred",
+          variants: [{ preview: "AlphaOff", state: "off" }],
+        },
+      ]),
+    ),
+    true,
+  );
+  // One required entry left over is enough — the filter is a real, non-empty render set.
+  assert.equal(
+    defersEveryPreview(
+      spec([
+        { componentId: "A", preview: "Alpha" },
+        { componentId: "B", preview: "Beta", priority: "deferred" },
+      ]),
+    ),
+    false,
+  );
+  // A shared function required by another entry keeps the catalog non-empty.
+  assert.equal(
+    defersEveryPreview(
+      spec([
+        { componentId: "A", preview: "Alpha", priority: "deferred" },
+        { componentId: "B", preview: "Alpha" },
+      ]),
+    ),
+    false,
+  );
+  // Deferring nothing is the ordinary render-all case, not the all-deferred defect.
+  assert.equal(defersEveryPreview(spec([{ componentId: "A", preview: "Alpha" }])), false);
+  // Mode-only deferral never empties the preview list, so it can't trip this.
+  assert.equal(
+    defersEveryPreview(
+      spec([{ componentId: "A", preview: "Alpha" }], {
+        modes: ["light", "dark"],
+        modePriority: { "*": "deferred" },
+      }),
+    ),
+    false,
+  );
+  // An empty catalog defers nothing.
+  assert.equal(defersEveryPreview(spec([])), false);
+  // Tolerant of malformed structure — a non-array `groups` / `components` can't throw here; the shape
+  // error is validateSpec's job to report (#2993).
+  assert.doesNotThrow(() => defersEveryPreview({ groups: {} }));
+  assert.equal(defersEveryPreview({ groups: {} }), false);
+  assert.equal(defersEveryPreview({ groups: [{ name: "G", components: {} }] }), false);
 });
 
 test("splitDeferredImages keeps the untagged sticker and drops deferred themes", () => {
