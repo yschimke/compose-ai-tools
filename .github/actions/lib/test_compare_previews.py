@@ -1127,10 +1127,15 @@ class PartialRenderGuardTest(unittest.TestCase):
             ]},
             self._baselines(12),
         )
+        # No confirmed "### Removed" heading...
         self.assertNotIn("### Removed", out)
         self.assertIn("[!CAUTION]", out)
         self.assertIn("10 are missing", out)
-        self.assertIn("not** reported as Removed", out)
+        # ...but the missing entries are still surfaced, relabelled unverified,
+        # so a genuine large deletion is never permanently hidden.
+        self.assertIn("unverified", out)
+        self.assertIn("Missing this run", out)
+        self.assertIn("`Fn5`", out)
         # Never collapses to the no-op sentinel — the warning must post.
         self.assertNotIn("No visual changes detected.", out)
 
@@ -2221,6 +2226,10 @@ class CompareResourcesTests(unittest.TestCase):
         self.assertIn("[!CAUTION]", out)
         self.assertIn("11 are missing", out)
         self.assertIn("resource capture(s)", out)
+        # Missing captures stay visible, relabelled unverified.
+        self.assertIn("unverified", out)
+        self.assertIn("Missing this run", out)
+        self.assertIn("drawable/res5", out)
 
 
 class LoadBaselinesTest(unittest.TestCase):

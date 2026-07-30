@@ -1009,18 +1009,21 @@ def _suspected_partial_render(removed_count: int, in_scope_total: int) -> bool:
 def _partial_render_warning(
     removed_count: int, in_scope_total: int, kind: str = "preview"
 ) -> str:
-    """The CAUTION block that replaces the Removed section when a run looks
-    truncated. Frames the shortfall as a completeness problem, not a deletion."""
+    """The CAUTION block that reframes the Removed section when a run looks
+    truncated. Frames the shortfall as a completeness question, not confirmed
+    deletions — but the missing entries are still listed (unverified) below it,
+    so a genuine large deletion is never permanently hidden."""
     rendered = in_scope_total - removed_count
     return (
         "> [!CAUTION]\n"
         f"> Expected {in_scope_total} in-scope {kind}(s) from the baseline but "
         f"this run produced only {rendered}; {removed_count} are missing. A render "
-        f"that emits far fewer entries than the baseline is far more likely "
-        f"truncated or incomplete than a PR that deliberately deleted "
-        f"{removed_count} {kind}(s), so they are **not** reported as Removed. "
-        f"Re-run the preview render; any genuine deletions will surface once the "
-        f"render is complete."
+        f"that emits far fewer entries than the baseline is more likely truncated "
+        f"or incomplete than a PR that deliberately deleted {removed_count} "
+        f"{kind}(s), so the missing entries are listed below as **unverified** "
+        f"rather than reported as confirmed deletions. If this run was truncated, "
+        f"re-run the preview render and they'll return; if the render was complete, "
+        f"they are genuine deletions."
     )
 
 
@@ -1117,14 +1120,14 @@ def cmd_compare(args: argparse.Namespace) -> int:
             removed.append((key, bl_info))
 
     # A removal set that's a large fraction of the in-scope baseline is far
-    # more likely a truncated render than a real deletion — reporting it as
-    # "Removed" would be indistinguishable from a PR that deleted that many
-    # previews. Suppress the section and raise a loud incompleteness warning
-    # instead (issue #2949).
+    # more likely a truncated render than a real deletion — reporting it as a
+    # confirmed "Removed" section would be indistinguishable from a PR that
+    # deleted that many previews. When it trips, we don't drop the entries
+    # (that would permanently hide a genuine large deletion, which can't be
+    # told apart from a truncated render without an explicit completeness
+    # signal — issue #2949's item 3); instead we relabel them as *unverified*
+    # missing and lead with a loud incompleteness warning.
     partial_render = _suspected_partial_render(len(removed), in_scope_baseline)
-    removed_suppressed = len(removed)
-    if partial_render:
-        removed = []
 
     failures = _collect_failures(current)
 
@@ -1149,7 +1152,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
         lines.append("")
 
     if partial_render:
-        lines.append(_partial_render_warning(removed_suppressed, in_scope_baseline))
+        lines.append(_partial_render_warning(len(removed), in_scope_baseline))
         lines.append("")
 
     if ab_groups:
@@ -1230,11 +1233,24 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
     if removed:
         fn_set = {bl_info.get("functionName", "?") for _, bl_info in removed}
-        lines.append(f"### Removed ({len(removed)} variant(s))")
-        lines.append("")
-        for fn in sorted(fn_set):
-            lines.append(f"- ~`{fn}`~")
-        lines.append("")
+        if partial_render:
+            # Relabelled by the caution above — visible, but not asserted as
+            # deletions, so a reviewer can still see exactly what went missing.
+            lines.append(
+                f"<details><summary>Missing this run ({len(removed)} variant(s), "
+                f"{len(fn_set)} function(s)) — unverified, see caution above</summary>"
+            )
+            lines.append("")
+            for fn in sorted(fn_set):
+                lines.append(f"- `{fn}`")
+            lines.append("")
+            lines.append("</details>")
+        else:
+            lines.append(f"### Removed ({len(removed)} variant(s))")
+            lines.append("")
+            for fn in sorted(fn_set):
+                lines.append(f"- ~`{fn}`~")
+            lines.append("")
 
     if failures:
         # Group by (module, functionName) so multi-capture failures land
@@ -1691,11 +1707,9 @@ def cmd_compare_resources(args: argparse.Namespace) -> int:
 
     # Same partial-render guard as the composable path: a removal set that's a
     # large fraction of the in-scope baseline is far more likely a truncated
-    # render than a real deletion, so suppress the section and warn loudly.
+    # render than a real deletion. The missing entries are relabelled unverified
+    # (not dropped) and led with a loud warning, never reported as confirmed.
     partial_render = _suspected_partial_render(len(removed), in_scope_baseline)
-    removed_suppressed = len(removed)
-    if partial_render:
-        removed = []
 
     failures = _collect_failures(current)
 
@@ -1711,7 +1725,7 @@ def cmd_compare_resources(args: argparse.Namespace) -> int:
 
     if partial_render:
         lines.append(
-            _partial_render_warning(removed_suppressed, in_scope_baseline, kind="resource capture")
+            _partial_render_warning(len(removed), in_scope_baseline, kind="resource capture")
         )
         lines.append("")
 
@@ -1786,11 +1800,25 @@ def cmd_compare_resources(args: argparse.Namespace) -> int:
         # noise.
         rm_resources = sorted({(bl_info.get("module", "?"), bl_info.get("resourceId", "?"))
                                for _, bl_info in removed})
-        lines.append(f"### Removed ({len(removed)} variant(s) across {len(rm_resources)} resource(s))")
-        lines.append("")
-        for module, resource_id in rm_resources:
-            lines.append(f"- ~`{resource_id}`~ ({module})")
-        lines.append("")
+        if partial_render:
+            # Relabelled by the caution above — visible, but not asserted as
+            # deletions, so a reviewer can still see exactly what went missing.
+            lines.append(
+                f"<details><summary>Missing this run ({len(removed)} variant(s) "
+                f"across {len(rm_resources)} resource(s)) — unverified, see caution "
+                f"above</summary>"
+            )
+            lines.append("")
+            for module, resource_id in rm_resources:
+                lines.append(f"- `{resource_id}` ({module})")
+            lines.append("")
+            lines.append("</details>")
+        else:
+            lines.append(f"### Removed ({len(removed)} variant(s) across {len(rm_resources)} resource(s))")
+            lines.append("")
+            for module, resource_id in rm_resources:
+                lines.append(f"- ~`{resource_id}`~ ({module})")
+            lines.append("")
 
     if failures:
         # Group by (module, resourceId) so multi-capture failures collapse
