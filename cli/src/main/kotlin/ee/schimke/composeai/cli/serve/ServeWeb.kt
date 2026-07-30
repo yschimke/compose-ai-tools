@@ -35,6 +35,11 @@ object ServeWeb {
     a:hover { text-decoration: underline; }
     .cp-head { margin: 0 0 4px; font-size: 1.2rem; font-weight: 600; }
     .cp-sub { margin: 0 0 20px; font-size: 0.82rem; color: #6b6b70; }
+    /* Per-preview link to the source file on GitHub, under the viewer title. */
+    .cp-source { margin: -12px 0 20px; font-size: 0.8rem; }
+    .cp-source-link { display: inline-flex; align-items: center; gap: 5px; color: #6b6b70;
+      text-decoration: none; }
+    .cp-source-link:hover { text-decoration: underline; }
     .cp-about { margin: 0 0 24px; padding: 14px 16px; border: 1px solid #e3e3e8; border-radius: 10px;
       background: #fff; max-width: 720px; }
     .cp-about-title { margin: 0 0 6px; font-size: 0.95rem; font-weight: 600; }
@@ -385,6 +390,7 @@ object ServeWeb {
       .cp-about-ver { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
       .cp-back { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
       .cp-back:hover { background: #26262b; }
+      .cp-source-link { color: #9a9aa2; }
       .cp-prov { background: #1d1d20; border-color: #34343a; color: #a0a0a8; }
       .cp-prov-item .cp-prov-key { color: #7a7a82; }
       .cp-prov-item code { background: #2a2a30; }
@@ -650,6 +656,22 @@ object ServeWeb {
   private fun backButton(token: String, isPublic: Boolean): String {
     val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     return """<a class="cp-back" href="/$suffix">← All design systems</a>"""
+  }
+
+  /**
+   * The per-preview "source" link shown under the viewer's title — an anchor to this preview's
+   * source file on GitHub. [href] is the resolved blob URL (from [ServeUrls.githubBlobUrl]);
+   * null/blank ⇒ nothing is rendered (a local session with no delivery provenance, or a preview
+   * whose manifest recorded no source path). [path] is the module-relative source path, surfaced as
+   * the link's tooltip so hovering names the file. Both the URL and the path are attribute-escaped.
+   */
+  private fun sourceLinkHtml(href: String?, path: String?): String {
+    val url = href?.takeIf { it.isNotBlank() } ?: return ""
+    val title =
+      path?.takeIf { it.isNotBlank() }?.let { " title=\"${WebEscaping.htmlEscape(it)}\"" } ?: ""
+    return "\n      <p class=\"cp-source\">" +
+      "<a class=\"cp-source-link\" href=\"${WebEscaping.htmlEscape(url)}\"$title>" +
+      "$GITHUB_ICON source</a></p>"
   }
 
   /**
@@ -3008,6 +3030,14 @@ object ServeWeb {
     degradations: List<ServeDegradation> = emptyList(),
     /** Absolute viewer + PNG URLs for Open Graph/Twitter link previews. */
     unfurl: UnfurlMetadata? = null,
+    /**
+     * Fully-formed GitHub link to this preview's source file, when it resolves — the caller builds
+     * it from the session's delivery provenance (repo + branch) and the preview's `sourceFile` via
+     * [ServeUrls.githubBlobUrl]. When non-null the header shows a "source" link beside the preview
+     * label; null (a local session with no provenance, or a preview with no recorded source)
+     * renders no link, matching how the footer/landing source links depend on a known repo.
+     */
+    sourceHref: String? = null,
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
@@ -3333,7 +3363,7 @@ object ServeWeb {
     val body =
       """
       <h1 class="cp-head"><a href="$basePath/$q">← previews</a>${trustBadge(trust)}</h1>
-      ${degradeBanner(degradations)}<p class="cp-sub" title="$idText">$label</p>
+      ${degradeBanner(degradations)}<p class="cp-sub" title="$idText">$label</p>${sourceLinkHtml(sourceHref, preview.sourceFile)}
       $switchers
       <div class="cp-viewer-bar">
         $navToggle

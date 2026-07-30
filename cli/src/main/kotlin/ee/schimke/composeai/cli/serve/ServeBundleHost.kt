@@ -104,6 +104,16 @@ class ServeBundleHost(
   private val variantMeta: Map<String, ServeCatalogStore.VariantMeta> = readVariantMeta()
 
   /**
+   * Per-preview `id → module-relative sourceFile`, read from the bundle's `previews.json` manifest.
+   * Empty when the bundle carries no manifest (a bare `previews/`-only WebEmbed) or its entries
+   * recorded no source path. Feeds [ServePreview.sourceFile] so the viewer can link a preview to
+   * its source on GitHub when the session carries delivery provenance. Best-effort: an unreadable /
+   * malformed manifest degrades to empty rather than failing the host (matching [readVariantMeta] /
+   * [declaredThemes]).
+   */
+  private val sourceFilesById: Map<String, String> = readSourceFiles()
+
+  /**
    * The live-only ids this host lists, minus any that turned out to have a baked PNG after all (a
    * catalog that both baked and deferred the same route — belt and braces: the baked pixels win, so
    * the id keeps its ordinary snapshot lane).
@@ -149,6 +159,7 @@ class ServeBundleHost(
           section = meta?.section,
           group = meta?.group,
           catalogOrder = meta?.order,
+          sourceFile = sourceFilesById[id],
         )
       }
       .toList()
@@ -183,6 +194,25 @@ class ServeBundleHost(
         MapSerializer(String.serializer(), ServeCatalogStore.VariantMeta.serializer()),
         text,
       )
+    } catch (e: Exception) {
+      emptyMap()
+    }
+  }
+
+  /**
+   * Best-effort read of `id → sourceFile` from the bundle's `previews.json`. Mirrors
+   * [declaredThemes] (same manifest, same fail-soft): absent / unreadable manifest → empty map;
+   * entries without a `sourceFile` are dropped, so `sourceFilesById[id]` is null for them and no
+   * source link renders.
+   */
+  private fun readSourceFiles(): Map<String, String> {
+    val previewsJson = File(bundleDir, PREVIEWS_JSON).toOkioPath()
+    if (!fileSystem.exists(previewsJson)) return emptyMap()
+    return try {
+      val text = fileSystem.read(previewsJson) { readUtf8() }
+      val manifest =
+        OVERRIDES_JSON.decodeFromString(ee.schimke.composeai.cli.PreviewManifest.serializer(), text)
+      manifest.previews.mapNotNull { p -> p.sourceFile?.let { p.id to it } }.toMap()
     } catch (e: Exception) {
       emptyMap()
     }

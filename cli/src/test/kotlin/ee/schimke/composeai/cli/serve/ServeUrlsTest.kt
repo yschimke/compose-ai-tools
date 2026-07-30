@@ -75,4 +75,41 @@ class ServeUrlsTest {
     // A bare component id (no variant) is passed through unchanged.
     assertEquals("/wasm/compose-m3/?id=switch", ServeUrls.wasmAppSrc("compose-m3", "switch"))
   }
+
+  @Test
+  fun `github blob url builds a source link, per-segment encoded`() {
+    assertEquals(
+      "https://github.com/yschimke/compose-ai-tools/blob/main/" +
+        "samples/android/src/main/kotlin/com/example/Home.kt",
+      ServeUrls.githubBlobUrl(
+        "yschimke/compose-ai-tools",
+        "main",
+        "samples/android/src/main/kotlin/com/example/Home.kt",
+      ),
+    )
+    // A multi-segment delivery branch is a valid ref path (matches the provenance tree link shape).
+    assertEquals(
+      "https://github.com/o/r/blob/design-artifacts/compose-m3/src/main/kotlin/A.kt",
+      ServeUrls.githubBlobUrl("o/r", "design-artifacts/compose-m3", "src/main/kotlin/A.kt"),
+    )
+    // '/' separators survive; spaces and unsafe chars in a segment are percent-encoded.
+    assertEquals(
+      "https://github.com/o/r/blob/main/src/My%20Screen.kt",
+      ServeUrls.githubBlobUrl("o/r", "main", "src/My Screen.kt"),
+    )
+    // Backslashes normalize and a leading slash is trimmed.
+    assertEquals(
+      "https://github.com/o/r/blob/main/src/main/A.kt",
+      ServeUrls.githubBlobUrl("o/r", "main", "\\src\\main\\A.kt"),
+    )
+  }
+
+  @Test
+  fun `github blob url is null when any part is missing`() {
+    assertEquals(null, ServeUrls.githubBlobUrl(null, "main", "src/A.kt"))
+    assertEquals(null, ServeUrls.githubBlobUrl("o/r", null, "src/A.kt"))
+    assertEquals(null, ServeUrls.githubBlobUrl("o/r", "main", null))
+    assertEquals(null, ServeUrls.githubBlobUrl("o/r", "main", "   "))
+    assertEquals(null, ServeUrls.githubBlobUrl("", "main", "src/A.kt"))
+  }
 }

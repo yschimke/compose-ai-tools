@@ -91,6 +91,27 @@ object ServeUrls {
   }
 
   /**
+   * GitHub blob URL for a preview's source file: `https://github.com/<repo>/blob/<branch>/<path>`.
+   * [repo] is `owner/name`; [branch] is the delivery/source branch (may itself contain `/`, e.g.
+   * `design-artifacts/compose-m3` — a valid ref path, same shape the provenance tree link already
+   * relies on); [sourceFile] is the module-relative path recorded in the manifest.
+   *
+   * Returns null when any component is missing/blank, so a caller can `?.let` the link into
+   * existence only when it actually resolves (a local session with no provenance, or a preview with
+   * no recorded source, then renders no link). The [sourceFile] path is percent-encoded per segment
+   * so `/` separators survive while spaces and other unsafe characters are escaped; [repo] and
+   * [branch] are passed through verbatim to match the existing provenance links.
+   */
+  fun githubBlobUrl(repo: String?, branch: String?, sourceFile: String?): String? {
+    val r = repo?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val b = branch?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val path =
+      sourceFile?.replace('\\', '/')?.trim()?.trim('/')?.takeIf { it.isNotEmpty() } ?: return null
+    val encoded = path.split('/').joinToString("/") { WebEscaping.urlEncodeSegment(it) }
+    return "https://github.com/$r/blob/$b/$encoded"
+  }
+
+  /**
    * Constant-time token comparison — avoids leaking how many leading characters matched via timing.
    * Both sides are compared as UTF-8 bytes; length mismatches short-circuit safely inside
    * [MessageDigest.isEqual] (which is itself constant-time for equal-length inputs).

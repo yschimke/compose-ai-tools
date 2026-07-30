@@ -2074,6 +2074,13 @@ class ServeHttpServer(
           // catalog-level reason (no live bundle, unverified, …) alongside the per-control note.
           degradations = renderHost.degradations,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = imageUrl),
+          // Per-preview: link the preview to its source file on GitHub when the session carries
+          // delivery provenance (repo + branch) and the manifest recorded a source path. A local /
+          // unprovenanced session yields null → no link.
+          sourceHref =
+            catalogBundleHost(renderHost)?.provenance?.let { prov ->
+              ServeUrls.githubBlobUrl(prov.repo, prov.branch, preview.sourceFile)
+            },
         ),
         ContentType.Text.Html,
       )
