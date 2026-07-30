@@ -11,15 +11,49 @@ harness fills `rc.jvm.output`, and `rc-compare.mjs --embedded-jvm` reads it back
 links libGL and draws offscreen, so its Gradle test runs under `xvfb-run` with the libGL the
 `desktop-render` deps step installs (that step now also fires on this input).
 
+## Produced by running exactly what the workflow runs — against the real remote-m3 bundle
+
+In-session, on this machine, over the real `remote-m3` catalog (24 `ir/*.rc` documents):
+
+```sh
+# 1. render the real catalog to a bundle (Robolectric baked PNGs + ir/*.rc)
+compose-preview bundle pack --module samples:design-catalog-remote-m3 --with-semantics -o bundle.png
+
+# 2. stage the documents once (shared by both embedded lanes)
+node rc-compare.mjs --bundle bundle.png --player <rc-player>/bundle.js --out out --stage-embedded rc-in
+#    -> rc-compare: staged 24 document(s)
+
+# 3. Android embedded lane
+./gradlew :third-party-rc-embedded-player:testDebugUnitTest --no-daemon --rerun \
+  -Prc.embedded.input=rc-in -Prc.embedded.output=rc-out            # BUILD SUCCESSFUL; 24 PNGs
+
+# 4. cmp-jvm lane (Compose Desktop / Skiko, drawing offscreen)
+./gradlew :third-party-rc-embedded-player-jvm:test --no-daemon --rerun \
+  -Prc.jvm.input=rc-in -Prc.jvm.output=rc-jvm-out                  # BUILD SUCCESSFUL; 24 PNGs, 0 errors
+
+# 5. render the four-lane page
+node rc-compare.mjs --bundle bundle.png --player <rc-player>/bundle.js --out out \
+  --system remote-m3 --title remote-m3 --embedded rc-out --embedded-jvm rc-jvm-out
+#    -> 24/24 rendered, mean mismatch 1.16%
+```
+
+Result: **JS mean 1.16%, embedded mean 1.05%, cmp-jvm mean 2.07%**, 24 scored in every lane. The
+cmp-jvm renders are real Skiko rasterizations of the real documents — the star icon, the
+`Morning run / Heart rate` watch face, the buttons and cards all draw.
+
+> In this Nix-based agent container skiko's `FontMgr`/GL natives are reached via `LD_LIBRARY_PATH`
+> (fontconfig + freetype + libGL); on the GitHub runner the workflow's `desktop-render` deps step
+> installs those as system libs (`libgl1 libfreetype6 libfontconfig1 …`), so CI needs no such dance.
+
 ## Compact by design — one extra column, not two
 
-The point of the layout choice: the JS and embedded lanes each take **two** columns (the render and
-its full pixel diff, always shown). The cmp-jvm lane takes **one** — the render, with its pixel diff
-collapsed into a `▶ pixel diff` disclosure directly beneath the cell. A reviewer scanning the page
-sees a fourth render inline without a fourth full-height diff column pushing everything sideways; the
-diff is one click away when a row actually diverges.
+The JS and embedded lanes each take **two** columns (the render and its full pixel diff, always
+shown). The cmp-jvm lane takes **one** — the render, with its pixel diff collapsed into a
+`▶ pixel diff` disclosure directly beneath the cell. A reviewer sees a fourth render inline without a
+fourth full-height diff column pushing everything sideways; the diff is one click away when a row
+diverges.
 
-Compact (default — the cmp-jvm diff folded):
+Compact (default — the cmp-jvm diff folded; header + the diverging rows):
 
 ![rc-compare with the cmp-jvm lane, diffs folded](rc-compare-four-lane-compact.png)
 
@@ -27,40 +61,30 @@ Expanded (the cmp-jvm `▶ pixel diff` disclosures opened):
 
 ![rc-compare with the cmp-jvm lane, diffs expanded](rc-compare-four-lane-expanded.png)
 
-The score chips in the left summary column carry all four readings per row (`JS`, `EMBEDDED`,
-`CMP-JVM`), and the page header gains a `cmp-jvm player:` summary line. A row whose baked PNG is
-fully transparent still reads `no reference` in every lane and stays out of the means.
-
-## How these images were produced
-
-`rc-compare.html` is a visual surface with no runnable capture path in a headless container for the
-real per-document renders (they need the `design-artifacts/remote-m3` bundle plus Skiko), so this
-evidence is the page emitter run over the checked-in fixture model — the same
-`rc-compare-fixture.mjs` the embedded lane uses, now extended with the cmp-jvm lane so any future
-change to the page gets before/after evidence for this column for free:
-
-```sh
-cd scripts/design-artifacts
-npm ci
-node rc-compare-fixture.mjs --out /tmp/rc-fixture   # writes rc-compare.html + fixture images
-# screenshot /tmp/rc-fixture/rc-compare.html with the bundled Playwright
-```
-
-The real per-document renders come from CI: the `remote-m3` catalog — the only tier shipping
-`ir/*.rc` — sets `rc-embedded-jvm-lane: true`, so the diff bot's published page scores every document
-through the desktop player against its baked PNG.
-
 ## Why the fourth lane earns its keep
 
 Scoring the same document through a *third* independent player makes a divergence attributable one
-step further: a row where only the cmp-jvm column is off points at the desktop draw seam
-(text/image/skiko) rather than the shared expression evaluator both embedded players run, or the
-TypeScript player. It also exercises the platform-neutral draw path off Android for real — a file
-that only compiles as "neutral" but mis-renders on the JVM shows up here as a diff, not a green pass.
+step further. `WatchScreenRemote` is the clearest case in this run:
+
+| preview | JS | embedded | cmp-jvm | reading |
+|---|---|---|---|---|
+| `WatchScreenRemote` | 1.92% | **21.16%** | **31.96%** | the `RcPlayer` draw path (shared by both embedded lanes) wraps the watch-face text differently from the baked/JS render — a draw-path issue, not a JS-player or catalog one |
+| `IconRemote` | **5.83%** | 0.00% | 0.00% | the reverse — only the JS player draws the star too small |
+
+A row where only the cmp-jvm column moves would point at the desktop seam (text/image/skiko) rather
+than the shared evaluator; here cmp-jvm tracks the Android embedded player, which is the expected
+result and itself a signal the platform-neutral draw path behaves the same off Android.
+
+## Keeping future coverage automatic
+
+`rc-compare-fixture.mjs` (the synthetic page emitter) is extended with this lane too, so a *page-
+layout* change to `rc-compare.html` can be screenshotted for before/after in one command without the
+full catalog render. This evidence is the real thing; the fixture is the fast path for iterating on
+the page chrome.
 
 ## Cost, and why it is opt-in
 
-Same posture as the Robolectric lane: this is Gradle/Skiko work, not Node, so it defaults to off. A
-runner without the desktop deps, or a harness that fails to load the Skia natives, degrades to a page
-without the cmp-jvm column and a `::warning::` rather than failing the render this job exists to
-publish.
+Gradle/Skiko work, not Node, so it defaults to off. The cmp-jvm harness ran in ~30s for 24 documents
+here. A runner without the desktop deps, or a harness that fails to load the Skia natives, degrades
+to a page without the cmp-jvm column and a `::warning::` rather than failing the render this job
+exists to publish.
