@@ -48,6 +48,25 @@ object PreviewNameFilter {
     return if (pkg.isEmpty()) functionName else "$pkg.$functionName"
   }
 
+  /**
+   * True when a preview **id** matches at least one of [patterns], or when [patterns] is empty.
+   *
+   * The id-level counterpart of [matches], for selecting individual members of one `@Preview`
+   * function's fan-out (issue #2966). A multipreview member or `@PreviewParameter` row is its own
+   * `PreviewInfo` with a distinct `id` (`FilledButton_Light` / `FilledButton_Dark`) but the *same*
+   * `functionName`, so [matches] can only ever keep or drop the whole function — which is why a
+   * catalog's `modePriority` could thin its published sticker set but not its render.
+   *
+   * Ids are opaque strings rather than named code, so only one candidate is compared (no FQN
+   * variant), but the glob-vs-substring rules are deliberately identical to [matches] so a single
+   * documented pattern syntax covers both filters.
+   */
+  fun matchesId(patterns: Collection<String>, id: String): Boolean {
+    val cleaned = patterns.map(String::trim).filter(String::isNotEmpty)
+    if (cleaned.isEmpty()) return true
+    return cleaned.any { matchOne(it, id, id) }
+  }
+
   private fun matchOne(pattern: String, simpleName: String, fqName: String): Boolean =
     if (pattern.any { it == '*' || it == '?' }) {
       val regex = globToRegex(pattern)
