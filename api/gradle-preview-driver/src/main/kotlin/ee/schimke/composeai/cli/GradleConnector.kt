@@ -242,17 +242,7 @@ class GradleConnection(
     // Show the captured stderr (Gradle's error output)
     val captured = errorCapture.toString().trim()
     if (captured.isNotEmpty()) {
-      // Extract actionable lines from Gradle output
-      val lines = captured.lines()
-      val actionable = lines.filter { line ->
-        line.contains("error:", ignoreCase = true) ||
-          line.contains("FAILURE:") ||
-          line.contains("What went wrong") ||
-          line.contains("not found") ||
-          line.startsWith("e: ") ||
-          line.startsWith("> ") ||
-          line.startsWith("* ")
-      }
+      val actionable = actionableFailureLines(captured)
       if (actionable.isNotEmpty()) {
         for (line in actionable) {
           System.err.println(line)
@@ -452,4 +442,35 @@ private fun Throwable.causeMessages(): List<String> {
     cause = cause.cause
   }
   return messages
+}
+
+/**
+ * The lines worth showing from Gradle's captured stderr when a build fails, without `--verbose`.
+ *
+ * Everything between `* What went wrong:` and the next `* <section>:` header is kept **verbatim**,
+ * whatever it looks like. The per-line patterns only recognise Gradle's decorated cause lines (`>
+ * …`) and compiler diagnostics, so a reason written as plain prose — `Execution failed for task
+ * ':a:b'.`, or a task's own multi-line `GradleException` text — used to match nothing and be
+ * dropped, printing `* What went wrong:` followed immediately by `* Try:` and no reason at all.
+ * That empty block is worse than noise: `printBuildFailure`'s `captured.contains("What went
+ * wrong")` check then suppresses the exception-chain fallback too, so the run reports a failure
+ * with no cause anywhere in its output and the only way to learn what broke is to re-run the whole
+ * render with `--verbose` — which, in CI, means nobody can.
+ *
+ * Blank lines inside the block are dropped so the section stays tight (Gradle puts one before the
+ * next header).
+ */
+internal fun actionableFailureLines(captured: String): List<String> {
+  var inWhatWentWrong = false
+  return captured.lines().filter { line ->
+    val header = line.startsWith("* ")
+    if (header) inWhatWentWrong = line.contains("What went wrong")
+    header ||
+      (inWhatWentWrong && line.isNotBlank()) ||
+      line.contains("error:", ignoreCase = true) ||
+      line.contains("FAILURE:") ||
+      line.contains("not found") ||
+      line.startsWith("e: ") ||
+      line.startsWith("> ")
+  }
 }
