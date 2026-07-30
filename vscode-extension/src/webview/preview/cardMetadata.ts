@@ -24,6 +24,7 @@ import {
     buildVariantLabel,
     isAnimatedPreview,
     isWearPreview,
+    writeNavDataset,
 } from "./cardData";
 import type {
     CapturePresentation,
@@ -64,6 +65,10 @@ export function refreshCardMetadata(
     card.dataset.function = p.functionName;
     card.dataset.group = p.params.group || "";
     card.dataset.wearPreview = isWearPreview(p) ? "1" : "0";
+    // Keep the title's navigation destination in step with the reseeded
+    // tooltip below — otherwise a reused card whose inferred target changed
+    // would advertise the new component but still open the old one.
+    writeNavDataset(card, p);
     const title = card.querySelector<HTMLButtonElement>(".card-title");
     if (title) {
         title.textContent =

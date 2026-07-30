@@ -156,6 +156,24 @@ export function previewSourceTarget(p: PreviewInfo): PreviewSourceTarget {
 }
 
 /**
+ * Stamp the title's navigation destination onto the card's dataset so the
+ * click handler reads it fresh at click time. Called on initial build and on
+ * every manifest reseed (`refreshCardMetadata`), so a reused card whose inferred
+ * target changed navigates to the new component — matching the reseeded tooltip
+ * — rather than the one captured when the handler was first attached.
+ */
+export function writeNavDataset(card: HTMLElement, p: PreviewInfo): void {
+    const nav = previewSourceTarget(p);
+    card.dataset.navClassName = nav.className;
+    card.dataset.navFunction = nav.functionName;
+    if (nav.sourceFile) {
+        card.dataset.navSourceFile = nav.sourceFile;
+    } else {
+        delete card.dataset.navSourceFile;
+    }
+}
+
+/**
  * Hover tooltip for the card title button — `Open source: <FQN>` (or
  * `Open component: <FQN>` when the title navigates to an inferred target
  * composable), followed by a `·`-separated digest of the preview's parameters.

@@ -900,6 +900,13 @@ export type WebviewToExtension =
            * class-derived path when it is absent or doesn't match.
            */
           sourceFile?: string;
+          /**
+           * Id of the clicked preview. Lets the host resolve `sourceFile` under
+           * the preview's owning module first, so a module-relative path that
+           * also exists in a sibling module (`feature-a` vs `feature-b`) can't
+           * open the wrong module's file.
+           */
+          previewId?: string;
       }
     | { command: "selectModule"; value: string }
     /**

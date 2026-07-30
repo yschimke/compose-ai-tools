@@ -10,6 +10,7 @@ import {
     previewSourceTarget,
     sanitizeId,
     shortDevice,
+    writeNavDataset,
 } from "../webview/preview/cardData";
 import type { Capture, PreviewInfo, PreviewTarget } from "../types";
 
@@ -261,6 +262,33 @@ describe("previewSourceTarget", () => {
                 .functionName,
             "HomeScreen",
         );
+    });
+});
+
+describe("writeNavDataset", () => {
+    it("stamps the inferred component target and its sourceFile", () => {
+        const card = { dataset: {} } as unknown as HTMLElement;
+        writeNavDataset(card, preview({ targets: [componentTarget] }));
+        assert.deepStrictEqual(
+            { ...card.dataset },
+            {
+                navClassName: "com.example.HomeScreenKt",
+                navFunction: "HomeScreen",
+                navSourceFile: "src/main/kotlin/com/example/HomeScreen.kt",
+            },
+        );
+    });
+
+    it("clears a stale navSourceFile when the new destination has none", () => {
+        // Simulates a reseed of the same card onto a preview that lost its
+        // sourceFile — the old value must not linger.
+        const card = {
+            dataset: { navSourceFile: "src/old/Stale.kt" },
+        } as unknown as HTMLElement;
+        writeNavDataset(card, preview());
+        assert.strictEqual(card.dataset.navSourceFile, undefined);
+        assert.strictEqual(card.dataset.navClassName, "com.example.PreviewsKt");
+        assert.strictEqual(card.dataset.navFunction, "MyPreview");
     });
 });
 
