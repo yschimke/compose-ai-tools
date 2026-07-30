@@ -651,4 +651,61 @@ class ServeOverridesTest {
       ServeOverrides.cacheKey("preview.A", ok(mapOf("rc.b" to "2", "rc.a" to "1"))),
     )
   }
+
+  @Test
+  fun `rcPlayer maps a server-side backend id onto the remote-compose player kind`() {
+    // Both the backend wire id (`java` / `cmp-android`) and the daemon-native player-kind spelling
+    // (`view` / `embedded`) resolve to the same RemoteComposePlayerKind.
+    assertEquals(
+      ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind.VIEW,
+      ok(mapOf("rcPlayer" to "java")).remoteCompose?.player,
+    )
+    assertEquals(
+      ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind.VIEW,
+      ok(mapOf("rcPlayer" to "view")).remoteCompose?.player,
+    )
+    assertEquals(
+      ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind.EMBEDDED,
+      ok(mapOf("rcPlayer" to "cmp-android")).remoteCompose?.player,
+    )
+    assertEquals(
+      ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind.EMBEDDED,
+      ok(mapOf("rcPlayer" to "embedded")).remoteCompose?.player,
+    )
+  }
+
+  @Test
+  fun `a client-side or unavailable rcPlayer value is rejected, not silently defaulted`() {
+    // `js` replays the doc in the browser and `cmp-jvm` has no draw path, so neither is a valid
+    // server-side render backend — and any unknown value is a hard Invalid.
+    for (bad in listOf("js", "cmp-jvm", "wasm", "nonsense")) {
+      val parsed = ServeOverrides.parse(mapOf("rcPlayer" to bad))
+      assertTrue(parsed is OverrideParse.Invalid, "expected Invalid for '$bad', got $parsed")
+    }
+  }
+
+  @Test
+  fun `an absent rcPlayer leaves the remote-compose override untouched`() {
+    // No rcPlayer, no other rc facet ⇒ no remoteCompose payload at all (byte-identical wire shape).
+    assertNull(ok(emptyMap()).remoteCompose)
+    // rcPlayer folds into the same override as the profile/named-value facets.
+    val both = ok(mapOf("rcPlayer" to "cmp-android", "rcProfile" to "androidx"))
+    assertEquals(
+      ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind.EMBEDDED,
+      both.remoteCompose?.player,
+    )
+    assertEquals(RemoteComposeProfile.ANDROIDX, both.remoteCompose?.profile)
+  }
+
+  @Test
+  fun `cache key differs when the rc render backend changes`() {
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("rcPlayer" to "java"))),
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("rcPlayer" to "cmp-android"))),
+    )
+    assertNotEquals(
+      ServeOverrides.cacheKey("preview.A", ok(mapOf("rcPlayer" to "java"))),
+      ServeOverrides.cacheKey("preview.A", ok(emptyMap())),
+    )
+  }
 }

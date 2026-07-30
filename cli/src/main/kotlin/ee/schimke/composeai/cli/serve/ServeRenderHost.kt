@@ -300,6 +300,36 @@ internal constructor(
   override val gesturesRenderable: Boolean =
     "gestures" in session.initializeResult.capabilities.supportedOverrides
 
+  // The Remote Compose `player` override (VIEW ⇄ EMBEDDED server-side player) is meaningful only on
+  // the Android backend, which is the only one carrying the Remote Compose runtime — the desktop
+  // backend has no runtime and ignores it. Read the daemon's declared backend so the viewer offers
+  // the server-side java / cmp-android backend chips only where they actually re-render.
+  override val remoteComposePlayerSelectable: Boolean =
+    session.initializeResult.capabilities.backend ==
+      ee.schimke.composeai.daemon.protocol.BackendKind.ANDROID
+
+  /**
+   * A daemon-backed host offers the server-side [RcPlayerBackend.JAVA] /
+   * [RcPlayerBackend.CMP_ANDROID] lanes for a Remote Compose preview when its backend honours the
+   * player override ([remoteComposePlayerSelectable]); the client-side [RcPlayerBackend.JS] lane
+   * rides on top whenever the host can also hand back the `.rc` document. RC-ness is taken from the
+   * preview's declared Remote Compose knobs (populated for a Remote Compose preview) or a carried
+   * `.rc` doc.
+   */
+  override fun enabledRcPlayersFor(previewId: String): List<RcPlayerBackend> {
+    val isRemoteCompose =
+      hasRemoteComposeDoc(previewId) ||
+        previews.firstOrNull { it.id == previewId }?.remoteComposeKnobs?.isNotEmpty() == true
+    if (!isRemoteCompose) return emptyList()
+    return buildList {
+      if (hasRemoteComposeDoc(previewId)) add(RcPlayerBackend.JS)
+      if (remoteComposePlayerSelectable) {
+        add(RcPlayerBackend.JAVA)
+        add(RcPlayerBackend.CMP_ANDROID)
+      }
+    }
+  }
+
   private val previewIds: Set<String> = previews.map { it.id }.toHashSet()
 
   // Decodes streamFrame notification params for the live-stream lane (startStream).

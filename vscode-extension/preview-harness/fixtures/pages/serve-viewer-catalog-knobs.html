@@ -292,6 +292,12 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-live-dot { width: 9px; height: 9px; border-radius: 50%; background: #b9b9c6; flex: none; }
 .cp-live-toggle[aria-pressed="true"] .cp-live-dot { background: #1e9c3f;
   box-shadow: 0 0 0 3px rgba(30, 156, 63, 0.2); }
+/* The Remote Compose backend selector: a segmented row of .cp-live-toggle chips (js / java /
+   cmp-android / cmp-jvm) sharing one visual group. */
+.cp-rc-backends { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cp-rc-backends-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em;
+  text-transform: uppercase; color: #8a8a92; }
+.cp-rc-backend { padding: 5px 11px; }
 .cp-mode-hint { font-size: 0.72rem; color: #6b6b70; }
 /* The SVG format toggle sits beside the Live toggle (only when the session can export SVG).
    It swaps the static snapshot between the raster PNG and the resolution-independent vector
@@ -1065,6 +1071,12 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     if (gc && !gc.disabled && gc.checked) o["gestures"] = "true";
     return o;
   }
+  // RC backend selector state (the #cp-rc-backends chips). `rcPlayerBackend` is the current pick
+  // and `rcPlayerPicked` gates whether it rides the render URL — so page load stays on the
+  // instant default snapshot until the visitor actually chooses a server-side backend.
+  var rcBackendsEl = document.getElementById("cp-rc-backends");
+  var rcPlayerBackend = rcBackendsEl ? (rcBackendsEl.getAttribute("data-default") || "") : "";
+  var rcPlayerPicked = false;
   function query() {
     var o = overrides();
     // Public routes are open, so a page that arrived without a token stays token-free — only
@@ -1114,6 +1126,14 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     // knob; omitted when unchecked so the URL stays on the baked snapshot.
     var gc = document.getElementById("cp-gestures");
     if (gc && !gc.disabled && gc.checked) parts.push("gestures=true");
+    // Remote Compose render backend: a server-side player pick (java / cmp-android) rides the
+    // render as rcPlayer=<wire>. Emitted only once the visitor picks a backend (rcPlayerPicked)
+    // and only for a server-side lane — the js canvas replays the doc in-browser (no server
+    // render) and cmp-jvm can't render, so neither sends the param, and an unpicked default
+    // stays on the instant baked snapshot.
+    if (rcPlayerPicked && (rcPlayerBackend === "java" || rcPlayerBackend === "cmp-android")) {
+      parts.push("rcPlayer=" + encodeURIComponent(rcPlayerBackend));
+    }
     return parts.join("&");
   }
   // "Full page (scroll)" appends `scroll=long` — but only to the SVG lane (the raster PNG has no
@@ -2003,6 +2023,46 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     rcBtn.addEventListener("click", function () {
       if (rcActive()) { setMode("png"); } else { setMode("rc"); }
     });
+  }
+  // ---- RC backend selector -----------------------------------------------------------------
+  // Chips choose which Remote Compose player draws the stage: `js` (the in-browser canvas lane,
+  // via setMode("rc")), or a server-side player (`java` / `cmp-android`) that re-renders the PNG
+  // with rcPlayer=<wire> (see query()). `cmp-jvm` is rendered disabled (no Skiko draw path yet).
+  // The pressed chip tracks the active backend and stays in sync with the js canvas toggle.
+  if (rcBackendsEl) {
+    var rcChips = rcBackendsEl.querySelectorAll(".cp-rc-backend[data-rc-backend]");
+    var rcDefaultBackend = rcBackendsEl.getAttribute("data-default") || "";
+    function syncRcBackendChips() {
+      // The js lane wins the "current" marker whenever its canvas is active; otherwise it's the
+      // picked server backend, or the default until the visitor picks one.
+      var active = rcActive() ? "js" : (rcPlayerPicked ? rcPlayerBackend : rcDefaultBackend);
+      Array.prototype.forEach.call(rcChips, function (c) {
+        var on = c.getAttribute("data-rc-backend") === active;
+        c.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    }
+    function pickRcBackend(w) {
+      if (w === "js") {
+        // The client canvas lane. Leave the server pick untouched so returning to a server
+        // backend restores it; activating the canvas is the existing rc mode.
+        rcPlayerPicked = false;
+        if (!rcActive()) setMode("rc");
+      } else {
+        // A server-side backend: leave the canvas lane if active, record the pick, re-render.
+        if (rcActive()) setMode("png");
+        rcPlayerBackend = w;
+        rcPlayerPicked = true;
+        refreshSnapshot();
+      }
+      syncRcBackendChips();
+    }
+    Array.prototype.forEach.call(rcChips, function (c) {
+      if (c.disabled) return;
+      c.addEventListener("click", function () {
+        pickRcBackend(c.getAttribute("data-rc-backend"));
+      });
+    });
+    syncRcBackendChips();
   }
   // Keep the live canvas overlay tracking the snapshot's slot when the page reflows (the Wasm
   // overlay has its own resize hook below; this covers a live session with no Wasm app).
