@@ -473,6 +473,32 @@ What this does **not** finish: the ops that call these four still live in `RcPla
 needs `Bitmap`/`BitmapDrawable`, so no draw op runs on the JVM yet. The seam is ready ahead of its
 callers — deliberately, since it was the piece with an unknown in it.
 
+#### Done: the jvm draw context decodes bitmaps
+
+`:third-party-rc-embedded-player-jvm` now carries **`JvmRemoteContext.kt`** — the desktop/JVM draw
+`RemoteContext`, the counterpart of `remote-player-core`'s `AndroidRemoteContext` for the pixel path.
+As the "What a `JvmRemoteContext` actually costs" section predicted, it is `StoreBackedRemoteContext`
+(the whole neutral variable/state store, already shared) plus the **one** genuinely platform-bound
+member, `loadBitmap` — decoding a document's encoded bytes to a raster — over skiko.
+
+It handles the inline PNG types through `Image.makeFromEncoded` and the raw types (`TYPE_RAW8888`,
+`TYPE_RAW8`) by building a raster straight from the pixel bytes, rejecting a buffer too short for the
+declared size and swallowing any decode failure to a blank rather than crashing the render — the same
+never-throw posture as the text seam. Where Android caches an `android.graphics.Bitmap` under the id,
+this caches a Compose `ImageBitmap`; the store is untyped, so the jvm image seam's `resolveImage`
+reads its own concrete type back. Two documented parity nuances: `TYPE_PNG_ALPHA_8` decodes to RGBA
+here rather than an alpha mask, and `ENCODING_URL`/`ENCODING_FILE` are the deferred host loader's job.
+
+`JvmRemoteContextBitmapTest` exercises it for real — PNG + raw round-trips to an `ImageBitmap` of the
+declared size, plus the reject-short-buffer / reject-malformed / skip-non-inline paths. Like
+`DesktopTextPlatformTest` it **needs skiko's natives** (`skiko-awt-runtime-*` + a loadable GL lib) and
+skips loudly where they are absent, so it is a CI check, not a bare-working-tree one.
+
+This is step 3's `RemoteContext` half. What it does **not** finish: the jvm `resolveImage`/
+`resolveCanvasImage` seam siblings (which read this cache back) and putting the draw files on the jvm
+source list — those wait on the `Drawable` image loader and googlefonts text layout being split, the
+remaining androidMain callees of the dispatch.
+
 #### Done: it runs on the desktop JVM
 
 `:third-party-rc-embedded-player-jvm` compiles the neutral subset of this module's sources against
@@ -628,7 +654,10 @@ single-target milestone it cannot be verified. It splits into 1a/1b.
    now, the module owns no resources, and `androidResources` is back at its default.
 3. Add the `jvm` target and the `expect`/`actual` seams, starting with `RemoteContext`
    (`GraphContext`'s `AndroidRemoteContext` base) and image decode. This is where the remaining
-   chains in the table are actually paid for, not step 1.
+   chains in the table are actually paid for, not step 1. **Partly done:** the draw `RemoteContext`
+   and its bitmap decode are in place (`JvmRemoteContext.kt` — see "Done: the jvm draw context decodes
+   bitmaps"). What remains here is the jvm `resolveImage`/`resolveCanvasImage` seam siblings that read
+   that decode back, and the `Drawable`-typed host loader.
 4. ~~Port text off framework `Paint`.~~ — **done ahead of order**, both halves. Pulled forward
    because it was the step with an actual unknown in it (does Skia answer the same four questions?),
    and the answer turned out to be yes; leaving it last would have deferred the only risk in the plan

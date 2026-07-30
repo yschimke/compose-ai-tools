@@ -85,7 +85,12 @@ val sharedPlayerSources =
  * be told apart — including the jvm one by name would silently pull in the Android one as well.
  */
 val jvmPlayerSources =
-  listOf("androidx/compose/remote/player/compose/embedded/RcPlayerTextPlatformJvm.kt")
+  listOf(
+    "androidx/compose/remote/player/compose/embedded/RcPlayerTextPlatformJvm.kt",
+    // The jvm draw RemoteContext — StoreBackedRemoteContext + a skiko `loadBitmap` decode, the one
+    // platform-bound member of the contract. Written here, so it names skiko rather than the SDK.
+    "androidx/compose/remote/player/compose/embedded/JvmRemoteContext.kt",
+  )
 
 kotlin {
   sourceSets["main"].kotlin.apply {
