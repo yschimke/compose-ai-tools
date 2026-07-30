@@ -7,10 +7,18 @@ import {
     kindSupportsLiveMode,
     mimeFor,
     parseBounds,
+    previewSourceTarget,
     sanitizeId,
     shortDevice,
 } from "../webview/preview/cardData";
-import type { Capture, PreviewInfo } from "../types";
+import type { Capture, PreviewInfo, PreviewTarget } from "../types";
+
+const componentTarget: PreviewTarget = {
+    className: "com.example.HomeScreenKt",
+    functionName: "HomeScreen",
+    sourceFile: "src/main/kotlin/com/example/HomeScreen.kt",
+    confidence: "HIGH",
+};
 
 const baseCapture: Capture = {
     advanceTimeMillis: null,
@@ -212,11 +220,62 @@ describe("buildVariantLabel", () => {
     });
 });
 
+describe("previewSourceTarget", () => {
+    it("falls back to the preview function when no target is inferred", () => {
+        assert.deepStrictEqual(
+            previewSourceTarget(
+                preview({
+                    sourceFile: "src/main/kotlin/com/example/Previews.kt",
+                }),
+            ),
+            {
+                className: "com.example.PreviewsKt",
+                functionName: "MyPreview",
+                sourceFile: "src/main/kotlin/com/example/Previews.kt",
+                isComponent: false,
+            },
+        );
+    });
+
+    it("points at the inferred component when a target exists", () => {
+        assert.deepStrictEqual(
+            previewSourceTarget(preview({ targets: [componentTarget] })),
+            {
+                className: "com.example.HomeScreenKt",
+                functionName: "HomeScreen",
+                sourceFile: "src/main/kotlin/com/example/HomeScreen.kt",
+                isComponent: true,
+            },
+        );
+    });
+
+    it("uses the most-confident target (first entry)", () => {
+        const second: PreviewTarget = {
+            className: "com.example.OtherKt",
+            functionName: "Other",
+            sourceFile: "src/main/kotlin/com/example/Other.kt",
+            confidence: "LOW",
+        };
+        assert.strictEqual(
+            previewSourceTarget(preview({ targets: [componentTarget, second] }))
+                .functionName,
+            "HomeScreen",
+        );
+    });
+});
+
 describe("buildTooltip", () => {
     it("starts with `Open source: <FQN>`", () => {
         assert.match(
             buildTooltip(preview()),
             /^Open source: com\.example\.PreviewsKt\.MyPreview/,
+        );
+    });
+
+    it("says `Open component: <target FQN>` when a target is inferred", () => {
+        assert.match(
+            buildTooltip(preview({ targets: [componentTarget] })),
+            /^Open component: com\.example\.HomeScreenKt\.HomeScreen/,
         );
     });
 

@@ -27,6 +27,7 @@ import {
     buildVariantLabel,
     isAnimatedPreview,
     isWearPreview,
+    previewSourceTarget,
     sanitizeId,
 } from "./cardData";
 import type { DiffOverlayConfig } from "./diffOverlay";
@@ -227,11 +228,17 @@ export function populatePreviewCard(
     title.textContent =
         p.functionName + (p.params.name ? " — " + p.params.name : "");
     title.title = buildTooltip(p);
+    // Navigate to the component the preview renders when discovery inferred one
+    // (targets[0]), else the preview function itself. `sourceFile` is the
+    // manifest's authoritative module-relative path — the host resolves the
+    // file from it and only falls back to the class-derived path when absent.
+    const nav = previewSourceTarget(p);
     title.addEventListener("click", () => {
         config.vscode.postMessage({
             command: "openFile",
-            className: p.className,
-            functionName: p.functionName,
+            className: nav.className,
+            functionName: nav.functionName,
+            sourceFile: nav.sourceFile ?? undefined,
         });
     });
     titleRow.appendChild(title);

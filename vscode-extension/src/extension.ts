@@ -5779,7 +5779,7 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             break;
         }
         case "openFile":
-            openPreviewSource(msg.className, msg.functionName);
+            openPreviewSource(msg.className, msg.functionName, msg.sourceFile);
             break;
         case "selectModule":
             selectedModule = msg.value || null;
@@ -8271,21 +8271,54 @@ function emptyStateMessage(activeFile: string | undefined): string {
     return "No @Preview functions in this file.";
 }
 
-async function openPreviewSource(className: string, functionName: string) {
+/**
+ * Resolve the source file for a preview/component the user clicked. Prefers the
+ * manifest's [sourceFile] — a module-relative path (`src/main/kotlin/…/Foo.kt`)
+ * that unambiguously identifies the file even when its name differs from the
+ * compiled class (multiple classes per file, `@JvmName`, etc.). Falls back to
+ * the class-derived path (`com.example.FooKt` → `com/example/Foo.kt`) for older
+ * manifests that don't carry a `sourceFile`, or when the recorded path no longer
+ * exists on disk. The `build` output tree is excluded from both globs so a stale
+ * generated copy never wins over the real source.
+ */
+async function resolvePreviewSourceUri(
+    className: string,
+    sourceFile?: string,
+): Promise<vscode.Uri | null> {
+    if (sourceFile) {
+        const normalized = sourceFile.replace(/\\/g, "/").replace(/^\.\/+/, "");
+        const hits = await vscode.workspace.findFiles(
+            `**/${normalized}`,
+            "**/build/**",
+            1,
+        );
+        if (hits.length > 0) {
+            return hits[0];
+        }
+    }
     const classFile = className.replace(/Kt$/, "").replace(/\./g, "/") + ".kt";
-    const files = await vscode.workspace.findFiles(
+    const hits = await vscode.workspace.findFiles(
         `**/${classFile}`,
         "**/build/**",
         1,
     );
-    if (files.length === 0) {
+    return hits.length > 0 ? hits[0] : null;
+}
+
+async function openPreviewSource(
+    className: string,
+    functionName: string,
+    sourceFile?: string,
+) {
+    const uri = await resolvePreviewSourceUri(className, sourceFile);
+    if (!uri) {
         vscode.window.showWarningMessage(
             `Could not find source for ${className}.${functionName}`,
         );
         return;
     }
 
-    const doc = await vscode.workspace.openTextDocument(files[0]);
+    const doc = await vscode.workspace.openTextDocument(uri);
     const editor = await vscode.window.showTextDocument(doc);
 
     const text = doc.getText();

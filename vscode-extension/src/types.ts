@@ -889,7 +889,18 @@ export type WebviewToExtension =
           tabHandleCount: number;
           overlayCountByBundle: Record<string, number>;
       }
-    | { command: "openFile"; className: string; functionName: string }
+    | {
+          command: "openFile";
+          className: string;
+          functionName: string;
+          /**
+           * Manifest-provided, module-relative source path of the destination
+           * (the inferred component's file, or the preview's own). The host
+           * resolves the file from this first and only falls back to the
+           * class-derived path when it is absent or doesn't match.
+           */
+          sourceFile?: string;
+      }
     | { command: "selectModule"; value: string }
     /**
      * User clicked a faded heavy card. The extension opts that preview into
