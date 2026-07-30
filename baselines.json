@@ -151,6 +151,14 @@
     "sha256": "e9e1a340de7c28076bb1939bca346a6f4278df10a393ac7243f464e6c07ea74e",
     "sourceFile": "src/main/kotlin/com/example/daemonbench/BenchPreviews.kt"
   },
+  "samples:android-library/com.example.samplelibrary.AndroidViewPreviewsKt.HtmlShowNotesPreview_HTML show notes": {
+    "captureLabel": "",
+    "functionName": "HtmlShowNotesPreview",
+    "module": "samples:android-library",
+    "renderBasename": "HtmlShowNotesPreview_HTML_show_notes.png",
+    "sha256": "60ab314a56b25057057dcd4c2ba9840bd93ced4ccc5ef7a4b27b1e36f23e184f",
+    "sourceFile": "src/main/kotlin/com/example/samplelibrary/AndroidViewPreviews.kt"
+  },
   "samples:android-library/com.example.samplelibrary.LibraryPreviewsKt.LibraryBoxPreview_Library Box": {
     "captureLabel": "",
     "functionName": "LibraryBoxPreview",
@@ -446,6 +454,14 @@
     "renderBasename": "NamedColorPaletteSpecimenPreview_Named_colour_palette_specimen.png",
     "sha256": "f53c4be2e7d155fe5c36967b7badcccc3ab751e25f61b7e0338cf886d0a152c9",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt"
+  },
+  "samples:android/com.example.sampleandroid.DividerShowBackgroundPreviewsKt.DividerShowBackgroundDarkPreview_Divider Dark": {
+    "captureLabel": "",
+    "functionName": "DividerShowBackgroundDarkPreview",
+    "module": "samples:android",
+    "renderBasename": "DividerShowBackgroundDarkPreview_Divider_Dark.png",
+    "sha256": "d6b0bb5ead3cb4f7bda8983948983e9bf19d70f5b4cf85559adc7b06a6fddd7b",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/DividerShowBackgroundPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.EmojiCompatComparisonPreviewKt.EmojiCompatComparisonPreview_EmojiCompat comparison": {
     "captureLabel": "",
@@ -3388,7 +3404,7 @@
     "functionName": "ActivityListMotionLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListMotionLongPreview_Devices_Large_Round_SCROLL_long.png",
-    "sha256": "4894efeb548deb8e9074068f891ddd4a3c9901e2e5482960eebaa1dbf8e65cca",
+    "sha256": "094df53da2ad611cb769f7a7e381c83ac0dbee764bc2060d387be804c6c5ba23",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round#1": {

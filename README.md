@@ -39,6 +39,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `ColorSchemeSpecimenDarkPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark.png" width="150" /> |
 | `ColorSchemeSpecimenLightPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/ColorSchemeSpecimenLightPreview_ColorScheme_specimen_light.png" width="150" /> |
 | `NamedColorPaletteSpecimenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NamedColorPaletteSpecimenPreview_Named_colour_palette_specimen.png" width="150" /> |
+| `DividerShowBackgroundDarkPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/DividerShowBackgroundDarkPreview_Divider_Dark.png" width="150" /> |
 | `EmojiCompatComparisonPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/EmojiCompatComparisonPreview_EmojiCompat_comparison.png" width="150" /> |
 | `FontWrapperShowcasePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/FontWrapperShowcasePreview_Dark.png" width="150" /> |
 | `FontWrapperShowcasePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/FontWrapperShowcasePreview_Light.png" width="150" /> |
@@ -182,6 +183,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 
 | Preview | Image |
 |---------|-------|
+| `HtmlShowNotesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-library/HtmlShowNotesPreview_HTML_show_notes.png" width="150" /> |
 | `LibraryBoxPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-library/LibraryBoxPreview_Library_Box.png" width="150" /> |
 | `LibraryGreetingPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-library/LibraryGreetingPreview_Library_Greeting.png" width="150" /> |
 
