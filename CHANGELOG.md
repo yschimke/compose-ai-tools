@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.11](https://github.com/yschimke/compose-ai-tools/compare/v0.19.10...v0.19.11) (2026-07-30)
+
+
+### Features
+
+* **playground:** remote-compose data path — capture → /d/&lt;id&gt; permalink ([#3028](https://github.com/yschimke/compose-ai-tools/issues/3028)) ([bacd0f5](https://github.com/yschimke/compose-ai-tools/commit/bacd0f5ef4f3cb6f30d1963819808873421fd2c5))
+* **remotecompose:** surface the captured .rc document as a fetchable data product ([#3034](https://github.com/yschimke/compose-ai-tools/issues/3034)) ([29c85ba](https://github.com/yschimke/compose-ai-tools/commit/29c85ba6f7b41a815dba6fd2e6f02cc09def43a5))
+* **serve:** light up the cmp-jvm Remote Compose chip via an isolated desktop subprocess ([#3029](https://github.com/yschimke/compose-ai-tools/issues/3029)) ([0dd3447](https://github.com/yschimke/compose-ai-tools/commit/0dd3447d0f17cb1a30854e7ae3fb1c4aa37caac6))
+
+
+### Bug Fixes
+
+* **rc-embedded:** density-scale literal clip-corner radii ([#3032](https://github.com/yschimke/compose-ai-tools/issues/3032)) ([0463874](https://github.com/yschimke/compose-ai-tools/commit/04638741675964febbb5a8f5aba3cfe48b4817e4))
+
 ## [0.19.10](https://github.com/yschimke/compose-ai-tools/compare/v0.19.9...v0.19.10) (2026-07-30)
 
 
