@@ -39,6 +39,7 @@ internal object RcJvmServerRenderer {
 
   private const val MAIN_CLASS = "ee.schimke.composeai.rcembedded.jvm.RcJvmRenderMainKt"
   private const val RENDER_TIMEOUT_SECONDS = 120L
+  private const val DRAIN_FLUSH_MILLIS = 1000L
 
   /**
    * The subprocess classpath: the embedded jvm player (`lib-rcjvm`) plus the desktop Compose +
@@ -98,16 +99,32 @@ internal object RcJvmServerRenderer {
 
       val process =
         ProcessBuilder(command).redirectErrorStream(true).start().also { it.outputStream.close() }
-      val log = process.inputStream.bufferedReader().use { it.readText() }
+      // Drain the merged stdout/stderr on a daemon thread *concurrently* with the timed wait — a
+      // blocking readText() here would wait for EOF, which a hung Skiko/native render never
+      // reaches,
+      // so the timeout below (and the render-semaphore permit the caller holds) would never
+      // release.
+      // Mirrors BundleRenderer.runRenderProcess.
+      val log = StringBuilder()
+      val drain =
+        Thread { process.inputStream.bufferedReader().forEachLine { log.appendLine(it) } }
+          .apply {
+            isDaemon = true
+            start()
+          }
       val finished = process.waitFor(RENDER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
       if (!finished) {
         process.destroyForcibly()
+        drain.join(DRAIN_FLUSH_MILLIS)
         return RenderResult.Failed("cmp-jvm render timed out after ${RENDER_TIMEOUT_SECONDS}s")
       }
+      // The process exited, so the reader has hit EOF; this join just flushes the last lines.
+      drain.join(DRAIN_FLUSH_MILLIS)
       if (process.exitValue() != 0 || !output.isFile || output.length() == 0L) {
         return RenderResult.Failed(
           "cmp-jvm render failed (exit ${process.exitValue()})" +
             log
+              .toString()
               .trim()
               .takeIf { it.isNotEmpty() }
               ?.let { ": ${it.lines().last().take(300)}" }

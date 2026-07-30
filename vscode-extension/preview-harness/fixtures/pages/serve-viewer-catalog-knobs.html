@@ -1132,12 +1132,18 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     // knob; omitted when unchecked so the URL stays on the baked snapshot.
     var gc = document.getElementById("cp-gestures");
     if (gc && !gc.disabled && gc.checked) parts.push("gestures=true");
-    // Remote Compose render backend: a server-side player pick (java / cmp-android) rides the
-    // render as rcPlayer=<wire>. Emitted only once the visitor picks a backend (rcPlayerPicked)
-    // and only for a server-side lane — the js canvas replays the doc in-browser (no server
-    // render) and cmp-jvm can't render, so neither sends the param, and an unpicked default
-    // stays on the instant baked snapshot.
-    if (rcPlayerPicked && (rcPlayerBackend === "java" || rcPlayerBackend === "cmp-android")) {
+    // Remote Compose render backend: a server-side player pick rides the render as
+    // rcPlayer=<wire>. Emitted only once the visitor picks a backend (rcPlayerPicked) and only
+    // for a server-side lane — java / cmp-android render through the daemon, cmp-jvm through its
+    // isolated desktop subprocess (all three PNG lanes). The js canvas replays the doc in-browser
+    // (no server render), so it never sends the param, and an unpicked default stays on the
+    // instant baked snapshot.
+    if (
+      rcPlayerPicked &&
+      (rcPlayerBackend === "java" ||
+        rcPlayerBackend === "cmp-android" ||
+        rcPlayerBackend === "cmp-jvm")
+    ) {
       parts.push("rcPlayer=" + encodeURIComponent(rcPlayerBackend));
     }
     return parts.join("&");
