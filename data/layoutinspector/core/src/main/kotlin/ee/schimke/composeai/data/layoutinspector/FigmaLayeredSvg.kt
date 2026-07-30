@@ -186,19 +186,24 @@ object FigmaLayeredSvg {
     val containsRaster = layer.containsCapturedRaster()
     val outerOpacity = inheritedOpacity * layer.opacity
     val namedGroupOpacity = if (containsRaster) 1.0 else outerOpacity
-    // A `Modifier.clip` layer whose subtree actually overflows its box masks its children to its
-    // own
-    // shape, so an intentionally-oversized child (Jetsnack Search/Categories' image under
-    // `.clip(CategoryShape)`) is clipped to the rounded box instead of bleeding past it (issue
-    // #2852). Only emitted on genuine overflow — a clip whose children all sit inside changes no
-    // pixels, so the common case keeps its clip-path-free group and stays byte-for-byte unchanged.
-    val clipId = if (layer.clipChildren && layer.overflowsClip()) "clip-${clipSeq[0]++}" else null
+    // A `Modifier.clip` layer masks its children to its own box + corner shape. Emit a `<clipPath>`
+    // when a child actually reaches the mask (Jetsnack Search/Categories' image overflowing
+    // `.clip(CategoryShape)`, or an expressive `ToggleButton`'s content filling a circle) — a
+    // rectangular clip only trims a child that overflows the box, but a rounded/circle/cut clip
+    // also
+    // trims the corners of a child that merely fills the box, so both cases are covered (issue
+    // #2852). A clip nothing reaches changes no pixels and stays clip-path-free.
+    val clipId =
+      if (layer.clipChildren && layer.clipsAnyDescendant()) "clip-${clipSeq[0]++}" else null
     if (clipId != null) {
       sb.append(indent).append(clipPathDef(layer, clipId)).append('\n')
     }
-    val clipAttr = clipId?.let { """ clip-path="url(#$it)"""" } ?: ""
+    // The mask wraps the *children* (below), not this named group: attaching it to the whole group
+    // would also clip the node's own background/border and its drop shadow, which in Compose's
+    // outer→inner order precede the clip (`background(color).clip(circle)` keeps a square
+    // background). The node's own shape is drawn at its box with its own corners regardless.
     sb.append(
-      """$indent<g id="${escapeAttr(layer.name)}"$dataToken$filterAttr$clipAttr${opacityAttr(namedGroupOpacity)}>"""
+      """$indent<g id="${escapeAttr(layer.name)}"$dataToken$filterAttr${opacityAttr(namedGroupOpacity)}>"""
     )
     sb.append('\n')
     if (options.annotateTokens && tokenName != null) {
@@ -239,19 +244,18 @@ object FigmaLayeredSvg {
           appendTextContent(layer, sb, options, familyOverrides, indent + "    ", curveSeq)
         }
       }
-      for (child in layer.children) {
-        renderLayer(
-          child,
-          sb,
-          options,
-          familyOverrides,
-          depth + 1,
-          inheritedOpacity = contentOpacity,
-          curveSeq = curveSeq,
-          gradientSeq = gradientSeq,
-          clipSeq = clipSeq,
-        )
-      }
+      renderChildren(
+        layer,
+        sb,
+        options,
+        familyOverrides,
+        depth + 1,
+        inheritedOpacity = contentOpacity,
+        curveSeq = curveSeq,
+        gradientSeq = gradientSeq,
+        clipSeq = clipSeq,
+        clipId = clipId,
+      )
     } else {
       if (layer.paintsShape()) {
         sb.append(indent).append("  ").append(shape(layer, gradientSeq)).append('\n')
@@ -268,38 +272,76 @@ object FigmaLayeredSvg {
           .append("""<g${opacityAttr(layer.contentOpacity)}>""")
           .append('\n')
         appendTextContent(layer, sb, options, familyOverrides, indent + "    ", curveSeq)
-        for (child in layer.children) {
-          renderLayer(
-            child,
-            sb,
-            options,
-            familyOverrides,
-            depth + 2,
-            inheritedOpacity = 1.0,
-            curveSeq = curveSeq,
-            gradientSeq = gradientSeq,
-            clipSeq = clipSeq,
-          )
-        }
+        renderChildren(
+          layer,
+          sb,
+          options,
+          familyOverrides,
+          depth + 2,
+          inheritedOpacity = 1.0,
+          curveSeq = curveSeq,
+          gradientSeq = gradientSeq,
+          clipSeq = clipSeq,
+          clipId = clipId,
+        )
         sb.append(indent).append("  </g>\n")
       } else {
         appendTextContent(layer, sb, options, familyOverrides, indent + "  ", curveSeq)
-        for (child in layer.children) {
-          renderLayer(
-            child,
-            sb,
-            options,
-            familyOverrides,
-            depth + 1,
-            inheritedOpacity = 1.0,
-            curveSeq = curveSeq,
-            gradientSeq = gradientSeq,
-            clipSeq = clipSeq,
-          )
-        }
+        renderChildren(
+          layer,
+          sb,
+          options,
+          familyOverrides,
+          depth + 1,
+          inheritedOpacity = 1.0,
+          curveSeq = curveSeq,
+          gradientSeq = gradientSeq,
+          clipSeq = clipSeq,
+          clipId = clipId,
+        )
       }
     }
     sb.append("$indent</g>\n")
+  }
+
+  /**
+   * Renders a layer's children, wrapping them in the layer's `Modifier.clip` mask when one is in
+   * force ([clipId] non-null). Only the children are masked — never the node's own shape/shadow —
+   * so a `background(color).clip(circle)` keeps a square background while its content is clipped,
+   * and an elevated card's drop shadow isn't cut off (issue #2852). A null [clipId] renders the
+   * children exactly as before, un-nested.
+   */
+  private fun renderChildren(
+    layer: FigmaSvgLayer,
+    sb: StringBuilder,
+    options: Options,
+    familyOverrides: Map<String, String>,
+    childDepth: Int,
+    inheritedOpacity: Double,
+    curveSeq: IntArray,
+    gradientSeq: Map<FigmaSvgLayer, Int>,
+    clipSeq: IntArray,
+    clipId: String?,
+  ) {
+    if (layer.children.isEmpty()) return
+    val wrap = clipId != null
+    val wrapIndent = "  ".repeat(childDepth)
+    if (wrap) sb.append(wrapIndent).append("""<g clip-path="url(#$clipId)">""").append('\n')
+    val childDepthEffective = if (wrap) childDepth + 1 else childDepth
+    for (child in layer.children) {
+      renderLayer(
+        child,
+        sb,
+        options,
+        familyOverrides,
+        childDepthEffective,
+        inheritedOpacity = inheritedOpacity,
+        curveSeq = curveSeq,
+        gradientSeq = gradientSeq,
+        clipSeq = clipSeq,
+      )
+    }
+    if (wrap) sb.append(wrapIndent).append("</g>\n")
   }
 
   private fun appendTextContent(
@@ -707,26 +749,96 @@ object FigmaLayeredSvg {
   }
 
   /**
-   * True when some descendant that draws pixels extends beyond this (clipping) layer's box — the
-   * only case a `Modifier.clip` actually removes anything the export would otherwise show. A
-   * one-pixel slop absorbs the sub-pixel rounding of placed bounds so a child sitting flush at the
-   * edge isn't treated as overflowing (and clipped a hair short of the render).
+   * True when a `Modifier.clip` on this layer would actually remove pixels a descendant draws — the
+   * only case worth emitting a `<clipPath>` for. Two ways a descendant reaches the mask:
+   * - it **overflows the box** (a child placed past the clip — Jetsnack Search/Categories' image);
+   *   the single case a *rectangular* clip trims. A one-pixel slop absorbs sub-pixel bounds
+   *   rounding so a child sitting flush at a straight edge isn't clipped a hair short of the
+   *   render.
+   * - it **reaches a rounded/circle/cut corner** even while fitting the bounding box — a child
+   *   filling a `CircleShape` container hits the square's corners the mask cuts. Only shaped clips
+   *   have this; a rectangular clip's corners remove nothing.
+   *
+   * Over-triggering is harmless (a mask nothing crosses is a no-op); under-triggering drops a clip
+   * the render applied, so the corner test errs toward emitting.
    */
-  private fun FigmaSvgLayer.overflowsClip(): Boolean {
-    fun beyond(l: Int, t: Int, r: Int, b: Int): Boolean =
+  private fun FigmaSvgLayer.clipsAnyDescendant(): Boolean {
+    if (children.isEmpty()) return false
+    fun overflows(l: Int, t: Int, r: Int, b: Int): Boolean =
       l < left - CLIP_OVERFLOW_SLOP ||
         t < top - CLIP_OVERFLOW_SLOP ||
         r > right + CLIP_OVERFLOW_SLOP ||
         b > bottom + CLIP_OVERFLOW_SLOP
 
-    fun scan(l: FigmaSvgLayer): Boolean {
-      if (l !== this) {
-        if (l.paintsShape() || l.text != null || l.raster != null || l.vector != null) {
-          if (beyond(l.left, l.top, l.right, l.bottom)) return true
-        }
-        l.background?.let { if (beyond(it.left, it.top, it.right, it.bottom)) return true }
+    // Per-corner radii (top-left, top-right, bottom-right, bottom-left) of the clip outline; null
+    // for a sharp rectangle, which trims only on overflow. `circle` resolves to a max-radius shape.
+    val radii = effectiveRadii(this)
+    val cut = this.cut
+    // Is the descendant's point nearest a rounded/cut corner actually *outside* the outline? Beyond
+    // the arc (distance from the arc centre > r) or beyond the chamfer line ((dx+dy) < r), reckoned
+    // only in the corner's own outer quadrant — so an inset child sitting **inside** the arc (a
+    // card's padded label) is not treated as clipped, while a full-bleed child that fills the box
+    // and reaches the bare corner is. This is what keeps the mask off every rounded card that
+    // merely
+    // contains inset content.
+    fun cornerOutside(px: Double, py: Double, cx: Double, cy: Double, r: Double): Boolean {
+      val dx = kotlin.math.abs(px - cx)
+      val dy = kotlin.math.abs(py - cy)
+      return if (cut) dx + dy < r else dx * dx + dy * dy > r * r
+    }
+    fun reachesCorner(l: Int, t: Int, r: Int, b: Int): Boolean {
+      radii ?: return false
+      val dl = l.toDouble()
+      val dt = t.toDouble()
+      val dr = r.toDouble()
+      val db = b.toDouble()
+      // top-left
+      if (radii[0] > 0.0) {
+        val px = maxOf(dl, left.toDouble())
+        val py = maxOf(dt, top.toDouble())
+        val cx = left + radii[0]
+        val cy = top + radii[0]
+        if (px < cx && py < cy && cornerOutside(px, py, cx, cy, radii[0])) return true
       }
-      return l.children.any(::scan)
+      // top-right
+      if (radii[1] > 0.0) {
+        val px = minOf(dr, right.toDouble())
+        val py = maxOf(dt, top.toDouble())
+        val cx = right - radii[1]
+        val cy = top + radii[1]
+        if (px > cx && py < cy && cornerOutside(px, py, cx, cy, radii[1])) return true
+      }
+      // bottom-right
+      if (radii[2] > 0.0) {
+        val px = minOf(dr, right.toDouble())
+        val py = minOf(db, bottom.toDouble())
+        val cx = right - radii[2]
+        val cy = bottom - radii[2]
+        if (px > cx && py > cy && cornerOutside(px, py, cx, cy, radii[2])) return true
+      }
+      // bottom-left
+      if (radii[3] > 0.0) {
+        val px = maxOf(dl, left.toDouble())
+        val py = minOf(db, bottom.toDouble())
+        val cx = left + radii[3]
+        val cy = bottom - radii[3]
+        if (px < cx && py > cy && cornerOutside(px, py, cx, cy, radii[3])) return true
+      }
+      return false
+    }
+
+    fun scan(node: FigmaSvgLayer): Boolean {
+      if (node !== this) {
+        if (node.paintsShape() || node.text != null || node.raster != null || node.vector != null) {
+          if (
+            overflows(node.left, node.top, node.right, node.bottom) ||
+              reachesCorner(node.left, node.top, node.right, node.bottom)
+          )
+            return true
+        }
+        node.background?.let { if (overflows(it.left, it.top, it.right, it.bottom)) return true }
+      }
+      return node.children.any(::scan)
     }
     return children.any(::scan)
   }

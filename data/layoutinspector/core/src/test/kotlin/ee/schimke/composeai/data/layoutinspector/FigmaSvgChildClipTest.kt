@@ -85,10 +85,80 @@ class FigmaSvgChildClipTest {
   }
 
   @Test
-  fun containedChildUnderClipEmitsNoClipPath() {
-    // A clip whose child sits fully inside its box removes nothing, so no clip-path is emitted and
-    // the common case stays unchanged.
+  fun containedChildAwayFromCornersEmitsNoClipPath() {
+    // A clip whose child sits fully inside its box AND clear of the rounded corners removes
+    // nothing,
+    // so no clip-path is emitted and the common case stays unchanged. (Child 40..90 never reaches
+    // the 12px corner squares.)
     val svg = FigmaLayeredSvg.render(model(clips = true, childRight = 90))
-    assertFalse("no overflow → no clipPath:\n$svg", svg.contains("<clipPath id=\"clip-"))
+    assertFalse(
+      "no overflow, no corner reach → no clipPath:\n$svg",
+      svg.contains("<clipPath id=\"clip-"),
+    )
+  }
+
+  /** A rounded-clip card whose child fills the whole box — reaching the corners the shape cuts. */
+  private fun cardWithFullBleedChild(shape: String?, cornerRadius: String?) =
+    LayoutInspectorNode(
+      nodeId = "card",
+      component = "Box",
+      bounds = bounds(0, 0, 100, 100),
+      size = LayoutInspectorSize(100, 100),
+      tokens =
+        ComposeSemanticsTokens(
+          backgroundColor = "#FFEEEEEE",
+          shape = shape,
+          cornerRadius = cornerRadius,
+          clipsContent = true,
+        ),
+      children =
+        listOf(
+          LayoutInspectorNode(
+            nodeId = "image",
+            component = "Image",
+            bounds = bounds(0, 0, 100, 100),
+            size = LayoutInspectorSize(100, 100),
+            tokens = ComposeSemanticsTokens(backgroundColor = "#FF3366CC"),
+          )
+        ),
+    )
+
+  @Test
+  fun childFillingARoundedClipIsMaskedAtTheCorners() {
+    // The P1 case: a child that fills the box under `.clip(RoundedCornerShape)` reaches the corners
+    // the shape rounds, so a clipPath must be emitted even though the child does not overflow the
+    // bounding box — otherwise the exported child keeps square corners the render clips off.
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(
+          layout =
+            LayoutInspectorPayload(cardWithFullBleedChild(shape = null, cornerRadius = "16.0dp")),
+          density = 1f,
+        )
+      )
+    assertTrue(
+      "a full-bleed child under a rounded clip must be masked:\n$svg",
+      svg.contains("<clipPath id=\"clip-"),
+    )
+    assertTrue(
+      "the mask must be rounded:\n$svg",
+      Regex("<clipPath[^>]*>\\s*<rect[^>]*rx=").containsMatchIn(svg),
+    )
+  }
+
+  @Test
+  fun childFillingACircleClipIsMaskedAtTheCorners() {
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(
+          layout =
+            LayoutInspectorPayload(cardWithFullBleedChild(shape = "circle", cornerRadius = null)),
+          density = 1f,
+        )
+      )
+    assertTrue(
+      "a full-bleed child under a circle clip must be masked:\n$svg",
+      svg.contains("<clipPath id=\"clip-"),
+    )
   }
 }
