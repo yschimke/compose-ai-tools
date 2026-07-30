@@ -397,17 +397,18 @@ ${rows.map((r) => rowHtml(r, withEmbedded, withEmbeddedJvm)).join("\n")}
 </header>
 <p class="lede">Each preview's baked <strong>PNG</strong> (the offline Robolectric/Skiko render) next to the
 same <code>ir/*.rc</code> document as each player renders it, with a per-pixel diff after each.
-${
-  withEmbedded
-    ? `The <strong>JS player</strong> is the vendored TypeScript <code>RC.RcdPlayer</code> on a
-<code>&lt;canvas&gt;</code>; the <strong>embedded player</strong> is AndroidX's
-<code>RcPlayer</code>, which interprets the document into Compose layout and draw nodes rather than
-painting into an Android <code>View</code> the way <code>remote-player-view</code> does — so the two
-diverge wherever that difference shows.`
-    : `The player is the vendored TypeScript <code>RC.RcdPlayer</code> on a <code>&lt;canvas&gt;</code>.`
-}
-Mismatch % is the fraction of pixels each diff flags; rows sort worst-match-first on the worse of the
-two players. A preview whose baked PNG is <strong>fully transparent</strong> is shown but not scored:
+${[
+  `The <strong>JS player</strong> is the vendored TypeScript <code>RC.RcdPlayer</code> on a <code>&lt;canvas&gt;</code>`,
+  withEmbedded &&
+    `the <strong>embedded player</strong> is AndroidX's <code>RcPlayer</code>, which interprets the document into Compose layout and draw nodes rather than painting into an Android <code>View</code> the way <code>remote-player-view</code> does`,
+  withEmbeddedJvm &&
+    `the <strong>cmp-jvm player</strong> runs that same <code>RcPlayer</code> draw path on Compose Desktop / Skiko, rasterizing offscreen`,
+]
+  .filter(Boolean)
+  .join("; ")}${laneNames.length > 1 ? " — so they diverge wherever those differences show." : "."}
+Mismatch % is the fraction of pixels each diff flags; rows sort worst-match-first${
+    laneNames.length > 1 ? " on the worst-scoring player" : ""
+  }. A preview whose baked PNG is <strong>fully transparent</strong> is shown but not scored:
 with nothing in the reference, a player that draws nothing would score a perfect 0% — so those rows
 read <code>no reference</code> and stay out of the means.</p>
 <div class="wrap">

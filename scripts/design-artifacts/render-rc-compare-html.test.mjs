@@ -183,6 +183,10 @@ test("the cmp-jvm lane adds one column with a folded diff, a score chip and its 
   assert.match(html, /<details class="difffold"><summary>pixel diff<\/summary>/);
   // Header carries exactly one cmp-jvm column (no standalone "pixel diff" th for it).
   assert.equal((html.match(/<th>RC · cmp-jvm player<\/th>/g) || []).length, 1);
+  // The lede must describe the cmp-jvm player even when the Android embedded lane is off —
+  // otherwise it falls into the JS-only branch and claims the TypeScript player is the only one.
+  assert.match(html, /<strong>cmp-jvm player<\/strong> runs that same/);
+  assert.doesNotMatch(html, /The player is the vendored TypeScript/);
 });
 
 test("the cmp-jvm and embedded lanes coexist, each its own column and summary", () => {
@@ -190,6 +194,11 @@ test("the cmp-jvm and embedded lanes coexist, each its own column and summary", 
   assert.match(html, /RC · embedded player/);
   assert.match(html, /RC · cmp-jvm player/);
   assert.match(html, /\(JS \+ embedded \+ cmp-jvm players\)/);
+  // The lede names all three players and the worst-scoring sort, not just JS + embedded.
+  assert.match(html, /<strong>JS player<\/strong>/);
+  assert.match(html, /<strong>embedded player<\/strong>/);
+  assert.match(html, /<strong>cmp-jvm player<\/strong>/);
+  assert.match(html, /rows sort worst-match-first on the worst-scoring player/);
 });
 
 test("cmp-jvm is summarized independently, like the embedded lane", () => {
