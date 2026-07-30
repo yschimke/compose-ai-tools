@@ -1,11 +1,13 @@
 package ee.schimke.composeai.data.render
 
 /**
- * Renderer-side `@Preview` selector shared by every Robolectric render entry — the image render
- * ([ee.schimke.composeai.renderer.PreviewManifestLoader]), the XR subspace render, and the XML
- * resource render — so `--preview` / `--preview-id` / `--exclude-preview-id` (and their
+ * Renderer-side `@Preview` selector shared by the Robolectric render entries that render actual
+ * `@Preview` composables — the image render ([ee.schimke.composeai.renderer.PreviewManifestLoader])
+ * and the XR subspace render — so `--preview` / `--preview-id` / `--exclude-preview-id` (and their
  * `composePreview.filter` / `.idFilter` / `.idExclude` property conventions) narrow an Android
- * render the same way they already narrow the desktop one (issues #2066, #2966, #2977).
+ * render the same way they already narrow the desktop one (issues #2066, #2966, #2977). The XML
+ * resource render is a separate manifest of assets with no `@Preview` function and is deliberately
+ * left unfiltered — see `ResourcePreviewRenderTest`.
  *
  * The matching rules ([matches] / [matchesId] / [globToRegex]) are a **deliberate mirror** of the
  * plugin's `ee.schimke.composeai.discovery.PreviewNameFilter`, which drives the desktop
@@ -85,8 +87,16 @@ object PreviewFilter {
    * produce zero output is a typo or stale spec, not a silent no-op (the failure the desktop path
    * guards against too). Empty filter lists pass [items] through unchanged.
    *
+   * [failOnNoMatch] gates that throw. `true` (the default) is for the authoritative render that
+   * sees every discovered preview — the Android image render, whose manifest carries all kinds
+   * (COMPOSE / XR / LOTTIE / SVG / catalog), so a global no-match really is a typo. `false` is for
+   * a **kind-restricted sibling** view — the XR-only render — where a filter naming a preview of a
+   * different kind legitimately matches nothing *here* while the image render matches it; failing
+   * would sink `composePreviewRenderAll`. There, a no-match yields an empty list and the sibling
+   * simply renders nothing.
+   *
    * Type-agnostic via the accessor lambdas so the image-render [ee.schimke.composeai.renderer]
-   * entry, the XR entry, and the resource entry can each pass their own row type.
+   * entry and the XR entry can each pass their own row type.
    */
   fun <T> select(
     items: List<T>,
@@ -96,23 +106,29 @@ object PreviewFilter {
     functionName: (T) -> String,
     className: (T) -> String,
     id: (T) -> String,
+    failOnNoMatch: Boolean = true,
   ): List<T> {
-    val nameFiltered = selectByName(items, nameFilters, functionName, className)
-    val idFiltered = selectById(nameFiltered, idFilters, id)
-    return excludeById(idFiltered, idExcludes, id)
+    val nameFiltered = selectByName(items, nameFilters, functionName, className, failOnNoMatch)
+    val idFiltered = selectById(nameFiltered, idFilters, id, failOnNoMatch)
+    return excludeById(idFiltered, idExcludes, id, failOnNoMatch)
   }
 
-  /** Narrows [items] to those whose function/FQN matches [patterns]; fails fast on no match. */
+  /**
+   * Narrows [items] to those whose function/FQN matches [patterns]. On no match, throws when
+   * [failOnNoMatch] (the default), else returns an empty list. See [select] for why a sibling view
+   * passes `false`.
+   */
   fun <T> selectByName(
     items: List<T>,
     patterns: List<String>,
     functionName: (T) -> String,
     className: (T) -> String,
+    failOnNoMatch: Boolean = true,
   ): List<T> {
     val cleaned = patterns.map(String::trim).filter(String::isNotEmpty)
     if (cleaned.isEmpty()) return items
     val matched = items.filter { matches(cleaned, functionName(it), className(it)) }
-    if (matched.isNotEmpty()) return matched
+    if (matched.isNotEmpty() || !failOnNoMatch) return matched
     throw noMatch(
       flag = "--preview",
       patterns = cleaned,
@@ -121,12 +137,19 @@ object PreviewFilter {
     )
   }
 
-  /** Narrows [items] to those whose id matches [patterns]; fails fast on no match. */
-  fun <T> selectById(items: List<T>, patterns: List<String>, id: (T) -> String): List<T> {
+  /**
+   * Narrows [items] to those whose id matches [patterns]. No-match behaviour: see [selectByName].
+   */
+  fun <T> selectById(
+    items: List<T>,
+    patterns: List<String>,
+    id: (T) -> String,
+    failOnNoMatch: Boolean = true,
+  ): List<T> {
     val cleaned = patterns.map(String::trim).filter(String::isNotEmpty)
     if (cleaned.isEmpty()) return items
     val matched = items.filter { matchesId(cleaned, id(it)) }
-    if (matched.isNotEmpty()) return matched
+    if (matched.isNotEmpty() || !failOnNoMatch) return matched
     throw noMatch(
       flag = "--preview-id",
       patterns = cleaned,
@@ -135,12 +158,21 @@ object PreviewFilter {
     )
   }
 
-  /** Drops [items] whose id matches [excludes], keeping the rest; fails fast if it drops all. */
-  fun <T> excludeById(items: List<T>, excludes: List<String>, id: (T) -> String): List<T> {
+  /**
+   * Drops [items] whose id matches [excludes], keeping the rest. When an exclusion removes
+   * everything, throws if [failOnNoMatch] (the default) else returns the empty list — a
+   * kind-restricted sibling may legitimately exclude its whole subset.
+   */
+  fun <T> excludeById(
+    items: List<T>,
+    excludes: List<String>,
+    id: (T) -> String,
+    failOnNoMatch: Boolean = true,
+  ): List<T> {
     val cleaned = excludes.map(String::trim).filter(String::isNotEmpty)
     if (cleaned.isEmpty() || items.isEmpty()) return items
     val kept = items.filterNot { matchesId(cleaned, id(it)) }
-    if (kept.isNotEmpty()) return kept
+    if (kept.isNotEmpty() || !failOnNoMatch) return kept
     throw IllegalStateException(
       "composePreviewRender --exclude-preview-id excluded every one of the ${items.size} " +
         "preview(s) for ${cleaned.joinToString(", ") { "'$it'" }} — nothing would render."

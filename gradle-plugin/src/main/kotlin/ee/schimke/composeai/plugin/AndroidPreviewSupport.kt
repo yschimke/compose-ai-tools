@@ -2219,29 +2219,12 @@ internal object AndroidPreviewSupport {
         systemProperty("composeai.resources.manifest", resourcesManifestPath.get())
         systemProperty("composeai.resources.outputDir", resourcesRendersOutputDir.get())
 
-        // Same `--preview` / `--preview-id` / `--exclude-preview-id` selection the composable
-        // render
-        // honours (issue #2977), forwarded as `composeai.preview.*`. A resource preview has no
-        // function/class name, so `ResourcePreviewRenderTest` matches all three against the
-        // resource
-        // id (`<type>/<name>`). Property conventions only — the sibling render tasks don't carry
-        // the
-        // CLI options themselves (only `composePreviewRender` does).
-        jvmArgumentProviders.add(
-          PreviewFilterSystemPropsProvider(
-            nameFilters = ComposePreviewTasks.previewFilterProperty(project),
-            idFilters = ComposePreviewTasks.previewIdFilterProperty(project),
-            idExcludes = ComposePreviewTasks.previewIdExcludeProperty(project),
-          )
-        )
-        // A filtered run writes only the named subset, so don't cache a partial
-        // `renders/resources/`
-        // set (same reasoning as `composePreviewRender`).
-        outputs.cacheIf("composePreviewRenderAndroidResources caches unfiltered runs only") {
-          ComposePreviewTasks.previewFilterProperty(project).get().none { it.isNotBlank() } &&
-            ComposePreviewTasks.previewIdFilterProperty(project).get().none { it.isNotBlank() } &&
-            ComposePreviewTasks.previewIdExcludeProperty(project).get().none { it.isNotBlank() }
-        }
+        // No preview-filter forwarding here (issue #2977): resource previews are XML assets in a
+        // separate manifest with no `@Preview` function, and this task owns a single shared
+        // `resource-render-errors.json` sidecar keyed across the whole set — a filtered (partial)
+        // run would overwrite it and erase diagnostics for the skipped resources. Resources always
+        // render in full; the composable render is where a filter narrows the output. See
+        // `ResourcePreviewRenderTest`.
 
         outputs.dir(resourcesRendersSubtree).withPropertyName("resourcesRendersDir")
 
@@ -2529,6 +2512,15 @@ internal object AndroidPreviewSupport {
         tier.set(resolveTier(project))
         displayFilterFilters.set(resolveDisplayFilterFilters(project))
         deviceFrameDevice.set(resolveDeviceFrameDevice(project))
+        // Honour the same `--preview` / `--preview-id` / `--exclude-preview-id` selection (issue
+        // #2977) so a filtered Android workflow doesn't render every Lottie asset. This is a
+        // `RenderPreviewsTask`, which applies the name/id filter over the FULL manifest before the
+        // `includeKinds` restriction below — so a filter naming a non-Lottie preview matches in the
+        // manifest (no fail-fast) and is simply dropped by the kind filter, while a global typo
+        // still fails fast. Conventions only; the CLI options live on `composePreviewRender`.
+        previewFilters.convention(ComposePreviewTasks.previewFilterProperty(project))
+        previewIdFilters.convention(ComposePreviewTasks.previewIdFilterProperty(project))
+        previewIdExcludes.convention(ComposePreviewTasks.previewIdExcludeProperty(project))
         includeKinds.add(PreviewKind.LOTTIE.name)
         // Lazy artifact view (not the raw `Configuration`) so the @Classpath collection stays
         // config-cache serializable — same rationale as the desktop validate guards (issue #1796).
@@ -2567,6 +2559,12 @@ internal object AndroidPreviewSupport {
         tier.set(resolveTier(project))
         displayFilterFilters.set(resolveDisplayFilterFilters(project))
         deviceFrameDevice.set(resolveDeviceFrameDevice(project))
+        // Honour the preview filters (issue #2977), same as the Lottie task above — filter over the
+        // full manifest, then restrict to `kind=SVG`, so filtered Android workflows don't render
+        // every SVG asset. Conventions only.
+        previewFilters.convention(ComposePreviewTasks.previewFilterProperty(project))
+        previewIdFilters.convention(ComposePreviewTasks.previewIdFilterProperty(project))
+        previewIdExcludes.convention(ComposePreviewTasks.previewIdExcludeProperty(project))
         includeKinds.add(PreviewKind.SVG.name)
         renderClasspath.from(svgRendererConfig.incoming.artifactView {}.files)
         renderClasspath.from(androidLottieResourceDirs(project))

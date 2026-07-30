@@ -64,6 +64,12 @@ public class XrSubspaceRenderTest(private val preview: XrManifestReader.XrPrevie
       // honours (issue #2977) — XR previews are ordinary `@Preview` composables with a
       // name/class/id, forwarded here by `composePreviewRenderXr` as the `composeai.preview.*`
       // system properties.
+      //
+      // `failOnNoMatch = false`: this reader has already narrowed the manifest to XR_SUBSPACE
+      // entries, so a filter that names a non-XR preview matches nothing *here* even though the
+      // image render matches it. Failing would sink `composePreviewRenderAll` (which always depends
+      // on this task when XR is enabled); instead render nothing and let the image render — which
+      // sees every kind and keeps fail-fast — be the authority on a genuine typo.
       return PreviewFilter.select(
         items = XrManifestReader.xrPreviews(File(manifest)),
         nameFilters = PreviewFilter.patternsFrom(PreviewFilter.NAME_FILTER_PROPERTY),
@@ -72,6 +78,7 @@ public class XrSubspaceRenderTest(private val preview: XrManifestReader.XrPrevie
         functionName = { it.functionName },
         className = { it.className },
         id = { it.id },
+        failOnNoMatch = false,
       )
     }
 

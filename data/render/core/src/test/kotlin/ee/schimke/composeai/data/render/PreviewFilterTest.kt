@@ -22,6 +22,7 @@ class PreviewFilterTest {
     name: List<String> = emptyList(),
     id: List<String> = emptyList(),
     exclude: List<String> = emptyList(),
+    failOnNoMatch: Boolean = true,
   ): List<Row> =
     PreviewFilter.select(
       items = items,
@@ -31,6 +32,7 @@ class PreviewFilterTest {
       functionName = { it.functionName },
       className = { it.className },
       id = { it.id },
+      failOnNoMatch = failOnNoMatch,
     )
 
   // --- matches (name / FQN) ---------------------------------------------------------------------
@@ -139,6 +141,35 @@ class PreviewFilterTest {
   fun excludeMatchingNothingIsANoOp() {
     val items = rows(Row("Foo_Light", "Foo", "com.example.FooKt"))
     assertEquals(listOf("Foo_Light"), select(items, exclude = listOf("*_Dark")).map { it.id })
+  }
+
+  // --- failOnNoMatch = false (kind-restricted sibling view, e.g. XR) ----------------------------
+
+  @Test
+  fun siblingViewReturnsEmptyInsteadOfThrowingOnNoNameMatch() {
+    val items = rows(Row("Xr_1", "XrPreview", "com.example.XrKt"))
+    // A filter naming a non-XR preview matches nothing in this XR-only view — no throw, empty
+    // result.
+    assertEquals(
+      emptyList(),
+      select(items, name = listOf("RegularComposable"), failOnNoMatch = false),
+    )
+  }
+
+  @Test
+  fun siblingViewReturnsEmptyOnNoIdMatchAndFullExclude() {
+    val items = rows(Row("Xr_dark", "XrPreview", "com.example.XrKt"))
+    assertEquals(emptyList(), select(items, id = listOf("nope"), failOnNoMatch = false))
+    assertEquals(emptyList(), select(items, exclude = listOf("*_dark"), failOnNoMatch = false))
+  }
+
+  @Test
+  fun siblingViewStillMatchesWhenPatternHits() {
+    val items = rows(Row("Xr_1", "XrPreview", "com.example.XrKt"), Row("Xr_2", "Other", "p.OKt"))
+    assertEquals(
+      listOf("Xr_1"),
+      select(items, name = listOf("XrPreview"), failOnNoMatch = false).map { it.id },
+    )
   }
 
   // --- system-property parsing ------------------------------------------------------------------
