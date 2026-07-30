@@ -32,8 +32,6 @@ import androidx.collection.ObjectIntMap
 import androidx.collection.emptyIntObjectMap
 import androidx.collection.emptyObjectIntMap
 import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.remote.core.CoreDocument
 import androidx.compose.remote.core.Limits
 import androidx.compose.remote.core.Operation
@@ -56,31 +54,10 @@ import androidx.compose.remote.core.operations.layout.Component
 import androidx.compose.remote.core.operations.layout.Container
 import androidx.compose.remote.core.operations.layout.LayoutComponent
 import androidx.compose.remote.core.operations.layout.LayoutComponentContent
-import androidx.compose.remote.core.operations.layout.RootLayoutComponent
-import androidx.compose.remote.core.operations.layout.managers.BoxLayout
-import androidx.compose.remote.core.operations.layout.managers.CanvasLayout
-import androidx.compose.remote.core.operations.layout.managers.ColumnLayout
-import androidx.compose.remote.core.operations.layout.managers.CoreText
-import androidx.compose.remote.core.operations.layout.managers.Custom
-import androidx.compose.remote.core.operations.layout.managers.FitBoxLayout
-import androidx.compose.remote.core.operations.layout.managers.FlowLayout
-import androidx.compose.remote.core.operations.layout.managers.ImageLayout
-import androidx.compose.remote.core.operations.layout.managers.RowLayout
-import androidx.compose.remote.core.operations.layout.managers.StateLayout
-import androidx.compose.remote.core.operations.layout.managers.TextLayout
-import androidx.compose.remote.core.operations.layout.modifiers.ComponentVisibilityOperation
 import androidx.compose.remote.core.operations.utilities.AnimatedFloatExpression
 import androidx.compose.remote.core.operations.utilities.NanMap
 import androidx.compose.remote.creation.compose.capture.CapturedDocument
 import androidx.compose.remote.player.compose.ExperimentalRemotePlayerApi
-import androidx.compose.remote.player.compose.embedded.layout.RcPlayerBox
-import androidx.compose.remote.player.compose.embedded.layout.RcPlayerColumn
-import androidx.compose.remote.player.compose.embedded.layout.RcPlayerFitBoxLayout
-import androidx.compose.remote.player.compose.embedded.layout.RcPlayerFlowRow
-import androidx.compose.remote.player.compose.embedded.layout.RcPlayerImageLayout
-import androidx.compose.remote.player.compose.embedded.layout.RcPlayerRow
-import androidx.compose.remote.player.compose.embedded.layout.RcPlayerStateLayout
-import androidx.compose.remote.player.compose.embedded.state.rememberRemoteIntAsState
 import androidx.compose.remote.player.core.platform.AndroidRemoteContext
 import androidx.compose.remote.player.core.state.StateUpdater
 import androidx.compose.runtime.Composable
@@ -93,19 +70,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.onPlaced
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.preferredFrameRate
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.util.fastForEach
 import java.io.ByteArrayInputStream
-import kotlin.math.abs
 
 /**
  * A player of a [CoreDocument].
@@ -513,160 +485,6 @@ public fun RcPlayer(
         // `CapturedDocument` in remote-creation-compose 1.0.0-alpha15. Same reasoning as the
         // named-action handler above: interactive dispatch, unused by the render lane.
     )
-}
-
-/**
- * Renders a document that has no root layout component — a raw draw-list document whose draw
- * operations live at the top level of `mOperations` rather than inside a component tree (e.g.
- * shader / canvas demos built without the layout DSL). The View player renders these via
- * `CoreDocument.paint`; here the document's operations are executed directly in a Canvas. Without
- * this fallback the layout-tree renderer dereferenced a null `rootLayoutComponent` and crashed
- * (NPE) for such documents.
- */
-@Composable
-internal fun RcPlayerRawDocument(size: IntSize) {
-    val document = LocalCoreDocument.current
-    val remoteContext = LocalRemoteContext.current
-    val graph = LocalGraphContext.current
-    val textMeasurer = rememberTextMeasurer()
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        // Publish the on-screen size as the document dimensions before painting, mirroring
-        // CoreDocument.paint, so draws positioned by the document size resolve.
-        document.setWidth(size.width)
-        document.setHeight(size.height)
-        executeOperations(
-            document.getOperationsReflection(),
-            remoteContext,
-            graph = graph,
-            textMeasurer = textMeasurer,
-        )
-    }
-}
-
-@Composable
-internal fun RcPlayerRootLayoutComponent(size: IntSize) {
-    val document = LocalCoreDocument.current
-    val root: RootLayoutComponent = document.rootLayoutComponent!!
-    val remoteContext = LocalRemoteContext.current
-
-    root.setWidth(size.width.toFloat())
-    root.setHeight(size.height.toFloat())
-    root.updateVariables(remoteContext)
-
-    RcPlayerChildren(root)
-}
-
-@Composable
-internal fun RcPlayerComponent(component: Component, modifier: Modifier = Modifier) {
-    if (component is LayoutComponent) {
-        val remoteContext = LocalRemoteContext.current
-        val componentValueMap = LocalComponentValueMap.current
-        val componentValueStateMap = LocalComponentValueStateMap.current
-
-        val visibilityOp =
-            component.componentModifiers.list.find { it is ComponentVisibilityOperation }
-                as? ComponentVisibilityOperation
-        if (visibilityOp != null) {
-            val visible by rememberRemoteIntAsState(visibilityOp.getVisibilityIdReflection())
-            if (visible == Component.Visibility.GONE) {
-                return
-            }
-        }
-
-        var modifier =
-            component.componentModifiers
-                .toModifier(component.getDrawContentOperationsListReflection())
-                .then(modifier)
-
-        // Publish the component's measured WIDTH/HEIGHT (read by ComponentValue expressions) from
-        // an onSizeChanged callback rather than a custom Modifier.layout that wrote snapshot state
-        // during the measure pass (a relayout hazard) and sat ahead of the real modifiers (which
-        // disturbed constraint propagation, e.g. FILL children collapsing to wrap size). As the
-        // outermost modifier, onSizeChanged reports the full component size and fires after layout.
-        val sizeFeedbackOps = componentValueMap[component.getId()]
-        if (!sizeFeedbackOps.isNullOrEmpty()) {
-            modifier =
-                Modifier.onSizeChanged { sz ->
-                        sizeFeedbackOps.forEach { op ->
-                            val state = componentValueStateMap[op.valueId] ?: return@forEach
-                            val w = sz.width.toFloat()
-                            val h = sz.height.toFloat()
-                            if (op.type == ComponentValue.WIDTH && abs(w - state.value) > 2.0f) {
-                                state.value = w
-                            } else if (
-                                op.type == ComponentValue.HEIGHT && abs(h - state.value) > 2.0f
-                            ) {
-                                state.value = h
-                            }
-                        }
-                    }
-                    .then(modifier)
-        }
-
-        val drawOpsList = component.getDrawContentOperationsListReflection()
-        if (drawOpsList != null) {
-            val remoteContext = LocalRemoteContext.current
-            val graph = LocalGraphContext.current
-            val document = LocalCoreDocument.current
-            val textMeasurer = rememberTextMeasurer()
-            modifier =
-                modifier.drawWithContent {
-                    // Size feedback is published by onSizeChanged above; the draw pass only draws.
-                    // graph makes time/variable-driven reads reactive, so the draw self-invalidates
-                    // when they change — no per-frame applyOperations refreshing the store.
-                    executeOperations(
-                        drawOpsList,
-                        remoteContext,
-                        onDrawContent = { drawContent() },
-                        graph = graph,
-                        textMeasurer = textMeasurer,
-                    )
-                }
-        }
-        when (component) {
-            is CanvasLayout -> RcPlayerCanvas(component, modifier)
-            is ColumnLayout -> RcPlayerColumn(component, modifier)
-            is FlowLayout -> RcPlayerFlowRow(component, modifier)
-            is RowLayout -> RcPlayerRow(component, modifier)
-            is CoreText -> RcPlayerText(component, modifier)
-            is TextLayout -> RcPlayerText(component, modifier)
-            is FitBoxLayout -> RcPlayerFitBoxLayout(component, modifier)
-            is StateLayout -> RcPlayerStateLayout(component, modifier)
-            is ImageLayout -> RcPlayerImageLayout(component, modifier)
-            is Custom -> RcPlayerCustom(component, modifier)
-            // Last as others are often BoxLayout subclasses
-            is BoxLayout -> RcPlayerBox(component, modifier)
-            else -> {
-                // Unsupported layout type. Render nothing rather than crash; see
-                // operation_coverage.md. The modifier (incl. any drawContent) was still applied
-                // above.
-                println(
-                    "Warning: unsupported layout component ${component::class.java.simpleName}; rendering nothing"
-                )
-            }
-        }
-    } else {
-        // Non-LayoutComponent component reached dispatch — skip gracefully instead of crashing.
-        println(
-            "Warning: unsupported component ${component?.let { it::class.java.simpleName }}; rendering nothing"
-        )
-    }
-}
-
-@Composable
-internal fun RcPlayerChildren(
-    layout: Component,
-    modifierProvider: @Composable (Component) -> Modifier = { Modifier },
-) {
-    if (layout is LayoutComponent) {
-        layout.childrenComponents.fastForEach { child ->
-            val scopeModifier = modifierProvider(child)
-            RcPlayerComponent(child, scopeModifier)
-        }
-    } else {
-        val children = remember { ArrayList<Component>().apply { layout.getComponents(this) } }
-        children.fastForEach { op -> RcPlayerComponent(op) }
-    }
 }
 
 /** True if the op tree contains a particle loop (drives the frame-loop keepalive). */

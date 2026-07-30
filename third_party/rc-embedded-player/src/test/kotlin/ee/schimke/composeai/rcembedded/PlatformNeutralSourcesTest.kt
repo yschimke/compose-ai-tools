@@ -227,8 +227,10 @@ class PlatformNeutralSourcesTest {
         "EmbeddedRcImageLoader",
         "LocalRcImageLoader",
         "DrawablePainter",
-        // SuppressLint / PendingIntent / AndroidRemoteContext
+        // SuppressLint / PendingIntent / AndroidRemoteContext (the player's Android entry point)
         "RcPlayer",
+        // The dispatch composables are import-clean (RcPlayerDispatch.kt) but still reach the
+        // googlefonts text layout / Drawable-typed image layout below, so they stay androidMain.
         "RcPlayerChildren",
         "RcPlayerComponent",
         // googlefonts Font/GoogleFont, Typeface, FontRequest
@@ -252,6 +254,11 @@ class PlatformNeutralSourcesTest {
         // silently creeping back before the jvm draw context lands.
         "RcPlayerDrawing.kt",
         "RcPlayerPaint.kt",
+        // The component-tree dispatch (RcPlayerRawDocument / RcPlayerRootLayoutComponent /
+        // RcPlayerComponent / RcPlayerChildren), split out of the Android-coupled RcPlayer.kt. Import-
+        // clean, but not movable yet: its `when` reaches the still-androidMain RcPlayerText
+        // (googlefonts) and RcPlayerImageLayout (Drawable loader).
+        "RcPlayerDispatch.kt",
       )
 
     /**

@@ -591,11 +591,20 @@ single-target milestone it cannot be verified. It splits into 1a/1b.
      draw context (whose `loadBitmap` decodes via `org.jetbrains.skia.Image`), which is step 3's
      `JvmRemoteContext` — so unlike the text seam, the image seam's jvm half is paced by the context,
      not ready ahead of it.
-   - **Next: the draw dispatcher.** `RcPlayerChildren`/`RcPlayerComponent` out of `RcPlayer.kt` (to
-     shed its `AndroidRemoteContext`/`PendingIntent` coupling), then add the now-import-clean
-     `RcPlayerDrawing.kt` / `RcPlayerPaint.kt` / `RcPlayerCanvas.kt` / `RcPlayerModifiers.kt` /
-     `RcPlayerDensity.kt` and the neutral `layout/**` + `modifier/**` to the jvm source list once
-     their callees resolve. This is the large remaining piece and where the deferrals below matter.
+   - The draw dispatcher out of `RcPlayer.kt` — **done** (`RcPlayerDispatch.kt`). The four
+     component-tree composables (`RcPlayerRawDocument`, `RcPlayerRootLayoutComponent`,
+     `RcPlayerComponent`, `RcPlayerChildren`) touch only neutral types — the composition locals, the
+     seamed `executeOperations`, and the per-layout composables — so moving them out keeps
+     `RcPlayer.kt`'s `SuppressLint`/`PendingIntent`/`AndroidRemoteContext` coupling (document setup +
+     interactive dispatch, neither on the pixel path) off the draw/layout path. A move, not a change:
+     the bodies are verbatim. `RcPlayerDispatch.kt` is import-clean but not yet movable — its `when`
+     still reaches `RcPlayerText` (googlefonts) and `RcPlayerImageLayout` (the `Drawable` loader).
+   - **Next: add the import-clean set to the jvm source list.** `RcPlayerDrawing.kt` /
+     `RcPlayerPaint.kt` / `RcPlayerDispatch.kt` / `RcPlayerCanvas.kt` / `RcPlayerModifiers.kt` /
+     `RcPlayerDensity.kt` and the neutral `layout/**` + `modifier/**`, once their remaining
+     androidMain callees (the `Drawable` image loader, the googlefonts text layout, and a jvm draw
+     `RemoteContext` whose `loadBitmap` decodes) are split or seamed. This is where the deferrals
+     below start to matter.
 
    **Import-clean and movable are different things**, and 1a keeps tripping over the difference —
    `GraphContext` imports nothing Android yet still cannot move, because of an ordinary in-package
