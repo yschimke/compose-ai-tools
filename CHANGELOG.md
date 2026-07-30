@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.19.10](https://github.com/yschimke/compose-ai-tools/compare/v0.19.9...v0.19.10) (2026-07-30)
+
+
+### Features
+
+* **design-artifacts:** add a ref input to the reusable publish workflow ([#3022](https://github.com/yschimke/compose-ai-tools/issues/3022)) ([f189142](https://github.com/yschimke/compose-ai-tools/commit/f1891423711e898c639cb81b5c3800a7954e8ff2))
+* **rc-embedded-jvm:** render Remote Compose documents to PNG on the desktop JVM ([#3025](https://github.com/yschimke/compose-ai-tools/issues/3025)) ([874eb17](https://github.com/yschimke/compose-ai-tools/commit/874eb172e50f13273a7278212440bd0aa1c9d5d9))
+* **vscode:** navigate previews to their component source on title click ([#3018](https://github.com/yschimke/compose-ai-tools/issues/3018)) ([34e821a](https://github.com/yschimke/compose-ai-tools/commit/34e821a00d71ff3f0b8d45531043ca33c75344da))
+
+
+### Bug Fixes
+
+* **cli:** make bundle pack --with-semantics deadline an inactivity window ([#3020](https://github.com/yschimke/compose-ai-tools/issues/3020)) ([9e1eacd](https://github.com/yschimke/compose-ai-tools/commit/9e1eacd5041652b205c542f2a924233dc536d018))
+* **design-artifacts:** reject an all-deferred catalog instead of rendering everything ([#3013](https://github.com/yschimke/compose-ai-tools/issues/3013)) ([c2fc252](https://github.com/yschimke/compose-ai-tools/commit/c2fc252f9ba9cb6c95c2488881ac6a141c48bf0a))
+* **figma-svg:** clip children to a Modifier.clip shape ([#2852](https://github.com/yschimke/compose-ai-tools/issues/2852)) ([#3023](https://github.com/yschimke/compose-ai-tools/issues/3023)) ([ec66c29](https://github.com/yschimke/compose-ai-tools/commit/ec66c292c34505b67485b17a3c344c1f3befdf61))
+* **rc-embedded:** resolve a gradient's bound colour-id stop in the embedded player ([#3019](https://github.com/yschimke/compose-ai-tools/issues/3019)) ([28f4def](https://github.com/yschimke/compose-ai-tools/commit/28f4defb4d3afbd708a6e2d5759b10a8ef59538c))
+
 ## [0.19.9](https://github.com/yschimke/compose-ai-tools/compare/v0.19.8...v0.19.9) (2026-07-30)
 
 
