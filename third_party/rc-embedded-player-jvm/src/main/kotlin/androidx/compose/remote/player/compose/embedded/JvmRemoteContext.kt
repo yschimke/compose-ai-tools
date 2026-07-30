@@ -98,8 +98,11 @@ internal class JvmRemoteContext(
                     raster(data, width, height, rowBytes = width, ColorType.ALPHA_8)
                 else -> null
             }
-        } catch (t: Throwable) {
-            // A malformed/undersized buffer or an unsupported skiko path must not crash the render.
+        } catch (e: Exception) {
+            // A malformed/undersized buffer must not crash the render — skiko throws an ordinary
+            // exception on bytes it can't decode. Deliberately NOT Throwable: a LinkageError (skiko
+            // mispackaged) or OutOfMemoryError is a real deployment/runtime failure that must stay
+            // visible rather than be hidden behind a blank image.
             null
         }
 
