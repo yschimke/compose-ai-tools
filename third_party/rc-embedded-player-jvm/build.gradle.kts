@@ -73,6 +73,41 @@ val sharedPlayerSources =
     // ink-bounds carrier they return. Neutral values, so both halves share this one rather than
     // agreeing on two copies of it.
     "androidx/compose/remote/player/compose/embedded/RcPlayerTextPaintSpec.kt",
+    // ---- the draw path (import-clean via the text + image seams) --------------------------------
+    // The op interpreter and paint decoder, plus the component-tree dispatch split out of RcPlayer.
+    "androidx/compose/remote/player/compose/embedded/RcPlayerDrawing.kt",
+    "androidx/compose/remote/player/compose/embedded/RcPlayerPaint.kt",
+    "androidx/compose/remote/player/compose/embedded/RcPlayerDispatch.kt",
+    "androidx/compose/remote/player/compose/embedded/RcPlayerCanvas.kt",
+    "androidx/compose/remote/player/compose/embedded/RcPlayerModifiers.kt",
+    "androidx/compose/remote/player/compose/embedded/RcPlayerDensity.kt",
+    // Custom (host-extension) components: schemas, the property reader, the plugin registry, and
+    // the
+    // dispatch leaf. All neutral Compose + remote-core — the host supplies the actual rendering.
+    "androidx/compose/remote/player/compose/embedded/RcPlayerCustom.kt",
+    // Per-layout composables (the neutral ones; text/image/custom get jvm siblings, see below).
+    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerBoxLayout.kt",
+    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerColumnLayout.kt",
+    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerRowLayout.kt",
+    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerFitBoxLayout.kt",
+    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerStateLayout.kt",
+    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerCollapsibleLayout.kt",
+    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerLayoutAlignment.kt",
+    // Component modifiers — all neutral Compose modifier factories.
+    "androidx/compose/remote/player/compose/embedded/modifier/AlignByModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/BackgroundModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/BorderModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/ClickModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/ClipModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/GraphicsLayerModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/HeightModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/MarqueeModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/OffsetModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/PaddingModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/RippleModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/ScrollModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/WidthModifier.kt",
+    "androidx/compose/remote/player/compose/embedded/modifier/ZIndexModifier.kt",
   )
 
 /**
@@ -90,6 +125,23 @@ val jvmPlayerSources =
     // The jvm draw RemoteContext — StoreBackedRemoteContext + a skiko `loadBitmap` decode, the one
     // platform-bound member of the contract. Written here, so it names skiko rather than the SDK.
     "androidx/compose/remote/player/compose/embedded/JvmRemoteContext.kt",
+    // jvm halves of the three Android-only draw seams the shared draw path calls: image decode over
+    // skiko, and no-op stubs for the deferred AGSL shaders and particles.
+    "androidx/compose/remote/player/compose/embedded/RcPlayerImagePlatformJvm.kt",
+    "androidx/compose/remote/player/compose/embedded/RcPlayerShadersJvm.kt",
+    "androidx/compose/remote/player/compose/embedded/RcPlayerParticlesJvm.kt",
+    // Vendored path utilities the draw path calls (core PathData -> Compose Path). Neutral upstream
+    // source that ships only inside the `remote-player-compose` AAR a kotlin(jvm) module can't
+    // consume, so it's vendored here; FloatsToPath swaps the conic op to skiko. See those files.
+    "androidx/compose/remote/player/compose/utils/PathUtils.kt",
+    "androidx/compose/remote/player/compose/utils/FloatsToPath.kt",
+    // jvm halves of the two per-layout composables whose Android originals name framework types:
+    // the
+    // text seam (google:/device: fonts -> nearest standard family) and the image layout (the
+    // `Drawable` host loader -> the embedded `ImageBitmap` decode). Different filenames from their
+    // Android siblings so the per-relative-path `include` can't pull both in. See those files.
+    "androidx/compose/remote/player/compose/embedded/RcPlayerTextLayoutJvm.kt",
+    "androidx/compose/remote/player/compose/embedded/layout/RcPlayerImageLayoutJvm.kt",
   )
 
 kotlin {
@@ -98,6 +150,21 @@ kotlin {
     // `include` filters every srcDir of this source set, so this module's own sources need a
     // pattern too — otherwise the explicit list above would silently exclude them.
     include(sharedPlayerSources + jvmPlayerSources + "ee/**")
+  }
+}
+
+// Share the Android module's `.rc` test fixtures (e.g. `rc-fixtures/TitleCardRemote-640x480.rc`)
+// rather than duplicating the binaries, so the jvm render harness test rasterizes the *same*
+// captured document the Android embedded lane does — the only way its output is comparable.
+sourceSets["test"].resources.srcDir("../rc-embedded-player/src/test/resources")
+
+// Forward the rc-compare jvm lane's staging properties to the test worker, mirroring the Android
+// module's `rc.embedded.*` forwarding. `RcJvmRenderHarness` reads `<id>.rc` + `manifest.json` from
+// `rc.jvm.input` and writes `<id>.png` to `rc.jvm.output`; the `rc-compare.mjs --embedded-jvm` lane
+// diffs those against the baked PNG, the same shape as the embedded (Android) lane.
+tasks.withType<Test>().configureEach {
+  for (key in listOf("rc.jvm.input", "rc.jvm.output")) {
+    (project.findProperty(key) as String?)?.let { systemProperty(key, it) }
   }
 }
 
@@ -121,8 +188,15 @@ dependencies {
   // Compose Desktop, not the Android artifacts — the point of this module.
   @Suppress("DEPRECATION") implementation(compose.runtime)
   @Suppress("DEPRECATION") implementation(compose.foundation)
+  // Material3 (desktop) for the ripple modifier; androidx.collection for the layout maps — both
+  // multiplatform, matching what the Android module pulls in.
+  @Suppress("DEPRECATION") implementation(compose.material3)
+  implementation(libs.androidx.collection)
 
   testImplementation(libs.junit)
+  // Manifest parsing for the rc-compare jvm render harness (RcJvmRenderHarness) — parsed via the
+  // runtime `Json` API, so no serialization compiler plugin is needed.
+  testImplementation(libs.kotlinx.serialization.json)
 
   // `compose.foundation` brings skiko's *API* jar, which is all the jvm text seam needs to compile
   // against — but calling into Skia needs the platform's `libskiko` too, and that ships in a

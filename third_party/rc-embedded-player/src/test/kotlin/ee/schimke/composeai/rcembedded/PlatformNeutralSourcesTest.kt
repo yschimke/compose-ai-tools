@@ -278,6 +278,11 @@ class PlatformNeutralSourcesTest {
         "GraphContext.kt",
         "RcPlayerCompositionLocals.kt",
         "RcPlayerEasing.kt",
+        // Custom (host-extension) components: schemas, the property reader, the plugin registry and
+        // the dispatch leaf — all neutral Compose + remote-core, so genuinely movable and compiled
+        // by the jvm module (`sharedPlayerSources`). Its Android-only siblings on the dispatch `when`
+        // (RcPlayerText / RcPlayerImageLayout) are answered by jvm siblings, not by this file.
+        "RcPlayerCustom.kt",
         "state/RcPlayerState.kt",
         "state/RcPlayerExpression.kt",
         // The canvas text seam's vocabulary — the paint projection its four functions take and the
