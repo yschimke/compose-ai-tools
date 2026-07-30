@@ -159,26 +159,14 @@ internal fun RcPlayerComponent(component: Component, modifier: Modifier = Modifi
                     .then(modifier)
         }
 
-        val drawOpsList = component.getDrawContentOperationsListReflection()
-        if (drawOpsList != null) {
-            val remoteContext = LocalRemoteContext.current
-            val graph = LocalGraphContext.current
-            val document = LocalCoreDocument.current
-            val textMeasurer = rememberTextMeasurer()
-            modifier =
-                modifier.drawWithContent {
-                    // Size feedback is published by onSizeChanged above; the draw pass only draws.
-                    // graph makes time/variable-driven reads reactive, so the draw self-invalidates
-                    // when they change — no per-frame applyOperations refreshing the store.
-                    executeOperations(
-                        drawOpsList,
-                        remoteContext,
-                        onDrawContent = { drawContent() },
-                        graph = graph,
-                        textMeasurer = textMeasurer,
-                    )
-                }
-        }
+        // The component's draw ops (background/border chrome + the DrawContent marker) are already
+        // rendered by `toModifier` above — its `DrawContentOperation` branch (or its fallback when a
+        // component carries no explicit marker) wraps them in the `drawWithContent`. Executing the
+        // same `drawOpsList` a second time here re-drew the chrome at a different point in the
+        // modifier chain: for a component with content padding (e.g. an outlined card) the second
+        // pass landed *inside* the padding and stroked a spurious inner outline hugging the content,
+        // on top of the correct card-bounds outline. Components without padding drew the two passes
+        // at the same size, so the duplication was invisible until a padded, bordered one hit it.
         when (component) {
             is CanvasLayout -> RcPlayerCanvas(component, modifier)
             is ColumnLayout -> RcPlayerColumn(component, modifier)
