@@ -242,17 +242,7 @@ class GradleConnection(
     // Show the captured stderr (Gradle's error output)
     val captured = errorCapture.toString().trim()
     if (captured.isNotEmpty()) {
-      // Extract actionable lines from Gradle output
-      val lines = captured.lines()
-      val actionable = lines.filter { line ->
-        line.contains("error:", ignoreCase = true) ||
-          line.contains("FAILURE:") ||
-          line.contains("What went wrong") ||
-          line.contains("not found") ||
-          line.startsWith("e: ") ||
-          line.startsWith("> ") ||
-          line.startsWith("* ")
-      }
+      val actionable = actionableFailureLines(captured)
       if (actionable.isNotEmpty()) {
         for (line in actionable) {
           System.err.println(line)
@@ -453,3 +443,49 @@ private fun Throwable.causeMessages(): List<String> {
   }
   return messages
 }
+
+/**
+ * The lines worth showing from Gradle's captured stderr when a build fails, without `--verbose`.
+ *
+ * Everything between `* What went wrong:` and the next `* <section>:` header is kept **verbatim**,
+ * whatever it looks like. The per-line patterns only recognise Gradle's decorated cause lines (`>
+ * …`) and compiler diagnostics, so a reason written as plain prose — `Execution failed for task
+ * ':a:b'.`, or a task's own multi-line `GradleException` text — used to match nothing and be
+ * dropped, printing `* What went wrong:` followed immediately by `* Try:` and no reason at all.
+ * That empty block is worse than noise: `printBuildFailure`'s `captured.contains("What went
+ * wrong")` check then suppresses the exception-chain fallback too, so the run reports a failure
+ * with no cause anywhere in its output and the only way to learn what broke is to re-run the whole
+ * render with `--verbose` — which, in CI, means nobody can.
+ *
+ * Blank lines inside the block are dropped so the section stays tight (Gradle puts one before the
+ * next header).
+ *
+ * The block ends at the next entry of [GRADLE_FAILURE_SECTIONS], not at the next line that merely
+ * starts with `* `: a task's `GradleException` message is free to contain its own unindented `* `
+ * bullets, and treating one of those as a section header would drop the rest of the reason —
+ * exactly the truncation this function exists to prevent (Codex review on #3003). Such a bullet is
+ * still printed, it just doesn't close the block.
+ */
+internal fun actionableFailureLines(captured: String): List<String> {
+  var inWhatWentWrong = false
+  return captured.lines().filter { line ->
+    val header = GRADLE_FAILURE_SECTIONS.any { line.startsWith(it) }
+    if (header) inWhatWentWrong = line.startsWith("* What went wrong:")
+    header ||
+      (inWhatWentWrong && line.isNotBlank()) ||
+      line.contains("error:", ignoreCase = true) ||
+      line.contains("FAILURE:") ||
+      line.contains("not found") ||
+      line.startsWith("e: ") ||
+      line.startsWith("> ") ||
+      line.startsWith("* ")
+  }
+}
+
+/**
+ * The section headers Gradle's console failure report emits, each at column zero. Used to decide
+ * where a `* What went wrong:` block ends — see [actionableFailureLines]. `* Get more help at …` is
+ * the one that doesn't end in a colon, so these are matched as prefixes rather than by shape.
+ */
+private val GRADLE_FAILURE_SECTIONS =
+  listOf("* Where:", "* What went wrong:", "* Try:", "* Exception is:", "* Get more help at")
