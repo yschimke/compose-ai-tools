@@ -307,6 +307,14 @@ data class PreviewManifestEntry(
    * router.
    */
   val uiMode: Int? = null,
+  /**
+   * Flat-schema mirrors of [PreviewParamsEntry.previewParameterProviderClassName] /
+   * [PreviewParamsEntry.previewParameterLimit] — see the kdoc there. The production gradle plugin
+   * writes them under `params`; `:daemon:harness` scenario manifests use the flat shape, which is
+   * what gives the `@PreviewParameter` render path (issue #3027) end-to-end cover in CI.
+   */
+  val previewParameterProviderClassName: String? = null,
+  val previewParameterLimit: Int? = null,
 ) {
   fun resolved(): ResolvedRenderParams {
     val p = params
@@ -360,8 +368,11 @@ data class PreviewManifestEntry(
       fontScale = fontScale,
       locale = locale,
       previewParameterProviderClassName =
-        p?.previewParameterProviderClassName?.takeIf { it.isNotBlank() },
-      previewParameterLimit = p?.previewParameterLimit ?: Int.MAX_VALUE,
+        (previewParameterProviderClassName ?: p?.previewParameterProviderClassName)?.takeIf {
+          it.isNotBlank()
+        },
+      previewParameterLimit =
+        previewParameterLimit ?: p?.previewParameterLimit ?: Int.MAX_VALUE,
     )
   }
 

@@ -194,6 +194,13 @@ data class RealModePreview(
   val heightPx: Int = 64,
   val density: Double = 1.0,
   val showBackground: Boolean = true,
+  /**
+   * FQN of the preview's `@PreviewParameter` provider, when it declares one. Emitted into the
+   * scenario manifest so the spawned daemon resolves the preview's `(<T>, Composer, int)` overload
+   * and renders the provider's first value — the path issue #3027 fixed. Null for the ordinary
+   * parameterless previews every other scenario uses.
+   */
+  val previewParameterProvider: String? = null,
 )
 
 data class RealModeScenarioPaths(
@@ -312,7 +319,11 @@ private fun prepareRealModeScenarioPaths(
         "widthPx": ${p.widthPx},
         "heightPx": ${p.heightPx},
         "density": ${p.density},
-        "showBackground": ${p.showBackground},
+        "showBackground": ${p.showBackground},${
+        p.previewParameterProvider?.let {
+          "\n        \"previewParameterProviderClassName\": \"$it\","
+        } ?: ""
+      }
         "outputBaseName": "${p.id}"
       }
       """
