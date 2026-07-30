@@ -193,6 +193,10 @@ dependencies {
   // Renderer-agnostic daemon core helpers that are safe to use as a local library from CLI
   // commands. Keep renderer backends (`:daemon:android`, `:daemon:desktop`) out of this module.
   implementation(project(":daemon:core"))
+  // ClassGraph for the `serve --playground` preview scan: a scoped `@Preview` enumeration of a
+  // just-compiled snippet's classes dir (mirrors `:daemon:core`'s IncrementalDiscovery, which keeps
+  // classgraph as its own `implementation` and so doesn't leak it here).
+  implementation(libs.classgraph)
   // Wire-shape of the `compose/overrides` data product (`PreviewOverrideDeclaration`) — the
   // editable
   // knobs `compose-preview serve` reads from a bundle's `previews/<id>.overrides.json` sidecar to
