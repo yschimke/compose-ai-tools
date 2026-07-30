@@ -63,6 +63,7 @@ internal object CliFlags {
       "--accept-bundles-from",
       "--accept-docs-from",
       "--doc-ttl",
+      "--playground-bundle",
       "--extra-maven-repos",
       "--trust-store",
       "--catalogs",

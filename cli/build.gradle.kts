@@ -110,7 +110,39 @@ val composePreviewDaemonAndroid =
     }
   }
 
+// BTA (Kotlin Build Tools API) *implementation* classpath for the `serve --playground` in-process
+// compile: `kotlin-build-tools-impl` (transitively `kotlin-compiler-embeddable` + runtime) plus the
+// Compose compiler plugin. These are the jars the gradle plugin's `DaemonBootstrapTask` supplies to
+// the editor daemon via sysprops — the serve host has no gradle plugin, so it stages them into the
+// CLI install (`lib-bta/`) and loads them into BTA's isolated classloader at compile time. Never on
+// the CLI's own classpath (a whole compiler frontend); resolved into
+// `cli/build/install/compose-preview/lib-bta/`, located at runtime via `APP_HOME/lib-bta/` (or
+// `-Dcomposeai.cli.libBtaDir`).
+val composePreviewBta =
+  configurations.create("composePreviewBta") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+  }
+
 dependencies {
+  // The BTA implementation + Compose compiler plugin jars, staged into `lib-bta/` (see the
+  // `composePreviewBta` configuration above). `kotlin-build-tools-impl` pulls
+  // `kotlin-compiler-embeddable` and the rest of the frontend transitively.
+  add(
+    "composePreviewBta",
+    "org.jetbrains.kotlin:kotlin-build-tools-impl:${libs.versions.kotlin.get()}",
+  )
+  add(
+    "composePreviewBta",
+    "org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable:${libs.versions.kotlin.get()}",
+  )
+  // BTA *interfaces only* — the CLI references `BtaCompileSession`'s build-tools-api parameter
+  // types
+  // (`CompilerPlugin`, `KotlinLogger`, `SourcesChanges`) to drive an in-process playground compile.
+  // `:daemon:core` declares this as `implementation`, so it isn't transitive; the impl JARs ride in
+  // `lib-bta/`, not here.
+  implementation("org.jetbrains.kotlin:kotlin-build-tools-api:${libs.versions.kotlin.get()}")
+
   // Published wire-format DTOs (`PreviewResult`, `PreviewManifest`, the v1 a11y mirror types,
   // `ExtensionPayload`). `api` so the existing in-package imports across this module (and the
   // CLI tests) keep resolving without an explicit `import` change — same source-compat pattern
@@ -161,6 +193,10 @@ dependencies {
   // Renderer-agnostic daemon core helpers that are safe to use as a local library from CLI
   // commands. Keep renderer backends (`:daemon:android`, `:daemon:desktop`) out of this module.
   implementation(project(":daemon:core"))
+  // ClassGraph for the `serve --playground` preview scan: a scoped `@Preview` enumeration of a
+  // just-compiled snippet's classes dir (mirrors `:daemon:core`'s IncrementalDiscovery, which keeps
+  // classgraph as its own `implementation` and so doesn't leak it here).
+  implementation(libs.classgraph)
   // Wire-shape of the `compose/overrides` data product (`PreviewOverrideDeclaration`) — the
   // editable
   // knobs `compose-preview serve` reads from a bundle's `previews/<id>.overrides.json` sidecar to
@@ -294,11 +330,40 @@ val stageDaemonAndroidLibs =
     destinationDir.set(layout.buildDirectory.dir("staged-daemon-android-libs"))
   }
 
+// Stage the BTA impl + Compose-plugin jars into `lib-bta/`, disambiguating any colliding filenames
+// by Maven `module-version.jar` (same reason as the desktop daemon: multiple artifacts can share a
+// basename). The playground compile loads this whole directory into BTA's isolated classloader.
+val stageBtaLibs =
+  tasks.register<Sync>("stageBtaLibs") {
+    description = "Stages the BTA impl + Compose compiler plugin jars for serve --playground."
+    destinationDir = layout.buildDirectory.dir("staged-bta-libs").get().asFile
+    val artifactsProvider = composePreviewBta.incoming.artifacts.resolvedArtifacts
+    from(artifactsProvider.map { it.map(ResolvedArtifactResult::getFile) })
+    val nameByPath = artifactsProvider.map { resolved ->
+      val counts = resolved.groupingBy { it.file.name }.eachCount()
+      resolved.associate { artifact ->
+        val original = artifact.file.name
+        val mapped =
+          if (counts.getValue(original) > 1) {
+            val id = artifact.id.componentIdentifier
+            if (id is ModuleComponentIdentifier) "${id.module}-${id.version}.jar" else original
+          } else original
+        artifact.file.absolutePath to mapped
+      }
+    }
+    inputs.property("nameByPath", nameByPath)
+    eachFile {
+      val mapped = nameByPath.get()[file.absolutePath]
+      if (mapped != null) name = mapped
+    }
+  }
+
 distributions {
   named("main") {
     contents {
       into("lib-renderer") { from(composePreviewRenderer) }
       into("lib-daemon-desktop") { from(stageDaemonDesktopLibs) }
+      into("lib-bta") { from(stageBtaLibs) }
     }
   }
 }
