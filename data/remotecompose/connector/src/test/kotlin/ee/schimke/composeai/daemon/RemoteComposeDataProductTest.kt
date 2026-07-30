@@ -7,9 +7,12 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
 import ee.schimke.composeai.daemon.protocol.RemoteHostAction
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.data.remotecompose.RemoteComposeDeclarationsPayload
+import ee.schimke.composeai.data.remotecompose.RemoteComposeDocumentPayload
 import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import ee.schimke.composeai.data.remotecompose.RemoteComposePayload
+import ee.schimke.composeai.data.render.IrSidecarChannel
 import ee.schimke.composeai.data.render.PreviewContext
+import java.util.Base64
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
@@ -17,6 +20,7 @@ import ee.schimke.composeai.data.render.extensions.compose.AroundComposableHook
 import ee.schimke.composeai.data.render.extensions.compose.hasAroundComposableHook
 import kotlinx.serialization.json.Json
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -28,6 +32,22 @@ class RemoteComposeDataProductTest {
   @After
   fun reset() {
     RemoteComposeController.resetForNewSession()
+    // The IR sidecar channel is process-static; drop anything a test left so it can't leak into
+    // the next one.
+    IrSidecarChannel.setCurrentPreviewId(null)
+    IrSidecarChannel.consume("preview-1")
+    IrSidecarChannel.consume("preview-2")
+  }
+
+  /** Stash [bytes] as [previewId]'s captured IR of [format], the way a render's producer would. */
+  private fun offerIr(
+    previewId: String,
+    bytes: ByteArray,
+    format: String = IrSidecarChannel.FORMAT_REMOTECOMPOSE,
+  ) {
+    IrSidecarChannel.setCurrentPreviewId(previewId)
+    IrSidecarChannel.offer(format, bytes)
+    IrSidecarChannel.setCurrentPreviewId(null)
   }
 
   @Test
@@ -64,9 +84,22 @@ class RemoteComposeDataProductTest {
 
   @Test
   fun capabilities_advertise_compose_remotecompose_as_inline_no_rerender_product() {
-    val cap = RemoteComposeDataProductRegistry().capabilities.single()
-    assertEquals("compose/remotecompose", cap.kind)
+    val cap =
+      RemoteComposeDataProductRegistry().capabilities.single { it.kind == "compose/remotecompose" }
     assertEquals(2, cap.schemaVersion)
+    assertEquals(DataProductTransport.INLINE, cap.transport)
+    assertTrue(cap.attachable)
+    assertTrue(cap.fetchable)
+    assertEquals(false, cap.requiresRerender)
+  }
+
+  @Test
+  fun capabilities_advertise_compose_remotecompose_doc_as_inline_no_rerender_product() {
+    val cap =
+      RemoteComposeDataProductRegistry().capabilities.single {
+        it.kind == "compose/remotecompose-doc"
+      }
+    assertEquals(1, cap.schemaVersion)
     assertEquals(DataProductTransport.INLINE, cap.transport)
     assertTrue(cap.attachable)
     assertTrue(cap.fetchable)
@@ -315,6 +348,86 @@ class RemoteComposeDataProductTest {
     assertEquals("label", payload.declarations[0].name)
     assertEquals(RemoteNamedValue.StringValue("Filled"), payload.declarations[0].default)
     assertEquals("stopColor", payload.declarations[1].name)
+  }
+
+  @Test
+  fun document_fetch_before_any_render_returns_not_available() {
+    val registry = RemoteComposeDataProductRegistry()
+    assertEquals(
+      DataProductRegistry.Outcome.NotAvailable,
+      registry.fetch("preview-1", "compose/remotecompose-doc", params = null, inline = true),
+    )
+  }
+
+  @Test
+  fun on_render_captures_the_document_fetchable_as_base64() {
+    val registry = RemoteComposeDataProductRegistry()
+    val rc = byteArrayOf(1, 2, 3, 4, 5)
+    offerIr("preview-1", rc)
+
+    registry.onRender("preview-1", stubRenderResult(), overrides = null, previewContext = stubContext())
+
+    val outcome = registry.fetch("preview-1", "compose/remotecompose-doc", params = null, inline = true)
+    assertTrue(outcome is DataProductRegistry.Outcome.Ok)
+    val result = (outcome as DataProductRegistry.Outcome.Ok).result
+    assertEquals("compose/remotecompose-doc", result.kind)
+    val payload = Json.decodeFromJsonElement(RemoteComposeDocumentPayload.serializer(), result.payload!!)
+    assertArrayEquals(rc, Base64.getDecoder().decode(payload.documentBase64))
+    // The render drained the channel — a second render with nothing offered clears the document.
+    assertNull(IrSidecarChannel.peek("preview-1"))
+  }
+
+  @Test
+  fun the_document_is_captured_even_when_the_preview_declares_no_knobs() {
+    // The knob payload and the document are independent facets: a preview can emit a `.rc` while
+    // declaring zero editable knobs, and the empty-knob clear must not suppress the document.
+    val registry = RemoteComposeDataProductRegistry()
+    offerIr("preview-1", byteArrayOf(9, 9, 9))
+
+    registry.onRender("preview-1", stubRenderResult(), overrides = null, previewContext = stubContext())
+
+    assertEquals(
+      "no knobs → the knob facet is unavailable",
+      DataProductRegistry.Outcome.NotAvailable,
+      registry.fetch("preview-1", "compose/remotecompose", params = null, inline = true),
+    )
+    assertTrue(
+      "…but the captured document is still fetchable",
+      registry.fetch("preview-1", "compose/remotecompose-doc", params = null, inline = true)
+        is DataProductRegistry.Outcome.Ok,
+    )
+  }
+
+  @Test
+  fun a_render_with_no_capture_clears_a_stale_document() {
+    val registry = RemoteComposeDataProductRegistry()
+    offerIr("preview-1", byteArrayOf(7))
+    registry.onRender("preview-1", stubRenderResult(), overrides = null, previewContext = stubContext())
+    // Next render offers nothing — the previously captured document must not linger.
+    registry.onRender("preview-1", stubRenderResult(), overrides = null, previewContext = stubContext())
+    assertEquals(
+      DataProductRegistry.Outcome.NotAvailable,
+      registry.fetch("preview-1", "compose/remotecompose-doc", params = null, inline = true),
+    )
+  }
+
+  @Test
+  fun a_protolayout_capture_is_left_for_its_own_drainer() {
+    // The RC drainer must not swallow another format's capture: it peeks, and only consumes a
+    // Remote Compose capture. A protolayout tile's IR stays put for its own consumer.
+    val registry = RemoteComposeDataProductRegistry()
+    offerIr("preview-1", byteArrayOf(4, 2), format = IrSidecarChannel.FORMAT_PROTOLAYOUT)
+
+    registry.onRender("preview-1", stubRenderResult(), overrides = null, previewContext = stubContext())
+
+    assertEquals(
+      "a non-RC capture yields no RC document",
+      DataProductRegistry.Outcome.NotAvailable,
+      registry.fetch("preview-1", "compose/remotecompose-doc", params = null, inline = true),
+    )
+    val left = IrSidecarChannel.peek("preview-1")
+    assertNotNull("the protolayout capture must survive the RC drainer", left)
+    assertEquals(IrSidecarChannel.FORMAT_PROTOLAYOUT, left!!.format)
   }
 
   private fun stubRenderResult(): RenderResult =
