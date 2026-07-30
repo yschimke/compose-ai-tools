@@ -35,11 +35,18 @@ import android.graphics.drawable.Drawable
  * a later `String.format` with args leaves it unchanged. Value resources ([getColor], the dimension
  * family, [getDrawable]) don't route through a shared accessor, so each is guarded directly. The
  * base class's `AssetManager` / `DisplayMetrics` / `Configuration` are reused, so every *resolvable*
- * resource still takes the normal Android path.
+ * resource still takes the normal Android path. Drawables are guarded on **all four**
+ * `loadDrawable` entry points — `getDrawable(id)`, `getDrawable(id, theme)`, and both
+ * `getDrawableForDensity(...)` overloads — because a density-aware caller
+ * (`ResourcesCompat.getDrawableForDensity`, RemoteViews / ImageView inflation, image loaders)
+ * reaches the throwing `ResourcesImpl.loadDrawable` without funnelling through the plain
+ * `getDrawable`, so guarding only the latter left the miss to abort the render (issue #2976).
  *
- * Not (yet) covered: `getValue`-based paths such as Compose `painterResource(...)` — a missing
- * drawable id read that way still throws. Tracked as a follow-up; the string family is the common
- * crash the live server hits (`wear-m3` stickers use `stringResource`).
+ * Not (yet) covered: raw `getValue` / `openRawResource` decode paths (e.g. a bitmap whose id
+ * resolves but whose backing file is absent) can't be substituted at the `Resources` seam without
+ * fabricating a `TypedValue` / stream, so a miss read that way still throws. The value families
+ * above (`getText`, `getColor`, the dimension family) and every `getDrawable*` overload are the
+ * common crashes the live server hits.
  */
 @Suppress("DEPRECATION")
 internal class PlaceholderFallbackResources(base: Resources) :
@@ -111,6 +118,28 @@ internal class PlaceholderFallbackResources(base: Resources) :
   override fun getDrawable(id: Int): Drawable =
     try {
       super.getDrawable(id)
+    } catch (_: NotFoundException) {
+      placeholderDrawable()
+    }
+
+  // The density-aware variants are a *separate* entry into `ResourcesImpl.loadDrawable` — the same
+  // method that throws `NotFoundException: Drawable <pkg>:drawable/<name> with resource ID #0x…`.
+  // `getDrawable(id[, theme])` funnels here internally, so overriding those two catches an app-code
+  // `getDrawable(...)`; but a caller that reaches `getDrawableForDensity(...)` directly (density-aware
+  // image-loading paths, `ResourcesCompat.getDrawableForDensity`, RemoteViews/ImageView inflation)
+  // bypasses those overrides and the miss escapes as a hard render abort (issue #2976:
+  // `splash_background` on the `pocketcasts-wear` live server). Guard both overloads too so every
+  // `loadDrawable` path degrades to the placeholder.
+  override fun getDrawableForDensity(id: Int, density: Int): Drawable? =
+    try {
+      super.getDrawableForDensity(id, density)
+    } catch (_: NotFoundException) {
+      placeholderDrawable()
+    }
+
+  override fun getDrawableForDensity(id: Int, density: Int, theme: Theme?): Drawable? =
+    try {
+      super.getDrawableForDensity(id, density, theme)
     } catch (_: NotFoundException) {
       placeholderDrawable()
     }
