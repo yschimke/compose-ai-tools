@@ -28,6 +28,12 @@ fun PlainSquareFixture() {
   Box(modifier = Modifier.fillMaxSize().background(Color(0xFFEF5350)))
 }
 
+/** Idiomatic `private fun` preview — compiles to a JVM-private static method. */
+@Composable
+private fun PrivateTintedSquareFixture(@PreviewParameter(TintProviderFixture::class) tint: Long) {
+  Box(modifier = Modifier.fillMaxSize().background(Color(tint)))
+}
+
 /**
  * Resolution-level cover for [PreviewParameterSupport], the shared seam behind issue #3027.
  *
@@ -65,6 +71,24 @@ class PreviewParameterSupportTest {
     assertEquals("TintedSquareFixture", jvmMethod.name)
     // `(long, Composer, int)` — the parameterized overload, not the parameterless one.
     assertEquals(Long::class.javaPrimitiveType, jvmMethod.parameterTypes.first())
+  }
+
+  @Test
+  fun resolvedMethodIsOpenedForReflectiveInvocation() {
+    // A `private fun` preview resolves fine but `ComposableMethod.invoke` throws
+    // IllegalAccessException unless the method is opened. `resolve` does it for every caller, so
+    // the daemon's scroll / figma-svg-long / held-session paths can't each forget to.
+    val resolved =
+      PreviewParameterSupport.resolve(
+        fixtureClass,
+        "PrivateTintedSquareFixture",
+        providerClassName = TintProviderFixture::class.java.name,
+      )
+    assertTrue("private preview method must be accessible", resolved.method.asMethod().isAccessible)
+
+    val plain =
+      PreviewParameterSupport.resolve(fixtureClass, "PlainSquareFixture", providerClassName = null)
+    assertTrue("parameterless path opens its method too", plain.method.asMethod().isAccessible)
   }
 
   @Test

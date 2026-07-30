@@ -37,6 +37,11 @@ object PreviewParameterSupport {
    * is named, its first value is used: a single-frame renderer has one output file per preview id,
    * and the daemon's manifest ids are the un-suffixed base ids the fan-out renderer would render as
    * `<id>_<label>`. Value 0 is the one Android Studio shows first as well.
+   *
+   * The returned method is always opened for reflective invocation ([openForInvoke]) — Kotlin
+   * `private fun` previews are idiomatic and resolve fine, but invoking one without that throws
+   * `IllegalAccessException`. Doing it here rather than at each call site is what keeps the daemon's
+   * scroll / `figma-svg-long` / held-session paths from each having to remember.
    */
   fun resolve(
     clazz: Class<*>,
@@ -46,7 +51,7 @@ object PreviewParameterSupport {
     classLoader: ClassLoader? = null,
   ): Resolved {
     if (providerClassName.isNullOrBlank()) {
-      return Resolved(clazz.getDeclaredComposableMethod(functionName), emptyList())
+      return Resolved(clazz.getDeclaredComposableMethod(functionName).openForInvoke(), emptyList())
     }
     if (limit <= 0) {
       throw PreviewParameterLoadException(
@@ -65,7 +70,17 @@ object PreviewParameterSupport {
       )
     }
     val args = listOf(values.first())
-    return Resolved(findComposableMethodWithArgs(clazz, functionName, args), args)
+    return Resolved(findComposableMethodWithArgs(clazz, functionName, args).openForInvoke(), args)
+  }
+
+  /**
+   * Opens [this] method for reflective invocation. Guarded with `runCatching`: a SecurityManager or
+   * strong module encapsulation can refuse, in which case we still attempt the invoke (which
+   * succeeds for public/internal previews) rather than failing resolution outright — same contract
+   * as `PreviewRenderStrategy`'s ComposePreviewStrategy.
+   */
+  private fun ComposableMethod.openForInvoke(): ComposableMethod = also {
+    runCatching { it.asMethod().isAccessible = true }
   }
 
   /**

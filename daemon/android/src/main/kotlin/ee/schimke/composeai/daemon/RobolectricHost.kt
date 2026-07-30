@@ -2364,6 +2364,8 @@ open class RobolectricHost(
       val nonComposableInvocation = isTile || isNotification || isGlanceAppWidget
       // `@PreviewParameter` previews resolve to the `(<T>, Composer, int)` overload and are invoked
       // with the provider's first value — same contract as the one-shot render (issue #3027).
+      // `resolve` also opens the method for reflective invocation, so a `private fun` preview
+      // composes in the held session instead of blanking the panel with IllegalAccessException.
       val resolvedInvocation =
         if (nonComposableInvocation) {
           null

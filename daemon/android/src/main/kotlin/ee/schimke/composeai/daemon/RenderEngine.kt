@@ -302,11 +302,9 @@ class RenderEngine(
     val previewArgs: List<Any?> = resolvedInvocation?.args ?: emptyList()
     // Kotlin `private fun` previews compile to JVM-private methods. `getDeclaredComposableMethod`
     // still resolves them (it scans `declaredMethods`), but the reflective `invoke` in
-    // [InvokeComposable] would throw IllegalAccessException, so open the method up first — mirrors
-    // `:renderer-android`'s ComposePreviewStrategy. Guarded with `runCatching`: a SecurityManager
-    // or strong module encapsulation can refuse, in which case we still attempt the invoke
-    // (which succeeds for public/internal previews) rather than failing resolution outright.
-    composableMethod?.let { runCatching { it.asMethod().isAccessible = true } }
+    // [InvokeComposable] would throw IllegalAccessException — [PreviewParameterSupport.resolve]
+    // opens the resolved method for every caller (this path, the scroll scenarios, and the
+    // held-session lane) so no single site has to remember.
 
     // Self-diagnostic — surfaces in the VS Code extension's output channel as `[daemon stderr] …`.
     // Pairs with `[classloader] swap requested` / `allocate child loader` lines from
@@ -1392,10 +1390,7 @@ class RenderEngine(
         override fun evaluate() {
           rule.mainClock.autoAdvance = false
           val clazz = Class.forName(spec.className, true, classLoader)
-          val (composableMethod, previewArgs) =
-            resolvePreviewInvocation(clazz, spec).also {
-              runCatching { it.method.asMethod().isAccessible = true }
-            }
+          val (composableMethod, previewArgs) = resolvePreviewInvocation(clazz, spec)
           val bgArgb = resolveBackgroundColor(spec).toArgb()
           // Coil-backed images: same install as `render`'s main body, repeated here because
           // `render` returns INTO this scenario before reaching that call — a direct scroll /
@@ -1721,12 +1716,10 @@ class RenderEngine(
         override fun evaluate() {
           rule.mainClock.autoAdvance = false
           val clazz = Class.forName(spec.className, true, classLoader)
-          val (composableMethod, previewArgs) =
-            resolvePreviewInvocation(clazz, spec).also {
-              // Kotlin `private fun` scrolling previews compile to JVM-private methods; open them
-              // so the reflective invoke doesn't throw IllegalAccessException — same as `render`.
-              runCatching { it.method.asMethod().isAccessible = true }
-            }
+          // Kotlin `private fun` scrolling previews compile to JVM-private methods;
+          // `resolvePreviewInvocation` opens them so the reflective invoke below doesn't throw
+          // IllegalAccessException — same as `render`.
+          val (composableMethod, previewArgs) = resolvePreviewInvocation(clazz, spec)
           val bgArgb = resolveBackgroundColor(spec).toArgb()
           // Coil-backed images: same install as `render`'s main body, repeated here because
           // `render` returns INTO this scenario before reaching that call — a direct scroll /
