@@ -2631,6 +2631,12 @@ internal object AndroidPreviewSupport {
       project.providers.gradleProperty("composePreview.fontsOffline").orElse("false")
     val daemonSvgEmbedFonts = composeAiSvgEmbedFonts(project)
     val daemonFontsFailOnFallback = composeAiFontsFailOnFallback(project)
+    // The Android theme the preview host activity runs under, forwarded to the daemon JVM exactly
+    // as the one-shot `composePreviewRender` path forwards it. `PreviewHostTheme` reads this in the
+    // daemon, not on the Gradle JVM, so without it a library module's `composePreview.hostTheme`
+    // reaches the standalone render but NOT the VS Code / MCP / a11y daemon paths — the same
+    // `AndroidView` inflation failure, just on the routes consumers actually use.
+    val daemonHostTheme = composeAiHostTheme(project, extension)
     // Pre-resolved at configuration time — both feed @Input fields whose Provider chains
     // mustn't capture `project`. The cheap-signal set used to be collected at task-action
     // time so newly-added subproject scripts were seen on the same run, but doing it
@@ -2797,6 +2803,7 @@ internal object AndroidPreviewSupport {
       this.systemProperties.put("composeai.fonts.offline", daemonFontsOffline)
       this.systemProperties.put("composeai.fonts.failOnFallback", daemonFontsFailOnFallback)
       this.systemProperties.put("composeai.svg.embedFonts", daemonSvgEmbedFonts)
+      this.systemProperties.put("composeai.render.hostTheme", daemonHostTheme)
       this.systemProperties.put("composeai.daemon.protocolVersion", "1")
       this.systemProperties.put("composeai.daemon.idleTimeoutMs", "5000")
       this.systemProperties.put(
