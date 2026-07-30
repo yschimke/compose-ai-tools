@@ -355,4 +355,39 @@ class ServeWebTest {
       )
     assertFalse(html.contains("id=\"cp-rc-backends\""), "no selector for a non-rc preview")
   }
+
+  @Test
+  fun `the viewer links the preview source when a source href is supplied`() {
+    val preview = ServePreview(id = "plain.Button", label = "button", sourceFile = "src/main/A.kt")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/compose-m3",
+        siblings = listOf(preview),
+        sourceHref = "https://github.com/o/r/blob/main/src/main/A.kt",
+      )
+    assertTrue(html.contains("class=\"cp-source\""), "source link block rendered")
+    assertTrue(
+      html.contains("href=\"https://github.com/o/r/blob/main/src/main/A.kt\""),
+      "links the resolved blob url",
+    )
+    // The module-relative path is surfaced as the link tooltip.
+    assertTrue(html.contains("title=\"src/main/A.kt\""), "source path shown as tooltip")
+  }
+
+  @Test
+  fun `the viewer renders no source link without a source href`() {
+    // A local / unprovenanced session (or a preview with no recorded source) passes sourceHref
+    // null.
+    val preview = ServePreview(id = "plain.Button", label = "button", sourceFile = "src/main/A.kt")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/compose-m3",
+        siblings = listOf(preview),
+      )
+    assertFalse(html.contains("class=\"cp-source\""), "no source link when no href is supplied")
+  }
 }

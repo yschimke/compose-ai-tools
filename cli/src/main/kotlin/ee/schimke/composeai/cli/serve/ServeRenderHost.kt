@@ -132,6 +132,15 @@ data class ServePreview(
    * Screens, …) rather than alphabetically. Null for a plain bundle (no ordering metadata).
    */
   val catalogOrder: Int? = null,
+  /**
+   * Module-relative source path of the file this preview was authored in
+   * (`src/main/kotlin/…/Foo.kt`), from the bundle's `previews.json` manifest
+   * ([ee.schimke.composeai.cli.PreviewInfo.sourceFile]). Lets the viewer link the preview to its
+   * source on GitHub when the session carries delivery provenance (repo + branch). Null for a
+   * bundle without a manifest, a preview whose manifest entry recorded no source path, or a
+   * live/local session with no published source to point at.
+   */
+  val sourceFile: String? = null,
 )
 
 /**

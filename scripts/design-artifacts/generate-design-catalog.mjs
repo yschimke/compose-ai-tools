@@ -96,6 +96,7 @@ import {
   derivationMismatches,
 } from "./catalog-image-path.mjs";
 import { applySpecSections } from "./apply-spec-sections.mjs";
+import { applySourceFiles } from "./apply-source-files.mjs";
 import { applySpecBreakpoints } from "./catalog-breakpoints.mjs";
 
 /**
@@ -1037,6 +1038,15 @@ if (values["publish-live-bundle"]) {
   if (stampedSections > 0) {
     console.log(
       `[${spec.system}] stamped section on ${stampedSections} component(s) from spec groups`,
+    );
+  }
+  // Re-stamp each component's module-relative `sourceFile` (dropped by the pinned
+  // buildCatalog) from the bundle's discovery previews, so the preview server can link a
+  // preview to its source on GitHub. No-op when discovery recorded no paths.
+  const stampedSources = applySourceFiles(manifest, spec, sourceByFunction(bundle));
+  if (stampedSources > 0) {
+    console.log(
+      `[${spec.system}] stamped sourceFile on ${stampedSources} component(s) from discovery`,
     );
   }
   for (const component of manifest.components ?? []) {
