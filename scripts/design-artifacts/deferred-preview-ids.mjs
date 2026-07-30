@@ -61,9 +61,11 @@ export function specPreviewFunctions(spec) {
  * @param {object} spec parsed `catalog.spec.json`.
  * @param {Array<{id: string, functionName?: string}>} previews discovered previews (from
  *   `compose-preview list --json`, or a `previews.json` manifest — both carry `id` + `functionName`).
- * @returns {{ ids: string[], keptByGuard: string[] }} `ids` sorted and unique; `keptByGuard` names
- *   the functions whose every id was mode-deferred and which were therefore left alone, so the caller
- *   can log the (spec-level) misconfiguration instead of hiding it behind a smaller render.
+ * @returns {{ ids: string[], rows: string[], keptByGuard: string[] }} `ids` sorted and unique;
+ *   `rows` the deferred mode names to skip as `@PreviewParameter` row labels (see [deferredRowLabels]);
+ *   `keptByGuard` names the functions whose every id was mode-deferred and which were therefore left
+ *   alone, so the caller can log the (spec-level) misconfiguration instead of hiding it behind a
+ *   smaller render.
  */
 export function deferredPreviewIds(spec, previews) {
   const referenced = specPreviewFunctions(spec);
@@ -92,7 +94,43 @@ export function deferredPreviewIds(spec, previews) {
     }
     for (const id of deferredIds) ids.add(id);
   }
-  return { ids: [...ids].sort(), keptByGuard: keptByGuard.sort() };
+  return {
+    ids: [...ids].sort(),
+    rows: deferredRowLabels(spec, byFunction),
+    keptByGuard: keptByGuard.sort(),
+  };
+}
+
+/**
+ * The deferred modes to hand the render as `@PreviewParameter` **row labels**
+ * (`--exclude-preview-row`), for the axis no id can name.
+ *
+ * When a catalog's palettes come from a provider rather than a multipreview, discovery emits ONE
+ * preview per function and the rows only exist inside the render — so a deferred mode leaves no
+ * trace in [previews] to exclude by id, and `deferredPreviewIds` above finds nothing to skip. What it
+ * *can* do is say which modes are deferred and let the renderer match them against the labels it
+ * mints. Hence the selection rule: a deferred mode is emitted as a row label exactly when **no
+ * discovered id carries it** — if the mode is visible as an id, the id filter already handles it
+ * precisely and a module-wide label pattern would only add risk.
+ *
+ * Two things bound that risk, which is real (labels are module-wide, so an unrelated parameterized
+ * preview whose row happens to be labelled `Dark` would lose that row):
+ *  - the renderer never empties a preview's row set, so nothing can render to zero pixels;
+ *  - a row that *was* needed goes missing from a component the spec didn't defer, and the
+ *    completeness gate fails the publish — loudly, rather than thinning the sheet in silence.
+ */
+function deferredRowLabels(spec, byFunction) {
+  const modes = (spec?.modes ?? []).filter((m) => typeof m === "string" && m.length > 0);
+  const seenAsId = new Set();
+  for (const fnIds of byFunction.values()) {
+    for (const id of fnIds) {
+      const mode = modeOfPreviewId(id, modes);
+      if (mode) seenAsId.add(mode);
+    }
+  }
+  return modes
+    .filter((mode) => modePriority(spec, mode) === DEFERRED && !seenAsId.has(mode))
+    .sort();
 }
 
 /**
@@ -108,27 +146,32 @@ export function previewsFromJson(parsed) {
 }
 
 // --- CLI ----------------------------------------------------------------------
-// `node deferred-preview-ids.mjs --spec catalog.spec.json --previews previews.json [--out ids.txt]`
+// `node deferred-preview-ids.mjs --spec catalog.spec.json --previews previews.json
+//    [--out ids.txt] [--rows-out rows.txt]`
 // Prints (and optionally writes) the comma-separated exclusion list the render consumes as
-// `compose-preview bundle pack --exclude-preview-id` / `-PcomposePreview.idExclude`. Empty output
-// is the normal case for a spec that defers no mode, and means "render everything".
+// `compose-preview bundle pack --exclude-preview-id` / `-PcomposePreview.idExclude`, and — for a
+// mode axis that lives in a `@PreviewParameter` provider rather than in ids — the row labels for
+// `--exclude-preview-row` / `-PcomposePreview.rowExclude`. Empty output on either is the normal case
+// for a spec that defers no mode, and means "render everything".
 if (import.meta.url === `file://${process.argv[1]}`) {
   const { values } = parseArgs({
     options: {
       spec: { type: "string" },
       previews: { type: "string" },
       out: { type: "string" },
+      "rows-out": { type: "string" },
     },
   });
   if (!values.spec || !values.previews) {
     console.error(
-      "usage: deferred-preview-ids.mjs --spec <catalog.spec.json> --previews <list.json> [--out <file>]",
+      "usage: deferred-preview-ids.mjs --spec <catalog.spec.json> --previews <list.json> " +
+        "[--out <file>] [--rows-out <file>]",
     );
     process.exit(2);
   }
   const spec = JSON.parse(readFileSync(values.spec, "utf8"));
   const previews = previewsFromJson(JSON.parse(readFileSync(values.previews, "utf8")));
-  const { ids, keptByGuard } = deferredPreviewIds(spec, previews);
+  const { ids, rows, keptByGuard } = deferredPreviewIds(spec, previews);
   for (const fn of keptByGuard) {
     console.error(
       `[${spec.system}] ${fn}: every discovered preview renders a DEFERRED mode — keeping all of ` +
@@ -140,7 +183,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     `[${spec.system}] mode deferral: ${ids.length} preview id(s) excluded from the render` +
       (ids.length > 0 ? ` (${ids.slice(0, 5).join(", ")}${ids.length > 5 ? ", …" : ""})` : ""),
   );
+  if (rows.length > 0) {
+    console.error(
+      `[${spec.system}] mode deferral: ${rows.length} mode(s) carry no discovered id, so they are ` +
+        `passed as @PreviewParameter row label(s) instead: ${rows.join(", ")}`,
+    );
+  }
   const line = ids.join(",");
   if (values.out) writeFileSync(values.out, line);
+  if (values["rows-out"]) writeFileSync(values["rows-out"], rows.join(","));
   console.log(line);
 }

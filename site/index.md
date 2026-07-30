@@ -116,8 +116,22 @@ pattern then renders too much rather than dropping a preview you wanted. Either
 way a filtered run is never stored in the build cache, since its render directory
 is only part of the module's output.
 
-(Android modules render previews through a Robolectric test task; the `--preview`
-filter there is tracked as a follow-up.)
+One fan-out has no ids to name: a `@PreviewParameter` provider's rows exist only
+once the renderer enumerates the provider, so discovery lists the parameterized
+function as a single preview. Those are skipped by **label** — the token in
+`<stem>_<label>.png`, matched case-insensitively:
+
+```sh
+./gradlew :desktopApp:composePreviewRender --exclude-preview-row 'Dark,ExtraDark'
+# or, as a Gradle property: -PcomposePreview.rowExclude='Dark,ExtraDark'
+```
+
+A row exclusion never empties a preview's rows: if every row matches, they all
+render, so nothing can silently produce a preview with no pixels.
+
+(Android modules render previews through a Robolectric test task, which reads none
+of these filters — tracked in
+[#2977](https://github.com/yschimke/compose-ai-tools/issues/2977).)
 
 Requirements and CI recipes live on the [Install page](./install/).
 

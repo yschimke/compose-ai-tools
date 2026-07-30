@@ -155,6 +155,32 @@ test("ids are unique and sorted", () => {
   ]);
 });
 
+test("a mode with no discovered id is emitted as a row label", () => {
+  // The `@PreviewParameter` shape: one discovered preview for the whole palette fan-out, so neither
+  // `dark` nor `highContrastDark` appears in an id and no id-level exclusion can name them.
+  const previews = [preview("FilledButtonPreview", "FilledButtonPreview")];
+  const { ids, rows } = deferredPreviewIds(spec, previews);
+  assert.deepEqual(ids, []);
+  assert.deepEqual(rows, ["dark", "highContrastDark"]);
+});
+
+test("a mode visible as an id is left to the id filter, not duplicated as a row", () => {
+  const previews = [
+    preview("FilledButtonPreview_Light", "FilledButtonPreview"),
+    preview("FilledButtonPreview_Dark", "FilledButtonPreview"),
+  ];
+  const { ids, rows } = deferredPreviewIds(spec, previews);
+  assert.deepEqual(ids, ["FilledButtonPreview_Dark"]);
+  // `dark` resolved to an id; only `highContrastDark` (which didn't) becomes a row label.
+  assert.deepEqual(rows, ["highContrastDark"]);
+});
+
+test("a spec that defers no mode emits no row labels", () => {
+  const strict = { ...spec, modePriority: undefined };
+  const previews = [preview("FilledButtonPreview", "FilledButtonPreview")];
+  assert.deepEqual(deferredPreviewIds(strict, previews).rows, []);
+});
+
 test("previewsFromJson accepts every shape the pipeline produces", () => {
   const rows = [{ id: "A" }];
   assert.deepEqual(previewsFromJson(rows), rows);

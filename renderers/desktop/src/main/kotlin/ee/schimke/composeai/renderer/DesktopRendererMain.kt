@@ -324,24 +324,50 @@ fun main(args: Array<String>) {
       return
     }
 
-  val suffixes: List<String> =
+  val allSuffixes: List<String> =
     if (values.size == 1 && values[0] === NO_PARAM) {
       listOf("")
     } else {
       PreviewParameterLabels.suffixesFor(values)
     }
-  val targetFiles = values.mapIndexed { idx, value ->
+  val allTargetFiles = values.mapIndexed { idx, value ->
     if (value === NO_PARAM) outputFile
-    else File(insertBeforeExtension(outputFile.path, suffixes[idx]))
+    else File(insertBeforeExtension(outputFile.path, allSuffixes[idx]))
   }
+  // Row filter (`--exclude-preview-row`, issue #2966 follow-up): drop the fan-out members the
+  // caller
+  // named by label. Applied AFTER labelling — the labels are the only handle on a row, and they
+  // don't
+  // exist until the provider has been enumerated, which is why this can't live in the id filters
+  // upstream. Kept out of `deleteStaleFanoutFiles` below on purpose: a skipped row's PNG from a
+  // prior
+  // full run stays on disk, exactly like a preview the id filter skipped, so an interactive panel
+  // still shows the (stale-badged) image instead of a hole.
+  val keptRows = PreviewRowFilter.keptRows(allSuffixes, PreviewRowFilter.patterns())
+  if (keptRows.size < allSuffixes.size) {
+    val skipped =
+      allSuffixes.filterIndexed { idx, _ -> idx !in keptRows }.map { it.removePrefix("_") }
+    System.err.println(
+      "@PreviewParameter on $functionName: skipping ${skipped.size} of ${allSuffixes.size} row(s) " +
+        "excluded by ${PreviewRowFilter.PROPERTY}: ${skipped.joinToString(", ")}"
+    )
+  }
+  val targetFiles = keptRows.map { allTargetFiles[it] }
+  val keptValues = keptRows.map { values[it] }
   // Renderer is authoritative about the fan-out — delete any
   // `<stem>_*<ext>` files from prior runs that aren't in this run's
   // expected output. Guards against provider renames and the
   // `_PARAM_<idx>` → `_<label>` migration leaving stale PNGs behind.
+  //
+  // Deliberately keyed on ALL of this run's rows, not just the kept ones: a row the filter skipped
+  // is
+  // still a row the current provider yields, so its previous PNG is stale-but-valid (badged in the
+  // panel), not orphaned. Passing the kept subset here would delete exactly the images the filter
+  // exists to avoid re-rendering.
   if (values.any { it !== NO_PARAM }) {
-    deleteStaleFanoutFiles(outputFile, targetFiles.map { it.name }.toSet(), fanoutSiblingStems)
+    deleteStaleFanoutFiles(outputFile, allTargetFiles.map { it.name }.toSet(), fanoutSiblingStems)
   }
-  for ((idx, value) in values.withIndex()) {
+  for ((idx, value) in keptValues.withIndex()) {
     val targetFile = targetFiles[idx]
     val previewArgs = if (value === NO_PARAM) emptyList() else listOf(value)
     // Per-value try/catch — the user-facing pain we're addressing is "one

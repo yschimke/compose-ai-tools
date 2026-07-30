@@ -138,6 +138,15 @@ class BundleCommand(args: List<String>) : Command(args) {
                             -PcomposePreview.idExclude; also read from the
                             ORG_GRADLE_PROJECT_composePreview.idExclude env var when the flag is
                             absent, so an env-only setup thins the semantics pass too.
+        --exclude-preview-row <label|glob>
+                            Skip rendering the @PreviewParameter rows whose label matches — the fan-out
+                            --exclude-preview-id can't reach, because discovery never sees the rows
+                            (they exist only once the renderer enumerates the provider). Repeatable
+                            and comma-separated; an exact label or a '*'/'?' glob, case-insensitive,
+                            matched against the label in <stem>_<label>.png. Never empties a preview's
+                            rows. Forwarded as -PcomposePreview.rowExclude; also read from
+                            ORG_GRADLE_PROJECT_composePreview.rowExclude when the flag is absent.
+                            Desktop render path only (see issue #2977).
         --per-preview       Emit one valid single-preview bundle per preview (<out-dir>/<id>.png)
                             instead of a single sheet — the addressable-preview unit, each openable /
                             re-renderable on its own. Renders once, then packs each (minimized to its
@@ -233,6 +242,13 @@ private class PackSubcommand(private val args: List<String>) {
    */
   private val excludePreviewIds: List<String> = PackPreviewIdExclusions.fromArgs(args)
 
+  /**
+   * `--exclude-preview-row` labels — the `@PreviewParameter` rows this pack must not render. Render
+   * only: the semantics capture is per preview, so a parameterized preview costs one capture
+   * whatever its provider fans out to and there is nothing to thin there.
+   */
+  private val excludePreviewRows: List<String> = PackPreviewIdExclusions.rowsFromArgs(args)
+
   fun run() {
     if (perPreview) {
       runPerPreview()
@@ -276,6 +292,14 @@ private class PackSubcommand(private val args: List<String>) {
                 add(
                   "-P${PackPreviewIdExclusions.GRADLE_PROPERTY}=" +
                     excludePreviewIds.joinToString(",")
+                )
+              // Same for the `@PreviewParameter` row axis, which the render resolves one level
+              // deeper
+              // (the labels don't exist until the provider is enumerated inside the render JVM).
+              if (excludePreviewRows.isNotEmpty())
+                add(
+                  "-P${PackPreviewIdExclusions.ROW_GRADLE_PROPERTY}=" +
+                    excludePreviewRows.joinToString(",")
                 )
               if (embedDeps) add("-PbundleEmbedDeps=true")
               if (includeDataExtensions) add("-PbundleIncludeDataExtensions=true")
