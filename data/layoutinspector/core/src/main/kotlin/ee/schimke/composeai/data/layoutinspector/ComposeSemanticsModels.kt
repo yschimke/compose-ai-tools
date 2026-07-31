@@ -45,7 +45,16 @@ object ComposeSemanticsProduct {
   // span). Additive; older entries decode with `spans = null` and line offsets unset.
   // v11 (#2852): the mirrored `tokens` may carry `clipsContent` — the node has a
   // `Modifier.clip(shape)` masking its children. Additive; older entries decode it as null.
-  const val SCHEMA_VERSION: Int = 11
+  // v12 (#3024): typography may carry the **resolved pixel** metrics — `fontSizePx`,
+  // `lineHeightPx`, `letterSpacingPx` (and `fontSizePx` per span) — alongside the `sp`/`em`
+  // strings, and a wrapped line may carry its measured `width`. A consumer cannot re-derive px
+  // from sp: Compose resolves `sp` through the platform `FontScaleConverter` on API 34+, which is
+  // **non-linear** in the font scale (small text scales fully, display sizes flatten toward
+  // identity), so `sp × density × fontScale` over-sizes large text on any `fontScale != 1` render
+  // — 50% on JetNews's 32sp article title, enough to push captured line breaks past their bounds.
+  // These fields carry what the render actually used. Additive; older entries decode them as null
+  // and consumers fall back to the linear conversion.
+  const val SCHEMA_VERSION: Int = 12
   const val FILE: String = "compose-semantics.json"
 }
 
@@ -231,6 +240,21 @@ data class ComposeSemanticsTypography(
    */
   val fontSize: String? = null,
   /**
+   * [fontSize] as the render actually resolved it, in **px** — the authoritative size for anything
+   * reproducing the render's typography (issue #3024).
+   *
+   * A consumer cannot recover this from [fontSize]: on API 34+ Compose resolves `sp` through the
+   * platform `FontScaleConverter`, whose curve is **non-linear** in the font scale — 12sp and 14sp
+   * take the full multiplier while a 32sp heading takes almost none. The `sp × density × fontScale`
+   * conversion the `compose/figma-svg` export used therefore over-sized JetNews's article title by
+   * 50% on a `fontScale = 1.5` render, and the captured line breaks overflowed their card. The
+   * curve is a platform table that varies by API level and Compose version, so it is read here
+   * (through the layout's own `Density`) rather than re-implemented downstream.
+   *
+   * Null when the capture had no layout result to resolve against, or the size wasn't in `sp`.
+   */
+  val fontSizePx: Double? = null,
+  /**
    * Resolved typeface identity. For a
    * [GenericFontFamily][androidx.compose.ui.text.font.GenericFontFamily] this is its declared name
    * (`"sans-serif"`, `"monospace"`); for a
@@ -257,8 +281,12 @@ data class ComposeSemanticsTypography(
   val fontFeatureSettings: String? = null,
   /** Resolved letter spacing as `"<value>sp"` / `"<value>em"`. */
   val letterSpacing: String? = null,
+  /** [letterSpacing] as the render resolved it, in px — see [fontSizePx] for why it is carried. */
+  val letterSpacingPx: Double? = null,
   /** Resolved line height as `"<value>sp"` / `"<value>em"`. */
   val lineHeight: String? = null,
+  /** [lineHeight] as the render resolved it, in px — see [fontSizePx] for why it is carried. */
+  val lineHeightPx: Double? = null,
   /**
    * Resolved paragraph alignment (`TextStyle.textAlign`) as a lowercase name — `"left"`, `"right"`,
    * `"center"`, `"justify"`, `"start"`, `"end"` — or null when the node leaves it unset or the
@@ -292,6 +320,11 @@ data class ComposeSemanticsTextSpan(
   val start: Int,
   val end: Int,
   val fontSize: String? = null,
+  /**
+   * [fontSize] as the render resolved it, in px — see [ComposeSemanticsTypography.fontSizePx] for
+   * why the resolved value is carried rather than re-derived from `sp`.
+   */
+  val fontSizePx: Double? = null,
   val fontFamily: String? = null,
   val fontWeight: Int? = null,
   val fontStyle: String? = null,
@@ -379,6 +412,15 @@ data class ComposeSemanticsTextLine(
   /** UTF-16 offsets into the node's full text; absent on schema v8 captures. */
   val start: Int? = null,
   val end: Int? = null,
+  /**
+   * The line's measured width in px (`getLineRight - getLineLeft`), so a consumer reproducing the
+   * line can pin it to the width the render measured instead of trusting its own text engine to
+   * agree (issue #3024). Browser SVG shaping differs from Android's in small ways that a captured
+   * break point cannot absorb — the exported face is subset with its `GPOS`/`kern` stripped, so the
+   * browser lays the run out unkerned while the render kerned it. Absent on captures before schema
+   * v12.
+   */
+  val width: Int? = null,
 )
 
 /**

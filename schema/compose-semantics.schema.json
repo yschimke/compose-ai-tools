@@ -5,7 +5,7 @@
   "description": "Payload for the `compose/semantics` data product: the Compose semantics tree projected for a render. Kotlin source of truth: ComposeSemanticsPayload / ComposeSemanticsNode in :data-layoutinspector-core. Each node carries a stable `ref` (see #1784).",
   "x-composeai": {
     "kind": "compose/semantics",
-    "schemaVersion": 8,
+    "schemaVersion": 12,
     "kotlinType": "ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload",
     "kotlinConst": "ComposeSemanticsProduct.SCHEMA_VERSION",
     "fixture": "vscode-extension/preview-harness/fixtures/inspection-tree.json"
@@ -39,13 +39,16 @@
       "description": "Resolved typographic identity of the text a node draws (#1934, #1903), read from its TextLayoutResult. Each field is present only when every drawn range agrees on it; a node that declares nothing typographic omits the object entirely.",
       "properties": {
         "fontSize": { "type": ["string", "null"], "description": "Resolved text size in sp (`22.0sp`) — the former flat `layoutFontSize` (#1903)." },
+        "fontSizePx": { "type": ["number", "null"], "description": "The size the render actually resolved `fontSize` to, in px (v12, #3024). Authoritative: Compose resolves sp through the platform FontScaleConverter on API 34+, a non-linear curve in the font scale, so `sp × density × fontScale` is only correct at fontScale 1." },
         "fontFamily": { "type": ["string", "null"], "description": "Resolved typeface identity: a GenericFontFamily's name, or a FontListFontFamily's resolved-face identity (font file path / declared name / `res/font/<id>`)." },
         "fontWeight": { "type": ["integer", "null"], "description": "Resolved font weight value (400/500/700/…)." },
         "fontStyle": { "type": ["string", "null"], "description": "Resolved font style: `normal` or `italic`." },
         "fontVariationSettings": { "type": ["string", "null"], "description": "Variable-font axes applied to the resolved face, `<axis> <value>` pairs sorted by tag (`opsz 18.0, wght 700.0`)." },
         "fontFeatureSettings": { "type": ["string", "null"], "description": "Resolved OpenType feature settings." },
         "letterSpacing": { "type": ["string", "null"], "description": "Resolved letter spacing in sp/em." },
-        "lineHeight": { "type": ["string", "null"], "description": "Resolved line height in sp/em." }
+        "letterSpacingPx": { "type": ["number", "null"], "description": "`letterSpacing` as the render resolved it, in px (v12, #3024). See `fontSizePx`." },
+        "lineHeight": { "type": ["string", "null"], "description": "Resolved line height in sp/em." },
+        "lineHeightPx": { "type": ["number", "null"], "description": "`lineHeight` as the render resolved it, in px (v12, #3024). See `fontSizePx`." }
       }
     },
     "ComposeSemanticsTextColor": {
@@ -75,7 +78,8 @@
       "properties": {
         "text": { "type": "string", "description": "The line's visible substring (with the ellipsis re-appended when the line is ellipsised)." },
         "left": { "type": "integer", "description": "The line's left edge (non-zero for centred/right-aligned text)." },
-        "baseline": { "type": "integer", "description": "The baseline the line's glyphs sit on." }
+        "baseline": { "type": "integer", "description": "The baseline the line's glyphs sit on." },
+        "width": { "type": ["integer", "null"], "description": "The width the render measured this line at, in px (v12, #3024), so a consumer can pin its own layout to it (SVG `textLength`) instead of trusting its text engine to reproduce Android's advances." }
       }
     },
     "ComposeSemanticsTokens": {
