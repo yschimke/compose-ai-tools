@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 265 preview(s) across 20 module(s) · 41 error(s) · 4 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/main`. 298 preview(s) across 20 module(s) · 41 error(s) · 4 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -314,6 +314,114 @@ _No findings._
 |--:|---|---|---|---|
 | 1 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
 | 2 | INFO | TextSizeCheck | com.android.internal.widget.NotificationActionListLayout #actions | Consider modifying the LayoutParams to allow for text expansion. |
+
+### `MatrixBackgroundColorPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixBackgroundColorPreview_Background_colour.png" width="400" />
+
+_No findings._
+
+### `MatrixComponentWrapPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixComponentWrapPreview_Component_wrap.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixDeviceSpecPreview` · `spec:width=360dp,height=640dp,dpi=320`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixDeviceSpecPreview_Device_spec.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFixedBothAxesPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixFixedBothAxesPreview_Fixed_both_axes.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFixedWidthOnlyPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixFixedWidthOnlyPreview_Fixed_width_only.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFoldableDevicePreview` · `pixel_fold`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixFoldableDevicePreview_Foldable.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFontScaleMultiPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixFontScaleMultiPreview_100.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFontScalePreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixFontScalePreview_Font_scale_2x.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixLightDarkMultiPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixLightDarkMultiPreview_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixLightPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixLightPreview_Day.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixLocalePreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixLocalePreview_German.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixMetaAnnotationMultiPreview` · `wearos_small_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixMetaAnnotationMultiPreview_Meta_watch.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixNightPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixNightPreview_Night.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixPhoneDevicePreview` · `pixel_5`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixPhoneDevicePreview_Phone.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixScreenSizesMultiPreview` · `spec:width=1920dp,height=1080dp,dpi=160`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixScreenSizesMultiPreview_Desktop.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixSystemUiPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixSystemUiPreview_System_UI.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixTvDevicePreview` · `tv_1080p`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixTvDevicePreview_TV.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixWearDevicePreview` · `wearos_small_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/MatrixWearDevicePreview_Wear.a11y.png" width="400" />
+
+_No findings._
 
 ### `MediaStylePreview`
 
@@ -714,6 +822,96 @@ _No findings._
 ### `LottieSpinStartPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/LottieSpinStartPreview.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixBackgroundColorPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MatrixBackgroundColorPreview_Background_colour.png" width="400" />
+
+_No findings._
+
+### `MatrixComponentWrapPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MatrixComponentWrapPreview_Component_wrap.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixDeviceSpecPreview` · `spec:width=360dp,height=640dp,dpi=320`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MatrixDeviceSpecPreview_Device_spec.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFixedBothAxesPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MatrixFixedBothAxesPreview_Fixed_both_axes.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFixedWidthOnlyPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MatrixFixedWidthOnlyPreview_Fixed_width_only.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFoldableDevicePreview` · `pixel_fold`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MatrixFoldableDevicePreview_Foldable.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFontScaleMultiPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MatrixFontScaleMultiPreview_100.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFontScalePreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MatrixFontScalePreview_Font_scale_2x.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixLightDarkMultiPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MatrixLightDarkMultiPreview_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixLightPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MatrixLightPreview_Day.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixLocalePreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MatrixLocalePreview_German.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixMetaAnnotationMultiPreview` · `wearos_small_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MatrixMetaAnnotationMultiPreview_Meta_watch.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixNightPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MatrixNightPreview_Night.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixPhoneDevicePreview` · `pixel_5`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MatrixPhoneDevicePreview_Phone.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixWearDevicePreview` · `wearos_small_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MatrixWearDevicePreview_Wear.a11y.png" width="400" />
 
 _No findings._
 

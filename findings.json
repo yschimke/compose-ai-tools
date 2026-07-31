@@ -828,6 +828,186 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "",
+      "cleanBasename": "MatrixBackgroundColorPreview_Background_colour.png",
+      "findings": [],
+      "functionName": "MatrixBackgroundColorPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixBackgroundColorPreview_Background colour",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixComponentWrapPreview_Component_wrap.a11y.png",
+      "cleanBasename": "MatrixComponentWrapPreview_Component_wrap.png",
+      "findings": [],
+      "functionName": "MatrixComponentWrapPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixComponentWrapPreview_Component wrap",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixDeviceSpecPreview_Device_spec.a11y.png",
+      "cleanBasename": "MatrixDeviceSpecPreview_Device_spec.png",
+      "findings": [],
+      "functionName": "MatrixDeviceSpecPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixDeviceSpecPreview_Device spec",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": "spec:width=360dp,height=640dp,dpi=320"
+    },
+    {
+      "annotatedBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes.a11y.png",
+      "cleanBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes.png",
+      "findings": [],
+      "functionName": "MatrixFixedBothAxesPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFixedBothAxesPreview_Fixed both axes",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only.a11y.png",
+      "cleanBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only.png",
+      "findings": [],
+      "functionName": "MatrixFixedWidthOnlyPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFixedWidthOnlyPreview_Fixed width only",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixFoldableDevicePreview_Foldable.a11y.png",
+      "cleanBasename": "MatrixFoldableDevicePreview_Foldable.png",
+      "findings": [],
+      "functionName": "MatrixFoldableDevicePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFoldableDevicePreview_Foldable",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": "pixel_fold"
+    },
+    {
+      "annotatedBasename": "MatrixFontScaleMultiPreview_100.a11y.png",
+      "cleanBasename": "MatrixFontScaleMultiPreview_100.png",
+      "findings": [],
+      "functionName": "MatrixFontScaleMultiPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_100%",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixFontScalePreview_Font_scale_2x.a11y.png",
+      "cleanBasename": "MatrixFontScalePreview_Font_scale_2x.png",
+      "findings": [],
+      "functionName": "MatrixFontScalePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFontScalePreview_Font scale 2x",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixLightDarkMultiPreview_Dark.a11y.png",
+      "cleanBasename": "MatrixLightDarkMultiPreview_Dark.png",
+      "findings": [],
+      "functionName": "MatrixLightDarkMultiPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixLightDarkMultiPreview_Dark",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixLightPreview_Day.a11y.png",
+      "cleanBasename": "MatrixLightPreview_Day.png",
+      "findings": [],
+      "functionName": "MatrixLightPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixLightPreview_Day",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixLocalePreview_German.a11y.png",
+      "cleanBasename": "MatrixLocalePreview_German.png",
+      "findings": [],
+      "functionName": "MatrixLocalePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixLocalePreview_German",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch.a11y.png",
+      "cleanBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch.png",
+      "findings": [],
+      "functionName": "MatrixMetaAnnotationMultiPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixMetaAnnotationMultiPreview_Meta watch",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": "wearos_small_round"
+    },
+    {
+      "annotatedBasename": "MatrixNightPreview_Night.a11y.png",
+      "cleanBasename": "MatrixNightPreview_Night.png",
+      "findings": [],
+      "functionName": "MatrixNightPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixNightPreview_Night",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixPhoneDevicePreview_Phone.a11y.png",
+      "cleanBasename": "MatrixPhoneDevicePreview_Phone.png",
+      "findings": [],
+      "functionName": "MatrixPhoneDevicePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixPhoneDevicePreview_Phone",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": "pixel_5"
+    },
+    {
+      "annotatedBasename": "MatrixScreenSizesMultiPreview_Desktop.a11y.png",
+      "cleanBasename": "MatrixScreenSizesMultiPreview_Desktop.png",
+      "findings": [],
+      "functionName": "MatrixScreenSizesMultiPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixScreenSizesMultiPreview_Desktop",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": "spec:width=1920dp,height=1080dp,dpi=160"
+    },
+    {
+      "annotatedBasename": "MatrixSystemUiPreview_System_UI.a11y.png",
+      "cleanBasename": "MatrixSystemUiPreview_System_UI.png",
+      "findings": [],
+      "functionName": "MatrixSystemUiPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixSystemUiPreview_System UI",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixTvDevicePreview_TV.a11y.png",
+      "cleanBasename": "MatrixTvDevicePreview_TV.png",
+      "findings": [],
+      "functionName": "MatrixTvDevicePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixTvDevicePreview_TV",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": "tv_1080p"
+    },
+    {
+      "annotatedBasename": "MatrixWearDevicePreview_Wear.a11y.png",
+      "cleanBasename": "MatrixWearDevicePreview_Wear.png",
+      "findings": [],
+      "functionName": "MatrixWearDevicePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixWearDevicePreview_Wear",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": "wearos_small_round"
+    },
+    {
       "annotatedBasename": "MediaStylePreview_Media_style.a11y.png",
       "cleanBasename": "MediaStylePreview_Media_style.png",
       "findings": [
@@ -1402,6 +1582,156 @@
       "previewId": "com.example.samplecmp.LottiePreviewsKt.LottieSpinStartPreview",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/LottiePreviews.kt",
       "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "MatrixBackgroundColorPreview_Background_colour.png",
+      "findings": [],
+      "functionName": "MatrixBackgroundColorPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixBackgroundColorPreview_Background colour",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixComponentWrapPreview_Component_wrap.a11y.png",
+      "cleanBasename": "MatrixComponentWrapPreview_Component_wrap.png",
+      "findings": [],
+      "functionName": "MatrixComponentWrapPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixComponentWrapPreview_Component wrap",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixDeviceSpecPreview_Device_spec.a11y.png",
+      "cleanBasename": "MatrixDeviceSpecPreview_Device_spec.png",
+      "findings": [],
+      "functionName": "MatrixDeviceSpecPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixDeviceSpecPreview_Device spec",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": "spec:width=360dp,height=640dp,dpi=320"
+    },
+    {
+      "annotatedBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes.a11y.png",
+      "cleanBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes.png",
+      "findings": [],
+      "functionName": "MatrixFixedBothAxesPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixFixedBothAxesPreview_Fixed both axes",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only.a11y.png",
+      "cleanBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only.png",
+      "findings": [],
+      "functionName": "MatrixFixedWidthOnlyPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixFixedWidthOnlyPreview_Fixed width only",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixFoldableDevicePreview_Foldable.a11y.png",
+      "cleanBasename": "MatrixFoldableDevicePreview_Foldable.png",
+      "findings": [],
+      "functionName": "MatrixFoldableDevicePreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixFoldableDevicePreview_Foldable",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": "pixel_fold"
+    },
+    {
+      "annotatedBasename": "MatrixFontScaleMultiPreview_100.a11y.png",
+      "cleanBasename": "MatrixFontScaleMultiPreview_100.png",
+      "findings": [],
+      "functionName": "MatrixFontScaleMultiPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_100%",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixFontScalePreview_Font_scale_2x.a11y.png",
+      "cleanBasename": "MatrixFontScalePreview_Font_scale_2x.png",
+      "findings": [],
+      "functionName": "MatrixFontScalePreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixFontScalePreview_Font scale 2x",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixLightDarkMultiPreview_Dark.a11y.png",
+      "cleanBasename": "MatrixLightDarkMultiPreview_Dark.png",
+      "findings": [],
+      "functionName": "MatrixLightDarkMultiPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixLightDarkMultiPreview_Dark",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixLightPreview_Day.a11y.png",
+      "cleanBasename": "MatrixLightPreview_Day.png",
+      "findings": [],
+      "functionName": "MatrixLightPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixLightPreview_Day",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixLocalePreview_German.a11y.png",
+      "cleanBasename": "MatrixLocalePreview_German.png",
+      "findings": [],
+      "functionName": "MatrixLocalePreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixLocalePreview_German",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch.a11y.png",
+      "cleanBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch.png",
+      "findings": [],
+      "functionName": "MatrixMetaAnnotationMultiPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixMetaAnnotationMultiPreview_Meta watch",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": "wearos_small_round"
+    },
+    {
+      "annotatedBasename": "MatrixNightPreview_Night.a11y.png",
+      "cleanBasename": "MatrixNightPreview_Night.png",
+      "findings": [],
+      "functionName": "MatrixNightPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixNightPreview_Night",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixPhoneDevicePreview_Phone.a11y.png",
+      "cleanBasename": "MatrixPhoneDevicePreview_Phone.png",
+      "findings": [],
+      "functionName": "MatrixPhoneDevicePreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixPhoneDevicePreview_Phone",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": "pixel_5"
+    },
+    {
+      "annotatedBasename": "MatrixWearDevicePreview_Wear.a11y.png",
+      "cleanBasename": "MatrixWearDevicePreview_Wear.png",
+      "findings": [],
+      "functionName": "MatrixWearDevicePreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixWearDevicePreview_Wear",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": "wearos_small_round"
     },
     {
       "annotatedBasename": "",
