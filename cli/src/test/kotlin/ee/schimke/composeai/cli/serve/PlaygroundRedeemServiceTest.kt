@@ -104,6 +104,16 @@ class PlaygroundRedeemServiceTest {
   }
 
   @Test
+  fun `a token that expired before redemption registers nothing`() {
+    val token = mint()
+    now += store.ttlSeconds * 1000 + 1 // expire (without an explicit purge)
+    assertEquals(PlaygroundRedeemService.Outcome.NotFound, service.redeem(token.id))
+    registry.acquire(token.id)
+    assertTrue(opened.isEmpty(), "an expired token stands up no session")
+    assertEquals(0, materializeCount)
+  }
+
+  @Test
   fun `an expiring token releases its live session`() {
     val token = mint()
     service.redeem(token.id)

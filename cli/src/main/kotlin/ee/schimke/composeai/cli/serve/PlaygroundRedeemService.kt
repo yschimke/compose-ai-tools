@@ -1,7 +1,5 @@
 package ee.schimke.composeai.cli.serve
 
-import java.util.concurrent.ConcurrentHashMap
-
 /**
  * Stage-2 of the playground (`docs/design/PLAYGROUND.md` §2 + §5): redeem a `/pg/<token>`
  * capability into a **live, streamed, interactive** preview session, reusing the serve host's
@@ -55,32 +53,49 @@ class PlaygroundRedeemService(
     data class Live(val sessionId: String, val previewId: String) : Outcome
   }
 
-  /** Session ids this service registered, so a re-redeem within the TTL reuses the live session. */
-  private val registered = ConcurrentHashMap.newKeySet<String>()
+  /**
+   * Ids whose session is **fully registered** — added only *after* [ServeSessionRegistry.register]
+   * returns, so a second redeem never reports `Live` before the viewer's session actually exists.
+   * Mutated only under [lock].
+   */
+  private val registered = HashSet<String>()
+
+  /**
+   * Serialises redeem/release **per service** so token expiry can't race a registration: a redeem
+   * that materializes while an expiry fires either wins the lock and registers, or the release wins
+   * and there's nothing to tear down. Redemption is a deliberate, rate-limited act (and the daemon
+   * boot happens later, in the registry lease — not here), so one coarse lock is ample.
+   */
+  private val lock = Any()
 
   /** Redeem [id] into (or back onto) its live session. Idempotent within the token's TTL. */
   fun redeem(id: String): Outcome {
-    val token = tokenStore.get(id) ?: return Outcome.NotFound
-    val previewId = token.snippet.previewId
-    // `add` is the register-once gate: the winner materializes + registers; a concurrent (or later)
-    // redeem of the same live token rides the session already standing.
-    if (!registered.add(id)) return Outcome.Live(id, previewId)
-    val state =
-      materialize(token.snippet)
-        ?: run {
-          registered.remove(id)
-          return Outcome.Unavailable
-        }
-    registry.register(id, state = state)
-    return Outcome.Live(id, previewId)
+    val previewId = (tokenStore.get(id) ?: return Outcome.NotFound).snippet.previewId
+    synchronized(lock) {
+      if (id in registered) return Outcome.Live(id, previewId)
+      // Re-check under the lock: the token may have expired/been evicted between the get above and
+      // here. If so, release() has already run (a no-op — we hadn't registered yet), and
+      // registering
+      // now would strand a session whose work dir is gone and which the token hook can never
+      // release.
+      val token = tokenStore.get(id) ?: return Outcome.NotFound
+      val state = materialize(token.snippet) ?: return Outcome.Unavailable
+      registry.register(id, state = state)
+      // Mark registered ONLY now: a concurrent redeem that got here first is still holding the
+      // lock,
+      // so no one observes `Live` until the registry entry the viewer resolves actually exists.
+      registered.add(id)
+      return Outcome.Live(id, previewId)
+    }
   }
 
   /**
    * Release the live session a token owned — unregister it (closing its daemon). Wired to
    * [PlaygroundTokenStore]'s removal hook, so a token's expiry/eviction tears down its session. A
-   * no-op for a token that was never redeemed into a session.
+   * no-op for a token that was never redeemed into a session. Takes [lock] so it can't interleave
+   * with a redeem mid-registration.
    */
   fun release(id: String) {
-    if (registered.remove(id)) registry.unregister(id)
+    synchronized(lock) { if (registered.remove(id)) registry.unregister(id) }
   }
 }

@@ -339,15 +339,27 @@ internal object ServeBundleDaemon {
       return null
     }
 
-    // The snippet's classpath already includes classesDir; bundleDaemonClasspaths dedupes, and puts
-    // the snippet classes on the user (child) classloader — never the daemon's own -cp.
+    // Partition the resolved catalog jars exactly as the bundle path does: the namespaces
+    // UserClassLoaderHolder delegates to the daemon parent (androidx.*, kotlinx-coroutines) must
+    // *precede* the sidecar on the parent -cp, or the daemon loads its own (possibly older) sidecar
+    // versions and a snippet/catalog composable built against the catalog's newer AndroidX fails
+    // with NoSuchMethodError/NoSuchFieldError. Everything else — including the snippet's own
+    // classes
+    // (classesDir) — stays isolated on the user (child) classloader. We only have file paths here
+    // (not coordinates), so match the same groups by their Maven/Gradle cache path segment.
+    // classesDir
+    // lands in `child` (its temp path matches neither), and bundleDaemonClasspaths dedupes it
+    // against
+    // the explicit classesDir arg.
+    val (parentOverlayJars, childJars) =
+      snippet.classpath.map { File(it.toString()) }.partition { jarPrecedesDaemonSidecar(it) }
     val classpaths =
       bundleDaemonClasspaths(
         classesDir = classesDir,
         extraClasspathDirs = emptyList(),
         embeddedLibJars = emptyList(),
-        parentOverlayJars = emptyList(),
-        childDependencyJars = snippet.classpath.map { File(it.toString()) },
+        parentOverlayJars = parentOverlayJars,
+        childDependencyJars = childJars,
         daemonSidecarClasspath = backendLaunch.daemonClasspath,
         androidResourceClasspath = emptyList(),
       )
@@ -606,6 +618,20 @@ internal object ServeBundleDaemon {
     coordinate.group.startsWith("androidx.") ||
       (coordinate.group == "org.jetbrains.kotlinx" &&
         coordinate.artifact.startsWith("kotlinx-coroutines"))
+
+  /**
+   * The [shouldPrecedeDaemonSidecar] rule applied to a resolved **jar path** rather than a
+   * coordinate — used by the playground live path ([materializePlaygroundSnippet]), which carries
+   * only the resolved files (the coordinates were dropped during catalog resolution). Both the
+   * Maven-local (`…/androidx/compose/…`) and Gradle-cache (`…/androidx.compose.material3/…`)
+   * layouts put the dotted/slashed group right after a path separator, so a `/androidx` segment
+   * identifies the AndroidX graph and `kotlinx-coroutines` the coroutines artifacts — the two
+   * namespaces `UserClassLoaderHolder` delegates to the daemon parent.
+   */
+  internal fun jarPrecedesDaemonSidecar(jar: File): Boolean {
+    val path = jar.path.replace('\\', '/')
+    return path.contains("/androidx") || path.contains("kotlinx-coroutines")
+  }
 
   private data class ResolvedBundleDependency(
     val coordinate: BundleReader.ClasspathEntry.Maven,

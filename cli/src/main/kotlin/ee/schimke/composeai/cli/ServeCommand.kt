@@ -916,7 +916,8 @@ class ServeCommand(args: List<String>) : Command(args) {
     )
 
     val snippetCounter = java.util.concurrent.atomic.AtomicLong()
-    // Stage 1 (mint) and Stage 2 (redeem) share ONE token store, so a dropped token both deletes its
+    // Stage 1 (mint) and Stage 2 (redeem) share ONE token store, so a dropped token both deletes
+    // its
     // work dir and releases any live session it stood up. onRemove closes over the redeem service —
     // which needs the store — so it's wired through a holder set once both exist below.
     val redeemRef = java.util.concurrent.atomic.AtomicReference<PlaygroundRedeemService?>()
@@ -982,6 +983,24 @@ class ServeCommand(args: List<String>) : Command(args) {
         materialize = { ServeBundleDaemon.materializePlaygroundSnippet(it) },
       )
     redeemRef.set(redeem)
+
+    // A redeemed /pg session lives in ServeSessionRegistry and is reached only via the viewer + WS
+    // lanes, which never touch the token store — so the store's lazy purge (driven from mint / get
+    // /
+    // snapshot) would never fire onRemove for it, and the session (plus its work dir) would outlive
+    // the token's TTL indefinitely. Sweep expired tokens on a timer so a redeemed session is torn
+    // down at (roughly) its deadline even with no further playground requests.
+    val purgePeriod = tokenStore.ttlSeconds.coerceIn(15L, 60L)
+    java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "playground-token-purge").apply { isDaemon = true }
+      }
+      .scheduleWithFixedDelay(
+        { runCatching { tokenStore.purgeExpired() } },
+        purgePeriod,
+        purgePeriod,
+        java.util.concurrent.TimeUnit.SECONDS,
+      )
+
     return PlaygroundLane(compile = service, redeem = redeem)
   }
 
