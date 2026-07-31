@@ -550,10 +550,38 @@ data class FigmaSvgModel(
       // canvas extent to the frame — otherwise the square/tall full-frame background paints the
       // corners the render leaves transparent. No drawing layer (a tree of pure grouping nodes) → a
       // minimal padding-square canvas, matching the wireframe's empty-tree convention.
+      // The captured frame PNG's rect, anchored at the root origin (the render crops top-left from
+      // the window, whose origin is the root node). This is *everything that was rendered* — no
+      // pixel outside it exists in the frame.
+      val frameExtent =
+        if (frameWidthPx != null && frameHeightPx != null && frameWidthPx > 0 && frameHeightPx > 0)
+          Extent(frame.left, frame.top, frame.left + frameWidthPx, frame.top + frameHeightPx)
+        else null
       val contentExtent =
         if (clip != null || capsule != null)
           Extent(frame.left, frame.top, frame.right, frame.bottom)
-        else rootLayer.extent() ?: Extent(0, 0, 0, 0)
+        else
+        // Clamped to the rendered frame (issue #2853). A lazy list reports every *composed* item,
+        // including the ones scrolled past the viewport — Jetsnack's `Screens/App shell` carries a
+        // third snack column at x 397…565 and two more rows below y 800, none of which the 400×800
+        // render paints. Letting them size the canvas grew it to 598×1003 and stranded their white
+        // card backgrounds outside the phone UI as detached tiles. With no frame size (the
+        // vector-only path, a synthetic model) there is nothing to clamp to and the drawn-content
+        // extent still decides, so an overflowing child of an unclipped container keeps growing
+        // the canvas exactly as `FigmaSvgChildClipTest` pins.
+        (rootLayer.extent() ?: Extent(0, 0, 0, 0)).let { drawn ->
+            frameExtent?.let { f ->
+              Extent(
+                  maxOf(drawn.minX, f.minX),
+                  maxOf(drawn.minY, f.minY),
+                  minOf(drawn.maxX, f.maxX),
+                  minOf(drawn.maxY, f.maxY),
+                )
+                // A tree drawn entirely outside its own frame is pathological; keep what it drew
+                // rather than emitting an inverted extent.
+                .takeIf { it.maxX > it.minX && it.maxY > it.minY }
+            } ?: drawn
+          }
       val deviceBgResolved = deviceBackground?.let { argbToColor(it, names) }
       // The captured frame PNG's pixel size is the exact area a maskless `showBackground` preview
       // fills: the render paints the background across the whole window and crops top-left, so
@@ -619,6 +647,24 @@ data class FigmaSvgModel(
             height = extent.maxY - extent.minY,
           )
         else null
+      // A crop whose rect lies entirely outside the rendered frame has no pixels to take — the
+      // connector would write a 1×1 transparent placeholder for an `<image>` the canvas no longer
+      // shows. Drop those targets so an off-viewport lazy item costs neither a PNG nor a dangling
+      // reference (issue #2853). Targets carrying their own captured bytes are unaffected: their
+      // pixels come with the payload, not out of the frame.
+      // Filtered against the **final canvas**, not the frame: the two must agree, or the SVG
+      // references a PNG nobody writes. The clamp above falls back to the drawn extent when content
+      // lies entirely outside the frame, and in that case those layers — `<image>` included — are
+      // still on the canvas and still need their crops. With no frame the canvas *is* the drawn
+      // extent, so every target is inside it and nothing is dropped.
+      val targets =
+        ctx.rasterTargets.filter {
+          it.pngBase64 != null ||
+            (it.right > extent.minX &&
+              it.left < extent.maxX &&
+              it.bottom > extent.minY &&
+              it.top < extent.maxY)
+        }
       return FigmaSvgModel(
         root = rootLayer,
         minX = extent.minX,
@@ -626,7 +672,7 @@ data class FigmaSvgModel(
         width = (extent.maxX - extent.minX) + padding * 2,
         height = (extent.maxY - extent.minY) + padding * 2,
         padding = padding,
-        rasterTargets = ctx.rasterTargets,
+        rasterTargets = targets,
         roundClip = clip,
         capsuleClip = capsule,
         deviceBackground = deviceBg,
