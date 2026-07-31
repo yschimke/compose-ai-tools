@@ -80,14 +80,14 @@ class ShowPartialResultsTest {
     )
   }
 
-  // --- resultsWithFreshRender -------------------------------------------------
+  // --- reportableAfterBuildFailure --------------------------------------------
 
   @Test
-  fun `only the results this run rendered are reported`() {
+  fun `a stale row is dropped and a freshly rendered one kept`() {
     val results = listOf(result("p.Fresh", "/r/fresh.png"), result("p.Stale", "/r/stale.png"))
     assertEquals(
       listOf("p.Fresh"),
-      resultsWithFreshRender(results, setOf("/r/fresh.png")).map { it.id },
+      reportableAfterBuildFailure(results, setOf("/r/fresh.png")).map { it.id },
     )
   }
 
@@ -102,7 +102,7 @@ class ShowPartialResultsTest {
       )
     assertEquals(
       listOf("a.Rendered"),
-      resultsWithFreshRender(results, setOf("/a/renders/x.png")).map { it.id },
+      reportableAfterBuildFailure(results, setOf("/a/renders/x.png")).map { it.id },
       "freshness must be per result, not admitted for the whole batch by one fresh file",
     )
   }
@@ -112,24 +112,46 @@ class ShowPartialResultsTest {
     val results = listOf(result("p.Multi", "/r/frame0.png", "/r/frame1.png"))
     assertEquals(
       listOf("p.Multi"),
-      resultsWithFreshRender(results, setOf("/r/frame1.png")).map { it.id },
+      reportableAfterBuildFailure(results, setOf("/r/frame1.png")).map { it.id },
     )
   }
 
   @Test
-  fun `a result whose render failed carries no evidence and is dropped`() {
-    val results = listOf(result("p.Broken", null))
+  fun `a preview that threw is kept so the failure stays visible`() {
+    // This is the signal partial reporting exists to deliver: which preview is broken. The row has
+    // no image, sha or changed flag, so there is nothing stale to mislead with.
+    val results = listOf(result("p.Rendered", "/r/ok.png"), result("p.Broken", null))
+    assertEquals(
+      listOf("p.Rendered", "p.Broken"),
+      reportableAfterBuildFailure(results, setOf("/r/ok.png")).map { it.id },
+    )
+  }
+
+  @Test
+  fun `a row keeping a stale PNG is dropped even alongside a null capture`() {
+    val results = listOf(result("p.Mixed", null, "/r/stale.png"))
     assertTrue(
-      resultsWithFreshRender(results, setOf("/r/other.png")).isEmpty(),
-      "a null pngPath cannot show the renderer ran for this row",
+      reportableAfterBuildFailure(results, setOf("/r/other.png")).isEmpty(),
+      "a stale PNG anywhere on the row still carries the previous run's sha into the output",
+    )
+  }
+
+  // --- anyFreshRender ---------------------------------------------------------
+
+  @Test
+  fun `a run that wrote nothing reports nothing at all`() {
+    val results = listOf(result("p.Stale", "/r/stale.png"), result("p.NoPng", null))
+    assertFalse(
+      anyFreshRender(results, emptySet()),
+      "with no render written, even the no-PNG rows are a manifest nobody refreshed",
     )
   }
 
   @Test
-  fun `nothing fresh means nothing to report`() {
-    val results = listOf(result("p.Stale", "/r/stale.png"))
-    assertTrue(resultsWithFreshRender(results, emptySet()).isEmpty())
-    assertTrue(resultsWithFreshRender(emptyList(), setOf("/r/a.png")).isEmpty())
+  fun `one freshly written render opens the gate`() {
+    val results = listOf(result("p.Fresh", "/r/fresh.png"))
+    assertTrue(anyFreshRender(results, setOf("/r/fresh.png")))
+    assertFalse(anyFreshRender(emptyList(), setOf("/r/fresh.png")))
   }
 
   // --- snapshotRenders --------------------------------------------------------
@@ -162,6 +184,28 @@ class ShowPartialResultsTest {
     assertEquals(
       setOf((dir / "first.png").toString()),
       freshRenderPaths(before, snapshotRenders(listOf(module), fs)),
+    )
+  }
+
+  @Test
+  fun `renders dir is canonicalised so its keys match PreviewResultBuilder's pngPath`() {
+    // The snapshot keys are compared to `CaptureResult.pngPath` by string equality, and
+    // PreviewResultBuilder builds that as `.canonicalFile.absolutePath`. If only one side resolved
+    // symlinks every lookup would miss and `show` would report nothing on every failed build — a
+    // silent, total regression. Exercised against the real filesystem because `canonicalFile` is a
+    // java.io.File operation, not an okio one.
+    val tmp = java.nio.file.Files.createTempDirectory("compose-preview-canon")
+    val real = java.nio.file.Files.createDirectories(tmp.resolve("real"))
+    val link = java.nio.file.Files.createSymbolicLink(tmp.resolve("link"), real)
+
+    val module = PreviewModule(gradlePath = "m", projectDir = link.toFile())
+    val pngPathAsBuilderWouldMakeIt =
+      File(link.toFile(), "build/compose-previews/renders/x.png").canonicalFile.absolutePath
+
+    assertEquals(
+      File(pngPathAsBuilderWouldMakeIt).parent,
+      rendersDirOf(module),
+      "snapshot base must resolve symlinks the same way pngPath does",
     )
   }
 

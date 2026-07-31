@@ -916,9 +916,20 @@ internal fun previewsMissingPng(results: List<PreviewResult>): List<PreviewResul
  */
 internal data class RenderStamp(val mtimeMillis: Long?, val sizeBytes: Long?)
 
-/** Where a module's rendered artifacts live. */
-internal fun rendersDirOf(module: PreviewModule): String =
-  java.io.File(module.projectDir, "build/compose-previews/renders").path
+/**
+ * Where a module's rendered artifacts live.
+ *
+ * **Canonicalised**, because the snapshot keys are compared for string equality against
+ * `CaptureResult.pngPath`, which `PreviewResultBuilder` produces as
+ * `…​.canonicalFile.absolutePath`. If only one side resolved symlinks (`/tmp` → `/private/tmp` on
+ * macOS, a symlinked checkout, a bind-mounted CI workspace) every path would miss and every result
+ * would look stale — `show` would silently report nothing on any failed build. Falls back to the
+ * absolute path if canonicalisation fails; the directory need not exist for this to work.
+ */
+internal fun rendersDirOf(module: PreviewModule): String {
+  val dir = java.io.File(module.projectDir, "build/compose-previews/renders")
+  return runCatching { dir.canonicalFile.path }.getOrElse { dir.absolutePath }
+}
 
 /**
  * Snapshot every file under each module's `renders/` directory.
@@ -962,24 +973,43 @@ internal fun freshRenderPaths(
   after.asSequence().filter { (path, now) -> before[path] != now }.map { it.key }.toSet()
 
 /**
- * The subset of [results] this invocation actually rendered.
+ * Did this invocation write any render at all? The gate for reporting anything — see
+ * [reportableAfterBuildFailure].
+ */
+internal fun anyFreshRender(results: List<PreviewResult>, freshPaths: Set<String>): Boolean =
+  results.any { r ->
+    r.captures.any { it.pngPath != null && it.pngPath in freshPaths }
+  }
+
+/**
+ * The subset of [results] safe to report after a failed build.
  *
  * Freshness is decided **per result**, not for the batch: a multi-module run that renders module A
  * and then fails compiling module B must not let A's fresh PNGs vouch for B's stale rows. The same
- * applies within one module when the render task stops partway and leaves unattempted captures on
+ * applies within one module when the render task stops partway, leaving unattempted captures on
  * disk from the previous run.
  *
- * A result survives when at least one of its captures points at a freshly written PNG. Results
- * whose every capture is stale — or which have no PNG at all, and so carry no evidence either way —
- * are dropped rather than reported, because a stale row is indistinguishable from a current one
- * once it reaches the output: its `sha256` matches the state file the last good run wrote, so
- * `changed` reads `false` and the caller concludes "nothing changed" about a build that never ran.
+ * Two kinds of row survive:
+ * - **Freshly rendered** — at least one capture points at a PNG this run wrote.
+ * - **No PNG at all** — the render was attempted and threw, so the row carries no image, no
+ *   `sha256` and no `changed`. There is nothing stale to mislead with, and this is precisely the
+ *   "which preview is broken?" signal that partial reporting exists to deliver; dropping it would
+ *   hand back a clean-looking list with the failure silently missing.
+ *
+ * What gets dropped is the dangerous middle case: a row whose PNG exists but this run never
+ * touched. That one is indistinguishable from a current result once it reaches the output — its
+ * `sha256` still matches the state file the last good run wrote, so `changed` reads `false` and the
+ * caller concludes "nothing changed" about a build that never ran.
+ *
+ * Callers must check [anyFreshRender] first: with no fresh render anywhere, gradle died before the
+ * renderer ran and even the no-PNG rows are leftovers of a manifest nobody refreshed.
  */
-internal fun resultsWithFreshRender(
+internal fun reportableAfterBuildFailure(
   results: List<PreviewResult>,
   freshPaths: Set<String>,
 ): List<PreviewResult> = results.filter { r ->
-  r.captures.any { it.pngPath != null && it.pngPath in freshPaths }
+  val pngs = r.captures.mapNotNull { it.pngPath }
+  pngs.isEmpty() || pngs.any { it in freshPaths }
 }
 
 /**
@@ -1030,31 +1060,34 @@ class ShowCommand(args: List<String>) : Command(args) {
       // hand-globbing the renders directory. Surface what did render and keep the exit code at 2 so
       // scripts gating on success are unaffected.
       //
-      // Narrow to the rows this invocation actually wrote. On a warm checkout the previous run's
-      // manifest and PNGs are still on disk, so anything the renderer didn't touch would otherwise
-      // go out carrying the last run's image, sha and a `changed: false` — "nothing changed" about
-      // a
-      // build that never ran. Filtering is per result, so a multi-module run that renders A and
-      // then
-      // fails compiling B reports only A.
-      val stale = outcome.results.size
-      val fresh = resultsWithFreshRender(outcome.results, outcome.freshRenderPaths)
-      if (fresh.isEmpty()) {
+      // Narrow to rows this invocation is entitled to speak for. On a warm checkout the previous
+      // run's manifest and PNGs are still on disk, so a row the renderer never touched would go out
+      // carrying the last run's image, sha and `changed: false` — "nothing changed" about a build
+      // that never ran. Rows that produced no PNG are kept: they carry no stale payload and are the
+      // "which preview broke?" signal this whole branch exists to deliver.
+      if (!anyFreshRender(outcome.results, outcome.freshRenderPaths)) {
         System.err.println(
-          "No preview was rendered by this invocation — gradle failed before the render task " +
-            "wrote anything, and the files under build/compose-previews/ belong to a previous run. " +
-            "Reporting nothing rather than passing them off as current."
+          "No preview was rendered by this invocation — gradle failed before the render task wrote " +
+            "anything, so everything under build/compose-previews/ belongs to a previous run. " +
+            "Reporting nothing rather than passing it off as current."
         )
         System.out.flush()
         exitProcess(2)
       }
-      val dropped = stale - fresh.size
+      val reportable = reportableAfterBuildFailure(outcome.results, outcome.freshRenderPaths)
+      val staleDropped = outcome.results.size - reportable.size
+      val failedToRender = reportable.count { r -> r.captures.all { it.pngPath == null } }
       System.err.println(
-        "Reporting the ${fresh.size} preview(s) this run rendered" +
-          (if (dropped > 0) ", omitting $dropped left over from a previous run" else "") +
-          ". Exit code stays 2."
+        buildString {
+          append("Reporting ${reportable.size} preview(s)")
+          if (failedToRender > 0) append(" ($failedToRender produced no PNG this run)")
+          if (staleDropped > 0) {
+            append(", omitting $staleDropped whose PNG is left over from a previous run")
+          }
+          append(". Exit code stays 2.")
+        }
       )
-      outcome = outcome.copy(results = fresh)
+      outcome = outcome.copy(results = reportable)
     }
 
     if (outcome.manifests.isEmpty() || outcome.manifests.all { it.second.previews.isEmpty() }) {
