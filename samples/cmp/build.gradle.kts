@@ -30,4 +30,14 @@ dependencies {
   // `previewOverride*` — opt-in editable knobs (label / list length / per-item indexed values) the
   // daemon can seed and a served bundle can present as editable controls.
   implementation(project(":data-preview-overrides-runtime"))
+
+  // `PreviewModeMatrixTest` reads the PNGs under `build/compose-previews/renders/`.
+  testImplementation(libs.junit)
+  testImplementation(libs.truth)
 }
+
+// Pixel-test wiring for the desktop backend. `composePreview { renderBeforeUnitTests }` only chains
+// AGP's `test<Variant>UnitTest` tasks, which a JVM/CMP module doesn't have — so wire the plain
+// `test` task here so `:samples:cmp:check` renders the previews before `PreviewModeMatrixTest`
+// asserts on them. No cycle: the desktop render is a `JavaExec` subprocess, not a `Test` task.
+tasks.named("test") { dependsOn("composePreviewRenderAll") }
