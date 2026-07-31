@@ -47,6 +47,30 @@ internal object UiAutomatorEvidence {
     prettyPrint = false
   }
 
+  /**
+   * [compute], serialised for the sandbox→host hop.
+   *
+   * [compute] runs under Robolectric's instrumenting classloader, so the [UiAutomatorUnsupportedReason]
+   * it returns is loaded by the sandbox — handing that reference to the host fails the host-side cast
+   * with a same-name `ClassCastException`. Only a String may cross, exactly as
+   * `ComposeSemanticsDataProducer.probeNodesJson` does for probe nodes and `CaptureA11yFindings` does
+   * for ATF findings; [decode] re-parses it into the host's own class.
+   */
+  fun computeJson(
+    rule: AndroidComposeTestRule<*, androidx.activity.ComponentActivity>,
+    actionKind: String,
+    selectorJson: String,
+    useUnmergedTree: Boolean,
+  ): String =
+    WireJson.encodeToString(
+      UiAutomatorUnsupportedReason.serializer(),
+      compute(rule, actionKind, selectorJson, useUnmergedTree),
+    )
+
+  /** Host-side inverse of [computeJson]. */
+  fun decode(json: String): UiAutomatorUnsupportedReason =
+    WireJson.decodeFromString(UiAutomatorUnsupportedReason.serializer(), json)
+
   fun compute(
     rule: AndroidComposeTestRule<*, androidx.activity.ComponentActivity>,
     actionKind: String,

@@ -25,29 +25,16 @@ import org.robolectric.internal.bytecode.InstrumentationConfiguration
  * inside [UserClassLoaderHolder]'s `ChildFirstURLClassLoader` to win against the parent — see
  * CLASSLOADER.md for the trade-off discussion.
  *
- * **Sandbox pool (SANDBOX-POOL.md).** When [SandboxHoldingHints.workerIndex] is set on the worker
- * thread that constructs this runner, [createClassLoaderConfig] adds a synthetic per-runner
- * discriminator so each pool worker's [InstrumentationConfiguration] differs and Robolectric's
- * sandbox cache builds a fresh sandbox per worker. Without this, multi-worker hosts share a single
- * cached sandbox (the cache key would be identical) and concurrent renders queue on one
- * single-thread executor.
+ * **Sandbox pool (SANDBOX-POOL.md).** This runner carries no per-worker cache-key discriminator any
+ * more (issue #3072). It had one — a synthetic `doNotAcquireClass` that forced Robolectric to build
+ * a distinct sandbox per pool worker in one JVM — and that is exactly the arrangement Robolectric's
+ * native runtime cannot survive: the second sandbox's `Typeface` init fails against an already-
+ * loaded `libandroid_runtime.so` and the process dies. The pool now scales by processes, one
+ * sandbox each, so every runner in a JVM shares one [InstrumentationConfiguration] and hits
+ * Robolectric's sandbox cache — which is what lets sequential hosts in a test suite reuse one
+ * sandbox instead of building a second.
  */
 open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(testClass) {
-
-  /**
-   * Snapshot of the worker-index hint at construction time. The ThreadLocal is set on the pool
-   * worker thread before `JUnitCore.runClasses` instantiates the runner; capture it now because
-   * Robolectric subsequently invokes [createClassLoaderConfig] from at least two different threads
-   * (the worker thread initially, then the sandbox's main thread later) and ThreadLocal would
-   * silently miss on the latter — collapsing the cache to a single shared sandbox. Verified
-   * empirically with a probe on Robolectric 4.16.1 (see SANDBOX-POOL.md "Layer 2 — empirical
-   * finding").
-   *
-   * Null when the runner is constructed on a thread without the hint set — i.e., the legacy
-   * single-sandbox path. In that case the discriminator is not applied, preserving cache hits
-   * across runs.
-   */
-  private val poolWorkerIndex: Int? = SandboxHoldingHints.workerIndex.get()
 
   /**
    * Mirrors the `application=android.app.Application` line that
@@ -96,24 +83,6 @@ open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(tes
     val builder =
       InstrumentationConfiguration.Builder(super.createClassLoaderConfig(method))
         .doNotAcquirePackage("ee.schimke.composeai.daemon.bridge")
-    // SANDBOX-POOL.md (Layer 2) — pool discriminator. Two interlocking subtleties:
-    //
-    //   1. Use `doNotAcquireClass`, not `doNotAcquirePackage`. Robolectric's
-    //      [InstrumentationConfiguration.equals] checks `classesToNotAcquire` but NOT
-    //      `packagesToNotAcquire` — verified empirically via `javap -c` on Robolectric 4.16.1.
-    //      A package-level discriminator silently collides on the cache key.
-    //   2. Read the snapshot, NOT the ThreadLocal. Robolectric calls this method twice for one
-    //      runner — first on the worker thread, then on the sandbox's main thread — and
-    //      ThreadLocal.get on the second call returns null (different thread). Snapshotting in
-    //      the constructor (which runs on the worker thread under JUnitCore.runClasses) keeps the
-    //      discriminator stable across both calls. The runner instance's identity hash is the
-    //      discriminator value so per-runner configs stay distinct.
-    //
-    // The synthetic class name never matches a real class — it exists purely to break the cache
-    // key.
-    if (poolWorkerIndex != null) {
-      builder.doNotAcquireClass("composeai.sandbox.uniq.Runner${System.identityHashCode(this)}")
-    }
     // Coil 2's `AsyncImagePainter` lives in a plain library package, which Robolectric does NOT
     // instrument by default — and an uninstrumented class can't be shadowed. Instrument it so
     // [ee.schimke.composeai.renderer.ShadowAsyncImagePainter] (registered in `getExtraShadows`
@@ -293,27 +262,3 @@ internal fun isRemoteComposeAvailable(loader: ClassLoader?): Boolean {
   }
 }
 
-/**
- * Cross-thread hints consumed by [SandboxHoldingRunner] during sandbox bootstrap. Lives at file
- * scope (not on a companion) so set/get is cheap and readable without instantiating a runner.
- *
- * Used by SANDBOX-POOL.md (Layer 2) — the host's pool worker thread sets [workerIndex] before
- * calling `JUnitCore.runClasses` so each pool worker bootstraps a distinct Robolectric sandbox
- * (otherwise the sandbox cache key — which includes the [InstrumentationConfiguration] — matches
- * across workers and the pool collapses to a single cached sandbox).
- */
-internal object SandboxHoldingHints {
-  /**
-   * Worker index hint. Non-null on the pool worker thread between
-   * [ee.schimke.composeai.daemon.RobolectricHost.runJUnit]'s `set` and `remove` calls; null
-   * otherwise so the pre-pool single-sandbox bootstrap path keeps its historical
-   * [InstrumentationConfiguration] (and therefore Robolectric's sandbox cache hits across runs).
-   *
-   * Read **only** at runner construction (snapshotted into [SandboxHoldingRunner.poolWorkerIndex]).
-   * Reading it elsewhere — particularly inside [SandboxHoldingRunner.createClassLoaderConfig] —
-   * silently misses on the second invocation (which Robolectric makes on the sandbox's main thread,
-   * where the ThreadLocal isn't set), so the discriminator vanishes and the cache key collapses
-   * across workers.
-   */
-  val workerIndex: ThreadLocal<Int?> = ThreadLocal()
-}
