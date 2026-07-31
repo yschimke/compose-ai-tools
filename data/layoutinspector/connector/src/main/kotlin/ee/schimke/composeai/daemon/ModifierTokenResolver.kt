@@ -269,7 +269,7 @@ internal object ModifierTokenResolver {
           ?.firstOrNull { it.name == "alpha" }
           ?.value
           ?.let(::floatValue)
-        ?: evaluateLayerBlockAlpha(info.modifier)
+        ?: evaluateLayerBlockAlpha(info.modifier, nodeSize(info))
         ?: reflectedField(info.coordinates, "graphicsLayerScope")?.let {
           reflectedFloat(it, "alpha")
         }
@@ -361,9 +361,16 @@ internal object ModifierTokenResolver {
    * a series of property assignments, and reading the animation state it closes over gives exactly
    * the alpha the frame was drawn with.
    */
-  internal fun evaluateLayerBlockAlpha(modifier: Any): Float? {
+  internal fun evaluateLayerBlockAlpha(modifier: Any, nodeSize: Long? = null): Float? {
     val block = layerBlock(modifier) ?: return null
     val recorded = HashMap<String, Any?>()
+    // The node's own placed size, so a block that *derives* alpha from geometry evaluates against
+    // the box it was actually drawn in (issue #2615). Wear's `TransformingLazyColumn` /
+    // `SurfaceTransformation` does exactly that — its alpha is a function of where the item sits in
+    // its scaled slot — and answering `size` with the type's zero handed it a 0×0 box, which
+    // collapsed to `opacity="0.0"`/`0.04` on groups the PNG paints fully opaque.
+    val geometry: Map<String, Any> =
+      nodeSize?.let { mapOf("size" to it, "center" to centerOf(it)) } ?: emptyMap()
     // The scope interface by name, not from the lambda's generic signature: a Kotlin lambda erases
     // to a raw `Function1`, so there is no type argument to read back off it.
     val iface =
@@ -383,12 +390,12 @@ internal object ModifierTokenResolver {
             val name = m.name
             when {
               name.startsWith("set") && args != null && args.size == 1 -> {
-                recorded[name.removePrefix("set").replaceFirstChar { it.lowercase() }] = args[0]
+                recorded[propertyName(name, "set")] = args[0]
                 null
               }
               // Getters (and anything else) answer with a harmless default so a block that reads
               // back a property it just set, or consults `density`, doesn't blow up mid-evaluation.
-              else -> defaultFor(m.returnType, name, recorded)
+              else -> defaultFor(m.returnType, name, recorded, geometry)
             }
           }
         }
@@ -397,6 +404,32 @@ internal object ModifierTokenResolver {
     runCatching { invoke(scope) }.getOrNull() ?: return null
     return recorded["alpha"] as? Float
   }
+
+  /**
+   * This modifier's placed size as a packed `Size`, or null when the coordinates are detached (a
+   * not-yet-placed node reports nothing usable and the evaluator keeps its identity defaults).
+   *
+   * `Size` is a value class over a packed `Long`, so it is built by packing the two floats rather
+   * than constructed — the same shape [offsetAxis] already reads `Offset` back through.
+   */
+  private fun nodeSize(info: ModifierInfo): Long? =
+    runCatching {
+        val size = info.coordinates.size
+        if (size.width <= 0 || size.height <= 0) null
+        else packFloats(size.width.toFloat(), size.height.toFloat())
+      }
+      .getOrNull()
+
+  /** The centre of a packed `Size`, as a packed `Offset` — the same packing layout. */
+  private fun centerOf(packedSize: Long): Long =
+    packFloats(unpackFloat1(packedSize) / 2f, unpackFloat2(packedSize) / 2f)
+
+  private fun packFloats(a: Float, b: Float): Long =
+    (a.toRawBits().toLong() shl 32) or (b.toRawBits().toLong() and 0xFFFFFFFFL)
+
+  private fun unpackFloat1(packed: Long): Float = Float.fromBits((packed ushr 32).toInt())
+
+  private fun unpackFloat2(packed: Long): Float = Float.fromBits((packed and 0xFFFFFFFFL).toInt())
 
   /** The `GraphicsLayerScope.() -> Unit` a lambda-form `graphicsLayer` element holds, if any. */
   private fun layerBlock(modifier: Any): Any? =
@@ -419,9 +452,19 @@ internal object ModifierTokenResolver {
    * reads a property back, else the type's zero. `density`/`fontScale` answer 1 so a block that
    * converts dp inside itself divides by something sane rather than zero.
    */
-  private fun defaultFor(type: Class<*>, name: String, recorded: Map<String, Any?>): Any? {
-    val property = name.removePrefix("get").replaceFirstChar { it.lowercase() }
+  private fun defaultFor(
+    type: Class<*>,
+    name: String,
+    recorded: Map<String, Any?>,
+    geometry: Map<String, Any> = emptyMap(),
+  ): Any? {
+    val property = propertyName(name, "get")
     recorded[property]?.let {
+      return it
+    }
+    // Before the static identities: a real `size`/`center` for this node beats `Size.Zero`, which
+    // is what a geometry-derived block would otherwise divide into (issue #2615).
+    geometry[property]?.let {
       return it
     }
     GRAPHICS_LAYER_DEFAULTS[property]?.let {
@@ -435,6 +478,18 @@ internal object ModifierTokenResolver {
       else -> null
     }
   }
+
+  /**
+   * The property a proxied accessor belongs to: `getAlpha` → `alpha`.
+   *
+   * The `-` truncation is load-bearing. A member whose type is a **value class** — `size` and
+   * `center` are `Size`/`Offset`, both packed over a `Long` — is name-mangled by the Kotlin
+   * compiler into `getSize-NH-jbRc`, so a plain `removePrefix("get")` yields `size-NH-jbRc` and
+   * matches nothing. That silent miss is what left a geometry-derived block reading `Size.Zero`
+   * (issue #2615); it also hid the mangled setters from [recorded].
+   */
+  private fun propertyName(accessor: String, prefix: String): String =
+    accessor.removePrefix(prefix).substringBefore('-').replaceFirstChar { it.lowercase() }
 
   /**
    * `GraphicsLayerScope`'s own identity defaults, for a property the block **reads before
