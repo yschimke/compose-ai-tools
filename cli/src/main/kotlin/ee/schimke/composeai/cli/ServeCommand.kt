@@ -912,39 +912,56 @@ class ServeCommand(args: List<String>) : Command(args) {
     )
 
     val snippetCounter = java.util.concurrent.atomic.AtomicLong()
-    return PlaygroundCompileService(
-      catalogClasspath = { mode ->
-        when (mode) {
-          PlaygroundMode.CMP -> cmpClasspath
-          // Only advertise the Android modes when their daemon backend actually came up — absent
-          // the
-          // sidecar/android.jar the host would otherwise accept the mode, run a full Android
-          // compile,
-          // then mint a dead token with no image (ANDROID) / report the preview drew no document
-          // (REMOTE_COMPOSE), contradicting the "Android modes disabled" startup log. A null
-          // classpath routes to the existing "mode … is not available" response.
-          PlaygroundMode.ANDROID -> androidClasspath?.takeIf { androidRender != null }
-          PlaygroundMode.REMOTE_COMPOSE -> androidClasspath?.takeIf { rcCapture != null }
-        }
-      },
-      compiler = compiler,
-      discoverer = PlaygroundPreviewDiscoverer(),
-      tokenStore = PlaygroundTokenStore(),
-      newWorkDir = {
-        java.io.File(workRoot, "snippet-${snippetCounter.incrementAndGet()}").absolutePath.toPath()
-      },
-      // The still first frame is the Android live render (ANDROID mode); CMP's desktop first frame
-      // is a separate lane, and REMOTE_COMPOSE never reaches this seam (it returns a documentUrl).
-      renderFirstFrame = { snippet ->
-        if (snippet.mode == PlaygroundMode.ANDROID) androidRender?.render(snippet) else null
-      },
-      captureRemoteDocument = { snippet -> rcCapture?.capture(snippet) },
-      publishRemoteDocument = { name, bytes, checked ->
-        (docStore?.add(name, bytes, isSecurityChecked = checked) as? ServeDocStore.Result.Ok)
-          ?.doc
-          ?.path
-      },
-    )
+    val service =
+      PlaygroundCompileService(
+        catalogClasspath = { mode ->
+          when (mode) {
+            PlaygroundMode.CMP -> cmpClasspath
+            // Only advertise the Android modes when their daemon backend actually came up — absent
+            // the
+            // sidecar/android.jar the host would otherwise accept the mode, run a full Android
+            // compile,
+            // then mint a dead token with no image (ANDROID) / report the preview drew no document
+            // (REMOTE_COMPOSE), contradicting the "Android modes disabled" startup log. A null
+            // classpath routes to the existing "mode … is not available" response.
+            PlaygroundMode.ANDROID -> androidClasspath?.takeIf { androidRender != null }
+            PlaygroundMode.REMOTE_COMPOSE -> androidClasspath?.takeIf { rcCapture != null }
+          }
+        },
+        compiler = compiler,
+        discoverer = PlaygroundPreviewDiscoverer(),
+        tokenStore = PlaygroundTokenStore(),
+        newWorkDir = {
+          java.io
+            .File(workRoot, "snippet-${snippetCounter.incrementAndGet()}")
+            .absolutePath
+            .toPath()
+        },
+        // The still first frame is the Android live render (ANDROID mode); CMP's desktop first
+        // frame
+        // is a separate lane, and REMOTE_COMPOSE never reaches this seam (it returns a
+        // documentUrl).
+        renderFirstFrame = { snippet ->
+          if (snippet.mode == PlaygroundMode.ANDROID) androidRender?.render(snippet) else null
+        },
+        captureRemoteDocument = { snippet -> rcCapture?.capture(snippet) },
+        publishRemoteDocument = { name, bytes, checked ->
+          (docStore?.add(name, bytes, isSecurityChecked = checked) as? ServeDocStore.Result.Ok)
+            ?.doc
+            ?.path
+        },
+      )
+    // No mode survived gating (e.g. an Android-only host whose daemon sidecar / android.jar is
+    // absent, so every classpath gated to null): don't enable a lane that would render an empty
+    // mode selector and mint dead tokens on Run. Disable it, like the no-classpath case above.
+    if (service.availableModes.isEmpty()) {
+      System.err.println(
+        "serve: playground resolved no runnable mode (a classpath resolved but its render backend " +
+          "is unavailable); playground disabled."
+      )
+      return null
+    }
+    return service
   }
 
   /** Resolve a playground compile classpath from a catalog liveBundle; null (logged) on failure. */
