@@ -1,7 +1,5 @@
 package ee.schimke.composeai.cli.serve
 
-import ee.schimke.composeai.cli.PreviewInfo
-import ee.schimke.composeai.cli.PreviewManifest
 import ee.schimke.composeai.data.remotecompose.RemoteComposeDocumentPayload
 import ee.schimke.composeai.data.remotecompose.RemoteComposeDocumentProduct
 import ee.schimke.composeai.render.session.RenderSession
@@ -42,25 +40,12 @@ import kotlinx.serialization.json.jsonPrimitive
  * queue, the render failed or timed out, or the preview drew no Remote Compose document.
  */
 class PlaygroundRcCaptureService(
-  private val openSession: SessionOpener,
+  private val openSession: PlaygroundAndroidSessionOpener,
   /** Mints a fresh scratch dir per capture (holds the synthesized manifest + render outputs). */
   private val newWorkDir: () -> File,
   private val renderBudget: Duration = DEFAULT_RENDER_BUDGET,
   private val ackTimeout: Duration = DEFAULT_ACK_TIMEOUT,
 ) {
-
-  /**
-   * Opens a render session over a compiled snippet. Production binds this to the Android
-   * `openBundleDaemon`; tests supply a fake session.
-   */
-  fun interface SessionOpener {
-    fun open(
-      classesDir: File,
-      previewsJson: File,
-      workspaceRoot: File,
-      userClasspath: List<String>,
-    ): RenderSession
-  }
 
   /**
    * The [PlaygroundCompileService] `captureRemoteDocument` seam: snippet → `.rc` bytes, or null.
@@ -69,7 +54,9 @@ class PlaygroundRcCaptureService(
     val workDir = newWorkDir().apply { mkdirs() }
     return try {
       val previewsJson =
-        File(workDir, "previews.json").apply { writeText(previewsManifestJson(snippet)) }
+        File(workDir, "previews.json").apply {
+          writeText(PlaygroundPreviews.singlePreviewManifestJson(snippet))
+        }
       // The playground's classpath entries are already absolute okio paths; File(toString()) is the
       // safe bridge to the java.io.File the render-session API takes.
       val classesDir = File(snippet.classesDir.toString())
@@ -132,29 +119,6 @@ class PlaygroundRcCaptureService(
         json.decodeFromJsonElement(RemoteComposeDocumentPayload.serializer(), payloadJson)
       runCatching { Base64.getDecoder().decode(payload.documentBase64) }.getOrNull()
     }
-  }
-
-  /**
-   * A one-preview `previews.json` the daemon can render: the snippet's discovered id split back
-   * into its `className` + `functionName` (the id is `"$className.$methodName"`, per
-   * [PlaygroundPreviewDiscoverer]).
-   */
-  private fun previewsManifestJson(snippet: PlaygroundTokenStore.PlaygroundSnippet): String {
-    val id = snippet.previewId
-    val manifest =
-      PreviewManifest(
-        module = snippet.moduleName,
-        variant = "",
-        previews =
-          listOf(
-            PreviewInfo(
-              id = id,
-              functionName = id.substringAfterLast('.'),
-              className = id.substringBeforeLast('.'),
-            )
-          ),
-      )
-    return json.encodeToString(PreviewManifest.serializer(), manifest)
   }
 
   companion object {
