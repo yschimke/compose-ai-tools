@@ -12,6 +12,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
@@ -1267,7 +1268,21 @@ abstract class RobolectricRenderTestBase(
           // `DiscoverPreviewsTask` guarantees `captures` is ordered by
           // ascending `advanceTimeMillis`, so we accumulate forward-only.
           var currentTime = 0L
-          val onRoot = rule.onRoot()
+          // A preview whose content is a `Dialog` / `ModalBottomSheet` installs a second Compose
+          // owner, and the activity's own root stays present but empty — so `isRoot()` matches two
+          // nodes and `onRoot()` is ambiguous (issue #3048). Resolve the subject deliberately in
+          // that case. Single-root previews — the overwhelming majority — keep using `onRoot()`
+          // verbatim so their captures stay byte-identical.
+          val rootInteractions = rule.onAllNodes(isRoot(), useUnmergedTree = true)
+          val rootNodes =
+            runCatching { rootInteractions.fetchSemanticsNodes(atLeastOneRootRequired = false) }
+              .getOrDefault(emptyList())
+          val resolvedRoot =
+            if (rootNodes.size <= 1) null
+            else DialogWindowCapture.selectCaptureRoot(rootNodes, rule.activity.window.decorView)
+          val onRoot =
+            if (resolvedRoot == null) rule.onRoot()
+            else rootInteractions[rootNodes.indexOf(resolvedRoot)]
           val jobs =
             (preview.captures.map { CaptureRenderJob(it, outputFileFor(it, outputDir)) } +
                 preview.dataProducts.map { ProductRenderJob(it, outputFileFor(it, outputDir)) })
@@ -1576,14 +1591,40 @@ abstract class RobolectricRenderTestBase(
               onRoot.captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
             }
 
+            // A `Dialog` / `ModalBottomSheet` preview composes into a window of its own, and the
+            // capture spans the whole screen with that window composited into it — so the sticker
+            // is the activity frame with the component floating somewhere inside (issue #3048).
+            // Crop to the dialog's window instead. The AS-parity wrap crop below cannot do this
+            // job: it crops from the origin, and a centred dialog is not at (0,0).
+            val capturedDialogWindow =
+              if (
+                !productFellThrough &&
+                  !animatedCaptureFellThrough &&
+                  !longHandled &&
+                  !gifHandled &&
+                  !animationHandled &&
+                  !focusGifHandled
+              ) {
+                resolvedRoot?.let { root ->
+                  DialogWindowCapture.shownDialogWindow(root)?.also { window ->
+                    DialogWindowCapture.cropPngToDialogWindow(outputFile, root, window)
+                  }
+                }
+              } else {
+                null
+              }
+
             // AS-parity: crop the PNG down to the composable's
             // intrinsic size on wrapped axes. Skipped for stitched
             // LONG output, scroll GIF output, @AnimatedPreview GIF
             // output, and @FocusedPreview(gif=true) GIF output —
             // those files' dimensions are the full scrollable
             // extent / frame size, not the composable's intrinsic box.
+            // Also skipped when the frame was already cropped to a dialog window above, which has
+            // framed it to the component already.
             if (
-              !productFellThrough &&
+              capturedDialogWindow == null &&
+                !productFellThrough &&
                 !animatedCaptureFellThrough &&
                 !longHandled &&
                 !gifHandled &&
