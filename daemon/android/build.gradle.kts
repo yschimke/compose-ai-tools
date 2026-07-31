@@ -459,3 +459,23 @@ composeAiMavenPublishing {
   )
   inceptionYear.set("2025")
 }
+
+// One JVM per test class.
+//
+// Robolectric's native-graphics runtime binds to a SINGLE classloader per process: it loads
+// `libandroid_runtime.so` once and registers its JNI natives against whichever sandbox's
+// instrumented framework classes got there first. A second sandbox in the same JVM comes up with a
+// `Typeface` whose system font map never populated, and the first native call that touches it
+// (`Paint.getFontMetrics` from `AndroidSemanticsWireframe`, say) takes the whole process down with
+// a
+// `SIGSEGV` in `libandroid_runtime.so` — killing the test executor and every test after it.
+//
+// This module has two runners that necessarily disagree on `InstrumentationConfiguration` — plain
+// `RobolectricTestRunner` for the direct tests, and `SandboxHoldingRunner` (which excludes the
+// bridge package) for everything driven through `RobolectricHost` — so a shared JVM allocates two
+// sandboxes and dies partway through the suite. Before this, the executor aborted around test 70 of
+// 216 and the rest never ran at all.
+//
+// Robolectric boot dominates the runtime either way, so the extra JVM starts cost little next to
+// the ~150 tests a dead executor was silently skipping. See #3072.
+tasks.withType<Test>().configureEach { forkEvery = 1 }
