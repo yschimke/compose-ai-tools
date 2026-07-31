@@ -1082,67 +1082,51 @@ class JsonRpcServer(
       }
       // Extension-driven overrides ride along as a single base64-encoded `PreviewOverrides`
       // bag — the renderer's [PreviewOverrideExtensions] hands the bag to every registered
-      // planner. New override-driven fields don't need a new wire token; they ride this bag.
-      // `permissions` is included so the panel's permissions tab body (Inspection bundle)
-      // can push `renderNow.overrides.permissions` and reach
-      // `PermissionsPreviewOverrideExtension.plan(request)` end-to-end — without this the
-      // planner sees `request.permissions == null` and the around-composable's controller
-      // seed never lands.
+      // planner, and the renderer itself reads a few fields off it directly (`themeProvider`,
+      // the min/max content bounds). New override-driven fields don't need a new wire token;
+      // they ride this bag.
+      //
+      // The bag is a **denylist**: take the caller's whole `overrides` and null out only what
+      // already travelled as a typed token above. It used to be a hand-maintained allowlist
+      // shadowed by a parallel emptiness check, so every field nobody remembered to add to
+      // *both* lists was accepted by the protocol, merged by `PreviewOverrideMerge`, then
+      // dropped here with no error and default pixels returned. #3073 counted eight live ones
+      // (`clockEpochMillis`, `placeholderActive`, `ambient`, `focus`, `keyboard`,
+      // `touchOverlay`, `remoteCompose`, `launcherWidget`), and `permissions`, `gestures`,
+      // `lottie`, `namedOverrides` and `themeProvider` had each been fixed the same way one at
+      // a time before that. Inverted, a new `PreviewOverrides` field reaches the renderer by
+      // default and the only edit it can ever need here is a *removal* — when it grows a typed
+      // token of its own. [PreviewOverridesEncodingCompletenessTest] walks the serializer
+      // descriptor and fails if any field reaches the renderer on neither path.
+      //
+      // `talkBack` rides the bag deliberately even though `DesktopRecordingSession` is its only
+      // reader today: a one-shot render ignores an unread field harmlessly, whereas scoping it
+      // out here would rebuild exactly the silent-drop trap for whoever wires it into
+      // single-frame capture later.
       val extensionBag =
-        PreviewOverrides(
-          material3Theme = overrides.material3Theme,
-          wallpaper = overrides.wallpaper,
-          permissions = overrides.permissions,
-          // `gestures` rides the bag so `renderNow.overrides.gestures` reaches the Wear
-          // `GesturePreviewOverrideExtension` planner — force-showing hints (`showHints`) or
-          // invoking a handler (`invoke`) on the immediate render path, and letting the
-          // `compose/gestures` data product capture the applied state instead of stale defaults.
-          gestures = overrides.gestures,
-          // `lottie` rides the same bag so `renderNow.overrides.lottie.progress` reaches the
-          // desktop `RenderEngine`, which provides it as `LocalLottieProgress` — the interactive
-          // Lottie timeline scrub path. No new wire token needed.
-          lottie = overrides.lottie,
-          // `namedOverrides` rides the bag so `renderNow.overrides.namedOverrides` reaches the
-          // `PreviewOverridesPreviewOverrideExtension` planner, which seeds
-          // `PreviewOverrideController`
-          // so a preview's `previewOverride*("title", …)` returns the requested value, not its
-          // default.
-          namedOverrides = overrides.namedOverrides,
-          // Min/max content-size bounds ride the bag so
-          // `renderNow.overrides.{min,max}{Width,Height}Px`
-          // reach the desktop `RenderEngine`, which clamps the wrap-layout measure to them (the
-          // Fixed / Max / Min / Within size modes). Fixed size stays on the `widthPx`/`heightPx`
-          // tokens above; these are the wrapped-axis bounds only, so no new fixed-frame token.
-          minWidthPx = overrides.minWidthPx,
-          minHeightPx = overrides.minHeightPx,
-          maxWidthPx = overrides.maxWidthPx,
-          maxHeightPx = overrides.maxHeightPx,
-          // `themeProvider` rides the bag so `renderNow.overrides.themeProvider` reaches the
-          // renderer, which reads `spec.overrides.themeProvider` in `InvokeWithOptionalWrapper` to
-          // wrap the preview in an app-declared `@ThemeCatalog` / `@WearThemeCatalog`
-          // `PreviewWrapperProvider`. It is renderer-read rather than planner-read, but it has no
-          // typed wire token of its own, so without a slot here the one-shot `renderNow` path
-          // dropped it silently: every `?themeProvider=` render on the preview server came back
-          // with
-          // the preview's declared wrapper (the theme chips redrew identical pixels). The live
-          // `stream/start` path carries it separately as
-          // `InteractiveCommand.Start.themeProviderFqn`
-          // and was unaffected.
-          themeProvider = overrides.themeProvider,
-        )
-      if (
-        extensionBag.material3Theme != null ||
-          extensionBag.wallpaper != null ||
-          extensionBag.permissions != null ||
-          extensionBag.gestures != null ||
-          extensionBag.lottie != null ||
-          !extensionBag.namedOverrides.isNullOrEmpty() ||
-          extensionBag.minWidthPx != null ||
-          extensionBag.minHeightPx != null ||
-          extensionBag.maxWidthPx != null ||
-          extensionBag.maxHeightPx != null ||
-          !extensionBag.themeProvider.isNullOrBlank()
-      ) {
+        overrides
+          .copy(
+            // The 12 typed wire tokens emitted above. Nulled so the bag never restates them —
+            // the tokens are what each backend's `parseFromPayload` reads, and `device` in
+            // particular has already been resolved into widthPx/heightPx/density up there.
+            widthPx = null,
+            heightPx = null,
+            density = null,
+            localeTag = null,
+            fontScale = null,
+            uiMode = null,
+            orientation = null,
+            device = null,
+            captureAdvanceMs = null,
+            inspectionMode = null,
+            slotMode = null,
+            clearBackground = null,
+          )
+          // Blank/empty means "not set" for these two, so normalize before the emptiness check
+          // below — a `themeProvider: ""` must not conjure a bag out of nothing.
+          .let { if (it.themeProvider.isNullOrBlank()) it.copy(themeProvider = null) else it }
+          .let { if (it.namedOverrides.isNullOrEmpty()) it.copy(namedOverrides = null) else it }
+      if (extensionBag != PreviewOverrides()) {
         if (isNotEmpty()) append(';')
         append("overrides=")
         append(
