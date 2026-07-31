@@ -63,6 +63,14 @@ class PlaygroundCompileService(
 ) {
 
   /**
+   * The modes this host can actually serve — the ones whose [catalogClasspath] resolved to a real
+   * classpath. Drives the editor's mode selector so it never offers a mode that would immediately
+   * answer "mode … is not available" (e.g. an Android-only host must not default to CMP).
+   */
+  val availableModes: List<PlaygroundMode> =
+    PlaygroundMode.entries.filter { catalogClasspath(it) != null }
+
+  /**
    * The resolved classpath a snippet compiles and renders against. Backed in production by a
    * catalog's liveBundle `userClassPath` (see the class KDoc); [moduleName] matches the catalog's
    * Kotlin module so the snippet's classes carry a consistent `kotlin.Metadata`.

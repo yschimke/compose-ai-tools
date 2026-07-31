@@ -769,7 +769,8 @@ class ServeWebFixtureTest {
     // The playground Stage-1 editor (`GET /playground`): the code box, mode selector, and result
     // pane. Always token-gated (the lane runs user code, refused under `--public`), so the fixture
     // renders the non-public form the server actually serves.
-    val playground = ServeWeb.playgroundPage(token, isPublic = false)
+    val playground =
+      ServeWeb.playgroundPage(token, isPublic = false, modes = PlaygroundMode.entries.toList())
     val docLottie =
       ServeWeb.docPage(
         ServeWeb.DocView(

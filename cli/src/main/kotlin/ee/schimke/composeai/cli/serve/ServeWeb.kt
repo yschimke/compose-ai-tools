@@ -2051,9 +2051,25 @@ object ServeWeb {
    * the links it builds. A plain `<textarea>` is the v1 editor — a stock `kotlin-playground` /
    * bespoke CodeMirror surface is a deferred, non-blocking decision (design §7 item 5).
    */
-  fun playgroundPage(token: String, isPublic: Boolean, unfurl: UnfurlMetadata? = null): String {
+  fun playgroundPage(
+    token: String,
+    isPublic: Boolean,
+    /**
+     * The modes this host serves — the selector offers only these, and the first is preselected.
+     */
+    modes: List<PlaygroundMode>,
+    unfurl: UnfurlMetadata? = null,
+  ): String {
     val suffix = querySuffix(queryString(token, sessionId = null, isPublic = isPublic))
     val sample = WebEscaping.htmlEscape(PLAYGROUND_SAMPLE)
+    val options =
+      modes
+        .mapIndexed { i, mode ->
+          val (value, label) = playgroundModeChoice(mode)
+          val selected = if (i == 0) " selected" else ""
+          """<option value="$value"$selected>$label</option>"""
+        }
+        .joinToString("\n              ")
     return document(
       title = "Playground — compose-preview",
       unfurlDescription = "Compile a Compose snippet against the live catalog and open a preview.",
@@ -2068,9 +2084,7 @@ object ServeWeb {
           <div class="cp-pg-bar">
             <label class="cp-pg-modelabel" for="pg-mode">Mode</label>
             <select id="pg-mode" class="cp-pg-mode">
-              <option value="compose-cmp">Compose (Desktop)</option>
-              <option value="compose-android">Compose (Android)</option>
-              <option value="remote-compose">Remote Compose</option>
+              $options
             </select>
             <button id="pg-run" class="cp-doc-btn cp-pg-run" type="button">Run</button>
           </div>
@@ -2129,7 +2143,12 @@ object ServeWeb {
           diags.appendChild(li);
         });
       }
+      // A monotonic id fences stale runs: only the newest click updates the DOM, and Run is disabled
+      // while a compile is in flight so a burst can't double-submit (each submit mints a token).
+      var reqId = 0;
       run.addEventListener("click", function () {
+        var myId = ++reqId;
+        run.disabled = true;
         clearOut();
         setStatus("Compiling…", false);
         var body = JSON.stringify({
@@ -2148,6 +2167,8 @@ object ServeWeb {
             });
           })
           .then(function (res) {
+            if (myId !== reqId) return;
+            run.disabled = false;
             renderDiags(res.diagnostics);
             var hasError = (res.diagnostics || []).some(function (d) { return d.severity === "error"; });
             if (res.exception) { setStatus(res.exception, true); return; }
@@ -2162,11 +2183,23 @@ object ServeWeb {
             }
             setStatus("Done.", false);
           })
-          .catch(function (e) { setStatus(e.message || "run failed", true); });
+          .catch(function (e) {
+            if (myId !== reqId) return;
+            run.disabled = false;
+            setStatus(e.message || "run failed", true);
+          });
       });
     })();
     """
       .trimIndent()
+
+  /** The `<option>` value + label for a playground mode in the editor's selector. */
+  private fun playgroundModeChoice(mode: PlaygroundMode): Pair<String, String> =
+    when (mode) {
+      PlaygroundMode.CMP -> "compose-cmp" to "Compose (Desktop)"
+      PlaygroundMode.ANDROID -> "compose-android" to "Compose (Android)"
+      PlaygroundMode.REMOTE_COMPOSE -> "remote-compose" to "Remote Compose"
+    }
 
   /**
    * One ingested document as the permalink page shows it — the display facts only, so this page
