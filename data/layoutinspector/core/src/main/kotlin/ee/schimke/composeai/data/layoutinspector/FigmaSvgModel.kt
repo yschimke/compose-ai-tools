@@ -764,7 +764,8 @@ data class FigmaSvgModel(
       // the layout node, not its coordinates), so anchor a `size`-sized rect at the parent's placed
       // origin, clamped to the parent, and use it everywhere below. Best-effort geometry for a
       // pathological capture; a normally-placed node keeps its real `bounds` untouched.
-      val bounds = recoverBounds(parentBounds)
+      val renderedClipBox = clipModifierBounds()
+      val bounds = renderedClipBox ?: recoverBounds(parentBounds)
       // Anything the export derives from a *token* or from the measured `size` is an
       // un-transformed value, while `bounds` is the rect as **drawn**. Under a draw-time
       // `graphicsLayer` scale — a Wear `TransformingLazyColumn` item shrunk toward the curved edge
@@ -1074,13 +1075,17 @@ data class FigmaSvgModel(
       val minHeightPx =
         tokens?.minHeight?.removeSuffix("dp")?.toDoubleOrNull()?.let { it * ctx.density * scaleY }
       val touchInflated = hasMinimumInteractiveSize()
+      // [clipModifierBounds] already narrowed this node to the box the frame was drawn in, and its
+      // measured `size` is exactly the too-large signal that narrowing rejected (a scroll
+      // container's `size` is its whole content). Growing back to it would undo the fix (#3056).
+      val ignoreMeasured = touchInflated || renderedClipBox != null
       val measuredW =
-        if (touchInflated) boundsW
+        if (ignoreMeasured) boundsW
         else
           parentBounds?.let { minOf((size.width * scaleX).roundToInt(), it.right - it.left) }
             ?: boundsW
       val measuredH =
-        if (touchInflated) boundsH
+        if (ignoreMeasured) boundsH
         else
           parentBounds?.let { minOf((size.height * scaleY).roundToInt(), it.bottom - it.top) }
             ?: boundsH
@@ -1375,6 +1380,41 @@ data class FigmaSvgModel(
     }
 
     /**
+     * The box of this node's **clipping** `graphicsLayer` (what `Modifier.clip(shape)` lowers to),
+     * when that box is a strict subset of the node's own `bounds` — else null, which is every
+     * ordinary node.
+     *
+     * A node's `bounds` come from its innermost coordinator, and under a lookahead chain
+     * (`sharedBounds(… RemeasureToBounds) … .verticalScroll(…).skipToLookaheadSize()`) that
+     * coordinator reports the **lookahead/content** extent, not the box the frame was drawn in:
+     * Jetsnack's `Catalog/Filter screen` measured its scroll content 652dp tall inside a 450dp
+     * `heightIn`. Every modifier coordinator OUTSIDE the scroll — the `clip` among them — still
+     * reports the real 450dp viewport, so the clipping modifier's own box is the rendered
+     * scroll-container rect the export must clip to. Without it the below-fold children stayed
+     * visible in the SVG while the PNG clipped them (issue #3056).
+     *
+     * Only ever *shrinks* a box, and only for a node that clips — a node whose clip modifier spans
+     * the same rect (the overwhelming majority) is left exactly as it was.
+     */
+    private fun LayoutInspectorNode.clipModifierBounds(): LayoutInspectorBounds? {
+      if (tokens?.clipsContent != true) return null
+      val clip =
+        modifiers.lastOrNull { it.properties["clip"] == "true" && it.bounds != null }?.bounds
+          ?: return null
+      val own = bounds
+      if (own.right <= own.left || own.bottom <= own.top) return null
+      val inside =
+        clip.left >= own.left &&
+          clip.top >= own.top &&
+          clip.right <= own.right &&
+          clip.bottom <= own.bottom
+      val smaller =
+        clip.right - clip.left < own.right - own.left ||
+          clip.bottom - clip.top < own.bottom - own.top
+      return clip.takeIf { inside && smaller && it.right > it.left && it.bottom > it.top }
+    }
+
+    /**
      * The modifier names that project a painter as a container fill: `Modifier.paint` (inspector
      * name `paint`, class-name fallback `PainterElement`) plus Coil's content painter — the
      * modifier `AsyncImage` actually draws through. Coil's `AsyncImage` never surfaces as a node
@@ -1639,6 +1679,31 @@ data class FigmaSvgModel(
      * `<image>` that doubles the `<text>` the wrapper emits (the "text rendered twice" bug). Nodes
      * are collected with their tree depth so a bounds tie resolves to the deepest (innermost) node.
      */
+    /**
+     * [b] ∩ [clip], or [b] itself when the clip doesn't cut it (so callers can skip a duplicate).
+     */
+    private fun clipped(
+      b: LayoutInspectorBounds,
+      clip: LayoutInspectorBounds,
+    ): LayoutInspectorBounds? {
+      val c = intersectBounds(b, clip) ?: return null
+      return if (c.left == b.left && c.top == b.top && c.right == b.right && c.bottom == b.bottom) b
+      else c
+    }
+
+    /** The overlap of two boxes, or null when they don't overlap at all. */
+    private fun intersectBounds(
+      a: LayoutInspectorBounds,
+      b: LayoutInspectorBounds,
+    ): LayoutInspectorBounds? {
+      val left = maxOf(a.left, b.left)
+      val top = maxOf(a.top, b.top)
+      val right = minOf(a.right, b.right)
+      val bottom = minOf(a.bottom, b.bottom)
+      return if (right > left && bottom > top) LayoutInspectorBounds(left, top, right, bottom)
+      else null
+    }
+
     private fun assignTextToLayers(
       layoutRoot: LayoutInspectorNode,
       semantics: ComposeSemanticsPayload,
@@ -1646,7 +1711,16 @@ data class FigmaSvgModel(
       fontScale: Float,
     ): Map<String, FigmaSvgText> {
       val candidates = mutableListOf<Triple<String, IntArray, Int>>()
-      fun collect(n: LayoutInspectorNode, depth: Int) {
+      // The two producers disagree about clipping, and the disagreement is invisible until a node
+      // straddles a clip edge. The layout-inspector records every node's UNCLIPPED box
+      // (`localBoundingBoxOf(clipBounds = false)`), while a semantics node's `boundsInRoot` is
+      // CLIPPED by its ancestors. A lazy-list row half above the viewport's top edge therefore
+      // presents two boxes that differ by the whole clipped-away strip — far past
+      // [BOUNDS_TOLERANCE_PX] — so its text matched nothing and the row exported as an empty group
+      // while the PNG painted the visible lines (issue #3057). Offering the clipped box as an
+      // ADDITIONAL candidate alongside the raw one lets an edge row match without loosening the
+      // tolerance for anything else.
+      fun collect(n: LayoutInspectorNode, depth: Int, clip: LayoutInspectorBounds?) {
         val candidateBounds =
           buildList {
               add(n.bounds)
@@ -1660,10 +1734,22 @@ data class FigmaSvgModel(
             .distinct()
         candidateBounds.forEach { b ->
           candidates.add(Triple(n.nodeId, intArrayOf(b.left, b.top, b.right, b.bottom), depth))
+          clip
+            ?.let { clipped(b, it) }
+            ?.takeIf { it !== b }
+            ?.let { c ->
+              candidates.add(Triple(n.nodeId, intArrayOf(c.left, c.top, c.right, c.bottom), depth))
+            }
         }
-        n.children.forEach { collect(it, depth + 1) }
+        // Nested clips intersect, exactly as they do when the layers are built.
+        val childClip =
+          if (n.tokens?.clipsContent == true)
+            clip?.let { intersectBounds(n.bounds, it) } ?: n.bounds
+          else clip
+        n.children.forEach { collect(it, depth + 1, childClip) }
       }
-      collect(layoutRoot, 0)
+      // The rendered window clips everything, whether or not any composable asked it to.
+      collect(layoutRoot, 0, layoutRoot.bounds)
 
       val textByNodeId = HashMap<String, FigmaSvgText>()
       val bestDistForNode = HashMap<String, Int>()
