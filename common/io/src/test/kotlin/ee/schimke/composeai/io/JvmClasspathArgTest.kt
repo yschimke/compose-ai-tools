@@ -48,6 +48,23 @@ class JvmClasspathArgTest {
   }
 
   @Test
+  fun `writes into a caller-supplied directory, for a spawn that cannot see the parent's tmp`() {
+    // A sandboxed playground daemon runs behind a jail with its own /tmp (bwrap --tmpfs /tmp), so
+    // an argfile in the parent's temp dir would be invisible and the launcher would fail to read
+    // its own classpath. The caller passes the one directory both sides can see.
+    val dir = java.nio.file.Files.createTempDirectory("argfile-dir").toFile()
+    try {
+      val token = classpathArgFile(listOf("/a/b.jar"), dir)
+
+      val file = File(token.removePrefix("@"))
+      assertEquals(dir.canonicalFile, file.parentFile.canonicalFile)
+      assertTrue(file.readText().contains("/a/b.jar"))
+    } finally {
+      dir.deleteRecursively()
+    }
+  }
+
+  @Test
   fun `rejects an empty classpath`() {
     assertFailsWith<IllegalArgumentException> { classpathArgFile(emptyList()) }
   }

@@ -598,15 +598,6 @@ sealed interface InteractiveCommand {
    * [replyReasonJson]. Issued by the recording-session handler after `dispatchUiAutomator` returns
    * `false` so a single bridge round-trip turns into a typed evidence shape on the wire.
    *
-   * The payload is a `java.lang.String` (do-not-acquire) rather than a typed
-   * `UiAutomatorUnsupportedReason` for the same reason [CaptureProbeSemantics] and
-   * [SemanticsTargetUnresolvedReason][ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedReason]
-   * ferry strings: the reason is built under Robolectric's instrumenting classloader, so a typed
-   * payload arrives host-side as a sandbox-loaded object and the host-side cast fails with
-   * `ClassCastException: UiAutomatorUnsupportedReason cannot be cast to
-   * UiAutomatorUnsupportedReason`. Serialising sandbox-side and re-parsing host-side keeps only a
-   * String on the wire.
-   *
    * Read-only against the held composition — the sandbox-side arm walks but doesn't dispatch
    * actions, so it doesn't compete with renders or other dispatch commands. Throwables from the
    * walk ride [replyError]; the host's `findUiAutomatorEvidence` rethrows on the caller thread.
@@ -619,6 +610,13 @@ sealed interface InteractiveCommand {
     val inputText: String?,
     val replyLatch: CountDownLatch,
     val replyError: AtomicReference<Throwable?>,
+    /**
+     * The evidence as a JSON string (do-not-acquire), not a typed
+     * `UiAutomatorUnsupportedReason` — same boundary rule as [CaptureProbeSemantics.replyNodesJson]
+     * and [CaptureA11yFindings.replyFindingsJson]. The reason object is built under Robolectric's
+     * instrumenting classloader, so a typed reference arrives host-side as a sandbox-loaded object
+     * and fails the host cast with a same-name `ClassCastException`.
+     */
     val replyReasonJson: AtomicReference<String?>,
   ) : InteractiveCommand
 

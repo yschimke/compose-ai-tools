@@ -124,6 +124,16 @@ declares themes gets a leading **Default** chip to return to. The choice persist
 These are orthogonal. **Trust** decides attribution; **format** decides what draws the pixels. Neither
 ever lets untrusted code run *on the server*.
 
+> **The one deliberate exception: the playground.** `--playground-bundle` /
+> `--playground-android-bundle` exist to compile and run a stranger's snippet, which inverts the
+> constraint above. It is refused under `--public` unless the operator configures a per-session
+> sandbox (`--playground-sandbox strict`, or a `custom:` jail that supplies its own resource caps)
+> **and** the startup probe proves that jail blocks egress, contains the filesystem, and isolates
+> the process namespace. The
+> snippet then runs in its own jailed JVM — one per snippet, killed at a hard wall-clock TTL — not
+> on the server proper. Design + profiles: [`docs/design/PLAYGROUND.md` §6](design/PLAYGROUND.md).
+> Everything else on this page keeps the original constraint unchanged.
+
 ### Trust
 
 A bundle/catalog is `Trusted(by …)` or `Unverified`. Trust gates only **server-side re-render** of a

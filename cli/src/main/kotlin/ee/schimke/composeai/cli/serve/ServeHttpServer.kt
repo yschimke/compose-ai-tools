@@ -193,9 +193,10 @@ class ServeHttpServer(
   /**
    * When non-null, enables the **playground** lane: `POST /api/{version}/compiler/run` compiles a
    * snippet against a catalog classpath and returns diagnostics + an expiring preview token.
-   * Supplied by `--playground-bundle`. Because the compile runs **user-supplied code** in-process,
-   * this lane is never enabled under `--public` — the CLI refuses the combination (see
-   * `ServeCommand`). See
+   * Supplied by `--playground-bundle`. Because the lane exists to run **user-supplied code**, it is
+   * enabled under `--public` only behind a per-session sandbox that passed the startup containment
+   * probe ([PlaygroundPublicGate]); `ServeCommand` decides and simply doesn't wire this in when the
+   * gate refuses. See
    * [docs/design/PLAYGROUND.md](../../../../../../../../docs/design/PLAYGROUND.md).
    */
   private val playgroundService: PlaygroundCompileService? = null,

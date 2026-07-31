@@ -30,14 +30,17 @@ private val ARGFILE_CHARSET: Charset =
  * short no matter how big the classpath is. Argfiles are honoured by every `java` launcher since
  * JDK 9.
  *
+ * @param directory where to write the argfile; null (the default) uses the JVM temp dir. A
+ *   **sandboxed** spawn passes the jailed process's own writable directory instead: a jail with its
+ *   own `/tmp` (e.g. `bwrap --tmpfs /tmp`) cannot see the parent's temp dir, so an argfile written
+ *   there would leave the launcher unable to read its own classpath.
  * @return the `@<file>` token to splice into the command **in place of** `-cp`/`-classpath` + the
- *   joined classpath. The file is created under the JVM temp dir and registered for deletion on
- *   exit.
+ *   joined classpath. The file is registered for deletion on exit.
  */
-fun classpathArgFile(classpath: List<String>): String {
+fun classpathArgFile(classpath: List<String>, directory: File? = null): String {
   require(classpath.isNotEmpty()) { "classpath must not be empty" }
   val joined = classpath.joinToString(File.pathSeparator)
-  val file = File.createTempFile("composeai-cp", ".args")
+  val file = File.createTempFile("composeai-cp", ".args", directory)
   file.deleteOnExit()
   file.writeText("-classpath ${quoteForArgFile(joined)}\n", ARGFILE_CHARSET)
   return "@" + file.absolutePath
