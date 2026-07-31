@@ -1741,11 +1741,15 @@ data class FigmaSvgModel(
               candidates.add(Triple(n.nodeId, intArrayOf(c.left, c.top, c.right, c.bottom), depth))
             }
         }
-        // Nested clips intersect, exactly as they do when the layers are built.
+        // Nested clips intersect, exactly as they do when the layers are built — and against the
+        // same **rendered** box `toLayer` clips with. A lookahead-inflated node (issue #3056)
+        // reports bounds taller than the frame, so clipping a descendant against `n.bounds` would
+        // leave a row straddling the real viewport edge mismatched all over again.
         val childClip =
-          if (n.tokens?.clipsContent == true)
-            clip?.let { intersectBounds(n.bounds, it) } ?: n.bounds
-          else clip
+          if (n.tokens?.clipsContent == true) {
+            val own = n.clipModifierBounds() ?: n.bounds
+            clip?.let { intersectBounds(own, it) } ?: own
+          } else clip
         n.children.forEach { collect(it, depth + 1, childClip) }
       }
       // The rendered window clips everything, whether or not any composable asked it to.

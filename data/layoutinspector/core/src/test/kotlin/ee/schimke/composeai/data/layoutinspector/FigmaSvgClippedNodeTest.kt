@@ -63,6 +63,70 @@ class FigmaSvgClippedNodeTest {
   }
 
   @Test
+  fun textOnARowStraddlingALookaheadInflatedNodesRealViewportStillAttaches() {
+    // The two fixes have to agree on ONE box: the clipping modifier's. If the layers clip a child
+    // to the rendered 100px viewport while text matching clips its candidate to the node's inflated
+    // 300px bounds, a row straddling the real edge mismatches again and exports blank.
+    val layout =
+      LayoutInspectorNode(
+        nodeId = "screen",
+        component = "Box",
+        bounds = bounds(0, 0, 200, 400),
+        size = LayoutInspectorSize(200, 400),
+        children =
+          listOf(
+            LayoutInspectorNode(
+              nodeId = "surface",
+              component = "Column",
+              bounds = bounds(0, 0, 200, 300),
+              size = LayoutInspectorSize(200, 300),
+              modifiers =
+                listOf(
+                  LayoutInspectorModifier(
+                    name = "graphicsLayer",
+                    properties = mapOf("clip" to "true"),
+                    bounds = bounds(0, 0, 200, 100),
+                  )
+                ),
+              tokens = ComposeSemanticsTokens(clipsContent = true),
+              children =
+                listOf(
+                  // Unclipped, this row runs from 80 to 140 — past the rendered 100px edge.
+                  LayoutInspectorNode(
+                    nodeId = "row",
+                    component = "Text",
+                    bounds = bounds(10, 80, 190, 140),
+                    size = LayoutInspectorSize(180, 60),
+                  )
+                ),
+            )
+          ),
+      )
+    val semantics =
+      ComposeSemanticsPayload(
+        root =
+          ComposeSemanticsNode(
+            nodeId = "root",
+            boundsInRoot = "0,0,200,400",
+            children =
+              listOf(
+                // Compose clips it to the viewport the surface actually rendered at.
+                ComposeSemanticsNode(nodeId = "t", boundsInRoot = "10,80,190,100", text = "Edge")
+              ),
+          )
+      )
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(
+          layout = LayoutInspectorPayload(layout),
+          semantics = semantics,
+          density = 1f,
+        )
+      )
+    assertTrue("the edge row must keep its text:\n$svg", svg.contains(">Edge</text>"))
+  }
+
+  @Test
   fun aClippingModifiersOwnBoxWinsOverALookaheadInflatedNodeBox() {
     val scrollSurface =
       LayoutInspectorNode(
