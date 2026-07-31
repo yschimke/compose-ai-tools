@@ -907,8 +907,11 @@ class ServeCommand(args: List<String>) : Command(args) {
       catalogClasspath = { mode ->
         when (mode) {
           PlaygroundMode.CMP -> cmpClasspath
-          PlaygroundMode.ANDROID,
-          PlaygroundMode.REMOTE_COMPOSE -> androidClasspath
+          PlaygroundMode.ANDROID -> androidClasspath
+          // Only advertise REMOTE_COMPOSE when its capture backend actually came up — otherwise the
+          // host would accept the mode, run a full Android compile, then report the preview drew no
+          // document. A null classpath routes to the existing "mode … is not available" response.
+          PlaygroundMode.REMOTE_COMPOSE -> androidClasspath?.takeIf { rcCapture != null }
         }
       },
       compiler = compiler,
@@ -962,7 +965,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     if (docStore == null) {
       System.err.println(
         "serve: playground remote-compose mode needs the /d/ document store — enable it with " +
-          "--docs. Remote-compose mode disabled."
+          "--accept-docs. Remote-compose mode disabled."
       )
       return null
     }

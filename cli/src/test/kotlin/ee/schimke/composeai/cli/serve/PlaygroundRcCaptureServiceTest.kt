@@ -83,10 +83,36 @@ class PlaygroundRcCaptureServiceTest {
     val bytes = svc.capture(snippet())
 
     assertEquals(rc.toList(), bytes?.toList())
+    // The `data/remotecompose` extension must be enabled (it registers inactive) or the daemon's
+    // document-capture `onRender` hook never runs and the fetch comes back empty.
+    assertTrue(
+      "data/remotecompose" in fake.enabledExtensionIds,
+      "the RC extension must be enabled before the render captures the document",
+    )
     val preview = seenManifest!!.previews.single()
     assertEquals("com.example.SnippetKt.RemotePreview", preview.id)
     assertEquals("com.example.SnippetKt", preview.className)
     assertEquals("RemotePreview", preview.functionName)
+  }
+
+  @Test
+  fun `a backend without the remote-compose extension yields null`() {
+    // The daemon reports `data/remotecompose` unknown (no Remote Compose runtime). Even though the
+    // fetch hook would hand back a document, capture must fail soft — the extension never
+    // activated.
+    val rc = byteArrayOf(9, 8, 7)
+    val fake =
+      FakeRenderSession(
+        renderRoot = tmp(),
+        unknownExtensionIds = setOf("data/remotecompose"),
+        fetchDataHook = { _, kind ->
+          if (kind == "compose/remotecompose-doc") docResult(rc) else null
+        },
+      )
+    val svc =
+      PlaygroundRcCaptureService(openSession = { _, _, _, _ -> fake }, newWorkDir = { tmp() })
+
+    assertNull(svc.capture(snippet()))
   }
 
   @Test

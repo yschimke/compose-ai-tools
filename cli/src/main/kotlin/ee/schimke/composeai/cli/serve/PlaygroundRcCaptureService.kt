@@ -90,6 +90,19 @@ class PlaygroundRcCaptureService(
   }
 
   private fun renderAndFetch(session: RenderSession, previewId: String): ByteArray? {
+    // The daemon registers `data/remotecompose` **inactive** (like every extension): its `onRender`
+    // hook — the one that drains the `.rc` off `IrSidecarChannel` into `compose/remotecompose-doc`
+    // —
+    // runs only while the extension is active (`JsonRpcServer.handleRenderFinished` feeds
+    // `activeDataProducts().onRender(...)`), and `fetchData` rejects the kind as "not advertised"
+    // until it's enabled. So enable it before rendering, or the capture silently draws nothing.
+    // An unknown/rejected id (or an enable RPC failure) means the backend carries no Remote Compose
+    // runtime — a clean "no document", handled like every other miss below.
+    val enabled =
+      runCatching { session.enableExtensions(listOf(REMOTE_COMPOSE_EXTENSION_ID)) }.getOrNull()
+        ?: return null
+    if (REMOTE_COMPOSE_EXTENSION_ID in enabled.unknown) return null
+
     val latch = CountDownLatch(1)
     val failure = AtomicReference<String?>()
     val handle = session.onNotification { method, params ->
@@ -145,6 +158,13 @@ class PlaygroundRcCaptureService(
   }
 
   companion object {
+    /**
+     * The daemon's Remote Compose extension **id** (`DaemonMain`'s `tryAdd("data/remotecompose")`)
+     * — distinct from the data-product **kind** `compose/remotecompose(-doc)`. `extensions/enable`
+     * resolves by extension id, so this is what activates the document-capture `onRender` hook.
+     */
+    const val REMOTE_COMPOSE_EXTENSION_ID: String = "data/remotecompose"
+
     /** Cold Android/Robolectric renders take tens of seconds; budget generously. */
     val DEFAULT_RENDER_BUDGET: Duration = 180.seconds
     val DEFAULT_ACK_TIMEOUT: Duration = 30.seconds
