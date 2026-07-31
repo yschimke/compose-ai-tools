@@ -86,6 +86,49 @@ class DaemonSemanticsFetcherTest {
   }
 
   @Test
+  fun `carries a PreviewParameter fan-out's semantics from the bare id`() {
+    // Issue #3049: `bundle pack --with-semantics` dropped every `@PreviewParameter` preview's a11y
+    // tree on a build predating the daemon's `@PreviewParameter` support — the parameterless
+    // `(Composer, int)` lookup threw `NoSuchMethodException`, so no sidecar was written at all.
+    // Once the daemon resolves the annotation it renders one frame of the provider's *first* value
+    // under the **bare** function id (it does not fan out per value — that stays with the
+    // standalone
+    // renderer), so the sidecar lands at `build/compose-previews/data/<id>/` exactly like a plain
+    // preview's. This guards that contract from the fetcher's side: a fan-out id is carried with no
+    // per-value directory resolution, because none is written.
+    val projectDir = newTempFolder("semantics-fanout")
+    writeDescriptor(projectDir)
+
+    val logs = mutableListOf<String>()
+    val fanoutTree = """{"root":{"nodeId":"searchbar","boundsInRoot":"0,0,48,12"}}"""
+    val fetcher =
+      DaemonSemanticsFetcher(
+        // The daemon writes the first value's sidecar under the bare id, keyed just like any other
+        // preview — no `SearchBarPreview_Light` / `_PARAM_0` leaf is ever produced.
+        factory = FakeFactory(mapOf("SearchBarPreview" to fanoutTree)),
+        onLog = { logs += it },
+      )
+
+    val outcome =
+      fetcher.fetch(
+        projectDir = projectDir,
+        moduleName = "sample",
+        previewIds = listOf("SearchBarPreview"),
+      )
+
+    assertTrue(outcome is DaemonSemanticsFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    assertEquals(setOf("SearchBarPreview"), outcome.semanticsById.keys)
+    assertEquals(
+      fanoutTree,
+      outcome.semanticsById.getValue("SearchBarPreview").toString(Charsets.UTF_8),
+    )
+    assertTrue(
+      logs.none { "no compose-semantics.json for 'SearchBarPreview'" in it },
+      "a fan-out's bare-id sidecar must be carried, not reported missing, got: $logs",
+    )
+  }
+
+  @Test
   fun `carries the fonts-used sidecar for previews whose backend records it`() {
     val projectDir = newTempFolder("semantics-fonts")
     writeDescriptor(projectDir)
