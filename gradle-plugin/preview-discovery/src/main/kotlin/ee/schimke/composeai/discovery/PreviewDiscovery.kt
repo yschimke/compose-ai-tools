@@ -406,6 +406,10 @@ object PreviewDiscovery {
     val rawShapeCatalogTokens = mutableListOf<RawCatalogToken>()
     // `@ThemeCatalog`-annotated `PreviewWrapperProvider` classes → one theme catalog sheet each.
     val rawThemeCatalogs = mutableListOf<RawThemeCatalog>()
+    // (declaring class, method) for every method that produced at least one preview. Fed to
+    // [PreviewThemeShadowing] after the class walk, which needs both the theme providers (collected
+    // in the same pass) and the previews before it can say anything.
+    val previewMethods = mutableListOf<Pair<ClassInfo, MethodInfo>>()
 
     if (classpath.isNotEmpty()) {
       ClassGraph()
@@ -478,6 +482,7 @@ object PreviewDiscovery {
               for (ann in annotations) {
                 annotationFqnCounts.merge(ann.name, 1, Int::plus)
               }
+              val previewCountBefore = previews.size
               discoverFromMethod(
                 classInfo,
                 method,
@@ -489,6 +494,12 @@ object PreviewDiscovery {
                 warnings,
                 catalogGroupsByFile,
               )
+              // Remember the methods that actually yielded previews, so the theme-shadowing check
+              // below walks exactly those rather than re-deriving "is this a preview?" (which
+              // multi-preview meta-annotations make non-trivial).
+              if (previews.size > previewCountBefore) {
+                previewMethods += classInfo to method
+              }
             }
             // `@ColorCatalog` / `@TypographyCatalog` / `@ShapeCatalog` design tokens: an annotated
             // `Color` / `TextStyle` / `Shape` (single token) or `ColorScheme` / `Typography` /
@@ -542,6 +553,19 @@ object PreviewDiscovery {
                   )
               }
             }
+          }
+
+          // A module that declares theme providers has an interactive theme axis, and a preview
+          // that installs its own theme silently opts out of it — the provider wraps the preview,
+          // the body's theme composes inside that wrapper and shadows it. Only worth saying when
+          // the module actually declares themes; otherwise every app preview would be "guilty".
+          if (rawThemeCatalogs.isNotEmpty()) {
+            PreviewThemeShadowing.warningOrNull(
+                findings =
+                  PreviewThemeShadowing.detect(previewMethods, scanResult, projectClassFqns),
+                themeCount = rawThemeCatalogs.size,
+              )
+              ?.let { warnings.add(it) }
           }
         }
     }

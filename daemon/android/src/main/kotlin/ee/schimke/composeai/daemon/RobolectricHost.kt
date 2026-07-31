@@ -2208,25 +2208,32 @@ open class RobolectricHost(
         // The library is `object ClassloaderForensics` — its singleton instance is reachable via
         // the synthetic `INSTANCE` field that Kotlin emits.
         val instance = forensicsClass.getField("INSTANCE").get(null)
+        // Look the method up by NAME, not by exact signature. `capture` carries Kotlin default
+        // arguments, and pinning the 4-parameter shape here broke the moment it gained the injected
+        // Okio `fileSystem` param the repo's IO convention requires: `getMethod` threw
+        // `NoSuchMethodException`, which killed the held-sandbox render loop mid-dispatch.
         val captureMethod =
-          forensicsClass.getMethod(
-            "capture",
-            List::class.java,
-            Class.forName(
-              "ee.schimke.composeai.daemon.forensics.RobolectricConfigSnapshot",
-              true,
-              effectiveLoader,
-            ),
-            String::class.java,
-            java.io.File::class.java,
-          )
-        captureMethod.invoke(
-          instance,
-          survey,
-          /*robolectricConfig=*/ null,
-          "daemon-subject",
-          outFile,
-        )
+          forensicsClass.methods.firstOrNull { it.name == "capture" }
+            ?: error("ClassloaderForensics has no capture(...) method")
+        val fixedArgs = arrayOf<Any?>(survey, /*robolectricConfig=*/ null, "daemon-subject", outFile)
+        if (captureMethod.parameterCount == fixedArgs.size) {
+          captureMethod.invoke(instance, *fixedArgs)
+        } else {
+          // Anything beyond the four we know about takes its declared default, via the synthetic
+          // `capture$default(receiver, p0…pN, mask, marker)` bridge Kotlin emits for defaults —
+          // cheaper and far more durable than resolving each default's value reflectively.
+          val bridge =
+            forensicsClass.methods.firstOrNull { it.name == "capture\$default" }
+              ?: error("ClassloaderForensics.capture has defaults but no \$default bridge")
+          val args = arrayOfNulls<Any?>(bridge.parameterCount)
+          args[0] = instance
+          fixedArgs.forEachIndexed { i, arg -> args[i + 1] = arg }
+          // One mask bit per user parameter we left unset, so the bridge fills in its default.
+          var mask = 0
+          for (i in fixedArgs.size until captureMethod.parameterCount) mask = mask or (1 shl i)
+          args[bridge.parameterCount - 2] = mask
+          bridge.invoke(null, *args)
+        }
       } finally {
         Thread.currentThread().contextClassLoader = previousContext
       }

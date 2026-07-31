@@ -74,11 +74,14 @@ import org.jetbrains.skia.EncodedImageFormat
  * landed here also has to land in `:renderer-desktop`'s `renderPreview` (and vice versa); the bench
  * + CI pixel-diff (D2.2 / harness S1) will catch divergence.
  *
- * **What's duplicated, what isn't.** This is the "small composable, no PreviewParameter, no
- * wrapper" subset — the daemon's v1 surface only renders single previews from existing
- * `previews.json` discovery. The fan-out / `@PreviewParameter` / `@PreviewWrapper` paths from
- * `DesktopRendererMain` stay behind the standalone renderer for now; B-desktop.1.7+ revisits if the
- * harness needs them.
+ * **What's duplicated, what isn't.** This is the small-composable, single-frame subset — the
+ * daemon's v1 surface renders one frame per preview id from existing `previews.json` discovery.
+ * `@PreviewParameter` is *resolved* here (via
+ * [ee.schimke.composeai.renderer.PreviewParameterSupport]) but not *fanned out*: a parameterized
+ * preview renders its provider's first value under the bare id, matching the one-frame-per-id
+ * contract and mirroring `:daemon:android`. Emitting one file per value stays with the standalone
+ * `DesktopRendererMain`. The scroll / animation / GIF paths from `DesktopRendererMain` likewise
+ * stay behind the standalone renderer for now; B-desktop.1.7+ revisits if the harness needs them.
  *
  * **Threading contract.** Called from [DesktopHost]'s single render thread. [ImageComposeScene] is
  * instantiated *per render* (not held warm across renders) — see
@@ -231,23 +234,28 @@ class RenderEngine(
 
     // kind=LOTTIE has no class to reflect — the asset is rendered directly via Compottie below.
     val isLottie = spec.kind == "LOTTIE"
-    val composableMethod: ComposableMethod? =
+    // Resolve the composable entrypoint plus any `@PreviewParameter` argument list. A parameterized
+    // preview compiles to `foo(<T>, Composer, int)`, so the bare `getDeclaredComposableMethod`
+    // lookup used to throw `NoSuchMethodException` here — no PNG, no semantics. The daemon now
+    // renders the provider's *first* value under the bare id (the per-value fan-out stays with the
+    // standalone renderer), mirroring `:daemon:android`'s single-frame contract.
+    // [PreviewParameterSupport.resolve] opens the method for reflective invocation (Kotlin `private
+    // fun` previews are idiomatic and would otherwise throw `IllegalAccessException`).
+    val resolvedInvocation: ee.schimke.composeai.renderer.PreviewParameterSupport.Resolved? =
       if (isLottie) {
         null
       } else {
         val clazz = Class.forName(spec.className, true, classLoader)
-        clazz.getDeclaredComposableMethod(spec.functionName).also {
-          // Kotlin `private fun` previews compile to JVM-private methods.
-          // `getDeclaredComposableMethod` still resolves them (it scans `declaredMethods`), but the
-          // reflective `invoke` in [InvokeComposable] would throw IllegalAccessException, so open
-          // the method up first — mirrors `:renderer-android`'s ComposePreviewStrategy. Guarded
-          // with
-          // `runCatching`: a SecurityManager or strong module encapsulation can refuse, in which
-          // case we still attempt the invoke (which succeeds for public/internal previews) rather
-          // than failing resolution outright.
-          runCatching { it.asMethod().isAccessible = true }
-        }
+        ee.schimke.composeai.renderer.PreviewParameterSupport.resolve(
+          clazz = clazz,
+          functionName = spec.functionName,
+          providerClassName = spec.previewParameterProviderClassName,
+          limit = spec.previewParameterLimit,
+          classLoader = classLoader,
+        )
       }
+    val composableMethod: ComposableMethod? = resolvedInvocation?.method
+    val previewArgs: List<Any?> = resolvedInvocation?.args ?: emptyList()
 
     // Self-diagnostic — surfaces in the VS Code extension's output channel as `[daemon stderr] …`.
     // Pairs with `[classloader] swap requested` / `allocate child loader` lines from
@@ -461,6 +469,9 @@ class RenderEngine(
                       // "render this preview under theme X" — but only when it resolves; a
                       // stale/misspelled FQN falls back to the declared wrapper.
                       themeProviderFqn = spec.overrides?.themeProvider,
+                      // The provider's first value for a `@PreviewParameter` preview; empty for a
+                      // plain parameterless one.
+                      previewArgs = previewArgs,
                     )
                   }
                 }
@@ -1557,6 +1568,17 @@ data class RenderSpec(
    * bypass the manifest.
    */
   val wrapperClassName: String? = null,
+  /**
+   * FQN of the `PreviewParameterProvider` from `@PreviewParameter` on the preview function's
+   * parameter, when discovery recorded one. Sourced from `previews.json` (the upstream annotation
+   * has `AnnotationRetention.BINARY` and is invisible to `Method.annotations` at runtime — same
+   * provenance as [wrapperClassName]). When set the render body resolves and renders the provider's
+   * *first* value under the bare id, matching `:daemon:android`'s single-frame contract; the
+   * per-value fan-out stays with the standalone renderer. Null is the plain parameterless preview.
+   */
+  val previewParameterProviderClassName: String? = null,
+  /** Mirrors `@PreviewParameter.limit`. `Int.MAX_VALUE` is the annotation default. */
+  val previewParameterLimit: Int = Int.MAX_VALUE,
 ) {
 
   enum class SpecUiMode {
@@ -1633,6 +1655,10 @@ data class RenderSpec(
         clearBackground = map["clearBackground"]?.toBoolean() ?: defaults.clearBackground,
         overrides = map["overrides"]?.decodePreviewOverrides(),
         wrapperClassName = map["wrapperClassName"]?.takeIf { it.isNotBlank() },
+        previewParameterProviderClassName =
+          map["previewParameterProvider"]?.takeIf { it.isNotBlank() },
+        previewParameterLimit =
+          map["previewParameterLimit"]?.toIntOrNull() ?: defaults.previewParameterLimit,
       )
     }
 
@@ -1667,8 +1693,8 @@ data class RenderSpec(
  * compose-compiler plugin recognises it as a composable function.
  */
 @androidx.compose.runtime.Composable
-private fun InvokeComposable(composableMethod: ComposableMethod) {
-  composableMethod.invoke(currentComposer, null)
+private fun InvokeComposable(composableMethod: ComposableMethod, previewArgs: List<Any?>) {
+  composableMethod.invoke(currentComposer, null, *previewArgs.toTypedArray())
 }
 
 /**
@@ -1697,6 +1723,7 @@ private fun InvokeWithOptionalWrapper(
   composableMethod: ComposableMethod,
   wrapperFqnFromSpec: String?,
   themeProviderFqn: String? = null,
+  previewArgs: List<Any?> = emptyList(),
 ) {
   val wrapper =
     remember(composableMethod, wrapperFqnFromSpec, themeProviderFqn) {
@@ -1708,10 +1735,10 @@ private fun InvokeWithOptionalWrapper(
         ?: resolveWrapperOrNull(composableMethod, wrapperFqnFromSpec)
     }
   if (wrapper == null) {
-    InvokeComposable(composableMethod)
+    InvokeComposable(composableMethod, previewArgs)
   } else {
     val (wrapMethod, wrapperInstance) = wrapper
-    val body: @Composable () -> Unit = { InvokeComposable(composableMethod) }
+    val body: @Composable () -> Unit = { InvokeComposable(composableMethod, previewArgs) }
     wrapMethod.invoke(currentComposer, wrapperInstance, body)
   }
 }

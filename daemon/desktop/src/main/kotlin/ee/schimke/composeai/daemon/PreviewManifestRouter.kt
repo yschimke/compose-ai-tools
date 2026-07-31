@@ -169,6 +169,16 @@ class PreviewManifestRouter(
             resolved.wrapperClassName
               ?.takeIf { it.isNotBlank() }
               ?.let { append("wrapperClassName=").append(it).append(';') }
+            // `@PreviewParameter` provider FQN sourced from `previews.json` (same BINARY-retention
+            // provenance as the wrapper — discovery reads it off the class-file annotation tables).
+            // When set the render body renders the provider's first value under the bare id. The
+            // limit rides along so the resolver's `limit <= 0` guard matches the annotation.
+            resolved.previewParameterProviderClassName
+              ?.takeIf { it.isNotBlank() }
+              ?.let {
+                append("previewParameterProvider=").append(it).append(';')
+                append("previewParameterLimit=").append(resolved.previewParameterLimit).append(';')
+              }
             // kind=LOTTIE + the asset path so `DesktopHost` builds a `RenderSpec` that inflates the
             // asset instead of reflecting a (non-existent) class. Plain Compose previews omit both.
             resolved.kind
@@ -238,6 +248,8 @@ class PreviewManifestRouter(
           // follow-up).
           uiMode = if ((resolved.uiMode and 0x30) == 0x20) RenderSpec.SpecUiMode.DARK else null,
           wrapperClassName = resolved.wrapperClassName,
+          previewParameterProviderClassName = resolved.previewParameterProviderClassName,
+          previewParameterLimit = resolved.previewParameterLimit,
           kind = resolved.kind,
           assetPath = resolved.assetPath,
         )
@@ -297,6 +309,15 @@ data class PreviewManifestEntry(
    * chrome for night `showSystemUi` previews (issue #1930 follow-up).
    */
   val uiMode: Int? = null,
+  /**
+   * Flat-schema mirror of `@PreviewParameter`'s provider FQN (used by `:daemon:harness` tests).
+   * Optional; when null the resolver consults the nested
+   * `params.previewParameterProviderClassName`. When set the render body renders the provider's
+   * first value under the bare id.
+   */
+  val previewParameterProviderClassName: String? = null,
+  /** Flat-schema mirror of `@PreviewParameter.limit`; null falls back to the nested params. */
+  val previewParameterLimit: Int? = null,
   val outputBaseName: String? = null,
 ) {
   fun resolved(): ResolvedRenderParams {
@@ -321,6 +342,9 @@ data class PreviewManifestEntry(
     val backgroundColor = backgroundColor ?: p?.backgroundColor ?: 0L
     val uiMode = uiMode ?: p?.uiMode ?: 0
     val wrapperClassName = p?.wrapperClassName
+    val previewParameterProviderClassName =
+      previewParameterProviderClassName ?: p?.previewParameterProviderClassName
+    val previewParameterLimit = previewParameterLimit ?: p?.previewParameterLimit ?: Int.MAX_VALUE
     return ResolvedRenderParams(
       widthPx = widthPx,
       heightPx = heightPx,
@@ -336,6 +360,8 @@ data class PreviewManifestEntry(
       assetPath = p?.assetPath,
       wrapWidth = wrapWidth,
       wrapHeight = wrapHeight,
+      previewParameterProviderClassName = previewParameterProviderClassName,
+      previewParameterLimit = previewParameterLimit,
     )
   }
 
@@ -388,6 +414,15 @@ data class PreviewParamsEntry(
    * [RenderSpec.wrapperClassName] for the render body.
    */
   val wrapperClassName: String? = null,
+  /**
+   * FQN of the `@PreviewParameter` provider harvested by discovery (BINARY-retention annotation,
+   * invisible to runtime reflection — same provenance as [wrapperClassName]). Threaded into
+   * [RenderSpec.previewParameterProviderClassName] so the render body renders the provider's first
+   * value under the bare id.
+   */
+  val previewParameterProviderClassName: String? = null,
+  /** Mirrors `@PreviewParameter.limit`. `Int.MAX_VALUE` is the annotation default. */
+  val previewParameterLimit: Int = Int.MAX_VALUE,
 )
 
 /**
@@ -415,4 +450,6 @@ data class ResolvedRenderParams(
    */
   val wrapWidth: Boolean = false,
   val wrapHeight: Boolean = false,
+  val previewParameterProviderClassName: String? = null,
+  val previewParameterLimit: Int = Int.MAX_VALUE,
 )

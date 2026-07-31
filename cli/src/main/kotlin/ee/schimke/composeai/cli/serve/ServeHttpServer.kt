@@ -18,6 +18,7 @@ import io.ktor.server.request.queryString
 import io.ktor.server.request.receiveStream
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytes
+import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.delete
@@ -198,6 +199,12 @@ class ServeHttpServer(
    * [docs/design/PLAYGROUND.md](../../../../../../../../docs/design/PLAYGROUND.md).
    */
   private val playgroundService: PlaygroundCompileService? = null,
+  /**
+   * When non-null, enables Stage-2 redemption: `GET /pg/<token>` redeems a preview token into a
+   * live streamed session (registered under the token id) and redirects to its viewer. Supplied by
+   * `ServeCommand` alongside [playgroundService]; the two share one [PlaygroundTokenStore].
+   */
+  private val playgroundRedeem: PlaygroundRedeemService? = null,
 ) {
   /** The actual bound port — may differ from the requested one if it was taken (auto-picked). */
   val port: Int = pickPort(host, requestedPort, portRange)
@@ -402,6 +409,13 @@ class ServeHttpServer(
           // `--public`.
           get("/playground") { handlePlaygroundPage(svc) }
         }
+
+        // Stage-2 redemption (`GET /pg/<token>`): redeem a preview token into a live streamed
+        // session and redirect to its viewer. Mounted with the playground lane; token-gated.
+        // The path segment is named `{pgToken}`, NOT `{token}`: on a token-gated host the access
+        // token rides as `?token=…`, and `call.parameters` merges path + query, so a `{token}` path
+        // segment would collide with the access token and redeem the wrong id (a NotFound 404).
+        playgroundRedeem?.let { redeem -> get("/pg/{pgToken}") { handlePlaygroundRedeem(redeem) } }
 
         // Shared/public mode ingestion: a client contributes a pre-rendered bundle (upload the zip
         // as the body, or pass `?url=` to a build-results artifact) and gets back a ?session= link.
@@ -793,6 +807,36 @@ class ServeHttpServer(
       ),
       ContentType.Text.Html,
     )
+  }
+
+  /**
+   * `GET /pg/<token>`: redeem a preview token into a live session and redirect to its viewer. An
+   * unknown/expired token — or a well-formed one this host has no live backend for — is a styled
+   * 404 that discloses neither. Token-gated (the redeemed session runs user code).
+   */
+  private suspend fun RoutingContext.handlePlaygroundRedeem(redeem: PlaygroundRedeemService) {
+    if (rejectBadToken()) return
+    // Read the PATH segment explicitly (see the route mount): it's named `{pgToken}` so it can't be
+    // shadowed by the `?token=` access token that `call.parameters` also carries on a gated host.
+    val id = call.parameters["pgToken"].orEmpty()
+    val gone = "That preview link has expired, or never existed."
+    if (!PlaygroundTokenStore.isWellFormedId(id)) {
+      respondNotFoundHtml(gone)
+      return
+    }
+    when (val outcome = redeem.redeem(id)) {
+      PlaygroundRedeemService.Outcome.NotFound -> respondNotFoundHtml(gone)
+      PlaygroundRedeemService.Outcome.Unavailable ->
+        respondNotFoundHtml("Live preview isn't available on this host.")
+      is PlaygroundRedeemService.Outcome.Live -> {
+        // Hand off to the existing path-form viewer for the just-registered session; its
+        // `/{session}/ws/{preview}` lane streams it and enforces the live-seat budget. Carry the
+        // token so the token-gated viewer + WS accept the follow-on requests.
+        val suffix =
+          if (isPublic) "" else "?token=" + java.net.URLEncoder.encode(token, Charsets.UTF_8)
+        call.respondRedirect("/${outcome.sessionId}/p/${outcome.previewId}$suffix")
+      }
+    }
   }
 
   private suspend fun RoutingContext.handlePlaygroundRun(service: PlaygroundCompileService) {

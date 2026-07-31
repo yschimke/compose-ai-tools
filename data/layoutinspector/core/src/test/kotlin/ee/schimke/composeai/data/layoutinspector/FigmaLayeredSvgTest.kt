@@ -2705,8 +2705,20 @@ class FigmaLayeredSvgTest {
                   fontFamily = "monospace",
                   spans =
                     listOf(
-                      ComposeSemanticsTextSpan(0, 5, "16.0sp", "monospace", 400),
-                      ComposeSemanticsTextSpan(5, 9, "12.0sp", "serif", 400),
+                      ComposeSemanticsTextSpan(
+                        0,
+                        5,
+                        "16.0sp",
+                        fontFamily = "monospace",
+                        fontWeight = 400,
+                      ),
+                      ComposeSemanticsTextSpan(
+                        5,
+                        9,
+                        "12.0sp",
+                        fontFamily = "serif",
+                        fontWeight = 400,
+                      ),
                     ),
                 ),
               textOverflow =
@@ -2761,8 +2773,20 @@ class FigmaLayeredSvgTest {
                   fontFamily = "monospace",
                   spans =
                     listOf(
-                      ComposeSemanticsTextSpan(0, 5, "16.0sp", "monospace", 400),
-                      ComposeSemanticsTextSpan(5, 9, "12.0sp", "serif", 400),
+                      ComposeSemanticsTextSpan(
+                        0,
+                        5,
+                        "16.0sp",
+                        fontFamily = "monospace",
+                        fontWeight = 400,
+                      ),
+                      ComposeSemanticsTextSpan(
+                        5,
+                        9,
+                        "12.0sp",
+                        fontFamily = "serif",
+                        fontWeight = 400,
+                      ),
                     ),
                 ),
               textOverflow =
@@ -2808,8 +2832,20 @@ class FigmaLayeredSvgTest {
                   fontFamily = "monospace",
                   spans =
                     listOf(
-                      ComposeSemanticsTextSpan(0, 5, "16.0sp", "monospace", 400),
-                      ComposeSemanticsTextSpan(5, 14, "12.0sp", "serif", 400),
+                      ComposeSemanticsTextSpan(
+                        0,
+                        5,
+                        "16.0sp",
+                        fontFamily = "monospace",
+                        fontWeight = 400,
+                      ),
+                      ComposeSemanticsTextSpan(
+                        5,
+                        14,
+                        "12.0sp",
+                        fontFamily = "serif",
+                        fontWeight = 400,
+                      ),
                     ),
                 ),
               textOverflow =

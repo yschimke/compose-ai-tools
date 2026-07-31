@@ -1286,6 +1286,24 @@ internal object ComposeLayoutInspector {
     ) {
       ModifierTokenResolver.graphicsLayerAlpha(this)?.let { properties["alpha"] = it.toString() }
     }
+    // The `clip` flag identifies which coordinator on the chain is the one that clips, and the
+    // figma-svg model uses that coordinator's box as the rect the frame was actually drawn in
+    // (issue #3056). Desktop/release Compose compiles the inspector element out for the same reason
+    // it does `BackgroundElement`'s above, so carry the reflected field too — otherwise the model
+    // finds no clipping modifier and a lookahead-inflated node keeps its oversized box.
+    if (
+      "clip" !in properties &&
+        (name == "graphicsLayer" || modifier.javaClass.simpleName.contains("GraphicsLayer"))
+    ) {
+      runCatching {
+          modifier.javaClass
+            .getDeclaredField("clip")
+            .apply { isAccessible = true }
+            .getBoolean(modifier)
+        }
+        .getOrNull()
+        ?.let { if (it) properties["clip"] = "true" }
+    }
     return LayoutInspectorModifier(
       name = name,
       value = value,

@@ -173,6 +173,29 @@ being free of `ClassNotFoundException`. The fixture's manifest names an
 `Application` the render classpath doesn't carry precisely to keep that gate
 honest.
 
+## Playground, end to end (compile → first frame → live redemption)
+
+[`playground.spec.mjs`](playground.spec.mjs) drives the Kotlin **playground**
+(`docs/design/PLAYGROUND.md`) the whole way through in a browser: the editor
+compiles a Compose snippet on the server (`POST /api/1/compiler/run`, BTA), gets a
+first-frame still back, and the returned `/pg/<token>` capability redeems into the
+ordinary live viewer. The playground's seams are unit-tested against fakes; this is
+the only thing that exercises the real wiring with a daemon behind it.
+
+```sh
+SERVE_URL=http://127.0.0.1:8727 SERVE_TOKEN=playground-e2e npm run harness:playground
+```
+
+[`playground-boot.sh`](playground-boot.sh) stands one up (also run by
+[`serve-lanes-e2e.yml`](../../.github/workflows/serve-lanes-e2e.yml)). It reuses the
+Android/Robolectric backend — the default editor snippet declares an Android
+`@Preview` — booting serve with `--playground-android-bundle` over a locally packed
+`:samples:android-live-lane`. The lane compiles and runs user code in-process, so it
+is refused under `--public`: the boot is **token-gated** (`SERVE_TOKEN`, which the
+spec carries as `?token=`), and the script fails loud unless the log shows
+`playground enabled`. Same `LIB_DAEMON_ANDROID_DIR` + Android-SDK prerequisites as
+the Android render lane above.
+
 ## Wire-side contract
 
 ```sh

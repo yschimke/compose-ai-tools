@@ -64,6 +64,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.Popup
 
 /**
@@ -102,6 +103,45 @@ fun MultipleSemanticsRoots() {
         Modifier.size(24.dp)
           .background(Color(0xFF42A5F5))
           .semantics { contentDescription = "popup-surface" }
+    )
+  }
+}
+
+/**
+ * Two-owner fixture whose activity surface renders real content but contributes **no semantics** — a
+ * `Box` with only a `background` modifier adds no semantics node. Guards the issue-#3048 root
+ * selection against keying "is the activity empty?" off the semantics descendant count: this
+ * activity looks empty by that measure, so a count-based rule would hand the subject role to the
+ * popup and export the wrong tree.
+ */
+@Composable
+fun VisualOnlySurfaceWithPopup() {
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFFEF5350)))
+  Popup {
+    Box(
+      modifier =
+        Modifier.size(24.dp)
+          .background(Color(0xFF42A5F5))
+          .semantics { contentDescription = "popup-surface" }
+    )
+  }
+}
+
+/**
+ * Dialog-window fixture (issue #3048): the preview's *entire* content composes into a `Dialog`, so
+ * the activity's Compose root stays empty and the dialog owns its own window, `ViewRootImpl`, and
+ * root. Unlike [MultipleSemanticsRoots] — where the extra root is incidental decoration over a real
+ * activity surface — here the extra root *is* the subject, so both the capture and every structured
+ * export have to read it or the preview renders blank.
+ */
+@Composable
+fun DialogWindowSurface() {
+  Dialog(onDismissRequest = {}) {
+    Box(
+      modifier =
+        Modifier.size(64.dp)
+          .background(Color(0xFF42A5F5))
+          .semantics { contentDescription = "dialog-surface" }
     )
   }
 }

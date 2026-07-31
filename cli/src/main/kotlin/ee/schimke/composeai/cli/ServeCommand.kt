@@ -14,6 +14,7 @@ import ee.schimke.composeai.cli.serve.PlaygroundCompileService
 import ee.schimke.composeai.cli.serve.PlaygroundMode
 import ee.schimke.composeai.cli.serve.PlaygroundPreviewDiscoverer
 import ee.schimke.composeai.cli.serve.PlaygroundRcCaptureService
+import ee.schimke.composeai.cli.serve.PlaygroundRedeemService
 import ee.schimke.composeai.cli.serve.PlaygroundTokenStore
 import ee.schimke.composeai.cli.serve.RenderOutcome
 import ee.schimke.composeai.cli.serve.ServeBundle
@@ -855,7 +856,10 @@ class ServeCommand(args: List<String>) : Command(args) {
    * server" model forbids (docs/design/PLAYGROUND.md § isolation). Fail-soft: any missing piece
    * (bundle unresolvable, no `lib-bta/`) logs why and disables the lane rather than aborting serve.
    */
-  private fun openPlaygroundService(docStore: ServeDocStore?): PlaygroundCompileService? {
+  private fun openPlaygroundService(
+    docStore: ServeDocStore?,
+    registry: ServeSessionRegistry,
+  ): PlaygroundLane? {
     val cmpBundle = playgroundBundlePath
     val androidBundle = playgroundAndroidBundlePath
     if (cmpBundle == null && androidBundle == null) return null
@@ -900,10 +904,20 @@ class ServeCommand(args: List<String>) : Command(args) {
       buildPlaygroundRcCaptureService(workRoot, docStore, opener)
     }
 
+    // CMP mode's still first frame renders on the desktop (Skiko) daemon — the backend-agnostic
+    // render service (same as Android) over a desktop opener. Absent the desktop sidecar, CMP
+    // simply
+    // carries no still image; its live `/pg/` redemption still renders on demand.
+    val cmpDaemonOpener = if (cmpClasspath != null) buildPlaygroundDesktopDaemonOpener() else null
+    val cmpRender = cmpDaemonOpener?.let { opener ->
+      buildPlaygroundAndroidRenderService(workRoot, opener)
+    }
+
     System.err.println(
       "serve: playground enabled (POST /api/1/compiler/run) — " +
         listOfNotNull(
             cmpClasspath?.let { "cmp✓" },
+            cmpRender?.let { "cmp-render✓" },
             androidClasspath?.let { "android✓" },
             androidRender?.let { "android-render✓" },
             rcCapture?.let { "remote-compose✓" },
@@ -912,6 +926,13 @@ class ServeCommand(args: List<String>) : Command(args) {
     )
 
     val snippetCounter = java.util.concurrent.atomic.AtomicLong()
+    // Stage 1 (mint) and Stage 2 (redeem) share ONE token store, so a dropped token both deletes
+    // its
+    // work dir and releases any live session it stood up. onRemove closes over the redeem service —
+    // which needs the store — so it's wired through a holder set once both exist below.
+    val redeemRef = java.util.concurrent.atomic.AtomicReference<PlaygroundRedeemService?>()
+    val tokenStore =
+      PlaygroundTokenStore(onRemove = { token -> redeemRef.get()?.release(token.id) })
     val service =
       PlaygroundCompileService(
         catalogClasspath = { mode ->
@@ -930,19 +951,23 @@ class ServeCommand(args: List<String>) : Command(args) {
         },
         compiler = compiler,
         discoverer = PlaygroundPreviewDiscoverer(),
-        tokenStore = PlaygroundTokenStore(),
+        tokenStore = tokenStore,
         newWorkDir = {
           java.io
             .File(workRoot, "snippet-${snippetCounter.incrementAndGet()}")
             .absolutePath
             .toPath()
         },
-        // The still first frame is the Android live render (ANDROID mode); CMP's desktop first
-        // frame
-        // is a separate lane, and REMOTE_COMPOSE never reaches this seam (it returns a
-        // documentUrl).
+        // The still first frame renders on the mode's daemon: CMP on desktop (Skiko), Android on
+        // Robolectric. REMOTE_COMPOSE never reaches this seam (it returns a documentUrl). A null
+        // (no
+        // sidecar for that mode) just omits the still image; it's never fatal to the run.
         renderFirstFrame = { snippet ->
-          if (snippet.mode == PlaygroundMode.ANDROID) androidRender?.render(snippet) else null
+          when (snippet.mode) {
+            PlaygroundMode.CMP -> cmpRender?.render(snippet)
+            PlaygroundMode.ANDROID -> androidRender?.render(snippet)
+            PlaygroundMode.REMOTE_COMPOSE -> null
+          }
         },
         captureRemoteDocument = { snippet -> rcCapture?.capture(snippet) },
         publishRemoteDocument = { name, bytes, checked ->
@@ -961,8 +986,43 @@ class ServeCommand(args: List<String>) : Command(args) {
       )
       return null
     }
-    return service
+    // Stage-2 redemption: stand the snippet's compiled classes up as a live daemon session via the
+    // registry, reusing the whole live/stream/input lane. materializePlaygroundSnippet self-gates —
+    // it returns null (→ "live preview unavailable") when the mode's daemon backend is absent — so
+    // this is always safe to enable alongside the compile lane.
+    val redeem =
+      PlaygroundRedeemService(
+        tokenStore = tokenStore,
+        registry = registry,
+        materialize = { ServeBundleDaemon.materializePlaygroundSnippet(it) },
+      )
+    redeemRef.set(redeem)
+
+    // A redeemed /pg session lives in ServeSessionRegistry and is reached only via the viewer + WS
+    // lanes, which never touch the token store — so the store's lazy purge (driven from mint / get
+    // /
+    // snapshot) would never fire onRemove for it, and the session (plus its work dir) would outlive
+    // the token's TTL indefinitely. Sweep expired tokens on a timer so a redeemed session is torn
+    // down at (roughly) its deadline even with no further playground requests.
+    val purgePeriod = tokenStore.ttlSeconds.coerceIn(15L, 60L)
+    java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "playground-token-purge").apply { isDaemon = true }
+      }
+      .scheduleWithFixedDelay(
+        { runCatching { tokenStore.purgeExpired() } },
+        purgePeriod,
+        purgePeriod,
+        java.util.concurrent.TimeUnit.SECONDS,
+      )
+
+    return PlaygroundLane(compile = service, redeem = redeem)
   }
+
+  /** The playground's Stage-1 compile lane + Stage-2 redeem lane, sharing one token store. */
+  private class PlaygroundLane(
+    val compile: PlaygroundCompileService,
+    val redeem: PlaygroundRedeemService,
+  )
 
   /** Resolve a playground compile classpath from a catalog liveBundle; null (logged) on failure. */
   private fun resolvePlaygroundClasspath(
@@ -1017,22 +1077,90 @@ class ServeCommand(args: List<String>) : Command(args) {
     val jvmArgs = launch.jvmArgs()
     val sysprops = launch.robolectricSystemProperties()
     return { classesDir, previewsJson, workspaceRoot, userClasspath ->
-      SubprocessRenderSessions.openBundleDaemon(
-        daemonClasspath = daemonClasspath,
-        classesDir = classesDir,
-        previewsJson = previewsJson,
-        workspaceRoot = workspaceRoot,
-        modulePath = ":playground",
-        jvmArgs = jvmArgs,
-        extraSystemProperties = sysprops,
-        userClasspath = userClasspath,
+      openPlaygroundFirstFrameDaemon(
+        daemonClasspath,
+        jvmArgs,
+        sysprops,
+        classesDir,
+        previewsJson,
+        workspaceRoot,
+        userClasspath,
       )
     }
   }
 
   /**
-   * The playground's Android first-frame render backend (ANDROID mode): renders a compiled snippet
-   * on the shared [opener] and returns the still PNG the Stage-1 response surfaces as its `image`.
+   * Open a bundle-less daemon for a first-frame render, partitioning the snippet's [userClasspath]
+   * the way the live path ([ServeBundleDaemon.materializePlaygroundSnippet]) does: jars in the
+   * namespaces `UserClassLoaderHolder` delegates to the parent (`androidx.*`, `kotlinx-coroutines`)
+   * must precede the [sidecarClasspath] on the daemon (parent) `-cp`, or the daemon loads its own
+   * sidecar versions and a snippet built against the catalog's newer AndroidX fails with
+   * `NoSuchMethodError`/`NoSuchFieldError` (and the render service then silently returns no image).
+   * The snippet's own classes stay isolated on the child (user) loader.
+   */
+  private fun openPlaygroundFirstFrameDaemon(
+    sidecarClasspath: List<String>,
+    jvmArgs: List<String>,
+    extraSystemProperties: Map<String, String>,
+    classesDir: java.io.File,
+    previewsJson: java.io.File,
+    workspaceRoot: java.io.File,
+    userClasspath: List<String>,
+  ) =
+    SubprocessRenderSessions.openBundleDaemon(
+      daemonClasspath =
+        userClasspath.filter { ServeBundleDaemon.jarPrecedesDaemonSidecar(java.io.File(it)) } +
+          sidecarClasspath,
+      classesDir = classesDir,
+      previewsJson = previewsJson,
+      workspaceRoot = workspaceRoot,
+      modulePath = ":playground",
+      jvmArgs = jvmArgs,
+      extraSystemProperties = extraSystemProperties,
+      userClasspath =
+        userClasspath.filterNot { ServeBundleDaemon.jarPrecedesDaemonSidecar(java.io.File(it)) },
+    )
+
+  /**
+   * The desktop (CMP/Skiko) daemon opener for the playground's CMP first-frame render — the
+   * `lib-daemon-desktop` + `lib-renderer` sidecar on the daemon classpath and the desktop jvmArgs,
+   * over a subprocess `openBundleDaemon`. Mirrors [ServeBundleDaemon]'s `desktopBundleDaemonLaunch`
+   * (the desktop twin of [buildPlaygroundAndroidDaemonOpener]). Returns null (logging why) when the
+   * sidecar jars are absent — CMP then simply carries no still first frame while its live `/pg/`
+   * redemption keeps rendering on demand.
+   */
+  private fun buildPlaygroundDesktopDaemonOpener(): PlaygroundAndroidSessionOpener? {
+    val daemonJars = locateBundleSidecarJars("lib-daemon-desktop")
+    val rendererJars = locateBundleSidecarJars("lib-renderer")
+    if (daemonJars.isEmpty() || rendererJars.isEmpty()) {
+      System.err.println(
+        "serve: playground CMP first-frame needs the desktop daemon sidecar (lib-daemon-desktop/ + " +
+          "lib-renderer/) from an installed distribution; CMP renders no still frame (its live " +
+          "preview still works)."
+      )
+      return null
+    }
+    val daemonClasspath = (daemonJars + rendererJars).map { it.absolutePath }
+    // -Dapple.awt.UIElement=true keeps the desktop JVM a macOS background agent (no Dock/focus
+    // steal); mirrors desktopBundleDaemonLaunch. No Robolectric sysprops on the desktop backend.
+    val jvmArgs = listOf("--enable-native-access=ALL-UNNAMED", "-Dapple.awt.UIElement=true")
+    return { classesDir, previewsJson, workspaceRoot, userClasspath ->
+      openPlaygroundFirstFrameDaemon(
+        daemonClasspath,
+        jvmArgs,
+        emptyMap(),
+        classesDir,
+        previewsJson,
+        workspaceRoot,
+        userClasspath,
+      )
+    }
+  }
+
+  /**
+   * The playground's first-frame render backend: renders a compiled snippet on the shared [opener]
+   * and returns the still PNG the Stage-1 response surfaces as its `image`. Backend-agnostic — the
+   * [opener] selects desktop (CMP) or Robolectric (Android); this wires it for both modes.
    */
   private fun buildPlaygroundAndroidRenderService(
     workRoot: java.io.File,
@@ -1184,6 +1312,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     // Resolved once so the playground's remote-compose lane publishes into the SAME store the `/d/`
     // route serves from — otherwise a minted `/d/<id>` link wouldn't resolve.
     val docStore = openDocStore()
+    val playgroundLane = openPlaygroundService(docStore, registry)
     val server =
       ServeHttpServer(
         host = host,
@@ -1209,7 +1338,8 @@ class ServeCommand(args: List<String>) : Command(args) {
         trustAdmin = trustAdmin,
         adminToken = adminToken,
         docStore = docStore,
-        playgroundService = openPlaygroundService(docStore),
+        playgroundService = playgroundLane?.compile,
+        playgroundRedeem = playgroundLane?.redeem,
       )
     if (trustAdmin != null) {
       System.err.println(
