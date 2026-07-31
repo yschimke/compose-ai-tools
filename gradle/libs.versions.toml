@@ -248,6 +248,11 @@ coil2 = "2.7.0"
 coil3 = "3.4.0"
 
 [libraries]
+# `@com.android.tools.screenshot.PreviewTest` — the marker Google's screenshot plugin requires on a
+# `@Preview` before it will render it (alpha15+ discovers nothing without it). Only the Studio-parity
+# fixtures in `:samples:android-screenshot-test` need it, on the `screenshotTest` classpath; version
+# is pinned to the plugin's own so the annotation and the JUnit engine reading it can't skew.
+android-screenshot-validation-api = { module = "com.android.tools.screenshot:screenshot-validation-api", version.ref = "android-compose-screenshot" }
 # Ktor HTTP client (OkHttp engine) — backs the `:cli` / `:bundle-viewer` bundle downloader. Same
 # `ktor` version ref as the server below so the two can't skew and re-trip the strict slf4j pin in
 # :cli. (The `ktor-client-websockets` entry was dropped when the session-viewer clients — its only
