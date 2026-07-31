@@ -917,3 +917,34 @@ fun KeyPressColorSquare() {
         }
   )
 }
+
+/**
+ * `@PreviewParameter` regression fixture — the desktop counterpart of `:daemon:android`'s
+ * `SquareTintProvider` / `ThemedTintedSquare` (issue #3027 on Android; the desktop follow-up that
+ * taught the desktop daemon to resolve `@PreviewParameter` at all).
+ *
+ * The desktop daemon used to resolve every preview with the parameterless
+ * `getDeclaredComposableMethod(functionName)` lookup, which matches only `foo(Composer, int)`. A
+ * preview with a `@PreviewParameter` argument compiles to `ThemedTintedSquare(long, Composer,
+ * int)`, so resolution threw `NoSuchMethodException` before composition started — no PNG, none of
+ * the composition-derived data products, and `bundle pack --with-semantics` dropped the whole
+ * fan-out's a11y tree on CMP/desktop modules.
+ *
+ * The provider is resolved reflectively via `getValues()` — the harness manifest carries its FQN in
+ * `previewParameterProviderClassName`, so it needs no `@PreviewParameter` annotation or
+ * `PreviewParameterProvider` supertype here, just a `values: Sequence` property and a `Long`
+ * parameter, matching the shapes [ee.schimke.composeai.renderer.PreviewParameterSupport] probes.
+ *
+ * Two values on purpose: the daemon renders one frame per preview id, so it must invoke the FIRST
+ * one (green `0xFF43A047`), never the second (blue `0xFF1E88E5`). A regression that silently picks
+ * the wrong value fails the pixel assertion instead of passing on "something rendered".
+ */
+@Suppress("unused")
+class SquareTintProvider {
+  val values: Sequence<Long> = sequenceOf(0xFF43A047L, 0xFF1E88E5L)
+}
+
+@Composable
+fun ThemedTintedSquare(tint: Long) {
+  Box(modifier = Modifier.fillMaxSize().background(Color(tint)))
+}

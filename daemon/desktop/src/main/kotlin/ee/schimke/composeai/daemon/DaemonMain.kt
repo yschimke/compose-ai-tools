@@ -539,6 +539,16 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
     uiMode = uiMode,
     orientation = defaults.orientation,
     wrapperClassName = params.wrapperClassName ?: defaults.wrapperClassName,
+    // `@PreviewParameter` provider FQN + limit — without these the parameterless
+    // `getDeclaredComposableMethod` lookup throws `NoSuchMethodException` on a parameterized
+    // preview
+    // and it renders nothing. This is the *production* live/interactive path (the preview-index
+    // resolver), distinct from the harness-only `PreviewManifestRouter`; both must thread the
+    // field.
+    // Mirrors `:daemon:android`'s `renderSpecFromInfo`.
+    previewParameterProviderClassName =
+      params.previewParameterProviderClassName ?: defaults.previewParameterProviderClassName,
+    previewParameterLimit = params.previewParameterLimit ?: defaults.previewParameterLimit,
     kind = params.kind ?: defaults.kind,
     assetPath = params.assetPath ?: defaults.assetPath,
     overrides = bakedOverrides,
