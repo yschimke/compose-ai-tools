@@ -307,6 +307,110 @@ internal object ServeBundleDaemon {
   }
 
   /**
+   * Materialize a compiled **playground snippet** into a resumable live-session state — the Stage-2
+   * ([PlaygroundRedeemService]) counterpart of [materialize], but over a just-compiled snippet's
+   * own classes instead of a fetched bundle. Writes a one-preview `previews.json` and a
+   * `daemon-launch.json` for the snippet's mode (desktop CMP / Android Robolectric) into the
+   * snippet's work dir, so the registry opens, resumes, seat-counts, and streams it through the
+   * exact same path a catalog uses — no new live-session machinery. Returns null (logged) when the
+   * mode's daemon backend (sidecar / `android.jar`) is unavailable, so redemption reports
+   * "unavailable" rather than standing up a dead session.
+   */
+  fun materializePlaygroundSnippet(
+    snippet: PlaygroundTokenStore.PlaygroundSnippet,
+    fileSystem: FileSystem = SystemFileSystem,
+    onLog: (String) -> Unit = { System.err.println("[playground live] $it") },
+  ): ServeSessionState? {
+    val label = "playground:${snippet.previewId.substringAfterLast('.').ifBlank { "snippet" }}"
+    val android = snippet.mode == PlaygroundMode.ANDROID
+    val backendLaunch =
+      (if (android) androidBundleDaemonLaunch(label, onLog)
+      else desktopBundleDaemonLaunch(label, onLog)) ?: return null
+
+    val workDir = File(snippet.workDir.toString())
+    val classesDir = File(snippet.classesDir.toString())
+    val previewsJson = File(workDir, "previews.json")
+    try {
+      fileSystem.write(previewsJson.path.toPath()) {
+        writeUtf8(PlaygroundPreviews.singlePreviewManifestJson(snippet))
+      }
+    } catch (e: Exception) {
+      onLog("$label: could not write previews.json (${e.message})")
+      return null
+    }
+
+    // Partition the resolved catalog jars exactly as the bundle path does: the namespaces
+    // UserClassLoaderHolder delegates to the daemon parent (androidx.*, kotlinx-coroutines) must
+    // *precede* the sidecar on the parent -cp, or the daemon loads its own (possibly older) sidecar
+    // versions and a snippet/catalog composable built against the catalog's newer AndroidX fails
+    // with NoSuchMethodError/NoSuchFieldError. Everything else — including the snippet's own
+    // classes
+    // (classesDir) — stays isolated on the user (child) classloader. We only have file paths here
+    // (not coordinates), so match the same groups by their Maven/Gradle cache path segment.
+    // classesDir
+    // lands in `child` (its temp path matches neither), and bundleDaemonClasspaths dedupes it
+    // against
+    // the explicit classesDir arg.
+    val (parentOverlayJars, childJars) =
+      snippet.classpath.map { File(it.toString()) }.partition { jarPrecedesDaemonSidecar(it) }
+    val classpaths =
+      bundleDaemonClasspaths(
+        classesDir = classesDir,
+        extraClasspathDirs = emptyList(),
+        embeddedLibJars = emptyList(),
+        parentOverlayJars = parentOverlayJars,
+        childDependencyJars = childJars,
+        daemonSidecarClasspath = backendLaunch.daemonClasspath,
+        androidResourceClasspath = emptyList(),
+      )
+    val descriptor =
+      DaemonLaunchDescriptor(
+        schemaVersion = DAEMON_LAUNCH_SCHEMA_VERSION,
+        modulePath = ":playground",
+        variant = backendLaunch.variant,
+        enabled = true,
+        mainClass = DAEMON_MAIN_CLASS,
+        javaLauncher = null,
+        classpath = classpaths.daemonClasspath,
+        jvmArgs = backendLaunch.jvmArgs,
+        systemProperties =
+          buildMap {
+            put("composeai.daemon.userClassDirs", classpaths.userClassPath)
+            put("composeai.daemon.previewsJsonPath", previewsJson.absolutePath)
+            put("composeai.render.outputDir", File(workDir, "renders").absolutePath)
+            put("composeai.render.placeholderMissingResources", "true")
+            putAll(backendLaunch.extraSystemProperties)
+          },
+        workingDirectory = workDir.absolutePath,
+        manifestPath = previewsJson.absolutePath,
+      )
+    val descriptorFile = File(workDir, "daemon-launch.json")
+    try {
+      fileSystem.write(descriptorFile.path.toPath()) {
+        writeUtf8(json.encodeToString(DaemonLaunchDescriptor.serializer(), descriptor))
+      }
+    } catch (e: Exception) {
+      onLog("$label: could not write daemon-launch.json (${e.message})")
+      return null
+    }
+
+    val previews =
+      readPreviews(previewsJson, File(workDir, "previews").apply { mkdirs() }, fileSystem)
+    if (previews.isEmpty()) {
+      onLog("$label: synthesized previews.json carried no previews")
+      return null
+    }
+    return ServeSessionState(
+      descriptor = descriptorFile,
+      workspaceRoot = workDir,
+      workspaceName = workDir.name.ifBlank { "playground" },
+      previews = previews,
+      label = label,
+      liveSeatWeight = if (android) ANDROID_LIVE_SEAT_WEIGHT else 1,
+    )
+  }
+
+  /**
    * Read the catalog's declared `@ThemeCatalog` themes from the carried `previews.json` (the
    * synthetic `THEME_CATALOG` entries discovery emits). Module-global, so the whole catalog shares
    * one theme set. Absent / unreadable previews.json → no themes.
@@ -514,6 +618,20 @@ internal object ServeBundleDaemon {
     coordinate.group.startsWith("androidx.") ||
       (coordinate.group == "org.jetbrains.kotlinx" &&
         coordinate.artifact.startsWith("kotlinx-coroutines"))
+
+  /**
+   * The [shouldPrecedeDaemonSidecar] rule applied to a resolved **jar path** rather than a
+   * coordinate — used by the playground live path ([materializePlaygroundSnippet]), which carries
+   * only the resolved files (the coordinates were dropped during catalog resolution). Both the
+   * Maven-local (`…/androidx/compose/…`) and Gradle-cache (`…/androidx.compose.material3/…`)
+   * layouts put the dotted/slashed group right after a path separator, so a `/androidx` segment
+   * identifies the AndroidX graph and `kotlinx-coroutines` the coroutines artifacts — the two
+   * namespaces `UserClassLoaderHolder` delegates to the daemon parent.
+   */
+  internal fun jarPrecedesDaemonSidecar(jar: File): Boolean {
+    val path = jar.path.replace('\\', '/')
+    return path.contains("/androidx") || path.contains("kotlinx-coroutines")
+  }
 
   private data class ResolvedBundleDependency(
     val coordinate: BundleReader.ClasspathEntry.Maven,
