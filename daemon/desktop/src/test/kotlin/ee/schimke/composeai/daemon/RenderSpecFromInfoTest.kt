@@ -174,4 +174,30 @@ class RenderSpecFromInfoTest {
     assertEquals(true, spec.showBackground)
     assertEquals(0xFFEEEEEE, spec.backgroundColor)
   }
+
+  @Test
+  fun `previewParameter provider and limit pass through the index resolver`() {
+    // The production live/interactive path (this preview-index resolver, not the harness-only
+    // PreviewManifestRouter): a `@PreviewParameter` preview's provider FQN + limit must reach the
+    // RenderSpec, else the render body's parameterless lookup throws NoSuchMethodException and the
+    // preview produces no render / no semantics. Mirrors :daemon:android's renderSpecFromInfo.
+    val spec =
+      renderSpecFromInfo(
+        info(
+          params =
+            PreviewParamsDto(
+              previewParameterProviderClassName = "com.example.SquareTintProvider",
+              previewParameterLimit = 3,
+            )
+        )
+      )
+    assertEquals("com.example.SquareTintProvider", spec.previewParameterProviderClassName)
+    assertEquals(3, spec.previewParameterLimit)
+  }
+
+  @Test
+  fun `previewParameter provider defaults to null when the params omit it`() {
+    val spec = renderSpecFromInfo(info(params = PreviewParamsDto()))
+    assertNull(spec.previewParameterProviderClassName)
+  }
 }
