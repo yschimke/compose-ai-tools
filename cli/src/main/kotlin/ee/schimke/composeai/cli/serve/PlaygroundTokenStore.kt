@@ -38,6 +38,13 @@ class PlaygroundTokenStore(
   /** Injected so tests can drive expiry without sleeping. */
   private val clock: () -> Long = System::currentTimeMillis,
   private val mintId: () -> String = ::randomId,
+  /**
+   * Invoked as a token is dropped (expiry, overflow eviction, [remove], [clear]), after its work
+   * dir is deleted. Stage 2 wires this to [PlaygroundRedeemService.release] so a dropped token also
+   * unregisters + closes any live session it stood up. Best-effort — a throw here must not wedge
+   * purging — so it runs under `runCatching`. Defaults to a no-op (mint-only hosts).
+   */
+  private val onRemove: (Token) -> Unit = {},
 ) {
 
   /**
@@ -117,7 +124,7 @@ class PlaygroundTokenStore(
   /** Explicitly drop [id] (and delete its work dir); returns true if it was present. */
   fun remove(id: String): Boolean {
     val removed = tokens.remove(id) ?: return false
-    disposeSnippet(removed.snippet)
+    drop(removed)
     return true
   }
 
@@ -129,7 +136,7 @@ class PlaygroundTokenStore(
       val entry = it.next()
       if (entry.value.expiresAtMillis <= nowMillis) {
         it.remove()
-        disposeSnippet(entry.value.snippet)
+        drop(entry.value)
         dropped++
       }
     }
@@ -147,7 +154,7 @@ class PlaygroundTokenStore(
   fun clear() {
     val all = tokens.values.toList()
     tokens.clear()
-    all.forEach { disposeSnippet(it.snippet) }
+    all.forEach { drop(it) }
   }
 
   /**
@@ -158,8 +165,14 @@ class PlaygroundTokenStore(
   private fun evictOverflow() {
     while (tokens.size > maxTokens) {
       val oldest = tokens.values.minByOrNull { it.expiresAtMillis } ?: return
-      tokens.remove(oldest.id)?.let { disposeSnippet(it.snippet) }
+      tokens.remove(oldest.id)?.let { drop(it) }
     }
+  }
+
+  /** The single drop path for every removal: delete the work dir, then fire [onRemove]. */
+  private fun drop(token: Token) {
+    disposeSnippet(token.snippet)
+    runCatching { onRemove(token) }
   }
 
   /** Best-effort delete of a dropped snippet's work dir; a failure must not wedge purging. */

@@ -14,6 +14,7 @@ import ee.schimke.composeai.cli.serve.PlaygroundCompileService
 import ee.schimke.composeai.cli.serve.PlaygroundMode
 import ee.schimke.composeai.cli.serve.PlaygroundPreviewDiscoverer
 import ee.schimke.composeai.cli.serve.PlaygroundRcCaptureService
+import ee.schimke.composeai.cli.serve.PlaygroundRedeemService
 import ee.schimke.composeai.cli.serve.PlaygroundTokenStore
 import ee.schimke.composeai.cli.serve.RenderOutcome
 import ee.schimke.composeai.cli.serve.ServeBundle
@@ -855,7 +856,10 @@ class ServeCommand(args: List<String>) : Command(args) {
    * server" model forbids (docs/design/PLAYGROUND.md § isolation). Fail-soft: any missing piece
    * (bundle unresolvable, no `lib-bta/`) logs why and disables the lane rather than aborting serve.
    */
-  private fun openPlaygroundService(docStore: ServeDocStore?): PlaygroundCompileService? {
+  private fun openPlaygroundService(
+    docStore: ServeDocStore?,
+    registry: ServeSessionRegistry,
+  ): PlaygroundLane? {
     val cmpBundle = playgroundBundlePath
     val androidBundle = playgroundAndroidBundlePath
     if (cmpBundle == null && androidBundle == null) return null
@@ -912,6 +916,12 @@ class ServeCommand(args: List<String>) : Command(args) {
     )
 
     val snippetCounter = java.util.concurrent.atomic.AtomicLong()
+    // Stage 1 (mint) and Stage 2 (redeem) share ONE token store, so a dropped token both deletes its
+    // work dir and releases any live session it stood up. onRemove closes over the redeem service —
+    // which needs the store — so it's wired through a holder set once both exist below.
+    val redeemRef = java.util.concurrent.atomic.AtomicReference<PlaygroundRedeemService?>()
+    val tokenStore =
+      PlaygroundTokenStore(onRemove = { token -> redeemRef.get()?.release(token.id) })
     val service =
       PlaygroundCompileService(
         catalogClasspath = { mode ->
@@ -930,7 +940,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         },
         compiler = compiler,
         discoverer = PlaygroundPreviewDiscoverer(),
-        tokenStore = PlaygroundTokenStore(),
+        tokenStore = tokenStore,
         newWorkDir = {
           java.io
             .File(workRoot, "snippet-${snippetCounter.incrementAndGet()}")
@@ -961,8 +971,25 @@ class ServeCommand(args: List<String>) : Command(args) {
       )
       return null
     }
-    return service
+    // Stage-2 redemption: stand the snippet's compiled classes up as a live daemon session via the
+    // registry, reusing the whole live/stream/input lane. materializePlaygroundSnippet self-gates —
+    // it returns null (→ "live preview unavailable") when the mode's daemon backend is absent — so
+    // this is always safe to enable alongside the compile lane.
+    val redeem =
+      PlaygroundRedeemService(
+        tokenStore = tokenStore,
+        registry = registry,
+        materialize = { ServeBundleDaemon.materializePlaygroundSnippet(it) },
+      )
+    redeemRef.set(redeem)
+    return PlaygroundLane(compile = service, redeem = redeem)
   }
+
+  /** The playground's Stage-1 compile lane + Stage-2 redeem lane, sharing one token store. */
+  private class PlaygroundLane(
+    val compile: PlaygroundCompileService,
+    val redeem: PlaygroundRedeemService,
+  )
 
   /** Resolve a playground compile classpath from a catalog liveBundle; null (logged) on failure. */
   private fun resolvePlaygroundClasspath(
@@ -1184,6 +1211,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     // Resolved once so the playground's remote-compose lane publishes into the SAME store the `/d/`
     // route serves from — otherwise a minted `/d/<id>` link wouldn't resolve.
     val docStore = openDocStore()
+    val playgroundLane = openPlaygroundService(docStore, registry)
     val server =
       ServeHttpServer(
         host = host,
@@ -1209,7 +1237,8 @@ class ServeCommand(args: List<String>) : Command(args) {
         trustAdmin = trustAdmin,
         adminToken = adminToken,
         docStore = docStore,
-        playgroundService = openPlaygroundService(docStore),
+        playgroundService = playgroundLane?.compile,
+        playgroundRedeem = playgroundLane?.redeem,
       )
     if (trustAdmin != null) {
       System.err.println(
