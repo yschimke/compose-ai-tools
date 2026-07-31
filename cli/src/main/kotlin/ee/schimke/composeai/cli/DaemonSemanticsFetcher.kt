@@ -58,19 +58,15 @@ internal class DaemonSemanticsFetcher(
    * **`@PreviewParameter` fan-outs read from the bare id like any other preview.** The daemon does
    * *not* fan a parameterized preview out across its provider's values — it renders one frame of
    * the provider's first value under the bare `<id>` base name (Android:
-   * `daemon/android/.../RenderEngine.kt`, `resolvePreviewInvocation`; the fan-out-per-value path
-   * stays with the standalone renderer). So a fan-out's `compose-semantics.json` lands at
+   * `daemon/android/.../RenderEngine.kt`, `resolvePreviewInvocation`; desktop:
+   * `daemon/desktop/.../RenderEngine.kt` via `PreviewParameterSupport`; the fan-out-per-value path
+   * stays with the standalone renderer on both). So a fan-out's `compose-semantics.json` lands at
    * `build/compose-previews/data/<id>/` exactly where a plain preview's does, and the bare-id read
    * below carries it. This was broken before the daemon learned to resolve `@PreviewParameter`
    * (previously the `(Composer, int)`-only lookup threw `NoSuchMethodException`, so every such
    * preview lost its PNG *and* its semantics — the drop reported in issue #3049 against a build
    * that predates that fix); nothing per-value is written, so there is nothing extra to resolve
    * here.
-   *
-   * **Known gap:** the desktop daemon does not resolve `@PreviewParameter` at all
-   * (`daemon/desktop/.../RenderEngine.kt`), so a fan-out in a CMP/desktop module renders no frame
-   * and produces no sidecar — its semantics stay absent until the desktop backend gains first-value
-   * resolution the way Android has.
    *
    * [projectDir] is the module's project directory (`PreviewModule.projectDir`);
    * `daemon-launch.json` and the daemon's `build/compose-previews/data/<id>/` output both sit under
