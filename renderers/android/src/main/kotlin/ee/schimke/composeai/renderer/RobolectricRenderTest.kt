@@ -12,6 +12,8 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Constraints
@@ -1273,16 +1275,22 @@ abstract class RobolectricRenderTestBase(
           // nodes and `onRoot()` is ambiguous (issue #3048). Resolve the subject deliberately in
           // that case. Single-root previews — the overwhelming majority — keep using `onRoot()`
           // verbatim so their captures stay byte-identical.
-          val rootInteractions = rule.onAllNodes(isRoot(), useUnmergedTree = true)
-          val rootNodes =
-            runCatching { rootInteractions.fetchSemanticsNodes(atLeastOneRootRequired = false) }
-              .getOrDefault(emptyList())
-          val resolvedRoot =
-            if (rootNodes.size <= 1) null
-            else DialogWindowCapture.selectCaptureRoot(rootNodes, rule.activity.window.decorView)
-          val onRoot =
-            if (resolvedRoot == null) rule.onRoot()
-            else rootInteractions[rootNodes.indexOf(resolvedRoot)]
+          //
+          // Resolved per capture rather than once up front: a dialog can open from a
+          // `LaunchedEffect`, so at virtual time 0 there is only the activity root, and the window
+          // appears after the job advances the clock below. A cached selection would also go stale
+          // across several timed still captures if a dialog opens or closes between them.
+          fun resolveCaptureRoot(): Pair<SemanticsNodeInteraction, SemanticsNode?> {
+            val interactions = rule.onAllNodes(isRoot(), useUnmergedTree = true)
+            val nodes =
+              runCatching { interactions.fetchSemanticsNodes(atLeastOneRootRequired = false) }
+                .getOrDefault(emptyList())
+            if (nodes.size <= 1) return rule.onRoot() to null
+            val resolved =
+              DialogWindowCapture.selectCaptureRoot(nodes, rule.activity.window.decorView)
+                ?: return rule.onRoot() to null
+            return interactions[nodes.indexOf(resolved)] to resolved
+          }
           val jobs =
             (preview.captures.map { CaptureRenderJob(it, outputFileFor(it, outputDir)) } +
                 preview.dataProducts.map { ProductRenderJob(it, outputFileFor(it, outputDir)) })
@@ -1588,7 +1596,9 @@ abstract class RobolectricRenderTestBase(
                   settlePostScrollAnimations(rule)
                 }
               }
-              onRoot.captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
+              resolveCaptureRoot()
+                .first
+                .captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
             }
 
             // A `Dialog` / `ModalBottomSheet` preview composes into a window of its own, and the
@@ -1605,7 +1615,10 @@ abstract class RobolectricRenderTestBase(
                   !animationHandled &&
                   !focusGifHandled
               ) {
-                resolvedRoot?.let { root ->
+                // Re-resolved rather than reusing the capture's value: the clock has not moved
+                // since, so this sees the same roots, and it keeps the selection out of a mutable
+                // var shared across jobs.
+                resolveCaptureRoot().second?.let { root ->
                   DialogWindowCapture.shownDialogWindow(root)?.also { window ->
                     DialogWindowCapture.cropPngToDialogWindow(outputFile, root, window)
                   }

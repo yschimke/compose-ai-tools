@@ -8,6 +8,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberStandardBottomSheetState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -21,6 +26,7 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import java.io.File
 import java.nio.file.Files
 import javax.imageio.ImageIO
+import kotlinx.coroutines.delay
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -113,6 +119,41 @@ class DialogWindowCaptureTest {
     // The sheet's window fills the screen, so the crop is a no-op — the frame is the sticker.
     val after = ImageIO.read(png).let { it.width to it.height }
     assertEquals("a full-screen window must not be cropped", before, after)
+  }
+
+  /**
+   * The renderer resolves the capture root *per capture*, after advancing the clock to that
+   * capture's target time — not once up front. A dialog opened from a `LaunchedEffect` does not
+   * exist at virtual time 0, so a selection cached before the advance would miss it entirely.
+   */
+  @Test
+  fun `a dialog opened from a LaunchedEffect is still resolved after the clock advances`() {
+    rule.setContent {
+      var shown by remember { mutableStateOf(false) }
+      LaunchedEffect(Unit) {
+        delay(500L)
+        shown = true
+      }
+      if (shown) {
+        Dialog(onDismissRequest = {}) { Box(modifier = Modifier.size(64.dp).background(FILL)) }
+      }
+    }
+
+    // At the usual settle point the dialog has not opened yet: one root, no dialog window.
+    rule.mainClock.advanceTimeBy(SETTLE_MS)
+    assertNull(
+      "precondition: no dialog window before the effect fires",
+      DialogWindowCapture.shownDialogWindow(resolveRoot()),
+    )
+
+    // Past the delay it is open, and a freshly-resolved root finds it.
+    rule.mainClock.advanceTimeBy(1_000L)
+    val root = resolveRoot()
+    assertNotNull(
+      "the dialog must be resolvable once the effect has fired",
+      DialogWindowCapture.shownDialogWindow(root),
+    )
+    assertEquals("the resolved root is the dialog's", 64, root.size.width)
   }
 
   @Test
