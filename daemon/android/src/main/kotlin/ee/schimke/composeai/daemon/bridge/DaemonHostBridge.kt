@@ -413,6 +413,14 @@ sealed interface InteractiveCommand {
      */
     val wrapperClassName: String? = null,
     /**
+     * FQN of the preview's `@PreviewParameter` provider (and its `limit`), threaded for the same
+     * reason as [wrapperClassName]: the held session must resolve the same overload the one-shot
+     * render did. Without it, live mode on a parameterized preview fails resolution with
+     * `NoSuchMethodException` and blanks the panel (issue #3027).
+     */
+    val previewParameterProviderClassName: String? = null,
+    val previewParameterLimit: Int = Int.MAX_VALUE,
+    /**
      * Optional app-declared theme `PreviewWrapperProvider` selected by a live override. Like the
      * one-shot path, a provider that resolves successfully replaces [wrapperClassName].
      */

@@ -176,6 +176,18 @@ class PreviewManifestRouter(
       resolved.wrapperClassName
         ?.takeIf { it.isNotBlank() }
         ?.let { append("wrapperClassName=").append(it).append(';') }
+      // `@PreviewParameter(SomeProvider::class)` FQN, sourced from `previews.json` for the same
+      // reason as the wrapper above (BINARY retention, invisible to runtime reflection). The render
+      // body loads the provider and invokes the preview with its first value; without it the
+      // parameterless lookup throws `NoSuchMethodException` for every parameterized preview (#3027).
+      resolved.previewParameterProviderClassName
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          append("previewParameterProvider=").append(it).append(';')
+          if (resolved.previewParameterLimit != Int.MAX_VALUE) {
+            append("previewParameterLimit=").append(resolved.previewParameterLimit).append(';')
+          }
+        }
       append("outputBaseName=").append(resolved.outputBaseName)
     }
   }
@@ -224,6 +236,8 @@ private fun PreviewManifestEntry.renderSpec(): RenderSpec {
     kind = resolved.kind,
     previewName = resolved.name,
     wrapperClassName = resolved.wrapperClassName,
+    previewParameterProviderClassName = resolved.previewParameterProviderClassName,
+    previewParameterLimit = resolved.previewParameterLimit,
     wrapWidth = resolved.wrapWidth,
     wrapHeight = resolved.wrapHeight,
     // The manifest-declared night bit, so a held session composes the same theme the one-shot
@@ -293,6 +307,14 @@ data class PreviewManifestEntry(
    * router.
    */
   val uiMode: Int? = null,
+  /**
+   * Flat-schema mirrors of [PreviewParamsEntry.previewParameterProviderClassName] /
+   * [PreviewParamsEntry.previewParameterLimit] — see the kdoc there. The production gradle plugin
+   * writes them under `params`; `:daemon:harness` scenario manifests use the flat shape, which is
+   * what gives the `@PreviewParameter` render path (issue #3027) end-to-end cover in CI.
+   */
+  val previewParameterProviderClassName: String? = null,
+  val previewParameterLimit: Int? = null,
 ) {
   fun resolved(): ResolvedRenderParams {
     val p = params
@@ -345,6 +367,12 @@ data class PreviewManifestEntry(
       uiMode = uiMode,
       fontScale = fontScale,
       locale = locale,
+      previewParameterProviderClassName =
+        (previewParameterProviderClassName ?: p?.previewParameterProviderClassName)?.takeIf {
+          it.isNotBlank()
+        },
+      previewParameterLimit =
+        previewParameterLimit ?: p?.previewParameterLimit ?: Int.MAX_VALUE,
     )
   }
 
@@ -421,6 +449,16 @@ data class PreviewParamsEntry(
    * motivated `@PreviewWrapper` in the first place).
    */
   val wrapperClassName: String? = null,
+  /**
+   * FQN of the `PreviewParameterProvider` from `@PreviewParameter(SomeProvider::class)` when the
+   * preview declares one, with its `limit`. Same story as [wrapperClassName]: the upstream
+   * annotation has `AnnotationRetention.BINARY`, so discovery's class-file read is the only way the
+   * render body can learn about it. Without this plumbing the daemon resolved the parameterless
+   * overload of a parameterized preview and threw `NoSuchMethodException` out of
+   * `getDeclaredComposableMethod` before composing anything (issue #3027).
+   */
+  val previewParameterProviderClassName: String? = null,
+  val previewParameterLimit: Int = Int.MAX_VALUE,
 )
 
 /**
@@ -451,4 +489,11 @@ data class ResolvedRenderParams(
   val fontScale: Float? = null,
   /** `@Preview(locale = ...)` BCP-47 tag, null when unset. */
   val locale: String? = null,
+  /**
+   * `@PreviewParameter(SomeProvider::class, limit = N)` from discovery — see
+   * [PreviewParamsEntry.previewParameterProviderClassName]. The render body loads the provider and
+   * invokes the preview with its first value; null renders the parameterless overload.
+   */
+  val previewParameterProviderClassName: String? = null,
+  val previewParameterLimit: Int = Int.MAX_VALUE,
 )

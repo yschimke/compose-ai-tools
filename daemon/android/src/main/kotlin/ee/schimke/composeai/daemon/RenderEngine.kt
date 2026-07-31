@@ -86,10 +86,16 @@ import okio.Path.Companion.toPath
  * versa); the `:samples:android-daemon-bench:composePreviewRender` task + CI pixel-diff catches
  * drift.
  *
- * **What's duplicated, what isn't.** This is the "small composable, no `@PreviewParameter`, no
- * `@AnimatedPreview`, no `@ScrollingPreview`" subset — the daemon's v1 surface only renders single
- * static previews. The fan-out / animation / GIF stitching paths from `RobolectricRenderTest` stay
- * behind the standalone renderer for now; B1.7+ revisits if the harness needs them.
+ * **What's duplicated, what isn't.** This is the "small composable, no `@AnimatedPreview`, no
+ * `@ScrollingPreview`" subset — the daemon's v1 surface renders a single static frame per preview
+ * id. The animation / GIF stitching paths from `RobolectricRenderTest` stay behind the standalone
+ * renderer for now; B1.7+ revisits if the harness needs them.
+ *
+ * `@PreviewParameter` is *resolved* here but not *fanned out*: a parameterized preview renders its
+ * provider's first value (see [resolvePreviewInvocation]), matching the one-frame-per-id contract.
+ * Emitting one file per value stays with the standalone renderer. Before issue #3027 the daemon
+ * didn't resolve these at all — the parameterless lookup threw `NoSuchMethodException`, so every
+ * parameterized preview lost its PNG and its composition-derived data products.
  *
  * **Threading contract.** Called from inside [RobolectricHost.SandboxRunner.holdSandboxOpen], i.e.
  * the test thread of the dummy `@Test` runner, with the Robolectric sandbox classloader as the
@@ -287,19 +293,18 @@ class RenderEngine(
     // matching renderer helper in the setContent body below.
     val nonComposableInvocation =
       isTile || isNotification || isGlanceAppWidget || isSyntheticThemeCatalog || isIrReplay
-    val composableMethod: ComposableMethod? =
+    // `@PreviewParameter` previews compile to `foo(<T>, Composer, int)`, so the parameterless
+    // lookup misses them entirely — see [resolvePreviewInvocation] and issue #3027.
+    val resolvedInvocation =
       if (nonComposableInvocation) null
-      else
-        trace.section("compose:resolveComposable") {
-          clazz!!.getDeclaredComposableMethod(spec.functionName)
-        }
+      else trace.section("compose:resolveComposable") { resolvePreviewInvocation(clazz!!, spec) }
+    val composableMethod: ComposableMethod? = resolvedInvocation?.method
+    val previewArgs: List<Any?> = resolvedInvocation?.args ?: emptyList()
     // Kotlin `private fun` previews compile to JVM-private methods. `getDeclaredComposableMethod`
     // still resolves them (it scans `declaredMethods`), but the reflective `invoke` in
-    // [InvokeComposable] would throw IllegalAccessException, so open the method up first — mirrors
-    // `:renderer-android`'s ComposePreviewStrategy. Guarded with `runCatching`: a SecurityManager
-    // or strong module encapsulation can refuse, in which case we still attempt the invoke
-    // (which succeeds for public/internal previews) rather than failing resolution outright.
-    composableMethod?.let { runCatching { it.asMethod().isAccessible = true } }
+    // [InvokeComposable] would throw IllegalAccessException — [PreviewParameterSupport.resolve]
+    // opens the resolved method for every caller (this path, the scroll scenarios, and the
+    // held-session lane) so no single site has to remember.
 
     // Self-diagnostic — surfaces in the VS Code extension's output channel as `[daemon stderr] …`.
     // Pairs with `[classloader] swap requested` / `allocate child loader` lines from
@@ -660,6 +665,7 @@ class RenderEngine(
                             // `@PreviewWrapper` — "render this preview under theme X" — but only when
                             // it resolves; a stale/misspelled FQN falls back to the declared wrapper.
                             themeProviderFqn = spec.overrides?.themeProvider,
+                            previewArgs = previewArgs,
                           )
                         }
                       }
@@ -1196,7 +1202,7 @@ class RenderEngine(
         override fun evaluate() {
           rule.mainClock.autoAdvance = false
           val clazz = Class.forName(spec.className, true, classLoader)
-          val composableMethod = clazz.getDeclaredComposableMethod(spec.functionName)
+          val (composableMethod, previewArgs) = resolvePreviewInvocation(clazz, spec)
           val bgArgb = resolveBackgroundColor(spec).toArgb()
           // Coil-backed images: same install as `render`'s main body, repeated here because
           // `render` returns INTO this scenario before reaching that call — a direct scroll /
@@ -1246,6 +1252,7 @@ class RenderEngine(
                   composableMethod = composableMethod,
                   wrapperFqnFromSpec = spec.wrapperClassName,
                   themeProviderFqn = spec.overrides?.themeProvider,
+                  previewArgs = previewArgs,
                 )
               }
             }
@@ -1383,10 +1390,7 @@ class RenderEngine(
         override fun evaluate() {
           rule.mainClock.autoAdvance = false
           val clazz = Class.forName(spec.className, true, classLoader)
-          val composableMethod =
-            clazz.getDeclaredComposableMethod(spec.functionName).also {
-              runCatching { it.asMethod().isAccessible = true }
-            }
+          val (composableMethod, previewArgs) = resolvePreviewInvocation(clazz, spec)
           val bgArgb = resolveBackgroundColor(spec).toArgb()
           // Coil-backed images: same install as `render`'s main body, repeated here because
           // `render` returns INTO this scenario before reaching that call — a direct scroll /
@@ -1425,6 +1429,7 @@ class RenderEngine(
                     composableMethod = composableMethod,
                     wrapperFqnFromSpec = spec.wrapperClassName,
                     themeProviderFqn = spec.overrides?.themeProvider,
+                    previewArgs = previewArgs,
                   )
                 }
               }
@@ -1711,12 +1716,10 @@ class RenderEngine(
         override fun evaluate() {
           rule.mainClock.autoAdvance = false
           val clazz = Class.forName(spec.className, true, classLoader)
-          val composableMethod =
-            clazz.getDeclaredComposableMethod(spec.functionName).also {
-              // Kotlin `private fun` scrolling previews compile to JVM-private methods; open them
-              // so the reflective invoke doesn't throw IllegalAccessException — same as `render`.
-              runCatching { it.asMethod().isAccessible = true }
-            }
+          // Kotlin `private fun` scrolling previews compile to JVM-private methods;
+          // `resolvePreviewInvocation` opens them so the reflective invoke below doesn't throw
+          // IllegalAccessException — same as `render`.
+          val (composableMethod, previewArgs) = resolvePreviewInvocation(clazz, spec)
           val bgArgb = resolveBackgroundColor(spec).toArgb()
           // Coil-backed images: same install as `render`'s main body, repeated here because
           // `render` returns INTO this scenario before reaching that call — a direct scroll /
@@ -1765,6 +1768,7 @@ class RenderEngine(
                   composableMethod,
                   wrapperFqnFromSpec = spec.wrapperClassName,
                   themeProviderFqn = spec.overrides?.themeProvider,
+                  previewArgs = previewArgs,
                 )
               }
             }
@@ -2119,9 +2123,33 @@ private fun SemanticsNode.descendantCount(): Int =
  * private+top-level so the compose-compiler plugin recognises it as a composable function.
  */
 @Composable
-private fun InvokeComposable(composableMethod: ComposableMethod) {
-  composableMethod.invoke(currentComposer, null)
+private fun InvokeComposable(composableMethod: ComposableMethod, previewArgs: List<Any?>) {
+  composableMethod.invoke(currentComposer, null, *previewArgs.toTypedArray())
 }
+
+/**
+ * Resolves the composable entrypoint for [spec] — plus the `@PreviewParameter` argument list to
+ * invoke it with, empty for the ordinary parameterless preview.
+ *
+ * Delegates to `:renderer-android`'s [ee.schimke.composeai.renderer.PreviewParameterSupport] so the
+ * daemon and the standalone renderer resolve providers identically. Before issue #3027 the daemon
+ * only ever asked for the parameterless `(Composer, int)` overload, so every preview declaring a
+ * `@PreviewParameter` argument failed resolution with `NoSuchMethodException` — no PNG and none of
+ * the composition-derived data products (semantics, layout, figma-svg), just an `.error.json`. The
+ * daemon renders one frame per preview id, so it takes the provider's first value; the per-value
+ * fan-out stays with the standalone renderer (see this file's class doc).
+ */
+private fun resolvePreviewInvocation(
+  clazz: Class<*>,
+  spec: RenderSpec,
+): ee.schimke.composeai.renderer.PreviewParameterSupport.Resolved =
+  ee.schimke.composeai.renderer.PreviewParameterSupport.resolve(
+    clazz = clazz,
+    functionName = spec.functionName,
+    providerClassName = spec.previewParameterProviderClassName,
+    limit = spec.previewParameterLimit,
+    classLoader = clazz.classLoader,
+  )
 
 /**
  * Wraps [InvokeComposable] in the preview's `@PreviewWrapper(SomeProvider::class)` `Wrap { … }` if
@@ -2153,6 +2181,7 @@ internal fun InvokeWithOptionalWrapper(
   composableMethod: ComposableMethod,
   wrapperFqnFromSpec: String?,
   themeProviderFqn: String? = null,
+  previewArgs: List<Any?> = emptyList(),
 ) {
   val wrapper =
     remember(composableMethod, wrapperFqnFromSpec, themeProviderFqn) {
@@ -2165,10 +2194,10 @@ internal fun InvokeWithOptionalWrapper(
         ?: resolveWrapperOrNull(composableMethod, wrapperFqnFromSpec)
     }
   if (wrapper == null) {
-    InvokeComposable(composableMethod)
+    InvokeComposable(composableMethod, previewArgs)
   } else {
     val (wrapMethod, wrapperInstance) = wrapper
-    val body: @Composable () -> Unit = { InvokeComposable(composableMethod) }
+    val body: @Composable () -> Unit = { InvokeComposable(composableMethod, previewArgs) }
     wrapMethod.invoke(currentComposer, wrapperInstance, body)
   }
 }
@@ -2426,6 +2455,21 @@ data class RenderSpec(
    * (best-effort) runtime-reflection lookup for direct-payload callers that bypass the manifest.
    */
   val wrapperClassName: String? = null,
+  /**
+   * FQN of the `PreviewParameterProvider` from `@PreviewParameter(SomeProvider::class)` when the
+   * source preview declares one, plus its `limit`. Sourced from the gradle plugin's discovery JSON
+   * for the same reason as [wrapperClassName] — the upstream annotation has
+   * `AnnotationRetention.BINARY` and is invisible to `Method.parameterAnnotations` at runtime.
+   *
+   * The render body resolves the preview's `(<T>, Composer, int)` overload and invokes it with the
+   * provider's **first** value: the daemon renders one frame per preview id, and these ids are the
+   * un-suffixed base ids the fan-out (standalone) renderer would emit as `<id>_<label>`. Null
+   * resolves the parameterless overload as before. Without this the daemon threw
+   * `NoSuchMethodException` from `getDeclaredComposableMethod` for every parameterized preview,
+   * costing them their PNG and every data product derived from the composition (issue #3027).
+   */
+  val previewParameterProviderClassName: String? = null,
+  val previewParameterLimit: Int = Int.MAX_VALUE,
 ) {
 
   enum class SpecUiMode {
@@ -2498,6 +2542,10 @@ data class RenderSpec(
         kind = map["kind"]?.takeIf { it.isNotBlank() },
         previewName = map["previewName"]?.takeIf { it.isNotBlank() },
         wrapperClassName = map["wrapperClassName"]?.takeIf { it.isNotBlank() },
+        previewParameterProviderClassName =
+          map["previewParameterProvider"]?.takeIf { it.isNotBlank() },
+        previewParameterLimit =
+          map["previewParameterLimit"]?.toIntOrNull() ?: defaults.previewParameterLimit,
       )
     }
 

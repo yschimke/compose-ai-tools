@@ -420,63 +420,16 @@ object PreviewManifestLoader {
   /**
    * Enumerate a `PreviewParameterProvider`'s values reflectively.
    *
-   * Throws [ProviderLoadException] on any hard failure (class missing, no no-arg constructor,
-   * missing/throwing `getValues()`) so the caller can isolate the failing preview and surface it as
-   * a per-preview error card rather than letting the throw sink the whole shard. Returns an empty
-   * list only when the provider legitimately yields no values.
+   * Throws [PreviewParameterLoadException] on any hard failure (class missing, no no-arg
+   * constructor, missing/throwing `getValues()`) so the caller can isolate the failing preview and
+   * surface it as a per-preview error card rather than letting the throw sink the whole shard.
+   * Returns an empty list only when the provider legitimately yields no values.
+   *
+   * The reflection itself lives in [PreviewParameterSupport] so the daemon's render body resolves
+   * providers exactly the same way (issue #3027) rather than growing a second copy that drifts.
    */
-  private fun loadProviderValues(providerFqn: String, limit: Int): List<Any?> {
-    val clazz =
-      try {
-        Class.forName(providerFqn)
-      } catch (e: ClassNotFoundException) {
-        throw ProviderLoadException("provider class $providerFqn not found on the test classpath", e)
-      }
-    val instance =
-      try {
-        val ctor = clazz.getDeclaredConstructor()
-        // `private` providers (idiomatic Kotlin, and rendered fine by Android Studio) compile to
-        // package-private JVM classes, so their no-arg constructor isn't reflectively callable from
-        // this package without opening it up first — see issue #2493.
-        ctor.isAccessible = true
-        ctor.newInstance()
-      } catch (e: Throwable) {
-        throw ProviderLoadException(
-          "couldn't instantiate $providerFqn via its no-arg constructor",
-          e,
-        )
-      }
-    // `PreviewParameterProvider<T>` exposes `values: Sequence<T>` as a Kotlin
-    // property — its JVM signature is `getValues(): Sequence`. Look up the
-    // method by name to avoid taking a compile-time dependency on the
-    // provider interface (which lives in the consumer's Compose artifact).
-    val getValues =
-      try {
-        clazz.getMethod("getValues")
-      } catch (e: Throwable) {
-        throw ProviderLoadException(
-          "$providerFqn has no getValues() — not a PreviewParameterProvider?",
-          e,
-        )
-      }
-    // Same package-private-class problem as the constructor above: a public `getValues()` declared
-    // on a package-private class throws `IllegalAccessException` from `Method.invoke` unless the
-    // member is opened up first. This is the crash in issue #2493.
-    getValues.isAccessible = true
-    return try {
-      @Suppress("UNCHECKED_CAST")
-      val sequence = getValues.invoke(instance) as? Sequence<Any?> ?: return emptyList()
-      // `Sequence.take(Int).toList()` is the Kotlin stdlib contract —
-      // drives the sequence lazily up to `limit` without requiring
-      // reflective access into package-private iterator implementations
-      // (`kotlin.jvm.internal.ArrayIterator`, which `Method.invoke`
-      // rejects with IllegalAccessException from outside the stdlib
-      // module).
-      sequence.take(limit).toList()
-    } catch (e: Throwable) {
-      throw ProviderLoadException("$providerFqn.getValues() failed", e)
-    }
-  }
+  private fun loadProviderValues(providerFqn: String, limit: Int): List<Any?> =
+    PreviewParameterSupport.loadValues(providerFqn, limit)
 
   /**
    * Resolve the base output PNG for [entry] the same way [RobolectricRenderTestBase.outputFileFor]
@@ -496,9 +449,6 @@ object PreviewManifestLoader {
     return null
   }
 
-  /** Thrown by [loadProviderValues] on a hard provider-load failure so the caller can isolate it. */
-  private class ProviderLoadException(message: String, cause: Throwable?) :
-    RuntimeException(message, cause)
 }
 
 /**

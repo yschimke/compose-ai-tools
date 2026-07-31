@@ -1,7 +1,6 @@
 package ee.schimke.composeai.daemon
 
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.runtime.tooling.observe
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toArgb
@@ -1346,6 +1345,10 @@ open class RobolectricHost(
         // Preserve the preview's declared wrapper in held/live mode. This is part of the preview's
         // composition contract, not decoration: wrappers may provide required app locals.
         wrapperClassName = spec.wrapperClassName,
+        // …and its `@PreviewParameter` provider, so a held session resolves the same overload the
+        // one-shot render did instead of failing on the parameterless lookup (issue #3027).
+        previewParameterProviderClassName = spec.previewParameterProviderClassName,
+        previewParameterLimit = spec.previewParameterLimit,
         // Theme providers use the same PreviewWrapperProvider machinery and replace the declared
         // wrapper when they resolve, matching the one-shot render path.
         themeProviderFqn = spec.overrides?.themeProvider,
@@ -2359,13 +2362,23 @@ open class RobolectricHost(
       val isGlanceAppWidget =
         start.kind.equals(RenderEngine.GLANCE_APPWIDGET_KIND, ignoreCase = true)
       val nonComposableInvocation = isTile || isNotification || isGlanceAppWidget
-      val composableMethod =
+      // `@PreviewParameter` previews resolve to the `(<T>, Composer, int)` overload and are invoked
+      // with the provider's first value — same contract as the one-shot render (issue #3027).
+      // `resolve` also opens the method for reflective invocation, so a `private fun` preview
+      // composes in the held session instead of blanking the panel with IllegalAccessException.
+      val resolvedInvocation =
         if (nonComposableInvocation) {
           null
         } else {
           try {
             val clazz = Class.forName(start.previewClassName, true, classLoader)
-            clazz.getDeclaredComposableMethod(start.previewFunctionName)
+            ee.schimke.composeai.renderer.PreviewParameterSupport.resolve(
+              clazz = clazz,
+              functionName = start.previewFunctionName,
+              providerClassName = start.previewParameterProviderClassName,
+              limit = start.previewParameterLimit,
+              classLoader = classLoader,
+            )
           } catch (t: Throwable) {
             // Resolution failure (class missing / method missing / signature mismatch) — surface
             // immediately on the start reply so the host doesn't wait out the 30s timeout.
@@ -2374,6 +2387,8 @@ open class RobolectricHost(
             return
           }
         }
+      val composableMethod = resolvedInvocation?.method
+      val previewArgs: List<Any?> = resolvedInvocation?.args ?: emptyList()
 
       // Activity registration — same idempotent shape RenderEngine.render uses. Robolectric
       // 4.13+ requires `ComponentActivity` to be reachable through `ShadowPackageManager` before
@@ -2643,6 +2658,7 @@ open class RobolectricHost(
                               composableMethod = composableMethod!!,
                               wrapperFqnFromSpec = start.wrapperClassName,
                               themeProviderFqn = start.themeProviderFqn,
+                              previewArgs = previewArgs,
                             )
                           }
                         }

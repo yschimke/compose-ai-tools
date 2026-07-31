@@ -762,6 +762,54 @@ class RenderEngineTest {
   }
 
   @Test
+  fun previewParameterPreviewRendersFirstProviderValue() {
+    // Regression (issue #3027): a preview declaring `@PreviewParameter` compiles to
+    // `foo(<T>, Composer, int)`, which the daemon's parameterless
+    // `getDeclaredComposableMethod(functionName)` lookup never matches — it threw
+    // `NoSuchMethodException: <class>.<function>` before composition started, so the preview
+    // produced no PNG and none of the composition-derived data products, only an `.error.json`.
+    // The provider FQN now rides the `RenderSpec` payload (the manifest router sources it from
+    // `previews.json`, since the annotation's BINARY retention hides it from runtime reflection)
+    // and the render invokes the preview with the provider's FIRST value.
+    val outputDir = tempFolder.newFolder("renders-preview-parameter")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost()
+    host.start()
+    try {
+      val result =
+        host.submit(
+          RenderRequest.Render(
+            payload =
+              "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+                "functionName=ThemedTintedSquare;" +
+                "previewParameterProvider=ee.schimke.composeai.daemon.SquareTintProvider;" +
+                "widthPx=64;heightPx=64;density=1.0;" +
+                "showBackground=true;" +
+                "outputBaseName=preview-parameter-square"
+          ),
+          timeoutMs = 120_000,
+        )
+
+      assertNotNull("@PreviewParameter preview must render a PNG, not error out", result.pngPath)
+      val pngFile = File(result.pngPath!!)
+      assertTrue("rendered PNG must exist on disk: ${pngFile.absolutePath}", pngFile.exists())
+      val img = ByteArrayInputStream(pngFile.readBytes()).use { ImageIO.read(it) }
+      assertNotNull("PNG must decode via javax.imageio", img)
+      // The provider's first value (green), not its second (blue) — a single-frame render has one
+      // output file per preview id, so "first value" is the contract, not "any value".
+      val matchPct = pixelMatchPct(img!!, 0x43A047, perChannelTolerance = 8)
+      assertTrue(
+        "expected >= 95% of pixels close to the provider's FIRST value #43A047; got " +
+          "${"%.2f".format(matchPct * 100)}%",
+        matchPct >= 0.95,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun serifTextWritesFontsUsedDataProduct() {
     val outputDir = tempFolder.newFolder("renders-fonts")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
