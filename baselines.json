@@ -711,6 +711,254 @@
     "sha256": "04d6202046790b0a5b6ca36340b1f7cf703fda31d351fd4684b79ec0027726e5",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/PermissionGatedPreview.kt"
   },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixBackgroundColorPreview_Background colour": {
+    "captureLabel": "",
+    "functionName": "MatrixBackgroundColorPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixBackgroundColorPreview_Background_colour.png",
+    "sha256": "938f7884666d7a858a279d03ae4e953301e0d8fdab1c60bf28048c56f5131dc4",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixComponentWrapPreview_Component wrap": {
+    "captureLabel": "",
+    "functionName": "MatrixComponentWrapPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixComponentWrapPreview_Component_wrap.png",
+    "sha256": "7cded270914b579748d0349e61d112703fe8b9e847d71be5ab84299901ac1ca8",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixDeviceSpecPreview_Device spec": {
+    "captureLabel": "",
+    "functionName": "MatrixDeviceSpecPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixDeviceSpecPreview_Device_spec.png",
+    "sha256": "0b11b932829fd2a57aab5bed1b770b999bf746e61c30976190ed7f1b3606b0c1",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixFixedBothAxesPreview_Fixed both axes": {
+    "captureLabel": "",
+    "functionName": "MatrixFixedBothAxesPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes.png",
+    "sha256": "1a066d9a7dedf10c2cdd7387434361fd2d964b8bf4134eeab36628fe252b3709",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixFixedWidthOnlyPreview_Fixed width only": {
+    "captureLabel": "",
+    "functionName": "MatrixFixedWidthOnlyPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only.png",
+    "sha256": "d0c50bc110ceb10fd2997faa907a9adc1b01a5c545554b99c2c0c4e65064fb6f",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixFoldableDevicePreview_Foldable": {
+    "captureLabel": "",
+    "functionName": "MatrixFoldableDevicePreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixFoldableDevicePreview_Foldable.png",
+    "sha256": "8ce4d4b3bfd62e9a9872964af937afbd706079c869120478338325d49eaa7c11",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_100%": {
+    "captureLabel": "",
+    "functionName": "MatrixFontScaleMultiPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixFontScaleMultiPreview_100.png",
+    "sha256": "151d55f9e92a279d1a9eec2c39b6bf76f4da290fdf149c316d3bdf929d9383c6",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_115%": {
+    "captureLabel": "",
+    "functionName": "MatrixFontScaleMultiPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixFontScaleMultiPreview_115.png",
+    "sha256": "b007d1a80ee5c148018fad4a6eaee395df720dd9a87fadbf4a6b76b439b0d944",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_130%": {
+    "captureLabel": "",
+    "functionName": "MatrixFontScaleMultiPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixFontScaleMultiPreview_130.png",
+    "sha256": "efd5259a25d7c3d26a46b21154160d9ec47917a6e4cc3fbc2276983da4fc6cd8",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_150%": {
+    "captureLabel": "",
+    "functionName": "MatrixFontScaleMultiPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixFontScaleMultiPreview_150.png",
+    "sha256": "df18f9e4b6cec55d930486651eda43f59f78df6ee012249454f84e532d24f29f",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_180%": {
+    "captureLabel": "",
+    "functionName": "MatrixFontScaleMultiPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixFontScaleMultiPreview_180.png",
+    "sha256": "48d9322fc96a9413983110770102a4a5dda9a5abbbef6b1d0bcefd68a577337a",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_200%": {
+    "captureLabel": "",
+    "functionName": "MatrixFontScaleMultiPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixFontScaleMultiPreview_200.png",
+    "sha256": "08cec390f74b008dd5c403a3e5e642ed34ee7ceed8ac09a710e70d89b929e7fd",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_85%": {
+    "captureLabel": "",
+    "functionName": "MatrixFontScaleMultiPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixFontScaleMultiPreview_85.png",
+    "sha256": "a1340657f23961ace9d942fac830c0b494055506074b9f5ed62f9620563789a4",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixFontScalePreview_Font scale 2x": {
+    "captureLabel": "",
+    "functionName": "MatrixFontScalePreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixFontScalePreview_Font_scale_2x.png",
+    "sha256": "f566f12651b6a59c4f92cc02c6931dd9ae2b754bd4e07cddfcd996ae89b70676",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixLightDarkMultiPreview_Dark": {
+    "captureLabel": "",
+    "functionName": "MatrixLightDarkMultiPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixLightDarkMultiPreview_Dark.png",
+    "sha256": "6d03e014fadec1ca28e829b77693ee7683821d691d573b619822b7e32937b53e",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixLightDarkMultiPreview_Light": {
+    "captureLabel": "",
+    "functionName": "MatrixLightDarkMultiPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixLightDarkMultiPreview_Light.png",
+    "sha256": "bee3f09bdb5b9e0f496b0741449b357ed34cb4eb174bc8cda72bb1791116acbd",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixLightPreview_Day": {
+    "captureLabel": "",
+    "functionName": "MatrixLightPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixLightPreview_Day.png",
+    "sha256": "120abbe746bb00b7bcff87cf0298beac00e0431a0e6d446d2383c016fd78e8b2",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixLocalePreview_German": {
+    "captureLabel": "",
+    "functionName": "MatrixLocalePreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixLocalePreview_German.png",
+    "sha256": "6ea81cbbb361b291e8eb5b0bec0d94fb9a72d37a18bb0fe8273b403ec1210087",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixMetaAnnotationMultiPreview_Meta phone": {
+    "captureLabel": "",
+    "functionName": "MatrixMetaAnnotationMultiPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixMetaAnnotationMultiPreview_Meta_phone.png",
+    "sha256": "113f08e4958c7212604cc508015d239dc3882cf6542eb8100243491d336b0253",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixMetaAnnotationMultiPreview_Meta watch": {
+    "captureLabel": "",
+    "functionName": "MatrixMetaAnnotationMultiPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch.png",
+    "sha256": "ab9b39600512564311ea4c8a30c5c8c86bf3ff4f7647252caef9bc31269e3fd1",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixNightPreview_Night": {
+    "captureLabel": "",
+    "functionName": "MatrixNightPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixNightPreview_Night.png",
+    "sha256": "97e5941f50f24ed4158d662a8c4946fad4838160f34db697235454b904a24326",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixPhoneDevicePreview_Phone": {
+    "captureLabel": "",
+    "functionName": "MatrixPhoneDevicePreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixPhoneDevicePreview_Phone.png",
+    "sha256": "21872a34b829fd0cea6ba82c908aeca92c6706907b2d39c59886006b9eec30a3",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixScreenSizesMultiPreview_Desktop": {
+    "captureLabel": "",
+    "functionName": "MatrixScreenSizesMultiPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixScreenSizesMultiPreview_Desktop.png",
+    "sha256": "6eb59b071dab825298f0059df34c64b43a0449d631922545cd71777e09a37b0f",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixScreenSizesMultiPreview_Phone": {
+    "captureLabel": "",
+    "functionName": "MatrixScreenSizesMultiPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixScreenSizesMultiPreview_Phone.png",
+    "sha256": "d6d50cdeec2843308903fc023b4f5a56175c1439e824dbee8cc592d72fc24ce0",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixScreenSizesMultiPreview_Phone - Landscape": {
+    "captureLabel": "",
+    "functionName": "MatrixScreenSizesMultiPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixScreenSizesMultiPreview_Phone_Landscape.png",
+    "sha256": "673aab921c89eb77964c1c5b19a13a3ed7630902877598ca6148f360578c0d9b",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixScreenSizesMultiPreview_Tablet": {
+    "captureLabel": "",
+    "functionName": "MatrixScreenSizesMultiPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixScreenSizesMultiPreview_Tablet.png",
+    "sha256": "3d0077c8f24c3e193e98ed7bf55b695fc9caf3f89b4d1f5dbba074d371bddfcb",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixScreenSizesMultiPreview_Tablet - Landscape": {
+    "captureLabel": "",
+    "functionName": "MatrixScreenSizesMultiPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixScreenSizesMultiPreview_Tablet_Landscape.png",
+    "sha256": "3d0077c8f24c3e193e98ed7bf55b695fc9caf3f89b4d1f5dbba074d371bddfcb",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixScreenSizesMultiPreview_Unfolded Foldable": {
+    "captureLabel": "",
+    "functionName": "MatrixScreenSizesMultiPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixScreenSizesMultiPreview_Unfolded_Foldable.png",
+    "sha256": "5244ef712b194cfba1c6d30553bd2b1633751eb31e3793fb04ebdd9be1aaf8a4",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixSystemUiPreview_System UI": {
+    "captureLabel": "",
+    "functionName": "MatrixSystemUiPreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixSystemUiPreview_System_UI.png",
+    "sha256": "ca7403091b678226b8918b9bde1f508b8d5b0180db75b0d5383108368647da0a",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixTvDevicePreview_TV": {
+    "captureLabel": "",
+    "functionName": "MatrixTvDevicePreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixTvDevicePreview_TV.png",
+    "sha256": "f5fc524d2ab9b5c6fd14ef7d6302c99f93772f00f458de8e06b078d44eb58f34",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
+  "samples:android/com.example.sampleandroid.PreviewModeMatrixKt.MatrixWearDevicePreview_Wear": {
+    "captureLabel": "",
+    "functionName": "MatrixWearDevicePreview",
+    "module": "samples:android",
+    "renderBasename": "MatrixWearDevicePreview_Wear.png",
+    "sha256": "571c464b614f02d0c6767e116ae338d226283f8c336a95767e0cb2d7886533f2",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt"
+  },
   "samples:android/com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text": {
     "captureLabel": "Lorem ipsum dolor sit amet conse",
     "functionName": "BodyTextPreview",
@@ -1438,6 +1686,190 @@
     "renderBasename": "PinchToZoomPreview_Pinch_To_Zoom.png",
     "sha256": "19cb3d976741ca4eac79b3d54fa796f2e36bfbe6ecbca17c8eccac082e6f1a0a",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/PinchToZoomPreview.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixBackgroundColorPreview_Background colour": {
+    "captureLabel": "",
+    "functionName": "MatrixBackgroundColorPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixBackgroundColorPreview_Background_colour.png",
+    "sha256": "be058a799af120cf965efac1c028572b5850105d37e8d1c141e701b7d76f51a5",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixComponentWrapPreview_Component wrap": {
+    "captureLabel": "",
+    "functionName": "MatrixComponentWrapPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixComponentWrapPreview_Component_wrap.png",
+    "sha256": "8031f025c175cbf211edd13c530e32b3e33307fd4297faaf4565e74805c8a62c",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixDeviceSpecPreview_Device spec": {
+    "captureLabel": "",
+    "functionName": "MatrixDeviceSpecPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixDeviceSpecPreview_Device_spec.png",
+    "sha256": "241c34a77bc1b3155596623a0e59991099477b0b178fbb6911fb4d4f95eafad2",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixFixedBothAxesPreview_Fixed both axes": {
+    "captureLabel": "",
+    "functionName": "MatrixFixedBothAxesPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes.png",
+    "sha256": "6293cb4e66310d34b3c36a3d162c7b40dc601ce9c743d9bc4798388c0c0ecf81",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixFixedWidthOnlyPreview_Fixed width only": {
+    "captureLabel": "",
+    "functionName": "MatrixFixedWidthOnlyPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only.png",
+    "sha256": "68af71a67073805b4fb5176b43da78b6ce7a45a58e19a6d4fd309c43fd13dd0f",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixFoldableDevicePreview_Foldable": {
+    "captureLabel": "",
+    "functionName": "MatrixFoldableDevicePreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixFoldableDevicePreview_Foldable.png",
+    "sha256": "1edeca0145d300d0c18417f091e0ab52d0e01465b01ecc920407937973e55c10",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_100%": {
+    "captureLabel": "",
+    "functionName": "MatrixFontScaleMultiPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixFontScaleMultiPreview_100.png",
+    "sha256": "b9617ae524520f747521b00a47dfac7e67886f20be28742d73796f25d3fdca60",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_115%": {
+    "captureLabel": "",
+    "functionName": "MatrixFontScaleMultiPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixFontScaleMultiPreview_115.png",
+    "sha256": "f1cfb8d2ca68f11b9965c14458336b7b5de3c5a6f355ffab6260984f360635bc",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_130%": {
+    "captureLabel": "",
+    "functionName": "MatrixFontScaleMultiPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixFontScaleMultiPreview_130.png",
+    "sha256": "9cc342cd3567f2aa78d5446d2c90c2ef08ca3077a80b65ef08a1643707d27422",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_150%": {
+    "captureLabel": "",
+    "functionName": "MatrixFontScaleMultiPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixFontScaleMultiPreview_150.png",
+    "sha256": "59e3e5e4169cf337a4a828b2fc33ba7b96f46a7e513782165ed0589214094b3a",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_180%": {
+    "captureLabel": "",
+    "functionName": "MatrixFontScaleMultiPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixFontScaleMultiPreview_180.png",
+    "sha256": "561f7b7382cc75bf703f4b26bff48b0aa797e7b9da0546f00a3ddf7f0623ce3d",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_200%": {
+    "captureLabel": "",
+    "functionName": "MatrixFontScaleMultiPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixFontScaleMultiPreview_200.png",
+    "sha256": "f853664579b235d1b94ea01b68b9bc8d7736a2d2015900befd4aec2809b244d9",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_85%": {
+    "captureLabel": "",
+    "functionName": "MatrixFontScaleMultiPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixFontScaleMultiPreview_85.png",
+    "sha256": "dc27a96c1ce8b1ade25591d7429b5364fe52a040f0f30e838c2f492c9f41f651",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixFontScalePreview_Font scale 2x": {
+    "captureLabel": "",
+    "functionName": "MatrixFontScalePreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixFontScalePreview_Font_scale_2x.png",
+    "sha256": "ea2fc21aa37fdc5331eb4e72913a5f67e721ed8ca39e77fcf52c40440134f0a1",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixLightDarkMultiPreview_Dark": {
+    "captureLabel": "",
+    "functionName": "MatrixLightDarkMultiPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixLightDarkMultiPreview_Dark.png",
+    "sha256": "8a11a60d38e1bdb0a4270b3b17e2e1d76a37cea8395de26fc7620e78f1a2ea1b",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixLightDarkMultiPreview_Light": {
+    "captureLabel": "",
+    "functionName": "MatrixLightDarkMultiPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixLightDarkMultiPreview_Light.png",
+    "sha256": "1f9a635669c8881569ad6c6c1122c707cdf6d2296287a678302f4dd8945567b2",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixLightPreview_Day": {
+    "captureLabel": "",
+    "functionName": "MatrixLightPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixLightPreview_Day.png",
+    "sha256": "d2dacb18034ba628c87e5ac44c9d93c229175ab2845f30d9c1324719dbd01d92",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixLocalePreview_German": {
+    "captureLabel": "",
+    "functionName": "MatrixLocalePreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixLocalePreview_German.png",
+    "sha256": "7e113066ebf6aace33de2656303630f40349d7a7112c719bb7ed2a5dd056a30c",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixMetaAnnotationMultiPreview_Meta phone": {
+    "captureLabel": "",
+    "functionName": "MatrixMetaAnnotationMultiPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixMetaAnnotationMultiPreview_Meta_phone.png",
+    "sha256": "776c97a276d3c1f247e758f20b2902acb3a7c103fc79c18fa458076a6c121eb6",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixMetaAnnotationMultiPreview_Meta watch": {
+    "captureLabel": "",
+    "functionName": "MatrixMetaAnnotationMultiPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch.png",
+    "sha256": "7111552c6fa4268cb50098959f0209d22043558604d965d932b27a2a7dea692b",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixNightPreview_Night": {
+    "captureLabel": "",
+    "functionName": "MatrixNightPreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixNightPreview_Night.png",
+    "sha256": "7f753446d77cd667655b6d14c5c512b9d1b19f01c92d5a53f0f66e38598a3c50",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixPhoneDevicePreview_Phone": {
+    "captureLabel": "",
+    "functionName": "MatrixPhoneDevicePreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixPhoneDevicePreview_Phone.png",
+    "sha256": "15acf841776ea73fb3e7847a4bc6581a1e0025a6930d0ec05a4372211751fab5",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PreviewModeMatrixKt.MatrixWearDevicePreview_Wear": {
+    "captureLabel": "",
+    "functionName": "MatrixWearDevicePreview",
+    "module": "samples:cmp",
+    "renderBasename": "MatrixWearDevicePreview_Wear.png",
+    "sha256": "2a307f38e13b1fdc3ef03ea482da681048e2e89860da3c2b2cf8d9d33b2c8877",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt"
   },
   "samples:cmp/com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch": {
     "captureLabel": "Amber",
@@ -3396,7 +3828,7 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "4894efeb548deb8e9074068f891ddd4a3c9901e2e5482960eebaa1dbf8e65cca",
+    "sha256": "094df53da2ad611cb769f7a7e381c83ac0dbee764bc2060d387be804c6c5ba23",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round": {
@@ -3404,7 +3836,7 @@
     "functionName": "ActivityListMotionLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListMotionLongPreview_Devices_Large_Round_SCROLL_long.png",
-    "sha256": "4894efeb548deb8e9074068f891ddd4a3c9901e2e5482960eebaa1dbf8e65cca",
+    "sha256": "094df53da2ad611cb769f7a7e381c83ac0dbee764bc2060d387be804c6c5ba23",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round#1": {

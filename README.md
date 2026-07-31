@@ -2,101 +2,6 @@
 
 Auto-generated from `main`. Browse inline or compare against PR branches.
 
-> [!WARNING]
-> 85 preview(s) failed to render in the latest update (85 retained from the prior baseline). See **Render Failures** below.
-
-## Render Failures
-
-The render task completed but no PNG was produced for these previews. Entries with a prior baseline keep their previous image; the rest are absent from the gallery until a successful render lands.
-
-| Preview | Module | Function | Source | Baseline |
-|---------|--------|----------|--------|----------|
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.AppScaffoldTemplate_Dark` | samples:design-catalog-m3 | `AppScaffoldTemplate` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.AppScaffoldTemplate_Light` | samples:design-catalog-m3 | `AppScaffoldTemplate` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.AssistChipSticker_Dark` | samples:design-catalog-m3 | `AssistChipSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.AssistChipSticker_Light` | samples:design-catalog-m3 | `AssistChipSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.BadgeSticker_Dark` | samples:design-catalog-m3 | `BadgeSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.BadgeSticker_Light` | samples:design-catalog-m3 | `BadgeSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.CheckboxChecked_Dark` | samples:design-catalog-m3 | `CheckboxChecked` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.CheckboxChecked_Dark_VARIANT_unchecked` | samples:design-catalog-m3 | `CheckboxChecked` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.CheckboxChecked_Light` | samples:design-catalog-m3 | `CheckboxChecked` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.CheckboxChecked_Light_VARIANT_unchecked` | samples:design-catalog-m3 | `CheckboxChecked` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.CircularProgressSticker_Dark` | samples:design-catalog-m3 | `CircularProgressSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.CircularProgressSticker_Light` | samples:design-catalog-m3 | `CircularProgressSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.ElevatedButtonSticker_Dark` | samples:design-catalog-m3 | `ElevatedButtonSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.ElevatedButtonSticker_Light` | samples:design-catalog-m3 | `ElevatedButtonSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.ElevatedCardSticker_Dark` | samples:design-catalog-m3 | `ElevatedCardSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.ElevatedCardSticker_Light` | samples:design-catalog-m3 | `ElevatedCardSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FabSticker_Dark` | samples:design-catalog-m3 | `FabSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FabSticker_Light` | samples:design-catalog-m3 | `FabSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonDisabled_Dark` | samples:design-catalog-m3 | `FilledButtonDisabled` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonDisabled_Light` | samples:design-catalog-m3 | `FilledButtonDisabled` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonFocused_Dark` | samples:design-catalog-m3 | `FilledButtonFocused` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonFocused_Light` | samples:design-catalog-m3 | `FilledButtonFocused` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonIconLabel_Dark` | samples:design-catalog-m3 | `FilledButtonIconLabel` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonIconLabel_Light` | samples:design-catalog-m3 | `FilledButtonIconLabel` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonLargeFont_Dark` | samples:design-catalog-m3 | `FilledButtonLargeFont` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonLargeFont_Light` | samples:design-catalog-m3 | `FilledButtonLargeFont` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonPressed_Dark` | samples:design-catalog-m3 | `FilledButtonPressed` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonPressed_Light` | samples:design-catalog-m3 | `FilledButtonPressed` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonPseudo_Dark` | samples:design-catalog-m3 | `FilledButtonPseudo` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonPseudo_Light` | samples:design-catalog-m3 | `FilledButtonPseudo` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonRtl_Dark` | samples:design-catalog-m3 | `FilledButtonRtl` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButtonRtl_Light` | samples:design-catalog-m3 | `FilledButtonRtl` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledButton_Light` | samples:design-catalog-m3 | `FilledButton` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledCardSticker_Dark` | samples:design-catalog-m3 | `FilledCardSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledCardSticker_Light` | samples:design-catalog-m3 | `FilledCardSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledTonalButtonSticker_Dark` | samples:design-catalog-m3 | `FilledTonalButtonSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilledTonalButtonSticker_Light` | samples:design-catalog-m3 | `FilledTonalButtonSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilterChipSelected_Dark` | samples:design-catalog-m3 | `FilterChipSelected` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilterChipSelected_Dark_VARIANT_unselected` | samples:design-catalog-m3 | `FilterChipSelected` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilterChipSelected_Light` | samples:design-catalog-m3 | `FilterChipSelected` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.FilterChipSelected_Light_VARIANT_unselected` | samples:design-catalog-m3 | `FilterChipSelected` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.LinearProgressSticker_Dark` | samples:design-catalog-m3 | `LinearProgressSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.LinearProgressSticker_Light` | samples:design-catalog-m3 | `LinearProgressSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.OutlinedButtonDisabled_Dark` | samples:design-catalog-m3 | `OutlinedButtonDisabled` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.OutlinedButtonDisabled_Light` | samples:design-catalog-m3 | `OutlinedButtonDisabled` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.OutlinedButtonSticker_Dark` | samples:design-catalog-m3 | `OutlinedButtonSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.OutlinedButtonSticker_Light` | samples:design-catalog-m3 | `OutlinedButtonSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.OutlinedCardSticker_Dark` | samples:design-catalog-m3 | `OutlinedCardSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.OutlinedCardSticker_Light` | samples:design-catalog-m3 | `OutlinedCardSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.OutlinedTextFieldSticker_Dark` | samples:design-catalog-m3 | `OutlinedTextFieldSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.OutlinedTextFieldSticker_Light` | samples:design-catalog-m3 | `OutlinedTextFieldSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.RadioSelected_Dark` | samples:design-catalog-m3 | `RadioSelected` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.RadioSelected_Dark_VARIANT_unselected` | samples:design-catalog-m3 | `RadioSelected` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.RadioSelected_Light` | samples:design-catalog-m3 | `RadioSelected` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.RadioSelected_Light_VARIANT_unselected` | samples:design-catalog-m3 | `RadioSelected` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SegmentedToggle_Dark` | samples:design-catalog-m3 | `SegmentedToggle` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SegmentedToggle_Light` | samples:design-catalog-m3 | `SegmentedToggle` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SliderMid_Dark` | samples:design-catalog-m3 | `SliderMid` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SliderMid_Light` | samples:design-catalog-m3 | `SliderMid` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SlottedCardSlotsSticker_Dark` | samples:design-catalog-m3 | `SlottedCardSlotsSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SlottedCardSlotsSticker_Light` | samples:design-catalog-m3 | `SlottedCardSlotsSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SlottedCardSticker_Dark` | samples:design-catalog-m3 | `SlottedCardSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SlottedCardSticker_Light` | samples:design-catalog-m3 | `SlottedCardSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SwitchOnLargeFont_Dark` | samples:design-catalog-m3 | `SwitchOnLargeFont` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SwitchOnLargeFont_Light` | samples:design-catalog-m3 | `SwitchOnLargeFont` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SwitchOnPseudo_Dark` | samples:design-catalog-m3 | `SwitchOnPseudo` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SwitchOnPseudo_Light` | samples:design-catalog-m3 | `SwitchOnPseudo` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SwitchOnRtl_Dark` | samples:design-catalog-m3 | `SwitchOnRtl` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SwitchOnRtl_Light` | samples:design-catalog-m3 | `SwitchOnRtl` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SwitchOn_Dark` | samples:design-catalog-m3 | `SwitchOn` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SwitchOn_Dark_VARIANT_off` | samples:design-catalog-m3 | `SwitchOn` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SwitchOn_Light` | samples:design-catalog-m3 | `SwitchOn` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.SwitchOn_Light_VARIANT_off` | samples:design-catalog-m3 | `SwitchOn` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextBrandedSpecimen_Dark` | samples:design-catalog-m3 | `TextBrandedSpecimen` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextBrandedSpecimen_Light` | samples:design-catalog-m3 | `TextBrandedSpecimen` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextButtonSticker_Dark` | samples:design-catalog-m3 | `TextButtonSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextButtonSticker_Light` | samples:design-catalog-m3 | `TextButtonSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextFieldSticker_Dark` | samples:design-catalog-m3 | `TextFieldSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextFieldSticker_Light` | samples:design-catalog-m3 | `TextFieldSticker` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextMaxLinesTruncated_Dark` | samples:design-catalog-m3 | `TextMaxLinesTruncated` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextMaxLinesTruncated_Light` | samples:design-catalog-m3 | `TextMaxLinesTruncated` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextMonospaceSpecimen_Dark` | samples:design-catalog-m3 | `TextMonospaceSpecimen` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextMonospaceSpecimen_Light` | samples:design-catalog-m3 | `TextMonospaceSpecimen` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextSerifSpecimen_Dark` | samples:design-catalog-m3 | `TextSerifSpecimen` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-| `samples:design-catalog-m3/com.example.designcatalogm3.CatalogPreviewsKt.TextSerifSpecimen_Light` | samples:design-catalog-m3 | `TextSerifSpecimen` | `src/main/kotlin/com/example/designcatalogm3/CatalogPreviews.kt` | retained |
-
 ## samples:android
 
 | Preview | Image |
@@ -166,6 +71,37 @@ The render task completed but no PNG was produced for these previews. Entries wi
 | `NowPlayingDebugOverlayPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NowPlayingDebugOverlayPreview_Now_Playing_debug_overlay.gif" width="150" /> |
 | `CameraPermissionDeniedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/CameraPermissionDeniedPreview_Camera_permission_denied.png" width="150" /> |
 | `CameraPermissionGrantedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/CameraPermissionGrantedPreview_Camera_permission_granted.png" width="150" /> |
+| `MatrixBackgroundColorPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixBackgroundColorPreview_Background_colour.png" width="150" /> |
+| `MatrixComponentWrapPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixComponentWrapPreview_Component_wrap.png" width="150" /> |
+| `MatrixDeviceSpecPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixDeviceSpecPreview_Device_spec.png" width="150" /> |
+| `MatrixFixedBothAxesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixFixedBothAxesPreview_Fixed_both_axes.png" width="150" /> |
+| `MatrixFixedWidthOnlyPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixFixedWidthOnlyPreview_Fixed_width_only.png" width="150" /> |
+| `MatrixFoldableDevicePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixFoldableDevicePreview_Foldable.png" width="150" /> |
+| `MatrixFontScaleMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixFontScaleMultiPreview_100.png" width="150" /> |
+| `MatrixFontScaleMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixFontScaleMultiPreview_115.png" width="150" /> |
+| `MatrixFontScaleMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixFontScaleMultiPreview_130.png" width="150" /> |
+| `MatrixFontScaleMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixFontScaleMultiPreview_150.png" width="150" /> |
+| `MatrixFontScaleMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixFontScaleMultiPreview_180.png" width="150" /> |
+| `MatrixFontScaleMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixFontScaleMultiPreview_200.png" width="150" /> |
+| `MatrixFontScaleMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixFontScaleMultiPreview_85.png" width="150" /> |
+| `MatrixFontScalePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixFontScalePreview_Font_scale_2x.png" width="150" /> |
+| `MatrixLightDarkMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixLightDarkMultiPreview_Dark.png" width="150" /> |
+| `MatrixLightDarkMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixLightDarkMultiPreview_Light.png" width="150" /> |
+| `MatrixLightPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixLightPreview_Day.png" width="150" /> |
+| `MatrixLocalePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixLocalePreview_German.png" width="150" /> |
+| `MatrixMetaAnnotationMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixMetaAnnotationMultiPreview_Meta_phone.png" width="150" /> |
+| `MatrixMetaAnnotationMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixMetaAnnotationMultiPreview_Meta_watch.png" width="150" /> |
+| `MatrixNightPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixNightPreview_Night.png" width="150" /> |
+| `MatrixPhoneDevicePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixPhoneDevicePreview_Phone.png" width="150" /> |
+| `MatrixScreenSizesMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixScreenSizesMultiPreview_Desktop.png" width="150" /> |
+| `MatrixScreenSizesMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixScreenSizesMultiPreview_Phone.png" width="150" /> |
+| `MatrixScreenSizesMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixScreenSizesMultiPreview_Phone_Landscape.png" width="150" /> |
+| `MatrixScreenSizesMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixScreenSizesMultiPreview_Tablet.png" width="150" /> |
+| `MatrixScreenSizesMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixScreenSizesMultiPreview_Tablet_Landscape.png" width="150" /> |
+| `MatrixScreenSizesMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixScreenSizesMultiPreview_Unfolded_Foldable.png" width="150" /> |
+| `MatrixSystemUiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixSystemUiPreview_System_UI.png" width="150" /> |
+| `MatrixTvDevicePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixTvDevicePreview_TV.png" width="150" /> |
+| `MatrixWearDevicePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/MatrixWearDevicePreview_Wear.png" width="150" /> |
 | `BodyTextPreview · Lorem ipsum dolor sit amet conse` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/BodyTextPreview_Body_Text_Lorem_ipsum_dolor_sit_amet_conse.png" width="150" /> |
 | `BodyTextPreview · Short` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/BodyTextPreview_Body_Text_Short.png" width="150" /> |
 | `BodyTextPreview · The quick brown fox` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/BodyTextPreview_Body_Text_The_quick_brown_fox.png" width="150" /> |
@@ -309,6 +245,29 @@ The render task completed but no PNG was produced for these previews. Entries wi
 | `MultiTouchDrawingSeededPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MultiTouchDrawingSeededPreview_Multi_Touch_Drawing_seeded.png" width="150" /> |
 | `OverridableListPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/OverridableListPreview_Overridable_List.png" width="150" /> |
 | `PinchToZoomPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/PinchToZoomPreview_Pinch_To_Zoom.png" width="150" /> |
+| `MatrixBackgroundColorPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixBackgroundColorPreview_Background_colour.png" width="150" /> |
+| `MatrixComponentWrapPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixComponentWrapPreview_Component_wrap.png" width="150" /> |
+| `MatrixDeviceSpecPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixDeviceSpecPreview_Device_spec.png" width="150" /> |
+| `MatrixFixedBothAxesPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixFixedBothAxesPreview_Fixed_both_axes.png" width="150" /> |
+| `MatrixFixedWidthOnlyPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixFixedWidthOnlyPreview_Fixed_width_only.png" width="150" /> |
+| `MatrixFoldableDevicePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixFoldableDevicePreview_Foldable.png" width="150" /> |
+| `MatrixFontScaleMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixFontScaleMultiPreview_100.png" width="150" /> |
+| `MatrixFontScaleMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixFontScaleMultiPreview_115.png" width="150" /> |
+| `MatrixFontScaleMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixFontScaleMultiPreview_130.png" width="150" /> |
+| `MatrixFontScaleMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixFontScaleMultiPreview_150.png" width="150" /> |
+| `MatrixFontScaleMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixFontScaleMultiPreview_180.png" width="150" /> |
+| `MatrixFontScaleMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixFontScaleMultiPreview_200.png" width="150" /> |
+| `MatrixFontScaleMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixFontScaleMultiPreview_85.png" width="150" /> |
+| `MatrixFontScalePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixFontScalePreview_Font_scale_2x.png" width="150" /> |
+| `MatrixLightDarkMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixLightDarkMultiPreview_Dark.png" width="150" /> |
+| `MatrixLightDarkMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixLightDarkMultiPreview_Light.png" width="150" /> |
+| `MatrixLightPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixLightPreview_Day.png" width="150" /> |
+| `MatrixLocalePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixLocalePreview_German.png" width="150" /> |
+| `MatrixMetaAnnotationMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixMetaAnnotationMultiPreview_Meta_phone.png" width="150" /> |
+| `MatrixMetaAnnotationMultiPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixMetaAnnotationMultiPreview_Meta_watch.png" width="150" /> |
+| `MatrixNightPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixNightPreview_Night.png" width="150" /> |
+| `MatrixPhoneDevicePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixPhoneDevicePreview_Phone.png" width="150" /> |
+| `MatrixWearDevicePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MatrixWearDevicePreview_Wear.png" width="150" /> |
 | `SwatchPreview · Amber` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/SwatchPreview_Color_Swatch_Amber.png" width="150" /> |
 | `SwatchPreview · Crimson` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/SwatchPreview_Color_Swatch_Crimson.png" width="150" /> |
 | `SwatchPreview · Teal` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/SwatchPreview_Color_Swatch_Teal.png" width="150" /> |
@@ -352,7 +311,92 @@ The render task completed but no PNG was produced for these previews. Entries wi
 
 | Preview | Image |
 |---------|-------|
+| `AppScaffoldTemplate` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/AppScaffoldTemplate_Dark.png" width="150" /> |
+| `AppScaffoldTemplate` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/AppScaffoldTemplate_Light.png" width="150" /> |
+| `AssistChipSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/AssistChipSticker_Dark.png" width="150" /> |
+| `AssistChipSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/AssistChipSticker_Light.png" width="150" /> |
+| `BadgeSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/BadgeSticker_Dark.png" width="150" /> |
+| `BadgeSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/BadgeSticker_Light.png" width="150" /> |
+| `CheckboxChecked` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/CheckboxChecked_Dark.png" width="150" /> |
+| `CheckboxChecked` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/CheckboxChecked_Dark_VARIANT_unchecked.png" width="150" /> |
+| `CheckboxChecked` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/CheckboxChecked_Light.png" width="150" /> |
+| `CheckboxChecked` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/CheckboxChecked_Light_VARIANT_unchecked.png" width="150" /> |
+| `CircularProgressSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/CircularProgressSticker_Dark.png" width="150" /> |
+| `CircularProgressSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/CircularProgressSticker_Light.png" width="150" /> |
+| `ElevatedButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/ElevatedButtonSticker_Dark.png" width="150" /> |
+| `ElevatedButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/ElevatedButtonSticker_Light.png" width="150" /> |
+| `ElevatedCardSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/ElevatedCardSticker_Dark.png" width="150" /> |
+| `ElevatedCardSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/ElevatedCardSticker_Light.png" width="150" /> |
+| `FabSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FabSticker_Dark.png" width="150" /> |
+| `FabSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FabSticker_Light.png" width="150" /> |
+| `FilledButtonDisabled` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledButtonDisabled_Dark.png" width="150" /> |
+| `FilledButtonDisabled` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledButtonDisabled_Light.png" width="150" /> |
+| `FilledButtonFocused` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledButtonFocused_Dark.png" width="150" /> |
+| `FilledButtonFocused` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledButtonFocused_Light.png" width="150" /> |
+| `FilledButtonIconLabel` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledButtonIconLabel_Dark.png" width="150" /> |
+| `FilledButtonIconLabel` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledButtonIconLabel_Light.png" width="150" /> |
+| `FilledButtonLargeFont` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledButtonLargeFont_Dark.png" width="150" /> |
+| `FilledButtonLargeFont` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledButtonLargeFont_Light.png" width="150" /> |
+| `FilledButtonPressed` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledButtonPressed_Dark.png" width="150" /> |
+| `FilledButtonPressed` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledButtonPressed_Light.png" width="150" /> |
+| `FilledButtonPseudo` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledButtonPseudo_Dark.png" width="150" /> |
+| `FilledButtonPseudo` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledButtonPseudo_Light.png" width="150" /> |
+| `FilledButtonRtl` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledButtonRtl_Dark.png" width="150" /> |
+| `FilledButtonRtl` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledButtonRtl_Light.png" width="150" /> |
 | `FilledButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledButton_Dark.png" width="150" /> |
+| `FilledButton` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledButton_Light.png" width="150" /> |
+| `FilledCardSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledCardSticker_Dark.png" width="150" /> |
+| `FilledCardSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledCardSticker_Light.png" width="150" /> |
+| `FilledTonalButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledTonalButtonSticker_Dark.png" width="150" /> |
+| `FilledTonalButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilledTonalButtonSticker_Light.png" width="150" /> |
+| `FilterChipSelected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilterChipSelected_Dark.png" width="150" /> |
+| `FilterChipSelected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilterChipSelected_Dark_VARIANT_unselected.png" width="150" /> |
+| `FilterChipSelected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilterChipSelected_Light.png" width="150" /> |
+| `FilterChipSelected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/FilterChipSelected_Light_VARIANT_unselected.png" width="150" /> |
+| `LinearProgressSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/LinearProgressSticker_Dark.png" width="150" /> |
+| `LinearProgressSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/LinearProgressSticker_Light.png" width="150" /> |
+| `OutlinedButtonDisabled` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/OutlinedButtonDisabled_Dark.png" width="150" /> |
+| `OutlinedButtonDisabled` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/OutlinedButtonDisabled_Light.png" width="150" /> |
+| `OutlinedButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/OutlinedButtonSticker_Dark.png" width="150" /> |
+| `OutlinedButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/OutlinedButtonSticker_Light.png" width="150" /> |
+| `OutlinedCardSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/OutlinedCardSticker_Dark.png" width="150" /> |
+| `OutlinedCardSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/OutlinedCardSticker_Light.png" width="150" /> |
+| `OutlinedTextFieldSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/OutlinedTextFieldSticker_Dark.png" width="150" /> |
+| `OutlinedTextFieldSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/OutlinedTextFieldSticker_Light.png" width="150" /> |
+| `RadioSelected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/RadioSelected_Dark.png" width="150" /> |
+| `RadioSelected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/RadioSelected_Dark_VARIANT_unselected.png" width="150" /> |
+| `RadioSelected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/RadioSelected_Light.png" width="150" /> |
+| `RadioSelected` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/RadioSelected_Light_VARIANT_unselected.png" width="150" /> |
+| `SegmentedToggle` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SegmentedToggle_Dark.png" width="150" /> |
+| `SegmentedToggle` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SegmentedToggle_Light.png" width="150" /> |
+| `SliderMid` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SliderMid_Dark.png" width="150" /> |
+| `SliderMid` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SliderMid_Light.png" width="150" /> |
+| `SlottedCardSlotsSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SlottedCardSlotsSticker_Dark.png" width="150" /> |
+| `SlottedCardSlotsSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SlottedCardSlotsSticker_Light.png" width="150" /> |
+| `SlottedCardSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SlottedCardSticker_Dark.png" width="150" /> |
+| `SlottedCardSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SlottedCardSticker_Light.png" width="150" /> |
+| `SwitchOnLargeFont` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOnLargeFont_Dark.png" width="150" /> |
+| `SwitchOnLargeFont` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOnLargeFont_Light.png" width="150" /> |
+| `SwitchOnPseudo` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOnPseudo_Dark.png" width="150" /> |
+| `SwitchOnPseudo` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOnPseudo_Light.png" width="150" /> |
+| `SwitchOnRtl` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOnRtl_Dark.png" width="150" /> |
+| `SwitchOnRtl` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOnRtl_Light.png" width="150" /> |
+| `SwitchOn` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOn_Dark.png" width="150" /> |
+| `SwitchOn` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOn_Dark_VARIANT_off.png" width="150" /> |
+| `SwitchOn` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOn_Light.png" width="150" /> |
+| `SwitchOn` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/SwitchOn_Light_VARIANT_off.png" width="150" /> |
+| `TextBrandedSpecimen` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextBrandedSpecimen_Dark.png" width="150" /> |
+| `TextBrandedSpecimen` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextBrandedSpecimen_Light.png" width="150" /> |
+| `TextButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextButtonSticker_Dark.png" width="150" /> |
+| `TextButtonSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextButtonSticker_Light.png" width="150" /> |
+| `TextFieldSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextFieldSticker_Dark.png" width="150" /> |
+| `TextFieldSticker` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextFieldSticker_Light.png" width="150" /> |
+| `TextMaxLinesTruncated` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextMaxLinesTruncated_Dark.png" width="150" /> |
+| `TextMaxLinesTruncated` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextMaxLinesTruncated_Light.png" width="150" /> |
+| `TextMonospaceSpecimen` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextMonospaceSpecimen_Dark.png" width="150" /> |
+| `TextMonospaceSpecimen` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextMonospaceSpecimen_Light.png" width="150" /> |
+| `TextSerifSpecimen` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextSerifSpecimen_Dark.png" width="150" /> |
+| `TextSerifSpecimen` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:design-catalog-m3/TextSerifSpecimen_Light.png" width="150" /> |
 
 ## samples:design-catalog-m3-android
 
