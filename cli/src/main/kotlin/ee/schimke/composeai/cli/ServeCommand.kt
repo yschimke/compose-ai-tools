@@ -1077,18 +1077,49 @@ class ServeCommand(args: List<String>) : Command(args) {
     val jvmArgs = launch.jvmArgs()
     val sysprops = launch.robolectricSystemProperties()
     return { classesDir, previewsJson, workspaceRoot, userClasspath ->
-      SubprocessRenderSessions.openBundleDaemon(
-        daemonClasspath = daemonClasspath,
-        classesDir = classesDir,
-        previewsJson = previewsJson,
-        workspaceRoot = workspaceRoot,
-        modulePath = ":playground",
-        jvmArgs = jvmArgs,
-        extraSystemProperties = sysprops,
-        userClasspath = userClasspath,
+      openPlaygroundFirstFrameDaemon(
+        daemonClasspath,
+        jvmArgs,
+        sysprops,
+        classesDir,
+        previewsJson,
+        workspaceRoot,
+        userClasspath,
       )
     }
   }
+
+  /**
+   * Open a bundle-less daemon for a first-frame render, partitioning the snippet's [userClasspath]
+   * the way the live path ([ServeBundleDaemon.materializePlaygroundSnippet]) does: jars in the
+   * namespaces `UserClassLoaderHolder` delegates to the parent (`androidx.*`, `kotlinx-coroutines`)
+   * must precede the [sidecarClasspath] on the daemon (parent) `-cp`, or the daemon loads its own
+   * sidecar versions and a snippet built against the catalog's newer AndroidX fails with
+   * `NoSuchMethodError`/`NoSuchFieldError` (and the render service then silently returns no image).
+   * The snippet's own classes stay isolated on the child (user) loader.
+   */
+  private fun openPlaygroundFirstFrameDaemon(
+    sidecarClasspath: List<String>,
+    jvmArgs: List<String>,
+    extraSystemProperties: Map<String, String>,
+    classesDir: java.io.File,
+    previewsJson: java.io.File,
+    workspaceRoot: java.io.File,
+    userClasspath: List<String>,
+  ) =
+    SubprocessRenderSessions.openBundleDaemon(
+      daemonClasspath =
+        userClasspath.filter { ServeBundleDaemon.jarPrecedesDaemonSidecar(java.io.File(it)) } +
+          sidecarClasspath,
+      classesDir = classesDir,
+      previewsJson = previewsJson,
+      workspaceRoot = workspaceRoot,
+      modulePath = ":playground",
+      jvmArgs = jvmArgs,
+      extraSystemProperties = extraSystemProperties,
+      userClasspath =
+        userClasspath.filterNot { ServeBundleDaemon.jarPrecedesDaemonSidecar(java.io.File(it)) },
+    )
 
   /**
    * The desktop (CMP/Skiko) daemon opener for the playground's CMP first-frame render — the
@@ -1114,14 +1145,14 @@ class ServeCommand(args: List<String>) : Command(args) {
     // steal); mirrors desktopBundleDaemonLaunch. No Robolectric sysprops on the desktop backend.
     val jvmArgs = listOf("--enable-native-access=ALL-UNNAMED", "-Dapple.awt.UIElement=true")
     return { classesDir, previewsJson, workspaceRoot, userClasspath ->
-      SubprocessRenderSessions.openBundleDaemon(
-        daemonClasspath = daemonClasspath,
-        classesDir = classesDir,
-        previewsJson = previewsJson,
-        workspaceRoot = workspaceRoot,
-        modulePath = ":playground",
-        jvmArgs = jvmArgs,
-        userClasspath = userClasspath,
+      openPlaygroundFirstFrameDaemon(
+        daemonClasspath,
+        jvmArgs,
+        emptyMap(),
+        classesDir,
+        previewsJson,
+        workspaceRoot,
+        userClasspath,
       )
     }
   }
