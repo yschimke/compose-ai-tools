@@ -281,21 +281,27 @@ is a pure policy type that produces three things for each snippet JVM:
 | Requirement | How |
 |---|---|
 | Own process, killed at a hard TTL | Already one JVM per snippet; `hardTtlSeconds` rides the daemon descriptor and the spawner arms a `destroyForcibly` watchdog — no cooperation needed from a wedged snippet. |
-| No outbound network | The jail's network namespace: `bwrap --unshare-net`, `unshare --net`, or `systemd-run -p PrivateNetwork=yes`. |
+| No outbound network | The jail's network namespace: `bwrap --unshare-net` or `unshare --net`. |
 | Read-only / ephemeral FS | `bwrap` binds the host read-only with a tmpfs `/tmp`, and the snippet's work dir is the **only** writable path — and that dir is deleted when its preview token drops. |
 | Memory + CPU caps | cgroup (`MemoryMax` / `CPUQuota` / `TasksMax`) on the `systemd`/`strict` profiles, **plus** JVM-level caps on every active profile (`-Xmx`, `-XX:ActiveProcessorCount`, `-XX:+ExitOnOutOfMemoryError`). |
 | One snippet per JVM | Structural: each lane opens its own subprocess daemon over one snippet's classes. |
 
 Profiles, chosen with `--playground-sandbox`:
 
-| Profile | Jail | Egress | FS | cgroup caps |
-|---|---|---|---|---|
-| `none` (default) | — | — | — | — |
-| `unshare` | `unshare(1)` user+net+pid ns | ✓ | ✗ (host FS visible) | ✗ |
-| `bwrap` | `bwrap(1)`, cleared env | ✓ | ✓ | ✗ (JVM caps only) |
-| `systemd` | `systemd-run --scope` | ✓ | ✓ | ✓ |
-| `strict` | `systemd-run … bwrap …` | ✓ | ✓ | ✓ |
-| `custom:<argv>` | operator-supplied | ? | ? | ? |
+| Profile | Jail | Egress | FS | cgroup caps | `--public` |
+|---|---|---|---|---|---|
+| `none` (default) | — | — | — | — | refused |
+| `unshare` | `unshare(1)` user+net+pid ns | ✓ | ✗ (host FS visible) | ✗ | refused |
+| `bwrap` | `bwrap(1)`, cleared env | ✓ | ✓ | ✗ (JVM caps only) | refused |
+| `systemd` | `systemd-run --scope` | ✗ | ✗ | ✓ | refused |
+| **`strict`** | `systemd-run --scope … bwrap …` | ✓ | ✓ | ✓ | **eligible** |
+| `custom:<argv>` | operator-supplied | ? | ? | operator's job | eligible on a clean probe |
+
+A transient **scope** takes cgroup resource properties but *not* service exec-context
+settings (`PrivateNetwork`, `PrivateTmp`, `ProtectSystem`, `NoNewPrivileges`) — passing
+those to `--scope` fails unit creation outright. So `systemd` owns resource control alone
+and delegates isolation to `bwrap`; `strict` is the composition, and the only built-in a
+`--public` host can run.
 
 Knobs: `--playground-sandbox-memory-mb`, `--playground-sandbox-cpus`,
 `--playground-sandbox-pids`, `--playground-sandbox-ttl`, and
@@ -326,6 +332,15 @@ any single failing check all keep the playground disabled with an actionable
 log. That also means `unshare` — which blocks egress but leaves the host
 filesystem visible — is a fine local rehearsal profile and is **refused** under
 `--public`, by measurement rather than by a hard-coded list.
+
+One property the probe *cannot* measure is resource capping: a snippet inside a
+perfectly sealed `bwrap` can still spin CPU-bound threads or fork until the box
+starves, and `-Xmx` bounds only heap while `-XX:ActiveProcessorCount` merely
+sizes JVM pools. So admission has a second condition beyond the probe — the
+profile must actually carry cgroup caps. `unshare` and `bwrap` are therefore
+refused under `--public` and pointed at `strict`; a `custom:` jail is taken at
+its word on caps (they're the operator's to supply, and the startup log says so)
+but must still pass the probe.
 
 ### 6.3 Residual: the compiler still runs in-process
 

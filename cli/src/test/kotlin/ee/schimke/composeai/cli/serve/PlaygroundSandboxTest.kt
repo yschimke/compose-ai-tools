@@ -81,8 +81,15 @@ class PlaygroundSandboxTest {
     assertTrue("MemoryMax=2048M" in argv)
     assertTrue("CPUQuota=150%" in argv)
     assertTrue("TasksMax=64" in argv)
-    assertTrue("RuntimeMaxSec=300" in argv)
-    assertTrue("PrivateNetwork=yes" in argv)
+    // A transient *scope* takes cgroup properties only. Service exec-context settings would fail
+    // unit creation outright, so a scope must never be handed one — and the profile must not claim
+    // the isolation those settings would have provided.
+    assertTrue(argv.none { it.startsWith("PrivateNetwork") }, argv.toString())
+    assertTrue(argv.none { it.startsWith("ProtectSystem") }, argv.toString())
+    assertTrue(argv.none { it.startsWith("NoNewPrivileges") }, argv.toString())
+    assertFalse(PlaygroundSandbox.Profile.SYSTEMD.declaresEgressBlocked)
+    assertFalse(PlaygroundSandbox.Profile.SYSTEMD.declaresFilesystemContained)
+    assertTrue(PlaygroundSandbox.Profile.SYSTEMD.declaresResourceCaps)
   }
 
   @Test
@@ -92,6 +99,12 @@ class PlaygroundSandboxTest {
     assertEquals("systemd-run", argv.first())
     assertTrue(argv.indexOf("systemd-run") < argv.indexOf("bwrap"))
     assertTrue("--unshare-net" in argv)
+    // The only built-in that provides every property the --public gate asks for.
+    assertTrue(
+      PlaygroundSandbox.Profile.entries.filter {
+        it.declaresEgressBlocked && it.declaresFilesystemContained && it.declaresResourceCaps
+      } == listOf(PlaygroundSandbox.Profile.STRICT)
+    )
   }
 
   @Test
@@ -225,12 +238,29 @@ class PlaygroundPublicGateTest {
   }
 
   @Test
-  fun `public is allowed on a verified sandbox`() {
-    val decision = PlaygroundPublicGate.decide(isPublic = true, sandbox = bwrap, probe = cleanProbe)
+  fun `public is allowed on a verified, resource-capped sandbox`() {
+    val strict = PlaygroundSandbox(profile = PlaygroundSandbox.Profile.STRICT)
+
+    val decision =
+      PlaygroundPublicGate.decide(isPublic = true, sandbox = strict, probe = cleanProbe)
 
     val allow = decision as? PlaygroundPublicGate.Decision.Allow
     requireNotNull(allow) { "expected Allow, got $decision" }
     assertTrue("verified" in allow.detail, allow.detail)
+  }
+
+  @Test
+  fun `a sealed jail with no cpu or pid cap is still refused under public`() {
+    // bwrap contains a snippet perfectly and caps nothing: -Xmx bounds heap, ActiveProcessorCount
+    // only sizes JVM pools, and the probe cannot measure either. A snippet could spin CPU-bound
+    // threads until the box starves, so containment alone is not admission.
+    val refusal = assertRefused(PlaygroundPublicGate.decide(true, bwrap, cleanProbe))
+
+    assertTrue("no CPU or process-count cap" in refusal, refusal)
+    assertTrue("strict" in refusal, refusal)
+
+    val unshare = PlaygroundSandbox(profile = PlaygroundSandbox.Profile.UNSHARE)
+    assertRefused(PlaygroundPublicGate.decide(true, unshare, cleanProbe))
   }
 
   @Test

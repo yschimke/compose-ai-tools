@@ -78,13 +78,23 @@ data class PlaygroundSandbox(
     BWRAP("bwrap", true, true, false),
 
     /**
-     * `systemd-run --scope` with `MemoryMax` / `CPUQuota` / `TasksMax` / `RuntimeMaxSec` plus
-     * `PrivateNetwork` + `ProtectSystem=strict`. Real cgroup caps; needs a system-scope systemd
-     * (`--user` scopes cannot set `PrivateNetwork`).
+     * `systemd-run --scope` with `MemoryMax` / `MemorySwapMax` / `CPUQuota` / `TasksMax`. Real
+     * cgroup caps — and **only** cgroup caps.
+     *
+     * A transient **scope** takes cgroup resource properties but *not* service execution settings
+     * (`PrivateNetwork`, `PrivateTmp`, `ProtectSystem`, `NoNewPrivileges`): those live in a service
+     * unit's exec context, and passing them to `--scope` fails unit creation outright. Rather than
+     * move the daemon into a transient service — which would put systemd between us and the JVM's
+     * stdio, the JSON-RPC transport — this profile owns resource control alone and delegates
+     * isolation to [STRICT]'s `bwrap` half. Hence: no egress or filesystem claim here.
      */
-    SYSTEMD("systemd", true, true, true),
+    SYSTEMD("systemd", false, false, true),
 
-    /** `systemd-run --scope … bwrap …` — cgroup caps *and* namespace/filesystem containment. */
+    /**
+     * `systemd-run --scope … bwrap …` — [SYSTEMD]'s cgroup caps around [BWRAP]'s namespace and
+     * filesystem containment. The profile a `--public` host should run: it is the only built-in
+     * that provides every property [PlaygroundPublicGate] requires.
+     */
     STRICT("strict", true, true, true),
 
     /**
@@ -229,19 +239,12 @@ data class PlaygroundSandbox(
       "CPUQuota=${(cpus * 100).roundToInt()}%",
       "-p",
       "TasksMax=$pids",
-      // The cgroup's own hard TTL, belt-and-braces with the spawner's kill watchdog.
-      "-p",
-      "RuntimeMaxSec=$ttlSeconds",
-      "-p",
-      "PrivateNetwork=yes",
-      "-p",
-      "PrivateTmp=yes",
-      "-p",
-      "ProtectSystem=strict",
-      "-p",
-      "ProtectHome=yes",
-      "-p",
-      "NoNewPrivileges=yes",
+      // Deliberately cgroup properties only. `PrivateNetwork` / `PrivateTmp` / `ProtectSystem` /
+      // `NoNewPrivileges` are service exec-context settings that a transient *scope* cannot take —
+      // passing them fails unit creation, so a profile that advertised them would fail preflight on
+      // every host. Isolation is bwrap's job (STRICT); the wall-clock deadline is the spawner's
+      // kill watchdog, which needs no systemd version floor (`RuntimeMaxSec` on a scope wants
+      // systemd 244+).
     )
 
   companion object {
@@ -359,9 +362,15 @@ data class PlaygroundSandbox(
  * because the serve host's founding constraint is that it never runs untrusted code. The constraint
  * has not moved; what changed is that a snippet can now be run somewhere that *isn't* the host. So
  * the gate opens on evidence, never on configuration alone:
- * 1. a sandbox profile must be configured (`none` is still a flat refusal), and
+ * 1. a sandbox profile must be configured (`none` is still a flat refusal),
  * 2. the startup [probe][PlaygroundSandboxProbe] must have run **inside that jail** and come back
- *    with egress blocked, the host filesystem contained, and the process namespace isolated.
+ *    with egress blocked, the host filesystem contained, and the process namespace isolated, and
+ * 3. the jail must actually **cap CPU and process count**, which the probe cannot measure. A
+ *    snippet inside a perfectly sealed `bwrap` can still spawn CPU-bound threads until it starves
+ *    the box: `-Xmx` bounds heap and `-XX:ActiveProcessorCount` only sizes JVM pools. So a built-in
+ *    profile with no cgroup behind it (`unshare`, `bwrap`) is refused under `--public` and pointed
+ *    at `strict`; a `custom:` jail is taken at its word here (its caps are the operator's to
+ *    supply) but still has to pass the probe.
  *
  * A profile that merely *claims* containment ([PlaygroundSandbox.Profile.declaresEgressBlocked] and
  * friends) is not enough: `bwrap` on a kernel with user namespaces disabled, or a `custom:` wrapper
@@ -420,6 +429,25 @@ object PlaygroundPublicGate {
           ". The playground stays disabled under --public until the jail contains a snippet."
       )
     }
-    return Decision.Allow("public; verified ${sandbox.describe()}")
+    // Containment proven — but the probe cannot measure CPU or process-count caps, and a sealed
+    // jail with none of those still lets a snippet burn the box down from the inside.
+    if (
+      !sandbox.profile.declaresResourceCaps && sandbox.profile != PlaygroundSandbox.Profile.CUSTOM
+    ) {
+      return Decision.Refuse(
+        "profile '${sandbox.profile.id}' contains a snippet but applies no CPU or process-count " +
+          "cap, so one snippet can still starve the box (-Xmx bounds heap only). Use " +
+          "--playground-sandbox strict (cgroup caps around the same jail), or a custom: jail that " +
+          "applies its own caps."
+      )
+    }
+    val caveat =
+      if (
+        sandbox.profile == PlaygroundSandbox.Profile.CUSTOM && !sandbox.profile.declaresResourceCaps
+      )
+        " (resource caps are the custom jail's responsibility — verify MemoryMax/CPUQuota/TasksMax " +
+          "or equivalent yourself)"
+      else ""
+    return Decision.Allow("public; verified ${sandbox.describe()}$caveat")
   }
 }

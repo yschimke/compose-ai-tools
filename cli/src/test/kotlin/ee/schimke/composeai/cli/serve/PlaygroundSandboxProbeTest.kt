@@ -183,12 +183,14 @@ class PlaygroundSandboxProbeTest {
   }
 
   /**
-   * The profile a `--public` host is meant to run: `bwrap` must satisfy **all four** checks, which
-   * is exactly the condition [PlaygroundPublicGate] admits on. Skipped where bubblewrap isn't
+   * `bwrap` is the containment half of the `--public`-grade `strict` profile, so it must satisfy
+   * **all four** probe checks — the whole of what the probe can measure. (Admission additionally
+   * requires cgroup caps, which is why `strict` and not bare `bwrap` is what a public host runs;
+   * that half is `systemd-run`'s and is not probe-measurable.) Skipped where bubblewrap isn't
    * installed or the kernel refuses its namespaces.
    */
   @Test
-  fun `a real bwrap jail passes every check the public gate requires`() {
+  fun `a real bwrap jail passes every check the probe can measure`() {
     if (!toolAvailable(listOf("bwrap", "--version"))) return
 
     val sandbox = PlaygroundSandbox(profile = PlaygroundSandbox.Profile.BWRAP)
@@ -205,9 +207,14 @@ class PlaygroundSandboxProbeTest {
 
     assertTrue(report.ran, "probe did not run: ${report.detail}")
     assertEquals(emptyList(), report.failedChecks(), report.summary())
+    // The same report under `strict` — bwrap's containment plus systemd's cgroup caps — is what the
+    // gate admits.
     assertTrue(
-      PlaygroundPublicGate.decide(isPublic = true, sandbox = sandbox, probe = report)
-        is PlaygroundPublicGate.Decision.Allow
+      PlaygroundPublicGate.decide(
+        isPublic = true,
+        sandbox = PlaygroundSandbox(profile = PlaygroundSandbox.Profile.STRICT),
+        probe = report,
+      ) is PlaygroundPublicGate.Decision.Allow
     )
   }
 
