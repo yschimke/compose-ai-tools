@@ -396,6 +396,11 @@ class ServeHttpServer(
         // first segment outscores the `/{system}` catch-all. Never registered under `--public`.
         playgroundService?.let { svc ->
           post("/api/{version}/compiler/run") { handlePlaygroundRun(svc) }
+          // The Stage-1 editor page (`GET /playground`): the browser surface that POSTs to the run
+          // route above and surfaces the diagnostics + first-frame + `/pg/` (live) or `/d/` (RC)
+          // handoff. Only mounted when the lane is enabled, and — like the lane — never under
+          // `--public`.
+          get("/playground") { handlePlaygroundPage() }
         }
 
         // Shared/public mode ingestion: a client contributes a pre-rendered bundle (upload the zip
@@ -771,6 +776,24 @@ class ServeHttpServer(
    * cleared its token gate (`rejectBadToken`); the service still bounds the work (size cap, token
    * TTL/caps).
    */
+  /**
+   * `GET /playground`: the Stage-1 editor page. Token-gated (the lane runs user code, so it is
+   * never public); a static HTML page whose script POSTs to `/api/{v}/compiler/run` and follows the
+   * returned `/pg/` or `/d/` handoff.
+   */
+  private suspend fun RoutingContext.handlePlaygroundPage() {
+    if (rejectBadToken()) return
+    markGeneration("static-page", pageCacheControl())
+    call.respondText(
+      ServeWeb.playgroundPage(
+        token = token,
+        isPublic = isPublic,
+        unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+      ),
+      ContentType.Text.Html,
+    )
+  }
+
   private suspend fun RoutingContext.handlePlaygroundRun(service: PlaygroundCompileService) {
     if (rejectBadToken()) return
     val body =

@@ -766,6 +766,10 @@ class ServeWebFixtureTest {
     // played-back document itself.
     val docUpload =
       ServeWeb.docUploadPage(token, isPublic = true, ttlSeconds = 3600, urlUploadAllowed = true)
+    // The playground Stage-1 editor (`GET /playground`): the code box, mode selector, and result
+    // pane. Always token-gated (the lane runs user code, refused under `--public`), so the fixture
+    // renders the non-public form the server actually serves.
+    val playground = ServeWeb.playgroundPage(token, isPublic = false)
     val docLottie =
       ServeWeb.docPage(
         ServeWeb.DocView(
@@ -966,6 +970,7 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-viewer-nav-collapsed.html").writeText(viewerNavCollapsed)
       File(pagesDir, "serve-notfound.html").writeText(notFound)
       File(pagesDir, "serve-docs-upload.html").writeText(docUpload)
+      File(pagesDir, "serve-playground.html").writeText(playground)
       File(pagesDir, "serve-doc-lottie.html").writeText(docLottie)
       File(pagesDir, "serve-doc-remotecompose.html").writeText(docRemoteCompose)
       writePlaceholderPng(File(pagesDir, "_render-placeholder.png"))
@@ -1331,6 +1336,23 @@ class ServeWebFixtureTest {
     )
     assertGolden(File(pagesDir, "serve-notfound.html"), notFound)
     assertGolden(File(pagesDir, "serve-docs-upload.html"), docUpload)
+    assertGolden(File(pagesDir, "serve-playground.html"), playground)
+    // The editor page carries its three DOM hooks the run script + the Playwright e2e drive: the
+    // source box, the mode selector with all three modes, and the Run button.
+    assertTrue(
+      playground.contains("id=\"pg-source\"") &&
+        playground.contains("id=\"pg-run\"") &&
+        playground.contains("value=\"compose-cmp\"") &&
+        playground.contains("value=\"compose-android\"") &&
+        playground.contains("value=\"remote-compose\""),
+      "the playground page exposes the source box, Run button, and all three mode options",
+    )
+    // The run script targets the versioned compile route and follows either handoff field.
+    assertTrue(
+      playground.contains("/api/1/compiler/run") &&
+        playground.contains("res.documentUrl || res.previewUrl"),
+      "the playground script POSTs to the compile route and follows the /pg or /d handoff",
+    )
     assertGolden(File(pagesDir, "serve-doc-lottie.html"), docLottie)
     assertGolden(File(pagesDir, "serve-doc-remotecompose.html"), docRemoteCompose)
     // The upload page names every format it accepts and states the expiry up front, so a visitor
