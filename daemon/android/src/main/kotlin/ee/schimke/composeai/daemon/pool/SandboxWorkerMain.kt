@@ -38,6 +38,19 @@ object SandboxWorkerMain {
     val slot = System.getProperty(SandboxProcessPool.WORKER_SLOT_PROP)?.toIntOrNull() ?: 0
     Thread.currentThread().name = "compose-ai-sandbox-worker-$slot"
 
+    // A worker must never outlive the daemon that spawned it. Socket EOF covers the normal case,
+    // but only once the serve loop is reading — a parent that dies while this worker is still
+    // inside its (minutes-long) Robolectric bootstrap would leave a whole JVM stranded, holding a
+    // sandbox's worth of heap until something reaps it. Watch the parent process directly so the
+    // boot window is covered too. The daemon's own test JVM aborting mid-suite (SIGABRT out of
+    // `libandroid_runtime.so`) is exactly that case.
+    ProcessHandle.current().parent().ifPresent { parent ->
+      parent.onExit().thenRun {
+        System.err.println("sandbox worker: parent process ${parent.pid()} exited; halting")
+        Runtime.getRuntime().halt(0)
+      }
+    }
+
     Socket(InetAddress.getLoopbackAddress(), port).use { socket ->
       socket.tcpNoDelay = true
       val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
