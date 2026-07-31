@@ -207,7 +207,7 @@ fun main(args: Array<String>) {
       }
       RobolectricHost(
         userClassloaderHolderFactory = userClassloaderHolderFactory,
-        sandboxCount = sandboxCount,
+        requestedSandboxCount = sandboxCount,
         previewSpecResolver =
           previewIndexBackedSpecResolver(previewIndex)?.takeIf { previewIndex.size > 0 },
         interactiveSessionListener =

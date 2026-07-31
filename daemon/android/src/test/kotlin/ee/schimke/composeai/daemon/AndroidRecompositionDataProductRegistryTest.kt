@@ -12,6 +12,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
+import org.junit.Ignore
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
@@ -91,6 +92,10 @@ class AndroidRecompositionDataProductRegistryTest {
   }
 
   @Test
+  @Ignore(
+    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
+      + "a JVM per sandbox — see #3072."
+  )
   fun delta_subscribe_then_click_attaches_non_empty_payload_and_resets_between_flushes() {
     val outputDir = tempFolder.newFolder("renders")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
@@ -100,7 +105,7 @@ class AndroidRecompositionDataProductRegistryTest {
     val resolver = previewSpecResolver()
     val host =
       RobolectricHost(
-        sandboxCount = 2,
+        requestedSandboxCount = 2,
         previewSpecResolver = resolver,
         interactiveSessionListener =
           RobolectricHost.InteractiveSessionListener { event -> registry.onSessionLifecycle(event) },

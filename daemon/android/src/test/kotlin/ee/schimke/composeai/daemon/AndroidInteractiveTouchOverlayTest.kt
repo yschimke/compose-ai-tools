@@ -10,6 +10,7 @@ import kotlin.math.abs
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
+import org.junit.Ignore
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
@@ -34,11 +35,15 @@ class AndroidInteractiveTouchOverlayTest {
   @get:Rule val tempFolder: TemporaryFolder = TemporaryFolder()
 
   @Test
+  @Ignore(
+    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
+      + "a JVM per sandbox — see #3072."
+  )
   fun overlay_enabled_session_paints_cyan_ring_on_press() {
     val outputDir = tempFolder.newFolder("interactive-overlay-renders")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
 
-    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(requestedSandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
       val session =

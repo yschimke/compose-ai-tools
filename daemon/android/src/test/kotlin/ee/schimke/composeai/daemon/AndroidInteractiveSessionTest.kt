@@ -14,6 +14,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Rule
+import org.junit.Ignore
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
@@ -48,13 +49,17 @@ class AndroidInteractiveSessionTest {
   @get:Rule val tempFolder: TemporaryFolder = TemporaryFolder()
 
   @Test
+  @Ignore(
+    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
+      + "a JVM per sandbox — see #3072."
+  )
   fun heldClickToggleSurvivesAcrossInputs() {
     val outputDir = tempFolder.newFolder("interactive-renders")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
     System.setProperty("roborazzi.test.record", "true")
 
     val resolver = previewSpecResolver()
-    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = resolver)
+    val host = RobolectricHost(requestedSandboxCount = 2, previewSpecResolver = resolver)
     host.start()
     try {
       assertTrue(
@@ -144,13 +149,17 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  @Ignore(
+    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
+      + "a JVM per sandbox — see #3072."
+  )
   fun clickableClickMutatesHeldState() {
     System.setProperty(
       RenderEngine.OUTPUT_DIR_PROP,
       tempFolder.newFolder("interactive-clickable").absolutePath,
     )
     System.setProperty("roborazzi.test.record", "true")
-    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(requestedSandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
       val session =
@@ -190,6 +199,10 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  @Ignore(
+    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
+      + "a JVM per sandbox — see #3072."
+  )
   fun uiAutomatorClickMutatesHeldStateThroughTheBridge() {
     // End-to-end coverage of the new InteractiveCommand.DispatchUiAutomator path:
     // session.dispatchUiAutomator(...) → bridge envelope → RobolectricHost.performUiAutomatorAction
@@ -205,7 +218,7 @@ class AndroidInteractiveSessionTest {
       tempFolder.newFolder("interactive-uia").absolutePath,
     )
     System.setProperty("roborazzi.test.record", "true")
-    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(requestedSandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
       val session =
@@ -250,6 +263,10 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  @Ignore(
+    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
+      + "a JVM per sandbox — see #3072."
+  )
   fun uiAutomatorClickReportsUnmatchedWhenNoNodeSatisfiesTheSelector() {
     // Negative-path coverage — the bridge must report `matched = false` (and *not* throw)
     // when the selector finds no nodes. The recording-session handler relies on this to
@@ -259,7 +276,7 @@ class AndroidInteractiveSessionTest {
       tempFolder.newFolder("interactive-uia-miss").absolutePath,
     )
     System.setProperty("roborazzi.test.record", "true")
-    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(requestedSandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
       val session =
@@ -324,13 +341,17 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  @Ignore(
+    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
+      + "a JVM per sandbox — see #3072."
+  )
   fun fingerDragScrollsVerticalScrollable() {
     System.setProperty(
       RenderEngine.OUTPUT_DIR_PROP,
       tempFolder.newFolder("interactive-scroll").absolutePath,
     )
     System.setProperty("roborazzi.test.record", "true")
-    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(requestedSandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
       val session =
@@ -386,13 +407,17 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  @Ignore(
+    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
+      + "a JVM per sandbox — see #3072."
+  )
   fun pointerUpUsesReleaseCoordinates() {
     System.setProperty(
       RenderEngine.OUTPUT_DIR_PROP,
       tempFolder.newFolder("interactive-release-position").absolutePath,
     )
     System.setProperty("roborazzi.test.record", "true")
-    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(requestedSandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
       val session =
@@ -448,13 +473,17 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  @Ignore(
+    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
+      + "a JVM per sandbox — see #3072."
+  )
   fun rotaryScrollDispatchesAsRsbInput() {
     System.setProperty(
       RenderEngine.OUTPUT_DIR_PROP,
       tempFolder.newFolder("interactive-rsb").absolutePath,
     )
     System.setProperty("roborazzi.test.record", "true")
-    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(requestedSandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
       val session =
@@ -495,6 +524,10 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  @Ignore(
+    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
+      + "a JVM per sandbox — see #3072."
+  )
   fun nonComposableNotificationKindRendersInHeldSessionInsteadOfErroring() {
     // Regression: "TilePreview goes blank on enabled live mode". The held-rule loop used to call
     // `getDeclaredComposableMethod` unconditionally, which throws for non-composable preview kinds
@@ -513,7 +546,7 @@ class AndroidInteractiveSessionTest {
       tempFolder.newFolder("interactive-notification").absolutePath,
     )
     System.setProperty("roborazzi.test.record", "true")
-    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(requestedSandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
       // Pre-fix this `acquire` threw (the start reply carried the NoSuchMethodException) — getting
@@ -544,13 +577,17 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  @Ignore(
+    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
+      + "a JVM per sandbox — see #3072."
+  )
   fun heldSessionPreservesRequiredPreviewWrapper() {
     System.setProperty(
       RenderEngine.OUTPUT_DIR_PROP,
       tempFolder.newFolder("interactive-wrapper").absolutePath,
     )
     System.setProperty("roborazzi.test.record", "true")
-    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(requestedSandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
       // WrapperRequiredFixturePreview throws during composition unless the app-owned environment
@@ -578,8 +615,12 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  @Ignore(
+    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
+      + "a JVM per sandbox — see #3072."
+  )
   fun acquireWithoutResolverThrowsUnsupported() {
-    val host = RobolectricHost(sandboxCount = 2)
+    val host = RobolectricHost(requestedSandboxCount = 2)
     assertFalse(
       "supportsInteractive must be false without a previewSpecResolver, even with sandboxCount=2",
       host.supportsInteractive,
@@ -621,8 +662,12 @@ class AndroidInteractiveSessionTest {
       "single-sandbox router must keep the v1 fallback capability",
       PreviewManifestRouter(manifest = manifest, sandboxCount = 1).supportsInteractive,
     )
-    assertTrue(
-      "pooled production router must advertise held interactive sessions",
+    // Asking for a pool doesn't get one while [RobolectricHost.MAX_SANDBOXES_PER_JVM] is 1, so the
+    // router must advertise the v1 fallback rather than an interactive lane it can't serve — the
+    // whole point of capping instead of letting the second sandbox crash the JVM (#3072). Flip this
+    // back to `assertTrue` when the pool moves to a JVM per sandbox.
+    assertFalse(
+      "a capped router must not advertise held interactive sessions it cannot honour",
       PreviewManifestRouter(manifest = manifest, sandboxCount = 2).supportsInteractive,
     )
   }
@@ -660,7 +705,7 @@ class AndroidInteractiveSessionTest {
   fun acquireWithSandboxCountOneThrowsUnsupported() {
     // sandboxCount = 1 should refuse interactive even when a resolver is wired — the single slot
     // can't be sacrificed without taking normal renders down.
-    val host = RobolectricHost(sandboxCount = 1, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(requestedSandboxCount = 1, previewSpecResolver = previewSpecResolver())
     assertFalse(
       "supportsInteractive must be false with sandboxCount=1 even when resolver is wired",
       host.supportsInteractive,
@@ -686,6 +731,10 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  @Ignore(
+    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
+      + "a JVM per sandbox — see #3072."
+  )
   fun idleLeaseAutoClosesAbandonedSession() {
     // Drive the watchdog with a 500ms lease so we don't burn a minute of CI per run. The host's
     // interactiveIdleLeaseMs forwards to every session it acquires.
@@ -693,7 +742,7 @@ class AndroidInteractiveSessionTest {
     System.setProperty("roborazzi.test.record", "true")
     val host =
       RobolectricHost(
-        sandboxCount = 2,
+        requestedSandboxCount = 2,
         previewSpecResolver = previewSpecResolver(),
         interactiveIdleLeaseMs = 500L,
       )
@@ -741,10 +790,14 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  @Ignore(
+    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
+      + "a JVM per sandbox — see #3072."
+  )
   fun nestedAcquireRefusesUntilFirstSessionCloses() {
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, tempFolder.newFolder("nested").absolutePath)
     System.setProperty("roborazzi.test.record", "true")
-    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(requestedSandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
       val first =
@@ -782,13 +835,17 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  @Ignore(
+    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
+      + "a JVM per sandbox — see #3072."
+  )
   fun uiModeOverrideReachesHeldSession() {
     System.setProperty(
       RenderEngine.OUTPUT_DIR_PROP,
       tempFolder.newFolder("dark-overrides").absolutePath,
     )
     System.setProperty("roborazzi.test.record", "true")
-    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(requestedSandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
       val session =
@@ -820,13 +877,17 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  @Ignore(
+    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
+      + "a JVM per sandbox — see #3072."
+  )
   fun swapUserClassLoadersForceClosesHeldSession() {
     System.setProperty(
       RenderEngine.OUTPUT_DIR_PROP,
       tempFolder.newFolder("classpath-dirty").absolutePath,
     )
     System.setProperty("roborazzi.test.record", "true")
-    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(requestedSandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
       val session =
@@ -861,13 +922,17 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  @Ignore(
+    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
+      + "a JVM per sandbox — see #3072."
+  )
   fun shutdownClosesHeldSessionCleanly() {
     System.setProperty(
       RenderEngine.OUTPUT_DIR_PROP,
       tempFolder.newFolder("shutdown-drain").absolutePath,
     )
     System.setProperty("roborazzi.test.record", "true")
-    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(requestedSandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     val session =
       host.acquireInteractiveSession(
@@ -903,13 +968,17 @@ class AndroidInteractiveSessionTest {
    * misses it and the card stays red — only the resolved centroid hits.
    */
   @Test
+  @Ignore(
+    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
+      + "a JVM per sandbox — see #3072."
+  )
   fun heldClickResolvesTestTagTargetToNodeCentre() {
     System.setProperty(
       RenderEngine.OUTPUT_DIR_PROP,
       tempFolder.newFolder("interactive-target").absolutePath,
     )
     System.setProperty("roborazzi.test.record", "true")
-    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(requestedSandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
       val session =
@@ -966,6 +1035,10 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  @Ignore(
+    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
+      + "a JVM per sandbox — see #3072."
+  )
   fun missingResourceHeldSessionFallsBackToPlaceholderUnderTheServeOptIn() {
     // Regression for the `wear-m3` live-mode failure: a preview whose `stringResource(...)` isn't in
     // the packed / child-loader resource table renders fine as a static sticker (the one-shot
@@ -980,7 +1053,7 @@ class AndroidInteractiveSessionTest {
     )
     System.setProperty("roborazzi.test.record", "true")
     val priorPlaceholder = System.getProperty(RenderEngine.PLACEHOLDER_MISSING_RESOURCES_PROP)
-    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(requestedSandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
       // Negative control: without the opt-in, the missing lookup throws and the throw fails the
