@@ -65,7 +65,24 @@ object ClassloaderForensics {
    * @param contextHint short string identifying the configuration ("standalone-control" /
    *   "daemon-subject" / etc.). Recorded verbatim in the dump.
    * @param out target file. Parent directories are created if absent. Existing file is overwritten.
+   *
+   * **`@JvmOverloads` is load-bearing — do not remove it.** `RobolectricHost.runForensicDump` calls
+   * this method *reflectively* (`getMethod("capture", List, RobolectricConfigSnapshot, String,
+   * File)`), because the forensics library is on the sandbox runtime classpath rather than the
+   * host's compile classpath. Kotlin does not emit an overload for a defaulted parameter: without
+   * this annotation the only JVM entry points are the full 5-arg `capture` and the synthetic
+   * `capture$default`, so that lookup throws `NoSuchMethodException` at runtime and nothing at
+   * compile time catches it. `@JvmOverloads` materialises the trailing-`fileSystem`-omitted
+   * overload the reflective caller names, and keeps doing so if further defaulted parameters are
+   * appended.
+   *
+   * The same trap applies to the `fileSystem` parameter itself: adding it to satisfy the injected-
+   * `FileSystem` convention in `docs/AGENTS.md` is source-compatible for ordinary Kotlin callers
+   * but silently binary-incompatible for a reflective one. Any future signature change here needs
+   * `ClassloaderForensicsDaemonTest` re-run, since that is the only thing that exercises the
+   * reflective path.
    */
+  @JvmOverloads
   fun capture(
     surveySet: List<String>,
     robolectricConfig: RobolectricConfigSnapshot? = null,
