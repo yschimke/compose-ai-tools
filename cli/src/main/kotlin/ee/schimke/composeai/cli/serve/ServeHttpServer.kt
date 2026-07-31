@@ -400,7 +400,7 @@ class ServeHttpServer(
           // route above and surfaces the diagnostics + first-frame + `/pg/` (live) or `/d/` (RC)
           // handoff. Only mounted when the lane is enabled, and — like the lane — never under
           // `--public`.
-          get("/playground") { handlePlaygroundPage() }
+          get("/playground") { handlePlaygroundPage(svc) }
         }
 
         // Shared/public mode ingestion: a client contributes a pre-rendered bundle (upload the zip
@@ -781,13 +781,14 @@ class ServeHttpServer(
    * never public); a static HTML page whose script POSTs to `/api/{v}/compiler/run` and follows the
    * returned `/pg/` or `/d/` handoff.
    */
-  private suspend fun RoutingContext.handlePlaygroundPage() {
+  private suspend fun RoutingContext.handlePlaygroundPage(service: PlaygroundCompileService) {
     if (rejectBadToken()) return
     markGeneration("static-page", pageCacheControl())
     call.respondText(
       ServeWeb.playgroundPage(
         token = token,
         isPublic = isPublic,
+        modes = service.availableModes,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
       ),
       ContentType.Text.Html,

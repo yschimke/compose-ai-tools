@@ -525,7 +525,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
           <div class="cp-pg-bar">
             <label class="cp-pg-modelabel" for="pg-mode">Mode</label>
             <select id="pg-mode" class="cp-pg-mode">
-              <option value="compose-cmp">Compose (Desktop)</option>
+              <option value="compose-cmp" selected>Compose (Desktop)</option>
               <option value="compose-android">Compose (Android)</option>
               <option value="remote-compose">Remote Compose</option>
             </select>
@@ -584,7 +584,12 @@ fun Greeting() {
       diags.appendChild(li);
     });
   }
+  // A monotonic id fences stale runs: only the newest click updates the DOM, and Run is disabled
+  // while a compile is in flight so a burst can't double-submit (each submit mints a token).
+  var reqId = 0;
   run.addEventListener("click", function () {
+    var myId = ++reqId;
+    run.disabled = true;
     clearOut();
     setStatus("Compiling…", false);
     var body = JSON.stringify({
@@ -603,6 +608,8 @@ fun Greeting() {
         });
       })
       .then(function (res) {
+        if (myId !== reqId) return;
+        run.disabled = false;
         renderDiags(res.diagnostics);
         var hasError = (res.diagnostics || []).some(function (d) { return d.severity === "error"; });
         if (res.exception) { setStatus(res.exception, true); return; }
@@ -617,7 +624,11 @@ fun Greeting() {
         }
         setStatus("Done.", false);
       })
-      .catch(function (e) { setStatus(e.message || "run failed", true); });
+      .catch(function (e) {
+        if (myId !== reqId) return;
+        run.disabled = false;
+        setStatus(e.message || "run failed", true);
+      });
   });
 })();</script>
         </main>
