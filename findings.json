@@ -265,7 +265,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text.a11y.png",
       "cleanBasename": "",
       "findings": [],
       "functionName": "BodyTextPreview",
@@ -978,7 +978,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "com.example.sampleandroid.PreviewParameterPreviewsKt.PrivateProviderBadgePreview_Private Provider Badge.a11y.png",
       "cleanBasename": "",
       "findings": [],
       "functionName": "PrivateProviderBadgePreview",
@@ -1274,7 +1274,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "com.example.sampleandroid.PreviewParameterPreviewsKt.UserCardPreview_User Card.a11y.png",
       "cleanBasename": "",
       "findings": [],
       "functionName": "UserCardPreview",
@@ -2866,9 +2866,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquircleLargePreview_Image Widget Squircle Large.a11y.png",
       "cleanBasename": "",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "0,0,364,224",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
       "functionName": "ImageWidgetSquircleLargePreview",
       "module": "wear-widget",
       "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquircleLargePreview_Image Widget Squircle Large",
@@ -2876,9 +2884,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle.a11y.png",
       "cleanBasename": "",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "0,0,364,152",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
       "functionName": "ImageWidgetSquirclePreview",
       "module": "wear-widget",
       "previewId": "com.example.wearwidget.WearWidgetPreviewsKt.ImageWidgetSquirclePreview_Image Widget Squircle",
