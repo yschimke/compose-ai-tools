@@ -2803,7 +2803,17 @@ open class RobolectricHost(
                         selectorJson = cmd.selectorJson,
                         useUnmergedTree = cmd.useUnmergedTree,
                       )
-                    cmd.replyReason.set(reason)
+                    // Crosses the sandbox boundary as a JSON string (do-not-acquire), like the
+                    // probe / a11y / unresolved-target arms: `reason` is built under the
+                    // instrumenting classloader, so handing the host the object itself fails its
+                    // cast. The host re-parses.
+                    cmd.replyReasonJson.set(
+                      Json.encodeToString(
+                        ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason
+                          .serializer(),
+                        reason,
+                      )
+                    )
                   } catch (t: Throwable) {
                     cmd.replyError.set(t)
                   } finally {

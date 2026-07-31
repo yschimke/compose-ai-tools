@@ -290,7 +290,7 @@ internal constructor(
       val reason =
         replyUnresolvedReasonJson?.get()?.let { json ->
           runCatching {
-              UNRESOLVED_REASON_JSON.decodeFromString(
+              BRIDGE_EVIDENCE_JSON.decodeFromString(
                 SemanticsTargetUnresolvedReason.serializer(),
                 json,
               )
@@ -431,8 +431,7 @@ internal constructor(
     lastUsedAtMs.set(System.currentTimeMillis())
     val replyLatch = CountDownLatch(1)
     val replyError = AtomicReference<Throwable?>(null)
-    val replyReason =
-      AtomicReference<ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason?>(null)
+    val replyReasonJson = AtomicReference<String?>(null)
     slot.interactiveCommands.put(
       InteractiveCommand.FindUiAutomatorEvidence(
         streamId = streamId,
@@ -442,7 +441,7 @@ internal constructor(
         inputText = inputText,
         replyLatch = replyLatch,
         replyError = replyError,
-        replyReason = replyReason,
+        replyReasonJson = replyReasonJson,
       )
     )
     if (!replyLatch.await(DISPATCH_TIMEOUT_SEC, TimeUnit.SECONDS)) {
@@ -453,7 +452,13 @@ internal constructor(
       )
     }
     replyError.get()?.let { throw it }
-    return replyReason.get()
+    // The sandbox encoded the reason to JSON (do-not-acquire); re-parse into the host DTO.
+    return replyReasonJson.get()?.let { json ->
+      BRIDGE_EVIDENCE_JSON.decodeFromString(
+        ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason.serializer(),
+        json,
+      )
+    }
   }
 
   /**
@@ -849,11 +854,13 @@ internal constructor(
     private const val DISPATCH_TIMEOUT_SEC: Long = 30L
 
     /**
-     * JSON used to decode the [SemanticsTargetUnresolvedReason] the sandbox passed back over the
-     * bridge as a string (issue #1784). `ignoreUnknownKeys` keeps host/sandbox forward-compatible
-     * if the reason shape gains fields on one side first.
+     * JSON used to decode the evidence reasons the sandbox passes back over the bridge as strings —
+     * [SemanticsTargetUnresolvedReason] (issue #1784) and
+     * [UiAutomatorUnsupportedReason][ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason]
+     * (issue #874). `ignoreUnknownKeys` keeps host/sandbox forward-compatible if a reason shape
+     * gains fields on one side first.
      */
-    private val UNRESOLVED_REASON_JSON: Json = Json { ignoreUnknownKeys = true }
+    private val BRIDGE_EVIDENCE_JSON: Json = Json { ignoreUnknownKeys = true }
 
     /**
      * Upper bound on a single capture — Roborazzi's `captureRoboImage` plus the disk write. Matches

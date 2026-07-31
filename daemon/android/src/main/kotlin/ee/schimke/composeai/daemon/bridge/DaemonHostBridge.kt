@@ -595,8 +595,17 @@ sealed interface InteractiveCommand {
    * `SemanticsOwner` tree the matcher uses, computes the structured
    * [`UiAutomatorUnsupportedReason`][ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason]
    * (matched-count + closest near-match node + exposed-actions list), and hands it back through
-   * [replyReason]. Issued by the recording-session handler after `dispatchUiAutomator` returns
+   * [replyReasonJson]. Issued by the recording-session handler after `dispatchUiAutomator` returns
    * `false` so a single bridge round-trip turns into a typed evidence shape on the wire.
+   *
+   * The payload is a `java.lang.String` (do-not-acquire) rather than a typed
+   * `UiAutomatorUnsupportedReason` for the same reason [CaptureProbeSemantics] and
+   * [SemanticsTargetUnresolvedReason][ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedReason]
+   * ferry strings: the reason is built under Robolectric's instrumenting classloader, so a typed
+   * payload arrives host-side as a sandbox-loaded object and the host-side cast fails with
+   * `ClassCastException: UiAutomatorUnsupportedReason cannot be cast to
+   * UiAutomatorUnsupportedReason`. Serialising sandbox-side and re-parsing host-side keeps only a
+   * String on the wire.
    *
    * Read-only against the held composition — the sandbox-side arm walks but doesn't dispatch
    * actions, so it doesn't compete with renders or other dispatch commands. Throwables from the
@@ -610,8 +619,7 @@ sealed interface InteractiveCommand {
     val inputText: String?,
     val replyLatch: CountDownLatch,
     val replyError: AtomicReference<Throwable?>,
-    val replyReason:
-      AtomicReference<ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason?>,
+    val replyReasonJson: AtomicReference<String?>,
   ) : InteractiveCommand
 
   /**
