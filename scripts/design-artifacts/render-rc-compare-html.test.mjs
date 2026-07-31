@@ -9,7 +9,34 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { hasEmbeddedLane, renderRcCompareHtml, summarizeRcCompare } from "./render-rc-compare-html.mjs";
+import {
+  hasEmbeddedJvmLane,
+  hasEmbeddedLane,
+  renderRcCompareHtml,
+  summarizeRcCompare,
+} from "./render-rc-compare-html.mjs";
+
+/** The same model with a cmp-jvm result on every row — for the desktop-lane assertions. */
+function withEmbeddedJvm(base) {
+  const jvm = {
+    TextRemoteButton: { embeddedJvmRendered: true, embeddedJvmMismatchPct: 2.5, embeddedJvmMismatchPx: 6_890 },
+    ShaderGradientSticker: {
+      embeddedJvmRendered: true,
+      embeddedJvmMismatchPct: 1.1,
+      embeddedJvmMismatchPx: 3_000,
+    },
+    Undecodable: { embeddedJvmRendered: true, embeddedJvmMismatchPct: 9, embeddedJvmMismatchPx: 24_806 },
+  };
+  return {
+    ...base,
+    rows: base.rows.map((r) => ({
+      ...r,
+      ...jvm[r.name],
+      embeddedJvm: `rc-embedded-jvm/${r.id}.png`,
+      embeddedJvmDiff: `rc-embedded-jvm-diff/${r.id}.png`,
+    })),
+  };
+}
 
 /** The same model with an embedded-player result on every row — the two-player page. */
 function withEmbedded(base) {
@@ -144,6 +171,44 @@ test("the embedded lane adds two columns and its own summary line", () => {
   // both players keep their own score chip on every row
   assert.match(html, /<span class="scorelabel">js<\/span>/);
   assert.match(html, /<span class="scorelabel">embedded<\/span>/);
+});
+
+test("the cmp-jvm lane adds one column with a folded diff, a score chip and its own summary line", () => {
+  const html = renderRcCompareHtml(withEmbeddedJvm(model));
+  assert.equal(hasEmbeddedJvmLane(withEmbeddedJvm(model).rows), true);
+  assert.match(html, /RC · cmp-jvm player/);
+  assert.match(html, /<strong>cmp-jvm player:<\/strong>/);
+  assert.match(html, /<span class="scorelabel">cmp-jvm<\/span>/);
+  // The diff is a collapsible <details>, not a second column — keeps the page from ballooning.
+  assert.match(html, /<details class="difffold"><summary>pixel diff<\/summary>/);
+  // Header carries exactly one cmp-jvm column (no standalone "pixel diff" th for it).
+  assert.equal((html.match(/<th>RC · cmp-jvm player<\/th>/g) || []).length, 1);
+  // The lede must describe the cmp-jvm player even when the Android embedded lane is off —
+  // otherwise it falls into the JS-only branch and claims the TypeScript player is the only one.
+  assert.match(html, /<strong>cmp-jvm player<\/strong> runs that same/);
+  assert.doesNotMatch(html, /The player is the vendored TypeScript/);
+});
+
+test("the cmp-jvm and embedded lanes coexist, each its own column and summary", () => {
+  const html = renderRcCompareHtml(withEmbeddedJvm(withEmbedded(model)));
+  assert.match(html, /RC · embedded player/);
+  assert.match(html, /RC · cmp-jvm player/);
+  assert.match(html, /\(JS \+ embedded \+ cmp-jvm players\)/);
+  // The lede names all three players and the worst-scoring sort, not just JS + embedded.
+  assert.match(html, /<strong>JS player<\/strong>/);
+  assert.match(html, /<strong>embedded player<\/strong>/);
+  assert.match(html, /<strong>cmp-jvm player<\/strong>/);
+  assert.match(html, /rows sort worst-match-first on the worst-scoring player/);
+});
+
+test("cmp-jvm is summarized independently, like the embedded lane", () => {
+  const s = summarizeRcCompare(withEmbeddedJvm(model).rows);
+  assert.equal(s.embeddedJvmRendered, 3);
+  assert.equal(s.embeddedJvmUnsupported, 0);
+  assert.ok(Math.abs(s.embeddedJvmMeanPct - (2.5 + 1.1 + 9) / 3) < 1e-9);
+  // A base model without the lane reports it absent and doesn't count it.
+  assert.equal(hasEmbeddedJvmLane(model.rows), false);
+  assert.equal(summarizeRcCompare(model.rows).embeddedJvmUnsupported, 0);
 });
 
 test("each player is summarized independently — one lane's failures don't touch the other's mean", () => {

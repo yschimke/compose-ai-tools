@@ -598,5 +598,10 @@ jobs:
       # player is off is a JS-player bug, one where only the embedded player is off is an
       # embedded-player bug. This catalog currently contains both kinds.
       rc-embedded-lane: true
+      # And the cmp-jvm (Compose Desktop / Skiko) player, as one extra compact column: the desktop
+      # half of the embedded player rasterizing the same staged documents. Same attribution win as
+      # the Robolectric lane, and it exercises the platform-neutral draw path off Android — a jvm-only
+      # divergence points at the desktop seam (text/image/skiko) rather than the shared evaluator.
+      rc-embedded-jvm-lane: true
     secrets:
       buildfetch_ro_token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}

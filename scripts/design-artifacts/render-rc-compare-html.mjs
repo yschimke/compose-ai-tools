@@ -77,6 +77,11 @@ export function hasEmbeddedLane(rows = []) {
   return rows.some((r) => r.embeddedRendered !== undefined || r.embedded);
 }
 
+/** True when any row carries a cmp-jvm result, i.e. the desktop lane ran at all. */
+export function hasEmbeddedJvmLane(rows = []) {
+  return rows.some((r) => r.embeddedJvmRendered !== undefined || r.embeddedJvm);
+}
+
 /**
  * Aggregate stats over the rows — mean mismatch across *scored* rows, counts.
  *
@@ -103,6 +108,14 @@ export function summarizeRcCompare(rows = []) {
       ? null
       : embScored.reduce((s, r) => s + (r.embeddedMismatchPct ?? 0), 0) / embScored.length;
 
+  // cmp-jvm lane, summarized the same independent way as the embedded lane.
+  const jvmRendered = rows.filter((r) => r.embeddedJvmRendered);
+  const jvmScored = jvmRendered.filter((r) => !r.referenceBlank);
+  const jvmMeanPct =
+    jvmScored.length === 0
+      ? null
+      : jvmScored.reduce((s, r) => s + (r.embeddedJvmMismatchPct ?? 0), 0) / jvmScored.length;
+
   return {
     total: rows.length,
     rendered: rendered.length,
@@ -114,6 +127,10 @@ export function summarizeRcCompare(rows = []) {
     embeddedScored: embScored.length,
     embeddedUnsupported: hasEmbeddedLane(rows) ? rows.length - embRendered.length : 0,
     embeddedMeanPct: embMeanPct,
+    embeddedJvmRendered: jvmRendered.length,
+    embeddedJvmScored: jvmScored.length,
+    embeddedJvmUnsupported: hasEmbeddedJvmLane(rows) ? rows.length - jvmRendered.length : 0,
+    embeddedJvmMeanPct: jvmMeanPct,
   };
 }
 
@@ -129,6 +146,7 @@ function worstPct(r) {
   const scores = [];
   if (r.rendered) scores.push(r.mismatchPct ?? 0);
   if (r.embeddedRendered) scores.push(r.embeddedMismatchPct ?? 0);
+  if (r.embeddedJvmRendered) scores.push(r.embeddedJvmMismatchPct ?? 0);
   return scores.length ? Math.max(...scores) : null;
 }
 
@@ -159,6 +177,26 @@ function cell(label, src, extraClass = "") {
 }
 
 /**
+ * A render cell whose pixel diff sits in a **collapsed** `<details>` beneath the image, so adding a
+ * player lane costs one column rather than two — the page already carries baked + JS (+ embedded)
+ * columns, and a full diff column per new lane would quickly overwhelm. The mismatch % is always
+ * visible as a score chip; the diff image is one click away when a divergence needs locating.
+ */
+function cellWithDiff(label, src, diffSrc, extraClass = "") {
+  const body = src
+    ? `<img loading="lazy" src="${esc(src)}" alt="${esc(label)}">`
+    : `<div class="missing">—</div>`;
+  const diff = diffSrc
+    ? `<details class="difffold"><summary>pixel diff</summary><img loading="lazy" src="${esc(
+        diffSrc,
+      )}" alt="${esc(label)} diff"></details>`
+    : "";
+  return `<figure class="cell ${extraClass}"><figcaption>${esc(
+    label,
+  )}</figcaption>${body}${diff}</figure>`;
+}
+
+/**
  * One player's score chip: `NN.NN%` + pixel count, or the reason it produced nothing.
  *
  * `referenceBlank` short-circuits both players: the baked PNG is empty, so there is no comparison to
@@ -180,9 +218,9 @@ function scoreBlock(label, rendered, pct, px, note, referenceBlank = false) {
     </div>`;
 }
 
-function rowHtml(r, withEmbedded) {
+function rowHtml(r, withEmbedded, withEmbeddedJvm) {
   const dims = r.width && r.height ? `<span class="dims">${r.width}×${r.height}</span>` : "";
-  const anyRendered = r.rendered || r.embeddedRendered;
+  const anyRendered = r.rendered || r.embeddedRendered || r.embeddedJvmRendered;
   const scores =
     scoreBlock("js", r.rendered, r.mismatchPct, r.mismatchPx, r.note, r.referenceBlank) +
     (withEmbedded
@@ -195,6 +233,16 @@ function rowHtml(r, withEmbedded) {
           r.referenceBlank,
         )
       : "") +
+    (withEmbeddedJvm
+      ? scoreBlock(
+          "cmp-jvm",
+          r.embeddedJvmRendered,
+          r.embeddedJvmMismatchPct,
+          r.embeddedJvmMismatchPx,
+          r.embeddedJvmNote,
+          r.referenceBlank,
+        )
+      : "") +
     (r.referenceBlank
       ? `<div class="blanknote">baked PNG is fully transparent — nothing to compare against</div>`
       : "");
@@ -204,12 +252,20 @@ function rowHtml(r, withEmbedded) {
   <td>${cell("RC · embedded player", r.embedded, "rc")}</td>
   <td>${cell("pixel diff", r.embeddedDiff, "diff")}</td>`
     : "";
+  // The cmp-jvm lane adds ONE column: its render, with the diff folded into a <details> below the
+  // image (see cellWithDiff) so the page stays legible as players accumulate.
+  const embeddedJvmCell = withEmbeddedJvm
+    ? `
+  <td>${cellWithDiff("RC · cmp-jvm player", r.embeddedJvm, r.embeddedJvmDiff, "rc")}</td>`
+    : "";
 
   const scorable = !r.referenceBlank;
   return `<tr class="row ${anyRendered ? "rendered" : "unsupported"}${
     r.referenceBlank ? " blank-reference" : ""
   }" data-pct="${scorable && r.rendered ? (r.mismatchPct ?? 0) : ""}" data-embedded-pct="${
     scorable && r.embeddedRendered ? (r.embeddedMismatchPct ?? 0) : ""
+  }" data-embedded-jvm-pct="${
+    scorable && r.embeddedJvmRendered ? (r.embeddedJvmMismatchPct ?? 0) : ""
   }">
   <th class="meta">
     <div class="name">${esc(r.name)}</div>
@@ -219,7 +275,7 @@ function rowHtml(r, withEmbedded) {
   </th>
   <td>${cell("baked PNG", r.baked)}</td>
   <td>${cell("RC · JS player", r.rc, "rc")}</td>
-  <td>${cell("pixel diff", r.diff, "diff")}</td>${embeddedCells}
+  <td>${cell("pixel diff", r.diff, "diff")}</td>${embeddedCells}${embeddedJvmCell}
 </tr>`;
 }
 
@@ -232,8 +288,14 @@ export function renderRcCompareHtml(model, opts = {}) {
   const genNote = opts.generatedNote ? `<span class="note">${esc(opts.generatedNote)}</span>` : "";
 
   const withEmbedded = hasEmbeddedLane(model.rows ?? []);
+  const withEmbeddedJvm = hasEmbeddedJvmLane(model.rows ?? []);
+  // "JS", "JS + embedded", "JS + embedded + cmp-jvm", … — the players this page actually compares.
+  const laneNames = ["JS", withEmbedded && "embedded", withEmbeddedJvm && "cmp-jvm"].filter(Boolean);
+  const laneLabel = `${laneNames.join(" + ")} player${laneNames.length > 1 ? "s" : ""}`;
   const embMeanTxt =
     stats.embeddedMeanPct == null ? "n/a" : `${stats.embeddedMeanPct.toFixed(2)}%`;
+  const jvmMeanTxt =
+    stats.embeddedJvmMeanPct == null ? "n/a" : `${stats.embeddedJvmMeanPct.toFixed(2)}%`;
 
   // Blank references are called out once, not per lane — the reference is shared, so a blank one
   // costs both players the same row.
@@ -249,11 +311,20 @@ export function renderRcCompareHtml(model, opts = {}) {
       ? `<br><strong>embedded player:</strong> ${stats.embeddedScored} scored · mean mismatch <strong>${embMeanTxt}</strong>` +
         (stats.embeddedUnsupported ? ` · ${stats.embeddedUnsupported} not rendered` : "") +
         blankTxt
+      : "") +
+    (withEmbeddedJvm
+      ? `<br><strong>cmp-jvm player:</strong> ${stats.embeddedJvmScored} scored · mean mismatch <strong>${jvmMeanTxt}</strong>` +
+        (stats.embeddedJvmUnsupported ? ` · ${stats.embeddedJvmUnsupported} not rendered` : "") +
+        blankTxt
       : "");
 
-  const head = withEmbedded
-    ? `<tr><th>preview</th><th>baked PNG</th><th>RC · JS player</th><th>pixel diff</th><th>RC · embedded player</th><th>pixel diff</th></tr>`
-    : `<tr><th>preview</th><th>baked PNG</th><th>RC · JS player</th><th>pixel diff</th></tr>`;
+  // The cmp-jvm lane adds a single column (its diff folds into the cell); the embedded lane keeps
+  // its own diff column, as before.
+  const head =
+    `<tr><th>preview</th><th>baked PNG</th><th>RC · JS player</th><th>pixel diff</th>` +
+    (withEmbedded ? `<th>RC · embedded player</th><th>pixel diff</th>` : "") +
+    (withEmbeddedJvm ? `<th>RC · cmp-jvm player</th>` : "") +
+    `</tr>`;
 
   const body =
     rows.length === 0
@@ -261,7 +332,7 @@ export function renderRcCompareHtml(model, opts = {}) {
       : `<table class="grid">
   <thead>${head}</thead>
   <tbody>
-${rows.map((r) => rowHtml(r, withEmbedded)).join("\n")}
+${rows.map((r) => rowHtml(r, withEmbedded, withEmbeddedJvm)).join("\n")}
   </tbody>
 </table>`;
 
@@ -270,7 +341,7 @@ ${rows.map((r) => rowHtml(r, withEmbedded)).join("\n")}
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title)} — PNG vs Remote Compose${withEmbedded ? " (JS + embedded players)" : " (JS player)"}</title>
+<title>${esc(title)} — PNG vs Remote Compose (${esc(laneLabel)})</title>
 <style>
   :root { color-scheme: light dark; --bg:#fff; --fg:#111; --muted:#666; --line:#e2e2e2; --card:#fafafa; }
   @media (prefers-color-scheme: dark) {
@@ -306,6 +377,10 @@ ${rows.map((r) => rowHtml(r, withEmbedded)).join("\n")}
   .cell img { display:block; max-width:280px; width:100%; height:auto; border:1px solid var(--line); border-radius:6px; background:
     repeating-conic-gradient(#0000 0% 25%, color-mix(in srgb, var(--fg) 6%, transparent) 0% 50%) 50% / 20px 20px; }
   .cell.diff img { background:#000; }
+  .difffold { margin-top:6px; }
+  .difffold > summary { cursor:pointer; color:var(--muted); font-size:11px; list-style:revert; }
+  .difffold[open] > summary { margin-bottom:4px; }
+  .difffold img { background:#000; max-width:280px; width:100%; height:auto; border:1px solid var(--line); border-radius:6px; }
   .missing { width:120px; height:80px; display:grid; place-items:center; color:var(--muted); border:1px dashed var(--line); border-radius:6px; }
   tr.unsupported .score { background:#555; }
   .empty { padding:24px 20px; color:var(--muted); }
@@ -314,25 +389,26 @@ ${rows.map((r) => rowHtml(r, withEmbedded)).join("\n")}
 </head>
 <body>
 <header>
-  <h1>${esc(title)} — PNG vs Remote Compose <span style="font-weight:400;color:var(--muted)">(${
-    withEmbedded ? "JS + embedded players" : "client-side JS player"
-  })</span></h1>
+  <h1>${esc(title)} — PNG vs Remote Compose <span style="font-weight:400;color:var(--muted)">(${esc(
+    laneLabel,
+  )})</span></h1>
   <div class="summary">${summary}</div>
   ${genNote}
 </header>
 <p class="lede">Each preview's baked <strong>PNG</strong> (the offline Robolectric/Skiko render) next to the
 same <code>ir/*.rc</code> document as each player renders it, with a per-pixel diff after each.
-${
-  withEmbedded
-    ? `The <strong>JS player</strong> is the vendored TypeScript <code>RC.RcdPlayer</code> on a
-<code>&lt;canvas&gt;</code>; the <strong>embedded player</strong> is AndroidX's
-<code>RcPlayer</code>, which interprets the document into Compose layout and draw nodes rather than
-painting into an Android <code>View</code> the way <code>remote-player-view</code> does — so the two
-diverge wherever that difference shows.`
-    : `The player is the vendored TypeScript <code>RC.RcdPlayer</code> on a <code>&lt;canvas&gt;</code>.`
-}
-Mismatch % is the fraction of pixels each diff flags; rows sort worst-match-first on the worse of the
-two players. A preview whose baked PNG is <strong>fully transparent</strong> is shown but not scored:
+${[
+  `The <strong>JS player</strong> is the vendored TypeScript <code>RC.RcdPlayer</code> on a <code>&lt;canvas&gt;</code>`,
+  withEmbedded &&
+    `the <strong>embedded player</strong> is AndroidX's <code>RcPlayer</code>, which interprets the document into Compose layout and draw nodes rather than painting into an Android <code>View</code> the way <code>remote-player-view</code> does`,
+  withEmbeddedJvm &&
+    `the <strong>cmp-jvm player</strong> runs that same <code>RcPlayer</code> draw path on Compose Desktop / Skiko, rasterizing offscreen`,
+]
+  .filter(Boolean)
+  .join("; ")}${laneNames.length > 1 ? " — so they diverge wherever those differences show." : "."}
+Mismatch % is the fraction of pixels each diff flags; rows sort worst-match-first${
+    laneNames.length > 1 ? " on the worst-scoring player" : ""
+  }. A preview whose baked PNG is <strong>fully transparent</strong> is shown but not scored:
 with nothing in the reference, a player that draws nothing would score a perfect 0% — so those rows
 read <code>no reference</code> and stay out of the means.</p>
 <div class="wrap">
