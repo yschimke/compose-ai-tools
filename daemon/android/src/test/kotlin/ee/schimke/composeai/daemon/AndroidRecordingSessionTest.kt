@@ -20,7 +20,6 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Rule
-import org.junit.Ignore
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
@@ -1782,10 +1781,6 @@ class AndroidRecordingSessionTest {
   }
 
   @Test
-  @Ignore(
-    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
-      + "a JVM per sandbox — see #3072."
-  )
   fun scriptedClickFlipsStateAndProducesFrames() {
     val outputDir = tempFolder.newFolder("recording-renders")
     val recordingsRoot = tempFolder.newFolder("recordings-root")
@@ -1793,7 +1788,7 @@ class AndroidRecordingSessionTest {
     System.setProperty(RobolectricHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
     System.setProperty("roborazzi.test.record", "true")
 
-    val host = RobolectricHost(requestedSandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
       assertTrue(
@@ -1884,12 +1879,8 @@ class AndroidRecordingSessionTest {
   }
 
   @Test
-  @Ignore(
-    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
-      + "a JVM per sandbox — see #3072."
-  )
   fun acquireWithLiveTrueAllocatesLiveRecording() {
-    val host = RobolectricHost(requestedSandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
       val session =
@@ -1913,10 +1904,6 @@ class AndroidRecordingSessionTest {
   }
 
   @Test
-  @Ignore(
-    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
-      + "a JVM per sandbox — see #3072."
-  )
   fun acquireWithOverridesAppliesFrameSize() {
     val outputDir = tempFolder.newFolder("recording-override-renders")
     val recordingsRoot = tempFolder.newFolder("recording-override-root")
@@ -1924,7 +1911,7 @@ class AndroidRecordingSessionTest {
     System.setProperty(RobolectricHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
     System.setProperty("roborazzi.test.record", "true")
 
-    val host = RobolectricHost(requestedSandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
     host.start()
     try {
       val session =
@@ -1957,7 +1944,7 @@ class AndroidRecordingSessionTest {
   fun acquireWithSandboxCountOneThrowsUnsupported() {
     // Same gating as interactive: sandboxCount=1 refuses recording too because it rides on the
     // held-rule loop's slot pinning.
-    val host = RobolectricHost(requestedSandboxCount = 1, previewSpecResolver = previewSpecResolver())
+    val host = RobolectricHost(sandboxCount = 1, previewSpecResolver = previewSpecResolver())
     assertEquals(
       "supportsRecording must be false with sandboxCount=1",
       false,

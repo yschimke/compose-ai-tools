@@ -56,7 +56,7 @@ class PreviewManifestRouter(
 ) :
   RobolectricHost(
     userClassloaderHolder = userClassloaderHolder,
-    requestedSandboxCount = sandboxCount,
+    sandboxCount = sandboxCount,
     userClassloaderHolderFactory = userClassloaderHolderFactory,
     previewSpecResolver = { previewId ->
       manifest.previews.firstOrNull { it.id == previewId }?.renderSpec()

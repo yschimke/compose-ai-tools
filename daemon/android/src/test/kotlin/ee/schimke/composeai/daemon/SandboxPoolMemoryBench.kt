@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * SANDBOX-POOL.md bench — boots `RobolectricHost(requestedSandboxCount = 4)` and prints heap and native
+ * SANDBOX-POOL.md bench — boots `RobolectricHost(sandboxCount = 4)` and prints heap and native
  * footprint before vs after, plus the per-sandbox marginal cost. The numbers are the empirical
  * basis for the "~750 MB per replica saved by Layer 3" claim in SANDBOX-POOL.md and the CHANGELOG.
  *
@@ -27,7 +27,7 @@ class SandboxPoolMemoryBench {
 
     val baseline = sample("baseline (before host.start)")
 
-    val host = RobolectricHost(requestedSandboxCount = sandboxCount)
+    val host = RobolectricHost(sandboxCount = sandboxCount)
     try {
       host.start()
       // Run a few stub renders so the JIT and Robolectric's per-sandbox shadow caches have warmed

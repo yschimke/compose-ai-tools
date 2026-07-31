@@ -110,19 +110,16 @@ open class RobolectricHost(
    */
   override val userClassloaderHolder: UserClassLoaderHolder? = null,
   /**
-   * Number of Robolectric sandboxes the caller *wants* — see
-   * [SANDBOX-POOL.md](../../../../../../docs/daemon/SANDBOX-POOL.md).
-   *
-   * **Currently capped to 1**; read the effective value back off [sandboxCount], not this
-   * parameter. Robolectric's native-graphics runtime can only ever serve ONE classloader per JVM,
-   * so a second in-process sandbox cannot boot — see [capSandboxCount] for the evidence and
-   * [SANDBOX-POOL.md] § "In-process pool is disabled".
+   * Number of Robolectric sandboxes to host in parallel — see
+   * [SANDBOX-POOL.md](../../../../../../docs/daemon/SANDBOX-POOL.md). Default `1` preserves the
+   * pre-pool single-sandbox behaviour bit-for-bit. `> 1` boots N sandboxes in this JVM and
+   * dispatches concurrent renders across them via affinity-aware slot routing in [submit].
    *
    * For the legacy single-instance [userClassloaderHolder] param (sandboxCount=1 only): set
    * [userClassloaderHolderFactory] instead when you need the pool. Both paths are otherwise
    * equivalent.
    */
-  requestedSandboxCount: Int = 1,
+  val sandboxCount: Int = 1,
   /**
    * Per-slot user-class loader factory. When non-null, the host invokes the factory once per
    * sandbox slot at first dispatch (with the slot's sandbox classloader) to allocate that slot's
@@ -177,16 +174,6 @@ open class RobolectricHost(
    */
   private val interactiveSessionListener: InteractiveSessionListener? = null,
 ) : RenderHost {
-
-  /**
-   * The number of sandboxes this host actually runs — [requestedSandboxCount] put through
-   * [capSandboxCount], so today always `1`.
-   *
-   * Everything downstream (slot count, worker threads, [supportsInteractive], dispatch) keys off
-   * this, never off the requested value, so a caller asking for a pool degrades to a working
-   * single-sandbox host instead of failing to boot at all.
-   */
-  val sandboxCount: Int = capSandboxCount(requestedSandboxCount)
 
   /**
    * Issue #1204 — session lifecycle hook fired on `acquireInteractiveSession` success and on
@@ -398,7 +385,7 @@ open class RobolectricHost(
     if (supportsInteractive) setOf("keyDown", "keyUp", "rotaryScroll") else emptySet()
 
   init {
-    // The `>= 1` floor is enforced by [capSandboxCount], which runs when [sandboxCount] initialises.
+    require(sandboxCount >= 1) { "sandboxCount must be >= 1, got $sandboxCount" }
     require(userClassloaderHolder == null || userClassloaderHolderFactory == null) {
       "RobolectricHost: pass either userClassloaderHolder OR userClassloaderHolderFactory, not " +
         "both. The factory form supersedes the single-instance form for sandboxCount > 1."
@@ -1252,11 +1239,7 @@ open class RobolectricHost(
       throw UnsupportedOperationException(
         "RobolectricHost: interactive sessions require sandboxCount >= 2 " +
           "(have $sandboxCount); v3 pins one sandbox slot per held session and slot 0 must stay " +
-          "available for normal renders. See docs/daemon/INTERACTIVE-ANDROID.md § 2. Note that " +
-          "sandboxCount is currently capped at ${MAX_SANDBOXES_PER_JVM} regardless of what was " +
-          "requested — Robolectric's native runtime serves one sandbox per JVM, so this path is " +
-          "unavailable until the pool moves to a sandbox per process " +
-          "(docs/daemon/SANDBOX-POOL.md)."
+          "available for normal renders. See docs/daemon/INTERACTIVE-ANDROID.md § 2."
       )
     }
     val resolver =
@@ -1671,49 +1654,6 @@ open class RobolectricHost(
      * daemon to whatever Robolectric currently supports.
      */
     const val ANDROID_SDK: Int = 35
-
-    /**
-     * The most sandboxes one JVM can host. **One** — Robolectric's native-graphics runtime binds to
-     * a single classloader per process, so an in-process pool cannot work today.
-     *
-     * `DefaultNativeRuntimeLoader` keeps its `loaded` flag in a static that lives in the *sandbox's*
-     * classloader, and the pool deliberately gives every worker its own sandbox (the cache-key
-     * discriminator in [SandboxHoldingRunner.createClassLoaderConfig]). So the second sandbox finds
-     * `loaded == false`, re-runs `Typeface.loadPreinstalledSystemFontMap()` against a native library
-     * that is already loaded process-wide, gets back a font map with no default family, and dies in
-     * `Typeface.setSystemFontMap` with `NullPointerException: Cannot read field "mStyle" because
-     * "family" is null` — after which the JVM tends to follow with a `SIGSEGV` inside
-     * `libandroid_runtime.so`.
-     *
-     * Two fixes were tried and rejected, both recorded here so they aren't re-attempted:
-     * - **Drop the discriminator** so all workers share one sandbox: the font crash goes away, but
-     *   slot 1 then never registers and `start()` hangs to the full boot timeout.
-     * - **Parent-load `org.robolectric.nativeruntime`** so the `loaded` flag is process-global: the
-     *   font crash goes away and is replaced by `UnsatisfiedLinkError` from `RenderNode`, because
-     *   the runtime registers its JNI natives against one sandbox's instrumented framework classes.
-     *
-     * Reproduces identically on the pinned Robolectric 4.17-beta-2 and on 4.16.1, so it is not a
-     * version regression. Lifting the cap needs a sandbox per *process*, not per classloader.
-     */
-    const val MAX_SANDBOXES_PER_JVM: Int = 1
-
-    /**
-     * [requested] clamped to [MAX_SANDBOXES_PER_JVM], warning once per host when it bites so a
-     * daemon launched with `composeai.daemon.sandboxCount=N` says why it came up single-sandboxed
-     * rather than silently ignoring the request.
-     */
-    internal fun capSandboxCount(requested: Int): Int {
-      require(requested >= 1) { "sandboxCount must be >= 1, got $requested" }
-      if (requested <= MAX_SANDBOXES_PER_JVM) return requested
-      System.err.println(
-        "compose-ai-daemon: sandboxCount=$requested requested but capped to " +
-          "$MAX_SANDBOXES_PER_JVM — Robolectric's native-graphics runtime supports only one " +
-          "sandbox per JVM, so additional in-process sandboxes cannot boot. Interactive sessions " +
-          "and concurrent multi-slot renders are unavailable until the pool moves to a sandbox " +
-          "per process. See docs/daemon/SANDBOX-POOL.md."
-      )
-      return MAX_SANDBOXES_PER_JVM
-    }
 
     /** Same sysprop the desktop side uses; honoured on Android too. */
     const val RECORDINGS_DIR_PROP: String = "composeai.daemon.recordingsDir"
@@ -2271,8 +2211,7 @@ open class RobolectricHost(
         // Look the method up by NAME, not by exact signature. `capture` carries Kotlin default
         // arguments, and pinning the 4-parameter shape here broke the moment it gained the injected
         // Okio `fileSystem` param the repo's IO convention requires: `getMethod` threw
-        // `NoSuchMethodException`, which killed the held-sandbox render loop and took the JVM down
-        // with a `SIGSEGV` in `libandroid_runtime.so` right after.
+        // `NoSuchMethodException`, which killed the held-sandbox render loop mid-dispatch.
         val captureMethod =
           forensicsClass.methods.firstOrNull { it.name == "capture" }
             ?: error("ClassloaderForensics has no capture(...) method")

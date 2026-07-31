@@ -6,7 +6,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
 
 /**
@@ -37,12 +36,8 @@ import org.junit.Test
 class RobolectricHostPoolTest {
 
   @Test
-  @Ignore(
-    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
-      + "a JVM per sandbox — see #3072."
-  )
   fun twoSandboxesServeDistinctClassloaders() {
-    val host = RobolectricHost(requestedSandboxCount = 2)
+    val host = RobolectricHost(sandboxCount = 2)
     try {
       host.start()
       val results = (1..20).map { i -> host.submit(RenderRequest.Render(payload = "render-$i")) }
@@ -100,16 +95,12 @@ class RobolectricHostPoolTest {
   }
 
   @Test
-  @Ignore(
-    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
-      + "a JVM per sandbox — see #3072."
-  )
   fun samePreviewIdAlwaysLandsOnSameSlot() {
     // Same previewId across many submits must hit the same sandbox slot every time so per-sandbox
     // Compose snapshot caches +
     // Robolectric shadow caches accumulate as intended; without this, repeat renders of the same
     // preview never warm a single sandbox.
-    val host = RobolectricHost(requestedSandboxCount = 2)
+    val host = RobolectricHost(sandboxCount = 2)
     try {
       host.start()
 
@@ -151,12 +142,8 @@ class RobolectricHostPoolTest {
   }
 
   @Test
-  @Ignore(
-    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
-      + "a JVM per sandbox — see #3072."
-  )
   fun normalRendersAvoidInteractiveSlotWhenHeldSessionIsPinned() {
-    val host = RobolectricHost(requestedSandboxCount = 2)
+    val host = RobolectricHost(sandboxCount = 2)
     val slotOnePayload =
       (0 until 64)
         .map { i -> "previewId=com.example.preview.HashesToInteractiveSlot$i" }
@@ -185,10 +172,6 @@ class RobolectricHostPoolTest {
   }
 
   @Test
-  @Ignore(
-    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
-      + "a JVM per sandbox — see #3072."
-  )
   fun backgroundBootServesRendersBeforePoolCompletesAndWarmsTheLateSlot() {
     // Cold-start fast path (`composeai.daemon.backgroundSandboxBoot=true`): start() blocks only
     // until slot 0 is up, slots 1..N-1 boot on a background thread, and dispatch routes across
@@ -201,7 +184,7 @@ class RobolectricHostPoolTest {
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
     System.setProperty("roborazzi.test.record", "true")
     System.setProperty(RobolectricHost.BACKGROUND_BOOT_PROP, "true")
-    val host = RobolectricHost(requestedSandboxCount = 2)
+    val host = RobolectricHost(sandboxCount = 2)
     try {
       host.start()
       // Must not block on slot 1: a stub render right after start() succeeds on the ready prefix.
@@ -265,10 +248,6 @@ class RobolectricHostPoolTest {
   }
 
   @Test
-  @Ignore(
-    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
-      + "a JVM per sandbox — see #3072."
-  )
   fun rejectsLegacyHolderWithSandboxCountAboveOne() {
     val holder =
       UserClassLoaderHolder(
@@ -277,7 +256,7 @@ class RobolectricHostPoolTest {
       )
     val ex =
       assertThrows(IllegalArgumentException::class.java) {
-        RobolectricHost(userClassloaderHolder = holder, requestedSandboxCount = 2)
+        RobolectricHost(userClassloaderHolder = holder, sandboxCount = 2)
       }
     assertTrue(
       "error should explain that pool callers should use the factory form, got: ${ex.message}",
@@ -286,10 +265,6 @@ class RobolectricHostPoolTest {
   }
 
   @Test
-  @Ignore(
-    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
-      + "a JVM per sandbox — see #3072."
-  )
   fun perSlotHoldersHaveDistinctChildLoadersParentedToTheirSandbox() {
     // The load-bearing per-slot guarantee: each slot's holder is parented to that slot's sandbox
     // classloader, so a render that lands on slot N resolves user
@@ -308,7 +283,7 @@ class RobolectricHostPoolTest {
       recordedParents[slotIndex] = sandboxClassLoader
       UserClassLoaderHolder(urls = emptyList(), parentSupplier = { sandboxClassLoader })
     }
-    val host = RobolectricHost(requestedSandboxCount = 2, userClassloaderHolderFactory = factory)
+    val host = RobolectricHost(sandboxCount = 2, userClassloaderHolderFactory = factory)
     try {
       host.start()
       // Drive enough renders that each slot is exercised at least once.
@@ -340,10 +315,6 @@ class RobolectricHostPoolTest {
   }
 
   @Test
-  @Ignore(
-    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
-      + "a JVM per sandbox — see #3072."
-  )
   fun realRenderUsesTheCurrentSlotsChildLoader() {
     // Regression for the slot-1 NoSuchMethodException loop seen in VS Code after #536. Stub
     // renders only report the sandbox classloader and never enter RenderEngine, so they cannot
@@ -364,7 +335,7 @@ class RobolectricHostPoolTest {
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
     System.setProperty("roborazzi.test.record", "true")
 
-    val probe = RobolectricHost(requestedSandboxCount = 2)
+    val probe = RobolectricHost(sandboxCount = 2)
     val slot0PreviewId =
       (0 until 128)
         .map { i -> "ee.schimke.composeai.daemon.RedFixturePreviewsKt.RedSquare.slot0.$i" }
@@ -387,7 +358,7 @@ class RobolectricHostPoolTest {
     val urls = listOf(userClassesDir.toURI().toURL())
     val host =
       RobolectricHost(
-        requestedSandboxCount = 2,
+        sandboxCount = 2,
         userClassloaderHolderFactory = { sandboxClassLoader ->
           UserClassLoaderHolder(urls = urls, parentSupplier = { sandboxClassLoader })
         },
@@ -418,17 +389,13 @@ class RobolectricHostPoolTest {
   }
 
   @Test
-  @Ignore(
-    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
-      + "a JVM per sandbox — see #3072."
-  )
   fun interactiveStartUsesTheCurrentSlotsChildLoader() {
     val userClassesDir = stageFixtureClassesDir()
     val outputDir = Files.createTempDirectory("pool-interactive-renders").toFile()
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
     System.setProperty("roborazzi.test.record", "true")
 
-    val probe = RobolectricHost(requestedSandboxCount = 2)
+    val probe = RobolectricHost(sandboxCount = 2)
     val slot0PreviewId =
       (0 until 128)
         .map { i ->
@@ -444,7 +411,7 @@ class RobolectricHostPoolTest {
     val urls = listOf(userClassesDir.toURI().toURL())
     val host =
       RobolectricHost(
-        requestedSandboxCount = 2,
+        sandboxCount = 2,
         userClassloaderHolderFactory = { sandboxClassLoader ->
           UserClassLoaderHolder(urls = urls, parentSupplier = { sandboxClassLoader })
         },
@@ -488,10 +455,6 @@ class RobolectricHostPoolTest {
   }
 
   @Test
-  @Ignore(
-    "Needs a real sandbox pool (sandboxCount >= 2), which is capped to 1 until the pool moves to "
-      + "a JVM per sandbox — see #3072."
-  )
   fun swapUserClassLoadersBroadcastsToEverySlot() {
     // `fileChanged({ kind: "source" })` calls `host.swapUserClassLoaders()`, which must invalidate
     // every slot's holder so the next render to any slot allocates a fresh child loader.
@@ -507,7 +470,7 @@ class RobolectricHostPoolTest {
         onSwap = { counter.incrementAndGet() },
       )
     }
-    val host = RobolectricHost(requestedSandboxCount = 2, userClassloaderHolderFactory = factory)
+    val host = RobolectricHost(sandboxCount = 2, userClassloaderHolderFactory = factory)
     try {
       host.start()
       // Warm both slots so both holders are allocated. Without this the swap is a no-op for slots
