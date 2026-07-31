@@ -2956,14 +2956,16 @@ open class RobolectricHost(
                 }
                 is InteractiveCommand.FindUiAutomatorEvidence -> {
                   try {
-                    val reason =
-                      UiAutomatorEvidence.compute(
+                    // Serialise inside the sandbox — only a String may cross to the host (the
+                    // reason object is loaded by the instrumenting classloader).
+                    cmd.replyReasonJson.set(
+                      UiAutomatorEvidence.computeJson(
                         rule = rule,
                         actionKind = cmd.actionKind,
                         selectorJson = cmd.selectorJson,
                         useUnmergedTree = cmd.useUnmergedTree,
                       )
-                    cmd.replyReason.set(reason)
+                    )
                   } catch (t: Throwable) {
                     cmd.replyError.set(t)
                   } finally {

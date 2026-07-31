@@ -434,8 +434,7 @@ internal constructor(
     lastUsedAtMs.set(System.currentTimeMillis())
     val replyLatch = CountDownLatch(1)
     val replyError = AtomicReference<Throwable?>(null)
-    val replyReason =
-      AtomicReference<ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason?>(null)
+    val replyReasonJson = AtomicReference<String?>(null)
     slot.interactiveCommands.put(
       InteractiveCommand.FindUiAutomatorEvidence(
         streamId = streamId,
@@ -445,7 +444,7 @@ internal constructor(
         inputText = inputText,
         replyLatch = replyLatch,
         replyError = replyError,
-        replyReason = replyReason,
+        replyReasonJson = replyReasonJson,
       )
     )
     if (!replyLatch.await(DISPATCH_TIMEOUT_SEC, TimeUnit.SECONDS)) {
@@ -456,7 +455,8 @@ internal constructor(
       )
     }
     replyError.get()?.let { throw it }
-    return replyReason.get()
+    // Re-parse into the host's own class — the sandbox only ever hands back a String.
+    return replyReasonJson.get()?.let { UiAutomatorEvidence.decode(it) }
   }
 
   /**
