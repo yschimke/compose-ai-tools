@@ -693,6 +693,12 @@ data class FigmaSvgModel(
     private fun LayoutInspectorNode.toLayer(
       ctx: BuildContext,
       parentBounds: LayoutInspectorBounds? = null,
+      /**
+       * The box of the nearest ancestor that actually clips its children (a `Modifier.clip`), or
+       * null when nothing above this node clips. Pixels outside it cannot be in the frame, which is
+       * what makes it — and not the immediate parent's box — the bound a raster crop can't exceed.
+       */
+      clipBounds: LayoutInspectorBounds? = null,
     ): FigmaSvgLayer {
       // Recover a usable rect for a node whose captured `bounds` collapsed to a zero-area box. The
       // Android/Wear layout inspector reports (0,0,0,0) for a node whose `LayoutCoordinates` were
@@ -773,7 +779,7 @@ data class FigmaSvgModel(
       // the recorder just made. Hybrid mode only — with no frame to crop from, the untinted vector
       // still beats a broken `<image>` reference.
       if (ctx.captureCanvasDraws && vectorGraphic?.fromDrawCapture == false && hasCustomDraw()) {
-        val region = drawnOverlayRegion(bounds)
+        val region = drawnOverlayRegion(bounds, clipBounds)
         val href = ctx.rasterHref(nodeId)
         ctx.rasterTargets.add(
           FigmaSvgRasterTarget(nodeId, href, region.left, region.top, region.right, region.bottom)
@@ -789,21 +795,33 @@ data class FigmaSvgModel(
           contentOpacity = contentOpacity,
         )
       }
+      // The box the painter *draws* into, which for a padded `Icon` is not the node's box at all
+      // (issue #2853). Jetchat writes `Icon(modifier = Modifier.padding(8.dp).size(56.dp))` inside
+      // an `IconButton`, and `Modifier.padding` before the paint insets what the painter fills —
+      // so the node measures (and places) the whole button while the glyph is drawn into a much
+      // smaller rect. Fitting the vector to the node box is what oversized Jetchat's five action
+      // icons and its microphone, in both the isolated and the embedded container.
+      // Null when the capture doesn't state one (an older file, a draw-captured vector, a detached
+      // coordinate) — then nothing changes and the node's own box and measured `size` still decide.
+      val painted = if (fromDrawCapture()) null else paintedVectorRegion(bounds)
       vectorGraphic
         ?.toFigmaSvgVector(
-          layoutWidth = size.width,
-          layoutHeight = size.height,
+          // The painted region is a *drawn* rect, so it already carries any graphics-layer scale;
+          // the emitter's placed/layout ratio then cancels to 1 and the vector fits it exactly.
+          layoutWidth = painted?.let { it.right - it.left } ?: size.width,
+          layoutHeight = painted?.let { it.bottom - it.top } ?: size.height,
           fillBounds = hasFillBoundsContentScale(),
           scaleX = transform?.scaleX?.toDouble() ?: 1.0,
           scaleY = transform?.scaleY?.toDouble() ?: 1.0,
         )
         ?.let { vec ->
+          val box = painted ?: bounds
           return FigmaSvgLayer(
             name = layerName(),
-            left = bounds.left,
-            top = bounds.top,
-            right = bounds.right,
-            bottom = bounds.bottom,
+            left = box.left,
+            top = box.top,
+            right = box.right,
+            bottom = box.bottom,
             vector = vec,
             opacity = opacity,
             contentOpacity = contentOpacity,
@@ -1100,7 +1118,16 @@ data class FigmaSvgModel(
         contentOpacity = contentOpacity,
         curvedTexts = curvedTexts,
         clipChildren = tokens?.clipsContent == true,
-        children = children.map { it.toLayer(ctx, bounds) },
+        children =
+          children.map {
+            // A `Modifier.clip` here becomes the clip box its subtree inherits; nested clips
+            // intersect. Without one the subtree keeps whatever (if anything) clipped it above —
+            // an ordinary container does NOT clip, and a child overflowing it still draws.
+            val childClip =
+              if (tokens?.clipsContent == true) intersectOrNull(bounds, clipBounds) ?: bounds
+              else clipBounds
+            it.toLayer(ctx, bounds, childClip)
+          },
       )
     }
 
@@ -1348,6 +1375,47 @@ data class FigmaSvgModel(
       return filter != null && filter != "null"
     }
 
+    /**
+     * True when this node's captured vector came from its own draw lambda, not an `ImageVector`.
+     */
+    private fun LayoutInspectorNode.fromDrawCapture(): Boolean =
+      vectorGraphic?.fromDrawCapture == true
+
+    /**
+     * The rect an `ImageVector` painter actually draws into — the placed bounds of the
+     * `Modifier.paint` entry that carries it, which is the node's box *after* every layout modifier
+     * ahead of it (issue #2853).
+     *
+     * That distinction is the whole point: `Modifier.padding(18.dp)` before the paint (Jetchat's
+     * `RecordButton`) insets the drawn glyph to 20dp inside a 56dp node, and
+     * `Modifier.padding(8.dp) .size(56.dp)` inside an `IconButton` (its `InputSelectorButton`) both
+     * pads *and* clamps. In either case the node's own `bounds`/`size` describe the button, not the
+     * icon, so fitting the viewport to them draws the glyph at the button's size — the oversized
+     * mic and action icons.
+     *
+     * Null whenever the capture can't be trusted, leaving the node's own box and measured `size` to
+     * decide exactly as before: no paint entry (an older layout-inspector file that carried no
+     * modifier bounds), a degenerate rect, or one that isn't inside the node's own placed box — a
+     * painter never paints outside the box it was measured in, so a rect that claims to is a
+     * detached/not-yet-placed coordinate we must not fit to. That fallback is what keeps a
+     * *clipped* vector square: with no painter rect, a drawn box smaller than the slot is a crop,
+     * not a fit.
+     */
+    private fun LayoutInspectorNode.paintedVectorRegion(
+      nodeBounds: LayoutInspectorBounds
+    ): LayoutInspectorBounds? {
+      val painted =
+        modifiers.lastOrNull { it.name in PAINT_FILL_MODIFIERS && it.bounds != null }?.bounds
+          ?: return null
+      if (painted.right <= painted.left || painted.bottom <= painted.top) return null
+      val inside =
+        painted.left >= nodeBounds.left &&
+          painted.top >= nodeBounds.top &&
+          painted.right <= nodeBounds.right &&
+          painted.bottom <= nodeBounds.bottom
+      return painted.takeIf { inside }
+    }
+
     /** The region a paint-fill painter actually covers — its modifier bounds, else the node box. */
     private fun LayoutInspectorNode.paintFillRegion(): LayoutInspectorBounds =
       modifiers
@@ -1427,9 +1495,23 @@ data class FigmaSvgModel(
      * the draw modifiers' own bounds. Unlike [drawnRegion] this never *shrinks* to the draw bounds
      * — the icon underneath still has to be inside the crop, and a tint pass that reports no bounds
      * covers the whole node.
+     *
+     * It never grows past [clipBounds] either — the box of the nearest ancestor that actually clips
+     * its children. The union is a crop taken out of the rendered frame, so a draw modifier
+     * reporting a rect beyond what its clip admits (a detached coordinate, a node whose ancestors'
+     * transform the capture didn't apply) would mint an `<image>` of frame pixels that belong to
+     * something else — the detached white tiles Jetsnack's `Screens/App shell` and `Snack/Detail`
+     * grew to the right of and below their UI, which also expand the exported canvas because the
+     * document extent is the union of its layers (issue #2853).
+     *
+     * Only a *clipping* ancestor bounds it. An ordinary container does not clip, and a child
+     * overflowing one really is drawn past its edge (`FigmaSvgChildClipTest`'s unclipped case), so
+     * the immediate parent's box is not a limit — clamping to that would truncate a crop whose
+     * pixels are genuinely in the frame.
      */
     private fun LayoutInspectorNode.drawnOverlayRegion(
-      nodeBounds: LayoutInspectorBounds
+      nodeBounds: LayoutInspectorBounds,
+      clipBounds: LayoutInspectorBounds? = null,
     ): LayoutInspectorBounds {
       // [nodeBounds], not this node's raw `bounds`: a detached or not-yet-placed node (a vector
       // inside a subcomposed Button/TextField) reports `(0,0,0,0)`, which `toLayer` has already
@@ -1441,12 +1523,35 @@ data class FigmaSvgModel(
       // allowed to drag the union back to the origin.
       val placed = drawn.filter { it.right > it.left && it.bottom > it.top }
       if (placed.isEmpty()) return nodeBounds
-      return LayoutInspectorBounds(
-        left = minOf(nodeBounds.left, placed.minOf { it.left }),
-        top = minOf(nodeBounds.top, placed.minOf { it.top }),
-        right = maxOf(nodeBounds.right, placed.maxOf { it.right }),
-        bottom = maxOf(nodeBounds.bottom, placed.maxOf { it.bottom }),
-      )
+      val union =
+        LayoutInspectorBounds(
+          left = minOf(nodeBounds.left, placed.minOf { it.left }),
+          top = minOf(nodeBounds.top, placed.minOf { it.top }),
+          right = maxOf(nodeBounds.right, placed.maxOf { it.right }),
+          bottom = maxOf(nodeBounds.bottom, placed.maxOf { it.bottom }),
+        )
+      // A node placed entirely outside its clip leaves nothing to clamp to, so `intersectOrNull`
+      // comes back null; keep the node's own box rather than emitting an inverted rect.
+      return intersectOrNull(union, clipBounds) ?: union
+    }
+
+    /**
+     * [a] ∩ [b], or [a] itself when [b] is absent or degenerate. Null when the two don't overlap at
+     * all, so a caller can tell "clamped" from "nothing left".
+     */
+    private fun intersectOrNull(
+      a: LayoutInspectorBounds,
+      b: LayoutInspectorBounds?,
+    ): LayoutInspectorBounds? {
+      if (b == null || b.right <= b.left || b.bottom <= b.top) return a
+      val out =
+        LayoutInspectorBounds(
+          left = maxOf(a.left, b.left),
+          top = maxOf(a.top, b.top),
+          right = minOf(a.right, b.right),
+          bottom = minOf(a.bottom, b.bottom),
+        )
+      return out.takeIf { it.right > it.left && it.bottom > it.top }
     }
 
     private fun LayoutInspectorNode.layerName(): String =

@@ -12,12 +12,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -128,6 +130,58 @@ fun FidelityCardPreview() {
         Text(text = "harness card", style = MaterialTheme.typography.bodyMedium)
         Box(modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.primary))
       }
+    }
+  }
+}
+
+/**
+ * Desktop mirror of the Android `IconButtonRowInputBar` fidelity fixture (issue #2853), the
+ * **padded icon** case: Jetchat's `Conversation/Input` row of `InputSelectorButton`s, each an
+ * `IconButton` around `Icon(modifier = Modifier.padding(8.dp).size(56.dp))`, plus its
+ * `RecordButton` shape — `Icon(modifier = Modifier.sizeIn(minWidth = 56.dp, …).padding(18.dp))`. In
+ * both, the padding ahead of the painter insets the box the glyph is drawn into, so a fit taken
+ * from the node's own box draws the glyph at its button's size. This is the one that scores the
+ * fix: the fidelity harness rasterises the SVG against the render, and an oversized glyph shows up
+ * as a direct score drop.
+ */
+@Composable
+fun IconButtonRowInputBar() {
+  val glyph =
+    ImageVector.Builder(
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+      )
+      .apply {
+        path(fill = SolidColor(Color.White)) {
+          moveTo(2f, 2f)
+          lineTo(22f, 2f)
+          lineTo(22f, 22f)
+          lineTo(2f, 22f)
+          close()
+        }
+      }
+      .build()
+
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFF1F1F1F))) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+      repeat(2) { index ->
+        IconButton(onClick = {}) {
+          Icon(
+            imageVector = glyph,
+            contentDescription = "action-$index",
+            tint = Color.White,
+            modifier = Modifier.testTag("action-$index").padding(8.dp).size(56.dp),
+          )
+        }
+      }
+      Icon(
+        imageVector = glyph,
+        contentDescription = "record",
+        tint = Color.White,
+        modifier = Modifier.testTag("record-mic").sizeIn(minWidth = 56.dp).padding(18.dp),
+      )
     }
   }
 }

@@ -358,6 +358,86 @@ class RenderEngineTest {
     )
   }
 
+  @Test
+  fun figmaSvgDrawsAPaddedIconAtItsPaintedSize() {
+    // Issue #2853 end-to-end, the padded icon: Jetchat's `InputSelectorButton`
+    // (`IconButton { Icon(Modifier.padding(8.dp).size(56.dp)) }`) and its `RecordButton`
+    // (`Icon(Modifier.sizeIn(minWidth = 56.dp).padding(18.dp))`). The padding ahead of the painter
+    // insets the box the glyph is drawn into, so fitting the vector to the node's own box drew each
+    // glyph at its *button's* size — the oversized action icons and microphone of
+    // `Conversation/Input`.
+    //
+    // Asserted against the render itself rather than a golden string: every glyph the SVG emits
+    // must land on the pixels the PNG actually painted. That is the fidelity the issue asks for,
+    // and
+    // it fails loudly whichever way the geometry drifts.
+    val outputDir = tempFolder.newFolder("renders-padded-icon")
+    val dataDir = tempFolder.newFolder("data-padded-icon")
+    val engine = RenderEngine(outputDir = outputDir, dataDir = dataDir)
+    val host = DesktopHost(engine = engine)
+    host.start()
+    try {
+      val result =
+        host.submit(
+          RenderRequest.Render(
+            payload =
+              "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+                "functionName=IconButtonRowInputBar;" +
+                "widthPx=240;heightPx=64;density=1.0;" +
+                "showBackground=true;" +
+                "outputBaseName=padded-icon"
+          ),
+          timeoutMs = 60_000,
+        )
+
+      val svg = File(dataDir, "padded-icon/compose-figma.svg").readText()
+      // Each glyph rides in `translate(x y) scale(s s)` and paints the viewport's 2..22 square, so
+      // the SVG says the white block covers [x + 2s, x + 20s] on each axis.
+      val groups =
+        Regex("""translate\(([-0-9.]+) ([-0-9.]+)\) scale\(([0-9.]+) ([0-9.]+)\)""")
+          .findAll(svg)
+          .map { m -> m.groupValues.drop(1).map { it.toDouble() } }
+          .toList()
+      assertTrue(
+        "all three icons must emit a vector group, got ${groups.size}:\n$svg",
+        groups.size >= 3,
+      )
+
+      val png = javax.imageio.ImageIO.read(File(result.pngPath!!))
+      for ((x, y, sx, sy) in groups.map { listOf(it[0], it[1], it[2], it[3]) }) {
+        assertEquals("a square glyph must stay square", sx, sy, 0.01)
+        val left = x + 2 * sx
+        val top = y + 2 * sy
+        val side = 20 * sx
+        // The white glyph the SVG claims is here must be white in the render too — centre, and just
+        // inside each edge. An oversized fit (the bug) puts the SVG's block over the dark
+        // background instead.
+        val probes =
+          listOf(
+            left + side / 2 to top + side / 2,
+            left + 2 to top + 2,
+            left + side - 2 to top + side - 2,
+          )
+        for ((px, py) in probes) {
+          assertTrue(
+            "the SVG places a glyph outside the render entirely ($px,$py in " +
+              "${png.width}×${png.height})",
+            px >= 0 && py >= 0 && px < png.width && py < png.height,
+          )
+          val rgb = png.getRGB(px.toInt(), py.toInt())
+          val bright = ((rgb shr 16 and 0xFF) + (rgb shr 8 and 0xFF) + (rgb and 0xFF)) / 3
+          assertTrue(
+            "the render must paint the glyph where the SVG places it " +
+              "(probe $px,$py in a ${side}px glyph at $left,$top was $bright/255)",
+            bright > 128,
+          )
+        }
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
   private fun assertFidelityScored(
     functionName: String,
     widthPx: Int,

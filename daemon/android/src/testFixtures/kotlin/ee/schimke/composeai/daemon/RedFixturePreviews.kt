@@ -23,6 +23,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -269,6 +270,54 @@ fun GraphicsLayerAndWideVector() {
       contentDescription = "diamond",
       modifier = Modifier.testTag("wide-vector").size(width = 48.dp, height = 16.dp),
     )
+  }
+}
+
+/**
+ * Android end-to-end fidelity fixture for #2853, the *embedded container* case: Jetchat's
+ * `Conversation/Input` row of `InputSelectorButton`s, whose icons the export blew up to their
+ * button box. Each button is an M3 `IconButton` holding
+ * `Icon(modifier = Modifier.padding(8.dp).size(56.dp))` — the exact chain Jetchat authors — so the
+ * painter draws into the *padded, constraint-clamped* box while the node still measures the button.
+ * Fitting the vector to the measured box instead of the drawn one is what oversized the five action
+ * icons from `scale(0.06)` to `scale(0.1)`.
+ */
+@Composable
+fun IconButtonRowInputBar() {
+  val glyph =
+    ImageVector.Builder(
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+      )
+      .apply {
+        path(fill = SolidColor(Color.White)) {
+          moveTo(2f, 2f)
+          lineTo(22f, 2f)
+          lineTo(22f, 22f)
+          lineTo(2f, 22f)
+          close()
+        }
+      }
+      .build()
+
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFF1F1F1F))) {
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      repeat(2) { index ->
+        IconButton(onClick = {}) {
+          Icon(
+            imageVector = glyph,
+            contentDescription = "action-$index",
+            tint = Color.White,
+            modifier = Modifier.testTag("action-$index").padding(8.dp).size(56.dp),
+          )
+        }
+      }
+    }
   }
 }
 
