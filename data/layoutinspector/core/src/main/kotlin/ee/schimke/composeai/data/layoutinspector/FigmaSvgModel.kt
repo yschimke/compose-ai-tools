@@ -652,13 +652,19 @@ data class FigmaSvgModel(
       // shows. Drop those targets so an off-viewport lazy item costs neither a PNG nor a dangling
       // reference (issue #2853). Targets carrying their own captured bytes are unaffected: their
       // pixels come with the payload, not out of the frame.
+      // Filtered against the **final canvas**, not the frame: the two must agree, or the SVG
+      // references a PNG nobody writes. The clamp above falls back to the drawn extent when content
+      // lies entirely outside the frame, and in that case those layers — `<image>` included — are
+      // still on the canvas and still need their crops. With no frame the canvas *is* the drawn
+      // extent, so every target is inside it and nothing is dropped.
       val targets =
-        frameExtent?.let { f ->
-          ctx.rasterTargets.filter {
-            it.pngBase64 != null ||
-              (it.right > f.minX && it.left < f.maxX && it.bottom > f.minY && it.top < f.maxY)
-          }
-        } ?: ctx.rasterTargets
+        ctx.rasterTargets.filter {
+          it.pngBase64 != null ||
+            (it.right > extent.minX &&
+              it.left < extent.maxX &&
+              it.bottom > extent.minY &&
+              it.top < extent.maxY)
+        }
       return FigmaSvgModel(
         root = rootLayer,
         minX = extent.minX,

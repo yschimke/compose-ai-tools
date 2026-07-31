@@ -91,4 +91,43 @@ class FigmaSvgOffscreenItemTest {
     val svg = FigmaLayeredSvg.render(m)
     assertTrue("the straddling card must still be emitted:\n$svg", svg.contains("""x="397""""))
   }
+
+  @Test
+  fun aTreeDrawnEntirelyOffFrameKeepsItsLayersAndTheirCrops() {
+    // Pathological capture: everything composed sits past the frame, so the clamp has nothing to
+    // intersect and falls back to the drawn extent — those layers stay on the canvas. The raster
+    // targets must stay with them, or the `<image>` they emit would reference a PNG nobody writes.
+    val offFrame =
+      LayoutInspectorNode(
+        nodeId = "screen",
+        component = "Box",
+        bounds = bounds(0, 0, 400, 800),
+        size = LayoutInspectorSize(400, 800),
+        children =
+          listOf(
+            LayoutInspectorNode(
+              nodeId = "photo",
+              component = "Image",
+              bounds = bounds(600, 900, 720, 1020),
+              size = LayoutInspectorSize(120, 120),
+            )
+          ),
+      )
+    val m =
+      FigmaSvgModel.from(
+        layout = LayoutInspectorPayload(offFrame),
+        density = 1f,
+        rasterComponents = FigmaSvgModel.DEFAULT_RASTER_COMPONENTS,
+        frameWidthPx = 400,
+        frameHeightPx = 800,
+      )
+    val svg = FigmaLayeredSvg.render(m)
+    val referenced = Regex("""href="([^"]+)"""").findAll(svg).map { it.groupValues[1] }.toList()
+    for (href in referenced) {
+      assertTrue(
+        "every <image href> must have a raster target to write it: $href in ${m.rasterTargets}",
+        m.rasterTargets.any { it.href == href },
+      )
+    }
+  }
 }
