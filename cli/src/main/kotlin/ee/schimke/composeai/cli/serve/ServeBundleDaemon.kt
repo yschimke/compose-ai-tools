@@ -315,9 +315,15 @@ internal object ServeBundleDaemon {
    * exact same path a catalog uses — no new live-session machinery. Returns null (logged) when the
    * mode's daemon backend (sidecar / `android.jar`) is unavailable, so redemption reports
    * "unavailable" rather than standing up a dead session.
+   *
+   * [sandbox] is the per-session containment (PLAYGROUND.md §6, issue #3016): its jail argv and
+   * hard TTL ride the written descriptor, so the registry's ordinary descriptor→spawn path launches
+   * the snippet's daemon inside the jail and shoots it at the deadline. [PlaygroundSandbox.NONE]
+   * leaves the descriptor identical to the pre-sandbox one.
    */
   fun materializePlaygroundSnippet(
     snippet: PlaygroundTokenStore.PlaygroundSnippet,
+    sandbox: PlaygroundSandbox = PlaygroundSandbox.NONE,
     fileSystem: FileSystem = SystemFileSystem,
     onLog: (String) -> Unit = { System.err.println("[playground live] $it") },
   ): ServeSessionState? {
@@ -372,7 +378,9 @@ internal object ServeBundleDaemon {
         mainClass = DAEMON_MAIN_CLASS,
         javaLauncher = null,
         classpath = classpaths.daemonClasspath,
-        jvmArgs = backendLaunch.jvmArgs,
+        // The sandbox's JVM caps come last so they win over any backend default: a snippet's daemon
+        // is bounded in heap and CPU even on a jail with no cgroup behind it.
+        jvmArgs = backendLaunch.jvmArgs + sandbox.jvmArgs(workDir),
         systemProperties =
           buildMap {
             put("composeai.daemon.userClassDirs", classpaths.userClassPath)
@@ -383,6 +391,21 @@ internal object ServeBundleDaemon {
           },
         workingDirectory = workDir.absolutePath,
         manifestPath = previewsJson.absolutePath,
+        jailCommand =
+          sandbox.command(
+            PlaygroundSandbox.Paths(
+              workDir = workDir,
+              // Everything the daemon reads: its own sidecar jars, the catalog classpath, and the
+              // snippet's compiled classes. Bound read-only; only workDir is writable.
+              readOnly =
+                (classpaths.daemonClasspath.map { File(it) } +
+                    snippet.classpath.map { File(it.toString()) } +
+                    classesDir)
+                  .distinct(),
+              javaHome = File(System.getProperty("java.home")),
+            )
+          ),
+        hardTtlSeconds = sandbox.ttlSeconds.takeIf { sandbox.isActive },
       )
     val descriptorFile = File(workDir, "daemon-launch.json")
     try {

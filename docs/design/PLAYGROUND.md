@@ -4,8 +4,10 @@ Status: **design proposal** (2026-07). Product analysis + architecture for a
 hosted "edit Compose, get a live interactive preview" surface, built on the
 seams `compose-preview serve` already ships. This document scopes what exists,
 what's missing, the REST + handoff contract, the isolation requirements, and a
-phased plan. The first phase's implementation is landing alongside this doc; the
-later phases are not built yet.
+phased plan. Phases 1–3 (CMP, Android, Remote Compose) and the Phase-4
+per-session sandbox ([§6](#6-isolation--the-actual-hard-part)) are built; the
+playground remains token-gated by default, and serves under `--public` only on a
+sandbox that has passed the startup containment probe.
 
 > **Thesis.** A Compose playground is mostly the *existing* serve viewer plus an
 > editor pane plus an ephemeral, per-session module. The three things that would
@@ -263,10 +265,77 @@ sandbox:
 - **one snippet per JVM** — never hot-swap a stranger's classes into a shared,
   long-lived daemon.
 
-This is a real ops project, not a flag. It is the gate between "internal /
-token-gated tool" and "open at `preview.coo.ee`", and the phased plan below is
-ordered so that everything valuable can be proven **behind a token** before any
-of it is exposed.
+### 6.1 What is built (Phase 4, `--playground-sandbox`)
+
+Half the list was already true and unremarked: every playground lane — the
+Stage-1 first frame, the RC capture, and the Stage-2 live session — spawns a
+**fresh daemon subprocess over that snippet's own classes**
+(`SubprocessRenderSessions.openBundleDaemon`, `ServeBundleDaemon.materializePlaygroundSnippet`).
+A stranger's classes are never hot-swapped into a shared, long-lived daemon;
+"one snippet per JVM" is the shape the code already had. What Phase 4 adds is
+the *containment around that child*, plus the evidence that it works.
+
+[`PlaygroundSandbox`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/PlaygroundSandbox.kt)
+is a pure policy type that produces three things for each snippet JVM:
+
+| Requirement | How |
+|---|---|
+| Own process, killed at a hard TTL | Already one JVM per snippet; `hardTtlSeconds` rides the daemon descriptor and the spawner arms a `destroyForcibly` watchdog — no cooperation needed from a wedged snippet. |
+| No outbound network | The jail's network namespace: `bwrap --unshare-net`, `unshare --net`, or `systemd-run -p PrivateNetwork=yes`. |
+| Read-only / ephemeral FS | `bwrap` binds the host read-only with a tmpfs `/tmp`, and the snippet's work dir is the **only** writable path — and that dir is deleted when its preview token drops. |
+| Memory + CPU caps | cgroup (`MemoryMax` / `CPUQuota` / `TasksMax`) on the `systemd`/`strict` profiles, **plus** JVM-level caps on every active profile (`-Xmx`, `-XX:ActiveProcessorCount`, `-XX:+ExitOnOutOfMemoryError`). |
+| One snippet per JVM | Structural: each lane opens its own subprocess daemon over one snippet's classes. |
+
+Profiles, chosen with `--playground-sandbox`:
+
+| Profile | Jail | Egress | FS | cgroup caps |
+|---|---|---|---|---|
+| `none` (default) | — | — | — | — |
+| `unshare` | `unshare(1)` user+net+pid ns | ✓ | ✗ (host FS visible) | ✗ |
+| `bwrap` | `bwrap(1)`, cleared env | ✓ | ✓ | ✗ (JVM caps only) |
+| `systemd` | `systemd-run --scope` | ✓ | ✓ | ✓ |
+| `strict` | `systemd-run … bwrap …` | ✓ | ✓ | ✓ |
+| `custom:<argv>` | operator-supplied | ? | ? | ? |
+
+Knobs: `--playground-sandbox-memory-mb`, `--playground-sandbox-cpus`,
+`--playground-sandbox-pids`, `--playground-sandbox-ttl`, and
+`--playground-sandbox-ro <path>[,…]` for caches a render legitimately reads with
+no network to fetch them (the Robolectric `android-all` cache, the downloadable
+font cache — **prewarm these before going public**; a cold Robolectric inside an
+empty netns cannot fetch its `android-all` jar).
+
+### 6.2 The gate is a probe, not a flag
+
+The `--public` refusal has *not* become "you passed `--playground-sandbox`, off
+you go". A profile name is a claim: `bwrap` on a kernel with user namespaces
+disabled, or a `custom:` wrapper with a typo in it, both claim everything and
+contain nothing. So at startup a `--public` host runs
+[`PlaygroundSandboxProbe`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/PlaygroundSandboxProbe.kt):
+a throwaway JVM launched **through the same jail argv a snippet gets**, which
+measures and reports back
+
+- **egress blocked** — every connect to a routable address fails;
+- **filesystem contained** — a canary the host wrote outside the jail's bind set
+  is invisible;
+- **process isolated** — the serve host's own pid is absent from `/proc`;
+- **work dir writable** — the jail isn't so tight that a render couldn't run.
+
+`PlaygroundPublicGate` admits the lane only on a clean report, and fails closed
+in every other direction: no profile, no report, a jail that wouldn't launch, or
+any single failing check all keep the playground disabled with an actionable
+log. That also means `unshare` — which blocks egress but leaves the host
+filesystem visible — is a fine local rehearsal profile and is **refused** under
+`--public`, by measurement rather than by a hard-coded list.
+
+### 6.3 Residual: the compiler still runs in-process
+
+`BtaCompileSession` compiles the snippet **in the serve JVM**. That compile does
+not *execute* snippet code (no annotation processors, no `init` blocks — only
+the Kotlin + Compose compiler plugins we ship), and the request body is capped
+(`MAX_PLAYGROUND_BYTES`), so it is a resource-exhaustion surface rather than an
+execution one. Jailing the compiler too — a compile subprocess per request,
+sharing this same `PlaygroundSandbox` — is the natural follow-up, tracked
+separately.
 
 ---
 
@@ -289,9 +358,12 @@ Each phase is independently shippable and useful on its own.
    `ServeDocFormats`, `rc-player`. No live seat. **This is the first mode safe to
    expose to a wider (still gated) audience**, because its serving side already is.
 
-4. **Phase 4 — per-session sandbox.** Only once 1–3 have proven the product:
-   container isolation, no egress, read-only FS, memory/CPU/wall-clock caps, hard
-   TTL, one snippet per JVM. This is the gate to `--public`.
+4. **Phase 4 — per-session sandbox (shipped).** Namespace/cgroup isolation, no
+   egress, read-only FS, memory/CPU caps, a hard wall-clock TTL enforced by kill,
+   one snippet per JVM — configured with `--playground-sandbox` and gated on a
+   startup probe that proves the jail contains a snippet before `--public` is
+   allowed to serve it. See [§6.1](#61-what-is-built-phase-4---playground-sandbox)
+   and [§6.2](#62-the-gate-is-a-probe-not-a-flag).
 
 5. **Editor decision (parallel, non-blocking).** Ship Stage 1 against the REST
    contract with a stock `kotlin-playground` first; evaluate a bespoke

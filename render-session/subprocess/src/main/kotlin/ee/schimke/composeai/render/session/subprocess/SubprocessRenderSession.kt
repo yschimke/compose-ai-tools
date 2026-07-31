@@ -104,6 +104,10 @@ object SubprocessRenderSessions : RenderSessionFactory {
    *   launch emits). Defaults to just [classesDir] (a bundle already carries its deps on
    *   [daemonClasspath]); a playground snippet passes its full compile classpath so the catalog's
    *   library jars reach the render.
+   * @param jailCommand optional argv prefix the daemon JVM launches behind — the playground's
+   *   per-session sandbox (`bwrap`/`unshare`/`systemd-run`); empty launches the JVM directly.
+   * @param hardTtlSeconds optional wall-clock deadline after which the spawner force-kills the JVM.
+   *   Set for a sandboxed playground snippet; null for an ordinary bundle daemon.
    */
   fun openBundleDaemon(
     daemonClasspath: List<String>,
@@ -115,6 +119,8 @@ object SubprocessRenderSessions : RenderSessionFactory {
     jvmArgs: List<String> = listOf("--enable-native-access=ALL-UNNAMED"),
     extraSystemProperties: Map<String, String> = emptyMap(),
     userClasspath: List<String> = listOf(classesDir.absolutePath),
+    jailCommand: List<String> = emptyList(),
+    hardTtlSeconds: Long? = null,
     factory: DaemonClientFactory = SubprocessDaemonClientFactory(),
   ): RenderSession {
     require(daemonClasspath.isNotEmpty()) { "daemonClasspath must not be empty" }
@@ -143,6 +149,8 @@ object SubprocessRenderSessions : RenderSessionFactory {
           ) + extraSystemProperties,
         workingDirectory = canonicalRoot.absolutePath,
         manifestPath = previewsJson.absolutePath,
+        jailCommand = jailCommand,
+        hardTtlSeconds = hardTtlSeconds,
       )
     return spawnAndInitialize(
       descriptor = descriptor,
