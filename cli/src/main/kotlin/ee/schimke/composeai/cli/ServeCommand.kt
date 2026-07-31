@@ -13,8 +13,11 @@ import ee.schimke.composeai.cli.serve.PlaygroundCatalogClasspath
 import ee.schimke.composeai.cli.serve.PlaygroundCompileService
 import ee.schimke.composeai.cli.serve.PlaygroundMode
 import ee.schimke.composeai.cli.serve.PlaygroundPreviewDiscoverer
+import ee.schimke.composeai.cli.serve.PlaygroundPublicGate
 import ee.schimke.composeai.cli.serve.PlaygroundRcCaptureService
 import ee.schimke.composeai.cli.serve.PlaygroundRedeemService
+import ee.schimke.composeai.cli.serve.PlaygroundSandbox
+import ee.schimke.composeai.cli.serve.PlaygroundSandboxProbe
 import ee.schimke.composeai.cli.serve.PlaygroundTokenStore
 import ee.schimke.composeai.cli.serve.RenderOutcome
 import ee.schimke.composeai.cli.serve.ServeBundle
@@ -253,6 +256,63 @@ class ServeCommand(args: List<String>) : Command(args) {
    * `android.jar` + the `/d/` document store). Refused under `--public` like `--playground-bundle`.
    */
   private val playgroundAndroidBundlePath: String? = args.flagValue("--playground-android-bundle")
+
+  /**
+   * `--playground-sandbox <profile>`: the **per-session sandbox** every playground snippet JVM runs
+   * inside (`none` | `unshare` | `bwrap` | `systemd` | `strict` | `custom:<argv>`), plus its
+   * resource knobs. This is Phase 4 of docs/design/PLAYGROUND.md — the gate that lets the
+   * playground run under `--public` at all: with a verified sandbox the snippet no longer executes
+   * unconfined on the serve host. Default `none`, which keeps the pre-Phase-4 behaviour (playground
+   * allowed token-gated, refused under `--public`).
+   */
+  private val playgroundSandboxSpec: String? = args.flagValue("--playground-sandbox")
+
+  private val playgroundSandboxMemoryMb: Int =
+    args.flagValue("--playground-sandbox-memory-mb")?.toIntOrNull()
+      ?: PlaygroundSandbox.DEFAULT_MEMORY_MB
+
+  private val playgroundSandboxCpus: Double =
+    args.flagValue("--playground-sandbox-cpus")?.toDoubleOrNull() ?: PlaygroundSandbox.DEFAULT_CPUS
+
+  private val playgroundSandboxPids: Int =
+    args.flagValue("--playground-sandbox-pids")?.toIntOrNull() ?: PlaygroundSandbox.DEFAULT_PIDS
+
+  /** Hard wall-clock lifetime of one snippet JVM; the spawner kills it at the deadline. */
+  private val playgroundSandboxTtlSeconds: Long =
+    args.flagValue("--playground-sandbox-ttl")?.toLongOrNull()
+      ?: PlaygroundSandbox.DEFAULT_TTL_SECONDS
+
+  /**
+   * `--playground-sandbox-ro <path>[,<path>…]`: extra host paths bound **read-only** into the jail.
+   * The escape hatch for caches a render legitimately reads while having no network to fetch them —
+   * the Robolectric `android-all` cache (`~/.m2/repository`) and the downloadable-font cache are
+   * the two that matter in practice; prewarm them before going public.
+   */
+  private val playgroundSandboxReadOnlyPaths: List<String> =
+    args
+      .flagValue("--playground-sandbox-ro")
+      ?.split(",")
+      ?.map { it.trim() }
+      ?.filter { it.isNotEmpty() } ?: emptyList()
+
+  /**
+   * The parsed, validated sandbox policy — or a startup failure. Parse errors are fatal rather than
+   * fail-soft: an operator who asked for containment and got a typo must not silently be handed an
+   * unsandboxed playground.
+   */
+  private val playgroundSandbox: Result<PlaygroundSandbox> =
+    PlaygroundSandbox.parseProfile(playgroundSandboxSpec).mapCatching { parsed ->
+      PlaygroundSandbox.validate(
+          parsed.copy(
+            memoryMb = playgroundSandboxMemoryMb,
+            cpus = playgroundSandboxCpus,
+            pids = playgroundSandboxPids,
+            ttlSeconds = playgroundSandboxTtlSeconds,
+            extraReadOnlyPaths = playgroundSandboxReadOnlyPaths,
+          )
+        )
+        .getOrThrow()
+    }
 
   /**
    * Extra remote Maven repository base URLs the live-daemon classpath resolver may fetch from, on
@@ -851,10 +911,15 @@ class ServeCommand(args: List<String>) : Command(args) {
   /**
    * Build the `--playground-bundle` compile service, or null when not opted in. Resolves the CMP
    * compile classpath from the catalog liveBundle once at startup and wires the in-process BTA
-   * compiler from the CLI install's `lib-bta/`. **Refused under `--public`**: the compile runs
-   * user-supplied code in-process, which the public server's "never run untrusted code on the
-   * server" model forbids (docs/design/PLAYGROUND.md § isolation). Fail-soft: any missing piece
-   * (bundle unresolvable, no `lib-bta/`) logs why and disables the lane rather than aborting serve.
+   * compiler from the CLI install's `lib-bta/`.
+   *
+   * **Under `--public` the lane serves only behind a verified per-session sandbox** — the Phase-4
+   * gate (docs/design/PLAYGROUND.md §6, issue #3016): `--playground-sandbox` selects the jail every
+   * snippet JVM launches inside, and a startup probe must come back showing that jail blocks
+   * egress, contains the filesystem, and isolates the process namespace before the lane is wired at
+   * all. With no sandbox configured the old flat refusal stands. Fail-soft everywhere else: any
+   * missing piece (bundle unresolvable, no `lib-bta/`) logs why and disables the lane rather than
+   * aborting serve.
    */
   private fun openPlaygroundService(
     docStore: ServeDocStore?,
@@ -863,14 +928,41 @@ class ServeCommand(args: List<String>) : Command(args) {
     val cmpBundle = playgroundBundlePath
     val androidBundle = playgroundAndroidBundlePath
     if (cmpBundle == null && androidBundle == null) return null
-    if (public) {
-      System.err.println(
-        "serve: --playground-bundle / --playground-android-bundle are refused under --public — they " +
-          "compile and run user-supplied code in-process. Omit --public to enable the playground."
-      )
+
+    val sandbox = playgroundSandbox.getOrElse { e ->
+      System.err.println("serve: ${e.message}. Playground disabled.")
       return null
     }
     val workRoot = java.nio.file.Files.createTempDirectory("compose-playground").toFile()
+
+    // Phase 4 (docs/design/PLAYGROUND.md §6, issue #3016): under --public the playground serves
+    // only behind a sandbox that has *demonstrated* containment — the preflight runs a throwaway
+    // JVM inside the configured jail and reports whether it can still reach the network, the host
+    // filesystem, or host processes. A profile's claims are never enough on their own.
+    val probe =
+      if (public && sandbox.isActive) {
+        System.err.println("serve: playground sandbox preflight (${sandbox.describe()})…")
+        PlaygroundSandboxProbe.run(
+            sandbox = sandbox,
+            javaHome = java.io.File(System.getProperty("java.home")),
+            classpath =
+              System.getProperty("java.class.path")
+                .orEmpty()
+                .split(java.io.File.pathSeparator)
+                .filter { it.isNotBlank() },
+            workRoot = workRoot,
+          )
+          .also { System.err.println("serve: ${it.summary()}") }
+      } else null
+    when (val decision = PlaygroundPublicGate.decide(public, sandbox, probe)) {
+      is PlaygroundPublicGate.Decision.Refuse -> {
+        System.err.println("serve: ${decision.reason}")
+        workRoot.deleteRecursively()
+        return null
+      }
+      is PlaygroundPublicGate.Decision.Allow ->
+        System.err.println("serve: playground admitted — ${decision.detail}")
+    }
 
     val cmpClasspath = cmpBundle?.let { resolvePlaygroundClasspath(it, workRoot, "cmp") }
     val androidClasspath = androidBundle?.let {
@@ -896,7 +988,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     // CMP is unaffected. Remote-compose additionally needs the `/d/` document store to publish
     // into.
     val androidDaemonOpener =
-      if (androidClasspath != null) buildPlaygroundAndroidDaemonOpener() else null
+      if (androidClasspath != null) buildPlaygroundAndroidDaemonOpener(sandbox) else null
     val androidRender = androidDaemonOpener?.let { opener ->
       buildPlaygroundAndroidRenderService(workRoot, opener)
     }
@@ -908,7 +1000,8 @@ class ServeCommand(args: List<String>) : Command(args) {
     // render service (same as Android) over a desktop opener. Absent the desktop sidecar, CMP
     // simply
     // carries no still image; its live `/pg/` redemption still renders on demand.
-    val cmpDaemonOpener = if (cmpClasspath != null) buildPlaygroundDesktopDaemonOpener() else null
+    val cmpDaemonOpener =
+      if (cmpClasspath != null) buildPlaygroundDesktopDaemonOpener(sandbox) else null
     val cmpRender = cmpDaemonOpener?.let { opener ->
       buildPlaygroundAndroidRenderService(workRoot, opener)
     }
@@ -994,7 +1087,7 @@ class ServeCommand(args: List<String>) : Command(args) {
       PlaygroundRedeemService(
         tokenStore = tokenStore,
         registry = registry,
-        materialize = { ServeBundleDaemon.materializePlaygroundSnippet(it) },
+        materialize = { ServeBundleDaemon.materializePlaygroundSnippet(it, sandbox) },
       )
     redeemRef.set(redeem)
 
@@ -1052,7 +1145,9 @@ class ServeCommand(args: List<String>) : Command(args) {
    * `androidBundleDaemonLaunch`. Returns null (logging why) when the sidecar or `android.jar` is
    * missing — both Android lanes then report unavailable rather than compiling to a dead end.
    */
-  private fun buildPlaygroundAndroidDaemonOpener(): PlaygroundAndroidSessionOpener? {
+  private fun buildPlaygroundAndroidDaemonOpener(
+    sandbox: PlaygroundSandbox
+  ): PlaygroundAndroidSessionOpener? {
     val daemonJars = locateBundleSidecarJars("lib-daemon-android")
     if (daemonJars.isEmpty()) {
       System.err.println(
@@ -1085,6 +1180,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         previewsJson,
         workspaceRoot,
         userClasspath,
+        sandbox,
       )
     }
   }
@@ -1106,6 +1202,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     previewsJson: java.io.File,
     workspaceRoot: java.io.File,
     userClasspath: List<String>,
+    sandbox: PlaygroundSandbox,
   ) =
     SubprocessRenderSessions.openBundleDaemon(
       daemonClasspath =
@@ -1115,10 +1212,25 @@ class ServeCommand(args: List<String>) : Command(args) {
       previewsJson = previewsJson,
       workspaceRoot = workspaceRoot,
       modulePath = ":playground",
-      jvmArgs = jvmArgs,
+      // The sandbox's JVM caps come last so they win over the backend defaults.
+      jvmArgs = jvmArgs + sandbox.jvmArgs(workspaceRoot),
       extraSystemProperties = extraSystemProperties,
       userClasspath =
         userClasspath.filterNot { ServeBundleDaemon.jarPrecedesDaemonSidecar(java.io.File(it)) },
+      // Stage-1's first frame and the RC capture run a stranger's snippet exactly as the live lane
+      // does, so they are jailed identically — one JVM per snippet, killed at the hard TTL.
+      jailCommand =
+        sandbox.command(
+          PlaygroundSandbox.Paths(
+            workDir = workspaceRoot,
+            readOnly =
+              (sidecarClasspath + userClasspath).map { java.io.File(it) }.distinct() +
+                classesDir +
+                previewsJson,
+            javaHome = java.io.File(System.getProperty("java.home")),
+          )
+        ),
+      hardTtlSeconds = sandbox.ttlSeconds.takeIf { sandbox.isActive },
     )
 
   /**
@@ -1129,7 +1241,9 @@ class ServeCommand(args: List<String>) : Command(args) {
    * sidecar jars are absent — CMP then simply carries no still first frame while its live `/pg/`
    * redemption keeps rendering on demand.
    */
-  private fun buildPlaygroundDesktopDaemonOpener(): PlaygroundAndroidSessionOpener? {
+  private fun buildPlaygroundDesktopDaemonOpener(
+    sandbox: PlaygroundSandbox
+  ): PlaygroundAndroidSessionOpener? {
     val daemonJars = locateBundleSidecarJars("lib-daemon-desktop")
     val rendererJars = locateBundleSidecarJars("lib-renderer")
     if (daemonJars.isEmpty() || rendererJars.isEmpty()) {
@@ -1153,6 +1267,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         previewsJson,
         workspaceRoot,
         userClasspath,
+        sandbox,
       )
     }
   }

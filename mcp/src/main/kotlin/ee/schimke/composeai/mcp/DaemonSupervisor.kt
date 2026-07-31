@@ -700,7 +700,31 @@ data class DaemonLaunchDescriptor(
   val systemProperties: Map<String, String>,
   val workingDirectory: String,
   val manifestPath: String,
+  /**
+   * Optional argv **prefix** the daemon JVM launches behind — an OS jail (`bwrap`, `unshare`,
+   * `systemd-run --scope`, …). Empty (the default, and what the gradle plugin writes) launches the
+   * JVM directly, exactly as before.
+   *
+   * This is how the playground's per-session sandbox reaches the live lane: serve writes the jail
+   * into the snippet's own `daemon-launch.json`, so the descriptor→spawn path applies it without
+   * every intermediate layer having to thread a sandbox object through (`docs/design/PLAYGROUND.md`
+   * §6). Distinct from [withSandboxCount], which sizes Robolectric's *in-JVM* sandbox pool and has
+   * nothing to do with containment.
+   */
+  val jailCommand: List<String> = emptyList(),
+  /**
+   * Optional hard wall-clock lifetime, in seconds, for the spawned JVM. When set, the spawner arms
+   * a watchdog that force-kills the process at the deadline — the "killed after a hard wall-clock
+   * TTL" requirement for a playground session, enforced by the parent rather than by the child's
+   * cooperation. Null (the default) means no watchdog: an ordinary project daemon lives as long as
+   * its owner keeps it.
+   */
+  val hardTtlSeconds: Long? = null,
 ) {
+
+  /** Returns a copy launched behind [command] and force-killed after [hardTtlSeconds]. */
+  fun jailed(command: List<String>, hardTtlSeconds: Long?): DaemonLaunchDescriptor =
+    copy(jailCommand = command, hardTtlSeconds = hardTtlSeconds)
 
   /**
    * SANDBOX-POOL.md — returns a copy with `composeai.daemon.sandboxCount` merged into

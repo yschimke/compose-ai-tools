@@ -178,6 +178,9 @@ class SubprocessDaemonClientFactory : DaemonClientFactory {
       descriptor.javaLauncher ?: File(System.getProperty("java.home"), "bin/java").absolutePath
     val command =
       buildList<String> {
+        // The optional OS jail (playground per-session sandbox). Empty for every ordinary daemon,
+        // so the launched argv is byte-identical to the pre-sandbox one.
+        addAll(descriptor.jailCommand)
         add(javaBin)
         addAll(descriptor.jvmArgs)
         descriptor.systemProperties.forEach { (k, v) -> add("-D$k=$v") }
@@ -185,7 +188,14 @@ class SubprocessDaemonClientFactory : DaemonClientFactory {
         // literal `-cp`, which silently drops the daemon (e.g. --with-semantics capture). Pass it
         // via a Java @argfile so argv stays short regardless of classpath size (see
         // classpathArgFile).
-        add(classpathArgFile(descriptor.classpath))
+        // Inside a jail the parent's temp dir may not exist (bwrap mounts its own /tmp), so the
+        // argfile goes in the one directory both sides can see: the daemon's working directory.
+        add(
+          classpathArgFile(
+            descriptor.classpath,
+            File(descriptor.workingDirectory).takeIf { descriptor.jailCommand.isNotEmpty() },
+          )
+        )
         add(descriptor.mainClass)
       }
     val process =
@@ -197,7 +207,30 @@ class SubprocessDaemonClientFactory : DaemonClientFactory {
         .redirectError(ProcessBuilder.Redirect.PIPE)
         .start()
     forwardStderr(process, "${project.workspaceId}/${descriptor.modulePath}")
+    descriptor.hardTtlSeconds?.let { ttl ->
+      armHardTtl(process, ttl, "${project.workspaceId}/${descriptor.modulePath}")
+    }
     return SubprocessDaemonSpawn(process)
+  }
+
+  /**
+   * The hard wall-clock TTL: a daemon thread that force-kills the JVM at the deadline regardless of
+   * what it is doing. Cooperative shutdown is not enough for a sandboxed playground session — a
+   * snippet can spin a tight loop that never services a JSON-RPC `shutdown` — so the parent shoots
+   * it. A process that exits on its own first makes this a no-op.
+   */
+  private fun armHardTtl(process: Process, ttlSeconds: Long, tag: String) {
+    Thread(
+        {
+          if (!process.waitFor(ttlSeconds, TimeUnit.SECONDS)) {
+            System.err.println("[daemon $tag] hard TTL of ${ttlSeconds}s reached — killing sandbox")
+            process.destroyForcibly()
+          }
+        },
+        "daemon-hard-ttl-$tag",
+      )
+      .apply { isDaemon = true }
+      .start()
   }
 
   private fun forwardStderr(process: Process, tag: String) {
