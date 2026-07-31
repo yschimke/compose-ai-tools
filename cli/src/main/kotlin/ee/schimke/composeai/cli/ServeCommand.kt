@@ -916,10 +916,14 @@ class ServeCommand(args: List<String>) : Command(args) {
       catalogClasspath = { mode ->
         when (mode) {
           PlaygroundMode.CMP -> cmpClasspath
-          PlaygroundMode.ANDROID -> androidClasspath
-          // Only advertise REMOTE_COMPOSE when its capture backend actually came up — otherwise the
-          // host would accept the mode, run a full Android compile, then report the preview drew no
-          // document. A null classpath routes to the existing "mode … is not available" response.
+          // Only advertise the Android modes when their daemon backend actually came up — absent
+          // the
+          // sidecar/android.jar the host would otherwise accept the mode, run a full Android
+          // compile,
+          // then mint a dead token with no image (ANDROID) / report the preview drew no document
+          // (REMOTE_COMPOSE), contradicting the "Android modes disabled" startup log. A null
+          // classpath routes to the existing "mode … is not available" response.
+          PlaygroundMode.ANDROID -> androidClasspath?.takeIf { androidRender != null }
           PlaygroundMode.REMOTE_COMPOSE -> androidClasspath?.takeIf { rcCapture != null }
         }
       },
