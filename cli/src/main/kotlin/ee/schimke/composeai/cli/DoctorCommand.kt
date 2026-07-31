@@ -25,6 +25,10 @@ import okio.Path.Companion.toPath
  * - HEAD probes of Google-controlled hosts required by Android / downloadable-font render paths
  *   (`maven.google.com`, `dl.google.com`, `fonts.googleapis.com`, `fonts.gstatic.com`). Warnings
  *   only; set `COMPOSE_PREVIEW_DOCTOR_SKIP_NETWORK=1` to skip.
+ * - `env.desktop-natives` — only when the project has a CMP Desktop module: resolves skiko's four
+ *   native dependencies the way the *render JVM's* loader would, catching the
+ *   `UnsatisfiedLinkError: libGL.so.1: cannot open shared object file` class of failure before a
+ *   render burns a full build. See [DesktopNativesCheck] for why `ldd` isn't a substitute.
  *
  * **Project** (runs when a `settings.gradle[.kts]` is found at `--project` or cwd):
  * - Plugin applied to at least one module
@@ -505,6 +509,7 @@ class DoctorCommand(
     }
 
     checkDaemonJdkForAgp(model.modules)
+    checkDesktopNatives(model.modules)
 
     for ((modulePath, info) in model.modules) {
       checkModuleVersions(modulePath, info)
@@ -634,6 +639,59 @@ class DoctorCommand(
           ),
       )
     )
+  }
+
+  /**
+   * Emits `env.desktop-natives` when any module renders through the CMP Desktop (skiko) path.
+   *
+   * Gated on [rendersThroughSkiko] rather than run unconditionally: an Android-only project renders
+   * under Robolectric and never touches `libskiko`, so the check would be pure noise there. On a
+   * project that *does* include CMP, this is the check that turns the otherwise-opaque
+   * `UnsatisfiedLinkError: libGL.so.1: cannot open shared object file` into a named, fixable
+   * environment problem — before the user spends a full render cycle discovering it.
+   *
+   * The JVM we evaluate against is the Gradle daemon's ([daemonJavaHome], captured by
+   * [checkGradleDaemon]), because that's what the desktop render path forks from. `LD_LIBRARY_PATH`
+   * comes from this process's *environment*, which is the same value the daemon and the render
+   * subprocess inherit — so a variable that was set but never exported reads as unset here, exactly
+   * as it does at render time.
+   */
+  private fun checkDesktopNatives(modules: Map<String, ModuleInfo>) {
+    val desktopModules = modules.filterValues { rendersThroughSkiko(it) }
+    if (desktopModules.isEmpty()) return
+    val result =
+      DesktopNativesCheck.evaluateDesktopNatives(
+        osName = System.getProperty("os.name") ?: "",
+        renderJavaHome = daemonJavaHome,
+        ldLibraryPath = System.getenv("LD_LIBRARY_PATH"),
+        exists = { path -> File(path).exists() },
+      )
+    val check = DesktopNativesCheck.interpret(result, inClaudeCloud = inClaudeCloud)
+    addCheck(
+      check.copy(
+        detail =
+          listOfNotNull(
+              check.detail,
+              "affects ${desktopModules.size} CMP/Desktop module(s): ${desktopModules.keys.joinToString(", ")}",
+            )
+            .joinToString(". ")
+      )
+    )
+  }
+
+  /**
+   * Whether [info]'s previews render through skiko (CMP Desktop) rather than Robolectric (Android).
+   *
+   * Primary signal is skiko itself on a resolved classpath — that's the artifact that carries the
+   * native `.so`, so its presence is precisely the condition under which the native deps matter.
+   * The `agpVersion == null` fallback covers a module whose classpath didn't resolve (doctor treats
+   * empty dep maps as "not checkable" elsewhere too): no AGP means no Robolectric path, so Desktop
+   * is the only renderer left.
+   */
+  private fun rendersThroughSkiko(info: ModuleInfo): Boolean {
+    val deps = info.mainRuntimeDependencies.keys + info.testRuntimeDependencies.keys
+    if (deps.any { it.startsWith("org.jetbrains.skiko:") }) return true
+    return deps.isEmpty() && info.agpVersion == null
   }
 
   /**
@@ -1388,6 +1446,24 @@ class DoctorCommand(
                 "Pin the composePreviewRender Test task's javaLauncher to the project toolchain.",
               commands = listOf("kotlin { jvmToolchain(21) }"),
               docs = "https://github.com/$REPO/issues/142",
+            ),
+        ),
+        ErrorSignature(
+          pattern = "cannot open shared object file",
+          hint =
+            "skiko's native deps aren't resolvable from the render JVM — see the env.desktop-natives check",
+          remediation =
+            DoctorRemediation(
+              summary =
+                "Install libGL/libX11/libfontconfig/libstdc++ and export LD_LIBRARY_PATH to the " +
+                  "Gradle daemon, then force a re-render (a failed render is a cached task output).",
+              commands =
+                listOf(
+                  "apt-get install -y libgl1 libx11-6 libfontconfig1 libstdc++6",
+                  "./gradlew --stop",
+                  "./gradlew :<module>:composePreviewRender --rerun",
+                ),
+              docs = "https://github.com/$REPO/blob/main/docs/DESKTOP_NATIVE_DEPS.md",
             ),
         ),
         ErrorSignature(
