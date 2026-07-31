@@ -891,15 +891,42 @@ internal fun previewsMissingPng(results: List<PreviewResult>): List<PreviewResul
  * one persistently broken preview in a module of sixty used to make `show` discard the fifty-nine
  * good ones and print nothing but "Render failed" — no `pngPath`, no `sha256`, no `changed`. That
  * makes the documented iterate loop ("re-render, read the entries marked changed") unusable in any
- * real repo. `renderAllModules` reads every manifest regardless of the build result, so whenever it
- * produced results there is something worth reporting; only a build that died before writing any
- * manifest leaves genuinely nothing to say. The exit code is unaffected either way — see
- * [showExitCode].
+ * real repo.
  *
- * Pure function so the policy is unit-testable without standing up a Gradle render.
+ * Non-empty results are **not** sufficient evidence on their own, and this is the trap: on a warm
+ * checkout `build/compose-previews/` still holds the previous run's `previews.json` and PNGs. If
+ * gradle fails during configuration or compilation — before the renderer rewrites anything —
+ * `renderAllModules` happily reads that stale manifest and `PreviewResultBuilder` accepts the stale
+ * PNGs, so reporting them would hand back the *previous* run's images, hashes and `changed` flags
+ * dressed up as this run's. Every `changed` would read `false` (the shas still match the state file
+ * the last good run wrote), i.e. "nothing changed" for a build that never actually ran — a more
+ * dangerous answer than the silence it replaced.
+ *
+ * So require positive evidence that this invocation produced renders: at least one capture PNG
+ * whose mtime is at or after [renderStartedAtMillis]. A render that ran and partially succeeded
+ * leaves fresh PNGs; a build that died before the render task leaves only stale ones and falls back
+ * to the old bail-out. The exit code is unaffected either way — see [showExitCode].
+ *
+ * [renderStartedAtMillis] is floored to whole seconds by [floorToSecond], because filesystem mtimes
+ * are commonly second-granular and a PNG written milliseconds after an unfloored start would
+ * otherwise look stale.
+ *
+ * Pure (bar the injected [fileSystem]) so the policy is unit-testable without a Gradle render.
  */
-internal fun canReportAfterBuildFailure(results: List<PreviewResult>): Boolean =
-  results.isNotEmpty()
+internal fun canReportAfterBuildFailure(
+  results: List<PreviewResult>,
+  renderStartedAtMillis: Long,
+  fileSystem: FileSystem = SystemFileSystem,
+): Boolean = results.any { r ->
+  r.captures.any { c ->
+    val path = c.pngPath ?: return@any false
+    val mtime = fileSystem.metadataOrNull(path.toPath())?.lastModifiedAtMillis ?: return@any false
+    mtime >= renderStartedAtMillis
+  }
+}
+
+/** Floor to whole seconds — see [canReportAfterBuildFailure]. */
+internal fun floorToSecond(millis: Long): Long = (millis / 1000L) * 1000L
 
 /**
  * `show`'s exit code: a gradle failure (2) outranks whatever the output itself would have reported,
@@ -935,6 +962,9 @@ class ShowCommand(args: List<String>) : Command(args) {
       )
 
   override fun run() {
+    // Stamped before gradle runs so [canReportAfterBuildFailure] can tell renders this invocation
+    // produced from the previous run's leftovers in a warm `build/compose-previews/`.
+    val renderStartedAt = floorToSecond(System.currentTimeMillis())
     val outcome =
       renderAllModules(silenceStdout = jsonOutput, gradleArguments = gradleArgsWithForce())
     if (!outcome.buildOk) {
@@ -948,9 +978,11 @@ class ShowCommand(args: List<String>) : Command(args) {
       // unusable in any repo with one persistently broken preview, and pushes agents into
       // hand-globbing the renders directory. Surface what did render, mark the rest via the
       // existing per-preview `[no PNG]` / null-`pngPath` channel, and keep the exit code at 2 so
-      // scripts gating on success are unaffected. Only bail early when there is genuinely nothing
-      // to show (gradle died before any manifest was written).
-      if (!canReportAfterBuildFailure(outcome.results)) {
+      // scripts gating on success are unaffected. Bail early unless this invocation actually
+      // produced renders — on a warm checkout the previous run's manifest and PNGs are still on
+      // disk, and reporting those would pass the last run's images and `changed` flags off as this
+      // one's.
+      if (!canReportAfterBuildFailure(outcome.results, renderStartedAt, fileSystem)) {
         System.out.flush()
         exitProcess(2)
       }
