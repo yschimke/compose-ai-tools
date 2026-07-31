@@ -138,19 +138,21 @@ test("the /pg/ token redeems into the live viewer", async ({ page }) => {
   const href = await page.locator("#pg-open").getAttribute("href");
 
   // Hit the /pg/ capability RAW (no redirect-follow) first. Redemption must 302 to the
-  // viewer at /<sessionId>/p/<previewId>; a NotFound/Unavailable serves inline HTML with
-  // NO redirect, so checking the raw status + Location surfaces exactly which outcome it
-  // was (and any body) instead of a cryptic "URL never became /p/".
+  // viewer at /<sessionId>/p/<previewId>; a NotFound/Unavailable serves inline HTML with NO
+  // redirect. One assertion on the Location header, whose failure message carries the status
+  // AND the body — the body text ("expired, or never existed" vs "Live preview isn't
+  // available") says whether it was NotFound or Unavailable.
   const raw = await page.request.get(href, { maxRedirects: 0 });
   const location = raw.headers()["location"] ?? "";
-  const bodyHint = raw.status() >= 400 ? (await raw.text()).slice(0, 200) : "";
+  const body =
+    raw.status() >= 300 && raw.status() < 400
+      ? ""
+      : (await raw.text()).slice(0, 300);
   expect(
-    raw.status(),
-    `/pg/ redemption should 3xx-redirect to the viewer; got ${raw.status()} ` +
-      `location="${location}" body="${bodyHint}"`,
-  ).toBeGreaterThanOrEqual(300);
-  expect(raw.status(), "redemption redirect is a 3xx").toBeLessThan(400);
-  expect(location, "redirect target is the viewer /p/ route").toMatch(/\/p\//);
+    location,
+    `/pg/ must 302 to the viewer /p/ route; got status ${raw.status()} ` +
+      `location="${location}" body="${body}"`,
+  ).toMatch(/\/p\//);
 
   // And the viewer actually loads (follow the redirect in a real page). The live frame
   // itself is the /ws/ lane's job (proven by the serve-lanes suite); here we only assert

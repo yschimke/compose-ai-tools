@@ -316,8 +316,13 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          echo "===== playground-lane.log ====="
-          tail -200 playground-lane.log || echo "(no serve log)"
+          echo "===== playground live/redeem reasons ====="
+          # The per-render daemon output is extremely verbose, so a plain tail buries the one line
+          # that matters (a redemption `[playground live] …` reason). Surface those first.
+          grep -nE 'playground live|redeem|Unavailable|Live preview|no previews|backend=android|android\.jar|sidecar' \
+            playground-lane.log || echo "(no redemption-reason lines matched)"
+          echo "===== playground-lane.log (tail) ====="
+          tail -120 playground-lane.log || echo "(no serve log)"
 
       - name: Tear down serve
         if: always()
