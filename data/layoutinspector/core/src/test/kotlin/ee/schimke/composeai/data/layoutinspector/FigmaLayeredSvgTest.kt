@@ -2422,13 +2422,20 @@ class FigmaLayeredSvgTest {
   }
 
   /**
-   * Follow-up to #2974: when the SVG retains drawing beyond the captured frame (a card's chrome
-   * wider than its box, a scroll item past its parent edge), the exported canvas grows to include
-   * it — so the background must grow with it, not stop at the frame crop. Otherwise the retained
-   * content renders over transparency, whereas in the live render it sat on the window background.
+   * Follow-up to #2974, revised by #2853: the background fills whatever the canvas ends up being,
+   * and with a captured frame the canvas **is** the frame.
+   *
+   * The earlier rule grew the canvas to any drawing retained past the frame (a card's chrome wider
+   * than its box, a scroll item past its parent edge) so that content wouldn't sit over
+   * transparency. But a lazy list composes items far outside the viewport — Jetsnack's `Screens/App
+   * shell` renders 400×800 and carries cards out to 566×970 — and growing the canvas to hold them
+   * stranded their white backgrounds outside the phone UI as detached tiles the render never
+   * painted. The frame PNG is the authority on what was rendered, so it now bounds the canvas;
+   * retained drawing that overhangs is cropped at the frame edge exactly as the render cropped it,
+   * and the background still covers every pixel of the result.
    */
   @Test
-  fun aShowBackgroundFillCoversContentRetainedBeyondTheFrame() {
+  fun aShowBackgroundFillCoversTheFrameTheRenderCaptured() {
     val layout =
       layoutNode(
         "Box",
@@ -2458,15 +2465,15 @@ class FigmaLayeredSvgTest {
       )
     val rect = model.backgroundRect
     assertNotNull(rect)
-    // Background spans the full retained extent (120×40), not just the 100×26 frame, so the
-    // retained chrome sits on the backing colour rather than over transparency.
+    // Background spans the captured 100×26 frame — every pixel the render produced — rather than
+    // the 120×40 bbox of a chrome layer that overhangs it.
     assertEquals(0, rect!!.x)
     assertEquals(0, rect.y)
-    assertEquals(120, rect.width)
-    assertEquals(40, rect.height)
-    // And the canvas contains it (extent + padding on each side).
-    assertEquals(120 + FigmaSvgModel.DEFAULT_PADDING * 2, model.width)
-    assertEquals(40 + FigmaSvgModel.DEFAULT_PADDING * 2, model.height)
+    assertEquals(100, rect.width)
+    assertEquals(26, rect.height)
+    // And the canvas is that frame (extent + padding on each side).
+    assertEquals(100 + FigmaSvgModel.DEFAULT_PADDING * 2, model.width)
+    assertEquals(26 + FigmaSvgModel.DEFAULT_PADDING * 2, model.height)
   }
 
   @Test
