@@ -809,6 +809,8 @@ _No findings._
 
 ### `SwatchPreview`
 
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch.a11y.png" width="400" />
+
 _No findings._
 
 ### `WallpaperDemoPreview`
