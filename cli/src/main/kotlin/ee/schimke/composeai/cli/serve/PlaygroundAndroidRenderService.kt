@@ -27,10 +27,13 @@ fun interface PlaygroundAndroidSessionOpener {
 }
 
 /**
- * The production [PlaygroundCompileService] `renderFirstFrame` for the **Android** mode: render a
- * freshly-compiled Compose Android snippet on an Android/Robolectric daemon and return the PNG the
- * daemon drew — the still frame the Stage-1 response surfaces as its `image` (`docs/design/
- * PLAYGROUND.md` §7 Phase 2, epic #3015).
+ * The production [PlaygroundCompileService] `renderFirstFrame`: render a freshly-compiled Compose
+ * snippet on a daemon and return the PNG the daemon drew — the still frame the Stage-1 response
+ * surfaces as its `image` (`docs/design/PLAYGROUND.md` §7 Phase 2, epic #3015).
+ *
+ * **Backend-agnostic:** the flow (open → render → read the `pngPath`) is identical for CMP (desktop
+ * Skiko daemon) and Android (Robolectric); the injected [openSession] selects the backend, so the
+ * same service wires both modes' first frame — only the daemon sidecar differs.
  *
  * The flow is the render half of [PlaygroundRcCaptureService]'s open → render → await → fetch
  * shape, over a bundle-less daemon standing on the snippet's own compiled classes:

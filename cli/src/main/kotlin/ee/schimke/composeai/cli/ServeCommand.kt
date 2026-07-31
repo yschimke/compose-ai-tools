@@ -904,10 +904,20 @@ class ServeCommand(args: List<String>) : Command(args) {
       buildPlaygroundRcCaptureService(workRoot, docStore, opener)
     }
 
+    // CMP mode's still first frame renders on the desktop (Skiko) daemon — the backend-agnostic
+    // render service (same as Android) over a desktop opener. Absent the desktop sidecar, CMP
+    // simply
+    // carries no still image; its live `/pg/` redemption still renders on demand.
+    val cmpDaemonOpener = if (cmpClasspath != null) buildPlaygroundDesktopDaemonOpener() else null
+    val cmpRender = cmpDaemonOpener?.let { opener ->
+      buildPlaygroundAndroidRenderService(workRoot, opener)
+    }
+
     System.err.println(
       "serve: playground enabled (POST /api/1/compiler/run) — " +
         listOfNotNull(
             cmpClasspath?.let { "cmp✓" },
+            cmpRender?.let { "cmp-render✓" },
             androidClasspath?.let { "android✓" },
             androidRender?.let { "android-render✓" },
             rcCapture?.let { "remote-compose✓" },
@@ -948,12 +958,16 @@ class ServeCommand(args: List<String>) : Command(args) {
             .absolutePath
             .toPath()
         },
-        // The still first frame is the Android live render (ANDROID mode); CMP's desktop first
-        // frame
-        // is a separate lane, and REMOTE_COMPOSE never reaches this seam (it returns a
-        // documentUrl).
+        // The still first frame renders on the mode's daemon: CMP on desktop (Skiko), Android on
+        // Robolectric. REMOTE_COMPOSE never reaches this seam (it returns a documentUrl). A null
+        // (no
+        // sidecar for that mode) just omits the still image; it's never fatal to the run.
         renderFirstFrame = { snippet ->
-          if (snippet.mode == PlaygroundMode.ANDROID) androidRender?.render(snippet) else null
+          when (snippet.mode) {
+            PlaygroundMode.CMP -> cmpRender?.render(snippet)
+            PlaygroundMode.ANDROID -> androidRender?.render(snippet)
+            PlaygroundMode.REMOTE_COMPOSE -> null
+          }
         },
         captureRemoteDocument = { snippet -> rcCapture?.capture(snippet) },
         publishRemoteDocument = { name, bytes, checked ->
@@ -1077,8 +1091,45 @@ class ServeCommand(args: List<String>) : Command(args) {
   }
 
   /**
-   * The playground's Android first-frame render backend (ANDROID mode): renders a compiled snippet
-   * on the shared [opener] and returns the still PNG the Stage-1 response surfaces as its `image`.
+   * The desktop (CMP/Skiko) daemon opener for the playground's CMP first-frame render — the
+   * `lib-daemon-desktop` + `lib-renderer` sidecar on the daemon classpath and the desktop jvmArgs,
+   * over a subprocess `openBundleDaemon`. Mirrors [ServeBundleDaemon]'s `desktopBundleDaemonLaunch`
+   * (the desktop twin of [buildPlaygroundAndroidDaemonOpener]). Returns null (logging why) when the
+   * sidecar jars are absent — CMP then simply carries no still first frame while its live `/pg/`
+   * redemption keeps rendering on demand.
+   */
+  private fun buildPlaygroundDesktopDaemonOpener(): PlaygroundAndroidSessionOpener? {
+    val daemonJars = locateBundleSidecarJars("lib-daemon-desktop")
+    val rendererJars = locateBundleSidecarJars("lib-renderer")
+    if (daemonJars.isEmpty() || rendererJars.isEmpty()) {
+      System.err.println(
+        "serve: playground CMP first-frame needs the desktop daemon sidecar (lib-daemon-desktop/ + " +
+          "lib-renderer/) from an installed distribution; CMP renders no still frame (its live " +
+          "preview still works)."
+      )
+      return null
+    }
+    val daemonClasspath = (daemonJars + rendererJars).map { it.absolutePath }
+    // -Dapple.awt.UIElement=true keeps the desktop JVM a macOS background agent (no Dock/focus
+    // steal); mirrors desktopBundleDaemonLaunch. No Robolectric sysprops on the desktop backend.
+    val jvmArgs = listOf("--enable-native-access=ALL-UNNAMED", "-Dapple.awt.UIElement=true")
+    return { classesDir, previewsJson, workspaceRoot, userClasspath ->
+      SubprocessRenderSessions.openBundleDaemon(
+        daemonClasspath = daemonClasspath,
+        classesDir = classesDir,
+        previewsJson = previewsJson,
+        workspaceRoot = workspaceRoot,
+        modulePath = ":playground",
+        jvmArgs = jvmArgs,
+        userClasspath = userClasspath,
+      )
+    }
+  }
+
+  /**
+   * The playground's first-frame render backend: renders a compiled snippet on the shared [opener]
+   * and returns the still PNG the Stage-1 response surfaces as its `image`. Backend-agnostic — the
+   * [opener] selects desktop (CMP) or Robolectric (Android); this wires it for both modes.
    */
   private fun buildPlaygroundAndroidRenderService(
     workRoot: java.io.File,
