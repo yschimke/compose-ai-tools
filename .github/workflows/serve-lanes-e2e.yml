@@ -23,12 +23,18 @@ on:
     branches: [main]
     paths:
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**"
+      # ServeCommand owns openPlaygroundService, the daemon-opener wiring, and the ServeHttpServer
+      # hookup — it lives one directory up from serve/**, so trigger on it explicitly.
+      - "cli/src/main/kotlin/ee/schimke/composeai/cli/ServeCommand.kt"
       - "daemon/**"
       - "render-session/**"
       - "render-session-subprocess/**"
       - "vscode-extension/preview-harness/serve-lanes.*"
       - "vscode-extension/preview-harness/serve-lanes-boot.sh"
       - "vscode-extension/preview-harness/serve-android-lane-boot.sh"
+      # The playground e2e (editor → compile → first-frame → /pg live redemption).
+      - "vscode-extension/preview-harness/playground.*"
+      - "vscode-extension/preview-harness/playground-boot.sh"
       # The Android lane's fixture and the detached-render Application pin it guards.
       - "samples/android-live-lane/**"
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt"
@@ -42,12 +48,18 @@ on:
   pull_request:
     paths:
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**"
+      # ServeCommand owns openPlaygroundService, the daemon-opener wiring, and the ServeHttpServer
+      # hookup — it lives one directory up from serve/**, so trigger on it explicitly.
+      - "cli/src/main/kotlin/ee/schimke/composeai/cli/ServeCommand.kt"
       - "daemon/**"
       - "render-session/**"
       - "render-session-subprocess/**"
       - "vscode-extension/preview-harness/serve-lanes.*"
       - "vscode-extension/preview-harness/serve-lanes-boot.sh"
       - "vscode-extension/preview-harness/serve-android-lane-boot.sh"
+      # The playground e2e (editor → compile → first-frame → /pg live redemption).
+      - "vscode-extension/preview-harness/playground.*"
+      - "vscode-extension/preview-harness/playground-boot.sh"
       # The Android lane's fixture and the detached-render Application pin it guards.
       - "samples/android-live-lane/**"
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt"
@@ -225,4 +237,106 @@ jobs:
           path: |
             serve-android-lane.log
             vscode-extension/preview-harness/test-results-serve-lanes/**
+          if-no-files-found: warn
+
+  # The Kotlin playground, end to end (#3015). The two lanes above prove the *render* backends honor
+  # knob overrides; this proves the *playground* itself: the browser editor compiles a user snippet on
+  # the server (BTA), gets a first-frame still back, and the returned `/pg/<token>` capability redeems
+  # into the ordinary live viewer. That whole chain — editor → `POST /api/1/compiler/run` → compile →
+  # Android/Robolectric first frame → `/pg/` redemption → viewer — has only ever been unit-tested
+  # against fakes; nothing exercised the real wiring in a browser until here.
+  #
+  # It reuses the Android/Robolectric backend (the default editor snippet declares an Android
+  # `@Preview`), booting serve with `--playground-android-bundle` over a locally packed
+  # `:samples:android-live-lane` — the same bundle the android lane packs. The playground lane compiles
+  # and runs user-supplied code in-process, so it is refused under `--public`; the boot is token-gated
+  # and the spec carries `?token=`.
+  playground-e2e:
+    name: Playground compiles + redeems a snippet end to end
+    runs-on: ubuntu-latest
+    # Same cost profile as the android lane: Robolectric sandbox bootstrap + the android-all fetch
+    # dominate the cold render, and the compile POST blocks on that first-frame render before it
+    # answers. Plus a bundle pack that renders the sample first.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+
+      # `lib-daemon-android` ships as a standalone archive rather than inside the CLI dist (#1685), so
+      # stage it and point the CLI at it via `-Dcomposeai.cli.libDaemonAndroidDir` (the boot script
+      # sets that through JAVA_OPTS). `android.jar` comes from the runner's Android SDK.
+      - name: Build the CLI (installDist) + Android daemon sidecar
+        shell: bash
+        run: ./gradlew --no-daemon :cli:installDist :cli:stageDaemonAndroidLibs --stacktrace
+
+      # The playground compiles user snippets against this bundle's classpath (not as a served
+      # catalog). It's the same sample the android lane serves.
+      - name: Pack the Android playground bundle
+        shell: bash
+        run: |
+          cli/build/install/compose-preview/bin/compose-preview bundle pack \
+            --module samples:android-live-lane \
+            -o "$GITHUB_WORKSPACE/playground-lane.png" --timeout 900
+
+      - name: Install harness deps + Chromium
+        working-directory: vscode-extension
+        shell: bash
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      # Boots serve with the playground lane enabled (token-gated) and fails the step unless the lane
+      # actually came up ("playground enabled" in the log) — see the boot script header.
+      - name: Boot playground serve
+        shell: bash
+        env:
+          SERVE_BUNDLE: playground-lane.png
+          LIB_DAEMON_ANDROID_DIR: cli/build/staged-daemon-android-libs
+          SERVE_TOKEN: playground-e2e
+        run: |
+          url="$(bash vscode-extension/preview-harness/playground-boot.sh)"
+          echo "playground: SERVE_URL=$url"
+          echo "SERVE_URL=$url" >> "$GITHUB_ENV"
+
+      - name: Drive the playground (Chromium)
+        working-directory: vscode-extension
+        shell: bash
+        env:
+          CI: "true"
+          SERVE_TOKEN: playground-e2e
+        run: npm run harness:playground
+
+      # Surface the serve log INLINE in the job log on failure. The `onLog` reason a redemption
+      # failure carries (`[playground live] …` — sidecar/android.jar missing, no previews, …) is
+      # written to the serve stderr, which only reaches the uploaded artifact; echoing it here makes
+      # a first-frame / redemption failure diagnosable straight from the job log.
+      - name: Dump serve log on failure
+        if: failure()
+        shell: bash
+        run: |
+          echo "===== playground live/redeem reasons ====="
+          # The per-render daemon output is extremely verbose, so a plain tail buries the one line
+          # that matters (a redemption `[playground live] …` reason). Surface those first.
+          grep -nE 'playground live|redeem|Unavailable|Live preview|no previews|backend=android|android\.jar|sidecar' \
+            playground-lane.log || echo "(no redemption-reason lines matched)"
+          echo "===== playground-lane.log (tail) ====="
+          tail -120 playground-lane.log || echo "(no serve log)"
+
+      - name: Tear down serve
+        if: always()
+        shell: bash
+        run: |
+          [ -f playground-lane.pid ] && kill "$(cat playground-lane.pid)" 2>/dev/null || true
+          pkill -f 'MainKt serve' 2>/dev/null || true
+
+      - name: Upload serve log + trace on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playground-e2e-artifacts
+          path: |
+            playground-lane.log
+            vscode-extension/preview-harness/test-results-playground/**
           if-no-files-found: warn

@@ -412,7 +412,10 @@ class ServeHttpServer(
 
         // Stage-2 redemption (`GET /pg/<token>`): redeem a preview token into a live streamed
         // session and redirect to its viewer. Mounted with the playground lane; token-gated.
-        playgroundRedeem?.let { redeem -> get("/pg/{token}") { handlePlaygroundRedeem(redeem) } }
+        // The path segment is named `{pgToken}`, NOT `{token}`: on a token-gated host the access
+        // token rides as `?token=…`, and `call.parameters` merges path + query, so a `{token}` path
+        // segment would collide with the access token and redeem the wrong id (a NotFound 404).
+        playgroundRedeem?.let { redeem -> get("/pg/{pgToken}") { handlePlaygroundRedeem(redeem) } }
 
         // Shared/public mode ingestion: a client contributes a pre-rendered bundle (upload the zip
         // as the body, or pass `?url=` to a build-results artifact) and gets back a ?session= link.
@@ -813,7 +816,9 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handlePlaygroundRedeem(redeem: PlaygroundRedeemService) {
     if (rejectBadToken()) return
-    val id = call.parameters["token"].orEmpty()
+    // Read the PATH segment explicitly (see the route mount): it's named `{pgToken}` so it can't be
+    // shadowed by the `?token=` access token that `call.parameters` also carries on a gated host.
+    val id = call.parameters["pgToken"].orEmpty()
     val gone = "That preview link has expired, or never existed."
     if (!PlaygroundTokenStore.isWellFormedId(id)) {
       respondNotFoundHtml(gone)

@@ -25,6 +25,11 @@ class PlaygroundRoutingTest {
   private val fs = FakeFileSystem()
   private var workN = 0
 
+  // Shared between the compile service (mints tokens) and the redeem service (looks them up), like
+  // production — so the token-gated redemption test below exercises a real mint → redeem
+  // round-trip.
+  private val tokenStore = PlaygroundTokenStore(fileSystem = fs)
+
   private val playground =
     PlaygroundCompileService(
       catalogClasspath = { mode ->
@@ -37,12 +42,29 @@ class PlaygroundRoutingTest {
       compiler = PlaygroundCompileService.Compiler { _, _, _ -> emptyList() },
       discoverer =
         PlaygroundCompileService.PreviewDiscoverer { _, _ -> listOf("com.example.PScreen") },
-      tokenStore = PlaygroundTokenStore(fileSystem = fs),
+      tokenStore = tokenStore,
       newWorkDir = { "/work/run${++workN}".toPath() },
       fileSystem = fs,
     )
 
   private val registry = ServeSessionRegistry(open = { null })
+
+  // Materialize always succeeds (a real daemon isn't in scope here) so redemption reaches its Live
+  // redirect — the path we assert isn't shadowed by the access token on a gated host.
+  private val redeem =
+    PlaygroundRedeemService(
+      tokenStore = tokenStore,
+      registry = registry,
+      materialize = { snippet ->
+        ServeSessionState(
+          descriptor = java.io.File("/tmp/pg-none.json"),
+          workspaceRoot = java.io.File("/tmp"),
+          workspaceName = "pg",
+          previews = listOf(ServePreview(id = snippet.previewId, label = snippet.previewId)),
+          label = "pg",
+        )
+      },
+    )
 
   private val server: ServeHttpServer by lazy {
     ServeHttpServer(
@@ -70,12 +92,32 @@ class PlaygroundRoutingTest {
       .also { it.start() }
   }
 
+  /**
+   * A **token-gated** host (`isPublic = false`) with the redemption lane wired — the shape a real
+   * playground runs as (the lane is refused under `--public`). Here the access token rides as
+   * `?token=…`, which is what made the `/pg/{token}` path-param collision surface.
+   */
+  private val gatedServer: ServeHttpServer by lazy {
+    ServeHttpServer(
+        host = "127.0.0.1",
+        requestedPort = 0,
+        token = "sekret",
+        sessions = registry,
+        defaultSessionId = "none",
+        isPublic = false,
+        playgroundService = playground,
+        playgroundRedeem = redeem,
+      )
+      .also { it.start() }
+  }
+
   private val client = OkHttpClient()
 
   @AfterTest
   fun stop() {
     runCatching { server.stop() }
     runCatching { plainServer.stop() }
+    runCatching { gatedServer.stop() }
     runCatching { registry.close() }
   }
 
@@ -137,5 +179,49 @@ class PlaygroundRoutingTest {
   @Test
   fun `the editor page is absent when the playground lane isn't enabled`() {
     get("/playground", plainServer.port).use { resp -> assertEquals(404, resp.code) }
+  }
+
+  @Test
+  fun `a gated pg redemption redirects to the viewer instead of 404ing on the access token`() {
+    // Mint a token on the gated host; the access token rides as ?token=sekret.
+    val body =
+      """{"files":[{"name":"Snippet.kt","text":"@Preview @Composable fun P(){}"}],"confType":"compose-cmp"}"""
+    val previewUrl =
+      client
+        .newCall(
+          Request.Builder()
+            .url("http://127.0.0.1:${gatedServer.port}/api/1/compiler/run?token=sekret")
+            .post(body.toRequestBody("application/json".toMediaType()))
+            .build()
+        )
+        .execute()
+        .use { resp ->
+          assertEquals(200, resp.code)
+          Json.parseToJsonElement(resp.body!!.string())
+            .jsonObject["previewUrl"]!!
+            .jsonPrimitive
+            .content
+        }
+
+    // Redeem it WITH the access token in the query. The `/pg/{pgToken}` path segment must resolve
+    // to
+    // the minted id — NOT be shadowed by the same-named `?token=` access token (which would fail
+    // the
+    // pg_ shape check and 404 as NotFound). Assert the 302 to the viewer, don't follow it.
+    val noRedirect = client.newBuilder().followRedirects(false).build()
+    noRedirect
+      .newCall(
+        Request.Builder()
+          .url("http://127.0.0.1:${gatedServer.port}$previewUrl?token=sekret")
+          .build()
+      )
+      .execute()
+      .use { resp ->
+        assertEquals(302, resp.code, "redemption redirects to the viewer, not a 404")
+        assertTrue(
+          resp.header("Location")?.contains("/p/") == true,
+          "redirect targets the viewer /p/ route: ${resp.header("Location")}",
+        )
+      }
   }
 }
