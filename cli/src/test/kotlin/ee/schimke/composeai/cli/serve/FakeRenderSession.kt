@@ -96,6 +96,18 @@ internal class FakeRenderSession(
    * without it (the ids come back in [ExtensionsEnableResult.unknown]).
    */
   private val figmaSvgAvailable: Boolean = true,
+  /**
+   * Extension ids the modelled daemon does not carry — [enableExtensions] returns them in
+   * [ExtensionsEnableResult.unknown] (e.g. a backend with no Remote Compose runtime rejects
+   * `data/remotecompose`). Empty by default.
+   */
+  private val unknownExtensionIds: Set<String> = emptySet(),
+  /**
+   * Stubs [fetchData] for kinds this fake doesn't model natively (e.g.
+   * `compose/remotecompose-doc`). Consulted first; a non-null return short-circuits the built-in
+   * figma-svg / semantics handling.
+   */
+  private val fetchDataHook: ((previewId: String, kind: String) -> DataFetchResult?)? = null,
 ) : RenderSession {
   val renderCount = AtomicInteger(0)
 
@@ -296,6 +308,9 @@ internal class FakeRenderSession(
     params: JsonElement?,
     timeout: kotlin.time.Duration,
   ): DataFetchResult {
+    fetchDataHook?.invoke(previewId, kind)?.let {
+      return it
+    }
     if (kind == ComposeFigmaSvgProduct.KIND) {
       val file = File(renderRoot, "$previewId/${ComposeFigmaSvgProduct.FILE_SVG}")
       return DataFetchResult(
@@ -355,10 +370,12 @@ internal class FakeRenderSession(
   ): ExtensionsEnableResult {
     enabledExtensionIds.addAll(ids)
     val figmaKinds = setOf(ComposeFigmaSvgProduct.KIND, ComposeFigmaSvgProduct.KIND_LONG)
-    val (figma, other) = ids.partition { it in figmaKinds }
-    // A backend without figma-svg reports those ids as unknown; everything else enables.
-    val unknown = if (figmaSvgAvailable) emptyList() else figma
-    val enabled = if (figmaSvgAvailable) ids else other
+    // A backend without figma-svg reports those ids as unknown, as does any id in
+    // [unknownExtensionIds]; everything else enables.
+    val unknown = ids.filter {
+      it in unknownExtensionIds || (!figmaSvgAvailable && it in figmaKinds)
+    }
+    val enabled = ids - unknown.toSet()
     return ExtensionsEnableResult(newlyEnabled = enabled, unknown = unknown)
   }
 
