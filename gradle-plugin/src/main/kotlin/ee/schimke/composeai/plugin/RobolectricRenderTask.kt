@@ -95,3 +95,40 @@ abstract class RobolectricRenderTask : Test() {
     previewRowExcludes.set(values)
   }
 }
+
+/**
+ * Make a render [Test] task's own output locale-independent.
+ *
+ * Agent sandboxes and minimal CI images routinely run under `LC_CTYPE=POSIX`, which leaves the JVM
+ * with `sun.jnu.encoding=ANSI_X3.4-1968` (US-ASCII). That breaks a render task in a way that looks
+ * nothing like an encoding problem:
+ * - `Test`'s **HTML** reporter creates one output directory *per test method*, and for these tasks
+ *   a test method is a preview, whose display name comes from consumer source — `@Preview(name =
+ *   "Play Store — 10 inch tablet")`. Gradle writes those directory names using the *daemon's*
+ *   platform encoding, so any preview name containing a non-ASCII character (an em dash, an accent,
+ *   CJK) fails report generation with "Malformed input or input contains unmappable characters".
+ *   Gradle then prints one line per failing file **twice** — once in the failure summary and once
+ *   in the cause list — so a handful of em-dashed preview names buries the actual render result
+ *   under hundreds of lines. Disabling the HTML report removes the failure class outright, and
+ *   costs nothing: this task's product is PNGs, and per-preview failures are already reported
+ *   through the `.error.json` sidecars that `formatMissingPreviewsMessage` reads.
+ * - [Test.setDefaultCharacterEncoding] fixes the forked render JVM's own streams. It cannot fix the
+ *   report-writing above (that happens in the daemon), and since JDK 18 `sun.jnu.encoding` cannot
+ *   be overridden with `-D` at all — hence disabling the report rather than trying to re-encode it.
+ *
+ * The **JUnit XML** report is deliberately left enabled: its files are named after the test *class*
+ * (`RobolectricRenderTest_Shard0`), which is always ASCII, so it is unaffected and CI test-result
+ * collection keeps working.
+ *
+ * Cost of turning HTML off, stated plainly: the `composePreviewRender-reports` CI artifact
+ * (`.github/actions/apply/action.yml`) uploads `build/reports/tests/composePreviewRender/`
+ * alongside `build/test-results/composePreviewRender/`, so that artifact loses its browsable HTML.
+ * No diagnostic content is lost — the HTML report is *generated from* the JUnit XML, which still
+ * ships with the full per-test stack traces — but triage from the artifact means reading XML
+ * instead of opening `index.html`. That is the deliberate trade: a browsable report on the runs
+ * that succeed, versus renders that fail outright on every machine with a non-UTF-8 locale.
+ */
+internal fun configureRenderTaskReporting(task: org.gradle.api.tasks.testing.Test) {
+  task.defaultCharacterEncoding = "UTF-8"
+  task.reports.html.required.set(false)
+}

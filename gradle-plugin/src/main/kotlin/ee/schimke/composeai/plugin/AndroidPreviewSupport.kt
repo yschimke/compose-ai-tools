@@ -2002,6 +2002,10 @@ internal object AndroidPreviewSupport {
         }
         useJUnit()
 
+        // Locale-proof this task's reporting — see [configureRenderTaskReporting] for why a
+        // non-UTF-8 sandbox locale otherwise fails the render outright on em-dashed preview names.
+        configureRenderTaskReporting(this)
+
         // Copy JVM args from AGP's test task. Deferred to the configuration
         // lambda (rather than called at registration time) so AGP has had
         // a chance to register `test${capVariant}UnitTest` by the time this
@@ -2236,6 +2240,8 @@ internal object AndroidPreviewSupport {
           resolvedClasspath + (agpTestTask?.testClassesDirs ?: project.files()) + agpTestClasspath
         include("**/ResourcePreviewRenderTest.class")
         useJUnit()
+        // Same locale exposure as the main render task — resource names reach the report path too.
+        configureRenderTaskReporting(this)
 
         jvmArgs(agpTestTask?.jvmArgs ?: emptyList<String>())
         jvmArgs(AndroidPreviewClasspath.buildJvmArgs())
@@ -2353,6 +2359,8 @@ internal object AndroidPreviewSupport {
             }
         include("**/XrSubspaceRenderTest.class")
         useJUnit()
+        // Same locale exposure as the main render task — preview names reach the report path too.
+        configureRenderTaskReporting(this)
 
         jvmArgs(agpTestTask?.jvmArgs ?: emptyList<String>())
         jvmArgs(AndroidPreviewClasspath.buildJvmArgs())

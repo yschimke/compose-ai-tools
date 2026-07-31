@@ -885,6 +885,30 @@ internal fun previewsMissingPng(results: List<PreviewResult>): List<PreviewResul
   }
 
 /**
+ * Whether `show` can still emit a useful report after gradle reported failure.
+ *
+ * `composePreviewRenderAll` fails the **whole task** when any single preview fails to render, so
+ * one persistently broken preview in a module of sixty used to make `show` discard the fifty-nine
+ * good ones and print nothing but "Render failed" — no `pngPath`, no `sha256`, no `changed`. That
+ * makes the documented iterate loop ("re-render, read the entries marked changed") unusable in any
+ * real repo. `renderAllModules` reads every manifest regardless of the build result, so whenever it
+ * produced results there is something worth reporting; only a build that died before writing any
+ * manifest leaves genuinely nothing to say. The exit code is unaffected either way — see
+ * [showExitCode].
+ *
+ * Pure function so the policy is unit-testable without standing up a Gradle render.
+ */
+internal fun canReportAfterBuildFailure(results: List<PreviewResult>): Boolean =
+  results.isNotEmpty()
+
+/**
+ * `show`'s exit code: a gradle failure (2) outranks whatever the output itself would have reported,
+ * so emitting partial results never downgrades a failed build to a success — and never reports "no
+ * previews matched" (3) for a build that never got far enough to know.
+ */
+internal fun showExitCode(buildOk: Boolean, naturalCode: Int): Int = if (buildOk) naturalCode else 2
+
+/**
  * Human-readable coordinate for a capture: `default`, `500ms`, `scroll long`, `500ms · scroll end`.
  */
 internal fun captureCoordLabel(c: CaptureResult): String =
@@ -915,8 +939,26 @@ class ShowCommand(args: List<String>) : Command(args) {
       renderAllModules(silenceStdout = jsonOutput, gradleArguments = gradleArgsWithForce())
     if (!outcome.buildOk) {
       System.err.println("Render failed")
-      System.out.flush()
-      exitProcess(2)
+      // A failed build does not imply there is nothing to report. `renderAllModules` reads every
+      // module's manifest and builds results whether or not gradle succeeded (see
+      // [RenderModulesOutcome.buildOk]), and `composePreviewRenderAll` fails the *whole task* when
+      // any single preview fails to render — so one broken preview in a module of sixty used to
+      // discard the fifty-nine good ones, emitting no JSON at all: no `pngPath`, no `sha256`, no
+      // `changed`. That makes the documented iterate loop ("re-render, read the changed entries")
+      // unusable in any repo with one persistently broken preview, and pushes agents into
+      // hand-globbing the renders directory. Surface what did render, mark the rest via the
+      // existing per-preview `[no PNG]` / null-`pngPath` channel, and keep the exit code at 2 so
+      // scripts gating on success are unaffected. Only bail early when there is genuinely nothing
+      // to show (gradle died before any manifest was written).
+      if (!canReportAfterBuildFailure(outcome.results)) {
+        System.out.flush()
+        exitProcess(2)
+      }
+      System.err.println(
+        "Reporting the ${outcome.results.size} preview(s) that were discovered anyway — previews " +
+          "that failed to render carry a null pngPath (`[no PNG]` in text output). Exit code " +
+          "stays 2."
+      )
     }
 
     if (outcome.manifests.isEmpty() || outcome.manifests.all { it.second.previews.isEmpty() }) {
@@ -944,7 +986,9 @@ class ShowCommand(args: List<String>) : Command(args) {
       if (jsonOutput) println(encodeResponse(emptyList(), countsScope = all))
       else println("No previews matched.")
       System.out.flush()
-      exitProcess(3)
+      // A build failure outranks "no match": exit 3 advertises a healthy build that simply had
+      // nothing matching the filter, which would be a lie here.
+      exitProcess(showExitCode(outcome.buildOk, naturalCode = 3))
     }
 
     if (jsonOutput) {
@@ -1016,6 +1060,10 @@ class ShowCommand(args: List<String>) : Command(args) {
       if (shouldFailOnMissingRenders()) exitProcess(2)
     }
     System.out.flush()
+    // Output has been emitted; now honour the build failure we deferred above. Left as a guarded
+    // exit rather than an unconditional `exitProcess(showExitCode(...))` so the success path still
+    // returns normally to the caller instead of taking the process down from inside a subcommand.
+    if (!outcome.buildOk) exitProcess(showExitCode(false, naturalCode = 0))
   }
 
   /**
