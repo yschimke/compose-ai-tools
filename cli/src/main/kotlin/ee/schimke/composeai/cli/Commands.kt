@@ -421,6 +421,16 @@ abstract class Command(
     val modules: List<PreviewModule>,
     val manifests: List<Pair<PreviewModule, PreviewManifest>>,
     val results: List<PreviewResult>,
+    /**
+     * Render outputs this invocation actually wrote, as absolute paths — see [freshRenderPaths].
+     *
+     * Computed from a `renders/` snapshot taken before the gradle run and diffed **before**
+     * [buildResults] runs, because `buildResults` can itself rewrite PNGs (the Claude / Codex /
+     * Antigravity image-size override resizes oversized files in place). Sampling the filesystem
+     * after that step cannot tell "the renderer wrote this" from "the CLI resized it", which would
+     * launder a stale PNG into a fresh-looking one.
+     */
+    val freshRenderPaths: Set<String>,
   )
 
   /**
@@ -429,7 +439,12 @@ abstract class Command(
    * whose manifests don't fit the `PreviewManifest` / `PreviewResult` shape (today:
    * `show-resources`, which has its own resource-manifest type).
    */
-  protected data class RawRenderOutcome(val buildOk: Boolean, val modules: List<PreviewModule>)
+  protected data class RawRenderOutcome(
+    val buildOk: Boolean,
+    val modules: List<PreviewModule>,
+    /** See [RenderModulesOutcome.freshRenderPaths]. Empty when no gradle run happened. */
+    val freshRenderPaths: Set<String> = emptySet(),
+  )
 
   /**
    * Shared gradle-drive pipeline — open the connector, resolve preview modules, optionally filter
@@ -456,6 +471,9 @@ abstract class Command(
     var outcome: RawRenderOutcome? = null
     withGradle(silenceStdout = silenceStdout) { gradle ->
       val modules = withGradleStdout(silenceStdout) { resolveModules(gradle).filter(moduleFilter) }
+      // Baseline for [freshRenderPaths]: the previous invocation's leftovers, captured before this
+      // one can touch them.
+      val before = snapshotRenders(modules, fileSystem)
       val buildOk =
         if (modules.isEmpty()) true
         else {
@@ -474,7 +492,14 @@ abstract class Command(
           if (!ok) reportRenderFailures(gradle)
           ok
         }
-      outcome = RawRenderOutcome(buildOk = buildOk, modules = modules)
+      // Diffed here, while the renderer's output is still exactly as it left it — the caller's
+      // `buildResults` may rewrite PNGs afterwards.
+      outcome =
+        RawRenderOutcome(
+          buildOk = buildOk,
+          modules = modules,
+          freshRenderPaths = freshRenderPaths(before, snapshotRenders(modules, fileSystem)),
+        )
     }
     return outcome ?: error("renderModules: gradle block did not produce an outcome")
   }
@@ -500,6 +525,7 @@ abstract class Command(
       modules = raw.modules,
       manifests = manifests,
       results = results,
+      freshRenderPaths = raw.freshRenderPaths,
     )
   }
 
@@ -885,48 +911,76 @@ internal fun previewsMissingPng(results: List<PreviewResult>): List<PreviewResul
   }
 
 /**
- * Whether `show` can still emit a useful report after gradle reported failure.
- *
- * `composePreviewRenderAll` fails the **whole task** when any single preview fails to render, so
- * one persistently broken preview in a module of sixty used to make `show` discard the fifty-nine
- * good ones and print nothing but "Render failed" — no `pngPath`, no `sha256`, no `changed`. That
- * makes the documented iterate loop ("re-render, read the entries marked changed") unusable in any
- * real repo.
- *
- * Non-empty results are **not** sufficient evidence on their own, and this is the trap: on a warm
- * checkout `build/compose-previews/` still holds the previous run's `previews.json` and PNGs. If
- * gradle fails during configuration or compilation — before the renderer rewrites anything —
- * `renderAllModules` happily reads that stale manifest and `PreviewResultBuilder` accepts the stale
- * PNGs, so reporting them would hand back the *previous* run's images, hashes and `changed` flags
- * dressed up as this run's. Every `changed` would read `false` (the shas still match the state file
- * the last good run wrote), i.e. "nothing changed" for a build that never actually ran — a more
- * dangerous answer than the silence it replaced.
- *
- * So require positive evidence that this invocation produced renders: at least one capture PNG
- * whose mtime is at or after [renderStartedAtMillis]. A render that ran and partially succeeded
- * leaves fresh PNGs; a build that died before the render task leaves only stale ones and falls back
- * to the old bail-out. The exit code is unaffected either way — see [showExitCode].
- *
- * [renderStartedAtMillis] is floored to whole seconds by [floorToSecond], because filesystem mtimes
- * are commonly second-granular and a PNG written milliseconds after an unfloored start would
- * otherwise look stale.
- *
- * Pure (bar the injected [fileSystem]) so the policy is unit-testable without a Gradle render.
+ * Identity of one render output at a point in time. Size is carried alongside mtime so a rewrite
+ * that lands within the filesystem's timestamp granularity still registers as a change.
  */
-internal fun canReportAfterBuildFailure(
-  results: List<PreviewResult>,
-  renderStartedAtMillis: Long,
+internal data class RenderStamp(val mtimeMillis: Long?, val sizeBytes: Long?)
+
+/** Where a module's rendered artifacts live. */
+internal fun rendersDirOf(module: PreviewModule): String =
+  java.io.File(module.projectDir, "build/compose-previews/renders").path
+
+/**
+ * Snapshot every file under each module's `renders/` directory.
+ *
+ * Taken **immediately before** the gradle run so it captures the previous invocation's leftovers,
+ * which is the baseline [freshRenderPaths] diffs against. Missing directories are simply absent
+ * from the map — a first-ever render then shows up as "new", which is correctly fresh.
+ */
+internal fun snapshotRenders(
+  modules: List<PreviewModule>,
   fileSystem: FileSystem = SystemFileSystem,
-): Boolean = results.any { r ->
-  r.captures.any { c ->
-    val path = c.pngPath ?: return@any false
-    val mtime = fileSystem.metadataOrNull(path.toPath())?.lastModifiedAtMillis ?: return@any false
-    mtime >= renderStartedAtMillis
+): Map<String, RenderStamp> {
+  val out = mutableMapOf<String, RenderStamp>()
+  for (module in modules) {
+    val dir = rendersDirOf(module).toPath()
+    if (fileSystem.metadataOrNull(dir)?.isDirectory != true) continue
+    runCatching { fileSystem.listRecursively(dir).toList() }
+      .getOrDefault(emptyList())
+      .forEach { path ->
+        val md = fileSystem.metadataOrNull(path) ?: return@forEach
+        if (md.isDirectory) return@forEach
+        out[path.toString()] = RenderStamp(md.lastModifiedAtMillis, md.size)
+      }
   }
+  return out
 }
 
-/** Floor to whole seconds — see [canReportAfterBuildFailure]. */
-internal fun floorToSecond(millis: Long): Long = (millis / 1000L) * 1000L
+/**
+ * Paths whose on-disk identity changed against [before] — i.e. the files this invocation's renderer
+ * actually wrote.
+ *
+ * A path counts as fresh when it is new since the snapshot, or when its mtime or size differs.
+ * Comparing against concrete prior state rather than a wall-clock threshold is what makes this
+ * robust: there is no window in which a file written during the invocation's own start second gets
+ * mistaken for a fresh one.
+ */
+internal fun freshRenderPaths(
+  before: Map<String, RenderStamp>,
+  after: Map<String, RenderStamp>,
+): Set<String> =
+  after.asSequence().filter { (path, now) -> before[path] != now }.map { it.key }.toSet()
+
+/**
+ * The subset of [results] this invocation actually rendered.
+ *
+ * Freshness is decided **per result**, not for the batch: a multi-module run that renders module A
+ * and then fails compiling module B must not let A's fresh PNGs vouch for B's stale rows. The same
+ * applies within one module when the render task stops partway and leaves unattempted captures on
+ * disk from the previous run.
+ *
+ * A result survives when at least one of its captures points at a freshly written PNG. Results
+ * whose every capture is stale — or which have no PNG at all, and so carry no evidence either way —
+ * are dropped rather than reported, because a stale row is indistinguishable from a current one
+ * once it reaches the output: its `sha256` matches the state file the last good run wrote, so
+ * `changed` reads `false` and the caller concludes "nothing changed" about a build that never ran.
+ */
+internal fun resultsWithFreshRender(
+  results: List<PreviewResult>,
+  freshPaths: Set<String>,
+): List<PreviewResult> = results.filter { r ->
+  r.captures.any { it.pngPath != null && it.pngPath in freshPaths }
+}
 
 /**
  * `show`'s exit code: a gradle failure (2) outranks whatever the output itself would have reported,
@@ -962,10 +1016,7 @@ class ShowCommand(args: List<String>) : Command(args) {
       )
 
   override fun run() {
-    // Stamped before gradle runs so [canReportAfterBuildFailure] can tell renders this invocation
-    // produced from the previous run's leftovers in a warm `build/compose-previews/`.
-    val renderStartedAt = floorToSecond(System.currentTimeMillis())
-    val outcome =
+    var outcome =
       renderAllModules(silenceStdout = jsonOutput, gradleArguments = gradleArgsWithForce())
     if (!outcome.buildOk) {
       System.err.println("Render failed")
@@ -976,21 +1027,34 @@ class ShowCommand(args: List<String>) : Command(args) {
       // discard the fifty-nine good ones, emitting no JSON at all: no `pngPath`, no `sha256`, no
       // `changed`. That makes the documented iterate loop ("re-render, read the changed entries")
       // unusable in any repo with one persistently broken preview, and pushes agents into
-      // hand-globbing the renders directory. Surface what did render, mark the rest via the
-      // existing per-preview `[no PNG]` / null-`pngPath` channel, and keep the exit code at 2 so
-      // scripts gating on success are unaffected. Bail early unless this invocation actually
-      // produced renders — on a warm checkout the previous run's manifest and PNGs are still on
-      // disk, and reporting those would pass the last run's images and `changed` flags off as this
-      // one's.
-      if (!canReportAfterBuildFailure(outcome.results, renderStartedAt, fileSystem)) {
+      // hand-globbing the renders directory. Surface what did render and keep the exit code at 2 so
+      // scripts gating on success are unaffected.
+      //
+      // Narrow to the rows this invocation actually wrote. On a warm checkout the previous run's
+      // manifest and PNGs are still on disk, so anything the renderer didn't touch would otherwise
+      // go out carrying the last run's image, sha and a `changed: false` — "nothing changed" about
+      // a
+      // build that never ran. Filtering is per result, so a multi-module run that renders A and
+      // then
+      // fails compiling B reports only A.
+      val stale = outcome.results.size
+      val fresh = resultsWithFreshRender(outcome.results, outcome.freshRenderPaths)
+      if (fresh.isEmpty()) {
+        System.err.println(
+          "No preview was rendered by this invocation — gradle failed before the render task " +
+            "wrote anything, and the files under build/compose-previews/ belong to a previous run. " +
+            "Reporting nothing rather than passing them off as current."
+        )
         System.out.flush()
         exitProcess(2)
       }
+      val dropped = stale - fresh.size
       System.err.println(
-        "Reporting the ${outcome.results.size} preview(s) that were discovered anyway — previews " +
-          "that failed to render carry a null pngPath (`[no PNG]` in text output). Exit code " +
-          "stays 2."
+        "Reporting the ${fresh.size} preview(s) this run rendered" +
+          (if (dropped > 0) ", omitting $dropped left over from a previous run" else "") +
+          ". Exit code stays 2."
       )
+      outcome = outcome.copy(results = fresh)
     }
 
     if (outcome.manifests.isEmpty() || outcome.manifests.all { it.second.previews.isEmpty() }) {
@@ -1560,6 +1624,7 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
         modules = raw.modules,
         manifests = manifests,
         results = results,
+        freshRenderPaths = raw.freshRenderPaths,
       )
 
     if (outcome.manifests.isEmpty()) {

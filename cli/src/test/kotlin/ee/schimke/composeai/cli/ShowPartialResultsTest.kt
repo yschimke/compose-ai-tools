@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -8,98 +9,176 @@ import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
 
 /**
- * Covers `show`'s behaviour when gradle reports failure but results were still produced.
+ * Covers `show`'s behaviour when gradle reports failure but render output is on disk.
  *
  * `composePreviewRenderAll` fails the whole task if any single preview fails to render, so a repo
- * with one persistently broken preview (a `@Preview` on an Activity whose ViewModel can't be
- * constructed, say) used to get nothing at all out of `compose-preview show --json` — the command
- * printed "Render failed" and exited before emitting the envelope, discarding every preview that
- * rendered perfectly well. That breaks the documented iterate loop, which tells agents to re-render
- * and read the entries marked `changed`.
+ * with one persistently broken preview used to get nothing at all out of `compose-preview show
+ * --json` — the command printed "Render failed" and exited before emitting the envelope, discarding
+ * every preview that rendered perfectly well.
  *
- * The counterweight is staleness: on a warm checkout the previous run's PNGs are still on disk, so
- * "results is non-empty" proves nothing. If gradle dies during configuration or compilation, those
- * leftovers must NOT be reported as this run's output — they would carry the last run's images and
- * hashes with every `changed` reading `false`, i.e. "nothing changed" for a build that never ran.
- *
- * The exit code deliberately does **not** change: a failed build still exits 2.
+ * The counterweight is staleness. On a warm checkout `build/compose-previews/` still holds the
+ * previous run's PNGs, so "a file exists" proves nothing, and neither does "its mtime is recent" —
+ * `buildResults` can itself rewrite PNGs via the image-size override, and a previous run finishing
+ * inside the new invocation's start second would clear any wall-clock threshold. Freshness is
+ * therefore decided by diffing a snapshot taken before the gradle run, per result.
  */
 class ShowPartialResultsTest {
 
   private val fs = FakeFileSystem()
 
-  private fun result(id: String, pngPath: String?): PreviewResult =
+  private fun result(id: String, vararg pngPaths: String?): PreviewResult =
     PreviewResult(
       id = id,
       module = "samples:demo",
       functionName = id.substringAfterLast('.'),
       className = id.substringBeforeLast('.'),
       params = PreviewParams(kind = "COMPOSE"),
-      captures = listOf(CaptureResult(pngPath = pngPath)),
-      pngPath = pngPath,
+      captures = pngPaths.map { CaptureResult(pngPath = it) },
+      pngPath = pngPaths.firstOrNull(),
     )
 
-  /** Writes a PNG into the fake filesystem and returns its actual recorded mtime. */
-  private fun writePng(path: String): Long {
-    val p = path.toPath()
-    p.parent?.let { fs.createDirectories(it) }
-    fs.write(p) { writeUtf8("png") }
-    return fs.metadata(p).lastModifiedAtMillis!!
+  private fun stamp(mtime: Long, size: Long) = RenderStamp(mtime, size)
+
+  // --- freshRenderPaths -------------------------------------------------------
+
+  @Test
+  fun `a rewritten file is fresh`() {
+    val before = mapOf("/r/a.png" to stamp(1000, 10))
+    val after = mapOf("/r/a.png" to stamp(2000, 10))
+    assertEquals(setOf("/r/a.png"), freshRenderPaths(before, after))
   }
 
   @Test
-  fun `a render written by this invocation is reported despite the failed build`() {
-    // The shape this actually fixes: one preview blew up, the other rendered fine, and the task
-    // failure applies to both.
-    val mtime = writePng("/r/ok.png")
-    val results = listOf(result("p.Ok", "/r/ok.png"), result("p.Broken", null))
+  fun `a file rewritten within the timestamp granularity is still fresh via size`() {
+    // The case a pure-mtime check misses: same second, different content.
+    val before = mapOf("/r/a.png" to stamp(1000, 10))
+    val after = mapOf("/r/a.png" to stamp(1000, 4096))
+    assertEquals(setOf("/r/a.png"), freshRenderPaths(before, after))
+  }
+
+  @Test
+  fun `a newly created file is fresh`() {
+    assertEquals(
+      setOf("/r/new.png"),
+      freshRenderPaths(emptyMap(), mapOf("/r/new.png" to stamp(1000, 10))),
+    )
+  }
+
+  @Test
+  fun `an untouched leftover is not fresh`() {
+    val same = mapOf("/r/old.png" to stamp(1000, 10))
+    assertTrue(freshRenderPaths(same, same).isEmpty())
+  }
+
+  @Test
+  fun `a previous run finishing in the invocation's start second is not fresh`() {
+    // This is what sank the wall-clock threshold: the file predates the run but shares its second.
+    val leftover = mapOf("/r/old.png" to stamp(1_700_000_000_500, 10))
     assertTrue(
-      canReportAfterBuildFailure(results, renderStartedAtMillis = mtime, fileSystem = fs),
-      "one broken preview must not suppress the ones that rendered",
+      freshRenderPaths(leftover, leftover).isEmpty(),
+      "identity is compared against concrete prior state, so there is no start-second window",
+    )
+  }
+
+  // --- resultsWithFreshRender -------------------------------------------------
+
+  @Test
+  fun `only the results this run rendered are reported`() {
+    val results = listOf(result("p.Fresh", "/r/fresh.png"), result("p.Stale", "/r/stale.png"))
+    assertEquals(
+      listOf("p.Fresh"),
+      resultsWithFreshRender(results, setOf("/r/fresh.png")).map { it.id },
     )
   }
 
   @Test
-  fun `leftover renders from a previous run are not reported as this run's output`() {
-    val mtime = writePng("/r/stale.png")
-    val results = listOf(result("p.Stale", "/r/stale.png"))
-    assertFalse(
-      canReportAfterBuildFailure(results, renderStartedAtMillis = mtime + 1, fileSystem = fs),
-      "a build that died before the renderer ran must not pass off the previous run's PNGs",
+  fun `one module's fresh render does not vouch for another module's stale rows`() {
+    // Module A rendered; gradle then failed compiling module B, leaving B's previous PNGs in place.
+    val results =
+      listOf(
+        result("a.Rendered", "/a/renders/x.png"),
+        result("b.Leftover", "/b/renders/y.png"),
+        result("b.AlsoLeftover", "/b/renders/z.png"),
+      )
+    assertEquals(
+      listOf("a.Rendered"),
+      resultsWithFreshRender(results, setOf("/a/renders/x.png")).map { it.id },
+      "freshness must be per result, not admitted for the whole batch by one fresh file",
     )
   }
 
   @Test
-  fun `results whose PNGs are gone entirely are not reportable`() {
-    val results = listOf(result("p.Missing", "/r/never-written.png"))
-    assertFalse(canReportAfterBuildFailure(results, renderStartedAtMillis = 0L, fileSystem = fs))
-  }
-
-  @Test
-  fun `a build that produced no results has nothing to report`() {
-    assertFalse(
-      canReportAfterBuildFailure(emptyList(), renderStartedAtMillis = 0L, fileSystem = fs),
-      "gradle died before any manifest was written — there is genuinely nothing to show",
+  fun `a multi-capture result survives when any one capture is fresh`() {
+    val results = listOf(result("p.Multi", "/r/frame0.png", "/r/frame1.png"))
+    assertEquals(
+      listOf("p.Multi"),
+      resultsWithFreshRender(results, setOf("/r/frame1.png")).map { it.id },
     )
   }
 
   @Test
-  fun `previews that never emit a PNG cannot vouch for freshness on their own`() {
+  fun `a result whose render failed carries no evidence and is dropped`() {
     val results = listOf(result("p.Broken", null))
-    assertFalse(
-      canReportAfterBuildFailure(results, renderStartedAtMillis = 0L, fileSystem = fs),
-      "a null pngPath carries no mtime, so it is no evidence the render ran",
+    assertTrue(
+      resultsWithFreshRender(results, setOf("/r/other.png")).isEmpty(),
+      "a null pngPath cannot show the renderer ran for this row",
     )
   }
 
   @Test
-  fun `floorToSecond absorbs second-granular filesystem mtimes`() {
-    // A PNG written 700ms after an unfloored start would otherwise look stale on a filesystem that
-    // truncates mtimes to whole seconds.
-    assertEquals(1_000L, floorToSecond(1_999L))
-    assertEquals(0L, floorToSecond(999L))
-    assertEquals(2_000L, floorToSecond(2_000L))
+  fun `nothing fresh means nothing to report`() {
+    val results = listOf(result("p.Stale", "/r/stale.png"))
+    assertTrue(resultsWithFreshRender(results, emptySet()).isEmpty())
+    assertTrue(resultsWithFreshRender(emptyList(), setOf("/r/a.png")).isEmpty())
   }
+
+  // --- snapshotRenders --------------------------------------------------------
+
+  @Test
+  fun `snapshot walks each module's renders directory`() {
+    val module = PreviewModule(gradlePath = "wear", projectDir = File("/proj/wear"))
+    val dir = rendersDirOf(module).toPath()
+    fs.createDirectories(dir)
+    fs.write(dir / "a.png") { writeUtf8("aa") }
+    fs.write(dir / "b.png") { writeUtf8("bbbb") }
+
+    val snap = snapshotRenders(listOf(module), fs)
+
+    assertEquals(setOf((dir / "a.png").toString(), (dir / "b.png").toString()), snap.keys)
+    assertEquals(2L, snap.getValue((dir / "a.png").toString()).sizeBytes)
+    assertEquals(4L, snap.getValue((dir / "b.png").toString()).sizeBytes)
+  }
+
+  @Test
+  fun `a module with no renders directory yet snapshots empty and its first render is fresh`() {
+    val module = PreviewModule(gradlePath = "app", projectDir = File("/proj/app"))
+    val before = snapshotRenders(listOf(module), fs)
+    assertTrue(before.isEmpty(), "a first-ever render must not require a pre-existing directory")
+
+    val dir = rendersDirOf(module).toPath()
+    fs.createDirectories(dir)
+    fs.write(dir / "first.png") { writeUtf8("x") }
+
+    assertEquals(
+      setOf((dir / "first.png").toString()),
+      freshRenderPaths(before, snapshotRenders(listOf(module), fs)),
+    )
+  }
+
+  @Test
+  fun `snapshot records files rather than directories`() {
+    val module = PreviewModule(gradlePath = "wear", projectDir = File("/proj/wear"))
+    val dir = rendersDirOf(module).toPath()
+    fs.createDirectories(dir / "nested")
+    fs.write(dir / "nested" / "deep.png") { writeUtf8("d") }
+
+    val snap = snapshotRenders(listOf(module), fs)
+
+    assertEquals(setOf((dir / "nested" / "deep.png").toString()), snap.keys)
+    assertFalse(snap.containsKey((dir / "nested").toString()))
+  }
+
+  // --- exit codes -------------------------------------------------------------
 
   @Test
   fun `a failed build exits 2 even though output was emitted`() {
