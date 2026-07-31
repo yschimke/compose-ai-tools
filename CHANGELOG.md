@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.19.13](https://github.com/yschimke/compose-ai-tools/compare/v0.19.12...v0.19.13) (2026-07-31)
+
+
+### Features
+
+* **doctor:** flag unresolvable skiko native deps on CMP Desktop projects ([#3051](https://github.com/yschimke/compose-ai-tools/issues/3051)) ([ac7b0f0](https://github.com/yschimke/compose-ai-tools/commit/ac7b0f0d71393a094e6f987a84500a07c0834fa0))
+* **playground:** add the Stage-1 editor page at GET /playground ([#3050](https://github.com/yschimke/compose-ai-tools/issues/3050)) ([8647ef0](https://github.com/yschimke/compose-ai-tools/commit/8647ef053219fc779a1eaf8c9348aa1fd0918106))
+* **playground:** render the CMP first frame (desktop parity with Android) ([#3060](https://github.com/yschimke/compose-ai-tools/issues/3060)) ([e26e24a](https://github.com/yschimke/compose-ai-tools/commit/e26e24a74c34b90adff082fc56bed1a706013785))
+* **playground:** Stage-2 live redemption at /pg/&lt;token&gt; ([#3054](https://github.com/yschimke/compose-ai-tools/issues/3054)) ([f1d1cee](https://github.com/yschimke/compose-ai-tools/commit/f1d1ceefd70eef4704b86cb1e1fbce98a53fa4d4))
+
+
+### Bug Fixes
+
+* **daemon:** capture the dialog window for Dialog / bottom-sheet previews ([#3067](https://github.com/yschimke/compose-ai-tools/issues/3067)) ([16e4e13](https://github.com/yschimke/compose-ai-tools/commit/16e4e130a6a0122d09f7468d8be2cedbd8a092e7))
+* **figma-svg:** clip to the rendered box and keep text on clip-edge nodes ([#3065](https://github.com/yschimke/compose-ai-tools/issues/3065)) ([6850e73](https://github.com/yschimke/compose-ai-tools/commit/6850e738dec284597e5463fb22af862b246409ae))
+* **playground:** gate the editor's mode selector and fence stale runs ([#3052](https://github.com/yschimke/compose-ai-tools/issues/3052)) ([8377eba](https://github.com/yschimke/compose-ai-tools/commit/8377ebaa8e43c0cd5b2476cc7719a9f6c5d563db))
+* **playground:** redeem /pg/ on token-gated hosts, with a browser e2e ([#3066](https://github.com/yschimke/compose-ai-tools/issues/3066)) ([cc520d3](https://github.com/yschimke/compose-ai-tools/commit/cc520d303be707949515f2d8554d7f2e4dd8e3ce))
+* survive a non-UTF-8 locale, and report show results from a failed render ([#3059](https://github.com/yschimke/compose-ai-tools/issues/3059)) ([b128120](https://github.com/yschimke/compose-ai-tools/commit/b128120f12938c10bdee540fe17f21616c3d199e))
+
 ## [0.19.12](https://github.com/yschimke/compose-ai-tools/compare/v0.19.11...v0.19.12) (2026-07-31)
 
 
