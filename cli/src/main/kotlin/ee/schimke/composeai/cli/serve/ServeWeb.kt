@@ -511,6 +511,64 @@ object ServeWeb {
       .trimIndent()
 
   /**
+   * Scoped styles for the [playgroundPage] editor — kept off the global [STYLE] since one page uses
+   * them.
+   */
+  private val PLAYGROUND_STYLE =
+    """
+    .cp-pg { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+    .cp-pg-bar { display: flex; align-items: center; gap: 10px; }
+    .cp-pg-modelabel { font-weight: 600; }
+    .cp-pg-mode { padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.18);
+      background: #fff; font: inherit; }
+    .cp-pg-run { margin-left: auto; }
+    .cp-pg-source { width: 100%; min-height: 260px; box-sizing: border-box; padding: 12px 14px;
+      border-radius: 10px; border: 1px solid rgba(0,0,0,0.18); background: #fbfbfd;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px;
+      line-height: 1.5; tab-size: 2; resize: vertical; }
+    .cp-pg-status { font-size: 14px; color: #55555f; }
+    .cp-pg-status.cp-doc-error { color: #b00020; }
+    .cp-pg-diags { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column;
+      gap: 6px; }
+    .cp-pg-diag { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12.5px; padding: 6px 10px; border-radius: 8px; background: #f2f2f5; }
+    .cp-pg-error { background: #fdecef; color: #8a0017; }
+    .cp-pg-warning { background: #fff5e0; color: #7a5200; }
+    .cp-pg-result { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+    .cp-pg-image { max-width: 100%; border-radius: 10px; border: 1px solid rgba(0,0,0,0.12);
+      background: #fff; }
+    @media (prefers-color-scheme: dark) {
+      .cp-pg-mode, .cp-pg-source { background: #161618; border-color: #34343a; color: #e6e6ea; }
+      .cp-pg-status { color: #a8a8b2; }
+      .cp-pg-diag { background: #1d1d20; }
+      .cp-pg-error { background: #34161b; color: #ff9aa6; }
+      .cp-pg-warning { background: #2c2410; color: #ffd486; }
+      .cp-pg-image { border-color: #34343a; }
+    }
+    """
+      .trimIndent()
+
+  /**
+   * The starter snippet the [playgroundPage] editor opens with — a minimal Material 3 `@Preview`.
+   */
+  private val PLAYGROUND_SAMPLE =
+    """
+    import androidx.compose.material3.Button
+    import androidx.compose.material3.Text
+    import androidx.compose.runtime.Composable
+    import androidx.compose.ui.tooling.preview.Preview
+
+    @Preview
+    @Composable
+    fun Greeting() {
+        Button(onClick = {}) {
+            Text("Hello, Compose!")
+        }
+    }
+    """
+      .trimIndent()
+
+  /**
    * Query string carrying the token and — only for a non-default tenant ([sessionId] non-null) —
    * the `session` id, so generated links stay on the same tenant. A null [sessionId] (the default
    * session) keeps URLs token-only.
@@ -1980,6 +2038,135 @@ object ServeWeb {
           .trimIndent(),
     )
   }
+
+  /**
+   * `GET /playground` — the **Stage-1 editor** for the Kotlin playground
+   * (`docs/design/PLAYGROUND.md` §2). A code box + a mode selector + a Run button that POSTs to
+   * `/api/{v}/compiler/run` and shows the compiler diagnostics, the first-frame render, and the
+   * handoff link: **Open live preview →** (`/pg/<token>`, the CMP/Android live modes) or **Open
+   * document →** (`/d/<id>`, Remote Compose).
+   *
+   * The lane compiles and runs user-supplied code on the server, so it is only ever mounted behind
+   * a token (refused under `--public`); the page therefore always carries a `?token=…` suffix on
+   * the links it builds. A plain `<textarea>` is the v1 editor — a stock `kotlin-playground` /
+   * bespoke CodeMirror surface is a deferred, non-blocking decision (design §7 item 5).
+   */
+  fun playgroundPage(token: String, isPublic: Boolean, unfurl: UnfurlMetadata? = null): String {
+    val suffix = querySuffix(queryString(token, sessionId = null, isPublic = isPublic))
+    val sample = WebEscaping.htmlEscape(PLAYGROUND_SAMPLE)
+    return document(
+      title = "Playground — compose-preview",
+      unfurlDescription = "Compile a Compose snippet against the live catalog and open a preview.",
+      unfurl = unfurl,
+      body =
+        """
+        <style>$PLAYGROUND_STYLE</style>
+        <h1 class="cp-head">Playground</h1>
+        <p class="cp-sub">Write a Compose snippet, compile it against the live catalog, and open a
+          preview. This lane runs your code on the server, so it stays behind your token.</p>
+        <div class="cp-pg">
+          <div class="cp-pg-bar">
+            <label class="cp-pg-modelabel" for="pg-mode">Mode</label>
+            <select id="pg-mode" class="cp-pg-mode">
+              <option value="compose-cmp">Compose (Desktop)</option>
+              <option value="compose-android">Compose (Android)</option>
+              <option value="remote-compose">Remote Compose</option>
+            </select>
+            <button id="pg-run" class="cp-doc-btn cp-pg-run" type="button">Run</button>
+          </div>
+          <textarea id="pg-source" class="cp-pg-source" spellcheck="false"
+            aria-label="Kotlin source">$sample</textarea>
+          <div id="pg-status" class="cp-pg-status" hidden></div>
+          <ul id="pg-diagnostics" class="cp-pg-diags" hidden></ul>
+          <div id="pg-result" class="cp-doc-result cp-pg-result" hidden>
+            <img id="pg-image" class="cp-pg-image" alt="Rendered first frame" hidden>
+            <p id="pg-open-row" hidden>
+              <a id="pg-open" class="cp-doc-btn" href="#" rel="noopener">Open preview →</a>
+            </p>
+          </div>
+        </div>
+        <script>${playgroundScript(suffix)}</script>
+        """
+          .trimIndent(),
+    )
+  }
+
+  /**
+   * Drives the playground editor: POST the snippet + mode, render the diagnostics/first-frame, and
+   * surface the `/pg/<token>` (live) or `/d/<id>` (Remote Compose) handoff link. Kept
+   * dependency-free (no bundle) so the page is one self-contained document.
+   */
+  private fun playgroundScript(querySuffix: String): String =
+    """
+    (function () {
+      var source = document.getElementById("pg-source");
+      var mode = document.getElementById("pg-mode");
+      var run = document.getElementById("pg-run");
+      var statusEl = document.getElementById("pg-status");
+      var diags = document.getElementById("pg-diagnostics");
+      var result = document.getElementById("pg-result");
+      var image = document.getElementById("pg-image");
+      var openRow = document.getElementById("pg-open-row");
+      var openLink = document.getElementById("pg-open");
+      var suffix = ${jsString(querySuffix)};
+      function setStatus(text, isError) {
+        statusEl.hidden = false;
+        statusEl.className = "cp-pg-status" + (isError ? " cp-doc-error" : "");
+        statusEl.textContent = text;
+      }
+      function clearOut() {
+        diags.hidden = true; diags.innerHTML = "";
+        result.hidden = true; image.hidden = true; image.removeAttribute("src"); openRow.hidden = true;
+      }
+      function renderDiags(list) {
+        if (!list || !list.length) return;
+        diags.hidden = false;
+        list.forEach(function (d) {
+          var li = document.createElement("li");
+          li.className = "cp-pg-diag cp-pg-" + (d.severity || "info");
+          var loc = (d.line != null) ? (" (line " + (d.line + 1) + ")") : "";
+          li.textContent = (d.severity || "info") + ": " + d.message + loc;
+          diags.appendChild(li);
+        });
+      }
+      run.addEventListener("click", function () {
+        clearOut();
+        setStatus("Compiling…", false);
+        var body = JSON.stringify({
+          confType: mode.value,
+          files: [{ name: "Snippet.kt", text: source.value }]
+        });
+        fetch("/api/1/compiler/run" + suffix, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: body
+        })
+          .then(function (r) {
+            return r.text().then(function (t) {
+              if (!r.ok) throw new Error(t || ("run failed (" + r.status + ")"));
+              return JSON.parse(t);
+            });
+          })
+          .then(function (res) {
+            renderDiags(res.diagnostics);
+            var hasError = (res.diagnostics || []).some(function (d) { return d.severity === "error"; });
+            if (res.exception) { setStatus(res.exception, true); return; }
+            if (hasError) { setStatus("Compilation failed.", true); return; }
+            result.hidden = false;
+            if (res.image) { image.hidden = false; image.src = res.image; }
+            var link = res.documentUrl || res.previewUrl;
+            if (link) {
+              openRow.hidden = false;
+              openLink.href = link + suffix;
+              openLink.textContent = res.documentUrl ? "Open document →" : "Open live preview →";
+            }
+            setStatus("Done.", false);
+          })
+          .catch(function (e) { setStatus(e.message || "run failed", true); });
+      });
+    })();
+    """
+      .trimIndent()
 
   /**
    * One ingested document as the permalink page shows it — the display facts only, so this page

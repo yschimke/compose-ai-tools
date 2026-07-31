@@ -112,4 +112,30 @@ class PlaygroundRoutingTest {
     val body = """{"files":[{"name":"S.kt","text":"x"}],"confType":"compose-cmp"}"""
     postRun(body, plainServer.port).use { resp -> assertEquals(404, resp.code) }
   }
+
+  private fun get(path: String, port: Int) =
+    client.newCall(Request.Builder().url("http://127.0.0.1:$port$path").build()).execute()
+
+  @Test
+  fun `the editor page is served when the playground lane is enabled`() {
+    get("/playground", server.port).use { resp ->
+      assertEquals(200, resp.code)
+      assertTrue(
+        resp.header("Content-Type")?.contains("text/html") == true,
+        "the editor page is served as HTML",
+      )
+      val html = resp.body!!.string()
+      assertTrue(
+        html.contains("id=\"pg-source\"") &&
+          html.contains("id=\"pg-run\"") &&
+          html.contains("/api/1/compiler/run"),
+        "the editor page exposes the source box, Run button, and the compile route",
+      )
+    }
+  }
+
+  @Test
+  fun `the editor page is absent when the playground lane isn't enabled`() {
+    get("/playground", plainServer.port).use { resp -> assertEquals(404, resp.code) }
+  }
 }
