@@ -169,8 +169,20 @@ class FigmaSvgTofuFallbackTest {
                     fontFamily = "Karla",
                     spans =
                       listOf(
-                        ComposeSemanticsTextSpan(0, 5, "16.0sp", "Karla", 400),
-                        ComposeSemanticsTextSpan(5, 9, "12.0sp", "monospace", 400),
+                        ComposeSemanticsTextSpan(
+                          start = 0,
+                          end = 5,
+                          fontSize = "16.0sp",
+                          fontFamily = "Karla",
+                          fontWeight = 400,
+                        ),
+                        ComposeSemanticsTextSpan(
+                          start = 5,
+                          end = 9,
+                          fontSize = "12.0sp",
+                          fontFamily = "monospace",
+                          fontWeight = 400,
+                        ),
                       ),
                   ),
               )

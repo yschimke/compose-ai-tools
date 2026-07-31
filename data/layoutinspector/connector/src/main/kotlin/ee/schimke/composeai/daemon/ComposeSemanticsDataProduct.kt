@@ -300,6 +300,19 @@ object ComposeSemanticsDataProducer {
         .distinct()
         .singleOrNull()
         ?.let { "${it}sp" }
+    // The same size as the render actually resolved it (issue #3024). `sp` is NOT a linear
+    // function of the font scale: on API 34+ Compose resolves it through the platform
+    // `FontScaleConverter`, whose curve scales body text fully and flattens toward identity at
+    // display sizes. A consumer recomputing `sp × density × fontScale` therefore over-sizes
+    // headings on any `fontScale != 1` render (50% on JetNews's 32sp article title, enough to push
+    // the captured line breaks past their card). Resolve it here, against the layout's *own*
+    // `Density` — that is the object the render measured with, converter included — instead of
+    // asking every consumer to re-implement a platform table that moves with the API level.
+    val fontSizePx =
+      results
+        .mapNotNull { it.layoutInput.style.fontSize.resolvePx(it.layoutInput.density) }
+        .distinct()
+        .singleOrNull()
     // Typography is read per *drawn range*, not just the paragraph style: an `AnnotatedString`
     // carries per-range overrides in `spanStyles`, so — like the colour extraction below — reason
     // over every effective face the node draws (see `effectiveSpanStyles`).
@@ -341,11 +354,27 @@ object ComposeSemanticsDataProducer {
     val fontFeatureSettings =
       spans.map { it.fontFeatureSettings?.takeIf(String::isNotBlank) }.distinct().singleOrNull()
     val letterSpacing = spans.map { it.letterSpacing.toWireTextUnit() }.distinct().singleOrNull()
+    // Letter spacing may be `em` — a multiple of the *resolved* size — so it resolves against the
+    // same density and the px size above, not against the `sp` nominal.
+    val letterSpacingPx =
+      results
+        .mapNotNull { r ->
+          r.layoutInput.style.letterSpacing.resolvePx(r.layoutInput.density, fontSizePx)
+        }
+        .distinct()
+        .singleOrNull()
     // Line height is a paragraph-level property (not carried on `SpanStyle`), so read it per
     // result.
     val lineHeight =
       results
         .mapNotNull { it.layoutInput.style.lineHeight.toWireTextUnit() }
+        .distinct()
+        .singleOrNull()
+    val lineHeightPx =
+      results
+        .mapNotNull { r ->
+          r.layoutInput.style.lineHeight.resolvePx(r.layoutInput.density, fontSizePx)
+        }
         .distinct()
         .singleOrNull()
     // Paragraph alignment, also paragraph-level (not on `SpanStyle`). The figma-svg export anchors
@@ -399,6 +428,9 @@ object ComposeSemanticsDataProducer {
               baseline = r.getLineBaseline(i).roundToInt(),
               start = start,
               end = end,
+              // The width the render measured this line at, so a consumer can pin its own
+              // rendering to it rather than trusting its text engine to agree (issue #3024).
+              width = (r.getLineRight(i) - r.getLineLeft(i)).roundToInt().takeIf { it > 0 },
             )
           }
         }
@@ -406,12 +438,13 @@ object ComposeSemanticsDataProducer {
       results
         .singleOrNull()
         ?.takeIf { it.layoutInput.text.spanStyles.isNotEmpty() }
-        ?.effectiveStyleRanges()
-        ?.map { range ->
+        ?.let { r -> r.effectiveStyleRanges().map { it to r.layoutInput.density } }
+        ?.map { (range, spanDensity) ->
           ComposeSemanticsTextSpan(
             start = range.start,
             end = range.end,
             fontSize = range.style.fontSize.toWireTextUnit(),
+            fontSizePx = range.style.fontSize.resolvePx(spanDensity),
             fontFamily =
               fontFamilyLabel(
                 range.style.fontFamily,
@@ -427,13 +460,16 @@ object ComposeSemanticsDataProducer {
     return LayoutTextDetails(
       text = text,
       fontSize = fontSize,
+      fontSizePx = fontSizePx,
       fontFamily = fontFamily,
       fontWeight = fontWeight,
       fontStyle = fontStyle,
       fontVariationSettings = fontVariationSettings,
       fontFeatureSettings = fontFeatureSettings,
       letterSpacing = letterSpacing,
+      letterSpacingPx = letterSpacingPx,
       lineHeight = lineHeight,
+      lineHeightPx = lineHeightPx,
       textAlign = textAlign,
       layoutDirection = layoutDirection,
       foregroundColor =
@@ -685,16 +721,43 @@ object ComposeSemanticsDataProducer {
       else -> null
     }
 
+  /**
+   * This [TextUnit] in px, as [density] resolves it (issue #3024).
+   *
+   * [density] must be the layout's own `Density` — `TextLayoutInput.density`, the object the render
+   * measured with. On API 34+ that carries the platform `FontScaleConverter`, so `sp` → px follows
+   * the **non-linear** font-scale curve: body sizes take the full multiplier, display sizes take
+   * almost none. `sp × density × fontScale` is not that curve, which is what over-sized exported
+   * headings on `fontScale != 1` renders.
+   *
+   * `em` is a multiple of the resolved font size rather than a density conversion, so it needs
+   * [fontSizePx] and yields null without one. Rounded to 2dp: the extra digits are float noise from
+   * the conversion, not measured precision. Null for unspecified/unknown units, and if the
+   * conversion throws (an `em` reaching the `Density` path on some Compose version).
+   */
+  private fun TextUnit.resolvePx(density: Density, fontSizePx: Double? = null): Double? =
+    when (type) {
+      TextUnitType.Sp ->
+        runCatching { with(density) { toPx() } }.getOrNull()?.toDouble()?.let(::roundPx)
+      TextUnitType.Em -> fontSizePx?.let { roundPx(value.toDouble() * it) }
+      else -> null
+    }
+
+  private fun roundPx(v: Double): Double = (v * 100.0).roundToInt() / 100.0
+
   private data class LayoutTextDetails(
     val text: String?,
     val fontSize: String?,
+    val fontSizePx: Double?,
     val fontFamily: String?,
     val fontWeight: Int?,
     val fontStyle: String?,
     val fontVariationSettings: String?,
     val fontFeatureSettings: String?,
     val letterSpacing: String?,
+    val letterSpacingPx: Double?,
     val lineHeight: String?,
+    val lineHeightPx: Double?,
     val textAlign: String?,
     val layoutDirection: String?,
     val foregroundColor: String?,
@@ -730,13 +793,16 @@ object ComposeSemanticsDataProducer {
     else
       ComposeSemanticsTypography(
         fontSize = fontSize,
+        fontSizePx = fontSizePx,
         fontFamily = fontFamily,
         fontWeight = fontWeight,
         fontStyle = fontStyle,
         fontVariationSettings = fontVariationSettings,
         fontFeatureSettings = fontFeatureSettings,
         letterSpacing = letterSpacing,
+        letterSpacingPx = letterSpacingPx,
         lineHeight = lineHeight,
+        lineHeightPx = lineHeightPx,
         textAlign = textAlign,
         layoutDirection = layoutDirection,
         spans = spans,

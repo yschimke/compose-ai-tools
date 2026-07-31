@@ -97,6 +97,12 @@ data class FigmaSvgTextLine(
   /** UTF-16 offsets into the full text; null for schema-v8 captures. */
   val start: Int? = null,
   val end: Int? = null,
+  /**
+   * The width the render measured this line at, in px, emitted as SVG `textLength` so the viewer
+   * lays the run out to the render's width instead of its own (issue #3024). Null for captures
+   * before schema v12.
+   */
+  val width: Int? = null,
 )
 
 /** One effective styled UTF-16 range within [FigmaSvgText.content]. */
@@ -1652,6 +1658,20 @@ data class FigmaSvgModel(
       return textByNodeId
     }
 
+    /**
+     * The capture's own resolved px for a typographic value, else the linear `sp × density ×
+     * fontScale` fallback (issue #3024).
+     *
+     * The resolved value always wins where the capture has one. Compose resolves `sp` through the
+     * platform `FontScaleConverter` on API 34+, a **non-linear** curve in the font scale: body
+     * sizes take the full multiplier, display sizes almost none. The linear formula is only ever
+     * right at `fontScale = 1`, and on a scaled render it over-sized headings by up to 50% — enough
+     * that the captured line breaks no longer fit the bounds they were measured in. The fallback
+     * stays for captures older than schema v12, which carry no resolved px at all.
+     */
+    private inline fun resolvedPx(captured: Double?, fallback: () -> Double?): Double? =
+      captured ?: fallback()
+
     private fun textFrom(
       node: ComposeSemanticsNode,
       content: String,
@@ -1660,20 +1680,27 @@ data class FigmaSvgModel(
     ): FigmaSvgText =
       FigmaSvgText(
         content = content,
-        fontSizePx = node.typography?.fontSize?.let { spToPx(it, density, fontScale) },
+        fontSizePx =
+          resolvedPx(node.typography?.fontSizePx) {
+            node.typography?.fontSize?.let { spToPx(it, density, fontScale) }
+          },
         fontFamily = node.typography?.fontFamily,
         fontWeight = node.typography?.fontWeight,
         italic = node.typography?.fontStyle == "italic",
         color = node.textColor?.foreground?.let { argbToColor(it, emptyMap()) },
         lineHeightPx =
-          node.typography?.lineHeight?.let {
-            lineHeightToPx(it, node.typography.fontSize, density, fontScale)
+          resolvedPx(node.typography?.lineHeightPx) {
+            node.typography?.lineHeight?.let {
+              lineHeightToPx(it, node.typography.fontSize, density, fontScale)
+            }
           },
         // Letter spacing uses the same sp×density×fontScale / em×fontSize resolution as line
         // height.
         letterSpacingPx =
-          node.typography?.letterSpacing?.let {
-            lineHeightToPx(it, node.typography.fontSize, density, fontScale)
+          resolvedPx(node.typography?.letterSpacingPx) {
+            node.typography?.letterSpacing?.let {
+              lineHeightToPx(it, node.typography.fontSize, density, fontScale)
+            }
           },
         textAlign = node.typography?.textAlign,
         layoutDirection = node.typography?.layoutDirection,
@@ -1682,7 +1709,10 @@ data class FigmaSvgModel(
             FigmaSvgTextSpan(
               start = span.start,
               end = span.end,
-              fontSizePx = span.fontSize?.let { spToPx(it, density, fontScale) },
+              fontSizePx =
+                resolvedPx(span.fontSizePx) {
+                  span.fontSize?.let { spToPx(it, density, fontScale) }
+                },
               fontFamily = span.fontFamily,
               fontWeight = span.fontWeight,
               italic = span.fontStyle == "italic",
@@ -1703,6 +1733,7 @@ data class FigmaSvgModel(
                 baseline = it.baseline,
                 start = it.start,
                 end = it.end,
+                width = it.width,
               )
             },
       )

@@ -961,7 +961,7 @@ object FigmaLayeredSvg {
               )
             } else null
           styled
-            ?: """<tspan x="${layer.left + line.left}" y="${layer.top + line.baseline}">${escape(line.content)}</tspan>"""
+            ?: """<tspan x="${layer.left + line.left}" y="${layer.top + line.baseline}"${lineLength(line)}>${escape(line.content)}</tspan>"""
         }
       return """<text font-size="${fmt(size)}"$family$weight$style$letterSpacing$fill>$tspans</text>"""
     }
@@ -983,6 +983,29 @@ object FigmaLayeredSvg {
     val (anchorX, anchor) = singleLineAnchor(layer, t.textAlign, t.layoutDirection)
     return """<text x="$anchorX" y="${fmt(baseline)}" font-size="${fmt(size)}"$family$weight$style$letterSpacing$anchor$fill>""" +
       "${styled ?: escape(t.content)}</text>"
+  }
+
+  /**
+   * `textLength` + `lengthAdjust` pinning a line to the width the render measured it at
+   * (issue #3024), or `""` when the capture carries no width (pre-schema-v12) or the line is empty.
+   *
+   * Placing a line at the render's break point isn't enough on its own: the viewer still lays the
+   * glyphs out with its own metrics, and those differ from Android's — the embedded face is subset
+   * with `GPOS`/`kern` stripped, so a browser draws the run unkerned where the render kerned it.
+   * `textLength` makes the viewer absorb that drift.
+   *
+   * `lengthAdjust="spacing"` — adjust the gaps between glyphs, never the glyphs themselves. The
+   * alternative (`spacingAndGlyphs`) would squeeze the outlines too, which hides a wrong font size
+   * by making it *look* right inside the correct box; that is exactly how #3024's 50%-oversized
+   * heading would have gone unnoticed. Spacing-only keeps a size error visible as a size error.
+   *
+   * Emitted only for a whole-line run. A styled line is several `<tspan>`s and the capture measures
+   * only the line as a whole, so there is nothing correct to put on each piece.
+   */
+  private fun lineLength(line: FigmaSvgTextLine): String {
+    val width = line.width?.takeIf { it > 0 } ?: return ""
+    if (line.content.isEmpty()) return ""
+    return """ textLength="$width" lengthAdjust="spacing""""
   }
 
   /**

@@ -58,9 +58,12 @@ object ComposeFigmaSvgDataProducer {
    * @param colorNames optional `#AARRGGBB` → theme-role-name map so named fills carry their
    *   variable.
    * @param density px-per-dp of the captured frame (dp/sp tokens are converted to px against it).
-   * @param fontScale the render's font-scale multiplier; sp text is emitted at `sp × density ×
-   *   fontScale` so the `<text>` matches the render whose (already fontScale-scaled) layer geometry
-   *   this export places it into. Defaults to 1.0 (an un-scaled capture).
+   * @param fontScale the render's font-scale multiplier, used only as the **fallback** conversion
+   *   (`sp × density × fontScale`) for captures older than `compose/semantics` v12. A v12+ capture
+   *   carries the px the render resolved and that always wins: Compose resolves `sp` through the
+   *   platform `FontScaleConverter` on API 34+, whose curve is non-linear in the font scale, so the
+   *   linear form is only correct at 1.0 and over-sizes display text on a scaled render (#3024).
+   *   Defaults to 1.0 (an un-scaled capture).
    * @param frameImage the captured frame PNG in root-pixel space; when present, enables hybrid
    *   raster export by cropping opaque-node rasters out of it.
    */
@@ -392,13 +395,50 @@ object ComposeFigmaSvgDataProducer {
     return path.takeIf { runCatching { fileSystem.exists(it) }.getOrDefault(false) }
   }
 
-  /** The font's real family name (`"Lobster Two"`), read from the bytes; falls back to the stem. */
+  /**
+   * The font's real family name (`"Lobster Two"`), read from the bytes; falls back to the stem.
+   *
+   * The **typographic** family (`name` ID 16) wins over the legacy one (ID 1, which is what AWT's
+   * `Font.family` reports) whenever a face declares both. They differ exactly for the weights
+   * outside the legacy regular/bold/italic quartet: `Montserrat-Medium.ttf` declares ID 1
+   * `"Montserrat Medium"` and ID 16 `"Montserrat"`. Taking ID 1 made the export emit
+   * `font-family="Montserrat Medium"` with `font-weight="500"` — self-consistent in the embedded
+   * SVG (the `@font-face` declares the same made-up family) but wrong everywhere the name has to
+   * mean something to someone else: the `?mode=web` rewrite asked Google Fonts for a
+   * `Montserrat+Medium` family that doesn't exist, so every Medium run fell back to the default
+   * face. ID 16 + `font-weight` is the pair CSS, Google Fonts and Figma all model, and it lets the
+   * weights of one family share it instead of splitting into pseudo-families (issue #3024).
+   */
   private fun fontFileFamily(bytes: ByteArray, path: okio.Path): String =
+    typographicFamily(bytes)
+      ?: runCatching {
+          java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, ByteArrayInputStream(bytes)).family
+        }
+        .getOrNull()
+        ?.takeIf { it.isNotBlank() }
+      ?: path.name.substringBeforeLast('.')
+
+  /**
+   * `name` ID 16 (typographic/preferred family) from an sfnt, or null when the face declares none —
+   * the common case for a plain Regular/Bold, where ID 1 already *is* the typographic family. Read
+   * through FontBox (already the subsetter's parser) rather than by hand.
+   */
+  private fun typographicFamily(bytes: ByteArray): String? =
     runCatching {
-        java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, ByteArrayInputStream(bytes)).family
+        val naming =
+          org.apache.fontbox.ttf
+            .TTFParser(true)
+            .parse(org.apache.pdfbox.io.RandomAccessReadBuffer(bytes))
+            .naming ?: return@runCatching null
+        naming.nameRecords
+          .firstOrNull { it.nameId == NAME_ID_TYPOGRAPHIC_FAMILY }
+          ?.string
+          ?.trim()
+          ?.takeIf { it.isNotBlank() }
       }
       .getOrNull()
-      ?.takeIf { it.isNotBlank() } ?: path.name.substringBeforeLast('.')
+
+  private const val NAME_ID_TYPOGRAPHIC_FAMILY = 16
 
   /**
    * Crops each opaque-node [FigmaSvgRasterTarget] out of the captured [frameImage] and writes it to
