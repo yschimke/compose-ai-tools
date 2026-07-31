@@ -200,6 +200,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-notfound/dark](renders/serve-notfound.dark.png) |
 | `light` | ![serve-notfound/light](renders/serve-notfound.light.png) |
 
+## serve-playground
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-playground/dark](renders/serve-playground.dark.png) |
+| `light` | ![serve-playground/light](renders/serve-playground.light.png) |
+
 ## serve-status
 
 | Theme | Capture |
