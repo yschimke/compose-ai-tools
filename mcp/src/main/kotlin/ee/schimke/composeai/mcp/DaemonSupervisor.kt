@@ -33,22 +33,23 @@ class DaemonSupervisor(
   private val clientFactory: DaemonClientFactory,
   private val router: NotificationRouter = NotificationRouter(),
   /**
-   * Concurrent render slots per (workspace, module) beyond the first. SANDBOX-POOL.md Layer 3 — the
+   * Concurrent render slots per (workspace, module) beyond the first. SANDBOX-POOL.md — the
    * supervisor passes `composeai.daemon.sandboxCount = 1 + replicasPerDaemon` as a sysprop on the
    * launch descriptor; the daemon's
-   * [`RobolectricHost`][ee.schimke.composeai.daemon.RobolectricHost] boots that many in-JVM
-   * Robolectric sandboxes and dispatches concurrent `renderNow` requests across them.
+   * [`RobolectricHost`][ee.schimke.composeai.daemon.RobolectricHost] then hosts one sandbox itself
+   * and spawns a worker JVM for each remaining slot (Robolectric's native runtime allows exactly
+   * one sandbox per process — issue #3072), dispatching concurrent `renderNow` requests across
+   * them.
    *
-   * **Default 3** — the daemon comes up with **4** in-JVM sandboxes (1 + 3) so a typical preview
-   * grid can render in parallel without the user opting in. This is cheap thanks to Layer 3: extra
-   * sandboxes share the JVM baseline + native heap, so the marginal cost per slot is the sandbox
-   * classloader's instrumented bytecode (~ a few hundred MB each at peak). `0` opts out and keeps a
-   * single sandbox — bit-identical with the pre-pool path on disk.
+   * **Default 4** — the daemon comes up with 5 sandboxes (1 + 4) so a typical preview grid can
+   * render in parallel without the user opting in. Each slot beyond the first is a worker JVM the
+   * daemon spawns and owns, so the marginal cost is a whole JVM: turn the knob down (or to `0`,
+   * which keeps a single sandbox, bit-identical with the pre-pool path) on memory-constrained
+   * hosts.
    *
-   * Pre-Layer-3 this knob spawned N additional **JVM subprocesses**; that wasted ~2 GB per replica
-   * on shared per-JVM cost (native heap, JVM baseline, instrumented framework). Layer 3 collapses
-   * those into a single daemon JVM with N sandbox classloaders. Wire-protocol-visible behaviour
-   * (initialize, renderNow, fileChanged fan-out) is unchanged from the consumer's perspective.
+   * Wire-protocol-visible behaviour (initialize, renderNow, fileChanged fan-out) is unchanged from
+   * the consumer's perspective — the supervisor still talks to exactly one daemon process per
+   * (workspace, module), and that daemon fans renders out to its workers internally.
    */
   private val replicasPerDaemon: Int = DEFAULT_REPLICAS_PER_DAEMON,
   /**
@@ -191,9 +192,9 @@ class DaemonSupervisor(
 
   private fun spawn(project: RegisteredProject, modulePath: String): SupervisedDaemon {
     val baseDescriptor = descriptorProvider.descriptorFor(project, modulePath)
-    // SANDBOX-POOL.md Layer 3 — inject `composeai.daemon.sandboxCount = 1 + replicasPerDaemon`
-    // into the descriptor's systemProperties so the spawned daemon JVM boots that many in-JVM
-    // sandboxes. The daemon's DaemonMain reads this sysprop and passes it to RobolectricHost. We
+    // SANDBOX-POOL.md — inject `composeai.daemon.sandboxCount = 1 + replicasPerDaemon` into the
+    // descriptor's systemProperties so the spawned daemon owns that many sandboxes (one in its own
+    // JVM, the rest in worker JVMs it spawns). DaemonMain reads the sysprop and passes it on. We
     // merge into a copy rather than mutating the original — the descriptor object is cached by
     // `DescriptorProvider.readingFromDisk` and shared across `daemonFor` calls.
     val descriptor = baseDescriptor.withSandboxCount(1 + replicasPerDaemon)
@@ -322,8 +323,8 @@ class DaemonSupervisor(
     /**
      * Out-of-the-box value for [replicasPerDaemon]. Picked so a typical preview grid renders
      * concurrently without the user opting in: 5 sandboxes per daemon (1 primary + 4 replicas). The
-     * marginal cost is per-sandbox instrumented bytecode in one shared JVM, not a whole extra JVM
-     * each — see SANDBOX-POOL.md Layer 3 for the memory math. Override via the MCP CLI's
+     * cost is one JVM per sandbox beyond the first (#3072 moved the pool out of process — a second
+     * Robolectric sandbox cannot share a JVM); see SANDBOX-POOL.md. Override via the MCP CLI's
      * `--replicas-per-daemon N` flag or the `composeai.mcp.replicasPerDaemon` system property.
      */
     const val DEFAULT_REPLICAS_PER_DAEMON: Int = 4
@@ -343,10 +344,10 @@ data class RegisteredProject(
 )
 
 /**
- * A live daemon — owned by [DaemonSupervisor]. SANDBOX-POOL.md Layer 3: one daemon JVM per
- * (workspaceId, modulePath); concurrent render capacity comes from in-JVM sandbox pooling
+ * A live daemon — owned by [DaemonSupervisor]. SANDBOX-POOL.md: one *supervised* daemon process per
+ * (workspaceId, modulePath); concurrent render capacity comes from that daemon's own sandbox pool,
  * configured via `composeai.daemon.sandboxCount` on the launch descriptor (the supervisor passes
- * `1 + replicasPerDaemon`).
+ * `1 + replicasPerDaemon`) and realised as one in-daemon sandbox plus N worker JVMs.
  *
  * Pre-Layer-3 this class fronted N+1 separate JVM subprocesses; the public surface ([client],
  * [allClients], [clientForRender]) survives that change because the daemon-side slot dispatch
@@ -523,24 +524,24 @@ class SupervisedDaemon(val workspaceId: WorkspaceId, val modulePath: String) {
 
   /**
    * Snapshot of every active client — for fan-out APIs (e.g. `fileChanged`, `setVisible`). Always a
-   * singleton list under Layer 3; kept as a list for source-compatibility with callers that iterate
-   * it (they keep working unchanged).
+   * singleton list — one supervised daemon per module; kept as a list for source-compatibility with
+   * callers that iterate it (they keep working unchanged).
    */
   fun allClients(): List<DaemonClient> = spawn?.let { listOf(it.client) } ?: emptyList()
 
   /**
-   * Returns the client for a render keyed on [previewId]. Layer 3: always the single client; the
-   * daemon-side `RobolectricHost.submit` dispatches across in-JVM sandbox slots internally. The
+   * Returns the client for a render keyed on [previewId]. Always the single client; the daemon-side
+   * `RobolectricHost.submit` dispatches across its sandbox slots (in-process plus workers). The
    * [previewId] argument is informational — kept on the API so a future affinity-aware wire change
    * can use it without breaking callers.
    */
   fun clientForRender(@Suppress("UNUSED_PARAMETER") previewId: String): DaemonClient = client
 
   /**
-   * Always 1 under Layer 3 (one JVM subprocess per supervised daemon). Concurrent render capacity
-   * is `1 + replicasPerDaemon` and is realised inside the daemon JVM's sandbox pool, not at the
-   * subprocess level. Kept for source-compatibility with callers that previously asserted "primary
-   * plus N replicas" — those assertions are now wrong, but the method itself doesn't lie.
+   * Always 1 — one *supervised* subprocess per daemon. Concurrent render capacity is `1 +
+   * replicasPerDaemon` and is realised by the daemon's own sandbox pool (whose worker JVMs the
+   * supervisor neither spawns nor counts). Kept for source-compatibility with callers that asserted
+   * "primary plus N replicas" — those assertions are now wrong, but the method itself doesn't lie.
    */
   fun replicaCount(): Int = if (spawn != null) 1 else 0
 
@@ -702,7 +703,7 @@ data class DaemonLaunchDescriptor(
 ) {
 
   /**
-   * SANDBOX-POOL.md Layer 3 — returns a copy with `composeai.daemon.sandboxCount` merged into
+   * SANDBOX-POOL.md — returns a copy with `composeai.daemon.sandboxCount` merged into
    * [systemProperties]. The supervisor calls this on the descriptor read from disk before passing
    * it to [DaemonClientFactory.spawn] so the daemon JVM picks up the right pool size at boot.
    *

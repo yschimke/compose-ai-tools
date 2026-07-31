@@ -26,10 +26,13 @@ import kotlinx.serialization.json.Json
  * sandbox-side [RobolectricHost.SandboxRunner.runHeldInteractiveSession] loop.
  *
  * **Sandbox pinning** (INTERACTIVE-ANDROID.md § 2). Each session pins exactly one sandbox slot for
- * its lifetime. v3 ships with `INTERACTIVE_SLOT_INDEX = 1` so slot 0 stays the always-on
- * normal-render slot — that's enforced host-side in [RobolectricHost.acquireInteractiveSession]
- * (the constraint that `sandboxCount >= 2`). The session itself is slot-agnostic; it only carries a
- * reference to the slot it was constructed against.
+ * its lifetime. Since #3072 that is `INTERACTIVE_SLOT_INDEX = 0`, the sandbox in the daemon JVM:
+ * the held rule and its bridge queues are live object handles that can't be proxied to a worker
+ * process, so the session stays local and the *normal* renders move to slots 1..N-1 (worker JVMs)
+ * for its lifetime. Enforced host-side in [RobolectricHost.acquireInteractiveSession] (the
+ * constraint that `sandboxCount >= 2` — one sandbox to pin, at least one left to render). The
+ * session itself is slot-agnostic; it only carries a reference to the slot it was constructed
+ * against.
  *
  * **Threading.** Per the [InteractiveSession] contract, callers are serialised — `JsonRpcServer`
  * dispatches one input per session at a time. Each public method enqueues an [InteractiveCommand]
@@ -39,7 +42,7 @@ import kotlinx.serialization.json.Json
  * the composition.
  *
  * **Lifecycle** (INTERACTIVE-ANDROID.md § 7).
- * - **Allocate** at `interactive/start`. The host enqueues [InteractiveCommand.Start] onto slot 1's
+ * - **Allocate** at `interactive/start`. The host enqueues [InteractiveCommand.Start] onto slot 0's
  *   [SandboxSlot.interactiveCommands]; the sandbox's idle loop picks it up and enters
  *   `runHeldInteractiveSession`, which constructs the rule + ActivityScenario + paused-clock
  *   `setContent`, then counts down [InteractiveCommand.Start.replyLatch] before draining further
@@ -63,8 +66,8 @@ internal constructor(
    */
   internal val streamId: String,
   /**
-   * The sandbox slot this session was acquired against — almost always slot 1 in v3 (slot 0 is the
-   * always-on normal-render slot). Carried explicitly rather than re-derived because the host's
+   * The sandbox slot this session was acquired against — slot 0, the in-process sandbox, since
+   * #3072. Carried explicitly rather than re-derived because the host's
    * routing code (`acquireInteractiveSession`) already chose it; passing it in keeps the session
    * itself slot-policy-agnostic so v4 (multi-target Android) can reuse this class unchanged.
    */
@@ -82,7 +85,7 @@ internal constructor(
    * tests can drive a sub-second lease without sleeping CI for a minute.
    *
    * Without this lease, a panel that crashes or a websocket that drops mid-session would leak a
-   * pinned sandbox slot for the rest of the daemon's lifetime — slot 1 stays held with no
+   * pinned sandbox slot for the rest of the daemon's lifetime — slot 0 stays held with no
    * `interactive/stop` ever arriving. v3 supports one held session at a time per host, so a single
    * zombie burns the whole interactive capacity. Symmetry with the desktop story comes via the
    * panel's auto-stop on editor change/scroll (#427); the lease is the daemon-side belt-and-braces.
