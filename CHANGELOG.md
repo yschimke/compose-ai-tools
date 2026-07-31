@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.19.12](https://github.com/yschimke/compose-ai-tools/compare/v0.19.11...v0.19.12) (2026-07-31)
+
+
+### Features
+
+* **playground:** render remote-compose snippets on the Android daemon → /d/&lt;id&gt; ([#3040](https://github.com/yschimke/compose-ai-tools/issues/3040)) ([9277a17](https://github.com/yschimke/compose-ai-tools/commit/9277a1772607193e9367c56b72df4d1083df2af0))
+* **playground:** render the Android first frame for ANDROID-mode snippets ([#3044](https://github.com/yschimke/compose-ai-tools/issues/3044)) ([e3e78d6](https://github.com/yschimke/compose-ai-tools/commit/e3e78d60dcdfa7cbf2bcd7e6736ac313faaea7fb))
+* **rc-compare:** add opt-in cmp-jvm desktop-player lane ([#3038](https://github.com/yschimke/compose-ai-tools/issues/3038)) ([315a909](https://github.com/yschimke/compose-ai-tools/commit/315a909a018abb9a26be7a2f6c37f5f810e8bcc4))
+* **serve:** apply rc.* knob seeds in the cmp-jvm render ([#3035](https://github.com/yschimke/compose-ai-tools/issues/3035)) ([68cb596](https://github.com/yschimke/compose-ai-tools/commit/68cb59626e75279f72a2aaf2091b38d10f25c68e))
+* **serve:** link each preview to its source file on GitHub ([#3033](https://github.com/yschimke/compose-ai-tools/issues/3033)) ([792b150](https://github.com/yschimke/compose-ai-tools/commit/792b15061146ada36745c6a52338db88c717ccc6))
+
+
+### Bug Fixes
+
+* **daemon:** resolve @PreviewParameter previews instead of failing on the parameterless lookup ([#3041](https://github.com/yschimke/compose-ai-tools/issues/3041)) ([5b28981](https://github.com/yschimke/compose-ai-tools/commit/5b289815c5735fba43f43b419125894d05f0c7b0))
+* **figma-svg:** evaluate a graphics-layer block against the node's real box ([#2615](https://github.com/yschimke/compose-ai-tools/issues/2615)) ([#3046](https://github.com/yschimke/compose-ai-tools/issues/3046)) ([833cc94](https://github.com/yschimke/compose-ai-tools/commit/833cc942759832ecf7587225b62d0e47c78af815))
+* **figma-svg:** export text at the size the render resolved, not sp × density × fontScale ([#3045](https://github.com/yschimke/compose-ai-tools/issues/3045)) ([d2189b5](https://github.com/yschimke/compose-ai-tools/commit/d2189b52abacdd4692f2775204115d0d4f5d24f9))
+* **figma-svg:** fit a padded icon's vector to the box its painter fills ([#2853](https://github.com/yschimke/compose-ai-tools/issues/2853)) ([#3042](https://github.com/yschimke/compose-ai-tools/issues/3042)) ([e747a39](https://github.com/yschimke/compose-ai-tools/commit/e747a394a280e55247c9710e9afadabbaa7cc351))
+* **figma-svg:** size the canvas from the rendered frame, not off-screen items ([#2853](https://github.com/yschimke/compose-ai-tools/issues/2853)) ([#3043](https://github.com/yschimke/compose-ai-tools/issues/3043)) ([c72dc6c](https://github.com/yschimke/compose-ai-tools/commit/c72dc6c983f4320db731d0b8db72b46ec950de63))
+* **rc-embedded:** draw component chrome once, not twice ([#3037](https://github.com/yschimke/compose-ai-tools/issues/3037)) ([a53cd46](https://github.com/yschimke/compose-ai-tools/commit/a53cd46a10aef835b6eef307e1a98b676124bf32))
+
 ## [0.19.11](https://github.com/yschimke/compose-ai-tools/compare/v0.19.10...v0.19.11) (2026-07-30)
 
 
