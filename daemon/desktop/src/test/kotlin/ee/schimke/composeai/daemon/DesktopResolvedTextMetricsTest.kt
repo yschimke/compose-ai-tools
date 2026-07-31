@@ -10,8 +10,11 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -100,6 +103,43 @@ class DesktopResolvedTextMetricsTest {
     assertEquals(40.0 * density * fontScale, typography.lineHeightPx!!, 0.5)
     assertNotNull("resolved letter spacing must be captured", typography.letterSpacingPx)
     assertEquals(0.5 * density * fontScale, typography.letterSpacingPx!!, 0.5)
+  }
+
+  /**
+   * An `AnnotatedString` whose span overrides the paragraph's tracking across the *whole* string —
+   * the case that separates "resolved over the effective ranges" from "read off the paragraph
+   * style". Reading the paragraph would report 0.5sp of tracking here while the string value
+   * correctly reports the span's 4sp, and the export prefers the px, so the wrong one would win.
+   */
+  @Test
+  fun `letter spacing resolves over the effective ranges, not the paragraph style`() {
+    val node =
+      checkNotNull(
+        buildTree {
+            Text(
+              text =
+                buildAnnotatedString {
+                  withStyle(SpanStyle(letterSpacing = 4.sp)) { append("Tracked") }
+                },
+              modifier = Modifier.testTag("tracked"),
+              style =
+                TextStyle(
+                  fontFamily = FontFamily.SansSerif,
+                  fontSize = 16.sp,
+                  letterSpacing = 0.5.sp,
+                ),
+            )
+          }
+          .find("tracked")
+      ) {
+        "no tracked node captured"
+      }
+    val typography = checkNotNull(node.typography) { "tracked node carried no typography" }
+
+    assertEquals("4.0sp", typography.letterSpacing)
+    assertNotNull("resolved tracking must be captured", typography.letterSpacingPx)
+    // The span's 4sp, not the paragraph's 0.5sp.
+    assertEquals(4.0 * density * fontScale, typography.letterSpacingPx!!, 0.5)
   }
 
   @Test

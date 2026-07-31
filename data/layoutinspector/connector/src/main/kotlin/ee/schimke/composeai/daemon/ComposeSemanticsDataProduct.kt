@@ -322,7 +322,12 @@ object ComposeSemanticsDataProducer {
     // a field only when *every* drawn range agrees on one concrete value, so a mix of an unstyled
     // (inherited-default) run and a styled span omits the field rather than reporting the span's
     // value as if the node were uniform.
-    val spans = results.flatMap { it.effectiveSpanStyles() }
+    // Each effective range paired with the density of the result it came from, so a px resolution
+    // reasons over the same ranges as the `sp`/`em` one and against the right `Density`.
+    val spansWithDensity = results.flatMap { r ->
+      r.effectiveSpanStyles().map { it to r.layoutInput.density }
+    }
+    val spans = spansWithDensity.map { it.first }
     val uniformFontFamily =
       spans
         .map { fontFamilyLabel(it.fontFamily, it.fontWeight, it.fontStyle) }
@@ -354,13 +359,15 @@ object ComposeSemanticsDataProducer {
     val fontFeatureSettings =
       spans.map { it.fontFeatureSettings?.takeIf(String::isNotBlank) }.distinct().singleOrNull()
     val letterSpacing = spans.map { it.letterSpacing.toWireTextUnit() }.distinct().singleOrNull()
-    // Letter spacing may be `em` — a multiple of the *resolved* size — so it resolves against the
-    // same density and the px size above, not against the `sp` nominal.
+    // Resolved over the *effective ranges*, exactly like the `sp`/`em` value above — not off the
+    // paragraph style. `SpanStyle` carries `letterSpacing`, so an `AnnotatedString` can override it
+    // per range: reading the paragraph here would let a whole-string span be overruled by the
+    // paragraph's tracking (the px value wins in the export), and would report a partial override
+    // as uniform where the string value correctly collapses to null. `em` is a multiple of the
+    // *resolved* size, so it resolves against the px size above rather than the `sp` nominal.
     val letterSpacingPx =
-      results
-        .mapNotNull { r ->
-          r.layoutInput.style.letterSpacing.resolvePx(r.layoutInput.density, fontSizePx)
-        }
+      spansWithDensity
+        .map { (style, spanDensity) -> style.letterSpacing.resolvePx(spanDensity, fontSizePx) }
         .distinct()
         .singleOrNull()
     // Line height is a paragraph-level property (not carried on `SpanStyle`), so read it per
