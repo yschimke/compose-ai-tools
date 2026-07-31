@@ -747,8 +747,13 @@ class RenderEngine(
             // AS-parity wrap crop below is for content laid out at the activity origin, so it
             // can't do this job: the dialog is centred, not at (0,0), and `measuredContent`
             // measures the *activity's* (empty) content.
-            if (!resolvedSemanticsRoot.belongsToWindow(rule.activity.window.decorView)) {
-              cropPngToDialogWindow(file = outputFile, root = resolvedSemanticsRoot)
+            val dialogWindow = resolvedSemanticsRoot.shownDialogWindow()
+            if (dialogWindow != null) {
+              cropPngToDialogWindow(
+                file = outputFile,
+                root = resolvedSemanticsRoot,
+                window = dialogWindow,
+              )
             } else if (spec.wrapWidth || spec.wrapHeight) {
               cropWrappedPngTopLeft(
                 file = outputFile,
@@ -1902,18 +1907,9 @@ class RenderEngine(
    * A `ModalBottomSheet`'s window fills the screen, so its rect covers the whole frame and this is a
    * no-op; a centred `Dialog`/`AlertDialog` crops to the dialog itself.
    */
-  private fun cropPngToDialogWindow(file: File, root: SemanticsNode) {
+  private fun cropPngToDialogWindow(file: File, root: SemanticsNode, window: android.view.Window) {
     if (!file.exists()) return
     val original = runCatching { javax.imageio.ImageIO.read(file) }.getOrNull() ?: return
-    val rootView = (root.root as? ViewRootForTest)?.view ?: return
-    val window =
-      org.robolectric.shadows.ShadowDialog.getShownDialogs()
-        .lastOrNull { dialog ->
-          val decor = dialog.window?.decorView ?: return@lastOrNull false
-          generateSequence(rootView as android.view.View) { it.parent as? android.view.View }
-            .any { it === decor }
-        }
-        ?.window ?: return
     val width = root.size.width.coerceIn(1, original.width)
     val height = root.size.height.coerceIn(1, original.height)
     val placed = android.graphics.Rect()
@@ -2148,28 +2144,61 @@ internal fun isRoundDevice(device: String?): Boolean {
  * with the most semantic content. Callers request the unmerged roots up front, so the selected node
  * retains the detailed tree all structured data products need.
  *
- * The activity preference is deliberately *conditional* (issue #3048). A preview whose whole content
- * is a `Dialog`, `AlertDialog` or `ModalBottomSheet` composes into a window of its own, leaving the
- * activity's root present but **empty** — so an unconditional activity preference selects a tree with
- * nothing in it, and the preview exports a blank PNG and no semantics. When the activity root has no
- * content and another root does, the other root is the subject and wins. That still keeps a popup
- * over a real activity surface (the [MultipleSemanticsRoots] fixture) on the activity: there the
- * activity root has content of its own, so the preference applies as before.
+ * The activity preference yields in exactly one case (issue #3048): a preview whose whole content is
+ * a `Dialog`, `AlertDialog` or `ModalBottomSheet` composes into a window of its own, leaving the
+ * activity's root present but **empty**, so preferring it unconditionally selects a tree with nothing
+ * in it and the preview exports a blank PNG and no semantics.
+ *
+ * The reversal is keyed on the other root living in a **shown dialog window**, not merely on the
+ * activity root looking empty. [descendantCount] counts *semantics* nodes, and plenty of real
+ * content carries none (a `Box` with only a `background` modifier contributes no semantics node at
+ * all), so "no semantic descendants" is not the same as "nothing rendered" — keying on emptiness
+ * alone would hand a `Popup` the subject role over a visually populated, semantics-free activity
+ * surface. A popup adds an owner but never a dialog window, so it can never trigger this.
  */
 internal fun selectRenderedSurfaceSemanticsRoot(
   roots: List<SemanticsNode>,
   activityDecorView: android.view.View,
 ): SemanticsNode? {
-  val activityRootIsEmpty =
-    roots.none { it.belongsToWindow(activityDecorView) && it.descendantCount() > 1 }
+  val activityRootHasSemantics =
+    roots.any { it.belongsToWindow(activityDecorView) && it.descendantCount() > 1 }
+  val dialogOwnsThePreview =
+    !activityRootHasSemantics && roots.any { it.shownDialogWindow() != null }
   return roots.maxWithOrNull(
     compareBy<SemanticsNode>(
-      { if (!activityRootIsEmpty && it.belongsToWindow(activityDecorView)) 1 else 0 },
+      {
+        val preferred =
+          if (dialogOwnsThePreview) it.shownDialogWindow() != null
+          else it.belongsToWindow(activityDecorView)
+        if (preferred) 1 else 0
+      },
       { it.descendantCount() },
       { it.boundsInRoot.width * it.boundsInRoot.height },
     )
   )
 }
+
+/**
+ * The window of the currently-shown dialog [this] root composes into, or `null` when the root is not
+ * inside one — an ordinary activity-hosted preview, or a `Popup`, which installs its own owner
+ * through the window manager but never a `Dialog`.
+ *
+ * `getShownDialogs` keeps dismissed dialogs in the list, hence the `isShowing` filter.
+ */
+internal fun SemanticsNode.shownDialogWindow(): android.view.Window? =
+  runCatching {
+    val rootView = (root as? ViewRootForTest)?.view ?: return null
+    org.robolectric.shadows.ShadowDialog.getShownDialogs()
+      .lastOrNull { dialog ->
+        val decor = dialog.window?.decorView
+        dialog.isShowing &&
+          decor != null &&
+          generateSequence(rootView as android.view.View) { it.parent as? android.view.View }
+            .any { it === decor }
+      }
+      ?.window
+  }
+    .getOrNull()
 
 private fun SemanticsNode.belongsToWindow(decorView: android.view.View): Boolean =
   runCatching { (root as? ViewRootForTest)?.view?.rootView === decorView.rootView }

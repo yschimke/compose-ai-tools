@@ -43,6 +43,52 @@ class DialogWindowRenderTest {
     )
   }
 
+  /**
+   * A `Popup` over an activity surface that renders content but declares no semantics must not
+   * become the subject. Only a *dialog* window displaces the activity preference — "no semantic
+   * descendants" is not the same as "nothing rendered", and a popup adds an owner but never a
+   * dialog window.
+   */
+  @Test
+  fun keepsTheActivitySurfaceWhenAPopupSitsOverSemanticsFreeContent() {
+    val previewId = "popup-over-visual-only"
+    val outputDir = tempFolder.newFolder("renders-$previewId")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val host =
+      PreviewManifestRouter(
+        manifest =
+          PreviewManifest(
+            previews =
+              listOf(
+                PreviewManifestEntry(
+                  id = previewId,
+                  className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+                  functionName = "VisualOnlySurfaceWithPopup",
+                  params = PreviewParamsEntry(widthDp = 96, heightDp = 96, density = 1.0f),
+                )
+              )
+          )
+      )
+
+    host.start()
+    try {
+      val result =
+        host.submit(RenderRequest.Render(payload = "previewId=$previewId"), timeoutMs = 120_000)
+      assertNotNull("PNG path must be populated", result.pngPath)
+
+      val semantics =
+        outputDir.parentFile!!.resolve("data/$previewId").resolve("compose-semantics.json")
+      assertTrue("compose-semantics.json must be written", semantics.isFile)
+      assertTrue(
+        "the popup must not displace the activity surface: ${semantics.readText()}",
+        "popup-surface" !in semantics.readText(),
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
   private fun assertDialogWindowIsTheSubject(previewId: String, params: PreviewParamsEntry) {
     val outputDir = tempFolder.newFolder("renders-$previewId")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
