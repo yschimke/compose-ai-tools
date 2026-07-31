@@ -121,7 +121,15 @@ class JsonRpcServerIntegrationTest {
       val initResponse = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 1 }
       assertNotNull("initialize response should arrive", initResponse)
       val initResult = initResponse!!["result"]!!.jsonObject
-      assertEquals(1, initResult["protocolVersion"]?.jsonPrimitive?.intOrNull)
+      // The daemon echoes its own `PROTOCOL_VERSION`, and the handshake above already sends 2 —
+      // a mismatch is rejected outright, so this can only ever be the current version. Asserting
+      // the constant rather than a literal keeps it from going stale again the next time the
+      // contract is bumped (this read `1` well after the v1 → v2 bump; PROTOCOL.md § "currently
+      // 2").
+      assertEquals(
+        JsonRpcServer.PROTOCOL_VERSION,
+        initResult["protocolVersion"]?.jsonPrimitive?.intOrNull,
+      )
       assertEquals("test", initResult["daemonVersion"]?.jsonPrimitive?.contentOrNull)
       assertNotNull("pid should be present", initResult["pid"])
       assertEquals(
@@ -230,6 +238,13 @@ class JsonRpcServerIntegrationTest {
         host = host,
         daemonVersion = "test",
         extensions = extensions,
+        // `onExit` MUST be overridden in every in-process server test: its default is
+        // `System.exit(code)`, so an `exit` notification here doesn't end the server, it ends the
+        // *test JVM* — taking the Gradle test executor and every not-yet-run class with it. This
+        // test doesn't assert on the exit code, but it still has to keep the JVM alive; leaving
+        // the default in place silently truncated `:daemon:core:test` after this class, skipping
+        // the remaining 15 (#3086).
+        onExit = { /* keep the test JVM alive; this test asserts on notifications, not exit */ },
       )
     val serverThread =
       Thread({ server.run() }, "json-rpc-server-test-failure-data").apply { isDaemon = true }

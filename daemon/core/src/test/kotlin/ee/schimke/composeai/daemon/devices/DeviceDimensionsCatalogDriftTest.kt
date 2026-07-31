@@ -14,7 +14,7 @@ class DeviceDimensionsCatalogDriftTest {
     val plugin =
       readCatalog(
         repoRoot.resolve(
-          "gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/DeviceDimensions.kt"
+          "gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/DeviceDimensions.kt"
         )
       )
     val daemon =
@@ -74,7 +74,7 @@ class DeviceDimensionsCatalogDriftTest {
         Files.exists(current.resolve("settings.gradle.kts")) &&
           Files.exists(
             current.resolve(
-              "gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/DeviceDimensions.kt"
+              "gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/DeviceDimensions.kt"
             )
           )
       ) {

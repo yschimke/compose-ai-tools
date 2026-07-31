@@ -142,11 +142,22 @@ class FigmaSvgDownloadableFontEmbedTest {
     }
   }
 
-  /** The distinctive stand-in downloadable face bundled as a test resource. */
+  /**
+   * The distinctive stand-in downloadable face bundled as a test resource.
+   *
+   * Deliberately **not** under `/fonts/` on the test classpath. Robolectric's
+   * `DefaultNativeRuntimeLoader` extracts the native runtime's system fonts from the `fonts`
+   * resource *directory*, resolved through the classloader — so the first `fonts/` root on the
+   * classpath wins outright. A module's own `src/test/resources/fonts/` sorts ahead of
+   * `nativeruntime-dist-compat`, which shadowed `fonts/fonts.xml` and the ~200 system faces with
+   * this single TTF. `Typeface.loadPreinstalledSystemFontMap()` then built a font map with no
+   * `sans-serif` entry and `setSystemFontMap` NPE'd on the null family, taking down *every*
+   * sandbox bootstrap in this module (see #3086). Keep test font fixtures out of `/fonts/`.
+   */
   private fun readFixtureFont(): ByteArray {
     val url =
-      checkNotNull(javaClass.getResource("/fonts/warm-cache-face.ttf")) {
-        "missing test font resource /fonts/warm-cache-face.ttf"
+      checkNotNull(javaClass.getResource("/composeai-test-fonts/warm-cache-face.ttf")) {
+        "missing test font resource /composeai-test-fonts/warm-cache-face.ttf"
       }
     return url.openStream().use { it.readBytes() }
   }

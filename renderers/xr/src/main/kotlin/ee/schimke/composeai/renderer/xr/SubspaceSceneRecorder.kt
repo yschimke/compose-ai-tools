@@ -44,6 +44,13 @@ public object SubspaceSceneRecorder {
   public const val XR_SPATIAL_FEATURE: String = "android.software.xr.api.spatial"
 
   /**
+   * Reflective accessors for a scenecore `Entity`'s runtime entity, newest first. `1.0.0-beta01`
+   * made this a plain public `getRtEntity()`; before that it was the internal-mangled
+   * `getRtEntity$scenecore` bridge. See [contentView].
+   */
+  private val RT_ENTITY_ACCESSORS: List<String> = listOf("getRtEntity", "getRtEntity\$scenecore")
+
+  /**
    * Reads the [panelTags] from the subspace composed on [rule] into a [SpatialScene]. Each tag must
    * resolve to exactly one subspace node (a `SpatialPanel`); [previewId] is recorded for traceback.
    */
@@ -208,20 +215,33 @@ public object SubspaceSceneRecorder {
   /**
    * Recovers the content [View] hosted by a panel node. A `SpatialPanel`'s
    * [SubspaceSemanticsInfo.getSemanticsEntity] is the public `androidx.xr.scenecore.PanelEntity`,
-   * whose `rtEntity` is the runtime panel — under the fake XR runtime that's a `FakePanelEntity`,
-   * which holds the `android.view.View` the panel composed. Both the `getRtEntity$scenecore` bridge
-   * and `getView` are reached reflectively so this module compiles without the scenecore-testing
-   * fakes on its main classpath (they're a render-time dependency, mirroring how the node
-   * enumeration reaches `compose-testing` internals); the recorder tests are the canary if either
-   * shifts.
+   * whose runtime entity is the panel — under the fake XR runtime that's a
+   * `androidx.xr.scenecore.testing.internal.FakePanelEntity`, which holds the `android.view.View`
+   * the panel composed. Both hops are reached reflectively so this module compiles without the
+   * scenecore-testing fakes on its main classpath (they're a render-time dependency, mirroring how
+   * the node enumeration reaches `compose-testing` internals); the recorder tests are the canary if
+   * either shifts.
+   *
+   * The accessor names have already shifted once: scenecore `1.0.0-beta01` promoted the
+   * internal-mangled `getRtEntity$scenecore` bridge to a plain public `Entity.getRtEntity()`. The
+   * lookup tries both, newest first, so the recorder spans the rename. Because a failed recovery
+   * degrades silently to a null `panelContent` (deliberately — one unreadable panel should cost an
+   * overlay, not the whole tree), a rename like that reads as "no 2D content anywhere" rather than
+   * an error; [SubspaceSceneRecorderTreeTest] is what turns it back into a signal.
    */
   private fun contentView(node: SubspaceSemanticsInfo): View? {
     val entity: Any = node.semanticsEntity ?: return null
-    return runCatching {
-        val rt = entity.javaClass.getMethod("getRtEntity\$scenecore").invoke(entity) ?: return null
-        rt.javaClass.getMethod("getView").invoke(rt) as? View
-      }
-      .getOrNull()
+    val rt = rtEntityOf(entity) ?: return null
+    return runCatching { rt.javaClass.getMethod("getView").invoke(rt) as? View }.getOrNull()
+  }
+
+  /** The runtime entity behind a public scenecore `Entity`, across the beta01 accessor rename. */
+  private fun rtEntityOf(entity: Any): Any? {
+    for (name in RT_ENTITY_ACCESSORS) {
+      val rt = runCatching { entity.javaClass.getMethod(name).invoke(entity) }.getOrNull()
+      if (rt != null) return rt
+    }
+    return null
   }
 
   @Suppress("UNCHECKED_CAST")

@@ -70,7 +70,15 @@ class SandboxHoldingRunnerApplicationOverrideTest {
     fun exposedGlobalConfig(): Config = buildGlobalConfig()
   }
 
+  /**
+   * Exists to give the `RobolectricTestRunner(Class)` constructor above a valid test class, but
+   * JUnit still discovers and *runs* it. Pin the SDK like every other Robolectric test in this
+   * module: without it the sandbox boots at `targetSdk` 36, which Robolectric only supports on
+   * Java 21 — and CI (like the daemon's own toolchain) runs Java 17, so the bootstrap throws
+   * `UnsupportedOperationException` from `DefaultSdkProvider` before `stub` ever executes.
+   */
   @RunWith(SandboxHoldingRunner::class)
+  @Config(sdk = [35])
   class DummyTest {
     @Test fun stub() = Unit
   }

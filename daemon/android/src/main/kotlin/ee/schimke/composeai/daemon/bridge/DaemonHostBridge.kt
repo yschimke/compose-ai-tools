@@ -595,7 +595,7 @@ sealed interface InteractiveCommand {
    * `SemanticsOwner` tree the matcher uses, computes the structured
    * [`UiAutomatorUnsupportedReason`][ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason]
    * (matched-count + closest near-match node + exposed-actions list), and hands it back through
-   * [replyReason]. Issued by the recording-session handler after `dispatchUiAutomator` returns
+   * [replyReasonJson]. Issued by the recording-session handler after `dispatchUiAutomator` returns
    * `false` so a single bridge round-trip turns into a typed evidence shape on the wire.
    *
    * Read-only against the held composition — the sandbox-side arm walks but doesn't dispatch
