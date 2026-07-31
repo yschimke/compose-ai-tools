@@ -6,6 +6,8 @@ import ee.schimke.composeai.cli.serve.DaemonStartupLog
 import ee.schimke.composeai.cli.serve.GitWorktrees
 import ee.schimke.composeai.cli.serve.GradleRevisionBuilder
 import ee.schimke.composeai.cli.serve.MutableTrustStore
+import ee.schimke.composeai.cli.serve.PlaygroundAndroidRenderService
+import ee.schimke.composeai.cli.serve.PlaygroundAndroidSessionOpener
 import ee.schimke.composeai.cli.serve.PlaygroundBtaCompiler
 import ee.schimke.composeai.cli.serve.PlaygroundCatalogClasspath
 import ee.schimke.composeai.cli.serve.PlaygroundCompileService
@@ -884,19 +886,26 @@ class ServeCommand(args: List<String>) : Command(args) {
       return null
     }
 
-    // Remote-compose mode needs the Android compile classpath, the Robolectric daemon sidecar, and
-    // a
-    // `/d/` document store to publish into. Absent any of the three it stays unavailable while CMP
-    // is
-    // unaffected.
-    val rcCapture =
-      if (androidClasspath != null) buildPlaygroundRcCaptureService(workRoot, docStore) else null
+    // The Android compile classpath plus the Robolectric daemon sidecar back both the live
+    // first-frame render (ANDROID mode) and the remote-compose capture (REMOTE_COMPOSE mode). Build
+    // the shared daemon opener once; absent the sidecar, both Android lanes stay unavailable while
+    // CMP is unaffected. Remote-compose additionally needs the `/d/` document store to publish
+    // into.
+    val androidDaemonOpener =
+      if (androidClasspath != null) buildPlaygroundAndroidDaemonOpener() else null
+    val androidRender = androidDaemonOpener?.let { opener ->
+      buildPlaygroundAndroidRenderService(workRoot, opener)
+    }
+    val rcCapture = androidDaemonOpener?.let { opener ->
+      buildPlaygroundRcCaptureService(workRoot, docStore, opener)
+    }
 
     System.err.println(
       "serve: playground enabled (POST /api/1/compiler/run) — " +
         listOfNotNull(
             cmpClasspath?.let { "cmp✓" },
             androidClasspath?.let { "android✓" },
+            androidRender?.let { "android-render✓" },
             rcCapture?.let { "remote-compose✓" },
           )
           .joinToString(" ")
@@ -907,10 +916,14 @@ class ServeCommand(args: List<String>) : Command(args) {
       catalogClasspath = { mode ->
         when (mode) {
           PlaygroundMode.CMP -> cmpClasspath
-          PlaygroundMode.ANDROID -> androidClasspath
-          // Only advertise REMOTE_COMPOSE when its capture backend actually came up — otherwise the
-          // host would accept the mode, run a full Android compile, then report the preview drew no
-          // document. A null classpath routes to the existing "mode … is not available" response.
+          // Only advertise the Android modes when their daemon backend actually came up — absent
+          // the
+          // sidecar/android.jar the host would otherwise accept the mode, run a full Android
+          // compile,
+          // then mint a dead token with no image (ANDROID) / report the preview drew no document
+          // (REMOTE_COMPOSE), contradicting the "Android modes disabled" startup log. A null
+          // classpath routes to the existing "mode … is not available" response.
+          PlaygroundMode.ANDROID -> androidClasspath?.takeIf { androidRender != null }
           PlaygroundMode.REMOTE_COMPOSE -> androidClasspath?.takeIf { rcCapture != null }
         }
       },
@@ -919,6 +932,11 @@ class ServeCommand(args: List<String>) : Command(args) {
       tokenStore = PlaygroundTokenStore(),
       newWorkDir = {
         java.io.File(workRoot, "snippet-${snippetCounter.incrementAndGet()}").absolutePath.toPath()
+      },
+      // The still first frame is the Android live render (ANDROID mode); CMP's desktop first frame
+      // is a separate lane, and REMOTE_COMPOSE never reaches this seam (it returns a documentUrl).
+      renderFirstFrame = { snippet ->
+        if (snippet.mode == PlaygroundMode.ANDROID) androidRender?.render(snippet) else null
       },
       captureRemoteDocument = { snippet -> rcCapture?.capture(snippet) },
       publishRemoteDocument = { name, bytes, checked ->
@@ -951,16 +969,75 @@ class ServeCommand(args: List<String>) : Command(args) {
   }
 
   /**
-   * Assemble the Android/Robolectric capture backend for the playground's remote-compose mode — the
-   * `lib-daemon-android` sidecar + `android.jar` on the daemon classpath, the Robolectric
-   * jvmArgs/sysprops, and a subprocess `openBundleDaemon` opener. Mirrors [ServeBundleDaemon]'s
-   * `androidBundleDaemonLaunch`. Returns null (logging why) when the sidecar, `android.jar`, or the
-   * `/d/` document store is missing — remote-compose then reports unavailable rather than compiling
-   * to a dead end.
+   * Resolve the Android/Robolectric daemon opener shared by the playground's Android render lanes —
+   * the `lib-daemon-android` sidecar + `android.jar` on the daemon classpath, the Robolectric
+   * jvmArgs/sysprops, and a subprocess `openBundleDaemon`. Mirrors [ServeBundleDaemon]'s
+   * `androidBundleDaemonLaunch`. Returns null (logging why) when the sidecar or `android.jar` is
+   * missing — both Android lanes then report unavailable rather than compiling to a dead end.
+   */
+  private fun buildPlaygroundAndroidDaemonOpener(): PlaygroundAndroidSessionOpener? {
+    val daemonJars = locateBundleSidecarJars("lib-daemon-android")
+    if (daemonJars.isEmpty()) {
+      System.err.println(
+        "serve: playground Android modes need the Android daemon sidecar " +
+          "(lib-daemon-android/), which ships separately as " +
+          "compose-preview-android-daemon-<version>.zip; unpack it and set " +
+          "-Dcomposeai.cli.libDaemonAndroidDir=<dir>/lib-daemon-android. Android modes disabled."
+      )
+      return null
+    }
+    val androidJar =
+      AndroidBundleLaunch.resolveAndroidJar(localPropertiesFile = null)
+        ?: run {
+          System.err.println(
+            "serve: playground Android modes need android.jar — set ANDROID_HOME / " +
+              "ANDROID_SDK_ROOT. Android modes disabled."
+          )
+          return null
+        }
+    val launch = AndroidBundleLaunch()
+    val daemonClasspath = (daemonJars + listOf(androidJar)).map { it.absolutePath }
+    val jvmArgs = launch.jvmArgs()
+    val sysprops = launch.robolectricSystemProperties()
+    return { classesDir, previewsJson, workspaceRoot, userClasspath ->
+      SubprocessRenderSessions.openBundleDaemon(
+        daemonClasspath = daemonClasspath,
+        classesDir = classesDir,
+        previewsJson = previewsJson,
+        workspaceRoot = workspaceRoot,
+        modulePath = ":playground",
+        jvmArgs = jvmArgs,
+        extraSystemProperties = sysprops,
+        userClasspath = userClasspath,
+      )
+    }
+  }
+
+  /**
+   * The playground's Android first-frame render backend (ANDROID mode): renders a compiled snippet
+   * on the shared [opener] and returns the still PNG the Stage-1 response surfaces as its `image`.
+   */
+  private fun buildPlaygroundAndroidRenderService(
+    workRoot: java.io.File,
+    opener: PlaygroundAndroidSessionOpener,
+  ): PlaygroundAndroidRenderService {
+    val renderCounter = java.util.concurrent.atomic.AtomicLong()
+    return PlaygroundAndroidRenderService(
+      openSession = opener,
+      newWorkDir = { java.io.File(workRoot, "android-render-${renderCounter.incrementAndGet()}") },
+    )
+  }
+
+  /**
+   * The playground's remote-compose capture backend (REMOTE_COMPOSE mode): renders a compiled
+   * snippet on the shared [opener] and captures its `.rc` document. Returns null (logging why) when
+   * the `/d/` document store is missing — remote-compose then reports unavailable rather than
+   * compiling to a dead end.
    */
   private fun buildPlaygroundRcCaptureService(
     workRoot: java.io.File,
     docStore: ServeDocStore?,
+    opener: PlaygroundAndroidSessionOpener,
   ): PlaygroundRcCaptureService? {
     if (docStore == null) {
       System.err.println(
@@ -969,43 +1046,9 @@ class ServeCommand(args: List<String>) : Command(args) {
       )
       return null
     }
-    val daemonJars = locateBundleSidecarJars("lib-daemon-android")
-    if (daemonJars.isEmpty()) {
-      System.err.println(
-        "serve: playground remote-compose mode needs the Android daemon sidecar " +
-          "(lib-daemon-android/), which ships separately as " +
-          "compose-preview-android-daemon-<version>.zip; unpack it and set " +
-          "-Dcomposeai.cli.libDaemonAndroidDir=<dir>/lib-daemon-android. Remote-compose disabled."
-      )
-      return null
-    }
-    val androidJar =
-      AndroidBundleLaunch.resolveAndroidJar(localPropertiesFile = null)
-        ?: run {
-          System.err.println(
-            "serve: playground remote-compose mode needs android.jar — set ANDROID_HOME / " +
-              "ANDROID_SDK_ROOT. Remote-compose mode disabled."
-          )
-          return null
-        }
-    val launch = AndroidBundleLaunch()
-    val daemonClasspath = (daemonJars + listOf(androidJar)).map { it.absolutePath }
-    val jvmArgs = launch.jvmArgs()
-    val sysprops = launch.robolectricSystemProperties()
     val captureCounter = java.util.concurrent.atomic.AtomicLong()
     return PlaygroundRcCaptureService(
-      openSession = { classesDir, previewsJson, workspaceRoot, userClasspath ->
-        SubprocessRenderSessions.openBundleDaemon(
-          daemonClasspath = daemonClasspath,
-          classesDir = classesDir,
-          previewsJson = previewsJson,
-          workspaceRoot = workspaceRoot,
-          modulePath = ":playground",
-          jvmArgs = jvmArgs,
-          extraSystemProperties = sysprops,
-          userClasspath = userClasspath,
-        )
-      },
+      openSession = opener,
       newWorkDir = { java.io.File(workRoot, "rc-capture-${captureCounter.incrementAndGet()}") },
     )
   }
