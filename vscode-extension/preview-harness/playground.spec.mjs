@@ -100,15 +100,26 @@ test("compiles the default Android snippet to a first frame + live /pg/ handoff"
       `(diagnostics: ${await page.locator("#pg-diagnostics").textContent()})`,
   ).toBe("Done.");
 
-  // A successful CMP/Android run always mints a live preview token and surfaces its
-  // "Open live preview →" handoff pointing at /pg/<token> (the still image is
-  // best-effort — the token is the contract).
+  // A successful CMP/Android run mints a live preview token and surfaces its
+  // "Open live preview →" handoff pointing at /pg/<token>.
   const open = page.locator("#pg-open");
   await expect(open, "live-preview handoff link").toBeVisible();
   const href = await open.getAttribute("href");
   expect(href, "handoff href targets the /pg/ capability").toMatch(
     /\/pg\/pg_[A-Za-z0-9_-]+/,
   );
+
+  // The advertised first frame must actually render — the daemon drew a still and the
+  // response carried it as a data:image/png URI. Asserting it (rather than treating the
+  // image as best-effort) is what proves the compile→daemon→PNG path really ran, not
+  // just that a token was minted; a silent render failure is otherwise invisible here.
+  const image = page.locator("#pg-image");
+  await expect(image, "first-frame image is shown").toBeVisible();
+  const src = await image.getAttribute("src");
+  expect(
+    src ?? "",
+    "first-frame src is an inline PNG (empty ⇒ the daemon render produced no frame; see serve log)",
+  ).toMatch(/^data:image\/png/);
 });
 
 test("the /pg/ token redeems into the live viewer", async ({ page }) => {
@@ -116,29 +127,37 @@ test("the /pg/ token redeems into the live viewer", async ({ page }) => {
   await page.goto(`/playground${q}`, { waitUntil: "domcontentloaded" });
   await page.selectOption("#pg-mode", ANDROID_MODE);
   const terminal = await runAndAwaitTerminal(page);
-  test.skip(
-    terminal !== "Done.",
+  // A non-Done terminal in CI is a real regression, not a reason to skip: the boot
+  // guarantees a compilable lane, so failing here (rather than green-skipping) keeps the
+  // redemption chain actually covered.
+  expect(
+    terminal,
     `compile did not succeed (status "${terminal}") — nothing to redeem`,
-  );
+  ).toBe("Done.");
 
-  // Follow the handoff. Redemption registers the compiled snippet as a live session
-  // and 302-redirects to the ordinary viewer at /<sessionId>/p/<previewId>; the
-  // browser lands there, NOT on the styled /pg/ 404 (which would mean Unavailable —
-  // no live backend). So the post-navigation URL must have left /pg/ for a /p/ route.
-  const open = page.locator("#pg-open");
-  const href = await open.getAttribute("href");
+  const href = await page.locator("#pg-open").getAttribute("href");
+
+  // Hit the /pg/ capability RAW (no redirect-follow) first. Redemption must 302 to the
+  // viewer at /<sessionId>/p/<previewId>; a NotFound/Unavailable serves inline HTML with
+  // NO redirect, so checking the raw status + Location surfaces exactly which outcome it
+  // was (and any body) instead of a cryptic "URL never became /p/".
+  const raw = await page.request.get(href, { maxRedirects: 0 });
+  const location = raw.headers()["location"] ?? "";
+  const bodyHint = raw.status() >= 400 ? (await raw.text()).slice(0, 200) : "";
+  expect(
+    raw.status(),
+    `/pg/ redemption should 3xx-redirect to the viewer; got ${raw.status()} ` +
+      `location="${location}" body="${bodyHint}"`,
+  ).toBeGreaterThanOrEqual(300);
+  expect(raw.status(), "redemption redirect is a 3xx").toBeLessThan(400);
+  expect(location, "redirect target is the viewer /p/ route").toMatch(/\/p\//);
+
+  // And the viewer actually loads (follow the redirect in a real page). The live frame
+  // itself is the /ws/ lane's job (proven by the serve-lanes suite); here we only assert
+  // redemption reached the real viewer shell, not an error page.
   await page.goto(href, { waitUntil: "domcontentloaded" });
-
   await expect
     .poll(() => new URL(page.url()).pathname, { timeout: 30_000 })
     .toMatch(/\/p\//);
-  expect(
-    new URL(page.url()).pathname,
-    "left the /pg/ capability route",
-  ).not.toMatch(/^\/pg\//);
-
-  // The viewer stage is present — the redeemed session resolved to the real viewer,
-  // not an error page. (The live frame itself is the /ws/ lane's job, proven by the
-  // serve-lanes suite; here we only assert redemption reached the viewer.)
   await expect(page.locator("#cp-img"), "viewer stage").toBeAttached();
 });

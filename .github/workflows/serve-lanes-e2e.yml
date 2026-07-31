@@ -23,6 +23,9 @@ on:
     branches: [main]
     paths:
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**"
+      # ServeCommand owns openPlaygroundService, the daemon-opener wiring, and the ServeHttpServer
+      # hookup — it lives one directory up from serve/**, so trigger on it explicitly.
+      - "cli/src/main/kotlin/ee/schimke/composeai/cli/ServeCommand.kt"
       - "daemon/**"
       - "render-session/**"
       - "render-session-subprocess/**"
@@ -45,6 +48,9 @@ on:
   pull_request:
     paths:
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**"
+      # ServeCommand owns openPlaygroundService, the daemon-opener wiring, and the ServeHttpServer
+      # hookup — it lives one directory up from serve/**, so trigger on it explicitly.
+      - "cli/src/main/kotlin/ee/schimke/composeai/cli/ServeCommand.kt"
       - "daemon/**"
       - "render-session/**"
       - "render-session-subprocess/**"
@@ -301,6 +307,17 @@ jobs:
           CI: "true"
           SERVE_TOKEN: playground-e2e
         run: npm run harness:playground
+
+      # Surface the serve log INLINE in the job log on failure. The `onLog` reason a redemption
+      # failure carries (`[playground live] …` — sidecar/android.jar missing, no previews, …) is
+      # written to the serve stderr, which only reaches the uploaded artifact; echoing it here makes
+      # a first-frame / redemption failure diagnosable straight from the job log.
+      - name: Dump serve log on failure
+        if: failure()
+        shell: bash
+        run: |
+          echo "===== playground-lane.log ====="
+          tail -200 playground-lane.log || echo "(no serve log)"
 
       - name: Tear down serve
         if: always()
