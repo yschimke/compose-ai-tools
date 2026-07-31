@@ -667,6 +667,135 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `composePreviewDiscover warns when a preview installs a theme under declared theme catalogs`() {
+    val projectDir = createCmpTestProject()
+
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "ThemeCatalog.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.CLASS)
+        annotation class ThemeCatalog(val name: String = "", val group: String = "")
+        """
+          .trimIndent()
+      )
+    // Two declared themes → this module has a theme axis the viewer can drive. `AppTheme` is the
+    // app's own wrapper, exactly like Confetti's `ConfettiThemeFixed`: the preview calls it, and it
+    // installs the real `MaterialTheme`. Leaving colorScheme/typography/shapes defaulted is what
+    // makes the compiler emit the `MaterialTheme$default` bridge, so this also pins that the
+    // detector matches the shape real code produces.
+    File(projectDir, "src/main/kotlin/test/Themes.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.material3.MaterialTheme
+        import androidx.compose.runtime.Composable
+        import ee.schimke.composeai.preview.ThemeCatalog
+
+        @ThemeCatalog(name = "Brand Light") class BrandLightTheme
+        @ThemeCatalog(name = "Brand Dark") class BrandDarkTheme
+
+        @Composable
+        fun AppTheme(content: @Composable () -> Unit) {
+            MaterialTheme(content = content)
+        }
+        """
+          .trimIndent()
+      )
+    File(projectDir, "src/main/kotlin/test/ShadowingPreviews.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.tooling.preview.Preview
+
+        @Preview
+        @Composable
+        fun ShadowedPreview() {
+            AppTheme { Text("shadowed") }
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    // Names the preview and the hop through the app wrapper, so the fix is obvious from the log.
+    assertThat(result.output).contains("install a theme in their own body")
+    assertThat(result.output).contains("test.ShadowingPreviewsKt.ShadowedPreview")
+    assertThat(result.output).contains("AppTheme")
+    // Advisory only — discovery still succeeds and the preview is still published.
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    assertThat(manifest.previews.map { it.functionName }).contains("ShadowedPreview")
+  }
+
+  @Test
+  fun `composePreviewDiscover stays quiet about body themes when no theme catalog is declared`() {
+    val projectDir = createCmpTestProject()
+
+    // Same body-installed theme, but nothing declares a theme catalog — there is no theme axis to
+    // shadow, so this is just an ordinary app preview and must not be warned about.
+    File(projectDir, "src/main/kotlin/test/Themes.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.material3.MaterialTheme
+        import androidx.compose.runtime.Composable
+
+        @Composable
+        fun AppTheme(content: @Composable () -> Unit) {
+            MaterialTheme(content = content)
+        }
+        """
+          .trimIndent()
+      )
+    File(projectDir, "src/main/kotlin/test/ShadowingPreviews.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.material3.Text
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.tooling.preview.Preview
+
+        @Preview
+        @Composable
+        fun ThemedPreview() {
+            AppTheme { Text("fine") }
+        }
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.output).doesNotContain("install a theme in their own body")
+  }
+
+  @Test
   fun `composePreviewDiscover routes @WearThemeCatalog to its own kind and id namespace`() {
     val projectDir = createCmpTestProject()
 
