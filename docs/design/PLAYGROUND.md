@@ -334,8 +334,8 @@ not *execute* snippet code (no annotation processors, no `init` blocks — only
 the Kotlin + Compose compiler plugins we ship), and the request body is capped
 (`MAX_PLAYGROUND_BYTES`), so it is a resource-exhaustion surface rather than an
 execution one. Jailing the compiler too — a compile subprocess per request,
-sharing this same `PlaygroundSandbox` — is the natural follow-up, tracked
-separately.
+sharing this same `PlaygroundSandbox` — is the natural follow-up, tracked in
+[#3090](https://github.com/yschimke/compose-ai-tools/issues/3090).
 
 ---
 
