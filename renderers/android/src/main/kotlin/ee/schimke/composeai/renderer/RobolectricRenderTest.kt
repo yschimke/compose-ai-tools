@@ -12,10 +12,6 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.semantics.SemanticsNode
-import androidx.compose.ui.test.SemanticsNodeInteraction
-import androidx.compose.ui.test.isRoot
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
@@ -1273,17 +1269,7 @@ abstract class RobolectricRenderTestBase(
           // `LaunchedEffect`, so at virtual time 0 there is only the activity root, and the window
           // appears after the job advances the clock below. A cached selection would also go stale
           // across several timed still captures if a dialog opens or closes between them.
-          fun resolveCaptureRoot(): Pair<SemanticsNodeInteraction, SemanticsNode?> {
-            val interactions = rule.onAllNodes(isRoot(), useUnmergedTree = true)
-            val nodes =
-              runCatching { interactions.fetchSemanticsNodes(atLeastOneRootRequired = false) }
-                .getOrDefault(emptyList())
-            if (nodes.size <= 1) return rule.onRoot() to null
-            val resolved =
-              DialogWindowCapture.selectCaptureRoot(nodes, rule.activity.window.decorView)
-                ?: return rule.onRoot() to null
-            return interactions[nodes.indexOf(resolved)] to resolved
-          }
+          fun resolveCaptureRoot() = DialogWindowCapture.resolveCaptureRoot(rule)
           val jobs =
             (preview.captures.map { CaptureRenderJob(it, outputFileFor(it, outputDir)) } +
                 preview.dataProducts.map { ProductRenderJob(it, outputFileFor(it, outputDir)) })
@@ -1582,7 +1568,7 @@ abstract class RobolectricRenderTestBase(
                 }
               }
               resolveCaptureRoot()
-                .first
+                .interaction
                 .captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
             }
 
@@ -1603,7 +1589,7 @@ abstract class RobolectricRenderTestBase(
                 // Re-resolved rather than reusing the capture's value: the clock has not moved
                 // since, so this sees the same roots, and it keeps the selection out of a mutable
                 // var shared across jobs.
-                resolveCaptureRoot().second?.let { root ->
+                resolveCaptureRoot().semanticsRoot?.let { root ->
                   DialogWindowCapture.shownDialogWindow(root)?.also { window ->
                     DialogWindowCapture.cropPngToDialogWindow(outputFile, root, window)
                   }
@@ -2045,6 +2031,7 @@ private fun handleLongCaptureInternal(
     RoborazziOptions(recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = false))
 
   val slices = mutableListOf<SliceCapture>()
+  val stableDialogCrop = DialogWindowCapture.StableDialogCrop()
   try {
     // Multi-mode annotations (e.g. END + LONG) run captures in enum
     // ordinal order against the same composition, so an earlier END
@@ -2093,7 +2080,11 @@ private fun handleLongCaptureInternal(
         maxScrollPx = scroll.maxScrollPx,
       ) { scrolledPx ->
         val sliceFile = File(slicesDir, "slice_${slices.size}.png")
-        rule.onRoot().captureRoboImage(file = sliceFile, roborazziOptions = sliceRoborazziOptions)
+        stableDialogCrop.captureFrame(
+          rule = rule,
+          file = sliceFile,
+          roborazziOptions = sliceRoborazziOptions,
+        )
         slices += SliceCapture(scrolledPx, sliceFile)
       }
     if (result is ScrollDriveResult.NoScrollable) {
@@ -2125,7 +2116,11 @@ private fun handleLongCaptureInternal(
     // bar, FAB — whatever animates in at scroll-end) is always
     // present. Generic over layout: not Wear-specific.
     val finalFrameFile = File(slicesDir, "final_frame.png")
-    rule.onRoot().captureRoboImage(file = finalFrameFile, roborazziOptions = sliceRoborazziOptions)
+    stableDialogCrop.captureFrame(
+      rule = rule,
+      file = finalFrameFile,
+      roborazziOptions = sliceRoborazziOptions,
+    )
 
     stitchSlicesWithFinalFrame(
       slices = slices,
@@ -2204,11 +2199,16 @@ private fun handleGifCaptureInternal(
     else ScrollGifEncoder.DEFAULT_FRAME_DELAY_MS
   val frameFiles = mutableListOf<File>()
   val frameDelays = mutableListOf<Int>()
+  val stableDialogCrop = DialogWindowCapture.StableDialogCrop()
 
   fun captureFrame(delayMs: Int) {
     val frameFile = File(framesDir, "frame_${frameFiles.size}.png")
     captureDecodableFrame(frameFile, role = "scroll GIF") { f ->
-      rule.onRoot().captureRoboImage(file = f, roborazziOptions = frameRoborazziOptions)
+      stableDialogCrop.captureFrame(
+        rule = rule,
+        file = f,
+        roborazziOptions = frameRoborazziOptions,
+      )
     }
     frameFiles += frameFile
     frameDelays += delayMs
@@ -2474,6 +2474,7 @@ private fun handleAnimatedCapture(
   val frameIntervalMs = animation.frameIntervalMs.coerceAtLeast(10)
 
   val frameFiles = mutableListOf<File>()
+  val stableDialogCrop = DialogWindowCapture.StableDialogCrop()
 
   // Settle the composition by ticking one frame so any
   // LaunchedEffect(Unit) { … } has fired before the inspector reads
@@ -2547,7 +2548,11 @@ private fun handleAnimatedCapture(
   fun captureFrame(virtualTimeMs: Long) {
     val frameFile = File(framesDir, "frame_${frameFiles.size}.png")
     captureDecodableFrame(frameFile, role = "animation") { f ->
-      rule.onRoot().captureRoboImage(file = f, roborazziOptions = frameRoborazziOptions)
+      stableDialogCrop.captureFrame(
+        rule = rule,
+        file = f,
+        roborazziOptions = frameRoborazziOptions,
+      )
     }
     frameFiles += frameFile
     frameTimes += virtualTimeMs
@@ -2697,6 +2702,7 @@ private fun handleFocusGifCapture(
   val frameRoborazziOptions =
     RoborazziOptions(recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound))
   val frameFiles = mutableListOf<File>()
+  val stableDialogCrop = DialogWindowCapture.StableDialogCrop()
 
   try {
     focusGif.steps.forEachIndexed { i, step ->
@@ -2721,7 +2727,11 @@ private fun handleFocusGifCapture(
       }
       val frameFile = File(framesDir, "frame_$i.png")
       captureDecodableFrame(frameFile, role = "focus GIF") { f ->
-        rule.onRoot().captureRoboImage(file = f, roborazziOptions = frameRoborazziOptions)
+        stableDialogCrop.captureFrame(
+          rule = rule,
+          file = f,
+          roborazziOptions = frameRoborazziOptions,
+        )
       }
       frameFiles += frameFile
     }

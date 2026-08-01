@@ -1,7 +1,15 @@
 package ee.schimke.composeai.renderer
 
+import androidx.activity.ComponentActivity
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.junit4.AndroidComposeTestRule
+import androidx.compose.ui.test.onRoot
+import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
+import com.github.takahirom.roborazzi.RoborazziOptions
+import com.github.takahirom.roborazzi.captureRoboImage
 import java.io.File
 
 /**
@@ -25,6 +33,42 @@ import java.io.File
  *    frame with the component floating inside. [cropPngToDialogWindow] crops to the window.
  */
 internal object DialogWindowCapture {
+  data class CaptureRoot(
+    val interaction: SemanticsNodeInteraction,
+    val semanticsRoot: SemanticsNode?,
+  )
+
+  class StableDialogCrop {
+    private var cropRect: android.graphics.Rect? = null
+
+    @OptIn(ExperimentalRoborazziApi::class)
+    fun captureFrame(
+      rule: AndroidComposeTestRule<*, ComponentActivity>,
+      file: File,
+      roborazziOptions: RoborazziOptions,
+    ): CaptureRoot {
+      val root = resolveCaptureRoot(rule)
+      root.interaction.captureRoboImage(file = file, roborazziOptions = roborazziOptions)
+      val semanticsRoot = root.semanticsRoot ?: return root
+      val window = shownDialogWindow(semanticsRoot) ?: return root
+      val rect =
+        cropRect ?: dialogWindowCropRect(file, semanticsRoot, window)?.also { cropRect = it }
+      if (rect != null) cropPngToRect(file, rect)
+      return root
+    }
+  }
+
+  fun resolveCaptureRoot(rule: AndroidComposeTestRule<*, ComponentActivity>): CaptureRoot {
+    val interactions = rule.onAllNodes(isRoot(), useUnmergedTree = true)
+    val nodes =
+      runCatching { interactions.fetchSemanticsNodes(atLeastOneRootRequired = false) }
+        .getOrDefault(emptyList())
+    if (nodes.size <= 1) return CaptureRoot(rule.onRoot(), nodes.firstOrNull())
+    val resolved =
+      selectCaptureRoot(nodes, rule.activity.window.decorView)
+        ?: return CaptureRoot(rule.onRoot(), nodes.firstOrNull())
+    return CaptureRoot(interactions[nodes.indexOf(resolved)], resolved)
+  }
 
   /**
    * The semantics root representing the surface being captured, given every `isRoot()` node.
@@ -104,8 +148,16 @@ internal object DialogWindowCapture {
    * no-op; a centred `Dialog` / `AlertDialog` crops to the dialog itself.
    */
   fun cropPngToDialogWindow(file: File, root: SemanticsNode, window: android.view.Window) {
-    if (!file.exists()) return
-    val original = runCatching { javax.imageio.ImageIO.read(file) }.getOrNull() ?: return
+    dialogWindowCropRect(file, root, window)?.let { cropPngToRect(file, it) }
+  }
+
+  fun dialogWindowCropRect(
+    file: File,
+    root: SemanticsNode,
+    window: android.view.Window,
+  ): android.graphics.Rect? {
+    if (!file.exists()) return null
+    val original = runCatching { javax.imageio.ImageIO.read(file) }.getOrNull() ?: return null
     val width = root.size.width.coerceIn(1, original.width)
     val height = root.size.height.coerceIn(1, original.height)
     val placed = android.graphics.Rect()
@@ -118,8 +170,18 @@ internal object DialogWindowCapture {
     )
     val left = placed.left.coerceIn(0, original.width - width)
     val top = placed.top.coerceIn(0, original.height - height)
-    if (left == 0 && top == 0 && width == original.width && height == original.height) return
-    val cropped = original.getSubimage(left, top, width, height)
+    return android.graphics.Rect(left, top, left + width, top + height)
+  }
+
+  private fun cropPngToRect(file: File, rect: android.graphics.Rect) {
+    if (!file.exists()) return
+    val original = runCatching { javax.imageio.ImageIO.read(file) }.getOrNull() ?: return
+    val left = rect.left.coerceIn(0, original.width - 1)
+    val top = rect.top.coerceIn(0, original.height - 1)
+    val right = rect.right.coerceIn(left + 1, original.width)
+    val bottom = rect.bottom.coerceIn(top + 1, original.height)
+    if (left == 0 && top == 0 && right == original.width && bottom == original.height) return
+    val cropped = original.getSubimage(left, top, right - left, bottom - top)
     runCatching { javax.imageio.ImageIO.write(cropped, "PNG", file) }
   }
 }
