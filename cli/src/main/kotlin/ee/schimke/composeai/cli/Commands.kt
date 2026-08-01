@@ -470,13 +470,23 @@ abstract class Command(
           // render-configuration time (see [runDiscover]). Kept as a first-class step — not an
           // incidental side effect of XR provisioning — so shard sizing can't regress if the XR
           // path changes. provisionXr therefore skips its own (now-redundant) discover.
-          runDiscover(gradle, modules, silenceStdout)
-          val discoveryManifests = readAllManifests(modules)
+          val discoverySucceeded = runDiscover(gradle, modules, silenceStdout)
+          val discoveryManifests =
+            if (discoverySucceeded) readAllManifests(modules) else emptyList()
           val renderModules =
-            if (scopeToPreviewRequest) modulesMatchingPreviewRequest(modules, discoveryManifests)
-            else modules
+            if (scopeToPreviewRequest) {
+              modulesMatchingPreviewRequest(
+                modules,
+                discoveryManifests,
+                discoverySucceeded = discoverySucceeded,
+              )
+            } else modules
           if (scopeToPreviewRequest) {
-            warnIfPreviewFilterStillRendersExtraRows(renderModules, discoveryManifests)
+            warnIfPreviewFilterStillRendersExtraRows(
+              renderModules,
+              discoveryManifests,
+              discoverySucceeded = discoverySucceeded,
+            )
           }
           val xrArgs =
             provisionXrCompositeArgs(gradle, renderModules, silenceStdout, discoverFirst = false)
@@ -760,20 +770,31 @@ abstract class Command(
   private fun modulesMatchingPreviewRequest(
     modules: List<PreviewModule>,
     manifests: List<Pair<PreviewModule, PreviewManifest>>,
+    discoverySucceeded: Boolean,
   ): List<PreviewModule> =
     modulesMatchingPreviewRequest(
       modules = modules,
       manifests = manifests,
       exactId = exactId,
       filter = filter,
+      discoverySucceeded = discoverySucceeded,
     )
 
   private fun warnIfPreviewFilterStillRendersExtraRows(
     renderModules: List<PreviewModule>,
     manifests: List<Pair<PreviewModule, PreviewManifest>>,
+    discoverySucceeded: Boolean,
   ) {
     if (exactId == null && filter == null) return
     if (renderModules.isEmpty()) return
+    val flag = if (exactId != null) "--id" else "--filter"
+    if (!discoverySucceeded) {
+      System.err.println(
+        "compose-preview: preview discovery failed, so $flag could not narrow the render; " +
+          "rendering all resolved modules so Gradle can retry discovery."
+      )
+      return
+    }
     val byPath = renderModules.map { it.gradlePath }.toSet()
     val rendersExtraRows =
       manifests
@@ -784,7 +805,6 @@ abstract class Command(
           }
         }
     if (!rendersExtraRows) return
-    val flag = if (exactId != null) "--id" else "--filter"
     System.err.println(
       "compose-preview: $flag narrowed the render to matching module(s) " +
         renderModules.joinToString(", ") { it.gradlePath } +
@@ -952,7 +972,11 @@ internal fun modulesMatchingPreviewRequest(
   manifests: List<Pair<PreviewModule, PreviewManifest>>,
   exactId: String?,
   filter: String?,
+  discoverySucceeded: Boolean = true,
 ): List<PreviewModule> {
+  // The render task depends on discovery and is the authoritative retry. Do not let missing or
+  // stale discovery manifests suppress that retry after the separate optimization pass fails.
+  if (!discoverySucceeded) return modules
   if (exactId == null && filter == null) return modules
   val matchingPaths =
     manifests

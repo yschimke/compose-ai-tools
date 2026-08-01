@@ -84,6 +84,23 @@ class ShowPartialResultsTest {
   }
 
   @Test
+  fun `failed discovery keeps all modules for the render retry`() {
+    val app = module("app")
+    val wear = module("wear")
+
+    val scoped =
+      modulesMatchingPreviewRequest(
+        modules = listOf(app, wear),
+        manifests = emptyList(),
+        exactId = null,
+        filter = "LowBattery",
+        discoverySucceeded = false,
+      )
+
+    assertEquals(listOf(app, wear), scoped)
+  }
+
+  @Test
   fun `task outcomes decide which module manifests may be read after render`() {
     val ok = module("ok")
     val cached = module("cached")
