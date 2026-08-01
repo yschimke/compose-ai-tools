@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/pr`. 265 preview(s) across 20 module(s) · 41 error(s) · 4 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/pr`. 298 preview(s) across 20 module(s) · 39 error(s) · 4 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -314,6 +314,114 @@ _No findings._
 |--:|---|---|---|---|
 | 1 | INFO | TextSizeCheck | android.view.NotificationHeaderView #notification_header | Consider modifying the LayoutParams to allow for text expansion. |
 | 2 | INFO | TextSizeCheck | com.android.internal.widget.NotificationActionListLayout #actions | Consider modifying the LayoutParams to allow for text expansion. |
+
+### `MatrixBackgroundColorPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/MatrixBackgroundColorPreview_Background_colour.png" width="400" />
+
+_No findings._
+
+### `MatrixComponentWrapPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/MatrixComponentWrapPreview_Component_wrap.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixDeviceSpecPreview` · `spec:width=360dp,height=640dp,dpi=320`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/MatrixDeviceSpecPreview_Device_spec.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFixedBothAxesPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/MatrixFixedBothAxesPreview_Fixed_both_axes.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFixedWidthOnlyPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/MatrixFixedWidthOnlyPreview_Fixed_width_only.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFoldableDevicePreview` · `pixel_fold`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/MatrixFoldableDevicePreview_Foldable.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFontScaleMultiPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/MatrixFontScaleMultiPreview_100.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFontScalePreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/MatrixFontScalePreview_Font_scale_2x.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixLightDarkMultiPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/MatrixLightDarkMultiPreview_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixLightPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/MatrixLightPreview_Day.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixLocalePreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/MatrixLocalePreview_German.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixMetaAnnotationMultiPreview` · `wearos_small_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/MatrixMetaAnnotationMultiPreview_Meta_watch.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixNightPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/MatrixNightPreview_Night.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixPhoneDevicePreview` · `pixel_5`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/MatrixPhoneDevicePreview_Phone.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixScreenSizesMultiPreview` · `spec:width=1920dp,height=1080dp,dpi=160`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/MatrixScreenSizesMultiPreview_Desktop.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixSystemUiPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/MatrixSystemUiPreview_System_UI.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixTvDevicePreview` · `tv_1080p`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/MatrixTvDevicePreview_TV.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixWearDevicePreview` · `wearos_small_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/MatrixWearDevicePreview_Wear.a11y.png" width="400" />
+
+_No findings._
 
 ### `MediaStylePreview`
 
@@ -717,6 +825,96 @@ _No findings._
 
 _No findings._
 
+### `MatrixBackgroundColorPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/MatrixBackgroundColorPreview_Background_colour.png" width="400" />
+
+_No findings._
+
+### `MatrixComponentWrapPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/MatrixComponentWrapPreview_Component_wrap.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixDeviceSpecPreview` · `spec:width=360dp,height=640dp,dpi=320`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/MatrixDeviceSpecPreview_Device_spec.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFixedBothAxesPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/MatrixFixedBothAxesPreview_Fixed_both_axes.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFixedWidthOnlyPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/MatrixFixedWidthOnlyPreview_Fixed_width_only.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFoldableDevicePreview` · `pixel_fold`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/MatrixFoldableDevicePreview_Foldable.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFontScaleMultiPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/MatrixFontScaleMultiPreview_100.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixFontScalePreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/MatrixFontScalePreview_Font_scale_2x.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixLightDarkMultiPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/MatrixLightDarkMultiPreview_Dark.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixLightPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/MatrixLightPreview_Day.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixLocalePreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/MatrixLocalePreview_German.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixMetaAnnotationMultiPreview` · `wearos_small_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/MatrixMetaAnnotationMultiPreview_Meta_watch.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixNightPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/MatrixNightPreview_Night.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixPhoneDevicePreview` · `pixel_5`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/MatrixPhoneDevicePreview_Phone.a11y.png" width="400" />
+
+_No findings._
+
+### `MatrixWearDevicePreview` · `wearos_small_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/MatrixWearDevicePreview_Wear.a11y.png" width="400" />
+
+_No findings._
+
 ### `MultiTouchDrawingPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/MultiTouchDrawingPreview_Multi_Touch_Drawing.png" width="400" />
@@ -808,6 +1006,8 @@ _No findings._
 _No findings._
 
 ### `SwatchPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/cmp/com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch.a11y.png" width="400" />
 
 _No findings._
 
@@ -1100,8 +1300,6 @@ _No findings._
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
 | 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
-| 2 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 42dp. Consider making the height of this touch target 48dp or larger. |
-| 3 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 42dp. Consider making the height of this touch target 48dp or larger. |
 
 ### `CardRemote` · `spec:width=320dp,height=240dp,dpi=320`
 
@@ -1246,6 +1444,7 @@ _No findings._
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
 | 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
+| 2 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 24dp. Consider making the height of this touch target 32dp or larger. |
 
 ### `WidgetContainerGradientRemote`
 
@@ -1622,7 +1821,6 @@ _No findings._
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
 | 1 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 39dp. Consider making the height of this touch target 48dp or larger. |
-| 2 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 39dp. Consider making the height of this touch target 48dp or larger. |
 
 ### `MediaGestureScreenHintPreview` · `wearos_large_round`
 

@@ -524,7 +524,7 @@
       "cleanBasename": "FontFamilySpecimenPreview_FontFamily_specimen.png",
       "findings": [
         {
-          "boundsInScreen": "368,5,1099,117",
+          "boundsInScreen": "368,5,1102,117",
           "level": "INFO",
           "message": "This non-clickable item's speakable text: \"The quick brown fox jumps over the lazy dog\" is identical to that of 4 other item(s).",
           "type": "DuplicateSpeakableTextCheck",
@@ -826,6 +826,186 @@
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.ManyActionsPreview_Edge \u2014 many actions",
       "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
       "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "MatrixBackgroundColorPreview_Background_colour.png",
+      "findings": [],
+      "functionName": "MatrixBackgroundColorPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixBackgroundColorPreview_Background colour",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixComponentWrapPreview_Component_wrap.a11y.png",
+      "cleanBasename": "MatrixComponentWrapPreview_Component_wrap.png",
+      "findings": [],
+      "functionName": "MatrixComponentWrapPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixComponentWrapPreview_Component wrap",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixDeviceSpecPreview_Device_spec.a11y.png",
+      "cleanBasename": "MatrixDeviceSpecPreview_Device_spec.png",
+      "findings": [],
+      "functionName": "MatrixDeviceSpecPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixDeviceSpecPreview_Device spec",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": "spec:width=360dp,height=640dp,dpi=320"
+    },
+    {
+      "annotatedBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes.a11y.png",
+      "cleanBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes.png",
+      "findings": [],
+      "functionName": "MatrixFixedBothAxesPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFixedBothAxesPreview_Fixed both axes",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only.a11y.png",
+      "cleanBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only.png",
+      "findings": [],
+      "functionName": "MatrixFixedWidthOnlyPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFixedWidthOnlyPreview_Fixed width only",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixFoldableDevicePreview_Foldable.a11y.png",
+      "cleanBasename": "MatrixFoldableDevicePreview_Foldable.png",
+      "findings": [],
+      "functionName": "MatrixFoldableDevicePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFoldableDevicePreview_Foldable",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": "pixel_fold"
+    },
+    {
+      "annotatedBasename": "MatrixFontScaleMultiPreview_100.a11y.png",
+      "cleanBasename": "MatrixFontScaleMultiPreview_100.png",
+      "findings": [],
+      "functionName": "MatrixFontScaleMultiPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_100%",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixFontScalePreview_Font_scale_2x.a11y.png",
+      "cleanBasename": "MatrixFontScalePreview_Font_scale_2x.png",
+      "findings": [],
+      "functionName": "MatrixFontScalePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFontScalePreview_Font scale 2x",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixLightDarkMultiPreview_Dark.a11y.png",
+      "cleanBasename": "MatrixLightDarkMultiPreview_Dark.png",
+      "findings": [],
+      "functionName": "MatrixLightDarkMultiPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixLightDarkMultiPreview_Dark",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixLightPreview_Day.a11y.png",
+      "cleanBasename": "MatrixLightPreview_Day.png",
+      "findings": [],
+      "functionName": "MatrixLightPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixLightPreview_Day",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixLocalePreview_German.a11y.png",
+      "cleanBasename": "MatrixLocalePreview_German.png",
+      "findings": [],
+      "functionName": "MatrixLocalePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixLocalePreview_German",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch.a11y.png",
+      "cleanBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch.png",
+      "findings": [],
+      "functionName": "MatrixMetaAnnotationMultiPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixMetaAnnotationMultiPreview_Meta watch",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": "wearos_small_round"
+    },
+    {
+      "annotatedBasename": "MatrixNightPreview_Night.a11y.png",
+      "cleanBasename": "MatrixNightPreview_Night.png",
+      "findings": [],
+      "functionName": "MatrixNightPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixNightPreview_Night",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixPhoneDevicePreview_Phone.a11y.png",
+      "cleanBasename": "MatrixPhoneDevicePreview_Phone.png",
+      "findings": [],
+      "functionName": "MatrixPhoneDevicePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixPhoneDevicePreview_Phone",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": "pixel_5"
+    },
+    {
+      "annotatedBasename": "MatrixScreenSizesMultiPreview_Desktop.a11y.png",
+      "cleanBasename": "MatrixScreenSizesMultiPreview_Desktop.png",
+      "findings": [],
+      "functionName": "MatrixScreenSizesMultiPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixScreenSizesMultiPreview_Desktop",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": "spec:width=1920dp,height=1080dp,dpi=160"
+    },
+    {
+      "annotatedBasename": "MatrixSystemUiPreview_System_UI.a11y.png",
+      "cleanBasename": "MatrixSystemUiPreview_System_UI.png",
+      "findings": [],
+      "functionName": "MatrixSystemUiPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixSystemUiPreview_System UI",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixTvDevicePreview_TV.a11y.png",
+      "cleanBasename": "MatrixTvDevicePreview_TV.png",
+      "findings": [],
+      "functionName": "MatrixTvDevicePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixTvDevicePreview_TV",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": "tv_1080p"
+    },
+    {
+      "annotatedBasename": "MatrixWearDevicePreview_Wear.a11y.png",
+      "cleanBasename": "MatrixWearDevicePreview_Wear.png",
+      "findings": [],
+      "functionName": "MatrixWearDevicePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixWearDevicePreview_Wear",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
+      "variant": "wearos_small_round"
     },
     {
       "annotatedBasename": "MediaStylePreview_Media_style.a11y.png",
@@ -1260,7 +1440,7 @@
       "cleanBasename": "TypographySpecimenPreview_Typography_specimen.png",
       "findings": [
         {
-          "boundsInScreen": "368,5,1099,349",
+          "boundsInScreen": "368,5,1102,349",
           "level": "INFO",
           "message": "This non-clickable item's speakable text: \"The quick brown fox\" is identical to that of 12 other item(s).",
           "type": "DuplicateSpeakableTextCheck",
@@ -1402,6 +1582,156 @@
       "previewId": "com.example.samplecmp.LottiePreviewsKt.LottieSpinStartPreview",
       "sourceFile": "src/main/kotlin/com/example/samplecmp/LottiePreviews.kt",
       "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "MatrixBackgroundColorPreview_Background_colour.png",
+      "findings": [],
+      "functionName": "MatrixBackgroundColorPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixBackgroundColorPreview_Background colour",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixComponentWrapPreview_Component_wrap.a11y.png",
+      "cleanBasename": "MatrixComponentWrapPreview_Component_wrap.png",
+      "findings": [],
+      "functionName": "MatrixComponentWrapPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixComponentWrapPreview_Component wrap",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixDeviceSpecPreview_Device_spec.a11y.png",
+      "cleanBasename": "MatrixDeviceSpecPreview_Device_spec.png",
+      "findings": [],
+      "functionName": "MatrixDeviceSpecPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixDeviceSpecPreview_Device spec",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": "spec:width=360dp,height=640dp,dpi=320"
+    },
+    {
+      "annotatedBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes.a11y.png",
+      "cleanBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes.png",
+      "findings": [],
+      "functionName": "MatrixFixedBothAxesPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixFixedBothAxesPreview_Fixed both axes",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only.a11y.png",
+      "cleanBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only.png",
+      "findings": [],
+      "functionName": "MatrixFixedWidthOnlyPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixFixedWidthOnlyPreview_Fixed width only",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixFoldableDevicePreview_Foldable.a11y.png",
+      "cleanBasename": "MatrixFoldableDevicePreview_Foldable.png",
+      "findings": [],
+      "functionName": "MatrixFoldableDevicePreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixFoldableDevicePreview_Foldable",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": "pixel_fold"
+    },
+    {
+      "annotatedBasename": "MatrixFontScaleMultiPreview_100.a11y.png",
+      "cleanBasename": "MatrixFontScaleMultiPreview_100.png",
+      "findings": [],
+      "functionName": "MatrixFontScaleMultiPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_100%",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixFontScalePreview_Font_scale_2x.a11y.png",
+      "cleanBasename": "MatrixFontScalePreview_Font_scale_2x.png",
+      "findings": [],
+      "functionName": "MatrixFontScalePreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixFontScalePreview_Font scale 2x",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixLightDarkMultiPreview_Dark.a11y.png",
+      "cleanBasename": "MatrixLightDarkMultiPreview_Dark.png",
+      "findings": [],
+      "functionName": "MatrixLightDarkMultiPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixLightDarkMultiPreview_Dark",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixLightPreview_Day.a11y.png",
+      "cleanBasename": "MatrixLightPreview_Day.png",
+      "findings": [],
+      "functionName": "MatrixLightPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixLightPreview_Day",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixLocalePreview_German.a11y.png",
+      "cleanBasename": "MatrixLocalePreview_German.png",
+      "findings": [],
+      "functionName": "MatrixLocalePreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixLocalePreview_German",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch.a11y.png",
+      "cleanBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch.png",
+      "findings": [],
+      "functionName": "MatrixMetaAnnotationMultiPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixMetaAnnotationMultiPreview_Meta watch",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": "wearos_small_round"
+    },
+    {
+      "annotatedBasename": "MatrixNightPreview_Night.a11y.png",
+      "cleanBasename": "MatrixNightPreview_Night.png",
+      "findings": [],
+      "functionName": "MatrixNightPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixNightPreview_Night",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "MatrixPhoneDevicePreview_Phone.a11y.png",
+      "cleanBasename": "MatrixPhoneDevicePreview_Phone.png",
+      "findings": [],
+      "functionName": "MatrixPhoneDevicePreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixPhoneDevicePreview_Phone",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": "pixel_5"
+    },
+    {
+      "annotatedBasename": "MatrixWearDevicePreview_Wear.a11y.png",
+      "cleanBasename": "MatrixWearDevicePreview_Wear.png",
+      "findings": [],
+      "functionName": "MatrixWearDevicePreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewModeMatrixKt.MatrixWearDevicePreview_Wear",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewModeMatrix.kt",
+      "variant": "wearos_small_round"
     },
     {
       "annotatedBasename": "",
@@ -1554,7 +1884,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch.a11y.png",
       "cleanBasename": "",
       "findings": [],
       "functionName": "SwatchPreview",
@@ -1978,7 +2308,7 @@
       "cleanBasename": "AppCardRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,640,480",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -1996,7 +2326,7 @@
       "cleanBasename": "BrandedTextRemote_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2014,25 +2344,11 @@
       "cleanBasename": "ButtonGroupRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,640,480",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
           "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
-        },
-        {
-          "boundsInScreen": "36,198,312,281",
-          "level": "ERROR",
-          "message": "This item's height is 42dp. Consider making the height of this touch target 48dp or larger.",
-          "type": "TouchTargetSizeCheck",
-          "viewDescription": "android.view.View"
-        },
-        {
-          "boundsInScreen": "328,198,604,281",
-          "level": "ERROR",
-          "message": "This item's height is 42dp. Consider making the height of this touch target 48dp or larger.",
-          "type": "TouchTargetSizeCheck",
-          "viewDescription": "android.view.View"
         }
       ],
       "functionName": "ButtonGroupRemote",
@@ -2046,7 +2362,7 @@
       "cleanBasename": "CardRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,640,480",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2064,7 +2380,7 @@
       "cleanBasename": "CircularProgressRemote_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2082,7 +2398,7 @@
       "cleanBasename": "ColorSchemeRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,640,480",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2100,7 +2416,7 @@
       "cleanBasename": "CompactRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2118,7 +2434,7 @@
       "cleanBasename": "CustomShapeRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2136,7 +2452,7 @@
       "cleanBasename": "FilledRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2154,7 +2470,7 @@
       "cleanBasename": "IconRemote_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2172,7 +2488,7 @@
       "cleanBasename": "IconRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2190,7 +2506,7 @@
       "cleanBasename": "NamedLabelRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2208,7 +2524,7 @@
       "cleanBasename": "OutlinedCardRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,640,480",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2226,7 +2542,7 @@
       "cleanBasename": "OutlinedRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2244,7 +2560,7 @@
       "cleanBasename": "RemoteTextSticker_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2262,7 +2578,7 @@
       "cleanBasename": "ShaderGradientSticker_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2280,7 +2596,7 @@
       "cleanBasename": "TextRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2298,7 +2614,7 @@
       "cleanBasename": "TitleCardRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,640,480",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2316,7 +2632,7 @@
       "cleanBasename": "TruncatedTextRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,640,480",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2334,7 +2650,7 @@
       "cleanBasename": "TypographyRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,640,480",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2352,11 +2668,18 @@
       "cleanBasename": "WatchScreenRemote_width_227dp_height_227dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,454,454",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
           "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        },
+        {
+          "boundsInScreen": "10,272,310,320",
+          "level": "ERROR",
+          "message": "This item's height is 24dp. Consider making the height of this touch target 32dp or larger.",
+          "type": "TouchTargetSizeCheck",
+          "viewDescription": "android.view.View"
         }
       ],
       "functionName": "WatchScreenRemote",
@@ -2370,7 +2693,7 @@
       "cleanBasename": "WidgetContainerGradientRemote.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,567,196",
+          "boundsInScreen": "0,0,567,199",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2388,7 +2711,7 @@
       "cleanBasename": "WidgetContainerLargeRemote.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,567,322",
+          "boundsInScreen": "0,0,567,325",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2406,7 +2729,7 @@
       "cleanBasename": "WidgetContainerSmallRemote.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,567,196",
+          "boundsInScreen": "0,0,567,199",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2852,7 +3175,7 @@
       "cleanBasename": "ImageWidgetFixedPreview_Image_Widget_Fixed.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,567,196",
+          "boundsInScreen": "0,0,567,199",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2976,7 +3299,7 @@
       "cleanBasename": "BadWearButtonPreview_Devices_Small_Round.png",
       "findings": [
         {
-          "boundsInScreen": "144,144,240,240",
+          "boundsInScreen": "112,112,208,208",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -3054,14 +3377,7 @@
       "cleanBasename": "GestureGalleryPreview_Devices_Large_Round.png",
       "findings": [
         {
-          "boundsInScreen": "74,169,380,247",
-          "level": "ERROR",
-          "message": "This item's height is 39dp. Consider making the height of this touch target 48dp or larger.",
-          "type": "TouchTargetSizeCheck",
-          "viewDescription": "android.view.View"
-        },
-        {
-          "boundsInScreen": "74,253,380,331",
+          "boundsInScreen": "53,142,267,220",
           "level": "ERROR",
           "message": "This item's height is 39dp. Consider making the height of this touch target 48dp or larger.",
           "type": "TouchTargetSizeCheck",
@@ -3129,7 +3445,7 @@
       "cleanBasename": "PlaceholderCardLoading_wearos_small_round.png",
       "findings": [
         {
-          "boundsInScreen": "32,128,352,256",
+          "boundsInScreen": "32,96,288,224",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
