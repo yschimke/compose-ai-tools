@@ -33,6 +33,8 @@ import ee.schimke.composeai.cli.serve.ServeCatalogsConfig
 import ee.schimke.composeai.cli.serve.ServeCatalogsConfigFile
 import ee.schimke.composeai.cli.serve.ServeDocFormats
 import ee.schimke.composeai.cli.serve.ServeDocStore
+import ee.schimke.composeai.cli.serve.ServeGithubAuth
+import ee.schimke.composeai.cli.serve.ServeGithubAuthConfig
 import ee.schimke.composeai.cli.serve.ServeHost
 import ee.schimke.composeai.cli.serve.ServeHttpServer
 import ee.schimke.composeai.cli.serve.ServeMdnsAdvertiser
@@ -416,6 +418,24 @@ class ServeCommand(args: List<String>) : Command(args) {
    * `/admin/trust` can make a producer's Compose eligible for server-side re-render here.
    */
   private val adminToken: String? = args.flagValue("--admin-token")?.takeIf { it.isNotBlank() }
+
+  private val githubAuthClientId: String? =
+    args.flagValue("--github-auth-client-id")?.takeIf { it.isNotBlank() }
+  private val githubAuthClientSecret: String? =
+    args.flagValue("--github-auth-client-secret")?.takeIf { it.isNotBlank() }
+  private val githubAuthCookieSecret: String? =
+    args.flagValue("--github-auth-cookie-secret")?.takeIf { it.isNotBlank() }
+  private val githubAuthRepo: String? =
+    args.flagValue("--github-auth-repo")?.takeIf { it.isNotBlank() }
+  private val githubAuthCallbackBaseUrl: String? =
+    args.flagValue("--github-auth-callback-base-url")?.takeIf { it.isNotBlank() }
+  private val githubAuthUsers: Set<String> =
+    args
+      .flagValue("--github-auth-users")
+      ?.split(",")
+      ?.map { it.trim().lowercase() }
+      ?.filter { it.isNotEmpty() }
+      ?.toSet() ?: emptySet()
 
   /**
    * The parsed `--catalogs-file`, or the empty config when none is set / it can't be read. A
@@ -1455,6 +1475,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     // route serves from — otherwise a minted `/d/<id>` link wouldn't resolve.
     val docStore = openDocStore()
     val playgroundLane = openPlaygroundService(docStore, registry)
+    val githubAuth = buildGithubAuth()
     val server =
       ServeHttpServer(
         host = host,
@@ -1482,6 +1503,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         docStore = docStore,
         playgroundService = playgroundLane?.compile,
         playgroundRedeem = playgroundLane?.redeem,
+        githubAuth = githubAuth,
       )
     if (trustAdmin != null) {
       System.err.println(
@@ -1495,6 +1517,12 @@ class ServeCommand(args: List<String>) : Command(args) {
         "serve: catalog admin API enabled at /admin/catalogs" +
           (catalogsFile?.let { " (persisting to ${it.displayPath})" }
             ?: " (runtime only — pass --catalogs-file to persist)")
+      )
+    }
+    if (githubAuth != null) {
+      System.err.println(
+        "serve: GitHub collaborator auth enabled for live sessions and playground " +
+          "(repo $githubAuthRepo)"
       )
     }
 
@@ -2198,6 +2226,29 @@ class ServeCommand(args: List<String>) : Command(args) {
     return ok
   }
 
+  private fun buildGithubAuth(): ServeGithubAuth? {
+    val provided =
+      listOf(githubAuthClientId, githubAuthClientSecret, githubAuthCookieSecret, githubAuthRepo)
+        .count { it != null }
+    if (provided == 0) return null
+    if (provided != 4) {
+      error(
+        "GitHub auth needs --github-auth-client-id, --github-auth-client-secret, " +
+          "--github-auth-cookie-secret, and --github-auth-repo"
+      )
+    }
+    return ServeGithubAuth(
+      ServeGithubAuthConfig(
+        clientId = githubAuthClientId!!,
+        clientSecret = githubAuthClientSecret!!,
+        cookieSecret = githubAuthCookieSecret!!,
+        repository = githubAuthRepo!!,
+        allowedUsers = githubAuthUsers,
+        callbackBaseUrl = githubAuthCallbackBaseUrl,
+      )
+    )
+  }
+
   private fun printBanner(moduleLabel: String, port: Int, token: String, previewCount: Int) {
     val exposed = ServeUrls.isExposed(host)
     val localHost = if (exposed || host == ServeUrls.LOOPBACK) ServeUrls.LOOPBACK else host
@@ -2317,6 +2368,20 @@ class ServeCommand(args: List<String>) : Command(args) {
                           server — browsing published catalogs / uploaded bundles is the point. Safe
                           by construction (no server-side code exec; untrusted re-render refused;
                           uploads capped + SSRF-gated). Off by default.
+        --github-auth-client-id <id>
+        --github-auth-client-secret <secret>
+        --github-auth-cookie-secret <secret>
+        --github-auth-repo <owner/repo>
+                          Add GitHub OAuth on top of the browse gate for code-running surfaces:
+                          live preview WebSockets and the playground. After sign-in the server
+                          checks the OAuth user is a collaborator on <owner/repo>, then stores only
+                          a signed, expiring login cookie. All four flags are required together.
+        --github-auth-callback-base-url <url>
+                          External origin for the OAuth callback, e.g. https://preview.example.com.
+                          Omit for local use; reverse-proxied deploys should set it explicitly.
+        --github-auth-users <login>[,<login>…]
+                          Optional extra allowlist after the collaborator check. Empty means any
+                          collaborator on --github-auth-repo may use live sessions/playground.
         --export <path>   Don't serve: render every preview once and write a portable bundle (a
                           self-contained web gallery + PNGs) to <path>. A '.zip' path writes a zip;
                           any other path writes a directory. The live server also offers this at

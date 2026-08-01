@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli.serve
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -26,6 +27,46 @@ class ServeAuthTest {
     assertTrue(ServeHttpServer.isAuthorized(token, null, isPublic = true))
     assertTrue(ServeHttpServer.isAuthorized(token, "wrong", isPublic = true))
     assertTrue(ServeHttpServer.isAuthorized(token, token, isPublic = true))
+  }
+
+  @Test
+  fun `github auth requires a full oauth and repo config`() {
+    assertFailsWith<IllegalArgumentException> {
+      ServeGithubAuthConfig(
+        clientId = "client",
+        clientSecret = "secret",
+        cookieSecret = "short",
+        repository = "yschimke/compose-ai-tools",
+      )
+    }
+    assertFailsWith<IllegalArgumentException> {
+      ServeGithubAuthConfig(
+        clientId = "client",
+        clientSecret = "secret",
+        cookieSecret = "x".repeat(32),
+        repository = "not-a-repo",
+      )
+    }
+    ServeGithubAuthConfig(
+      clientId = "client",
+      clientSecret = "secret",
+      cookieSecret = "x".repeat(32),
+      repository = "yschimke/compose-ai-tools",
+    )
+  }
+
+  @Test
+  fun `github auth only redirects back to local paths`() {
+    assertEquals("/compose-m3/p/Button", ServeGithubAuth.safeReturnTo("/compose-m3/p/Button"))
+    assertEquals("/", ServeGithubAuth.safeReturnTo("https://evil.example/"))
+    assertEquals("/", ServeGithubAuth.safeReturnTo("//evil.example/"))
+  }
+
+  @Test
+  fun `github auth token match rejects missing or different values`() {
+    assertTrue(ServeGithubAuth.tokensMatch("state", "state"))
+    assertFalse(ServeGithubAuth.tokensMatch("state", "other"))
+    assertFalse(ServeGithubAuth.tokensMatch("state", null))
   }
 
   @Test

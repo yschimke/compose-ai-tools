@@ -26,6 +26,7 @@ services:
     restart: always
     pull_policy: always
     environment:
+      DOMAIN: "${DOMAIN:-}"
       # Public preview server by default (preview.coo.ee): open, serving our
       # published design systems. The in-browser CMP Wasm tier rides --catalogs —
       # `serve` fetches each system's web/wasm/ from the trusted branch (the
@@ -49,6 +50,16 @@ services:
       # code-execution credential: trusting a branch makes that producer's Compose eligible for
       # server-side re-render here. Treat it like a deploy key, not a read token.
       SERVE_ADMIN_TOKEN: "${SERVE_ADMIN_TOKEN:-}"
+      # Optional GitHub OAuth collaborator auth for code-running surfaces (live WebSockets and
+      # playground). Set the three secrets in .env to enable; the entrypoint then defaults the repo
+      # check to yschimke/compose-ai-tools and uses this domain as the OAuth callback origin unless
+      # overridden. Empty values keep the public catalog browsing behaviour unchanged.
+      SERVE_GITHUB_AUTH_CLIENT_ID: "${SERVE_GITHUB_AUTH_CLIENT_ID:-}"
+      SERVE_GITHUB_AUTH_CLIENT_SECRET: "${SERVE_GITHUB_AUTH_CLIENT_SECRET:-}"
+      SERVE_GITHUB_AUTH_COOKIE_SECRET: "${SERVE_GITHUB_AUTH_COOKIE_SECRET:-}"
+      SERVE_GITHUB_AUTH_REPO: "${SERVE_GITHUB_AUTH_REPO:-yschimke/compose-ai-tools}"
+      SERVE_GITHUB_AUTH_CALLBACK_BASE_URL: "${SERVE_GITHUB_AUTH_CALLBACK_BASE_URL:-}"
+      SERVE_GITHUB_AUTH_USERS: "${SERVE_GITHUB_AUTH_USERS:-}"
       # Optional ADDITIONS to that file, for one extra catalog without editing config:
       # <system>@<owner>/<repo>, comma-separated. Empty (the default) = the file decides.
       SERVE_CATALOGS: "${SERVE_CATALOGS:-}"

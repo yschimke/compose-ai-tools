@@ -107,6 +107,21 @@ fi
 # gated by its own secret — never the browse token, which a public box hands to every visitor.
 # Unset (the default) means the admin routes don't exist at all.
 [[ -n "${SERVE_ADMIN_TOKEN:-}" ]] && args+=(--admin-token "${SERVE_ADMIN_TOKEN}")
+if [[ -n "${SERVE_GITHUB_AUTH_CLIENT_ID:-}" ||
+  -n "${SERVE_GITHUB_AUTH_CLIENT_SECRET:-}" ||
+  -n "${SERVE_GITHUB_AUTH_COOKIE_SECRET:-}" ]]; then
+  args+=(--github-auth-client-id "${SERVE_GITHUB_AUTH_CLIENT_ID:-}")
+  args+=(--github-auth-client-secret "${SERVE_GITHUB_AUTH_CLIENT_SECRET:-}")
+  args+=(--github-auth-cookie-secret "${SERVE_GITHUB_AUTH_COOKIE_SECRET:-}")
+  args+=(--github-auth-repo "${SERVE_GITHUB_AUTH_REPO:-yschimke/compose-ai-tools}")
+  github_auth_callback_base_url="${SERVE_GITHUB_AUTH_CALLBACK_BASE_URL:-}"
+  if [[ -z "${github_auth_callback_base_url}" && -n "${DOMAIN:-}" ]]; then
+    github_auth_callback_base_url="https://${DOMAIN}"
+  fi
+  [[ -n "${github_auth_callback_base_url}" ]] &&
+    args+=(--github-auth-callback-base-url "${github_auth_callback_base_url}")
+  [[ -n "${SERVE_GITHUB_AUTH_USERS:-}" ]] && args+=(--github-auth-users "${SERVE_GITHUB_AUTH_USERS}")
+fi
 # The producer-trust store is CONFIG, on the same /config volume as catalogs.json — for the
 # same reason. It used to live only in the image, which meant trusting a new producer needed a
 # code change, a release and an image publish, while a *catalog* could be published at runtime in
