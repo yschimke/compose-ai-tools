@@ -428,7 +428,7 @@
     "functionName": "AsyncImageUnreachablePreview",
     "module": "samples:android",
     "renderBasename": "AsyncImageUnreachablePreview_Async_Image_Unreachable.png",
-    "sha256": "a4aa26408df2485140dfaceaf53590f099ef5c7c1e1cd686037db04332faf9b2",
+    "sha256": "47cdbeaa2930cdfcfd6f2c74282368cdacda123abb9a8fe576ae515e53bed401",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/AsyncImagePreviews.kt"
   },
   "samples:android/com.example.sampleandroid.ColorGalleryKt.ColorSchemeSpecimenDarkPreview_ColorScheme specimen \u2014 dark": {
@@ -3828,7 +3828,7 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "094df53da2ad611cb769f7a7e381c83ac0dbee764bc2060d387be804c6c5ba23",
+    "sha256": "4894efeb548deb8e9074068f891ddd4a3c9901e2e5482960eebaa1dbf8e65cca",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round": {
