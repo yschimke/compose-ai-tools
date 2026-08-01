@@ -62,6 +62,8 @@ data class ServeSessionState(
    * render path, so without these the catalog's stats would miss most real renders.
    */
   val perPreviewRenderStats: () -> List<RenderPerfSnapshot> = { emptyList() },
+  /** Occupancy snapshots of the pooled per-preview daemons, surfaced on `/status.json`. */
+  val perPreviewPoolStats: () -> List<DaemonPoolSnapshot> = { emptyList() },
   /**
    * Optional reclaim hook invoked when the registry **removes** this session entirely — the
    * second-level GC of a long-idle *suspended* forked session (issue #2022), NOT ordinary

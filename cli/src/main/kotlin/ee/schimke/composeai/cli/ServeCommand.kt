@@ -875,6 +875,7 @@ class ServeCommand(args: List<String>) : Command(args) {
               perPreviewResolve = state.perPreviewResolve,
               perPreviewStreamCount = state.perPreviewStreamCount,
               perPreviewRenderStats = state.perPreviewRenderStats,
+              perPreviewPoolStats = state.perPreviewPoolStats,
             )
             // Warm the daemon off the request path so the first browse already gets the per-variant
             // SVG lane instead of the baked fallback — critical for a slow-cold-starting Android
@@ -1790,6 +1791,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         trust = { trustStore.get() },
         repo = catalogRepo,
         branchPrefix = catalogBranchPrefix,
+        serverSideRenderEnabled = allowRenderTrusted,
         registerWasm = { system, wasmDir ->
           // A local `--wasm-dir` is the operator's explicit override, so a published app never
           // displaces it — including on a later branch refresh, which re-runs this callback.
@@ -1998,6 +2000,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           perPreviewResolve = perPreviewPool::get,
           perPreviewStreamCount = perPreviewPool::activeStreamCount,
           perPreviewRenderStats = perPreviewPool::renderPerfStats,
+          perPreviewPoolStats = { listOf(perPreviewPool.snapshot()) },
         ) ?: return false
     val host = openHost(state) ?: return false
     registry.register(system, state, host = host)

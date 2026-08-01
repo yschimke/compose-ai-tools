@@ -100,6 +100,7 @@ class ServeSessionRegistry(
     val startedAt: Long?,
     /** Render-latency counters for the host's live lane; null for hosts that don't track them. */
     val renderStats: RenderPerfSnapshot? = null,
+    val daemonPools: List<DaemonPoolSnapshot> = emptyList(),
   )
 
   /** A live hold on a session that keeps it from being suspended until [close] (idempotent). */
@@ -446,6 +447,7 @@ class ServeSessionRegistry(
           leases = entry.leases,
           startedAt = entry.startedAt,
           renderStats = runCatching { host.renderPerfStats() }.getOrNull(),
+          daemonPools = runCatching { host.daemonPoolStats() }.getOrDefault(emptyList()),
         )
       }
       .sortedBy { it.id }

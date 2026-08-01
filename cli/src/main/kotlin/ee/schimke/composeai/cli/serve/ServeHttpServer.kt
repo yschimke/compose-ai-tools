@@ -1612,6 +1612,7 @@ class ServeHttpServer(
               activeStreams = d.activeStreams,
               uptimeSeconds = d.startedAt?.let { ((nowMillis - it) / 1000).coerceAtLeast(0) },
               renderStats = d.renderStats,
+              daemonPools = d.daemonPools,
             )
           },
         recentDaemonFailures = failures.map { FailureDto(it.atEpochMillis, it.session, it.reason) },
@@ -2930,6 +2931,8 @@ private data class RunningServerDto(
    * or for hosts without a measurable live lane.
    */
   val renderStats: RenderPerfSnapshot? = null,
+  /** Child daemon pools owned by this server, e.g. per-preview bundles for trusted catalogs. */
+  val daemonPools: List<DaemonPoolSnapshot> = emptyList(),
 )
 
 @Serializable
