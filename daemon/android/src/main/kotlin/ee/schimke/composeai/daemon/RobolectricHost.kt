@@ -1217,6 +1217,7 @@ open class RobolectricHost(
     // pngPath / metrics fields landed in B1.4. Read them reflectively too so a sandbox-side
     // RenderResult instance carries its real-render payload back to the host caller.
     val pngPath = cls.getMethod("getPngPath").invoke(raw) as String?
+    val outputBaseName = cls.getMethod("getOutputBaseName").invoke(raw) as String?
     @Suppress("UNCHECKED_CAST")
     val metrics = cls.getMethod("getMetrics").invoke(raw) as Map<String, Long>?
     val previewContext =
@@ -1232,6 +1233,7 @@ open class RobolectricHost(
       // explicitly so a future change to the metrics type is observable here.
       metrics = metrics?.let { LinkedHashMap(it) },
       previewContext = previewContext,
+      outputBaseName = outputBaseName,
     )
   }
 

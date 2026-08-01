@@ -1121,6 +1121,7 @@ class RenderEngine(
       pngPath = outputFile.absolutePath,
       metrics = metrics,
       previewContext = previewContext,
+      outputBaseName = spec.outputBaseName,
     )
   }
 
