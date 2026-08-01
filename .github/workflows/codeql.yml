@@ -12,6 +12,10 @@ name: CodeQL
 # The other languages use `build-mode: none` — Kotlin isn't supported in
 # `none` mode but JS/TS and Actions are.
 #
+# PRs classify the changed language surface first. All three historical matrix
+# checks are still emitted, but initialization/analysis runs only for relevant
+# languages. Pushes and the weekly schedule always scan every language.
+#
 # Switch the repo from Default to Advanced setup in
 # Settings → Code security → Code scanning for this workflow to take effect.
 
@@ -32,7 +36,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Determine CodeQL scope
+    runs-on: ubuntu-latest
+    outputs:
+      java_kotlin: ${{ steps.scope.outputs.java_kotlin }}
+      javascript_typescript: ${{ steps.scope.outputs.javascript_typescript }}
+      actions: ${{ steps.scope.outputs.actions }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Classify changed languages
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
+          python3 .github/ci/path-scope.py \
+            --config .github/ci/codeql-paths.json >> "$GITHUB_OUTPUT"
+
   analyze:
+    needs: changes
     if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
@@ -67,10 +94,14 @@ jobs:
           persist-credentials: false
 
       - name: Set up JDK + Gradle
-        if: matrix.language == 'java-kotlin'
+        if: matrix.language == 'java-kotlin' && needs.changes.outputs.java_kotlin == 'true'
         uses: ./.github/actions/setup
 
       - name: Initialize CodeQL
+        if: >-
+          ${{ (matrix.language == 'java-kotlin' && needs.changes.outputs.java_kotlin == 'true')
+          || (matrix.language == 'javascript-typescript' && needs.changes.outputs.javascript_typescript == 'true')
+          || (matrix.language == 'actions' && needs.changes.outputs.actions == 'true') }}
         uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         with:
           languages: ${{ matrix.language }}
@@ -88,7 +119,7 @@ jobs:
       # `compileKotlin` covers all Kotlin source sets across the multi-module
       # build via task-name matching in subprojects.
       - name: Compile Kotlin for CodeQL
-        if: matrix.language == 'java-kotlin'
+        if: matrix.language == 'java-kotlin' && needs.changes.outputs.java_kotlin == 'true'
         run: |
           ./gradlew compileKotlin compileDebugKotlin compileReleaseKotlin \
             --no-configuration-cache \
@@ -97,6 +128,10 @@ jobs:
             --continue
 
       - name: Perform CodeQL Analysis
+        if: >-
+          ${{ (matrix.language == 'java-kotlin' && needs.changes.outputs.java_kotlin == 'true')
+          || (matrix.language == 'javascript-typescript' && needs.changes.outputs.javascript_typescript == 'true')
+          || (matrix.language == 'actions' && needs.changes.outputs.actions == 'true') }}
         uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         with:
           category: "/language:${{ matrix.language }}"

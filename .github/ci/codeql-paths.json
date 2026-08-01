@@ -1,0 +1,49 @@
+{
+  "ignorePaths": [
+    "docs/**",
+    "site/**",
+    "renders/**",
+    "**/*.md",
+    "**/*.png",
+    "**/*.jpg",
+    "**/*.gif",
+    "**/*.json",
+    "LICENSE",
+    ".gitignore",
+    ".gitattributes"
+  ],
+  "globalPaths": [
+    ".github/ci/codeql-paths.json",
+    ".github/ci/path-scope.py",
+    ".github/workflows/codeql.yml",
+    ".github/codeql/**"
+  ],
+  "groups": {
+    "java_kotlin": [
+      "**/*.java",
+      "**/*.kt",
+      "**/*.kts",
+      "gradle/**",
+      "build-logic/**",
+      "gradle-plugin/**",
+      "settings.gradle*",
+      "build.gradle*",
+      "gradle.properties",
+      ".github/actions/setup/**"
+    ],
+    "javascript_typescript": [
+      "**/*.js",
+      "**/*.mjs",
+      "**/*.cjs",
+      "**/*.ts",
+      "**/*.tsx",
+      "**/package.json",
+      "**/package-lock.json",
+      "**/tsconfig*.json"
+    ],
+    "actions": [
+      ".github/workflows/**",
+      ".github/actions/**"
+    ]
+  }
+}
