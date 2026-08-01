@@ -524,7 +524,7 @@
       "cleanBasename": "FontFamilySpecimenPreview_FontFamily_specimen.png",
       "findings": [
         {
-          "boundsInScreen": "368,5,1099,117",
+          "boundsInScreen": "368,5,1102,117",
           "level": "INFO",
           "message": "This non-clickable item's speakable text: \"The quick brown fox jumps over the lazy dog\" is identical to that of 4 other item(s).",
           "type": "DuplicateSpeakableTextCheck",
@@ -1440,7 +1440,7 @@
       "cleanBasename": "TypographySpecimenPreview_Typography_specimen.png",
       "findings": [
         {
-          "boundsInScreen": "368,5,1099,349",
+          "boundsInScreen": "368,5,1102,349",
           "level": "INFO",
           "message": "This non-clickable item's speakable text: \"The quick brown fox\" is identical to that of 12 other item(s).",
           "type": "DuplicateSpeakableTextCheck",
@@ -2308,7 +2308,7 @@
       "cleanBasename": "AppCardRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,640,480",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2326,7 +2326,7 @@
       "cleanBasename": "BrandedTextRemote_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2344,25 +2344,11 @@
       "cleanBasename": "ButtonGroupRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,640,480",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
           "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
-        },
-        {
-          "boundsInScreen": "36,198,312,281",
-          "level": "ERROR",
-          "message": "This item's height is 42dp. Consider making the height of this touch target 48dp or larger.",
-          "type": "TouchTargetSizeCheck",
-          "viewDescription": "android.view.View"
-        },
-        {
-          "boundsInScreen": "328,198,604,281",
-          "level": "ERROR",
-          "message": "This item's height is 42dp. Consider making the height of this touch target 48dp or larger.",
-          "type": "TouchTargetSizeCheck",
-          "viewDescription": "android.view.View"
         }
       ],
       "functionName": "ButtonGroupRemote",
@@ -2376,7 +2362,7 @@
       "cleanBasename": "CardRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,640,480",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2394,7 +2380,7 @@
       "cleanBasename": "CircularProgressRemote_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2412,7 +2398,7 @@
       "cleanBasename": "ColorSchemeRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,640,480",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2430,7 +2416,7 @@
       "cleanBasename": "CompactRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2448,7 +2434,7 @@
       "cleanBasename": "CustomShapeRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2466,7 +2452,7 @@
       "cleanBasename": "FilledRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2484,7 +2470,7 @@
       "cleanBasename": "IconRemote_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2502,7 +2488,7 @@
       "cleanBasename": "IconRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2520,7 +2506,7 @@
       "cleanBasename": "NamedLabelRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2538,7 +2524,7 @@
       "cleanBasename": "OutlinedCardRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,640,480",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2556,7 +2542,7 @@
       "cleanBasename": "OutlinedRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2574,7 +2560,7 @@
       "cleanBasename": "RemoteTextSticker_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2592,7 +2578,7 @@
       "cleanBasename": "ShaderGradientSticker_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2610,7 +2596,7 @@
       "cleanBasename": "TextRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,400,400",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2628,7 +2614,7 @@
       "cleanBasename": "TitleCardRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,640,480",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2646,7 +2632,7 @@
       "cleanBasename": "TruncatedTextRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,640,480",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2664,7 +2650,7 @@
       "cleanBasename": "TypographyRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,640,480",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2682,11 +2668,18 @@
       "cleanBasename": "WatchScreenRemote_width_227dp_height_227dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,454,454",
+          "boundsInScreen": "0,0,320,320",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
           "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        },
+        {
+          "boundsInScreen": "10,272,310,320",
+          "level": "ERROR",
+          "message": "This item's height is 24dp. Consider making the height of this touch target 32dp or larger.",
+          "type": "TouchTargetSizeCheck",
+          "viewDescription": "android.view.View"
         }
       ],
       "functionName": "WatchScreenRemote",
@@ -2700,7 +2693,7 @@
       "cleanBasename": "WidgetContainerGradientRemote.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,567,196",
+          "boundsInScreen": "0,0,567,199",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2718,7 +2711,7 @@
       "cleanBasename": "WidgetContainerLargeRemote.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,567,322",
+          "boundsInScreen": "0,0,567,325",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -2736,7 +2729,7 @@
       "cleanBasename": "WidgetContainerSmallRemote.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,567,196",
+          "boundsInScreen": "0,0,567,199",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -3182,7 +3175,7 @@
       "cleanBasename": "ImageWidgetFixedPreview_Image_Widget_Fixed.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,567,196",
+          "boundsInScreen": "0,0,567,199",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -3306,7 +3299,7 @@
       "cleanBasename": "BadWearButtonPreview_Devices_Small_Round.png",
       "findings": [
         {
-          "boundsInScreen": "144,144,240,240",
+          "boundsInScreen": "112,112,208,208",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
@@ -3384,14 +3377,7 @@
       "cleanBasename": "GestureGalleryPreview_Devices_Large_Round.png",
       "findings": [
         {
-          "boundsInScreen": "74,169,380,247",
-          "level": "ERROR",
-          "message": "This item's height is 39dp. Consider making the height of this touch target 48dp or larger.",
-          "type": "TouchTargetSizeCheck",
-          "viewDescription": "android.view.View"
-        },
-        {
-          "boundsInScreen": "74,253,380,331",
+          "boundsInScreen": "53,142,267,220",
           "level": "ERROR",
           "message": "This item's height is 39dp. Consider making the height of this touch target 48dp or larger.",
           "type": "TouchTargetSizeCheck",
@@ -3459,7 +3445,7 @@
       "cleanBasename": "PlaceholderCardLoading_wearos_small_round.png",
       "findings": [
         {
-          "boundsInScreen": "32,128,352,256",
+          "boundsInScreen": "32,96,288,224",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",

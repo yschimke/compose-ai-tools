@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 298 preview(s) across 20 module(s) · 41 error(s) · 4 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/main`. 298 preview(s) across 20 module(s) · 39 error(s) · 4 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1300,8 +1300,6 @@ _No findings._
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
 | 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
-| 2 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 42dp. Consider making the height of this touch target 48dp or larger. |
-| 3 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 42dp. Consider making the height of this touch target 48dp or larger. |
 
 ### `CardRemote` · `spec:width=320dp,height=240dp,dpi=320`
 
@@ -1446,6 +1444,7 @@ _No findings._
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
 | 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
+| 2 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 24dp. Consider making the height of this touch target 32dp or larger. |
 
 ### `WidgetContainerGradientRemote`
 
@@ -1822,7 +1821,6 @@ _No findings._
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
 | 1 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 39dp. Consider making the height of this touch target 48dp or larger. |
-| 2 | ERROR | TouchTargetSizeCheck | android.view.View | This item's height is 39dp. Consider making the height of this touch target 48dp or larger. |
 
 ### `MediaGestureScreenHintPreview` · `wearos_large_round`
 
