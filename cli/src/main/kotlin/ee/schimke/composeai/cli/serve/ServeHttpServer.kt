@@ -1017,9 +1017,6 @@ class ServeHttpServer(
   ): ServeWeb.PreviewEngagement =
     ServeWeb.PreviewEngagement(engagementStore.incrementPreview(sessionId, previewId))
 
-  private fun previewEngagement(sessionId: String, previewId: String): ServeWeb.PreviewEngagement =
-    ServeWeb.PreviewEngagement(engagementStore.previewViews(sessionId, previewId))
-
   private fun previewEngagement(sessionId: String, previews: List<ServePreview>) =
     engagementStore.previewViews(sessionId, previews.map { it.id }).mapValues {
       ServeWeb.PreviewEngagement(it.value)
@@ -1922,6 +1919,7 @@ class ServeHttpServer(
     if (rejectBadToken()) return
     val sessionId = selectedSessionId(sessionInPath)
     withLeasedSession(sessionId) { renderHost ->
+      val previewEngagement = previewEngagement(sessionId, renderHost.previews)
       val dto =
         PreviewsResponse(
           module = renderHost.label,
@@ -1941,7 +1939,7 @@ class ServeHttpServer(
                 overrides = p.overrides,
                 remoteComposeKnobs = p.remoteComposeKnobs,
                 liveOnly = p.id in renderHost.liveOnlyPreviewIds,
-                views = previewEngagement(sessionId, p.id).views,
+                views = previewEngagement.getValue(p.id).views,
               )
             },
         )

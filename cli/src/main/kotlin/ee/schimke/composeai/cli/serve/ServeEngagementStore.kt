@@ -19,6 +19,7 @@ import kotlinx.serialization.json.Json
  */
 class ServeEngagementStore(
   private val file: File? = null,
+  private val maxSystemEntries: Int = DEFAULT_MAX_SYSTEM_ENTRIES,
   private val maxPreviewEntries: Int = DEFAULT_MAX_PREVIEW_ENTRIES,
 ) {
   @Serializable
@@ -83,6 +84,7 @@ class ServeEngagementStore(
   private fun <T> update(block: () -> T): T = withFileLock {
     if (file != null) state = load()
     val result = block()
+    pruneSystems()
     prunePreviews()
     persist()
     result
@@ -117,6 +119,21 @@ class ServeEngagementStore(
         System.err.println("serve: engagement file unreadable: ${source.path}: ${it.message}")
       }
       .getOrDefault(State())
+  }
+
+  private fun pruneSystems() {
+    val overflow = state.systems.size - maxSystemEntries
+    if (overflow <= 0) return
+    val victims =
+      state.systems.entries
+        .sortedBy { it.value.lastViewedAtEpochMillis }
+        .take(overflow)
+        .map { it.key }
+    state =
+      state.copy(
+        systems = state.systems - victims.toSet(),
+        previews = state.previews - victims.toSet(),
+      )
   }
 
   private fun prunePreviews() {
@@ -164,6 +181,7 @@ class ServeEngagementStore(
 
   companion object {
     const val SCHEMA = "compose-preview-serve/engagement/v1"
+    const val DEFAULT_MAX_SYSTEM_ENTRIES = 1_000
     const val DEFAULT_MAX_PREVIEW_ENTRIES = 10_000
   }
 }

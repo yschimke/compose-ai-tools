@@ -51,4 +51,18 @@ class ServeEngagementStoreTest {
     assertEquals(1, store.previewViews("app", "middle"))
     assertEquals(1, store.previewViews("app", "newest"))
   }
+
+  @Test
+  fun `old system counters and their previews are bounded`() {
+    val store = ServeEngagementStore(maxSystemEntries = 2)
+    store.incrementSystem("oldest")
+    store.incrementPreview("oldest", "button")
+    store.incrementSystem("middle")
+    store.incrementSystem("newest")
+
+    assertEquals(0, store.systemViews("oldest"))
+    assertEquals(0, store.previewViews("oldest", "button"))
+    assertEquals(1, store.systemViews("middle"))
+    assertEquals(1, store.systemViews("newest"))
+  }
 }
