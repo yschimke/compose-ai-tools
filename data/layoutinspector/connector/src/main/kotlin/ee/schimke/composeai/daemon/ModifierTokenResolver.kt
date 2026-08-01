@@ -285,14 +285,14 @@ internal object ModifierTokenResolver {
    *
    * `NodeCoordinator.lastLayerAlpha` is updated immediately after Compose invokes that
    * coordinator's layer block and before it hands the properties to `OwnedLayer`. The field starts
-   * at a non-identity sentinel, so it is usable only when the coordinator owns a layer and the
-   * block has actually run. All access is reflective to keep the connector compatible with Compose
-   * lines that predate this implementation detail; those fall back to [evaluateLayerBlockAlpha].
+   * at a non-identity sentinel, but Compose calls `updateLayerParameters()` synchronously when it
+   * creates the coordinator's layer, so a non-null layer means the value has been applied. Compose
+   * 1.9.5 does not expose newer versions' `wasLayerBlockInvoked` field, so that field cannot be
+   * used as a compatibility guard. All access remains reflective for Compose lines that predate
+   * `lastLayerAlpha`; those fall back to [evaluateLayerBlockAlpha].
    */
   internal fun appliedGraphicsLayerAlpha(coordinates: Any): Float? {
     if (reflectedField(coordinates, "layer") == null) return null
-    val invoked = reflectedField(coordinates, "wasLayerBlockInvoked") as? Boolean ?: return null
-    if (!invoked) return null
     return reflectedFloat(coordinates, "lastLayerAlpha")
   }
 
