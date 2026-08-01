@@ -183,8 +183,8 @@ RUN ln -s "/opt/compose-preview-${CP_VERSION}" /opt/compose-preview
 COPY --from=android-daemon /opt/lib-daemon-android /opt/lib-daemon-android
 COPY --from=android-daemon /opt/android-sdk /opt/android-sdk
 # JAVA_TOOL_OPTIONS (inherited by the spawned daemon JVM too) points the CLI at the
-# unpacked Android daemon sidecar, keeps per-preview daemons lazy
-# (warmInBackground=false), and lifts BOTH cold-start budgets so a cold
+# unpacked Android daemon sidecar, warms catalog daemons in the background so the
+# HTTP listener can come up before every live catalog finishes, and lifts BOTH cold-start budgets so a cold
 # Robolectric daemon doesn't abort before it can serve live:
 #   * sandboxBootTimeoutMs — the Robolectric sandbox boot (the one-time
 #     `android-all-instrumented` ~150 MB fetch + instrumentation, in RobolectricHost.start,
@@ -221,7 +221,7 @@ ENV PATH="/opt/compose-preview/bin:${PATH}" \
     COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1 \
     ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk \
-    JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -Dcomposeai.cli.libDaemonAndroidDir=/opt/lib-daemon-android -Dcomposeai.serve.warmInBackground=false -Dcomposeai.serve.renderTimeoutSeconds=900 -Dcomposeai.serve.frameRenderTimeoutSeconds=120 -Dcomposeai.daemon.sandboxCount=3 -Dcomposeai.daemon.sandboxBootTimeoutMs=1800000 -Dcomposeai.daemon.backgroundSandboxBoot=true"
+    JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -Dcomposeai.cli.libDaemonAndroidDir=/opt/lib-daemon-android -Dcomposeai.serve.warmInBackground=true -Dcomposeai.serve.renderTimeoutSeconds=900 -Dcomposeai.serve.frameRenderTimeoutSeconds=120 -Dcomposeai.daemon.sandboxCount=3 -Dcomposeai.daemon.sandboxBootTimeoutMs=1800000 -Dcomposeai.daemon.backgroundSandboxBoot=true"
 
 WORKDIR /project
 # Carry the release Maven tree so live bundles can resolve the plugin/runtime
