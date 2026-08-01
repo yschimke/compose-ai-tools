@@ -42,7 +42,6 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -212,6 +211,8 @@ class ServeHttpServer(
    * code-running surfaces (playground + live WebSocket sessions) require a signed-in collaborator.
    */
   private val githubAuth: ServeGithubAuth? = null,
+  /** Aggregate view counts; pass a file-backed store to keep them across server restarts. */
+  private val engagementStore: ServeEngagementStore = ServeEngagementStore(),
 ) {
   /** The actual bound port — may differ from the requested one if it was taken (auto-picked). */
   val port: Int = pickPort(host, requestedPort, portRange)
@@ -223,9 +224,6 @@ class ServeHttpServer(
   private val startedAtMillis: Long = System.currentTimeMillis()
 
   private val renderSemaphore = Semaphore(renderSlots)
-
-  /** Best-effort bounded in-memory engagement counts, keyed by session id + preview id. */
-  private val previewViews = ConcurrentHashMap<String, PreviewViewCounter>()
 
   /**
    * Readiness latch for `/readyz` (the rolling-update gate). Unlike `/healthz` — a static "ok" that
@@ -1013,43 +1011,19 @@ class ServeHttpServer(
     cacheControl?.let { call.response.headers.append(HttpHeaders.CacheControl, it) }
   }
 
-  private fun previewViewKey(sessionId: String, previewId: String): String =
-    "$sessionId\u0000$previewId"
-
-  private data class PreviewViewCounter(
-    val views: AtomicLong = AtomicLong(0),
-    val lastAccessMillis: AtomicLong = AtomicLong(0),
-  )
-
   private fun incrementPreviewViews(
     sessionId: String,
     previewId: String,
-  ): ServeWeb.PreviewEngagement {
-    prunePreviewViewsIfNeeded()
-    val counter =
-      previewViews.computeIfAbsent(previewViewKey(sessionId, previewId)) { PreviewViewCounter() }
-    counter.lastAccessMillis.set(System.currentTimeMillis())
-    return ServeWeb.PreviewEngagement(counter.views.incrementAndGet())
-  }
+  ): ServeWeb.PreviewEngagement =
+    ServeWeb.PreviewEngagement(engagementStore.incrementPreview(sessionId, previewId))
 
   private fun previewEngagement(sessionId: String, previewId: String): ServeWeb.PreviewEngagement =
-    ServeWeb.PreviewEngagement(
-      previewViews[previewViewKey(sessionId, previewId)]?.views?.get() ?: 0L
-    )
+    ServeWeb.PreviewEngagement(engagementStore.previewViews(sessionId, previewId))
 
   private fun previewEngagement(sessionId: String, previews: List<ServePreview>) =
-    previews.associate {
-      it.id to previewEngagement(sessionId, it.id)
+    engagementStore.previewViews(sessionId, previews.map { it.id }).mapValues {
+      ServeWeb.PreviewEngagement(it.value)
     }
-
-  private fun prunePreviewViewsIfNeeded() {
-    val overflow = previewViews.size - MAX_PREVIEW_VIEW_ENTRIES
-    if (overflow <= 0) return
-    previewViews.entries
-      .sortedBy { it.value.lastAccessMillis.get() }
-      .take(overflow + MAX_PREVIEW_VIEW_PRUNE_BATCH)
-      .forEach { previewViews.remove(it.key, it.value) }
-  }
 
   /** `GET /` (query) and `GET /{system}[/]` (path): the session's preview-list landing page. */
   private suspend fun RoutingContext.handleLanding(sessionInPath: Boolean) {
@@ -1068,10 +1042,12 @@ class ServeHttpServer(
       return
     }
     val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
+    val selectedSessionId = selectedSessionId(sessionInPath)
     withLeasedSession(
-      selectedSessionId(sessionInPath),
+      selectedSessionId,
       onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
     ) { renderHost ->
+      val systemViews = engagementStore.incrementSystem(selectedSessionId)
       val heroId =
         catalogBundleHost(renderHost)?.declaredHeroPreviewId
           ?: ServeWeb.representativePreviewId(renderHost.previews)
@@ -1114,7 +1090,8 @@ class ServeHttpServer(
           // a daemon-twinned card can actually re-render one, hence the per-preview predicate.
           declaredThemes = renderHost.declaredThemes,
           canRenderThemeFor = { id -> renderHost.canRenderOverridesFor(id) },
-          engagement = previewEngagement(selectedSessionId(sessionInPath), renderHost.previews),
+          engagement = previewEngagement(selectedSessionId, renderHost.previews),
+          systemViews = systemViews,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = heroUrl),
         ),
         ContentType.Text.Html,
@@ -1904,8 +1881,9 @@ class ServeHttpServer(
    * count. A catalog with neither a resident host nor a last-known snapshot is skipped rather than
    * sinking the whole page.
    */
-  private fun homeSystemsFor(ids: List<String>): List<ServeWeb.HomeSystem> =
-    ids.mapNotNull { system ->
+  private fun homeSystemsFor(ids: List<String>): List<ServeWeb.HomeSystem> {
+    val views = engagementStore.systemViews(ids)
+    return ids.mapNotNull { system ->
       sessions.peekHost(system)?.let { rememberCatalogMeta(system, it) }
       val meta = catalogMetaSeen[system] ?: return@mapNotNull null
       ServeWeb.HomeSystem(
@@ -1916,6 +1894,7 @@ class ServeHttpServer(
         title = meta.title ?: system,
         subtitle = meta.subtitle,
         previewCount = meta.previews ?: 0,
+        views = views.getValue(system),
         trust = meta.trust,
         sourceRepo = meta.provenance?.repo,
         heroPreviewId = meta.heroPreviewId,
@@ -1933,6 +1912,7 @@ class ServeHttpServer(
         darkStage = meta.darkStage,
       )
     }
+  }
 
   /**
    * `GET /api/previews` (query) and `GET /{system}/api/previews` (path): the session's preview
@@ -1940,7 +1920,8 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handleApiPreviews(sessionInPath: Boolean) {
     if (rejectBadToken()) return
-    withLeasedSession(selectedSessionId(sessionInPath)) { renderHost ->
+    val sessionId = selectedSessionId(sessionInPath)
+    withLeasedSession(sessionId) { renderHost ->
       val dto =
         PreviewsResponse(
           module = renderHost.label,
@@ -1950,6 +1931,7 @@ class ServeHttpServer(
           // Why the session is snapshot-only (no live lane), when it is — read off the host so a
           // programmatic client sees the same reason the viewer banner shows.
           degradations = renderHost.degradations.map { DegradationDto(it.code, it.detail) },
+          views = engagementStore.systemViews(sessionId),
           previews =
             renderHost.previews.map { p ->
               PreviewDto(
@@ -1959,7 +1941,7 @@ class ServeHttpServer(
                 overrides = p.overrides,
                 remoteComposeKnobs = p.remoteComposeKnobs,
                 liveOnly = p.id in renderHost.liveOnlyPreviewIds,
-                views = previewEngagement(selectedSessionId(sessionInPath), p.id).views,
+                views = previewEngagement(sessionId, p.id).views,
               )
             },
         )
@@ -2744,12 +2726,6 @@ class ServeHttpServer(
     /** Variant renders and all token-gated responses stay out of shared and browser caches. */
     private const val DYNAMIC_RESOURCE_CACHE_CONTROL = "no-store"
 
-    /** Bound best-effort engagement counters so short-lived playground sessions cannot leak. */
-    private const val MAX_PREVIEW_VIEW_ENTRIES = 10_000
-
-    /** Remove a little extra when pruning so a burst does not sort the map on every new entry. */
-    private const val MAX_PREVIEW_VIEW_PRUNE_BATCH = 256
-
     internal fun viewerCacheControl(
       githubAuthConfigured: Boolean,
       hasLiveStream: Boolean,
@@ -3095,6 +3071,8 @@ private data class PreviewsResponse(
    * plus a human [detail]. Additive since `compose-preview-serve/v2`. See [ServeDegradation].
    */
   val degradations: List<DegradationDto> = emptyList(),
+  /** Aggregate landing-page visits for this catalog/app. */
+  val views: Long = 0,
   val previews: List<PreviewDto>,
 )
 

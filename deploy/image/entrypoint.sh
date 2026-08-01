@@ -107,6 +107,10 @@ fi
 # gated by its own secret — never the browse token, which a public box hands to every visitor.
 # Unset (the default) means the admin routes don't exist at all.
 [[ -n "${SERVE_ADMIN_TOKEN:-}" ]] && args+=(--admin-token "${SERVE_ADMIN_TOKEN}")
+# Aggregate view counts live beside catalog/trust config so container restarts and image updates do
+# not erase engagement. Set to `none` to keep counters process-local.
+: "${SERVE_ENGAGEMENT_FILE:=/config/engagement.json}"
+[[ "${SERVE_ENGAGEMENT_FILE}" != "none" ]] && args+=(--engagement-file "${SERVE_ENGAGEMENT_FILE}")
 if [[ -n "${SERVE_GITHUB_AUTH_CLIENT_ID:-}" ||
   -n "${SERVE_GITHUB_AUTH_CLIENT_SECRET:-}" ||
   -n "${SERVE_GITHUB_AUTH_COOKIE_SECRET:-}" ]]; then

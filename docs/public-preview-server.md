@@ -22,6 +22,13 @@
    served module's own preview grid at `/`.) This replaces showing an arbitrary default module at the
    root — the point of the public server is the catalogs, so the landing leads with them.
 
+   The server keeps privacy-minimal **engagement counts** for catalog/app landing visits and each
+   preview viewer. Small view totals appear in the front-door card footer, catalog summary, preview
+   cards, and viewer; `/api/previews` exposes the same aggregate `views` fields. No IP address,
+   cookie, user agent, or referrer is retained. `--engagement-file <path>` makes the JSON counters
+   survive restarts; the prebuilt image defaults this to `/config/engagement.json` on its existing
+   `preview_config` volume (`SERVE_ENGAGEMENT_FILE=none` opts out of persistence).
+
    Two per-system display choices are **systematised** in one place (`ServeWeb.SystemDisplay`), so
    the front door and each catalog grid agree:
    - **Hero** — the card fronts the *most representative* preview: a real `Screens`-section preview

@@ -33,6 +33,7 @@ import ee.schimke.composeai.cli.serve.ServeCatalogsConfig
 import ee.schimke.composeai.cli.serve.ServeCatalogsConfigFile
 import ee.schimke.composeai.cli.serve.ServeDocFormats
 import ee.schimke.composeai.cli.serve.ServeDocStore
+import ee.schimke.composeai.cli.serve.ServeEngagementStore
 import ee.schimke.composeai.cli.serve.ServeGithubAuth
 import ee.schimke.composeai.cli.serve.ServeGithubAuthConfig
 import ee.schimke.composeai.cli.serve.ServeHost
@@ -418,6 +419,10 @@ class ServeCommand(args: List<String>) : Command(args) {
    * `/admin/trust` can make a producer's Compose eligible for server-side re-render here.
    */
   private val adminToken: String? = args.flagValue("--admin-token")?.takeIf { it.isNotBlank() }
+
+  /** Optional durable aggregate counters. Null keeps local serve sessions in-memory only. */
+  private val engagementFile: File? =
+    args.flagValue("--engagement-file")?.takeIf { it.isNotBlank() }?.let(::File)
 
   private val githubAuthClientId: String? =
     args.flagValue("--github-auth-client-id")?.takeIf { it.isNotBlank() }
@@ -1528,6 +1533,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         playgroundService = playgroundLane?.compile,
         playgroundRedeem = playgroundLane?.redeem,
         githubAuth = githubAuth,
+        engagementStore = ServeEngagementStore(engagementFile),
       )
     if (trustAdmin != null) {
       System.err.println(
@@ -2573,6 +2579,10 @@ class ServeCommand(args: List<String>) : Command(args) {
                           routes don't exist at all. NB with --allow-render-trusted this token can
                           grant server-side execution, since trusting a branch makes that
                           producer's Compose eligible for re-render here.
+        --engagement-file <path>
+                          Persist privacy-minimal aggregate catalog/app and per-preview view counts
+                          as JSON. No IPs, cookies, user agents, or referrers are stored. Omitted =
+                          counters last only for this server process.
         --catalog-repo <owner/repo>
                           Default repo the catalogs are fetched from (default
                           yschimke/compose-ai-tools); per-entry @<owner>/<repo> overrides it.
