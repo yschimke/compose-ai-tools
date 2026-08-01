@@ -18,11 +18,12 @@ a:hover { text-decoration: underline; }
 .cp-about-body code { font-size: 0.8rem; padding: 0 3px; border-radius: 4px; background: #f0f0f3; }
 .cp-about-links { margin: 0; font-size: 0.8rem; color: #6b6b70; display: flex; flex-wrap: wrap;
   align-items: center; gap: 6px; }
-.cp-about-links a { display: inline-flex; align-items: center; gap: 4px; }
+.cp-about-links a, .cp-gh-auth { display: inline-flex; align-items: center; gap: 4px; }
 .cp-gh { width: 15px; height: 15px; vertical-align: text-bottom; }
 .cp-about-ver { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.74rem;
   padding: 1px 7px; border-radius: 999px; border: 1px solid #d7d7de; background: #fff;
   color: #45454c; }
+.cp-gh-auth--signed { color: #45454c; }
 /* Catalog "back to home" button — replaces the in-catalog design-systems nav row. */
 .cp-back { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 14px;
   font-size: 0.82rem; padding: 5px 12px; border-radius: 999px; border: 1px solid #d7d7de;

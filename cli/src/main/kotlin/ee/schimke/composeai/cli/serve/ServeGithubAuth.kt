@@ -87,8 +87,12 @@ class ServeGithubAuth(
   }
 
   fun isAuthenticated(call: ApplicationCall): Boolean {
-    val cookie = call.request.cookieValue(AUTH_COOKIE) ?: return false
-    return verifySession(cookie) != null
+    return currentLogin(call) != null
+  }
+
+  fun currentLogin(call: ApplicationCall): String? {
+    val cookie = call.request.cookieValue(AUTH_COOKIE) ?: return null
+    return verifySession(cookie)
   }
 
   fun loginPath(call: ApplicationCall): String {
@@ -98,12 +102,14 @@ class ServeGithubAuth(
 
   fun accessRepository(): String = config.repository
 
+  fun isRestrictedToAllowedUsers(): Boolean = config.allowedUsers.isNotEmpty()
+
   private fun authorizeUrl(call: ApplicationCall, state: String): String {
     val params =
       listOf(
           "client_id" to config.clientId,
           "redirect_uri" to callbackUrl(call),
-          "scope" to "read:user repo",
+          "scope" to "read:user",
           "state" to state,
         )
         .joinToString("&") { (k, v) -> "$k=${urlEncode(v)}" }
@@ -215,8 +221,6 @@ class GitHubOAuthVerifier(private val client: OkHttpClient = OkHttpClient()) {
       if (config.allowedUsers.isNotEmpty() && login.lowercase() !in config.allowedUsers) {
         error("GitHub user $login is not allowed")
       }
-      val permission = fetchPermission(token, config.repository, login)
-      if (permission !in ALLOWED_REPO_PERMISSIONS) error("GitHub user $login is not a collaborator")
       login
     }
 
@@ -258,22 +262,7 @@ class GitHubOAuthVerifier(private val client: OkHttpClient = OkHttpClient()) {
     }
   }
 
-  private fun fetchPermission(token: String, repo: String, login: String): String {
-    val request =
-      Request.Builder()
-        .url("https://api.github.com/repos/$repo/collaborators/$login/permission")
-        .header(HttpHeaders.Authorization, "Bearer $token")
-        .header(HttpHeaders.Accept, "application/vnd.github+json")
-        .build()
-    return client.newCall(request).execute().use { response ->
-      if (!response.isSuccessful) error("permission lookup failed: ${response.code}")
-      JSON.decodeFromString(GitHubPermissionResponse.serializer(), response.body.string())
-        .permission
-    }
-  }
-
   companion object {
-    private val ALLOWED_REPO_PERMISSIONS = setOf("admin", "maintain", "write", "triage", "read")
     private val JSON = Json { ignoreUnknownKeys = true }
   }
 }
@@ -282,8 +271,6 @@ class GitHubOAuthVerifier(private val client: OkHttpClient = OkHttpClient()) {
 private data class GitHubTokenResponse(@SerialName("access_token") val accessToken: String? = null)
 
 @Serializable private data class GitHubUserResponse(val login: String)
-
-@Serializable private data class GitHubPermissionResponse(val permission: String)
 
 private fun ApplicationCall.uriWithQuery(): String = request.uri
 

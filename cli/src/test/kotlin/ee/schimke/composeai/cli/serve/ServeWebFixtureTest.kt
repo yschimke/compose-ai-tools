@@ -1841,9 +1841,7 @@ class ServeWebFixtureTest {
       "GitHub-protected live preview disables the hidden live transport radio too",
     )
     assertTrue(
-      protectedLive.contains(
-        "title=\"Sign in with GitHub to enable Live preview. Access is limited to collaborators on yschimke/compose-ai-tools.\""
-      ),
+      protectedLive.contains("title=\"Sign in with GitHub to enable Live preview.\""),
       "disabled live preview explains the GitHub access requirement on hover",
     )
     assertTrue(
@@ -2175,6 +2173,36 @@ class ServeWebFixtureTest {
     // A null version simply omits the pill (no dangling separator crash).
     val noVer = ServeWeb.homeIndexPage(emptyList(), token, isPublic = true)
     assertFalse(noVer.contains("class=\"cp-about-ver\""), "no version pill when version is null")
+  }
+
+  @Test
+  fun `the home about box shows GitHub login state when auth is configured`() {
+    val unsigned =
+      ServeWeb.homeIndexPage(
+        emptyList(),
+        token,
+        isPublic = true,
+        githubAuth = ServeWeb.GitHubAuthStatus(loginHref = "/auth/github/start?return=%2F"),
+      )
+    assertTrue(
+      unsigned.contains("class=\"cp-gh-auth\" href=\"/auth/github/start?return=%2F\""),
+      "unsigned home page links to GitHub sign-in",
+    )
+    assertTrue(unsigned.contains("> Sign in with GitHub</a>"), unsigned)
+
+    val signed =
+      ServeWeb.homeIndexPage(
+        emptyList(),
+        token,
+        isPublic = true,
+        githubAuth =
+          ServeWeb.GitHubAuthStatus(loginHref = "/auth/github/start?return=%2F", login = "yschimke"),
+      )
+    assertTrue(
+      signed.contains("class=\"cp-gh-auth cp-gh-auth--signed\""),
+      "signed home page shows GitHub status",
+    )
+    assertTrue(signed.contains("Signed in as yschimke"), signed)
   }
 
   @Test
