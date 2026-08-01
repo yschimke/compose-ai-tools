@@ -508,6 +508,47 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `serve web assets are versioned and conditionally cacheable`() {
+    val asset = ServeWebAssets.load("viewer.js") ?: error("viewer asset missing")
+    val versionedPath = "/assets/serve/${asset.version}/viewer.js"
+    val etag: String
+    val req = Request.Builder().url("http://127.0.0.1:${server.port}$versionedPath").build()
+    client.newCall(req).execute().use { r ->
+      assertEquals(200, r.code)
+      assertEquals("text/javascript", r.body?.contentType()?.let { "${it.type}/${it.subtype}" })
+      assertEquals("public, max-age=31536000, immutable", r.header("Cache-Control"))
+      etag = r.header("ETag") ?: ""
+      assertEquals(asset.etag, etag)
+    }
+
+    val conditional =
+      Request.Builder()
+        .url("http://127.0.0.1:${server.port}$versionedPath")
+        .header("If-None-Match", etag)
+        .build()
+    client.newCall(conditional).execute().use { r -> assertEquals(304, r.code) }
+
+    client
+      .newCall(
+        Request.Builder()
+          .url("http://127.0.0.1:${server.port}/assets/serve/stale/viewer.js")
+          .build()
+      )
+      .execute()
+      .use { r -> assertEquals(404, r.code) }
+
+    client
+      .newCall(
+        Request.Builder().url("http://127.0.0.1:${server.port}/assets/serve/viewer.js").build()
+      )
+      .execute()
+      .use { r ->
+        assertEquals(200, r.code)
+        assertEquals("no-cache", r.header("Cache-Control"))
+      }
+  }
+
+  @Test
   fun `api previews advertises v2 and carries author override declarations`() {
     val (code, api) = get("/compose-m3/api/previews")
     assertEquals(200, code)

@@ -5,6 +5,7 @@ import java.security.MessageDigest
 /** Static browser assets for [ServeWeb], served from classpath resources under `/assets/serve/`. */
 internal object ServeWebAssets {
   private const val RESOURCE_DIR = "/ee/schimke/composeai/cli/serve/assets"
+  private const val URL_BASE = "/assets/serve"
 
   private val contentTypes =
     mapOf(
@@ -18,7 +19,14 @@ internal object ServeWebAssets {
 
   private val cache = java.util.concurrent.ConcurrentHashMap<String, Asset>()
 
-  data class Asset(val bytes: ByteArray, val contentType: String, val etag: String)
+  data class Asset(
+    val bytes: ByteArray,
+    val contentType: String,
+    val etag: String,
+    val version: String,
+  )
+
+  fun href(name: String): String = "$URL_BASE/${load(name)?.version ?: "missing"}/$name"
 
   fun load(name: String): Asset? {
     if (name !in contentTypes) return null
@@ -37,7 +45,12 @@ internal object ServeWebAssets {
           "-" +
           digest.take(8).joinToString("") { "%02x".format(it.toInt() and 0xff) } +
           "\""
-      Asset(bytes = bytes, contentType = contentTypes.getValue(name), etag = etag)
+      Asset(
+        bytes = bytes,
+        contentType = contentTypes.getValue(name),
+        etag = etag,
+        version = etag.trim('"'),
+      )
     }
     cache.putIfAbsent(name, asset)
     return cache.getValue(name)

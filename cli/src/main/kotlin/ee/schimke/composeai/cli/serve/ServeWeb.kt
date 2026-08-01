@@ -24,9 +24,7 @@ object ServeWeb {
   /** In-memory engagement metrics surfaced by the live server UI/API. */
   data class PreviewEngagement(val views: Long = 0)
 
-  private const val ASSET_BASE = "/assets/serve"
-
-  private fun assetHref(name: String): String = "$ASSET_BASE/$name"
+  private fun assetHref(name: String): String = ServeWebAssets.href(name)
 
   private fun scriptTag(name: String): String = "<script src=\"${assetHref(name)}\"></script>"
 

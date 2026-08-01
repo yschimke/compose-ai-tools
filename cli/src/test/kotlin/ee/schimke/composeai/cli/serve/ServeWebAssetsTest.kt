@@ -13,6 +13,8 @@ class ServeWebAssetsTest {
       val asset = assertNotNull(ServeWebAssets.load(name), "$name should be loadable")
       assertTrue(asset.bytes.isNotEmpty(), "$name should not be empty")
       assertTrue(asset.etag.startsWith("\"") && asset.etag.endsWith("\""), "$name ETag")
+      assertEquals(asset.etag.trim('"'), asset.version, "$name version")
+      assertEquals("/assets/serve/${asset.version}/$name", ServeWebAssets.href(name))
     }
   }
 
@@ -21,9 +23,18 @@ class ServeWebAssetsTest {
     val preview = ServePreview("plain.Button", "button")
     val html = ServeWeb.viewerPage(preview, token = "t", siblings = listOf(preview))
 
-    assertTrue(html.contains("""<link rel="stylesheet" href="/assets/serve/serve.css">"""), html)
-    assertTrue(html.contains("""<script src="/assets/serve/viewer.js"></script>"""), html)
-    assertTrue(html.contains("""<script src="/assets/serve/backend-badge.js"></script>"""), html)
+    assertTrue(
+      html.contains("""<link rel="stylesheet" href="${ServeWebAssets.href("serve.css")}">"""),
+      html,
+    )
+    assertTrue(
+      html.contains("""<script src="${ServeWebAssets.href("viewer.js")}"></script>"""),
+      html,
+    )
+    assertTrue(
+      html.contains("""<script src="${ServeWebAssets.href("backend-badge.js")}"></script>"""),
+      html,
+    )
   }
 
   @Test

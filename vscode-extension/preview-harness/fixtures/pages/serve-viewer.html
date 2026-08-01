@@ -4,7 +4,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Profile screen — compose-preview</title>
-        <link rel="stylesheet" href="/assets/serve/serve.css">
+        <link rel="stylesheet" href="/assets/serve/890d-6d8fd3af83e8c5c6/serve.css">
         <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
@@ -195,8 +195,8 @@
       <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
            tapping it dismisses the sheet. Inert on desktop. -->
       <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
-      <script src="/assets/serve/viewer-groups.js"></script>
-      <script src="/assets/serve/viewer-drawers.js"></script>
+      <script src="/assets/serve/22e-68c7d41937f0dccd/viewer-groups.js"></script>
+      <script src="/assets/serve/c0f-86b66f86ed745fcf/viewer-drawers.js"></script>
       <script>(function () {
   var el = document.getElementById("cp-uiMode");
   if (!el) return;
@@ -204,7 +204,7 @@
   // (id carries no __light/__dark segment), which would otherwise open at (default). A themed
   // variant's theme is explicit in its deep link, so it opens on its baked (instant) pixels and
   // is not overridden by a remembered theme — seeding it would force a daemon re-render on a
-  // fresh deep link, defeating baked-until-changed. Runs before viewerScript()'s initial render.
+  // fresh deep link, defeating baked-until-changed. Runs before viewer.js' initial render.
   var root = document.querySelector(".cp-viewer");
   var pid = (root && root.getAttribute("data-preview-id")) || "";
   var themed = pid.split("__").some(function (s) { return s === "light" || s === "dark"; });
@@ -239,8 +239,8 @@
   });
   syncBg();
 })();</script>
-      <script src="/assets/serve/viewer.js"></script>
-      <script src="/assets/serve/backend-badge.js"></script>
+      <script src="/assets/serve/125ba-1d68b411d6440004/viewer.js"></script>
+      <script src="/assets/serve/580-33b18e7b310ae1cc/backend-badge.js"></script>
         </main>
       </body>
     </html>
