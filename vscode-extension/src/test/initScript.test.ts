@@ -272,9 +272,7 @@ describe("renderInitScript", () => {
             "expected resolution via a detached configuration (not a buildscript.repositories add)",
         );
         assert.ok(
-            script.includes(
-                'add("classpath", composeAiPreviewClasspathFiles)',
-            ),
+            script.includes('add("classpath", composeAiPreviewClasspathFiles)'),
             "expected the resolved files to be injected onto the buildscript classpath",
         );
         // The resolved set is memoised so a large multi-module build resolves once.

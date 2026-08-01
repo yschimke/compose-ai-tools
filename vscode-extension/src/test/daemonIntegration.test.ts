@@ -30,14 +30,13 @@ class FakeDaemon {
     private readonly decoder: FrameDecoder;
     private onInitialize: ((req: JsonRpcRequest) => void) | null = null;
     private onRenderNow:
-        | ((req: JsonRpcRequest, params: RenderNowParams) => void)
-        | null = null;
+        ((req: JsonRpcRequest, params: RenderNowParams) => void) | null = null;
     private onSubscribeReq:
-        | ((req: JsonRpcRequest, params: DataSubscribeParams) => void)
-        | null = null;
+        ((req: JsonRpcRequest, params: DataSubscribeParams) => void) | null =
+        null;
     private onUnsubscribeReq:
-        | ((req: JsonRpcRequest, params: DataSubscribeParams) => void)
-        | null = null;
+        ((req: JsonRpcRequest, params: DataSubscribeParams) => void) | null =
+        null;
 
     constructor() {
         this.toClient = new PassThrough();

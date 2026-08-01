@@ -28,9 +28,7 @@ interface ClearCompileErrorsMessage {
 }
 
 type IncomingMessage =
-    | SetCompileErrorsMessage
-    | ClearCompileErrorsMessage
-    | { command: string };
+    SetCompileErrorsMessage | ClearCompileErrorsMessage | { command: string };
 
 @customElement("compile-errors-banner")
 export class CompileErrorsBanner extends LitElement {

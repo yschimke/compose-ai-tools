@@ -270,29 +270,25 @@ export function computeInspectionBundleData(
     const nodeById = new Map<string, InspectionNodeRecord>();
     if (enabledKinds.has("compose/semantics")) {
         const payload = getPayload("compose/semantics") as
-            | ComposeSemanticsPayload
-            | undefined;
+            ComposeSemanticsPayload | undefined;
         const data = computeComposeSemanticsBundleData(payload, nodeById);
         if (data) sections.push({ kind: "compose/semantics", data });
     }
     if (enabledKinds.has("layout/inspector")) {
         const payload = getPayload("layout/inspector") as
-            | LayoutInspectorPayload
-            | undefined;
+            LayoutInspectorPayload | undefined;
         const data = computeLayoutInspectorBundleData(payload, nodeById);
         if (data) sections.push({ kind: "layout/inspector", data });
     }
     if (enabledKinds.has("uia/hierarchy")) {
         const payload = getPayload("uia/hierarchy") as
-            | UiaHierarchyPayload
-            | undefined;
+            UiaHierarchyPayload | undefined;
         const data = computeUiaHierarchyBundleData(payload, nodeById);
         if (data) sections.push({ kind: "uia/hierarchy", data });
     }
     if (enabledKinds.has("compose/permissions")) {
         const payload = getPayload("compose/permissions") as
-            | PermissionsPayload
-            | undefined;
+            PermissionsPayload | undefined;
         const data = computePermissionsInspectionData(payload);
         if (data) sections.push({ kind: "compose/permissions", data });
     }

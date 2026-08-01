@@ -270,8 +270,7 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
             if (against === "current") {
                 const synthList = currentRendersFor(scope).list(previewId);
                 const synth = synthList.entries[0] as
-                    | { id?: string; timestamp?: string }
-                    | undefined;
+                    { id?: string; timestamp?: string } | undefined;
                 if (!synth?.id) {
                     this.view.webview.postMessage({
                         command: "diffPairError",
@@ -298,8 +297,7 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
                 const prev =
                     idx >= 0
                         ? (sorted[idx + 1] as
-                              | { id?: string; timestamp?: string }
-                              | undefined)
+                              { id?: string; timestamp?: string } | undefined)
                         : undefined;
                 if (!prev?.id) {
                     this.view.webview.postMessage({
