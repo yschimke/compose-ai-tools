@@ -138,8 +138,8 @@ class PreviewManifestRouterRoutingTest {
     assertTrue("width is pinned → no wrapWidth. payload=$routed", !routed.contains("wrapWidth="))
     assertTrue("no height → wrapHeight=true must ride the payload. payload=$routed",
       routed.contains("wrapHeight=true"))
-    assertTrue("pinned width stays 340dp × 2.625 = 892px. payload=$routed",
-      routed.contains("widthPx=892"))
+    assertTrue("pinned width stays 340dp × 2.625 = 893px. payload=$routed",
+      routed.contains("widthPx=893"))
     assertTrue("wrapped height uses the 800dp sandbox bound (2100px). payload=$routed",
       routed.contains("heightPx=2100"))
   }

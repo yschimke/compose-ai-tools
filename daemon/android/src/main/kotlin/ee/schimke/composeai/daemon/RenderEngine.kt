@@ -11,6 +11,7 @@ import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.InternalComposeApi
+import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.reflect.ComposableMethod
@@ -26,7 +27,9 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
@@ -324,75 +327,7 @@ class RenderEngine(
         "outputBaseName=${spec.outputBaseName}"
     )
 
-    // `device = "id:wearos_*_round"` / `isRound=true` Compose previews need a circular crop
-    // matching Layoutlib / Android Studio. Tile and notification captures have their own surface
-    // renderers and are intentionally left out of this Studio @Preview parity mask.
-    val isRound =
-      isRoundDevice(spec.device) && (spec.kind == null || spec.kind.equals("COMPOSE", ignoreCase = true))
-
-    // A round Wear frame requested TALLER than it is wide is the grown `figma-svg-long` scroll
-    // render re-entering `render()` (a normal round watch face is square). Flatten
-    // `TransformingLazyColumn` edge scaling (`LocalReduceMotion = true`) so its items stack at their
-    // natural size — the flat, editable list the capsule-clipped SVG lays out — instead of curving /
-    // shrinking toward the tall frame's top and bottom. Same knob the raster LONG path uses;
-    // resolved reflectively via the request classloader (the user's `wear-compose` lives on the
-    // child loader, not the daemon's own), and a no-op when the consumer isn't a Wear app.
-    val flattenWearScroll = isRound && spec.heightPx > spec.widthPx
-    val wearReduceMotionLocal =
-      if (flattenWearScroll)
-        ee.schimke.composeai.renderer.WearReduceMotionLocal.get(classLoader)
-      else null
-
-    // Content-size bounds (the Max / Min / Within size modes) apply on a wrapped axis, where
-    // widthPx/heightPx are a sandbox bound rather than a fixed frame. A min bound larger than the
-    // default sandbox needs the Robolectric display enlarged to fit, otherwise the wrap measure is
-    // clamped to the sandbox window before it can reach the requested floor. Only widen (never
-    // shrink) the sandbox — the intrinsic-size crop still trims the PNG back to the measured size.
-    // Mirrors the desktop daemon's scene-enlarge in `:daemon:desktop`'s RenderEngine.
-    val sizeOverrides = spec.overrides
-    val sandboxWidthPx =
-      if (spec.wrapWidth)
-        maxOf(spec.widthPx, sizeOverrides?.minWidthPx ?: 0, sizeOverrides?.maxWidthPx ?: 0)
-      else spec.widthPx
-    val sandboxHeightPx =
-      if (spec.wrapHeight)
-        maxOf(spec.heightPx, sizeOverrides?.minHeightPx ?: 0, sizeOverrides?.maxHeightPx ?: 0)
-      else spec.heightPx
-
-    // Per-preview Robolectric configuration — qualifiers re-applied so a previous render's size /
-    // density doesn't bleed into this one. Same entrypoints `RobolectricRenderTest` uses; both
-    // mutate `RuntimeEnvironment` global state, which is OK here because the sandbox is single-
-    // threaded under our render loop (DESIGN § 9 invariant: no concurrent renders).
-    applyPreviewQualifiers(
-      widthDp = pxToDp(sandboxWidthPx, spec.density),
-      heightDp = pxToDp(sandboxHeightPx, spec.density),
-      density = spec.density,
-      isRound = isRound,
-      localeTag = spec.localeTag,
-      uiMode = spec.uiMode,
-      orientation = spec.orientation,
-    )
-    org.robolectric.RuntimeEnvironment.setFontScale(spec.fontScale ?: 1.0f)
-
-    // Activity registration mirrors `RobolectricRenderTest.renderDefault` — Robolectric 4.13+
-    // requires the activity to be resolvable through `ShadowPackageManager` before
-    // `createAndroidComposeRule` will launch it. `addActivityIfNotPresent` is idempotent across
-    // renders; B1.7 owns the additive-state cleanup story.
-    val appContext: android.app.Application =
-      androidx.test.core.app.ApplicationProvider.getApplicationContext()
-    org.robolectric.Shadows.shadowOf(appContext.packageManager)
-      .addActivityIfNotPresent(
-        android.content.ComponentName(appContext.packageName, ComponentActivity::class.java.name)
-      )
-
-    // Seed `Typeface.sSystemFontMap` with the Pixel-system-family aliases, exactly as
-    // `RobolectricRenderTest.renderDefault` does for the baked snapshot. Both tiers must seed:
-    // this is per-process state, and when only the batch renderer did it, every
-    // `Font(DeviceFontFamilyName("roboto-flex"), …)` — the shape Wear Material3's type scale uses —
-    // rendered as Roboto in serve's live stream while the baked PNG of the same preview showed
-    // Roboto Flex. Idempotent + process-cached, so only the first render in a sandbox pays for it.
-    // See [PixelSystemFontAliases].
-    PixelSystemFontAliases.seedSystemFonts()
+    val environment = prepareRenderEnvironment(spec, classLoader)
 
     // v2 `createAndroidComposeRule` (compose-ui-test 1.11.0-alpha03+) is the
     // long-term replacement, but we share the renderer's `compose-bom-compat`
@@ -494,8 +429,10 @@ class RenderEngine(
                           spec.clearBackground
                       )
                       // Flatten Wear `TransformingLazyColumn` scaling for the grown scroll-SVG
-                      // render (see `flattenWearScroll` above); no-op provider when not a Wear app.
-                      if (wearReduceMotionLocal != null) add(wearReduceMotionLocal provides true)
+                      // render (see `prepareRenderEnvironment`); no-op provider when not a Wear app.
+                      if (environment.wearReduceMotionLocal != null) {
+                        add(environment.wearReduceMotionLocal provides true)
+                      }
                     }
                     .toTypedArray()
                 CompositionLocalProvider(*provided) {
@@ -530,13 +467,19 @@ class RenderEngine(
                             // keep the AS-parity wrap (min = 0, max = sandbox). Mirrors the desktop
                             // daemon RenderEngine.
                             val maxWBound =
-                              sizeOverrides?.maxWidthPx?.coerceAtMost(constraints.maxWidth)
+                              environment.sizeOverrides?.maxWidthPx?.coerceAtMost(
+                                constraints.maxWidth
+                              )
                                 ?: constraints.maxWidth
                             val maxHBound =
-                              sizeOverrides?.maxHeightPx?.coerceAtMost(constraints.maxHeight)
+                              environment.sizeOverrides?.maxHeightPx?.coerceAtMost(
+                                constraints.maxHeight
+                              )
                                 ?: constraints.maxHeight
-                            val minWBound = (sizeOverrides?.minWidthPx ?: 0).coerceIn(0, maxWBound)
-                            val minHBound = (sizeOverrides?.minHeightPx ?: 0).coerceIn(0, maxHBound)
+                            val minWBound =
+                              (environment.sizeOverrides?.minWidthPx ?: 0).coerceIn(0, maxWBound)
+                            val minHBound =
+                              (environment.sizeOverrides?.minHeightPx ?: 0).coerceIn(0, maxHBound)
                             val wrapped =
                               androidx.compose.ui.unit.Constraints(
                                 minWidth = if (spec.wrapWidth) minWBound else constraints.maxWidth,
@@ -692,7 +635,9 @@ class RenderEngine(
             val roborazziOptions =
               RoborazziOptions(
                 recordOptions =
-                  RoborazziOptions.RecordOptions(applyDeviceCrop = isRound && !flattenWearScroll)
+                  RoborazziOptions.RecordOptions(
+                    applyDeviceCrop = environment.isRound && !environment.flattenWearScroll
+                  )
               )
             // A preview may install more than one Compose owner (Wear empty-state scaffolds and
             // popup/dialog-like content do this). `onRoot()` asserts that exactly one node matches
@@ -700,21 +645,15 @@ class RenderEngine(
             // whole render as soon as a second owner appears. Resolve one owner once: prefer the
             // owner attached to the activity's rendered window, then prefer the richest tree. Use
             // that same interaction for pixels and its unmerged root for every structured export.
-            val rootInteractions = rule.onAllNodes(isRoot(), useUnmergedTree = true)
-            val semanticsRoots =
-              rootInteractions.fetchSemanticsNodes(atLeastOneRootRequired = false)
+            val resolvedCaptureRoot = resolveRenderedCaptureRoot(rule)
             val resolvedSemanticsRoot =
-              selectRenderedSurfaceSemanticsRoot(
-                roots = semanticsRoots,
-                activityDecorView = rule.activity.window.decorView,
-              ) ?: error("No semantics root was produced for '${spec.outputBaseName}'")
-            val resolvedRootIndex = semanticsRoots.indexOf(resolvedSemanticsRoot)
-            val resolvedRootInteraction = rootInteractions[resolvedRootIndex]
+              resolvedCaptureRoot.semanticsRoot
+                ?: error("No semantics root was produced for '${spec.outputBaseName}'")
             System.err.println(
               "compose-ai-daemon: [render] phase=captureRoboImage.start outputBaseName=${spec.outputBaseName}"
             )
             trace.section("render:captureRoboImage") {
-              resolvedRootInteraction.captureRoboImage(
+              resolvedCaptureRoot.interaction.captureRoboImage(
                 file = outputFile,
                 roborazziOptions = roborazziOptions,
               )
@@ -899,7 +838,7 @@ class RenderEngine(
                     nodes = hierarchy.nodes,
                     density = spec.density,
                     pngFile = outputFile,
-                    isRound = isRound,
+                    isRound = environment.isRound,
                   )
                   System.err.println(
                     "compose-ai-daemon: [render] phase=a11y.done outputBaseName=${spec.outputBaseName} " +
@@ -1456,8 +1395,8 @@ class RenderEngine(
               // frames (which the crescent raster crops from) must keep their full pixels.
               captureFrame = { file ->
                 file.parentFile?.mkdirs()
-                rule
-                  .onRoot()
+                resolveRenderedCaptureRoot(rule)
+                  .interaction
                   .captureRoboImage(
                     file = file,
                     roborazziOptions =
@@ -1467,7 +1406,11 @@ class RenderEngine(
                   )
               },
               captureTree = {
-                val semRoot = rule.onRoot(useUnmergedTree = true).fetchSemanticsNode()
+                val semRoot =
+                  resolveRenderedCaptureRoot(rule).semanticsRoot
+                    ?: error(
+                      "RenderEngine: no semantics root for scroll-slice capture of $previewId"
+                    )
                 val semantics =
                   ComposeSemanticsDataProducer.buildPayload(semRoot, density = spec.density)
                 val layout =
@@ -1968,6 +1911,80 @@ class RenderEngine(
     runCatching { javax.imageio.ImageIO.write(cropped, "PNG", file) }
   }
 
+  private data class RenderEnvironment(
+    val isRound: Boolean,
+    val flattenWearScroll: Boolean,
+    val wearReduceMotionLocal: ProvidableCompositionLocal<Boolean>?,
+    val sizeOverrides: PreviewOverrides?,
+    val sandboxWidthPx: Int,
+    val sandboxHeightPx: Int,
+  )
+
+  private fun prepareRenderEnvironment(
+    spec: RenderSpec,
+    classLoader: ClassLoader,
+  ): RenderEnvironment {
+    // `device = "id:wearos_*_round"` / `isRound=true` Compose previews need a circular crop
+    // matching Layoutlib / Android Studio. Tile and notification captures have their own surface
+    // renderers and are intentionally left out of this Studio @Preview parity mask.
+    val isRound =
+      isRoundDevice(spec.device) &&
+        (spec.kind == null || spec.kind.equals("COMPOSE", ignoreCase = true))
+
+    // A round Wear frame requested TALLER than it is wide is the grown `figma-svg-long` scroll
+    // render re-entering `render()` (a normal round watch face is square). Flatten
+    // `TransformingLazyColumn` edge scaling (`LocalReduceMotion = true`) so its items stack at their
+    // natural size. Same knob the raster LONG path uses; resolved reflectively via the request
+    // classloader, and a no-op when the consumer isn't a Wear app.
+    val flattenWearScroll = isRound && spec.heightPx > spec.widthPx
+    val wearReduceMotionLocal =
+      if (flattenWearScroll)
+        ee.schimke.composeai.renderer.WearReduceMotionLocal.get(classLoader)
+      else null
+
+    // Content-size bounds (Max / Min / Within) apply on a wrapped axis, where widthPx/heightPx are
+    // sandbox bounds rather than a fixed frame. Only widen the sandbox; the intrinsic crop trims the
+    // PNG back to measured size. Mirrors the desktop daemon's scene-enlarge.
+    val sizeOverrides = spec.overrides
+    val sandboxWidthPx =
+      if (spec.wrapWidth)
+        maxOf(spec.widthPx, sizeOverrides?.minWidthPx ?: 0, sizeOverrides?.maxWidthPx ?: 0)
+      else spec.widthPx
+    val sandboxHeightPx =
+      if (spec.wrapHeight)
+        maxOf(spec.heightPx, sizeOverrides?.minHeightPx ?: 0, sizeOverrides?.maxHeightPx ?: 0)
+      else spec.heightPx
+
+    applyPreviewQualifiers(
+      widthDp = pxToDp(sandboxWidthPx, spec.density),
+      heightDp = pxToDp(sandboxHeightPx, spec.density),
+      density = spec.density,
+      isRound = isRound,
+      localeTag = spec.localeTag,
+      uiMode = spec.uiMode,
+      orientation = spec.orientation,
+    )
+    org.robolectric.RuntimeEnvironment.setFontScale(spec.fontScale ?: 1.0f)
+
+    val appContext: android.app.Application =
+      androidx.test.core.app.ApplicationProvider.getApplicationContext()
+    org.robolectric.Shadows.shadowOf(appContext.packageManager)
+      .addActivityIfNotPresent(
+        android.content.ComponentName(appContext.packageName, ComponentActivity::class.java.name)
+      )
+
+    PixelSystemFontAliases.seedSystemFonts()
+
+    return RenderEnvironment(
+      isRound = isRound,
+      flattenWearScroll = flattenWearScroll,
+      wearReduceMotionLocal = wearReduceMotionLocal,
+      sizeOverrides = sizeOverrides,
+      sandboxWidthPx = sandboxWidthPx,
+      sandboxHeightPx = sandboxHeightPx,
+    )
+  }
+
   /**
    * Builds and applies the Robolectric resource qualifier string for one render. Same
    * `RuntimeEnvironment` entrypoint as `RobolectricRenderTest.applyPreviewQualifiers`; the
@@ -2216,6 +2233,32 @@ internal fun selectRenderedSurfaceSemanticsRoot(
       { it.descendantCount() },
       { it.boundsInRoot.width * it.boundsInRoot.height },
     )
+  )
+}
+
+private data class RenderedCaptureRoot(
+  val interaction: SemanticsNodeInteraction,
+  val semanticsRoot: SemanticsNode?,
+)
+
+private fun resolveRenderedCaptureRoot(
+  rule: AndroidComposeTestRule<*, ComponentActivity>
+): RenderedCaptureRoot {
+  val rootInteractions = rule.onAllNodes(isRoot(), useUnmergedTree = true)
+  val semanticsRoots =
+    runCatching { rootInteractions.fetchSemanticsNodes(atLeastOneRootRequired = false) }
+      .getOrDefault(emptyList())
+  if (semanticsRoots.size <= 1) {
+    return RenderedCaptureRoot(rule.onRoot(), semanticsRoots.firstOrNull())
+  }
+  val resolvedSemanticsRoot =
+    selectRenderedSurfaceSemanticsRoot(
+      roots = semanticsRoots,
+      activityDecorView = rule.activity.window.decorView,
+    ) ?: return RenderedCaptureRoot(rule.onRoot(), semanticsRoots.firstOrNull())
+  return RenderedCaptureRoot(
+    interaction = rootInteractions[semanticsRoots.indexOf(resolvedSemanticsRoot)],
+    semanticsRoot = resolvedSemanticsRoot,
   )
 }
 

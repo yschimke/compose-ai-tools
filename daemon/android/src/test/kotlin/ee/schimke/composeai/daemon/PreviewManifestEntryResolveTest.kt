@@ -44,7 +44,7 @@ class PreviewManifestEntryResolveTest {
     val resolved = json.decodeFromString(PreviewManifestEntry.serializer(), raw).resolved()
     assertEquals(false, resolved.wrapWidth)
     assertEquals(true, resolved.wrapHeight)
-    assertEquals((340 * 2.625f).toInt(), resolved.widthPx) // pinned width
+    assertEquals(893, resolved.widthPx) // pinned width: 340dp * 2.625, half-up rounded
     assertEquals((800 * 2.625f).toInt(), resolved.heightPx) // sandbox height bound
   }
 

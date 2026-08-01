@@ -16,8 +16,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.isRoot
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.Popup
@@ -157,6 +155,38 @@ class DialogWindowCaptureTest {
   }
 
   @Test
+  fun `stable dialog crop reuses the first dialog rect across frames`() {
+    rule.setContent {
+      var large by remember { mutableStateOf(false) }
+      LaunchedEffect(Unit) {
+        delay(500L)
+        large = true
+      }
+      Dialog(onDismissRequest = {}) {
+        Box(modifier = Modifier.size(if (large) 96.dp else 64.dp).background(FILL))
+      }
+    }
+
+    val stableCrop = DialogWindowCapture.StableDialogCrop()
+    rule.mainClock.advanceTimeBy(SETTLE_MS)
+    val first = File(rootDir, "stable-first.png")
+    stableCrop.captureFrame(rule, first, RoborazziOptions())
+    assertEquals("first cropped frame width", 64, ImageIO.read(first).width)
+
+    rule.mainClock.advanceTimeBy(1_000L)
+    val rootAfterResize = resolveRoot()
+    assertEquals(
+      "precondition: the dialog root was freshly resolved after resize",
+      96,
+      rootAfterResize.size.width,
+    )
+
+    val second = File(rootDir, "stable-second.png")
+    stableCrop.captureFrame(rule, second, RoborazziOptions())
+    assertEquals("second frame keeps the first crop width", 64, ImageIO.read(second).width)
+  }
+
+  @Test
   fun `a popup is not a dialog window and is left alone`() {
     rule.setContent {
       Box(modifier = Modifier.fillMaxSize().background(Color(0xFFEF5350)))
@@ -173,20 +203,13 @@ class DialogWindowCaptureTest {
   }
 
   /** Mirrors what the renderer does: resolve the subject root rather than trusting `onRoot()`. */
-  private fun resolveRoot() =
-    DialogWindowCapture.selectCaptureRoot(
-      rule.onAllNodes(isRoot(), useUnmergedTree = true)
-        .fetchSemanticsNodes(atLeastOneRootRequired = false),
-      rule.activity.window.decorView,
-    )!!
+  private fun resolveRoot() = DialogWindowCapture.resolveCaptureRoot(rule).semanticsRoot!!
 
   private fun capture(name: String): File {
-    val nodes = rule.onAllNodes(isRoot(), useUnmergedTree = true)
-    val resolved = resolveRoot()
-    val index =
-      nodes.fetchSemanticsNodes(atLeastOneRootRequired = false).indexOf(resolved)
     return File(rootDir, name).also {
-      nodes[index].captureRoboImage(file = it, roborazziOptions = RoborazziOptions())
+      DialogWindowCapture.resolveCaptureRoot(rule)
+        .interaction
+        .captureRoboImage(file = it, roborazziOptions = RoborazziOptions())
     }
   }
 
