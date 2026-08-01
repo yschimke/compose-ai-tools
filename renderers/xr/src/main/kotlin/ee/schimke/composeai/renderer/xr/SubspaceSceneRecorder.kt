@@ -128,6 +128,21 @@ public object SubspaceSceneRecorder {
         "@XrSubspacePreview must carry a unique testTag (panel ids and texture paths derive from it)."
     }
     val views = tagged.mapNotNull { (tag, node) -> contentView(node)?.let { tag to it } }.toMap()
+    // Recovering *no* view when there are tagged panels can't be a per-panel content problem — it
+    // means the reflective bridge in [contentView] no longer resolves, the way the scenecore
+    // `getRtEntity$scenecore` → `getRtEntity` rename broke it (#3087). Per-panel failures stay
+    // silent on purpose (one unreadable panel should cost an overlay, not the render), but the
+    // all-or-nothing case has exactly one cause and is worth naming: without this the symptom
+    // downstream is an empty semantics tree and a missing texture, which reads as "the recorder
+    // produced nothing" rather than "the accessor moved again".
+    if (views.isEmpty() && panels.isNotEmpty()) {
+      System.err.println(
+        "compose-ai-tools xr: recovered no content View for any of ${panels.size} tagged panel(s). " +
+          "SubspaceSceneRecorder reaches a panel's view reflectively via one of " +
+          "$RT_ENTITY_ACCESSORS then getView(); if androidx.xr.scenecore renamed either, panel " +
+          "textures and 2D semantics will be missing from this scene."
+      )
+    }
     val scene = SpatialScene(previewId = previewId, camera = defaultCamera(panels), panels = panels)
     return RecordedSubspace(scene, views)
   }

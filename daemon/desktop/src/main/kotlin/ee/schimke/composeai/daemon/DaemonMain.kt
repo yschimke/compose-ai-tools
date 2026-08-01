@@ -41,8 +41,9 @@ import java.nio.file.Path
  *    out of `read()` and calls `host.shutdown(timeoutMs)` so the in-flight render drains before the
  *    JVM exits. Mirrors the no-mid-render-cancellation enforcement listed in
  *    [DESIGN.md § 9](../../../../../../docs/daemon/DESIGN.md#no-mid-render-cancellation--invariant--enforcement).
- * 6. [JsonRpcServer.run] blocks until the client sends `shutdown` + `exit` or stdin closes; it
- *    calls `System.exit` itself.
+ * 6. [JsonRpcServer.run] blocks until the client sends `shutdown` + `exit` or stdin closes, then
+ *    invokes the `onExit` it was built with — [JsonRpcServer.EXIT_PROCESS] on this subprocess path,
+ *    a no-op on the embedded path, which shares its JVM with the caller.
  * 7. Defensive `host.shutdown(...)` in `finally` — `JsonRpcServer.run` already calls
  *    `host.shutdown()` on its `cleanShutdown` path, but if `run()` itself throws (e.g. an
  *    unrecoverable IO error) before reaching that, the host's render thread is still alive and a
@@ -67,7 +68,7 @@ fun main(args: Array<String>) {
     input = System.`in`,
     output = realOut,
     installSigtermHook = true,
-    onExit = { code -> System.exit(code) },
+    onExit = JsonRpcServer.EXIT_PROCESS,
   )
 }
 
@@ -96,7 +97,13 @@ fun runDaemon(
   input: InputStream,
   output: OutputStream,
   installSigtermHook: Boolean,
-  onExit: (Int) -> Unit = { code -> System.exit(code) },
+  /**
+   * Terminal action, forwarded to [JsonRpcServer]. **No default, for the same reason the server's
+   * own parameter has none** (#3087): subprocess mode wants [JsonRpcServer.EXIT_PROCESS], embedded
+   * mode shares the JVM with its caller and must swallow the code — and a default silently picks
+   * the wrong one for whichever caller forgets.
+   */
+  onExit: (Int) -> Unit,
 ) {
 
   // D-harness.v1.5a — when the harness drives real-mode runs it sets

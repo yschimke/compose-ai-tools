@@ -127,6 +127,8 @@ fun main(args: Array<String>) {
       previewIndex = previewIndex,
       incrementalDiscovery = incrementalDiscovery,
       historyManager = historyManager,
+      // The harness runs as its own daemon process, so ending the JVM is the right terminal action.
+      onExit = JsonRpcServer.EXIT_PROCESS,
     )
   server.run()
 }

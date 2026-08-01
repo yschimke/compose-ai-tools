@@ -721,6 +721,8 @@ fun main(args: Array<String>) {
       historyManager = historyManager,
       extensions = extensions,
       btaCompileService = btaCompileService,
+      // A real daemon process: end the JVM on `exit` / idle timeout / classpathDirty grace.
+      onExit = JsonRpcServer.EXIT_PROCESS,
     )
   server.run()
 }
