@@ -825,6 +825,11 @@ jobs:
         run: python3 .github/ci/test_change_scope.py -v
       - name: Run per-job path-scope classifier tests
         run: python3 .github/ci/test_path_scope.py -v
+      # The AdaptiveJetStream XR cell renders the sample's Subspaces with OUR compose-testing
+      # against ITS compose. A version skew there fails only on main (the XR step is skipped on
+      # PRs) and only at runtime, with a message that points nowhere near the cause.
+      - name: Run consumer XR version-skew guard
+        run: python3 .github/ci/check_consumer_xr_version.py
       - name: Run affected Gradle test-scope tests
         run: python3 .github/ci/test_affected_gradle_tests.py -v
       - name: Run scoped findings filter tests

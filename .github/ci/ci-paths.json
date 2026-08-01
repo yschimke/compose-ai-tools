@@ -86,7 +86,8 @@
       ".github/scripts/**",
       ".github/workflows/**",
       "scripts/design-artifacts/**",
-      "deploy/image/**"
+      "deploy/image/**",
+      "gradle/libs.versions.toml"
     ],
     "design_artifacts": [
       "scripts/design-artifacts/**",
