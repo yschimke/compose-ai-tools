@@ -243,7 +243,11 @@ fun OpaqueImageSquare() {
   }
 }
 
-/** Brush-background hybrid SVG fixture: gradient pixels plus editable-looking child content. */
+/**
+ * **Linear**-brush background fixture. Since #2852 a linear gradient is captured and emitted as a
+ * real SVG `<linearGradient>` fill, so this exports fully vector: gradient def + editable `<text>`,
+ * no raster. [RadialGradientBackgroundCard] is the other half of that contract.
+ */
 @Composable
 fun GradientBackgroundCard() {
   Box(
@@ -256,6 +260,29 @@ fun GradientBackgroundCard() {
     contentAlignment = Alignment.Center,
   ) {
     Text("Gradient", color = Color.White)
+  }
+}
+
+/**
+ * **Radial**-brush background fixture — the raster half of the brush contract.
+ *
+ * `ModifierTokenResolver.linearGradient` deliberately returns null for anything that isn't a
+ * `LinearGradient`, so a radial brush resolves no flat colour and no gradient def: the layer falls
+ * back to the hybrid raster path rather than being emitted as a gradient it isn't. Same shape and
+ * label as [GradientBackgroundCard] so the two differ only in the brush.
+ */
+@Composable
+fun RadialGradientBackgroundCard() {
+  Box(
+    modifier =
+      Modifier.fillMaxSize()
+        .background(
+          Brush.radialGradient(listOf(Color(0xFFFF0000), Color(0xFF0000FF))),
+          RoundedCornerShape(8.dp),
+        ),
+    contentAlignment = Alignment.Center,
+  ) {
+    Text("Radial", color = Color.White)
   }
 }
 

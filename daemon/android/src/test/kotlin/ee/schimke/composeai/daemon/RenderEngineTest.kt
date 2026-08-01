@@ -373,8 +373,22 @@ class RenderEngineTest {
     }
   }
 
+  /**
+   * A **linear** brush background exports as a real `<linearGradient>` fill with its label left
+   * editable — no raster at all.
+   *
+   * This test used to assert the opposite ("brush-backed layer must use the hybrid raster path"),
+   * which was correct when any brush defeated flat-colour resolution and forced the whole subtree
+   * to be baked. #2852 superseded that for linear gradients: the brush is now captured and emitted
+   * as an SVG gradient def, so the export stays vector and the text stays editable in Figma. The
+   * assertion was simply never updated, and the failure sat masked inside a larger Robolectric
+   * breakage on `main` until that was fixed (#3099).
+   *
+   * [figmaSvgExportRastersARadialBrushBackground] holds the other half of the contract, so
+   * "gradients no longer raster" can't quietly become "nothing rasters".
+   */
   @Test
-  fun figmaSvgExportRastersBrushBackgroundWithItsCompleteSubtree() {
+  fun figmaSvgExportEmitsALinearBrushBackgroundAsAGradientWithEditableText() {
     val outputDir = tempFolder.newFolder("renders-figma-gradient")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
     System.setProperty("roborazzi.test.record", "true")
@@ -395,10 +409,61 @@ class RenderEngineTest {
 
       val previewDir = outputDir.parentFile!!.resolve("data").resolve("figma-gradient")
       val svg = previewDir.resolve("compose-figma.svg").readText()
-      assertTrue("brush-backed layer must use the hybrid raster path", svg.contains("<image "))
+
+      assertTrue("a linear brush must be emitted as a gradient def, got:\n$svg", svg.contains("<linearGradient"))
+      assertTrue("the background rect must reference that def, got:\n$svg", svg.contains("fill=\"url(#"))
+      // The whole point of the gradient path over a raster: the label survives as editable text.
+      assertTrue("the label must stay editable, got:\n$svg", svg.contains(">Gradient<"))
+      assertFalse("a linear brush must not fall back to a raster, got:\n$svg", svg.contains("<image "))
       assertFalse(
-        "the complete raster already contains the label, so no editable duplicate should survive",
-        svg.contains(">Gradient<"),
+        "no raster crop should be written for a linear brush",
+        previewDir.resolve("figma-raster").exists(),
+      )
+
+      // Same end-to-end colour claim the raster crop used to make — red on the left, blue on the
+      // right — now read off the gradient's stops rather than sampled pixels.
+      val stops = Regex("""<stop offset="([\d.]+)" stop-color="(#[0-9A-Fa-f]{6})"/>""").findAll(svg)
+      val byOffset = stops.map { it.groupValues[1].toDouble() to it.groupValues[2].uppercase() }.toList()
+      assertEquals("expected exactly two stops, got $byOffset", 2, byOffset.size)
+      assertEquals("gradient must start red", "#FF0000", byOffset.first().second)
+      assertEquals("gradient must end blue", "#0000FF", byOffset.last().second)
+      assertTrue("stops must run left to right", byOffset.first().first < byOffset.last().first)
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /**
+   * The raster half of the brush contract: `ModifierTokenResolver.linearGradient` returns null for
+   * anything that isn't a `LinearGradient`, so a radial brush resolves neither a flat colour nor a
+   * gradient def and the layer bakes to a raster instead of being drawn as a gradient it isn't.
+   */
+  @Test
+  fun figmaSvgExportRastersARadialBrushBackground() {
+    val outputDir = tempFolder.newFolder("renders-figma-radial")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost()
+    host.start()
+    try {
+      host.submit(
+        RenderRequest.Render(
+          payload =
+            "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+              "functionName=RadialGradientBackgroundCard;" +
+              "widthPx=128;heightPx=48;density=1.0;" +
+              "showBackground=true;" +
+              "outputBaseName=figma-radial"
+        ),
+        timeoutMs = 120_000,
+      )
+
+      val previewDir = outputDir.parentFile!!.resolve("data").resolve("figma-radial")
+      val svg = previewDir.resolve("compose-figma.svg").readText()
+      assertTrue("a radial brush must keep the hybrid raster path, got:\n$svg", svg.contains("<image "))
+      assertFalse(
+        "a radial brush must not be emitted as a linear gradient it isn't, got:\n$svg",
+        svg.contains("<linearGradient"),
       )
 
       val crop =
@@ -406,16 +471,14 @@ class RenderEngineTest {
           .resolve("figma-raster")
           .listFiles { file -> file.extension == "png" }
           ?.singleOrNull()
-      assertNotNull("gradient layer must produce one raster crop", crop)
+      assertNotNull("radial layer must produce one raster crop", crop)
       val image = ByteArrayInputStream(crop!!.readBytes()).use { ImageIO.read(it) }
-      assertNotNull("gradient raster crop must decode", image)
-      val left = image!!.getRGB(image.width / 8, image.height / 2)
-      val right = image.getRGB(image.width * 7 / 8, image.height / 2)
-      assertTrue("left side should remain red-dominant", ((left shr 16) and 0xFF) > (left and 0xFF))
-      assertTrue(
-        "right side should remain blue-dominant",
-        (right and 0xFF) > ((right shr 16) and 0xFF),
-      )
+      assertNotNull("radial raster crop must decode", image)
+      // Radial: red at the centre, shading to blue at the edges.
+      val centre = image!!.getRGB(image.width / 2, image.height / 2)
+      val edge = image.getRGB(image.width - 1, image.height / 2)
+      assertTrue("centre should be red-dominant", ((centre shr 16) and 0xFF) > (centre and 0xFF))
+      assertTrue("edge should be blue-dominant", (edge and 0xFF) > ((edge shr 16) and 0xFF))
     } finally {
       host.shutdown()
     }
