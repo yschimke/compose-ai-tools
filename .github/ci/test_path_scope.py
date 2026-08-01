@@ -95,7 +95,18 @@ class RepositoryConfigsTest(unittest.TestCase):
             self.load("serve-lanes-paths.json"),
         )
         self.assertEqual(
-            result, {"desktop": False, "android": False, "playground": True}
+            result,
+            {"desktop": False, "android": False, "bundle": False, "playground": True},
+        )
+
+    def test_bundle_upload_harness_runs_only_bundle_lane(self):
+        result = mod.decide(
+            ["vscode-extension/preview-harness/bundle-upload.spec.mjs"],
+            self.load("serve-lanes-paths.json"),
+        )
+        self.assertEqual(
+            result,
+            {"desktop": False, "android": False, "bundle": True, "playground": False},
         )
 
 

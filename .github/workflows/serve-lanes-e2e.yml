@@ -10,13 +10,15 @@
 # that would have caught the compose/figma-svg SVG-override regression and the
 # Caddy WebSocket break.
 #
-# Three jobs, independently path-scoped on PRs and all enabled off PRs:
+# Four jobs, independently path-scoped on PRs and all enabled off PRs:
 #   * `serve-lanes`         — the desktop CMP/Skiko daemon, live-rendering the fetched
 #                             `compose-m3` catalog.
 #   * `serve-lanes-android` — the Robolectric daemon, live-rendering a locally packed
 #                             `:samples:android-live-lane` bundle whose manifest names an
 #                             `Application` the render classpath doesn't carry (#2675 / #2669).
-#   * `playground-e2e`     — the Android-backed editor → compile → redemption chain.
+#   * `bundle-upload-e2e`   — a locally generated bundle uploaded to an upload-only server, then
+#                             opened through the returned browsable URL (#3116).
+#   * `playground-e2e`      — the Kotlin playground compile + redemption flow.
 name: Serve Lanes E2E
 
 on:
@@ -27,12 +29,17 @@ on:
       # ServeCommand owns openPlaygroundService, the daemon-opener wiring, and the ServeHttpServer
       # hookup — it lives one directory up from serve/**, so trigger on it explicitly.
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/ServeCommand.kt"
+      # The bundle upload E2E packs a local bundle first, so run it when the producer changes too.
+      - "cli/src/main/kotlin/ee/schimke/composeai/cli/BundleCommand.kt"
+      - "gradle-plugin/**"
       - "daemon/**"
       - "render-session/**"
       - "render-session-subprocess/**"
       - "vscode-extension/preview-harness/serve-lanes.*"
       - "vscode-extension/preview-harness/serve-lanes-boot.sh"
       - "vscode-extension/preview-harness/serve-android-lane-boot.sh"
+      - "vscode-extension/preview-harness/bundle-upload.*"
+      - "vscode-extension/preview-harness/bundle-upload-boot.sh"
       # The playground e2e (editor → compile → first-frame → /pg live redemption).
       - "vscode-extension/preview-harness/playground.*"
       - "vscode-extension/preview-harness/playground-boot.sh"
@@ -52,12 +59,17 @@ on:
       # ServeCommand owns openPlaygroundService, the daemon-opener wiring, and the ServeHttpServer
       # hookup — it lives one directory up from serve/**, so trigger on it explicitly.
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/ServeCommand.kt"
+      # The bundle upload E2E packs a local bundle first, so run it when the producer changes too.
+      - "cli/src/main/kotlin/ee/schimke/composeai/cli/BundleCommand.kt"
+      - "gradle-plugin/**"
       - "daemon/**"
       - "render-session/**"
       - "render-session-subprocess/**"
       - "vscode-extension/preview-harness/serve-lanes.*"
       - "vscode-extension/preview-harness/serve-lanes-boot.sh"
       - "vscode-extension/preview-harness/serve-android-lane-boot.sh"
+      - "vscode-extension/preview-harness/bundle-upload.*"
+      - "vscode-extension/preview-harness/bundle-upload-boot.sh"
       # The playground e2e (editor → compile → first-frame → /pg live redemption).
       - "vscode-extension/preview-harness/playground.*"
       - "vscode-extension/preview-harness/playground-boot.sh"
@@ -87,6 +99,7 @@ jobs:
     outputs:
       desktop: ${{ steps.scope.outputs.desktop }}
       android: ${{ steps.scope.outputs.android }}
+      bundle: ${{ steps.scope.outputs.bundle }}
       playground: ${{ steps.scope.outputs.playground }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -263,6 +276,72 @@ jobs:
           path: |
             serve-android-lane.log
             vscode-extension/preview-harness/test-results-serve-lanes/**
+          if-no-files-found: warn
+
+  bundle-upload-e2e:
+    needs: changes
+    if: needs.changes.outputs.bundle == 'true'
+    name: Bundle upload returns a browsable preview URL
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+
+      # Generate a real local portable bundle. This is the producer half of the
+      # issue: the uploaded artifact is not a synthetic zip, it is the same
+      # PNG+ZIP polyglot produced by `compose-preview bundle pack`.
+      - name: Build CLI and pack a local bundle
+        shell: bash
+        run: |
+          ./gradlew --no-daemon :cli:installDist --stacktrace
+          cli/build/install/compose-preview/bin/compose-preview bundle pack \
+            --module samples:cmp \
+            -o "$GITHUB_WORKSPACE/local-e2e-bundle.png" --timeout 900
+
+      - name: Install harness deps + Chromium
+        working-directory: vscode-extension
+        shell: bash
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Boot upload-only serve
+        shell: bash
+        env:
+          SERVE_TOKEN: bundle-upload-e2e
+        run: |
+          url="$(bash vscode-extension/preview-harness/bundle-upload-boot.sh)"
+          echo "bundle-upload: SERVE_URL=$url"
+          echo "SERVE_URL=$url" >> "$GITHUB_ENV"
+
+      - name: Upload bundle and follow returned URL
+        working-directory: vscode-extension
+        shell: bash
+        env:
+          CI: "true"
+          BUNDLE_PATH: ${{ github.workspace }}/local-e2e-bundle.png
+          BUNDLE_SESSION: local-e2e-bundle
+          SERVE_TOKEN: bundle-upload-e2e
+        run: npm run harness:bundle-upload
+
+      - name: Tear down serve
+        if: always()
+        shell: bash
+        run: |
+          [ -f bundle-upload.pid ] && kill "$(cat bundle-upload.pid)" 2>/dev/null || true
+          pkill -f 'MainKt serve' 2>/dev/null || true
+
+      - name: Upload serve log + trace on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bundle-upload-e2e-artifacts
+          path: |
+            bundle-upload.log
+            vscode-extension/preview-harness/test-results-bundle-upload/**
           if-no-files-found: warn
 
   # The Kotlin playground, end to end (#3015). The two lanes above prove the *render* backends honor

@@ -30,6 +30,12 @@
       "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt",
       "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleLaunch.kt"
     ],
+    "bundle": [
+      "cli/src/main/kotlin/ee/schimke/composeai/cli/BundleCommand.kt",
+      "gradle-plugin/**",
+      "vscode-extension/preview-harness/bundle-upload.*",
+      "vscode-extension/preview-harness/bundle-upload-boot.sh"
+    ],
     "playground": [
       "daemon/android/**",
       "renderers/android/**",
