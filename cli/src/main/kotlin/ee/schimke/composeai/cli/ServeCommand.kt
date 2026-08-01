@@ -997,6 +997,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         inProcess = it,
         btaImplJars = implJars,
         compilerPluginJars = pluginJars,
+        slots = playgroundCompileSlots,
       )
     }
     if (compiler == null) {

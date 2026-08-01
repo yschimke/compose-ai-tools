@@ -294,6 +294,27 @@ class PlaygroundJailedCompilerTest {
   }
 
   @Test
+  fun `wrap honours the operator's slot count, and says so`() {
+    val logs = mutableListOf<String>()
+
+    PlaygroundJailedCompiler.wrap(
+      sandbox = PlaygroundSandbox(profile = PlaygroundSandbox.Profile.STRICT, memoryMb = 1024),
+      inProcess = PlaygroundCompileService.Compiler { _, _, _ -> emptyList() },
+      btaImplJars = listOf(File("/install/lib-bta/impl.jar")),
+      compilerPluginJars = emptyList(),
+      slots = 1,
+    ) {
+      logs += it
+    }
+
+    // The host budget an operator reasons about is slots × memoryMb, so a `--playground-compile-
+    // slots 1` host must see 1024MB — not the default-2 arithmetic it would print if the flag
+    // were parsed but never forwarded (which is exactly how it shipped in #3105).
+    assertTrue(logs.single().contains("1 at a time"), logs.toString())
+    assertTrue(logs.single().contains("peak 1024MB"), logs.toString())
+  }
+
+  @Test
   fun `wrap jails the compiler when the sandbox and toolchain are both there`() {
     val logs = mutableListOf<String>()
 
