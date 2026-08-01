@@ -456,9 +456,10 @@ class ServeHttpRoutingTest {
     assertTrue(html.contains("data-rc-backend=\"js\""), "js backend chip present")
     assertTrue(html.contains("value=\"rc\""), "rc mode radio present")
     // The client-side lane JS loads the player and applies knob edits without a daemon round-trip.
-    assertTrue(html.contains("/rc-player/bundle.js"), "the lane loads the player bundle")
-    assertTrue(html.contains("RcdPlayer"), "the lane creates the Rc player")
-    assertTrue(html.contains("setNamedFloatOverride"), "rc knob edits apply client-side")
+    val viewerJs = ServeWebAssets.load("viewer.js")!!.bytes.decodeToString()
+    assertTrue(viewerJs.contains("/rc-player/bundle.js"), "the lane loads the player bundle")
+    assertTrue(viewerJs.contains("RcdPlayer"), "the lane creates the Rc player")
+    assertTrue(viewerJs.contains("setNamedFloatOverride"), "rc knob edits apply client-side")
   }
 
   @Test
@@ -504,6 +505,47 @@ class ServeHttpRoutingTest {
         .header("If-None-Match", etag)
         .build()
     client.newCall(conditional).execute().use { r -> assertEquals(304, r.code) }
+  }
+
+  @Test
+  fun `serve web assets are versioned and conditionally cacheable`() {
+    val asset = ServeWebAssets.load("viewer.js") ?: error("viewer asset missing")
+    val versionedPath = "/assets/serve/${asset.version}/viewer.js"
+    val etag: String
+    val req = Request.Builder().url("http://127.0.0.1:${server.port}$versionedPath").build()
+    client.newCall(req).execute().use { r ->
+      assertEquals(200, r.code)
+      assertEquals("text/javascript", r.body?.contentType()?.let { "${it.type}/${it.subtype}" })
+      assertEquals("public, max-age=31536000, immutable", r.header("Cache-Control"))
+      etag = r.header("ETag") ?: ""
+      assertEquals(asset.etag, etag)
+    }
+
+    val conditional =
+      Request.Builder()
+        .url("http://127.0.0.1:${server.port}$versionedPath")
+        .header("If-None-Match", etag)
+        .build()
+    client.newCall(conditional).execute().use { r -> assertEquals(304, r.code) }
+
+    client
+      .newCall(
+        Request.Builder()
+          .url("http://127.0.0.1:${server.port}/assets/serve/stale/viewer.js")
+          .build()
+      )
+      .execute()
+      .use { r -> assertEquals(404, r.code) }
+
+    client
+      .newCall(
+        Request.Builder().url("http://127.0.0.1:${server.port}/assets/serve/viewer.js").build()
+      )
+      .execute()
+      .use { r ->
+        assertEquals(200, r.code)
+        assertEquals("no-cache", r.header("Cache-Control"))
+      }
   }
 
   @Test

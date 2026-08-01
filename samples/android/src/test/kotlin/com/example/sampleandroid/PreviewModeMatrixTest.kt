@@ -15,8 +15,7 @@ import org.junit.Test
  * The numbers below are not read back from our own resolver — they are written out as `dp × density`
  * from Studio's own device catalog, so the test says "we match Studio", not "we match ourselves". The
  * two rounding rules are the ones the pipeline actually implements:
- * - a **fixed** axis (explicit `widthDp`/`heightDp`, or any `device` / `showSystemUi` frame) becomes
- *   `floor(dp × density)` px — the sandbox is configured in whole pixels;
+ * - an explicit **fixed** axis (`widthDp`/`heightDp`) rounds half-up to Studio's whole-pixel frame;
  * - a **wrapped** axis is the composable's measured size, rounded up to the enclosing pixel.
  *
  * Together with the fixture this is the answer to "do we match Studio by default?": a regression in
@@ -36,18 +35,18 @@ class PreviewModeMatrixTest {
     mapOf(
       // Both axes wrap: the probe's own 160×80dp at 2.625× = 420×210.
       "MatrixComponentWrapPreview_Component_wrap" to (420 to 210),
-      // Both axes fixed: 200×100dp at 2.625× = 525 × floor(262.5) = 525×262.
-      "MatrixFixedBothAxesPreview_Fixed_both_axes" to (525 to 262),
+      // Both axes fixed: 200×100dp at 2.625× = 525 × roundHalfUp(262.5) = 525×263.
+      "MatrixFixedBothAxesPreview_Fixed_both_axes" to (525 to 263),
       // Width fixed (240dp → 630px), height still wraps to the probe's 80dp → 210px.
       "MatrixFixedWidthOnlyPreview_Fixed_width_only" to (630 to 210),
-      // 120×60dp at 2.625× = 315 × floor(157.5).
-      "MatrixBackgroundColorPreview_Background_colour" to (315 to 157),
+      // 120×60dp at 2.625× = 315 × roundHalfUp(157.5).
+      "MatrixBackgroundColorPreview_Background_colour" to (315 to 158),
       // The uiMode / fontScale / locale trio all keep the same 200×100dp frame — those params
       // change what is drawn, never the canvas.
-      "MatrixLightPreview_Day" to (525 to 262),
-      "MatrixNightPreview_Night" to (525 to 262),
-      "MatrixFontScalePreview_Font_scale_2x" to (525 to 262),
-      "MatrixLocalePreview_German" to (525 to 262),
+      "MatrixLightPreview_Day" to (525 to 263),
+      "MatrixNightPreview_Night" to (525 to 263),
+      "MatrixFontScalePreview_Font_scale_2x" to (525 to 263),
+      "MatrixLocalePreview_German" to (525 to 263),
       // Device ids resolve to Studio's catalog geometry, both axes fixed.
       // Pixel 5: 393×851dp @2.75×.
       "MatrixPhoneDevicePreview_Phone" to (1080 to 2340),
@@ -140,13 +139,12 @@ class PreviewModeMatrixTest {
 
   @Test
   fun `mixed fixed-wrap showBackground fills the whole fixed frame`() {
-    // Studio paints the harness background across the *whole* fixed axis even when the other axis
-    // wraps. The desktop backend currently doesn't (issue #3092, found by this matrix) — this is
-    // the reference expectation that one is measured against.
+    // Studio measures the fixed width tightly even when height wraps, so the preferred-size probe
+    // itself fills the full fixed axis.
     val img = readRender("MatrixFixedWidthOnlyPreview_Fixed_width_only")
     val argb = img.getRGB(img.width - 2, 2)
     assertThat((argb ushr 24) and 0xff).isEqualTo(0xff)
-    assertThat(argb and 0xffffff).isEqualTo(0xFFFFFF)
+    assertThat(argb and 0xffffff).isEqualTo(0x3366FF)
   }
 
   @Test

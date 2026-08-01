@@ -9,7 +9,7 @@ package ee.schimke.composeai.cli.serve
  */
 internal object WebEscaping {
 
-  /** Escape `&`, `<`, `>`, `"` for safe interpolation into HTML text / double-quoted attributes. */
+  /** Escape HTML-significant characters for safe interpolation into text or quoted attributes. */
   fun htmlEscape(s: String): String =
     buildString(s.length) {
       for (c in s) {
@@ -18,6 +18,7 @@ internal object WebEscaping {
           '<' -> append("&lt;")
           '>' -> append("&gt;")
           '"' -> append("&quot;")
+          '\'' -> append("&#39;")
           else -> append(c)
         }
       }

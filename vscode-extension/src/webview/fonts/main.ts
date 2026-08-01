@@ -321,16 +321,20 @@ export class FontBrowserApp extends LitElement {
                     </div>
                     <div class="gfb-row-meta">
                         <span class="gfb-tag">${meta.category}</span>
-                        ${meta.isVariable
-                            ? html`<span class="gfb-tag gfb-variable"
-                                  >variable · ${meta.axes.length} axes</span
-                              >`
-                            : html`<span class="gfb-tag"
-                                  >${meta.weights.length} weights</span
-                              >`}
-                        ${meta.hasItalic
-                            ? html`<span class="gfb-tag">italic</span>`
-                            : nothing}
+                        ${
+                            meta.isVariable
+                                ? html`<span class="gfb-tag gfb-variable"
+                                      >variable · ${meta.axes.length} axes</span
+                                  >`
+                                : html`<span class="gfb-tag"
+                                      >${meta.weights.length} weights</span
+                                  >`
+                        }
+                        ${
+                            meta.hasItalic
+                                ? html`<span class="gfb-tag">italic</span>`
+                                : nothing
+                        }
                     </div>
                 </div>
                 <div class="gfb-row-actions">
@@ -347,17 +351,19 @@ export class FontBrowserApp extends LitElement {
                     >
                         Specimen ↗
                     </button>
-                    ${downloaded
-                        ? html`<span class="gfb-downloaded-pill"
-                              >Downloaded</span
-                          >`
-                        : html`<button
-                              class="gfb-btn gfb-primary"
-                              ?disabled=${busy}
-                              @click=${() => this.onDownload(meta)}
-                          >
-                              ${busy ? "Downloading…" : "Download"}
-                          </button>`}
+                    ${
+                        downloaded
+                            ? html`<span class="gfb-downloaded-pill"
+                                  >Downloaded</span
+                              >`
+                            : html`<button
+                                  class="gfb-btn gfb-primary"
+                                  ?disabled=${busy}
+                                  @click=${() => this.onDownload(meta)}
+                              >
+                                  ${busy ? "Downloading…" : "Download"}
+                              </button>`
+                    }
                 </div>
             </div>
         `;
@@ -416,11 +422,13 @@ export class FontBrowserApp extends LitElement {
                 <div class="gfb-customiser-head">
                     <h2 class="gfb-section-title">${font.family}</h2>
                     <div class="gfb-customiser-head-actions">
-                        ${face
-                            ? nothing
-                            : html`<span class="gfb-warn"
-                                  >no matching face</span
-                              >`}
+                        ${
+                            face
+                                ? nothing
+                                : html`<span class="gfb-warn"
+                                      >no matching face</span
+                                  >`
+                        }
                         <button
                             class="gfb-btn"
                             @click=${() => this.onRemove(font)}

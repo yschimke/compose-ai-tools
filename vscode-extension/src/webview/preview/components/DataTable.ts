@@ -107,11 +107,13 @@ export class DataTable<TRow = unknown> extends LitElement {
                 <div class="data-table-header">
                     <div class="data-table-title">
                         <span class="data-table-heading">${this.heading}</span>
-                        ${this.summary
-                            ? html`<span class="data-table-summary"
-                                  >· ${this.summary}</span
-                              >`
-                            : nothing}
+                        ${
+                            this.summary
+                                ? html`<span class="data-table-summary"
+                                      >· ${this.summary}</span
+                                  >`
+                                : nothing
+                        }
                     </div>
                     <div class="data-table-actions">
                         <slot name="actions"></slot>
@@ -130,9 +132,11 @@ export class DataTable<TRow = unknown> extends LitElement {
                         </button>
                     </div>
                 </div>
-                ${this.rows.length === 0
-                    ? html`<div class="data-table-empty">No rows.</div>`
-                    : this.renderTable()}
+                ${
+                    this.rows.length === 0
+                        ? html`<div class="data-table-empty">No rows.</div>`
+                        : this.renderTable()
+                }
             </div>
         `;
     }

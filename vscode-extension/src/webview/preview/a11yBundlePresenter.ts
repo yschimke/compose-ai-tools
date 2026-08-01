@@ -357,29 +357,36 @@ export function a11yTableColumns(): readonly DataTableColumn<A11yRow>[] {
                         data-depth=${row.depth}
                         data-merged=${row.merged ? "true" : "false"}
                     >
-                        ${row.depth > 0
-                            ? html`<span
-                                  class="a11y-tree-arm"
-                                  aria-hidden="true"
-                                  >↳</span
-                              >`
-                            : html`<span
-                                  class="a11y-tree-pip"
-                                  aria-hidden="true"
-                                  title="Merged (focusable / screen-reader stop)"
-                                  >●</span
-                              >`}
-                        <div class="a11y-label-text">
-                            ${row.merged
-                                ? html`<strong>${row.label}</strong>`
-                                : html`<span class="a11y-label-unmerged-text"
-                                      >${row.label}</span
-                                  >`}
-                            ${row.role
-                                ? html`<span class="a11y-row-role"
-                                      >${row.role}</span
+                        ${
+                            row.depth > 0
+                                ? html`<span
+                                      class="a11y-tree-arm"
+                                      aria-hidden="true"
+                                      >↳</span
                                   >`
-                                : ""}
+                                : html`<span
+                                      class="a11y-tree-pip"
+                                      aria-hidden="true"
+                                      title="Merged (focusable / screen-reader stop)"
+                                      >●</span
+                                  >`
+                        }
+                        <div class="a11y-label-text">
+                            ${
+                                row.merged
+                                    ? html`<strong>${row.label}</strong>`
+                                    : html`<span
+                                          class="a11y-label-unmerged-text"
+                                          >${row.label}</span
+                                      >`
+                            }
+                            ${
+                                row.role
+                                    ? html`<span class="a11y-row-role"
+                                          >${row.role}</span
+                                      >`
+                                    : ""
+                            }
                         </div>
                     </div>
                 `;

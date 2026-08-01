@@ -91,6 +91,7 @@ data class RenderResultDto(
   val pngPath: String? = null,
   val metrics: Map<String, Long>? = null,
   val previewContext: PreviewContextDto? = null,
+  val outputBaseName: String? = null,
 ) {
   fun toRenderResult(): RenderResult =
     RenderResult(
@@ -100,6 +101,7 @@ data class RenderResultDto(
       pngPath = pngPath,
       metrics = metrics?.let { LinkedHashMap(it) },
       previewContext = previewContext?.toPreviewContext(),
+      outputBaseName = outputBaseName,
     )
 
   companion object {
@@ -111,6 +113,7 @@ data class RenderResultDto(
         pngPath = result.pngPath,
         metrics = result.metrics,
         previewContext = result.previewContext?.let(PreviewContextDto::of),
+        outputBaseName = result.outputBaseName,
       )
   }
 }

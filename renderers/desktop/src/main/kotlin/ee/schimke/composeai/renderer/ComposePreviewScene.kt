@@ -63,13 +63,9 @@ fun composePreviewSceneSize(
  * box so a sticker's backdrop is content-sized, not sandbox-sized. Fixed axes keep the sandbox
  * constraint so `fillMax*` / `LazyColumn` still have a finite viewport.
  *
- * On a wrapped axis `propagateMinConstraints = true` pushes the wrapped-axis *min* bound (the Min /
- * Within size modes) down onto the composable itself, not just this box — with the default the box
- * grows to the min bound but relaxes the child's min to 0, so a wrap-content component (a Button, a
- * badge) stays at its intrinsic size in the corner of an enlarged frame instead of filling the
- * requested size. It is scoped to wrapped renders only: the fixed-frame branch is `fillMaxSize`,
- * whose tight min would otherwise be forwarded into the root composable and stretch wrap-content
- * content that must stay small in an explicitly-sized frame.
+ * `propagateMinConstraints = true` pushes the wrapper's min bounds down onto the composable itself:
+ * fixed axes become Studio-tight, while wrapped axes remain loose unless Min / Within size modes
+ * add a floor.
  *
  * [onMeasured] is invoked exactly once per measure pass, and only when at least one axis wraps.
  */
@@ -100,9 +96,9 @@ fun ComposePreviewContentBox(
           val minHBound = (sizeBounds.minHeightPx ?: 0).coerceIn(0, maxHBound)
           val wrapped =
             Constraints(
-              minWidth = if (wrapWidth) minWBound else constraints.minWidth,
+              minWidth = if (wrapWidth) minWBound else constraints.maxWidth,
               maxWidth = if (wrapWidth) maxWBound else constraints.maxWidth,
-              minHeight = if (wrapHeight) minHBound else constraints.minHeight,
+              minHeight = if (wrapHeight) minHBound else constraints.maxHeight,
               maxHeight = if (wrapHeight) maxHBound else constraints.maxHeight,
             )
           val placeable = measurable.measure(wrapped)
@@ -113,5 +109,5 @@ fun ComposePreviewContentBox(
     } else {
       Modifier.fillMaxSize().background(backgroundColor)
     }
-  Box(modifier = boxModifier, propagateMinConstraints = wrapWidth || wrapHeight) { content() }
+  Box(modifier = boxModifier, propagateMinConstraints = true) { content() }
 }

@@ -98,9 +98,11 @@ export class DataTabs extends LitElement {
         const selected = b.id === this.activeTab;
         return html`
             <div
-                class=${selected
-                    ? "data-tab-handle data-tab-handle-active"
-                    : "data-tab-handle"}
+                class=${
+                    selected
+                        ? "data-tab-handle data-tab-handle-active"
+                        : "data-tab-handle"
+                }
                 role="tab"
                 aria-selected=${selected ? "true" : "false"}
                 data-bundle=${b.id}

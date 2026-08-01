@@ -4,486 +4,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>:samples:cmp — compose-preview</title>
-        <style>:root { color-scheme: light dark; }
-* { box-sizing: border-box; }
-body { margin: 0; padding: 24px; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  color: #1b1b1f; background: #fafafb; }
-a { color: #5b5bd6; text-decoration: none; }
-a:hover { text-decoration: underline; }
-.cp-head { margin: 0 0 4px; font-size: 1.2rem; font-weight: 600; }
-.cp-sub { margin: 0 0 20px; font-size: 0.82rem; color: #6b6b70; }
-/* Per-preview link to the source file on GitHub, under the viewer title. */
-.cp-source { margin: -12px 0 20px; font-size: 0.8rem; }
-.cp-source-link { display: inline-flex; align-items: center; gap: 5px; color: #6b6b70;
-  text-decoration: none; }
-.cp-source-link:hover { text-decoration: underline; }
-.cp-about { margin: 0 0 24px; padding: 14px 16px; border: 1px solid #e3e3e8; border-radius: 10px;
-  background: #fff; max-width: 720px; }
-.cp-about-title { margin: 0 0 6px; font-size: 0.95rem; font-weight: 600; }
-.cp-about-body { margin: 0 0 8px; font-size: 0.84rem; line-height: 1.45; color: #45454c; }
-.cp-about-body code { font-size: 0.8rem; padding: 0 3px; border-radius: 4px; background: #f0f0f3; }
-.cp-about-links { margin: 0; font-size: 0.8rem; color: #6b6b70; display: flex; flex-wrap: wrap;
-  align-items: center; gap: 6px; }
-.cp-about-links a { display: inline-flex; align-items: center; gap: 4px; }
-.cp-gh { width: 15px; height: 15px; vertical-align: text-bottom; }
-.cp-about-ver { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.74rem;
-  padding: 1px 7px; border-radius: 999px; border: 1px solid #d7d7de; background: #fff;
-  color: #45454c; }
-/* Catalog "back to home" button — replaces the in-catalog design-systems nav row. */
-.cp-back { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 14px;
-  font-size: 0.82rem; padding: 5px 12px; border-radius: 999px; border: 1px solid #d7d7de;
-  background: #fff; color: #45454c; }
-.cp-back:hover { background: #f0f0f3; text-decoration: none; }
-/* Provenance strip: how/when/from-what this catalog was generated (branch, date, versions,
-   a link to re-run the generating workflow). Shown near the catalog header. */
-.cp-prov { margin: 0 0 18px; padding: 10px 14px; border: 1px solid #e3e3e8; border-radius: 10px;
-  background: #fff; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.78rem;
-  color: #6b6b70; max-width: 720px; }
-.cp-prov-item { display: inline-flex; align-items: center; gap: 5px; }
-.cp-prov-item .cp-prov-key { color: #8a8a92; }
-.cp-prov-item code { font-size: 0.74rem; padding: 0 4px; border-radius: 4px; background: #f0f0f3; }
-.cp-systems { margin: 0 0 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
-  font-size: 0.85rem; }
-.cp-systems-label { font-weight: 600; color: #6b6b70; }
-.cp-systems a, .cp-systems-cur { padding: 3px 10px; border-radius: 999px; border: 1px solid #d7d7de; }
-.cp-systems a { background: #fff; }
-.cp-systems-cur { background: #ececff; border-color: #c4c4f5; color: #3a3a8a; font-weight: 600; }
-.cp-toolbar { margin: 0 0 16px; }
-.cp-searchbar { margin: 0 0 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.cp-search { flex: 1 1 260px; max-width: 420px; padding: 7px 12px; font: inherit; font-size: 0.85rem;
-  border: 1px solid #d7d7de; border-radius: 999px; background: #fff; color: inherit; }
-.cp-search:focus { outline: 2px solid #c4c4f5; outline-offset: 1px; }
-.cp-count { font-size: 0.78rem; color: #6b6b70; }
-.cp-empty { margin: 12px 0 0; font-size: 0.85rem; color: #6b6b70; }
-.cp-empty[hidden] { display: none; }
-/* Tabbed catalog: a tab bar (role=tablist) over per-section panels. Progressive enhancement —
-   with no JS every section shows under its own <h2> and the tabs act as in-page anchor links;
-   the filter script turns them into real tabs (one panel shown at a time) and adds `cp-js` to
-   <html>, which hides the then-redundant per-section <h2> (the tab already names the section). */
-.cp-tabs { display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 0 0 18px;
-  border-bottom: 1px solid #e3e3e8; }
-.cp-tab { display: inline-flex; align-items: center; gap: 7px; padding: 8px 15px;
-  font-size: 0.85rem; color: #6b6b70; border: 1px solid transparent; border-bottom: none;
-  border-radius: 9px 9px 0 0; margin-bottom: -1px; cursor: pointer; }
-.cp-tab:hover { color: #3a3a8a; background: #f0f0f3; text-decoration: none; }
-.cp-tab[aria-selected="true"] { color: #3a3a8a; font-weight: 600; background: #fafafb;
-  border-color: #e3e3e8; border-bottom-color: #fafafb; }
-.cp-tab-count { font-size: 0.7rem; padding: 0 7px; border-radius: 999px; background: #ececff;
-  color: #5a5a9a; }
-.cp-section { margin: 0; }
-.cp-section[hidden] { display: none; }
-.cp-section-head { margin: 0 0 14px; font-size: 1rem; font-weight: 600; }
-html.cp-js .cp-section-head { display: none; }
-.cp-subgroup { margin: 0 0 20px; }
-.cp-subgroup[hidden] { display: none; }
-.cp-group-head { margin: 18px 0 10px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em;
-  text-transform: uppercase; color: #8a8a92; }
-.cp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
-/* The Theme picker carries one chip per configured theme (the baked light/dark pair plus any
-   app-declared @ThemeCatalog theme), so it wraps rather than overflowing a narrow viewport. */
-.cp-theme { display: inline-flex; flex-wrap: wrap; border: 1px solid #d7d7de; border-radius: 999px;
-  overflow: hidden; max-width: 100%; }
-.cp-theme-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
-  padding: 3px 14px; cursor: pointer; }
-.cp-theme-btn + .cp-theme-btn { border-left: 1px solid #ececf1; }
-.cp-theme-btn[aria-pressed="true"] { background: #ececff; color: #3a3a8a; font-weight: 600; }
-.cp-states { display: inline-flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
-.cp-state-btn { border: 1px solid #d7d7de; border-radius: 999px; background: #fff; color: #6b6b70;
-  font: inherit; font-size: 0.78rem; padding: 3px 14px; cursor: pointer; text-decoration: none; }
-.cp-state-btn:hover { border-color: #b9b9c6; color: #3a3a8a; }
-.cp-state-btn[aria-current="page"] { background: #ececff; border-color: #c5c5f0; color: #3a3a8a; font-weight: 600; }
-.cp-badge { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
-  font-size: 0.7rem; font-weight: 600; vertical-align: middle; white-space: nowrap; }
-.cp-badge--trusted { background: #e7f4ea; color: #1e7a34; border: 1px solid #b6e0c2; }
-.cp-badge--unverified { background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
-.cp-degrade { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px;
-  margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; line-height: 1.4;
-  background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
-.cp-degrade-icon { font-weight: 700; }
-.cp-degrade-item { display: inline; }
-/* Status page (GET /status): stat tiles, config grid, and the catalog/daemon/failure tables. */
-.cp-status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 10px; margin: 0 0 22px; max-width: 860px; }
-.cp-stat { border: 1px solid #e3e3e8; border-radius: 10px; background: #fff; padding: 10px 14px; }
-.cp-stat-key { font-size: 0.71rem; text-transform: uppercase; letter-spacing: 0.04em; color: #8a8a92; }
-.cp-stat-val { margin-top: 3px; font-size: 1.05rem; font-weight: 600; color: #1b1b1f; }
-.cp-status-sec { margin: 26px 0 12px; font-size: 1rem; font-weight: 600; }
-.cp-status-scroll { overflow-x: auto; max-width: 100%; margin: 0 0 8px; }
-.cp-table { border-collapse: collapse; font-size: 0.82rem; max-width: 860px; min-width: 100%; }
-.cp-table th { text-align: left; font-weight: 600; color: #6b6b70; font-size: 0.72rem;
-  text-transform: uppercase; letter-spacing: 0.03em; padding: 6px 12px 6px 0;
-  border-bottom: 1px solid #e3e3e8; white-space: nowrap; }
-.cp-table td { padding: 8px 12px 8px 0; border-bottom: 1px solid #f0f0f3; vertical-align: top; }
-.cp-table tr:last-child td { border-bottom: none; }
-.cp-table code { font-size: 0.76rem; padding: 0 4px; border-radius: 4px; background: #f0f0f3; }
-.cp-ok { color: #1e7a34; font-weight: 600; }
-.cp-muted { color: #8a8a92; font-size: 0.76rem; }
-.cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
-.cp-syslist { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
-.cp-syslist .cp-imgwrap { min-height: 120px; }
-.cp-sys-title { font-size: 0.98rem; font-weight: 600; }
-.cp-sys-desc { margin-top: 4px; font-size: 0.76rem; color: #6b6b70; line-height: 1.4; }
-.cp-sys-foot { margin-top: 8px; font-size: 0.74rem; color: #6b6b70; }
-.cp-sys-noimg { font-size: 0.78rem; color: #a0a0a8; }
-.cp-card { border: 1px solid #e3e3e8; border-radius: 10px; overflow: hidden; background: #fff;
-  display: block; color: inherit; }
-.cp-card[hidden] { display: none; }
-.cp-imgwrap { display: flex; align-items: center; justify-content: center; min-height: 88px;
-  background: #fff; padding: 12px; }
-/* `width`/`height` stay auto so the max-* pair alone decides the used size and the image can
-   never be stretched. The front door's prebaked heroes DO carry width/height attributes — they
-   give the browser the aspect ratio up front (no layout shift) — but those must not become a
-   definite width, or a max-height clamp (the narrow-viewport rule below drops it to 200px)
-   would squash the height without narrowing the width. The heroes are rasterised at 2x this
-   box, so clamping here is what makes them crisp rather than merely small. */
-.cp-imgwrap img { max-width: 100%; max-height: 240px; width: auto; height: auto; display: block; }
-/* A framed thumbnail: a clip window whose aspect-ratio is the component box, that crops away a
-   sticker's empty watch canvas. The window's natural width is the box (so it never upscales past
-   1x), but `max-width: 100%` lets it shrink to a narrow grid card instead of overflowing it —
-   the render <img> inside is absolutely positioned and sized + offset in PERCENTAGES of the box,
-   so the whole frame scales as one when the card is narrower than the box. Overrides fit-to-box. */
-.cp-crop { position: relative; overflow: hidden; display: block; max-width: 100%; }
-.cp-imgwrap .cp-crop img { position: absolute; max-width: none; max-height: none; margin: 0; }
-/* Sticker backing: the preview server shows components on a solid surface by DEFAULT, so a
-   transparent sticker reads like a real component instead of washing out. The header's
-   Background/Transparent toggle flips the whole page to a checkerboard (html.cp-bg-transparent)
-   to inspect the raw transparent PNG; the choice persists per-visitor in localStorage['cp-bg']. */
-html.cp-bg-transparent .cp-imgwrap, html.cp-bg-transparent .cp-stage {
-  background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 16px 16px; }
-/* Back each card by its OWN render theme: a light-rendered sticker always sits on a light
-   surface and a dark-rendered one on a dark surface, independent of the browser's color scheme
-   or the explicitly-selected catalog theme. Without this a transparent light sticker (dark
-   strokes) shown on the dark browser backing — or dark on light — washes to near-invisible.
-   Solid mode only; the Transparent toggle's checkerboard still wins via cp-bg-transparent. */
-html:not(.cp-bg-transparent) .cp-card[data-bg-theme="light"] .cp-imgwrap { background: #fff; }
-html:not(.cp-bg-transparent) .cp-card[data-bg-theme="dark"] .cp-imgwrap { background: #1d1d20; }
-/* The single-preview viewer's stage follows the preview's background theme the same way the grid
-   thumbnails do (data-bg-theme on .cp-viewer, kept SEPARATE from the explicit-only
-   data-card-theme filter axis): a dark variant — or any preview in a dark-first system like Wear
-   — sits on a dark stage so a light-on-transparent render stays readable. The viewer JS keeps
-   data-bg-theme in step with the chosen Theme (uiMode) so it doesn't clash after a re-render.
-   Solid mode only; the Transparent checkerboard still wins via cp-bg-transparent. */
-html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="dark"] .cp-stage { background: #1d1d20; }
-html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { background: #fff; }
-.cp-bg { display: inline-flex; border: 1px solid #d7d7de; border-radius: 999px; overflow: hidden; }
-.cp-bg-btn { border: 0; background: #fff; color: #6b6b70; font: inherit; font-size: 0.78rem;
-  padding: 3px 14px; cursor: pointer; }
-.cp-bg-btn[aria-pressed="true"] { background: #ececff; color: #3a3a8a; font-weight: 600; }
-.cp-meta { padding: 8px 10px; font-size: 0.82rem; }
-.cp-label { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cp-id { color: #6b6b70; font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cp-viewer { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
-.cp-stage { position: relative; flex: 1 1 360px; min-width: 280px; border: 1px solid #e3e3e8;
-  border-radius: 10px;
-  background: #fff; padding: 12px;
-  display: flex; align-items: center; justify-content: center; min-height: 220px; }
-.cp-stage img, .cp-stage canvas { max-width: 100%; height: auto; }
-.cp-backend { position: absolute; top: 8px; right: 8px; font-size: 0.62rem; font-weight: 600;
-  letter-spacing: 0.02em; padding: 2px 8px; border-radius: 999px; background: rgba(20,20,22,0.72);
-  color: #fff; pointer-events: none; }
-.cp-stage iframe { position: absolute; border: 0; background: transparent; opacity: 0;
-  transition: opacity 0.15s ease; pointer-events: none; }
-.cp-stage iframe.cp-wasm-live { opacity: 1; pointer-events: auto; }
-/* Live daemon frames paint into the SAME absolute overlay box the Wasm iframe uses, pinned to
-   the snapshot img's slot — so the stage is one fixed box every transport fills and toggling a
-   mode never resizes or shifts it (the img keeps its layout slot underneath via visibility). */
-.cp-stage canvas.cp-canvas-live { position: absolute; max-width: none; }
-.cp-live-row { flex-direction: row !important; align-items: center; gap: 6px !important; }
-.cp-modes { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px 14px;
-  font-size: 0.8rem; }
-.cp-controls { flex: 0 0 240px; display: flex; flex-direction: column; gap: 14px; }
-.cp-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }
-.cp-controls input, .cp-controls select { padding: 5px 6px; font-size: 0.85rem; }
-.cp-status { font-size: 0.75rem; color: #6b6b70; min-height: 1em; }
-/* Visible mode-activation error overlay: shown when a lane (Live stream, Wasm
-   app, or a /render) fails to activate, so a failed mode reads as an error
-   instead of a silent stale frame. Centered over the stage; [hidden] hides it. */
-.cp-error { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  max-width: 80%; z-index: 3; padding: 10px 14px; border-radius: 8px;
-  font-size: 0.8rem; line-height: 1.4; text-align: center; color: #8a1c1c;
-  background: #fdecec; border: 1px solid #f3b6b6; box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
-.cp-error[hidden] { display: none; }
-.cp-note { font-size: 0.75rem; color: #6b6b70; line-height: 1.4; padding: 8px 10px;
-  border-radius: 8px; background: #f4f4f6; }
-.cp-controls label:has(:disabled) { opacity: 0.55; }
-.cp-size { display: flex; flex-direction: column; gap: 8px; }
-/* :not([hidden]) so the mode toggle's `hidden` attribute still wins over this display rule. */
-.cp-size-row:not([hidden]) { display: flex; gap: 8px; }
-.cp-size-row label { flex: 1; }
-.cp-size-row input { width: 100%; box-sizing: border-box; }
-.cp-knobs { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
-.cp-knobs-head { font-size: 0.72rem; color: #6b6b70; }
-.cp-overlays { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
-.cp-overlays-head { font-size: 0.72rem; color: #6b6b70; }
-.cp-knobs input:disabled { opacity: 0.7; }
-.cp-links { border-top: 1px solid #e3e3e8; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
-/* The under-stage column: the lane toggles (Live / Wasm / SVG), the static-snapshot note, and
-   the Export & direct links card. Page-level, not part of the collapsible overrides drawer, so
-   picking a lane and grabbing the /render URLs stay visible with the drawer closed. */
-.cp-below { margin: 18px 0 0; max-width: 720px; display: flex; flex-direction: column; gap: 12px; }
-/* Export & direct links: its own border is the card's, so the .cp-links divider rule above is
-   dropped inside it. */
-.cp-export { padding: 12px 14px; border: 1px solid #e3e3e8;
-  border-radius: 10px; background: #fff; }
-.cp-export-head { margin: 0 0 10px; font-size: 0.78rem; font-weight: 600; color: #45454c; }
-.cp-export .cp-links { border-top: 0; padding-top: 0; }
-.cp-link-row { display: flex; align-items: center; gap: 6px; }
-.cp-link-kind { font-size: 0.72rem; font-weight: 600; color: #6b6b70; width: 30px; flex: none; }
-.cp-url { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.72rem; padding: 4px 6px; border: 1px solid #d7d7de; border-radius: 6px;
-  background: #fff; color: #1b1b1f; cursor: pointer; }
-.cp-url.cp-url-copied { border-color: #5b5bd6; box-shadow: 0 0 0 2px rgba(91, 91, 214, 0.25); }
-.cp-copyimg, .cp-dl { font-size: 0.72rem; padding: 4px 8px; border-radius: 6px; border: 1px solid #d7d7de;
-  background: #fff; color: #5b5bd6; cursor: pointer; text-decoration: none; flex: none; white-space: nowrap; }
-.cp-copyimg:hover, .cp-dl:hover { background: #f0f0f3; }
-/* Drawer toggles + the two collapsible drawers (left component nav, right overrides). The open
-   state is a class on .cp-viewer — cp-controls-open (default on) and cp-nav-open (default off) —
-   so a drawer hides purely in CSS and the toggle JS just flips the class + aria-expanded. */
-.cp-viewer-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
-.cp-drawer-toggle { display: inline-flex; align-items: center; gap: 6px; font: inherit;
-  font-size: 0.78rem; padding: 5px 12px; border-radius: 999px; border: 1px solid #d7d7de;
-  background: #fff; color: #45454c; cursor: pointer; }
-.cp-drawer-toggle:hover { background: #f0f0f3; }
-.cp-drawer-toggle[aria-expanded="true"] { background: #ececff; border-color: #c4c4f5;
-  color: #3a3a8a; font-weight: 600; }
-.cp-nav { flex: 0 0 220px; align-self: stretch; max-height: 72vh; overflow: auto;
-  border: 1px solid #e3e3e8; border-radius: 10px; background: #fff; padding: 12px;
-  display: flex; flex-direction: column; gap: 10px; }
-.cp-nav-head { display: flex; align-items: center; justify-content: space-between;
-  font-size: 0.8rem; font-weight: 600; color: #45454c; }
-.cp-nav-close { border: 0; background: none; font: inherit; font-size: 1.1rem; line-height: 1;
-  color: #6b6b70; cursor: pointer; padding: 0 2px; }
-.cp-nav-search { padding: 6px 10px; font: inherit; font-size: 0.8rem; border: 1px solid #d7d7de;
-  border-radius: 8px; background: #fff; color: inherit; }
-.cp-nav-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.cp-nav-item { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 6px;
-  font-size: 0.8rem; color: inherit; }
-.cp-nav-thumb { flex: none; width: 28px; height: 28px; object-fit: contain; border-radius: 4px;
-  background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 8px 8px; }
-.cp-nav-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cp-nav-item:hover { background: #f0f0f3; text-decoration: none; }
-.cp-nav-item[aria-current="page"] { background: #ececff; color: #3a3a8a; font-weight: 600; }
-.cp-nav-empty { font-size: 0.78rem; color: #6b6b70; }
-.cp-nav-empty[hidden] { display: none; }
-.cp-viewer:not(.cp-nav-open) .cp-nav { display: none; }
-.cp-viewer:not(.cp-controls-open) .cp-controls { display: none; }
-/* Mobile drawer backdrop — hidden by default; shown (below) only while a drawer is open on a
-   narrow viewport, where the drawers render as bottom sheets. */
-.cp-scrim { display: none; }
-/* Collapsible override groups: each axis-set is a <details class="cp-group"> the viewer
-   expands/collapses on its own. The summary is the group title with a rotating disclosure
-   caret; the body holds the labelled controls. Replaces the old flat control stack so the
-   overrides panel reads as a small set of named, foldable groups. */
-.cp-group { border: 1px solid #e3e3e8; border-radius: 8px; background: #fff; }
-.cp-group > summary { cursor: pointer; list-style: none; display: flex; align-items: center;
-  gap: 6px; padding: 8px 10px; font-size: 0.78rem; font-weight: 600; color: #45454c;
-  user-select: none; }
-.cp-group > summary::-webkit-details-marker { display: none; }
-.cp-group > summary::before { content: "\25B8"; font-size: 0.72rem; color: #8a8a92;
-  transition: transform 0.12s ease; }
-.cp-group[open] > summary::before { transform: rotate(90deg); }
-.cp-group > summary:hover { color: #3a3a8a; }
-.cp-group-body { display: flex; flex-direction: column; gap: 12px; padding: 0 10px 12px; }
-/* The single Static⇄Live preview toggle (replaces the old PNG/SVG/Live/Wasm radio row). Off =
-   the baked / on-demand snapshot; on = the interactive lane (daemon stream, or the in-browser
-   Wasm app). The hidden mode radios behind it are what the transport JS actually reads. */
-.cp-preview-mode { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.cp-live-toggle { display: inline-flex; align-items: center; gap: 7px; font: inherit;
-  font-size: 0.8rem; font-weight: 600; padding: 6px 14px; border-radius: 999px;
-  border: 1px solid #d7d7de; background: #fff; color: #45454c; cursor: pointer; }
-.cp-live-toggle:hover:not(:disabled) { background: #f0f0f3; }
-.cp-live-toggle:disabled { opacity: 0.5; cursor: default; }
-.cp-live-toggle[aria-pressed="true"] { background: #e7f4ea; border-color: #b6e0c2; color: #1e7a34; }
-.cp-live-dot { width: 9px; height: 9px; border-radius: 50%; background: #b9b9c6; flex: none; }
-.cp-live-toggle[aria-pressed="true"] .cp-live-dot { background: #1e9c3f;
-  box-shadow: 0 0 0 3px rgba(30, 156, 63, 0.2); }
-/* The Remote Compose backend selector: a segmented row of .cp-live-toggle chips (js / java /
-   cmp-android / cmp-jvm) sharing one visual group. */
-.cp-rc-backends { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.cp-rc-backends-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em;
-  text-transform: uppercase; color: #8a8a92; }
-.cp-rc-backend { padding: 5px 11px; }
-.cp-mode-hint { font-size: 0.72rem; color: #6b6b70; }
-/* The SVG format toggle sits beside the Live toggle (only when the session can export SVG).
-   It swaps the static snapshot between the raster PNG and the resolution-independent vector
-   render; pressing it while Live is on drops back to the static SVG. */
-.cp-fmt-toggle { display: inline-flex; align-items: center; font: inherit; font-size: 0.78rem;
-  font-weight: 600; padding: 6px 12px; border-radius: 999px; border: 1px solid #d7d7de;
-  background: #fff; color: #45454c; cursor: pointer; }
-.cp-fmt-toggle:hover { background: #f0f0f3; }
-.cp-fmt-toggle[aria-pressed="true"] { background: #ececff; border-color: #c4c4f5; color: #3a3a8a; }
-/* The mode radios are kept in the DOM (the transport JS drives them) but visually removed —
-   the single toggle above is the only visible mode control. */
-.cp-modes-inputs { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-/* Backend badge flips its accent green when a live lane drives the stage (see backendBadgeScript). */
-.cp-backend[data-live="true"] { background: rgba(30, 122, 52, 0.82); }
-/* …and amber while that lane is still activating ("connecting…"), so the wait reads on the
-   preview itself rather than in the controls footer. Declared after the green rule so it wins
-   at equal specificity (a connecting live lane carries both attributes). */
-.cp-backend[data-pending="true"] { background: rgba(138, 83, 0, 0.86); }
-/* Shared-document surfaces (POST /docs → GET /d/<id>): the drop zone on the upload page and the
-   played-back document + its facts on the permalink page. Both reuse the card/stage chrome. */
-.cp-drop { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 720px;
-  padding: 28px 20px; border: 2px dashed #d7d7de; border-radius: 12px; background: #fff;
-  text-align: center; cursor: pointer; }
-.cp-drop:hover, .cp-drop.cp-drop-over { border-color: #8f8ff0; background: #f6f6ff; }
-.cp-drop-title { font-size: 0.95rem; font-weight: 600; }
-.cp-drop-hint { font-size: 0.8rem; color: #6b6b70; line-height: 1.45; }
-.cp-doc-form { max-width: 720px; margin: 16px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
-.cp-doc-url { flex: 1 1 320px; padding: 7px 12px; font: inherit; font-size: 0.85rem;
-  border: 1px solid #d7d7de; border-radius: 999px; background: #fff; color: inherit; }
-.cp-doc-btn { font: inherit; font-size: 0.82rem; font-weight: 600; padding: 6px 16px;
-  border-radius: 999px; border: 1px solid #d7d7de; background: #fff; color: #45454c; cursor: pointer; }
-.cp-doc-btn:hover { background: #f0f0f3; }
-.cp-doc-result { max-width: 720px; margin: 18px 0 0; padding: 14px 16px; border-radius: 10px;
-  border: 1px solid #e3e3e8; background: #fff; font-size: 0.84rem; }
-.cp-doc-result[hidden] { display: none; }
-.cp-doc-result.cp-doc-error { background: #fdf0e3; color: #8a5300; border-color: #f0d3a8; }
-.cp-doc-stage { max-width: 720px; border: 1px solid #e3e3e8; border-radius: 10px; background: #fff;
-  padding: 12px; display: flex; align-items: center; justify-content: center; min-height: 260px; }
-.cp-doc-stage canvas, .cp-doc-stage svg, .cp-doc-stage img { max-width: 100%; height: auto; }
-.cp-doc-status { margin: 8px 0 0; font-size: 0.78rem; color: #6b6b70; min-height: 1.2em; }
-.cp-doc-facts { max-width: 720px; margin: 16px 0 0; display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
-.cp-doc-expiry { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.7rem;
-  font-weight: 600; background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
-@media (prefers-color-scheme: dark) {
-  body { color: #e6e6e9; background: #161618; }
-  .cp-sub, .cp-id, .cp-status, .cp-about-links, .cp-sys-desc, .cp-sys-foot { color: #a0a0a8; }
-  .cp-card, .cp-stage, .cp-knobs, .cp-links, .cp-about { border-color: #34343a; }
-  .cp-export { background: #1d1d20; border-color: #34343a; }
-  .cp-export-head { color: #c9c9d0; }
-  .cp-url { background: #1d1d20; color: #e6e6e9; border-color: #34343a; }
-  .cp-url.cp-url-copied { border-color: #8f8ff0; box-shadow: 0 0 0 2px rgba(143, 143, 240, 0.3); }
-  .cp-copyimg, .cp-dl { background: #1d1d20; border-color: #34343a; }
-  .cp-copyimg:hover, .cp-dl:hover { background: #26262b; }
-  .cp-card, .cp-about { background: #1d1d20; }
-  .cp-about-body { color: #c9c9d0; }
-  .cp-about-body code { background: #2a2a30; }
-  .cp-systems-label { color: #a0a0a8; }
-  .cp-systems a, .cp-systems-cur { border-color: #34343a; }
-  .cp-systems a { background: #1d1d20; }
-  .cp-systems-cur { background: #26264a; border-color: #45458a; color: #c9c9ff; }
-  .cp-about-ver { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
-  .cp-back { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
-  .cp-back:hover { background: #26262b; }
-  .cp-source-link { color: #9a9aa2; }
-  .cp-prov { background: #1d1d20; border-color: #34343a; color: #a0a0a8; }
-  .cp-prov-item .cp-prov-key { color: #7a7a82; }
-  .cp-prov-item code { background: #2a2a30; }
-  .cp-search { border-color: #34343a; background: #1d1d20; }
-  .cp-count, .cp-empty { color: #a0a0a8; }
-  .cp-tabs { border-bottom-color: #34343a; }
-  .cp-tab { color: #a0a0a8; }
-  .cp-tab:hover { color: #c9c9ff; background: #26262b; }
-  .cp-tab[aria-selected="true"] { color: #c9c9ff; background: #161618; border-color: #34343a;
-    border-bottom-color: #161618; }
-  .cp-tab-count { background: #26264a; color: #c9c9ff; }
-  .cp-group-head { color: #7a7a82; }
-  .cp-theme { border-color: #34343a; }
-  .cp-theme-btn { background: #1d1d20; color: #a0a0a8; }
-  .cp-theme-btn + .cp-theme-btn { border-left-color: #34343a; }
-  .cp-theme-btn[aria-pressed="true"] { background: #26264a; color: #c9c9ff; }
-  .cp-state-btn { background: #1d1d20; color: #a0a0a8; border-color: #34343a; }
-  .cp-state-btn:hover { border-color: #4a4a55; color: #c9c9ff; }
-  .cp-state-btn[aria-current="page"] { background: #26264a; border-color: #3a3a6a; color: #c9c9ff; }
-  .cp-note { background: #26262b; color: #a0a0a8; }
-  .cp-drop { background: #1d1d20; border-color: #34343a; }
-  .cp-drop:hover, .cp-drop.cp-drop-over { border-color: #6a6ad0; background: #22222c; }
-  .cp-drop-hint, .cp-doc-status { color: #a0a0a8; }
-  .cp-doc-url, .cp-doc-btn { background: #1d1d20; border-color: #34343a; color: #e6e6e9; }
-  .cp-doc-btn:hover { background: #26262b; }
-  .cp-doc-result, .cp-doc-stage { background: #1d1d20; border-color: #34343a; }
-  /* Stat tiles are shared by the status page and the document facts; without these they stayed
-     white-on-dark in both. */
-  .cp-stat { background: #1d1d20; border-color: #34343a; }
-  .cp-stat-key { color: #7a7a82; }
-  .cp-stat-val { color: #e6e6e9; }
-  .cp-imgwrap, .cp-stage { background: #1d1d20; }
-  html.cp-bg-transparent .cp-imgwrap, html.cp-bg-transparent .cp-stage {
-    background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 16px 16px; }
-  .cp-bg { border-color: #34343a; }
-  .cp-bg-btn { background: #1d1d20; color: #a0a0a8; }
-  .cp-bg-btn[aria-pressed="true"] { background: #26264a; color: #c9c9ff; }
-  .cp-badge--trusted { background: #14361f; color: #6cd98a; border-color: #2c6b40; }
-  .cp-badge--unverified { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
-  .cp-degrade { background: #3a2a12; color: #e6b067; border-color: #6b4f24; }
-  .cp-drawer-toggle { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
-  .cp-drawer-toggle:hover { background: #26262b; }
-  .cp-drawer-toggle[aria-expanded="true"] { background: #26264a; border-color: #45458a; color: #c9c9ff; }
-  .cp-nav { background: #1d1d20; border-color: #34343a; }
-  .cp-nav-head { color: #c9c9d0; }
-  .cp-nav-search { background: #1d1d20; border-color: #34343a; }
-  .cp-nav-item:hover { background: #26262b; }
-  .cp-nav-item[aria-current="page"] { background: #26264a; color: #c9c9ff; }
-  .cp-nav-thumb { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 8px 8px; }
-  .cp-nav-empty { color: #a0a0a8; }
-  .cp-group { background: #1d1d20; border-color: #34343a; }
-  .cp-group > summary { color: #c9c9d0; }
-  .cp-group > summary:hover { color: #c9c9ff; }
-  .cp-live-toggle { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
-  .cp-live-toggle:hover:not(:disabled) { background: #26262b; }
-  .cp-live-toggle[aria-pressed="true"] { background: #14361f; border-color: #2c6b40; color: #6cd98a; }
-  .cp-fmt-toggle { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
-  .cp-fmt-toggle:hover { background: #26262b; }
-  .cp-fmt-toggle[aria-pressed="true"] { background: #26264a; border-color: #45458a; color: #c9c9ff; }
-  .cp-mode-hint { color: #a0a0a8; }
-}
-/* Mobile / narrow viewports. The viewer is a flex row of stage + overrides (+ optional nav);
-   on a phone we collapse it to a single stacked column and — crucially for usability on a tall
-   preview — turn the two drawers into bottom sheets reachable from a sticky toggle bar, so the
-   overrides and the component list are one tap away instead of a long scroll below the preview.
-   We also drop the flex items' min-width so nothing overflows the viewport, and reflow the
-   grids, size rows and copyable link rows to fit a ~320px screen without horizontal scrolling. */
-@media (max-width: 640px) {
-  body { padding: 14px; }
-  /* The trust badge can carry a long branch string; constrain it to the viewport and let it
-     wrap instead of forcing a horizontal scroll. */
-  .cp-badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
-  /* Sticky toggle bar so ⚙ Overrides / ☰ Components stay one tap away without scrolling. */
-  .cp-viewer-bar { position: sticky; top: 0; z-index: 20; margin: 0 0 10px; padding: 6px 0;
-    background: #fafafb; }
-  .cp-viewer { gap: 16px; }
-  /* Stage, overrides and nav each stack full-width; min-width:0 lets the flex items (and their
-     selects/inputs) shrink below their content's intrinsic width instead of overflowing. */
-  .cp-stage, .cp-controls, .cp-nav { flex: 1 1 100%; min-width: 0; }
-  .cp-controls label, .cp-group, .cp-group-body { min-width: 0; }
-  .cp-controls select, .cp-controls input { max-width: 100%; }
-  /* Open drawers overlay the preview as bottom sheets (with the scrim below), so overrides and
-     the component list are reachable without scrolling past a tall preview. */
-  .cp-viewer.cp-controls-open .cp-controls,
-  .cp-viewer.cp-nav-open .cp-nav {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; margin: 0;
-    max-height: 78vh; overflow: auto;
-    padding: 12px 14px calc(14px + env(safe-area-inset-bottom, 0px));
-    border: 0; border-top: 1px solid #e3e3e8; border-radius: 14px 14px 0 0;
-    background: #fafafb; box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18); }
-  /* Grabber affordance at the top of a sheet. */
-  .cp-viewer.cp-controls-open .cp-controls::before,
-  .cp-viewer.cp-nav-open .cp-nav::before {
-    content: ""; display: block; width: 36px; height: 4px; margin: 0 auto 10px;
-    border-radius: 999px; background: #c9c9d0; }
-  .cp-scrim.cp-scrim-on { display: block; position: fixed; inset: 0; z-index: 35;
-    background: rgba(0, 0, 0, 0.38); }
-  .cp-grid, .cp-cards { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
-  .cp-syslist, .cp-syslist.cp-grid { grid-template-columns: 1fr; }
-  .cp-imgwrap img { max-height: 200px; }
-  /* Copyable direct-link rows: the URL field takes its own line above the Copy/Download
-     buttons instead of squeezing all three onto one narrow row. */
-  .cp-link-row { flex-wrap: wrap; }
-  .cp-url { flex: 1 1 100%; }
-  /* The paired Min/Max (and Fixed W/H) size inputs stack rather than sit side by side. */
-  .cp-size-row:not([hidden]) { flex-direction: column; gap: 6px; }
-}
-/* Dark-mode surfaces for the mobile sticky bar + bottom sheets. */
-@media (max-width: 640px) and (prefers-color-scheme: dark) {
-  .cp-viewer-bar { background: #161618; }
-  .cp-viewer.cp-controls-open .cp-controls,
-  .cp-viewer.cp-nav-open .cp-nav { background: #161618; border-top-color: #34343a;
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5); }
-  .cp-viewer.cp-controls-open .cp-controls::before,
-  .cp-viewer.cp-nav-open .cp-nav::before { background: #4a4a55; }
-}</style>
+        <link rel="stylesheet" href="/assets/serve/890d-6d8fd3af83e8c5c6/serve.css">
         <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
@@ -509,6 +30,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   <div class="cp-meta">
     <div class="cp-label" title="com.example.ButtonPreview">Button</div>
     <div class="cp-id">com.example.ButtonPreview</div>
+    
   </div>
 </a>
 <a class="cp-card" href="/p/com.example.CardPreview?token=demo-token-fixture">
@@ -518,6 +40,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   <div class="cp-meta">
     <div class="cp-label" title="com.example.CardPreview">Card</div>
     <div class="cp-id">com.example.CardPreview</div>
+    
   </div>
 </a>
 <a class="cp-card" href="/p/com.example.DialogPreview?token=demo-token-fixture">
@@ -527,6 +50,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   <div class="cp-meta">
     <div class="cp-label" title="com.example.DialogPreview">Dialog</div>
     <div class="cp-id">com.example.DialogPreview</div>
+    
   </div>
 </a>
 <a class="cp-card" href="/p/com.example.ListScreenPreview?token=demo-token-fixture">
@@ -536,6 +60,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   <div class="cp-meta">
     <div class="cp-label" title="com.example.ListScreenPreview">List screen</div>
     <div class="cp-id">com.example.ListScreenPreview</div>
+    
   </div>
 </a>
 <a class="cp-card" href="/p/com.example.ProfileScreenPreview?token=demo-token-fixture">
@@ -545,6 +70,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   <div class="cp-meta">
     <div class="cp-label" title="com.example.ProfileScreenPreview">Profile screen</div>
     <div class="cp-id">com.example.ProfileScreenPreview</div>
+    
   </div>
 </a>
 <a class="cp-card" href="/p/com.example.SettingsScreenPreview?token=demo-token-fixture">
@@ -554,6 +80,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   <div class="cp-meta">
     <div class="cp-label" title="com.example.SettingsScreenPreview">Settings screen</div>
     <div class="cp-id">com.example.SettingsScreenPreview</div>
+    
   </div>
 </a>
         </div>

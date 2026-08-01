@@ -808,8 +808,10 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
   // measures the composable's intrinsic size within the 400×800 dp sandbox bound and crops to it,
   // instead of reflowing content past the fixed 320 px frame to zero height. Without this the held
   // interactive / stream lane collapses no-height previews exactly as the batch render did.
-  val explicitWidthPx = params.widthDp?.let { (it * density).toInt() }
-  val explicitHeightPx = params.heightDp?.let { (it * density).toInt() }
+  val isDeviceFrame = !params.device.isNullOrBlank()
+  val explicitWidthPx = params.widthDp?.takeUnless { isDeviceFrame }?.let { (it * density).roundHalfUpPx() }
+  val explicitHeightPx =
+    params.heightDp?.takeUnless { isDeviceFrame }?.let { (it * density).roundHalfUpPx() }
   val pinned =
     (params.device ?: defaults.device) != null ||
       ((params.kind ?: defaults.kind)?.let { it != "COMPOSE" } ?: false)
@@ -817,11 +819,11 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
   val wrapHeight = explicitHeightPx == null && !pinned
   val widthPx =
     explicitWidthPx
-      ?: if (wrapWidth) (PreviewManifestEntry.WRAP_SANDBOX_WIDTH_DP * density).toInt()
+      ?: if (wrapWidth) (PreviewManifestEntry.WRAP_SANDBOX_WIDTH_DP * density).roundHalfUpPx()
       else defaults.widthPx
   val heightPx =
     explicitHeightPx
-      ?: if (wrapHeight) (PreviewManifestEntry.WRAP_SANDBOX_HEIGHT_DP * density).toInt()
+      ?: if (wrapHeight) (PreviewManifestEntry.WRAP_SANDBOX_HEIGHT_DP * density).roundHalfUpPx()
       else defaults.heightPx
   val uiMode = if (uiModeIsNight(params.uiMode)) RenderSpec.SpecUiMode.DARK else defaults.uiMode
   return RenderSpec(
@@ -849,6 +851,8 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
     overrides = bakedOverrides,
   )
 }
+
+private fun Float.roundHalfUpPx(): Int = kotlin.math.floor(this + 0.5f).toInt().coerceAtLeast(1)
 
 /**
  * SANDBOX-POOL.md (Layer 3) — sandbox-pool size knob. Set by [DaemonSupervisor] from `1 +
