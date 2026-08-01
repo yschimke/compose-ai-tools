@@ -200,8 +200,7 @@ internal abstract class StoreBackedRemoteContext(clock: RemoteClock) : RemoteCon
         }
     }
 
-    /** Not part of the [RemoteContext] contract — `AndroidRemoteContext`'s own API, mirrored here. */
-    fun clearVariables() {
+    override fun clearVariables() {
         varNames.clear()
     }
 

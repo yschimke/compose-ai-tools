@@ -18,8 +18,8 @@ import androidx.wear.compose.material3.onehandedgesture.GestureAction
 import androidx.wear.compose.material3.onehandedgesture.GestureIndicatorSize
 import androidx.wear.compose.material3.onehandedgesture.LocalOneHandedGestureEnabled
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureConfiguration
-import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureIndicator
-import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureIndicatorState
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureClickIndicator
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureClickIndicatorState
 import androidx.wear.compose.material3.onehandedgesture.oneHandedGesture
 import ee.schimke.composeai.daemon.protocol.GestureKindOverride
 import kotlinx.coroutines.launch
@@ -69,10 +69,10 @@ val LocalGestureRegistry: ProvidableCompositionLocal<GestureStateController> =
  * @param type gesture kind (drives the framework [GestureAction] and the reported wire kind).
  * @param label accessibility / hint label, forwarded to `oneHandedGesture(onGestureLabel = …)` and
  *   used as the handler's identity in the data product.
- * @param gestureConfiguration persistent action/key/priority specification shared with the matching
+ * @param gestureConfiguration persistent action/id/priority specification shared with the matching
  *   [GestureHint].
- * @param indicatorState explicit indicator state shared with the matching [GestureHint], or `null`
- *   when this handler has no indicator.
+ * @param showIndicator suspending callback that shows the indicator paired with this handler, or
+ *   `null` when this handler has no indicator.
  * @param interactionSource forwarded to the framework so gesture activation produces the same
  *   pressed/ripple feedback as a touch interaction.
  * @param hintAvailable whether a [GestureHint] is wired for this handler (reported, not enforced).
@@ -83,7 +83,7 @@ fun Modifier.reportedOneHandedGesture(
   type: GestureType,
   label: String,
   gestureConfiguration: OneHandedGestureConfiguration,
-  indicatorState: OneHandedGestureIndicatorState? = null,
+  showIndicator: (suspend () -> Unit)? = null,
   interactionSource: MutableInteractionSource,
   enabledInAmbient: Boolean = false,
   hintAvailable: Boolean = true,
@@ -107,15 +107,17 @@ fun Modifier.reportedOneHandedGesture(
     enabledInAmbient = enabledInAmbient,
     interactionSource = interactionSource,
     onGestureLabel = label,
-    onGestureAvailable = { indicatorState?.isIndicatorActive = true },
+    onGestureAvailable = {
+      showIndicator?.let { show -> scope.launch { show() } }
+    },
     onGesture = onGesture,
   )
 }
 
 /**
- * Wraps [content] with the real Wear [OneHandedGestureIndicator] hint affordance.
+ * Wraps [content] with the real Wear [OneHandedGestureClickIndicator] hint affordance.
  *
- * The matching [reportedOneHandedGesture] sets [indicatorState] active when the framework reports
+ * The matching [reportedOneHandedGesture] asks [indicatorState] to show when the framework reports
  * the gesture as available. In a forced still preview, [forceShow] or the daemon's
  * `overrides.gestures.showHints = true` renders the indicator's peak frame directly because the real
  * finite animation completes during Robolectric idle pre-roll.
@@ -123,7 +125,7 @@ fun Modifier.reportedOneHandedGesture(
 @Composable
 fun GestureHint(
   gestureConfiguration: OneHandedGestureConfiguration,
-  indicatorState: OneHandedGestureIndicatorState,
+  indicatorState: OneHandedGestureClickIndicatorState,
   modifier: Modifier = Modifier,
   forceShow: Boolean = false,
   gestureIndicatorSize: GestureIndicatorSize = GestureIndicatorSize.Medium,
@@ -144,9 +146,9 @@ fun GestureHint(
     }
     return
   }
-  OneHandedGestureIndicator(
+  OneHandedGestureClickIndicator(
     gestureConfiguration = gestureConfiguration,
-    indicatorState = indicatorState,
+    state = indicatorState,
     modifier = modifier,
     gestureIndicatorSize = gestureIndicatorSize,
     gestureIndicatorTint = gestureIndicatorTint,

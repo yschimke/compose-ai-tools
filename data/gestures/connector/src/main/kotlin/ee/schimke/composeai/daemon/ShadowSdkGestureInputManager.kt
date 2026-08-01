@@ -12,14 +12,14 @@ import org.robolectric.annotation.Implements
  * On a real Pixel Watch this class forwards to `com.google.wear`'s `GestureInputManager`; off-device
  * `isAvailable(...)` is `false`, so `GestureRegistry.invalidate()` bails immediately and the whole
  * gesture pipeline is inert — which is why an app's raw `Modifier.oneHandedGesture` /
- * `OneHandedGestureIndicator` shows nothing in a preview. This shadow replaces the SDK bridge so the
+ * one-handed gesture indicator shows nothing in a preview. This shadow replaces the SDK bridge so the
  * **real** framework pipeline runs under the render, for **any** app, with no source changes:
  *
  * - [isAvailable] returns [GestureStateController.detectionArmed] (armed by [GestureOverrideExtension]
  *   while a gesture override is applied). When armed, `GestureRegistry.invalidate()` proceeds: it
  *   subscribes to gesture actions and, after the framework's indicator delay, invokes the
  *   registered `onGestureAvailable` callback. The app uses that callback to activate its
- *   `OneHandedGestureIndicatorState`, so its own indicator shows without any reporting seam. (A
+ *   indicator state, so its own indicator shows without any reporting seam. (A
  *   captured frame must advance past that delay; the daemon does so via `advanceTimeMillis`.)
  * - [subscribeToSdkGestureAction] records the detected action + captures the framework's `onGesture`
  *   callback into [GestureStateController], so the gesture is **surfaced** in `compose/gestures` and

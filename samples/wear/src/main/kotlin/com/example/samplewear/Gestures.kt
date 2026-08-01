@@ -57,10 +57,12 @@ import androidx.wear.compose.material3.TitleCard
 import androidx.wear.compose.material3.onehandedgesture.LocalOneHandedGestureEnabled
 import androidx.wear.compose.material3.onehandedgesture.GesturePriority
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureDefaults
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureClickIndicatorState
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureConfiguration
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureHorizontalPageIndicator
-import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureIndicatorState
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGesturePageIndicatorState
 import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureScrollIndicator
+import androidx.wear.compose.material3.onehandedgesture.OneHandedGestureScrollIndicatorState
 import androidx.wear.compose.material3.onehandedgesture.rememberOneHandedGestureConfiguration
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
@@ -105,19 +107,41 @@ internal fun rememberGestureConfiguration(
 ): OneHandedGestureConfiguration =
   rememberOneHandedGestureConfiguration(
     action = type.toGestureAction(),
-    key = key,
+    gestureId = key,
     priority = priority,
   )
 
 @Composable
 internal fun rememberGestureIndicatorState(
   forceShow: Boolean = false
-): OneHandedGestureIndicatorState {
-  val state = remember { OneHandedGestureIndicatorState() }
+): OneHandedGestureClickIndicatorState {
+  val state = remember { OneHandedGestureClickIndicatorState() }
   LaunchedEffect(forceShow, state) {
     if (forceShow) {
-      state.isIndicatorActive = true
+      state.showIndicator()
     }
+  }
+  return state
+}
+
+@Composable
+private fun rememberScrollGestureIndicatorState(
+  forceShow: Boolean = false
+): OneHandedGestureScrollIndicatorState {
+  val state = remember { OneHandedGestureScrollIndicatorState() }
+  LaunchedEffect(forceShow, state) {
+    if (forceShow) state.showIndicator()
+  }
+  return state
+}
+
+@Composable
+private fun rememberPageGestureIndicatorState(
+  forceShow: Boolean = false
+): OneHandedGesturePageIndicatorState {
+  val state = remember { OneHandedGesturePageIndicatorState() }
+  LaunchedEffect(forceShow, state) {
+    if (forceShow) state.showIndicator()
   }
   return state
 }
@@ -224,7 +248,7 @@ private fun GestureHomeScreen(onOpen: (String) -> Unit) {
  * Renders wear-compose-material3's shipped gesture-indicator AVD
  * (`wear_one_handed_gesture_{primary,dismiss}_indicator_animation`) as a static, tinted icon via the
  * official `androidx.compose.animation.graphics` API — the same drawable + API
- * `OneHandedGestureIndicator` draws internally, shown here at its resting frame so the gesture
+ * one-handed gesture indicator draws internally, shown here at its resting frame so the gesture
  * illustration is visible in a still capture (the interactive indicator only flashes it on-device).
  */
 @OptIn(ExperimentalAnimationGraphicsApi::class)
@@ -301,7 +325,7 @@ private fun PlayGestureButton(forceHint: Boolean) {
           type = GestureType.PRIMARY,
           label = if (playing) "Pause" else "Play",
           gestureConfiguration = gestureConfiguration,
-          indicatorState = indicatorState,
+          showIndicator = indicatorState::showIndicator,
           interactionSource = interactionSource,
         ) {
           playing = !playing
@@ -349,7 +373,7 @@ fun DismissActionScreen(onDismiss: () -> Unit = {}, forceHint: Boolean = false) 
             type = GestureType.DISMISS,
             label = "Dismiss",
             gestureConfiguration = gestureConfiguration,
-            indicatorState = indicatorState,
+            showIndicator = indicatorState::showIndicator,
             interactionSource = interactionSource,
           ) {
             onDismiss()
@@ -368,7 +392,7 @@ fun ScrollGestureScreen(forceHint: Boolean = false) {
   val interactionSource = remember { MutableInteractionSource() }
   val gestureConfiguration =
     rememberGestureConfiguration(GestureType.SCROLL, key = "samplewear:scroll")
-  val indicatorState = rememberGestureIndicatorState(forceHint)
+  val indicatorState = rememberScrollGestureIndicatorState(forceHint)
   ScreenScaffold(scrollState = listState) { contentPadding ->
     Box(modifier = Modifier.fillMaxSize()) {
       TransformingLazyColumn(
@@ -380,7 +404,7 @@ fun ScrollGestureScreen(forceHint: Boolean = false) {
               type = GestureType.SCROLL,
               label = "Scroll down",
               gestureConfiguration = gestureConfiguration,
-              indicatorState = indicatorState,
+              showIndicator = indicatorState::showIndicator,
               interactionSource = interactionSource,
             ) {
               OneHandedGestureDefaults.scrollDown(listState)
@@ -413,7 +437,7 @@ fun PageGestureScreen(forceHint: Boolean = false) {
   val interactionSource = remember { MutableInteractionSource() }
   val gestureConfiguration =
     rememberGestureConfiguration(GestureType.PAGE, key = "samplewear:page")
-  val indicatorState = rememberGestureIndicatorState(forceHint)
+  val indicatorState = rememberPageGestureIndicatorState(forceHint)
   ScreenScaffold {
     Box(modifier = Modifier.fillMaxSize()) {
       HorizontalPager(
@@ -424,7 +448,7 @@ fun PageGestureScreen(forceHint: Boolean = false) {
               type = GestureType.PAGE,
               label = "Next page",
               gestureConfiguration = gestureConfiguration,
-              indicatorState = indicatorState,
+              showIndicator = indicatorState::showIndicator,
               interactionSource = interactionSource,
             ) {
               OneHandedGestureDefaults.scrollToNextPage(pagerState)
@@ -479,7 +503,7 @@ fun DisabledGestureScreen() {
 /**
  * The design guide's **button hint**: the gesture-indicator icon drawn *within* the target element,
  * tinted to match the button's content colour (`onPrimary`). This is the affordance
- * `OneHandedGestureIndicator` flashes over the button on-device; here it's composited statically so
+ * one-handed gesture indicator flashes over the button on-device; here it's composited statically so
  * the "icon on the button" treatment is visible in a still frame.
  */
 @Composable
@@ -601,7 +625,7 @@ fun ScrollIndicatorStickerPreview() {
       rememberGestureConfiguration(GestureType.SCROLL, key = "samplewear:scroll-sticker")
     OneHandedGestureScrollIndicator(
       gestureConfiguration = gestureConfiguration,
-      indicatorState = rememberGestureIndicatorState(forceShow = true),
+      indicatorState = rememberScrollGestureIndicatorState(forceShow = true),
       scrollState = listState,
       modifier = Modifier.size(48.dp),
     )
@@ -616,7 +640,7 @@ fun PageIndicatorStickerPreview() {
       rememberGestureConfiguration(GestureType.PAGE, key = "samplewear:page-sticker")
     OneHandedGestureHorizontalPageIndicator(
       gestureConfiguration = gestureConfiguration,
-      indicatorState = rememberGestureIndicatorState(forceShow = true),
+      indicatorState = rememberPageGestureIndicatorState(forceShow = true),
       pagerState = rememberPagerState(initialPage = 1, pageCount = { 4 }),
     )
   }
