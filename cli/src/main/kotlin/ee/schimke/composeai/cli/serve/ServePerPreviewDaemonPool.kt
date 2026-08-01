@@ -77,6 +77,16 @@ class ServePerPreviewDaemonPool(
   /** Total live upstream streams across the pooled per-preview daemons. */
   fun activeStreamCount(): Int = lock.withLock { hosts.values.sumOf { it.activeStreamCount() } }
 
+  /** Resident occupancy for `/status.json` without opening or touching any daemon. */
+  fun snapshot(name: String = "per-preview"): DaemonPoolSnapshot = lock.withLock {
+    DaemonPoolSnapshot(
+      name = name,
+      open = hosts.size,
+      maxOpen = maxOpen,
+      activeStreams = hosts.values.sumOf { it.activeStreamCount() },
+    )
+  }
+
   /**
    * Render-latency snapshots of the currently-pooled per-preview daemons (see
    * [RenderPerfSnapshot]). The per-preview lane is the DEFAULT render path for a trusted catalog,

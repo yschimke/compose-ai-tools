@@ -371,6 +371,54 @@ class ServeCatalogLiveHostTest {
     assertEquals("live-svg:$daemonId", out.svg.decodeToString())
   }
 
+  @Test
+  fun `prewarm does not open per-preview daemons eagerly`() {
+    var resolved = false
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "mono",
+        streaming = true,
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = baked,
+        perPreviewResolve = {
+          resolved = true
+          null
+        },
+        warmInBackground = true,
+      )
+
+    composite.prewarm()
+
+    assertEquals(false, resolved, "startup prewarm must not fan out into per-preview daemon JVMs")
+    assertNull(live.lastRenderId, "per-preview catalogs warm lazily on demand, not at startup")
+  }
+
+  @Test
+  fun `daemonPoolStats exposes per-preview pool occupancy`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live = RecordingHost(previews = listOf(ServePreview(daemonId, daemonId)), tag = "mono")
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = baked,
+        perPreviewPoolStats = {
+          listOf(DaemonPoolSnapshot("per-preview", open = 2, maxOpen = 4, activeStreams = 1))
+        },
+      )
+
+    assertEquals(
+      listOf(DaemonPoolSnapshot("per-preview", open = 2, maxOpen = 4, activeStreams = 1)),
+      composite.daemonPoolStats(),
+    )
+  }
+
   /** Poll [block] until it returns non-null or [timeoutMs] elapses (for the async warm). */
   private fun <T : Any> awaitOk(timeoutMs: Long, block: () -> T?): T {
     val deadline = System.nanoTime() + timeoutMs * 1_000_000

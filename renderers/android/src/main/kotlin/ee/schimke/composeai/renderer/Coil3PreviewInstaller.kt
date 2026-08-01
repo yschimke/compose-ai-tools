@@ -75,15 +75,15 @@ internal class Coil3PreviewInstaller : CoilPreviewInstaller {
 
   /**
    * The handler's lambda must return a non-null `Image`, but a request the sandbox can't fetch
-   * yields an `ErrorResult` whose `image` is null. Substituting a zero-sized transparent
-   * [ColorImage] keeps that case on the same path as a normal coil error — nothing drawn — instead
-   * of throwing out of the handler and taking the whole composition down with it.
-   * [CoilLoadDiagnostics] is what turns the miss into an explanation in the warnings sidecar.
+   * yields an `ErrorResult` whose `image` is null. Fall back to the request placeholder so an
+   * unresolvable model keeps Android Studio parity instead of becoming an empty transparent image.
+   * Requests with no placeholder still use [EMPTY_IMAGE], and [CoilLoadDiagnostics] turns the miss
+   * into an explanation in the warnings sidecar.
    */
   private val previewHandler: AsyncImagePreviewHandler = AsyncImagePreviewHandler {
     request: ImageRequest ->
     val loaded: Image? = SingletonImageLoader.get(request.context).execute(request).image
-    loaded ?: EMPTY_IMAGE
+    coil3ImageWithPlaceholderFallback(request, loaded, EMPTY_IMAGE)
   }
 
   private companion object {
@@ -106,3 +106,9 @@ internal class Coil3PreviewInstaller : CoilPreviewInstaller {
     }
   }
 }
+
+internal fun coil3ImageWithPlaceholderFallback(
+  request: ImageRequest,
+  loaded: Image?,
+  empty: Image,
+): Image = loaded ?: request.placeholder() ?: empty

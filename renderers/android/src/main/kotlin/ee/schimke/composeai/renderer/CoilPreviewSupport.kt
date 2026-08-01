@@ -270,7 +270,7 @@ object CoilLoadDiagnostics {
     inFlight.clear()
     synchronized(failures) { failures.clear() }
     val all = failed + pending
-    all.forEach { if (warnedThisProcess.add(it.model + ' ' + it.outcome)) warn(it) }
+    all.forEach { if (warnedThisProcess.add(it.model + '\u0000' + it.outcome)) warn(it) }
     return all
   }
 
@@ -301,16 +301,19 @@ object CoilLoadDiagnostics {
       Outcome.FAILED ->
         if (load.detail?.contains("NetworkOnMainThreadException") == true) {
           "ComposeAiCoil: image request for \"${load.model}\" was not fetched — preview renders " +
-            "don't hit the network, so remote models capture blank and may collapse the layout " +
-            "around them. Preview with local bytes / an R.drawable, or warm coil's disk cache."
+            "don't hit the network. The request placeholder is drawn when one is set; otherwise " +
+            "the image may capture blank and collapse the layout around it. Preview with local " +
+            "bytes / an R.drawable, or warm coil's disk cache."
         } else {
           "ComposeAiCoil: image request for \"${load.model}\" failed" +
             (load.detail?.let { " — $it" } ?: "") +
-            "; it captures blank and may collapse the layout around it"
+            "; the request placeholder is drawn when one is set, otherwise it may capture blank " +
+            "and collapse the layout around it"
         }
       Outcome.PENDING ->
         "ComposeAiCoil: image request for \"${load.model}\" had not completed when the preview " +
-          "was captured; it captures blank and may collapse the layout around it"
+          "was captured; the request placeholder is drawn when one is set, otherwise it may " +
+          "capture blank and collapse the layout around it"
     }
 
   private fun warn(load: UnresolvedLoad) = System.err.println(describe(load))

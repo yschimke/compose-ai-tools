@@ -1,5 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.daemon.protocol.StreamCodec
+import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -119,6 +122,54 @@ class ServeStatusTest {
     assertTrue(body.contains("\"catalogRefreshSeconds\":600"), body)
     // Static bundle catalogs run no daemon, so no live servers.
     assertTrue(body.contains("\"runningServers\":[]"), "static catalogs run no daemon: $body")
+  }
+
+  @Test
+  fun `status_json includes per-preview daemon pool occupancy`() {
+    val live =
+      object : ServeHost {
+        override val previews: List<ServePreview> = listOf(ServePreview("a", "A"))
+        override val label: String = "live"
+        override val hasLiveStream: Boolean = true
+
+        override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+          RenderOutcome.Ok(png())
+
+        override fun activeStreamCount(): Int = 1
+
+        override fun subscribeStream(
+          previewId: String,
+          overrides: PreviewOverrides,
+          codec: StreamCodec?,
+          maxFps: Int?,
+          onUnavailable: ((String) -> Unit)?,
+          onFrame: (StreamFrameParams) -> Unit,
+        ): StreamHandle? = null
+
+        override fun daemonPoolStats(): List<DaemonPoolSnapshot> =
+          listOf(DaemonPoolSnapshot("per-preview", open = 2, maxOpen = 4, activeStreams = 1))
+
+        override fun close() {}
+      }
+    registry.register("live", host = live)
+    server =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused",
+          sessions = registry,
+          defaultSessionId = "live",
+          isPublic = true,
+        )
+        .also { it.start() }
+
+    val (code, body) = get("/status.json")
+
+    assertEquals(200, code)
+    assertTrue(body.contains("\"daemonPools\""), body)
+    assertTrue(body.contains("\"name\":\"per-preview\""), body)
+    assertTrue(body.contains("\"open\":2"), body)
+    assertTrue(body.contains("\"maxOpen\":4"), body)
   }
 
   @Test

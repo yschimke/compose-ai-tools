@@ -31,7 +31,7 @@ on a file the user is currently scoped to.
   **Enforcement (so accidental cancellation can't sneak in):**
   - Render thread does not poll `Thread.interrupted()` and the daemon's
     own code never calls `interrupt()` on it.
-  - Shutdown is a poison-pill on `DaemonHost`'s queue, not a thread
+  - Shutdown is a poison-pill on `DaemonHostBridge`'s request queue, not a thread
     abort; the in-flight render finishes before the sandbox tears down.
   - `JsonRpcServer.shutdown` drains the in-flight queue and blocks the
     response until drain completes — per PROTOCOL.md § 3.

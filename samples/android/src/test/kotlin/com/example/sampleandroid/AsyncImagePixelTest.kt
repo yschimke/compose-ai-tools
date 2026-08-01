@@ -20,8 +20,8 @@ import org.junit.Test
  *     the same colour as the middle" catches that collapse even if the image itself somehow
  *     resolved.
  *
- * A third test covers the diagnostic half: a model that genuinely can't be fetched must leave a
- * `<png>.warnings.json` naming it, so a blank capture is diagnosable rather than mysterious.
+ * A third test covers the diagnostic half: a model that genuinely can't be fetched must draw its
+ * request placeholder and leave a `<png>.warnings.json` naming the unresolved model.
  */
 class AsyncImagePixelTest {
 
@@ -75,5 +75,19 @@ class AsyncImagePixelTest {
     val json = sidecar.readText()
     assertThat(json).contains("unresolvedImages")
     assertThat(json).contains(UNREACHABLE_ARTWORK_URL)
+  }
+
+  @Test
+  fun `an unfetchable model falls back to its placeholder`() {
+    assertThat(unreachablePng.exists()).isTrue()
+    val img = ImageIO.read(unreachablePng)
+    val placeholderPink = 0xe91e63
+
+    val centreBand =
+      (img.height / 3 until img.height * 2 / 3).flatMap { y ->
+        (img.width / 4 until img.width * 3 / 4).map { x -> img.getRGB(x, y) and 0xffffff }
+      }
+
+    assertThat(centreBand).contains(placeholderPink)
   }
 }
