@@ -651,14 +651,12 @@ class RenderEngine(
     run {
       val semanticsRoot = state.scene.semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode
       if (semanticsRoot != null && dataArtifactExtensions.isNotEmpty()) {
-        // Key the per-preview dir the same way the removed inline call did — `previewId`, falling
-        // back to `outputBaseName` — so the written path is byte-for-byte unchanged.
         val previewId = state.spec.previewId ?: state.spec.outputBaseName
         val contextData =
           ExtensionContextData.of(
             *buildList {
                 add(RenderArtifactContextKeys.RootDir provides dataDir)
-                add(RenderArtifactContextKeys.OutputBaseName provides previewId)
+                add(RenderArtifactContextKeys.OutputBaseName provides state.spec.outputBaseName)
                 // Thread the protocol previewId when present so extensions that key their dir off
                 // it
                 // (the wireframe/spatial producer) resolve the same path the inline call did.
@@ -772,6 +770,7 @@ class RenderEngine(
       pngPath = state.outputFile.absolutePath,
       metrics = metrics,
       previewContext = previewContext,
+      outputBaseName = state.spec.outputBaseName,
     )
   }
 

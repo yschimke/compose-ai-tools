@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -115,14 +116,23 @@ class FigmaSvgPerVariantTest {
           "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
           "functionName=DarkAwareSquare;" +
           "widthPx=48;heightPx=48;density=1.0;showBackground=false;"
-      host.submit(
-        RenderRequest.Render(payload = basePayload + "uiMode=light;outputBaseName=dark-aware-light"),
-        timeoutMs = 120_000,
-      )
-      host.submit(
-        RenderRequest.Render(payload = basePayload + "uiMode=dark;outputBaseName=dark-aware-dark"),
-        timeoutMs = 120_000,
-      )
+      val lightResult =
+        host.submit(
+          RenderRequest.Render(
+            payload = basePayload + "uiMode=light;outputBaseName=dark-aware-light"
+          ),
+          timeoutMs = 120_000,
+        )
+      val darkResult =
+        host.submit(
+          RenderRequest.Render(
+            payload = basePayload + "uiMode=dark;outputBaseName=dark-aware-dark"
+          ),
+          timeoutMs = 120_000,
+        )
+
+      assertEquals("dark-aware-light", lightResult.outputBaseName)
+      assertEquals("dark-aware-dark", darkResult.outputBaseName)
 
       val dataDir = outputDir.parentFile!!.resolve("data")
       val lightSvg = dataDir.resolve("dark-aware-light").resolve("compose-figma.svg")
