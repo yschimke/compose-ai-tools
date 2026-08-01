@@ -81,9 +81,9 @@ class PreviewManifestEntryResolveTest {
     // Mirrors what `DiscoverPreviewsTask` writes for a Wear preview annotated with
     // `@Preview(device = "id:wearos_small_round")` — production manifest the daemon was silently
     // dropping pre-fix. Since #3113 (Studio geometry parity) a device frame owns its own size: the
-    // resolver deliberately ignores the manifest's `widthDp`/`heightDp` and `PreviewManifestRouter`
-    // derives the frame from `DeviceDimensions.resolve(device)`. The resolver still pins both axes
-    // (no wrap) and passes the device id through.
+    // manifest's `widthDp`/`heightDp` are ignored and the dp extent comes from
+    // `DeviceDimensions.resolve(device)` — 192×192 dp for `id:wearos_small_round` — at the
+    // manifest's density. Both axes stay pinned (no wrap).
     val raw =
       """{"id":"wear-1","className":"X","functionName":"R","sourceFile":"P.kt",""" +
         """"params":{"device":"id:wearos_small_round","widthDp":192,"heightDp":192,""" +
@@ -93,6 +93,8 @@ class PreviewManifestEntryResolveTest {
     val resolved = entry.resolved()
     assertEquals(false, resolved.wrapWidth) // device frame pins both axes
     assertEquals(false, resolved.wrapHeight)
+    assertEquals(504, resolved.widthPx) // 192dp (device catalog) × 2.625
+    assertEquals(504, resolved.heightPx)
     assertEquals(2.625f, resolved.density, 0.0001f)
     assertEquals(true, resolved.showBackground)
     assertEquals("id:wearos_small_round", resolved.device)
@@ -145,8 +147,8 @@ class PreviewManifestEntryResolveTest {
     val entry = json.decodeFromString(PreviewManifestEntry.serializer(), raw)
     val resolved = entry.resolved()
     assertEquals("id:wearos_small_round", resolved.device)
-    // Device frame pins the axes; the size itself comes from the router.
-    assertEquals(false, resolved.wrapWidth)
+    assertEquals(false, resolved.wrapWidth) // device frame pins the axes
+    assertEquals(384, resolved.widthPx) // 192dp (device catalog) × 2.0 default density
   }
 
   @Test

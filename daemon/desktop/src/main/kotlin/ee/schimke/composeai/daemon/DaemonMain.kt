@@ -504,11 +504,20 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
   // carries one (it declares showBackground), so the PNG↔Live parity fix is unaffected.
   val params = info.params ?: return defaults
   val density = params.density ?: defaults.density
-  val isDeviceFrame = !params.device.isNullOrBlank()
+  // A device frame owns its geometry (#3113) — take the dp extent from the device catalog rather
+  // than the manifest's widthDp/heightDp, so a `@Preview(device = …)` streams at the same size the
+  // batch resolver and the inbound `overrides.device` path produce instead of the fixed frame it
+  // would otherwise fall through to.
+  val deviceDims =
+    params.device
+      ?.takeIf { it.isNotBlank() }
+      ?.let { ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it) }
   val explicitWidthPx =
-    params.widthDp?.takeUnless { isDeviceFrame }?.let { (it * density).roundHalfUpPx() }
+    deviceDims?.let { (it.widthDp * density).roundHalfUpPx() }
+      ?: params.widthDp?.let { (it * density).roundHalfUpPx() }
   val explicitHeightPx =
-    params.heightDp?.takeUnless { isDeviceFrame }?.let { (it * density).roundHalfUpPx() }
+    deviceDims?.let { (it.heightDp * density).roundHalfUpPx() }
+      ?: params.heightDp?.let { (it * density).roundHalfUpPx() }
   // AS-parity wrap-content, mirroring the offline-bake / harness resolver
   // ([PreviewManifestEntry.resolved]). A preview that declares no explicit size on an axis and is
   // not pinned to a device frame renders wrap-content on that axis: the held-session/stream render

@@ -333,11 +333,28 @@ data class PreviewManifestEntry(
     // from it — reflect the preview's natural size, instead of the historical fixed 320² frame that
     // clipped wide content and reflowed text (diverging from the standalone renderer's wrap crop).
     // The sandbox bound (400×800 dp) matches the standalone renderer's DesktopRendererMain default.
-    val isDeviceFrame = !device.isNullOrBlank()
+    // A device frame owns its geometry (#3113): the manifest's `widthDp`/`heightDp` are ignored and
+    // the frame comes from the device catalog instead — the same source the inbound
+    // `overrides.device` path in [PreviewManifestRouter.submit] resolves against, and the same one
+    // the plugin's `resolveForRender` bakes with. Resolving it HERE is what makes a
+    // manifest-declared `@Preview(device = …)` render at its device size: without it a device
+    // preview has no explicit size AND doesn't wrap (it's pinned), so it fell through to the
+    // 400×800 dp sandbox bound — a Wear preview rendered 1050×2100 instead of 504×504. The
+    // manifest's density is kept (the plugin writes the device's own density there); only the dp
+    // extent comes from the catalog, so an unknown device string still degrades to the catalog's
+    // documented default.
+    val deviceDims =
+      device
+        ?.takeIf { it.isNotBlank() }
+        ?.let { ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it) }
     val explicitWidthPx =
-      widthPx ?: p?.widthDp?.takeUnless { isDeviceFrame }?.let { (it * density).roundHalfUpPx() }
+      widthPx
+        ?: deviceDims?.let { (it.widthDp * density).roundHalfUpPx() }
+        ?: p?.widthDp?.let { (it * density).roundHalfUpPx() }
     val explicitHeightPx =
-      heightPx ?: p?.heightDp?.takeUnless { isDeviceFrame }?.let { (it * density).roundHalfUpPx() }
+      heightPx
+        ?: deviceDims?.let { (it.heightDp * density).roundHalfUpPx() }
+        ?: p?.heightDp?.let { (it * density).roundHalfUpPx() }
     val pinned = device != null || showSystemUi
     val wrapWidth = explicitWidthPx == null && !pinned
     val wrapHeight = explicitHeightPx == null && !pinned

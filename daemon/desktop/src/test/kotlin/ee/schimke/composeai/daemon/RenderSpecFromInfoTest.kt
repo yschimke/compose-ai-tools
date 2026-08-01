@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -18,7 +19,7 @@ import org.junit.Test
  * - A *null* (absent) params block ⇒ "params unknown" ⇒ the fixed 320² frame, wrap OFF — so an
  *   incrementally-rediscovered preview (whose DTO carries no params) doesn't briefly wrap-crop.
  * - Null ≠ empty: only the present-but-empty block wraps.
- * - An explicit `device` ⇒ pinned: neither axis wraps, px dims fall back to defaults.
+ * - An explicit `device` ⇒ pinned: neither axis wraps, px dims come from the device catalog.
  * - `widthDp` / `heightDp` / `density` set ⇒ pixel dimensions multiply through and wrap is off.
  * - `density` defaulted ⇒ default 2.0x is used for the dp→px conversion of `widthDp`.
  * - `widthDp` set without `heightDp` ⇒ the width axis pins, the absent height axis wraps.
@@ -82,13 +83,15 @@ class RenderSpecFromInfoTest {
 
   @Test
   fun `an explicit device pins the frame so neither axis wraps`() {
-    // A device frame is "pinned": the fixed frame is kept (device sizing is applied downstream), so
-    // the wrap flags stay off and the px dims fall back to the RenderSpec defaults.
+    // A device frame is "pinned" AND owns its geometry: the wrap flags stay off and the px dims
+    // come
+    // from the device catalog (`id:pixel_5` = 393×851 dp) at the spec's density — not from the
+    // RenderSpec defaults, which used to leave every device preview in a 320² frame.
     val spec = renderSpecFromInfo(info(params = PreviewParamsDto(device = "id:pixel_5")))
     assertEquals(false, spec.wrapWidth)
     assertEquals(false, spec.wrapHeight)
-    assertEquals(320, spec.widthPx)
-    assertEquals(320, spec.heightPx)
+    assertEquals((393 * spec.density).roundToInt(), spec.widthPx)
+    assertEquals((851 * spec.density).roundToInt(), spec.heightPx)
     assertEquals("id:pixel_5", spec.device)
   }
 
