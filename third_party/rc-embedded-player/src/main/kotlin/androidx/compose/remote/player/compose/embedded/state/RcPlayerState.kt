@@ -21,6 +21,8 @@ package androidx.compose.remote.player.compose.embedded.state
 import androidx.compose.remote.core.RemoteContext
 import androidx.compose.remote.core.VariableSupport
 import androidx.compose.remote.core.operations.Utils
+import androidx.compose.remote.core.operations.utilities.AnimatedFloatExpression
+import androidx.compose.remote.core.operations.utilities.NanMap
 import androidx.compose.remote.player.compose.embedded.LocalComponentValueStateMap
 import androidx.compose.remote.player.compose.embedded.LocalCoreDocument
 import androidx.compose.remote.player.compose.embedded.LocalCurrentTimeMillis
@@ -118,7 +120,8 @@ internal fun rememberRemoteFloatAsState(id: Int): State<Float> {
     val context = document.remoteComposeState
 
     if (
-        id == RemoteContext.ID_TIME_IN_SEC ||
+        id == RemoteContext.ID_CONTINUOUS_SEC ||
+            id == RemoteContext.ID_TIME_IN_SEC ||
             id == RemoteContext.ID_TIME_IN_MIN ||
             id == RemoteContext.ID_TIME_IN_HR
     ) {
@@ -127,6 +130,7 @@ internal fun rememberRemoteFloatAsState(id: Int): State<Float> {
             derivedStateOf {
                 val timeMillis = timeMillisState.value
                 when (id) {
+                    RemoteContext.ID_CONTINUOUS_SEC,
                     RemoteContext.ID_TIME_IN_SEC -> timeMillis / 1000f
                     RemoteContext.ID_TIME_IN_MIN -> timeMillis / 60000f
                     RemoteContext.ID_TIME_IN_HR -> timeMillis / 3600000f
@@ -145,8 +149,17 @@ internal fun rememberRemoteFloatAsState(id: Int): State<Float> {
     // Animation-bearing expressions resolve as a Compose-native animated State (Animatable). Plain
     // (non-animated) FloatExpressions fall through to the graph below — one evaluation path.
     val expression = document.getFloatExpressionsReflection()[id]
-    if (expression != null && expression.mFloatAnimation != null) {
-        return rememberAnimatedRemoteFloat(id)
+    if (expression != null) {
+        if (expression.mFloatAnimation != null) {
+            return rememberAnimatedRemoteFloat(id)
+        }
+        // Keep an expression chain in the Compose-native evaluator when any nested input is
+        // animated. GraphContext deliberately evaluates core FloatExpressions as pure target
+        // values, so routing an outer expression through it would flatten its animated child and
+        // make interaction-driven Material 3 progress indicators appear frozen.
+        if (expressionDependsOnAnimation(document.getFloatExpressionsReflection(), id)) {
+            return rememberRemoteExpression(id)
+        }
     }
 
     // Computed float (FloatExpression or e.g. ImageAttribute): resolve via the pure-Compose graph.
@@ -156,6 +169,30 @@ internal fun rememberRemoteFloatAsState(id: Int): State<Float> {
     }
     // Plain variable: reactive read of the snapshot-backed scalar store (no listener bridge).
     return remember(document, id) { derivedStateOf { context.getFloat(id) } }
+}
+
+private fun expressionDependsOnAnimation(
+    expressions: Map<Int, androidx.compose.remote.core.operations.FloatExpression>,
+    id: Int,
+    visiting: MutableSet<Int> = mutableSetOf(),
+): Boolean {
+    if (!visiting.add(id)) return false
+    val expression = expressions[id] ?: return false
+    return expression.mSrcValue.any { value ->
+        if (
+            !value.isNaN() ||
+                AnimatedFloatExpression.isMathOperator(value) ||
+                NanMap.isDataVariable(value)
+        ) {
+            false
+        } else {
+            val dependencyId = Utils.idFromNan(value)
+            val dependency = expressions[dependencyId]
+            dependency?.mFloatAnimation != null ||
+                (dependency != null &&
+                    expressionDependsOnAnimation(expressions, dependencyId, visiting))
+        }
+    }
 }
 
 @Composable

@@ -85,7 +85,7 @@ class RemoteComposeIrReplay {
  *
  * Invalid hex is skipped rather than thrown, matching [applyConnectorOverrides].
  */
-private fun Map<String, RemoteNamedValue>.toNamedColorOverrides(): ObjectIntMap<String> {
+internal fun Map<String, RemoteNamedValue>.toNamedColorOverrides(): ObjectIntMap<String> {
   val colors = entries.mapNotNull { (name, value) ->
     val color = value as? RemoteNamedValue.ColorValue ?: return@mapNotNull null
     val argb = color.argb.removePrefix("#").toLongOrNull(16)?.toInt() ?: return@mapNotNull null
@@ -95,7 +95,7 @@ private fun Map<String, RemoteNamedValue>.toNamedColorOverrides(): ObjectIntMap<
   return MutableObjectIntMap<String>(colors.size).apply { colors.forEach { (n, v) -> put(n, v) } }
 }
 
-private val isEmbeddedPlayerAvailable: Boolean by lazy {
+internal val isEmbeddedPlayerAvailable: Boolean by lazy {
   runCatching {
       Class.forName(
         "androidx.compose.remote.player.compose.embedded.ExperimentalRemoteDocumentPlayerKt",

@@ -57,6 +57,7 @@ dependencies {
   implementation(libs.compose.remote.creation)
   implementation(libs.compose.remote.creation.compose)
   implementation(libs.wear.compose.remote.material3)
+  implementation(project(":preview-annotations"))
   implementation(libs.activity.compose)
   // `RemoteOverridablePreview` bridges connector-side named-value overrides into the running
   // Remote Compose player. Sample uses it in place of upstream `RemotePreview` so the panel

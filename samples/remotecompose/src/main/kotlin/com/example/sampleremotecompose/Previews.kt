@@ -8,6 +8,8 @@ import androidx.compose.remote.tooling.preview.RemotePreviewWrapper
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewWrapper
+import ee.schimke.composeai.daemon.RemoteEmbeddedPreviewWrapper
+import ee.schimke.composeai.preview.AnimatedPreview
 
 /**
  * Two ways to preview a Remote Compose component — same output, different code shape. The
@@ -68,6 +70,52 @@ fun RemoteButtonWithShapePreview() {
 @Composable
 fun RemoteButtonWithBorderPreview() {
   Container { RemoteButtonWithBorder() }
+}
+
+/**
+ * Captures the Remote Material 3 indeterminate progress indicator across one second of its
+ * document-driven animation. A fixed duration is required because the animation is intentionally
+ * infinite, and [AnimatedPreview.showCurves] is disabled because the moving values live in the
+ * Remote Compose document rather than Compose UI's animation inspector.
+ *
+ * The wrapper path also emits the captured `.rc` document. This variant uses the standard
+ * View-backed Remote Compose player; [RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview]
+ * renders the identical remote content through the embedded Compose player.
+ */
+@Preview(showBackground = true, widthDp = 200, heightDp = 200)
+@PreviewWrapper(RemotePreviewWrapper::class)
+@AnimatedPreview(durationMs = 1000, frameIntervalMs = 100, showCurves = false)
+@Composable
+fun RemoteIndeterminateCircularProgressIndicatorStandardPreview() {
+  Container { RemoteIndeterminateCircularProgressIndicator() }
+}
+
+/** Embedded-player companion to [RemoteIndeterminateCircularProgressIndicatorStandardPreview]. */
+@Preview(showBackground = true, widthDp = 200, heightDp = 200)
+@PreviewWrapper(RemoteEmbeddedPreviewWrapper::class)
+@AnimatedPreview(durationMs = 1000, frameIntervalMs = 100, showCurves = false)
+@Composable
+fun RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview() {
+  Container { RemoteIndeterminateCircularProgressIndicator() }
+}
+
+/**
+ * Standard-player preview for the interaction-driven `animateRemoteFloat` technique. Click the
+ * indicator (or use `compose-preview record`) to animate progress to the next quarter.
+ */
+@Preview(showBackground = true, widthDp = 200, heightDp = 200)
+@PreviewWrapper(RemotePreviewWrapper::class)
+@Composable
+fun RemoteAnimatedCircularProgressIndicatorStandardPreview() {
+  Container { RemoteAnimatedCircularProgressIndicator() }
+}
+
+/** Embedded-player companion to [RemoteAnimatedCircularProgressIndicatorStandardPreview]. */
+@Preview(showBackground = true, widthDp = 200, heightDp = 200)
+@PreviewWrapper(RemoteEmbeddedPreviewWrapper::class)
+@Composable
+fun RemoteAnimatedCircularProgressIndicatorEmbeddedPreview() {
+  Container { RemoteAnimatedCircularProgressIndicator() }
 }
 
 /**
