@@ -45,6 +45,7 @@ internal object CliFlags {
       "--raw-base",
       "--with-extension",
       "--with",
+      "--permutations",
       "--missing-renders",
       "--variant",
       "--preview",
