@@ -974,7 +974,7 @@ class JsonRpcServer(
           try {
             // 5-minute ceiling: covers cold sandbox bootstrap (~5–15s on
             // first render) plus B1.4's eventual real Compose render
-            // (single-digit seconds). DaemonHost still uses its own 60s
+            // (single-digit seconds). The Android host still uses its own 60s
             // default for direct callers; we override here because the
             // first render in a daemon's life sits behind the sandbox cold
             // boot.

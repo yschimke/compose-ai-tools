@@ -271,7 +271,7 @@ Enforced in code:
 
 - Render thread does **not** poll `Thread.interrupted()`; the daemon's
   own code never calls `interrupt()` on it.
-- Shutdown is a poison-pill on `DaemonHost`'s queue, not a thread
+- Shutdown is a poison-pill on `DaemonHostBridge`'s request queue, not a thread
   abort. The in-flight render finishes before the sandbox tears down.
 - `JsonRpcServer.shutdown` (PROTOCOL.md § 3) drains the in-flight queue
   before resolving the response.
