@@ -3511,6 +3511,22 @@
     "sha256": "a1417a6830df1e0548dd9d47c7ea9c8adf7b463a1ee5dcc4def14d0f6422f25e",
     "sourceFile": null
   },
+  "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorEmbeddedPreview": {
+    "captureLabel": "",
+    "functionName": "RemoteAnimatedCircularProgressIndicatorEmbeddedPreview",
+    "module": "samples:remotecompose",
+    "renderBasename": "RemoteAnimatedCircularProgressIndicatorEmbeddedPreview.png",
+    "sha256": "0eb2e5114e58245efb0352101ed27a12758e15b13549c80bc3cc9ca79ecdcc2e",
+    "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
+  },
+  "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorStandardPreview": {
+    "captureLabel": "",
+    "functionName": "RemoteAnimatedCircularProgressIndicatorStandardPreview",
+    "module": "samples:remotecompose",
+    "renderBasename": "RemoteAnimatedCircularProgressIndicatorStandardPreview.png",
+    "sha256": "0eb2e5114e58245efb0352101ed27a12758e15b13549c80bc3cc9ca79ecdcc2e",
+    "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
+  },
   "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonEnabledPreview": {
     "captureLabel": "",
     "functionName": "RemoteButtonEnabledPreview",
@@ -3541,6 +3557,22 @@
     "module": "samples:remotecompose",
     "renderBasename": "RemoteButtonWithShapePreview.png",
     "sha256": "5e60f8a1f84b2815f4c352a60294384158046b8c1df9583b95f5e8f379ff586a",
+    "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
+  },
+  "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview": {
+    "captureLabel": "",
+    "functionName": "RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview",
+    "module": "samples:remotecompose",
+    "renderBasename": "RemoteIndeterminateCircularProgressIndicatorEmbeddedPreview.gif",
+    "sha256": "fd0891797da6895623c69f86b38127aaf90ab154da59de1ae2e1dcc316f5fa70",
+    "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
+  },
+  "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteIndeterminateCircularProgressIndicatorStandardPreview": {
+    "captureLabel": "",
+    "functionName": "RemoteIndeterminateCircularProgressIndicatorStandardPreview",
+    "module": "samples:remotecompose",
+    "renderBasename": "RemoteIndeterminateCircularProgressIndicatorStandardPreview.gif",
+    "sha256": "fb3308c2766adb26b7b9acb642bf3b3a9f29f812655c8fbce0b14c32485d48b4",
     "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
   },
   "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteShaderGradientPreview": {
