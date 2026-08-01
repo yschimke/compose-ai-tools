@@ -147,7 +147,7 @@ class DesktopLayoutInspectorTest {
    * drive synthetic models or lower-level extraction), and losing it would let a vector-capture
    * regression through CI.
    */
-  private fun captureStarIconNode(): LayoutInspectorNode {
+  private fun captureStarIconNode(tint: Color = Color.Unspecified): LayoutInspectorNode {
     val star =
       ImageVector.Builder(
           defaultWidth = 24.dp,
@@ -172,8 +172,7 @@ class DesktopLayoutInspectorTest {
         }
         .build()
 
-    val root =
-      writeAndRead { Icon(star, "star", Modifier.size(48.dp), tint = Color.Unspecified) }
+    val root = writeAndRead { Icon(star, "star", Modifier.size(48.dp), tint = tint) }
 
     val node = root.firstWhere { it.vectorGraphic != null }
     assertNotNull("an ImageVector-backed Icon must carry a captured vectorGraphic", node)
@@ -195,6 +194,12 @@ class DesktopLayoutInspectorTest {
   fun resolves_the_solid_fill_on_a_captured_vector_path() {
     val path = captureStarIconNode().vectorGraphic!!.paths.first()
     assertEquals("solid fill resolved", "#FF112233", path.fillArgb)
+  }
+
+  @Test
+  fun resolves_an_external_tint_on_a_captured_vector_path() {
+    val path = captureStarIconNode(tint = Color(0xFFAABBCC)).vectorGraphic!!.paths.first()
+    assertEquals("external tint resolved", "#FFAABBCC", path.fillArgb)
   }
 
   @Test

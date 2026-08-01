@@ -97,10 +97,9 @@ class TcpPanelFigmaSvgTest {
    * Renders the panel through the real capture and builds the production figma-svg model.
    *
    * Shared by the zero-area and raster-count expectations: this is the only end-to-end exercise of
-   * a live Compose panel through
-   * `LayoutInspectorDataProducer` → `FigmaSvgModel.from` (the sibling `FigmaSvgZeroBoundsTest` is
-   * synthetic), so a new collapsed-bounds regression would otherwise sail through CI while #3080 is
-   * open.
+   * a live Compose panel through `LayoutInspectorDataProducer` → `FigmaSvgModel.from` (the sibling
+   * `FigmaSvgZeroBoundsTest` is synthetic), so a new collapsed-bounds regression would otherwise
+   * sail through CI while #3080 is open.
    */
   private fun tcpPanelModel(): FigmaSvgModel {
     val density = 2f
