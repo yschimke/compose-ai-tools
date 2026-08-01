@@ -520,13 +520,11 @@ abstract class RobolectricRenderTestBase(
     val wrapHeight = params.heightDp == null || params.heightDp <= 0
     val widthDp = params.widthDp?.takeIf { it > 0 } ?: SANDBOX_WIDTH_DP
     val heightDp = params.heightDp?.takeIf { it > 0 } ?: SANDBOX_HEIGHT_DP
-    // Round crop fires when the preview is on a round device AND it's the
-    // kind of surface that fills the watch — either a @Composable the user
-    // asked for system UI on, or a tile (tiles always fill the watchface,
-    // so `showSystemUi` is never set for them). Without the tile branch,
-    // tile previews render as rectangles even on wearos_*_round devices.
+    // Round crop fires for ordinary Compose @Preview captures with a round device, matching
+    // Layoutlib / Android Studio. Tile and notification captures have their own surface renderers
+    // and are intentionally left out of this Studio @Preview parity mask.
     val isRound =
-      isRoundDevice(params.device) && (params.showSystemUi || params.kind == PreviewKind.TILE)
+      isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE
 
     // AS-parity default: previews render with `LocalInspectionMode = true`,
     // matching Android Studio's `@Preview` behaviour, so a preview that
@@ -920,8 +918,7 @@ abstract class RobolectricRenderTestBase(
     applyPreviewQualifiers(
       widthDp = widthDp,
       heightDp = heightDp,
-      isRound =
-        isRoundDevice(params.device) && (params.showSystemUi || params.kind == PreviewKind.TILE),
+      isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
       locale = params.locale,
       uiMode = params.uiMode,
       density = params.density,
@@ -1192,15 +1189,11 @@ abstract class RobolectricRenderTestBase(
               }
               val previewBody: @Composable () -> Unit = {
                 val core: @Composable () -> Unit = {
-                  if (wrapWidth || wrapHeight) {
-                    MeasuredWrapBox(
-                      wrapWidth = wrapWidth,
-                      wrapHeight = wrapHeight,
-                      onMeasured = { measured = it },
-                    ) {
-                      strategyFor(params.kind).Render(preview, widthDp, heightDp, previewArgs)
-                    }
-                  } else {
+                  MeasuredWrapBox(
+                    wrapWidth = wrapWidth,
+                    wrapHeight = wrapHeight,
+                    onMeasured = { measured = it },
+                  ) {
                     strategyFor(params.kind).Render(preview, widthDp, heightDp, previewArgs)
                   }
                 }
@@ -1404,9 +1397,7 @@ abstract class RobolectricRenderTestBase(
                   scroll = scroll,
                   previewId = preview.id,
                   heightDp = heightDp,
-                  isRound =
-                    isRoundDevice(params.device) &&
-                      (params.showSystemUi || params.kind == PreviewKind.TILE),
+                  isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
                   outputFile = outputFile,
                 )
             if (forceLongFlatten) {
@@ -1450,9 +1441,7 @@ abstract class RobolectricRenderTestBase(
                   scroll = scroll,
                   previewId = preview.id,
                   heightDp = heightDp,
-                  isRound =
-                    isRoundDevice(params.device) &&
-                      (params.showSystemUi || params.kind == PreviewKind.TILE),
+                  isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
                   outputFile = outputFile,
                 )
             if (forceGifMotion) {
@@ -1480,9 +1469,7 @@ abstract class RobolectricRenderTestBase(
                     rule = rule,
                     animation = job.capture.animation,
                     previewId = preview.id,
-                    isRound =
-                      isRoundDevice(params.device) &&
-                        (params.showSystemUi || params.kind == PreviewKind.TILE),
+                    isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
                     outputFile = outputFile,
                     curveCapture = animationCurveCapture,
                   )
@@ -1510,9 +1497,7 @@ abstract class RobolectricRenderTestBase(
                     rule = rule,
                     focusGif = job.capture.focusGif,
                     previewId = preview.id,
-                    isRound =
-                      isRoundDevice(params.device) &&
-                        (params.showSystemUi || params.kind == PreviewKind.TILE),
+                    isRound = isRoundDevice(params.device) && params.kind == PreviewKind.COMPOSE,
                     outputFile = outputFile,
                   )
                   .also { handled ->
@@ -1651,6 +1636,28 @@ abstract class RobolectricRenderTestBase(
                 wrapWidth = wrapWidth,
                 wrapHeight = wrapHeight,
                 measured = measured!!,
+              )
+            }
+            if (
+              capturedDialogWindow == null &&
+                !productFellThrough &&
+                !animatedCaptureFellThrough &&
+                !longHandled &&
+                !gifHandled &&
+                !animationHandled &&
+                !focusGifHandled
+            ) {
+              val resizeDensity = params.density ?: 2.0f
+              resizeFixedAxesPng(
+                file = outputFile,
+                targetWidth =
+                  if (!wrapWidth && params.device == null && params.widthDp != null)
+                    (widthDp * resizeDensity).roundHalfUpPx()
+                  else null,
+                targetHeight =
+                  if (!wrapHeight && params.device == null && params.heightDp != null)
+                    (heightDp * resizeDensity).roundHalfUpPx()
+                  else null,
               )
             }
 
@@ -1819,15 +1826,16 @@ abstract class RobolectricRenderTestBase(
         Modifier.layout { measurable, constraints ->
           val wrappedConstraints =
             Constraints(
-              minWidth = if (wrapWidth) 0 else constraints.minWidth,
+              minWidth = if (wrapWidth) 0 else constraints.maxWidth,
               maxWidth = constraints.maxWidth,
-              minHeight = if (wrapHeight) 0 else constraints.minHeight,
+              minHeight = if (wrapHeight) 0 else constraints.maxHeight,
               maxHeight = constraints.maxHeight,
             )
           val placeable = measurable.measure(wrappedConstraints)
           onMeasured(IntSize(placeable.width, placeable.height))
           layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-        }
+        },
+      propagateMinConstraints = true,
     ) {
       content()
     }
@@ -1905,6 +1913,56 @@ private fun cropPngTopLeft(file: File, wrapWidth: Boolean, wrapHeight: Boolean, 
   val cropped = original.getSubimage(0, 0, cropW, cropH)
   javax.imageio.ImageIO.write(cropped, "PNG", file)
 }
+
+private fun resizeFixedAxesPng(file: File, targetWidth: Int?, targetHeight: Int?) {
+  if (targetWidth == null && targetHeight == null) return
+  if (!file.exists()) return
+  val original = javax.imageio.ImageIO.read(file) ?: return
+  val newWidth = targetWidth ?: original.width
+  val newHeight = targetHeight ?: original.height
+  if (newWidth == original.width && newHeight == original.height) return
+  val resized =
+    java.awt.image.BufferedImage(newWidth, newHeight, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+  val g = resized.createGraphics()
+  try {
+    val copyWidth = minOf(original.width, newWidth)
+    val copyHeight = minOf(original.height, newHeight)
+    g.drawImage(original, 0, 0, copyWidth, copyHeight, 0, 0, copyWidth, copyHeight, null)
+    if (newWidth > copyWidth && copyWidth > 0 && copyHeight > 0) {
+      g.drawImage(
+        original,
+        copyWidth,
+        0,
+        newWidth,
+        copyHeight,
+        copyWidth - 1,
+        0,
+        copyWidth,
+        copyHeight,
+        null,
+      )
+    }
+    if (newHeight > copyHeight && copyHeight > 0) {
+      g.drawImage(
+        resized,
+        0,
+        copyHeight,
+        newWidth,
+        newHeight,
+        0,
+        copyHeight - 1,
+        newWidth,
+        copyHeight,
+        null,
+      )
+    }
+  } finally {
+    g.dispose()
+  }
+  javax.imageio.ImageIO.write(resized, "PNG", file)
+}
+
+private fun Float.roundHalfUpPx(): Int = kotlin.math.floor(this + 0.5f).toInt().coerceAtLeast(1)
 
 /**
  * Handles `@ScrollingPreview(modes = [LONG])` captures. Plans the projected slice walk through the

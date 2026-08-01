@@ -1,6 +1,8 @@
 package ee.schimke.composeai.daemon
 
 import android.content.res.Resources
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -82,6 +84,27 @@ class PlaceholderFallbackResourcesTest {
       "3-arg density+theme variant must degrade to a placeholder",
       fallback.getDrawableForDensity(missingId, 160, null),
     )
+  }
+
+  @Test
+  fun `fallback delegates through a wrapped Resources implementation before substituting`() {
+    // The live daemon stacks resource wrappers: recorders, pseudolocale, and the placeholder
+    // fallback can all sit between LocalContext and the raw Android table. The placeholder wrapper
+    // must call its wrapped Resources instance first, not `super`, or it bypasses an inner wrapper's
+    // successful drawable substitution and returns magenta for resources that were actually handled.
+    val handledColor = 0xFF123456.toInt()
+    val handled =
+      object : Resources(base.assets, base.displayMetrics, base.configuration) {
+        override fun getDrawableForDensity(id: Int, density: Int, theme: Theme?): Drawable? {
+          if (id == missingId) return ColorDrawable(handledColor)
+          return base.getDrawableForDensity(id, density, theme)
+        }
+      }
+
+    val drawable = PlaceholderFallbackResources(handled).getDrawableForDensity(missingId, 160, null)
+
+    assertTrue(drawable is ColorDrawable)
+    assertEquals(handledColor, (drawable as ColorDrawable).color)
   }
 
   @Test

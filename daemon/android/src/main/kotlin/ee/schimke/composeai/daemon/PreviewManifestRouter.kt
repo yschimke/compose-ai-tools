@@ -97,8 +97,10 @@ class PreviewManifestRouter(
     val deviceSpec = deviceOverride?.let {
       ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it)
     }
-    val baseWidthPx = deviceSpec?.let { (it.widthDp * it.density).toInt() } ?: resolved.widthPx
-    val baseHeightPx = deviceSpec?.let { (it.heightDp * it.density).toInt() } ?: resolved.heightPx
+    val baseWidthPx =
+      deviceSpec?.let { (it.widthDp * it.density).toInt().coerceAtLeast(1) } ?: resolved.widthPx
+    val baseHeightPx =
+      deviceSpec?.let { (it.heightDp * it.density).toInt().coerceAtLeast(1) } ?: resolved.heightPx
     val baseDensity = deviceSpec?.density ?: resolved.density
     val effectiveDevice = deviceOverride ?: resolved.device
     return buildString {
@@ -336,18 +338,24 @@ data class PreviewManifestEntry(
     // wide content and reflowed tall content to zero height. Mirrors the desktop daemon's resolver
     // and the standalone renderer's wrap crop.
     val pinned = device != null || (kind != null && kind != "COMPOSE")
-    val explicitWidthPx = widthPx ?: p?.widthDp?.let { (it * density).toInt() }
-    val explicitHeightPx = heightPx ?: p?.heightDp?.let { (it * density).toInt() }
+    val isDeviceFrame = !device.isNullOrBlank()
+    val explicitWidthPx =
+      widthPx ?: p?.widthDp?.takeUnless { isDeviceFrame }?.let { (it * density).roundHalfUpPx() }
+    val explicitHeightPx =
+      heightPx ?: p?.heightDp?.takeUnless { isDeviceFrame }?.let { (it * density).roundHalfUpPx() }
     val wrapWidth = explicitWidthPx == null && !pinned
     val wrapHeight = explicitHeightPx == null && !pinned
     // The generous sandbox bound is only for a WRAPPING axis (measured + cropped). A pinned preview
     // with no explicit size (notification / tile / Glance — their render helpers consume the concrete
     // px) keeps the historical fixed 320px frame, so this fix doesn't resize those surfaces.
     val resolvedWidthPx =
-      explicitWidthPx ?: if (wrapWidth) (WRAP_SANDBOX_WIDTH_DP * density).toInt() else DEFAULT_FRAME_PX
+      explicitWidthPx
+        ?: if (wrapWidth) (WRAP_SANDBOX_WIDTH_DP * density).roundHalfUpPx()
+        else DEFAULT_FRAME_PX
     val resolvedHeightPx =
       explicitHeightPx
-        ?: if (wrapHeight) (WRAP_SANDBOX_HEIGHT_DP * density).toInt() else DEFAULT_FRAME_PX
+        ?: if (wrapHeight) (WRAP_SANDBOX_HEIGHT_DP * density).roundHalfUpPx()
+        else DEFAULT_FRAME_PX
     val showBackground = showBackground ?: p?.showBackground ?: true
     val backgroundColor = backgroundColor ?: p?.backgroundColor ?: 0L
     val wrapperClassName = p?.wrapperClassName
@@ -395,6 +403,8 @@ data class PreviewManifestEntry(
     const val DEFAULT_FRAME_PX: Int = 320
   }
 }
+
+private fun Float.roundHalfUpPx(): Int = kotlin.math.floor(this + 0.5f).toInt().coerceAtLeast(1)
 
 /**
  * Subset of the plugin's [PreviewParams][ee.schimke.composeai.plugin.PreviewParams] the daemon's

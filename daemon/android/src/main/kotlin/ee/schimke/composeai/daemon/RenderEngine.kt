@@ -324,13 +324,11 @@ class RenderEngine(
         "outputBaseName=${spec.outputBaseName}"
     )
 
-    // `device = "id:wearos_*_round"` / `isRound=true` previews need a circular crop matching the
-    // standalone renderer's `RobolectricRenderTest`. The standalone path also gates on
-    // `showSystemUi || kind == TILE` to skip the crop on non-fullscreen previews (the crop is a
-    // device frame, not part of the composable), but the daemon's v1 `RenderSpec` doesn't carry
-    // either field — assume any explicit round-device request wants the crop. Refine when those
-    // fields get plumbed through.
-    val isRound = isRoundDevice(spec.device)
+    // `device = "id:wearos_*_round"` / `isRound=true` Compose previews need a circular crop
+    // matching Layoutlib / Android Studio. Tile and notification captures have their own surface
+    // renderers and are intentionally left out of this Studio @Preview parity mask.
+    val isRound =
+      isRoundDevice(spec.device) && (spec.kind == null || spec.kind.equals("COMPOSE", ignoreCase = true))
 
     // A round Wear frame requested TALLER than it is wide is the grown `figma-svg-long` scroll
     // render re-entering `render()` (a normal round watch face is square). Flatten
@@ -541,10 +539,10 @@ class RenderEngine(
                             val minHBound = (sizeOverrides?.minHeightPx ?: 0).coerceIn(0, maxHBound)
                             val wrapped =
                               androidx.compose.ui.unit.Constraints(
-                                minWidth = if (spec.wrapWidth) minWBound else constraints.minWidth,
+                                minWidth = if (spec.wrapWidth) minWBound else constraints.maxWidth,
                                 maxWidth = if (spec.wrapWidth) maxWBound else constraints.maxWidth,
                                 minHeight =
-                                  if (spec.wrapHeight) minHBound else constraints.minHeight,
+                                  if (spec.wrapHeight) minHBound else constraints.maxHeight,
                                 maxHeight =
                                   if (spec.wrapHeight) maxHBound else constraints.maxHeight,
                               )
@@ -556,20 +554,9 @@ class RenderEngine(
                         } else {
                           Modifier.fillMaxSize()
                         }
-                      // On a wrapped axis, `propagateMinConstraints = true` pushes the wrapped-axis
-                      // *min* bound (the Min / Within size modes) down onto the composable itself,
-                      // not just the wrapping box — with the default (false) the outer box grows to
-                      // the min bound but relaxes the child's min to 0, so a wrap-content component
-                      // stays at its intrinsic size in the corner of an enlarged frame instead of
-                      // filling the requested size. Scoped to wrapped renders only: the fixed-frame
-                      // branch above is `fillMaxSize`, whose tight min would otherwise be forwarded
-                      // into the root composable and stretch wrap-content content that must stay
-                      // small in an explicitly-sized frame. Mirrors the desktop daemon + standalone
-                      // renderer.
-                      Box(
-                        modifier = contentBoxModifier,
-                        propagateMinConstraints = spec.wrapWidth || spec.wrapHeight,
-                      ) {
+                      // Propagate the wrapper's min constraints to match Studio's fixed-frame
+                      // measure contract: fixed axes are tight, wrapped axes remain loose/bounded.
+                      Box(modifier = contentBoxModifier, propagateMinConstraints = true) {
                         if (isProtolayoutIr) {
                           // v5 IR replay — inflate the captured protolayout `Layout` + `Resources`
                           // protos through `TileRenderer`, with no reference to the tile function
@@ -763,6 +750,11 @@ class RenderEngine(
                 measuredHeight = measuredContent[1],
               )
             }
+            resizeFixedAxesPng(
+              file = outputFile,
+              targetWidth = if (spec.wrapWidth) null else spec.widthPx,
+              targetHeight = if (spec.wrapHeight) null else spec.heightPx,
+            )
 
             // Pull per-node theme facts while the composition is still alive so theme consumer
             // attribution (#1847) can run after the rule tears the scene down.
@@ -1129,6 +1121,7 @@ class RenderEngine(
       pngPath = outputFile.absolutePath,
       metrics = metrics,
       previewContext = previewContext,
+      outputBaseName = spec.outputBaseName,
     )
   }
 
@@ -1893,6 +1886,54 @@ class RenderEngine(
     if (cropW >= original.width && cropH >= original.height) return
     val cropped = original.getSubimage(0, 0, cropW, cropH)
     runCatching { javax.imageio.ImageIO.write(cropped, "PNG", file) }
+  }
+
+  private fun resizeFixedAxesPng(file: File, targetWidth: Int?, targetHeight: Int?) {
+    if (targetWidth == null && targetHeight == null) return
+    if (!file.exists()) return
+    val original = runCatching { javax.imageio.ImageIO.read(file) }.getOrNull() ?: return
+    val newWidth = targetWidth ?: original.width
+    val newHeight = targetHeight ?: original.height
+    if (newWidth == original.width && newHeight == original.height) return
+    val resized =
+      java.awt.image.BufferedImage(newWidth, newHeight, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+    val g = resized.createGraphics()
+    try {
+      val copyWidth = minOf(original.width, newWidth)
+      val copyHeight = minOf(original.height, newHeight)
+      g.drawImage(original, 0, 0, copyWidth, copyHeight, 0, 0, copyWidth, copyHeight, null)
+      if (newWidth > copyWidth && copyWidth > 0 && copyHeight > 0) {
+        g.drawImage(
+          original,
+          copyWidth,
+          0,
+          newWidth,
+          copyHeight,
+          copyWidth - 1,
+          0,
+          copyWidth,
+          copyHeight,
+          null,
+        )
+      }
+      if (newHeight > copyHeight && copyHeight > 0) {
+        g.drawImage(
+          resized,
+          0,
+          copyHeight,
+          newWidth,
+          newHeight,
+          0,
+          copyHeight - 1,
+          newWidth,
+          copyHeight,
+          null,
+        )
+      }
+    } finally {
+      g.dispose()
+    }
+    runCatching { javax.imageio.ImageIO.write(resized, "PNG", file) }
   }
 
   /**

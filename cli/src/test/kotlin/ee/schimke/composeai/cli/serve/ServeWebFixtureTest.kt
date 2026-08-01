@@ -46,6 +46,8 @@ class ServeWebFixtureTest {
     for ((key, value) in entries) put(key, JsonPrimitive(value))
   }
 
+  private fun assetText(name: String): String = ServeWebAssets.load(name)!!.bytes.decodeToString()
+
   private val token = "demo-token-fixture"
   private val moduleLabel = ":samples:cmp"
 
@@ -1528,7 +1530,7 @@ class ServeWebFixtureTest {
       )
     assertFalse(publicViewer.contains("?token="), "public viewer back-link carries no token")
     assertTrue(
-      publicViewer.contains("if (token) parts.push(\"token=\""),
+      assetText("viewer.js").contains("if (token) parts.push(\"token=\""),
       "viewer JS only appends a token when the page URL carried one",
     )
     // The representative pick prefers a default-state light hero over dark / disabled edge cases.
@@ -1700,7 +1702,7 @@ class ServeWebFixtureTest {
     // The badge now prefixes a lane icon (▶ live / ▪ static) — the visible signal the Static⇄Live
     // toggle flipped — but still hard-codes the CMP-WASM tier label for the in-browser app.
     assertTrue(
-      wasmViewer.contains("\"▶ CMP-WASM\""),
+      assetText("backend-badge.js").contains("\"▶ CMP-WASM\""),
       "badge hard-codes the wasm tier label with the live icon",
     )
     assertTrue(
@@ -1770,14 +1772,17 @@ class ServeWebFixtureTest {
     // Flash-free switch: the snapshot stays on-stage until the app's first-frame signal, and the
     // iframe is overlaid on the snapshot's exact box (pixel parity with the baked PNG).
     assertTrue(
-      withWasm.contains("\"cp-wasm-ready\""),
+      assetText("viewer.js").contains("\"cp-wasm-ready\""),
       "viewer listens for the app's first-frame signal",
     )
     assertTrue(
-      withWasm.contains("function positionWasmFrame()"),
+      assetText("viewer.js").contains("function positionWasmFrame()"),
       "iframe is positioned over the snapshot's rendered box",
     )
-    assertTrue(withWasm.contains("loading Wasm…"), "load state keeps the snapshot with a status")
+    assertTrue(
+      assetText("viewer.js").contains("loading Wasm…"),
+      "load state keeps the snapshot with a status",
+    )
     // Guard against re-adding a page-side font preload: the real prefetch lives in the app's own
     // index.html (in flight before the iframe navigates, and the app consumes the promises), so a
     // page-side preload is redundant.
@@ -1833,12 +1838,13 @@ class ServeWebFixtureTest {
     // background + the app-theme selector) can't be honoured by the iframe, so syncServerControls
     // disables them on the wasm lane rather than leaving dead-but-enabled knobs.
     assertTrue(
-      both.contains("var onWasm = wasmActive();") &&
-        both.contains("!onWasm && !onRc && (!staticSnapshot || canRenderOverrides"),
+      assetText("viewer.js").contains("var onWasm = wasmActive();") &&
+        assetText("viewer.js")
+          .contains("!onWasm && !onRc && (!staticSnapshot || canRenderOverrides"),
       "server-only controls are gated off while the Wasm lane is active",
     )
     assertTrue(
-      both.contains("themeProviderEl.disabled = onWasm ||"),
+      assetText("viewer.js").contains("themeProviderEl.disabled = onWasm ||"),
       "the app-theme selector is disabled while the Wasm lane is active",
     )
 
@@ -1872,25 +1878,28 @@ class ServeWebFixtureTest {
         canApplyOverrides = true,
       )
     assertTrue(
-      liveView.contains("function fitLiveCanvas()"),
+      assetText("viewer.js").contains("function fitLiveCanvas()"),
       "the live canvas has a dedicated aspect-preserving fit function",
     )
     // Contain-fit math: scale by the smaller of the two box/buffer ratios, then centre.
     assertTrue(
-      liveView.contains("Math.min(boxW / liveW, boxH / liveH)"),
+      assetText("viewer.js").contains("Math.min(boxW / liveW, boxH / liveH)"),
       "the frame is scaled to contain (the smaller box/buffer ratio), not stretched to fill",
     )
     assertTrue(
-      liveView.contains("(boxW - w) / 2") && liveView.contains("(boxH - h) / 2"),
+      assetText("viewer.js").contains("(boxW - w) / 2") &&
+        assetText("viewer.js").contains("(boxH - h) / 2"),
       "the fitted frame is centred within the snapshot box",
     )
     // drawFrame caches the buffer dims and re-fits on each frame; a resize re-fits too.
     assertTrue(
-      liveView.contains("liveW = im.naturalWidth;") && liveView.contains("fitLiveCanvas();"),
+      assetText("viewer.js").contains("liveW = im.naturalWidth;") &&
+        assetText("viewer.js").contains("fitLiveCanvas();"),
       "each frame caches its dims and re-fits",
     )
     assertTrue(
-      liveView.contains("if (live && live.checked && !canvas.hidden) fitLiveCanvas();"),
+      assetText("viewer.js")
+        .contains("if (live && live.checked && !canvas.hidden) fitLiveCanvas();"),
       "a window resize re-fits the live canvas (not a plain box fill)",
     )
   }
@@ -1905,13 +1914,14 @@ class ServeWebFixtureTest {
       "the viewer exposes screen and width fit modes with screen fit selected",
     )
     assertTrue(
-      view.contains("var maxHeight = mode === \"fit\" ? \"72vh\" : \"\";") &&
-        view.contains("applyZoom(\"fit\");"),
+      assetText("viewer.js").contains("var maxHeight = mode === \"fit\" ? \"72vh\" : \"\";") &&
+        assetText("viewer.js").contains("applyZoom(\"fit\");"),
       "screen fit bounds tall previews to the viewport before the initial render",
     )
     assertTrue(
-      view.contains("if (live && live.checked && !canvas.hidden) fitLiveCanvas();") &&
-        view.contains("if (wasmActive()) positionWasmFrame();"),
+      assetText("viewer.js")
+        .contains("if (live && live.checked && !canvas.hidden) fitLiveCanvas();") &&
+        assetText("viewer.js").contains("if (wasmActive()) positionWasmFrame();"),
       "changing zoom re-pins active live and Wasm overlays to the snapshot geometry",
     )
   }
@@ -1931,11 +1941,12 @@ class ServeWebFixtureTest {
     // The SVG lane reuses the snapshot <img> but swaps the render extension; the viewer JS carries
     // the snapshotExt seam and stamps the backend badge with SVG.
     assertTrue(
-      svgView.contains("var snapshotExt = \".png\";") && svgView.contains("? \".svg\" : \".png\""),
+      assetText("viewer.js").contains("var snapshotExt = \".png\";") &&
+        assetText("viewer.js").contains("? \".svg\" : \".png\""),
       "the snapshot lane flips its render extension between PNG and SVG",
     )
     assertTrue(
-      svgView.contains("if (mode === \"svg\") return \"▪ SVG\";"),
+      assetText("backend-badge.js").contains("if (mode === \"svg\") return \"▪ SVG\";"),
       "the backend badge names the SVG lane",
     )
     // The SVG export also surfaces as a copyable/downloadable URL row plus the "Full page (scroll)"
@@ -1965,38 +1976,44 @@ class ServeWebFixtureTest {
       "the page declares a mobile viewport",
     )
     assertTrue(
-      viewer.contains("@media (max-width: 640px) {"),
+      assetText("serve.css").contains("@media (max-width: 640px) {"),
       "the stylesheet has a narrow-viewport breakpoint",
     )
     assertTrue(
-      viewer.contains(".cp-stage, .cp-controls, .cp-nav { flex: 1 1 100%; min-width: 0; }"),
+      assetText("serve.css")
+        .contains(".cp-stage, .cp-controls, .cp-nav { flex: 1 1 100%; min-width: 0; }"),
       "stage/overrides/nav stack full-width and drop their min-width on a phone",
     )
     // Usability: on mobile the two drawers become bottom sheets reachable from a sticky toggle bar
     // (so overrides + the component list are one tap away, not a long scroll below a tall preview),
     // with a scrim behind the open sheet.
     assertTrue(
-      viewer.contains(".cp-viewer-bar { position: sticky; top: 0;"),
+      assetText("serve.css").contains(".cp-viewer-bar { position: sticky; top: 0;"),
       "the drawer toggle bar is sticky on mobile",
     )
     assertTrue(
-      viewer.contains(".cp-viewer.cp-controls-open .cp-controls,") &&
-        viewer.contains("position: fixed; left: 0; right: 0; bottom: 0;"),
+      assetText("serve.css").contains(".cp-viewer.cp-controls-open .cp-controls,") &&
+        assetText("serve.css").contains("position: fixed; left: 0; right: 0; bottom: 0;"),
       "open drawers render as fixed bottom sheets on mobile",
     )
     assertTrue(
-      viewer.contains("id=\"cp-scrim\"") && viewer.contains(".cp-scrim.cp-scrim-on"),
+      viewer.contains("id=\"cp-scrim\"") &&
+        assetText("serve.css").contains(".cp-scrim.cp-scrim-on"),
       "a dismiss scrim backs the open bottom sheet",
     )
     // The overrides drawer collapses on load on a phone so the preview leads (JS-driven; the
     // server markup still defaults it open for desktop).
     assertTrue(
-      viewer.contains("if (isMobile()) setOpen(\"cp-controls-open\", false);"),
+      assetText("viewer-drawers.js")
+        .contains("if (isMobile()) setOpen(\"cp-controls-open\", false);"),
       "the overrides drawer starts collapsed on a phone",
     )
     // The breakpoint ships on the landing pages too (shared stylesheet).
     val landing = ServeWeb.landingPage(moduleLabel, previews, token)
-    assertTrue(landing.contains("@media (max-width: 640px) {"), "landing is responsive too")
+    assertTrue(
+      assetText("serve.css").contains("@media (max-width: 640px) {"),
+      "landing is responsive too",
+    )
   }
 
   @Test
@@ -2149,7 +2166,7 @@ class ServeWebFixtureTest {
     )
     // The viewer JS recovers the base from the path so /render + /ws hit the same session.
     assertTrue(
-      viewer.contains("location.pathname.replace"),
+      assetText("viewer.js").contains("location.pathname.replace"),
       "viewer derives its request base from the path",
     )
   }
@@ -2235,8 +2252,8 @@ class ServeWebFixtureTest {
     assertTrue(wasmView.contains("id=\"cp-orientation\" disabled"), "orientation stays server-only")
     // The Wasm override-patch builder forwards the honoured params (theme/font scale/locale) to the
     // running app (via postMessage / the initial `#…` fragment), not the iframe query.
-    assertTrue(wasmView.contains("\"fontScale=\""), "font scale forwarded to Wasm")
-    assertTrue(wasmView.contains("\"localeTag=\""), "locale forwarded to Wasm")
+    assertTrue(assetText("viewer.js").contains("\"fontScale=\""), "font scale forwarded to Wasm")
+    assertTrue(assetText("viewer.js").contains("\"localeTag=\""), "locale forwarded to Wasm")
     // On a static snapshot, a wasm-honoured control change auto-enables the Wasm tier (rather than
     // firing a /render the published catalog can't serve), so the control actually takes effect.
     // The
@@ -2247,7 +2264,7 @@ class ServeWebFixtureTest {
       "static-snapshot flag on the viewer",
     )
     assertTrue(
-      wasmView.contains("if (wasmToggle) { setMode(\"wasm\"); return; }"),
+      assetText("viewer.js").contains("setMode(\"wasm\");"),
       "static-snapshot wasm controls auto-enable the in-browser tier",
     )
 
@@ -2291,7 +2308,7 @@ class ServeWebFixtureTest {
     // was
     // still connecting (its change event dropped by the readyState guard) still reaches the daemon.
     assertTrue(
-      liveCatalogWasm.contains("sock.onopen = function () {"),
+      assetText("viewer.js").contains("sock.onopen = function () {"),
       "the live stream seeds the daemon with the current overrides once the socket opens",
     )
 
@@ -2338,7 +2355,7 @@ class ServeWebFixtureTest {
     // knobs now, so the handler picks the iframe when Wasm is active (see the wasm-only case
     // below).
     assertTrue(
-      catalogKnobs.contains("function onKnobEdited()"),
+      assetText("viewer.js").contains("function onKnobEdited()"),
       "knob edits have a dedicated, transport-aware handler",
     )
     // During an active Live (stream), the override map sent over the WebSocket must carry the knob
@@ -2346,12 +2363,12 @@ class ServeWebFixtureTest {
     // an edited knob to its default. The setOverrides sends use liveOverrides(), which folds them
     // in.
     assertTrue(
-      catalogKnobs.contains("function liveOverrides()") &&
-        catalogKnobs.contains("o[\"knob.\" + key]"),
+      assetText("viewer.js").contains("function liveOverrides()") &&
+        assetText("viewer.js").contains("o[\"knob.\" + key]"),
       "the live-stream override map includes the declared knob values",
     )
     assertFalse(
-      catalogKnobs.contains("setOverrides\", overrides: overrides()"),
+      assetText("viewer.js").contains("setOverrides\", overrides: overrides()"),
       "live-stream setOverrides sends liveOverrides() (knobs included), not the display-only map",
     )
     // A live catalog's carried daemon re-renders an override on demand (canRenderOverrides), so the
@@ -2360,15 +2377,16 @@ class ServeWebFixtureTest {
     // is the fix for "most override modes disabled for CMP": they no longer sit greyed out until a
     // live stream is opened.
     assertTrue(
-      catalogKnobs.contains("function syncServerControls()"),
+      assetText("viewer.js").contains("function syncServerControls()"),
       "the viewer has a syncServerControls() that keeps the display controls in sync",
     )
     assertTrue(
-      catalogKnobs.contains("syncServerControls();"),
+      assetText("viewer.js").contains("syncServerControls();"),
       "syncServerControls() is invoked on every mode transition",
     )
     assertTrue(
-      catalogKnobs.contains("!staticSnapshot || canRenderOverrides || !!(live && live.checked)"),
+      assetText("viewer.js")
+        .contains("!staticSnapshot || canRenderOverrides || !!(live && live.checked)"),
       "display controls are live whenever the server can render an override (on-demand or streaming)",
     )
     // The server-render controls render ENABLED in the baked markup (canRenderOverrides), not
@@ -2428,16 +2446,16 @@ class ServeWebFixtureTest {
     // posts the override patch (with the knob) to the iframe, or auto-enables Wasm from the
     // snapshot.
     assertTrue(
-      wasmKnobs.contains("function onKnobEdited()") &&
-        wasmKnobs.contains("wasmFrame.contentWindow.postMessage(wasmOverridePatch()"),
+      assetText("viewer.js").contains("function onKnobEdited()") &&
+        assetText("viewer.js").contains("wasmFrame.contentWindow.postMessage(wasmOverridePatch()"),
       "a knob edit routes to the Wasm iframe when that tier is active",
     )
     // wasmOverridePatch() carries the changed knob into the iframe fragment / postMessage,
     // alongside
     // the display axes — without this the app never sees the edit.
     assertTrue(
-      wasmKnobs.contains("function wasmOverridePatch()") &&
-        wasmKnobs.contains("parts.push(\"knob.\" + encodeURIComponent(key)"),
+      assetText("viewer.js").contains("function wasmOverridePatch()") &&
+        assetText("viewer.js").contains("parts.push(\"knob.\" + encodeURIComponent(key)"),
       "the wasm override patch includes the author-declared knob values",
     )
     // Deep-link parity: the knob controls hydrate from the page URL's `knob.<key>` params on load,
@@ -2446,7 +2464,7 @@ class ServeWebFixtureTest {
     // state
     // — rather than the author default until the user edits the control.
     assertTrue(
-      wasmKnobs.contains("q.get(\"knob.\" + key)"),
+      assetText("viewer.js").contains("q.get(\"knob.\" + key)"),
       "the viewer hydrates declared knob controls from the URL's knob.<key> params",
     )
 
@@ -2472,8 +2490,8 @@ class ServeWebFixtureTest {
       "each URL row has a Copy PNG / Copy SVG button that copies the artefact as text",
     )
     assertTrue(
-      catalogKnobs.contains("readAsDataURL") &&
-        catalogKnobs.contains("navigator.clipboard.writeText"),
+      assetText("viewer.js").contains("readAsDataURL") &&
+        assetText("viewer.js").contains("navigator.clipboard.writeText"),
       "the Copy PNG/SVG handler fetches the render and writes it to the clipboard as text",
     )
     // The URL itself is copied by clicking the field (no separate "Copy URL" button) — the handler
@@ -2483,12 +2501,13 @@ class ServeWebFixtureTest {
       "the separate Copy URL button is gone — the field is click-to-copy",
     )
     assertTrue(
-      catalogKnobs.contains("querySelectorAll(\".cp-url\")") &&
-        catalogKnobs.contains("cp-url-copied"),
+      assetText("viewer.js").contains("querySelectorAll(\".cp-url\")") &&
+        assetText("viewer.js").contains("cp-url-copied"),
       "clicking the URL field copies the URL and flashes the field",
     )
     assertTrue(
-      catalogKnobs.contains("function refreshLinks()") && catalogKnobs.contains("location.origin"),
+      assetText("viewer.js").contains("function refreshLinks()") &&
+        assetText("viewer.js").contains("location.origin"),
       "the links are rebuilt from location.origin as the controls change",
     )
     // A plain static bundle can't export SVG, so it shows the PNG row but not the SVG one.
@@ -2545,11 +2564,11 @@ class ServeWebFixtureTest {
       "the theme selector is enabled on a daemon-backed host",
     )
     assertTrue(
-      view.contains("themeSel.addEventListener(\"change\", onKnobChanged)"),
+      assetText("viewer.js").contains("themeSel.addEventListener(\"change\", onKnobChanged)"),
       "the theme selector routes its change through the daemon (knob) path",
     )
     assertTrue(
-      view.contains("parts.push(\"themeProvider=\""),
+      assetText("viewer.js").contains("parts.push(\"themeProvider=\""),
       "a chosen theme is appended to the /render URL as themeProvider",
     )
 

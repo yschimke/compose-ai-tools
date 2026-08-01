@@ -22,10 +22,7 @@ import * as fs from "fs";
 import * as path from "path";
 
 export type AndroidSdkSource =
-    | "setting"
-    | "ANDROID_HOME"
-    | "ANDROID_SDK_ROOT"
-    | "local.properties";
+    "setting" | "ANDROID_HOME" | "ANDROID_SDK_ROOT" | "local.properties";
 
 export interface AndroidSdkResolution {
     /** Absolute path to the Android SDK root (an existing directory). */

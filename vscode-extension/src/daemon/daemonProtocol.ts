@@ -144,12 +144,7 @@ export type DataProductFacet =
     | "interactive";
 
 export type SamplingPolicy =
-    | "Start"
-    | "End"
-    | "EachFrame"
-    | "OnDemand"
-    | "Aggregate"
-    | "Failure";
+    "Start" | "End" | "EachFrame" | "OnDemand" | "Aggregate" | "Failure";
 
 export interface PreviewExtensionDescriptor {
     id: string;
@@ -205,8 +200,7 @@ export interface PreviewPipelineStep {
 }
 
 export type PreviewExtensionUsageMode =
-    | "ExplicitEffect"
-    | "SuggestedExtraPreview";
+    "ExplicitEffect" | "SuggestedExtraPreview";
 
 export type PipelineStepTrait =
     | "ScenarioDriver"

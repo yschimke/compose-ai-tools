@@ -187,9 +187,11 @@ export class BundleLegend extends LitElement {
         };
         return html`
             <li
-                class=${active
-                    ? "bundle-legend-entry bundle-legend-entry-active"
-                    : "bundle-legend-entry"}
+                class=${
+                    active
+                        ? "bundle-legend-entry bundle-legend-entry-active"
+                        : "bundle-legend-entry"
+                }
                 data-legend-id=${e.id}
                 tabindex="0"
                 role="button"
@@ -208,11 +210,13 @@ export class BundleLegend extends LitElement {
                 ></span>
                 <div class="bundle-legend-text">
                     <strong class="bundle-legend-label">${e.label}</strong>
-                    ${e.detail
-                        ? html`<span class="bundle-legend-detail"
-                              >${e.detail}</span
-                          >`
-                        : ""}
+                    ${
+                        e.detail
+                            ? html`<span class="bundle-legend-detail"
+                                  >${e.detail}</span
+                              >`
+                            : ""
+                    }
                 </div>
             </li>
         `;

@@ -330,6 +330,10 @@ sealed interface RenderRequest {
  *
  * [previewContext] carries the effective render metadata and optional inspection captures that data
  * products can project from after the render completes.
+ *
+ * [outputBaseName] is the concrete artifact identity selected by the renderer. It can differ from
+ * the protocol preview id when one discovered function expands into multiple annotation or catalog
+ * variants; file-backed products use it to resolve the artifact produced by this exact render.
  */
 data class RenderResult(
   val id: Long,
@@ -338,4 +342,5 @@ data class RenderResult(
   val pngPath: String? = null,
   val metrics: Map<String, Long>? = null,
   val previewContext: PreviewContext? = null,
+  val outputBaseName: String? = null,
 )

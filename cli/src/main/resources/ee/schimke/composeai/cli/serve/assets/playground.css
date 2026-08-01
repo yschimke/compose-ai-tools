@@ -1,0 +1,38 @@
+.cp-pg { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+.cp-pg-bar { display: flex; align-items: center; gap: 10px; }
+.cp-pg-modelabel { font-weight: 600; }
+.cp-pg-mode { padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.18);
+  background: #fff; font: inherit; }
+.cp-pg-run { margin-left: auto; }
+.cp-pg-files { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cp-pg-file { padding: 5px 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.18);
+  background: #fff; font: inherit; font-size: 13px; cursor: pointer; }
+.cp-pg-file[aria-current="true"] { background: #1b1b1f; color: #fff; border-color: #1b1b1f; }
+.cp-pg-filebtn { padding: 5px 10px; border-radius: 8px; border: 1px dashed rgba(0,0,0,0.28);
+  background: transparent; font: inherit; font-size: 13px; cursor: pointer; }
+.cp-pg-source { width: 100%; min-height: 260px; box-sizing: border-box; padding: 12px 14px;
+  border-radius: 10px; border: 1px solid rgba(0,0,0,0.18); background: #fbfbfd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px;
+  line-height: 1.5; tab-size: 2; resize: vertical; }
+.cp-pg-status { font-size: 14px; color: #55555f; }
+.cp-pg-status.cp-doc-error { color: #b00020; }
+.cp-pg-diags { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column;
+  gap: 6px; }
+.cp-pg-diag { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px; padding: 6px 10px; border-radius: 8px; background: #f2f2f5; }
+.cp-pg-error { background: #fdecef; color: #8a0017; }
+.cp-pg-warning { background: #fff5e0; color: #7a5200; }
+.cp-pg-result { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.cp-pg-image { max-width: 100%; border-radius: 10px; border: 1px solid rgba(0,0,0,0.12);
+  background: #fff; }
+@media (prefers-color-scheme: dark) {
+  .cp-pg-mode, .cp-pg-source, .cp-pg-file { background: #161618; border-color: #34343a;
+    color: #e6e6ea; }
+  .cp-pg-file[aria-current="true"] { background: #e6e6ea; color: #161618; border-color: #e6e6ea; }
+  .cp-pg-filebtn { border-color: #4a4a52; color: #e6e6ea; }
+  .cp-pg-status { color: #a8a8b2; }
+  .cp-pg-diag { background: #1d1d20; }
+  .cp-pg-error { background: #34161b; color: #ff9aa6; }
+  .cp-pg-warning { background: #2c2410; color: #ffd486; }
+  .cp-pg-image { border-color: #34343a; }
+}

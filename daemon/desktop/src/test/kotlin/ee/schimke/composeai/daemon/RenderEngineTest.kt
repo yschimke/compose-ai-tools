@@ -6,6 +6,7 @@ import javax.imageio.ImageIO
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -137,6 +138,53 @@ class RenderEngineTest {
       assertTrue("figma SVG must be valid", figmaSvg.trimStart().startsWith("<svg"))
       // The export is layered: at least the root composable is emitted as a named `<g id=…>` group.
       assertTrue("figma SVG must carry named layer groups", figmaSvg.contains("<g id="))
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun figmaSvgVariantsWithOnePreviewIdRemainIsolated() {
+    val outputDir = tempFolder.newFolder("renders-figma-variants")
+    val dataDir = tempFolder.newFolder("data-figma-variants")
+    val engine = RenderEngine(outputDir = outputDir, dataDir = dataDir)
+    val host = DesktopHost(engine = engine)
+    host.start()
+    try {
+      val basePayload =
+        "previewId=dark-aware;" +
+          "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+          "functionName=DarkAwareSquare;" +
+          "widthPx=48;heightPx=48;density=1.0;showBackground=false;"
+      val lightResult =
+        host.submit(
+          RenderRequest.Render(
+            payload = basePayload + "uiMode=light;outputBaseName=dark-aware-light"
+          ),
+          timeoutMs = 60_000,
+        )
+      val darkResult =
+        host.submit(
+          RenderRequest.Render(
+            payload = basePayload + "uiMode=dark;outputBaseName=dark-aware-dark"
+          ),
+          timeoutMs = 60_000,
+        )
+
+      assertEquals("dark-aware-light", lightResult.outputBaseName)
+      assertEquals("dark-aware-dark", darkResult.outputBaseName)
+      val lightFile = dataDir.resolve("dark-aware-light/compose-figma.svg")
+      val darkFile = dataDir.resolve("dark-aware-dark/compose-figma.svg")
+      assertTrue(
+        "light variant SVG must be produced: ${lightFile.absolutePath}",
+        lightFile.exists(),
+      )
+      assertTrue("dark variant SVG must be produced: ${darkFile.absolutePath}", darkFile.exists())
+      val lightSvg = lightFile.readText()
+      val darkSvg = darkFile.readText()
+      assertTrue("light SVG must carry the light render", lightSvg.contains("fill=\"#FFFFFF\""))
+      assertTrue("dark SVG must carry the dark render", darkSvg.contains("fill=\"#000000\""))
+      assertNotEquals("desktop variants must not replay one captured tree", lightSvg, darkSvg)
     } finally {
       host.shutdown()
     }

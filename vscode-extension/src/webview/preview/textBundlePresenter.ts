@@ -248,15 +248,17 @@ export function textBundleStringColumns(): readonly DataTableColumn<DrawnTextRow
                     <strong class="text-bundle-text-rendered"
                         >${row.text || "(empty)"}</strong
                     >
-                    ${row.truncated ||
-                    row.didOverflowWidth ||
-                    row.didOverflowHeight
-                        ? html`<span
-                              class="text-bundle-flag"
-                              data-level="warning"
-                              >${overflowBadge(row)}</span
-                          >`
-                        : ""}
+                    ${
+                        row.truncated ||
+                        row.didOverflowWidth ||
+                        row.didOverflowHeight
+                            ? html`<span
+                                  class="text-bundle-flag"
+                                  data-level="warning"
+                                  >${overflowBadge(row)}</span
+                              >`
+                            : ""
+                    }
                 </div>`,
         },
         {
@@ -545,9 +547,11 @@ export function textBundleTranslationColumns(
                 html`<span
                     class="text-bundle-locale-chip"
                     data-tone="supported"
-                    title=${row.translatedLocales.length === 0
-                        ? "No translations recorded"
-                        : "Translated: " + row.translatedLocales.join(", ")}
+                    title=${
+                        row.translatedLocales.length === 0
+                            ? "No translations recorded"
+                            : "Translated: " + row.translatedLocales.join(", ")
+                    }
                     >${row.supportedLocaleCount}</span
                 >`,
         },
@@ -565,8 +569,9 @@ export function textBundleTranslationColumns(
                     : html`<span
                           class="text-bundle-locale-chip"
                           data-tone="warning"
-                          title=${"Missing: " +
-                          row.untranslatedLocales.join(", ")}
+                          title=${
+                              "Missing: " + row.untranslatedLocales.join(", ")
+                          }
                           >${row.untranslatedLocaleCount}</span
                       >`,
         },
