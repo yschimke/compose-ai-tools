@@ -4,7 +4,9 @@ import android.content.Context
 import coil.Coil
 import coil.EventListener
 import coil.ImageLoader
+import coil.intercept.Interceptor
 import coil.request.ErrorResult
+import coil.request.ImageResult
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import kotlinx.coroutines.Dispatchers
@@ -62,6 +64,7 @@ internal class Coil2PreviewInstaller : CoilPreviewInstaller {
         .allowHardware(false)
         .networkObserverEnabled(false)
         .respectCacheHeaders(false)
+        .components { add(PlaceholderFallbackInterceptor) }
         .eventListener(DiagnosticEventListener)
         .build()
     )
@@ -99,6 +102,22 @@ internal class Coil2PreviewInstaller : CoilPreviewInstaller {
       // A cancelled request is indistinguishable from one that never finished as far as the
       // captured pixels go, so leave it in the in-flight map and let the drain report it PENDING.
     }
+  }
+
+  private object PlaceholderFallbackInterceptor : Interceptor {
+    override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
+      val result = chain.proceed(chain.request)
+      return coil2ResultWithPlaceholderFallback(result)
+    }
+  }
+}
+
+internal fun coil2ResultWithPlaceholderFallback(result: ImageResult): ImageResult {
+  val placeholder = result.request.placeholder
+  return if (result is ErrorResult && result.drawable == null && placeholder != null) {
+    ErrorResult(placeholder, result.request, result.throwable)
+  } else {
+    result
   }
 }
 

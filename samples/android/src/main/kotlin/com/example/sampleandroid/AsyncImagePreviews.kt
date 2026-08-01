@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.drawable.BitmapDrawable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,9 +16,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import java.io.ByteArrayOutputStream
 
 /**
@@ -69,29 +72,42 @@ fun AsyncImageArtworkPreview() {
 }
 
 /**
- * The honestly-unfixable case, kept as a fixture so the *diagnostic* has a regression test too.
+ * The unresolvable case, kept as a fixture so the placeholder fallback has a regression test too.
  *
  * A preview render deliberately doesn't hit the network — coil runs inline on the render thread so
  * local models resolve, which puts any HTTP fetch under Android's main-thread network guard, and a
  * preview whose pixels depend on live egress wouldn't be reproducible anyway. `.invalid` is a
- * reserved TLD that resolves nowhere, so this fixture behaves identically in a sandbox, in CI and
- * on a laptop regardless. What the renderer *can* do is record the unresolved request in
- * `<png>.warnings.json` so the blank area comes with a reason attached instead of being a mystery.
- * `AsyncImagePixelTest` asserts the sidecar names this model.
+ * reserved TLD that resolves nowhere, so this fixture behaves identically in a sandbox, in CI and on
+ * a laptop regardless. The renderer should keep the real inline load path, diagnose the failed
+ * request in `<png>.warnings.json`, and still paint the request placeholder instead of dropping to
+ * transparent empty pixels.
  *
- * This sticker therefore still shows the broken-looking result — no artwork, and the caption pushed
- * out of frame by the intrinsic-size collapse. That is deliberate: it is the *before* picture,
- * rendered side by side with [AsyncImageArtworkPreview]'s *after*, and the difference between the
- * two is exactly what the warnings sidecar now explains.
+ * The placeholder is bright and flat on purpose: `AsyncImagePixelTest` can assert those pixels
+ * survived even though the URL did not.
  */
 @Preview(name = "Async Image Unreachable", widthDp = 200, heightDp = 220, showBackground = true)
 @Composable
 fun AsyncImageUnreachablePreview() {
-  DeviceStatusCard(image = UNREACHABLE_ARTWORK_URL, description = "Offline")
+  val context = LocalContext.current
+  val request =
+    ImageRequest.Builder(context)
+      .data(UNREACHABLE_ARTWORK_URL)
+      .placeholder(BitmapDrawable(context.resources, unreachablePlaceholderBitmap()))
+      .build()
+
+  DeviceStatusCard(
+    image = request,
+    description = "Offline",
+  )
 }
 
 /** Reserved-TLD URL: guaranteed not to resolve, on any network, in any environment. */
 const val UNREACHABLE_ARTWORK_URL: String = "https://artwork.invalid/living-room-speaker.png"
+
+fun unreachablePlaceholderBitmap(size: Int = 96): Bitmap =
+  Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888).apply {
+    eraseColor(Color.rgb(233, 30, 99))
+  }
 
 /**
  * A small procedurally-drawn PNG, encoded exactly the way an app's artwork would arrive — as
