@@ -6,11 +6,11 @@ Auto-rendered by the integration matrix from [`android/adaptive-apps-samples@mai
 
 - XR spatial Compose. Upstream tracks `androidx.xr.compose`
   alpha07, whose `ApplicationSubspace` / `MovePolicy` /
-  `SpatialConfiguration` APIs were removed or deprecated by
-  alpha14 — the version our XR render path compiles against. The
-  integration run therefore applies the in-repo
-  `adaptive-apps-samples-xr-alpha14.patch` before configuring the
-  build.
+  `SpatialConfiguration` APIs were removed or deprecated by the
+  version our XR render path compiles against. The integration run
+  therefore applies the in-repo
+  `adaptive-apps-samples-xr-upgrade.patch` before configuring the
+  build, pinned to the same version as `xr-compose`.
 - Poster art is loaded from remote URLs that can't resolve under
   the offline Robolectric render, so a second CI patch installs a
   Coil `FakeImageLoaderEngine` singleton that serves bundled
@@ -22,7 +22,19 @@ Auto-rendered by the integration matrix from [`android/adaptive-apps-samples@mai
 ### Workarounds applied by the integration harness
 
 - Source: [`android/adaptive-apps-samples@main`](https://github.com/android/adaptive-apps-samples/tree/main)
-- Consumer patch(es) applied before configuring the build: `adaptive-apps-samples-xr-alpha14.patch adaptive-apps-samples-xr-spatial-previews.patch adaptive-apps-samples-coil-fake-images.patch` (idempotent — auto-skipped once the change lands upstream).
+- Consumer patch(es) applied before configuring the build: `adaptive-apps-samples-xr-upgrade.patch adaptive-apps-samples-xr-spatial-previews.patch adaptive-apps-samples-coil-fake-images.patch` (idempotent — auto-skipped once the change lands upstream).
+
+> [!WARNING]
+> 2 preview(s) failed to render in the latest update (2 with no prior baseline to retain). See **Render Failures** below.
+
+## Render Failures
+
+The render task completed but no PNG was produced for these previews. Entries with a prior baseline keep their previous image; the rest are absent from the gallery until a successful render lands.
+
+| Preview | Module | Function | Source | Baseline |
+|---------|--------|----------|--------|----------|
+| `jetstream/activity__MainActivity` | jetstream | `MainActivity` | `—` | none |
+| `jetstream/com.google.jetstream.presentation.screens.profile.compoents.AccountsSectionKt.AccountsSection_TV` | jetstream | `AccountsSection` | `src/main/java/com/google/jetstream/presentation/screens/profile/compoents/AccountsSection.kt` | none |
 
 ## jetstream
 
