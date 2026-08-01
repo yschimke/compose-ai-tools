@@ -333,52 +333,54 @@ class ServeHttpServer(
 
         // In-browser CMP tier: serve the static Wasm app for a registered system at
         // `/wasm/<system>/<file>`. Ungated (generic client code, no session data) so the viewer's
-        // sandboxed iframe and its relative asset fetches work without a token. Registered only
-        // when
-        // the operator mapped a system to its built dist (`--wasm-dir`).
-        // Registered when the server has any Wasm app OR can gain one at runtime: [wasmCatalogs] is
-        // a live view of the served catalogs' apps, so an admin-published catalog that carries one
-        // needs this route to already exist. Unknown systems 404 either way.
-        if (wasmCatalogs.isNotEmpty() || adminEnabled) {
-          get("/wasm/{system}/{path...}") {
-            val dir = call.parameters["system"]?.let { wasmCatalogs[it] }
-            if (dir == null) {
-              call.respondText("not found", status = HttpStatusCode.NotFound)
-              return@get
-            }
-            val segments = call.parameters.getAll("path").orEmpty().filter { it.isNotEmpty() }
-            val rel = if (segments.isEmpty()) "index.html" else segments.joinToString("/")
-            val base = dir.toPath().toAbsolutePath().normalize()
-            val resolved = base.resolve(rel).normalize()
-            // Zip-slip guard: a crafted `../` path must not escape the app directory.
-            if (!resolved.startsWith(base)) {
-              call.respondText("not found", status = HttpStatusCode.NotFound)
-              return@get
-            }
-            val file = resolved.toFile()
-            if (!file.isFile) {
-              call.respondText("not found", status = HttpStatusCode.NotFound)
-              return@get
-            }
-            // The viewer mounts this app in a `sandbox="allow-scripts"` iframe, which has an opaque
-            // (null) origin — so the app's own ES-module + wasm fetches count as cross-origin and
-            // need CORS. `*` is safe: these are public static client assets with no session data,
-            // and keeping the strong sandbox (no `allow-same-origin`) isolates even untrusted wasm.
-            call.response.headers.append(HttpHeaders.AccessControlAllowOrigin, "*")
-            // Cache the heavy payload (skiko + app wasm ≈ 8 MB gzipped). The filenames aren't
-            // content-hashed, so pair a moderate max-age with a size+mtime ETag: within the window
-            // the browser serves from cache (no request); after it, a conditional request gets a
-            // cheap 304 instead of re-downloading megabytes.
-            val etag = "\"${file.length().toString(16)}-${file.lastModified().toString(16)}\""
-            call.response.headers.append(HttpHeaders.CacheControl, "public, max-age=3600")
-            call.response.headers.append(HttpHeaders.ETag, etag)
-            if (call.request.headers[HttpHeaders.IfNoneMatch] == etag) {
-              call.respond(HttpStatusCode.NotModified)
-              return@get
-            }
-            val bytes = withContext(Dispatchers.IO) { file.readBytes() }
-            call.respondBytes(bytes, wasmContentType(file.name))
+        // sandboxed iframe and its relative asset fetches work without a token.
+        //
+        // Registered UNCONDITIONALLY. [wasmCatalogs] is a live view of the served catalogs' apps,
+        // but routes are installed once, at bind time — and since #3127 the listener binds BEFORE
+        // the catalogs load, so a `wasmCatalogs.isNotEmpty()` guard here always saw an empty map
+        // and dropped the route for the whole process lifetime. The viewer meanwhile reads the
+        // same live map later (it offers "Run in browser (Wasm)" for any system present in it), so
+        // the toggle appeared while every `/wasm/…` fetch 404'd — the serve-lanes E2E's "Wasm
+        // iframe re-renders on knob override" failure. An unknown system 404s inside the handler
+        // either way, so the route costs nothing when no app is ever registered.
+        get("/wasm/{system}/{path...}") {
+          val dir = call.parameters["system"]?.let { wasmCatalogs[it] }
+          if (dir == null) {
+            call.respondText("not found", status = HttpStatusCode.NotFound)
+            return@get
           }
+          val segments = call.parameters.getAll("path").orEmpty().filter { it.isNotEmpty() }
+          val rel = if (segments.isEmpty()) "index.html" else segments.joinToString("/")
+          val base = dir.toPath().toAbsolutePath().normalize()
+          val resolved = base.resolve(rel).normalize()
+          // Zip-slip guard: a crafted `../` path must not escape the app directory.
+          if (!resolved.startsWith(base)) {
+            call.respondText("not found", status = HttpStatusCode.NotFound)
+            return@get
+          }
+          val file = resolved.toFile()
+          if (!file.isFile) {
+            call.respondText("not found", status = HttpStatusCode.NotFound)
+            return@get
+          }
+          // The viewer mounts this app in a `sandbox="allow-scripts"` iframe, which has an opaque
+          // (null) origin — so the app's own ES-module + wasm fetches count as cross-origin and
+          // need CORS. `*` is safe: these are public static client assets with no session data,
+          // and keeping the strong sandbox (no `allow-same-origin`) isolates even untrusted wasm.
+          call.response.headers.append(HttpHeaders.AccessControlAllowOrigin, "*")
+          // Cache the heavy payload (skiko + app wasm ≈ 8 MB gzipped). The filenames aren't
+          // content-hashed, so pair a moderate max-age with a size+mtime ETag: within the window
+          // the browser serves from cache (no request); after it, a conditional request gets a
+          // cheap 304 instead of re-downloading megabytes.
+          val etag = "\"${file.length().toString(16)}-${file.lastModified().toString(16)}\""
+          call.response.headers.append(HttpHeaders.CacheControl, "public, max-age=3600")
+          call.response.headers.append(HttpHeaders.ETag, etag)
+          if (call.request.headers[HttpHeaders.IfNoneMatch] == etag) {
+            call.respond(HttpStatusCode.NotModified)
+            return@get
+          }
+          val bytes = withContext(Dispatchers.IO) { file.readBytes() }
+          call.respondBytes(bytes, wasmContentType(file.name))
         }
 
         // Prebaked front-door hero thumbnails ([ServeHeroImages]). Deliberately NOT the `/render`
