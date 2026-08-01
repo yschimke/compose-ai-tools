@@ -80,8 +80,10 @@ class PreviewManifestEntryResolveTest {
   fun `nested schema - plugin shape - reads params block`() {
     // Mirrors what `DiscoverPreviewsTask` writes for a Wear preview annotated with
     // `@Preview(device = "id:wearos_small_round")` — production manifest the daemon was silently
-    // dropping pre-fix. `widthDp` × `density` is the per-render sandbox size; the resolver does
-    // the dp→px conversion the plugin's schema requires.
+    // dropping pre-fix. Since #3113 (Studio geometry parity) a device frame owns its own size: the
+    // resolver deliberately ignores the manifest's `widthDp`/`heightDp` and `PreviewManifestRouter`
+    // derives the frame from `DeviceDimensions.resolve(device)`. The resolver still pins both axes
+    // (no wrap) and passes the device id through.
     val raw =
       """{"id":"wear-1","className":"X","functionName":"R","sourceFile":"P.kt",""" +
         """"params":{"device":"id:wearos_small_round","widthDp":192,"heightDp":192,""" +
@@ -89,8 +91,8 @@ class PreviewManifestEntryResolveTest {
         """"captures":[{"renderOutput":"renders/wear-1.png","cost":1.0}]}"""
     val entry = json.decodeFromString(PreviewManifestEntry.serializer(), raw)
     val resolved = entry.resolved()
-    assertEquals(504, resolved.widthPx) // 192 * 2.625
-    assertEquals(504, resolved.heightPx)
+    assertEquals(false, resolved.wrapWidth) // device frame pins both axes
+    assertEquals(false, resolved.wrapHeight)
     assertEquals(2.625f, resolved.density, 0.0001f)
     assertEquals(true, resolved.showBackground)
     assertEquals("id:wearos_small_round", resolved.device)
@@ -143,7 +145,8 @@ class PreviewManifestEntryResolveTest {
     val entry = json.decodeFromString(PreviewManifestEntry.serializer(), raw)
     val resolved = entry.resolved()
     assertEquals("id:wearos_small_round", resolved.device)
-    assertEquals(384, resolved.widthPx) // 192 * 2.0 default density
+    // Device frame pins the axes; the size itself comes from the router.
+    assertEquals(false, resolved.wrapWidth)
   }
 
   @Test
