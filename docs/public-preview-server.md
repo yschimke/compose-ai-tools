@@ -344,11 +344,10 @@ Both container profiles take this config from env (the entrypoint maps `SERVE_PU
 `SERVE_ACCEPT_DOCS_FROM` → flags) and put **Caddy** in front for TLS. They default to the **open
 public profile** (`SERVE_PUBLIC=1`); set `SERVE_PUBLIC=0` + `SERVE_TOKEN` for a token-gated box.
 
-### GitHub auth for collaborator-only live lanes
+### GitHub auth for live lanes
 
-A public catalog can stay browseable while code-running surfaces require a GitHub collaborator
-session. Configure a GitHub OAuth app with callback `/auth/github/callback`, then set the OAuth
-secrets:
+A public catalog can stay browseable while code-running surfaces require a GitHub session. Configure
+a GitHub OAuth app with callback `/auth/github/callback`, then set the OAuth secrets:
 
 ```bash
 SERVE_GITHUB_AUTH_CLIENT_ID=...
@@ -357,14 +356,12 @@ SERVE_GITHUB_AUTH_COOKIE_SECRET=... # at least 32 chars
 ```
 
 With those set, `/playground`, `POST /api/<version>/compiler/run`, `/pg/<token>`, and live preview
-WebSockets require a signed-in user who has collaborator permission on `SERVE_GITHUB_AUTH_REPO`.
-The server exchanges the OAuth code and checks repository permission server-side; the browser cookie
-stores only a signed, expiring login. Reverse-proxied deployments should also set
+WebSockets require a signed-in GitHub user. The browser cookie stores only a signed, expiring login.
+Reverse-proxied deployments should also set
 `SERVE_GITHUB_AUTH_CALLBACK_BASE_URL=https://preview.example.com` so the OAuth callback URL is stable.
-The prebuilt image defaults `SERVE_GITHUB_AUTH_REPO=yschimke/compose-ai-tools` and, when `DOMAIN` is
-set, derives `SERVE_GITHUB_AUTH_CALLBACK_BASE_URL=https://$DOMAIN`; override either value for another
-deployment. `SERVE_GITHUB_AUTH_USERS=alice,bob` can narrow access further after the collaborator
-check.
+When `DOMAIN` is set, the prebuilt image derives
+`SERVE_GITHUB_AUTH_CALLBACK_BASE_URL=https://$DOMAIN`. Empty `SERVE_GITHUB_AUTH_USERS` allows any
+signed-in GitHub user; set `SERVE_GITHUB_AUTH_USERS=alice,bob` to narrow access to named logins.
 
 ### The catalog set is config, not image content
 

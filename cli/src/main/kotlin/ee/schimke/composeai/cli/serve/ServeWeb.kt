@@ -12,8 +12,15 @@ import kotlinx.serialization.json.JsonPrimitive
  */
 object ServeWeb {
 
-  /** Sign-in affordance for a live stream lane protected by GitHub collaborator auth. */
+  /** Sign-in affordance for a GitHub-protected live stream lane. */
   data class LiveAuthPrompt(val loginHref: String, val repository: String)
+
+  /** Front-door GitHub auth state, shown when the public server protects code-running surfaces. */
+  data class GitHubAuthStatus(
+    val loginHref: String,
+    val login: String? = null,
+    val restrictedToAllowedUsers: Boolean = false,
+  )
 
   /**
    * Absolute URLs advertised to link unfurlers for a browser-facing page. [imageUrl] is the thing
@@ -176,7 +183,7 @@ object ServeWeb {
    * `/version` links so the live build is visible on the front door; callers that want a stable
    * golden pass a fixed string rather than the release version.
    */
-  private fun aboutSection(version: String?): String {
+  private fun aboutSection(version: String?, githubAuth: GitHubAuthStatus? = null): String {
     val ver =
       version
         ?.takeIf { it.isNotBlank() }
@@ -184,6 +191,21 @@ object ServeWeb {
           " · <span class=\"cp-about-ver\" title=\"running preview-server build\">" +
             "server v${WebEscaping.htmlEscape(it)}</span>"
         } ?: ""
+    val auth =
+      githubAuth?.let {
+        val restricted =
+          if (it.restrictedToAllowedUsers)
+            " title=\"Live preview access is limited to configured GitHub users\""
+          else " title=\"Live previews require a GitHub sign-in\""
+        val login = it.login?.takeIf { name -> name.isNotBlank() }
+        if (login == null) {
+          " · <a class=\"cp-gh-auth\" href=\"${WebEscaping.htmlEscape(it.loginHref)}\"" +
+            "$restricted>$GITHUB_ICON Sign in with GitHub</a>"
+        } else {
+          " · <span class=\"cp-gh-auth cp-gh-auth--signed\"$restricted>$GITHUB_ICON " +
+            "Signed in as ${WebEscaping.htmlEscape(login)}</span>"
+        }
+      } ?: ""
     return """
     <section class="cp-about">
       <p class="cp-about-title">compose-preview · public preview server</p>
@@ -194,7 +216,7 @@ object ServeWeb {
         and anything unverified is badged.</p>
       <p class="cp-about-links">
         <a href="https://github.com/$SOURCE_REPO">$GITHUB_ICON source</a> ·
-        <a href="/version">/version</a>$ver
+        <a href="/version">/version</a>$ver$auth
       </p>
     </section>
     """
@@ -1314,8 +1336,9 @@ object ServeWeb {
     version: String? = null,
     /** Absolute page + representative hero URLs for Open Graph/Twitter link previews. */
     unfurl: UnfurlMetadata? = null,
+    githubAuth: GitHubAuthStatus? = null,
   ): String {
-    val about = if (isPublic) aboutSection(version) + "\n" else ""
+    val about = if (isPublic) aboutSection(version, githubAuth) + "\n" else ""
     // Public routes are open — no token param on the cards; a token-gated box keeps it.
     val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     fun card(s: HomeSystem): String {
@@ -2982,10 +3005,7 @@ object ServeWeb {
     // note) on a pure static bundle with neither.
     val liveToggleDis =
       if ((hasLiveStream || wasmSrc != null) && !liveAuthBlocksStream) "" else " disabled"
-    val liveAuthTitle = liveAuthPrompt?.let {
-      "Sign in with GitHub to enable Live preview. Access is limited to collaborators on " +
-        "${it.repository}."
-    }
+    val liveAuthTitle = liveAuthPrompt?.let { "Sign in with GitHub to enable Live preview." }
     val liveToggleTitleAttr =
       liveAuthTitle?.let { " title=\"${WebEscaping.htmlEscape(it)}\"" } ?: ""
     val liveAuthDataAttr =

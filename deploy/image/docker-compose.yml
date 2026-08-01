@@ -52,10 +52,10 @@ services:
       SERVE_ADMIN_TOKEN: "${SERVE_ADMIN_TOKEN:-}"
       # Privacy-minimal aggregate app/catalog + preview views, persisted on preview_config.
       SERVE_ENGAGEMENT_FILE: "${SERVE_ENGAGEMENT_FILE:-}"
-      # Optional GitHub OAuth collaborator auth for code-running surfaces (live WebSockets and
-      # playground). Set the three secrets in .env to enable; the entrypoint then defaults the repo
-      # check to yschimke/compose-ai-tools and uses this domain as the OAuth callback origin unless
-      # overridden. Empty values keep the public catalog browsing behaviour unchanged.
+      # Optional GitHub OAuth auth for code-running surfaces (live WebSockets and playground). Set
+      # the three secrets in .env to enable; the entrypoint uses this domain as the OAuth callback
+      # origin unless overridden. Empty values keep the public catalog browsing behaviour unchanged.
+      # Empty SERVE_GITHUB_AUTH_USERS allows any signed-in GitHub user; set it to narrow access.
       SERVE_GITHUB_AUTH_CLIENT_ID: "${SERVE_GITHUB_AUTH_CLIENT_ID:-}"
       SERVE_GITHUB_AUTH_CLIENT_SECRET: "${SERVE_GITHUB_AUTH_CLIENT_SECRET:-}"
       SERVE_GITHUB_AUTH_COOKIE_SECRET: "${SERVE_GITHUB_AUTH_COOKIE_SECRET:-}"

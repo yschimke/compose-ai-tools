@@ -1551,8 +1551,9 @@ class ServeCommand(args: List<String>) : Command(args) {
     }
     if (githubAuth != null) {
       System.err.println(
-        "serve: GitHub collaborator auth enabled for live sessions and playground " +
-          "(repo $githubAuthRepo)"
+        "serve: GitHub auth enabled for live sessions and playground" +
+          (githubAuthUsers.takeIf { it.isNotEmpty() }?.let { " (${it.size} allowed user(s))" }
+            ?: "")
       )
     }
 
@@ -2466,14 +2467,14 @@ class ServeCommand(args: List<String>) : Command(args) {
         --github-auth-repo <owner/repo>
                           Add GitHub OAuth on top of the browse gate for code-running surfaces:
                           live preview WebSockets and the playground. After sign-in the server
-                          checks the OAuth user is a collaborator on <owner/repo>, then stores only
-                          a signed, expiring login cookie. All four flags are required together.
+                          stores only a signed, expiring login cookie. All four flags are required
+                          together; <owner/repo> is kept as deployment context and for compatibility.
         --github-auth-callback-base-url <url>
                           External origin for the OAuth callback, e.g. https://preview.example.com.
                           Omit for local use; reverse-proxied deploys should set it explicitly.
         --github-auth-users <login>[,<login>…]
-                          Optional extra allowlist after the collaborator check. Empty means any
-                          collaborator on --github-auth-repo may use live sessions/playground.
+                          Optional allowlist. Empty means any signed-in GitHub user may use live
+                          sessions/playground.
         --export <path>   Don't serve: render every preview once and write a portable bundle (a
                           self-contained web gallery + PNGs) to <path>. A '.zip' path writes a zip;
                           any other path writes a directory. The live server also offers this at

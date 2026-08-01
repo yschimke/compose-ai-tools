@@ -207,8 +207,8 @@ class ServeHttpServer(
    */
   private val playgroundRedeem: PlaygroundRedeemService? = null,
   /**
-   * Optional GitHub collaborator auth. When present, public browsing can stay open while
-   * code-running surfaces (playground + live WebSocket sessions) require a signed-in collaborator.
+   * Optional GitHub auth. When present, public browsing can stay open while code-running surfaces
+   * (playground + live WebSocket sessions) require a signed-in GitHub account.
    */
   private val githubAuth: ServeGithubAuth? = null,
   /** Aggregate view counts; pass a file-backed store to keep them across server restarts. */
@@ -1333,6 +1333,14 @@ class ServeHttpServer(
         isPublic = isPublic,
         version = BUNDLE_VERSION,
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = featuredUrl),
+        githubAuth =
+          githubAuth?.let { auth ->
+            ServeWeb.GitHubAuthStatus(
+              loginHref = auth.loginPath(call),
+              login = auth.currentLogin(call),
+              restrictedToAllowedUsers = auth.isRestrictedToAllowedUsers(),
+            )
+          },
       ),
       ContentType.Text.Html,
     )
