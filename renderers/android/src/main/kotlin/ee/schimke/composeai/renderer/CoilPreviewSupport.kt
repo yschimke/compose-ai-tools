@@ -270,7 +270,7 @@ object CoilLoadDiagnostics {
     inFlight.clear()
     synchronized(failures) { failures.clear() }
     val all = failed + pending
-    all.forEach { if (warnedThisProcess.add(it.model + ' ' + it.outcome)) warn(it) }
+    all.forEach { if (warnedThisProcess.add(it.model + '\u0000' + it.outcome)) warn(it) }
     return all
   }
 
