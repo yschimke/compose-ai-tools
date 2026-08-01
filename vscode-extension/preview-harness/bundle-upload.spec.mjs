@@ -10,15 +10,6 @@ const BUNDLE_PATH = process.env.BUNDLE_PATH;
 const SESSION = process.env.BUNDLE_SESSION ?? "local-e2e-bundle";
 const SERVE_URL = process.env.SERVE_URL || "http://127.0.0.1:8728";
 
-function htmlDecode(value) {
-  return value
-    .replaceAll("&amp;", "&")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#39;", "'")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">");
-}
-
 function requireBundle() {
   if (!BUNDLE_PATH && process.env.CI) {
     throw new Error("BUNDLE_PATH is required for the bundle upload e2e");
@@ -51,7 +42,10 @@ test("uploads a local bundle and opens the returned preview URL", async ({ reque
   const landingHtml = await landing.text();
   const previewHref = landingHtml.match(/href="([^"]*\/p\/[^"]+)"/)?.[1];
   expect(previewHref, "uploaded bundle landing has preview links").toBeTruthy();
-  const previewUrl = htmlDecode(previewHref);
+  expect(previewHref, "landing preview link carries the uploaded session").toContain(
+    `session=${encodeURIComponent(SESSION)}`,
+  );
+  const previewUrl = previewHref;
   const viewer = await request.get(previewUrl);
   expect(viewer.status(), `viewer linked from landing (${previewUrl})`).toBe(200);
   expect(await viewer.text(), "linked viewer belongs to uploaded session").toContain(
