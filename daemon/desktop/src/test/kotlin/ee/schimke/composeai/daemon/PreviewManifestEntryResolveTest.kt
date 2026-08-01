@@ -123,10 +123,10 @@ class PreviewManifestEntryResolveTest {
   fun `nested schema - plugin shape - reads params block`() {
     // Mirrors what `DiscoverPreviewsTask` writes for a Wear preview annotated with
     // `@Preview(device = "id:wearos_small_round")` — production manifest the daemon was silently
-    // dropping pre-fix. Since #3113 (Studio geometry parity) a device frame owns its own size: the
-    // manifest's `widthDp`/`heightDp` are ignored and the dp extent comes from
-    // `DeviceDimensions.resolve(device)` — 192×192 dp for `id:wearos_small_round` — at the
-    // manifest's density. Both axes stay pinned (no wrap).
+    // dropping pre-fix. Since #3113 (Studio geometry parity) a device frame owns its own size, so
+    // the frame comes from `DeviceDimensions.resolve(device)` — 192×192 dp for
+    // `id:wearos_small_round`, which the annotation's own 192dp happens to agree with — at the
+    // entry's 2.625 density. Both axes stay pinned (no wrap).
     val raw =
       """{"id":"wear-1","className":"X","functionName":"R","sourceFile":"P.kt",""" +
         """"params":{"device":"id:wearos_small_round","widthDp":192,"heightDp":192,""" +
