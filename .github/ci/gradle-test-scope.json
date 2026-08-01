@@ -1,0 +1,44 @@
+{
+  "ignorePaths": [
+    "docs/**",
+    "site/**",
+    "samples/**",
+    "renders/**",
+    "vscode-extension/**",
+    "deploy/**",
+    "scripts/**",
+    "schema/**",
+    ".github/**",
+    "**/*.md",
+    "**/*.png",
+    "**/*.jpg",
+    "**/*.gif",
+    "LICENSE",
+    ".gitignore",
+    ".gitattributes"
+  ],
+  "excludeProjects": [
+    ":samples:android",
+    ":samples:android-alpha",
+    ":samples:android-library",
+    ":samples:design-catalog-remote-m3",
+    ":samples:remotecompose",
+    ":samples:wear",
+    ":samples:wear-widget",
+    ":samples:xr-glimmer",
+    ":samples:xr-spatial"
+  ],
+  "globalPaths": [
+    "build-logic/**",
+    "gradle/**",
+    "settings.gradle*",
+    "build.gradle*",
+    "gradle.properties",
+    "gradlew",
+    "gradlew.bat",
+    ".github/ci/gradle-test-scope.json",
+    ".github/ci/affected-gradle-tests.py",
+    ".github/actions/apply/scope-project-graph.init.gradle",
+    ".github/workflows/ci.yml"
+  ]
+}

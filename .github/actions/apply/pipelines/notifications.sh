@@ -28,6 +28,12 @@
 #   PR_NUMBER               — PR number (comment mode)
 set -e
 
+if [ "${SKIP_SCOPED_NOTIFICATIONS:-false}" = true ]; then
+  echo "notifications pipeline: affected modules do not include the configured notification modules; skipping."
+  echo "0" > "$GITHUB_WORKSPACE/_notifications_rc"
+  exit 0
+fi
+
 split_csv() {
   local raw="${1:-}"
   if [ -z "$raw" ]; then
@@ -151,6 +157,12 @@ else
       || echo '{"entries":[]}' > _notification_baseline_findings.json
   else
     echo '{"entries":[]}' > _notification_baseline_findings.json
+  fi
+
+  if [ -n "${SCOPE_MODULES:-}" ] && [ "$SCOPE_MODULES" != full ]; then
+    python3 "$ACTION_PATH/filter-findings-scope.py" \
+      _notification_baseline_findings.json \
+      --modules "$SCOPE_MODULES"
   fi
 
   python3 "$ACTION_PATH/../lib/notification-previews.py" comment \

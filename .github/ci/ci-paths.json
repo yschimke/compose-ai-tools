@@ -1,0 +1,97 @@
+{
+  "ignorePaths": [
+    "docs/**",
+    "site/**",
+    "renders/**",
+    "vscode-extension/**",
+    "**/*.md",
+    "**/*.png",
+    "**/*.jpg",
+    "**/*.gif",
+    "LICENSE",
+    ".gitignore",
+    ".gitattributes"
+  ],
+  "globalPaths": [
+    ".github/ci/ci-paths.json",
+    ".github/ci/path-scope.py",
+    ".github/workflows/ci.yml",
+    "build-logic/**",
+    "gradle/**",
+    "settings.gradle*",
+    "build.gradle*",
+    "gradle.properties",
+    "gradlew",
+    "gradlew.bat"
+  ],
+  "groups": {
+    "plugin_tests": [
+      "gradle-plugin/**",
+      "api/preview-annotations/**",
+      "api/preview-data-api/**"
+    ],
+    "renderer_android_tests": [
+      "renderers/android/**",
+      "third_party/rc-embedded-player/**",
+      "third_party/rc-embedded-player-jvm/**",
+      "data/layoutinspector/**",
+      "data/render/**"
+    ],
+    "module_unit_tests": [
+      "api/**",
+      "bundle-viewer/**",
+      "cli/**",
+      "common/**",
+      "daemon/**",
+      "data/**",
+      "gradle-plugin/**",
+      "mcp/**",
+      "render-session/**",
+      "renderers/**",
+      "runtimes/**",
+      "third_party/**"
+    ],
+    "functional_tests": [
+      "gradle-plugin/**",
+      "api/preview-annotations/**",
+      "api/preview-data-api/**",
+      "renderers/**"
+    ],
+    "build_samples": [
+      "samples/**",
+      "gradle-plugin/**",
+      "api/preview-annotations/**",
+      "api/preview-data-api/**",
+      "renderers/**",
+      "runtimes/**",
+      "data/**"
+    ],
+    "build_cli": [
+      "cli/**",
+      "bundle-viewer/**",
+      "common/**",
+      "api/**",
+      "data/**",
+      "render-session/**",
+      "trust/**"
+    ],
+    "spatial_scene": [
+      "schema/spatial-scene.schema.json",
+      "api/preview-data-api/src/**",
+      "scripts/codegen/gen-spatial-scene.mjs"
+    ],
+    "actions_tests": [
+      ".github/actions/**",
+      ".github/ci/**",
+      ".github/scripts/**",
+      ".github/workflows/**",
+      "scripts/design-artifacts/**",
+      "deploy/image/**"
+    ],
+    "design_artifacts": [
+      "scripts/design-artifacts/**",
+      "cli/src/main/resources/rc-player/**",
+      ".github/actions/lib/**"
+    ]
+  }
+}
