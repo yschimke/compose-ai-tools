@@ -286,6 +286,7 @@ is a pure policy type that produces three things for each snippet JVM:
 | Read-only / ephemeral FS | `bwrap` binds the host read-only with a tmpfs `/tmp`, and the snippet's work dir is the **only** writable path — and that dir is deleted when its preview token drops. |
 | Memory + CPU caps | cgroup (`MemoryMax` / `CPUQuota` / `TasksMax`) on the `systemd`/`strict` profiles, **plus** JVM-level caps on every active profile (`-Xmx`, `-XX:ActiveProcessorCount`, `-XX:+ExitOnOutOfMemoryError`). |
 | One snippet per JVM | Structural: each lane opens its own subprocess daemon over one snippet's classes. |
+| The compile, too | With a sandbox configured, `kotlinc` runs in the same jail — see [§6.3](#63-the-compile-is-jailed-too). |
 
 Profiles, chosen with `--playground-sandbox`:
 
@@ -343,15 +344,44 @@ refused under `--public` and pointed at `strict`; a `custom:` jail is taken at
 its word on caps (they're the operator's to supply, and the startup log says so)
 but must still pass the probe.
 
-### 6.3 Residual: the compiler still runs in-process
+### 6.3 The compile is jailed too
 
-`BtaCompileSession` compiles the snippet **in the serve JVM**. That compile does
-not *execute* snippet code (no annotation processors, no `init` blocks — only
-the Kotlin + Compose compiler plugins we ship), and the request body is capped
-(`MAX_PLAYGROUND_BYTES`), so it is a resource-exhaustion surface rather than an
-execution one. Jailing the compiler too — a compile subprocess per request,
-sharing this same `PlaygroundSandbox` — is the natural follow-up, tracked in
-[#3090](https://github.com/yschimke/compose-ai-tools/issues/3090).
+`kotlinc` used to run **in the serve JVM**, which was never an
+arbitrary-execution hole — compiling a snippet does not run it (no annotation
+processors, no `init` blocks; only the Kotlin + Compose plugins we ship) — but it
+was a **resource** one. The Kotlin compiler is the least predictable thing on the
+request path: a pathological snippet can burn CPU and heap inside the host
+process, where `-Xmx` is the operator's and no wall clock applies.
+
+So with a sandbox configured, [`PlaygroundJailedCompiler`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/PlaygroundJailedCompiler.kt)
+runs the compile in the **same jail** the render lanes use: the catalog classpath
+and the `lib-bta/` toolchain bound read-only, the snippet's work dir the one
+writable path, the sandbox's `-Xmx`/CPU caps applied, and a compile budget on
+top. Parent and child speak the same one-JSON-line protocol as the preflight
+probe — the child runs the *same* `PlaygroundBtaCompiler`, so a jailed compile
+can't drift from an unjailed one — and every failure mode (jail won't launch,
+compiler killed, unparseable output) comes back as an ordinary compile
+diagnostic instead of an exception.
+
+**What it costs, measured** (trivial snippet, this container, `bwrap`):
+
+| | first compile | subsequent |
+|---|---|---|
+| in-process (`--playground-sandbox none`) | 3.8 s | **0.3–0.5 s** (warm `BtaCompileSession`) |
+| jailed subprocess | 3.4 s | **3.3–3.5 s** (cold every time) |
+
+The jail itself is free — a jailed cold compile is no slower than an unjailed
+one. What costs ~3 s is losing the *warm* toolchain: a fresh JVM re-bootstraps
+BTA per request. That is the deliberate v1 trade (a `--public` host takes
+predictable seconds over an unbounded compiler in its own process), and it is
+why `--playground-sandbox none` — the dev posture — keeps warm compiles and the
+sub-second edit→pixel loop [§7.1](#71-latency-note) describes.
+
+The obvious follow-up is a **warm jailed compile JVM per catalog classpath**,
+recycled periodically. Worth noting *why* that's admissible where a warm render
+JVM isn't: compiling doesn't execute the snippet, so a reused compile process
+never runs a stranger's code — the "one snippet per JVM" rule exists for the
+lanes that do.
 
 ---
 

@@ -11,6 +11,7 @@ import ee.schimke.composeai.cli.serve.PlaygroundAndroidSessionOpener
 import ee.schimke.composeai.cli.serve.PlaygroundBtaCompiler
 import ee.schimke.composeai.cli.serve.PlaygroundCatalogClasspath
 import ee.schimke.composeai.cli.serve.PlaygroundCompileService
+import ee.schimke.composeai.cli.serve.PlaygroundJailedCompiler
 import ee.schimke.composeai.cli.serve.PlaygroundMode
 import ee.schimke.composeai.cli.serve.PlaygroundPreviewDiscoverer
 import ee.schimke.composeai.cli.serve.PlaygroundPublicGate
@@ -973,7 +974,22 @@ class ServeCommand(args: List<String>) : Command(args) {
       return null
     }
 
-    val compiler = PlaygroundBtaCompiler.fromInstall(java.io.File(workRoot, "bta-ic").toPath())
+    val inProcessCompiler =
+      PlaygroundBtaCompiler.fromInstall(java.io.File(workRoot, "bta-ic").toPath())
+    // Phase 4's residual (issue #3090): with a sandbox configured, the *compile* runs in the jail
+    // too, so a pathological snippet burns a disposable child's CPU/heap budget instead of the
+    // serve JVM's. Falls back to the in-process compiler (loudly) when it can't be jailed.
+    val compiler = inProcessCompiler?.let {
+      val (implJars, pluginJars) =
+        PlaygroundBtaCompiler.installJars()
+          ?: (emptyList<java.io.File>() to emptyList<java.io.File>())
+      PlaygroundJailedCompiler.wrap(
+        sandbox = sandbox,
+        inProcess = it,
+        btaImplJars = implJars,
+        compilerPluginJars = pluginJars,
+      )
+    }
     if (compiler == null) {
       System.err.println(
         "serve: playground compiler unavailable — no lib-bta/ in the CLI install (run from an " +
