@@ -1852,6 +1852,13 @@ class ServeWebFixtureTest {
       ),
       "disabled live preview keeps the GitHub sign-in URL available to the page",
     )
+    assertTrue(
+      assetText("viewer.js")
+        .contains(
+          "liveToggle.disabled = wasmBtn ? !(live && !live.disabled) : !liveTransportAvailable();"
+        ),
+      "hydration keeps the daemon Live preview button disabled when GitHub auth blocks live",
+    )
 
     val openLive = ServeWeb.viewerPage(card, token, canApplyOverrides = true)
     assertTrue(

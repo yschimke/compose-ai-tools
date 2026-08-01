@@ -1161,7 +1161,7 @@
       // it's the generic interactive toggle that lights for either lane.
       var livePressed = wasmBtn ? liveOn : (liveOn || wasmOn);
       liveToggle.setAttribute("aria-pressed", livePressed ? "true" : "false");
-      liveToggle.disabled = !liveTransportAvailable();
+      liveToggle.disabled = wasmBtn ? !(live && !live.disabled) : !liveTransportAvailable();
     }
     if (wasmBtn) { wasmBtn.setAttribute("aria-pressed", wasmOn ? "true" : "false"); }
     if (modeHint) {

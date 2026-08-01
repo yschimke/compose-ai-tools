@@ -2192,6 +2192,7 @@ class ServeHttpServer(
       val engagement = incrementPreviewViews(sessionId, preview.id)
       val liveAuthPrompt =
         githubAuth
+          ?.takeIf { renderHost.hasLiveStream }
           ?.takeUnless { it.isAuthenticated(call) }
           ?.let {
             ServeWeb.LiveAuthPrompt(
@@ -2199,7 +2200,14 @@ class ServeHttpServer(
               repository = it.accessRepository(),
             )
           }
-      markGeneration("static-page", pageCacheControl())
+      markGeneration(
+        "static-page",
+        viewerCacheControl(
+          githubAuthConfigured = githubAuth != null,
+          hasLiveStream = renderHost.hasLiveStream,
+          isPublic = isPublic,
+        ),
+      )
       call.respondText(
         ServeWeb.viewerPage(
           preview,
@@ -2741,6 +2749,14 @@ class ServeHttpServer(
 
     /** Remove a little extra when pruning so a burst does not sort the map on every new entry. */
     private const val MAX_PREVIEW_VIEW_PRUNE_BATCH = 256
+
+    internal fun viewerCacheControl(
+      githubAuthConfigured: Boolean,
+      hasLiveStream: Boolean,
+      isPublic: Boolean,
+    ): String =
+      if (githubAuthConfigured && hasLiveStream) DYNAMIC_RESOURCE_CACHE_CONTROL
+      else if (isPublic) STATIC_PAGE_CACHE_CONTROL else DYNAMIC_RESOURCE_CACHE_CONTROL
 
     /** Classpath location of the vendored Remote Compose player IIFE bundle (global `RC`). */
     private const val RC_PLAYER_RESOURCE = "/rc-player/bundle.js"
