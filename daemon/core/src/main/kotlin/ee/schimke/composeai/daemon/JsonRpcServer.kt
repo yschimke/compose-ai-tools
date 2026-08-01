@@ -92,6 +92,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.system.exitProcess
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -254,7 +255,19 @@ class JsonRpcServer(
    */
   private val btaCompileService: ee.schimke.composeai.daemon.bta.BtaCompileService? = null,
   private val fileSystem: FileSystem = SystemFileSystem,
-  private val onExit: (Int) -> Unit = { code -> System.exit(code) },
+  /**
+   * What the server does when it reaches a terminal path (`exit`, idle timeout, `classpathDirty`
+   * grace expiry). **Deliberately has no default.**
+   *
+   * It used to default to `System.exit(code)`, which is right for a real daemon and catastrophic
+   * in-process: one construction site that forgot to override it turned an `exit` notification into
+   * the death of the *test JVM*, taking the Gradle test executor and every class scheduled after it
+   * down with no failing test to point at — `:daemon:core:test` silently ran 20 of its 35 classes
+   * (#3087). Requiring the parameter moves that from a silent runtime truncation to a compile error
+   * at the call site. Real daemons pass [EXIT_PROCESS]; in-process callers pass a lambda that keeps
+   * the JVM alive.
+   */
+  private val onExit: (Int) -> Unit,
   /**
    * Factory for the native XR render server (see the "XR render service" section in
    * `protocol/Messages.kt`). When non-null the daemon advertises `capabilities.xr` and serves
@@ -4085,6 +4098,13 @@ class JsonRpcServer(
      * on `protocolVersion` mismatch so they get a clean handshake failure instead.
      */
     const val PROTOCOL_VERSION: Int = 2
+
+    /**
+     * The `onExit` a **real daemon process** wants: end the JVM with the server's exit code. Named
+     * rather than inlined at each `DaemonMain` so the process-ending call sites are greppable, and
+     * so no in-process caller reaches it by accident (see the `onExit` parameter doc / #3087).
+     */
+    val EXIT_PROCESS: (Int) -> Unit = { code -> exitProcess(code) }
 
     const val IDLE_TIMEOUT_PROP: String = "composeai.daemon.idleTimeoutMs"
     const val DEFAULT_IDLE_TIMEOUT_MS: Long = 5_000L

@@ -238,12 +238,11 @@ class JsonRpcServerIntegrationTest {
         host = host,
         daemonVersion = "test",
         extensions = extensions,
-        // `onExit` MUST be overridden in every in-process server test: its default is
-        // `System.exit(code)`, so an `exit` notification here doesn't end the server, it ends the
-        // *test JVM* — taking the Gradle test executor and every not-yet-run class with it. This
-        // test doesn't assert on the exit code, but it still has to keep the JVM alive; leaving
-        // the default in place silently truncated `:daemon:core:test` after this class, skipping
-        // the remaining 15 (#3086).
+        // `onExit` is a required parameter precisely because of this call site: it used to default
+        // to `System.exit(code)`, so an `exit` notification here didn't end the server, it ended
+        // the *test JVM* — taking the Gradle test executor and every not-yet-run class with it,
+        // silently truncating `:daemon:core:test` after this class (#3087). This test doesn't
+        // assert on the exit code, but it still has to keep the JVM alive.
         onExit = { /* keep the test JVM alive; this test asserts on notifications, not exit */ },
       )
     val serverThread =
