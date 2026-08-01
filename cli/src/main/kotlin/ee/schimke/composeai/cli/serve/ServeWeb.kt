@@ -2169,12 +2169,7 @@ object ServeWeb {
           tab.setAttribute("data-pg-file", f.name);
           tab.setAttribute("aria-current", i === active ? "true" : "false");
           tab.textContent = f.name;
-          tab.addEventListener("click", function () {
-            files[active].text = source.value;
-            active = i;
-            source.value = files[active].text;
-            renderFiles();
-          });
+          tab.addEventListener("click", function () { showFile(i); });
           fileBar.insertBefore(tab, addFile);
         });
         removeFile.hidden = files.length < 2;
@@ -2208,14 +2203,35 @@ object ServeWeb {
         result.hidden = true; image.hidden = true; image.removeAttribute("src"); openRow.hidden = true;
         note.hidden = true; note.textContent = "";
       }
+      function indexOfFile(name) {
+        for (var i = 0; i < files.length; i++) if (files[i].name === name) return i;
+        return -1;
+      }
+      function showFile(i) {
+        if (i < 0 || i === active) return;
+        files[active].text = source.value;
+        active = i;
+        source.value = files[active].text;
+        renderFiles();
+      }
       function renderDiags(list) {
         if (!list || !list.length) return;
         diags.hidden = false;
         list.forEach(function (d) {
           var li = document.createElement("li");
           li.className = "cp-pg-diag cp-pg-" + (d.severity || "info");
-          var loc = (d.line != null) ? (" (line " + (d.line + 1) + ")") : "";
+          // With several buffers open, "unresolved reference at line 5" is useless without the
+          // file — the server keys diagnostics by basename, so name it and, when that file is one
+          // of ours, make the entry jump to its tab.
+          var owner = indexOfFile(d.file || "");
+          var where = (d.file ? d.file : "") + ((d.line != null) ? (":" + (d.line + 1)) : "");
+          var loc = where ? (" (" + where + ")") : "";
           li.textContent = (d.severity || "info") + ": " + d.message + loc;
+          if (owner >= 0) {
+            li.style.cursor = "pointer";
+            li.title = "Show " + d.file;
+            li.addEventListener("click", function () { showFile(owner); });
+          }
           diags.appendChild(li);
         });
       }

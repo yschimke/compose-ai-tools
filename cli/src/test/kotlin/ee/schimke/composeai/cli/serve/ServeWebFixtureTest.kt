@@ -1373,6 +1373,12 @@ class ServeWebFixtureTest {
         playground.contains("id=\"pg-preview-note\""),
       "the editor names the preview it rendered when a snippet declares several",
     )
+    // A diagnostic names its file (and jumps to that tab): with several buffers open, a bare
+    // "line 5" says nothing about which file to look at.
+    assertTrue(
+      playground.contains("d.file") && playground.contains("indexOfFile"),
+      "diagnostics name their file and can jump to it",
+    )
     // The terminal status stays exactly "Done." — the e2e polls on it, so the preview note lives
     // in its own element rather than being appended to the status text.
     assertTrue(

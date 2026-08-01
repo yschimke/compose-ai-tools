@@ -418,6 +418,12 @@ grows a file strip (`+ file` / `Remove file`) and posts the whole list.
 
 ![Playground editor, two files, dark](../images/serve-playground-multifile-dark.png)
 
+A diagnostic names the file it belongs to (`file:line`) and clicking it switches
+the editor to that file — with several buffers open, "unresolved reference at
+line 5" says nothing about where to look:
+
+![A diagnostic naming its file, with that file selected](../images/serve-playground-multifile-diagnostic.png)
+
 Pinned by `PlaygroundCompileServiceTest` ("every file in a multi-file snippet
 reaches one compile"), the `serve-playground · multifile` state in the
 preview-harness page snapshots, and a browser e2e that splits a snippet across
