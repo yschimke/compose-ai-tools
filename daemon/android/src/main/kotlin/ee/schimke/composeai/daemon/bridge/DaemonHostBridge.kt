@@ -10,13 +10,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Cross-classloader handoff for the Robolectric-sandboxed [DaemonHost].
+ * Cross-classloader handoff for the Robolectric-sandboxed
+ * [ee.schimke.composeai.daemon.RobolectricHost].
  *
  * **Why a separate package?** Robolectric's `InstrumentingClassLoader` re-loads classes in the
  * project's namespace by default — confirmed empirically: a static `companion object` on
- * `DaemonHost` resolves to different instances when accessed from the test thread vs. from inside
- * the sandbox (`@Test fun holdSandboxOpen`). That breaks the single-shared-queue assumption the
- * daemon depends on.
+ * `RobolectricHost` resolves to different instances when accessed from the test thread vs. from
+ * inside the sandbox (`@Test fun holdSandboxOpen`). That breaks the single-shared-queue assumption
+ * the daemon depends on.
  *
  * The fix is a custom Robolectric runner ([SandboxHoldingRunner]) that registers
  * `ee.schimke.composeai.daemon.bridge` as a do-not-acquire package. Classes here are then loaded

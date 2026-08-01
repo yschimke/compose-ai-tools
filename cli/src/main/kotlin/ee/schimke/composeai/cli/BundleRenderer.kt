@@ -198,10 +198,10 @@ class BundleRenderer(
 
   /**
    * Re-render an `backend="android"` bundle by spawning the Android (Robolectric) renderer
-   * ([ee.schimke.composeai.renderer.AndroidRendererMain], which reads `composeai.render.manifest`
-   * and renders the whole `previews.json` into `composeai.render.outputDir` — one subprocess for
-   * the batch, vs the desktop per-preview spawn). Classpath/JVM-arg/property assembly lives in the
-   * unit-tested [AndroidBundleLaunch].
+   * (`AndroidRendererMainKt`, which reads `composeai.render.manifest` and renders the whole
+   * `previews.json` into `composeai.render.outputDir` — one subprocess for the batch, vs the
+   * desktop per-preview spawn). Classpath/JVM-arg/property assembly lives in the unit-tested
+   * [AndroidBundleLaunch].
    *
    * Phase 1: the Android renderer sidecar (`lib-renderer-android/`) isn't packaged into the CLI
    * distribution yet, so absent an override this surfaces an actionable diagnostic rather than the
@@ -634,7 +634,7 @@ class BundleRenderer(
 
     /**
      * Reconcile the Android batch renderer's exit code + produced PNGs into per-preview
-     * succeeded/failed lists. [AndroidRendererMain] renders the whole manifest into [outputDir];
+     * succeeded/failed lists. `AndroidRendererMainKt` renders the whole manifest into [outputDir];
      * each preview is matched by its capture's `renderOutput` leaf (the exact name
      * `RobolectricRenderTest.outputFileFor` writes — NOT an id-derived name, which the renderer
      * normalizes, e.g. `com.example.FooKt.CardPreview` → `CardPreview.png`).
