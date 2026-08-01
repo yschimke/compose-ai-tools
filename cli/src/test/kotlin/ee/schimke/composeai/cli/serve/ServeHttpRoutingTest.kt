@@ -203,6 +203,107 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `readyz falls through to a later loaded catalog when the configured default failed`() {
+    val catalogRegistry = ServeSessionRegistry(open = { null })
+    catalogRegistry.register("reply", host = bundle("reply"), pinned = true)
+    val loads =
+      CatalogLoadTracker(
+        listOf(
+          CatalogLoadTracker.Config(
+            system = "compose-m3",
+            listed = true,
+            repo = "yschimke/compose-ai-tools",
+            branch = "design-artifacts/compose-m3",
+          ),
+          CatalogLoadTracker.Config(
+            system = "reply",
+            listed = true,
+            repo = "yschimke/compose-samples",
+            branch = "design-artifacts/reply",
+          ),
+        )
+      )
+    loads.recordFailure("compose-m3", "could not parse catalog.json")
+    loads.recordSuccess("reply")
+    val catalogServer =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused-in-public",
+          sessions = catalogRegistry,
+          defaultSessionId = "compose-m3",
+          isPublic = true,
+          catalogSessions = listOf("compose-m3", "reply"),
+          catalogLoads = loads,
+        )
+        .also { it.start() }
+    try {
+      var response = 503 to "warming"
+      for (attempt in 0 until 50) {
+        val req = Request.Builder().url("http://127.0.0.1:${catalogServer.port}/readyz").build()
+        client.newCall(req).execute().use { r -> response = r.code to (r.body?.string() ?: "") }
+        if (response.first == 200) break
+        Thread.sleep(100)
+      }
+      assertEquals(200 to "ready", response)
+    } finally {
+      catalogServer.stop()
+      catalogRegistry.close()
+    }
+  }
+
+  @Test
+  fun `readyz waits for an all-unlisted catalog server to load a catalog`() {
+    val catalogRegistry = ServeSessionRegistry(open = { null })
+    val loads =
+      CatalogLoadTracker(
+        listOf(
+          CatalogLoadTracker.Config(
+            system = "meshcore-mobile",
+            listed = false,
+            repo = "yschimke/meshcore-mobile",
+            branch = "design-artifacts/meshcore-mobile",
+          )
+        )
+      )
+    val catalogServer =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused-in-public",
+          sessions = catalogRegistry,
+          defaultSessionId = "",
+          isPublic = true,
+          appCatalogSessions = listOf("meshcore-mobile"),
+          catalogLoads = loads,
+        )
+        .also { it.start() }
+    try {
+      Request.Builder().url("http://127.0.0.1:${catalogServer.port}/readyz").build().let { req ->
+        client.newCall(req).execute().use { r ->
+          assertEquals(503, r.code)
+          assertEquals("warming", r.body?.string())
+        }
+      }
+
+      catalogRegistry.register("meshcore-mobile", host = bundle("meshcore-mobile"), pinned = true)
+      loads.recordSuccess("meshcore-mobile")
+
+      var response = 503 to "warming"
+      for (attempt in 0 until 50) {
+        val req = Request.Builder().url("http://127.0.0.1:${catalogServer.port}/readyz").build()
+        client.newCall(req).execute().use { r -> response = r.code to (r.body?.string() ?: "") }
+        if (response.first == 200) break
+        Thread.sleep(100)
+      }
+      assertEquals(200 to "ready", response)
+    } finally {
+      catalogServer.stop()
+      catalogRegistry.close()
+    }
+  }
+
+  @Test
   fun `readyz withholds ready when the default session cannot render`() {
     // A server whose default session resolves to nothing (an empty registry) can't render a
     // representative preview, so /readyz must report 503 "warming" — NOT a false green. This is the

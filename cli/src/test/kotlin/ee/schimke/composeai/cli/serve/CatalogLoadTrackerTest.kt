@@ -59,6 +59,7 @@ class CatalogLoadTrackerTest {
     tracker.recordSuccess("reply")
 
     assertTrue(tracker.allAvailable())
+    assertEquals("jetnews", tracker.firstAvailableSystem())
     val reply = tracker.snapshot().single { it.config.system == "reply" }
     assertEquals("loaded", reply.loadState)
     assertEquals(null, reply.error)

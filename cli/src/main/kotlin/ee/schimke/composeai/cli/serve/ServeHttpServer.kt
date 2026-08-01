@@ -1423,10 +1423,10 @@ class ServeHttpServer(
       call.respondText("ready")
       return
     }
-    // Upload-only server (`--accept-bundles`, no landing session): there's no representative
-    // preview
-    // to render, so "ready" means the listener is up and waiting for uploads. Latch immediately.
-    if (defaultSessionId.isBlank()) {
+    // Upload-only server (`--accept-bundles`, no landing session, no configured catalogs): there's
+    // no representative preview to render, so "ready" means the listener is up and waiting for
+    // uploads. Catalog-only starts still wait for the first loaded catalog below.
+    if (defaultSessionId.isBlank() && catalogLoads?.snapshot().isNullOrEmpty()) {
       ready.set(true)
       call.respondText("ready")
       return
@@ -1468,16 +1468,19 @@ class ServeHttpServer(
   }
 
   /**
-   * One readiness attempt: lease the default session and render its first preview override-free. A
-   * successful [RenderOutcome.Ok] means the render path works end-to-end — catalogs loaded, a
-   * preview exists, and the host can produce bytes (baked for a catalog session, a real daemon
-   * render for a plain module). Any failure — no session, no previews, a render error, or an
-   * exception — returns false so the prober retries. Runs on the [readinessProber] thread (the
-   * lease
-   * + render are blocking). Never throws.
+   * One readiness attempt: lease a representative session and render its first preview
+   * override-free. A successful [RenderOutcome.Ok] means the render path works end-to-end —
+   * catalogs loaded, a preview exists, and the host can produce bytes (baked for a catalog session,
+   * a real daemon render for a plain module). Catalog-only starts can bind before their configured
+   * default session is loaded, so fall forward to the first usable catalog the tracker sees. Any
+   * failure — no session, no previews, a render error, or an exception — returns false so the
+   * prober retries. Runs on the [readinessProber] thread (the lease + render are blocking). Never
+   * throws.
    */
   private fun probeReadiness(): Boolean {
-    val lease = sessions.lease(defaultSessionId) ?: return false
+    val lease =
+      readinessSessionIds().asSequence().mapNotNull { sessions.lease(it) }.firstOrNull()
+        ?: return false
     return try {
       val preview = lease.host.previews.firstOrNull() ?: return false
       lease.host.render(preview.id, PreviewOverrides()) is RenderOutcome.Ok
@@ -1488,6 +1491,10 @@ class ServeHttpServer(
       lease.close()
     }
   }
+
+  private fun readinessSessionIds(): List<String> =
+    listOfNotNull(defaultSessionId.takeIf { it.isNotBlank() }, catalogLoads?.firstAvailableSystem())
+      .distinct()
 
   /**
    * Raw catalog metadata for the status snapshot — projected to HTML rows and JSON by [StatusData].
