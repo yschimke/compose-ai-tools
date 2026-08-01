@@ -608,10 +608,12 @@ class RenderEngine(
             "Failed to encode image to PNG for ${state.spec.className}.${state.spec.functionName}"
           )
       }
+    val pngBytes =
+      if (state.spec.isRoundComposePreview()) applyRoundClip(pngData.bytes) else pngData.bytes
 
     state.outputFile.parentFile?.mkdirs()
     trace.section("render:writePng") {
-      fileSystem.write(state.outputFile.path.toPath()) { write(pngData.bytes) }
+      fileSystem.write(state.outputFile.path.toPath()) { write(pngBytes) }
     }
 
     // Display filters — post-capture colour-matrix variants (grayscale/bedtime, invert,
@@ -671,10 +673,7 @@ class RenderEngine(
                 )
                 add(RenderArtifactContextKeys.FontScale provides (state.spec.fontScale ?: 1.0f))
                 add(RenderArtifactContextKeys.OutputPng provides state.outputFile)
-                // Desktop leaves round-Wear clipping off, as its inline figma-svg export always
-                // did;
-                // converging with Android's device-derived clip is a separate visual change.
-                add(RenderArtifactContextKeys.RoundClip provides false)
+                add(RenderArtifactContextKeys.RoundClip provides state.spec.isRoundComposePreview())
                 // The background this render painted behind the composable, so the figma-svg
                 // export lays the same colour down as its bottom layer (issue #2884). Resolved the
                 // same way the render itself resolves `bgColor` above; a transparent result
@@ -805,6 +804,42 @@ class RenderEngine(
     } finally {
       surface.close()
     }
+  }
+
+  private fun RenderSpec.isRoundComposePreview(): Boolean {
+    val kindIsCompose = kind == null || kind.equals("COMPOSE", ignoreCase = true)
+    if (!kindIsCompose) return false
+    val lower = device?.lowercase() ?: return false
+    return lower.contains("_round") ||
+      lower.contains("isround=true") ||
+      lower.contains("shape=round")
+  }
+
+  private fun applyRoundClip(sourceBytes: ByteArray): ByteArray {
+    val source =
+      java.io.ByteArrayInputStream(sourceBytes).use { javax.imageio.ImageIO.read(it) }
+        ?: return sourceBytes
+    val output =
+      java.awt.image.BufferedImage(
+        source.width,
+        source.height,
+        java.awt.image.BufferedImage.TYPE_INT_ARGB,
+      )
+    val g = output.createGraphics()
+    try {
+      g.setRenderingHint(
+        java.awt.RenderingHints.KEY_ANTIALIASING,
+        java.awt.RenderingHints.VALUE_ANTIALIAS_ON,
+      )
+      g.clip =
+        java.awt.geom.Ellipse2D.Float(0f, 0f, source.width.toFloat(), source.height.toFloat())
+      g.drawImage(source, 0, 0, null)
+    } finally {
+      g.dispose()
+    }
+    val out = java.io.ByteArrayOutputStream()
+    javax.imageio.ImageIO.write(output, "PNG", out)
+    return out.toByteArray()
   }
 
   /**

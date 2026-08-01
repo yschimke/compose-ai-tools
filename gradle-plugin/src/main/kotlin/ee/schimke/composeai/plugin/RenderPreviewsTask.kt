@@ -399,8 +399,21 @@ abstract class RenderPreviewsTask : DefaultTask() {
       // a device/showSystemUi frame applies; the wrap-content path leaves
       // it null and we fall back to `spec.density` (= DEFAULT_DENSITY).
       val density = preview.params.density ?: spec.density
-      val widthPx = (spec.widthDp * density).toInt().coerceAtLeast(1)
-      val heightPx = (spec.heightDp * density).toInt().coerceAtLeast(1)
+      val isDeviceFrame = !preview.params.device.isNullOrBlank()
+      val explicitWidthDp = preview.params.widthDp?.takeIf { !isDeviceFrame && it > 0 }
+      val explicitHeightDp = preview.params.heightDp?.takeIf { !isDeviceFrame && it > 0 }
+      val widthPx =
+        if (!spec.wrapWidth && explicitWidthDp != null) {
+          (spec.widthDp * density).roundHalfUpPx()
+        } else {
+          (spec.widthDp * density).toInt().coerceAtLeast(1)
+        }
+      val heightPx =
+        if (!spec.wrapHeight && explicitHeightDp != null) {
+          (spec.heightDp * density).roundHalfUpPx()
+        } else {
+          (spec.heightDp * density).toInt().coerceAtLeast(1)
+        }
 
       // (1) Iterate primary captures. Most previews have exactly one; multi-mode @ScrollingPreview
       // (TOP/END), @RoboComposePreviewOptions time fan-out, and @FocusedPreview indexed mode all
@@ -609,6 +622,8 @@ abstract class RenderPreviewsTask : DefaultTask() {
     }
   }
 }
+
+private fun Float.roundHalfUpPx(): Int = kotlin.math.floor(this + 0.5f).toInt().coerceAtLeast(1)
 
 /** JSON used to (de)serialise `@OverrideVariant` seeds across the desktop renderer boundary. */
 private val OVERRIDES_JSON = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }

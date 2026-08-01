@@ -1026,8 +1026,8 @@ class JsonRpcServer(
       val deviceSpec = deviceToken?.let {
         ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it)
       }
-      val deviceWidthPx = deviceSpec?.let { (it.widthDp * it.density).toInt() }
-      val deviceHeightPx = deviceSpec?.let { (it.heightDp * it.density).toInt() }
+      val deviceWidthPx = deviceSpec?.let { (it.widthDp * it.density).toInt().coerceAtLeast(1) }
+      val deviceHeightPx = deviceSpec?.let { (it.heightDp * it.density).toInt().coerceAtLeast(1) }
       val deviceDensity = deviceSpec?.density
       (overrides.widthPx ?: deviceWidthPx)?.let {
         if (isNotEmpty()) append(';')
