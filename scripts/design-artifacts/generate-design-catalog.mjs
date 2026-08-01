@@ -1588,7 +1588,11 @@ if (figmaVariantGapCount) {
 // This is the signature the catalog-breakpoint half of #2883 shipped under for four releases (see
 // `variant-render-pairing.mjs`); print it so a regression shows up in the run log rather than only
 // as a sunk compare score.
-const variantRenderMismatches = mismatchedVariantRenders(catalog.components);
+// Read from `indexManifest` (the written catalog.json), NOT the in-memory `catalog`: only the
+// manifest carries the flattened `images[]` with the `previewId` the stamp pass bridged on — see
+// its declaration above. Against `catalog.components` this check iterates nothing and reports
+// nothing, whatever the export actually emitted, which is the one way a checker can fail worst.
+const variantRenderMismatches = mismatchedVariantRenders(indexManifest.components);
 if (variantRenderMismatches.length) {
   const shown = describeMismatchedRenders(variantRenderMismatches).slice(0, 8);
   const more =

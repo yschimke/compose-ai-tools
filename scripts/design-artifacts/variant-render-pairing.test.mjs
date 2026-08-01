@@ -78,6 +78,20 @@ test("distinct previewIds are never compared against each other", () => {
   );
 });
 
+test("the pre-manifest component shape is rejected, not silently passed", () => {
+  // `buildCatalog` keeps captures under `variants.ideal` and carries no `images[]`; only the
+  // written catalog.json has the flattened images and the previewId the stamp pass bridges on.
+  // Handed the wrong one the checker would report nothing at all, however broken the export —
+  // which is exactly how this check shipped inert in review.
+  assert.throws(
+    () =>
+      mismatchedVariantRenders([
+        { componentId: "Foundations/Button", variants: { ideal: [{ uri: "a.png" }] } },
+      ]),
+    /pass the components of the WRITTEN catalog\.json/,
+  );
+});
+
 test("unbridged and dimensionless images are skipped, not crashed on", () => {
   // No previewId is a different gap (the driver counts it separately), and `width`/`height` are
   // optional in the schema — neither may throw or produce a phantom mismatch.

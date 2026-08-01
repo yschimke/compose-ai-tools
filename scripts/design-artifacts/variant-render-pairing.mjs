@@ -30,6 +30,17 @@
 export function mismatchedVariantRenders(components) {
   const out = [];
   for (const component of components ?? []) {
+    // Handed the PRE-manifest shape, this checker would iterate no images and report nothing —
+    // whatever the export emitted. A silent all-clear is the worst way for a checker to fail, and
+    // the driver has two component arrays of different shapes in scope (`catalog.components` keeps
+    // captures under `variants.ideal`; only the written manifest carries the flattened `images[]`
+    // and their `previewId`). Fail loudly on the wrong one instead of passing vacuously.
+    if (component?.variants && !Array.isArray(component?.images)) {
+      throw new TypeError(
+        `mismatchedVariantRenders: component '${component?.componentId ?? "?"}' has no images[] ` +
+          `— pass the components of the WRITTEN catalog.json, not the in-memory catalog`,
+      );
+    }
     const byPreviewId = new Map();
     for (const image of component?.images ?? []) {
       const previewId = image?.previewId;
