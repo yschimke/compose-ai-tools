@@ -377,6 +377,32 @@ class ServeWebTest {
   }
 
   @Test
+  fun `landing and viewer surface preview engagement counts`() {
+    val previews =
+      listOf(
+        ServePreview(id = "plain.Button", label = "button"),
+        ServePreview(id = "plain.Card", label = "card"),
+      )
+    val landing =
+      ServeWeb.landingPage(
+        "bundle",
+        previews,
+        token = "t",
+        engagement = mapOf("plain.Button" to ServeWeb.PreviewEngagement(12)),
+      )
+    assertTrue(landing.contains("""<div class="cp-engage">12 views</div>"""), landing)
+
+    val viewer =
+      ServeWeb.viewerPage(
+        previews[0],
+        token = "t",
+        siblings = previews,
+        engagement = ServeWeb.PreviewEngagement(13),
+      )
+    assertTrue(viewer.contains("""<p class="cp-viewer-engage">13 views</p>"""), viewer)
+  }
+
+  @Test
   fun `the viewer renders no source link without a source href`() {
     // A local / unprovenanced session (or a preview with no recorded source) passes sourceHref
     // null.

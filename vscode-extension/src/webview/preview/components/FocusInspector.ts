@@ -57,11 +57,13 @@ export class FocusInspector extends LitElement {
                         <div class="focus-error-message">
                             ${this.renderError}
                         </div>
-                        ${this.renderErrorDetail
-                            ? html`<div class="focus-error-detail">
-                                  ${this.renderErrorDetail}
-                              </div>`
-                            : nothing}
+                        ${
+                            this.renderErrorDetail
+                                ? html`<div class="focus-error-detail">
+                                      ${this.renderErrorDetail}
+                                  </div>`
+                                : nothing
+                        }
                     </div>
                 </div>
             </section>

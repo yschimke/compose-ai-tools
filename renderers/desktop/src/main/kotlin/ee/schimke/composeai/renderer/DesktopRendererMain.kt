@@ -1014,21 +1014,27 @@ internal fun renderPreview(
     // above — if it somehow wasn't set (shouldn't happen, but defensive),
     // fall back to the sandbox dimensions and write the uncropped PNG.
     val m = measured
-    if ((wrapWidth || wrapHeight) && m != null) {
+    val roundClip = isRoundPreviewDevice(device)
+    if (((wrapWidth || wrapHeight) && m != null) || roundClip) {
       // Ceiling is the (possibly enlarged) scene dimension, not the raw widthPx/heightPx — a min
       // bound larger than the original frame grew the scene, and the crop must keep that extent.
-      val cropW = (if (wrapWidth) m.width else widthPx).coerceIn(1, sceneWidthPx)
-      val cropH = (if (wrapHeight) m.height else heightPx).coerceIn(1, sceneHeightPx)
+      val cropW = (if (wrapWidth && m != null) m.width else widthPx).coerceIn(1, sceneWidthPx)
+      val cropH = (if (wrapHeight && m != null) m.height else heightPx).coerceIn(1, sceneHeightPx)
       val decoded = ByteArrayInputStream(pngData.bytes).use { ImageIO.read(it) }
-      if (decoded != null && (cropW < decoded.width || cropH < decoded.height)) {
-        val sub =
-          decoded.getSubimage(
-            0,
-            0,
-            cropW.coerceAtMost(decoded.width),
-            cropH.coerceAtMost(decoded.height),
-          )
-        fileSystem.write(outputFile.path.toPath()) { ImageIO.write(sub, "PNG", outputStream()) }
+      if (decoded != null) {
+        val cropped =
+          if (cropW < decoded.width || cropH < decoded.height) {
+            decoded.getSubimage(
+              0,
+              0,
+              cropW.coerceAtMost(decoded.width),
+              cropH.coerceAtMost(decoded.height),
+            )
+          } else {
+            decoded
+          }
+        val output = if (roundClip) applyRoundClip(cropped) else cropped
+        fileSystem.write(outputFile.path.toPath()) { ImageIO.write(output, "PNG", outputStream()) }
       } else {
         fileSystem.write(outputFile.path.toPath()) { write(pngData.bytes) }
       }
@@ -1045,6 +1051,32 @@ internal fun renderPreview(
   } finally {
     restoreJvmDefaultLocale(previousDefaultLocale)
   }
+}
+
+private fun applyRoundClip(source: java.awt.image.BufferedImage): java.awt.image.BufferedImage {
+  val output =
+    java.awt.image.BufferedImage(
+      source.width,
+      source.height,
+      java.awt.image.BufferedImage.TYPE_INT_ARGB,
+    )
+  val g = output.createGraphics()
+  try {
+    g.setRenderingHint(
+      java.awt.RenderingHints.KEY_ANTIALIASING,
+      java.awt.RenderingHints.VALUE_ANTIALIAS_ON,
+    )
+    g.clip = java.awt.geom.Ellipse2D.Float(0f, 0f, source.width.toFloat(), source.height.toFloat())
+    g.drawImage(source, 0, 0, null)
+  } finally {
+    g.dispose()
+  }
+  return output
+}
+
+private fun isRoundPreviewDevice(device: String?): Boolean {
+  val lower = device?.lowercase() ?: return false
+  return lower.contains("_round") || lower.contains("isround=true") || lower.contains("shape=round")
 }
 
 private val overridesSidecarJson =

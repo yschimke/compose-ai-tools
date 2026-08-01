@@ -409,8 +409,7 @@ describeE2E("Compose Preview cached preload on module switch", function () {
                     const m = raw as PostedMessage;
                     if (m.command !== "setPreviews") continue;
                     const previews = m.previews as
-                        | Array<{ id?: string }>
-                        | undefined;
+                        Array<{ id?: string }> | undefined;
                     if (!previews || previews.length === 0) continue;
                     // Bind to wear by checking the previews' fully-qualified
                     // names — `preloadCachedPreviews` filters by file path,

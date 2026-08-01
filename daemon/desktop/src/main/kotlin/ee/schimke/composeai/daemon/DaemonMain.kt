@@ -504,8 +504,11 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
   // carries one (it declares showBackground), so the PNG↔Live parity fix is unaffected.
   val params = info.params ?: return defaults
   val density = params.density ?: defaults.density
-  val explicitWidthPx = params.widthDp?.let { (it * density).toInt() }
-  val explicitHeightPx = params.heightDp?.let { (it * density).toInt() }
+  val isDeviceFrame = !params.device.isNullOrBlank()
+  val explicitWidthPx =
+    params.widthDp?.takeUnless { isDeviceFrame }?.let { (it * density).roundHalfUpPx() }
+  val explicitHeightPx =
+    params.heightDp?.takeUnless { isDeviceFrame }?.let { (it * density).roundHalfUpPx() }
   // AS-parity wrap-content, mirroring the offline-bake / harness resolver
   // ([PreviewManifestEntry.resolved]). A preview that declares no explicit size on an axis and is
   // not pinned to a device frame renders wrap-content on that axis: the held-session/stream render
@@ -521,11 +524,11 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
   val wrapHeight = explicitHeightPx == null && !pinned
   val widthPx =
     explicitWidthPx
-      ?: if (wrapWidth) (PreviewManifestEntry.WRAP_SANDBOX_WIDTH_DP * density).toInt()
+      ?: if (wrapWidth) (PreviewManifestEntry.WRAP_SANDBOX_WIDTH_DP * density).roundHalfUpPx()
       else defaults.widthPx
   val heightPx =
     explicitHeightPx
-      ?: if (wrapHeight) (PreviewManifestEntry.WRAP_SANDBOX_HEIGHT_DP * density).toInt()
+      ?: if (wrapHeight) (PreviewManifestEntry.WRAP_SANDBOX_HEIGHT_DP * density).roundHalfUpPx()
       else defaults.heightPx
   val uiMode = if (uiModeIsNight(params.uiMode)) RenderSpec.SpecUiMode.DARK else defaults.uiMode
   return RenderSpec(
@@ -561,6 +564,8 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
     overrides = bakedOverrides,
   )
 }
+
+private fun Float.roundHalfUpPx(): Int = kotlin.math.floor(this + 0.5f).toInt().coerceAtLeast(1)
 
 private fun installSigtermShutdownHook(host: RenderHost, originalStdin: java.io.InputStream) {
   // Same property the JsonRpcServer reads, so a single sysprop tunes both timeouts coherently.

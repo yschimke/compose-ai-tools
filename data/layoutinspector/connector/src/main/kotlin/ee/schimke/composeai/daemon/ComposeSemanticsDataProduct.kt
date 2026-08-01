@@ -1491,12 +1491,16 @@ internal object ComposeLayoutInspector {
       // `Modifier.paint(painter)` `PainterElement` field, or (depending on the Compose version /
       // wrapping) nested a level inside it. Scan each modifier element's fields shallowly for the
       // painter rather than assume a single exact field name, so the capture survives those shapes.
-      val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Any, Boolean>())
-      val painter =
+      val match =
         (node.modifierInfo.asSequence().map { it.modifier } + sequenceOf(node.measurePolicy))
-          .mapNotNull { candidate -> findVectorPainter(candidate, 0, seen) }
-          .firstOrNull()
-      if (painter == null) return null
+          .mapNotNull { candidate ->
+            if (candidate == null) return@mapNotNull null
+            val seen =
+              java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Any, Boolean>())
+            findVectorPainter(candidate, candidate, 0, seen)
+          }
+          .firstOrNull() ?: return null
+      val painter = match.painter
       // An `Icon` recolours its vector with a tint `colorFilter` (Material's `LocalContentColor`
       // default) applied at draw time — the painter tree still holds the *source* path colours.
       // Read
@@ -1504,7 +1508,7 @@ internal object ComposeLayoutInspector {
       // represent as a flat SrcIn tint (a colour-matrix filter, an unusual blend mode) declines
       // vectorisation so the node rasters at full fidelity rather than emitting the wrong colour.
       val tint =
-        when (val t = resolveTint(painter)) {
+        when (val t = resolveTint(painter, match.externalColorFilter)) {
           UnsupportedTint -> return null
           NoTint -> null
           is SolidTint -> t.argb
@@ -1536,19 +1540,20 @@ internal object ComposeLayoutInspector {
      * path). Anything else — a different blend mode, a colour-matrix filter, an unreadable colour ⇒
      * [UnsupportedTint], so the caller declines vectorisation and the node rasters instead.
      *
-     * The filter can arrive several ways: the external filter the `Icon`/`Image` passed
-     * (`colorFilter`), the resolved filter used at the last draw (`currentColorFilter`), or — when
-     * a vector carries its own `tintColor` and no external filter is passed — the intrinsic filter.
-     * `VectorPainter.intrinsicColorFilter` is a forwarding property backed on the
-     * `VectorComponent`, so its `intrinsicColorFilter$delegate` state lives on the vector (older
-     * layouts kept it on the painter); probe both so an intrinsically-tinted vector isn't
-     * vectorised in its source colours.
+     * The filter can arrive several ways: [externalColorFilter] from the `Modifier.paint` that the
+     * `Icon`/`Image` built, or — when a vector carries its own `tintColor` and no external filter
+     * is passed — the intrinsic filter. `VectorPainter.intrinsicColorFilter` is a forwarding
+     * property backed on the `VectorComponent`, so its `intrinsicColorFilter$delegate` state lives
+     * on the vector (older layouts kept it on the painter); probe both so an intrinsically-tinted
+     * vector isn't vectorised in its source colours. Deliberately skip `currentColorFilter`: it is
+     * a painter draw-cache detail, and on desktop captures it can retain an ambient/default black
+     * filter even when the owning paint modifier has no filter, recolouring source-painted vectors
+     * to black (#3080).
      */
-    private fun resolveTint(painter: Any): TintResult {
+    private fun resolveTint(painter: Any, externalColorFilter: Any?): TintResult {
       val vector = runCatching { field(painter, "vector") }.getOrNull()
       val filter =
-        runCatching { field(painter, "colorFilter") }.getOrNull()
-          ?: runCatching { field(painter, "currentColorFilter") }.getOrNull()
+        externalColorFilter
           ?: currentStateValue(
             runCatching { field(painter, "intrinsicColorFilter\$delegate") }.getOrNull()
           )
@@ -1592,10 +1597,22 @@ internal object ComposeLayoutInspector {
      * the class hierarchy) up to a shallow depth rather than hard-code the path. Identity-tracked
      * to avoid cycles; confined to `androidx` objects so it never wanders into unrelated graphs.
      */
-    private fun findVectorPainter(o: Any?, depth: Int, seen: MutableSet<Any>): Any? {
+    private data class VectorPainterMatch(val painter: Any, val externalColorFilter: Any?)
+
+    private fun findVectorPainter(
+      o: Any?,
+      paintModifier: Any,
+      depth: Int,
+      seen: MutableSet<Any>,
+    ): VectorPainterMatch? {
       if (o == null || depth > 2 || o is String || o is Number || o is Boolean) return null
       if (!seen.add(o)) return null
-      if (o.javaClass.simpleName == "VectorPainter") return o
+      if (o.javaClass.simpleName == "VectorPainter") {
+        return VectorPainterMatch(
+          painter = o,
+          externalColorFilter = runCatching { field(paintModifier, "colorFilter") }.getOrNull(),
+        )
+      }
       if (!o.javaClass.name.startsWith("androidx")) return null
       var c: Class<*>? = o.javaClass
       while (c != null) {
@@ -1606,7 +1623,7 @@ internal object ComposeLayoutInspector {
                 f.get(o)
               }
               .getOrNull()
-          findVectorPainter(v, depth + 1, seen)?.let {
+          findVectorPainter(v, paintModifier, depth + 1, seen)?.let {
             return it
           }
         }
