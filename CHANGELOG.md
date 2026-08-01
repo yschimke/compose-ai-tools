@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.19.15](https://github.com/yschimke/compose-ai-tools/compare/v0.19.14...v0.19.15) (2026-08-01)
+
+
+### Features
+
+* add accessibility preview permutations ([#3126](https://github.com/yschimke/compose-ai-tools/issues/3126)) ([1a7cabd](https://github.com/yschimke/compose-ai-tools/commit/1a7cabdf3afa95a781251295098f325de5683323))
+* **bundle:** Test bundle upload end to end ([#3120](https://github.com/yschimke/compose-ai-tools/issues/3120)) ([00cc3d8](https://github.com/yschimke/compose-ai-tools/commit/00cc3d80ef806242388dae526673681eb36af48d))
+
+
+### Bug Fixes
+
+* **android-renderer:** consolidate dialog frame capture ([#3125](https://github.com/yschimke/compose-ai-tools/issues/3125)) ([edc11c8](https://github.com/yschimke/compose-ai-tools/commit/edc11c87b0d7fc2130a8193109c29dccc0880129))
+* **cli:** add GitHub auth for preview server ([#3121](https://github.com/yschimke/compose-ai-tools/issues/3121)) ([93f4329](https://github.com/yschimke/compose-ai-tools/commit/93f432991c09c4afd7c8806a3ba0f8afe6a7f401))
+* **cli:** make preview render orchestration reliable ([#3107](https://github.com/yschimke/compose-ai-tools/issues/3107)) ([b962e2f](https://github.com/yschimke/compose-ai-tools/commit/b962e2f04e0f133619e049a4a49d03d1b7794b7f))
+* **coil:** fall back to request placeholders ([#3109](https://github.com/yschimke/compose-ai-tools/issues/3109)) ([5453405](https://github.com/yschimke/compose-ai-tools/commit/5453405dac139e3442e0436b7a44e07323bcbc80))
+* **daemon:** preserve wrapped resource fallbacks ([#3119](https://github.com/yschimke/compose-ai-tools/issues/3119)) ([58113c4](https://github.com/yschimke/compose-ai-tools/commit/58113c4a1b54fd4b78142448501f7b868f1af3d9))
+* **figma-svg:** isolate preview variant artifacts ([#3108](https://github.com/yschimke/compose-ai-tools/issues/3108)) ([55664e7](https://github.com/yschimke/compose-ai-tools/commit/55664e77c6650dacc0a06e703a30fb43ea3d33d0))
+* **figma-svg:** preserve applied Wear graphics-layer alpha ([#3130](https://github.com/yschimke/compose-ai-tools/issues/3130)) ([2cf7891](https://github.com/yschimke/compose-ai-tools/commit/2cf7891aa3c46d98d065c97a14d46905008fbf17))
+* **layout-inspector:** repair capture regressions ([#3110](https://github.com/yschimke/compose-ai-tools/issues/3110)) ([97f9853](https://github.com/yschimke/compose-ai-tools/commit/97f9853eb4e8e90caa8cc0ae039aaf70c4eaa765))
+* match studio fixed preview geometry ([#3113](https://github.com/yschimke/compose-ai-tools/issues/3113)) ([afaa189](https://github.com/yschimke/compose-ai-tools/commit/afaa1899a96745d43c707f1abe9db1a92587df46))
+* **serve:** bind before loading catalogs ([#3127](https://github.com/yschimke/compose-ai-tools/issues/3127)) ([23bb808](https://github.com/yschimke/compose-ai-tools/commit/23bb808ec1e9d13397f051b9d9b85ba4edffb817))
+
 ## [0.19.14](https://github.com/yschimke/compose-ai-tools/compare/v0.19.13...v0.19.14) (2026-08-01)
 
 
