@@ -74,6 +74,24 @@ class PreviewManifestEntryResolveTest {
       )
     assertEquals(false, device.resolved().wrapWidth)
     assertEquals(false, device.resolved().wrapHeight)
+    assertEquals(384, device.resolved().widthPx) // 192dp × 2.0, the device's own geometry
+  }
+
+  @Test
+  fun `device with no annotation dp still pins the device frame`() {
+    // A `@Preview(device = …)` carries no widthDp/heightDp of its own, so the resolver must read
+    // the device catalog. Falling through to the wrap sandbox bound is what shrank the exported
+    // figma-svg away from the rendered frame (issues #2615 / #2883).
+    val entry =
+      json.decodeFromString(
+        PreviewManifestEntry.serializer(),
+        """{"id":"d","className":"X","functionName":"R",""" +
+          """"params":{"device":"spec:width=340dp,height=800dp,dpi=160"}}""",
+      )
+    val resolved = entry.resolved()
+    assertEquals(1.0f, resolved.density, 0.0001f)
+    assertEquals(340, resolved.widthPx)
+    assertEquals(800, resolved.heightPx)
   }
 
   @Test

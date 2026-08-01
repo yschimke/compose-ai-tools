@@ -320,8 +320,17 @@ data class PreviewManifestEntry(
 ) {
   fun resolved(): ResolvedRenderParams {
     val p = params
-    val density = density ?: p?.density ?: 2.0f
     val device = device ?: p?.device
+    // A `@Preview(device = …)` frame is the device's own geometry, not the annotation's
+    // `widthDp`/`heightDp` — so resolve the catalog here rather than trusting the discovered dp
+    // (issue #2615 / #2883). Skipping the discovered dp *without* resolving the device dropped
+    // every device preview onto the fixed [DEFAULT_FRAME_PX] fallback, so a Wear large-round
+    // screen composed — and exported — at 320² while its PNG stayed at the device's 454².
+    val deviceSpec =
+      device
+        ?.takeIf { it.isNotBlank() }
+        ?.let { ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it) }
+    val density = density ?: p?.density ?: deviceSpec?.density ?: 2.0f
     val kind = kind ?: p?.kind
     val name = p?.name
     val uiMode = uiMode ?: p?.uiMode ?: 0
@@ -338,11 +347,14 @@ data class PreviewManifestEntry(
     // wide content and reflowed tall content to zero height. Mirrors the desktop daemon's resolver
     // and the standalone renderer's wrap crop.
     val pinned = device != null || (kind != null && kind != "COMPOSE")
-    val isDeviceFrame = !device.isNullOrBlank()
     val explicitWidthPx =
-      widthPx ?: p?.widthDp?.takeUnless { isDeviceFrame }?.let { (it * density).roundHalfUpPx() }
+      widthPx
+        ?: deviceSpec?.let { (it.widthDp * density).roundHalfUpPx() }
+        ?: p?.widthDp?.let { (it * density).roundHalfUpPx() }
     val explicitHeightPx =
-      heightPx ?: p?.heightDp?.takeUnless { isDeviceFrame }?.let { (it * density).roundHalfUpPx() }
+      heightPx
+        ?: deviceSpec?.let { (it.heightDp * density).roundHalfUpPx() }
+        ?: p?.heightDp?.let { (it * density).roundHalfUpPx() }
     val wrapWidth = explicitWidthPx == null && !pinned
     val wrapHeight = explicitHeightPx == null && !pinned
     // The generous sandbox bound is only for a WRAPPING axis (measured + cropped). A pinned preview

@@ -69,6 +69,38 @@ class PreviewManifestEntryResolveTest {
     assertEquals(false, resolved.wrapWidth)
     assertEquals(false, resolved.wrapHeight)
     assertEquals("id:wearos_small_round", resolved.device)
+    // …and it pins it to the DEVICE's geometry (192dp × 2.0), not the fixed 320px fallback. A
+    // device preview carries no explicit widthDp/heightDp, so falling through to DEFAULT_FRAME_PX
+    // composed every Wear screen at 320² and exported a 352² figma-svg beside a 454² PNG
+    // (issues #2615 / #2883).
+    assertEquals(384, resolved.widthPx)
+    assertEquals(384, resolved.heightPx)
+  }
+
+  @Test
+  fun `device geometry wins over the annotation's own dp`() {
+    // `@Preview(device = "id:wearos_large_round", widthDp = 100)`: Studio frames the preview at the
+    // device, so the device's 227dp must win over the annotation's 100dp.
+    val raw =
+      """{"id":"wear","className":"X","functionName":"R",""" +
+        """"params":{"device":"id:wearos_large_round","widthDp":100,"heightDp":100,""" +
+        """"density":2.0}}"""
+    val resolved = json.decodeFromString(PreviewManifestEntry.serializer(), raw).resolved()
+    assertEquals(454, resolved.widthPx)
+    assertEquals(454, resolved.heightPx)
+  }
+
+  @Test
+  fun `spec device grammar pins the frame at its own dpi`() {
+    // Jetchat's `spec:width=340dp,height=800dp,dpi=160` — dpi 160 is density 1.0, so the frame is
+    // 340×800 px. The daemon used to render it at 320² regardless.
+    val raw =
+      """{"id":"chat","className":"X","functionName":"R",""" +
+        """"params":{"device":"spec:width=340dp,height=800dp,dpi=160"}}"""
+    val resolved = json.decodeFromString(PreviewManifestEntry.serializer(), raw).resolved()
+    assertEquals(1.0f, resolved.density, 0.0001f)
+    assertEquals(340, resolved.widthPx)
+    assertEquals(800, resolved.heightPx)
   }
 
   @Test
