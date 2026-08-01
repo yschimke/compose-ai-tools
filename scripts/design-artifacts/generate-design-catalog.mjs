@@ -98,6 +98,7 @@ import {
 import { applySpecSections } from "./apply-spec-sections.mjs";
 import { applySourceFiles } from "./apply-source-files.mjs";
 import { applySpecBreakpoints } from "./catalog-breakpoints.mjs";
+import { applyCatalogPreviewAxes } from "./catalog-preview-axes.mjs";
 
 /**
  * Best-effort fetch + parse of a JSON URL, with a short timeout. Returns null on
@@ -176,15 +177,6 @@ async function loadCandidates(path, breakpoints) {
     candidateBundle,
     (entry) => entry.functionName ?? entry.id,
   );
-  // The published candidate reader classifies every numeric width with Material
-  // window classes. Give this catalog's declared names precedence so domain
-  // breakpoints such as Wear's 192 dp `smallRound` and 227 dp `largeRound` remain
-  // distinct output axes instead of both collapsing to `compact`.
-  applySpecBreakpoints(
-    candidates,
-    candidateBundle.previews,
-    breakpoints,
-  );
   // `@OverrideVariant` synthetic previews share their base's `functionName`, so `mergeByFunction`
   // (below) folds their images into the parent candidate. Stamp each one's `_VARIANT_<name>` suffix
   // as `image.state` HERE — before the merge — so the fold surfaces it as a distinct secondary
@@ -197,6 +189,21 @@ async function loadCandidates(path, breakpoints) {
     const state = variantStateFromId(candidate.previewId ?? candidate.id);
     if (state) for (const image of candidate.images ?? []) image.state = state;
   }
+  // Candidate images retain width-derived size but not `PreviewParams.fontScale`. Promote a
+  // non-default scale to a props axis before candidates sharing one function are folded, and remove
+  // the exact small-round/default-font duplicate emitted when Wear stacks its device + font-scale
+  // multi-previews. Synthetic state tagging above intentionally runs first so equal display params
+  // never collapse distinct override states.
+  applyCatalogPreviewAxes(candidates, candidateBundle.previews);
+  // The published candidate reader classifies every numeric width with Material
+  // window classes. Give this catalog's declared names precedence so domain
+  // breakpoints such as Wear's 192 dp `smallRound` and 227 dp `largeRound` remain
+  // distinct output axes instead of both collapsing to `compact`.
+  applySpecBreakpoints(
+    candidates,
+    candidateBundle.previews,
+    breakpoints,
+  );
   // Return the ORIGINAL (unfiltered) bundle: its raw `entries` carry the per-preview
   // `previews/<id>.layout.json` (layout-inspector tree) the wireframe is built from, and its full
   // `previews` list carries the catalog-token sheets `catalogTokensFromBundle` needs.
