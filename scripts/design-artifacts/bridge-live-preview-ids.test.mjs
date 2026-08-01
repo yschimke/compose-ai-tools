@@ -641,6 +641,98 @@ test("multi-annotation screen: each variant sticker gets its OWN annotation's pr
   assert.equal(new Set(ids).size, 3, "each variant must resolve to a distinct render");
 });
 
+test("a breakpoint sticker takes the annotation declaring that width, font scale and all", () => {
+  // Regression for the catalog-breakpoint half of #2883, still reproducing in 0.19.15 as Jetsnack
+  // `Foundations/Button`. `ButtonPreview` declares no width, and its only 412dp sibling is the
+  // large-font annotation — which is precisely the render `applySpecBreakpoints` tags `compact`,
+  // since the size axis is derived from the annotation's own `widthDp`. Scored as one number, the
+  // width match (+2) and the unwanted font scale (-1) tied with the default annotation's two
+  // preference points, bundle order won, and the compact 1082×315 PNG shipped beside the default
+  // annotation's intrinsic 282×137 vector (39.5% match). The constraint tier must decide this.
+  const spec = {
+    system: "jetsnack",
+    breakpoints: [
+      { size: "compact", widthDp: 412 },
+      { size: "medium", widthDp: 700 },
+    ],
+    groups: [
+      {
+        components: [
+          { componentId: "Foundations/Button", preview: "ButtonPreview", variants: [] },
+        ],
+      },
+    ],
+  };
+  const bundle = {
+    previews: [
+      { id: "app.ButtonKt.ButtonPreview", functionName: "ButtonPreview", params: {} },
+      {
+        id: "app.ButtonKt.ButtonPreview_large_font",
+        functionName: "ButtonPreview",
+        params: { widthDp: 412, heightDp: 120, fontScale: 2 },
+      },
+    ],
+  };
+  const manifest = {
+    system: "jetsnack",
+    components: [
+      {
+        componentId: "Foundations/Button",
+        images: [{ state: "default" }, { state: "default", size: "compact" }],
+      },
+    ],
+  };
+
+  bridgeLivePreviewIds(manifest, spec, bundle, new Set());
+
+  assert.deepEqual(
+    manifest.components[0].images.map((i) => i.previewId),
+    ["app.ButtonKt.ButtonPreview", "app.ButtonKt.ButtonPreview_large_font"],
+    "the sized sticker must reach the annotation whose widthDp defines that size",
+  );
+});
+
+test("a matching width outranks the preference for an untagged theme", () => {
+  // The same cancellation as above, reached through the other preference: an untagged sticker
+  // prefers the light annotation (+1) but that must not outweigh the dark annotation matching the
+  // width the sticker's size names (+2). Only the tiering keeps these apart — as one sum both
+  // candidates score 1.
+  const spec = {
+    system: "jetsnack",
+    breakpoints: [{ size: "compact", widthDp: 412 }],
+    groups: [
+      {
+        components: [
+          { componentId: "Search/Categories", preview: "CategoriesPreview", variants: [] },
+        ],
+      },
+    ],
+  };
+  const bundle = {
+    previews: [
+      { id: "app.SearchKt.CategoriesPreview", functionName: "CategoriesPreview", params: {} },
+      {
+        id: "app.SearchKt.CategoriesPreview_dark",
+        functionName: "CategoriesPreview",
+        params: { widthDp: 412, uiMode: 0x20 },
+      },
+    ],
+  };
+  const manifest = {
+    system: "jetsnack",
+    components: [
+      { componentId: "Search/Categories", images: [{ state: "default", size: "compact" }] },
+    ],
+  };
+
+  bridgeLivePreviewIds(manifest, spec, bundle, new Set());
+
+  assert.equal(
+    manifest.components[0].images[0].previewId,
+    "app.SearchKt.CategoriesPreview_dark",
+  );
+});
+
 test("a single-annotation function still resolves for every sticker, unconstrained", () => {
   // The complement of the test above: nothing about the per-variant pick may cost a component
   // whose function has exactly one `@Preview` its id, whatever axes its stickers carry.
