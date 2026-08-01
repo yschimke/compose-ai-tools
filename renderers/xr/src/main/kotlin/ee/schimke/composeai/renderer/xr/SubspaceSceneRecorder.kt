@@ -280,6 +280,14 @@ public object SubspaceSceneRecorder {
       method.isAccessible = true
       (method.invoke(context, /* useUnmergedTree= */ true) as Iterable<SubspaceSemanticsInfo>)
         .toList()
+    } catch (e: java.lang.reflect.InvocationTargetException) {
+      // The bridge RESOLVED and the call itself failed — the enumeration's own diagnosis (e.g.
+      // "No subspace compose hierarchies found in the app", which is what a compose /
+      // compose-testing version skew looks like) is the useful message. Rethrow the target so it
+      // reaches the test report intact instead of being relabelled as an API change: the generic
+      // "the compose-testing API may have changed" wording sent a real skew failure on a wild
+      // goose chase through this file.
+      throw e.targetException ?: e
     } catch (e: ReflectiveOperationException) {
       throw IllegalStateException(
         "Could not enumerate subspace nodes via androidx.xr.compose.testing internals; the " +
