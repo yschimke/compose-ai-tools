@@ -377,6 +377,17 @@ predictable seconds over an unbounded compiler in its own process), and it is
 why `--playground-sandbox none` — the dev posture — keeps warm compiles and the
 sub-second edit→pixel loop [§7.1](#71-latency-note) describes.
 
+**Bounded, like the live lanes.** The in-process compiler serialized compiles
+behind one `BtaCompileSession`, so concurrency was implicitly 1; a subprocess per
+request removes that, and a per-process memory cap bounds one compile without
+bounding the total. `--playground-compile-slots` (default 2) is the compile-side
+counterpart to `--live-seats`: peak compile memory an operator budgets for is
+`slots × --playground-sandbox-memory-mb`, and a request that finds every slot
+taken is told the playground is busy rather than queueing behind an unbounded
+fork. The compile budget is also clamped to `--playground-sandbox-ttl` whenever
+that is tighter — shortening the sandbox deadline shortens *everything*
+snippet-related, not just the render.
+
 The obvious follow-up is a **warm jailed compile JVM per catalog classpath**,
 recycled periodically. Worth noting *why* that's admissible where a warm render
 JVM isn't: compiling doesn't execute the snippet, so a reused compile process

@@ -295,7 +295,7 @@ object WebEmbed {
    * attribute.
    */
   internal fun embedKey(title: String, modulePath: String, previewIds: List<String>): String {
-    val material = (listOf(title, modulePath) + previewIds).joinToString(" ")
+    val material = (listOf(title, modulePath) + previewIds).joinToString("\u0000")
     val digest = java.security.MessageDigest.getInstance("SHA-256").digest(material.toByteArray())
     return digest.take(6).joinToString("") { "%02x".format(it) }
   }
