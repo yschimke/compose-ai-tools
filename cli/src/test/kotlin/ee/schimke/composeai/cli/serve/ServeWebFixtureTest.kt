@@ -1813,6 +1813,61 @@ class ServeWebFixtureTest {
   }
 
   @Test
+  fun `viewer disables live preview with GitHub auth prompt when sign-in is required`() {
+    val card = previews.first { it.id.endsWith("CardPreview") }
+    val protectedLive =
+      ServeWeb.viewerPage(
+        card,
+        token,
+        canApplyOverrides = true,
+        liveAuthPrompt =
+          ServeWeb.LiveAuthPrompt(
+            loginHref = "/auth/github/start?return=%2Fp%2FCardPreview%3Ftoken%3Dabc",
+            repository = "yschimke/compose-ai-tools",
+          ),
+      )
+
+    assertTrue(
+      protectedLive.contains("id=\"cp-live-toggle\"") &&
+        protectedLive.contains(
+          "id=\"cp-live-toggle\" class=\"cp-live-toggle\" aria-pressed=\"false\" disabled"
+        ),
+      "GitHub-protected live preview renders the visible toggle disabled until sign-in",
+    )
+    assertTrue(
+      protectedLive.contains(
+        "name=\"cp-mode\" value=\"live\" id=\"cp-live\" tabindex=\"-1\" disabled"
+      ),
+      "GitHub-protected live preview disables the hidden live transport radio too",
+    )
+    assertTrue(
+      protectedLive.contains(
+        "title=\"Sign in with GitHub to enable Live preview. Access is limited to collaborators on yschimke/compose-ai-tools.\""
+      ),
+      "disabled live preview explains the GitHub access requirement on hover",
+    )
+    assertTrue(
+      protectedLive.contains(
+        "data-github-login=\"/auth/github/start?return=%2Fp%2FCardPreview%3Ftoken%3Dabc\""
+      ),
+      "disabled live preview keeps the GitHub sign-in URL available to the page",
+    )
+    assertTrue(
+      assetText("viewer.js")
+        .contains(
+          "liveToggle.disabled = wasmBtn ? !(live && !live.disabled) : !liveTransportAvailable();"
+        ),
+      "hydration keeps the daemon Live preview button disabled when GitHub auth blocks live",
+    )
+
+    val openLive = ServeWeb.viewerPage(card, token, canApplyOverrides = true)
+    assertTrue(
+      openLive.contains("id=\"cp-live-toggle\" class=\"cp-live-toggle\" aria-pressed=\"false\">"),
+      "live preview remains enabled when no GitHub sign-in prompt is required",
+    )
+  }
+
+  @Test
   fun `a dedicated In-browser Wasm toggle shows only when a wasm app and a daemon lane are both present`() {
     val card = previews.first { it.id.endsWith("CardPreview") }
     // Case C — daemon live lane + wasm app: "Live preview" would prefer the daemon (bestLiveMode)

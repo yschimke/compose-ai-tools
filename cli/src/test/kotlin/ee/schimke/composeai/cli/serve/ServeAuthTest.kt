@@ -70,6 +70,34 @@ class ServeAuthTest {
   }
 
   @Test
+  fun `github protected live viewer pages are not cached`() {
+    assertEquals(
+      "no-store",
+      ServeHttpServer.viewerCacheControl(
+        githubAuthConfigured = true,
+        hasLiveStream = true,
+        isPublic = true,
+      ),
+    )
+    assertEquals(
+      "public, max-age=60, stale-while-revalidate=300",
+      ServeHttpServer.viewerCacheControl(
+        githubAuthConfigured = true,
+        hasLiveStream = false,
+        isPublic = true,
+      ),
+    )
+    assertEquals(
+      "no-store",
+      ServeHttpServer.viewerCacheControl(
+        githubAuthConfigured = false,
+        hasLiveStream = true,
+        isPublic = false,
+      ),
+    )
+  }
+
+  @Test
   fun `wasm assets get the content types a streaming wasm load requires`() {
     // application/wasm is mandatory: WebAssembly.instantiateStreaming rejects octet-stream. The
     // ES-module loader (.mjs) and its glue (.js) must be a JS type to execute.
