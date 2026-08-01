@@ -1,0 +1,45 @@
+{
+  "ignorePaths": [
+    "api/**",
+    "build-logic/**",
+    "bundle-viewer/**",
+    "cli/**",
+    "common/**",
+    "daemon/**",
+    "data/**",
+    "deploy/**",
+    "docs/**",
+    "gradle-plugin/**",
+    "gradle/**",
+    "mcp/**",
+    "render-session/**",
+    "renderers/**",
+    "renders/**",
+    "runtimes/**",
+    "samples/**",
+    "site/**",
+    "third_party/**",
+    "vscode-extension/src/**",
+    "vscode-extension/media/**",
+    "**/*.md",
+    "**/*.kt",
+    "**/*.kts",
+    "**/*.java",
+    "**/*.png",
+    "LICENSE",
+    ".gitignore",
+    ".gitattributes"
+  ],
+  "globalPaths": [
+    ".github/ci/report-schema-paths.json",
+    ".github/ci/path-scope.py",
+    ".github/workflows/report-schemas.yml"
+  ],
+  "groups": {
+    "validate": [
+      "schema/**",
+      "scripts/validate-report-schemas.mjs",
+      "vscode-extension/preview-harness/fixtures/**/*.json"
+    ]
+  }
+}

@@ -76,11 +76,13 @@ export class SpatialView extends LitElement {
     protected render(): TemplateResult {
         return html`
             <div class="spatial-stage"></div>
-            ${this.scene
-                ? ""
-                : html`<div class="spatial-empty">
-                      No spatial scene loaded
-                  </div>`}
+            ${
+                this.scene
+                    ? ""
+                    : html`<div class="spatial-empty">
+                          No spatial scene loaded
+                      </div>`
+            }
         `;
     }
 

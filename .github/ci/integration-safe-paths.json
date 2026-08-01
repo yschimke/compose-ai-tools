@@ -1,0 +1,18 @@
+{
+  "ignorePaths": [
+    "docs/**",
+    "site/**",
+    "**/*.md",
+    "samples/**",
+    "renders/**",
+    "vscode-extension/**",
+    "deploy/**",
+    "scripts/**",
+    ".githooks/**",
+    ".idea/**",
+    ".vscode/**",
+    "LICENSE",
+    ".gitignore",
+    ".gitattributes"
+  ]
+}

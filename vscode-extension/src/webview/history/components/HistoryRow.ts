@@ -273,12 +273,14 @@ export class HistoryRow extends LitElement {
 
         return html`
             <div class="thumb" data-id=${entryId}>
-                ${cached !== undefined
-                    ? html`<img
-                          src=${"data:image/png;base64," + cached}
-                          alt=""
-                      />`
-                    : ""}
+                ${
+                    cached !== undefined
+                        ? html`<img
+                              src=${"data:image/png;base64," + cached}
+                              alt=""
+                          />`
+                        : ""
+                }
             </div>
             <div class="meta">
                 <div class="ts" title=${entry.timestamp || ""}>
@@ -308,20 +310,24 @@ export class HistoryRow extends LitElement {
                     ></i>
                 </button>
             </div>
-            ${this._expandedKind === "image"
-                ? html`<div class="expanded" data-id=${entryId}>
-                      ${this._renderImageExpansion(entry, entryId)}
-                  </div>`
-                : ""}
-            ${this._expandedKind === "diff" && this._diffAgainst
-                ? html`<div
-                      class="expanded diff-expanded"
-                      data-id=${entryId}
-                      data-against=${this._diffAgainst}
-                  >
-                      ${this._renderDiffExpansion()}
-                  </div>`
-                : ""}
+            ${
+                this._expandedKind === "image"
+                    ? html`<div class="expanded" data-id=${entryId}>
+                          ${this._renderImageExpansion(entry, entryId)}
+                      </div>`
+                    : ""
+            }
+            ${
+                this._expandedKind === "diff" && this._diffAgainst
+                    ? html`<div
+                          class="expanded diff-expanded"
+                          data-id=${entryId}
+                          data-against=${this._diffAgainst}
+                      >
+                          ${this._renderDiffExpansion()}
+                      </div>`
+                    : ""
+            }
         `;
     }
 
@@ -346,13 +352,15 @@ export class HistoryRow extends LitElement {
                     alt=${alt}
                 />
                 <div class="actions">
-                    ${sourceFile
-                        ? html`<button
-                              @click=${() => this._openSource(sourceFile)}
-                          >
-                              Open in Editor
-                          </button>`
-                        : ""}
+                    ${
+                        sourceFile
+                            ? html`<button
+                                  @click=${() => this._openSource(sourceFile)}
+                              >
+                                  Open in Editor
+                              </button>`
+                            : ""
+                    }
                 </div>
             `;
         }
@@ -378,8 +386,7 @@ export class HistoryRow extends LitElement {
 
     private _openSource(sourceFile: string): void {
         const vscode = this.diffViewConfig?.vscode as
-            | VsCodeApi<unknown>
-            | undefined;
+            VsCodeApi<unknown> | undefined;
         if (vscode) vscode.postMessage({ command: "openSource", sourceFile });
     }
 

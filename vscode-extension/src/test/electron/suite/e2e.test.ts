@@ -39,8 +39,7 @@ function findMessage(
     command: string,
 ): PostedMessage | undefined {
     return messages.find((m) => (m as PostedMessage).command === command) as
-        | PostedMessage
-        | undefined;
+        PostedMessage | undefined;
 }
 
 async function waitFor<T>(

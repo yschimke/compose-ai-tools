@@ -93,13 +93,15 @@ export class BundleExpander extends LitElement {
                     @change=${(e: Event) => this.onCheckboxChanged(e, k.kind)}
                 />
                 <span class="bundle-expander-label">${k.label}</span>
-                ${k.defaultOn
-                    ? html`<span
-                          class="bundle-expander-default"
-                          title="On by default"
-                          >default</span
-                      >`
-                    : html``}
+                ${
+                    k.defaultOn
+                        ? html`<span
+                              class="bundle-expander-default"
+                              title="On by default"
+                              >default</span
+                          >`
+                        : html``
+                }
                 <code class="bundle-expander-kind">${k.kind}</code>
             </label>
         `;

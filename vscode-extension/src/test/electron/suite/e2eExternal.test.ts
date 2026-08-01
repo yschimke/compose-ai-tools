@@ -357,8 +357,7 @@ describeExternal(
                         const m = msgs[i] as PostedMessage;
                         if (m.command !== "setPreviews") continue;
                         const previews = m.previews as
-                            | Array<unknown>
-                            | undefined;
+                            Array<unknown> | undefined;
                         if (previews && previews.length > 0) return m;
                     }
                     return undefined;
@@ -555,8 +554,7 @@ describeExternal(
                             const msg = m as PostedMessage;
                             if (msg.command !== "setPreviews") return false;
                             const previews = msg.previews as
-                                | Array<{ id?: string }>
-                                | undefined;
+                                Array<{ id?: string }> | undefined;
                             return previews?.some((p) =>
                                 /ComposeAiEditLoopProbe/.test(
                                     String(p.id ?? ""),

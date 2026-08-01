@@ -47,9 +47,57 @@ concurrency:
 # `github.event.pull_request` is null, so pushes to main always run the full
 # suite.
 jobs:
+  changes:
+    name: Determine CI scope
+    runs-on: ubuntu-latest
+    outputs:
+      plugin_tests: ${{ steps.scope.outputs.plugin_tests }}
+      renderer_android_tests: ${{ steps.scope.outputs.renderer_android_tests }}
+      module_unit_tests: ${{ steps.scope.outputs.module_unit_tests }}
+      module_test_tasks: ${{ steps.test-scope.outputs.tasks }}
+      functional_tests: ${{ steps.scope.outputs.functional_tests }}
+      build_samples: ${{ steps.scope.outputs.build_samples }}
+      build_cli: ${{ steps.scope.outputs.build_cli }}
+      spatial_scene: ${{ steps.scope.outputs.spatial_scene }}
+      actions_tests: ${{ steps.scope.outputs.actions_tests }}
+      design_artifacts: ${{ steps.scope.outputs.design_artifacts }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Classify changed paths
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
+          python3 .github/ci/path-scope.py \
+            --config .github/ci/ci-paths.json >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/setup
+        if: github.event_name == 'pull_request' && steps.scope.outputs.module_unit_tests == 'true'
+      - name: Resolve affected Gradle tests
+        id: test-scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+          RUN_MODULE_TESTS: ${{ steps.scope.outputs.module_unit_tests }}
+        run: |
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            tasks=full
+          elif [ "$RUN_MODULE_TESTS" != "true" ]; then
+            tasks=none
+          else
+            tasks=$(python3 .github/ci/affected-gradle-tests.py)
+          fi
+          echo "tasks=$tasks" >> "$GITHUB_OUTPUT"
+
   plugin-tests:
     name: Plugin Unit Tests
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    needs: changes
+    if: ${{ needs.changes.outputs.plugin_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -79,7 +127,8 @@ jobs:
     # That guard is what stops `vscode-preview-diff` screenshotting a stale capsule after a
     # figma-svg export change, so it has to run on PRs, where the export changes land.
     name: Renderer Android Unit Tests
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    needs: changes
+    if: ${{ needs.changes.outputs.renderer_android_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -183,7 +232,7 @@ jobs:
             third_party/rc-embedded-player/build/reports/tests/
             third_party/rc-embedded-player-jvm/build/reports/tests/
 
-  # Every module's unit tests, in one fan-out.
+  # Every affected module's unit tests on PRs; the full fan-out on main/nightly.
   #
   # The named jobs around this one cover a handful of modules by task path
   # (`:renderer-android`, `:gradle-plugin`, `:cli` via its `build`, …). That left **66 modules
@@ -194,16 +243,18 @@ jobs:
   # merged without ever running anywhere, which is a large part of why those issues kept
   # reopening against releases that were supposed to have fixed them.
   #
-  # Root-level task-name abbreviation fans `test` out to every project that has it. The `samples/*`
-  # modules are excluded: their tests drive real renders and are already covered by the dedicated
-  # render jobs (`Build Samples`, `Render + pixel-test Wear sample previews`), so running them here
-  # would double a slow job rather than add coverage.
+  # On PRs the change classifier maps files to Gradle projects and expands the
+  # reverse dependency closure, then invokes only those projects' `test` tasks.
+  # Root build wiring, unknown paths, graph errors, and every non-PR event fail
+  # open to the historical root-level `test` fan-out. The render-heavy sample
+  # modules below stay excluded in either mode.
   #
   # `--continue` so one failing module reports every other module's result in the same run instead
   # of masking them — the point of the job is to know the true state, not to stop at the first red.
   module-unit-tests:
     name: Module Unit Tests
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    needs: changes
+    if: ${{ needs.changes.outputs.module_unit_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -214,18 +265,25 @@ jobs:
         with:
           rw-token: ${{ github.event_name == 'push' && (secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN) || '' }}
           ro-token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}
-      - name: Run every module's unit tests
-        run: >-
-          ./gradlew test --continue
-          -x :samples:android:test
-          -x :samples:android-alpha:test
-          -x :samples:android-library:test
-          -x :samples:design-catalog-remote-m3:test
-          -x :samples:remotecompose:test
-          -x :samples:wear:test
-          -x :samples:wear-widget:test
-          -x :samples:xr-glimmer:test
-          -x :samples:xr-spatial:test
+      - name: Run affected module tests (full suite off PRs)
+        env:
+          TEST_TASKS: ${{ needs.changes.outputs.module_test_tasks }}
+        run: |
+          if [ "$TEST_TASKS" = full ]; then
+            ./gradlew test --continue \
+              -x :samples:android:test \
+              -x :samples:android-alpha:test \
+              -x :samples:android-library:test \
+              -x :samples:design-catalog-remote-m3:test \
+              -x :samples:remotecompose:test \
+              -x :samples:wear:test \
+              -x :samples:wear-widget:test \
+              -x :samples:xr-glimmer:test \
+              -x :samples:xr-spatial:test
+          else
+            read -r -a tasks <<< "$TEST_TASKS"
+            ./gradlew "${tasks[@]}" --continue
+          fi
       - name: Upload test reports on failure
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -238,7 +296,8 @@ jobs:
 
   functional-tests:
     name: Plugin Functional Tests
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    needs: changes
+    if: ${{ needs.changes.outputs.functional_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -268,7 +327,8 @@ jobs:
     # drift without extending the PR critical path.
     # Keep the historical check name because branch protection requires it.
     name: Build Samples
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    needs: changes
+    if: ${{ needs.changes.outputs.build_samples == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -397,7 +457,8 @@ jobs:
 
   build-cli:
     name: Build CLI
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    needs: changes
+    if: ${{ needs.changes.outputs.build_cli == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -567,7 +628,8 @@ jobs:
 
   spatial-scene-codegen:
     name: SpatialScene codegen up to date
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    needs: changes
+    if: ${{ needs.changes.outputs.spatial_scene == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -736,7 +798,8 @@ jobs:
   # (e.g. PR #76 bare-list → envelope) before they hit a real PR.
   actions-tests:
     name: Actions Script Tests
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    needs: changes
+    if: ${{ needs.changes.outputs.actions_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -760,6 +823,12 @@ jobs:
         run: python3 .github/actions/apply/test_compute_scope.py -v
       - name: Run change-scope classifier tests
         run: python3 .github/ci/test_change_scope.py -v
+      - name: Run per-job path-scope classifier tests
+        run: python3 .github/ci/test_path_scope.py -v
+      - name: Run affected Gradle test-scope tests
+        run: python3 .github/ci/test_affected_gradle_tests.py -v
+      - name: Run scoped findings filter tests
+        run: python3 .github/actions/apply/test_filter_findings_scope.py -v
       # Guards the path→system mapping that decides which design-artifacts delivery
       # branches a merge to main regenerates. A false negative there strands a
       # published catalog on stale renders without any signal.
@@ -802,7 +871,8 @@ jobs:
   # the browser install is what makes them actually assert.
   design-artifacts-driver-tests:
     name: Design Artifacts Driver Tests
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    needs: changes
+    if: ${{ needs.changes.outputs.design_artifacts == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
