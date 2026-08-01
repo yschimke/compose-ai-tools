@@ -1286,15 +1286,17 @@ internal object ComposeLayoutInspector {
     ) {
       ModifierTokenResolver.graphicsLayerAlpha(this)?.let { properties["alpha"] = it.toString() }
     }
-    // The `clip` flag identifies which coordinator on the chain is the one that clips, and the
-    // figma-svg model uses that coordinator's box as the rect the frame was actually drawn in
-    // (issue #3056). Desktop/release Compose compiles the inspector element out for the same reason
-    // it does `BackgroundElement`'s above, so carry the reflected field too — otherwise the model
-    // finds no clipping modifier and a lookahead-inflated node keeps its oversized box.
-    if (
+    // Mark the coordinator that actually clipped the captured frame. This catches both a static
+    // `Modifier.clip(shape)` graphics layer and Foundation's runtime scroll clip, whose element has
+    // no `clip` field. The latter owns the final viewport under lookahead (#3056).
+    if ("clip" !in properties && ModifierTokenResolver.appliedClipsContent(coordinates)) {
+      properties["clip"] = "true"
+    } else if (
       "clip" !in properties &&
         (name == "graphicsLayer" || modifier.javaClass.simpleName.contains("GraphicsLayer"))
     ) {
+      // Compatibility fallback for Compose versions that do not expose `isClipping` on the
+      // coordinator: retain the element-field path used for a static graphics-layer clip.
       runCatching {
           modifier.javaClass
             .getDeclaredField("clip")

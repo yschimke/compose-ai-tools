@@ -1398,20 +1398,26 @@ data class FigmaSvgModel(
      */
     private fun LayoutInspectorNode.clipModifierBounds(): LayoutInspectorBounds? {
       if (tokens?.clipsContent != true) return null
-      val clip =
-        modifiers.lastOrNull { it.properties["clip"] == "true" && it.bounds != null }?.bounds
-          ?: return null
       val own = bounds
       if (own.right <= own.left || own.bottom <= own.top) return null
-      val inside =
-        clip.left >= own.left &&
-          clip.top >= own.top &&
-          clip.right <= own.right &&
-          clip.bottom <= own.bottom
-      val smaller =
-        clip.right - clip.left < own.right - own.left ||
-          clip.bottom - clip.top < own.bottom - own.top
-      return clip.takeIf { inside && smaller && it.right > it.left && it.bottom > it.top }
+      return modifiers
+        .asSequence()
+        .filter { it.properties["clip"] == "true" }
+        .mapNotNull { it.bounds }
+        .filter { clip ->
+          clip.right > clip.left &&
+            clip.bottom > clip.top &&
+            clip.left >= own.left &&
+            clip.top >= own.top &&
+            clip.right <= own.right &&
+            clip.bottom <= own.bottom &&
+            (clip.right - clip.left < own.right - own.left ||
+              clip.bottom - clip.top < own.bottom - own.top)
+        }
+        // Multiple coordinators can clip the same node (a rounded surface around a scroll clip).
+        // Their intersection is the actual visible region; for the nested, axis-aligned boxes
+        // Compose emits here, the smallest area is the tightest final rendered viewport.
+        .minByOrNull { (it.right - it.left).toLong() * (it.bottom - it.top).toLong() }
     }
 
     /**

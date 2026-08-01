@@ -81,6 +81,12 @@ internal object ModifierTokenResolver {
       val elements = inspectable?.inspectableElements?.associate { it.name to it.value }.orEmpty()
       val simpleName = mod.javaClass.simpleName
 
+      // A scrolling modifier installs clipping at runtime on its coordinator rather than exposing
+      // a static graphics-layer `clip` field. Treat the applied frame state as authoritative so a
+      // scroll-only viewport masks its children too (and supplies the final lookahead viewport to
+      // figma-svg; issue #3056).
+      if (!clipsContent && appliedClipsContent(info.coordinates)) clipsContent = true
+
       // `Surface`/`Card`/`FAB` cast their Material drop shadow via
       // `graphicsLayer { shadowElevation = … }`. Capture the largest shadow elevation on the node
       // so
@@ -295,6 +301,19 @@ internal object ModifierTokenResolver {
     if (!invoked) return null
     return reflectedFloat(coordinates, "lastLayerAlpha")
   }
+
+  /**
+   * Whether this modifier coordinator clipped the captured frame.
+   *
+   * This is deliberately read from the placed coordinator rather than only from the modifier
+   * element. Foundation's scrolling modifiers install a runtime clip on their coordinator but do
+   * not expose a static `clip` field like `Modifier.clip(shape)`'s `GraphicsLayerElement` does.
+   * Under lookahead/shared-element measurement that runtime coordinator is also the one that keeps
+   * the final height-limited viewport, while the shape clip farther out in the chain can report the
+   * taller lookahead content box (issue #3056).
+   */
+  internal fun appliedClipsContent(coordinates: Any): Boolean =
+    reflectedField(coordinates, "isClipping") as? Boolean ?: false
 
   /**
    * Reads a **linear** gradient brush off [mod]'s `brush` field (or an inspector `brush` element)
