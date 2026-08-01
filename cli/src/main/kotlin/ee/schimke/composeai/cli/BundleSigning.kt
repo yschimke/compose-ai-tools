@@ -15,9 +15,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * Ed25519 bundle signing + verification — the reference implementation shared by `compose-preview
- * bundle sign|verify|keygen` ([BundleSignCommand]) and the public-server trust gate
- * ([BundleVerifier]).
+ * Ed25519 bundle signing + verification — the reference implementation shared by
+ * [KeygenSubcommand], [SignSubcommand], and [VerifySubcommand], exposed as `compose-preview bundle
+ * keygen|sign|verify`, and the public-server trust gate ([BundleVerifier]).
  *
  * The signed bytes are the bundle's **canonical digest**, not the raw `.png` file: zip ordering /
  * compression aren't byte-stable and `signatures.json` itself must be excluded so a second producer
