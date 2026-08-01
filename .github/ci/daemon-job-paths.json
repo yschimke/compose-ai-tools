@@ -1,0 +1,49 @@
+{
+  "ignorePaths": [
+    "docs/**",
+    "site/**",
+    "samples/**",
+    "renders/**",
+    "vscode-extension/**",
+    "deploy/**",
+    "scripts/**",
+    "cli/**",
+    "bundle-viewer/**",
+    "mcp/**",
+    "**/*.md",
+    "LICENSE",
+    ".gitignore",
+    ".gitattributes"
+  ],
+  "globalPaths": [
+    ".github/ci/daemon-job-paths.json",
+    ".github/ci/path-scope.py",
+    ".github/workflows/daemon-harness.yml",
+    "build-logic/**",
+    "gradle/**",
+    "settings.gradle*",
+    "build.gradle*",
+    "gradle.properties",
+    "common/io/**",
+    "daemon/core/**",
+    "daemon/harness/src/**",
+    "daemon/harness/build.gradle*"
+  ],
+  "groups": {
+    "desktop_fake": [
+      "daemon/harness/baselines/fake/**"
+    ],
+    "desktop_real": [
+      "daemon/desktop/**",
+      "renderers/desktop/**",
+      "daemon/harness/baselines/desktop/**"
+    ],
+    "android_real": [
+      "daemon/android/**",
+      "renderers/android/**",
+      "daemon/harness/baselines/android/**",
+      "data/**",
+      "runtimes/**"
+    ]
+  }
+}

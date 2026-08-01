@@ -10,12 +10,13 @@
 # that would have caught the compose/figma-svg SVG-override regression and the
 # Caddy WebSocket break.
 #
-# Two jobs, one per render backend:
+# Three jobs, independently path-scoped on PRs and all enabled off PRs:
 #   * `serve-lanes`         — the desktop CMP/Skiko daemon, live-rendering the fetched
 #                             `compose-m3` catalog.
 #   * `serve-lanes-android` — the Robolectric daemon, live-rendering a locally packed
 #                             `:samples:android-live-lane` bundle whose manifest names an
 #                             `Application` the render classpath doesn't carry (#2675 / #2669).
+#   * `playground-e2e`     — the Android-backed editor → compile → redemption chain.
 name: Serve Lanes E2E
 
 on:
@@ -80,7 +81,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Determine serve-lane scope
+    runs-on: ubuntu-latest
+    outputs:
+      desktop: ${{ steps.scope.outputs.desktop }}
+      android: ${{ steps.scope.outputs.android }}
+      playground: ${{ steps.scope.outputs.playground }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
+          python3 .github/ci/path-scope.py \
+            --config .github/ci/serve-lanes-paths.json >> "$GITHUB_OUTPUT"
+
   serve-lanes:
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
     name: Serve render lanes honor overrides
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -164,6 +188,8 @@ jobs:
   # regression in the `android.app.Application` pin (or a Robolectric bump that changes config-merge
   # precedence again — #2671 took us to 4.17-beta-2) turns the silent degradation into a red build.
   serve-lanes-android:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     name: Android (Robolectric) serve lane honors overrides
     runs-on: ubuntu-latest
     # Robolectric sandbox bootstrap + the android-all-instrumented fetch dominate the cold render,
@@ -252,6 +278,8 @@ jobs:
   # and runs user-supplied code in-process, so it is refused under `--public`; the boot is token-gated
   # and the spec carries `?token=`.
   playground-e2e:
+    needs: changes
+    if: needs.changes.outputs.playground == 'true'
     name: Playground compiles + redeems a snippet end to end
     runs-on: ubuntu-latest
     # Same cost profile as the android lane: Robolectric sandbox bootstrap + the android-all fetch
