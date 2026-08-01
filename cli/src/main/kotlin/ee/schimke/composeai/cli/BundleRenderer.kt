@@ -603,13 +603,6 @@ class BundleRenderer(
 
   companion object {
     /**
-     * Leaf filename the Android renderer ([ee.schimke.composeai.renderer.RobolectricRenderTest]'s
-     * `outputFileFor`) writes a preview's primary capture to: the first capture's `renderOutput`
-     * basename, or `"<id>.png"` when unset. Reconciling against this — rather than a name derived
-     * from the preview id — is what keeps a successful Android render from being mis-reported as a
-     * failure. Fan-out captures write additional files; the primary capture is the render signal.
-     */
-    /**
      * Return [raw] (a `previews.json` body) with every preview whose `id` is in [drop] removed from
      * the top-level `previews` array, preserving all other fields verbatim (operates on the JSON
      * tree, not the lossy `ignoreUnknownKeys` model). Used to hide IR-backed previews from the
@@ -627,6 +620,13 @@ class BundleRenderer(
       )
     }
 
+    /**
+     * Leaf filename the Android renderer writes for a preview's primary capture: the first
+     * capture's `renderOutput` basename, or `"<id>.png"` when unset. Reconciling against this,
+     * rather than a name derived from the preview id, keeps successful Android renders from being
+     * mis-reported as failures. Fan-out captures write additional files; the primary capture is the
+     * render signal.
+     */
     internal fun androidOutputLeaf(preview: PreviewInfo): String {
       val leaf = preview.captures.firstOrNull()?.renderOutput?.substringAfterLast('/')
       return if (leaf.isNullOrEmpty()) "${preview.id}.png" else leaf

@@ -15,8 +15,8 @@ import kotlinx.serialization.json.JsonElement
 /**
  * Daemon-side history orchestrator — see HISTORY.md § "What this PR lands § H1" / § "H2".
  *
- * Holds the configured [HistorySource]s in priority order. H1+H2 ships only [LocalFsHistorySource];
- * future phases (H10+) add `GitRefHistorySource` / `HttpMirrorHistorySource` here without changing
+ * Holds the configured [HistorySource]s in priority order. [LocalFsHistorySource] handles local
+ * writes and reads; reporting-branch read sources can plug in here without changing
  * [JsonRpcServer]'s call site.
  *
  * **Read** ([list], [read]) merges across all configured sources. For H1+H2 with one source this is
