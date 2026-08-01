@@ -134,8 +134,8 @@ jobs:
           npx playwright install --with-deps chromium
 
       # Boot the daemon-backed serve (backgrounded; pid in serve-lanes.pid) and
-      # export its URL. The script waits for /version + warms one render so the
-      # spec's per-test budget isn't spent on cold-daemon warm-up.
+      # export its URL. The script waits for /readyz + warms one render so the
+      # spec starts after bind-first catalog loading has produced a usable lane.
       - name: Boot daemon-backed serve
         shell: bash
         env:

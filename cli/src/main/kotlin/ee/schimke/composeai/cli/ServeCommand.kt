@@ -472,6 +472,14 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val catalogPerPreviewPoolsCloseable = AutoCloseable {
     catalogPerPreviewPools.values.forEach { runCatching { it.close() } }
   }
+
+  /**
+   * Serializes catalog session publication and retirement. The initial loader now runs after the
+   * listener binds, so admin trust/catalog routes can otherwise interleave with a load that has
+   * already computed trust but has not yet registered its host.
+   */
+  private val catalogRegistrationLock = Any()
+
   /**
    * In-browser CMP tier (`--wasm-dir <system>=<dir>[,<system>=<dir>…]`): map a design system to the
    * assembled Wasm catalog app (`./gradlew :samples:cmp-wasm-catalog:wasmCatalogDist` →
@@ -736,14 +744,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     val catalogReg =
       if (needsCatalogMachinery) registerCatalogs(registry, catalogWorktrees, openHost) else null
     // Keep the catalogs fresh against their (routinely-changing) branches without a restart.
-    val catalogRefresher =
-      catalogReg
-        ?.let { buildCatalogRefresher(it.store, it.loads) }
-        ?.also {
-          it.seedInitialHeads(catalogReg.loads.availableSystems())
-          it.start()
-          activeRefresher = it
-        }
+    val catalogRefresher = catalogReg?.let { buildCatalogRefresher(it.store, it.loads) }
     // Runtime ingestion (--accept-bundles): clients POST a bundle (or a ?url= to one) and it's
     // registered as a pinned session. Unpacked under a temp dir for this server's lifetime.
     val bundleStore = if (acceptBundles) openUploadStore(registry) else null
@@ -763,13 +764,23 @@ class ServeCommand(args: List<String>) : Command(args) {
       mdnsPreviewIds = previews.map { it.id },
       closeables =
         listOf(
+          catalogReg?.loader,
+          catalogRefresher,
           worktrees,
           catalogWorktrees.takeIf { it !== worktrees },
-          catalogRefresher,
           catalogPerPreviewPoolsCloseable,
         ),
       catalogLoads = catalogReg?.loads,
       catalogStore = catalogReg?.store,
+      onStarted = {
+        catalogReg?.loader?.start { loaded ->
+          catalogRefresher?.let {
+            it.seedInitialHeads(loaded)
+            it.start()
+            activeRefresher = it
+          }
+        }
+      },
     )
   }
 
@@ -798,14 +809,7 @@ class ServeCommand(args: List<String>) : Command(args) {
       if (needsCatalogMachinery) registerCatalogs(registry, worktrees = null, ::openHost) else null
     // Keep the catalogs fresh against their (routinely-changing) branches without a restart — the
     // public preview server (preview.coo.ee) runs this module-less path.
-    val catalogRefresher =
-      catalogReg
-        ?.let { buildCatalogRefresher(it.store, it.loads) }
-        ?.also {
-          it.seedInitialHeads(catalogReg.loads.availableSystems())
-          it.start()
-          activeRefresher = it
-        }
+    val catalogRefresher = catalogReg?.let { buildCatalogRefresher(it.store, it.loads) }
     val bundleStore = if (acceptBundles) openUploadStore(registry) else null
 
     val wasmCatalogs = mergedWasmCatalogs(catalogReg)
@@ -813,15 +817,23 @@ class ServeCommand(args: List<String>) : Command(args) {
       System.err.println("serve: in-browser Wasm tier for: ${wasmCatalogs.keys.joinToString(", ")}")
     }
 
-    // Pick a landing session so `/` resolves: the first registered catalog, else the first bundle.
+    // Pick a landing session so `/` resolves: the first configured catalog, else the first bundle.
     val defaultSessionId =
-      registeredCatalogs.firstOrNull() ?: registeredStartup.firstOrNull() ?: registry.anySessionId()
+      catalogRefs.firstOrNull { it.listed }?.system
+        ?: registeredStartup.firstOrNull()
+        ?: registry.anySessionId()
     // An `--accept-bundles` server legitimately starts with no sessions — they arrive at runtime
     // via
     // POST /bundles — so only bail when there's genuinely nothing to serve and no way to add any.
     // `--accept-docs` is the same case (a pure document drop-box has no sessions at all, ever), as
     // is `--admin-token`: that server's catalogs arrive later via POST /admin/catalogs.
-    if (defaultSessionId == null && !acceptBundles && !acceptDocs && adminToken == null) {
+    if (
+      defaultSessionId == null &&
+        catalogRefs.isEmpty() &&
+        !acceptBundles &&
+        !acceptDocs &&
+        adminToken == null
+    ) {
       System.err.println(
         "serve: nothing to serve — no --bundle / --bundles / --catalogs registered a session, and " +
           "none of --accept-bundles / --accept-docs / --admin-token is set."
@@ -849,9 +861,19 @@ class ServeCommand(args: List<String>) : Command(args) {
       // No module previews to advertise; discovery is a module-session nicety, so skip it here.
       mdnsModuleLabel = null,
       mdnsPreviewIds = null,
-      closeables = listOfNotNull(catalogPerPreviewPoolsCloseable, catalogRefresher),
+      closeables =
+        listOfNotNull(catalogReg?.loader, catalogRefresher, catalogPerPreviewPoolsCloseable),
       catalogLoads = catalogReg?.loads,
       catalogStore = catalogReg?.store,
+      onStarted = {
+        catalogReg?.loader?.start { loaded ->
+          catalogRefresher?.let {
+            it.seedInitialHeads(loaded)
+            it.start()
+            activeRefresher = it
+          }
+        }
+      },
     )
   }
 
@@ -1416,6 +1438,8 @@ class ServeCommand(args: List<String>) : Command(args) {
     catalogLoads: CatalogLoadTracker?,
     /** The catalog store an admin registration fetches through; null ⇒ no runtime admin. */
     catalogStore: ServeCatalogStore? = null,
+    /** Called immediately after the HTTP listener binds, before the long blocking wait. */
+    onStarted: () -> Unit = {},
   ) {
     val configuredCatalogs =
       catalogLoads?.snapshot()?.filter { it.config.listed }?.map { it.config.system }
@@ -1528,6 +1552,7 @@ class ServeCommand(args: List<String>) : Command(args) {
       )
 
     server.start()
+    onStarted()
     printBanner(bannerLabel, server.port, token, bannerPreviewCount)
     val watchdog = if (exitWhenIdle) startIdleWatchdog(registry, done) else null
     done.await()
@@ -1770,7 +1795,66 @@ class ServeCommand(args: List<String>) : Command(args) {
     val wasm: MutableMap<String, File>,
     val store: ServeCatalogStore,
     val loads: CatalogLoadTracker,
+    val loader: InitialCatalogLoader,
   )
+
+  private inner class InitialCatalogLoader(
+    private val store: ServeCatalogStore,
+    private val loads: CatalogLoadTracker,
+  ) : AutoCloseable {
+    private val executor = Executors.newSingleThreadExecutor { r ->
+      Thread(r, "serve-catalog-initial-load").apply { isDaemon = true }
+    }
+    private val started = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    fun start(onComplete: (Set<String>) -> Unit = {}) {
+      if (!started.compareAndSet(false, true)) return
+      executor.execute {
+        val loaded = linkedSetOf<String>()
+        try {
+          for (seed in loads.snapshot().map { it.config }) {
+            if (closed.get()) return@execute
+            val (config, result) =
+              synchronized(catalogRegistrationLock) {
+                val current = loads.configFor(seed.system) ?: return@synchronized null
+                val result =
+                  runCatching { store.load(current.system, sourceRepo = current.repo) }
+                    .getOrElse {
+                      ServeCatalogStore.Result.Failed(
+                        current.system,
+                        it.message ?: it::class.simpleName ?: "load failed",
+                      )
+                    }
+                loads.record(result)
+                current to result
+              } ?: continue
+            when (val r = result) {
+              is ServeCatalogStore.Result.Ok -> {
+                if (config.listed) registeredCatalogs += r.system
+                else registeredUnlistedCatalogs += r.system
+                loaded += r.system
+                System.err.println(
+                  "serve: catalog ${r.system} → ${r.previewCount} preview(s), trust=${r.trust} " +
+                    "(/${r.system}/${if (config.listed) "" else ", unlisted"})"
+                )
+              }
+              is ServeCatalogStore.Result.Failed ->
+                System.err.println("serve: catalog ${r.system} not served: ${r.reason}")
+            }
+          }
+          System.err.println("serve: ${loads.startupSummary()}")
+        } finally {
+          if (!closed.get()) onComplete(loaded)
+        }
+      }
+    }
+
+    override fun close() {
+      closed.set(true)
+      executor.shutdownNow()
+    }
+  }
 
   private fun registerCatalogs(
     registry: ServeSessionRegistry,
@@ -1842,25 +1926,12 @@ class ServeCommand(args: List<String>) : Command(args) {
           )
         },
       )
-    for (ref in catalogRefs) {
-      val result = store.load(ref.system, sourceRepo = ref.repo)
-      loads.record(result)
-      when (val r = result) {
-        is ServeCatalogStore.Result.Ok -> {
-          // Listed catalogs feed the front-page "Design systems" nav; unlisted app catalogs feed
-          // the separate "Apps" section (both reachable at /<system>/ and ?session=<system>).
-          if (ref.listed) registeredCatalogs += r.system else registeredUnlistedCatalogs += r.system
-          System.err.println(
-            "serve: catalog ${r.system} → ${r.previewCount} preview(s), trust=${r.trust} " +
-              "(/${r.system}/${if (ref.listed) "" else ", unlisted"})"
-          )
-        }
-        is ServeCatalogStore.Result.Failed ->
-          System.err.println("serve: catalog ${r.system} not served: ${r.reason}")
-      }
-    }
-    System.err.println("serve: ${loads.startupSummary()}")
-    return CatalogRegistration(wasm = wasm, store = store, loads = loads)
+    return CatalogRegistration(
+      wasm = wasm,
+      store = store,
+      loads = loads,
+      loader = InitialCatalogLoader(store, loads),
+    )
   }
 
   /**
@@ -1882,16 +1953,22 @@ class ServeCommand(args: List<String>) : Command(args) {
       configFile = catalogsFile,
       groups = catalogsConfig.groups,
       load = { system, repo ->
-        val result = store.load(system, sourceRepo = repo)
-        loads.record(result)
-        (result as? ServeCatalogStore.Result.Failed)?.reason
+        synchronized(catalogRegistrationLock) {
+          val result = store.load(system, sourceRepo = repo)
+          loads.record(result)
+          (result as? ServeCatalogStore.Result.Failed)?.reason
+        }
       },
       unload = { system ->
-        registry.unregister(system)
-        catalogPerPreviewPools.remove(system)?.let { runCatching { it.close() } }
-        // Stop serving the retired catalog's in-browser app too — but never drop a local
-        // `--wasm-dir` the operator configured, which isn't the catalog's to remove.
-        if (system !in localWasm) wasmCatalogs.remove(system)
+        synchronized(catalogRegistrationLock) {
+          registry.unregister(system)
+          catalogPerPreviewPools.remove(system)?.let { runCatching { it.close() } }
+          registeredCatalogs.remove(system)
+          registeredUnlistedCatalogs.remove(system)
+          // Stop serving the retired catalog's in-browser app too — but never drop a local
+          // `--wasm-dir` the operator configured, which isn't the catalog's to remove.
+          if (system !in localWasm) wasmCatalogs.remove(system)
+        }
       },
     )
 
@@ -1925,9 +2002,16 @@ class ServeCommand(args: List<String>) : Command(args) {
     return ServeCatalogRefresher(
       entries = entries,
       reload = { system, repo ->
-        val result = store.load(system, sourceRepo = repo)
-        loads.record(result)
-        if (result is ServeCatalogStore.Result.Failed) {
+        val result =
+          synchronized(catalogRegistrationLock) {
+            if (loads.configFor(system) == null) return@synchronized null
+            val result = store.load(system, sourceRepo = repo)
+            loads.record(result)
+            result
+          }
+        if (result == null) {
+          false
+        } else if (result is ServeCatalogStore.Result.Failed) {
           System.err.println("serve: catalog $system refresh failed: ${result.reason}")
           false
         } else {
@@ -2126,19 +2210,21 @@ class ServeCommand(args: List<String>) : Command(args) {
   ) {
     val loads = tracker ?: return
     val retired = mutableListOf<String>()
-    for (state in loads.snapshot()) {
-      val repo = state.config.repo
-      val branch = state.config.branch
-      if (updated.trustsBranch(repo, branch)) continue
-      // Only a catalog that actually loaded under the old trust needs tearing down; a pending or
-      // already-failed row has nothing serving to revoke.
-      if (!state.available) continue
-      registry.unregister(state.config.system)
-      loads.recordFailure(state.config.system, "producer trust revoked; awaiting re-verification")
-      retired += state.config.system
-      System.err.println(
-        "serve: retired ${state.config.system} — $repo@$branch is no longer trusted"
-      )
+    synchronized(catalogRegistrationLock) {
+      for (state in loads.snapshot()) {
+        val repo = state.config.repo
+        val branch = state.config.branch
+        if (updated.trustsBranch(repo, branch)) continue
+        // Only a catalog that actually loaded under the old trust needs tearing down; a pending or
+        // already-failed row has nothing serving to revoke.
+        if (!state.available) continue
+        registry.unregister(state.config.system)
+        loads.recordFailure(state.config.system, "producer trust revoked; awaiting re-verification")
+        retired += state.config.system
+        System.err.println(
+          "serve: retired ${state.config.system} — $repo@$branch is no longer trusted"
+        )
+      }
     }
     // Clear the remembered branch heads so the next refresh pass re-fetches these instead of
     // short-circuiting on an unchanged SHA — without this the teardown would be undone only by a

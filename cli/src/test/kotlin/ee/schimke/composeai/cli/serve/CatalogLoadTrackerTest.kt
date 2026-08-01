@@ -42,6 +42,16 @@ class CatalogLoadTrackerTest {
   }
 
   @Test
+  fun `configured catalogs start pending before the first async load records an attempt`() {
+    val tracker = tracker()
+
+    assertFalse(tracker.allAvailable())
+    assertEquals("catalogs 0/2 loaded", tracker.startupSummary())
+    assertEquals(listOf("pending", "pending"), tracker.snapshot().map { it.loadState })
+    assertEquals(listOf(null, null), tracker.snapshot().map { it.lastAttemptEpochMillis })
+  }
+
+  @Test
   fun `a later success clears the error and satisfies completeness`() {
     val tracker = tracker()
     tracker.recordSuccess("jetnews")
@@ -49,6 +59,7 @@ class CatalogLoadTrackerTest {
     tracker.recordSuccess("reply")
 
     assertTrue(tracker.allAvailable())
+    assertEquals("jetnews", tracker.firstAvailableSystem())
     val reply = tracker.snapshot().single { it.config.system == "reply" }
     assertEquals("loaded", reply.loadState)
     assertEquals(null, reply.error)

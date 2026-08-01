@@ -16,8 +16,8 @@ import java.util.concurrent.ConcurrentHashMap
  * success keeps it true because [ServeCatalogStore] retains the last good staged copy; the
  * [State.error] still records that the latest refresh failed. An initial failure has
  * `available=false`, remains visible in status, and stays eligible for refresh retry. Catalog
- * availability deliberately does not gate server readiness: a usable server with a partial external
- * catalog set should still deploy.
+ * availability deliberately does not require every catalog for server readiness: a usable server
+ * with a partial external catalog set should still deploy.
  */
 class CatalogLoadTracker(
   configured: List<Config>,
@@ -118,6 +118,9 @@ class CatalogLoadTracker(
 
   /** The configured entry for [system], or null when it isn't served here. */
   fun configFor(system: String): Config? = states[system]?.config
+
+  /** First currently usable catalog in configured order, or null while every catalog is pending. */
+  fun firstAvailableSystem(): String? = snapshot().firstOrNull { it.available }?.config?.system
 
   fun record(result: ServeCatalogStore.Result) {
     when (result) {

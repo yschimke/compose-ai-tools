@@ -272,18 +272,21 @@ test("Wasm iframe re-renders on knob override", async ({ page }) => {
   });
   const frame = page.locator("#cp-wasm");
   await expect(frame).toBeVisible();
-  await page.waitForTimeout(9000); // Kotlin/Wasm boot + first frame
+  await expect(frame).toHaveClass(/cp-wasm-live/, { timeout: 30000 });
 
   const before = await frame.screenshot();
 
   await knob.fill("WasmAfter");
   await knob.dispatchEvent("input");
   await knob.dispatchEvent("change");
-  await page.waitForTimeout(6000); // recompose in the iframe
 
-  const after = await frame.screenshot();
-  expect(
-    Buffer.compare(before, after) !== 0,
-    "Wasm stage pixels should change after the knob override",
-  ).toBeTruthy();
+  await expect
+    .poll(
+      async () => Buffer.compare(before, await frame.screenshot()) !== 0,
+      {
+        message: "Wasm stage pixels should change after the knob override",
+        timeout: 30000,
+      },
+    )
+    .toBeTruthy();
 });

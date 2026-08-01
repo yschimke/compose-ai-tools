@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Boot a daemon-backed `compose-preview serve` for the serve-lanes e2e spec, wait
-# until it can actually LIVE-RENDER (not merely answer /version), and print its
+# until it can actually LIVE-RENDER (not merely bind /version), and print its
 # base URL. Same shape the public server (preview.coo.ee) runs: a Trusted
 # `--catalogs` system live-rendered from its carried liveBundle, so every render
 # lane (PNG / SVG / Live WS) exercises a real Compose render daemon.
@@ -48,21 +48,23 @@ LIBGL_ALWAYS_SOFTWARE=1 nohup xvfb-run -a "$CLI" serve \
   > "$LOG" 2>&1 &
 echo $! > "$PID_FILE"
 
-# 1) Wait for the HTTP server to answer.
+# 1) Wait for the serve readiness gate: in catalog mode the listener binds before
+#    the async catalog load starts, so /version can answer while /api/previews is
+#    still empty. /readyz retries until a representative preview renders.
 up=""
 for _ in $(seq 1 120); do
-  if curl -sf -o /dev/null --max-time 4 "$BASE/version"; then up=1; break; fi
+  if curl -sf -o /dev/null --max-time 4 "$BASE/readyz"; then up=1; break; fi
   sleep 2
 done
 if [ -z "$up" ]; then
-  echo "::error::serve did not answer /version in time" >&2
+  echo "::error::serve did not become ready in time" >&2
   tail -60 "$LOG" >&2 || true
   exit 1
 fi
 
-# 2) Warm the render daemon: hit one live PNG render and wait for a 200. A cold
-#    daemon's first render pays the JVM + Skia warm-up; do it here so the spec's
-#    per-test budget isn't spent on warm-up.
+# 2) Warm the render daemon: /readyz already rendered one representative preview,
+#    but keep this explicit render wait so the test sees the same clear log line
+#    and we verify the path the spec exercises.
 PID="$(curl -s --max-time 8 "$BASE/$SYSTEM/api/previews" \
   | tr ',' '\n' | grep -oE '"id":"[^"]+"' | head -1 | sed 's/"id":"//;s/"//')"
 if [ -n "${PID:-}" ]; then
