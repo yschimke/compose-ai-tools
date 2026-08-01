@@ -337,17 +337,29 @@
       "sha256": "518ac242f70dd7ba560d8a23c35689707cce51a32a805233a0c7fa0a1d8b4b5a",
       "size": 12499
     },
+    "serve-playground-multifile.dark.png": {
+      "fixture": "serve-playground-multifile",
+      "theme": "dark",
+      "sha256": "45488565d98212c5f9bce3e4e24b6a9ba6e89ca07242c7c90254b028af4517f1",
+      "size": 30500
+    },
+    "serve-playground-multifile.light.png": {
+      "fixture": "serve-playground-multifile",
+      "theme": "light",
+      "sha256": "c0b891ab0134df2ef717dd84038e87c4f94c5324824b9ee72acfc5d25612588a",
+      "size": 30445
+    },
     "serve-playground.dark.png": {
       "fixture": "serve-playground",
       "theme": "dark",
-      "sha256": "a6358089097beeb6358673d0421f1b7e95d6a6e1f318858f695e8e7e83193242",
-      "size": 44035
+      "sha256": "83f48c1b9361dec1d401b9fa06c01490566ad64f78900ed27d9c193d8039692b",
+      "size": 46247
     },
     "serve-playground.light.png": {
       "fixture": "serve-playground",
       "theme": "light",
-      "sha256": "d2edee5f437f1ab0473f31298bd6292d6f250bebd6569c55a1c5155abc9ba281",
-      "size": 44108
+      "sha256": "6d72454ce016f8a4895d0ac6c1fba9fefeaf29a3b9fc99d6442e68c2b5c8581b",
+      "size": 46349
     },
     "serve-status.dark.png": {
       "fixture": "serve-status",
