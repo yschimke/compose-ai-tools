@@ -12,7 +12,10 @@ import org.gradle.tooling.events.OperationDescriptor
 import org.gradle.tooling.events.OperationType
 import org.gradle.tooling.events.ProgressEvent
 import org.gradle.tooling.events.StartEvent
+import org.gradle.tooling.events.task.TaskFailureResult
 import org.gradle.tooling.events.task.TaskOperationDescriptor
+import org.gradle.tooling.events.task.TaskSkippedResult
+import org.gradle.tooling.events.task.TaskSuccessResult
 import org.gradle.tooling.events.test.JvmTestOperationDescriptor
 import org.gradle.tooling.events.test.TestOperationDescriptor
 
@@ -33,6 +36,19 @@ data class GradleAccessFailure(
   val message: String,
   val detail: String? = null,
 )
+
+enum class GradleTaskDisposition {
+  SUCCESS,
+  UP_TO_DATE,
+  FROM_CACHE,
+  FAILED,
+  SKIPPED,
+}
+
+data class GradleTaskOutcome(val taskPath: String, val disposition: GradleTaskDisposition) {
+  val canReadOutputs: Boolean
+    get() = disposition != GradleTaskDisposition.SKIPPED
+}
 
 class GradleConnection(
   private val projectDir: File,
@@ -67,6 +83,8 @@ class GradleConnection(
 
   private val capturedTestFailures =
     Collections.synchronizedList(mutableListOf<CapturedTestFailure>())
+  private val capturedTaskOutcomes =
+    Collections.synchronizedMap(linkedMapOf<String, GradleTaskOutcome>())
 
   /**
    * Test failures captured during the most recent [runTasks] call. Populated live from the Tooling
@@ -75,6 +93,9 @@ class GradleConnection(
    */
   fun lastTestFailures(): List<CapturedTestFailure> =
     synchronized(capturedTestFailures) { capturedTestFailures.toList() }
+
+  fun lastTaskOutcomes(): Map<String, GradleTaskOutcome> =
+    synchronized(capturedTaskOutcomes) { capturedTaskOutcomes.toMap() }
 
   fun runTasks(
     vararg tasks: String,
@@ -85,6 +106,7 @@ class GradleConnection(
     val startTime = System.currentTimeMillis()
     val runningTasks = Collections.synchronizedSet(linkedSetOf<String>())
     capturedTestFailures.clear()
+    capturedTaskOutcomes.clear()
 
     // Ctrl+C otherwise kills the CLI without going through the cancellation
     // token — leaving the Gradle daemon still executing and any forked Test
@@ -176,6 +198,9 @@ class GradleConnection(
                 is FinishEvent -> {
                   runningTasks.remove(desc)
                   tasksFinished++
+                  val taskPath = descriptor.taskPath
+                  capturedTaskOutcomes[taskPath] =
+                    GradleTaskOutcome(taskPath, event.result.toTaskDisposition())
                   if (taskCount > 0) {
                     TerminalProgress.show((tasksFinished * 100) / taskCount)
                   }
@@ -226,6 +251,19 @@ class GradleConnection(
       } catch (_: IllegalStateException) {}
     }
   }
+
+  private fun org.gradle.tooling.events.OperationResult.toTaskDisposition(): GradleTaskDisposition =
+    when (this) {
+      is TaskSuccessResult ->
+        when {
+          isFromCache -> GradleTaskDisposition.FROM_CACHE
+          isUpToDate -> GradleTaskDisposition.UP_TO_DATE
+          else -> GradleTaskDisposition.SUCCESS
+        }
+      is TaskFailureResult -> GradleTaskDisposition.FAILED
+      is TaskSkippedResult -> GradleTaskDisposition.SKIPPED
+      else -> GradleTaskDisposition.SUCCESS
+    }
 
   private fun printBuildFailure(
     e: org.gradle.tooling.BuildException,

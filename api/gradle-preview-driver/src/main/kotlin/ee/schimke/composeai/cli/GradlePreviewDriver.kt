@@ -96,14 +96,19 @@ class GradlePreviewDriver(projectRoot: File, private val options: DriverOptions 
         val tasks = modules.map(request.taskFor).toTypedArray()
         connection.runTasks(*tasks, timeoutSeconds = options.timeoutSeconds, arguments = args)
       }
-    val manifests = PreviewResultBuilder.readAllManifests(modules)
+    val taskOutcomes = if (modules.isEmpty()) emptyMap() else connection.lastTaskOutcomes()
+    val readableModules = modules.filter { module ->
+      taskOutcomes[request.taskFor(module)]?.canReadOutputs == true
+    }
+    val manifests = PreviewResultBuilder.readAllManifests(readableModules)
     val previews = PreviewResultBuilder.build(manifests)
     return RenderOutcome(
       buildOk = buildOk,
-      modules = modules,
+      modules = readableModules,
       manifests = manifests,
       previews = previews,
       testFailures = connection.lastTestFailures(),
+      taskOutcomes = taskOutcomes,
     )
   }
 
@@ -173,4 +178,5 @@ data class RenderOutcome(
   val manifests: List<Pair<PreviewModule, PreviewManifest>>,
   val previews: List<PreviewResult>,
   val testFailures: List<CapturedTestFailure>,
+  val taskOutcomes: Map<String, GradleTaskOutcome> = emptyMap(),
 )

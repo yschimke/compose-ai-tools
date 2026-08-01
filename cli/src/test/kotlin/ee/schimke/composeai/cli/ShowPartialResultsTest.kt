@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -18,6 +19,27 @@ import kotlin.test.assertTrue
  * The exit code deliberately does **not** change: a failed build still exits 2.
  */
 class ShowPartialResultsTest {
+
+  private fun module(path: String): PreviewModule =
+    PreviewModule(path, File("/tmp/compose-preview-test/${path.replace(':', '/')}"))
+
+  private fun manifest(
+    module: PreviewModule,
+    vararg ids: String,
+  ): Pair<PreviewModule, PreviewManifest> =
+    module to
+      PreviewManifest(
+        module = module.gradlePath,
+        variant = "debug",
+        previews =
+          ids.map { id ->
+            PreviewInfo(
+              id = id,
+              functionName = id.substringAfterLast('.'),
+              className = id.substringBeforeLast('.'),
+            )
+          },
+      )
 
   private fun result(id: String, pngPath: String?): PreviewResult =
     PreviewResult(
@@ -39,6 +61,51 @@ class ShowPartialResultsTest {
       canReportAfterBuildFailure(results),
       "one broken preview must not suppress the ones that rendered",
     )
+  }
+
+  @Test
+  fun `preview filter scopes render to modules that can match`() {
+    val app = module("app")
+    val wear = module("wear")
+
+    val scoped =
+      modulesMatchingPreviewRequest(
+        modules = listOf(app, wear),
+        manifests =
+          listOf(
+            manifest(app, "com.example.HomePreview"),
+            manifest(wear, "com.example.LowBatteryPreview", "com.example.OtherWearPreview"),
+          ),
+        exactId = null,
+        filter = "LowBattery",
+      )
+
+    assertEquals(listOf(wear), scoped)
+  }
+
+  @Test
+  fun `task outcomes decide which module manifests may be read after render`() {
+    val ok = module("ok")
+    val cached = module("cached")
+    val failed = module("failed")
+    val skipped = module("skipped")
+    val neverStarted = module("neverStarted")
+    val taskFor: (PreviewModule) -> String = { ":${it.gradlePath}:composePreviewRenderAll" }
+
+    val readable =
+      readableRenderModules(
+        modules = listOf(ok, cached, failed, skipped, neverStarted),
+        taskFor = taskFor,
+        outcomes =
+          mapOf(
+            taskFor(ok) to GradleTaskOutcome(taskFor(ok), GradleTaskDisposition.SUCCESS),
+            taskFor(cached) to GradleTaskOutcome(taskFor(cached), GradleTaskDisposition.FROM_CACHE),
+            taskFor(failed) to GradleTaskOutcome(taskFor(failed), GradleTaskDisposition.FAILED),
+            taskFor(skipped) to GradleTaskOutcome(taskFor(skipped), GradleTaskDisposition.SKIPPED),
+          ),
+      )
+
+    assertEquals(listOf(ok, cached, failed), readable)
   }
 
   @Test
