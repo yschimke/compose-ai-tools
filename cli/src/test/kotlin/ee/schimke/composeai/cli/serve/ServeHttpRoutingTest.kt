@@ -456,9 +456,10 @@ class ServeHttpRoutingTest {
     assertTrue(html.contains("data-rc-backend=\"js\""), "js backend chip present")
     assertTrue(html.contains("value=\"rc\""), "rc mode radio present")
     // The client-side lane JS loads the player and applies knob edits without a daemon round-trip.
-    assertTrue(html.contains("/rc-player/bundle.js"), "the lane loads the player bundle")
-    assertTrue(html.contains("RcdPlayer"), "the lane creates the Rc player")
-    assertTrue(html.contains("setNamedFloatOverride"), "rc knob edits apply client-side")
+    val viewerJs = ServeWebAssets.load("viewer.js")!!.bytes.decodeToString()
+    assertTrue(viewerJs.contains("/rc-player/bundle.js"), "the lane loads the player bundle")
+    assertTrue(viewerJs.contains("RcdPlayer"), "the lane creates the Rc player")
+    assertTrue(viewerJs.contains("setNamedFloatOverride"), "rc knob edits apply client-side")
   }
 
   @Test

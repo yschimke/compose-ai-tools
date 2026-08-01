@@ -42,6 +42,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -218,6 +219,9 @@ class ServeHttpServer(
 
   private val renderSemaphore = Semaphore(renderSlots)
 
+  /** Best-effort in-memory engagement counts, keyed by session id + preview id. */
+  private val previewViews = ConcurrentHashMap<String, AtomicLong>()
+
   /**
    * Readiness latch for `/readyz` (the rolling-update gate). Unlike `/healthz` — a static "ok" that
    * only proves the HTTP listener is up — readiness is `true` only once a representative preview
@@ -313,6 +317,10 @@ class ServeHttpServer(
         // sensitive than `/version`/`/healthz`, so a private box keeps it behind the token.
         get("/status") { handleStatus(json = false) }
         get("/status.json") { handleStatus(json = true) }
+
+        // Shared frontend assets for ServeWeb pages. These are generic CSS/JS bytes baked into the
+        // CLI jar, so they are ungated like the Wasm/RC players and cacheable with an ETag.
+        get("/assets/serve/{name}") { handleServeWebAsset() }
 
         // In-browser CMP tier: serve the static Wasm app for a registered system at
         // `/wasm/<system>/<file>`. Ungated (generic client code, no session data) so the viewer's
@@ -958,6 +966,24 @@ class ServeHttpServer(
     respondPlayerAsset(playerAsset(format.playerResource))
   }
 
+  /** `GET /assets/serve/{name}`: static ServeWeb CSS/JS extracted from Kotlin raw strings. */
+  private suspend fun RoutingContext.handleServeWebAsset() {
+    val name = call.parameters["name"] ?: ""
+    val asset = ServeWebAssets.load(name)
+    if (asset == null) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
+    call.response.headers.append(HttpHeaders.AccessControlAllowOrigin, "*")
+    call.response.headers.append(HttpHeaders.CacheControl, "public, max-age=3600")
+    call.response.headers.append(HttpHeaders.ETag, asset.etag)
+    if (call.request.headers[HttpHeaders.IfNoneMatch] == asset.etag) {
+      call.respond(HttpStatusCode.NotModified)
+      return
+    }
+    call.respondBytes(asset.bytes, ContentType.parse(asset.contentType))
+  }
+
   /**
    * Describe the work behind a response in headers that survive a reverse proxy. This lets a
    * browser, curl, or an agent distinguish cheap published bytes from a daemon render without
@@ -968,6 +994,27 @@ class ServeHttpServer(
     call.response.headers.append(GENERATION_HEADER, generation)
     cacheControl?.let { call.response.headers.append(HttpHeaders.CacheControl, it) }
   }
+
+  private fun previewViewKey(sessionId: String, previewId: String): String =
+    "$sessionId\u0000$previewId"
+
+  private fun incrementPreviewViews(
+    sessionId: String,
+    previewId: String,
+  ): ServeWeb.PreviewEngagement =
+    ServeWeb.PreviewEngagement(
+      previewViews
+        .computeIfAbsent(previewViewKey(sessionId, previewId)) { AtomicLong(0) }
+        .incrementAndGet()
+    )
+
+  private fun previewEngagement(sessionId: String, previewId: String): ServeWeb.PreviewEngagement =
+    ServeWeb.PreviewEngagement(previewViews[previewViewKey(sessionId, previewId)]?.get() ?: 0L)
+
+  private fun previewEngagement(sessionId: String, previews: List<ServePreview>) =
+    previews.associate {
+      it.id to previewEngagement(sessionId, it.id)
+    }
 
   /** `GET /` (query) and `GET /{system}[/]` (path): the session's preview-list landing page. */
   private suspend fun RoutingContext.handleLanding(sessionInPath: Boolean) {
@@ -1032,6 +1079,7 @@ class ServeHttpServer(
           // a daemon-twinned card can actually re-render one, hence the per-preview predicate.
           declaredThemes = renderHost.declaredThemes,
           canRenderThemeFor = { id -> renderHost.canRenderOverridesFor(id) },
+          engagement = previewEngagement(selectedSessionId(sessionInPath), renderHost.previews),
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = heroUrl),
         ),
         ContentType.Text.Html,
@@ -1868,6 +1916,7 @@ class ServeHttpServer(
                 overrides = p.overrides,
                 remoteComposeKnobs = p.remoteComposeKnobs,
                 liveOnly = p.id in renderHost.liveOnlyPreviewIds,
+                views = previewEngagement(selectedSessionId(sessionInPath), p.id).views,
               )
             },
         )
@@ -2097,6 +2146,7 @@ class ServeHttpServer(
       val origin = externalOrigin()
       val imageUrl =
         "$origin$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png${requestQuerySuffix()}"
+      val engagement = incrementPreviewViews(sessionId, preview.id)
       markGeneration("static-page", pageCacheControl())
       call.respondText(
         ServeWeb.viewerPage(
@@ -2142,6 +2192,7 @@ class ServeHttpServer(
           // the
           // catalog-level reason (no live bundle, unverified, …) alongside the per-control note.
           degradations = renderHost.degradations,
+          engagement = engagement,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = imageUrl),
           // Per-preview: link the preview to its source file on GitHub, built from the catalog's
           // SOURCE (repo/ref/module of the Kotlin — NOT the delivery branch) joined with the
@@ -2791,7 +2842,7 @@ private data class VersionResponse(
   val version: String,
   /**
    * The schema id the `/api/previews` + page surface speaks, so a client can feature-detect. `v2`
-   * adds the per-preview `overrides` (author knob declarations) to `/api/previews`.
+   * adds per-preview `overrides` plus best-effort engagement counts to `/api/previews`.
    */
   val serveSchema: String = "compose-preview-serve/v2",
   /** True when the box serves token-free (public preview server); false for a token-gated serve. */
@@ -2985,6 +3036,8 @@ private data class PreviewDto(
    * every ordinary baked preview. Additive since `compose-preview-serve/v2`.
    */
   val liveOnly: Boolean = false,
+  /** Number of viewer page opens for this preview since this server process started. */
+  val views: Long = 0,
 )
 
 /** One configured catalog on `GET /admin/catalogs`: its config plus its latest load outcome. */
