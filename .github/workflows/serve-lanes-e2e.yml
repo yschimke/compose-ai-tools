@@ -29,6 +29,9 @@ on:
       # ServeCommand owns openPlaygroundService, the daemon-opener wiring, and the ServeHttpServer
       # hookup — it lives one directory up from serve/**, so trigger on it explicitly.
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/ServeCommand.kt"
+      # The bundle upload E2E packs a local bundle first, so run it when the producer changes too.
+      - "cli/src/main/kotlin/ee/schimke/composeai/cli/BundleCommand.kt"
+      - "gradle-plugin/**"
       - "daemon/**"
       - "render-session/**"
       - "render-session-subprocess/**"
@@ -56,6 +59,9 @@ on:
       # ServeCommand owns openPlaygroundService, the daemon-opener wiring, and the ServeHttpServer
       # hookup — it lives one directory up from serve/**, so trigger on it explicitly.
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/ServeCommand.kt"
+      # The bundle upload E2E packs a local bundle first, so run it when the producer changes too.
+      - "cli/src/main/kotlin/ee/schimke/composeai/cli/BundleCommand.kt"
+      - "gradle-plugin/**"
       - "daemon/**"
       - "render-session/**"
       - "render-session-subprocess/**"

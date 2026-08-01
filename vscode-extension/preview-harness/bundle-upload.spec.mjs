@@ -8,6 +8,16 @@ import { readFileSync } from "node:fs";
 const TOKEN = process.env.SERVE_TOKEN ?? "bundle-upload-e2e";
 const BUNDLE_PATH = process.env.BUNDLE_PATH;
 const SESSION = process.env.BUNDLE_SESSION ?? "local-e2e-bundle";
+const SERVE_URL = process.env.SERVE_URL || "http://127.0.0.1:8728";
+
+function htmlDecode(value) {
+  return value
+    .replaceAll("&amp;", "&")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">");
+}
 
 function requireBundle() {
   if (!BUNDLE_PATH && process.env.CI) {
@@ -38,9 +48,16 @@ test("uploads a local bundle and opens the returned preview URL", async ({ reque
 
   const landing = await request.get(`${accepted.path}&token=${encodeURIComponent(TOKEN)}`);
   expect(landing.status(), "returned upload URL").toBe(200);
-  expect(await landing.text(), "uploaded bundle landing has preview links").toContain(
-    'href="/p/',
+  const landingHtml = await landing.text();
+  const previewHref = landingHtml.match(/href="([^"]*\/p\/[^"]+)"/)?.[1];
+  expect(previewHref, "uploaded bundle landing has preview links").toBeTruthy();
+  const previewUrl = htmlDecode(previewHref);
+  const viewer = await request.get(previewUrl);
+  expect(viewer.status(), `viewer linked from landing (${previewUrl})`).toBe(200);
+  expect(await viewer.text(), "linked viewer belongs to uploaded session").toContain(
+    `data-preview-id=`,
   );
+  const linkedViewer = new URL(previewUrl, SERVE_URL);
 
   const previews = await request.get(
     `/api/previews?session=${encodeURIComponent(SESSION)}&token=${encodeURIComponent(TOKEN)}`,
@@ -49,11 +66,15 @@ test("uploads a local bundle and opens the returned preview URL", async ({ reque
   const body = await previews.json();
   const list = Array.isArray(body) ? body : (body.previews ?? []);
   expect(list.length, "uploaded session previews").toBeGreaterThan(0);
-  const previewId = list[0].id;
+  const previewId = decodeURIComponent(linkedViewer.pathname.match(/\/p\/([^/]+)$/)?.[1] ?? "");
   expect(previewId, "uploaded preview id").toBeTruthy();
+  expect(
+    list.some((p) => p.id === previewId),
+    "landing-linked preview is present in uploaded session API",
+  ).toBeTruthy();
 
   const render = await request.get(
-    `/render/${encodeURIComponent(previewId)}.png?session=${encodeURIComponent(SESSION)}&token=${encodeURIComponent(TOKEN)}`,
+    `/render/${encodeURIComponent(previewId)}.png${linkedViewer.search}`,
   );
   expect(render.status(), "uploaded preview render").toBe(200);
   expect(render.headers()["content-type"] ?? "").toContain("image/png");
