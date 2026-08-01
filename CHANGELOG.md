@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.19.16](https://github.com/yschimke/compose-ai-tools/compare/v0.19.15...v0.19.16) (2026-08-01)
+
+
+### Features
+
+* **serve:** persist preview engagement ([#3136](https://github.com/yschimke/compose-ai-tools/issues/3136)) ([0c93552](https://github.com/yschimke/compose-ai-tools/commit/0c9355258f549468b06a99764de90efdbe0d2dea))
+
+
+### Bug Fixes
+
+* **ci:** protect release publish runs from coalescing ([#3139](https://github.com/yschimke/compose-ai-tools/issues/3139)) ([dd2c559](https://github.com/yschimke/compose-ai-tools/commit/dd2c5595af1e7786f423e2cbfce6646acdc851ed))
+* **deps:** update gradle minor/patch ([#3134](https://github.com/yschimke/compose-ai-tools/issues/3134)) ([1217032](https://github.com/yschimke/compose-ai-tools/commit/12170320bc405b65fece92a48b54880ba2977b8c))
+* **figma-svg:** clip lookahead scrolls to rendered viewport ([#3137](https://github.com/yschimke/compose-ai-tools/issues/3137)) ([8fdaee5](https://github.com/yschimke/compose-ai-tools/commit/8fdaee56bcb3a2aabbfdef5b0dfe5c89a2f41d0c))
+* **figma-svg:** support Compose 1.9 applied alpha ([#3132](https://github.com/yschimke/compose-ai-tools/issues/3132)) ([0ccd709](https://github.com/yschimke/compose-ai-tools/commit/0ccd709a6710b39710dbaaaed0e353e8c446aaaf))
+
 ## [0.19.15](https://github.com/yschimke/compose-ai-tools/compare/v0.19.14...v0.19.15) (2026-08-01)
 
 
