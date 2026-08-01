@@ -421,6 +421,7 @@ abstract class Command(
     val modules: List<PreviewModule>,
     val manifests: List<Pair<PreviewModule, PreviewManifest>>,
     val results: List<PreviewResult>,
+    val discoveredPreviewCount: Int,
   )
 
   /**
@@ -429,7 +430,12 @@ abstract class Command(
    * whose manifests don't fit the `PreviewManifest` / `PreviewResult` shape (today:
    * `show-resources`, which has its own resource-manifest type).
    */
-  protected data class RawRenderOutcome(val buildOk: Boolean, val modules: List<PreviewModule>)
+  protected data class RawRenderOutcome(
+    val buildOk: Boolean,
+    val modules: List<PreviewModule>,
+    val discoveredPreviewCount: Int,
+    val taskOutcomes: Map<String, GradleTaskOutcome> = emptyMap(),
+  )
 
   /**
    * Shared gradle-drive pipeline — open the connector, resolve preview modules, optionally filter
@@ -452,32 +458,65 @@ abstract class Command(
     moduleFilter: (PreviewModule) -> Boolean = { true },
     taskFor: (PreviewModule) -> String = { ":${it.gradlePath}:composePreviewRenderAll" },
     gradleArguments: List<String> = emptyList(),
+    scopeToPreviewRequest: Boolean = false,
   ): RawRenderOutcome {
     var outcome: RawRenderOutcome? = null
     withGradle(silenceStdout = silenceStdout) { gradle ->
       val modules = withGradleStdout(silenceStdout) { resolveModules(gradle).filter(moduleFilter) }
-      val buildOk =
-        if (modules.isEmpty()) true
+      val (buildOk, modulesToRead, discoveredPreviewCount, taskOutcomes) =
+        if (modules.isEmpty()) Quad(true, emptyList(), 0, emptyMap<String, GradleTaskOutcome>())
         else {
           // Explicit discover pass before the render so `shards=auto` sees a fresh previews.json at
           // render-configuration time (see [runDiscover]). Kept as a first-class step — not an
           // incidental side effect of XR provisioning — so shard sizing can't regress if the XR
           // path changes. provisionXr therefore skips its own (now-redundant) discover.
-          runDiscover(gradle, modules, silenceStdout)
+          val discoverySucceeded = runDiscover(gradle, modules, silenceStdout)
+          val discoveryManifests =
+            if (discoverySucceeded) readAllManifests(modules) else emptyList()
+          val renderModules =
+            if (scopeToPreviewRequest) {
+              modulesMatchingPreviewRequest(
+                modules,
+                discoveryManifests,
+                discoverySucceeded = discoverySucceeded,
+              )
+            } else modules
+          if (scopeToPreviewRequest) {
+            warnIfPreviewFilterStillRendersExtraRows(
+              renderModules,
+              discoveryManifests,
+              discoverySucceeded = discoverySucceeded,
+            )
+          }
           val xrArgs =
-            provisionXrCompositeArgs(gradle, modules, silenceStdout, discoverFirst = false)
-          val tasks = modules.map(taskFor).toTypedArray()
+            provisionXrCompositeArgs(gradle, renderModules, silenceStdout, discoverFirst = false)
+          val tasks = renderModules.map(taskFor).toTypedArray()
           val ok =
-            withGradleStdout(silenceStdout) {
-              runGradle(gradle, *tasks, arguments = gradleArguments + xrArgs)
+            if (renderModules.isEmpty()) true
+            else {
+              withGradleStdout(silenceStdout) {
+                runGradle(gradle, *tasks, arguments = gradleArguments + xrArgs)
+              }
             }
           if (!ok) reportRenderFailures(gradle)
-          ok
+          val outcomes = gradle.lastTaskOutcomes()
+          val readableModules = readableRenderModules(renderModules, taskFor, outcomes)
+          val discoveredPreviewCount =
+            if (scopeToPreviewRequest) discoveryManifests.sumOf { it.second.previews.size } else 0
+          Quad(ok, readableModules, discoveredPreviewCount, outcomes)
         }
-      outcome = RawRenderOutcome(buildOk = buildOk, modules = modules)
+      outcome =
+        RawRenderOutcome(
+          buildOk = buildOk,
+          modules = modulesToRead,
+          discoveredPreviewCount = discoveredPreviewCount,
+          taskOutcomes = taskOutcomes,
+        )
     }
     return outcome ?: error("renderModules: gradle block did not produce an outcome")
   }
+
+  private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 
   /**
    * Standard "discover modules → run `:composePreviewRenderAll` → load manifests → build results"
@@ -492,7 +531,12 @@ abstract class Command(
     silenceStdout: Boolean,
     gradleArguments: List<String> = emptyList(),
   ): RenderModulesOutcome {
-    val raw = renderModules(silenceStdout = silenceStdout, gradleArguments = gradleArguments)
+    val raw =
+      renderModules(
+        silenceStdout = silenceStdout,
+        gradleArguments = gradleArguments,
+        scopeToPreviewRequest = true,
+      )
     val manifests = readAllManifests(raw.modules)
     val results = if (manifests.isEmpty()) emptyList() else buildResults(manifests)
     return RenderModulesOutcome(
@@ -500,6 +544,8 @@ abstract class Command(
       modules = raw.modules,
       manifests = manifests,
       results = results,
+      discoveredPreviewCount =
+        raw.discoveredPreviewCount.takeIf { it > 0 } ?: manifests.sumOf { it.second.previews.size },
     )
   }
 
@@ -718,9 +764,53 @@ abstract class Command(
     )
 
   protected fun matchesRequest(result: PreviewResult): Boolean {
-    if (exactId != null && result.id != exactId) return false
-    if (filter != null && !result.id.contains(filter, ignoreCase = true)) return false
-    return true
+    return previewIdMatchesRequest(result.id, exactId = exactId, filter = filter)
+  }
+
+  private fun modulesMatchingPreviewRequest(
+    modules: List<PreviewModule>,
+    manifests: List<Pair<PreviewModule, PreviewManifest>>,
+    discoverySucceeded: Boolean,
+  ): List<PreviewModule> =
+    modulesMatchingPreviewRequest(
+      modules = modules,
+      manifests = manifests,
+      exactId = exactId,
+      filter = filter,
+      discoverySucceeded = discoverySucceeded,
+    )
+
+  private fun warnIfPreviewFilterStillRendersExtraRows(
+    renderModules: List<PreviewModule>,
+    manifests: List<Pair<PreviewModule, PreviewManifest>>,
+    discoverySucceeded: Boolean,
+  ) {
+    if (exactId == null && filter == null) return
+    if (renderModules.isEmpty()) return
+    val flag = if (exactId != null) "--id" else "--filter"
+    if (!discoverySucceeded) {
+      System.err.println(
+        "compose-preview: preview discovery failed, so $flag could not narrow the render; " +
+          "rendering all resolved modules so Gradle can retry discovery."
+      )
+      return
+    }
+    val byPath = renderModules.map { it.gradlePath }.toSet()
+    val rendersExtraRows =
+      manifests
+        .filter { (module, _) -> module.gradlePath in byPath }
+        .any { (_, manifest) ->
+          manifest.previews.any {
+            !previewIdMatchesRequest(it.id, exactId = exactId, filter = filter)
+          }
+        }
+    if (!rendersExtraRows) return
+    System.err.println(
+      "compose-preview: $flag narrowed the render to matching module(s) " +
+        renderModules.joinToString(", ") { it.gradlePath } +
+        "; Gradle still renders the full selected module task, so other previews in those " +
+        "module(s) may execute but will not be printed."
+    )
   }
 
   private fun stateFile(module: PreviewModule): File =
@@ -871,6 +961,42 @@ internal fun agpClassloaderGuidance(failures: List<ProjectDiscoveryFailure>): St
 
 internal val NON_PNG_PREVIEW_KINDS = setOf("XR_SUBSPACE")
 
+internal fun previewIdMatchesRequest(id: String, exactId: String?, filter: String?): Boolean {
+  if (exactId != null && id != exactId) return false
+  if (filter != null && !id.contains(filter, ignoreCase = true)) return false
+  return true
+}
+
+internal fun modulesMatchingPreviewRequest(
+  modules: List<PreviewModule>,
+  manifests: List<Pair<PreviewModule, PreviewManifest>>,
+  exactId: String?,
+  filter: String?,
+  discoverySucceeded: Boolean = true,
+): List<PreviewModule> {
+  // The render task depends on discovery and is the authoritative retry. Do not let missing or
+  // stale discovery manifests suppress that retry after the separate optimization pass fails.
+  if (!discoverySucceeded) return modules
+  if (exactId == null && filter == null) return modules
+  val matchingPaths =
+    manifests
+      .filter { (_, manifest) ->
+        manifest.previews.any { previewIdMatchesRequest(it.id, exactId = exactId, filter = filter) }
+      }
+      .map { (module, _) -> module.gradlePath }
+      .toSet()
+  return modules.filter { it.gradlePath in matchingPaths }
+}
+
+internal fun readableRenderModules(
+  modules: List<PreviewModule>,
+  taskFor: (PreviewModule) -> String,
+  outcomes: Map<String, GradleTaskOutcome>,
+): List<PreviewModule> = modules.filter { module ->
+  val outcome = outcomes[taskFor(module)]
+  outcome?.canReadOutputs == true
+}
+
 /**
  * Previews that finished rendering but produced no PNG for at least one capture — the set
  * `--missing-renders` gates on and the diagnostic enumerates. Excludes [NON_PNG_PREVIEW_KINDS],
@@ -961,7 +1087,7 @@ class ShowCommand(args: List<String>) : Command(args) {
       )
     }
 
-    if (outcome.manifests.isEmpty() || outcome.manifests.all { it.second.previews.isEmpty() }) {
+    if (outcome.discoveredPreviewCount == 0) {
       if (jsonOutput) println(encodeResponse(emptyList(), countsScope = emptyList()))
       else println("No previews found.")
       // Mirror ShowResourcesCommand: a workspace with the plugin applied
@@ -1511,7 +1637,12 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
     // Hand-roll the renderModules→manifests→buildResults pipeline so the subclass hook can slot
     // between gradle finish and renderer load. `renderAllModules` is the same shape but
     // single-shot — no hook seam — so we expand it here.
-    val raw = renderModules(silenceStdout = jsonOutput, gradleArguments = gradleArgsWithForce())
+    val raw =
+      renderModules(
+        silenceStdout = jsonOutput,
+        gradleArguments = gradleArgsWithForce(),
+        scopeToPreviewRequest = true,
+      )
     val manifests = readAllManifests(raw.modules)
     produceAdditionalDataProducts(raw.modules, manifests)
     // After production runs, give the subclass a chance to abort the run when its data product
@@ -1528,6 +1659,9 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
         modules = raw.modules,
         manifests = manifests,
         results = results,
+        discoveredPreviewCount =
+          raw.discoveredPreviewCount.takeIf { it > 0 }
+            ?: manifests.sumOf { it.second.previews.size },
       )
 
     if (outcome.manifests.isEmpty()) {
