@@ -2,6 +2,7 @@
 
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.devices.frameDpOverriddenBy
 import ee.schimke.composeai.daemon.history.GitProvenance
 import ee.schimke.composeai.daemon.history.GitRefHistorySource
 import ee.schimke.composeai.daemon.history.HistoryManager
@@ -503,20 +504,28 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
   // return. Only a *present* params block drives the wrap decision below — a catalog sticker always
   // carries one (it declares showBackground), so the PNG↔Live parity fix is unaffected.
   val params = info.params ?: return defaults
-  val density = params.density ?: defaults.density
+  // The device catalog's density is the last-resort fallback (matching the batch resolver), so a
+  // bare `spec:…,dpi=160` entry streams at 1.0 instead of the session default.
+  val density =
+    params.density
+      ?: params.device
+        ?.takeIf { it.isNotBlank() }
+        ?.let { ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it).density }
+      ?: defaults.density
   // A device frame owns its geometry (#3113) — take the dp extent from the device catalog rather
   // than the manifest's widthDp/heightDp, so a `@Preview(device = …)` streams at the same size the
   // batch resolver and the inbound `overrides.device` path produce instead of the fixed frame it
   // would otherwise fall through to.
-  val deviceDims =
+  val deviceFrameDp =
     params.device
       ?.takeIf { it.isNotBlank() }
       ?.let { ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it) }
+      ?.frameDpOverriddenBy(params.widthDp, params.heightDp)
   val explicitWidthPx =
-    deviceDims?.let { (it.widthDp * density).toInt().coerceAtLeast(1) }
+    deviceFrameDp?.let { (it.first * density).toInt().coerceAtLeast(1) }
       ?: params.widthDp?.let { (it * density).roundHalfUpPx() }
   val explicitHeightPx =
-    deviceDims?.let { (it.heightDp * density).toInt().coerceAtLeast(1) }
+    deviceFrameDp?.let { (it.second * density).toInt().coerceAtLeast(1) }
       ?: params.heightDp?.let { (it * density).roundHalfUpPx() }
   // AS-parity wrap-content, mirroring the offline-bake / harness resolver
   // ([PreviewManifestEntry.resolved]). A preview that declares no explicit size on an axis and is

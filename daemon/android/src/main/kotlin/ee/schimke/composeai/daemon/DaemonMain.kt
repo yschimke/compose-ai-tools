@@ -4,6 +4,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
+import ee.schimke.composeai.daemon.devices.frameDpOverriddenBy
 import ee.schimke.composeai.daemon.history.GitProvenance
 import ee.schimke.composeai.daemon.history.GitRefHistorySource
 import ee.schimke.composeai.daemon.history.HistoryManager
@@ -801,7 +802,14 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
       uiMode = RenderSpec.SpecUiMode.LIGHT,
     )
   val params = info.params ?: return defaults
-  val density = params.density ?: defaults.density
+  // The device catalog's density is the last-resort fallback (matching the batch resolver), so a
+  // bare `spec:…,dpi=160` entry streams at 1.0 instead of the session default.
+  val density =
+    params.density
+      ?: params.device
+        ?.takeIf { it.isNotBlank() }
+        ?.let { ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it).density }
+      ?: defaults.density
   // AS-parity wrap-content, mirroring the batch resolver ([PreviewManifestEntry.resolved]) and the
   // desktop daemon's [renderSpecFromInfo]. A preview that declares no explicit size on an axis and
   // isn't pinned by a device / non-Compose surface renders wrap-content on that axis: the render
@@ -812,15 +820,16 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
   // than the manifest's widthDp/heightDp, so a `@Preview(device = …)` streams at the same size the
   // batch resolver and the inbound `overrides.device` path produce instead of the fixed frame it
   // would otherwise fall through to.
-  val deviceDims =
-    params.device?.takeIf { it.isNotBlank() }?.let {
-      ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it)
-    }
+  val deviceFrameDp =
+    params.device
+      ?.takeIf { it.isNotBlank() }
+      ?.let { ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it) }
+      ?.frameDpOverriddenBy(params.widthDp, params.heightDp)
   val explicitWidthPx =
-    deviceDims?.let { (it.widthDp * density).toInt().coerceAtLeast(1) }
+    deviceFrameDp?.let { (it.first * density).toInt().coerceAtLeast(1) }
       ?: params.widthDp?.let { (it * density).roundHalfUpPx() }
   val explicitHeightPx =
-    deviceDims?.let { (it.heightDp * density).toInt().coerceAtLeast(1) }
+    deviceFrameDp?.let { (it.second * density).toInt().coerceAtLeast(1) }
       ?: params.heightDp?.let { (it * density).roundHalfUpPx() }
   val pinned =
     (params.device ?: defaults.device) != null ||

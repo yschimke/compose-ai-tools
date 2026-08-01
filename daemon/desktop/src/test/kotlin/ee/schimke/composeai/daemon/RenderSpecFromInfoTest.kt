@@ -94,6 +94,40 @@ class RenderSpecFromInfoTest {
     assertEquals((393 * spec.density).toInt(), spec.widthPx)
     assertEquals((851 * spec.density).toInt(), spec.heightPx)
     assertEquals("id:pixel_5", spec.device)
+    // With no annotation density the device's own is used, so the stream lane frames the Pixel at
+    // the catalog's 2.75 — the same density the bake resolves — instead of the session default.
+    assertEquals(2.75f, spec.density, 0.0001f)
+    assertEquals(1080, spec.widthPx) // 393 × 2.75 = 1080.75, truncated
+  }
+
+  @Test
+  fun `annotation dp override the device frame on the stream lane too`() {
+    // Same precedence the batch resolver applies (`DeviceDimensions.frameDpOverriddenBy`): both
+    // axes set displace the catalog, a single-axis hint does not. The two lanes must agree or a
+    // held session drifts from the preview's own baked snapshot.
+    val both =
+      renderSpecFromInfo(
+        info(
+          params =
+            PreviewParamsDto(
+              device = "id:wearos_large_round",
+              widthDp = 100,
+              heightDp = 100,
+              density = 2.0f,
+            )
+        )
+      )
+    assertEquals(200, both.widthPx)
+    assertEquals(200, both.heightPx)
+
+    val single =
+      renderSpecFromInfo(
+        info(
+          params = PreviewParamsDto(device = "id:wearos_large_round", widthDp = 100, density = 2.0f)
+        )
+      )
+    assertEquals(454, single.widthPx)
+    assertEquals(454, single.heightPx)
   }
 
   @Test

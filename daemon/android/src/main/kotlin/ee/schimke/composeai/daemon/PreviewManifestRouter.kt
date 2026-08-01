@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
+import ee.schimke.composeai.daemon.devices.frameDpOverriddenBy
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.Serializable
@@ -321,8 +322,11 @@ data class PreviewManifestEntry(
 ) {
   fun resolved(): ResolvedRenderParams {
     val p = params
-    val density = density ?: p?.density ?: 2.0f
     val device = device ?: p?.device
+    val deviceDims = device?.takeIf { it.isNotBlank() }?.let { DeviceDimensions.resolve(it) }
+    // The manifest's density wins (the plugin writes the device's own density there); the catalog's
+    // is the fallback, so a bare `spec:…,dpi=160` entry resolves at 1.0 instead of the 2.0 default.
+    val density = density ?: p?.density ?: deviceDims?.density ?: 2.0f
     val kind = kind ?: p?.kind
     val name = p?.name
     val uiMode = uiMode ?: p?.uiMode ?: 0
@@ -351,15 +355,17 @@ data class PreviewManifestEntry(
     // The dp→px conversion TRUNCATES, matching `RenderPreviewsTask`'s device-frame branch and the
     // inbound-`device` path in `submit` — a fractional product (id:pixel_5 = 393dp × 2.75 =
     // 1080.75) must land on the same 1080 the bake produces, or the live lane sits one pixel off
-    // its own snapshot. Only the explicit-dp path below rounds half-up (#3113).
-    val deviceDims = device?.takeIf { it.isNotBlank() }?.let { DeviceDimensions.resolve(it) }
+    // its own snapshot. Only the explicit-dp path below rounds half-up (#3113). Annotation dp still
+    // displace the catalog when BOTH axes are set — [frameDpOverriddenBy] holds that precedence for
+    // all four resolvers.
+    val deviceFrameDp = deviceDims?.frameDpOverriddenBy(p?.widthDp, p?.heightDp)
     val explicitWidthPx =
       widthPx
-        ?: deviceDims?.let { (it.widthDp * density).toInt().coerceAtLeast(1) }
+        ?: deviceFrameDp?.let { (it.first * density).toInt().coerceAtLeast(1) }
         ?: p?.widthDp?.let { (it * density).roundHalfUpPx() }
     val explicitHeightPx =
       heightPx
-        ?: deviceDims?.let { (it.heightDp * density).toInt().coerceAtLeast(1) }
+        ?: deviceFrameDp?.let { (it.second * density).toInt().coerceAtLeast(1) }
         ?: p?.heightDp?.let { (it * density).roundHalfUpPx() }
     val wrapWidth = explicitWidthPx == null && !pinned
     val wrapHeight = explicitHeightPx == null && !pinned
