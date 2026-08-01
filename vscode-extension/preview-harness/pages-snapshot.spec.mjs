@@ -44,6 +44,18 @@ const IMAGE_LANES = ["**/render/**", "**/hero/**"];
 // accent under test are produced by the real `backendBadgeScript`, not faked here.
 const FIXTURE_STATES = [
     {
+        // The playground editor's multi-file strip (#3017): a snippet is a list of files compiled
+        // as one module, and the second file only exists after a click — the committed HTML always
+        // opens on one buffer. Clicking "+ file" here means every future PR diffs the multi-file
+        // editor (tab strip, active-tab styling, the Remove button appearing) for free.
+        fixture: "serve-playground",
+        suffix: "multifile",
+        apply: async (page) => {
+            await page.click("#pg-add-file");
+            await page.fill("#pg-source", "val Brand = 0xFF6750A4");
+        },
+    },
+    {
         fixture: "serve-viewer",
         suffix: "connecting",
         apply: async (page) => {

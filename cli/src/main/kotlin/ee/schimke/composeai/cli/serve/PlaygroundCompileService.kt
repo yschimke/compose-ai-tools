@@ -11,6 +11,12 @@ import okio.Path
  * token that Stage 2 redeems into a live session. Compile errors return diagnostics and **no**
  * token.
  *
+ * **Multi-file snippets** are a plain consequence of the staging step: every file in the request is
+ * written into the same source dir and handed to **one** compile, so a snippet can split types
+ * across files and reference them across file boundaries. Which `@Preview` then drives the render
+ * is decided here rather than by the discoverer — sorted by id, so a snippet with several previews
+ * renders the same one every time (see [compileAndMint]).
+ *
  * [PlaygroundMode.REMOTE_COMPOSE] is the exception to the token model: instead of a live session it
  * captures the snippet's `.rc` document and publishes it as an expiring `/d/<id>` permalink
  * ([remoteComposeResult]), returning a [PlaygroundRunResponse.documentUrl] and no token — the
@@ -144,7 +150,11 @@ class PlaygroundCompileService(
     }
 
     val renderClasspath = classpath.entries + classesDir
-    val previews = discoverer.discover(classesDir, renderClasspath)
+    // Sorted, so the same snippet renders the same preview on every run: ClassGraph's scan order
+    // over the snippet's classes is not a guaranteed order, and a multi-file snippet routinely
+    // declares more than one @Preview. The full list rides the response, so the editor can say
+    // which of them it drew.
+    val previews = discoverer.discover(classesDir, renderClasspath).sorted()
     if (previews.isEmpty()) {
       cleanup(workDir)
       return PlaygroundRunResponse(
@@ -165,7 +175,7 @@ class PlaygroundCompileService(
       )
 
     if (mode == PlaygroundMode.REMOTE_COMPOSE) {
-      return remoteComposeResult(snippet, diagnostics, workDir, isSecurityChecked)
+      return remoteComposeResult(snippet, previews, diagnostics, workDir, isSecurityChecked)
     }
 
     val image = renderFirstFrame(snippet)?.let(::toDataUri)
@@ -177,6 +187,8 @@ class PlaygroundCompileService(
       image = image,
       previewToken = token.id,
       previewUrl = token.path,
+      previewId = snippet.previewId,
+      previews = previews,
     )
   }
 
@@ -190,6 +202,7 @@ class PlaygroundCompileService(
    */
   private fun remoteComposeResult(
     snippet: PlaygroundTokenStore.PlaygroundSnippet,
+    previews: List<String>,
     diagnostics: List<PlaygroundDiagnostic>,
     workDir: Path,
     isSecurityChecked: Boolean,
@@ -215,7 +228,13 @@ class PlaygroundCompileService(
           errors = errors,
           exception = "remote-compose documents are not accepted on this host",
         )
-    return PlaygroundRunResponse(diagnostics = diagnostics, errors = errors, documentUrl = url)
+    return PlaygroundRunResponse(
+      diagnostics = diagnostics,
+      errors = errors,
+      documentUrl = url,
+      previewId = snippet.previewId,
+      previews = previews,
+    )
   }
 
   /**

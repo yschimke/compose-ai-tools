@@ -7,7 +7,8 @@ what's missing, the REST + handoff contract, the isolation requirements, and a
 phased plan. Phases 1–3 (CMP, Android, Remote Compose) and the Phase-4
 per-session sandbox ([§6](#6-isolation--the-actual-hard-part)) are built; the
 playground remains token-gated by default, and serves under `--public` only on a
-sandbox that has passed the startup containment probe.
+sandbox that has passed the startup containment probe. The [§8](#8-open-questions--resolved)
+questions are resolved.
 
 > **Thesis.** A Compose playground is mostly the *existing* serve viewer plus an
 > editor pane plus an ephemeral, per-session module. The three things that would
@@ -380,9 +381,13 @@ Each phase is independently shippable and useful on its own.
    allowed to serve it. See [§6.1](#61-what-is-built-phase-4---playground-sandbox)
    and [§6.2](#62-the-gate-is-a-probe-not-a-flag).
 
-5. **Editor decision (parallel, non-blocking).** Ship Stage 1 against the REST
-   contract with a stock `kotlin-playground` first; evaluate a bespoke
-   CodeMirror/Monaco editor once completion and per-mode UI justify owning it.
+5. **Editor decision (settled).** We ship **our own** minimal editor — a
+   dependency-free page with a mode selector, a file strip, and the result pane —
+   *and* keep the stock `kotlin-playground` REST contract ([§4](#4-the-rest-contract-stock-frontend-compatibility))
+   working, since honouring it costs little and keeps a stock frontend an option.
+   Owning the page is what made per-mode UI (the three modes), the multi-file
+   strip, and the "which preview did it draw" note straightforward; a
+   CodeMirror/Monaco upgrade stays open for when completion matters.
 
 ### 7.1 Latency note
 
@@ -396,18 +401,62 @@ cold-fork range.
 
 ---
 
-## 8. Open questions
+## 8. Open questions — resolved
 
-- **Classpath source per mode.** Phase 1 borrows `compose-m3`'s resolved
-  live-bundle classpath. Should a snippet be able to pick its catalog (and thus
-  its available components), or is one canonical classpath per mode enough for v1?
-- **Multi-file snippets.** The `run` contract carries `files: [...]`. Phase 1 can
-  accept one file; multi-file is a natural extension (all written to the temp
-  source dir, all passed to `compileSources`).
-- **`@Preview` discovery vs. an entrypoint.** Does the snippet declare a
-  `@Preview` we discover (reusing `previews.json` discovery), or a known
-  entrypoint we render directly? Discovery reuses more; a fixed entrypoint is
-  simpler to explain in an editor. Leaning discovery, to reuse the pipeline.
-- **Token TTL + redemption count.** One redemption or many within the TTL? Many is
-  friendlier (refresh the tab); one is tighter. Leaning many-within-TTL, matching
-  `ServeDocStore`.
+Each of these is now settled in code, with the test that pins it (issue #3017).
+
+### 8.1 Multi-file snippets — **shipped**
+
+A snippet is a **list of files compiled as one module**, not one buffer. Every
+file in the `run` request is staged into the same temp source dir and handed to a
+single `compileSources`, so files reference each other's declarations; the editor
+grows a file strip (`+ file` / `Remove file`) and posts the whole list.
+
+| One file (unchanged default) | Two files, cross-referencing |
+|---|---|
+| ![Playground editor with a single file](../images/serve-playground-single-file.png) | ![Playground editor with two files](../images/serve-playground-multifile-light.png) |
+
+![Playground editor, two files, dark](../images/serve-playground-multifile-dark.png)
+
+A diagnostic names the file it belongs to (`file:line`) and clicking it switches
+the editor to that file — with several buffers open, "unresolved reference at
+line 5" says nothing about where to look:
+
+![A diagnostic naming its file, with that file selected](../images/serve-playground-multifile-diagnostic.png)
+
+Pinned by `PlaygroundCompileServiceTest` ("every file in a multi-file snippet
+reaches one compile"), the `serve-playground · multifile` state in the
+preview-harness page snapshots, and a browser e2e that splits a snippet across
+two files and compiles it on a real daemon.
+
+### 8.2 `@Preview` discovery vs. an entrypoint — **discovery, deterministically**
+
+Discovery won (it reuses `PlaygroundPreviewDiscoverer` and the render pipeline's
+id shape). Multi-file made the follow-on question real: a snippet can now declare
+several `@Preview`s while exactly **one** drives the first frame and the Stage-2
+session. The orchestrator therefore picks the **lowest id in sorted order** — a
+ClassGraph scan has no guaranteed order, and a preview that changed between two
+runs of the same snippet would be baffling — and the response carries both
+`previewId` (what was drawn) and `previews` (everything found), so the editor can
+say which one it rendered instead of silently choosing.
+
+![Playground result naming the rendered preview](../images/serve-playground-multifile-result.png)
+
+### 8.3 Token TTL + redemption count — **many within the TTL**
+
+Many, matching `ServeDocStore`: a redeemed token keeps working until it expires,
+so refreshing the viewer tab doesn't burn the link. `PlaygroundRedeemServiceTest`
+("a live token redeems to a registered session and re-redeem reuses it") pins
+both halves — the second redemption reuses the session rather than standing up a
+second one.
+
+### 8.4 Classpath source per mode — **one canonical classpath per mode, for now**
+
+A snippet compiles against the catalog its mode was configured with
+(`--playground-bundle` for CMP, `--playground-android-bundle` for Android/RC).
+Snippet-selectable catalogs stay out of v1 deliberately: each additional catalog
+is another liveBundle to resolve and hold open at startup, another set of live
+seats to account for, and a per-request choice the `--public` gate would have to
+reason about. The seam is ready when demand is (`catalogClasspath` is already a
+`(PlaygroundMode) -> Classpath?` function), so this is a wiring change plus a
+request field, not a redesign.

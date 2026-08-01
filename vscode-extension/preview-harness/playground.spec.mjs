@@ -122,6 +122,66 @@ test("compiles the default Android snippet to a first frame + live /pg/ handoff"
   ).toMatch(/^data:image\/png/);
 });
 
+test("a multi-file snippet compiles as one module and names the preview it drew", async ({
+  page,
+}) => {
+  requirePlayground();
+  await page.goto(`/playground${q}`, { waitUntil: "domcontentloaded" });
+  await page.selectOption("#pg-mode", ANDROID_MODE);
+
+  // Split the snippet across two files, with the second declaring what the first uses. A
+  // cross-file reference is the whole point: the files reach ONE compile, so this only
+  // resolves if the server staged both into the same module (#3017).
+  await page.click("#pg-add-file");
+  await page.fill(
+    "#pg-source",
+    [
+      "import androidx.compose.ui.graphics.Color",
+      "",
+      "val Brand = Color(0xFF6750A4)",
+    ].join("\n"),
+  );
+  await expect(
+    page.locator("[data-pg-file]"),
+    "one tab per open file",
+  ).toHaveCount(2);
+
+  await page.click('[data-pg-file="Snippet.kt"]');
+  await page.fill(
+    "#pg-source",
+    [
+      "import androidx.compose.material3.Text",
+      "import androidx.compose.runtime.Composable",
+      "import androidx.compose.ui.tooling.preview.Preview",
+      "",
+      "@Preview",
+      "@Composable",
+      "fun Greeting() {",
+      '    Text("Hello", color = Brand)',
+      "}",
+      "",
+      "@Preview",
+      "@Composable",
+      "fun Second() {",
+      '    Text("Second")',
+      "}",
+    ].join("\n"),
+  );
+
+  const terminal = await runAndAwaitTerminal(page);
+  expect(
+    terminal,
+    `multi-file run should compile, got "${terminal}" ` +
+      `(diagnostics: ${await page.locator("#pg-diagnostics").textContent()})`,
+  ).toBe("Done.");
+
+  // Two @Previews in the snippet: exactly one is rendered and tokenized, and the editor says
+  // which — otherwise the choice is invisible.
+  const note = page.locator("#pg-preview-note");
+  await expect(note, "preview note for a multi-preview snippet").toBeVisible();
+  expect(await note.textContent()).toMatch(/2 previews found/);
+});
+
 test("the /pg/ token redeems into the live viewer", async ({ page }) => {
   requirePlayground();
   await page.goto(`/playground${q}`, { waitUntil: "domcontentloaded" });
