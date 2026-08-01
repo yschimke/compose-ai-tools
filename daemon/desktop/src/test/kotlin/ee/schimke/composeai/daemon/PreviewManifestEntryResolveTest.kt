@@ -98,10 +98,9 @@ class PreviewManifestEntryResolveTest {
   fun `nested schema - plugin shape - reads params block`() {
     // Mirrors what `DiscoverPreviewsTask` writes for a Wear preview annotated with
     // `@Preview(device = "id:wearos_small_round")` — production manifest the daemon was silently
-    // dropping pre-fix. Since #3113 (Studio geometry parity) a device frame owns its own size: the
-    // resolver deliberately ignores the manifest's `widthDp`/`heightDp` and `PreviewManifestRouter`
-    // derives the frame from `DeviceDimensions.resolve(device)`. The resolver still pins both axes
-    // (no wrap) and passes the device id through.
+    // dropping pre-fix. Since #3113 (Studio geometry parity) a device frame owns its own size, so
+    // the resolver reads `DeviceDimensions.resolve(device)` rather than the manifest's
+    // `widthDp`/`heightDp` — 192dp here either way, at the entry's own 2.625 density.
     val raw =
       """{"id":"wear-1","className":"X","functionName":"R","sourceFile":"P.kt",""" +
         """"params":{"device":"id:wearos_small_round","widthDp":192,"heightDp":192,""" +
@@ -111,6 +110,8 @@ class PreviewManifestEntryResolveTest {
     val resolved = entry.resolved()
     assertEquals(false, resolved.wrapWidth) // device frame pins both axes
     assertEquals(false, resolved.wrapHeight)
+    assertEquals(504, resolved.widthPx) // 192dp × 2.625
+    assertEquals(504, resolved.heightPx)
     assertEquals(2.625f, resolved.density, 0.0001f)
     assertEquals(true, resolved.showBackground)
     assertEquals("id:wearos_small_round", resolved.device)
@@ -163,8 +164,9 @@ class PreviewManifestEntryResolveTest {
     val entry = json.decodeFromString(PreviewManifestEntry.serializer(), raw)
     val resolved = entry.resolved()
     assertEquals("id:wearos_small_round", resolved.device)
-    // Device frame pins the axes; the size itself comes from the router.
+    // Device frame pins the axes, sized from the catalog at the default 2.0 density.
     assertEquals(false, resolved.wrapWidth)
+    assertEquals(384, resolved.widthPx) // 192dp × 2.0
   }
 
   @Test
