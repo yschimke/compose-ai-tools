@@ -27,6 +27,7 @@ class DialogWindowRenderTest {
     assertDialogWindowIsTheSubject(
       previewId = "dialog-window-fixed",
       params = PreviewParamsEntry(widthDp = 96, heightDp = 96, density = 1.0f),
+      expectedFramePx = 96,
     )
   }
 
@@ -90,6 +91,14 @@ class DialogWindowRenderTest {
   }
 
   private fun assertDialogWindowIsTheSubject(previewId: String, params: PreviewParamsEntry) {
+    assertDialogWindowIsTheSubject(previewId, params, expectedFramePx = 64)
+  }
+
+  private fun assertDialogWindowIsTheSubject(
+    previewId: String,
+    params: PreviewParamsEntry,
+    expectedFramePx: Int,
+  ) {
     val outputDir = tempFolder.newFolder("renders-$previewId")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
     System.setProperty("roborazzi.test.record", "true")
@@ -124,11 +133,16 @@ class DialogWindowRenderTest {
         png.containsColor(DIALOG_FILL_ARGB),
       )
 
-      // …and that the sticker is framed to the dialog, not to the window it floats in. The fixture's
-      // dialog wraps a 64 dp box at density 1.
+      // …and that the sticker is framed to the dialog subject, not to the activity window it floats
+      // in. Fixed-size @Preview annotations still preserve their Studio frame after the dialog crop;
+      // wrap-content previews crop to the fixture's 64 dp dialog at density 1.
       val size = ImageIO.read(png)
-      assertEquals("captured width must be the dialog's", 64, size.width)
-      assertEquals("captured height must be the dialog's", 64, size.height)
+      assertEquals("captured width must match the dialog preview frame", expectedFramePx, size.width)
+      assertEquals(
+        "captured height must match the dialog preview frame",
+        expectedFramePx,
+        size.height,
+      )
 
       val previewDataDir = outputDir.parentFile!!.resolve("data/$previewId")
       val semantics = previewDataDir.resolve("compose-semantics.json")
