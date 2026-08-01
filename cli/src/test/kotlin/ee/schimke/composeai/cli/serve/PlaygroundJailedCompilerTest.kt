@@ -190,6 +190,69 @@ class PlaygroundJailedCompilerTest {
   }
 
   @Test
+  fun `concurrent compiles are bounded, and the overflow is told so`() {
+    // The in-process compiler this replaces serialized compiles behind one BtaCompileSession, so
+    // concurrency was implicitly 1. A subprocess per request removes that: without a bound, N
+    // parallel POSTs are N whole JVMs each holding the full per-process memory budget.
+    val inFlight = java.util.concurrent.CountDownLatch(1)
+    val release = java.util.concurrent.CountDownLatch(1)
+    val compiler =
+      PlaygroundJailedCompiler(
+        sandbox = PlaygroundSandbox(profile = PlaygroundSandbox.Profile.BWRAP),
+        javaHome = File("/opt/jdk17"),
+        cliClasspath = listOf("/install/lib/cli.jar"),
+        btaImplJars = listOf("/install/lib-bta/impl.jar"),
+        compilerPluginJars = emptyList(),
+        slots = 1,
+        slotWaitSeconds = 1,
+      ) { _, _ ->
+        inFlight.countDown()
+        release.await(10, java.util.concurrent.TimeUnit.SECONDS)
+        report()
+      }
+
+    val first = Thread { compile(compiler) }.apply { start() }
+    assertTrue(inFlight.await(10, java.util.concurrent.TimeUnit.SECONDS), "first compile started")
+
+    // The second request finds the only slot taken and is refused *quickly*, with a diagnostic
+    // rather than an unbounded queue.
+    val second = compile(compiler)
+    assertTrue("busy compiling" in second.single().message, second.single().message)
+    assertEquals(PlaygroundSeverity.ERROR, second.single().severity)
+
+    release.countDown()
+    first.join(10_000)
+
+    // …and the slot is handed back, so the next request compiles normally.
+    assertEquals(emptyList(), compile(compiler))
+  }
+
+  @Test
+  fun `a compile never outlives a shortened sandbox TTL`() {
+    fun budget(ttl: Long, compileTimeout: Long) =
+      PlaygroundJailedCompiler(
+          sandbox = PlaygroundSandbox(profile = PlaygroundSandbox.Profile.BWRAP, ttlSeconds = ttl),
+          javaHome = File("/opt/jdk17"),
+          cliClasspath = listOf("/install/lib/cli.jar"),
+          btaImplJars = listOf("/install/lib-bta/impl.jar"),
+          compilerPluginJars = emptyList(),
+          timeoutSeconds = compileTimeout,
+        ) { _, _ ->
+          report()
+        }
+        .effectiveTimeoutSeconds
+
+    // An operator who shortens --playground-sandbox-ttl means everything snippet-related is
+    // reclaimed by then — not just the render, which honours it via the descriptor's hardTtl.
+    assertEquals(45L, budget(ttl = 45, compileTimeout = 180), "the tighter budget wins")
+    assertEquals(
+      180L,
+      budget(ttl = 900, compileTimeout = 180),
+      "…and a generous TTL leaves the compile budget in charge",
+    )
+  }
+
+  @Test
   fun `wrap leaves an unsandboxed host on the in-process compiler`() {
     val inProcess = PlaygroundCompileService.Compiler { _, _, _ -> emptyList() }
 

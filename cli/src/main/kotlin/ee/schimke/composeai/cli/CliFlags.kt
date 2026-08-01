@@ -71,6 +71,7 @@ internal object CliFlags {
       "--playground-sandbox-pids",
       "--playground-sandbox-ttl",
       "--playground-sandbox-ro",
+      "--playground-compile-slots",
       "--extra-maven-repos",
       "--trust-store",
       "--catalogs",

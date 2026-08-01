@@ -278,6 +278,15 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val playgroundSandboxPids: Int =
     args.flagValue("--playground-sandbox-pids")?.toIntOrNull() ?: PlaygroundSandbox.DEFAULT_PIDS
 
+  /**
+   * `--playground-compile-slots <n>`: how many snippet compiles may hold a jailed JVM at once. The
+   * compile-side counterpart to `--live-seats` — per-process caps bound one compile, this bounds
+   * the aggregate, so peak compile memory is `slots × --playground-sandbox-memory-mb`.
+   */
+  private val playgroundCompileSlots: Int =
+    args.flagValue("--playground-compile-slots")?.toIntOrNull()?.takeIf { it > 0 }
+      ?: PlaygroundJailedCompiler.DEFAULT_COMPILE_SLOTS
+
   /** Hard wall-clock lifetime of one snippet JVM; the spawner kills it at the deadline. */
   private val playgroundSandboxTtlSeconds: Long =
     args.flagValue("--playground-sandbox-ttl")?.toLongOrNull()
