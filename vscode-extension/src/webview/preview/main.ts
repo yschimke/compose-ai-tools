@@ -281,48 +281,50 @@ export class PreviewApp extends LitElement {
             <progress-bar></progress-bar>
             <compile-errors-banner></compile-errors-banner>
             <filter-toolbar></filter-toolbar>
-            ${minimal
-                ? html`
-                      <div
-                          class="minimal-refresh-bar"
-                          id="minimal-refresh-bar"
-                          role="region"
-                          aria-label="Minimal mode"
-                      >
-                          <div class="minimal-refresh-text">
-                              <strong>Minimal mode</strong>
-                              <span class="minimal-refresh-hint"
-                                  >Renders don't auto-update on save. Click
-                                  Refresh to apply changes, or apply the Compose
-                                  Preview Gradle plugin to enable
-                                  auto-render.</span
-                              >
-                              <span
-                                  class="minimal-save-pending"
-                                  id="minimal-save-pending"
-                                  hidden
-                                  >Saved changes pending — click Refresh
-                                  previews.</span
-                              >
+            ${
+                minimal
+                    ? html`
+                          <div
+                              class="minimal-refresh-bar"
+                              id="minimal-refresh-bar"
+                              role="region"
+                              aria-label="Minimal mode"
+                          >
+                              <div class="minimal-refresh-text">
+                                  <strong>Minimal mode</strong>
+                                  <span class="minimal-refresh-hint"
+                                      >Renders don't auto-update on save. Click
+                                      Refresh to apply changes, or apply the
+                                      Compose Preview Gradle plugin to enable
+                                      auto-render.</span
+                                  >
+                                  <span
+                                      class="minimal-save-pending"
+                                      id="minimal-save-pending"
+                                      hidden
+                                      >Saved changes pending — click Refresh
+                                      previews.</span
+                                  >
+                              </div>
+                              <div class="minimal-refresh-actions">
+                                  <button
+                                      type="button"
+                                      id="btn-minimal-refresh"
+                                      class="minimal-refresh-button"
+                                      title="Re-run composePreviewRenderAll"
+                                      aria-label="Refresh previews"
+                                  >
+                                      <i
+                                          class="codicon codicon-refresh"
+                                          aria-hidden="true"
+                                      ></i>
+                                      <span>Refresh previews</span>
+                                  </button>
+                              </div>
                           </div>
-                          <div class="minimal-refresh-actions">
-                              <button
-                                  type="button"
-                                  id="btn-minimal-refresh"
-                                  class="minimal-refresh-button"
-                                  title="Re-run composePreviewRenderAll"
-                                  aria-label="Refresh previews"
-                              >
-                                  <i
-                                      class="codicon codicon-refresh"
-                                      aria-hidden="true"
-                                  ></i>
-                                  <span>Refresh previews</span>
-                              </button>
-                          </div>
-                      </div>
-                  `
-                : ""}
+                      `
+                    : ""
+            }
 
             <message-banner></message-banner>
             <div id="focus-controls" class="focus-controls" hidden>
@@ -1419,8 +1421,7 @@ export class PreviewApp extends LitElement {
                     ? dataProductsByPreview.get(focusedId)
                     : undefined;
                 const semantics = byKind?.get("compose/semantics") as
-                    | SemanticsLookupPayload
-                    | undefined;
+                    SemanticsLookupPayload | undefined;
                 const boundsMap = buildSemanticsBoundsMap(
                     semantics,
                     "theming-consumer",
@@ -1459,11 +1460,9 @@ export class PreviewApp extends LitElement {
             // bundle whose data is already in memory.
             const byKind = dataProductsByPreview.get(previewId);
             const hierarchyPayload = byKind?.get("a11y/hierarchy") as
-                | { nodes?: readonly AccessibilityNode[] }
-                | undefined;
+                { nodes?: readonly AccessibilityNode[] } | undefined;
             const atfPayload = byKind?.get("a11y/atf") as
-                | { findings?: readonly AccessibilityFinding[] }
-                | undefined;
+                { findings?: readonly AccessibilityFinding[] } | undefined;
             const nodes =
                 store.cardA11yNodes.get(previewId) ??
                 hierarchyPayload?.nodes ??
@@ -1481,8 +1480,7 @@ export class PreviewApp extends LitElement {
         ): readonly import("./a11yBundlePresenter").AccessibilityTouchTarget[] => {
             const byKind = dataProductsByPreview.get(previewId);
             const raw = byKind?.get("a11y/touchTargets") as
-                | { targets?: unknown }
-                | undefined;
+                { targets?: unknown } | undefined;
             const targets = raw?.targets;
             if (!Array.isArray(targets)) return [];
             return targets as readonly import("./a11yBundlePresenter").AccessibilityTouchTarget[];
@@ -1688,8 +1686,7 @@ export class PreviewApp extends LitElement {
                 : null;
             const wallpaper = enabled.includes("compose/wallpaper")
                 ? ((byKind?.get("compose/wallpaper") as
-                      | WallpaperPayload
-                      | undefined) ?? null)
+                      WallpaperPayload | undefined) ?? null)
                 : null;
             const data = computeThemingBundleData(theme, wallpaper, target);
             const body = themingBody();
@@ -1824,8 +1821,7 @@ export class PreviewApp extends LitElement {
                     ? dataProductsByPreview.get(focusedId)
                     : undefined;
                 const semantics = byKind?.get("compose/semantics") as
-                    | SemanticsLookupPayload
-                    | undefined;
+                    SemanticsLookupPayload | undefined;
                 const boundsMap = buildSemanticsBoundsMap(
                     semantics,
                     "resources-consumer",
@@ -1880,8 +1876,7 @@ export class PreviewApp extends LitElement {
             const byKind = dataProductsByPreview.get(target);
             const payload =
                 (byKind?.get("compose/ambient") as
-                    | AmbientPayload
-                    | undefined) ?? null;
+                    AmbientPayload | undefined) ?? null;
             const data = computeAmbientBundleData(payload);
             const body = ambientBodyBuilt();
             const table = body.table;
@@ -1948,8 +1943,7 @@ export class PreviewApp extends LitElement {
             const byKind = dataProductsByPreview.get(target);
             const payload =
                 (byKind?.get("compose/remotecompose") as
-                    | RemoteComposePayload
-                    | undefined) ?? null;
+                    RemoteComposePayload | undefined) ?? null;
             const data = computeRemoteComposeBundleData(payload);
             const body = remoteComposeBodyBuilt();
             const table = body.table;
@@ -2011,8 +2005,7 @@ export class PreviewApp extends LitElement {
             const byKind = dataProductsByPreview.get(target);
             const metadata =
                 (byKind?.get("animation/lottie") as
-                    | LottieTimelineMetadata
-                    | undefined) ?? null;
+                    LottieTimelineMetadata | undefined) ?? null;
             const progress = lottieProgressByPreview.get(target) ?? 0;
             const data = computeLottieScrubberData(metadata, progress);
             const body = lottieScrubberBodyBuilt();
@@ -2121,8 +2114,7 @@ export class PreviewApp extends LitElement {
             const byKind = dataProductsByPreview.get(target);
             const payload =
                 (byKind?.get("history/diff/regions") as
-                    | HistoryDiffPayload
-                    | undefined) ?? null;
+                    HistoryDiffPayload | undefined) ?? null;
             const data = computeHistoryDiffBundleData(payload);
             const body = historyDiffBodyBuilt();
             const host = body.wrapper;
@@ -2172,8 +2164,7 @@ export class PreviewApp extends LitElement {
                     (dataProductsByPreview
                         .get(previewId)
                         ?.get("history/diff/regions") as
-                        | HistoryDiffPayload
-                        | undefined) ?? null;
+                        HistoryDiffPayload | undefined) ?? null;
                 return computeHistoryDiffBundleData(cardPayload).overlay;
             });
         };
@@ -2198,8 +2189,7 @@ export class PreviewApp extends LitElement {
             const byKind = dataProductsByPreview.get(target);
             const payload =
                 (byKind?.get("test/failure") as
-                    | TestFailurePayload
-                    | undefined) ?? null;
+                    TestFailurePayload | undefined) ?? null;
             const data = computeErrorsBundleData(payload);
             const body = errorsBodyBuilt();
             const host = body.wrapper;
@@ -2747,8 +2737,7 @@ export class PreviewApp extends LitElement {
         // it via the focusController and call `setActiveOverlayId`
         // on the layer that matches the active tab.
         const overlayLayerForActiveTab = ():
-            | import("./components/BoxOverlay").BoxOverlay
-            | null => {
+            import("./components/BoxOverlay").BoxOverlay | null => {
             const tab = bundleController.state().activeTab;
             if (!tab) return null;
             const card = focusController.focusedCard();

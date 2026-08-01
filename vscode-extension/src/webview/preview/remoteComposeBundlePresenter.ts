@@ -260,10 +260,11 @@ function renderValueCell(row: RemoteComposeRow): TemplateResult | string {
             return html`<div class="rc-action-cell">
                 <code class="rc-action-payload">${row.payload}</code>
                 <span class="rc-action-meta"
-                    >handler=${row.handlerId.toFixed(0)}${row.firedAtMillis !==
-                    null
-                        ? html` · @${formatMillis(row.firedAtMillis)}`
-                        : ""}</span
+                    >handler=${row.handlerId.toFixed(0)}${
+                        row.firedAtMillis !== null
+                            ? html` · @${formatMillis(row.firedAtMillis)}`
+                            : ""
+                    }</span
                 >
             </div>`;
     }
@@ -339,9 +340,9 @@ function renderNamedValueInput(row: NamedValueRow): TemplateResult {
                             value: { kind: v.kind, value: n },
                         });
                     }}
-                />${suffix
-                    ? html`<span class="rc-unit">${suffix}</span>`
-                    : ""}</span
+                />${
+                    suffix ? html`<span class="rc-unit">${suffix}</span>` : ""
+                }</span
             >`;
         }
         case "string":

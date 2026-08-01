@@ -79,10 +79,7 @@ export type ThemingColorSource = "theme" | "wallpaper" | "seed";
  *  so the column factory can render mixed sections without juggling
  *  three tables. Each variant tags itself with `kind` for the renderers. */
 export type ThemingRow =
-    | ThemingColorRow
-    | ThemingTypographyRow
-    | ThemingShapeRow
-    | ThemingSeedRow;
+    ThemingColorRow | ThemingTypographyRow | ThemingShapeRow | ThemingSeedRow;
 
 export interface ThemingColorRow {
     id: string;
@@ -425,9 +422,9 @@ function renderSwatch(row: ThemingRow): TemplateResult | string {
         };
         return html`<span
             class="theming-swatch"
-            data-source=${row.kind === "seed"
-                ? "seed"
-                : (row as ThemingColorRow).source}
+            data-source=${
+                row.kind === "seed" ? "seed" : (row as ThemingColorRow).source
+            }
             ${ref(apply)}
             title=${row.hex}
         ></span>`;
@@ -474,9 +471,11 @@ function renderName(row: ThemingRow): TemplateResult {
     if (row.kind === "color") {
         return html`<div class="theming-name-stack">
             <strong>${row.name}</strong>
-            ${row.source === "wallpaper"
-                ? html`<span class="theming-name-sub">from wallpaper</span>`
-                : ""}
+            ${
+                row.source === "wallpaper"
+                    ? html`<span class="theming-name-sub">from wallpaper</span>`
+                    : ""
+            }
         </div>`;
     }
     if (row.kind === "typography") {

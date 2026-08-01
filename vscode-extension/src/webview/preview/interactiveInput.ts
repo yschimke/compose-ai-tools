@@ -584,11 +584,7 @@ const DOM_CODE_TO_ANDROID_KEYCODE: ReadonlyMap<string, number> = new Map([
 ]);
 
 type InteractiveInputKind =
-    | "click"
-    | "pointerDown"
-    | "pointerMove"
-    | "pointerUp"
-    | "rotaryScroll";
+    "click" | "pointerDown" | "pointerMove" | "pointerUp" | "rotaryScroll";
 
 function postInteractiveInput(
     vscode: VsCodeApi<unknown>,

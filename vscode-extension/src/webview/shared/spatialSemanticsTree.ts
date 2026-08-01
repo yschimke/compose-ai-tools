@@ -26,12 +26,7 @@ export interface Size3dDp {
 
 /** The kind of a {@link SpatialSemanticsNode} — a 3D container type, or a content-hosting panel. */
 export type SpatialSemanticsKind =
-    | "subspaceRoot"
-    | "row"
-    | "column"
-    | "box"
-    | "panel"
-    | "orbiter";
+    "subspaceRoot" | "row" | "column" | "box" | "panel" | "orbiter";
 
 /**
  * The 2D semantics node a panel hosts. A structural mirror of the Kotlin `ComposeSemanticsNode`

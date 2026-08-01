@@ -24,9 +24,7 @@ interface ClearProgressMessage {
 }
 
 type IncomingMessage =
-    | SetProgressMessage
-    | ClearProgressMessage
-    | { command: string };
+    SetProgressMessage | ClearProgressMessage | { command: string };
 
 interface ProgressVisual {
     pct: number;
