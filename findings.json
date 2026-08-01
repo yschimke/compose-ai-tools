@@ -184,7 +184,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "AsyncImageUnreachablePreview_Async_Image_Unreachable.a11y.png",
       "cleanBasename": "AsyncImageUnreachablePreview_Async_Image_Unreachable.png",
       "findings": [],
       "functionName": "AsyncImageUnreachablePreview",
@@ -3050,6 +3050,42 @@
       "module": "desktop-daemon-bench",
       "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.StackPreview_Stack",
       "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "RemoteAnimatedCircularProgressIndicatorEmbeddedPreview.a11y.png",
+      "cleanBasename": "RemoteAnimatedCircularProgressIndicatorEmbeddedPreview.png",
+      "findings": [
+        {
+          "boundsInScreen": "168,168,357,357",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "android.widget.Button"
+        }
+      ],
+      "functionName": "RemoteAnimatedCircularProgressIndicatorEmbeddedPreview",
+      "module": "remotecompose",
+      "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorEmbeddedPreview",
+      "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "RemoteAnimatedCircularProgressIndicatorStandardPreview.a11y.png",
+      "cleanBasename": "RemoteAnimatedCircularProgressIndicatorStandardPreview.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "RemoteAnimatedCircularProgressIndicatorStandardPreview",
+      "module": "remotecompose",
+      "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteAnimatedCircularProgressIndicatorStandardPreview",
+      "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt",
       "variant": ""
     },
     {

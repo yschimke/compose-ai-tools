@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/pr`. 298 preview(s) across 20 module(s) · 39 error(s) · 4 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/pr`. 300 preview(s) across 20 module(s) · 41 error(s) · 4 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -23,7 +23,7 @@ _No findings._
 
 ### `AsyncImageUnreachablePreview`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/AsyncImageUnreachablePreview_Async_Image_Unreachable.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/android/AsyncImageUnreachablePreview_Async_Image_Unreachable.a11y.png" width="400" />
 
 _No findings._
 
@@ -1661,6 +1661,22 @@ _No findings._
 _No findings._
 
 ## remotecompose
+
+### `RemoteAnimatedCircularProgressIndicatorEmbeddedPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/remotecompose/RemoteAnimatedCircularProgressIndicatorEmbeddedPreview.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | SpeakableTextPresentCheck | android.widget.Button | This item may not have a label readable by screen readers. |
+
+### `RemoteAnimatedCircularProgressIndicatorStandardPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/remotecompose/RemoteAnimatedCircularProgressIndicatorStandardPreview.a11y.png" width="400" />
+
+| # | Level | Rule | Element | Message |
+|--:|---|---|---|---|
+| 1 | ERROR | SpeakableTextPresentCheck | androidx.compose.remote.player.view.RemoteComposePlayer | This item may not have a label readable by screen readers. |
 
 ### `RemoteButtonEnabledPreview`
 
