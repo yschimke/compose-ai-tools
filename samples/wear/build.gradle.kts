@@ -59,7 +59,7 @@ dependencies {
   // wires its screens with the connector's `reportedOneHandedGesture` / `GestureHint` seam so the
   // handlers show up in `compose/gestures` and are drivable via `renderNow.overrides.gestures`.
   // Static `@Preview` rendering doesn't run the daemon extension chain, so previews activate an
-  // explicit `OneHandedGestureIndicatorState`; the daemon path activates the same state from
+  // explicit indicator state; the daemon path activates the same state from
   // `overrides.gestures.showHints`.
   implementation(project(":data-gestures-connector"))
 

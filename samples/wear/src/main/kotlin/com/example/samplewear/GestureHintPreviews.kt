@@ -28,7 +28,7 @@ import ee.schimke.composeai.preview.GestureHintPreview
 /**
  * A normal Wear media screen with **two** one-handed gestures: a primary double-pinch that toggles
  * play/pause, and a dismiss wrist-turn mapped to back. Each button wraps its **content** (the label)
- * in `GestureHint`, so the real `OneHandedGestureIndicator` swaps the label for that gesture's
+ * in `GestureHint`, so the real one-handed gesture indicator swaps the label for that gesture's
  * animation on-device while the button pill stays put — the design guide's on-button hint.
  *
  * Crucially this is **ordinary app code**: there is no preview-only flag, no capture mode, nothing
@@ -64,7 +64,7 @@ fun MediaGestureScreen(onDismiss: () -> Unit = {}) {
             type = GestureType.PRIMARY,
             label = if (playing) "Pause" else "Play",
             gestureConfiguration = playConfiguration,
-            indicatorState = playIndicatorState,
+            showIndicator = playIndicatorState::showIndicator,
             interactionSource = playSource,
           ) {
             playing = !playing
@@ -86,7 +86,7 @@ fun MediaGestureScreen(onDismiss: () -> Unit = {}) {
             type = GestureType.DISMISS,
             label = "Back",
             gestureConfiguration = backConfiguration,
-            indicatorState = backIndicatorState,
+            showIndicator = backIndicatorState::showIndicator,
             interactionSource = backSource,
           ) {
             onDismiss()

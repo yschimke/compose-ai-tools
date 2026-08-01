@@ -6,7 +6,7 @@
 //    preview reports, plus the enabled / hint / last-invoked state the data product serves.
 //  - `reportedOneHandedGesture` / `GestureHint` — the reporting seam a previewable Wear screen uses
 //    instead of the raw framework API: identical on-device behaviour (delegates to the real
-//    modifier / `OneHandedGestureIndicator`) but also reports to the controller, since the
+//    modifier / click indicator) but also reports to the controller, since the
 //    framework's own registry is internal and Pixel-Watch-only.
 //  - `GestureOverrideExtension` / `GesturePreviewOverrideExtension` — Compose `AroundComposable`
 //    plumbing planned from `renderNow.overrides.gestures`: force-shows hints (immediate mode) or
@@ -57,7 +57,7 @@ dependencies {
   api(project(":data-render-compose"))
 
   // `androidx.wear.compose.material3.onehandedgesture.*` — the real one-handed-gesture API the
-  // reporting seam wraps (`oneHandedGesture`, `OneHandedGestureIndicator`, `GestureAction`,
+  // reporting seam wraps (`oneHandedGesture`, `OneHandedGestureClickIndicator`, `GestureAction`,
   // `LocalOneHandedGestureEnabled`) plus `LocalContentColor`. `compileOnly` because consumers
   // using the public reporting/indicator helpers are Wear apps that already pull
   // wear-compose-material3 at runtime; `:daemon:android` can still link the connector without
@@ -66,7 +66,7 @@ dependencies {
   testImplementation(libs.wear.compose.material3)
 
   // The forced still-capture path renders wear-compose-material3's shipped indicator AVD at its
-  // peak frame. The real alpha06 state-backed indicator completes during Robolectric idle pre-roll.
+  // peak frame. The real alpha07 state-backed indicator completes during Robolectric idle pre-roll.
   compileOnly(platform(libs.compose.bom.stable))
   compileOnly("androidx.compose.animation:animation-graphics")
   testImplementation(platform(libs.compose.bom.stable))
