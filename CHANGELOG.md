@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.17](https://github.com/yschimke/compose-ai-tools/compare/v0.19.16...v0.19.17) (2026-08-01)
+
+
+### Features
+
+* **serve:** persist preview engagement ([#3136](https://github.com/yschimke/compose-ai-tools/issues/3136)) ([0c93552](https://github.com/yschimke/compose-ai-tools/commit/0c9355258f549468b06a99764de90efdbe0d2dea))
+
+
+### Bug Fixes
+
+* **catalog:** preserve Wear font-scale preview axes ([#3145](https://github.com/yschimke/compose-ai-tools/issues/3145)) ([1f0f751](https://github.com/yschimke/compose-ai-tools/commit/1f0f751f940e225bbc667ef3c9e5f01ec8afa218))
+* **ci:** protect release publish runs from coalescing ([#3139](https://github.com/yschimke/compose-ai-tools/issues/3139)) ([dd2c559](https://github.com/yschimke/compose-ai-tools/commit/dd2c5595af1e7786f423e2cbfce6646acdc851ed))
+* **serve:** show GitHub login on preview home ([#3140](https://github.com/yschimke/compose-ai-tools/issues/3140)) ([43010c9](https://github.com/yschimke/compose-ai-tools/commit/43010c9e0a3abd8479eb807675e8be5c9228a544))
+
 ## [0.19.16](https://github.com/yschimke/compose-ai-tools/compare/v0.19.15...v0.19.16) (2026-08-01)
 
 
