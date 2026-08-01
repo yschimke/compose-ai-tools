@@ -50,6 +50,8 @@ services:
       # code-execution credential: trusting a branch makes that producer's Compose eligible for
       # server-side re-render here. Treat it like a deploy key, not a read token.
       SERVE_ADMIN_TOKEN: "${SERVE_ADMIN_TOKEN:-}"
+      # Privacy-minimal aggregate app/catalog + preview views, persisted on preview_config.
+      SERVE_ENGAGEMENT_FILE: "${SERVE_ENGAGEMENT_FILE:-}"
       # Optional GitHub OAuth collaborator auth for code-running surfaces (live WebSockets and
       # playground). Set the three secrets in .env to enable; the entrypoint then defaults the repo
       # check to yschimke/compose-ai-tools and uses this domain as the OAuth callback origin unless

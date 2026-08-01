@@ -389,8 +389,10 @@ class ServeWebTest {
         previews,
         token = "t",
         engagement = mapOf("plain.Button" to ServeWeb.PreviewEngagement(12)),
+        systemViews = 1234,
       )
     assertTrue(landing.contains("""<div class="cp-engage">12 views</div>"""), landing)
+    assertTrue(landing.contains("2 preview(s) · 1.2k views"), landing)
 
     val viewer =
       ServeWeb.viewerPage(
@@ -400,6 +402,27 @@ class ServeWebTest {
         engagement = ServeWeb.PreviewEngagement(13),
       )
     assertTrue(viewer.contains("""<p class="cp-viewer-engage">13 views</p>"""), viewer)
+  }
+
+  @Test
+  fun `home cards subtly surface catalog engagement`() {
+    val html =
+      ServeWeb.homeIndexPage(
+        systems =
+          listOf(
+            ServeWeb.HomeSystem(
+              system = "compose-m3",
+              title = "Material 3",
+              subtitle = null,
+              previewCount = 42,
+              trust = null,
+              heroPreviewId = null,
+              views = 12_345,
+            )
+          ),
+        token = "t",
+      )
+    assertTrue(html.contains("42 preview(s) · 12.3k views"), html)
   }
 
   @Test

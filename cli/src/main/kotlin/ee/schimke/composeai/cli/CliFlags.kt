@@ -79,6 +79,7 @@ internal object CliFlags {
       "--catalogs-unlisted",
       "--catalogs-file",
       "--admin-token",
+      "--engagement-file",
       "--github-auth-client-id",
       "--github-auth-client-secret",
       "--github-auth-cookie-secret",

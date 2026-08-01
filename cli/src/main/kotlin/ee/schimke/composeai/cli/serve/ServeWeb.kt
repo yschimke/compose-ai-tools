@@ -24,7 +24,7 @@ object ServeWeb {
    */
   data class UnfurlMetadata(val pageUrl: String, val imageUrl: String? = null)
 
-  /** In-memory engagement metrics surfaced by the live server UI/API. */
+  /** Aggregate engagement metrics surfaced by the live server UI/API. */
   data class PreviewEngagement(val views: Long = 0)
 
   private fun assetHref(name: String): String = ServeWebAssets.href(name)
@@ -32,10 +32,13 @@ object ServeWeb {
   private fun scriptTag(name: String): String = "<script src=\"${assetHref(name)}\"></script>"
 
   private fun viewCountHtml(views: Long): String =
-    if (views <= 0) "" else "<div class=\"cp-engage\">${formatCount(views)} views</div>"
+    if (views <= 0) "" else "<div class=\"cp-engage\">${formatViews(views)}</div>"
 
   private fun viewerViewCountHtml(views: Long): String =
-    if (views <= 0) "" else "<p class=\"cp-viewer-engage\">${formatCount(views)} views</p>"
+    if (views <= 0) "" else "<p class=\"cp-viewer-engage\">${formatViews(views)}</p>"
+
+  private fun formatViews(views: Long): String =
+    "${formatCount(views)} ${if (views == 1L) "view" else "views"}"
 
   private fun formatCount(n: Long): String =
     if (n < 1000) n.toString()
@@ -1213,6 +1216,8 @@ object ServeWeb {
      * takes effect when [sourceRepo] is one of [HomeGroup.repos] — see [homeSections].
      */
     val group: HomeGroup? = null,
+    /** Aggregate visits to this catalog/app landing page. */
+    val views: Long = 0,
   )
 
   /**
@@ -1354,7 +1359,7 @@ object ServeWeb {
         <div class="cp-meta">
           <div class="cp-sys-title">$title${compactTrustBadge(s.trust)}</div>
           <div class="cp-id">$sysId</div>$desc
-          <div class="cp-sys-foot">${s.previewCount} preview(s)</div>
+          <div class="cp-sys-foot">${s.previewCount} preview(s)${if (s.views > 0) " · ${formatViews(s.views)}" else ""}</div>
         </div>
       </a>
       """
@@ -2443,6 +2448,8 @@ object ServeWeb {
      * missing or zero entries render no badge.
      */
     engagement: Map<String, PreviewEngagement> = emptyMap(),
+    /** Aggregate visits to this app/design-system landing page. */
+    systemViews: Long = 0,
     /** Absolute page + representative preview URLs for Open Graph/Twitter link previews. */
     unfurl: UnfurlMetadata? = null,
   ): String {
@@ -2666,7 +2673,7 @@ object ServeWeb {
       body =
         """
         $back<h1 class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</h1>
-        ${degradeBanner(degradations)}$prov$themeToggle<p class="cp-sub">${previews.size} preview(s) · click one to view with overrides ·
+        ${degradeBanner(degradations)}$prov$themeToggle<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""} · click one to view with overrides ·
           <a href="$basePath/bundle.zip$q">download all (.zip)</a></p>
         $searchBox$tabBar$gridBlock$emptyState$filterScript$about
         """
