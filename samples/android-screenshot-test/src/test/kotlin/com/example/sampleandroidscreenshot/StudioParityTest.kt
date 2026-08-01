@@ -25,8 +25,8 @@ import org.junit.Test
  * Both engines' sizes are pinned exactly, per preview, rather than compared loosely. Where they
  * agree, that pins the parity. Where they *disagree*, the divergence is written down with its cause
  * and issue — so a fix flips the test instead of silently changing output, and a regression can't
- * hide behind a tolerance. Three divergences are live today — #3095, #3096 and #3097; see the table below and
- * [docs/STUDIO_PARITY.md](../../../../../../../docs/STUDIO_PARITY.md).
+ * hide behind a tolerance. [docs/STUDIO_PARITY.md](../../../../../../../docs/STUDIO_PARITY.md)
+ * carries the fixture rationale.
  *
  * Same-size pairs are additionally compared pixel-by-pixel. Text rasterisation differs between
  * Layoutlib (native Skia + platform fonts) and our Robolectric renderer, so an exact match is not
@@ -50,10 +50,8 @@ class StudioParityTest {
   )
 
   /**
-   * Layoutlib's rounding, for reference while reading the table: a fixed axis is
-   * `ceil(dp × density)`, ours is `floor(...)`. They only differ when the product lands on a half
-   * pixel, which is why the 2.625× (420dpi) previews at 100dp and 60dp drift by 1px and every
-   * whole-pixel device preview agrees exactly.
+   * Layoutlib's rounding, for reference while reading the table: an explicit fixed axis rounds
+   * half-up (`dp × density + 0.5`) while catalog device frames keep their resolved pixel sizes.
    */
   private val expectations =
     mapOf(
@@ -64,30 +62,18 @@ class StudioParityTest {
       "ParityPhoneDevicePreview" to Parity(1080 to 2340, 1080 to 2340, maxDiffFraction = 0.01),
       "ParityDeviceSpecPreview" to Parity(720 to 1280, 720 to 1280, maxDiffFraction = 0.01),
 
-      // --- divergence 1 (#3095): half-pixel rounding on a fixed axis ------------------------------------
-      // 100dp × 2.625 = 262.5 and 60dp × 2.625 = 157.5. Layoutlib rounds up, we truncate.
-      "ParityDayPreview" to Parity(525 to 263, 525 to 262, divergence = "half-pixel rounding (#3095)"),
-      "ParityNightPreview" to Parity(525 to 263, 525 to 262, divergence = "half-pixel rounding (#3095)"),
-      "ParityFontScalePreview" to
-        Parity(525 to 263, 525 to 262, divergence = "half-pixel rounding (#3095)"),
-      "ParityLocalePreview" to Parity(525 to 263, 525 to 262, divergence = "half-pixel rounding (#3095)"),
-      "ParityBackgroundPreview" to
-        Parity(315 to 158, 315 to 157, divergence = "half-pixel rounding (#3095)"),
-
-      // --- divergence 2 (#3096): constraints on a fixed frame -------------------------------------------
-      // Layoutlib measures the composable with *tight* constraints equal to the frame, so a
-      // `Modifier.size` child (a preferred size) stretches to fill it. We measure loose and
-      // letterbox the child against the harness background. Same canvas, very different pixels.
-      "ParityFixedPreview" to
-        Parity(525 to 263, 525 to 262, divergence = "fixed-frame constraints (#3096) + rounding (#3095)"),
-      "ParityFixedWidthPreview" to
-        Parity(630 to 210, 630 to 210, maxDiffFraction = 1.0, divergence = "fixed-frame constraints (#3096)"),
-
-      // --- divergence 3 (#3097): round device mask ------------------------------------------------------
-      // Layoutlib clips an `isRound` wear device to its circle, leaving the corners transparent.
-      // We render the full square. Sizes and configuration agree; only the mask differs.
-      "ParityWearDevicePreview" to
-        Parity(384 to 384, 384 to 384, maxDiffFraction = 1.0, divergence = "round device mask (#3097)"),
+      // Explicit fixed axes use Studio's half-up pixel rounding.
+      "ParityDayPreview" to Parity(525 to 263, 525 to 263),
+      "ParityNightPreview" to Parity(525 to 263, 525 to 263),
+      "ParityFontScalePreview" to Parity(525 to 263, 525 to 263),
+      "ParityLocalePreview" to Parity(525 to 263, 525 to 263),
+      "ParityBackgroundPreview" to Parity(315 to 158, 315 to 158),
+      // Fixed frames measure content with tight constraints, so preferred-size children fill the
+      // requested frame just as they do in Studio.
+      "ParityFixedPreview" to Parity(525 to 263, 525 to 263),
+      "ParityFixedWidthPreview" to Parity(630 to 210, 630 to 210),
+      // Round Wear device previews are circularly clipped with transparent corners.
+      "ParityWearDevicePreview" to Parity(384 to 384, 384 to 384),
     )
 
   @Test
@@ -149,17 +135,7 @@ class StudioParityTest {
     // Guards the table itself: if a renderer fix closes a divergence, the entry above must be
     // updated in the same change rather than left claiming a difference that no longer exists.
     val declared = expectations.filterValues { it.divergence != null }.keys
-    assertThat(declared)
-      .containsExactly(
-        "ParityDayPreview",
-        "ParityNightPreview",
-        "ParityFontScalePreview",
-        "ParityLocalePreview",
-        "ParityBackgroundPreview",
-        "ParityFixedPreview",
-        "ParityFixedWidthPreview",
-        "ParityWearDevicePreview",
-      )
+    assertThat(declared).isEmpty()
   }
 
   /** `<Function>_<preview name>_<hash>_<index>.png` → function name. */

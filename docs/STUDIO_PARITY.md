@@ -49,11 +49,8 @@ and forces the table to be updated in the same change.
 
 ## Known divergences
 
-| # | What | Where it shows | Issue |
-|---|---|---|---|
-| 1 | **Half-pixel rounding.** A fixed axis is `ceil(dp × density)` in Layoutlib and `floor(...)` for us, so any axis landing on a half pixel is 1px short — e.g. `heightDp = 100` at 2.625× is 263 vs our 262. Whole-pixel device frames agree exactly. | 5 previews | [#3095](https://github.com/yschimke/compose-ai-tools/issues/3095) |
-| 2 | **Fixed-frame constraints.** Layoutlib measures the composable with *tight* constraints equal to the frame, so a `Modifier.size` child (a preferred size) stretches to fill it. We measure loose and letterbox the child against the harness background. Same canvas, ~35% of pixels differ. | `ParityFixedPreview`, `ParityFixedWidthPreview` | [#3096](https://github.com/yschimke/compose-ai-tools/issues/3096) |
-| 3 | **Round device mask.** Layoutlib clips an `isRound` wear device to its circle, leaving the corners transparent. We render the full square. | `ParityWearDevicePreview` | [#3097](https://github.com/yschimke/compose-ai-tools/issues/3097) |
+None currently pinned. The previous fixed-frame constraint, half-pixel rounding, and round-device
+mask divergences are covered by the parity table and sample matrix tests.
 
 Adding a fixture without a matching expectation entry fails the gate, so a new mode can't be
 rendered by both engines and compared by neither.

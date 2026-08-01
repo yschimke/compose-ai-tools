@@ -85,10 +85,29 @@ object FontSubsetter {
         val subsetter = TTFSubsetter(ttf)
         subsetter.addAll(codePoints)
         val subset = ByteArrayOutputStream().also { subsetter.writeToStream(it) }.toByteArray()
-        val stripped = stripTables(subset, DROPPABLE)
+        val stripped = stripTables(repairMalformedOs2Table(subset), DROPPABLE)
         stripped.takeIf { it.size < fontBytes.size }
       }
       .getOrNull()
+  }
+
+  /**
+   * FontBox can emit an `OS/2` table whose version field declares v4 while the table record still
+   * has the v0 length (78 bytes). Strict sfnt parsers then read past the table and reject the face
+   * (#3047). When the bytes are internally shorter than their declared version requires, downgrade
+   * only the version field to the newest version that actually fits the table. The table contents
+   * remain honest, and [stripTables] recomputes the table and whole-font checksums immediately
+   * afterwards.
+   */
+  private fun repairMalformedOs2Table(font: ByteArray): ByteArray {
+    val record = tableRecord(font, "OS/2") ?: return font
+    if (record.length < OS2_V0_LENGTH) return font
+    val declared = ByteBuffer.wrap(font).getShort(record.offset).toInt() and 0xFFFF
+    val fitted = os2VersionThatFits(record.length) ?: return font
+    if (declared <= fitted) return font
+    val repaired = font.copyOf()
+    ByteBuffer.wrap(repaired).putShort(record.offset, fitted.toShort())
+    return repaired
   }
 
   /**
@@ -101,7 +120,6 @@ object FontSubsetter {
   private fun stripTables(font: ByteArray, drop: Set<String>): ByteArray {
     val input = ByteBuffer.wrap(font)
     val numTables = input.getShort(4).toInt() and 0xFFFF
-    data class Rec(val tag: String, val offset: Int, val length: Int)
     val kept = ArrayList<Rec>(numTables)
     for (i in 0 until numTables) {
       val rec = 12 + i * 16
@@ -156,6 +174,33 @@ object FontSubsetter {
     }
     return out
   }
+
+  private data class Rec(val tag: String, val offset: Int, val length: Int)
+
+  private fun tableRecord(font: ByteArray, tag: String): Rec? {
+    if (font.size < 12) return null
+    val input = ByteBuffer.wrap(font)
+    val numTables = input.getShort(4).toInt() and 0xFFFF
+    for (i in 0 until numTables) {
+      val rec = 12 + i * 16
+      if (rec + 16 > font.size) return null
+      val recTag = String(font, rec, 4, Charsets.ISO_8859_1)
+      if (recTag == tag) return Rec(recTag, input.getInt(rec + 8), input.getInt(rec + 12))
+    }
+    return null
+  }
+
+  private fun os2VersionThatFits(length: Int): Int? =
+    when {
+      length >= OS2_V2_LENGTH -> 4
+      length >= OS2_V1_LENGTH -> 1
+      length >= OS2_V0_LENGTH -> 0
+      else -> null
+    }
+
+  private const val OS2_V0_LENGTH = 78
+  private const val OS2_V1_LENGTH = 86
+  private const val OS2_V2_LENGTH = 96
 
   /**
    * Scripts that lay out one glyph per code point with no reordering, mark stacking, or mandatory

@@ -35,9 +35,10 @@ class ComposeFigmaSvgExtension(private val fontResolver: () -> FigmaFontResolver
   override fun process(context: ExtensionPostCaptureContext) {
     val rootDir = context.require(RenderArtifactContextKeys.RootDir)
     val outputBaseName = context.require(RenderArtifactContextKeys.OutputBaseName)
-    // Key off the protocol previewId when present, matching the file-backed registry lookup and the
-    // sibling extensions so `data/fetch` finds the SVG.
-    val previewId = context.get(RenderArtifactContextKeys.PreviewId) ?: outputBaseName
+    // Key the SVG by the concrete render output, not just the protocol previewId. Catalog
+    // breakpoints can render the same previewId into several outputBaseName variants; reusing the
+    // function-level previewId directory would replay one captured tree into every SVG path.
+    val previewId = outputBaseName
     val semanticsRoot = context.require(RenderArtifactContextKeys.SemanticsRoot)
     val slotTables = context.get(RenderArtifactContextKeys.SlotTables).orEmpty()
     val density = context.get(RenderArtifactContextKeys.Density) ?: 1f

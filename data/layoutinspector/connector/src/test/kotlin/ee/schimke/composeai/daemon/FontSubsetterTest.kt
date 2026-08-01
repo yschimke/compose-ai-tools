@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import java.awt.Font
 import java.io.ByteArrayInputStream
+import java.nio.ByteBuffer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -84,6 +85,19 @@ class FontSubsetterTest {
   }
 
   @Test
+  fun subsetDoesNotDeclareAnOs2VersionLongerThanTheTable() {
+    val subset = FontSubsetter.subset(fixtureFont(), codePoints("Filled card"))!!
+    val record = tableRecord(subset, "OS/2")!!
+    val version = ByteBuffer.wrap(subset).getShort(record.offset).toInt() and 0xFFFF
+
+    assertTrue(
+      "OS/2 version $version requires at least ${os2LengthFor(version)} bytes, " +
+        "but table length is ${record.length}",
+      record.length >= os2LengthFor(version),
+    )
+  }
+
+  @Test
   fun subsetIsBestEffortAndReturnsNullRatherThanThrowing() {
     assertNull("empty font bytes", FontSubsetter.subset(ByteArray(0), codePoints("A")))
     assertNull("no code points requested", FontSubsetter.subset(fixtureFont(), emptySet()))
@@ -92,4 +106,25 @@ class FontSubsetterTest {
       FontSubsetter.subset(byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8), codePoints("A")),
     )
   }
+
+  private data class TableRecord(val offset: Int, val length: Int)
+
+  private fun tableRecord(font: ByteArray, tag: String): TableRecord? {
+    val input = ByteBuffer.wrap(font)
+    val numTables = input.getShort(4).toInt() and 0xFFFF
+    for (i in 0 until numTables) {
+      val rec = 12 + i * 16
+      val recTag = String(font, rec, 4, Charsets.ISO_8859_1)
+      if (recTag == tag) return TableRecord(input.getInt(rec + 8), input.getInt(rec + 12))
+    }
+    return null
+  }
+
+  private fun os2LengthFor(version: Int): Int =
+    when (version) {
+      0 -> 78
+      1 -> 86
+      in 2..5 -> 96
+      else -> 96
+    }
 }

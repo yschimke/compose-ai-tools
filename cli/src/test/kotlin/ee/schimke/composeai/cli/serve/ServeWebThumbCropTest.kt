@@ -72,13 +72,13 @@ class ServeWebThumbCropTest {
 
   @Test
   fun `the crop CSS is present so the clip window actually clips`() {
-    val html = ServeWeb.landingPage("wear-m3", previews, token = "t", thumbCrop = { crop })
+    val css = ServeWebAssets.load("serve.css")!!.bytes.decodeToString()
     assertTrue(
-      html.contains(".cp-crop { position: relative; overflow: hidden;"),
+      css.contains(".cp-crop { position: relative; overflow: hidden;"),
       "clip style shipped",
     )
     assertTrue(
-      html.contains(".cp-imgwrap .cp-crop img { position: absolute; max-width: none;"),
+      css.contains(".cp-imgwrap .cp-crop img { position: absolute; max-width: none;"),
       "img escapes the fit-to-box cap",
     )
   }
