@@ -18,6 +18,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.Base64
+import java.util.concurrent.ConcurrentHashMap
 import javax.imageio.ImageIO
 import kotlinx.serialization.json.Json
 import okio.FileSystem
@@ -569,9 +570,19 @@ class ComposeFigmaSvgDataProductRegistry(
       ),
     fileSystem = fileSystem,
   ) {
+  private val latestOutputBaseNameByPreviewId = ConcurrentHashMap<String, String>()
+
+  override fun onRender(previewId: String, result: RenderResult) {
+    // Mode-specific renders (for example figma-svg-long) do not replace the viewport export, so a
+    // result without a concrete output name must leave the latest viewport mapping intact.
+    result.outputBaseName?.let { latestOutputBaseNameByPreviewId[previewId] = it }
+  }
+
   override fun fileFor(previewId: String, kind: String): File? =
     if (kind == ComposeFigmaSvgDataProducer.KIND)
-      rootDir.resolve(previewId).resolve(ComposeFigmaSvgDataProducer.FILE_SVG)
+      rootDir
+        .resolve(latestOutputBaseNameByPreviewId[previewId] ?: previewId)
+        .resolve(ComposeFigmaSvgDataProducer.FILE_SVG)
     else null
 
   /** The SVG is not JSON — an `inline = true` fetch must still return the path, not parse it. */

@@ -79,8 +79,10 @@ class PreviewManifestRouter(
     val deviceSpec = deviceOverride?.let {
       ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it)
     }
-    val baseWidthPx = deviceSpec?.let { (it.widthDp * it.density).toInt() } ?: resolved.widthPx
-    val baseHeightPx = deviceSpec?.let { (it.heightDp * it.density).toInt() } ?: resolved.heightPx
+    val baseWidthPx =
+      deviceSpec?.let { (it.widthDp * it.density).toInt().coerceAtLeast(1) } ?: resolved.widthPx
+    val baseHeightPx =
+      deviceSpec?.let { (it.heightDp * it.density).toInt().coerceAtLeast(1) } ?: resolved.heightPx
     val baseDensity = deviceSpec?.density ?: resolved.density
     val effectiveDevice = deviceOverride ?: resolved.device
     // Issue #1208 — `orientation` on desktop is a `widthPx ↔ heightPx` swap; explicit pixel
@@ -331,13 +333,16 @@ data class PreviewManifestEntry(
     // from it — reflect the preview's natural size, instead of the historical fixed 320² frame that
     // clipped wide content and reflowed text (diverging from the standalone renderer's wrap crop).
     // The sandbox bound (400×800 dp) matches the standalone renderer's DesktopRendererMain default.
-    val explicitWidthPx = widthPx ?: p?.widthDp?.let { (it * density).toInt() }
-    val explicitHeightPx = heightPx ?: p?.heightDp?.let { (it * density).toInt() }
+    val isDeviceFrame = !device.isNullOrBlank()
+    val explicitWidthPx =
+      widthPx ?: p?.widthDp?.takeUnless { isDeviceFrame }?.let { (it * density).roundHalfUpPx() }
+    val explicitHeightPx =
+      heightPx ?: p?.heightDp?.takeUnless { isDeviceFrame }?.let { (it * density).roundHalfUpPx() }
     val pinned = device != null || showSystemUi
     val wrapWidth = explicitWidthPx == null && !pinned
     val wrapHeight = explicitHeightPx == null && !pinned
-    val widthPx = explicitWidthPx ?: (WRAP_SANDBOX_WIDTH_DP * density).toInt()
-    val heightPx = explicitHeightPx ?: (WRAP_SANDBOX_HEIGHT_DP * density).toInt()
+    val widthPx = explicitWidthPx ?: (WRAP_SANDBOX_WIDTH_DP * density).roundHalfUpPx()
+    val heightPx = explicitHeightPx ?: (WRAP_SANDBOX_HEIGHT_DP * density).roundHalfUpPx()
     val showBackground = showBackground ?: p?.showBackground ?: true
     val backgroundColor = backgroundColor ?: p?.backgroundColor ?: 0L
     val uiMode = uiMode ?: p?.uiMode ?: 0
@@ -375,6 +380,8 @@ data class PreviewManifestEntry(
     const val WRAP_SANDBOX_HEIGHT_DP: Int = 800
   }
 }
+
+private fun Float.roundHalfUpPx(): Int = kotlin.math.floor(this + 0.5f).toInt().coerceAtLeast(1)
 
 /**
  * Subset of the plugin's [PreviewParams][ee.schimke.composeai.plugin.PreviewParams] the daemon's

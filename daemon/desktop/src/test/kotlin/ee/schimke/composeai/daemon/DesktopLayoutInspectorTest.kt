@@ -38,7 +38,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
-import org.junit.Ignore
 import org.junit.Test
 
 /**
@@ -143,12 +142,12 @@ class DesktopLayoutInspectorTest {
    * the figma-svg export can emit `<path>`s instead of a raster crop. Exercises the reflection
    * against the real androidx VectorPainter/VectorComponent/PathComponent/PathNode classes.
    *
-   * Shared by the geometry test below and the `@Ignore`d fill-colour one, so that #3080 costs us
-   * only the colour assertion — this `ImageComposeScene` → `LayoutInspectorDataProducer` path has
-   * no other end-to-end coverage (the sibling vector tests drive synthetic models or lower-level
-   * extraction), and losing it entirely would let a vector-capture regression through CI.
+   * Shared by the geometry and fill-colour tests below: this `ImageComposeScene` →
+   * `LayoutInspectorDataProducer` path has no other end-to-end coverage (the sibling vector tests
+   * drive synthetic models or lower-level extraction), and losing it would let a vector-capture
+   * regression through CI.
    */
-  private fun captureStarIconNode(): LayoutInspectorNode {
+  private fun captureStarIconNode(tint: Color = Color.Unspecified): LayoutInspectorNode {
     val star =
       ImageVector.Builder(
           defaultWidth = 24.dp,
@@ -173,7 +172,7 @@ class DesktopLayoutInspectorTest {
         }
         .build()
 
-    val root = writeAndRead { Icon(star, "star", Modifier.size(48.dp)) }
+    val root = writeAndRead { Icon(star, "star", Modifier.size(48.dp), tint = tint) }
 
     val node = root.firstWhere { it.vectorGraphic != null }
     assertNotNull("an ImageVector-backed Icon must carry a captured vectorGraphic", node)
@@ -192,15 +191,15 @@ class DesktopLayoutInspectorTest {
   }
 
   @Test
-  @Ignore(
-    "#3080 — fillArgb resolves to #FF000000 instead of the declared #FF112233. Split out of " +
-      "captures_an_imagevector_icon_as_editable_vector_paths so the viewport/path-count/geometry " +
-      "assertions stay active: only colour resolution is broken, and the rest of that capture is " +
-      "worth guarding meanwhile."
-  )
   fun resolves_the_solid_fill_on_a_captured_vector_path() {
     val path = captureStarIconNode().vectorGraphic!!.paths.first()
     assertEquals("solid fill resolved", "#FF112233", path.fillArgb)
+  }
+
+  @Test
+  fun resolves_an_external_tint_on_a_captured_vector_path() {
+    val path = captureStarIconNode(tint = Color(0xFFAABBCC)).vectorGraphic!!.paths.first()
+    assertEquals("external tint resolved", "#FFAABBCC", path.fillArgb)
   }
 
   @Test

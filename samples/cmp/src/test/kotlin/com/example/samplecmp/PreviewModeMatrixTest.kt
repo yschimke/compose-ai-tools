@@ -25,24 +25,24 @@ class PreviewModeMatrixTest {
 
   /**
    * `functionName_sanitisedPreviewName` → expected PNG size in pixels, as `dp × density` from
-   * Studio's device catalog. A fixed axis is `floor(dp × density)`; a wrapped axis is the
-   * composable's measured size.
+   * Studio's device catalog. Explicit fixed axes round half-up to whole pixels; wrapped axes use
+   * the composable's measured size.
    */
   private val expectedSizes =
     mapOf(
       // Wrapped both axes: the probe's 160×80dp at Studio's 2.625× default.
       "MatrixComponentWrapPreview_Component_wrap" to (420 to 210),
       // 200×100dp fixed.
-      "MatrixFixedBothAxesPreview_Fixed_both_axes" to (525 to 262),
+      "MatrixFixedBothAxesPreview_Fixed_both_axes" to (525 to 263),
       // 240dp fixed width, wrapped height.
       "MatrixFixedWidthOnlyPreview_Fixed_width_only" to (630 to 210),
       // 120×60dp fixed.
-      "MatrixBackgroundColorPreview_Background_colour" to (315 to 157),
+      "MatrixBackgroundColorPreview_Background_colour" to (315 to 158),
       // uiMode / fontScale / locale change what is drawn, never the canvas.
-      "MatrixLightPreview_Day" to (525 to 262),
-      "MatrixNightPreview_Night" to (525 to 262),
-      "MatrixFontScalePreview_Font_scale_2x" to (525 to 262),
-      "MatrixLocalePreview_German" to (525 to 262),
+      "MatrixLightPreview_Day" to (525 to 263),
+      "MatrixNightPreview_Night" to (525 to 263),
+      "MatrixFontScalePreview_Font_scale_2x" to (525 to 263),
+      "MatrixLocalePreview_German" to (525 to 263),
       // Pixel 5: 393×851dp @2.75×.
       "MatrixPhoneDevicePreview_Phone" to (1080 to 2340),
       // Wear small round: 192×192dp @2.0×.
@@ -109,18 +109,13 @@ class PreviewModeMatrixTest {
   }
 
   @Test
-  fun `mixed fixed-wrap showBackground leaves the fixed axis unpainted - issue 3092`() {
-    // Known desktop/Android divergence the matrix surfaced: with one axis fixed and the other
-    // wrapping, `showBackground = true` only covers the *measured content*, so the rest of the
-    // fixed frame stays transparent. Android (and Studio) fill the whole frame — its sibling test
-    // asserts the opaque-white corner for the same fixture.
-    //
-    // Pinned to the current pixel deliberately, as a change detector: when #3092 lands this test
-    // fails and gets flipped to match the Android expectation, rather than the fix quietly
-    // changing rendered output nobody was watching.
+  fun `mixed fixed-wrap showBackground fills the whole fixed frame`() {
+    // Studio measures the fixed width tightly even when height wraps, so the preferred-size probe
+    // itself fills the full fixed axis.
     val img = readRender("MatrixFixedWidthOnlyPreview_Fixed_width_only")
-    val alphaAtFixedEdge = (img.getRGB(img.width - 2, 2) ushr 24) and 0xff
-    assertThat(alphaAtFixedEdge).isEqualTo(0)
+    val argb = img.getRGB(img.width - 2, 2)
+    assertThat((argb ushr 24) and 0xff).isEqualTo(0xff)
+    assertThat(argb and 0xffffff).isEqualTo(0x3366FF)
   }
 
   @Test
