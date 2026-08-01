@@ -56,6 +56,7 @@ class ServeCatalogStore(
    * catalog** — a deployed public server needs no local `--wasm-dir` build, just `--catalogs`.
    */
   private val registerWasm: (system: String, dir: File) -> Unit = { _, _ -> },
+  private val serverSideRenderEnabled: Boolean = false,
   /**
    * Trusted server-side re-render from a carried **executable bundle** (opt-in,
    * `--allow-render-trusted`). When a catalog is `Trusted` AND declares a `liveBundle` (`{path,
@@ -527,7 +528,8 @@ class ServeCatalogStore(
             // reason.
             liveBundleFallback =
               ServeDegradation.liveBundleUnavailable(
-                "server-side re-render is not enabled on this server"
+                if (serverSideRenderEnabled) "the live bundle daemon could not be started"
+                else "server-side re-render is not enabled on this server"
               )
           }
           // Fall through to source/static — a declared resource couldn't be rehydrated.

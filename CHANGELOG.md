@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.19.14](https://github.com/yschimke/compose-ai-tools/compare/v0.19.13...v0.19.14) (2026-08-01)
+
+
+### Features
+
+* **daemon-desktop:** resolve @PreviewParameter previews on the desktop daemon ([#3069](https://github.com/yschimke/compose-ai-tools/issues/3069)) ([ae59646](https://github.com/yschimke/compose-ai-tools/commit/ae5964664c55d28862313ddcd8d8a6239e6842fe))
+* **daemon:** give each sandbox its own process so the pool can boot ([#3091](https://github.com/yschimke/compose-ai-tools/issues/3091)) ([e1e5035](https://github.com/yschimke/compose-ai-tools/commit/e1e503534594c43a84d593bb00bf0b05645436bd))
+* **discovery:** warn when a preview installs a theme under declared theme catalogs ([#3068](https://github.com/yschimke/compose-ai-tools/issues/3068)) ([f1b430a](https://github.com/yschimke/compose-ai-tools/commit/f1b430a23ba8c98360dbf8f7ae441b15074870b8))
+* **serve:** multi-file playground snippets, and settle the design doc's open questions ([#3102](https://github.com/yschimke/compose-ai-tools/issues/3102)) ([5806094](https://github.com/yschimke/compose-ai-tools/commit/5806094d745c2e5ae7ca7f82c4ba03b22a66c668))
+* **serve:** run the playground compile inside the sandbox too ([#3105](https://github.com/yschimke/compose-ai-tools/issues/3105)) ([3c022df](https://github.com/yschimke/compose-ai-tools/commit/3c022df08f9e3377f579aac3bb19c6e622fc6cd7))
+* **serve:** sandbox playground sessions and gate --public on a containment probe ([#3089](https://github.com/yschimke/compose-ai-tools/issues/3089)) ([e0af114](https://github.com/yschimke/compose-ai-tools/commit/e0af114072c802cf7552055868a680d6379d3348))
+
+
+### Bug Fixes
+
+* **daemon-tests:** assert the gradient export contract the exporter actually implements ([#3103](https://github.com/yschimke/compose-ai-tools/issues/3103)) ([57434f4](https://github.com/yschimke/compose-ai-tools/commit/57434f4772fceca1db9590d73aaa02eafe3866d2))
+* **daemon-tests:** stop a test `fonts/` resource shadowing Robolectric's system fonts ([#3094](https://github.com/yschimke/compose-ai-tools/issues/3094)) ([5009aa1](https://github.com/yschimke/compose-ai-tools/commit/5009aa1e7617bbdf3d0b819cb8368e564f4035a1))
+* **daemon:** require an explicit onExit so a forgotten override can't kill the test JVM ([#3104](https://github.com/yschimke/compose-ai-tools/issues/3104)) ([2f71a4c](https://github.com/yschimke/compose-ai-tools/commit/2f71a4c942a904954e380f5b71fd8e4ee73c7c93))
+* **daemon:** restore the capture overload the forensic dump looks up reflectively ([#3071](https://github.com/yschimke/compose-ai-tools/issues/3071)) ([d82d03a](https://github.com/yschimke/compose-ai-tools/commit/d82d03ad49b8420f01b0038bc297f3b6f18dc109))
+* **daemon:** stop encodeRenderPayload dropping 8 PreviewOverrides fields ([#3088](https://github.com/yschimke/compose-ai-tools/issues/3088)) ([a30b0f9](https://github.com/yschimke/compose-ai-tools/commit/a30b0f9431e5f157dcacebad4a067cdba4a8ee39))
+* **daemon:** stop the Robolectric test JVM aborting mid-suite ([#3079](https://github.com/yschimke/compose-ai-tools/issues/3079)) ([a1df148](https://github.com/yschimke/compose-ai-tools/commit/a1df1483b841a2c90b1859157e3e601d213d7aba))
+* **deps:** update gradle minor/patch ([#3101](https://github.com/yschimke/compose-ai-tools/issues/3101)) ([d53b097](https://github.com/yschimke/compose-ai-tools/commit/d53b0972c8a8e1cf1bc7f9f3945a05405406c3e5))
+* **renderer-android:** frame dialog previews in the standalone renderer too ([#3084](https://github.com/yschimke/compose-ai-tools/issues/3084)) ([72facbd](https://github.com/yschimke/compose-ai-tools/commit/72facbde548dba8e087e91390dd0f8f5a8051af9))
+* **serve:** bound concurrent playground compiles, and clamp them to the sandbox TTL ([#3106](https://github.com/yschimke/compose-ai-tools/issues/3106)) ([ad0ba4f](https://github.com/yschimke/compose-ai-tools/commit/ad0ba4fb322263dece817249548796deeb4bbe2b))
+
 ## [0.19.13](https://github.com/yschimke/compose-ai-tools/compare/v0.19.12...v0.19.13) (2026-07-31)
 
 

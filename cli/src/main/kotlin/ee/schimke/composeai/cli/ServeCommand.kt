@@ -278,6 +278,15 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val playgroundSandboxPids: Int =
     args.flagValue("--playground-sandbox-pids")?.toIntOrNull() ?: PlaygroundSandbox.DEFAULT_PIDS
 
+  /**
+   * `--playground-compile-slots <n>`: how many snippet compiles may hold a jailed JVM at once. The
+   * compile-side counterpart to `--live-seats` — per-process caps bound one compile, this bounds
+   * the aggregate, so peak compile memory is `slots × --playground-sandbox-memory-mb`.
+   */
+  private val playgroundCompileSlots: Int =
+    args.flagValue("--playground-compile-slots")?.toIntOrNull()?.takeIf { it > 0 }
+      ?: PlaygroundJailedCompiler.DEFAULT_COMPILE_SLOTS
+
   /** Hard wall-clock lifetime of one snippet JVM; the spawner kills it at the deadline. */
   private val playgroundSandboxTtlSeconds: Long =
     args.flagValue("--playground-sandbox-ttl")?.toLongOrNull()
@@ -875,6 +884,7 @@ class ServeCommand(args: List<String>) : Command(args) {
               perPreviewResolve = state.perPreviewResolve,
               perPreviewStreamCount = state.perPreviewStreamCount,
               perPreviewRenderStats = state.perPreviewRenderStats,
+              perPreviewPoolStats = state.perPreviewPoolStats,
             )
             // Warm the daemon off the request path so the first browse already gets the per-variant
             // SVG lane instead of the baked fallback — critical for a slow-cold-starting Android
@@ -988,6 +998,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         inProcess = it,
         btaImplJars = implJars,
         compilerPluginJars = pluginJars,
+        slots = playgroundCompileSlots,
       )
     }
     if (compiler == null) {
@@ -1790,6 +1801,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         trust = { trustStore.get() },
         repo = catalogRepo,
         branchPrefix = catalogBranchPrefix,
+        serverSideRenderEnabled = allowRenderTrusted,
         registerWasm = { system, wasmDir ->
           // A local `--wasm-dir` is the operator's explicit override, so a published app never
           // displaces it — including on a later branch refresh, which re-runs this callback.
@@ -1998,6 +2010,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           perPreviewResolve = perPreviewPool::get,
           perPreviewStreamCount = perPreviewPool::activeStreamCount,
           perPreviewRenderStats = perPreviewPool::renderPerfStats,
+          perPreviewPoolStats = { listOf(perPreviewPool.snapshot()) },
         ) ?: return false
     val host = openHost(state) ?: return false
     registry.register(system, state, host = host)

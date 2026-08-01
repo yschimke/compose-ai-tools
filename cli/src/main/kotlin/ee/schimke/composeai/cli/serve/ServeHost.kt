@@ -102,6 +102,13 @@ interface ServeHost : AutoCloseable {
   fun renderPerfStats(): RenderPerfSnapshot? = null
 
   /**
+   * Bounded child-daemon pools owned by this host, surfaced on `/status.json` so production
+   * monitors can distinguish "one catalog daemon is up" from "a catalog daemon plus N per-preview
+   * daemons are resident". Empty for ordinary hosts.
+   */
+  fun daemonPoolStats(): List<DaemonPoolSnapshot> = emptyList()
+
+  /**
    * Whether this session's daemon can actually apply the **one-handed gesture** override
    * (`overrides.gestures`) — i.e. the daemon advertises `"gestures"` in its capabilities. Only the
    * Android (Robolectric) backend does; the desktop backend behind a CMP `serve` / the published

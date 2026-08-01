@@ -43,10 +43,32 @@ class PlaygroundJailedCompiler(
   /** `kotlin-compose-compiler-plugin-embeddable`, split out of the same dir. */
   private val compilerPluginJars: List<String>,
   private val moduleName: String = "playground",
+  /**
+   * How many snippet compiles may hold a JVM at once. **Load-bearing:** the in-process compiler it
+   * replaces serialized compiles behind one `BtaCompileSession`, so concurrency was implicitly 1; a
+   * subprocess per request removes that, and per-process caps bound one compile without bounding
+   * the *aggregate* — N concurrent compiles is N × [PlaygroundSandbox.memoryMb]. This is the
+   * playground's compile-side counterpart to `--live-seats`: peak compile memory an operator has to
+   * budget for is `slots × memoryMb`.
+   */
+  private val slots: Int = DEFAULT_COMPILE_SLOTS,
+  /** How long a request waits for a slot before answering "busy" rather than queueing forever. */
+  private val slotWaitSeconds: Long = DEFAULT_SLOT_WAIT_SECONDS,
   private val timeoutSeconds: Long = DEFAULT_COMPILE_TIMEOUT_SECONDS,
   /** Injected in tests; null (the default) forks a real JVM via [spawn]. */
   private val launcher: ((List<String>, File) -> PlaygroundSandboxProbe.Launch)? = null,
 ) : PlaygroundCompileService.Compiler {
+
+  private val compileSlots = java.util.concurrent.Semaphore(slots.coerceAtLeast(1), true)
+
+  /**
+   * A compile never outlives the sandbox's own wall-clock deadline: an operator who shortens
+   * `--playground-sandbox-ttl` is asking for *everything* snippet-related to be reclaimed by then,
+   * and the render path already honours it via the descriptor's `hardTtlSeconds`. Whichever of the
+   * two budgets is tighter wins.
+   */
+  internal val effectiveTimeoutSeconds: Long =
+    if (sandbox.isActive) minOf(timeoutSeconds, sandbox.ttlSeconds) else timeoutSeconds
 
   override fun compile(
     sources: List<Path>,
@@ -68,6 +90,15 @@ class PlaygroundJailedCompiler(
         icWorkingDir = File(workDir, "bta-ic").absolutePath,
         moduleName = moduleName,
       )
+    // Admission control BEFORE the fork: without it, every concurrent POST is another whole JVM
+    // holding another whole memory budget, and the per-process caps say nothing about the total.
+    if (!compileSlots.tryAcquire(slotWaitSeconds, TimeUnit.SECONDS)) {
+      return listOf(
+        internalError(
+          "the playground is busy compiling (all $slots compile slots in use) — try again shortly"
+        )
+      )
+    }
     return try {
       requestFile.writeText(JSON.encodeToString(PlaygroundCompileRequest.serializer(), request))
       val argv = command(workDir, classpath, requestFile)
@@ -86,6 +117,7 @@ class PlaygroundJailedCompiler(
     } catch (e: Exception) {
       listOf(internalError("compile sandbox failed: ${e.message ?: e.javaClass.simpleName}"))
     } finally {
+      compileSlots.release()
       runCatching { requestFile.delete() }
     }
   }
@@ -146,7 +178,7 @@ class PlaygroundJailedCompiler(
     val err = StringBuilder()
     val outThread = drain(process.inputStream, out)
     val errThread = drain(process.errorStream, err)
-    val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+    val finished = process.waitFor(effectiveTimeoutSeconds, TimeUnit.SECONDS)
     if (!finished) {
       process.destroyForcibly()
       process.waitFor(5, TimeUnit.SECONDS)
@@ -157,7 +189,8 @@ class PlaygroundJailedCompiler(
       exitCode = if (finished) process.exitValue() else -1,
       stdout = out.toString(),
       stderr =
-        if (finished) err.toString() else "the compile exceeded its ${timeoutSeconds}s budget",
+        if (finished) err.toString()
+        else "the compile exceeded its ${effectiveTimeoutSeconds}s budget",
     )
   }
 
@@ -180,9 +213,21 @@ class PlaygroundJailedCompiler(
 
     /**
      * A cold BTA bootstrap plus a snippet compile; generous, because the cost of being wrong is a
-     * spurious "no result" on a slow box. The sandbox's own wall-clock TTL still applies on top.
+     * spurious "no result" on a slow box. Clamped to the sandbox's own wall-clock TTL when that is
+     * tighter (see `effectiveTimeoutSeconds`).
      */
     const val DEFAULT_COMPILE_TIMEOUT_SECONDS = 180L
+
+    /**
+     * Concurrent compile JVMs. Two, not one: one in flight while another is being typed is the
+     * common case, and a sandbox's memory cap is per process — so the host budget an operator
+     * reasons about is `slots × --playground-sandbox-memory-mb` (3 GB at the defaults). Raise it
+     * only with that arithmetic in hand.
+     */
+    const val DEFAULT_COMPILE_SLOTS = 2
+
+    /** Long enough to ride out one in-flight compile, short enough that a client isn't stranded. */
+    const val DEFAULT_SLOT_WAIT_SECONDS = 30L
 
     private val JSON = Json { ignoreUnknownKeys = true }
 
@@ -197,6 +242,7 @@ class PlaygroundJailedCompiler(
       inProcess: PlaygroundCompileService.Compiler,
       btaImplJars: List<File>,
       compilerPluginJars: List<File>,
+      slots: Int = DEFAULT_COMPILE_SLOTS,
       onLog: (String) -> Unit = { System.err.println("serve: $it") },
     ): PlaygroundCompileService.Compiler {
       if (!sandbox.isActive) return inProcess
@@ -215,13 +261,17 @@ class PlaygroundJailedCompiler(
         )
         return inProcess
       }
-      onLog("playground: compiles run inside the ${sandbox.profile.id} sandbox")
+      onLog(
+        "playground: compiles run inside the ${sandbox.profile.id} sandbox, " +
+          "$slots at a time (peak ${slots * sandbox.memoryMb}MB)"
+      )
       return PlaygroundJailedCompiler(
         sandbox = sandbox,
         javaHome = File(System.getProperty("java.home")),
         cliClasspath = cliClasspath,
         btaImplJars = btaImplJars.map { it.absolutePath },
         compilerPluginJars = compilerPluginJars.map { it.absolutePath },
+        slots = slots,
       )
     }
   }

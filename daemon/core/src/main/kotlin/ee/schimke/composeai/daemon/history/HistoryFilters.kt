@@ -5,10 +5,10 @@ import java.util.Base64
 /**
  * Shared `HistoryFilter` matchers and pagination cursor helpers.
  *
- * Extracted from [LocalFsHistorySource] (H1+H2) so [GitRefHistorySource] (H10-read) and any future
- * read-only source ([HttpMirrorHistorySource], H13) apply identical filter / pagination logic
- * without duplicating it across implementations. See HISTORY.md § "HistorySource interface" — every
- * source returns the same shape; only the storage backend differs.
+ * Extracted from [LocalFsHistorySource] so every read source can apply identical filter /
+ * pagination logic without duplicating it across implementations. See HISTORY.md § "HistorySource
+ * interface" — every source returns the same [HistoryEntry] shape; only the storage backend
+ * differs.
  */
 internal object HistoryFilters {
 
