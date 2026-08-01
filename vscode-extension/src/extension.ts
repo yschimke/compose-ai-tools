@@ -2198,13 +2198,19 @@ export async function activate(
     // upgrade `"auto"` from `"minimal"` to `"full"` is gone: `composePreview.mode`
     // is now a binary user pin (`"minimal"` | `"full"`), so the mode never
     // changes mid-session except via a settings change + window reload.
-    void gradleService.bootstrapAppliedMarkers((err) => {
-        if (err instanceof ClassVersionError) {
-            showClassVersionRemediation(err);
-        } else if (err instanceof JdkImageError) {
-            showJdkImageRemediation(err);
-        }
-    });
+    if (gradleService.hasPotentialComposePreviewHost()) {
+        void gradleService.bootstrapAppliedMarkers((err) => {
+            if (err instanceof ClassVersionError) {
+                showClassVersionRemediation(err);
+            } else if (err instanceof JdkImageError) {
+                showJdkImageRemediation(err);
+            }
+        });
+    } else {
+        outputChannel.appendLine(
+            "[startup] no Android/Compose Gradle host detected; skipping composePreviewApplied bootstrap",
+        );
+    }
 
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration((event) => {

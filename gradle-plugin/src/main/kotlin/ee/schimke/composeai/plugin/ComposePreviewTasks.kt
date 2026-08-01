@@ -265,6 +265,7 @@ internal object ComposePreviewTasks {
         // subprocess as a system property since the rows only exist once the provider is
         // enumerated.
         previewRowExcludes.convention(previewRowExcludeProperty(project))
+        permutations.convention(previewPermutationsProperty(project))
         displayFilterFilters.set(AndroidPreviewSupport.resolveDisplayFilterFilters(project))
         deviceFrameDevice.set(AndroidPreviewSupport.resolveDeviceFrameDevice(project))
         renderClasspath.from(sourceClassDirs)
@@ -1363,6 +1364,17 @@ internal object ComposePreviewTasks {
       .orElse(emptyList())
 
   /**
+   * `Provider<List<String>>` for `composePreview.permutations`. The first preset is
+   * `accessibility`, which synthesizes dark, RTL, and large-font siblings for every discovered
+   * Compose preview at render time.
+   */
+  internal fun previewPermutationsProperty(project: Project): Provider<List<String>> =
+    project.providers
+      .gradleProperty(PreviewPermutations.PROPERTY)
+      .map { v -> PreviewPermutations.clean(listOf(v)) }
+      .orElse(emptyList())
+
+  /**
    * `Provider<String>` for the `composePreview.missingRenders` Gradle property. Controls how
    * `composePreviewRenderAll` reacts when a preview is listed in the manifest but produced no
    * on-disk output: `"fail"` (default — throws), `"warn"` (logs a `WARN` line + writes the
@@ -1541,6 +1553,7 @@ internal object ComposePreviewTasks {
         .map { v -> if (v.equals("fast", ignoreCase = true)) "fast" else "full" }
         .orElse("full")
     val missingRendersProvider = missingRendersProperty(project)
+    val permutationsProvider = previewPermutationsProperty(project)
     project.tasks.register("composePreviewRenderAll", DefaultTask::class.java) {
       group = "compose preview"
       dependsOn(renderTask)
@@ -1550,16 +1563,21 @@ internal object ComposePreviewTasks {
         .withPropertyName("manifest")
       inputs.property("tier", tierProvider)
       inputs.property("missingRenders", missingRendersProvider)
+      inputs.property("permutations", permutationsProvider)
       outputs.file(validationMarker).withPropertyName("validationMarker")
       doLast {
         val isFastTier = tierProvider.get() == "fast"
         val missingPolicy = missingRendersProvider.get()
         val manifestOnDisk = manifestFile.get().asFile
         if (!manifestOnDisk.exists()) return@doLast
-        val manifest =
+        val manifestRaw =
           previewManifestJson.decodeFromString(
             PreviewManifest.serializer(),
             manifestOnDisk.readText(),
+          )
+        val manifest =
+          manifestRaw.copy(
+            previews = PreviewPermutations.expand(manifestRaw.previews, permutationsProvider.get())
           )
         if (manifest.previews.isEmpty()) return@doLast
 

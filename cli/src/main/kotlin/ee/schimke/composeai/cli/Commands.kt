@@ -180,6 +180,13 @@ abstract class Command(
       .filter { it.isNotEmpty() }
       .distinct()
 
+  protected val permutations: List<String> =
+    PreviewPermutationsCli.clean(args.flagValuesAll("--permutations"))
+
+  protected fun permutationsGradleArgs(): List<String> =
+    if (permutations.isEmpty()) emptyList()
+    else listOf("-P${PreviewPermutationsCli.PROPERTY}=${permutations.joinToString(",")}")
+
   /**
    * Subclass hook — extensions a particular command always wants on regardless of whether the user
    * passed `--with-extension`. Default empty; `A11yCommand` returns `["a11y"]` so its behaviour is
@@ -248,7 +255,8 @@ abstract class Command(
   protected fun gradleArgsWithForce(extra: List<String> = emptyList()): List<String> {
     val extensionArgs = extensionGradleArgs()
     val missingRendersArgs = missingRendersGradleArgs()
-    val withExtras = extra + extensionArgs + missingRendersArgs
+    val permutationsArgs = permutationsGradleArgs()
+    val withExtras = extra + extensionArgs + missingRendersArgs + permutationsArgs
     val reason = forceReason ?: return withExtras
     if (forceNoticePrinted.compareAndSet(false, true)) {
       System.err.println(
@@ -560,11 +568,16 @@ abstract class Command(
   }
 
   protected fun readManifest(module: PreviewModule): PreviewManifest? =
-    PreviewResultBuilder.readManifest(module)
+    PreviewResultBuilder.readManifest(module)?.let {
+      PreviewPermutationsCli.expandManifest(it, permutations)
+    }
 
   protected fun readAllManifests(
     modules: List<PreviewModule>
-  ): List<Pair<PreviewModule, PreviewManifest>> = PreviewResultBuilder.readAllManifests(modules)
+  ): List<Pair<PreviewModule, PreviewManifest>> =
+    PreviewResultBuilder.readAllManifests(modules).map { (module, manifest) ->
+      module to PreviewPermutationsCli.expandManifest(manifest, permutations)
+    }
 
   /**
    * Per-CLI-invocation renderer set, built once and cached. Iterated by [buildResults] (via

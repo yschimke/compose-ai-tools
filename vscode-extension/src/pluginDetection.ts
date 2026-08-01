@@ -31,6 +31,9 @@ export const APPLIES_PLUGIN_RE =
 
 const APPLY_FALSE_RE = /\bapply\s+false\b/;
 
+export const COMPOSE_HOST_PLUGIN_RE =
+    /\bid\s*[(\s]\s*["'](?:com\.android\.application|com\.android\.library|org\.jetbrains\.compose)["']/;
+
 /**
  * Returns true if `content` applies the plugin literally. Matches on a line
  * with `apply false` are excluded — that's the root-build.gradle pattern
@@ -49,6 +52,20 @@ export function appliesPlugin(content: string): boolean {
     const lines = content.split(/\r?\n/);
     for (const line of lines) {
         if (!APPLIES_PLUGIN_RE.test(line)) {
+            continue;
+        }
+        if (APPLY_FALSE_RE.test(line)) {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
+export function hasComposeHostPlugin(content: string): boolean {
+    const lines = content.split(/\r?\n/);
+    for (const line of lines) {
+        if (!COMPOSE_HOST_PLUGIN_RE.test(line)) {
             continue;
         }
         if (APPLY_FALSE_RE.test(line)) {

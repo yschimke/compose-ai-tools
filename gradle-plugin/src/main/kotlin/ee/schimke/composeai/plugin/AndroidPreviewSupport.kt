@@ -1932,12 +1932,14 @@ internal object AndroidPreviewSupport {
         previewIdFilters.convention(ComposePreviewTasks.previewIdFilterProperty(project))
         previewIdExcludes.convention(ComposePreviewTasks.previewIdExcludeProperty(project))
         previewRowExcludes.convention(ComposePreviewTasks.previewRowExcludeProperty(project))
+        permutations.convention(ComposePreviewTasks.previewPermutationsProperty(project))
         jvmArgumentProviders.add(
           PreviewFilterSystemPropsProvider(
             nameFilters = previewFilters,
             idFilters = previewIdFilters,
             idExcludes = previewIdExcludes,
             rowExcludes = previewRowExcludes,
+            permutations = permutations,
           )
         )
         // Bail fast (with remediation) when the gate passed via project-deps tier but the
@@ -2121,7 +2123,8 @@ internal object AndroidPreviewSupport {
             previewFilters.getOrElse(emptyList()).none { it.isNotBlank() } &&
             previewIdFilters.getOrElse(emptyList()).none { it.isNotBlank() } &&
             previewIdExcludes.getOrElse(emptyList()).none { it.isNotBlank() } &&
-            previewRowExcludes.getOrElse(emptyList()).none { it.isNotBlank() }
+            previewRowExcludes.getOrElse(emptyList()).none { it.isNotBlank() } &&
+            !PreviewPermutations.expandsAccessibility(permutations.getOrElse(emptyList()))
         }
         // The PNG files are written to `rendersDirectory` via the
         // `composeai.render.outputDir` system property, not through any
@@ -2392,6 +2395,7 @@ internal object AndroidPreviewSupport {
             // Forwarded for uniformity; the XR subspace render has no `@PreviewParameter` fan-out
             // to thin, so it is inert there rather than meaningful.
             rowExcludes = ComposePreviewTasks.previewRowExcludeProperty(project),
+            permutations = project.providers.provider { emptyList() },
           )
         )
         // The row filter joins the gate even though it can't change what this task renders: XR has
@@ -3204,6 +3208,7 @@ internal object AndroidPreviewSupport {
     @get:org.gradle.api.tasks.Input val idFilters: org.gradle.api.provider.Provider<List<String>>,
     @get:org.gradle.api.tasks.Input val idExcludes: org.gradle.api.provider.Provider<List<String>>,
     @get:org.gradle.api.tasks.Input val rowExcludes: org.gradle.api.provider.Provider<List<String>>,
+    @get:org.gradle.api.tasks.Input val permutations: org.gradle.api.provider.Provider<List<String>>,
   ) : org.gradle.process.CommandLineArgumentProvider {
     override fun asArguments(): Iterable<String> = buildList {
       arg("composeai.preview.filter", nameFilters.getOrElse(emptyList()))
@@ -3213,6 +3218,10 @@ internal object AndroidPreviewSupport {
       // this backend, like the desktop one, applies the id filters to DISCOVERED entries — before
       // `expandParameterProvider` mints the per-row ids — so an id pattern can never name a row.
       arg("composeai.preview.rowExclude", rowExcludes.getOrElse(emptyList()))
+      arg(
+        PreviewPermutations.SYSTEM_PROPERTY,
+        PreviewPermutations.clean(permutations.getOrElse(emptyList())),
+      )
     }
 
     private fun MutableList<String>.arg(property: String, values: List<String>) {

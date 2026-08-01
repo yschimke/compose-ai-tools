@@ -131,7 +131,7 @@ object PreviewManifestLoader {
     // id filter selects the same multipreview-member ids the desktop path sees. The FULL
     // `manifest.previews` is still what `deleteStaleFanoutFiles` protects below, so a filtered-out
     // preview keeps its existing PNG on disk exactly as it does on desktop.
-    val selected =
+    val selectedBase =
       PreviewFilter.select(
         items = manifest.previews,
         nameFilters = PreviewFilter.patternsFrom(PreviewFilter.NAME_FILTER_PROPERTY),
@@ -141,6 +141,9 @@ object PreviewManifestLoader {
         className = { it.className },
         id = { it.id },
       )
+    val permutationPatterns = RenderPreviewPermutations.patternsFrom()
+    val selected = RenderPreviewPermutations.expand(selectedBase, permutationPatterns)
+    val allEntries = RenderPreviewPermutations.expand(manifest.previews, permutationPatterns)
     // Expand `@PreviewParameter` providers into one row per value BEFORE
     // sharding, so one preview's values never span multiple shards — each
     // (preview, value) row carries an already-suffixed id / renderOutput
@@ -208,7 +211,7 @@ object PreviewManifestLoader {
     // test body writes to the directory.
     deleteStaleFanoutFiles(
       outDir = System.getProperty("composeai.render.outputDir")?.let(::File),
-      allEntries = manifest.previews,
+      allEntries = allEntries,
       expandedByEntry = expandedByEntry,
       ownedIds = ours.map { it.entry.id }.toSet(),
     )
