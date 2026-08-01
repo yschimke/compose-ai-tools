@@ -69,6 +69,62 @@ class PreviewManifestEntryResolveTest {
     assertEquals(false, resolved.wrapWidth)
     assertEquals(false, resolved.wrapHeight)
     assertEquals("id:wearos_small_round", resolved.device)
+    // …and it pins it to the DEVICE's geometry (192dp × 2.0), not the fixed 320px fallback. A
+    // device preview carries no explicit widthDp/heightDp, so falling through to DEFAULT_FRAME_PX
+    // composed every Wear screen at 320² and exported a 352² figma-svg beside a 454² PNG
+    // (issues #2615 / #2883).
+    assertEquals(384, resolved.widthPx)
+    assertEquals(384, resolved.heightPx)
+  }
+
+  @Test
+  fun `annotation dp override the device frame when both axes are set`() {
+    // `@Preview(device = …, widthDp = 100, heightDp = 100)` — the precedence
+    // `DeviceDimensions.resolve(device, w, h)` applies, and therefore the one the standalone
+    // renderer's PNG uses. The daemon must agree or the SVG frames a different box than the PNG.
+    val raw =
+      """{"id":"wear","className":"X","functionName":"R",""" +
+        """"params":{"device":"id:wearos_large_round","widthDp":100,"heightDp":100,""" +
+        """"density":2.0}}"""
+    val resolved = json.decodeFromString(PreviewManifestEntry.serializer(), raw).resolved()
+    assertEquals(200, resolved.widthPx)
+    assertEquals(200, resolved.heightPx)
+  }
+
+  @Test
+  fun `a single-axis dp hint does not displace the device frame`() {
+    // Only `widthDp` set — `resolve` needs both axes to short-circuit, so the catalog still wins.
+    val raw =
+      """{"id":"wear","className":"X","functionName":"R",""" +
+        """"params":{"device":"id:wearos_large_round","widthDp":100,"density":2.0}}"""
+    val resolved = json.decodeFromString(PreviewManifestEntry.serializer(), raw).resolved()
+    assertEquals(454, resolved.widthPx)
+    assertEquals(454, resolved.heightPx)
+  }
+
+  @Test
+  fun `a fractional device frame truncates like the standalone renderer`() {
+    // `id:pixel_5` is 393dp × 2.75 = 1080.75. The renderer's device-frame branch truncates, so the
+    // PNG is 1080px wide; rounding half-up here would frame the SVG at 1081 and defeat the match.
+    val raw =
+      """{"id":"phone","className":"X","functionName":"R",""" +
+        """"params":{"device":"id:pixel_5","density":2.75}}"""
+    val resolved = json.decodeFromString(PreviewManifestEntry.serializer(), raw).resolved()
+    assertEquals(1080, resolved.widthPx)
+    assertEquals(2340, resolved.heightPx) // 851dp × 2.75 = 2340.25
+  }
+
+  @Test
+  fun `spec device grammar pins the frame at its own dpi`() {
+    // Jetchat's `spec:width=340dp,height=800dp,dpi=160` — dpi 160 is density 1.0, so the frame is
+    // 340×800 px. The daemon used to render it at 320² regardless.
+    val raw =
+      """{"id":"chat","className":"X","functionName":"R",""" +
+        """"params":{"device":"spec:width=340dp,height=800dp,dpi=160"}}"""
+    val resolved = json.decodeFromString(PreviewManifestEntry.serializer(), raw).resolved()
+    assertEquals(1.0f, resolved.density, 0.0001f)
+    assertEquals(340, resolved.widthPx)
+    assertEquals(800, resolved.heightPx)
   }
 
   @Test

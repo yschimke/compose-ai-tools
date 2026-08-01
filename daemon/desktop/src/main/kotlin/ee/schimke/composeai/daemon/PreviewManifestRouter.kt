@@ -324,8 +324,12 @@ data class PreviewManifestEntry(
 ) {
   fun resolved(): ResolvedRenderParams {
     val p = params
-    val density = density ?: p?.density ?: 2.0f
     val device = device ?: p?.device
+    val deviceSpec =
+      device
+        ?.takeIf { it.isNotBlank() }
+        ?.let { ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it) }
+    val density = density ?: p?.density ?: deviceSpec?.density ?: 2.0f
     val showSystemUi = showSystemUi ?: p?.showSystemUi ?: false
     // A preview that declares an explicit size, a device frame, or system UI keeps its fixed frame.
     // One that declares NONE renders wrap-content (AS-parity): the render crops to the composable's
@@ -333,11 +337,25 @@ data class PreviewManifestEntry(
     // from it — reflect the preview's natural size, instead of the historical fixed 320² frame that
     // clipped wide content and reflowed text (diverging from the standalone renderer's wrap crop).
     // The sandbox bound (400×800 dp) matches the standalone renderer's DesktopRendererMain default.
-    val isDeviceFrame = !device.isNullOrBlank()
+    // A `@Preview(device = …)` frame comes from the device catalog. Skipping the discovered dp for
+    // a device frame *without* resolving the device dropped every device preview onto the wrap
+    // sandbox bound instead of the device frame (issues #2615 / #2883). Sizing mirrors
+    // `RenderPreviewsTask` — the standalone renderer whose PNG this export is compared against —
+    // so the two lanes agree: annotation dp override the catalog when BOTH axes are set, and the
+    // dp→px conversion truncates (`id:pixel_5` is 393 × 2.75 = 1080.75, which must land on 1080).
+    val deviceFrameDp = deviceSpec?.let {
+      with(ee.schimke.composeai.daemon.devices.DeviceDimensions) {
+        it.frameDpOverriddenBy(p?.widthDp, p?.heightDp)
+      }
+    }
     val explicitWidthPx =
-      widthPx ?: p?.widthDp?.takeUnless { isDeviceFrame }?.let { (it * density).roundHalfUpPx() }
+      widthPx
+        ?: deviceFrameDp?.let { (it.first * density).toInt().coerceAtLeast(1) }
+        ?: p?.widthDp?.let { (it * density).roundHalfUpPx() }
     val explicitHeightPx =
-      heightPx ?: p?.heightDp?.takeUnless { isDeviceFrame }?.let { (it * density).roundHalfUpPx() }
+      heightPx
+        ?: deviceFrameDp?.let { (it.second * density).toInt().coerceAtLeast(1) }
+        ?: p?.heightDp?.let { (it * density).roundHalfUpPx() }
     val pinned = device != null || showSystemUi
     val wrapWidth = explicitWidthPx == null && !pinned
     val wrapHeight = explicitHeightPx == null && !pinned

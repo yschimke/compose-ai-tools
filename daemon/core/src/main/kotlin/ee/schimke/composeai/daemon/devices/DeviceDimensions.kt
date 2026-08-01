@@ -196,4 +196,22 @@ object DeviceDimensions {
       lower.contains("isround=true") ||
       lower.contains("shape=round")
   }
+
+  /**
+   * The `(widthDp, heightDp)` a device frame renders at, given the annotation's own
+   * [widthDp]/[heightDp] alongside the `device`.
+   *
+   * Annotation dp override the catalog only when **both** axes are set — the same precedence
+   * [resolve] applies to its `widthDp`/`heightDp` arguments, which is what the gradle plugin's
+   * `DeviceDimensions.resolveForRender` (and therefore the standalone renderer's PNG) uses. A
+   * single-axis hint is ignored, exactly as Studio ignores it on a device frame.
+   *
+   * Kept here rather than in either `PreviewManifestRouter` so the Android and desktop resolvers
+   * can't drift apart on it.
+   */
+  fun DeviceSpec.frameDpOverriddenBy(widthDp: Int?, heightDp: Int?): Pair<Int, Int> {
+    val w = widthDp?.takeIf { it > 0 }
+    val h = heightDp?.takeIf { it > 0 }
+    return if (w != null && h != null) w to h else this.widthDp to this.heightDp
+  }
 }
