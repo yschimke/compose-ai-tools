@@ -140,6 +140,52 @@ class PreviewResultBuilderTest {
   }
 
   @Test
+  fun `build keeps accessibility permutation parameter fan-outs isolated`() {
+    val module = module(":params-permuted")
+    writeManifest(
+      module,
+      PreviewManifest(
+        module = ":params-permuted",
+        variant = "debug",
+        previews =
+          listOf(
+            PreviewInfo(
+              id = "ParamShow",
+              functionName = "ParamShow",
+              className = "com.params.ParamShowKt",
+              params =
+                PreviewParams(previewParameterProviderClassName = "com.params.SampleProvider"),
+              captures = listOf(Capture(renderOutput = "ParamShow.png")),
+            ),
+            PreviewInfo(
+              id = "ParamShow_dark",
+              functionName = "ParamShow",
+              className = "com.params.ParamShowKt",
+              params =
+                PreviewParams(previewParameterProviderClassName = "com.params.SampleProvider"),
+              captures = listOf(Capture(renderOutput = "ParamShow_dark.png")),
+            ),
+          ),
+      ),
+    )
+    writePng(module, "ParamShow_row.png")
+    writePng(module, "ParamShow_dark_row.png")
+
+    val results =
+      PreviewResultBuilder.build(listOf(module to PreviewResultBuilder.readManifest(module)!!))
+
+    val byId = results.associateBy { it.id }
+    assertEquals(
+      listOf("ParamShow_row.png"),
+      byId.getValue("ParamShow").captures.mapNotNull { it.pngPath }.map { File(it).name },
+    )
+    assertEquals(
+      listOf("ParamShow_dark_row.png"),
+      byId.getValue("ParamShow_dark").captures.mapNotNull { it.pngPath }.map { File(it).name },
+    )
+  }
+
+  @Test
   fun `build skips previews whose PNG file does not exist on disk yet`() {
     val module = module(":missing")
     writeManifest(

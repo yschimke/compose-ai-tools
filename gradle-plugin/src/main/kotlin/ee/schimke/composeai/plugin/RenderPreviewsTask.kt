@@ -171,6 +171,23 @@ abstract class RenderPreviewsTask : DefaultTask() {
   }
 
   /**
+   * Extra render fan-outs to synthesize from every discovered preview. `accessibility` adds dark,
+   * RTL pseudolocale, and 2x font-scale siblings by rewriting the manifest entries before the
+   * existing renderer path sees them; no new render capability is introduced.
+   */
+  @get:Input abstract val permutations: ListProperty<String>
+
+  @Option(
+    option = "permutations",
+    description =
+      "Render extra preview permutations. Currently supports 'accessibility' (dark, RTL, " +
+        "fontscale-2x). Repeatable or comma-separated. Overrides -PcomposePreview.permutations.",
+  )
+  fun setPermutationsOption(values: List<String>) {
+    permutations.set(values)
+  }
+
+  /**
    * Render-tier filter. When `"fast"` the desktop path skips any preview whose representative
    * capture is heavier than [HEAVY_COST_THRESHOLD] (TOP / static stay in; LONG / GIF / animated
    * fall out). Default `"full"` keeps the historical behaviour (every preview rendered).
@@ -236,6 +253,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // And one axis further down again: empty = "render every row of every parameterized preview".
     // Overridden at registration with `composePreview.rowExclude`; `--exclude-preview-row` wins.
     previewRowExcludes.convention(emptyList())
+    permutations.convention(emptyList())
     // Caching is intentionally gated on `tier=full` AND an empty `--preview` filter — a run is only
     // cacheable when its `outputDir` is the module's *complete* render set. A `tier=fast` run
     // writes
@@ -263,7 +281,8 @@ abstract class RenderPreviewsTask : DefaultTask() {
         previewFilters.getOrElse(emptyList()).none { it.isNotBlank() } &&
         previewIdFilters.getOrElse(emptyList()).none { it.isNotBlank() } &&
         previewIdExcludes.getOrElse(emptyList()).none { it.isNotBlank() } &&
-        previewRowExcludes.getOrElse(emptyList()).none { it.isNotBlank() }
+        previewRowExcludes.getOrElse(emptyList()).none { it.isNotBlank() } &&
+        !PreviewPermutations.expandsAccessibility(permutations.getOrElse(emptyList()))
     }
   }
 
@@ -291,6 +310,9 @@ abstract class RenderPreviewsTask : DefaultTask() {
         previewIdExcludes.getOrElse(emptyList()),
       )
 
+    val permutationValues = permutations.getOrElse(emptyList())
+    val permuted = PreviewPermutations.expand(idFiltered, permutationValues)
+
     // Tier filter — drop previews whose representative capture is heavy
     // when running in `fast` mode. The desktop path renders just the
     // first capture per preview, so the decision is per-preview rather
@@ -301,9 +323,9 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // with its badge.
     val isFastTier = tier.get().equals("fast", ignoreCase = true)
     val tierFiltered =
-      if (!isFastTier) idFiltered
+      if (!isFastTier) permuted
       else
-        idFiltered.filter {
+        permuted.filter {
           val firstCost = it.captures.firstOrNull()?.cost ?: STATIC_COST
           !isHeavyCost(firstCost)
         }
@@ -337,7 +359,11 @@ abstract class RenderPreviewsTask : DefaultTask() {
     val outDir = outputDir.get().asFile
     outDir.mkdirs()
 
-    renderWithCompose(manifest, rawManifest, outDir)
+    val rawManifestForCleanup =
+      rawManifest.copy(
+        previews = PreviewPermutations.expand(rawManifest.previews, permutationValues)
+      )
+    renderWithCompose(manifest, rawManifestForCleanup, outDir)
 
     val tierTag =
       if (isFastTier) " (fast tier; ${idFiltered.size - manifest.previews.size} heavy skipped)"

@@ -8,8 +8,8 @@ import org.gradle.api.tasks.testing.Test
 /**
  * The Android `composePreviewRender` task — a Robolectric [Test] that renders `@Preview`s inside
  * the test JVM — subtyped only so it can carry the same `--preview` / `--preview-id` /
- * `--exclude-preview-id` / `--exclude-preview-row` command-line options the desktop
- * [RenderPreviewsTask] exposes (issues #2066 / #2966 / #2977). A plain `Test` can't declare
+ * `--exclude-preview-id` / `--exclude-preview-row` / `--permutations` command-line options the
+ * desktop [RenderPreviewsTask] exposes (issues #2066 / #2966 / #2977). A plain `Test` can't declare
  * `@Option`s, and before #2977 those options (and their `composePreview.filter` / `.idFilter` /
  * `.idExclude` property conventions) reached only the desktop backend, so
  * `:app:composePreviewRender --preview Foo` was inert on an Android module.
@@ -93,6 +93,22 @@ abstract class RobolectricRenderTask : Test() {
   )
   fun setPreviewRowExcludeOption(values: List<String>) {
     previewRowExcludes.set(values)
+  }
+
+  /**
+   * Extra render fan-outs. Currently `accessibility`, which adds dark, RTL, and 2x font-scale
+   * siblings for every discovered Compose preview.
+   */
+  @get:Input abstract val permutations: ListProperty<String>
+
+  @Option(
+    option = "permutations",
+    description =
+      "Render extra preview permutations. Currently supports 'accessibility' (dark, RTL, " +
+        "fontscale-2x). Repeatable or comma-separated. Overrides -PcomposePreview.permutations.",
+  )
+  fun setPermutationsOption(values: List<String>) {
+    permutations.set(values)
   }
 }
 

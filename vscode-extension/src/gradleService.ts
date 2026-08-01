@@ -10,7 +10,12 @@ import {
     ResourceManifest,
     manifestReportsView,
 } from "./types";
-import { appliesPlugin, BUILD_SCRIPT_NAMES } from "./pluginDetection";
+import {
+    appliesPlugin,
+    BUILD_SCRIPT_NAMES,
+    hasComposeHostPlugin,
+    hasPotentialComposeHostPlugin,
+} from "./pluginDetection";
 import { JdkImageError, JdkImageErrorDetector } from "./jdkImageErrorDetector";
 import {
     ClassVersionError,
@@ -1223,6 +1228,68 @@ export class GradleService {
         return [...found.values()].sort((a, b) =>
             a.projectDir.localeCompare(b.projectDir),
         );
+    }
+
+    /**
+     * Cheap filesystem-only preflight for workspaces where auto-inject could plausibly apply the
+     * preview plugin. Plain JVM Gradle projects (OkHttp is the motivating example for #3063) have
+     * no markers and no Android/Compose host plugins, so activation should stay quiet instead of
+     * immediately running `composePreviewApplied` and surfacing "task not found" style noise.
+     */
+    hasPotentialComposePreviewHost(): boolean {
+        if (this.findPreviewModules().length > 0) {
+            return true;
+        }
+        let found = false;
+        const walk = (relDir: string, depth: number): void => {
+            if (found || depth > SCAN_MAX_DEPTH) {
+                return;
+            }
+            const absDir = relDir
+                ? path.join(this.workspaceRoot, relDir)
+                : this.workspaceRoot;
+            let entries: fs.Dirent[];
+            try {
+                entries = fs.readdirSync(absDir, { withFileTypes: true });
+            } catch {
+                return;
+            }
+            for (const name of BUILD_SCRIPT_NAMES) {
+                const buildFile = path.join(absDir, name);
+                try {
+                    const content = fs.readFileSync(buildFile, "utf-8");
+                    if (
+                        hasComposeHostPlugin(content) ||
+                        hasPotentialComposeHostPlugin(content)
+                    ) {
+                        found = true;
+                        return;
+                    }
+                } catch {
+                    /* try the next build-script name */
+                }
+            }
+            for (const entry of entries) {
+                if (
+                    entry.name.startsWith(".") ||
+                    SCAN_SKIP_DIRS.has(entry.name)
+                ) {
+                    continue;
+                }
+                if (!entry.isDirectory()) {
+                    continue;
+                }
+                const childRel = relDir
+                    ? `${relDir}/${entry.name}`
+                    : entry.name;
+                walk(childRel, depth + 1);
+                if (found) {
+                    return;
+                }
+            }
+        };
+        walk("", 0);
+        return found;
     }
 
     /**

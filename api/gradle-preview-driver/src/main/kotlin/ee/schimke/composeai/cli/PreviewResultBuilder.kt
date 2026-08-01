@@ -67,17 +67,19 @@ object PreviewResultBuilder {
   ): List<PreviewResult> {
     val results = mutableListOf<PreviewResult>()
     for ((module, manifest) in manifests) {
-      // Files owned by non-parameterised siblings — exclude them from the `<stem>_*` glob so a
-      // `Foo_header.png` that belongs to a different preview never gets attributed to `Foo`'s
-      // fan-out.
-      val siblingRenderOutputs =
-        manifest.previews
-          .filter { it.params.previewParameterProviderClassName == null }
-          .flatMap { it.captures.map { c -> c.renderOutput } }
-          .filter { it.isNotEmpty() }
-          .toSet()
-
       for (p in manifest.previews) {
+        // Files owned by sibling previews — exclude them from the `<stem>_*` glob so a
+        // `Foo_header.png` or permutation template such as `Foo_dark.png` never gets attributed to
+        // `Foo`'s parameter fan-out. Parameterized siblings still declare their template capture,
+        // and that template is enough to isolate their own rendered rows (`Foo_dark_row.png`).
+        val siblingRenderOutputs =
+          manifest.previews
+            .asSequence()
+            .filter { it !== p }
+            .flatMap { it.captures.asSequence().map { c -> c.renderOutput } }
+            .filter { it.isNotEmpty() }
+            .toSet()
+
         // `@PreviewParameter`-driven previews render at `<stem>_<suffix>.<ext>`, one file per
         // provider value. The manifest carries a single template capture; here we glob the actual
         // fan-out and synthesize a `CaptureResult` per file on disk.
@@ -181,9 +183,17 @@ object PreviewResultBuilder {
     val matches =
       (fileSystem.listOrNull(dir.path.toPath())?.map { it.toFile() } ?: emptyList())
         .filter { f ->
+          val candidate = dirPrefix + f.name
           f.name.startsWith(prefix) &&
             f.name.endsWith(ext) &&
-            (dirPrefix + f.name) !in siblingRenderOutputs
+            candidate !in siblingRenderOutputs &&
+            siblingRenderOutputs.none { sibling ->
+              ownsMoreSpecificParameterFanout(
+                templateOutput = rel,
+                siblingOutput = sibling,
+                candidate,
+              )
+            }
         }
         .sortedWith(paramFanoutOrder(prefix, ext))
     if (matches.isEmpty()) return emptyList()
@@ -201,6 +211,28 @@ object PreviewResultBuilder {
         parameterLabel = paramFanoutLabel(f.name, prefix, ext),
       )
     }
+  }
+
+  private fun ownsMoreSpecificParameterFanout(
+    templateOutput: String,
+    siblingOutput: String,
+    candidateOutput: String,
+  ): Boolean {
+    if (siblingOutput.isEmpty()) return false
+    val siblingDir = siblingOutput.substringBeforeLast('/', "")
+    val candidateDir = candidateOutput.substringBeforeLast('/', "")
+    if (siblingDir != candidateDir) return false
+    val templateStem = templateOutput.substringAfterLast('/').substringBeforeLast('.', "")
+    val siblingLeaf = siblingOutput.substringAfterLast('/')
+    val candidateLeaf = candidateOutput.substringAfterLast('/')
+    val siblingDot = siblingLeaf.lastIndexOf('.')
+    val candidateDot = candidateLeaf.lastIndexOf('.')
+    if (siblingDot <= 0 || candidateDot <= 0) return false
+    val siblingStem = siblingLeaf.substring(0, siblingDot)
+    if (siblingStem.length <= templateStem.length) return false
+    val siblingExt = siblingLeaf.substring(siblingDot)
+    if (candidateLeaf.substring(candidateDot) != siblingExt) return false
+    return candidateLeaf.startsWith(siblingStem + "_")
   }
 
   private data class ExpandedCapture(val capture: Capture, val parameterLabel: String? = null)

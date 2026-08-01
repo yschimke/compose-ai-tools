@@ -25,6 +25,7 @@ class PreviewFilterSystemPropsProviderTest {
           idFilters = list("*_Light"),
           idExcludes = list("*_Dark"),
           rowExcludes = list("Dark", "ExtraDark"),
+          permutations = list("accessibility"),
         )
         .asArguments()
         .toList()
@@ -35,6 +36,7 @@ class PreviewFilterSystemPropsProviderTest {
         "-Dcomposeai.preview.idFilter=*_Light",
         "-Dcomposeai.preview.idExclude=*_Dark",
         "-Dcomposeai.preview.rowExclude=Dark,ExtraDark",
+        "-Dcomposeai.preview.permutations=accessibility",
       )
   }
 
@@ -46,6 +48,7 @@ class PreviewFilterSystemPropsProviderTest {
           idFilters = list(),
           idExcludes = list(),
           rowExcludes = list(),
+          permutations = list(),
         )
         .asArguments()
         .toList()
@@ -61,6 +64,7 @@ class PreviewFilterSystemPropsProviderTest {
           idFilters = list(),
           idExcludes = list(),
           rowExcludes = list(),
+          permutations = list(),
         )
         .asArguments()
         .toList()
@@ -79,10 +83,27 @@ class PreviewFilterSystemPropsProviderTest {
           idFilters = list(),
           idExcludes = list(),
           rowExcludes = list("Dark", " ExtraDark "),
+          permutations = list(),
         )
         .asArguments()
         .toList()
 
     assertThat(args).containsExactly("-Dcomposeai.preview.rowExclude=Dark,ExtraDark")
+  }
+
+  @Test
+  fun `permutations split comma-batched values`() {
+    val args =
+      AndroidPreviewSupport.PreviewFilterSystemPropsProvider(
+          nameFilters = list(),
+          idFilters = list(),
+          idExcludes = list(),
+          rowExcludes = list(),
+          permutations = list(" accessibility,foo ", "accessibility"),
+        )
+        .asArguments()
+        .toList()
+
+    assertThat(args).containsExactly("-Dcomposeai.preview.permutations=accessibility,foo")
   }
 }
