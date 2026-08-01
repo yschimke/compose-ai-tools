@@ -14,6 +14,7 @@ import {
     appliesPlugin,
     BUILD_SCRIPT_NAMES,
     hasComposeHostPlugin,
+    hasPotentialComposeHostPlugin,
 } from "./pluginDetection";
 import { JdkImageError, JdkImageErrorDetector } from "./jdkImageErrorDetector";
 import {
@@ -1256,10 +1257,10 @@ export class GradleService {
             for (const name of BUILD_SCRIPT_NAMES) {
                 const buildFile = path.join(absDir, name);
                 try {
+                    const content = fs.readFileSync(buildFile, "utf-8");
                     if (
-                        hasComposeHostPlugin(
-                            fs.readFileSync(buildFile, "utf-8"),
-                        )
+                        hasComposeHostPlugin(content) ||
+                        hasPotentialComposeHostPlugin(content)
                     ) {
                         found = true;
                         return;
