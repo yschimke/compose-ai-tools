@@ -24,12 +24,7 @@
  * public phase flips to B's preload. Tests assert this behaviour directly.
  */
 export type RefreshPhase =
-    | "idle"
-    | "preload"
-    | "discover"
-    | "reconcile"
-    | "render"
-    | "warm";
+    "idle" | "preload" | "discover" | "reconcile" | "render" | "warm";
 
 /**
  * Sub-phase callback the orchestrator threads into `refresh()` so the monolithic

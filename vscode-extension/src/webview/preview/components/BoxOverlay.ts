@@ -111,9 +111,9 @@ export class BoxOverlay extends LitElement {
         return html`
             <div
                 ${ref(applyStyle)}
-                class=${active
-                    ? "overlay-box overlay-box-active"
-                    : "overlay-box"}
+                class=${
+                    active ? "overlay-box overlay-box-active" : "overlay-box"
+                }
                 data-overlay-id=${b.id}
                 data-level=${b.level ?? "info"}
                 title=${b.tooltip ?? ""}
