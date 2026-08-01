@@ -289,7 +289,7 @@
     },
     "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
-        "@playwright/test": "~1.61.0",
+        "@playwright/test": "~1.62.0",
         "@types/mocha": "^10.0.0",
         "@types/node": "^24.0.0",
         "@types/three": "^0.185.0",
@@ -302,7 +302,7 @@
         "happy-dom": "^20.9.0",
         "lit": "^3.2.0",
         "mocha": "^11.0.0",
-        "playwright": "~1.61.0",
+        "playwright": "~1.62.0",
         "prettier": "^3.8.3",
         "typescript": "^7.0.0"
     },

@@ -824,6 +824,54 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `a liveBundle builder failure reports daemon startup failure when re-render is enabled`() {
+    val bundleBytes =
+      polyglotBundle(
+        manifest =
+          """
+          {"schemaVersion":8,"backend":"desktop","previewIds":["FilledButton_Dark"],
+           "coverPreviewId":"FilledButton_Dark",
+           "classpath":[{"kind":"module","path":"classes/app.jar"}],
+           "modulePath":":m","producedBy":"test"}
+          """
+            .trimIndent()
+      )
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "liveBundle":{"path":"bundle/","file":"compose-m3-bundle.png"},
+       "components":[{"componentId":"Button/Filled","images":[
+         {"path":"images/button-filled/ideal__default__dark.png","theme":"dark","previewId":"FilledButton_Dark"}]}]}
+      """
+        .trimIndent()
+    val trust =
+      TrustStore(
+        branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
+      )
+    val store =
+      ServeCatalogStore(
+        root = tempRoot(),
+        register = { n, h -> registered[n] = h },
+        trust = { trust },
+        serverSideRenderEnabled = true,
+        fetch = { url ->
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.toByteArray()
+            url.endsWith("bundle/compose-m3-bundle.png") -> bundleBytes
+            url.endsWith(".png") -> png()
+            else -> null
+          }
+        },
+        buildTrustedBundle = { _, _, _, _, _, _ -> false },
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+    val detail = registered.getValue("compose-m3").degradations.single().detail
+    assertTrue(detail.contains("live bundle daemon could not be started"), detail)
+    assertTrue(!detail.contains("re-render is not enabled"), detail)
+  }
+
+  @Test
   fun `a same-size but corrupt cache entry is re-fetched, not trusted`() {
     // The cache key is a sha256, so a pre-existing cache file with the right size but wrong bytes
     // (a partial write / disk fault) must be re-fetched and repaired — not silently materialized.

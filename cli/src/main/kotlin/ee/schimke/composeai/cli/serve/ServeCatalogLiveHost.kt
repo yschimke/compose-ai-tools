@@ -75,6 +75,8 @@ class ServeCatalogLiveHost(
    * or it misses most real renders.
    */
   private val perPreviewRenderStats: () -> List<RenderPerfSnapshot> = { emptyList() },
+  /** Pool occupancy snapshots for `/status.json`, supplied by the pool. */
+  private val perPreviewPoolStats: () -> List<DaemonPoolSnapshot> = { emptyList() },
   /**
    * Serve the baked vector immediately and warm the daemon in the background rather than blocking a
    * browse on a cold (possibly minutes-long, esp. Android/Robolectric) first render — see the
@@ -144,15 +146,34 @@ class ServeCatalogLiveHost(
     return false
   }
 
+  private fun scheduleWarm(daemonId: String, host: ServeHost = live) {
+    if (!warmInBackground || warmDaemonIds.contains(daemonId)) return
+    if (warmingInFlight.add(daemonId)) {
+      warmExecutor.execute {
+        try {
+          if (host.render(daemonId, PreviewOverrides()) is RenderOutcome.Ok) {
+            warmDaemonIds.add(daemonId)
+          }
+        } catch (_: Throwable) {
+          // Best-effort: a failed warm just leaves the id cold; the next request retries.
+        } finally {
+          warmingInFlight.remove(daemonId)
+        }
+      }
+    }
+  }
+
   /**
    * Warm the live daemon(s) off the request path so the first real browse already gets the
-   * per-variant SVG lane rather than the baked fallback. Best-effort + async: warms up to
-   * [PREWARM_MAX] distinct daemon ids (a monolithic daemon shares one; a per-preview pool has many,
-   * and the rest warm lazily on first request). No-op when [warmInBackground] is off.
+   * per-variant SVG lane rather than the baked fallback. Best-effort + async: for a monolithic-only
+   * catalog this warms one shared daemon render; a per-preview catalog deliberately skips eager
+   * render warming so startup never fans out into one JVM per preview. No-op when
+   * [warmInBackground] is off.
    */
   fun prewarm() {
     if (!warmInBackground) return
-    alias.values.distinct().take(PREWARM_MAX).forEach { daemonWarmOrScheduling(it) }
+    if (perPreviewResolve != null) return
+    alias.values.firstOrNull()?.let { scheduleWarm(it, live) }
   }
 
   override val label: String = baked.label
@@ -390,6 +411,8 @@ class ServeCatalogLiveHost(
     return RenderPerfSnapshot.aggregate(listOfNotNull(monolithic) + pool)
   }
 
+  override fun daemonPoolStats(): List<DaemonPoolSnapshot> = perPreviewPoolStats()
+
   /**
    * Graft the daemon previews' per-preview metadata onto the baked browse surface. The daemon knows
    * its previews by descriptor id (`FilledButton_Dark`) and carries their author-declared knobs
@@ -432,14 +455,5 @@ class ServeCatalogLiveHost(
     } finally {
       baked.close()
     }
-  }
-
-  private companion object {
-    /**
-     * Cap on how many distinct daemon ids [prewarm] warms eagerly, so a per-preview pool doesn't
-     * spawn a render per preview at once (a thundering herd on startup). The rest warm lazily on
-     * first request. A monolithic daemon shares one id, so the cap is irrelevant there.
-     */
-    const val PREWARM_MAX = 8
   }
 }

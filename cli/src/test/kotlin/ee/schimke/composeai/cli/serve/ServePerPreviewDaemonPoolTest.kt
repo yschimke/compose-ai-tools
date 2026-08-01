@@ -141,4 +141,22 @@ class ServePerPreviewDaemonPoolTest {
     assertTrue(hosts.all { it.closed }, "close tears down every held daemon")
     assertNull(pool.get("A"), "a closed pool opens nothing")
   }
+
+  @Test
+  fun `snapshot reports resident occupancy without opening another daemon`() {
+    val opens = mutableListOf<String>()
+    val pool =
+      ServePerPreviewDaemonPool(maxOpen = 4) { id ->
+        opens += id
+        FakeHost(streams = if (id == "A") 1 else 0)
+      }
+    pool.get("A")
+    pool.get("B")
+
+    assertEquals(
+      DaemonPoolSnapshot("per-preview", open = 2, maxOpen = 4, activeStreams = 1),
+      pool.snapshot(),
+    )
+    assertEquals(listOf("A", "B"), opens, "snapshot is read-only")
+  }
 }

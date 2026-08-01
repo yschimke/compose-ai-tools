@@ -106,11 +106,11 @@ enum class WriteResult {
 /**
  * Pluggable history backend — see HISTORY.md § "HistorySource interface".
  *
- * H1+H2 ships only [LocalFsHistorySource]. Future phases (H10 onward) will add
- * `GitRefHistorySource` and `HttpMirrorHistorySource`; the consumer side merges across configured
- * sources by `pngHash + previewId + git.commit`. The interface is intentionally narrow: write is a
- * side-effect of [HistoryManager.recordRender]; read is paginated; watch is reserved for future
- * phases (a UI doesn't poll, it subscribes to `historyAdded`).
+ * [LocalFsHistorySource] handles local writes and reads; [GitRefHistorySource] exposes reporting
+ * refs as read sources. The consumer side merges across configured sources by `pngHash +
+ * previewId + git.commit`. The interface is intentionally narrow: write is a side-effect of
+ * [HistoryManager.recordRender]; read is paginated; watch is reserved for future phases (a UI
+ * doesn't poll, it subscribes to `historyAdded`).
  */
 interface HistorySource {
   /** Stable identifier — e.g. `"fs:/abs/historyDir"`, `"git:preview/main"`, `"http:https://…"`. */
