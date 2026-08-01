@@ -101,4 +101,47 @@ class FigmaSvgPerVariantTest {
       host.shutdown()
     }
   }
+
+  @Test
+  fun `same preview id with distinct output names emits isolated figma SVGs`() {
+    val outputDir = tempFolder.newFolder("renders-figma-output-variant")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost()
+    host.start()
+    try {
+      val basePayload =
+        "previewId=dark-aware;" +
+          "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+          "functionName=DarkAwareSquare;" +
+          "widthPx=48;heightPx=48;density=1.0;showBackground=false;"
+      host.submit(
+        RenderRequest.Render(payload = basePayload + "uiMode=light;outputBaseName=dark-aware-light"),
+        timeoutMs = 120_000,
+      )
+      host.submit(
+        RenderRequest.Render(payload = basePayload + "uiMode=dark;outputBaseName=dark-aware-dark"),
+        timeoutMs = 120_000,
+      )
+
+      val dataDir = outputDir.parentFile!!.resolve("data")
+      val lightSvg = dataDir.resolve("dark-aware-light").resolve("compose-figma.svg")
+      val darkSvg = dataDir.resolve("dark-aware-dark").resolve("compose-figma.svg")
+
+      assertTrue("light output-name SVG must be produced: ${lightSvg.absolutePath}", lightSvg.exists())
+      assertTrue("dark output-name SVG must be produced: ${darkSvg.absolutePath}", darkSvg.exists())
+      val light = lightSvg.readText()
+      val dark = darkSvg.readText()
+
+      assertTrue("light SVG must carry the light render", light.contains("fill=\"#FFFFFF\""))
+      assertTrue("dark SVG must carry the dark render", dark.contains("fill=\"#000000\""))
+      assertNotEquals(
+        "output-name variants for one previewId must not replay one captured SVG",
+        light,
+        dark,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
 }
