@@ -40,7 +40,6 @@ import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Before
-import org.junit.Ignore
 import org.junit.Test
 
 /**
@@ -97,8 +96,8 @@ class TcpPanelFigmaSvgTest {
   /**
    * Renders the panel through the real capture and builds the production figma-svg model.
    *
-   * Shared so the `@Ignore`d raster-count expectation doesn't take the zero-area guards down with
-   * it: this is the only end-to-end exercise of a live Compose panel through
+   * Shared by the zero-area and raster-count expectations: this is the only end-to-end exercise of
+   * a live Compose panel through
    * `LayoutInspectorDataProducer` → `FigmaSvgModel.from` (the sibling `FigmaSvgZeroBoundsTest` is
    * synthetic), so a new collapsed-bounds regression would otherwise sail through CI while #3080 is
    * open.
@@ -149,16 +148,16 @@ class TcpPanelFigmaSvgTest {
   }
 
   @Test
-  @Ignore(
-    "#3080 — 2 raster targets are emitted where the icon plus two text fields should give 3, so " +
-      "one is absent rather than collapsed (the zero-area checks still pass). Split out of the " +
-      "zero-area test so those end-to-end guards stay active meanwhile."
-  )
   fun `the tcp connect panel exports a raster target for the icon and both text fields`() {
     val model = tcpPanelModel()
     assertTrue(
-      "expected at least the icon + two text-field raster targets (got ${model.rasterTargets.size})",
-      model.rasterTargets.size >= 3,
+      "expected both text fields to be raster targets " +
+        "(got ${model.rasterTargets.size}: ${model.rasterTargets.map { it.nodeId }})",
+      model.rasterTargets.size >= 2,
+    )
+    assertTrue(
+      "expected the header icon to survive as an editable vector layer",
+      flatten(model.root).any { it.vector != null },
     )
   }
 }

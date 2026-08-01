@@ -1537,18 +1537,20 @@ internal object ComposeLayoutInspector {
      * [UnsupportedTint], so the caller declines vectorisation and the node rasters instead.
      *
      * The filter can arrive several ways: the external filter the `Icon`/`Image` passed
-     * (`colorFilter`), the resolved filter used at the last draw (`currentColorFilter`), or — when
-     * a vector carries its own `tintColor` and no external filter is passed — the intrinsic filter.
+     * (`colorFilter`), or — when a vector carries its own `tintColor` and no external filter is
+     * passed — the intrinsic filter.
      * `VectorPainter.intrinsicColorFilter` is a forwarding property backed on the
      * `VectorComponent`, so its `intrinsicColorFilter$delegate` state lives on the vector (older
      * layouts kept it on the painter); probe both so an intrinsically-tinted vector isn't
-     * vectorised in its source colours.
+     * vectorised in its source colours. Deliberately skip `currentColorFilter`: it is a painter
+     * draw-cache detail, and on desktop captures it can retain an ambient/default black filter even
+     * when the explicit painter and intrinsic filters are absent, recolouring source-painted
+     * vectors to black (#3080).
      */
     private fun resolveTint(painter: Any): TintResult {
       val vector = runCatching { field(painter, "vector") }.getOrNull()
       val filter =
         runCatching { field(painter, "colorFilter") }.getOrNull()
-          ?: runCatching { field(painter, "currentColorFilter") }.getOrNull()
           ?: currentStateValue(
             runCatching { field(painter, "intrinsicColorFilter\$delegate") }.getOrNull()
           )
