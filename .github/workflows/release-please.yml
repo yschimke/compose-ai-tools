@@ -22,7 +22,9 @@ concurrency:
   # Ordinary main pushes share one pending slot so release-please PR updates coalesce during a
   # merge burst. A merged release PR must not share that slot: if it is still pending, the next
   # main push can replace it before any publish job starts.
-  group: release-please-${{ github.ref }}-${{ github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore(main): release ') && github.sha || 'updates' }}
+  # Quoted: the `chore(main): release ` literal contains `: `, which YAML would otherwise read as a
+  # nested mapping and reject the whole workflow at startup.
+  group: "release-please-${{ github.ref }}-${{ github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore(main): release ') && github.sha || 'updates' }}"
   cancel-in-progress: false
 
 jobs:
