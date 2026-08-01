@@ -337,17 +337,24 @@ data class PreviewManifestEntry(
     // from it — reflect the preview's natural size, instead of the historical fixed 320² frame that
     // clipped wide content and reflowed text (diverging from the standalone renderer's wrap crop).
     // The sandbox bound (400×800 dp) matches the standalone renderer's DesktopRendererMain default.
-    // A `@Preview(device = …)` frame is the device's own geometry, not the annotation's
-    // `widthDp`/`heightDp` — so resolve the catalog here rather than trusting the discovered dp
-    // (issue #2615 / #2883). Skipping the discovered dp *without* resolving the device dropped
-    // every device preview onto the wrap sandbox bound instead of the device frame.
+    // A `@Preview(device = …)` frame comes from the device catalog. Skipping the discovered dp for
+    // a device frame *without* resolving the device dropped every device preview onto the wrap
+    // sandbox bound instead of the device frame (issues #2615 / #2883). Sizing mirrors
+    // `RenderPreviewsTask` — the standalone renderer whose PNG this export is compared against —
+    // so the two lanes agree: annotation dp override the catalog when BOTH axes are set, and the
+    // dp→px conversion truncates (`id:pixel_5` is 393 × 2.75 = 1080.75, which must land on 1080).
+    val deviceFrameDp = deviceSpec?.let {
+      with(ee.schimke.composeai.daemon.devices.DeviceDimensions) {
+        it.frameDpOverriddenBy(p?.widthDp, p?.heightDp)
+      }
+    }
     val explicitWidthPx =
       widthPx
-        ?: deviceSpec?.let { (it.widthDp * density).roundHalfUpPx() }
+        ?: deviceFrameDp?.let { (it.first * density).toInt().coerceAtLeast(1) }
         ?: p?.widthDp?.let { (it * density).roundHalfUpPx() }
     val explicitHeightPx =
       heightPx
-        ?: deviceSpec?.let { (it.heightDp * density).roundHalfUpPx() }
+        ?: deviceFrameDp?.let { (it.second * density).toInt().coerceAtLeast(1) }
         ?: p?.heightDp?.let { (it * density).roundHalfUpPx() }
     val pinned = device != null || showSystemUi
     val wrapWidth = explicitWidthPx == null && !pinned

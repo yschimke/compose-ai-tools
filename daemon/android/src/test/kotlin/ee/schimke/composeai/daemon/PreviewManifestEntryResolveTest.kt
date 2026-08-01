@@ -78,16 +78,40 @@ class PreviewManifestEntryResolveTest {
   }
 
   @Test
-  fun `device geometry wins over the annotation's own dp`() {
-    // `@Preview(device = "id:wearos_large_round", widthDp = 100)`: Studio frames the preview at the
-    // device, so the device's 227dp must win over the annotation's 100dp.
+  fun `annotation dp override the device frame when both axes are set`() {
+    // `@Preview(device = …, widthDp = 100, heightDp = 100)` — the precedence
+    // `DeviceDimensions.resolve(device, w, h)` applies, and therefore the one the standalone
+    // renderer's PNG uses. The daemon must agree or the SVG frames a different box than the PNG.
     val raw =
       """{"id":"wear","className":"X","functionName":"R",""" +
         """"params":{"device":"id:wearos_large_round","widthDp":100,"heightDp":100,""" +
         """"density":2.0}}"""
     val resolved = json.decodeFromString(PreviewManifestEntry.serializer(), raw).resolved()
+    assertEquals(200, resolved.widthPx)
+    assertEquals(200, resolved.heightPx)
+  }
+
+  @Test
+  fun `a single-axis dp hint does not displace the device frame`() {
+    // Only `widthDp` set — `resolve` needs both axes to short-circuit, so the catalog still wins.
+    val raw =
+      """{"id":"wear","className":"X","functionName":"R",""" +
+        """"params":{"device":"id:wearos_large_round","widthDp":100,"density":2.0}}"""
+    val resolved = json.decodeFromString(PreviewManifestEntry.serializer(), raw).resolved()
     assertEquals(454, resolved.widthPx)
     assertEquals(454, resolved.heightPx)
+  }
+
+  @Test
+  fun `a fractional device frame truncates like the standalone renderer`() {
+    // `id:pixel_5` is 393dp × 2.75 = 1080.75. The renderer's device-frame branch truncates, so the
+    // PNG is 1080px wide; rounding half-up here would frame the SVG at 1081 and defeat the match.
+    val raw =
+      """{"id":"phone","className":"X","functionName":"R",""" +
+        """"params":{"device":"id:pixel_5","density":2.75}}"""
+    val resolved = json.decodeFromString(PreviewManifestEntry.serializer(), raw).resolved()
+    assertEquals(1080, resolved.widthPx)
+    assertEquals(2340, resolved.heightPx) // 851dp × 2.75 = 2340.25
   }
 
   @Test

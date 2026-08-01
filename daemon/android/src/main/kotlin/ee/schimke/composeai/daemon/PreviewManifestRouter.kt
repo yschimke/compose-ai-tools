@@ -321,11 +321,10 @@ data class PreviewManifestEntry(
   fun resolved(): ResolvedRenderParams {
     val p = params
     val device = device ?: p?.device
-    // A `@Preview(device = …)` frame is the device's own geometry, not the annotation's
-    // `widthDp`/`heightDp` — so resolve the catalog here rather than trusting the discovered dp
-    // (issue #2615 / #2883). Skipping the discovered dp *without* resolving the device dropped
-    // every device preview onto the fixed [DEFAULT_FRAME_PX] fallback, so a Wear large-round
-    // screen composed — and exported — at 320² while its PNG stayed at the device's 454².
+    // A `@Preview(device = …)` frame comes from the device catalog. Skipping the discovered dp for
+    // a device frame *without* resolving the device dropped every device preview onto the fixed
+    // [DEFAULT_FRAME_PX] fallback, so a Wear large-round screen composed — and exported — at 320²
+    // while its PNG stayed at the device's 454² (issues #2615 / #2883).
     val deviceSpec =
       device
         ?.takeIf { it.isNotBlank() }
@@ -347,13 +346,26 @@ data class PreviewManifestEntry(
     // wide content and reflowed tall content to zero height. Mirrors the desktop daemon's resolver
     // and the standalone renderer's wrap crop.
     val pinned = device != null || (kind != null && kind != "COMPOSE")
+    // Device-frame sizing mirrors `RenderPreviewsTask` (the standalone renderer that produces the
+    // PNG this export is compared against) so the two lanes agree pixel-for-pixel:
+    //   - annotation `widthDp` + `heightDp` still override the catalog when BOTH are set — the
+    //     `DeviceDimensions.resolve(device, w, h)` precedence Studio uses;
+    //   - the dp→px conversion truncates, matching the renderer's device-frame branch and the
+    //     inbound-override lane in `mergePreviewOverrides` (`id:pixel_5` is 393 × 2.75 = 1080.75,
+    //     which must land on 1080, not 1081).
+    val deviceFrameDp =
+      deviceSpec?.let {
+        with(ee.schimke.composeai.daemon.devices.DeviceDimensions) {
+          it.frameDpOverriddenBy(p?.widthDp, p?.heightDp)
+        }
+      }
     val explicitWidthPx =
       widthPx
-        ?: deviceSpec?.let { (it.widthDp * density).roundHalfUpPx() }
+        ?: deviceFrameDp?.let { (it.first * density).toInt().coerceAtLeast(1) }
         ?: p?.widthDp?.let { (it * density).roundHalfUpPx() }
     val explicitHeightPx =
       heightPx
-        ?: deviceSpec?.let { (it.heightDp * density).roundHalfUpPx() }
+        ?: deviceFrameDp?.let { (it.second * density).toInt().coerceAtLeast(1) }
         ?: p?.heightDp?.let { (it * density).roundHalfUpPx() }
     val wrapWidth = explicitWidthPx == null && !pinned
     val wrapHeight = explicitHeightPx == null && !pinned
