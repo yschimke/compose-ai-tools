@@ -333,6 +333,51 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `the wasm route serves an app registered after the listener bound`() {
+    // #3127 made the listener bind BEFORE the catalogs load, so `wasmCatalogs` is empty at route-
+    // installation time and only fills in later. Gating the route's registration on the map being
+    // non-empty therefore dropped `/wasm/…` for the whole process lifetime, while the viewer —
+    // which reads the same live map on each request — still offered "Run in browser (Wasm)". The
+    // route must be installed unconditionally and consult the map per request.
+    val appDir = Files.createTempDirectory("serve-wasm-late").toFile().also { it.deleteOnExit() }
+    val wasmCatalogs = mutableMapOf<String, File>()
+    val lateRegistry = ServeSessionRegistry(open = { null })
+    lateRegistry.register("default-mod", host = bundle("late-default"), pinned = true)
+    val lateServer =
+      ServeHttpServer(
+          host = "127.0.0.1",
+          requestedPort = 0,
+          token = "unused-in-public",
+          sessions = lateRegistry,
+          defaultSessionId = "default-mod",
+          isPublic = true,
+          wasmCatalogs = wasmCatalogs,
+        )
+        .also { it.start() }
+    fun fetch(path: String): Pair<Int, String> {
+      val req = Request.Builder().url("http://127.0.0.1:${lateServer.port}$path").build()
+      client.newCall(req).execute().use { r ->
+        return r.code to (r.body?.string() ?: "")
+      }
+    }
+    try {
+      // Nothing registered yet: 404 from inside the handler, not a missing route.
+      assertEquals(404, fetch("/wasm/compose-m3/").first)
+      // The catalog load finishes and publishes its app into the live map.
+      File(appDir, "index.html").writeText("<!doctype html><title>wasm app</title>")
+      wasmCatalogs["compose-m3"] = appDir
+      val (code, body) = fetch("/wasm/compose-m3/")
+      assertEquals(200, code, "the late-registered wasm app must be reachable")
+      assertTrue(body.contains("wasm app"), "served index.html: $body")
+      // An unknown system still 404s.
+      assertEquals(404, fetch("/wasm/nope/").first)
+    } finally {
+      lateServer.stop()
+      lateRegistry.close()
+    }
+  }
+
+  @Test
   fun `a catalog is reachable under its canonical path`() {
     val (landingCode, landing) = get("/compose-m3/")
     assertEquals(200, landingCode)
