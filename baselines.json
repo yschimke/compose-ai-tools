@@ -3572,7 +3572,7 @@
     "functionName": "RemoteIndeterminateCircularProgressIndicatorStandardPreview",
     "module": "samples:remotecompose",
     "renderBasename": "RemoteIndeterminateCircularProgressIndicatorStandardPreview.gif",
-    "sha256": "25ff8b63314263ddcc97cba9b9ab3f2d922a62d6a6ce09f10468e39ad19b8d55",
+    "sha256": "6c211d0049230f9e6b90f98a66636c777c17f9c1d05b4b10c370e2b9d2e6a2f0",
     "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
   },
   "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteShaderGradientPreview": {
