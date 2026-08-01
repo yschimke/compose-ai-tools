@@ -47,6 +47,7 @@ if (outPath != null) {
         path: p.path,
         dir: p.projectDir.absolutePath,
         hasPreviewPlugin: hasPlugin,
+        hasTestTask: p.tasks.findByName('test') != null,
         dependencies: deps.toList(),
       ])
     }

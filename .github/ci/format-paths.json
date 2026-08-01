@@ -1,0 +1,31 @@
+{
+  "ignorePaths": [
+    "docs/**",
+    "site/**",
+    "renders/**",
+    "vscode-extension/**",
+    "deploy/**",
+    "scripts/**",
+    "schema/**",
+    "**/*.md",
+    "**/*.json",
+    "**/*.yml",
+    "**/*.yaml",
+    "**/*.sh",
+    "**/*.png",
+    "LICENSE",
+    ".gitignore",
+    ".gitattributes"
+  ],
+  "globalPaths": [
+    ".github/ci/format-paths.json",
+    ".github/ci/path-scope.py",
+    ".github/workflows/format.yml"
+  ],
+  "groups": {
+    "ktfmt": [
+      "**/*.kt",
+      "**/*.kts"
+    ]
+  }
+}

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Decide whether a PR needs a heavy, unscoped CI workflow to run in full.
 
-Shared by the workflows that gate expensive jobs on PRs but have no natural
+Shared by workflows that gate expensive jobs on PRs but have no natural
 `paths:` trigger filter (a required check hidden behind `paths:` would hang on
 "Expected — Waiting for status"): the Integration external-repo matrix
 (integration.yml) and the Daemon Harness renderer legs (daemon-harness.yml).
 
-Reads the PR's changed files and a committed ignore list
-(`.github/ci/change-scope-safe-paths.json` by default) and prints a single
+Reads the PR's changed files and a workflow-specific committed ignore list
+(`SCOPE_CONFIG`, with the integration config as a fallback) and prints a single
 token:
 
     true     run the workflow in full (default / any doubt)
@@ -31,7 +31,7 @@ ignore, so one shared list stays correct for every caller.
 Env:
     BASE_SHA / HEAD_SHA  PR diff endpoints (base must already be fetched)
     SCOPE_CONFIG         override config path
-                         (default .github/ci/change-scope-safe-paths.json)
+                         (default .github/ci/integration-safe-paths.json)
 
 Pure stdlib; unit-tested by test_change_scope.py. The glob semantics match
 .github/actions/apply/compute-scope.py.
@@ -143,7 +143,7 @@ def main() -> int:
     try:
         config_path = Path(
             os.environ.get("SCOPE_CONFIG")
-            or (REPO_ROOT / ".github" / "ci" / "change-scope-safe-paths.json")
+            or (REPO_ROOT / ".github" / "ci" / "integration-safe-paths.json")
         )
         base_sha = os.environ.get("BASE_SHA", "")
         head_sha = os.environ.get("HEAD_SHA", "")

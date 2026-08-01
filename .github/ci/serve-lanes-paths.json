@@ -1,0 +1,43 @@
+{
+  "ignorePaths": [
+    "docs/**",
+    "**/*.md"
+  ],
+  "globalPaths": [
+    ".github/ci/serve-lanes-paths.json",
+    ".github/ci/path-scope.py",
+    ".github/workflows/serve-lanes-e2e.yml",
+    "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**",
+    "cli/src/main/kotlin/ee/schimke/composeai/cli/ServeCommand.kt",
+    "daemon/core/**",
+    "render-session/**",
+    "render-session-subprocess/**",
+    "gradle/libs.versions.toml"
+  ],
+  "groups": {
+    "desktop": [
+      "daemon/desktop/**",
+      "renderers/desktop/**",
+      "vscode-extension/preview-harness/serve-lanes.*",
+      "vscode-extension/preview-harness/serve-lanes-boot.sh"
+    ],
+    "android": [
+      "daemon/android/**",
+      "renderers/android/**",
+      "vscode-extension/preview-harness/serve-lanes.*",
+      "vscode-extension/preview-harness/serve-android-lane-boot.sh",
+      "samples/android-live-lane/**",
+      "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt",
+      "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleLaunch.kt"
+    ],
+    "playground": [
+      "daemon/android/**",
+      "renderers/android/**",
+      "vscode-extension/preview-harness/playground.*",
+      "vscode-extension/preview-harness/playground-boot.sh",
+      "samples/android-live-lane/**",
+      "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleResources.kt",
+      "cli/src/main/kotlin/ee/schimke/composeai/cli/AndroidBundleLaunch.kt"
+    ]
+  }
+}

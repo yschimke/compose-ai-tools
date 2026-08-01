@@ -14,8 +14,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Determine format scope
+    runs-on: ubuntu-latest
+    outputs:
+      ktfmt: ${{ steps.scope.outputs.ktfmt }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
+          python3 .github/ci/path-scope.py \
+            --config .github/ci/format-paths.json >> "$GITHUB_OUTPUT"
+
   ktfmt:
-    if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    needs: changes
+    if: ${{ needs.changes.outputs.ktfmt == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     name: ktfmt (Google style)
     runs-on: ubuntu-latest
     steps:
