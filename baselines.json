@@ -3708,7 +3708,7 @@
     "functionName": "PageGestureScreenPreview",
     "module": "samples:wear",
     "renderBasename": "PageGestureScreenPreview_Devices_Large_Round.png",
-    "sha256": "8108859b0606d7f22257b17a22c292ad1b7ee45e7c926d7f44e7fb8ba0553b91",
+    "sha256": "a0d75ecef629756a96410b8f285a94d3c63687d3f660d255db55250c17d2b234",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
   },
   "samples:wear/com.example.samplewear.GesturesKt.PageIndicatorStickerPreview": {
@@ -3716,7 +3716,7 @@
     "functionName": "PageIndicatorStickerPreview",
     "module": "samples:wear",
     "renderBasename": "PageIndicatorStickerPreview.png",
-    "sha256": "8e59736a1192d22c3be38befa97a98933f3bc8d187ec11af1eed590e3fec5535",
+    "sha256": "17fa9995d8f942bee8fbb7785cd9a6968b5de7d8c1774298eae743f5e188349c",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
   },
   "samples:wear/com.example.samplewear.GesturesKt.PrimaryActionScreenPreview_Devices - Large Round": {
@@ -3740,7 +3740,7 @@
     "functionName": "ScrollGestureScreenPreview",
     "module": "samples:wear",
     "renderBasename": "ScrollGestureScreenPreview_Devices_Large_Round.png",
-    "sha256": "fd762e40979fd0f720f275b5c06cf8b0b5ed5f8f688680d53db658b8ee60977e",
+    "sha256": "7cbbdc9a88cee41579c77714e14283c257681866834c48814f076ce229858e26",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
   },
   "samples:wear/com.example.samplewear.GesturesKt.ScrollIndicatorStickerPreview": {
@@ -3748,7 +3748,7 @@
     "functionName": "ScrollIndicatorStickerPreview",
     "module": "samples:wear",
     "renderBasename": "ScrollIndicatorStickerPreview.png",
-    "sha256": "7d60d2d94dec17849bd1c22d52b66887c5e759cbfd4f13a9e4f3fb8669d0f51a",
+    "sha256": "0e24a97e9ac1abd78f744462dfb8864656f6a8f478691af362e43a837473726a",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
   },
   "samples:wear/com.example.samplewear.PlaceholderPreviewsKt.PlaceholderCardLoaded_wearos_small_round": {
@@ -3828,7 +3828,7 @@
     "functionName": "ActivityListLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "4894efeb548deb8e9074068f891ddd4a3c9901e2e5482960eebaa1dbf8e65cca",
+    "sha256": "094df53da2ad611cb769f7a7e381c83ac0dbee764bc2060d387be804c6c5ba23",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round": {
@@ -3836,7 +3836,7 @@
     "functionName": "ActivityListMotionLongPreview",
     "module": "samples:wear",
     "renderBasename": "ActivityListMotionLongPreview_Devices_Large_Round_SCROLL_long.png",
-    "sha256": "4894efeb548deb8e9074068f891ddd4a3c9901e2e5482960eebaa1dbf8e65cca",
+    "sha256": "094df53da2ad611cb769f7a7e381c83ac0dbee764bc2060d387be804c6c5ba23",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListMotionLongPreview_Devices - Large Round#1": {
@@ -3996,7 +3996,7 @@
     "functionName": "GlimmerListPressedWalk",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk_FOCUS_0.png",
-    "sha256": "24f52caa192e703dd3c542d7793942866954ff3acb8307bf102faf33c1a168f6",
+    "sha256": "9626d1c8328d7e99b7b9d82479ea72dfd0852c708654e19b549cb2b8c24a6566",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer \u00b7 Pressed Walk#1": {
@@ -4004,7 +4004,7 @@
     "functionName": "GlimmerListPressedWalk",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk_FOCUS_1.png",
-    "sha256": "58186c819119cc699b49326f4967172e394d5c31e8a3bd569d6144f7bea3d35c",
+    "sha256": "0626162f16de40fbaf4c70b3d851d32ce93efd92d7d11d379c88deb4bb7f0d3d",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuBusy_Busy": {
@@ -4012,7 +4012,7 @@
     "functionName": "GlimmerXrMenuBusy",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerXrMenuBusy_Busy.gif",
-    "sha256": "71448481e041511163266a6045967cd1afb4470bbd5f13ac50e2b2d5757d0268",
+    "sha256": "dd10fc7d229bcf05ed8eb422b7acd6ba68655eb6864fa87220c37e86472eb258",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerInteractiveMenuPreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuDark_Dark": {
@@ -4020,7 +4020,7 @@
     "functionName": "GlimmerXrMenuDark",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerXrMenuDark_Dark.gif",
-    "sha256": "5e6f7a5ccef4458e64cc7468340db299d1224c9a24499d1e84657a099e930460",
+    "sha256": "00f384f5d5d7c47cf098a87bc85b0bad6ae6f8791498b985c7381b53034cf859",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerInteractiveMenuPreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuLight_Light": {
@@ -4028,7 +4028,7 @@
     "functionName": "GlimmerXrMenuLight",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerXrMenuLight_Light.gif",
-    "sha256": "b874522cc9a9219ccde440487fb019c95f48a5ed36295edfe7d7e05df54039b6",
+    "sha256": "7edae2c736372457a6ab249dfd3b4be04a7edbbc9791f1c3831fe791ebd94a67",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerInteractiveMenuPreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuVeniceCanalCats_VeniceCanalCats": {
@@ -4036,7 +4036,7 @@
     "functionName": "GlimmerXrMenuVeniceCanalCats",
     "module": "samples:xr-glimmer",
     "renderBasename": "GlimmerXrMenuVeniceCanalCats_VeniceCanalCats.gif",
-    "sha256": "6ba7856aba3a0c1fb23bf19de468ca9049d0e2c5c93e2f57328f9956b83e2799",
+    "sha256": "35227094640d96305b49be4d17e7c300e610ebfc873a163525c9e2c5430bead0",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerInteractiveMenuPreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerPreviewsKt.FocusableMenu_Glimmer \u00b7 Input": {
