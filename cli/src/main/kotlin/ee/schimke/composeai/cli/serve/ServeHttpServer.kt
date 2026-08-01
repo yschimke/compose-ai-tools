@@ -207,6 +207,11 @@ class ServeHttpServer(
    * `ServeCommand` alongside [playgroundService]; the two share one [PlaygroundTokenStore].
    */
   private val playgroundRedeem: PlaygroundRedeemService? = null,
+  /**
+   * Optional GitHub collaborator auth. When present, public browsing can stay open while
+   * code-running surfaces (playground + live WebSocket sessions) require a signed-in collaborator.
+   */
+  private val githubAuth: ServeGithubAuth? = null,
 ) {
   /** The actual bound port — may differ from the requested one if it was taken (auto-picked). */
   val port: Int = pickPort(host, requestedPort, portRange)
@@ -306,6 +311,11 @@ class ServeHttpServer(
             ),
             ContentType.Application.Json,
           )
+        }
+
+        githubAuth?.let { auth ->
+          get(ServeGithubAuth.START_PATH) { with(auth) { handleStart() } }
+          get(ServeGithubAuth.CALLBACK_PATH) { with(auth) { handleCallback() } }
         }
 
         // `/status` — the operator/observer view of this running host: published catalogs + their
@@ -807,6 +817,7 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handlePlaygroundPage(service: PlaygroundCompileService) {
     if (rejectBadToken()) return
+    if (rejectMissingGithubAuth()) return
     markGeneration("static-page", pageCacheControl())
     call.respondText(
       ServeWeb.playgroundPage(
@@ -826,6 +837,7 @@ class ServeHttpServer(
    */
   private suspend fun RoutingContext.handlePlaygroundRedeem(redeem: PlaygroundRedeemService) {
     if (rejectBadToken()) return
+    if (rejectMissingGithubAuth()) return
     // Read the PATH segment explicitly (see the route mount): it's named `{pgToken}` so it can't be
     // shadowed by the `?token=` access token that `call.parameters` also carries on a gated host.
     val id = call.parameters["pgToken"].orEmpty()
@@ -851,6 +863,7 @@ class ServeHttpServer(
 
   private suspend fun RoutingContext.handlePlaygroundRun(service: PlaygroundCompileService) {
     if (rejectBadToken()) return
+    if (rejectMissingGithubAuth(api = true)) return
     val body =
       withContext(Dispatchers.IO) {
         call.receiveStream().use { readCapped(it, MAX_PLAYGROUND_BYTES) }
@@ -2553,6 +2566,10 @@ class ServeHttpServer(
       close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "unauthorized"))
       return
     }
+    if (githubAuth?.isAuthenticated(call) == false) {
+      close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "github auth required"))
+      return
+    }
     val sessionId =
       call.parameters["system"] ?: call.request.queryParameters["session"] ?: defaultSessionId
     // Reserve live-seat permits BEFORE opening the session: leasing resumes a suspended/forked
@@ -2673,6 +2690,17 @@ class ServeHttpServer(
     val provided = call.request.queryParameters["token"] ?: call.request.headers[TOKEN_HEADER]
     if (isAuthorized(token, provided, isPublic)) return false
     call.respondText("not found", status = HttpStatusCode.NotFound)
+    return true
+  }
+
+  private suspend fun RoutingContext.rejectMissingGithubAuth(api: Boolean = false): Boolean {
+    val auth = githubAuth ?: return false
+    if (auth.isAuthenticated(call)) return false
+    if (api) {
+      call.respondText("GitHub sign-in required.", status = HttpStatusCode.Unauthorized)
+    } else {
+      call.respondRedirect(auth.loginPath(call))
+    }
     return true
   }
 

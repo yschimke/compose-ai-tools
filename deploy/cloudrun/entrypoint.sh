@@ -50,6 +50,17 @@ fi
 # Runtime catalog admin (GET/POST /admin/catalogs, DELETE /admin/catalogs/<system>), gated by
 # its own secret — never the browse token. Unset = the routes don't exist.
 [[ -n "${SERVE_ADMIN_TOKEN:-}" ]] && args+=(--admin-token "${SERVE_ADMIN_TOKEN}")
+if [[ -n "${SERVE_GITHUB_AUTH_CLIENT_ID:-}" ||
+  -n "${SERVE_GITHUB_AUTH_CLIENT_SECRET:-}" ||
+  -n "${SERVE_GITHUB_AUTH_COOKIE_SECRET:-}" ]]; then
+  args+=(--github-auth-client-id "${SERVE_GITHUB_AUTH_CLIENT_ID:-}")
+  args+=(--github-auth-client-secret "${SERVE_GITHUB_AUTH_CLIENT_SECRET:-}")
+  args+=(--github-auth-cookie-secret "${SERVE_GITHUB_AUTH_COOKIE_SECRET:-}")
+  args+=(--github-auth-repo "${SERVE_GITHUB_AUTH_REPO:-yschimke/compose-ai-tools}")
+  [[ -n "${SERVE_GITHUB_AUTH_CALLBACK_BASE_URL:-}" ]] &&
+    args+=(--github-auth-callback-base-url "${SERVE_GITHUB_AUTH_CALLBACK_BASE_URL}")
+  [[ -n "${SERVE_GITHUB_AUTH_USERS:-}" ]] && args+=(--github-auth-users "${SERVE_GITHUB_AUTH_USERS}")
+fi
 [[ -n "${SERVE_CATALOGS:-}" ]] && args+=(--catalogs "${SERVE_CATALOGS}")
 # Design systems served but hidden from the front-page nav — reachable at /<system>/
 # (and ?session=<system>). Each entry may carry a per-repo source as <system>@<owner>/<repo>

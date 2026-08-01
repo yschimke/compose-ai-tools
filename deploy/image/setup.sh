@@ -95,3 +95,16 @@ if [[ -n "${HOOK_TOKEN}" ]]; then
   echo "    (and, if this box isn't preview.coo.ee, a DEPLOY_HOOK_URL variable ="
   echo "     https://${DOMAIN}/__hooks/rollout). Until then the box still rolls on its poll."
 fi
+
+if [[ "${DOMAIN}" == "preview.coo.ee" ]]; then
+  echo
+  echo "==> GitHub auth for live preview/playground:"
+  echo "    Create a GitHub OAuth app with callback:"
+  echo "      https://${DOMAIN}/auth/github/callback"
+  echo "    Then add these to .env and run: sudo docker compose up -d"
+  echo "      SERVE_GITHUB_AUTH_CLIENT_ID=..."
+  echo "      SERVE_GITHUB_AUTH_CLIENT_SECRET=..."
+  echo "      SERVE_GITHUB_AUTH_COOKIE_SECRET=$(openssl rand -hex 32)"
+  echo "    The compose file defaults SERVE_GITHUB_AUTH_REPO=yschimke/compose-ai-tools"
+  echo "    and SERVE_GITHUB_AUTH_CALLBACK_BASE_URL=https://${DOMAIN}."
+fi

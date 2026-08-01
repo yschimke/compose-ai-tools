@@ -16,7 +16,8 @@ pull it.
   resource placeholder fallback #2499), so `wear-m3` renders live once the box rolls that image and
   re-fetches the regenerated bundle. See `docs/public-preview-server.md`. This is what
   `preview.coo.ee` runs.
-- **Bundle uploads:** disabled. **Auth:** shared token. **TLS:** via Caddy.
+- **Bundle uploads:** disabled. **Auth:** public browsing, optional GitHub collaborator gate for
+  live/playground surfaces, shared token for private boxes. **TLS:** via Caddy.
 
 ## How it's fast
 
@@ -64,6 +65,27 @@ DOMAIN=preview.example.com ./setup.sh
 
 Pin a version with `IMAGE_TAG=0.16.33` in `.env` (a bare tag; defaults to the
 `latest` tag when unset).
+
+### GitHub auth on `preview.coo.ee`
+
+To keep catalog browsing public while requiring collaborators for live sessions and playground,
+create a GitHub OAuth app with callback:
+
+```text
+https://preview.coo.ee/auth/github/callback
+```
+
+Then add the OAuth values to the host `.env` and recreate the preview service:
+
+```bash
+SERVE_GITHUB_AUTH_CLIENT_ID=...
+SERVE_GITHUB_AUTH_CLIENT_SECRET=...
+SERVE_GITHUB_AUTH_COOKIE_SECRET=... # openssl rand -hex 32
+```
+
+The compose profile defaults the collaborator check to `yschimke/compose-ai-tools` and derives the
+callback base URL from `DOMAIN`; set `SERVE_GITHUB_AUTH_REPO`,
+`SERVE_GITHUB_AUTH_CALLBACK_BASE_URL`, or `SERVE_GITHUB_AUTH_USERS` to override.
 
 ## Auto-updates (zero-downtime)
 
