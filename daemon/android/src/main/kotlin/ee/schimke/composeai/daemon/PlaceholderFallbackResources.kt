@@ -49,75 +49,75 @@ import android.graphics.drawable.Drawable
  * common crashes the live server hits.
  */
 @Suppress("DEPRECATION")
-internal class PlaceholderFallbackResources(base: Resources) :
+internal class PlaceholderFallbackResources(private val base: Resources) :
   Resources(base.assets, base.displayMetrics, base.configuration) {
 
   override fun getText(id: Int): CharSequence =
     try {
-      super.getText(id)
+      base.getText(id)
     } catch (_: NotFoundException) {
       placeholderText(id)
     }
 
   override fun getText(id: Int, def: CharSequence?): CharSequence =
     try {
-      super.getText(id, def)
+      base.getText(id, def)
     } catch (_: NotFoundException) {
       def ?: placeholderText(id)
     }
 
   override fun getQuantityText(id: Int, quantity: Int): CharSequence =
     try {
-      super.getQuantityText(id, quantity)
+      base.getQuantityText(id, quantity)
     } catch (_: NotFoundException) {
       placeholderText(id)
     }
 
   override fun getColor(id: Int, theme: Theme?): Int =
     try {
-      super.getColor(id, theme)
+      base.getColor(id, theme)
     } catch (_: NotFoundException) {
       PLACEHOLDER_COLOR
     }
 
   override fun getColor(id: Int): Int =
     try {
-      super.getColor(id)
+      base.getColor(id)
     } catch (_: NotFoundException) {
       PLACEHOLDER_COLOR
     }
 
   override fun getDimension(id: Int): Float =
     try {
-      super.getDimension(id)
+      base.getDimension(id)
     } catch (_: NotFoundException) {
       0f
     }
 
   override fun getDimensionPixelOffset(id: Int): Int =
     try {
-      super.getDimensionPixelOffset(id)
+      base.getDimensionPixelOffset(id)
     } catch (_: NotFoundException) {
       0
     }
 
   override fun getDimensionPixelSize(id: Int): Int =
     try {
-      super.getDimensionPixelSize(id)
+      base.getDimensionPixelSize(id)
     } catch (_: NotFoundException) {
       0
     }
 
   override fun getDrawable(id: Int, theme: Theme?): Drawable =
     try {
-      super.getDrawable(id, theme)
+      base.getDrawable(id, theme)
     } catch (_: NotFoundException) {
       placeholderDrawable()
     }
 
   override fun getDrawable(id: Int): Drawable =
     try {
-      super.getDrawable(id)
+      base.getDrawable(id)
     } catch (_: NotFoundException) {
       placeholderDrawable()
     }
@@ -132,14 +132,14 @@ internal class PlaceholderFallbackResources(base: Resources) :
   // `loadDrawable` path degrades to the placeholder.
   override fun getDrawableForDensity(id: Int, density: Int): Drawable? =
     try {
-      super.getDrawableForDensity(id, density)
+      base.getDrawableForDensity(id, density)
     } catch (_: NotFoundException) {
       placeholderDrawable()
     }
 
   override fun getDrawableForDensity(id: Int, density: Int, theme: Theme?): Drawable? =
     try {
-      super.getDrawableForDensity(id, density, theme)
+      base.getDrawableForDensity(id, density, theme)
     } catch (_: NotFoundException) {
       placeholderDrawable()
     }
