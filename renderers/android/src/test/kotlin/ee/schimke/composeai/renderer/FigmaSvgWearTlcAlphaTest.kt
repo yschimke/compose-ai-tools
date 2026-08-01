@@ -1,6 +1,7 @@
 package ee.schimke.composeai.renderer
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -17,8 +18,11 @@ import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.Button
+import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.ButtonGroup
 import androidx.wear.compose.material3.FilledIconButton
+import androidx.wear.compose.material3.ListHeader
+import androidx.wear.compose.material3.ListHeaderDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SurfaceTransformation
@@ -26,6 +30,9 @@ import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.TitleCard
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
+import androidx.wear.compose.material3.placeholder
+import androidx.wear.compose.material3.rememberPlaceholderState
+import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.daemon.ComposeFigmaSvgDataProducer
 import ee.schimke.composeai.daemon.ComposeSemanticsDataProducer
@@ -49,17 +56,17 @@ import org.robolectric.annotation.GraphicsMode
  * Guard for #2615's *alpha* half: the export must never fade transformed Wear content to
  * invisibility.
  *
- * Wear's `TransformingLazyColumn` + `SurfaceTransformation` fades items toward the round face's
- * edges through a `graphicsLayer { alpha = … }` block whose value is derived from the item's scroll
- * progress, and the exporter evaluates that block reflectively against a proxy scope. On Jetcaster
- * Wear that evaluation produces `opacity="0.0"` / `opacity="0.04"` groups around content the PNG
- * paints fully opaque.
+ * Wear's `TransformingLazyColumn` + `SurfaceTransformation` leaves the most recently applied edge
+ * alpha in Compose's shared graphics-layer scratch scope. The exporter used that scope as a
+ * fallback for unrelated alpha-less layers, producing `opacity="0.0"` / `opacity="0.04"` groups
+ * around content the PNG paints fully opaque.
  *
- * **This fixture does not currently reproduce that failure** — the production shapes the issue names
- * (`ButtonGroup` + `FilledIconButton`s, a transformed `Button`, transformed `TitleCard` rows, at
- * Wear's 2x density) all evaluate to sane edge fades here (~0.5–1.0). It is kept as the standing
- * guard the issue asks for, so the day the real path is reproduced the assertion is already in
- * place; the Jetcaster-specific trigger is still unidentified.
+ * This deliberately follows Jetcaster's production list shape instead of the original synthetic
+ * stack of `TitleCard`s: a transformed `ListHeader`, an inactive-placeholder `ButtonGroup` of
+ * `FilledIconButton`s, direct text items that use only `transformedHeight`, and transformed
+ * `Button`/`TitleCard` surfaces. The alpha-less graphics layers inside the group, placeholders, and
+ * curved `TimeText` are the nodes that used to copy a near-zero alpha from Compose's shared
+ * graphics-layer scratch scope.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -89,15 +96,47 @@ class FigmaSvgWearTlcAlphaTest {
             val state = rememberTransformingLazyColumnState()
             val spec = rememberTransformationSpec()
             ScreenScaffold(scrollState = state) { contentPadding ->
+              val placeholderState = rememberPlaceholderState(isVisible = false)
               TransformingLazyColumn(
                 state = state,
                 contentPadding = contentPadding,
                 modifier = Modifier.fillMaxSize(),
               ) {
                 item {
-                  ButtonGroup(Modifier.fillMaxWidth().transformedHeight(this, spec)) {
-                    FilledIconButton(onClick = {}, modifier = Modifier.weight(1f)) { Text("<") }
-                    FilledIconButton(onClick = {}, modifier = Modifier.weight(1f)) { Text(">") }
+                  ListHeader(
+                    modifier =
+                      Modifier.fillMaxWidth()
+                        .minimumVerticalContentPadding(
+                          ListHeaderDefaults.minimumTopListContentPadding,
+                          ListHeaderDefaults.minimumBottomListContentPadding,
+                        )
+                        .transformedHeight(this, spec),
+                    transformation = SurfaceTransformation(spec),
+                  ) {
+                    Text("Episode title", modifier = Modifier.placeholder(placeholderState))
+                  }
+                }
+                item {
+                  ButtonGroup(
+                    Modifier.fillMaxWidth()
+                      .minimumVerticalContentPadding(
+                        ButtonDefaults.minimumVerticalListContentPadding
+                      )
+                      .transformedHeight(this, spec)
+                      .padding(bottom = 16.dp)
+                  ) {
+                    FilledIconButton(
+                      onClick = {},
+                      modifier = Modifier.weight(0.7f).placeholder(placeholderState),
+                    ) {
+                      Text("▶")
+                    }
+                    FilledIconButton(
+                      onClick = {},
+                      modifier = Modifier.weight(0.3f).placeholder(placeholderState),
+                    ) {
+                      Text("+")
+                    }
                   }
                 }
                 item {
@@ -108,6 +147,20 @@ class FigmaSvgWearTlcAlphaTest {
                   ) {
                     Text("Play")
                   }
+                }
+                item {
+                  Text(
+                    "Jun 2, 2020",
+                    modifier =
+                      Modifier.padding(horizontal = 8.dp).transformedHeight(this, spec),
+                  )
+                }
+                item {
+                  Text(
+                    "A real Jetcaster episode summary",
+                    modifier =
+                      Modifier.padding(horizontal = 8.dp).transformedHeight(this, spec),
+                  )
                 }
                 items(LABELS.size) { index ->
                   TitleCard(
@@ -129,6 +182,13 @@ class FigmaSvgWearTlcAlphaTest {
 
     val faded =
       OPACITY.findAll(svg).map { it.groupValues[1].toDouble() }.filter { it < MIN_VISIBLE }.toList()
+    REQUIRED_CONTENT.forEach { content ->
+      assertTrue("real transformed Wear content '$content' is missing:\n$svg", svg.contains(content))
+    }
+    assertTrue(
+      "FilledIconButton surfaces must survive as opaque vector fills:\n$svg",
+      OPAQUE_BUTTON_FILL.findAll(svg).count() >= 2,
+    )
     assertTrue(
       "transformed Wear content must not be exported at near-zero opacity; got $faded:\n$svg",
       faded.isEmpty(),
@@ -185,7 +245,11 @@ class FigmaSvgWearTlcAlphaTest {
     /** Wear's real screen density — the alpha block converts dp inside itself, so 1x hid the bug. */
     const val DENSITY = 2f
     val LABELS = listOf("Latest episode", "Queue", "Library", "Podcasts", "Downloads")
+    // ListHeader paints through its transformed container painter and is intentionally rasterised;
+    // these are the editable descendants whose disappearance exposed the alpha contamination.
+    val REQUIRED_CONTENT = listOf("▶", "+", "Play", "Jun 2, 2020", "summary")
     val OPACITY = Regex("""\bopacity="([\d.]+)"""")
+    val OPAQUE_BUTTON_FILL = Regex("""<rect [^>]*fill="#E9DDFF"""")
     /** Below this the layer is invisible on screen — no authored Wear fade lands here. */
     const val MIN_VISIBLE = 0.1
   }

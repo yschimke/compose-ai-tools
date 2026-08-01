@@ -246,20 +246,26 @@ internal object ModifierTokenResolver {
   /**
    * Effective alpha of one graphics-layer modifier.
    *
-   * Three shapes, probed in order of how much we can trust them:
+   * Resolution order, from most direct to most compatible:
    * 1. The **named-parameter** overload (`graphicsLayer(alpha = 0f)`) keeps `alpha` as a real field
    *    on the element, and the inspector also exposes it as a property.
-   * 2. The **lambda** overload (`graphicsLayer { alpha = … }`) keeps only the opaque block, so we
-   *    evaluate it ourselves against a recording scope ([evaluateLayerBlockAlpha]).
-   * 3. Only if neither answered, the coordinator's `graphicsLayerScope`.
+   * 2. Compose's coordinator keeps `lastLayerAlpha`, the value its real layer block applied for the
+   *    captured frame. Unlike the scratch scope, this value belongs to this modifier's coordinator.
+   * 3. On Compose versions where that per-coordinator value isn't available, the **lambda**
+   *    overload (`graphicsLayer { alpha = … }`) keeps only the opaque block, so we evaluate it
+   *    ourselves against a recording scope ([evaluateLayerBlockAlpha]).
+   * 4. If none answers, there is no alpha to export.
    *
-   * The ordering is the fix for issue #2853. Probing the coordinator *first* looked like it covered
-   * the lambda case, but `graphicsLayerScope` is a **shared static** on `NodeCoordinator` that
-   * Compose reuses for whichever layer it updated most recently — so it reports some other node's
-   * alpha, and for Jetchat's `RecordButton` (`graphicsLayer { alpha = containerAlpha.value }`, zero
-   * when idle) it read back 1 and the export drew an opaque blue circle the PNG doesn't have.
-   * Evaluating the block is per-node and exact, which is why it now runs before that fallback
-   * rather than after it.
+   * The applied value also preserves issue #2853's animated-lambda fix: Jetchat's `RecordButton`
+   * (`graphicsLayer { alpha = containerAlpha.value }`, zero when idle) resolves to the zero its own
+   * coordinator applied, not another node's value. On older Compose lines, evaluating its block
+   * remains the per-node fallback.
+   *
+   * `NodeCoordinator.graphicsLayerScope` is deliberately not a fallback: it is a **shared static**
+   * scratch object Compose reuses for whichever layer it updated most recently. Wear's
+   * `TransformingLazyColumn` leaves its edge transformation there; reading it for a later
+   * alpha-less `ButtonGroup`, text node, or `TimeText` copied the previous item's `0.0`/`0.04`
+   * alpha into unrelated SVG groups even though the renderer never applied it there (issue #2615).
    */
   internal fun graphicsLayerAlpha(info: ModifierInfo): Double? {
     val effective =
@@ -269,11 +275,25 @@ internal object ModifierTokenResolver {
           ?.firstOrNull { it.name == "alpha" }
           ?.value
           ?.let(::floatValue)
+        ?: appliedGraphicsLayerAlpha(info.coordinates)
         ?: evaluateLayerBlockAlpha(info.modifier, nodeSize(info))
-        ?: reflectedField(info.coordinates, "graphicsLayerScope")?.let {
-          reflectedFloat(it, "alpha")
-        }
     return effective?.coerceIn(0f, 1f)?.toDouble()
+  }
+
+  /**
+   * Alpha the node's real graphics layer used for the captured frame.
+   *
+   * `NodeCoordinator.lastLayerAlpha` is updated immediately after Compose invokes that
+   * coordinator's layer block and before it hands the properties to `OwnedLayer`. The field starts
+   * at a non-identity sentinel, so it is usable only when the coordinator owns a layer and the
+   * block has actually run. All access is reflective to keep the connector compatible with Compose
+   * lines that predate this implementation detail; those fall back to [evaluateLayerBlockAlpha].
+   */
+  internal fun appliedGraphicsLayerAlpha(coordinates: Any): Float? {
+    if (reflectedField(coordinates, "layer") == null) return null
+    val invoked = reflectedField(coordinates, "wasLayerBlockInvoked") as? Boolean ?: return null
+    if (!invoked) return null
+    return reflectedFloat(coordinates, "lastLayerAlpha")
   }
 
   /**
