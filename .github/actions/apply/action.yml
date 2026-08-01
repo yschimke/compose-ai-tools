@@ -265,10 +265,9 @@ runs:
     # resolved mode through unchanged, except when a PR's changed files
     # provably cannot affect any preview — then mode flips to `skip` before
     # the CLI install pays any cost. Partial scopes (a module subset) flow
-    # to the pipelines via the `modules` output; only the compose pipeline
-    # renders scoped (the graph probe is skipped for the others), everything
-    # else treats a partial scope as a full run. Fail-open throughout: any
-    # doubt = full render.
+    # to all rendering pipelines via the `modules` output. Their baseline
+    # comparisons filter to the same module set so an omitted module is never
+    # mistaken for a removal. Fail-open throughout: any doubt = full render.
     - name: Resolve change scope
       id: scope
       shell: bash
@@ -303,11 +302,16 @@ runs:
           git fetch --no-tags --depth=1 \
             "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" \
             "$BASE_SHA" 2>/dev/null || true
-          # Only the compose pipeline renders scoped, so only it needs the
-          # Gradle dependency-graph probe; the other pipelines just need the
-          # none-vs-not-none answer.
+          # Every render pipeline accepts the affected-module closure. The
+          # graph probe is shared by compose, a11y, and notifications so a
+          # sample-only PR never expands back into an all-module accessibility
+          # render on the parallel a11y job.
           WANT_GRAPH=0
-          [ "$WANT_COMPOSE" = "1" ] && WANT_GRAPH=1
+          if [ "$WANT_COMPOSE" = "1" ] \
+             || [ "$WANT_A11Y" = "1" ] \
+             || [ "$WANT_NOTIFICATIONS" = "1" ]; then
+            WANT_GRAPH=1
+          fi
           MODULES=$(WORKSPACE="$GITHUB_WORKSPACE" \
                     SCOPE_CONFIG="$SCOPE_CONFIG" \
                     BASE_SHA="$BASE_SHA" HEAD_SHA="$HEAD_SHA" \
@@ -628,6 +632,44 @@ runs:
         for p in compose resources a11y notifications; do
           echo "0" > "$GITHUB_WORKSPACE/_${p}_rc"
         done
+
+        # Intersect configured module allowlists with the affected preview
+        # closure. Empty historically means "all", so a disjoint notification
+        # scope gets an explicit skip sentinel rather than being widened.
+        if [ -n "${SCOPE_MODULES:-}" ] && [ "$SCOPE_MODULES" != full ]; then
+          intersect_modules() {
+            local configured="$1"
+            if [ -z "$configured" ]; then
+              printf '%s' "$SCOPE_MODULES"
+              return
+            fi
+            local result="" candidate scoped
+            IFS=',' read -r -a configured_arr <<< "$configured"
+            IFS=',' read -r -a scoped_arr <<< "$SCOPE_MODULES"
+            for candidate in "${configured_arr[@]}"; do
+              candidate="${candidate#:}"
+              for scoped in "${scoped_arr[@]}"; do
+                scoped="${scoped#:}"
+                if [ "$candidate" = "$scoped" ]; then
+                  result="${result:+$result,}$candidate"
+                fi
+              done
+            done
+            printf '%s' "$result"
+          }
+          configured_a11y="$A11Y_MODULES"
+          A11Y_MODULES=$(intersect_modules "$configured_a11y")
+          NOTIFY_MODULES=$(intersect_modules "$NOTIFY_MODULES")
+          export A11Y_MODULES NOTIFY_MODULES
+          if [ "$WANT_A11Y" = "1" ] \
+             && [ -n "$configured_a11y" ] \
+             && [ -z "$A11Y_MODULES" ]; then
+            export SKIP_SCOPED_A11Y=true
+          fi
+          if [ "$WANT_NOTIFICATIONS" = "1" ] && [ -z "$NOTIFY_MODULES" ]; then
+            export SKIP_SCOPED_NOTIFICATIONS=true
+          fi
+        fi
 
         worst=0
         run_one() {

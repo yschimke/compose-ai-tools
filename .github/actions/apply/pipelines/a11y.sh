@@ -30,6 +30,12 @@
 #   PR_NUMBER             — PR number (comment mode)
 set -e
 
+if [ "${SKIP_SCOPED_A11Y:-false}" = true ]; then
+  echo "a11y pipeline: affected modules do not include the configured a11y modules; skipping."
+  echo "0" > "$GITHUB_WORKSPACE/_a11y_rc"
+  exit 0
+fi
+
 # Comma-split + trim helper. Empty input → empty array.
 split_csv() {
   local raw="${1:-}"
@@ -153,6 +159,16 @@ else
       || echo '{"entries":[]}' > _a11y_baseline_findings.json
   else
     echo '{"entries":[]}' > _a11y_baseline_findings.json
+  fi
+
+  # A scoped PR compares only the affected modules. Without filtering, every
+  # out-of-scope baseline preview looks resolved merely because it was not
+  # rendered in this job.
+  if [ -n "${SCOPE_MODULES:-}" ] && [ "$SCOPE_MODULES" != full ]; then
+    python3 "$ACTION_PATH/filter-findings-scope.py" \
+      _a11y_baseline_findings.json \
+      --current _a11y_renders/findings.json \
+      --modules "$SCOPE_MODULES"
   fi
 
   # Provisional --head-ref; rewritten post-push with the actual SHA.

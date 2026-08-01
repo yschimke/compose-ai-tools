@@ -3,18 +3,14 @@ name: Daemon Harness
 # End-to-end test harness for the preview daemon — see
 # docs/daemon/TEST-HARNESS.md.
 #
-# Change-scoped on PRs (.github/ci/change-scope-safe-paths.json): the `changes`
-# job classifies the diff first, and all three harness jobs gate on its `run`
-# output. `:daemon:harness:test` depends only on :daemon:core/desktop/android +
-# :common-io + the renderers, so a PR that touches only safe paths — docs, this
-# repo's own samples, the VS Code extension, deploy, clients, the design-
-# artifacts scripts — cannot change what the harness renders and skips all three
-# legs. Unlike integration.yml these are plain (non-matrix) jobs, so a scoped
-# skip still reports each check as "skipped", which branch protection counts as
-# passing — no re-emit gate needed. Fail-open: pushes to main, an empty diff, a
-# git failure, or an unreadable config all run the full harness.
+# Change-scoped on PRs (.github/ci/daemon-job-paths.json): the `changes` job
+# emits one decision per backend. Safe-path PRs skip all three, while an
+# Android/desktop implementation or baseline change runs only that real
+# renderer. Shared daemon/harness/build inputs run every leg. These are plain
+# jobs, so a scoped skip still reports the historical check as skipped, which
+# branch protection accepts. Pushes to main and classification errors run all.
 #
-# Three jobs run on every in-scope PR:
+# Three independently-scoped jobs provide the complete main-branch suite:
 #   * `desktop-fake` — FakeDaemonMain + FakeHost; deterministic-failure
 #     coverage plus the seven-scenario v1 catalogue. Does not link in
 #     Compose Desktop / Skiko on the harness production classpath.
@@ -44,16 +40,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Fast PR-diff classifier (shared with integration.yml via
-  # .github/ci/change-scope.py). Outputs `run` = true|false; all three harness
-  # jobs key off it. Non-PR events and any classification error resolve to
-  # `true`, so scoping only ever trims the PR critical path.
+  # Fast PR-diff classifier with one output per backend. Shared daemon/core,
+  # harness-source, and build-wiring changes enable all three; backend code or
+  # baseline-only changes enable just the applicable real renderer. Unknown
+  # paths and classifier errors fail open to all three.
   changes:
     name: Determine harness scope
     if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     outputs:
-      run: ${{ steps.scope.outputs.run }}
+      desktop_fake: ${{ steps.scope.outputs.desktop_fake }}
+      desktop_real: ${{ steps.scope.outputs.desktop_real }}
+      android_real: ${{ steps.scope.outputs.android_real }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -65,27 +63,13 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.sha }}
         run: |
-          set -uo pipefail
-          # Non-PR events (push to main) always run the full harness.
-          if [ "$EVENT_NAME" != "pull_request" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::event=$EVENT_NAME — running the full daemon harness."
-            exit 0
-          fi
-          # Fetch the PR base so the classifier can diff against it (checkout is
-          # shallow). The script is fail-open, so a failed fetch still runs.
           git fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
-          run="$(python3 .github/ci/change-scope.py)"
-          echo "run=$run" >> "$GITHUB_OUTPUT"
-          if [ "$run" = "true" ]; then
-            echo "::notice::Daemon harness will run — a changed path can affect :daemon:harness:test."
-          else
-            echo "::notice::Daemon harness scope-skipped — all changes are docs/samples/tooling (.github/ci/change-scope-safe-paths.json)."
-          fi
+          python3 .github/ci/path-scope.py \
+            --config .github/ci/daemon-job-paths.json >> "$GITHUB_OUTPUT"
 
   desktop-fake:
     needs: changes
-    if: ${{ needs.changes.outputs.run == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ needs.changes.outputs.desktop_fake == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     name: Daemon Harness (desktop, fake host)
     runs-on: ubuntu-latest
     steps:
@@ -110,7 +94,7 @@ jobs:
 
   desktop-real:
     needs: changes
-    if: ${{ needs.changes.outputs.run == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ needs.changes.outputs.desktop_real == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     name: Daemon Harness (desktop, real renderer)
     runs-on: ubuntu-latest
     steps:
@@ -145,7 +129,7 @@ jobs:
 
   android-real:
     needs: changes
-    if: ${{ needs.changes.outputs.run == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    if: ${{ needs.changes.outputs.android_real == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     name: Daemon Harness (android, real renderer)
     runs-on: ubuntu-latest
     # Slower than desktop because Robolectric sandbox bootstrap dominates

@@ -24,9 +24,11 @@ _spec = importlib.util.spec_from_file_location(
 mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(mod)
 
-# Real ignore list from the committed shared config.
-_CONFIG = json.loads((_HERE / "change-scope-safe-paths.json").read_text())
-IGNORE = [mod.glob_to_regex(p) for p in _CONFIG["ignorePaths"]]
+INTEGRATION_CONFIG = json.loads((_HERE / "integration-safe-paths.json").read_text())
+DAEMON_CONFIG = json.loads((_HERE / "daemon-job-paths.json").read_text())
+INTEGRATION_IGNORE = [mod.glob_to_regex(p) for p in INTEGRATION_CONFIG["ignorePaths"]]
+DAEMON_IGNORE = [mod.glob_to_regex(p) for p in DAEMON_CONFIG["ignorePaths"]]
+IGNORE = INTEGRATION_IGNORE
 
 
 def decide(files):
@@ -115,6 +117,18 @@ class DecideRun(unittest.TestCase):
 
     def test_empty_diff_runs(self):
         self.assertEqual(decide([]), "true")
+
+
+class WorkflowSpecificConfigs(unittest.TestCase):
+    def test_cli_runs_integration_but_not_daemon_harness(self):
+        files = ["cli/src/main/kotlin/ee/schimke/composeai/cli/ServeCommand.kt"]
+        self.assertEqual(mod.decide(files, INTEGRATION_IGNORE), "true")
+        self.assertEqual(mod.decide(files, DAEMON_IGNORE), "false")
+
+    def test_daemon_change_runs_both(self):
+        files = ["daemon/core/src/main/kotlin/Daemon.kt"]
+        self.assertEqual(mod.decide(files, INTEGRATION_IGNORE), "true")
+        self.assertEqual(mod.decide(files, DAEMON_IGNORE), "true")
 
 
 if __name__ == "__main__":
