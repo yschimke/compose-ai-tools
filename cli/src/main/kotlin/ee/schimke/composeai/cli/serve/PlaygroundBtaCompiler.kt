@@ -98,15 +98,26 @@ class PlaygroundBtaCompiler(
      * unavailable. Splits the Compose plugin jar(s) out of the impl classpath.
      */
     fun fromInstall(icWorkingDir: NioPath): PlaygroundBtaCompiler? {
-      val jars = locateBundleSidecarJars("lib-bta")
-      if (jars.isEmpty()) return null
-      val (pluginJars, implJars) = jars.partition { it.name.startsWith(COMPOSE_PLUGIN_PREFIX) }
-      if (implJars.isEmpty()) return null
+      val (implJars, pluginJars) = installJars() ?: return null
       return PlaygroundBtaCompiler(
         btaImplJars = implJars.map(File::toPath),
         compilerPluginJars = pluginJars.map(File::toPath),
         icWorkingDir = icWorkingDir,
       )
+    }
+
+    /**
+     * The staged `lib-bta/` split into (impl, Compose-plugin) jars, or null when the dir is absent
+     * or carries no impl jar. Shared with [PlaygroundJailedCompiler], which binds the same jars
+     * read-only into the compile sandbox and passes them to the child — so the jailed and
+     * in-process compilers can never be looking at different toolchains.
+     */
+    fun installJars(): Pair<List<File>, List<File>>? {
+      val jars = locateBundleSidecarJars("lib-bta")
+      if (jars.isEmpty()) return null
+      val (pluginJars, implJars) = jars.partition { it.name.startsWith(COMPOSE_PLUGIN_PREFIX) }
+      if (implJars.isEmpty()) return null
+      return implJars to pluginJars
     }
 
     /**
