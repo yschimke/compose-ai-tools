@@ -49,9 +49,30 @@ android {
 
   // `screenshotTest` is experimental in AGP. The source set appears only when
   // callers opt in with `android.experimental.enableScreenshotTest=true`.
+  //
+  // The gradle property alone isn't enough for Google's plugin: it also requires the
+  // per-module `experimentalProperties` flag, and fails configuration without it
+  // ("Please enable screenshotTest source set in module first"). Gated on the same
+  // property so the default build is unchanged.
+  if (screenshotTestEnabled) {
+    experimentalProperties["android.experimental.enableScreenshotTest"] = true
+  }
 }
 
+// `StudioParityTest` diffs `build/compose-previews/renders/` against the committed Layoutlib
+// references, so the renders have to exist by the time it runs. Same wiring rationale as
+// `composePreview { renderBeforeUnitTests }` in the other samples; spelled out here because this
+// module's previews live in the `screenshotTest` source set.
+// `tasks.matching { … }.configureEach { … }` rather than `named(…)`: AGP registers the unit-test
+// tasks lazily, so eager lookup fails at configuration time.
+tasks
+  .matching { it.name == "testDebugUnitTest" }
+  .configureEach { dependsOn("composePreviewRenderAll") }
+
 dependencies {
+  testImplementation(libs.junit)
+  testImplementation(libs.truth)
+
   implementation(platform(libs.compose.bom.stable))
   implementation(libs.compose.ui)
   implementation(libs.compose.material3)
@@ -69,5 +90,9 @@ dependencies {
     "screenshotTestImplementation"(platform(libs.compose.bom.stable))
     "screenshotTestImplementation"(libs.compose.ui.tooling.preview)
     "screenshotTestImplementation"("androidx.compose.ui:ui-tooling")
+    // `@PreviewTest` — from alpha15 on, Google's plugin only *discovers* a `@Preview` that also
+    // carries this marker, so the Studio-parity fixtures need the annotation on the compile
+    // classpath. Same coordinates the plugin runs its own JUnit engine from.
+    "screenshotTestImplementation"(libs.android.screenshot.validation.api)
   }
 }
