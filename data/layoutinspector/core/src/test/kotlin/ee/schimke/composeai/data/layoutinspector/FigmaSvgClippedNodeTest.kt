@@ -144,12 +144,19 @@ class FigmaSvgClippedNodeTest {
               size = LayoutInspectorSize(200, 300),
               modifiers =
                 listOf(
-                  // …while the clipping `graphicsLayer` still reports the rendered 100px viewport.
+                  // The runtime scroll clip reports the rendered 100px viewport.
+                  LayoutInspectorModifier(
+                    name = "scrollingContainer",
+                    properties = mapOf("clip" to "true"),
+                    bounds = bounds(0, 0, 200, 100),
+                  ),
+                  // The outer rounded surface still carries the lookahead content height. Put it
+                  // last to prove selection does not depend on modifier enumeration order.
                   LayoutInspectorModifier(
                     name = "graphicsLayer",
                     properties = mapOf("clip" to "true"),
-                    bounds = bounds(0, 0, 200, 100),
-                  )
+                    bounds = bounds(0, 0, 200, 300),
+                  ),
                 ),
               tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFFFF", clipsContent = true),
             )
