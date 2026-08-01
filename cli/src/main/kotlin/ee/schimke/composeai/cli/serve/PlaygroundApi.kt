@@ -49,7 +49,14 @@ enum class PlaygroundMode {
   }
 }
 
-/** One editor file in a run request. `publicId` is carried through but unused server-side. */
+/**
+ * One editor file in a run request. `publicId` is carried through but unused server-side.
+ *
+ * A request may carry **several**: every file is staged into the snippet's source dir and passed to
+ * one compile, so files see each other's declarations (they are one module, not N compiles). Names
+ * are sanitised and de-duplicated by [PlaygroundCompileService]; only the text matters to the
+ * compiler, since Kotlin does not require a file name to match its declarations.
+ */
 @Serializable
 data class PlaygroundFile(val name: String, val text: String, val publicId: String = "")
 
@@ -125,6 +132,11 @@ data class PlaygroundStockError(
  * client-side (PLAYGROUND.md §3). A run yields **either** a [previewToken] (the live CMP/Android
  * modes) **or** a [documentUrl] (RC) — never both — and [previewToken] stays null on the RC path.
  *
+ * [previewId] is the `@Preview` this run actually rendered and tokenized, and [previews] is every
+ * `@Preview` the snippet declared — a multi-file snippet can hold several, and only one drives the
+ * first frame and the Stage-2 session. Both are additive fields a stock frontend ignores; ours uses
+ * them to say *which* preview it drew when a snippet declares more than one.
+ *
  * [errors] is the **same** diagnostics projected into the stock `kotlin-compiler-server` wire shape
  * (a map keyed by file name → [PlaygroundStockError]s with nested `interval` positions), so an
  * unmodified `kotlin-playground` frontend can render inline squiggles. Our own frontend reads the
@@ -140,4 +152,6 @@ data class PlaygroundRunResponse(
   val previewToken: String? = null,
   val previewUrl: String? = null,
   val documentUrl: String? = null,
+  val previewId: String? = null,
+  val previews: List<String> = emptyList(),
 )

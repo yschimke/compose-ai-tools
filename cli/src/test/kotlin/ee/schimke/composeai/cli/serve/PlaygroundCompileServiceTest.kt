@@ -280,6 +280,73 @@ class PlaygroundCompileServiceTest {
   }
 
   @Test
+  fun `every file in a multi-file snippet reaches one compile, so they see each other`() {
+    var staged: List<Path>? = null
+    var compiles = 0
+    val svc =
+      service(
+        compile = { sources, _, _ ->
+          compiles++
+          staged = sources
+          sources.forEach { assertTrue(fs.exists(it), "${'$'}it should be staged before compile") }
+          emptyList()
+        }
+      )
+
+    val resp =
+      svc.run(
+        PlaygroundRunRequest(
+          files =
+            listOf(
+              PlaygroundFile("Theme.kt", "object Palette { val brand = 1 }"),
+              PlaygroundFile("Snippet.kt", "@Preview @Composable fun P() { Text(Palette.brand) }"),
+            ),
+          confType = "compose-cmp",
+        ),
+        isSecurityChecked = true,
+      )
+
+    // One compile over both sources — files are one module, not N independent compiles, which is
+    // what lets Snippet.kt reference Palette from Theme.kt.
+    assertEquals(1, compiles)
+    assertEquals(listOf("Theme.kt", "Snippet.kt"), staged!!.map { it.name })
+    assertNotNull(resp.previewToken)
+  }
+
+  @Test
+  fun `the rendered preview is the same one on every run, and the rest are surfaced`() {
+    // ClassGraph's scan order over the snippet's classes is not guaranteed, so the orchestrator
+    // sorts: a snippet with several @Previews must not render a different one run to run.
+    val svc = service(discover = { _, _ -> listOf("com.example.Zeta", "com.example.Alpha") })
+
+    val resp = svc.run(request(), isSecurityChecked = true)
+
+    assertEquals("com.example.Alpha", resp.previewId)
+    assertEquals(listOf("com.example.Alpha", "com.example.Zeta"), resp.previews)
+    assertEquals(
+      resp.previewId,
+      tokenStore.get(resp.previewToken!!)!!.snippet.previewId,
+      "the token renders exactly the preview the response named",
+    )
+  }
+
+  @Test
+  fun `the remote-compose terminal names its preview too`() {
+    val svc =
+      service(
+        discover = { _, _ -> listOf("com.example.Doc") },
+        capture = { byteArrayOf(1, 2) },
+        publish = { _, _, _ -> "/d/abc" },
+      )
+
+    val resp = svc.run(request(confType = "remote-compose"), isSecurityChecked = true)
+
+    assertEquals("/d/abc", resp.documentUrl)
+    assertEquals("com.example.Doc", resp.previewId)
+    assertEquals(listOf("com.example.Doc"), resp.previews)
+  }
+
+  @Test
   fun `case-only-distinct names are disambiguated so a case-insensitive FS can't overwrite`() {
     var staged: List<Path>? = null
     val svc =

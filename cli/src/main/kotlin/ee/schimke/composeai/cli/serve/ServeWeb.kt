@@ -522,6 +522,12 @@ object ServeWeb {
     .cp-pg-mode { padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.18);
       background: #fff; font: inherit; }
     .cp-pg-run { margin-left: auto; }
+    .cp-pg-files { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .cp-pg-file { padding: 5px 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.18);
+      background: #fff; font: inherit; font-size: 13px; cursor: pointer; }
+    .cp-pg-file[aria-current="true"] { background: #1b1b1f; color: #fff; border-color: #1b1b1f; }
+    .cp-pg-filebtn { padding: 5px 10px; border-radius: 8px; border: 1px dashed rgba(0,0,0,0.28);
+      background: transparent; font: inherit; font-size: 13px; cursor: pointer; }
     .cp-pg-source { width: 100%; min-height: 260px; box-sizing: border-box; padding: 12px 14px;
       border-radius: 10px; border: 1px solid rgba(0,0,0,0.18); background: #fbfbfd;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px;
@@ -538,7 +544,10 @@ object ServeWeb {
     .cp-pg-image { max-width: 100%; border-radius: 10px; border: 1px solid rgba(0,0,0,0.12);
       background: #fff; }
     @media (prefers-color-scheme: dark) {
-      .cp-pg-mode, .cp-pg-source { background: #161618; border-color: #34343a; color: #e6e6ea; }
+      .cp-pg-mode, .cp-pg-source, .cp-pg-file { background: #161618; border-color: #34343a;
+        color: #e6e6ea; }
+      .cp-pg-file[aria-current="true"] { background: #e6e6ea; color: #161618; border-color: #e6e6ea; }
+      .cp-pg-filebtn { border-color: #4a4a52; color: #e6e6ea; }
       .cp-pg-status { color: #a8a8b2; }
       .cp-pg-diag { background: #1d1d20; }
       .cp-pg-error { background: #34161b; color: #ff9aa6; }
@@ -2088,11 +2097,18 @@ object ServeWeb {
             </select>
             <button id="pg-run" class="cp-doc-btn cp-pg-run" type="button">Run</button>
           </div>
+          <div id="pg-files" class="cp-pg-files" role="tablist" aria-label="Snippet files">
+            <button class="cp-pg-file" type="button" role="tab" aria-current="true"
+              data-pg-file="Snippet.kt">Snippet.kt</button>
+            <button id="pg-add-file" class="cp-pg-filebtn" type="button">+ file</button>
+            <button id="pg-remove-file" class="cp-pg-filebtn" type="button" hidden>Remove file</button>
+          </div>
           <textarea id="pg-source" class="cp-pg-source" spellcheck="false"
             aria-label="Kotlin source">$sample</textarea>
           <div id="pg-status" class="cp-pg-status" hidden></div>
           <ul id="pg-diagnostics" class="cp-pg-diags" hidden></ul>
           <div id="pg-result" class="cp-doc-result cp-pg-result" hidden>
+            <p id="pg-preview-note" class="cp-pg-status" hidden></p>
             <img id="pg-image" class="cp-pg-image" alt="Rendered first frame" hidden>
             <p id="pg-open-row" hidden>
               <a id="pg-open" class="cp-doc-btn" href="#" rel="noopener">Open preview →</a>
@@ -2116,13 +2132,72 @@ object ServeWeb {
       var source = document.getElementById("pg-source");
       var mode = document.getElementById("pg-mode");
       var run = document.getElementById("pg-run");
+      var fileBar = document.getElementById("pg-files");
+      var addFile = document.getElementById("pg-add-file");
+      var removeFile = document.getElementById("pg-remove-file");
       var statusEl = document.getElementById("pg-status");
       var diags = document.getElementById("pg-diagnostics");
       var result = document.getElementById("pg-result");
       var image = document.getElementById("pg-image");
       var openRow = document.getElementById("pg-open-row");
       var openLink = document.getElementById("pg-open");
+      var note = document.getElementById("pg-preview-note");
       var suffix = ${jsString(querySuffix)};
+      // The snippet is a LIST of files compiled as one module, not one file: `files` holds every
+      // buffer, `active` is the one the textarea is showing. A single-file snippet keeps exactly
+      // the old shape, so nothing about the common case changes.
+      var files = [{ name: "Snippet.kt", text: source.value }];
+      var active = 0;
+      function uniqueName(name) {
+        var taken = {}; files.forEach(function (f) { taken[f.name.toLowerCase()] = true; });
+        if (!taken[name.toLowerCase()]) return name;
+        var stem = name.replace(/\.kt${'$'}/, "");
+        for (var i = 1; ; i++) {
+          var candidate = stem + "_" + i + ".kt";
+          if (!taken[candidate.toLowerCase()]) return candidate;
+        }
+      }
+      function renderFiles() {
+        // Rebuild the tab strip from `files`; the +/- buttons are kept, not recreated.
+        var tabs = fileBar.querySelectorAll("[data-pg-file]");
+        for (var i = 0; i < tabs.length; i++) fileBar.removeChild(tabs[i]);
+        files.forEach(function (f, i) {
+          var tab = document.createElement("button");
+          tab.type = "button";
+          tab.className = "cp-pg-file";
+          tab.setAttribute("role", "tab");
+          tab.setAttribute("data-pg-file", f.name);
+          tab.setAttribute("aria-current", i === active ? "true" : "false");
+          tab.textContent = f.name;
+          tab.addEventListener("click", function () {
+            files[active].text = source.value;
+            active = i;
+            source.value = files[active].text;
+            renderFiles();
+          });
+          fileBar.insertBefore(tab, addFile);
+        });
+        removeFile.hidden = files.length < 2;
+      }
+      addFile.addEventListener("click", function () {
+        files[active].text = source.value;
+        // Auto-named rather than prompted: Kotlin does not tie declarations to a file name, so the
+        // name only ever shows up in diagnostics — not worth a modal dialog on every added file.
+        var name = uniqueName("File" + (files.length + 1) + ".kt");
+        files.push({ name: name, text: "" });
+        active = files.length - 1;
+        source.value = "";
+        renderFiles();
+        source.focus();
+      });
+      removeFile.addEventListener("click", function () {
+        if (files.length < 2) return;
+        files.splice(active, 1);
+        active = Math.min(active, files.length - 1);
+        source.value = files[active].text;
+        renderFiles();
+      });
+      renderFiles();
       function setStatus(text, isError) {
         statusEl.hidden = false;
         statusEl.className = "cp-pg-status" + (isError ? " cp-doc-error" : "");
@@ -2131,6 +2206,7 @@ object ServeWeb {
       function clearOut() {
         diags.hidden = true; diags.innerHTML = "";
         result.hidden = true; image.hidden = true; image.removeAttribute("src"); openRow.hidden = true;
+        note.hidden = true; note.textContent = "";
       }
       function renderDiags(list) {
         if (!list || !list.length) return;
@@ -2151,10 +2227,8 @@ object ServeWeb {
         run.disabled = true;
         clearOut();
         setStatus("Compiling…", false);
-        var body = JSON.stringify({
-          confType: mode.value,
-          files: [{ name: "Snippet.kt", text: source.value }]
-        });
+        files[active].text = source.value;
+        var body = JSON.stringify({ confType: mode.value, files: files });
         fetch("/api/1/compiler/run" + suffix, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2180,6 +2254,15 @@ object ServeWeb {
               openRow.hidden = false;
               openLink.href = link + suffix;
               openLink.textContent = res.documentUrl ? "Open document →" : "Open live preview →";
+            }
+            // With several @Previews in the snippet only one is rendered and tokenized, so name
+            // it — otherwise a multi-file snippet silently shows one of them with no clue why.
+            // Kept out of the status line, which stays the terminal "Done." the e2e keys on.
+            var found = (res.previews || []).length;
+            if (res.previewId && found > 1) {
+              note.hidden = false;
+              note.textContent =
+                "Rendered " + res.previewId + " — " + found + " previews found in this snippet.";
             }
             setStatus("Done.", false);
           })

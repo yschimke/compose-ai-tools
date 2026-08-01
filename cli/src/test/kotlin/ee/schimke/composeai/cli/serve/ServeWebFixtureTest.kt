@@ -1354,6 +1354,31 @@ class ServeWebFixtureTest {
         playground.contains("res.documentUrl || res.previewUrl"),
       "the playground script POSTs to the compile route and follows the /pg or /d handoff",
     )
+    // A snippet is a list of files, not one buffer (#3017): the file strip is present, the run body
+    // posts the whole list, and the response's previewId is surfaced so a snippet with several
+    // @Previews says which one it drew.
+    assertTrue(
+      playground.contains("id=\"pg-files\"") &&
+        playground.contains("id=\"pg-add-file\"") &&
+        playground.contains("id=\"pg-remove-file\""),
+      "the playground page exposes the multi-file strip",
+    )
+    assertTrue(
+      playground.contains("files: files") && !playground.contains("files: [{ name: \"Snippet.kt\""),
+      "the run body posts every open file, not just the active buffer",
+    )
+    assertTrue(
+      playground.contains("res.previewId") &&
+        playground.contains("res.previews") &&
+        playground.contains("id=\"pg-preview-note\""),
+      "the editor names the preview it rendered when a snippet declares several",
+    )
+    // The terminal status stays exactly "Done." — the e2e polls on it, so the preview note lives
+    // in its own element rather than being appended to the status text.
+    assertTrue(
+      playground.contains("setStatus(\"Done.\", false)"),
+      "a successful run still ends on the terminal status the e2e keys on",
+    )
     assertGolden(File(pagesDir, "serve-doc-lottie.html"), docLottie)
     assertGolden(File(pagesDir, "serve-doc-remotecompose.html"), docRemoteCompose)
     // The upload page names every format it accepts and states the expiry up front, so a visitor
