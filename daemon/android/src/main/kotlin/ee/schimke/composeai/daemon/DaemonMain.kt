@@ -817,10 +817,10 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
       ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it)
     }
   val explicitWidthPx =
-    deviceDims?.let { (it.widthDp * density).roundHalfUpPx() }
+    deviceDims?.let { (it.widthDp * density).toInt().coerceAtLeast(1) }
       ?: params.widthDp?.let { (it * density).roundHalfUpPx() }
   val explicitHeightPx =
-    deviceDims?.let { (it.heightDp * density).roundHalfUpPx() }
+    deviceDims?.let { (it.heightDp * density).toInt().coerceAtLeast(1) }
       ?: params.heightDp?.let { (it * density).roundHalfUpPx() }
   val pinned =
     (params.device ?: defaults.device) != null ||

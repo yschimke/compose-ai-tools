@@ -342,18 +342,22 @@ data class PreviewManifestEntry(
     // 400×800 dp sandbox bound — a Wear preview rendered 1050×2100 instead of 504×504. The
     // manifest's density is kept (the plugin writes the device's own density there); only the dp
     // extent comes from the catalog, so an unknown device string still degrades to the catalog's
-    // documented default.
+    // documented default. The dp→px conversion TRUNCATES, matching `RenderPreviewsTask`'s
+    // device-frame branch and the inbound-`device` path in `submit` — a fractional product
+    // (id:pixel_5 = 393dp × 2.75 = 1080.75) must land on the same 1080 the bake produces, or the
+    // live lane sits one pixel off its own snapshot. Only the explicit-dp path below rounds
+    // half-up (#3113).
     val deviceDims =
       device
         ?.takeIf { it.isNotBlank() }
         ?.let { ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it) }
     val explicitWidthPx =
       widthPx
-        ?: deviceDims?.let { (it.widthDp * density).roundHalfUpPx() }
+        ?: deviceDims?.let { (it.widthDp * density).toInt().coerceAtLeast(1) }
         ?: p?.widthDp?.let { (it * density).roundHalfUpPx() }
     val explicitHeightPx =
       heightPx
-        ?: deviceDims?.let { (it.heightDp * density).roundHalfUpPx() }
+        ?: deviceDims?.let { (it.heightDp * density).toInt().coerceAtLeast(1) }
         ?: p?.heightDp?.let { (it * density).roundHalfUpPx() }
     val pinned = device != null || showSystemUi
     val wrapWidth = explicitWidthPx == null && !pinned

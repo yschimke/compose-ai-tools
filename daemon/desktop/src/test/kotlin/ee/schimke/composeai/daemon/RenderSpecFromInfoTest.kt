@@ -1,6 +1,5 @@
 package ee.schimke.composeai.daemon
 
-import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -90,8 +89,10 @@ class RenderSpecFromInfoTest {
     val spec = renderSpecFromInfo(info(params = PreviewParamsDto(device = "id:pixel_5")))
     assertEquals(false, spec.wrapWidth)
     assertEquals(false, spec.wrapHeight)
-    assertEquals((393 * spec.density).roundToInt(), spec.widthPx)
-    assertEquals((851 * spec.density).roundToInt(), spec.heightPx)
+    // TRUNCATED, like `RenderPreviewsTask`'s device-frame branch — not rounded. Both sides of a
+    // fractional product must agree or the live lane sits a pixel off its own baked snapshot.
+    assertEquals((393 * spec.density).toInt(), spec.widthPx)
+    assertEquals((851 * spec.density).toInt(), spec.heightPx)
     assertEquals("id:pixel_5", spec.device)
   }
 
