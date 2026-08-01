@@ -3,25 +3,32 @@
 package com.example.sampleremotecompose
 
 import androidx.compose.remote.creation.compose.action.hostAction
+import androidx.compose.remote.creation.compose.action.valueChange
 import androidx.compose.remote.creation.compose.layout.RemoteAlignment
 import androidx.compose.remote.creation.compose.layout.RemoteBox
 import androidx.compose.remote.creation.compose.layout.RemoteComposable
 import androidx.compose.remote.creation.compose.modifier.RemoteModifier
 import androidx.compose.remote.creation.compose.modifier.background
+import androidx.compose.remote.creation.compose.modifier.clickable
 import androidx.compose.remote.creation.compose.modifier.fillMaxSize
+import androidx.compose.remote.creation.compose.modifier.size
 import androidx.compose.remote.creation.compose.shaders.RemoteBrush
 import androidx.compose.remote.creation.compose.shaders.linearGradient
 import androidx.compose.remote.creation.compose.shapes.RemoteRoundedCornerShape
 import androidx.compose.remote.creation.compose.state.RemoteColor
+import androidx.compose.remote.creation.compose.state.animateRemoteFloat
 import androidx.compose.remote.creation.compose.state.rb
 import androidx.compose.remote.creation.compose.state.rdp
 import androidx.compose.remote.creation.compose.state.rememberNamedRemoteColor
 import androidx.compose.remote.creation.compose.state.rememberNamedRemoteString
+import androidx.compose.remote.creation.compose.state.rememberMutableRemoteFloat
 import androidx.compose.remote.creation.compose.state.rf
 import androidx.compose.remote.creation.compose.state.rs
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.wear.compose.remote.material3.RemoteButton
+import androidx.wear.compose.remote.material3.RemoteCircularProgressIndicator
 import androidx.wear.compose.remote.material3.RemoteText
 import androidx.wear.compose.remote.material3.buttonSizeModifier
 
@@ -94,6 +101,41 @@ fun RemoteButtonWithShape() {
     modifier = RemoteModifier.buttonSizeModifier(),
     shape = RemoteRoundedCornerShape(4.rdp),
     content = { RemoteText("Custom shape".rs) },
+  )
+}
+
+/**
+ * The indeterminate Remote Material 3 progress indicator. Unlike a normal Compose animation, its
+ * motion is encoded into the [androidx.compose.remote.player.core.RemoteDocument]: the indicator
+ * reads Remote Compose's continuous-time variable and each player evaluates the arc expressions
+ * while replaying the document.
+ *
+ * Keeping this as a pure [RemoteComposable] lets the animated preview exercise both replay
+ * implementations — the standard View-backed Remote Compose player and the embedded Compose
+ * player — without an app-side animation masking a stalled document clock.
+ */
+@Composable
+@RemoteComposable
+fun RemoteIndeterminateCircularProgressIndicator() {
+  RemoteCircularProgressIndicator(modifier = RemoteModifier.size(72.rdp))
+}
+
+/**
+ * The interaction-driven animation technique from AndroidX's
+ * `RemoteCircularProgressIndicatorAnimatedSample`: clicking changes a mutable value in the remote
+ * document, and [animateRemoteFloat] interpolates the determinate indicator to its next quarter.
+ */
+@Composable
+@RemoteComposable
+fun RemoteAnimatedCircularProgressIndicator() {
+  val progress = rememberMutableRemoteFloat { 0.25f.rf }
+  val animatedProgress = animateRemoteFloat(progress, 0.25f)
+  val advanceProgress = valueChange(progress, ((progress + 0.25f) % 1f).createReference())
+
+  RemoteCircularProgressIndicator(
+    progress = animatedProgress,
+    modifier =
+      RemoteModifier.size(72.rdp).clickable(action = advanceProgress, role = Role.Button),
   )
 }
 

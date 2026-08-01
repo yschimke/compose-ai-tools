@@ -10,6 +10,7 @@ import androidx.compose.remote.creation.compose.layout.RemoteComposable
 import androidx.compose.remote.creation.profile.Profile
 import androidx.compose.remote.creation.profile.RcPlatformProfiles
 import androidx.compose.remote.player.compose.RemoteDocumentPlayer
+import androidx.compose.remote.player.compose.embedded.ExperimentalRemoteDocumentPlayer
 import androidx.compose.remote.player.core.RemoteDocument
 import androidx.compose.remote.player.core.state.StateUpdater
 import androidx.compose.runtime.Composable
@@ -19,6 +20,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.PreviewWrapperProvider
 import androidx.compose.ui.unit.LayoutDirection
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
+import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
 import ee.schimke.composeai.data.render.IrSidecarChannel
 import kotlinx.coroutines.runBlocking
 
@@ -43,9 +45,28 @@ open class RemoteOverridablePreviewWrapper : PreviewWrapperProvider {
   /** Remote-compose platform profile to capture the document against. Defaults to ANDROIDX. */
   protected open val profile: Profile = RcPlatformProfiles.ANDROIDX
 
+  /** Player used to replay the captured document. */
+  protected open val player: RemoteComposePlayerKind = RemoteComposePlayerKind.VIEW
+
   @Composable
   override fun Wrap(content: @Composable () -> Unit) {
-    RemoteOverridablePreview(profile = profile, content = content)
+    RemoteOverridablePreview(profile = profile, player = player, content = content)
+  }
+}
+
+/**
+ * Preview wrapper that replays the captured document with the embedded Compose Remote player.
+ * Consumers must supply `:third-party-rc-embedded-player` (or its upstream equivalent) at runtime;
+ * when it is absent this falls back to the standard View-backed player.
+ */
+class RemoteEmbeddedPreviewWrapper : RemoteOverridablePreviewWrapper() {
+  override val player: RemoteComposePlayerKind = RemoteComposePlayerKind.EMBEDDED
+
+  // The renderer resolves wrapper methods with getDeclaredMethod, so this must be declared on the
+  // concrete wrapper rather than inherited from RemoteOverridablePreviewWrapper.
+  @Composable
+  override fun Wrap(content: @Composable () -> Unit) {
+    RemoteOverridablePreview(profile = profile, player = player, content = content)
   }
 }
 
@@ -74,6 +95,7 @@ open class RemoteOverridablePreviewWrapper : PreviewWrapperProvider {
 fun RemoteOverridablePreview(
   profile: Profile,
   modifier: Modifier = Modifier,
+  player: RemoteComposePlayerKind = RemoteComposePlayerKind.VIEW,
   content: @Composable @RemoteComposable () -> Unit,
 ) {
   val context = LocalContext.current
@@ -148,13 +170,23 @@ fun RemoteOverridablePreview(
   // controller's `MutableState`, so a follow-up render with a new override re-runs the bridge.
   val seededOverrides = RemoteComposeController.namedValues.value
 
-  RemoteDocumentPlayer(
-    document = remoteDocument.document,
-    documentWidth = displayMetrics.widthPixels,
-    documentHeight = displayMetrics.heightPixels,
-    modifier = modifier,
-    init = { player -> applyConnectorOverrides(player.stateUpdater, seededOverrides) },
-  )
+  if (player == RemoteComposePlayerKind.EMBEDDED && isEmbeddedPlayerAvailable) {
+    ExperimentalRemoteDocumentPlayer(
+      document = remoteDocument,
+      modifier = modifier,
+      namedColorOverrides = seededOverrides.toNamedColorOverrides(),
+    )
+  } else {
+    RemoteDocumentPlayer(
+      document = remoteDocument.document,
+      documentWidth = displayMetrics.widthPixels,
+      documentHeight = displayMetrics.heightPixels,
+      modifier = modifier,
+      init = { remotePlayer ->
+        applyConnectorOverrides(remotePlayer.stateUpdater, seededOverrides)
+      },
+    )
+  }
 }
 
 // Remote Compose modern-header wire constants (big-endian). The header op is:
