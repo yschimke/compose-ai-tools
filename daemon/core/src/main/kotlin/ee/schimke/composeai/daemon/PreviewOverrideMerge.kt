@@ -269,10 +269,12 @@ fun mergePreviewOverrides(
   val deviceSpec = deviceOverride?.let { DeviceDimensions.resolve(it) }
   val effectiveDensity = overrides.density ?: deviceSpec?.density ?: base.density
   val widthPx =
-    overrides.widthPx ?: deviceSpec?.let { (it.widthDp * effectiveDensity).toInt() } ?: base.widthPx
+    overrides.widthPx
+      ?: deviceSpec?.let { (it.widthDp * effectiveDensity).toInt().coerceAtLeast(1) }
+      ?: base.widthPx
   val heightPx =
     overrides.heightPx
-      ?: deviceSpec?.let { (it.heightDp * effectiveDensity).toInt() }
+      ?: deviceSpec?.let { (it.heightDp * effectiveDensity).toInt().coerceAtLeast(1) }
       ?: base.heightPx
   return MergedPreviewOverrides(
     widthPx = widthPx,
