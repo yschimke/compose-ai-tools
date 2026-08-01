@@ -12,6 +12,9 @@ import kotlinx.serialization.json.JsonPrimitive
  */
 object ServeWeb {
 
+  /** Sign-in affordance for a live stream lane protected by GitHub collaborator auth. */
+  data class LiveAuthPrompt(val loginHref: String, val repository: String)
+
   /**
    * Absolute URLs advertised to link unfurlers for a browser-facing page. [imageUrl] is the thing
    * that page represents (a featured catalog hero, catalog component, or exact viewer render);
@@ -2813,6 +2816,8 @@ object ServeWeb {
      * renders no link, matching how the footer/landing source links depend on a known repo.
      */
     sourceHref: String? = null,
+    /** GitHub sign-in prompt shown when the daemon live stream is present but requires auth. */
+    liveAuthPrompt: LiveAuthPrompt? = null,
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
@@ -2963,11 +2968,33 @@ object ServeWeb {
     // stream on demand. For plain daemon / static sessions hasLiveStream tracks canApplyOverrides,
     // so
     // this is unchanged there.
-    val liveDis = if (hasLiveStream) "" else " disabled"
+    val liveAuthBlocksStream = hasLiveStream && liveAuthPrompt != null
+    val liveDis = if (hasLiveStream && !liveAuthBlocksStream) "" else " disabled"
     // Whether the single Static⇄Live preview toggle has any interactive lane to switch to — the
     // daemon stream ([hasLiveStream]) or the in-browser Wasm app ([wasmSrc]). Disabled (with the
     // note) on a pure static bundle with neither.
-    val liveToggleDis = if (hasLiveStream || wasmSrc != null) "" else " disabled"
+    val liveToggleDis =
+      if ((hasLiveStream || wasmSrc != null) && !liveAuthBlocksStream) "" else " disabled"
+    val liveAuthTitle = liveAuthPrompt?.let {
+      "Sign in with GitHub to enable Live preview. Access is limited to collaborators on " +
+        "${it.repository}."
+    }
+    val liveToggleTitleAttr =
+      liveAuthTitle?.let { " title=\"${WebEscaping.htmlEscape(it)}\"" } ?: ""
+    val liveAuthDataAttr =
+      liveAuthPrompt?.let {
+        " data-github-login=\"${WebEscaping.htmlEscape(it.loginHref)}\" " +
+          "data-github-repo=\"${WebEscaping.htmlEscape(it.repository)}\""
+      } ?: ""
+    val liveToggleButton =
+      "<button type=\"button\" id=\"cp-live-toggle\" class=\"cp-live-toggle\" " +
+        "aria-pressed=\"false\"$liveToggleDis$liveToggleTitleAttr>\n" +
+        "            <span class=\"cp-live-dot\" aria-hidden=\"true\"></span>\n" +
+        "            <span id=\"cp-live-toggle-label\">Live preview</span>\n" +
+        "          </button>"
+    val liveToggleHtml =
+      if (liveAuthPrompt == null) liveToggleButton
+      else "<span$liveToggleTitleAttr$liveAuthDataAttr>$liveToggleButton</span>"
     // Controls the in-browser Wasm app also honours — day/night (uiMode), font scale (density),
     // locale (layout direction): live whenever the server can render an override OR a Wasm app
     // backs
@@ -3263,10 +3290,7 @@ object ServeWeb {
            (appearance, size, scroll, locale, device, knobs). -->
       <div class="cp-below">
         <div class="cp-preview-mode">
-          <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false"$liveToggleDis>
-            <span class="cp-live-dot" aria-hidden="true"></span>
-            <span id="cp-live-toggle-label">Live preview</span>
-          </button>
+          $liveToggleHtml
           $wasmToggleBtn
           $rcBackendSelector
           $svgFmtToggle

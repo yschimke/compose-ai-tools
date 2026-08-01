@@ -2190,6 +2190,15 @@ class ServeHttpServer(
       val imageUrl =
         "$origin$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png${requestQuerySuffix()}"
       val engagement = incrementPreviewViews(sessionId, preview.id)
+      val liveAuthPrompt =
+        githubAuth
+          ?.takeUnless { it.isAuthenticated(call) }
+          ?.let {
+            ServeWeb.LiveAuthPrompt(
+              loginHref = it.loginPath(call),
+              repository = it.accessRepository(),
+            )
+          }
       markGeneration("static-page", pageCacheControl())
       call.respondText(
         ServeWeb.viewerPage(
@@ -2246,6 +2255,7 @@ class ServeHttpServer(
             catalogBundleHost(renderHost)?.catalogSource?.let { src ->
               ServeUrls.githubBlobUrl(src.repo, src.ref, src.module, preview.sourceFile)
             },
+          liveAuthPrompt = liveAuthPrompt,
         ),
         ContentType.Text.Html,
       )

@@ -96,6 +96,8 @@ class ServeGithubAuth(
     return "$START_PATH?return=${urlEncode(current)}"
   }
 
+  fun accessRepository(): String = config.repository
+
   private fun authorizeUrl(call: ApplicationCall, state: String): String {
     val params =
       listOf(
