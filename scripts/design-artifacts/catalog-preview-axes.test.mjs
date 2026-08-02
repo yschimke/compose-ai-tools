@@ -135,3 +135,34 @@ test("equal display params do not collapse distinct synthetic states", () => {
   assert.equal(candidates[0].images.length, 1);
   assert.equal(candidates[1].images.length, 1);
 });
+
+test("an explicit same-function font-scale variant is not folded twice", () => {
+  const candidates = [
+    candidate("Feed_Default"),
+    candidate("Feed_LargeFont"),
+  ];
+  const previews = [
+    { id: "Feed_Default", params: { widthDp: 412, fontScale: 1 } },
+    { id: "Feed_LargeFont", params: { widthDp: 412, fontScale: 2 } },
+  ];
+
+  applyCatalogPreviewAxes(candidates, previews);
+  const images = candidates.flatMap((entry) => entry.images);
+  const byFunction = new Map([["FeedScreenPreview", { images }]]);
+
+  const { ideal, missing } = foldVariants(
+    images,
+    {
+      componentId: "Screens/Feed",
+      variants: [{ props: { fontScale: 2 }, preview: "FeedScreenPreview" }],
+    },
+    byFunction,
+  );
+
+  assert.deepEqual(missing, []);
+  assert.equal(ideal.length, 2);
+  assert.deepEqual(
+    ideal.map((image) => image.props?.fontScale),
+    [undefined, "2.0"],
+  );
+});

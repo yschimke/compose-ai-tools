@@ -60,6 +60,19 @@ export function foldVariants(defaultImages, component, byFunction) {
       else missing.push(label);
       continue;
     }
+    // A single @Preview function can fan out into multiple images whose axes are promoted from
+    // annotation parameters before this fold (fontScale is the first such axis). When the spec
+    // explicitly names that same function as a variant, the matching image is already present in
+    // `defaultImages`. Folding the whole merged candidate again would retag every image with the
+    // variant axes and create duplicate output keys. Treat an already-tagged image as satisfying
+    // the same-function variant; variants backed by a different function still retain the
+    // authoritative re-tagging behavior below.
+    if (
+      candidate.images === defaultImages &&
+      defaultImages.some((image) => imageHasVariantAxes(image, variant))
+    ) {
+      continue;
+    }
     for (const image of candidate.images) {
       const tagged = { ...image };
       if (variant.state !== undefined) tagged.state = variant.state;
@@ -70,6 +83,35 @@ export function foldVariants(defaultImages, component, byFunction) {
     }
   }
   return { ideal, missing, noSticker };
+}
+
+function imageHasVariantAxes(image, variant) {
+  let hasExplicitAxis = false;
+  if (variant.state !== undefined) {
+    hasExplicitAxis = true;
+    if ((image.state ?? "default") !== variant.state) return false;
+  }
+  if (variant.theme !== undefined) {
+    hasExplicitAxis = true;
+    if (image.theme !== variant.theme) return false;
+  }
+  for (const [key, expected] of Object.entries(variant.props ?? {})) {
+    hasExplicitAxis = true;
+    if (!axisValueEquals(key, image.props?.[key], expected)) return false;
+  }
+  return hasExplicitAxis;
+}
+
+function axisValueEquals(key, actual, expected) {
+  if (Object.is(actual, expected)) return true;
+  if (key !== "fontScale") return false;
+  const actualNumber = Number(actual);
+  const expectedNumber = Number(expected);
+  return (
+    Number.isFinite(actualNumber) &&
+    Number.isFinite(expectedNumber) &&
+    actualNumber === expectedNumber
+  );
 }
 
 /**
