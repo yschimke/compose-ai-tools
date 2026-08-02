@@ -100,6 +100,12 @@ class ServeBundleDaemonTest {
       )
     )
     assertTrue(
+      ServeBundleDaemon.shouldPrecedeDaemonSidecar(
+        coordinate("org.jetbrains.compose.components", "components-resources")
+      ),
+      "bundle resource APIs must share the parent-loaded LocalResourceReader with the daemon",
+    )
+    assertTrue(
       !ServeBundleDaemon.shouldPrecedeDaemonSidecar(
         coordinate("org.jetbrains.kotlinx", "kotlinx-serialization-json-jvm")
       ),
@@ -107,6 +113,15 @@ class ServeBundleDaemonTest {
     )
     assertTrue(
       !ServeBundleDaemon.shouldPrecedeDaemonSidecar(coordinate("com.squareup.okhttp3", "okhttp"))
+    )
+  }
+
+  @Test
+  fun `playground resource runtime overlays daemon sidecar`() {
+    assertTrue(
+      ServeBundleDaemon.jarPrecedesDaemonSidecar(
+        File("/cache/org.jetbrains.compose.components/components-resources-desktop/library.jar")
+      )
     )
   }
 

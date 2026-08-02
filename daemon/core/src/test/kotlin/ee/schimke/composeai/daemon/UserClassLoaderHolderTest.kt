@@ -138,6 +138,13 @@ class UserClassLoaderHolderTest {
     assertTrue(UserClassLoaderHolder.mustDelegateToParent("kotlin.Unit"))
     assertTrue(UserClassLoaderHolder.mustDelegateToParent("androidx.compose.runtime.Composer"))
     assertTrue(UserClassLoaderHolder.mustDelegateToParent("org.jetbrains.skia.Image"))
+    // LocalResourceReader is provided by the parent-loaded renderer and consumed by bundle code.
+    // Both sides must see the same composition-local key rather than one copy per classloader.
+    assertTrue(
+      UserClassLoaderHolder.mustDelegateToParent(
+        "org.jetbrains.compose.resources.LocalResourceReaderKt"
+      )
+    )
     // Cross-classloader process-static bridges shared with the daemon.
     assertTrue(
       UserClassLoaderHolder.mustDelegateToParent(
