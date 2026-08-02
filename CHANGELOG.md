@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.19.20](https://github.com/yschimke/compose-ai-tools/compare/v0.19.19...v0.19.20) (2026-08-02)
+
+
+### Features
+
+* add native format comparisons ([#3183](https://github.com/yschimke/compose-ai-tools/issues/3183)) ([6ba5bd6](https://github.com/yschimke/compose-ai-tools/commit/6ba5bd68b7d0ab815a717f249f13d22b461b7c9d))
+* **preview:** improve preview server layout ([#3191](https://github.com/yschimke/compose-ai-tools/issues/3191)) ([35a1df6](https://github.com/yschimke/compose-ai-tools/commit/35a1df68ecd09de1336bd13e5a80e53c53682db5))
+* **preview:** use device sizes for app screens ([#3194](https://github.com/yschimke/compose-ai-tools/issues/3194)) ([4357f4d](https://github.com/yschimke/compose-ai-tools/commit/4357f4daeb13cf54f408594a86af9a3c5cd56c56))
+* **serve:** add catalog refresh control ([#3178](https://github.com/yschimke/compose-ai-tools/issues/3178)) ([f17a802](https://github.com/yschimke/compose-ai-tools/commit/f17a802ecca726ae0b9efe31c9f0776717b3e426))
+* **serve:** compare previews with design references ([#3189](https://github.com/yschimke/compose-ai-tools/issues/3189)) ([ca8ebc6](https://github.com/yschimke/compose-ai-tools/commit/ca8ebc6ef914985c3905990376cdc588915501fc))
+* **serve:** support tall PNG preview exports ([#3190](https://github.com/yschimke/compose-ai-tools/issues/3190)) ([5839d11](https://github.com/yschimke/compose-ai-tools/commit/5839d1102be08965f41f234924271ce977ec6599))
+
+
+### Bug Fixes
+
+* **bundle:** honor semantics render timeout ([#3198](https://github.com/yschimke/compose-ai-tools/issues/3198)) ([291a094](https://github.com/yschimke/compose-ai-tools/commit/291a0949182d7c4d8e6c99e523a37b9e48320baf))
+* **figma-svg:** keep a clipped node's fill at its painted width ([#3181](https://github.com/yschimke/compose-ai-tools/issues/3181)) ([d028c8f](https://github.com/yschimke/compose-ai-tools/commit/d028c8fd8c876e9dcb576fb321881968633dd043))
+* keep catalog theme in preview viewer ([#3193](https://github.com/yschimke/compose-ai-tools/issues/3193)) ([fb7e4c0](https://github.com/yschimke/compose-ai-tools/commit/fb7e4c0d8b30ce1ca917e20f774b7cb2d0834317))
+* scope comparison deep-link aliases ([#3186](https://github.com/yschimke/compose-ai-tools/issues/3186)) ([14e98ba](https://github.com/yschimke/compose-ai-tools/commit/14e98ba0a0a6fa219621ae2c7b7b2435856b3607))
+* **serve:** complete design reference support ([#3195](https://github.com/yschimke/compose-ai-tools/issues/3195)) ([30f0ad7](https://github.com/yschimke/compose-ai-tools/commit/30f0ad7a6536df0eb97956630050c5b5125baadd))
+* **serve:** enable IR-backed live lanes ([#3192](https://github.com/yschimke/compose-ai-tools/issues/3192)) ([7e3826f](https://github.com/yschimke/compose-ai-tools/commit/7e3826ff98f32b17504ff8e5be5ef3f5dbcb0411))
+* **serve:** lease and cache catalog theme renders ([#3187](https://github.com/yschimke/compose-ai-tools/issues/3187)) ([563c0c9](https://github.com/yschimke/compose-ai-tools/commit/563c0c920b0f449e7bf71060133aef8b4bd966b3))
+* **serve:** parallelize catalog theme renders ([#3185](https://github.com/yschimke/compose-ai-tools/issues/3185)) ([7bb4f4a](https://github.com/yschimke/compose-ai-tools/commit/7bb4f4aefb0a25ec588c6048e41f9950bbeb63a2))
+* stabilize format comparison scoring ([#3184](https://github.com/yschimke/compose-ai-tools/issues/3184)) ([f2337c8](https://github.com/yschimke/compose-ai-tools/commit/f2337c80abddcc3810bc8aba4fd27b44ccb1fe56))
+* **svg:** preserve text fidelity ([#3188](https://github.com/yschimke/compose-ai-tools/issues/3188)) ([6dcff6e](https://github.com/yschimke/compose-ai-tools/commit/6dcff6e9335f8948fb9f322b0beb99d417b43a8a))
+
 ## [0.19.19](https://github.com/yschimke/compose-ai-tools/compare/v0.19.18...v0.19.19) (2026-08-02)
 
 
