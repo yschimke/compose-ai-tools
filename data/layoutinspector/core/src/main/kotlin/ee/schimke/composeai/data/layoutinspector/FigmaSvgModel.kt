@@ -1474,16 +1474,23 @@ data class FigmaSvgModel(
      * scroll-container rect the export must clip to. Without it the below-fold children stayed
      * visible in the SVG while the PNG clipped them (issue #3056).
      *
-     * The clip box is taken **whole**, not intersected with `bounds`, and containment is
-     * deliberately NOT required. Jetsnack's real chain ends
+     * Containment in `bounds` is deliberately NOT required. Jetsnack's real chain ends
      * `…verticalScroll(…).clickable(…).background(…).padding(horizontal = 24.dp, vertical =
      * 16.dp).skipToLookaheadSize()`, so the innermost coordinator — the node's `bounds` — is the
      * *content* box: inset 24dp on each side by that trailing padding while overflowing the
      * viewport vertically. The rendered viewport is therefore 48dp **wider** than `bounds` at the
      * same time as it is shorter, and requiring `clip ⊆ bounds` rejected it — which is why the
-     * first pass at this fixed the synthetic fixture but left the real screen leaking. The clipping
-     * coordinator's own box is the rect the frame was drawn and masked in, padding included, so it
-     * is the faithful box for both the surface's own fill and its children's clip.
+     * first pass at this fixed the synthetic fixture but left the real screen leaking.
+     *
+     * What comes back is the clip box ∩ the node's **painted** extent ([paintedExtent]), not the
+     * clip box whole. Both halves matter, and each covers a case the other gets wrong:
+     * - Jetsnack's sheet paints its `background` at the full 368dp-wide coordinator outside the
+     *   trailing padding, so the painted extent is as wide as the clip and the result keeps the
+     *   sheet's own margins — the box the PNG fills.
+     * - An ordinary `size(100.dp).clip(…).requiredSize(50.dp, 200.dp).background(…)` overflows its
+     *   fixed clip on one axis while staying narrower on the other. Its paint really is 50dp wide,
+     *   so the intersection clips the height to 100dp and leaves the width alone instead of
+     *   spreading the fill across margins Compose leaves blank.
      *
      * Only ever fires when the clip box *shrinks* an axis, which keeps it a no-op on ordinary
      * nodes: a plain chain places every coordinator outside the innermost one at or around it, so
@@ -1495,23 +1502,57 @@ data class FigmaSvgModel(
       if (tokens?.clipsContent != true) return null
       val own = bounds
       if (own.right <= own.left || own.bottom <= own.top) return null
-      return modifiers
-        .asSequence()
-        .filter { it.properties["clip"] == "true" }
-        .mapNotNull { it.bounds }
-        .filter { clip ->
-          clip.right > clip.left &&
-            clip.bottom > clip.top &&
-            // The clip must be this node's own rendered box, not a detached/unplaced coordinate:
-            // it has to overlap the box the node was measured into.
-            intersectBounds(clip, own) != null &&
-            (clip.right - clip.left < own.right - own.left ||
-              clip.bottom - clip.top < own.bottom - own.top)
-        }
-        // Multiple coordinators can clip the same node (a rounded surface around a scroll clip).
-        // Their intersection is the actual visible region; for the nested, axis-aligned boxes
-        // Compose emits here, the smallest area is the tightest final rendered viewport.
-        .minByOrNull { (it.right - it.left).toLong() * (it.bottom - it.top).toLong() }
+      val clip =
+        modifiers
+          .asSequence()
+          .filter { it.properties["clip"] == "true" }
+          .mapNotNull { it.bounds }
+          .filter { clip ->
+            clip.right > clip.left &&
+              clip.bottom > clip.top &&
+              // The clip must be this node's own rendered box, not a detached/unplaced coordinate:
+              // it has to overlap the box the node was measured into.
+              intersectBounds(clip, own) != null &&
+              (clip.right - clip.left < own.right - own.left ||
+                clip.bottom - clip.top < own.bottom - own.top)
+          }
+          // Multiple coordinators can clip the same node (a rounded surface around a scroll clip).
+          // Their intersection is the actual visible region; for the nested, axis-aligned boxes
+          // Compose emits here, the smallest area is the tightest final rendered viewport.
+          .minByOrNull { (it.right - it.left).toLong() * (it.bottom - it.top).toLong() }
+          ?: return null
+      return intersectBounds(paintedExtent(), clip)
+    }
+
+    /**
+     * The box this node's own paint covers: its [LayoutInspectorNode.bounds] unioned with the
+     * placed box of every fill/stroke modifier it carries.
+     *
+     * A node's `bounds` come from its innermost coordinator, so a chain that ends in a layout
+     * modifier (`…background(…).padding(…)`, Jetsnack's filter sheet) reports a box *smaller* than
+     * the rect the background actually filled. Only modifiers that put pixels on screen count — a
+     * `padding`/`size` coordinator is a layout box, not a painted one — and only those that overlap
+     * the node's own box, so a detached (0,0,0,0) or not-yet-placed coordinate can't drag the
+     * extent to the origin.
+     */
+    private fun LayoutInspectorNode.paintedExtent(): LayoutInspectorBounds {
+      val own = bounds
+      var acc = own
+      modifiers.forEach { m ->
+        val b = m.bounds ?: return@forEach
+        if (m.name !in PAINTED_BOX_MODIFIERS && !PAINTED_BOX_CLASSES.any { m.name.startsWith(it) })
+          return@forEach
+        if (b.right <= b.left || b.bottom <= b.top) return@forEach
+        if (intersectBounds(b, own) == null) return@forEach
+        acc =
+          LayoutInspectorBounds(
+            left = minOf(acc.left, b.left),
+            top = minOf(acc.top, b.top),
+            right = maxOf(acc.right, b.right),
+            bottom = maxOf(acc.bottom, b.bottom),
+          )
+      }
+      return acc
     }
 
     /**
@@ -1529,6 +1570,13 @@ data class FigmaSvgModel(
      */
     private val PAINT_FILL_MODIFIERS =
       setOf("paint", "PainterElement", "content", "ContentPainterElement", "ContentPainterModifier")
+
+    /** Fill/stroke modifier names — the entries whose box is a *painted* rect. */
+    private val PAINTED_BOX_MODIFIERS =
+      PAINT_FILL_MODIFIERS + setOf("background", "BackgroundElement", "border")
+
+    /** Release builds compile the inspector name out, leaving these element class-name prefixes. */
+    private val PAINTED_BOX_CLASSES = setOf("BackgroundElement", "BorderModifier")
 
     /**
      * True when this node is filled by paint we can't turn into a flat colour.
