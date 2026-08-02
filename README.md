@@ -123,6 +123,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-docs-upload/dark](renders/serve-docs-upload.dark.png) |
 | `light` | ![serve-docs-upload/light](renders/serve-docs-upload.light.png) |
 
+## serve-format-compare
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-format-compare/dark](renders/serve-format-compare.dark.png) |
+| `light` | ![serve-format-compare/light](renders/serve-format-compare.light.png) |
+
 ## serve-home-index
 
 | Theme | Capture |
