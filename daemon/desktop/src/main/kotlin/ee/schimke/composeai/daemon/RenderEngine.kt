@@ -58,6 +58,10 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import okio.FileSystem
 import okio.Path.Companion.toPath
+import org.jetbrains.compose.resources.ExperimentalResourceApi
+import org.jetbrains.compose.resources.JvmResourceReader
+import org.jetbrains.compose.resources.LocalResourceReader
+import org.jetbrains.compose.resources.ResourceReader
 import org.jetbrains.skia.EncodedImageFormat
 
 /**
@@ -220,7 +224,7 @@ class RenderEngine(
    * inspection branch. Interactive sessions pass `false` so `pointerInput` modifiers fire and the
    * preview shows its real, click-aware behaviour.
    */
-  @OptIn(androidx.compose.ui.InternalComposeUiApi::class)
+  @OptIn(androidx.compose.ui.InternalComposeUiApi::class, ExperimentalResourceApi::class)
   fun setUp(
     spec: RenderSpec,
     classLoader: ClassLoader =
@@ -386,8 +390,17 @@ class RenderEngine(
               RenderSpec.SpecUiMode.LIGHT -> SystemTheme.Light
               null -> SystemTheme.Unknown
             }
+          val previewResources = remember(classLoader) { previewResourceReader(classLoader) }
           CompositionLocalProvider(
             LocalInspectionMode provides inspectionMode,
+            // Compose Resources' desktop default reader is permanently bound to the classloader
+            // that loaded components-resources (the daemon parent). Bundle classes and their
+            // composeResources payload live only on this render's disposable child loader, so an
+            // unqualified stringResource() lookup can otherwise miss a resource that is visibly
+            // present beside the preview classes. Point the public reader local at the same child
+            // loader used to invoke the preview; unlike the thread context-loader install above,
+            // Compose Resources actually consults this value.
+            LocalResourceReader provides previewResources,
             // Slot mode: a `PreviewSlot` marker renders a labelled placeholder instead of its
             // content, so a structured-screen builder gets a visible slot map. Defaults false.
             ee.schimke.composeai.preview.slots.LocalSlotMode provides (spec.slotMode ?: false),
@@ -1453,6 +1466,11 @@ class RenderEngine(
     }
   }
 }
+
+/** A Compose Resources reader whose lookup scope matches the preview's disposable classloader. */
+@OptIn(ExperimentalResourceApi::class)
+internal fun previewResourceReader(classLoader: ClassLoader): ResourceReader =
+  JvmResourceReader(classLoader)
 
 /**
  * The flat colour a render paints behind the composable: the per-render "crisp outline" override

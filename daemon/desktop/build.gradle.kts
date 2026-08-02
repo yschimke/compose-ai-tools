@@ -138,6 +138,11 @@ dependencies {
   // rendered content, so a `PreviewSlot` marker draws a placeholder when `slotMode` is set.
   implementation(project(":slot-preview-runtime"))
 
+  // Bundle previews keep generated composeResources on the disposable user classloader. The
+  // daemon provides a JvmResourceReader for that loader around every composition so CMP resource
+  // lookups do not fall back to components-resources' parent-classloader-bound default reader.
+  implementation(libs.jetbrains.compose.components.resources)
+
   // Compose runtime / foundation / ui — the B-desktop.1.4 RenderEngine body
   // imports `ImageComposeScene`, `@Composable`, `currentComposer`,
   // `getDeclaredComposableMethod`, and a few Modifier / layout helpers.
