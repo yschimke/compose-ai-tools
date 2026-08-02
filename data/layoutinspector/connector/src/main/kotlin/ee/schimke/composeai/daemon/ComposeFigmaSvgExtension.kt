@@ -51,7 +51,8 @@ class ComposeFigmaSvgExtension(private val fontResolver: () -> FigmaFontResolver
     val previewBackground =
       context.get(RenderArtifactContextKeys.PreviewBackground)?.takeIf { it.isNotBlank() }
     val layout =
-      LayoutInspectorDataProducer.buildPayload(semanticsRoot, slotTables, density) ?: return
+      LayoutInspectorDataProducer.buildPayload(semanticsRoot, slotTables, density, fontScale)
+        ?: return
     val semantics = ComposeSemanticsDataProducer.buildPayload(semanticsRoot, density)
     ComposeFigmaSvgDataProducer.writeSvg(
       rootDir = rootDir,
