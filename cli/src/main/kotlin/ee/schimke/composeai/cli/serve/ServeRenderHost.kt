@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.DataFetchParams
+import ee.schimke.composeai.daemon.protocol.ExtensionsEnableResult
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
@@ -56,6 +57,8 @@ data class ServePreview(
   val label: String,
   /** Delivery transports available for this preview. Tier 1 is always [PreviewMode.SNAPSHOT]. */
   val modes: List<PreviewMode> = listOf(PreviewMode.SNAPSHOT),
+  /** Data products declared for this preview in `previews.json`. */
+  val dataProductKinds: Set<String> = emptySet(),
   /**
    * The author-declared editable knobs this preview exposed via `previewOverride*` (the
    * `compose/overrides` payload). Populated from a bundle's `previews/<id>.overrides.json` sidecar
@@ -292,22 +295,34 @@ internal constructor(
   // `hasSvgExport` on whether the daemon actually has them (a backend without figma-svg reports
   // them in `unknown`), so a non-figma backend cleanly offers no SVG rather than dead-ending in a
   // 500. Best-effort: an enable RPC failure disables the export, it doesn't break the host.
-  private val unavailableExportKinds: Set<String> =
+  private val exportEnableResult: ExtensionsEnableResult =
     runCatching {
-        val result =
-          session.enableExtensions(
-            listOf(ComposeFigmaSvgProduct.KIND, ComposeFigmaSvgProduct.KIND_LONG, SCROLL_LONG_KIND)
-          )
-        result.unknown.toSet()
+        session.enableExtensions(
+          listOf(ComposeFigmaSvgProduct.KIND, ComposeFigmaSvgProduct.KIND_LONG, SCROLL_EXTENSION_ID)
+        )
       }
       .getOrElse { e ->
         onLog("full-page exports unavailable: enable failed: ${e.message}")
-        setOf(ComposeFigmaSvgProduct.KIND, ComposeFigmaSvgProduct.KIND_LONG, SCROLL_LONG_KIND)
+        ExtensionsEnableResult(
+          unknown =
+            listOf(
+              ComposeFigmaSvgProduct.KIND,
+              ComposeFigmaSvgProduct.KIND_LONG,
+              SCROLL_EXTENSION_ID,
+            )
+        )
       }
 
-  override val hasSvgExport: Boolean = ComposeFigmaSvgProduct.KIND !in unavailableExportKinds
+  override val hasSvgExport: Boolean = ComposeFigmaSvgProduct.KIND !in exportEnableResult.unknown
 
-  override val hasScrollExport: Boolean = SCROLL_LONG_KIND !in unavailableExportKinds
+  override val hasScrollExport: Boolean =
+    SCROLL_EXTENSION_ID !in exportEnableResult.unknown &&
+      exportEnableResult.dataProducts.any { it.kind == SCROLL_LONG_KIND }
+
+  override fun hasScrollExportFor(previewId: String): Boolean =
+    hasScrollExport &&
+      previews.firstOrNull { it.id == previewId }?.dataProductKinds?.contains(SCROLL_LONG_KIND) ==
+        true
 
   // The one-handed gesture override is honoured only by the Android (Robolectric) backend — the
   // desktop backend ignores `overrides.gestures`. Read the daemon's advertised capabilities so the
@@ -1032,6 +1047,7 @@ internal constructor(
 
   companion object {
     internal const val SCROLL_LONG_KIND = "render/scroll/long"
+    internal const val SCROLL_EXTENSION_ID = "scroll"
     /** RPC ack budget for the (fast, queue-only) `renderNow` call itself. */
     private val RENDER_ACK_TIMEOUT = 60.seconds
 

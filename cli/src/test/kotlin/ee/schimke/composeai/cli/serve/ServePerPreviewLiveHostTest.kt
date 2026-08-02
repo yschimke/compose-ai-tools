@@ -8,6 +8,7 @@ import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -94,7 +95,14 @@ class ServePerPreviewLiveHostTest {
     val baked =
       RecordingHost(
         previews =
-          listOf(ServePreview(catalogId, catalogId), ServePreview(androidOnlyId, androidOnlyId)),
+          listOf(
+            ServePreview(
+              catalogId,
+              catalogId,
+              dataProductKinds = setOf(ServeRenderHost.SCROLL_LONG_KIND),
+            ),
+            ServePreview(androidOnlyId, androidOnlyId),
+          ),
         tag = "baked",
       )
     val composite =
@@ -176,6 +184,24 @@ class ServePerPreviewLiveHostTest {
     assertTrue(composite.hasLiveStream)
     assertTrue(composite.canRenderOverridesFor(catalogId))
     assertTrue(composite.hasSvgExport, "hasSvgExport defaults to the baked host's capability")
+    assertTrue(composite.hasScrollExport)
+    assertTrue(composite.hasScrollExportFor(catalogId))
+    assertFalse(composite.hasScrollExportFor(androidOnlyId))
+  }
+
+  @Test
+  fun `mapped preview without long-scroll metadata does not offer full-page export`() {
+    val baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked")
+    val composite =
+      ServePerPreviewLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        baked = baked,
+        resolveLive = { null },
+        previews = baked.previews,
+      )
+
+    assertFalse(composite.hasScrollExport)
+    assertFalse(composite.hasScrollExportFor(catalogId))
   }
 
   @Test

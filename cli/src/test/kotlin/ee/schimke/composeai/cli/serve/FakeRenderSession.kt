@@ -3,6 +3,8 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.DataFetchParams
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
+import ee.schimke.composeai.daemon.protocol.DataProductCapability
+import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.daemon.protocol.DataSubscribeResult
 import ee.schimke.composeai.daemon.protocol.ExtensionsDisableResult
 import ee.schimke.composeai.daemon.protocol.ExtensionsEnableResult
@@ -391,7 +393,26 @@ internal class FakeRenderSession(
       it in unknownExtensionIds || (!figmaSvgAvailable && it in figmaKinds)
     }
     val enabled = ids - unknown.toSet()
-    return ExtensionsEnableResult(newlyEnabled = enabled, unknown = unknown)
+    val dataProducts =
+      if (ServeRenderHost.SCROLL_EXTENSION_ID in enabled) {
+        listOf(
+          DataProductCapability(
+            kind = ServeRenderHost.SCROLL_LONG_KIND,
+            schemaVersion = 1,
+            transport = DataProductTransport.PATH,
+            attachable = false,
+            fetchable = true,
+            requiresRerender = true,
+          )
+        )
+      } else {
+        emptyList()
+      }
+    return ExtensionsEnableResult(
+      newlyEnabled = enabled,
+      unknown = unknown,
+      dataProducts = dataProducts,
+    )
   }
 
   override fun disableExtensions(

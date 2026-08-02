@@ -125,9 +125,16 @@ class ServePerPreviewLiveHost(
   override fun hasSvgExportFor(previewId: String): Boolean =
     hasSvgExport && (previewId in alias || baked.hasSvgExportFor(previewId))
 
-  override val hasScrollExport: Boolean = alias.isNotEmpty()
+  override val hasScrollExport: Boolean = previews.any {
+    it.id in alias && ServeRenderHost.SCROLL_LONG_KIND in it.dataProductKinds
+  }
 
-  override fun hasScrollExportFor(previewId: String): Boolean = previewId in alias
+  override fun hasScrollExportFor(previewId: String): Boolean =
+    previewId in alias &&
+      previews
+        .firstOrNull { it.id == previewId }
+        ?.dataProductKinds
+        ?.contains(ServeRenderHost.SCROLL_LONG_KIND) == true
 
   /**
    * Ordinary browsing serves the baked catalog PNG; an override the baked PNG can't represent

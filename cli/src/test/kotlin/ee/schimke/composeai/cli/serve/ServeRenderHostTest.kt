@@ -32,7 +32,10 @@ class ServeRenderHostTest {
   private fun host(session: RenderSession): ServeRenderHost =
     ServeRenderHost(
       session = session,
-      previews = listOf(ServePreview(previewId, "Red")),
+      previews =
+        listOf(
+          ServePreview(previewId, "Red", dataProductKinds = setOf(ServeRenderHost.SCROLL_LONG_KIND))
+        ),
       renderTimeoutSeconds = 30,
     )
 
@@ -169,13 +172,28 @@ class ServeRenderHostTest {
           listOf(
             ComposeFigmaSvgProduct.KIND,
             ComposeFigmaSvgProduct.KIND_LONG,
-            ServeRenderHost.SCROLL_LONG_KIND,
+            ServeRenderHost.SCROLL_EXTENSION_ID,
           )
         ),
         "the host enables the viewport and full-page export products on open",
       )
       assertTrue(h.hasScrollExport, "the daemon advertises full-page PNG export")
+      assertTrue(h.hasScrollExportFor(previewId), "the annotated preview offers full-page export")
     }
+  }
+
+  @Test
+  fun `full-page export is hidden for a preview without long-scroll metadata`() {
+    val session = FakeRenderSession(newRenderRoot())
+    ServeRenderHost(
+        session = session,
+        previews = listOf(ServePreview(previewId, "Red")),
+        renderTimeoutSeconds = 30,
+      )
+      .use { h ->
+        assertTrue(h.hasScrollExport, "the daemon supports the scroll producer")
+        assertFalse(h.hasScrollExportFor(previewId), "the preview did not declare LONG capture")
+      }
   }
 
   @Test
