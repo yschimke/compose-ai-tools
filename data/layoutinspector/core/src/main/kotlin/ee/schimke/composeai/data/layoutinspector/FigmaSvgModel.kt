@@ -1462,7 +1462,7 @@ data class FigmaSvgModel(
 
     /**
      * The box of this node's **clipping** `graphicsLayer` (what `Modifier.clip(shape)` lowers to),
-     * when that box is a strict subset of the node's own `bounds` — else null, which is every
+     * when that box is shorter or narrower than the node's own `bounds` — else null, which is every
      * ordinary node.
      *
      * A node's `bounds` come from its innermost coordinator, and under a lookahead chain
@@ -1474,8 +1474,22 @@ data class FigmaSvgModel(
      * scroll-container rect the export must clip to. Without it the below-fold children stayed
      * visible in the SVG while the PNG clipped them (issue #3056).
      *
-     * Only ever *shrinks* a box, and only for a node that clips — a node whose clip modifier spans
-     * the same rect (the overwhelming majority) is left exactly as it was.
+     * The clip box is taken **whole**, not intersected with `bounds`, and containment is
+     * deliberately NOT required. Jetsnack's real chain ends
+     * `…verticalScroll(…).clickable(…).background(…).padding(horizontal = 24.dp, vertical =
+     * 16.dp).skipToLookaheadSize()`, so the innermost coordinator — the node's `bounds` — is the
+     * *content* box: inset 24dp on each side by that trailing padding while overflowing the
+     * viewport vertically. The rendered viewport is therefore 48dp **wider** than `bounds` at the
+     * same time as it is shorter, and requiring `clip ⊆ bounds` rejected it — which is why the
+     * first pass at this fixed the synthetic fixture but left the real screen leaking. The clipping
+     * coordinator's own box is the rect the frame was drawn and masked in, padding included, so it
+     * is the faithful box for both the surface's own fill and its children's clip.
+     *
+     * Only ever fires when the clip box *shrinks* an axis, which keeps it a no-op on ordinary
+     * nodes: a plain chain places every coordinator outside the innermost one at or around it, so
+     * an ordinary clip box is ≥ `bounds` on both axes and is skipped. An axis that shrinks means
+     * something inside reported a size its own clip didn't honour — the lookahead case this exists
+     * for.
      */
     private fun LayoutInspectorNode.clipModifierBounds(): LayoutInspectorBounds? {
       if (tokens?.clipsContent != true) return null
@@ -1488,10 +1502,9 @@ data class FigmaSvgModel(
         .filter { clip ->
           clip.right > clip.left &&
             clip.bottom > clip.top &&
-            clip.left >= own.left &&
-            clip.top >= own.top &&
-            clip.right <= own.right &&
-            clip.bottom <= own.bottom &&
+            // The clip must be this node's own rendered box, not a detached/unplaced coordinate:
+            // it has to overlap the box the node was measured into.
+            intersectBounds(clip, own) != null &&
             (clip.right - clip.left < own.right - own.left ||
               clip.bottom - clip.top < own.bottom - own.top)
         }
