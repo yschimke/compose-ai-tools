@@ -18,7 +18,7 @@ import org.junit.Test
  * - A *null* (absent) params block ⇒ "params unknown" ⇒ the fixed 320² frame, wrap OFF — so an
  *   incrementally-rediscovered preview (whose DTO carries no params) doesn't briefly wrap-crop.
  * - Null ≠ empty: only the present-but-empty block wraps.
- * - An explicit `device` ⇒ pinned: neither axis wraps, px dims fall back to defaults.
+ * - An explicit `device` ⇒ pinned: neither axis wraps, px dims come from the device catalog.
  * - `widthDp` / `heightDp` / `density` set ⇒ pixel dimensions multiply through and wrap is off.
  * - `density` defaulted ⇒ default 2.0x is used for the dp→px conversion of `widthDp`.
  * - `widthDp` set without `heightDp` ⇒ the width axis pins, the absent height axis wraps.
@@ -82,14 +82,52 @@ class RenderSpecFromInfoTest {
 
   @Test
   fun `an explicit device pins the frame so neither axis wraps`() {
-    // A device frame is "pinned": the fixed frame is kept (device sizing is applied downstream), so
-    // the wrap flags stay off and the px dims fall back to the RenderSpec defaults.
+    // A device frame is "pinned" AND owns its geometry: the wrap flags stay off and the px dims
+    // come
+    // from the device catalog (`id:pixel_5` = 393×851 dp) at the spec's density — not from the
+    // RenderSpec defaults, which used to leave every device preview in a 320² frame.
     val spec = renderSpecFromInfo(info(params = PreviewParamsDto(device = "id:pixel_5")))
     assertEquals(false, spec.wrapWidth)
     assertEquals(false, spec.wrapHeight)
-    assertEquals(320, spec.widthPx)
-    assertEquals(320, spec.heightPx)
+    // TRUNCATED, like `RenderPreviewsTask`'s device-frame branch — not rounded. Both sides of a
+    // fractional product must agree or the live lane sits a pixel off its own baked snapshot.
+    assertEquals((393 * spec.density).toInt(), spec.widthPx)
+    assertEquals((851 * spec.density).toInt(), spec.heightPx)
     assertEquals("id:pixel_5", spec.device)
+    // With no annotation density the device's own is used, so the stream lane frames the Pixel at
+    // the catalog's 2.75 — the same density the bake resolves — instead of the session default.
+    assertEquals(2.75f, spec.density, 0.0001f)
+    assertEquals(1080, spec.widthPx) // 393 × 2.75 = 1080.75, truncated
+  }
+
+  @Test
+  fun `annotation dp override the device frame on the stream lane too`() {
+    // Same precedence the batch resolver applies (`DeviceDimensions.frameDpOverriddenBy`): both
+    // axes set displace the catalog, a single-axis hint does not. The two lanes must agree or a
+    // held session drifts from the preview's own baked snapshot.
+    val both =
+      renderSpecFromInfo(
+        info(
+          params =
+            PreviewParamsDto(
+              device = "id:wearos_large_round",
+              widthDp = 100,
+              heightDp = 100,
+              density = 2.0f,
+            )
+        )
+      )
+    assertEquals(200, both.widthPx)
+    assertEquals(200, both.heightPx)
+
+    val single =
+      renderSpecFromInfo(
+        info(
+          params = PreviewParamsDto(device = "id:wearos_large_round", widthDp = 100, density = 2.0f)
+        )
+      )
+    assertEquals(454, single.widthPx)
+    assertEquals(454, single.heightPx)
   }
 
   @Test

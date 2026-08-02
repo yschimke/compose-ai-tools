@@ -4,6 +4,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
+import ee.schimke.composeai.daemon.devices.frameDpOverriddenBy
 import ee.schimke.composeai.daemon.history.GitProvenance
 import ee.schimke.composeai.daemon.history.GitRefHistorySource
 import ee.schimke.composeai.daemon.history.HistoryManager
@@ -801,17 +802,35 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
       uiMode = RenderSpec.SpecUiMode.LIGHT,
     )
   val params = info.params ?: return defaults
-  val density = params.density ?: defaults.density
+  // The device catalog's density is the last-resort fallback (matching the batch resolver), so a
+  // bare `spec:…,dpi=160` entry streams at 1.0 instead of the session default.
+  val density =
+    params.density
+      ?: params.device
+        ?.takeIf { it.isNotBlank() }
+        ?.let { ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it).density }
+      ?: defaults.density
   // AS-parity wrap-content, mirroring the batch resolver ([PreviewManifestEntry.resolved]) and the
   // desktop daemon's [renderSpecFromInfo]. A preview that declares no explicit size on an axis and
   // isn't pinned by a device / non-Compose surface renders wrap-content on that axis: the render
   // measures the composable's intrinsic size within the 400×800 dp sandbox bound and crops to it,
   // instead of reflowing content past the fixed 320 px frame to zero height. Without this the held
   // interactive / stream lane collapses no-height previews exactly as the batch render did.
-  val isDeviceFrame = !params.device.isNullOrBlank()
-  val explicitWidthPx = params.widthDp?.takeUnless { isDeviceFrame }?.let { (it * density).roundHalfUpPx() }
+  // A device frame owns its geometry (#3113) — take the dp extent from the device catalog rather
+  // than the manifest's widthDp/heightDp, so a `@Preview(device = …)` streams at the same size the
+  // batch resolver and the inbound `overrides.device` path produce instead of the fixed frame it
+  // would otherwise fall through to.
+  val deviceFrameDp =
+    params.device
+      ?.takeIf { it.isNotBlank() }
+      ?.let { ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it) }
+      ?.frameDpOverriddenBy(params.widthDp, params.heightDp)
+  val explicitWidthPx =
+    deviceFrameDp?.let { (it.first * density).toInt().coerceAtLeast(1) }
+      ?: params.widthDp?.let { (it * density).roundHalfUpPx() }
   val explicitHeightPx =
-    params.heightDp?.takeUnless { isDeviceFrame }?.let { (it * density).roundHalfUpPx() }
+    deviceFrameDp?.let { (it.second * density).toInt().coerceAtLeast(1) }
+      ?: params.heightDp?.let { (it * density).roundHalfUpPx() }
   val pinned =
     (params.device ?: defaults.device) != null ||
       ((params.kind ?: defaults.kind)?.let { it != "COMPOSE" } ?: false)

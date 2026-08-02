@@ -1,5 +1,7 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.devices.DeviceDimensions
+import ee.schimke.composeai.daemon.devices.frameDpOverriddenBy
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.Serializable
@@ -321,15 +323,10 @@ data class PreviewManifestEntry(
   fun resolved(): ResolvedRenderParams {
     val p = params
     val device = device ?: p?.device
-    // A `@Preview(device = …)` frame comes from the device catalog. Skipping the discovered dp for
-    // a device frame *without* resolving the device dropped every device preview onto the fixed
-    // [DEFAULT_FRAME_PX] fallback, so a Wear large-round screen composed — and exported — at 320²
-    // while its PNG stayed at the device's 454² (issues #2615 / #2883).
-    val deviceSpec =
-      device
-        ?.takeIf { it.isNotBlank() }
-        ?.let { ee.schimke.composeai.daemon.devices.DeviceDimensions.resolve(it) }
-    val density = density ?: p?.density ?: deviceSpec?.density ?: 2.0f
+    val deviceDims = device?.takeIf { it.isNotBlank() }?.let { DeviceDimensions.resolve(it) }
+    // The manifest's density wins (the plugin writes the device's own density there); the catalog's
+    // is the fallback, so a bare `spec:…,dpi=160` entry resolves at 1.0 instead of the 2.0 default.
+    val density = density ?: p?.density ?: deviceDims?.density ?: 2.0f
     val kind = kind ?: p?.kind
     val name = p?.name
     val uiMode = uiMode ?: p?.uiMode ?: 0
@@ -346,19 +343,22 @@ data class PreviewManifestEntry(
     // wide content and reflowed tall content to zero height. Mirrors the desktop daemon's resolver
     // and the standalone renderer's wrap crop.
     val pinned = device != null || (kind != null && kind != "COMPOSE")
-    // Device-frame sizing mirrors `RenderPreviewsTask` (the standalone renderer that produces the
-    // PNG this export is compared against) so the two lanes agree pixel-for-pixel:
-    //   - annotation `widthDp` + `heightDp` still override the catalog when BOTH are set — the
-    //     `DeviceDimensions.resolve(device, w, h)` precedence Studio uses;
-    //   - the dp→px conversion truncates, matching the renderer's device-frame branch and the
-    //     inbound-override lane in `mergePreviewOverrides` (`id:pixel_5` is 393 × 2.75 = 1080.75,
-    //     which must land on 1080, not 1081).
-    val deviceFrameDp =
-      deviceSpec?.let {
-        with(ee.schimke.composeai.daemon.devices.DeviceDimensions) {
-          it.frameDpOverriddenBy(p?.widthDp, p?.heightDp)
-        }
-      }
+    // A device frame owns its geometry (#3113): the manifest's `widthDp`/`heightDp` are ignored and
+    // the frame comes from the device catalog instead — the same source the inbound
+    // `overrides.device` path in [PreviewManifestRouter.submit] resolves against, and the same one
+    // the plugin's `resolveForRender` bakes with. Resolving it HERE is what makes a
+    // manifest-declared `@Preview(device = …)` render at its device size: without it a device
+    // preview has no explicit size AND doesn't wrap (it's pinned), so it fell through to the fixed
+    // 320² default — a Wear preview rendered 320×320 instead of 384×384. The manifest's density is
+    // kept (the plugin writes the device's own density there); only the dp extent comes from the
+    // catalog, so an unknown device string still degrades to the catalog's documented default.
+    // The dp→px conversion TRUNCATES, matching `RenderPreviewsTask`'s device-frame branch and the
+    // inbound-`device` path in `submit` — a fractional product (id:pixel_5 = 393dp × 2.75 =
+    // 1080.75) must land on the same 1080 the bake produces, or the live lane sits one pixel off
+    // its own snapshot. Only the explicit-dp path below rounds half-up (#3113). Annotation dp still
+    // displace the catalog when BOTH axes are set — [frameDpOverriddenBy] holds that precedence for
+    // all four resolvers.
+    val deviceFrameDp = deviceDims?.frameDpOverriddenBy(p?.widthDp, p?.heightDp)
     val explicitWidthPx =
       widthPx
         ?: deviceFrameDp?.let { (it.first * density).toInt().coerceAtLeast(1) }

@@ -81,7 +81,8 @@ class PreviewManifestEntryResolveTest {
   fun `device with no annotation dp still pins the device frame`() {
     // A `@Preview(device = …)` carries no widthDp/heightDp of its own, so the resolver must read
     // the device catalog. Falling through to the wrap sandbox bound is what shrank the exported
-    // figma-svg away from the rendered frame (issues #2615 / #2883).
+    // figma-svg away from the rendered frame (issues #2615 / #2883), and the catalog's own density
+    // (dpi 160 → 1.0) is what keeps a Jetchat `spec:` frame off the 2.0 default.
     val entry =
       json.decodeFromString(
         PreviewManifestEntry.serializer(),
@@ -95,12 +96,37 @@ class PreviewManifestEntryResolveTest {
   }
 
   @Test
+  fun `annotation dp override the device frame when both axes are set`() {
+    // The `DeviceDimensions.resolve(device, w, h)` precedence the plugin's `resolveForRender` uses;
+    // a single-axis hint does NOT displace the catalog frame.
+    val both =
+      json.decodeFromString(
+        PreviewManifestEntry.serializer(),
+        """{"id":"b","className":"X","functionName":"R",""" +
+          """"params":{"device":"id:wearos_large_round","widthDp":100,"heightDp":100,""" +
+          """"density":2.0}}""",
+      )
+    assertEquals(200, both.resolved().widthPx)
+    assertEquals(200, both.resolved().heightPx)
+
+    val single =
+      json.decodeFromString(
+        PreviewManifestEntry.serializer(),
+        """{"id":"s","className":"X","functionName":"R",""" +
+          """"params":{"device":"id:wearos_large_round","widthDp":100,"density":2.0}}""",
+      )
+    assertEquals(454, single.resolved().widthPx)
+    assertEquals(454, single.resolved().heightPx)
+  }
+
+  @Test
   fun `nested schema - plugin shape - reads params block`() {
     // Mirrors what `DiscoverPreviewsTask` writes for a Wear preview annotated with
     // `@Preview(device = "id:wearos_small_round")` — production manifest the daemon was silently
     // dropping pre-fix. Since #3113 (Studio geometry parity) a device frame owns its own size, so
-    // the resolver reads `DeviceDimensions.resolve(device)` rather than the manifest's
-    // `widthDp`/`heightDp` — 192dp here either way, at the entry's own 2.625 density.
+    // the frame comes from `DeviceDimensions.resolve(device)` — 192×192 dp for
+    // `id:wearos_small_round`, which the annotation's own 192dp happens to agree with — at the
+    // entry's 2.625 density. Both axes stay pinned (no wrap).
     val raw =
       """{"id":"wear-1","className":"X","functionName":"R","sourceFile":"P.kt",""" +
         """"params":{"device":"id:wearos_small_round","widthDp":192,"heightDp":192,""" +
@@ -110,7 +136,7 @@ class PreviewManifestEntryResolveTest {
     val resolved = entry.resolved()
     assertEquals(false, resolved.wrapWidth) // device frame pins both axes
     assertEquals(false, resolved.wrapHeight)
-    assertEquals(504, resolved.widthPx) // 192dp × 2.625
+    assertEquals(504, resolved.widthPx) // 192dp (device catalog) × 2.625
     assertEquals(504, resolved.heightPx)
     assertEquals(2.625f, resolved.density, 0.0001f)
     assertEquals(true, resolved.showBackground)
@@ -164,9 +190,8 @@ class PreviewManifestEntryResolveTest {
     val entry = json.decodeFromString(PreviewManifestEntry.serializer(), raw)
     val resolved = entry.resolved()
     assertEquals("id:wearos_small_round", resolved.device)
-    // Device frame pins the axes, sized from the catalog at the default 2.0 density.
-    assertEquals(false, resolved.wrapWidth)
-    assertEquals(384, resolved.widthPx) // 192dp × 2.0
+    assertEquals(false, resolved.wrapWidth) // device frame pins the axes
+    assertEquals(384, resolved.widthPx) // 192dp (device catalog) × 2.0 default density
   }
 
   @Test

@@ -430,4 +430,88 @@ class PreviewManifestRouterRoutingTest {
 
     assertFalse("1.0 is the annotation default. payload=$routed", routed.contains("fontScale="))
   }
+
+  @Test
+  fun `routePayload sizes a manifest-declared device from the device catalog`() {
+    // #3113 made a device frame own its size, so the resolver stops honouring the manifest's
+    // widthDp/heightDp for a device preview. Nothing then supplied the device's own extent on this
+    // path — `DeviceDimensions` was consulted only for an INBOUND `device=` override — so a Wear
+    // preview routed at the fixed 320² default instead of 192dp × 2.0 = 384². The routed payload is
+    // what the render body consumes, so assert the frame there, not just the wrap flags.
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "wear",
+              className = "com.example.PreviewsKt",
+              functionName = "WearTile",
+              params =
+                PreviewParamsEntry(
+                  device = "id:wearos_small_round",
+                  widthDp = 192,
+                  heightDp = 192,
+                  density = 2.0f,
+                ),
+            )
+          )
+      )
+    val router = PreviewManifestRouter(manifest = manifest)
+
+    val routed = router.routePayload("previewId=wear")
+
+    assertTrue("device frame width. payload=$routed", routed.contains("widthPx=384;"))
+    assertTrue("device frame height. payload=$routed", routed.contains("heightPx=384;"))
+    assertTrue("device id forwarded. payload=$routed", routed.contains("device=id:wearos_small_round"))
+    assertFalse("a device frame never wraps. payload=$routed", routed.contains("wrapWidth=true"))
+  }
+
+  @Test
+  fun `routePayload truncates a fractional device frame exactly like the bake`() {
+    // Batch/live parity: `RenderPreviewsTask` converts a catalog-derived device frame with
+    // `(dp * density).toInt()`, so this path must truncate too. `id:pixel_5` is the case that
+    // exposes a rounding difference — 393dp × 2.75 = 1080.75 — where rounding half-up would put
+    // the live render at 1081 px against a 1080 px baked snapshot.
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "phone",
+              className = "com.example.PreviewsKt",
+              functionName = "Phone",
+              params = PreviewParamsEntry(device = "id:pixel_5", density = 2.75f),
+            )
+          )
+      )
+
+    val routed = PreviewManifestRouter(manifest = manifest).routePayload("previewId=phone")
+
+    assertTrue("393dp × 2.75 truncates to 1080, not 1081. payload=$routed",
+      routed.contains("widthPx=1080;"))
+    assertTrue("851dp × 2.75 truncates to 2340. payload=$routed", routed.contains("heightPx=2340;"))
+  }
+
+  @Test
+  fun `routePayload keeps an inbound explicit size over the device frame`() {
+    // Precedence is unchanged: an explicit inbound widthPx still beats the device-derived extent.
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "wear",
+              className = "com.example.PreviewsKt",
+              functionName = "WearTile",
+              params = PreviewParamsEntry(device = "id:wearos_small_round", density = 2.0f),
+            )
+          )
+      )
+    val router = PreviewManifestRouter(manifest = manifest)
+
+    val routed = router.routePayload("previewId=wear;widthPx=600")
+
+    assertTrue("inbound width wins. payload=$routed", routed.contains("widthPx=600;"))
+    assertTrue("height still device-derived. payload=$routed", routed.contains("heightPx=384;"))
+  }
 }
