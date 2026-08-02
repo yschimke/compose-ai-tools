@@ -102,6 +102,10 @@ jobs:
           # frozen. This is a safety ceiling against a hung build, not a
           # budget, so keep it comfortably above the slowest observed run.
           timeout: '1800'
+          # pr-commands.yml consumes edits that check this task-list item,
+          # acknowledges them in place, and reruns this workflow for the
+          # current PR head.
+          rerun-checkbox: 'true'
           # No `missing-renders` override: the action's default `fail` gates
           # every push + PR on all required renders producing a PNG. The one
           # legitimately unrenderable capture (the desktop `@ColorCatalog`

@@ -1,8 +1,8 @@
 name: PR Commands
 
-# Slash commands in PR comments, for maintainers. GitHub Actions has no
-# trigger for comment *reactions*, so commands are the available shape —
-# the workflow ACKs with a 🚀 reaction so the comment thread stays clean.
+# Lightweight controls in PR comments, for maintainers. Slash commands are
+# ACKed with a 🚀 reaction; the preview-diff checkbox is ACKed by updating the
+# same sticky comment, then reset by the fresh preview result.
 #
 #   /rerun               re-run the failed jobs of every failed / cancelled
 #                        run on the PR's current head SHA (flaky render,
@@ -14,6 +14,9 @@ name: PR Commands
 #                        vscode-preview-comment
 #   /rerun all           full re-run of every completed run on the head SHA
 #
+# Checking "Re-run preview diff" in the sticky <!-- preview-diff --> comment
+# is the UI equivalent of `/rerun previews`.
+#
 # Re-runs execute against the same commit the original run used, which is
 # exactly right for the common cases: a flaked render, or re-diffing after
 # the baseline branches moved (baselines are fetched at run time, not baked
@@ -22,11 +25,12 @@ name: PR Commands
 #
 # issue_comment workflows always run the workflow file from the default
 # branch, so a PR cannot smuggle changes into this logic; the author gate
-# below additionally restricts commands to owners / members / collaborators.
+# below restricts slash commands to owners / members / collaborators and
+# resolves the actual checkbox-clicking actor's repository permission.
 
 on:
   issue_comment:
-    types: [created]
+    types: [created, edited]
 
 permissions: {}
 
@@ -40,8 +44,20 @@ jobs:
     if: >-
       ${{
         github.event.issue.pull_request != null &&
-        startsWith(github.event.comment.body, '/rerun') &&
-        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+        (
+          (
+            github.event.action == 'created' &&
+            startsWith(github.event.comment.body, '/rerun') &&
+            contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+          ) ||
+          (
+            github.event.action == 'edited' &&
+            github.event.comment.user.type == 'Bot' &&
+            startsWith(github.event.comment.body, '<!-- preview-diff -->') &&
+            contains(github.event.changes.body.from, '- [ ] Re-run preview diff') &&
+            contains(github.event.comment.body, '- [x] Re-run preview diff')
+          )
+        )
       }}
     runs-on: ubuntu-latest
     permissions:
@@ -50,6 +66,7 @@ jobs:
       pull-requests: read   # resolve the PR head SHA
     steps:
       - name: Acknowledge command
+        if: ${{ github.event.action == 'created' }}
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -65,13 +82,49 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.issue.number }}
           COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          EVENT_ACTION: ${{ github.event.action }}
+          ACTOR: ${{ github.actor }}
         run: |
           set -euo pipefail
 
-          # First line only; everything after `/rerun` is the target.
-          cmd=$(printf '%s\n' "$COMMENT_BODY" | head -1 | tr -d '\r')
-          target=$(printf '%s' "$cmd" | sed -E 's|^/rerun[[:space:]]*||' \
-                   | tr '[:upper:]' '[:lower:]' | awk '{print $1}')
+          checkbox=false
+          status_file=$(mktemp)
+          trap 'rm -f "$status_file"' EXIT
+
+          set_checkbox_status() {
+            local status="$1"
+            gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" --jq .body > "$status_file"
+            STATUS="$status" perl -0pi -e \
+              's/^- \[[ xX]\] Re-run preview diff.*$/- [ ] Re-run preview diff — $ENV{STATUS}/m' \
+              "$status_file"
+            gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
+              -X PATCH -F "body=@${status_file}" >/dev/null
+          }
+
+          if [ "$EVENT_ACTION" = "edited" ]; then
+            checkbox=true
+            target="compose-preview"
+
+            # The edited comment is bot-authored, so author_association names
+            # the bot rather than the person who clicked. Authorize the event
+            # actor directly, matching GitHub's own write-access rerun rule.
+            permission=$(gh api "repos/${REPO}/collaborators/${ACTOR}/permission" \
+              --jq '.permission' 2>/dev/null || true)
+            case "$permission" in
+              admin|maintain|write) ;;
+              *)
+                set_checkbox_status "not started: @${ACTOR} needs write access"
+                exit 0
+                ;;
+            esac
+            set_checkbox_status "⏳ requested by @${ACTOR}; starting…"
+          else
+            # First line only; everything after `/rerun` is the target.
+            cmd=$(printf '%s\n' "$COMMENT_BODY" | head -1 | tr -d '\r')
+            target=$(printf '%s' "$cmd" | sed -E 's|^/rerun[[:space:]]*||' \
+                     | tr '[:upper:]' '[:lower:]' | awk '{print $1}')
+          fi
 
           case "$target" in
             previews) target="compose-preview" ;;
@@ -86,7 +139,11 @@ jobs:
             --jq '[.workflow_runs[] | {id, path, status, conclusion, name}]')
 
           reply() {
-            gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" -f body="$1" >/dev/null
+            if [ "$checkbox" = "true" ]; then
+              set_checkbox_status "$1"
+            else
+              gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" -f body="$1" >/dev/null
+            fi
           }
 
           count=$(printf '%s' "$runs" | jq 'length')
@@ -141,5 +198,8 @@ jobs:
             fi
             rerun_one "$id" rerun "$name" && triggered=$((triggered+1)) \
               || reply "\`/rerun ${target}\`: GitHub refused to re-run **${name}** (run ${id}); see the Actions tab."
+          fi
+          if [ "$checkbox" = "true" ] && [ "$triggered" -gt 0 ]; then
+            set_checkbox_status "⏳ re-run started by @${ACTOR}; [view run](https://github.com/${REPO}/actions/runs/${id}) — this report will update when it finishes"
           fi
           echo "triggered: $triggered"

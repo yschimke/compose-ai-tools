@@ -821,7 +821,7 @@ class CompareMarkdownTest(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp)
 
-    def _run(self, current_payload, baselines_payload) -> str:
+    def _run(self, current_payload, baselines_payload, *, rerun_checkbox=False) -> str:
         cli_path = self.tmp / "cli.json"
         cli_path.write_text(json.dumps(current_payload))
         bl_path = self.tmp / "baselines.json"
@@ -839,6 +839,7 @@ class CompareMarkdownTest(unittest.TestCase):
                 repo="owner/repo",
                 base_ref="deadbeef",
                 head_ref="cafef00d",
+                rerun_checkbox=rerun_checkbox,
             ))
         return buf.getvalue()
 
@@ -849,6 +850,25 @@ class CompareMarkdownTest(unittest.TestCase):
         )
         self.assertIn("No visual changes detected.", out)
         self.assertIn("1 preview(s) unchanged", out)
+
+    def test_optional_rerun_checkbox_is_near_comment_heading(self):
+        out = self._run(
+            {"previews": [_entry(id="X", sha="s1", png="/p.png")]},
+            {"app/X": {"sha256": "s1", "functionName": "Fn"}},
+            rerun_checkbox=True,
+        )
+        self.assertIn(
+            "<!-- preview-diff -->\n## Preview Changes\n\n"
+            "- [ ] Re-run preview diff\n",
+            out,
+        )
+
+    def test_rerun_checkbox_is_absent_by_default(self):
+        out = self._run(
+            {"previews": [_entry(id="X", sha="s1", png="/p.png")]},
+            {"app/X": {"sha256": "s1", "functionName": "Fn"}},
+        )
+        self.assertNotIn("Re-run preview diff", out)
 
     def test_marks_added_changed_and_removed(self):
         out = self._run(
