@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.19.19](https://github.com/yschimke/compose-ai-tools/compare/v0.19.18...v0.19.19) (2026-08-02)
+
+
+### Features
+
+* **serve:** show loading state while previews rerender ([#3161](https://github.com/yschimke/compose-ai-tools/issues/3161)) ([8c079ce](https://github.com/yschimke/compose-ai-tools/commit/8c079cef81965ca7ca47d7f7195b4eed6afaaaf3))
+
+
+### Bug Fixes
+
+* **catalog:** avoid refolding same-function axes ([#3164](https://github.com/yschimke/compose-ai-tools/issues/3164)) ([43f1956](https://github.com/yschimke/compose-ai-tools/commit/43f1956e814bbfc70a8220ef758a89e6a6b94768))
+* **catalog:** default Wear device breakpoints ([#3172](https://github.com/yschimke/compose-ai-tools/issues/3172)) ([d8c9bb1](https://github.com/yschimke/compose-ai-tools/commit/d8c9bb1f73f4d7b971b0d7e9d51ccc70cb5895e8))
+* **ci:** shard VS Code extension e2e ([#3174](https://github.com/yschimke/compose-ai-tools/issues/3174)) ([9dd991e](https://github.com/yschimke/compose-ai-tools/commit/9dd991ebb63dd97ffe2cf7b03f66d668e5f56691))
+* **design-artifacts:** preserve lazy SVG blobs ([#3176](https://github.com/yschimke/compose-ai-tools/issues/3176)) ([5003c80](https://github.com/yschimke/compose-ai-tools/commit/5003c803dc235ab49140515e872336970dc8ddb2))
+* **figma-svg:** clip a lookahead scroll container to its rendered viewport ([#3180](https://github.com/yschimke/compose-ai-tools/issues/3180)) ([a6f974a](https://github.com/yschimke/compose-ai-tools/commit/a6f974a3426880f390cbb14ede791e86fe71c136))
+* **figma-svg:** remove orphaned raster references ([#3167](https://github.com/yschimke/compose-ai-tools/issues/3167)) ([75930eb](https://github.com/yschimke/compose-ai-tools/commit/75930eb2bc3e500634e7d4fa6ca0149bf94295c2))
+* preserve Wear TimePicker SVG fidelity ([#3163](https://github.com/yschimke/compose-ai-tools/issues/3163)) ([910d2a8](https://github.com/yschimke/compose-ai-tools/commit/910d2a8c90921b78f94b7ab01578d2c4edfa4c1c))
+* **rc-embedded:** match rounded clip density ([#3162](https://github.com/yschimke/compose-ai-tools/issues/3162)) ([f8a2d6c](https://github.com/yschimke/compose-ai-tools/commit/f8a2d6c597c69c220fa5f4385315bbcb0efcaccc))
+* **renderer:** stabilize View-backed animated previews ([#3170](https://github.com/yschimke/compose-ai-tools/issues/3170)) ([205c8b6](https://github.com/yschimke/compose-ai-tools/commit/205c8b692153422e59fa4b3ffbc904ebbb1ff167))
+* **serve:** clear cancelled render status ([#3171](https://github.com/yschimke/compose-ai-tools/issues/3171)) ([70f206b](https://github.com/yschimke/compose-ai-tools/commit/70f206bf9b77371b43e71c94f5fdabfa7aec8bd0))
+* **serve:** explain disabled playground on preview hosts ([#3166](https://github.com/yschimke/compose-ai-tools/issues/3166)) ([3527605](https://github.com/yschimke/compose-ai-tools/commit/3527605093f2c558d30052dcfd8f2f7a8d108ea1))
+* **serve:** prioritize visible theme renders ([#3165](https://github.com/yschimke/compose-ai-tools/issues/3165)) ([40a9b84](https://github.com/yschimke/compose-ai-tools/commit/40a9b84b3d914ad238122f98c5192a9d967c04fb))
+* **serve:** require repo access for playground ([#3173](https://github.com/yschimke/compose-ai-tools/issues/3173)) ([415153c](https://github.com/yschimke/compose-ai-tools/commit/415153c3521e05062c9c0bc301cdce313ad092e5))
+* **theme:** resolve bundle compose resources ([#3169](https://github.com/yschimke/compose-ai-tools/issues/3169)) ([bf200cd](https://github.com/yschimke/compose-ai-tools/commit/bf200cdb977ed30e39f65e735771f579d33a9a84))
+
 ## [0.19.18](https://github.com/yschimke/compose-ai-tools/compare/v0.19.17...v0.19.18) (2026-08-02)
 
 
