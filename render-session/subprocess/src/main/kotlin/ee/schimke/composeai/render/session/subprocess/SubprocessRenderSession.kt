@@ -68,6 +68,7 @@ object SubprocessRenderSessions : RenderSessionFactory {
       workspaceName = config.workspaceName,
       canonicalRoot = canonicalRoot,
       initializeTimeout = config.initializeTimeout,
+      maxRenderTime = config.maxRenderTime,
       factory = factory,
     )
   }
@@ -157,6 +158,7 @@ object SubprocessRenderSessions : RenderSessionFactory {
       workspaceName = canonicalRoot.name.ifBlank { "bundle" },
       canonicalRoot = canonicalRoot,
       initializeTimeout = initializeTimeout,
+      maxRenderTime = null,
       factory = factory,
     )
   }
@@ -167,6 +169,7 @@ object SubprocessRenderSessions : RenderSessionFactory {
     workspaceName: String,
     canonicalRoot: File,
     initializeTimeout: Duration,
+    maxRenderTime: Duration?,
     factory: DaemonClientFactory,
   ): RenderSession {
     val project =
@@ -201,6 +204,7 @@ object SubprocessRenderSessions : RenderSessionFactory {
           workspaceRoot = canonicalRoot.absolutePath,
           moduleId = descriptor.modulePath,
           moduleProjectDir = descriptor.workingDirectory,
+          maxRenderMs = maxRenderTime?.inWholeMilliseconds,
           timeout = initializeTimeout,
         )
       } catch (e: Exception) {

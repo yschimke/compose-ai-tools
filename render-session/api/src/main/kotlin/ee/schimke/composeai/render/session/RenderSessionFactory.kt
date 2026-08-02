@@ -69,6 +69,12 @@ data class RenderSessionConfig(
   val logSink: (String) -> Unit = { System.err.println("[render-session] $it") },
   /** Upper bound on the initialize handshake. */
   val initializeTimeout: Duration = 60.seconds,
+  /**
+   * Optional per-render deadline advertised to the daemon during initialization. When absent, the
+   * daemon keeps its own default. Batch clients should set this to the same budget they expose to
+   * users so an internal `host.submit(...)` timeout cannot expire before the caller's wait does.
+   */
+  val maxRenderTime: Duration? = null,
 ) {
   companion object {
     private fun inferWorkspaceRoot(descriptorPath: File): File =

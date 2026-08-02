@@ -89,6 +89,11 @@ internal class DaemonSemanticsFetcher(
         workspaceRoot = workspaceRoot.absoluteFile,
         workspaceName = workspaceRoot.name.ifBlank { moduleName },
         logSink = onLog,
+        // The daemon otherwise applies its fixed five-minute `host.submit(...)` deadline from the
+        // moment every render is queued. A wide sandbox-pooled catalog can leave tail requests in
+        // that queue for most of the window, so propagate the command's `--timeout` budget into
+        // the handshake as the effective per-render deadline (issue #3197).
+        maxRenderTime = renderTimeout,
       )
 
     val session: RenderSession =

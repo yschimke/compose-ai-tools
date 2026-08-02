@@ -327,6 +327,21 @@ class DaemonSemanticsFetcherTest {
   }
 
   @Test
+  fun `render timeout is forwarded to the daemon session`() {
+    // Issue #3197: the fetcher honored --timeout while waiting for notifications, but the daemon
+    // still used its fixed 300-second host.submit deadline. Tail previews in a bounded sandbox pool
+    // therefore failed while queued even when the command was run with --timeout 600.
+    val projectDir = newTempFolder("semantics-daemon-timeout")
+    writeDescriptor(projectDir)
+    val factory = FakeFactory(produced = emptyMap())
+
+    DaemonSemanticsFetcher(factory = factory, renderTimeout = 600_000.milliseconds)
+      .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("Preview"))
+
+    assertEquals(600_000.milliseconds, factory.openedConfig?.maxRenderTime)
+  }
+
+  @Test
   fun `missing descriptor returns DescriptorMissing`() {
     val projectDir = newTempFolder("semantics-no-descriptor")
     val fetcher = DaemonSemanticsFetcher(factory = FakeFactory(emptyMap()))
@@ -372,9 +387,11 @@ class DaemonSemanticsFetcherTest {
     private val staggerMs: Long = 0,
   ) : RenderSessionFactory {
     override val backendKind: RenderSessionBackend = RenderSessionBackend.Subprocess
+    var openedConfig: RenderSessionConfig? = null
 
-    override fun open(config: RenderSessionConfig): RenderSession =
-      FakeSession(
+    override fun open(config: RenderSessionConfig): RenderSession {
+      openedConfig = config
+      return FakeSession(
         workspaceRoot = config.workspaceRoot.absolutePath,
         produced = produced,
         fontsProduced = fontsProduced,
@@ -383,6 +400,7 @@ class DaemonSemanticsFetcherTest {
         staggerMs = staggerMs,
         dataRoot = File(config.workspaceRoot, "build/compose-previews/data"),
       )
+    }
   }
 
   private class OpenFailFactory : RenderSessionFactory {
