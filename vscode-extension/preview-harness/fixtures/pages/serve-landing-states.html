@@ -4,23 +4,35 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>compose-m3 — compose-preview</title>
-        <link rel="stylesheet" href="/assets/serve/a5e8-3fa78bf7c43ab640/serve.css">
+        <link rel="stylesheet" href="/assets/serve/b429-434fef1056806367/serve.css">
         <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
+        <header class="cp-site-header">
+  <a class="cp-site-brand" href="/" aria-label="compose-preview home">
+    <span class="cp-site-mark" aria-hidden="true">◇</span>
+    <span>compose-preview</span>
+  </a>
+  <nav class="cp-site-nav" aria-label="Primary navigation">
+    <a href="/">Catalogs</a>
+    <a href="/status">Status</a>
+    <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
+  </nav>
+</header>
         <main class="cp-main">
                 <a class="cp-back" href="/">← All design systems</a>
-<h1 class="cp-head">compose-m3 <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ branch:yschimke/compose-ai-tools@design-artifacts/compose-m3</span></h1>
+<h1 class="cp-head cp-catalog-head">compose-m3 <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1>
+        <p class="cp-sub">8 preview(s) ·
+          <a href="/bundle.zip">download all (.zip)</a></p>
+        <div class="cp-catalog-tools">
         <div class="cp-toolbar">
   <span class="cp-theme" role="group" aria-label="Preview theme">
     <button type="button" class="cp-theme-btn" data-theme-choice="light">Light</button>
     <button type="button" class="cp-theme-btn" data-theme-choice="dark">Dark</button>
   </span>
 </div>
-<p class="cp-sub">8 preview(s) · click one to view with overrides ·
-          <a href="/bundle.zip">download all (.zip)</a></p>
-        <div class="cp-searchbar">
+<div class="cp-searchbar">
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
     autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
   <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="8"></span>
@@ -29,7 +41,8 @@
     <button type="button" class="cp-bg-btn" data-bg-choice="off">Transparent</button>
   </span>
 </div>
-<div class="cp-grid" id="cp-grid">
+</div>
+        <div class="cp-grid" id="cp-grid">
         <a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
   data-l-src="/render/checkbox__ideal__default__light.png" data-l-href="/p/checkbox__ideal__default__light"
   data-l-id="checkbox__ideal__default__light" data-l-label="Checkbox · Checked (light)"
@@ -40,7 +53,7 @@
     <img loading="lazy" alt="Checkbox · Checked (light)" src="/render/checkbox__ideal__default__light.png">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="Checkbox · Checked (light)">Checkbox · Checked (light)</div>
+    <div class="cp-label" title="checkbox__ideal__default__light">Checkbox · Checked (light)</div>
     <div class="cp-id">checkbox__ideal__default__light</div>
     
   </div>
@@ -55,7 +68,7 @@
     <img loading="lazy" alt="Radio · Selected (light)" src="/render/radiobutton__ideal__default__light.png">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="Radio · Selected (light)">Radio · Selected (light)</div>
+    <div class="cp-label" title="radiobutton__ideal__default__light">Radio · Selected (light)</div>
     <div class="cp-id">radiobutton__ideal__default__light</div>
     
   </div>
@@ -156,18 +169,22 @@ applyThemeChoice();
       reflectBg();
       apply();
     })();</script>
-<section class="cp-about">
-  <p class="cp-about-title">compose-preview · public preview server</p>
-  <p class="cp-about-body">Browse rendered Compose &amp; Compose&nbsp;Multiplatform design
-    catalogs live. CMP components run <strong>in your browser</strong> (Kotlin/Wasm, sandboxed);
-    everything else is served as pre-rendered snapshots. The server never re-runs untrusted code
-    — catalogs are trusted via signature or their published <code>design-artifacts</code> branch,
-    and anything unverified is badged.</p>
-  <p class="cp-about-links">
-    <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·
-    <a href="/version">/version</a> · <span class="cp-about-ver" title="running preview-server build">server v0.0.0-fixture</span>
-  </p>
-</section>
+<details class="cp-about cp-disclosure">
+  <summary>
+    <span class="cp-about-title">About this preview server</span>
+    <span class="cp-disclosure-hint">How previews run and catalogs are trusted</span>
+  </summary>
+  <div class="cp-disclosure-body">
+    <p class="cp-about-body">Compose Multiplatform components can run <strong>in your browser</strong>
+      using sandboxed Kotlin/Wasm; other previews are published as pre-rendered snapshots. The
+      server never re-runs untrusted code. Catalogs are trusted by signature or their published
+      <code>design-artifacts</code> branch, and anything unverified is badged.</p>
+    <p class="cp-about-links">
+      <a href="https://github.com/yschimke/compose-ai-tools"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a> ·
+      <a href="/version">/version</a> · <span class="cp-about-ver" title="running preview-server build">server v0.0.0-fixture</span>
+    </p>
+  </div>
+</details>
         </main>
       </body>
     </html>

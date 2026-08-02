@@ -65,6 +65,7 @@ class ServeHttpRoutingTest {
 
   private fun bundle(
     label: String,
+    title: String? = null,
     overrides: List<PreviewOverrideDeclaration> = emptyList(),
     remoteComposeKnobs: List<RemoteComposeKnobDeclaration> = emptyList(),
     degradations: List<ServeDegradation> = emptyList(),
@@ -126,7 +127,7 @@ class ServeHttpRoutingTest {
         )
       File(dir, "previews/$previewId.remotecompose.json").writeText(sidecar)
     }
-    return ServeBundleHost(dir, label = label, degradations = degradations)
+    return ServeBundleHost(dir, label = label, title = title, degradations = degradations)
   }
 
   private val registry = ServeSessionRegistry(open = { null })
@@ -137,6 +138,7 @@ class ServeHttpRoutingTest {
       host =
         bundle(
           "compose-m3",
+          "Compose Material 3",
           listOf(labelKnob),
           listOf(rcColorKnob),
           rcDoc = rcDocBytes,
@@ -898,6 +900,10 @@ class ServeHttpRoutingTest {
     val (pathCode, pathBody) = get("/compose-m3/compare")
     assertEquals(200, pathCode)
     assertTrue(pathBody.contains("id=\"cp-compare\""), "canonical comparison page: $pathBody")
+    assertTrue(
+      pathBody.contains(">Compose Material 3</a> / Compare formats"),
+      "the comparison breadcrumb uses the catalog's human title: $pathBody",
+    )
     assertTrue(
       pathBody.contains("data-compare-format=\"rc\"") &&
         !pathBody.contains("data-compare-format=\"svg\""),

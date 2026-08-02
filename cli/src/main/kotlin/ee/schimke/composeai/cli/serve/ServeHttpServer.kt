@@ -1184,6 +1184,7 @@ class ServeHttpServer(
           engagement = previewEngagement(selectedSessionId, renderHost.previews),
           systemViews = systemViews,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = heroUrl),
+          displayTitle = catalogBundleHost(renderHost)?.title,
         ),
         ContentType.Text.Html,
       )
@@ -1259,6 +1260,7 @@ class ServeHttpServer(
           hasRemoteComposeFor = renderHost::hasRemoteComposeDoc,
           referencesFor = renderHost::designReferencesFor,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+          displayTitle = catalogBundleHost(renderHost)?.title,
         ),
         ContentType.Text.Html,
       )
@@ -1315,6 +1317,7 @@ class ServeHttpServer(
           isPublic = isPublic,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+          displayTitle = catalogBundleHost(renderHost)?.title,
         ),
         ContentType.Text.Html,
       )
@@ -2477,6 +2480,7 @@ class ServeHttpServer(
               ServeUrls.githubBlobUrl(src.repo, src.ref, src.module, preview.sourceFile)
             },
           liveAuthPrompt = liveAuthPrompt,
+          catalogTitle = catalogBundleHost(renderHost)?.title,
         ),
         ContentType.Text.Html,
       )

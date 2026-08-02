@@ -4,18 +4,43 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Card — compose-preview</title>
-        <link rel="stylesheet" href="/assets/serve/a5e8-3fa78bf7c43ab640/serve.css">
+        <link rel="stylesheet" href="/assets/serve/b429-434fef1056806367/serve.css">
         <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
+        <header class="cp-site-header">
+  <a class="cp-site-brand" href="/?token=demo-token-fixture" aria-label="compose-preview home">
+    <span class="cp-site-mark" aria-hidden="true">◇</span>
+    <span>compose-preview</span>
+  </a>
+  <nav class="cp-site-nav" aria-label="Primary navigation">
+    <a href="/?token=demo-token-fixture">Catalogs</a>
+    <a href="/status?token=demo-token-fixture">Status</a>
+    <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
+  </nav>
+</header>
         <main class="cp-main">
-              <h1 class="cp-head"><a href="/?token=demo-token-fixture&session=compose-m3">← previews</a> <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ branch:yschimke/compose-ai-tools@design-artifacts/compose-m3</span></h1>
-      <p class="cp-sub" title="com.example.CardPreview">Card</p>
-      
-      
+              <p class="cp-breadcrumb"><a href="/?token=demo-token-fixture&session=compose-m3">Previews</a> / Component</p>
+      <h1 class="cp-head cp-preview-title">Card <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1>
+      <p class="cp-preview-id" title="com.example.CardPreview"><code>com.example.CardPreview</code></p>
+
+
+
+      <div class="cp-preview-primary" aria-label="Preview renderer">
+      <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false">
+            <span class="cp-live-dot" aria-hidden="true"></span>
+            <span id="cp-live-toggle-label">Live preview</span>
+          </button>
+        <span class="cp-mode-hint" id="cp-mode-hint"></span>
+        <span class="cp-modes-inputs" aria-hidden="true">
+      <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
+<input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1" disabled>
+<input type="radio" name="cp-mode" value="wasm" id="cp-wasm-toggle" tabindex="-1">
+        </span>
+      </div>
       <div class="cp-viewer-bar">
-        
+
         <span class="cp-bg" role="group" aria-label="Preview zoom">
           <button type="button" class="cp-bg-btn cp-zoom-btn" data-zoom-mode="fit" aria-pressed="true">Fit screen</button>
           <button type="button" class="cp-bg-btn cp-zoom-btn" data-zoom-mode="width" aria-pressed="false">Fit width</button>
@@ -23,7 +48,7 @@
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
       <div class="cp-viewer cp-controls-open" data-preview-id="com.example.CardPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2" data-wasm-src="/wasm/compose-m3/?id=card-filled">
-        
+
         <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Card"><canvas id="cp-canvas" hidden></canvas><iframe id="cp-wasm" hidden sandbox="allow-scripts allow-same-origin" title="Card (Wasm)"></iframe><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         <div class="cp-controls" id="cp-controls">
           <details class="cp-group" data-cp-group="appearance">
@@ -71,7 +96,7 @@
               </div>
             </div>
           </details>
-          
+
           <details class="cp-group" data-cp-group="locale">
             <summary>Locale &amp; text</summary>
             <div class="cp-group-body">
@@ -129,42 +154,20 @@
               </label>
             </div>
           </details>
-          
-          
-          
-          
+
+
+
+
           <div class="cp-status" id="cp-status"></div>
         </div>
       </div>
-      <!-- What you get *out* of the preview lives in the page under the stage, outside the
-           collapsible overrides drawer: the lane toggles (Live / Wasm / SVG) that pick what the
-           stage shows, and the copyable /render URLs. Closing ⚙ Overrides — or never opening the
-           mobile bottom sheet — no longer hides them. The drawer keeps only the render *overrides*
-           (appearance, size, scroll, locale, device, knobs). -->
+      <!-- Export remains below the workspace; renderer selection is kept beside the preview
+           heading so it is visible before a tall stage. -->
       <div class="cp-below">
-        <div class="cp-preview-mode">
-          <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false">
-            <span class="cp-live-dot" aria-hidden="true"></span>
-            <span id="cp-live-toggle-label">Live preview</span>
-          </button>
-          
-          
-          
-          <span class="cp-mode-hint" id="cp-mode-hint"></span>
-          <!-- The mode radios the transport JS drives; visually removed (the toggle above is the
-               only visible mode control). png = static snapshot, live = daemon stream, wasm =
-               in-browser app. -->
-          <span class="cp-modes-inputs" aria-hidden="true">
-            <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
-            <input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1" disabled>
-            <input type="radio" name="cp-mode" value="wasm" id="cp-wasm-toggle" tabindex="-1">
-            
-          </span>
-        </div>
         <div class="cp-note">Pre-rendered snapshot — turn on <strong>Live preview</strong> to interact. Day/Night, Font scale, Locale, background &amp; declared knob values apply in the browser; Size, Device &amp; Orientation need the live server. <a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/public-preview-server.md#running-one">Enable a local preview server.</a></div>
-              <section class="cp-export" aria-labelledby="cp-export-head">
-        <h2 class="cp-export-head" id="cp-export-head">Export &amp; direct links</h2>
-        <div class="cp-links">
+              <details class="cp-export cp-disclosure">
+        <summary id="cp-export-head">Export &amp; direct links</summary>
+        <div class="cp-links cp-disclosure-body">
           <div class="cp-knobs-head">The current view as a URL (overrides applied)</div>
           <div class="cp-link-row">
   <span class="cp-link-kind">PNG</span>
@@ -175,7 +178,7 @@
   <a id="cp-dl-png" class="cp-dl" download>Download</a>
 </div>
         </div>
-      </section>
+      </details>
       </div>
       <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
            tapping it dismisses the sheet. Inert on desktop. -->

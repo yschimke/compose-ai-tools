@@ -4,16 +4,32 @@ body { margin: 0; padding: 24px; font-family: system-ui, -apple-system, Segoe UI
   color: #1b1b1f; background: #fafafb; }
 a { color: #5b5bd6; text-decoration: none; }
 a:hover { text-decoration: underline; }
+.cp-main, .cp-site-header { width: 100%; max-width: 1440px; margin-left: auto; margin-right: auto; }
+.cp-site-header { min-height: 44px; margin-bottom: 24px; padding: 0 0 12px; border-bottom: 1px solid #e3e3e8;
+  display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.cp-site-brand { display: inline-flex; align-items: center; gap: 8px; color: #1b1b1f;
+  font-size: 0.92rem; font-weight: 700; }
+.cp-site-brand:hover { text-decoration: none; color: #3a3a8a; }
+.cp-site-mark { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px;
+  color: #fff; background: #5b5bd6; font-size: 0.9rem; }
+.cp-site-nav { display: flex; align-items: center; gap: 18px; font-size: 0.8rem; }
+.cp-site-nav a { color: #56565f; }
 .cp-head { margin: 0 0 4px; font-size: 1.2rem; font-weight: 600; }
 .cp-sub { margin: 0 0 20px; font-size: 0.82rem; color: #6b6b70; }
+.cp-breadcrumb { margin: 0 0 8px; color: #8a8a92; font-size: 0.78rem; }
+.cp-section-title { margin: 0 0 12px; display: flex; align-items: baseline; gap: 10px; }
+.cp-section-title .cp-head { margin: 0; }
+.cp-section-count, .cp-catalog-id { color: #8a8a92; font-size: 0.75rem; }
+.cp-catalog-id { margin: 0 0 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.cp-catalog-head { font-size: 1.35rem; }
 /* Per-preview link to the source file on GitHub, under the viewer title. */
-.cp-source { margin: -12px 0 20px; font-size: 0.8rem; }
+.cp-source { margin: 0 0 8px; font-size: 0.8rem; }
 .cp-source-link { display: inline-flex; align-items: center; gap: 5px; color: #6b6b70;
   text-decoration: none; }
 .cp-source-link:hover { text-decoration: underline; }
 .cp-about { margin: 0 0 24px; padding: 14px 16px; border: 1px solid #e3e3e8; border-radius: 10px;
   background: #fff; max-width: 720px; }
-.cp-about-title { margin: 0 0 6px; font-size: 0.95rem; font-weight: 600; }
+.cp-about-title { font-size: 0.88rem; font-weight: 600; }
 .cp-about-body { margin: 0 0 8px; font-size: 0.84rem; line-height: 1.45; color: #45454c; }
 .cp-about-body code { font-size: 0.8rem; padding: 0 3px; border-radius: 4px; background: #f0f0f3; }
 .cp-about-links { margin: 0; font-size: 0.8rem; color: #6b6b70; display: flex; flex-wrap: wrap;
@@ -24,6 +40,13 @@ a:hover { text-decoration: underline; }
   padding: 1px 7px; border-radius: 999px; border: 1px solid #d7d7de; background: #fff;
   color: #45454c; }
 .cp-gh-auth--signed { color: #45454c; }
+.cp-disclosure > summary { cursor: pointer; list-style: none; display: flex; align-items: center;
+  justify-content: space-between; gap: 12px; }
+.cp-disclosure > summary::-webkit-details-marker { display: none; }
+.cp-disclosure > summary::after { content: "Show"; color: #5b5bd6; font-size: 0.72rem; font-weight: 600; }
+.cp-disclosure[open] > summary::after { content: "Hide"; }
+.cp-disclosure-hint { flex: 1; color: #8a8a92; font-size: 0.75rem; font-weight: 400; }
+.cp-disclosure-body { margin-top: 12px; }
 /* Catalog "back to home" button — replaces the in-catalog design-systems nav row. */
 .cp-back { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 14px;
   font-size: 0.82rem; padding: 5px 12px; border-radius: 999px; border: 1px solid #d7d7de;
@@ -31,9 +54,10 @@ a:hover { text-decoration: underline; }
 .cp-back:hover { background: #f0f0f3; text-decoration: none; }
 /* Provenance strip: how/when/from-what this catalog was generated (branch, date, versions,
    a link to re-run the generating workflow). Shown near the catalog header. */
-.cp-prov { margin: 0 0 18px; padding: 10px 14px; border: 1px solid #e3e3e8; border-radius: 10px;
-  background: #fff; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.78rem;
-  color: #6b6b70; max-width: 720px; }
+.cp-prov { margin: 0 0 14px; padding: 10px 14px; border: 1px solid #e3e3e8; border-radius: 10px;
+  background: #fff; font-size: 0.78rem; color: #6b6b70; max-width: 720px; }
+.cp-prov-title { color: #45454c; font-weight: 600; }
+.cp-prov-body { display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .cp-prov-item { display: inline-flex; align-items: center; gap: 5px; }
 .cp-prov-item .cp-prov-key { color: #8a8a92; }
 .cp-prov-item code { font-size: 0.74rem; padding: 0 4px; border-radius: 4px; background: #f0f0f3; }
@@ -48,8 +72,10 @@ a:hover { text-decoration: underline; }
 .cp-systems a, .cp-systems-cur { padding: 3px 10px; border-radius: 999px; border: 1px solid #d7d7de; }
 .cp-systems a { background: #fff; }
 .cp-systems-cur { background: #ececff; border-color: #c4c4f5; color: #3a3a8a; font-weight: 600; }
-.cp-toolbar { margin: 0 0 16px; }
-.cp-searchbar { margin: 0 0 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cp-toolbar { margin: 0; }
+.cp-searchbar { margin: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1 1 440px; }
+.cp-catalog-tools { position: sticky; top: 0; z-index: 18; margin: 0 0 16px; padding: 8px 0;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; background: #fafafb; }
 .cp-search { flex: 1 1 260px; max-width: 420px; padding: 7px 12px; font: inherit; font-size: 0.85rem;
   border: 1px solid #d7d7de; border-radius: 999px; background: #fff; color: inherit; }
 .cp-search:focus { outline: 2px solid #c4c4f5; outline-offset: 1px; }
@@ -88,6 +114,8 @@ html.cp-js .cp-section-head { display: none; }
 .cp-theme-btn + .cp-theme-btn { border-left: 1px solid #ececf1; }
 .cp-theme-btn[aria-pressed="true"] { background: #ececff; color: #3a3a8a; font-weight: 600; }
 .cp-states { display: inline-flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.cp-axis-label { align-self: center; margin-right: 2px; color: #8a8a92; font-size: 0.68rem;
+  font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
 .cp-state-btn { border: 1px solid #d7d7de; border-radius: 999px; background: #fff; color: #6b6b70;
   font: inherit; font-size: 0.78rem; padding: 3px 14px; cursor: pointer; text-decoration: none; }
 .cp-state-btn:hover { border-color: #b9b9c6; color: #3a3a8a; }
@@ -120,7 +148,9 @@ html.cp-js .cp-section-head { display: none; }
 .cp-muted { color: #8a8a92; font-size: 0.76rem; }
 .cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
 .cp-syslist { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
-.cp-syslist .cp-imgwrap { min-height: 120px; }
+.cp-sys { display: grid; grid-template-rows: 220px auto; }
+.cp-syslist .cp-imgwrap { min-height: 0; height: 220px; overflow: hidden; }
+.cp-syslist .cp-imgwrap > img { width: 100%; height: 100%; max-height: none; object-fit: contain; }
 .cp-sys-title { font-size: 0.98rem; font-weight: 600; }
 .cp-sys-desc { margin-top: 4px; font-size: 0.76rem; color: #6b6b70; line-height: 1.4; }
 .cp-sys-foot { margin-top: 8px; font-size: 0.74rem; color: #6b6b70; }
@@ -174,6 +204,10 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-id { color: #6b6b70; font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-engage { margin-top: 3px; color: #8a8a92; font-size: 0.7rem; }
 .cp-viewer-engage { margin: -14px 0 16px; color: #8a8a92; font-size: 0.78rem; }
+.cp-preview-title { font-size: 1.35rem; }
+.cp-preview-id { margin: 2px 0 8px; color: #6b6b70; font-size: 0.75rem; }
+.cp-preview-id code { padding: 1px 5px; border-radius: 4px; background: #f0f0f3; }
+.cp-preview-primary { margin: 2px 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cp-viewer { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
 .cp-stage { position: relative; flex: 1 1 360px; min-width: 280px; border: 1px solid #e3e3e8;
   border-radius: 10px;
@@ -212,7 +246,8 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-live-row { flex-direction: row !important; align-items: center; gap: 6px !important; }
 .cp-modes { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px 14px;
   font-size: 0.8rem; }
-.cp-controls { flex: 0 0 240px; display: flex; flex-direction: column; gap: 14px; }
+.cp-controls { position: sticky; top: 16px; flex: 0 0 240px; max-height: calc(100vh - 32px);
+  overflow: auto; display: flex; flex-direction: column; gap: 14px; }
 .cp-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }
 .cp-controls input, .cp-controls select { padding: 5px 6px; font-size: 0.85rem; }
 .cp-status { font-size: 0.75rem; color: #6b6b70; min-height: 1em; }
@@ -246,7 +281,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
    dropped inside it. */
 .cp-export { padding: 12px 14px; border: 1px solid #e3e3e8;
   border-radius: 10px; background: #fff; }
-.cp-export-head { margin: 0 0 10px; font-size: 0.78rem; font-weight: 600; color: #45454c; }
+.cp-export > summary { color: #45454c; font-size: 0.78rem; font-weight: 600; }
 .cp-export .cp-links { border-top: 0; padding-top: 0; }
 .cp-link-row { display: flex; align-items: center; gap: 6px; }
 .cp-link-kind { font-size: 0.72rem; font-weight: 600; color: #6b6b70; width: 30px; flex: none; }
@@ -434,6 +469,9 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   font-weight: 600; background: #fdf0e3; color: #8a5300; border: 1px solid #f0d3a8; }
 @media (prefers-color-scheme: dark) {
   body { color: #e6e6e9; background: #161618; }
+  .cp-site-header { border-bottom-color: #34343a; }
+  .cp-site-brand { color: #e6e6e9; }
+  .cp-site-nav a { color: #b6b6bf; }
   .cp-sub, .cp-id, .cp-status, .cp-about-links, .cp-sys-desc, .cp-sys-foot { color: #a0a0a8; }
   .cp-engage, .cp-viewer-engage { color: #7a7a82; }
   .cp-card, .cp-stage, .cp-knobs, .cp-links, .cp-about { border-color: #34343a; }
@@ -444,6 +482,8 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-copyimg, .cp-dl { background: #1d1d20; border-color: #34343a; }
   .cp-copyimg:hover, .cp-dl:hover { background: #26262b; }
   .cp-card, .cp-about { background: #1d1d20; }
+  .cp-catalog-tools { background: #161618; }
+  .cp-preview-id code { background: #2a2a30; }
   .cp-about-body { color: #c9c9d0; }
   .cp-about-body code { background: #2a2a30; }
   .cp-systems-label { color: #a0a0a8; }
@@ -534,6 +574,12 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-compare-score--bad { color: #ef9292; }
   .cp-mode-hint { color: #a0a0a8; }
 }
+
+@media (min-width: 1100px) {
+  /* Component discovery is part of the desktop workspace; drawers remain opt-in below this. */
+  .cp-viewer:not(.cp-nav-open) .cp-nav { display: flex; }
+  #cp-nav-toggle, .cp-nav-close { display: none; }
+}
 /* Mobile / narrow viewports. The viewer is a flex row of stage + overrides (+ optional nav);
    on a phone we collapse it to a single stacked column and — crucially for usability on a tall
    preview — turn the two drawers into bottom sheets reachable from a sticky toggle bar, so the
@@ -542,6 +588,14 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
    grids, size rows and copyable link rows to fit a ~320px screen without horizontal scrolling. */
 @media (max-width: 640px) {
   body { padding: 14px; }
+  .cp-site-header { margin-bottom: 18px; }
+  .cp-site-mark { width: 22px; height: 22px; }
+  .cp-site-nav { gap: 12px; }
+  .cp-site-nav a:last-child { display: none; }
+  .cp-disclosure > summary { align-items: flex-start; }
+  .cp-disclosure-hint { display: none; }
+  .cp-section-title { margin-bottom: 10px; }
+  .cp-catalog-tools { margin-left: -14px; margin-right: -14px; padding: 8px 14px; }
   /* The trust badge can carry a long branch string; constrain it to the viewport and let it
      wrap instead of forcing a horizontal scroll. */
   .cp-badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
@@ -552,6 +606,7 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   /* Stage, overrides and nav each stack full-width; min-width:0 lets the flex items (and their
      selects/inputs) shrink below their content's intrinsic width instead of overflowing. */
   .cp-stage, .cp-controls, .cp-nav { flex: 1 1 100%; min-width: 0; }
+  .cp-controls { position: static; max-height: none; }
   .cp-controls label, .cp-group, .cp-group-body { min-width: 0; }
   .cp-controls select, .cp-controls input { max-width: 100%; }
   /* Open drawers overlay the preview as bottom sheets (with the scrim below), so overrides and
@@ -572,7 +627,9 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
     background: rgba(0, 0, 0, 0.38); }
   .cp-grid, .cp-cards { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
   .cp-syslist, .cp-syslist.cp-grid { grid-template-columns: 1fr; }
+  .cp-sys { grid-template-rows: 220px auto; }
   .cp-imgwrap img { max-height: 200px; }
+  .cp-syslist .cp-imgwrap > img { max-height: none; }
   /* Copyable direct-link rows: the URL field takes its own line above the Copy/Download
      buttons instead of squeezing all three onto one narrow row. */
   .cp-link-row { flex-wrap: wrap; }
