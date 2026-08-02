@@ -89,11 +89,15 @@ internal class DaemonSemanticsFetcher(
         workspaceRoot = workspaceRoot.absoluteFile,
         workspaceName = workspaceRoot.name.ifBlank { moduleName },
         logSink = onLog,
-        // The daemon otherwise applies its fixed five-minute `host.submit(...)` deadline from the
-        // moment every render is queued. A wide sandbox-pooled catalog can leave tail requests in
-        // that queue for most of the window, so propagate the command's `--timeout` budget into
-        // the handshake as the effective per-render deadline (issue #3197).
-        maxRenderTime = renderTimeout,
+        // The daemon's `host.submit(...)` deadline starts while each render is still queued. Let a
+        // long command timeout extend that deadline (issue #3197), but never let a short inactivity
+        // window reduce the daemon's five-minute default: doing so would make queued tail previews
+        // expire even while the fetcher continues to observe steady progress.
+        maxRenderTime = maxOf(renderTimeout, DEFAULT_RENDER_TIMEOUT),
+        // A genuinely stuck render must not add the subprocess backend's normal 15s shutdown RPC
+        // plus process-exit grace after this fetcher's inactivity timeout. Give the daemon a short
+        // graceful window, then let the subprocess owner terminate the outstanding render.
+        shutdownTimeout = SEMANTICS_SHUTDOWN_TIMEOUT,
       )
 
     val session: RenderSession =
@@ -297,5 +301,8 @@ internal class DaemonSemanticsFetcher(
      * single render may take before the daemon is presumed stalled, not a whole-batch budget.
      */
     val DEFAULT_RENDER_TIMEOUT = 300.seconds
+
+    /** Graceful close budget before a stalled one-shot semantics daemon is terminated. */
+    val SEMANTICS_SHUTDOWN_TIMEOUT = 2.seconds
   }
 }

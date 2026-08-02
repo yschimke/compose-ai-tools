@@ -69,6 +69,7 @@ object SubprocessRenderSessions : RenderSessionFactory {
       canonicalRoot = canonicalRoot,
       initializeTimeout = config.initializeTimeout,
       maxRenderTime = config.maxRenderTime,
+      shutdownTimeout = config.shutdownTimeout,
       factory = factory,
     )
   }
@@ -159,6 +160,7 @@ object SubprocessRenderSessions : RenderSessionFactory {
       canonicalRoot = canonicalRoot,
       initializeTimeout = initializeTimeout,
       maxRenderTime = null,
+      shutdownTimeout = null,
       factory = factory,
     )
   }
@@ -170,6 +172,7 @@ object SubprocessRenderSessions : RenderSessionFactory {
     canonicalRoot: File,
     initializeTimeout: Duration,
     maxRenderTime: Duration?,
+    shutdownTimeout: Duration?,
     factory: DaemonClientFactory,
   ): RenderSession {
     val project =
@@ -224,7 +227,9 @@ object SubprocessRenderSessions : RenderSessionFactory {
       client = client,
       notificationFanout = fanout,
       closeAction = {
-        runCatching { spawn.shutdown() }
+        runCatching {
+          if (shutdownTimeout == null) spawn.shutdown() else spawn.shutdown(shutdownTimeout)
+        }
         fanout.clear()
       },
     )

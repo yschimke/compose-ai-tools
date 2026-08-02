@@ -4,6 +4,7 @@ import ee.schimke.composeai.io.classpathArgFile
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import java.io.File
 import java.util.concurrent.TimeUnit
+import kotlin.time.Duration
 import kotlinx.serialization.json.JsonObject
 
 /**
@@ -247,7 +248,7 @@ class SubprocessDaemonClientFactory : DaemonClientFactory {
   }
 }
 
-private class SubprocessDaemonSpawn(private val process: Process) : DaemonSpawn {
+internal class SubprocessDaemonSpawn(private val process: Process) : DaemonSpawn {
   private lateinit var _client: DaemonClient
 
   override val client: DaemonClient
@@ -274,5 +275,26 @@ private class SubprocessDaemonSpawn(private val process: Process) : DaemonSpawn 
       if (!process.waitFor(2, TimeUnit.SECONDS)) process.destroyForcibly()
     }
     runCatching { _client.close() }
+  }
+
+  override fun shutdown(timeout: Duration) {
+    require(!timeout.isNegative()) { "shutdown timeout must not be negative" }
+    val deadlineNanos = System.nanoTime() + timeout.inWholeNanoseconds
+
+    runCatching { _client.shutdownAndExit(timeout) }
+    waitForUntil(deadlineNanos)
+
+    if (process.isAlive) {
+      process.destroy()
+      waitForUntil(deadlineNanos)
+      if (process.isAlive) process.destroyForcibly()
+    }
+    runCatching { _client.close() }
+  }
+
+  private fun waitForUntil(deadlineNanos: Long) {
+    if (!process.isAlive) return
+    val remainingMillis = (deadlineNanos - System.nanoTime()).coerceAtLeast(0L) / 1_000_000L
+    if (remainingMillis > 0L) process.waitFor(remainingMillis, TimeUnit.MILLISECONDS)
   }
 }

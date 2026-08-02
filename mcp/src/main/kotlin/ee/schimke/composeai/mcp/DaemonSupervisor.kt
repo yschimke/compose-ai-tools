@@ -5,6 +5,7 @@ import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.time.Duration
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -786,6 +787,12 @@ interface DaemonSpawn {
   ): DaemonClient
 
   fun shutdown()
+
+  /**
+   * Shuts down within [timeout] when the owner has a stricter lifecycle budget. Implementations
+   * that do not own a subprocess retain their ordinary shutdown behaviour.
+   */
+  fun shutdown(timeout: Duration) = shutdown()
 }
 
 // -----------------------------------------------------------------------------

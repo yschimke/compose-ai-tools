@@ -34,6 +34,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
@@ -327,7 +328,7 @@ class DaemonSemanticsFetcherTest {
   }
 
   @Test
-  fun `render timeout is forwarded to the daemon session`() {
+  fun `long render timeout is forwarded to the daemon session`() {
     // Issue #3197: the fetcher honored --timeout while waiting for notifications, but the daemon
     // still used its fixed 300-second host.submit deadline. Tail previews in a bounded sandbox pool
     // therefore failed while queued even when the command was run with --timeout 600.
@@ -339,6 +340,23 @@ class DaemonSemanticsFetcherTest {
       .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("Preview"))
 
     assertEquals(600_000.milliseconds, factory.openedConfig?.maxRenderTime)
+    assertEquals(2.seconds, factory.openedConfig?.shutdownTimeout)
+  }
+
+  @Test
+  fun `short inactivity timeout does not reduce the daemon render deadline`() {
+    // Review follow-up for #3198: host.submit starts its deadline while a render waits behind
+    // earlier previews. Forwarding a short inactivity window directly would therefore turn it
+    // back into a batch-wide cutoff for queued tail previews even when renders keep completing.
+    val projectDir = newTempFolder("semantics-short-daemon-timeout")
+    writeDescriptor(projectDir)
+    val factory = FakeFactory(produced = emptyMap())
+
+    DaemonSemanticsFetcher(factory = factory, renderTimeout = 150.milliseconds)
+      .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("Preview"))
+
+    assertEquals(300_000.milliseconds, factory.openedConfig?.maxRenderTime)
+    assertEquals(2.seconds, factory.openedConfig?.shutdownTimeout)
   }
 
   @Test
