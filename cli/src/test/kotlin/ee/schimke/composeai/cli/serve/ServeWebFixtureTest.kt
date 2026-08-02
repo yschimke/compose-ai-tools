@@ -1106,7 +1106,7 @@ class ServeWebFixtureTest {
     // serially (each queued, the next started on the previous image's load) with one delayed retry
     // — otherwise a grid-sized burst would leave most cards on their pre-theme pixels.
     assertTrue(
-      landingDeclaredThemes.contains("themeQueue.push({") &&
+      landingDeclaredThemes.contains("var job = {") &&
         landingDeclaredThemes.contains("runThemeQueue(themeQueue, themeQueueGen)") &&
         landingDeclaredThemes.contains("job.src = job.src + \"&_retry=1\""),
       "themed renders are fetched serially with a retry, not fired as one burst",
@@ -1116,6 +1116,14 @@ class ServeWebFixtureTest {
         landingDeclaredThemes.contains("job.card.classList.remove(\"cp-reloading\")") &&
         landingDeclaredThemes.contains("c.setAttribute(\"aria-busy\", \"true\")"),
       "themed cards expose a busy treatment until each replacement thumbnail settles",
+    )
+    // Issue #3160: when the visitor is on a later tab, its visible cards must lead the serial
+    // daemon queue. Otherwise every hidden Theme/Component card renders before the selected tab's
+    // first image request, making the theme control appear to do nothing.
+    assertTrue(
+      landingDeclaredThemes.contains("(c.hidden ? themeDeferredQueue : themeQueue).push(job)") &&
+        landingDeclaredThemes.contains("themeQueue = themeQueue.concat(themeDeferredQueue)"),
+      "visible cards are rendered before hidden cards after a declared-theme change",
     )
     // Re-pointing runs only when the theme itself changed, so a search keystroke (which also calls
     // apply()) never restarts an in-flight themed-render queue.
