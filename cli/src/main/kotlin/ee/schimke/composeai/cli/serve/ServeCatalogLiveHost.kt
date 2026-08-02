@@ -98,6 +98,12 @@ class ServeCatalogLiveHost(
    */
   override val previews: List<ServePreview> = mergeDeclaredKnobs(baked.previews, live.previews)
 
+  override fun designReferencesFor(previewId: String): List<DesignReference> =
+    baked.designReferencesFor(previewId)
+
+  override fun designReferenceRaster(referenceId: String): ByteArray? =
+    baked.designReferenceRaster(referenceId)
+
   /**
    * The baked host's live-only (deferred) ids — previews it lists with no PNG behind them, which
    * the catalog publishes for on-demand render. Carried through so the routing below sends them to

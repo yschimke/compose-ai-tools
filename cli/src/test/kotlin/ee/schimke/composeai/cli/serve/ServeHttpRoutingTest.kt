@@ -69,6 +69,7 @@ class ServeHttpRoutingTest {
     remoteComposeKnobs: List<RemoteComposeKnobDeclaration> = emptyList(),
     degradations: List<ServeDegradation> = emptyList(),
     rcDoc: ByteArray? = null,
+    designReference: Boolean = false,
   ): ServeBundleHost {
     val dir = Files.createTempDirectory("routing-$label").toFile().also { it.deleteOnExit() }
     File(dir, "index.html").writeText("<html></html>")
@@ -77,6 +78,29 @@ class ServeHttpRoutingTest {
     if (rcDoc != null) {
       File(dir, "ir").apply { mkdirs() }
       File(dir, "ir/$previewId.rc").writeBytes(rcDoc)
+    }
+    if (designReference) {
+      val references = File(dir, "references").apply { mkdirs() }
+      File(references, "red-design.png").writeBytes(png())
+      File(references, "index.json")
+        .writeText(
+          Json.encodeToString(
+            DesignReferenceManifest.serializer(),
+            DesignReferenceManifest(
+              references =
+                listOf(
+                  DesignReference(
+                    id = "red-design",
+                    previewId = previewId,
+                    label = "Red design",
+                    raster =
+                      DesignReferenceRaster("references/red-design.png", width = 2, height = 2),
+                    source = DesignReferenceSource(provider = "figma", revision = "7"),
+                  )
+                )
+            ),
+          )
+        )
     }
     if (overrides.isNotEmpty()) {
       val sidecar =
@@ -102,7 +126,14 @@ class ServeHttpRoutingTest {
     registry.register("default-mod", host = bundle("default-mod"), pinned = true)
     registry.register(
       "compose-m3",
-      host = bundle("compose-m3", listOf(labelKnob), listOf(rcColorKnob), rcDoc = rcDocBytes),
+      host =
+        bundle(
+          "compose-m3",
+          listOf(labelKnob),
+          listOf(rcColorKnob),
+          rcDoc = rcDocBytes,
+          designReference = true,
+        ),
       pinned = true,
     )
     // A baked-only session carrying a degradation reason — reachable at /baked-only/… but kept off
@@ -865,6 +896,14 @@ class ServeHttpRoutingTest {
       "the page exposes the carried RC format without a dead SVG tab: $pathBody",
     )
     assertTrue(
+      pathBody.contains("data-compare-format=\"reference\"") &&
+        pathBody.contains("data-reference-neutral=\"/compose-m3/reference/red-design.png\"") &&
+        pathBody.contains(
+          "data-reference-detail-neutral=\"/compose-m3/compare/$previewId?reference=red-design\""
+        ),
+      "the native comparison gallery also exposes the exact design reference: $pathBody",
+    )
+    assertTrue(
       pathBody.contains("data-rc-neutral=\"/compose-m3/render/$previewId.rc\""),
       "the path-mounted page keeps its RC document URL under the catalog path: $pathBody",
     )
@@ -879,6 +918,29 @@ class ServeHttpRoutingTest {
       get("/compose-m3/").second.contains("href=\"/compose-m3/compare\""),
       "the catalog landing links to the native comparison page",
     )
+  }
+
+  @Test
+  fun `design reference detail and inert raster are served on canonical routes`() {
+    val (pageCode, page) = get("/compose-m3/compare/$previewId?reference=red-design")
+    assertEquals(200, pageCode)
+    assertTrue(page.contains("id=\"cp-reference-compare\""), "reference detail: $page")
+    assertTrue(page.contains(">Reference</h2>"), "reference lane: $page")
+    assertTrue(page.contains(">Diff</h2>"), "diff lane: $page")
+    assertTrue(page.contains(">Actual</h2>"), "actual lane: $page")
+    assertTrue(page.contains("Source:</strong> figma · revision 7"), "provenance: $page")
+
+    val request =
+      Request.Builder()
+        .url("http://127.0.0.1:${server.port}/compose-m3/reference/red-design.png")
+        .build()
+    client.newCall(request).execute().use { response ->
+      assertEquals(200, response.code)
+      assertEquals("image/png", response.header("Content-Type")?.substringBefore(';'))
+      assertTrue((response.body?.bytes()?.size ?: 0) > 0)
+    }
+    assertEquals(404, get("/compose-m3/reference/missing.png").first)
+    assertEquals(404, get("/compose-m3/compare/$previewId?reference=missing").first)
   }
 
   @Test

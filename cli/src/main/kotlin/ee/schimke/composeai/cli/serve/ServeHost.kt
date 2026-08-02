@@ -17,6 +17,12 @@ interface ServeHost : AutoCloseable {
   /** The whole servable preview set for this session. */
   val previews: List<ServePreview>
 
+  /** Independently-authored design references mapped to [previewId], if this host carries any. */
+  fun designReferencesFor(previewId: String): List<DesignReference> = emptyList()
+
+  /** Canonical PNG bytes for a previously advertised design [referenceId]. */
+  fun designReferenceRaster(referenceId: String): ByteArray? = null
+
   /**
    * The app's declared `@ThemeCatalog` themes — module-global, so the viewer's Theme selector can
    * offer "render this preview under Brand Dark". Non-empty only for a daemon-backed host

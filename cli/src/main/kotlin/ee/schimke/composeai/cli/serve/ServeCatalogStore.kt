@@ -367,6 +367,13 @@ class ServeCatalogStore(
       File(previewsDir, VARIANTS_FILE).writeText(manifest)
     }
 
+    // Design tools are deliberately normalized by the producer to inert PNGs. Fetch only those
+    // declared rasters into the staged catalog, rewrite their paths to server-owned locations,
+    // and retain the source fields as provenance. In particular, source.uri and artifact.path are
+    // never fetched here: an HTML/Figma reference cannot turn catalog refresh into code execution
+    // or an authenticated remote request.
+    writeDesignReferences(catalog.references, base, staging)
+
     // The staged catalog is usable — atomically replace the live dir with it. The delete + rename
     // is near-instant (same filesystem), so the window where `dir` is absent is microseconds, not
     // the multi-second fetch above. From here everything operates on the fresh `dir` as before.
@@ -1003,6 +1010,43 @@ class ServeCatalogStore(
     return if (wrote > 0) figmaDir else null
   }
 
+  private fun writeDesignReferences(
+    references: List<DesignReference>,
+    base: String,
+    staging: File,
+  ) {
+    if (references.isEmpty()) return
+    val seen = HashSet<String>()
+    val accepted = references.mapNotNull { reference ->
+      if (
+        !ServeDesignReferenceStore.isSafeId(reference.id) ||
+          !seen.add(reference.id) ||
+          reference.previewId.isBlank() ||
+          !ServeDesignReferenceStore.isSafeRelativePath(reference.raster.path)
+      ) {
+        return@mapNotNull null
+      }
+      val bytes =
+        runCatching { fetchCatalogAsset("$base${reference.raster.path}") }.getOrNull()
+          ?: return@mapNotNull null
+      val localPath = "${ServeDesignReferenceStore.DIRECTORY}/${reference.id}.png"
+      val file = File(staging, localPath)
+      file.parentFile?.mkdirs()
+      file.writeBytes(bytes)
+      reference.copy(raster = reference.raster.copy(path = localPath))
+    }
+    if (accepted.isEmpty()) return
+    val referenceDir = File(staging, ServeDesignReferenceStore.DIRECTORY)
+    referenceDir.mkdirs()
+    File(referenceDir, ServeDesignReferenceStore.INDEX_FILE)
+      .writeText(
+        json.encodeToString(
+          DesignReferenceManifest.serializer(),
+          DesignReferenceManifest(references = accepted),
+        )
+      )
+  }
+
   /**
    * Minimal mirror of the `design-parity-catalog/v1` schema — only the bits we serve are needed.
    */
@@ -1030,6 +1074,8 @@ class ServeCatalogStore(
      */
     val designParity: String? = null,
     val components: List<Component> = emptyList(),
+    /** Provider-neutral design references, each carrying a canonical PNG for exact comparison. */
+    val references: List<DesignReference> = emptyList(),
     /**
      * Optional presentation hints the system declared (stage surface + hero preview), written by
      * `generate-design-catalog.mjs` from the spec's `display`. The server reads these instead of

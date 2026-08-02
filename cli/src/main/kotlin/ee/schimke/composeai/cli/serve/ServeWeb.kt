@@ -2878,7 +2878,7 @@ object ServeWeb {
     )
   }
 
-  /** Native PNG↔SVG / PNG↔Remote Compose comparison page for one served session. */
+  /** PNG↔native-format and PNG↔design-reference comparison page for one served session. */
   fun comparisonPage(
     moduleLabel: String,
     previews: List<ServePreview>,
@@ -2890,14 +2890,22 @@ object ServeWeb {
     declaredSurface: String? = null,
     hasSvgFor: (String) -> Boolean = { false },
     hasRemoteComposeFor: (String) -> Boolean = { false },
+    referencesFor: (String) -> List<DesignReference> = { emptyList() },
     unfurl: UnfurlMetadata? = null,
   ): String {
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
-    val defaults = previews.filterNot { isNonDefaultState(it) || hasNonDefaultProps(it) }
-    val cards = groupPreviews(defaults)
-    val hasSvg = defaults.any { hasSvgFor(it.id) }
-    val hasRc = defaults.any { hasRemoteComposeFor(it.id) }
-    val defaultFormat = if (hasSvg) "svg" else "rc"
+    // Native-format rows retain the catalog's one-default-card presentation. A design reference,
+    // however, names one exact preview state/props mapping, so that referenced variant must remain
+    // independently visible instead of being folded out with the landing-page variants.
+    val comparablePreviews = previews.filterNot { preview ->
+      (isNonDefaultState(preview) || hasNonDefaultProps(preview)) &&
+        referencesFor(preview.id).isEmpty()
+    }
+    val cards = groupPreviews(comparablePreviews)
+    val hasSvg = comparablePreviews.any { hasSvgFor(it.id) }
+    val hasRc = comparablePreviews.any { hasRemoteComposeFor(it.id) }
+    val hasReference = comparablePreviews.any { referencesFor(it.id).isNotEmpty() }
+    val defaultFormat = if (hasSvg) "svg" else if (hasRc) "rc" else "reference"
     val darkFirst = isDarkFirstSystem(basePath, sessionId, declaredSurface)
     // A viewer deep-link may name a non-default state/props variant that is intentionally folded
     // out of this gallery. Keep every sibling id as an alias on the included component row so the
@@ -2918,11 +2926,26 @@ object ServeWeb {
       return " data-$kind-$theme=\"${WebEscaping.htmlEscape(path(preview, if (kind == "png") "png" else if (kind == "svg") "svg" else "rc"))}\""
     }
 
+    fun referenceAttrs(theme: String, preview: ServePreview?): String {
+      val reference = preview?.let { referencesFor(it.id).firstOrNull() } ?: return ""
+      val raster = "$basePath/reference/${WebEscaping.urlEncodeSegment(reference.id)}.png$q"
+      val detailQuery =
+        linkQuery(token, sessionId, basePath, isPublic).let { query ->
+          listOf(query, "reference=${WebEscaping.urlEncodeSegment(reference.id)}")
+            .filter { it.isNotEmpty() }
+            .joinToString("&")
+        }
+      val detail =
+        "$basePath/compare/${WebEscaping.urlEncodeSegment(preview.id)}${querySuffix(detailQuery)}"
+      return " data-reference-$theme=\"${WebEscaping.htmlEscape(raster)}\"" +
+        " data-reference-detail-$theme=\"${WebEscaping.htmlEscape(detail)}\""
+    }
+
     val rows =
       cards
         .filter { card ->
           listOfNotNull(card.light, card.dark, card.neutral).any { p ->
-            hasSvgFor(p.id) || hasRemoteComposeFor(p.id)
+            hasSvgFor(p.id) || hasRemoteComposeFor(p.id) || referencesFor(p.id).isNotEmpty()
           }
         }
         .joinToString("\n") { card ->
@@ -2944,9 +2967,13 @@ object ServeWeb {
             attrs("rc", "light", card.light, hasRemoteComposeFor) +
               attrs("rc", "dark", card.dark, hasRemoteComposeFor) +
               attrs("rc", "neutral", card.neutral, hasRemoteComposeFor)
+          val referenceAttrs =
+            referenceAttrs("light", card.light) +
+              referenceAttrs("dark", card.dark) +
+              referenceAttrs("neutral", card.neutral)
           """
           <tr class="cp-compare-row" data-label="${WebEscaping.htmlEscape(label)}"
-            data-hay="${WebEscaping.htmlEscape(hay)}" data-preview-ids="${WebEscaping.htmlEscape(ids)}"$pngAttrs$svgAttrs$rcAttrs>
+            data-hay="${WebEscaping.htmlEscape(hay)}" data-preview-ids="${WebEscaping.htmlEscape(ids)}"$pngAttrs$svgAttrs$rcAttrs$referenceAttrs>
             <th scope="row"><a href="$viewer">${WebEscaping.htmlEscape(label)}</a></th>
             <td><div class="cp-compare-shot"><img class="cp-compare-png" alt=""></div></td>
             <td><div class="cp-compare-shot"><img class="cp-compare-vector" alt=""><canvas hidden></canvas></div></td>
@@ -2966,6 +2993,11 @@ object ServeWeb {
         append(
           "<button type=\"button\" class=\"cp-theme-btn\" data-compare-format=\"rc\" " +
             "aria-pressed=\"${defaultFormat == "rc"}\">PNG ↔ Remote Compose</button>"
+        )
+      if (hasReference)
+        append(
+          "<button type=\"button\" class=\"cp-theme-btn\" data-compare-format=\"reference\" " +
+            "aria-pressed=\"${defaultFormat == "reference"}\">PNG ↔ Design reference</button>"
         )
     }
     val themeControls =
@@ -2997,7 +3029,8 @@ object ServeWeb {
     val rootAttrs =
       "data-default-format=\"$defaultFormat\" data-default-theme=\"${if (darkFirst) "dark" else "light"}\" " +
         "data-theme-key=\"${WebEscaping.htmlEscape(themeStorageKey(sessionId, basePath))}\" " +
-        "data-has-svg=\"${if (hasSvg) "1" else "0"}\" data-has-rc=\"${if (hasRc) "1" else "0"}\""
+        "data-has-svg=\"${if (hasSvg) "1" else "0"}\" data-has-rc=\"${if (hasRc) "1" else "0"}\" " +
+        "data-has-reference=\"${if (hasReference) "1" else "0"}\""
 
     return document(
       title = "$moduleLabel — format comparison",
@@ -3018,6 +3051,53 @@ object ServeWeb {
             <span id="cp-compare-count" class="cp-count" role="status"></span>
           </div>
           $empty
+        </div>
+        ${scriptTag("format-compare.js")}
+        """
+          .trimIndent(),
+    )
+  }
+
+  /** Focused design handoff view: independent reference, marked diff, and actual Compose output. */
+  fun referenceComparisonPage(
+    moduleLabel: String,
+    preview: ServePreview,
+    reference: DesignReference,
+    token: String,
+    sessionId: String? = null,
+    basePath: String = "",
+    isPublic: Boolean = false,
+    trust: String? = null,
+    unfurl: UnfurlMetadata? = null,
+  ): String {
+    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    val actual = "$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png$q"
+    val raster = "$basePath/reference/${WebEscaping.urlEncodeSegment(reference.id)}.png$q"
+    val source = WebEscaping.htmlEscape(reference.source.provider)
+    val revision =
+      reference.source.revision
+        ?.takeIf { it.isNotBlank() }
+        ?.let { " · revision ${WebEscaping.htmlEscape(it)}" }
+        .orEmpty()
+    return document(
+      title = "${reference.label} — design comparison",
+      unfurlTitle = "$moduleLabel design comparison",
+      unfurlDescription = "Reference, diff, and Compose output for ${preview.id}",
+      unfurl = unfurl,
+      body =
+        """
+        <div id="cp-reference-compare" data-reference="$raster" data-actual="$actual">
+          <h1 class="cp-head"><a href="$basePath/compare$q">← comparisons</a>${trustBadge(trust)}</h1>
+          <p class="cp-sub">${WebEscaping.htmlEscape(reference.label)} · ${WebEscaping.htmlEscape(preview.id)}</p>
+          <div class="cp-reference-meta"><strong>Source:</strong> $source$revision</div>
+          <div class="cp-reference-grid">
+            <section><h2>Reference</h2><div class="cp-compare-shot"><img src="$raster" alt="Design reference"></div></section>
+            <section><h2>Diff</h2><div class="cp-compare-shot"><canvas class="cp-reference-diff" aria-label="Highlighted pixel difference"></canvas></div></section>
+            <section><h2>Actual</h2><div class="cp-compare-shot"><img src="$actual" alt="Actual Compose preview"></div></section>
+          </div>
+          <p class="cp-reference-result" role="status">comparing…</p>
+          <label class="cp-overlay-control">Overlay <input class="cp-overlay-range" type="range" min="0" max="100" value="50"><span>50%</span></label>
+          <div class="cp-reference-overlay"><img src="$raster" alt=""><img src="$actual" alt=""></div>
         </div>
         ${scriptTag("format-compare.js")}
         """

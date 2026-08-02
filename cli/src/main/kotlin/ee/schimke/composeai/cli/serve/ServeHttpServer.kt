@@ -605,6 +605,10 @@ class ServeHttpServer(
         get("/{system}/") { handleLanding(sessionInPath = true) }
         get("/compare") { handleFormatComparison(sessionInPath = false) }
         get("/{system}/compare") { handleFormatComparison(sessionInPath = true) }
+        get("/compare/{name}") { handleReferenceComparison(sessionInPath = false) }
+        get("/{system}/compare/{name}") { handleReferenceComparison(sessionInPath = true) }
+        get("/reference/{name}") { handleDesignReferenceAsset(sessionInPath = false) }
+        get("/{system}/reference/{name}") { handleDesignReferenceAsset(sessionInPath = true) }
 
         post("/refresh") { handleCatalogRefresh(sessionInPath = false) }
         post("/{system}/refresh") { handleCatalogRefresh(sessionInPath = true) }
@@ -1151,7 +1155,9 @@ class ServeHttpServer(
           basePath = basePath,
           hasFormatComparison =
             renderHost.previews.any { preview ->
-              renderHost.hasSvgExportFor(preview.id) || renderHost.hasRemoteComposeDoc(preview.id)
+              renderHost.hasSvgExportFor(preview.id) ||
+                renderHost.hasRemoteComposeDoc(preview.id) ||
+                renderHost.designReferencesFor(preview.id).isNotEmpty()
             },
           version = BUNDLE_VERSION,
           // Catalog provenance (delivery branch, generation date, tool versions) for the strip
@@ -1230,10 +1236,12 @@ class ServeHttpServer(
     ) { renderHost ->
       val comparable =
         renderHost.previews.any { preview ->
-          renderHost.hasSvgExportFor(preview.id) || renderHost.hasRemoteComposeDoc(preview.id)
+          renderHost.hasSvgExportFor(preview.id) ||
+            renderHost.hasRemoteComposeDoc(preview.id) ||
+            renderHost.designReferencesFor(preview.id).isNotEmpty()
         }
       if (!comparable) {
-        respondNotFoundHtml("This session has no SVG or Remote Compose formats to compare.")
+        respondNotFoundHtml("This session has no native formats or design references to compare.")
         return@withLeasedSession
       }
       markGeneration("static-page", pageCacheControl())
@@ -1249,6 +1257,62 @@ class ServeHttpServer(
           declaredSurface = catalogBundleHost(renderHost)?.stageSurface,
           hasSvgFor = renderHost::hasSvgExportFor,
           hasRemoteComposeFor = renderHost::hasRemoteComposeDoc,
+          referencesFor = renderHost::designReferencesFor,
+          unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+        ),
+        ContentType.Text.Html,
+      )
+    }
+  }
+
+  /** Canonical, inert PNG for a design reference. Original HTML/Figma sources are never served. */
+  private suspend fun RoutingContext.handleDesignReferenceAsset(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    val sessionId = selectedSessionId(sessionInPath)
+    val referenceId = call.parameters["name"]?.removeSuffix(".png").orEmpty()
+    withLeasedSession(sessionId, onMissing = { call.respond(HttpStatusCode.NotFound) }) { renderHost
+      ->
+      val bytes = renderHost.designReferenceRaster(referenceId)
+      if (bytes == null) {
+        call.respond(HttpStatusCode.NotFound)
+      } else {
+        markGeneration("design-reference", "private, max-age=300")
+        call.respondBytes(bytes, ContentType.Image.PNG)
+      }
+    }
+  }
+
+  /** Focused Reference / Diff / Actual comparison for one exact preview-reference mapping. */
+  private suspend fun RoutingContext.handleReferenceComparison(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    val sessionId = selectedSessionId(sessionInPath)
+    val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
+    val previewId = call.parameters["name"].orEmpty()
+    val requestedReference = call.request.queryParameters["reference"]
+    withLeasedSession(
+      sessionId,
+      onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
+    ) { renderHost ->
+      val preview = renderHost.previews.firstOrNull { it.id == previewId }
+      val references = renderHost.designReferencesFor(previewId)
+      val reference =
+        if (requestedReference != null) references.firstOrNull { it.id == requestedReference }
+        else references.firstOrNull()
+      if (preview == null || reference == null) {
+        respondNotFoundHtml("That preview has no matching design reference.")
+        return@withLeasedSession
+      }
+      markGeneration("static-page", pageCacheControl())
+      call.respondText(
+        ServeWeb.referenceComparisonPage(
+          moduleLabel = renderHost.label,
+          preview = preview,
+          reference = reference,
+          token = token,
+          sessionId = webSessionId,
+          basePath = basePath,
+          isPublic = isPublic,
+          trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
         ),
         ContentType.Text.Html,

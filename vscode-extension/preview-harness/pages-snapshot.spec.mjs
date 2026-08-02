@@ -47,7 +47,16 @@ const serveAssetsDir = resolve(
 // a realistic size instead of collapsing on broken images.
 const renderPlaceholder = resolve(pagesDir, "_render-placeholder.png");
 const renderSvgPlaceholder = resolve(pagesDir, "_render-placeholder.svg");
-const IMAGE_LANES = ["**/render/**", "**/hero/**"];
+const IMAGE_LANES = ["**/render/**", "**/hero/**", "**/reference/**"];
+const REFERENCE_PLACEHOLDER = `
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="420" viewBox="0 0 200 420">
+  <rect width="200" height="420" rx="20" fill="#f4efff"/>
+  <rect x="20" y="28" width="160" height="42" rx="12" fill="#7657b5"/>
+  <rect x="20" y="92" width="116" height="18" rx="9" fill="#5f5968"/>
+  <rect x="20" y="132" width="160" height="104" rx="18" fill="#dfd2f5"/>
+  <rect x="20" y="258" width="160" height="64" rx="18" fill="#ffffff"/>
+  <circle cx="100" cy="378" r="18" fill="#7657b5"/>
+</svg>`;
 const SERVE_ASSETS = [
     ["serve.css", "text/css"],
     ["viewer.js", "text/javascript"],
@@ -106,7 +115,10 @@ for (const fixture of listPageFixtures()) {
         test(`snapshot · ${fixture} · ${theme}`, async ({ page }) => {
             // The comparison fixture exercises production CSS and JS (including its asynchronous
             // scorer), while older static-page baselines retain their historical capture contract.
-            if (fixture === "serve-format-compare") {
+            if (
+                fixture === "serve-format-compare" ||
+                fixture === "serve-reference-compare"
+            ) {
                 for (const [name, contentType] of SERVE_ASSETS) {
                     await page.route(`**/assets/serve/**/${name}`, (route) =>
                         route.fulfill({
@@ -118,6 +130,12 @@ for (const fixture of listPageFixtures()) {
             }
             for (const lane of IMAGE_LANES) {
                 await page.route(lane, (route) => {
+                    if (lane.includes("reference")) {
+                        return route.fulfill({
+                            body: REFERENCE_PLACEHOLDER,
+                            contentType: "image/svg+xml",
+                        });
+                    }
                     const svg = new URL(route.request().url()).pathname.endsWith(".svg");
                     return route.fulfill({
                         path: svg ? renderSvgPlaceholder : renderPlaceholder,
@@ -152,6 +170,16 @@ for (const fixture of listPageFixtures()) {
                                 cell.textContent !== "waiting…" &&
                                 cell.textContent !== "comparing…",
                         ),
+                    )
+                    .catch(() => {});
+            }
+            if (fixture === "serve-reference-compare") {
+                await page
+                    .waitForFunction(
+                        () =>
+                            !document
+                                .querySelector(".cp-reference-result")
+                                .textContent.includes("comparing"),
                     )
                     .catch(() => {});
             }

@@ -197,11 +197,105 @@
     });
   }
 
+  function imageDimensions(image) {
+    return { width: image.naturalWidth || image.width, height: image.naturalHeight || image.height };
+  }
+
+  function scoreImageUrls(referenceUrl, candidateUrl) {
+    return Promise.all([loadImage(referenceUrl), loadImage(candidateUrl)]).then(function (images) {
+      var referenceImage = images[0];
+      var candidateImage = images[1];
+      var dimensions = imageDimensions(referenceImage);
+      var candidateDimensions = imageDimensions(candidateImage);
+      if (dimensions.width !== candidateDimensions.width || dimensions.height !== candidateDimensions.height) {
+        throw new Error("image dimensions differ");
+      }
+      var scale = Math.min(1, MAX_SIDE / Math.max(dimensions.width, dimensions.height));
+      var width = Math.max(1, Math.round(dimensions.width * scale));
+      var height = Math.max(1, Math.round(dimensions.height * scale));
+      var reference = grayFromDraw(function (context) {
+        context.drawImage(referenceImage, 0, 0, width, height);
+      }, width, height);
+      var candidate = grayFromDraw(function (context) {
+        context.drawImage(candidateImage, 0, 0, width, height);
+      }, width, height);
+      return scorePlanes(reference, candidate, width, height);
+    });
+  }
+
+  function compareImageUrls(referenceUrl, actualUrl, canvas) {
+    return Promise.all([loadImage(referenceUrl), loadImage(actualUrl)]).then(function (images) {
+      var dimensions = imageDimensions(images[0]);
+      var actualDimensions = imageDimensions(images[1]);
+      if (dimensions.width !== actualDimensions.width || dimensions.height !== actualDimensions.height) {
+        throw new Error("image dimensions differ");
+      }
+      canvas.width = dimensions.width;
+      canvas.height = dimensions.height;
+      var context = canvas.getContext("2d", { willReadFrequently: true });
+      context.drawImage(images[0], 0, 0);
+      var reference = context.getImageData(0, 0, dimensions.width, dimensions.height);
+      context.clearRect(0, 0, dimensions.width, dimensions.height);
+      context.drawImage(images[1], 0, 0);
+      var actual = context.getImageData(0, 0, dimensions.width, dimensions.height);
+      var diff = context.createImageData(dimensions.width, dimensions.height);
+      var changed = 0;
+      for (var i = 0; i < reference.data.length; i += 4) {
+        var delta = Math.max(
+          Math.abs(reference.data[i] - actual.data[i]),
+          Math.abs(reference.data[i + 1] - actual.data[i + 1]),
+          Math.abs(reference.data[i + 2] - actual.data[i + 2]),
+          Math.abs(reference.data[i + 3] - actual.data[i + 3])
+        );
+        if (delta > 3) {
+          changed++;
+          diff.data[i] = 229;
+          diff.data[i + 1] = 46;
+          diff.data[i + 2] = 115;
+          diff.data[i + 3] = Math.min(255, 96 + delta);
+        }
+      }
+      context.clearRect(0, 0, dimensions.width, dimensions.height);
+      context.putImageData(diff, 0, 0);
+      return scoreImageUrls(referenceUrl, actualUrl).then(function (score) {
+        return { score: score, changed: changed, pixels: dimensions.width * dimensions.height };
+      });
+    });
+  }
+
   window.ComposePreviewCompare = {
     loadImage: loadImage,
     scoreSvgUrls: scoreSvgUrls,
-    scoreCanvas: scoreCanvas
+    scoreCanvas: scoreCanvas,
+    scoreImageUrls: scoreImageUrls,
+    compareImageUrls: compareImageUrls
   };
+
+  var referenceRoot = document.getElementById("cp-reference-compare");
+  if (referenceRoot) {
+    var referenceUrl = referenceRoot.getAttribute("data-reference");
+    var actualUrl = referenceRoot.getAttribute("data-actual");
+    var diffCanvas = referenceRoot.querySelector(".cp-reference-diff");
+    var resultText = referenceRoot.querySelector(".cp-reference-result");
+    compareImageUrls(referenceUrl, actualUrl, diffCanvas).then(function (result) {
+      var changedPercent = result.pixels ? result.changed * 100 / result.pixels : 0;
+      resultText.textContent = result.score.toFixed(1) + "% structural match · " +
+        changedPercent.toFixed(2) + "% pixels changed";
+    }, function (error) {
+      resultText.textContent = error.message === "image dimensions differ"
+        ? "Unavailable · reference and actual dimensions differ"
+        : "Comparison unavailable";
+    });
+    var overlayRange = referenceRoot.querySelector(".cp-overlay-range");
+    var overlayActual = referenceRoot.querySelector(".cp-reference-overlay img:last-child");
+    var overlayValue = referenceRoot.querySelector(".cp-overlay-control span");
+    function applyOverlay() {
+      overlayActual.style.opacity = String(parseInt(overlayRange.value, 10) / 100);
+      overlayValue.textContent = overlayRange.value + "%";
+    }
+    overlayRange.addEventListener("input", applyOverlay);
+    applyOverlay();
+  }
 
   var root = document.getElementById("cp-compare");
   if (!root) return;
@@ -219,6 +313,7 @@
   var params = new URLSearchParams(location.search);
   if (params.get("format") === "rc" && root.getAttribute("data-has-rc") === "1") format = "rc";
   if (params.get("format") === "svg" && root.getAttribute("data-has-svg") === "1") format = "svg";
+  if (params.get("format") === "reference" && root.getAttribute("data-has-reference") === "1") format = "reference";
   try {
     var remembered = localStorage.getItem(root.getAttribute("data-theme-key"));
     if (remembered === "light" || remembered === "dark") theme = remembered;
@@ -319,18 +414,24 @@
     png.alt = row.getAttribute("data-label") + " rendered PNG";
     score.textContent = "comparing…";
     score.className = "cp-compare-score";
-    if (format === "svg") {
+    if (format === "svg" || format === "reference") {
       vector.hidden = false;
       canvas.hidden = true;
       vector.src = candidateUrl;
-      vector.alt = row.getAttribute("data-label") + " SVG";
+      vector.alt = row.getAttribute("data-label") + (format === "svg" ? " SVG" : " design reference");
+      vector.title = format === "reference" ? "Open Reference / Diff / Actual" : "";
+      vector.onclick = format === "reference"
+        ? function () { location.href = sourceFor(row, "reference-detail", variant); }
+        : null;
     } else {
       vector.hidden = true;
       canvas.hidden = false;
     }
     var result = format === "svg"
       ? scoreSvgUrls(pngUrl, candidateUrl)
-      : renderRc(row, pngUrl, candidateUrl);
+      : format === "reference"
+        ? scoreImageUrls(candidateUrl, pngUrl)
+        : renderRc(row, pngUrl, candidateUrl);
     return result.then(function (percent) {
       if (run !== sequence) return null;
       row.setAttribute("data-score", String(percent));
