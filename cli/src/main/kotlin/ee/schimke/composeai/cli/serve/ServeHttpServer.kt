@@ -227,6 +227,9 @@ class ServeHttpServer(
 
   private val renderSemaphore = Semaphore(renderSlots)
 
+  /** Catalog ids with a manual branch check in flight; public callers coalesce at this boundary. */
+  private val catalogRefreshesInFlight = ConcurrentHashMap.newKeySet<String>()
+
   /**
    * Readiness latch for `/readyz` (the rolling-update gate). Unlike `/healthz` — a static "ok" that
    * only proves the HTTP listener is up — readiness is `true` only once a representative preview
@@ -676,7 +679,22 @@ class ServeHttpServer(
       )
       return
     }
-    val result = withContext(Dispatchers.IO) { refresh(system) }
+    if (!catalogRefreshesInFlight.add(system)) {
+      call.response.headers.append(HttpHeaders.CacheControl, "no-store")
+      call.response.headers.append(HttpHeaders.RetryAfter, "2")
+      call.respondText(
+        "{\"status\":\"checking\"}",
+        ContentType.Application.Json,
+        HttpStatusCode.Accepted,
+      )
+      return
+    }
+    val result =
+      try {
+        withContext(Dispatchers.IO) { refresh(system) }
+      } finally {
+        catalogRefreshesInFlight.remove(system)
+      }
     val (status, code) =
       when (result) {
         CatalogRefreshResult.UPDATED -> "updated" to HttpStatusCode.OK

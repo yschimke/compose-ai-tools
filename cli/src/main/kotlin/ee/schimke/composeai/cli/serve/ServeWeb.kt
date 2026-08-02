@@ -355,7 +355,8 @@ object ServeWeb {
             window.location.reload();
             return;
           }
-          status.textContent = result.status === 'current' ? 'up to date' : 'check failed';
+          status.textContent = result.status === 'current' ? 'up to date' :
+            result.status === 'checking' ? 'check in progress' : 'check failed';
         } catch (_) {
           status.textContent = 'check failed';
         }
