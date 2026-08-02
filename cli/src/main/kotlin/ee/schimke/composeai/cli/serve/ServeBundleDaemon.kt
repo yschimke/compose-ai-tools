@@ -639,6 +639,8 @@ internal object ServeBundleDaemon {
    */
   internal fun shouldPrecedeDaemonSidecar(coordinate: BundleReader.ClasspathEntry.Maven): Boolean =
     coordinate.group.startsWith("androidx.") ||
+      (coordinate.group == "org.jetbrains.compose.components" &&
+        coordinate.artifact.startsWith("components-resources")) ||
       (coordinate.group == "org.jetbrains.kotlinx" &&
         coordinate.artifact.startsWith("kotlinx-coroutines"))
 
@@ -648,12 +650,15 @@ internal object ServeBundleDaemon {
    * only the resolved files (the coordinates were dropped during catalog resolution). Both the
    * Maven-local (`…/androidx/compose/…`) and Gradle-cache (`…/androidx.compose.material3/…`)
    * layouts put the dotted/slashed group right after a path separator, so a `/androidx` segment
-   * identifies the AndroidX graph and `kotlinx-coroutines` the coroutines artifacts — the two
-   * namespaces `UserClassLoaderHolder` delegates to the daemon parent.
+   * identifies the AndroidX graph, `components-resources` the Compose resources runtime, and
+   * `kotlinx-coroutines` the coroutines artifacts — the namespaces `UserClassLoaderHolder`
+   * delegates to the daemon parent.
    */
   internal fun jarPrecedesDaemonSidecar(jar: File): Boolean {
     val path = jar.path.replace('\\', '/')
-    return path.contains("/androidx") || path.contains("kotlinx-coroutines")
+    return path.contains("/androidx") ||
+      path.contains("components-resources") ||
+      path.contains("kotlinx-coroutines")
   }
 
   private data class ResolvedBundleDependency(

@@ -165,11 +165,10 @@ class UserClassLoaderHolder(
    *
    * **Shared process-static bridges are forced to the parent even when the child's URLs carry
    * them.** [mustDelegateToParent] lists the framework packages *plus*
-   * `ee.schimke.composeai.daemon.*` and `ee.schimke.composeai.overrides.*` — the latter is the
-   * `previewOverride*` named-override runtime, whose `PreviewOverrideController` static the daemon
-   * seeds and the preview reads. On the bundle-backed live daemon the runtime jar is on the child's
-   * URLs, so a bare child-first lookup would load a *second* copy and split the shared static; the
-   * explicit delegation keeps it a singleton. See [mustDelegateToParent] for the full rationale.
+   * `org.jetbrains.compose.resources.*`, `ee.schimke.composeai.daemon.*`, and
+   * `ee.schimke.composeai.overrides.*`. These packages expose composition locals or process-static
+   * bridges shared between the daemon and preview, so a child-loaded copy would split that shared
+   * state. See [mustDelegateToParent] for the full rationale.
    *
    * **Loaded-class cache discipline.** The JVM's `findLoadedClass` is checked first so a user class
    * loaded via the child stays the same `Class<?>` instance for repeated lookups within the
@@ -216,12 +215,14 @@ class UserClassLoaderHolder(
      *    Skiko, etc. Punching holes in the JDK packages would break the JVM's bootstrap invariants,
      *    and the Compose/AndroidX runtime must be the *one* copy the parent bootstrapped
      *    (child-loading it would fail on classloader-identity skew).
-     * 2. **Process-static bridges shared with the daemon** — `ee.schimke.composeai.daemon.*` (the
-     *    cross-classloader handoff queues) and `ee.schimke.composeai.overrides.*` (the
-     *    `previewOverride*` named-override runtime: `PreviewOverrideController` is a process-static
-     *    the daemon's connector seeds *before* the preview composes, and the preview reads it back
-     *    during composition). These only work when the daemon and the user preview see the **same**
-     *    `Class<?>` — one shared static, not two per-classloader copies.
+     * 2. **Composition locals / process-static bridges shared with the daemon** —
+     *    `org.jetbrains.compose.resources.*` (the `LocalResourceReader` provided by the renderer),
+     *    `ee.schimke.composeai.daemon.*` (the cross-classloader handoff queues), and
+     *    `ee.schimke.composeai.overrides.*` (the `previewOverride*` named-override runtime:
+     *    `PreviewOverrideController` is a process-static the daemon's connector seeds *before* the
+     *    preview composes, and the preview reads it back during composition). These only work when
+     *    the daemon and the user preview see the **same** `Class<?>` — one shared static, not two
+     *    per-classloader copies.
      *
      * The overrides runtime is the load-bearing case for the **bundle-backed live daemon**
      * (`ServeBundleDaemon`, the engine behind `--catalogs` `liveBundle` / `preview.coo.ee`): there
@@ -246,6 +247,7 @@ class UserClassLoaderHolder(
         name.startsWith("org.robolectric.") ||
         name.startsWith("com.github.takahirom.roborazzi.") ||
         name.startsWith("org.jetbrains.skia.") ||
+        name.startsWith("org.jetbrains.compose.resources.") ||
         name.startsWith("ee.schimke.composeai.daemon.") ||
         name.startsWith("ee.schimke.composeai.overrides.")
 
