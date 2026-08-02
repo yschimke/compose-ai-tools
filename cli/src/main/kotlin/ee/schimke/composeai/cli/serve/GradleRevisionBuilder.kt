@@ -53,6 +53,7 @@ class GradleRevisionBuilder(
         ServePreview(
           id = it.id,
           label = it.functionName.ifBlank { it.id },
+          dataProductKinds = it.dataProducts.mapTo(LinkedHashSet()) { product -> product.kind },
           supportsFocus = focus,
           supportsGestures = gestures,
         )

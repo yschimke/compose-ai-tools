@@ -2438,6 +2438,7 @@ class ServeHttpServer(
           // the SVG control on this preview's actual availability rather than the session-wide
           // flag.
           hasSvgExport = renderHost.hasSvgExportFor(preview.id),
+          hasScrollExport = renderHost.hasScrollExportFor(preview.id),
           hasLiveStream = renderHost.hasLiveStream,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           // Per-preview: offer the in-browser Remote Compose canvas lane only when this preview
@@ -2555,11 +2556,11 @@ class ServeHttpServer(
           // Wear/watch surfaces are always dark. Ignore a generic or hand-authored uiMode query so
           // it cannot wake the live daemon and produce another render for an unsupported mode.
           val overrides = parsed.overrides
+          val scroll =
+            call.request.queryParameters["scroll"]?.lowercase() in setOf("long", "full", "page")
           if (wantSvg) {
             // `?scroll=long` (or `full`/`page`) asks for the full-page export of a scrolling
             // preview (compose/figma-svg-long) instead of the viewport-sized one.
-            val scroll =
-              call.request.queryParameters["scroll"]?.lowercase() in setOf("long", "full", "page")
             // `?mode=web` serves a web/document variant: the base64 `@font-face` blocks are swapped
             // for an external Google Fonts `@import`, so a browser viewing the `.svg` directly
             // pulls
@@ -2582,7 +2583,9 @@ class ServeHttpServer(
           // Catalog-host theme cache hits are memory reads and must not be rejected merely because
           // unrelated live renders occupy every global slot. [render] rechecks after admission to
           // close the race with a render that completes between these two calls.
-          val cached = renderHost.cachedRender(previewId, overrides)
+          // A full-page request is a distinct daemon data product; a cached viewport PNG cannot
+          // satisfy it even when the preview + overrides key is otherwise identical.
+          val cached = if (scroll) null else renderHost.cachedRender(previewId, overrides)
           val pureThemeProvider =
             overrides.themeProvider?.takeIf {
               overrides == PreviewOverrides(themeProvider = it) &&
@@ -2623,7 +2626,8 @@ class ServeHttpServer(
                     null
                   } else {
                     try {
-                      renderHost.render(previewId, overrides)
+                      if (scroll) renderHost.renderScrollPng(previewId, overrides)
+                      else renderHost.render(previewId, overrides)
                     } finally {
                       renderSemaphore.release()
                       if (needsSerialThemePermit) unleasedThemeSemaphore.release()

@@ -330,11 +330,11 @@
     }
     return parts.join("&");
   }
-  // "Full page (scroll)" appends `scroll=long` — but only to the SVG lane (the raster PNG has no
-  // full-page export), so the toggle scopes to `.svg` and leaves the PNG URL untouched.
+  // "Full page (scroll)" appends `scroll=long` to both snapshot formats. The server routes SVG to
+  // compose/figma-svg-long and PNG to render/scroll/long.
   var scrollLong = document.getElementById("cp-scroll-long");
   function withScroll(ext, qs) {
-    if (ext === ".svg" && scrollLong && scrollLong.checked) {
+    if (scrollLong && scrollLong.checked) {
       return qs ? qs + "&scroll=long" : "scroll=long";
     }
     return qs;
@@ -1134,12 +1134,10 @@
       }
     });
   }
-  // "Full page (scroll)" re-renders the on-screen SVG when it's the active format, and always
-  // reshapes the copyable/downloadable SVG export URL (withScroll scopes it to the `.svg` lane).
+  // "Full page (scroll)" re-renders the active snapshot format and reshapes both export URLs.
   if (scrollLong) {
     scrollLong.addEventListener("change", function () {
-      if (snapshotExt === ".svg") refreshSnapshot();
-      else refreshLinks();
+      refreshSnapshot();
     });
   }
   // The live-only overlay toggles (talkBack / touchOverlay) are meaningful only while the daemon

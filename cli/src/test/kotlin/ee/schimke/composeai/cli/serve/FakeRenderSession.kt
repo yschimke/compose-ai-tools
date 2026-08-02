@@ -3,6 +3,8 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.DataFetchParams
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
+import ee.schimke.composeai.daemon.protocol.DataProductCapability
+import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.daemon.protocol.DataSubscribeResult
 import ee.schimke.composeai.daemon.protocol.ExtensionsDisableResult
 import ee.schimke.composeai.daemon.protocol.ExtensionsEnableResult
@@ -116,6 +118,9 @@ internal class FakeRenderSession(
    */
   val scrollFetchCount = AtomicInteger(0)
   @Volatile var lastScrollFetchParams: JsonElement? = null
+
+  val scrollPngFetchCount = AtomicInteger(0)
+  @Volatile var lastScrollPngFetchParams: JsonElement? = null
 
   /** Extension ids passed to [enableExtensions], in call order — for assertions. */
   val enabledExtensionIds = CopyOnWriteArrayList<String>()
@@ -338,6 +343,18 @@ internal class FakeRenderSession(
         path = file.absolutePath,
       )
     }
+    if (kind == ServeRenderHost.SCROLL_LONG_KIND) {
+      scrollPngFetchCount.incrementAndGet()
+      lastScrollPngFetchParams = params
+      val o =
+        params?.jsonObject?.get(DataFetchParams.PARAM_OVERRIDES)?.let {
+          Json.decodeFromJsonElement(PreviewOverrides.serializer(), it)
+        }
+      val file = File(renderRoot, "scroll-long/$previewId.png")
+      file.parentFile.mkdirs()
+      file.writeText("png-long:$previewId:${o?.uiMode}:${o?.localeTag}:${o?.device}")
+      return DataFetchResult(kind = kind, schemaVersion = 1, path = file.absolutePath)
+    }
     if (kind == ComposeSemanticsProduct.KIND) {
       val file = File(renderRoot, "$previewId/${ComposeSemanticsProduct.FILE}")
       return DataFetchResult(
@@ -376,7 +393,26 @@ internal class FakeRenderSession(
       it in unknownExtensionIds || (!figmaSvgAvailable && it in figmaKinds)
     }
     val enabled = ids - unknown.toSet()
-    return ExtensionsEnableResult(newlyEnabled = enabled, unknown = unknown)
+    val dataProducts =
+      if (ServeRenderHost.SCROLL_EXTENSION_ID in enabled) {
+        listOf(
+          DataProductCapability(
+            kind = ServeRenderHost.SCROLL_LONG_KIND,
+            schemaVersion = 1,
+            transport = DataProductTransport.PATH,
+            attachable = false,
+            fetchable = true,
+            requiresRerender = true,
+          )
+        )
+      } else {
+        emptyList()
+      }
+    return ExtensionsEnableResult(
+      newlyEnabled = enabled,
+      unknown = unknown,
+      dataProducts = dataProducts,
+    )
   }
 
   override fun disableExtensions(

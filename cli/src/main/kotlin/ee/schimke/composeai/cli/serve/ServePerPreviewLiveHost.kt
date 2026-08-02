@@ -125,6 +125,17 @@ class ServePerPreviewLiveHost(
   override fun hasSvgExportFor(previewId: String): Boolean =
     hasSvgExport && (previewId in alias || baked.hasSvgExportFor(previewId))
 
+  override val hasScrollExport: Boolean = previews.any {
+    it.id in alias && ServeRenderHost.SCROLL_LONG_KIND in it.dataProductKinds
+  }
+
+  override fun hasScrollExportFor(previewId: String): Boolean =
+    previewId in alias &&
+      previews
+        .firstOrNull { it.id == previewId }
+        ?.dataProductKinds
+        ?.contains(ServeRenderHost.SCROLL_LONG_KIND) == true
+
   /**
    * Ordinary browsing serves the baked catalog PNG; an override the baked PNG can't represent
    * routes to that preview's own daemon. An unmapped id, or one whose per-preview daemon can't be
@@ -141,6 +152,20 @@ class ServePerPreviewLiveHost(
         ?: return if (previewId in liveOnlyPreviewIds) RenderOutcome.NotFound
         else baked.render(previewId, overrides)
     return live.render(daemonId, overrides)
+  }
+
+  /** Full-page raster capture is not baked; route a mapped preview to its own daemon. */
+  override fun renderScrollPng(previewId: String, overrides: PreviewOverrides): RenderOutcome {
+    val daemonId = alias[previewId] ?: return RenderOutcome.NotFound
+    val live = resolveLive(daemonId) ?: return RenderOutcome.NotFound
+    return live.renderScrollPng(daemonId, overrides)
+  }
+
+  /** Full-page vector capture follows the same per-preview daemon route. */
+  override fun renderScrollSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
+    val daemonId = alias[previewId] ?: return SvgOutcome.NotFound
+    val live = resolveLive(daemonId) ?: return SvgOutcome.NotFound
+    return live.renderScrollSvg(daemonId, overrides)
   }
 
   /**

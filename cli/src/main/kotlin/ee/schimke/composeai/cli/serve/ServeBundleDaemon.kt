@@ -498,6 +498,7 @@ internal object ServeBundleDaemon {
       ServePreview(
         id = it.id,
         label = it.functionName.ifBlank { it.id },
+        dataProductKinds = it.dataProducts.mapTo(LinkedHashSet()) { product -> product.kind },
         overrides = readOverrideSidecar(previewsDir, it.id, fileSystem),
         remoteComposeKnobs = readRemoteComposeSidecar(previewsDir, it.id, fileSystem),
         supportsFocus = focus,

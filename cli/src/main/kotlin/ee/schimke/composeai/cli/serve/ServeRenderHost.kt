@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.daemon.protocol.DataFetchParams
+import ee.schimke.composeai.daemon.protocol.ExtensionsEnableResult
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
@@ -56,6 +57,8 @@ data class ServePreview(
   val label: String,
   /** Delivery transports available for this preview. Tier 1 is always [PreviewMode.SNAPSHOT]. */
   val modes: List<PreviewMode> = listOf(PreviewMode.SNAPSHOT),
+  /** Data products declared for this preview in `previews.json`. */
+  val dataProductKinds: Set<String> = emptySet(),
   /**
    * The author-declared editable knobs this preview exposed via `previewOverride*` (the
    * `compose/overrides` payload). Populated from a bundle's `previews/<id>.overrides.json` sidecar
@@ -292,18 +295,34 @@ internal constructor(
   // `hasSvgExport` on whether the daemon actually has them (a backend without figma-svg reports
   // them in `unknown`), so a non-figma backend cleanly offers no SVG rather than dead-ending in a
   // 500. Best-effort: an enable RPC failure disables the export, it doesn't break the host.
-  override val hasSvgExport: Boolean =
+  private val exportEnableResult: ExtensionsEnableResult =
     runCatching {
-        val result =
-          session.enableExtensions(
-            listOf(ComposeFigmaSvgProduct.KIND, ComposeFigmaSvgProduct.KIND_LONG)
-          )
-        ComposeFigmaSvgProduct.KIND !in result.unknown
+        session.enableExtensions(
+          listOf(ComposeFigmaSvgProduct.KIND, ComposeFigmaSvgProduct.KIND_LONG, SCROLL_EXTENSION_ID)
+        )
       }
       .getOrElse { e ->
-        onLog("figma-svg export unavailable: enable failed: ${e.message}")
-        false
+        onLog("full-page exports unavailable: enable failed: ${e.message}")
+        ExtensionsEnableResult(
+          unknown =
+            listOf(
+              ComposeFigmaSvgProduct.KIND,
+              ComposeFigmaSvgProduct.KIND_LONG,
+              SCROLL_EXTENSION_ID,
+            )
+        )
       }
+
+  override val hasSvgExport: Boolean = ComposeFigmaSvgProduct.KIND !in exportEnableResult.unknown
+
+  override val hasScrollExport: Boolean =
+    SCROLL_EXTENSION_ID !in exportEnableResult.unknown &&
+      exportEnableResult.dataProducts.any { it.kind == SCROLL_LONG_KIND }
+
+  override fun hasScrollExportFor(previewId: String): Boolean =
+    hasScrollExport &&
+      previews.firstOrNull { it.id == previewId }?.dataProductKinds?.contains(SCROLL_LONG_KIND) ==
+        true
 
   // The one-handed gesture override is honoured only by the Android (Robolectric) backend — the
   // desktop backend ignores `overrides.gestures`. Read the daemon's advertised capabilities so the
@@ -355,6 +374,9 @@ internal constructor(
 
   // The full-page (scrolling) figma-svg counterpart of [svgCache], keyed the same way.
   private val scrollSvgCache = LruByteCache(MAX_CACHE_ENTRIES)
+
+  // The full-page raster counterpart of [scrollSvgCache], keyed by preview id + overrides.
+  private val scrollPngCache = LruByteCache(MAX_CACHE_ENTRIES)
 
   // The preview-slots counterpart of [cache], keyed the same way (previewId × overrides).
   private val slotsCache = LruByteCache(MAX_CACHE_ENTRIES)
@@ -721,6 +743,55 @@ internal constructor(
   }
 
   /**
+   * Fetch the daemon's tall raster scroll product at [overrides]. Like [renderScrollSvg], the
+   * product is a shared per-preview file, so every cache miss forces an override-aware re-render
+   * and reads the resulting bytes while [renderLock] is held.
+   */
+  override fun renderScrollPng(previewId: String, overrides: PreviewOverrides): RenderOutcome {
+    check(!closed.get()) { "ServeRenderHost is closed" }
+    if (previewId !in previewIds) return RenderOutcome.NotFound
+
+    val key = ServeOverrides.cacheKey(previewId, overrides)
+    scrollPngCache.get(key)?.let {
+      return RenderOutcome.Ok(it, RenderOutcome.Generation.DAEMON_CACHE)
+    }
+
+    return renderLock.withLock {
+      scrollPngCache.get(key)?.let {
+        return@withLock RenderOutcome.Ok(it, RenderOutcome.Generation.DAEMON_CACHE)
+      }
+
+      val fetchParams = buildJsonObject {
+        put(DataFetchParams.PARAM_FORCE_RERENDER, JsonPrimitive(true))
+        put(
+          DataFetchParams.PARAM_OVERRIDES,
+          Json.encodeToJsonElement(PreviewOverrides.serializer(), overrides),
+        )
+      }
+      val pngPath =
+        try {
+          session.fetchData(previewId, SCROLL_LONG_KIND, params = fetchParams).path?.toPath()
+        } catch (e: Exception) {
+          val reason = "scroll-long fetch failed: ${e.message}"
+          onLog(reason)
+          return@withLock RenderOutcome.Failed(reason)
+        }
+      val bytes =
+        pngPath
+          ?.takeIf { fileSystem.exists(it) }
+          ?.let { p -> fileSystem.read(p) { readByteArray() } }
+      if (bytes == null) {
+        val reason = "render produced no full-page PNG"
+        onLog(reason)
+        return@withLock RenderOutcome.Failed(reason)
+      }
+
+      scrollPngCache.put(key, bytes)
+      RenderOutcome.Ok(bytes)
+    }
+  }
+
+  /**
    * Inline a hybrid SVG's sibling `figma-raster/<node>.png` crops as `data:` URIs so the served SVG
    * is self-contained — the Figma importer (and any consumer that can't resolve external hrefs)
    * needs every layer embedded. A vector-only SVG has no such refs and passes through. Shares the
@@ -975,6 +1046,8 @@ internal constructor(
   }
 
   companion object {
+    internal const val SCROLL_LONG_KIND = "render/scroll/long"
+    internal const val SCROLL_EXTENSION_ID = "scroll"
     /** RPC ack budget for the (fast, queue-only) `renderNow` call itself. */
     private val RENDER_ACK_TIMEOUT = 60.seconds
 
