@@ -490,15 +490,17 @@ object ServeWeb {
    * the whole id when there's no state (a plain preview) or the state token isn't found, so such a
    * preview only ever groups with itself.
    */
-  private fun stateInvariantKey(p: ServePreview): String {
-    val state = p.state ?: return p.id
-    val parts = p.id.split("__")
+  private fun stateInvariantKey(id: String, state: String?): String {
+    state ?: return id
+    val parts = id.split("__")
     val idealIdx = parts.indexOf("ideal")
     val stateIdx =
       if (idealIdx in 0 until parts.lastIndex && parts[idealIdx + 1] == state) idealIdx + 1
-      else parts.indexOfFirst { it == state }.takeIf { it >= 1 } ?: return p.id
+      else parts.indexOfFirst { it == state }.takeIf { it >= 1 } ?: return id
     return parts.filterIndexed { i, _ -> i != stateIdx }.joinToString("__")
   }
+
+  private fun stateInvariantKey(p: ServePreview): String = stateInvariantKey(p.id, p.state)
 
   /**
    * The viewer's **state switcher**: a `<nav>` of plain links from [current] to each of its
@@ -610,6 +612,14 @@ object ServeWeb {
     val parts = p.id.split("__")
     return if (parts.size > n) parts.dropLast(n).joinToString("__") else p.id
   }
+
+  /**
+   * The comparison-table card family for [p]: fold state, props, and the baked light/dark pair,
+   * while preserving independent axes such as size. This mirrors the default-card grouping used by
+   * [groupPreviews] without broadening aliases to every render of the same [componentKey].
+   */
+  private fun comparisonCardKey(p: ServePreview): String =
+    baseKey(stateInvariantKey(propsFamilyKey(p), p.state))
 
   /**
    * The viewer's **variant switcher**: a `<nav>` of plain links from [current] to its component's
@@ -2848,8 +2858,8 @@ object ServeWeb {
     // A viewer deep-link may name a non-default state/props variant that is intentionally folded
     // out of this gallery. Keep every sibling id as an alias on the included component row so the
     // client can still select that row instead of presenting an empty comparison page.
-    val previewIdsByComponent =
-      previews.groupBy(::componentKey).mapValues { (_, values) -> values.map { it.id } }
+    val previewIdsByCard =
+      previews.groupBy(::comparisonCardKey).mapValues { (_, values) -> values.map { it.id } }
 
     fun path(preview: ServePreview, extension: String): String =
       "$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.$extension$q"
@@ -2876,7 +2886,7 @@ object ServeWeb {
           val current = if (darkFirst) card.dark ?: card.default else card.default
           val label = componentKey(current)
           val viewer = "$basePath/p/${WebEscaping.urlEncodeSegment(current.id)}$q"
-          val ids = previewIdsByComponent[label].orEmpty().joinToString(" ")
+          val ids = previewIdsByCard[comparisonCardKey(current)].orEmpty().joinToString(" ")
           val hay = (label + " " + ids).lowercase()
           val pngAttrs =
             attrs("png", "light", card.light) { true } +
