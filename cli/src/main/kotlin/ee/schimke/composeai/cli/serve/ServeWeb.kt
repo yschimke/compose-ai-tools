@@ -2823,6 +2823,11 @@ object ServeWeb {
     val hasRc = defaults.any { hasRemoteComposeFor(it.id) }
     val defaultFormat = if (hasSvg) "svg" else "rc"
     val darkFirst = isDarkFirstSystem(basePath, sessionId, declaredSurface)
+    // A viewer deep-link may name a non-default state/props variant that is intentionally folded
+    // out of this gallery. Keep every sibling id as an alias on the included component row so the
+    // client can still select that row instead of presenting an empty comparison page.
+    val previewIdsByComponent =
+      previews.groupBy(::componentKey).mapValues { (_, values) -> values.map { it.id } }
 
     fun path(preview: ServePreview, extension: String): String =
       "$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.$extension$q"
@@ -2849,7 +2854,7 @@ object ServeWeb {
           val current = if (darkFirst) card.dark ?: card.default else card.default
           val label = componentKey(current)
           val viewer = "$basePath/p/${WebEscaping.urlEncodeSegment(current.id)}$q"
-          val ids = variants.joinToString(" ") { it.id }
+          val ids = previewIdsByComponent[label].orEmpty().joinToString(" ")
           val hay = (label + " " + ids).lowercase()
           val pngAttrs =
             attrs("png", "light", card.light) { true } +

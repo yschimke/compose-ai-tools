@@ -1134,6 +1134,20 @@ class ServeWebFixtureTest {
         ),
       "each comparison row pairs PNG and SVG from the exact same baked theme variant",
     )
+    val variantComparison =
+      ServeWeb.comparisonPage(
+        "compose-m3",
+        variantPreviews,
+        token,
+        sessionId = "compose-m3",
+        hasSvgFor = { true },
+      )
+    val variantComparisonIds =
+      variantComparison.substringAfter("data-preview-ids=\"").substringBefore('"')
+    assertTrue(
+      variantComparisonIds.contains("button-filled__ideal__default__light__direction-rtl"),
+      "a folded non-default variant deep-link aliases to its included component comparison row",
+    )
     assertGolden(File(pagesDir, "serve-landing-declared-themes.html"), landingDeclaredThemes)
     // Issue #2881: the header control lists every CONFIGURED theme, not just Light/Dark — the baked
     // pair plus one chip per declared `@ThemeCatalog` theme, each carrying its provider FQN.
