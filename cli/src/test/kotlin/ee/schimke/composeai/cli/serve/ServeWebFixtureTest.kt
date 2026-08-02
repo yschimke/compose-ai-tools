@@ -493,7 +493,7 @@ class ServeWebFixtureTest {
       ServeWeb.viewerPage(
         previews
           .first { it.id.endsWith("ProfileScreenPreview") }
-          .copy(sourceFile = "src/main/kotlin/com/example/ProfileScreen.kt"),
+          .copy(sourceFile = "src/main/kotlin/com/example/ProfileScreen.kt", section = "Screens"),
         token,
         trust = "unverified",
         // The full preview list feeds the left-hand component nav drawer (default closed) so the
@@ -2130,6 +2130,36 @@ class ServeWebFixtureTest {
         assetText("viewer.js").contains("if (wasmActive()) positionWasmFrame();"),
       "changing zoom re-pins active live and Wasm overlays to the snapshot geometry",
     )
+  }
+
+  @Test
+  fun `screen previews move device and orientation into Size while components keep constraints`() {
+    val screen =
+      ServeWeb.viewerPage(
+        ServePreview("speaker-details", "Speaker details", section = "Screens"),
+        token,
+        canApplyOverrides = true,
+      )
+    val component =
+      ServeWeb.viewerPage(
+        ServePreview("speaker-card", "Speaker card", section = "Components"),
+        token,
+        canApplyOverrides = true,
+      )
+
+    assertTrue(screen.contains("<label>Device size"), "screen Size panel contains device presets")
+    assertTrue(screen.contains("id=\"cp-orientation\""), "screen Size panel contains orientation")
+    assertFalse(screen.contains("id=\"cp-sizeMode\""), "screen omits component constraints")
+    assertFalse(screen.contains("data-cp-group=\"device\""), "screen has no duplicate Device panel")
+    listOf("id:pixel_5", "id:pixel_7", "id:pixel_fold", "id:pixel_tablet").forEach {
+      assertTrue(screen.contains("value=\"$it\""), "screen offers $it")
+    }
+
+    assertTrue(component.contains("id=\"cp-sizeMode\""), "component keeps size constraints")
+    assertTrue(component.contains("id=\"cp-fixedW\""), "component keeps fixed sizing")
+    assertTrue(component.contains("id=\"cp-minW\""), "component keeps minimum sizing")
+    assertTrue(component.contains("id=\"cp-maxW\""), "component keeps maximum sizing")
+    assertTrue(component.contains("data-cp-group=\"device\""), "component keeps its Device panel")
   }
 
   @Test

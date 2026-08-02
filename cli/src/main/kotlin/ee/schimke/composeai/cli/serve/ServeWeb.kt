@@ -3263,6 +3263,13 @@ object ServeWeb {
         val v = WebEscaping.htmlEscape(value)
         "<option value=\"$v\">${WebEscaping.htmlEscape(name)}</option>"
       }
+    val isAppScreen = preview.section.equals("Screens", ignoreCase = true)
+    val screenDeviceOptions =
+      SCREEN_DEVICES.joinToString("\n                  ") { device ->
+        val value = WebEscaping.htmlEscape(device.id)
+        val label = WebEscaping.htmlEscape("${device.name} · ${device.kind} (${device.sizeDp})")
+        "<option value=\"$value\">$label</option>"
+      }
     // A static bundle/catalog replays baked PNGs — the server can't re-render, so the override
     // controls that rebuild the /render URL (device/locale/font scale/orientation + the live
     // stream)
@@ -3449,6 +3456,95 @@ object ServeWeb {
         </details>
         """
           .trimIndent()
+    // Catalog app screens represent a whole device surface. Arbitrary min/max constraints are
+    // useful for components, but are a poor model for a screen; give screens four recognisable,
+    // deliberately varied Android device profiles instead. The select retains #cp-device, so the
+    // existing override transport and deep-link behaviour apply unchanged.
+    val sizeControlsHtml =
+      if (isAppScreen)
+        """
+        <details class="cp-group" data-cp-group="size">
+          <summary>Size</summary>
+          <div class="cp-group-body">
+            <label>Device size
+              <select id="cp-device"$serverDis>
+                <option value="">(preview default)</option>
+                SCREEN_DEVICE_OPTIONS_PLACEHOLDER
+              </select>
+            </label>
+            <label>Orientation
+              <select id="cp-orientation"$serverDis>
+                <option value="">(device default)</option>
+                <option value="portrait">Portrait</option>
+                <option value="landscape">Landscape</option>
+              </select>
+            </label>
+          </div>
+        </details>
+        """
+          .trimIndent()
+          .replace("\n", "\n          ")
+          .replace("SCREEN_DEVICE_OPTIONS_PLACEHOLDER", screenDeviceOptions)
+      else
+        """
+        <details class="cp-group" data-cp-group="size">
+          <summary>Size</summary>
+          <div class="cp-group-body">
+            <div class="cp-size">
+              <label>Size mode
+                <select id="cp-sizeMode"$serverDis>
+                  <option value="">(default)</option>
+                  <option value="fixed">Fixed size</option>
+                  <option value="max">Max</option>
+                  <option value="min">Min</option>
+                  <option value="within">Within (min–max)</option>
+                </select>
+              </label>
+              <div class="cp-size-row" id="cp-size-fixed" hidden>
+                <label>Width (dp)<input id="cp-fixedW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+                <label>Height (dp)<input id="cp-fixedH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+              </div>
+              <div class="cp-size-row" id="cp-size-min" hidden>
+                <label>Min width (dp)<input id="cp-minW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+                <label>Min height (dp)<input id="cp-minH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+              </div>
+              <div class="cp-size-row" id="cp-size-max" hidden>
+                <label>Max width (dp)<input id="cp-maxW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+                <label>Max height (dp)<input id="cp-maxH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
+              </div>
+            </div>
+          </div>
+        </details>
+        """
+          .trimIndent()
+          .replace("\n", "\n          ")
+    val deviceControlsHtml =
+      if (isAppScreen) ""
+      else
+        """
+        <details class="cp-group" data-cp-group="device">
+          <summary>Device</summary>
+          <div class="cp-group-body">
+            <label>Device
+              <select id="cp-device"$serverDis>
+                <option value="">(default)</option>
+                DEVICE_OPTIONS_PLACEHOLDER
+              </select>
+            </label>
+            <label>Orientation
+              <select id="cp-orientation"$serverDis>
+                <option value="">(default)</option>
+                <option value="portrait">Portrait</option>
+                <option value="landscape">Landscape</option>
+              </select>
+            </label>
+          </div>
+        </details>
+        """
+          .trimIndent()
+          .replace("\n", "\n          ")
+          .replace("DEVICE_OPTIONS_PLACEHOLDER", deviceOptions)
+          .let { "          $it" }
     // Left-hand component nav drawer (default closed) and its toggle — only when the session
     // carries
     // sibling previews to move between. The right-hand overrides drawer (.cp-controls) is always
@@ -3512,34 +3608,7 @@ object ServeWeb {
               </label>
             </div>
           </details>
-          <details class="cp-group" data-cp-group="size">
-            <summary>Size</summary>
-            <div class="cp-group-body">
-              <div class="cp-size">
-                <label>Size mode
-                  <select id="cp-sizeMode"$serverDis>
-                    <option value="">(default)</option>
-                    <option value="fixed">Fixed size</option>
-                    <option value="max">Max</option>
-                    <option value="min">Min</option>
-                    <option value="within">Within (min–max)</option>
-                  </select>
-                </label>
-                <div class="cp-size-row" id="cp-size-fixed" hidden>
-                  <label>Width (dp)<input id="cp-fixedW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
-                  <label>Height (dp)<input id="cp-fixedH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
-                </div>
-                <div class="cp-size-row" id="cp-size-min" hidden>
-                  <label>Min width (dp)<input id="cp-minW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
-                  <label>Min height (dp)<input id="cp-minH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
-                </div>
-                <div class="cp-size-row" id="cp-size-max" hidden>
-                  <label>Max width (dp)<input id="cp-maxW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
-                  <label>Max height (dp)<input id="cp-maxH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off"$serverDis></label>
-                </div>
-              </div>
-            </div>
-          </details>
+          $sizeControlsHtml
           ${scrollGroupHtml(hasSvgExport)}
           <details class="cp-group" data-cp-group="locale">
             <summary>Locale &amp; text</summary>
@@ -3575,24 +3644,7 @@ object ServeWeb {
               </label>
             </div>
           </details>
-          <details class="cp-group" data-cp-group="device">
-            <summary>Device</summary>
-            <div class="cp-group-body">
-              <label>Device
-                <select id="cp-device"$serverDis>
-                  <option value="">(default)</option>
-                  $deviceOptions
-                </select>
-              </label>
-              <label>Orientation
-                <select id="cp-orientation"$serverDis>
-                  <option value="">(default)</option>
-                  <option value="portrait">Portrait</option>
-                  <option value="landscape">Landscape</option>
-                </select>
-              </label>
-            </div>
-          </details>
+$deviceControlsHtml
           $overlaysHtml
           $featureControlsHtml
           ${overrideKnobsHtml(preview, canApplyOverrides || canRenderOverrides, wasmSrc != null)}
@@ -4107,6 +4159,21 @@ object ServeWeb {
    * hidden magic number.
    */
   private const val RENDER_DENSITY = 2
+
+  private data class ScreenDevice(
+    val id: String,
+    val name: String,
+    val kind: String,
+    val sizeDp: String,
+  )
+
+  private val SCREEN_DEVICES: List<ScreenDevice> =
+    listOf(
+      ScreenDevice("id:pixel_5", "Pixel 5", "compact phone", "393 × 851 dp"),
+      ScreenDevice("id:pixel_7", "Pixel 7", "standard phone", "411 × 914 dp"),
+      ScreenDevice("id:pixel_fold", "Pixel Fold", "foldable", "841 × 701 dp"),
+      ScreenDevice("id:pixel_tablet", "Pixel Tablet", "tablet", "1280 × 800 dp"),
+    )
 
   private val COMMON_DEVICES: List<Pair<String, String>> =
     listOf(
