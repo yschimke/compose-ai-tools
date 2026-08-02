@@ -1,7 +1,47 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { applySpecBreakpoints } from "./catalog-breakpoints.mjs";
+import {
+  applySpecBreakpoints,
+  catalogBreakpoints,
+  DEFAULT_WEAR_BREAKPOINTS,
+} from "./catalog-breakpoints.mjs";
+
+test("Wear catalogs default to standard round device breakpoints", () => {
+  assert.equal(
+    catalogBreakpoints({ library: ["androidx.wear.compose:compose-material3"] }),
+    DEFAULT_WEAR_BREAKPOINTS,
+  );
+  assert.deepEqual(DEFAULT_WEAR_BREAKPOINTS, [
+    { size: "smallRound", widthDp: 192 },
+    { size: "largeRound", widthDp: 227 },
+  ]);
+});
+
+test("explicit breakpoints override Wear defaults, including an empty opt-out", () => {
+  const declared = [{ size: "xlRound", widthDp: 240 }];
+  assert.equal(
+    catalogBreakpoints({
+      library: ["androidx.wear.compose:compose-material3"],
+      breakpoints: declared,
+    }),
+    declared,
+  );
+  assert.deepEqual(
+    catalogBreakpoints({
+      library: ["androidx.wear.compose:compose-material3"],
+      breakpoints: [],
+    }),
+    [],
+  );
+});
+
+test("non-Wear catalogs do not acquire round device breakpoints", () => {
+  assert.equal(
+    catalogBreakpoints({ library: ["androidx.compose.material3:material3"] }),
+    undefined,
+  );
+});
 
 test("declared Wear breakpoints replace canonical compact sizes", () => {
   const candidates = [

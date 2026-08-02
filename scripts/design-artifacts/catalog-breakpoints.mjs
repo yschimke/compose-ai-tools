@@ -48,3 +48,28 @@ export function applySpecBreakpoints(candidates, previews, breakpoints) {
   }
   return applied;
 }
+
+export const DEFAULT_WEAR_BREAKPOINTS = Object.freeze([
+  Object.freeze({ size: "smallRound", widthDp: 192 }),
+  Object.freeze({ size: "largeRound", widthDp: 227 }),
+]);
+
+/**
+ * Resolve the breakpoint vocabulary for one catalog.
+ *
+ * Wear's standard device previews use 192 dp and 227 dp round displays. Without domain names the
+ * generic candidate reader classifies both widths as Material `compact`, collapsing distinct
+ * renders onto one output axis. Apply the standard Wear names when a catalog declares a Wear
+ * Compose library and omits `breakpoints`; any explicit array (including `[]`) remains
+ * authoritative.
+ *
+ * @param {{library?: string[], breakpoints?: Array<{size: string, widthDp: number}>}} spec
+ * @returns {Array<{size: string, widthDp: number}> | undefined}
+ */
+export function catalogBreakpoints(spec) {
+  if (Array.isArray(spec?.breakpoints)) return spec.breakpoints;
+  const isWear = (spec?.library ?? []).some((dependency) =>
+    dependency.startsWith("androidx.wear.compose:"),
+  );
+  return isWear ? DEFAULT_WEAR_BREAKPOINTS : undefined;
+}
