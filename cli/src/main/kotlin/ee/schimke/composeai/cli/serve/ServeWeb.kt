@@ -207,21 +207,42 @@ object ServeWeb {
         }
       } ?: ""
     return """
-    <section class="cp-about">
-      <p class="cp-about-title">compose-preview · public preview server</p>
-      <p class="cp-about-body">Browse rendered Compose &amp; Compose&nbsp;Multiplatform design
-        catalogs live. CMP components run <strong>in your browser</strong> (Kotlin/Wasm, sandboxed);
-        everything else is served as pre-rendered snapshots. The server never re-runs untrusted code
-        — catalogs are trusted via signature or their published <code>design-artifacts</code> branch,
-        and anything unverified is badged.</p>
-      <p class="cp-about-links">
-        <a href="https://github.com/$SOURCE_REPO">$GITHUB_ICON source</a> ·
-        <a href="/version">/version</a>$ver$auth
-      </p>
-    </section>
+    <details class="cp-about cp-disclosure">
+      <summary>
+        <span class="cp-about-title">About this preview server</span>
+        <span class="cp-disclosure-hint">How previews run and catalogs are trusted</span>
+      </summary>
+      <div class="cp-disclosure-body">
+        <p class="cp-about-body">Compose Multiplatform components can run <strong>in your browser</strong>
+          using sandboxed Kotlin/Wasm; other previews are published as pre-rendered snapshots. The
+          server never re-runs untrusted code. Catalogs are trusted by signature or their published
+          <code>design-artifacts</code> branch, and anything unverified is badged.</p>
+        <p class="cp-about-links">
+          <a href="https://github.com/$SOURCE_REPO">$GITHUB_ICON source</a> ·
+          <a href="/version">/version</a>$ver$auth
+        </p>
+      </div>
+    </details>
     """
       .trimIndent()
   }
+
+  /** Shared, intentionally compact navigation for every browser-facing page. */
+  private fun siteHeader(navSuffix: String): String =
+    """
+    <header class="cp-site-header">
+      <a class="cp-site-brand" href="/$navSuffix" aria-label="compose-preview home">
+        <span class="cp-site-mark" aria-hidden="true">◇</span>
+        <span>compose-preview</span>
+      </a>
+      <nav class="cp-site-nav" aria-label="Primary navigation">
+        <a href="/$navSuffix">Catalogs</a>
+        <a href="/status$navSuffix">Status</a>
+        <a href="https://github.com/$SOURCE_REPO">GitHub</a>
+      </nav>
+    </header>
+    """
+      .trimIndent()
 
   /**
    * A "back to all design systems" button for a catalog landing — replaces the in-catalog
@@ -329,9 +350,15 @@ object ServeWeb {
       }
     }
     return """
-      <section class="cp-prov" aria-label="Catalog provenance">
-        ${items.joinToString("\n        ")}
-      </section>
+      <details class="cp-prov cp-disclosure">
+        <summary>
+          <span class="cp-prov-title">Catalog details</span>
+          <span class="cp-disclosure-hint">Source, generation time and tooling</span>
+        </summary>
+        <div class="cp-prov-body" aria-label="Catalog provenance">
+          ${items.joinToString("\n          ")}
+        </div>
+      </details>
       ${if (refreshUrl == null) "" else provenanceRefreshScript()}
       """
       .trimIndent()
@@ -540,6 +567,7 @@ object ServeWeb {
       }
     return """
       <nav class="cp-states" aria-label="Component state">
+        <span class="cp-axis-label">State</span>
         $links
       </nav>
       """
@@ -659,6 +687,7 @@ object ServeWeb {
       }
     return """
       <nav class="cp-states" aria-label="Component variant">
+        <span class="cp-axis-label">Variant</span>
         $links
       </nav>
       """
@@ -808,6 +837,16 @@ object ServeWeb {
   /** A human family heading: a curated name, else the token title-cased (`switch` → `Switch`). */
   private fun familyDisplayName(family: String): String =
     FAMILY_DISPLAY_NAMES[family] ?: family.replace('-', ' ').replaceFirstChar { it.uppercaseChar() }
+
+  /**
+   * Prefer catalog-authored labels; turn generated ids into readable component names as fallback.
+   */
+  private fun previewDisplayName(preview: ServePreview): String {
+    if (preview.label.isNotBlank() && preview.label != preview.id) return preview.label
+    return componentKey(preview).substringBefore("__").replace('-', ' ').replaceFirstChar {
+      it.uppercaseChar()
+    }
+  }
 
   /**
    * A **synthesized** sub-grouping for a section-less catalog: bucket [cards] by [cardFamily] so
@@ -1526,9 +1565,10 @@ object ServeWeb {
       val head = WebEscaping.htmlEscape(heading)
       val count = "${list.size} ${WebEscaping.htmlEscape(noun)}"
       return """
-      <h1 class="cp-head">$head</h1>
-      <p class="cp-sub">$count · pick one to browse its components and
-        open a live, customisable preview.</p>
+      <div class="cp-section-title">
+        <h1 class="cp-head">$head</h1>
+        <span class="cp-section-count">$count</span>
+      </div>
       <div class="cp-grid cp-syslist" id="$gridId">
       ${list.joinToString("\n") { card(it) }}
       </div>
@@ -1553,6 +1593,7 @@ object ServeWeb {
       unfurlDescription =
         "Browse ${systems.size} published Compose design system and app catalogs.",
       unfurl = unfurl,
+      navSuffix = suffix,
       body =
         """
         $about$body
@@ -1637,6 +1678,7 @@ object ServeWeb {
       title = "Not found — compose-preview",
       unfurlDescription = message,
       unfurl = unfurl,
+      navSuffix = suffix,
       body =
         """
         <h1 class="cp-head">Not found</h1>
@@ -1682,6 +1724,7 @@ object ServeWeb {
       title = "Playground — compose-preview",
       unfurlDescription = "Compile a Compose snippet against the live catalog and open a preview.",
       unfurl = unfurl,
+      navSuffix = suffix,
       body =
         """
         <link rel="stylesheet" href="${assetHref("playground.css")}">
@@ -1901,6 +1944,7 @@ object ServeWeb {
       title = "Playground unavailable — compose-preview",
       unfurlDescription = "The playground is not enabled on this server.",
       unfurl = unfurl,
+      navSuffix = suffix,
       body =
         """
         <h1 class="cp-head">Playground unavailable</h1>
@@ -1989,6 +2033,7 @@ object ServeWeb {
       title = "Share a document — compose-preview",
       unfurlDescription = "Upload a Remote Compose or Lottie document and get an expiring link.",
       unfurl = unfurl,
+      navSuffix = suffix,
       body =
         """
         <h1 class="cp-head">Share a document</h1>
@@ -2109,6 +2154,7 @@ object ServeWeb {
       title = "${doc.name} — compose-preview",
       unfurlDescription = "A shared ${doc.formatLabel} document, played back in your browser.",
       unfurl = unfurl,
+      navSuffix = suffix,
       body =
         """
         <h1 class="cp-head">${WebEscaping.htmlEscape(doc.name)}</h1>
@@ -2382,18 +2428,21 @@ object ServeWeb {
       """
       <h1 class="cp-head">Server status$healthBadge</h1>
       <p class="cp-sub">compose-preview serve · $mode$ver</p>
-      <section class="cp-about">
-        <p class="cp-about-title">Status &amp; monitoring</p>
-        <p class="cp-about-body">A live snapshot of this preview server — every configured catalog
-          and its latest load result, the render daemons running now, its configuration, and recent
-          daemon startup failures. The same data is available as JSON for a monitor or Home
-          Assistant sensor.</p>
-        <p class="cp-about-links">
-          <a href="/status.json$suffix">/status.json</a> ·
-          <a href="/version">/version</a> ·
-          <a href="/healthz">/healthz</a>
-        </p>
-      </section>
+      <details class="cp-about cp-disclosure">
+        <summary>
+          <span class="cp-about-title">Status &amp; monitoring details</span>
+          <span class="cp-disclosure-hint">JSON and health-check endpoints</span>
+        </summary>
+        <div class="cp-disclosure-body">
+          <p class="cp-about-body">Catalog load results, render daemons, configuration and recent
+            failures. The same data is available as JSON for monitors and Home Assistant.</p>
+          <p class="cp-about-links">
+            <a href="/status.json$suffix">/status.json</a> ·
+            <a href="/version">/version</a> ·
+            <a href="/healthz">/healthz</a>
+          </p>
+        </div>
+      </details>
 
       <div class="cp-status-grid">
       $summaryGrid
@@ -2434,6 +2483,7 @@ object ServeWeb {
       unfurlDescription =
         "Live catalog, render-daemon, and deployment status for this compose-preview server.",
       unfurl = unfurl,
+      navSuffix = suffix,
     )
   }
 
@@ -2645,10 +2695,18 @@ object ServeWeb {
     systemViews: Long = 0,
     /** Absolute page + representative preview URLs for Open Graph/Twitter link previews. */
     unfurl: UnfurlMetadata? = null,
+    /** Human catalog title from catalog.json; [moduleLabel] remains the stable technical id. */
+    displayTitle: String? = null,
   ): String {
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
     val themeLeaseUrl =
       if (themeRenderBurstCapacity > 1) "$basePath/api/theme-render-lease$q" else ""
+    val navSuffix =
+      querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
+    val heading = displayTitle?.takeIf { it.isNotBlank() } ?: moduleLabel
+    val catalogId =
+      if (heading == moduleLabel) ""
+      else "<p class=\"cp-catalog-id\">${WebEscaping.htmlEscape(moduleLabel)}</p>"
     // A dark-first system (Wear) puts every unthemed card on the dark stage; explicit light/dark
     // variants keep their own token. Only affects the background — the Light/Dark filter axis below
     // still keys off the explicit-only [cardTheme].
@@ -2689,20 +2747,23 @@ object ServeWeb {
       // no URL-building in the browser.
       val def = if (darkFirst) d else l
       val defTheme = if (darkFirst) "dark" else "light"
+      val lightLabel = previewDisplayName(l)
+      val darkLabel = previewDisplayName(d)
+      val defaultLabel = previewDisplayName(def)
       // `data-def` is the variant a DECLARED theme re-renders (the server-side default), so picking
       // one doesn't also flip the card's light/dark base.
       return """
         <a class="cp-card" data-swap="1" data-bg-theme="$defTheme" data-def="${if (darkFirst) "d" else "l"}"
           data-l-src="${renderSrc(l)}" data-l-href="${viewerHref(l)}"
-          data-l-id="${WebEscaping.htmlEscape(l.id)}" data-l-label="${WebEscaping.htmlEscape(l.label)}"
+          data-l-id="${WebEscaping.htmlEscape(l.id)}" data-l-label="${WebEscaping.htmlEscape(lightLabel)}"
           data-d-src="${renderSrc(d)}" data-d-href="${viewerHref(d)}"
-          data-d-id="${WebEscaping.htmlEscape(d.id)}" data-d-label="${WebEscaping.htmlEscape(d.label)}"
+          data-d-id="${WebEscaping.htmlEscape(d.id)}" data-d-label="${WebEscaping.htmlEscape(darkLabel)}"
           href="${viewerHref(def)}">
           <div class="cp-imgwrap">
-            <img loading="lazy" alt="${WebEscaping.htmlEscape(def.label)}" src="${renderSrc(def)}">
+            <img loading="lazy" alt="${WebEscaping.htmlEscape(defaultLabel)}" src="${renderSrc(def)}">
           </div>
           <div class="cp-meta">
-            <div class="cp-label" title="${WebEscaping.htmlEscape(def.label)}">${WebEscaping.htmlEscape(def.label)}</div>
+            <div class="cp-label" title="${WebEscaping.htmlEscape(def.id)}">${WebEscaping.htmlEscape(defaultLabel)}</div>
             <div class="cp-id">${WebEscaping.htmlEscape(def.id)}</div>
             ${viewCountHtml(cardViews(card))}
           </div>
@@ -2712,7 +2773,7 @@ object ServeWeb {
     }
     fun singleCard(p: ServePreview): String {
       val idSeg = WebEscaping.urlEncodeSegment(p.id)
-      val label = WebEscaping.htmlEscape(p.label)
+      val label = WebEscaping.htmlEscape(previewDisplayName(p))
       val idText = WebEscaping.htmlEscape(p.id)
       // data-bg-theme is the thumbnail's background (explicit token, else the dark-first default).
       val bgAttr = bgTheme(p.id, darkFirst)?.let { " data-bg-theme=\"$it\"" } ?: ""
@@ -2866,16 +2927,19 @@ object ServeWeb {
         " · <a class=\"cp-format-link\" href=\"$basePath/compare$q\">compare formats</a>"
       else ""
     return document(
-      title = "$moduleLabel — compose-preview",
-      unfurlTitle = moduleLabel,
-      unfurlDescription = "${previews.size} Compose previews in $moduleLabel",
+      title = "$heading — compose-preview",
+      unfurlTitle = heading,
+      unfurlDescription = "${previews.size} Compose previews in $heading",
       unfurl = unfurl,
+      navSuffix = navSuffix,
       body =
         """
-        $back<h1 class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</h1>
-        ${degradeBanner(degradations)}$prov$themeToggle<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""} · click one to view with overrides ·
+        $back<h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(heading)}${compactTrustBadge(trust)}</h1>
+        $catalogId${degradeBanner(degradations)}$prov<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""} ·
           <a href="$basePath/bundle.zip$q">download all (.zip)</a>$formatLink</p>
-        $searchBox$tabBar$gridBlock$emptyState$filterScript$about
+        <div class="cp-catalog-tools">
+        $themeToggle$searchBox</div>
+        $tabBar$gridBlock$emptyState$filterScript$about
         """
           .trimIndent(),
     )
@@ -2895,8 +2959,12 @@ object ServeWeb {
     hasRemoteComposeFor: (String) -> Boolean = { false },
     referencesFor: (String) -> List<DesignReference> = { emptyList() },
     unfurl: UnfurlMetadata? = null,
+    displayTitle: String? = null,
   ): String {
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    val navSuffix =
+      querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
+    val heading = displayTitle?.takeIf { it.isNotBlank() } ?: moduleLabel
     // Native-format rows retain the catalog's one-default-card presentation. A design reference,
     // however, names one exact preview state/props mapping, so that referenced variant must remain
     // independently visible instead of being folded out with the landing-page variants.
@@ -3036,15 +3104,17 @@ object ServeWeb {
         "data-has-reference=\"${if (hasReference) "1" else "0"}\""
 
     return document(
-      title = "$moduleLabel — format comparison",
-      unfurlTitle = "$moduleLabel format comparison",
-      unfurlDescription = "Compare rendered PNG, SVG, and Remote Compose output for $moduleLabel",
+      title = "$heading — format comparison",
+      unfurlTitle = "$heading format comparison",
+      unfurlDescription = "Compare rendered PNG, SVG, and Remote Compose output for $heading",
       unfurl = unfurl,
+      navSuffix = navSuffix,
       body =
         """
         <div id="cp-compare" $rootAttrs>
-          <h1 class="cp-head"><a href="$basePath/$q">← previews</a>${trustBadge(trust)}</h1>
-          <p class="cp-sub">Format comparison · scores use structural similarity on a fixed backdrop</p>
+          <p class="cp-breadcrumb"><a href="$basePath/$q">${WebEscaping.htmlEscape(heading)}</a> / Compare formats</p>
+          <h1 class="cp-head">Format comparison${compactTrustBadge(trust)}</h1>
+          <p class="cp-sub">PNG, SVG and Remote Compose fidelity · scores use structural similarity on a fixed backdrop</p>
           <div class="cp-compare-controls">
             <span class="cp-theme" role="group" aria-label="Comparison format">$formatControls</span>
             $themeControls
@@ -3073,8 +3143,12 @@ object ServeWeb {
     isPublic: Boolean = false,
     trust: String? = null,
     unfurl: UnfurlMetadata? = null,
+    displayTitle: String? = null,
   ): String {
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    val navSuffix =
+      querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
+    val heading = displayTitle?.takeIf { it.isNotBlank() } ?: moduleLabel
     val actual = "$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png$q"
     val raster = "$basePath/reference/${WebEscaping.urlEncodeSegment(reference.id)}.png$q"
     val source = WebEscaping.htmlEscape(reference.source.provider)
@@ -3114,14 +3188,16 @@ object ServeWeb {
       }
     return document(
       title = "${reference.label} — design comparison",
-      unfurlTitle = "$moduleLabel design comparison",
+      unfurlTitle = "$heading design comparison",
       unfurlDescription = "Reference, diff, and Compose output for ${preview.id}",
       unfurl = unfurl,
+      navSuffix = navSuffix,
       body =
         """
         <div id="cp-reference-compare" data-reference="$raster" data-actual="$actual">
-          <h1 class="cp-head"><a href="$basePath/compare$q">← comparisons</a>${trustBadge(trust)}</h1>
-          <p class="cp-sub">${WebEscaping.htmlEscape(reference.label)} · ${WebEscaping.htmlEscape(preview.id)}</p>
+          <p class="cp-breadcrumb"><a href="$basePath/compare$q">${WebEscaping.htmlEscape(heading)}</a> / Design comparison</p>
+          <h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(reference.label)}${compactTrustBadge(trust)}</h1>
+          <p class="cp-sub">${WebEscaping.htmlEscape(previewDisplayName(preview))} · ${WebEscaping.htmlEscape(preview.id)}</p>
           $referencePicker
           <div class="cp-reference-meta"><strong>Source:</strong> $source$revision</div>
           <div class="cp-reference-grid">
@@ -3283,11 +3359,17 @@ object ServeWeb {
     sourceHref: String? = null,
     /** GitHub sign-in prompt shown when the daemon live stream is present but requires auth. */
     liveAuthPrompt: LiveAuthPrompt? = null,
+    /** Human catalog title used in the breadcrumb; falls back to a generic "Previews" label. */
+    catalogTitle: String? = null,
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
-    val label = WebEscaping.htmlEscape(preview.label)
+    val navSuffix =
+      querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
+    val displayName = previewDisplayName(preview)
+    val label = WebEscaping.htmlEscape(displayName)
     val idText = WebEscaping.htmlEscape(preview.id)
+    val catalogName = WebEscaping.htmlEscape(catalogTitle?.takeIf { it.isNotBlank() } ?: "Previews")
     val modes = preview.modes.joinToString(",") { it.wire }
     // Wear OS is an always-dark surface. Do not expose the generic day/night override: besides
     // being meaningless for Wear, an old light choice within the Wear catalog must not turn into a
@@ -3731,12 +3813,34 @@ object ServeWeb {
     val variantSwitcher = variantSwitcherHtml(preview, siblings, basePath, q)
     val switchers =
       listOf(stateSwitcher, variantSwitcher).filter { it.isNotBlank() }.joinToString("\n")
+    val primaryControls =
+      listOf(liveToggleHtml, wasmToggleBtn, rcBackendSelector, svgFmtToggle, svgMatch)
+        .filter { it.isNotBlank() }
+        .joinToString("\n")
+    val modeInputs =
+      listOf(
+          "<input type=\"radio\" name=\"cp-mode\" value=\"png\" id=\"cp-mode-png\" tabindex=\"-1\" checked>",
+          "<input type=\"radio\" name=\"cp-mode\" value=\"live\" id=\"cp-live\" tabindex=\"-1\"$liveDis>",
+          wasmModeInput,
+          rcModeInput,
+        )
+        .filter { it.isNotBlank() }
+        .joinToString("\n")
     val body =
       """
-      <h1 class="cp-head"><a href="$basePath/$q">← previews</a>${trustBadge(trust)}</h1>
-      ${degradeBanner(degradations)}<p class="cp-sub" title="$idText">$label</p>${sourceLinkHtml(sourceHref, preview.sourceFile)}
+      <p class="cp-breadcrumb"><a href="$basePath/$q">$catalogName</a> / Component</p>
+      <h1 class="cp-head cp-preview-title">$label${compactTrustBadge(trust)}</h1>
+      <p class="cp-preview-id" title="$idText"><code>$idText</code></p>
+      ${degradeBanner(degradations)}${sourceLinkHtml(sourceHref, preview.sourceFile)}
       ${viewerViewCountHtml(engagement.views)}
       $switchers
+      <div class="cp-preview-primary" aria-label="Preview renderer">
+      $primaryControls
+        <span class="cp-mode-hint" id="cp-mode-hint"></span>
+        <span class="cp-modes-inputs" aria-hidden="true">
+      $modeInputs
+        </span>
+      </div>
       <div class="cp-viewer-bar">
         $navToggle
         <span class="cp-bg" role="group" aria-label="Preview zoom">
@@ -3805,28 +3909,9 @@ $deviceControlsHtml
           <div class="cp-status" id="cp-status"></div>
         </div>
       </div>
-      <!-- What you get *out* of the preview lives in the page under the stage, outside the
-           collapsible overrides drawer: the lane toggles (Live / Wasm / SVG) that pick what the
-           stage shows, and the copyable /render URLs. Closing ⚙ Overrides — or never opening the
-           mobile bottom sheet — no longer hides them. The drawer keeps only the render *overrides*
-           (appearance, size, scroll, locale, device, knobs). -->
+      <!-- Export remains below the workspace; renderer selection is kept beside the preview
+           heading so it is visible before a tall stage. -->
       <div class="cp-below">
-        <div class="cp-preview-mode">
-          $liveToggleHtml
-          $wasmToggleBtn
-          $rcBackendSelector
-          $svgFmtToggle
-          ${if (svgMatch.isNotEmpty()) "$svgMatch\n          " else ""}<span class="cp-mode-hint" id="cp-mode-hint"></span>
-          <!-- The mode radios the transport JS drives; visually removed (the toggle above is the
-               only visible mode control). png = static snapshot, live = daemon stream, wasm =
-               in-browser app. -->
-          <span class="cp-modes-inputs" aria-hidden="true">
-            <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
-            <input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1"$liveDis>
-            $wasmModeInput
-            $rcModeInput
-          </span>
-        </div>
         $snapshotNote
         ${downloadLinksHtml(hasSvgExport)}
       </div>
@@ -3840,12 +3925,15 @@ $deviceControlsHtml
       ${scriptTag("backend-badge.js")}
       """
         .trimIndent()
+        .lineSequence()
+        .joinToString("\n") { it.trimEnd() }
     return document(
-      title = "${preview.label} — compose-preview",
+      title = "$displayName — compose-preview",
       body = body,
-      unfurlTitle = preview.label,
-      unfurlDescription = "Compose preview for ${preview.label}",
+      unfurlTitle = displayName,
+      unfurlDescription = "Compose preview for $displayName",
       unfurl = unfurl,
+      navSuffix = navSuffix,
     )
   }
 
@@ -3894,7 +3982,7 @@ $deviceControlsHtml
     val items =
       representatives.joinToString("\n") { p ->
         val segItem = WebEscaping.urlEncodeSegment(p.id)
-        val labelItem = WebEscaping.htmlEscape(p.label)
+        val labelItem = WebEscaping.htmlEscape(previewDisplayName(p))
         val idItem = WebEscaping.htmlEscape(p.id)
         // data-search folds label + id so the drawer filter matches either. aria-current pins the
         // one we're viewing (styled as active, and it stays visible even under a filter miss so the
@@ -3928,6 +4016,7 @@ $deviceControlsHtml
     unfurlTitle: String? = null,
     unfurlDescription: String? = null,
     unfurl: UnfurlMetadata? = null,
+    navSuffix: String = "",
   ): String {
     val unfurlHtml =
       if (unfurl == null) ""
@@ -3981,6 +4070,7 @@ $deviceControlsHtml
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
+        ${siteHeader(navSuffix)}
         <main class="cp-main">
         $body
         </main>
@@ -4024,13 +4114,13 @@ $deviceControlsHtml
     // "Full page (scroll)" toggle over in the overrides drawer's Scroll group.
     val svgRow = if (hasSvgExport) "\n" + row("SVG", "svg") else ""
     return """
-      <section class="cp-export" aria-labelledby="cp-export-head">
-        <h2 class="cp-export-head" id="cp-export-head">Export &amp; direct links</h2>
-        <div class="cp-links">
+      <details class="cp-export cp-disclosure">
+        <summary id="cp-export-head">Export &amp; direct links</summary>
+        <div class="cp-links cp-disclosure-body">
           <div class="cp-knobs-head">The current view as a URL (overrides applied)</div>
           ${row("PNG", "png")}$svgRow
         </div>
-      </section>
+      </details>
       """
       .trimIndent()
   }

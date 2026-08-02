@@ -1169,6 +1169,19 @@ class ServeWebFixtureTest {
         formatComparison.contains("data-compare-theme=\"dark\""),
       "the comparison page exposes only its available formats and its baked theme pair",
     )
+    val escapedComparison =
+      ServeWeb.comparisonPage(
+        moduleLabel = "compose-m3",
+        previews = themedPreviews,
+        token = token,
+        displayTitle = "<script>alert('title')</script>",
+        hasSvgFor = { true },
+      )
+    assertTrue(
+      escapedComparison.contains("&lt;script&gt;alert(&#39;title&#39;)&lt;/script&gt;</a>") &&
+        !escapedComparison.contains("<script>alert('title')</script></a>"),
+      "the catalog-authored comparison breadcrumb title is HTML-escaped",
+    )
     assertTrue(
       referenceComparison.contains(">Reference</h2>") &&
         referenceComparison.contains(">Diff</h2>") &&
@@ -1678,7 +1691,7 @@ class ServeWebFixtureTest {
         Regex("<main class=\"cp-main\">").findAll(html).count(),
         "the $name page has exactly one <main> landmark",
       )
-      assertTrue(html.contains("<h1 class=\"cp-head\""), "the $name page leads with an <h1>")
+      assertTrue(html.contains("<h1 class=\"cp-head"), "the $name page leads with an <h1>")
     }
     assertTrue(
       File(pagesDir, "_render-placeholder.png").isFile,
@@ -2356,6 +2369,16 @@ class ServeWebFixtureTest {
       assetText("serve.css").contains("@media (max-width: 640px) {"),
       "landing is responsive too",
     )
+    assertTrue(
+      assetText("serve.css")
+        .contains(".cp-sys { display: grid; grid-template-rows: 220px auto; }") &&
+        assetText("serve.css").contains(".cp-syslist .cp-imgwrap { min-height: 0; height: 220px;"),
+      "system cards reserve one consistent hero region so metadata aligns across aspect ratios",
+    )
+    assertTrue(
+      landing.contains("class=\"cp-site-header\"") && landing.contains(">Catalogs</a>"),
+      "all pages carry the shared catalog/status navigation",
+    )
   }
 
   @Test
@@ -2411,7 +2434,7 @@ class ServeWebFixtureTest {
           ),
         refreshUrl = "/compose-m3/refresh",
       )
-    assertTrue(landing.contains("class=\"cp-prov\""), "the provenance strip renders")
+    assertTrue(landing.contains("class=\"cp-prov cp-disclosure\""), "the provenance details render")
     // Links to the delivery branch and the regenerating workflow.
     assertTrue(
       landing.contains(
@@ -2552,8 +2575,8 @@ class ServeWebFixtureTest {
   @Test
   fun `public landing shows the about intro, default landing does not`() {
     val public = ServeWeb.landingPage(moduleLabel, previews, token, isPublic = true)
-    assertTrue(public.contains("class=\"cp-about\""), "expected the about section")
-    assertTrue(public.contains("public preview server"), "expected the about title")
+    assertTrue(public.contains("class=\"cp-about cp-disclosure\""), "expected the about disclosure")
+    assertTrue(public.contains("About this preview server"), "expected the about title")
     assertTrue(public.contains("href=\"/version\""), "expected a link to /version")
 
     val default = ServeWeb.landingPage(moduleLabel, previews, token)
@@ -2867,7 +2890,10 @@ class ServeWebFixtureTest {
     // can
     // export SVG (a catalog / daemon) also offers an SVG row. The URLs are built client-side from
     // location.origin with the current overrides so a copied link reproduces the on-screen render.
-    assertTrue(catalogKnobs.contains("class=\"cp-links\""), "the direct-links panel is shown")
+    assertTrue(
+      catalogKnobs.contains("class=\"cp-links cp-disclosure-body\""),
+      "the direct-links panel is shown",
+    )
     assertTrue(
       catalogKnobs.contains("id=\"cp-url-png\"") && catalogKnobs.contains("id=\"cp-dl-png\""),
       "the PNG URL row has a copyable field and a download link",
@@ -2984,7 +3010,8 @@ class ServeWebFixtureTest {
   fun `trust badge renders trusted and unverified variants and is absent for a live module`() {
     val trusted = ServeWeb.landingPage(moduleLabel, previews, token, trust = "branch:repo@b")
     assertTrue(trusted.contains("cp-badge--trusted"), "expected a trusted badge")
-    assertTrue(trusted.contains("✓ branch:repo@b"))
+    assertTrue(trusted.contains("✓ trusted"))
+    assertTrue(trusted.contains("producer trust: branch:repo@b"))
 
     val unverified = ServeWeb.viewerPage(previews.first(), token, trust = "unverified")
     assertTrue(unverified.contains("cp-badge--unverified"), "expected an unverified badge")

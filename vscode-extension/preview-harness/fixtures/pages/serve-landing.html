@@ -4,15 +4,27 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>:samples:cmp — compose-preview</title>
-        <link rel="stylesheet" href="/assets/serve/a5e8-3fa78bf7c43ab640/serve.css">
+        <link rel="stylesheet" href="/assets/serve/b429-434fef1056806367/serve.css">
         <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
+        <header class="cp-site-header">
+  <a class="cp-site-brand" href="/?token=demo-token-fixture" aria-label="compose-preview home">
+    <span class="cp-site-mark" aria-hidden="true">◇</span>
+    <span>compose-preview</span>
+  </a>
+  <nav class="cp-site-nav" aria-label="Primary navigation">
+    <a href="/?token=demo-token-fixture">Catalogs</a>
+    <a href="/status?token=demo-token-fixture">Status</a>
+    <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
+  </nav>
+</header>
         <main class="cp-main">
-                <h1 class="cp-head">:samples:cmp <span class="cp-badge cp-badge--trusted" title="producer trust: signature:compose-ai-tools-ci">✓ signature:compose-ai-tools-ci</span></h1>
-        <p class="cp-sub">6 preview(s) · click one to view with overrides ·
+                <h1 class="cp-head cp-catalog-head">:samples:cmp <span class="cp-badge cp-badge--trusted" title="producer trust: signature:compose-ai-tools-ci">✓ trusted</span></h1>
+        <p class="cp-sub">6 preview(s) ·
           <a href="/bundle.zip?token=demo-token-fixture">download all (.zip)</a></p>
+        <div class="cp-catalog-tools">
         <div class="cp-searchbar">
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
     autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
@@ -22,7 +34,8 @@
     <button type="button" class="cp-bg-btn" data-bg-choice="off">Transparent</button>
   </span>
 </div>
-<div class="cp-grid" id="cp-grid">
+</div>
+        <div class="cp-grid" id="cp-grid">
         <a class="cp-card" href="/p/com.example.ButtonPreview?token=demo-token-fixture">
   <div class="cp-imgwrap">
     <img loading="lazy" alt="Button" src="/render/com.example.ButtonPreview.png?token=demo-token-fixture">

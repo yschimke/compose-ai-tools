@@ -4,26 +4,40 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Server status — compose-preview</title>
-        <link rel="stylesheet" href="/assets/serve/a5e8-3fa78bf7c43ab640/serve.css">
+        <link rel="stylesheet" href="/assets/serve/b429-434fef1056806367/serve.css">
         <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
+        <header class="cp-site-header">
+  <a class="cp-site-brand" href="/" aria-label="compose-preview home">
+    <span class="cp-site-mark" aria-hidden="true">◇</span>
+    <span>compose-preview</span>
+  </a>
+  <nav class="cp-site-nav" aria-label="Primary navigation">
+    <a href="/">Catalogs</a>
+    <a href="/status">Status</a>
+    <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
+  </nav>
+</header>
         <main class="cp-main">
               <h1 class="cp-head">Server status <span class="cp-badge cp-badge--unverified">⚠ degraded</span></h1>
       <p class="cp-sub">compose-preview serve · public (open) <span class="cp-about-ver">v0.0.0-fixture</span></p>
-      <section class="cp-about">
-        <p class="cp-about-title">Status &amp; monitoring</p>
-        <p class="cp-about-body">A live snapshot of this preview server — every configured catalog
-          and its latest load result, the render daemons running now, its configuration, and recent
-          daemon startup failures. The same data is available as JSON for a monitor or Home
-          Assistant sensor.</p>
-        <p class="cp-about-links">
-          <a href="/status.json">/status.json</a> ·
-          <a href="/version">/version</a> ·
-          <a href="/healthz">/healthz</a>
-        </p>
-      </section>
+      <details class="cp-about cp-disclosure">
+        <summary>
+          <span class="cp-about-title">Status &amp; monitoring details</span>
+          <span class="cp-disclosure-hint">JSON and health-check endpoints</span>
+        </summary>
+        <div class="cp-disclosure-body">
+          <p class="cp-about-body">Catalog load results, render daemons, configuration and recent
+            failures. The same data is available as JSON for monitors and Home Assistant.</p>
+          <p class="cp-about-links">
+            <a href="/status.json">/status.json</a> ·
+            <a href="/version">/version</a> ·
+            <a href="/healthz">/healthz</a>
+          </p>
+        </div>
+      </details>
 
       <div class="cp-status-grid">
       <div class="cp-stat"><div class="cp-stat-key">Catalogs</div><div class="cp-stat-val">4</div></div>
