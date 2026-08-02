@@ -938,11 +938,11 @@ object FigmaLayeredSvg {
         ?.takeIf { kotlin.math.abs(it) >= 0.01 }
         ?.let { """ letter-spacing="${fmt(it)}"""" } ?: ""
     val lines = t.lines
-    if (lines != null && lines.size > 1) {
-      // Wrapped text: one positioned <tspan> per line at the exact place the render wrapped it,
-      // instead of collapsing the whole string onto one baseline. x/y are absolute (layer origin +
-      // the captured per-line offset), so line alignment (centre/right) and the real break points
-      // are preserved on Figma import.
+    if (!lines.isNullOrEmpty()) {
+      // Wrapped or ellipsised text: one positioned <tspan> per captured line at the exact place the
+      // render drew it, instead of collapsing the full source string onto one baseline. x/y are
+      // absolute (layer origin + the captured per-line offset), so alignment, break points, and a
+      // single-line visible ellipsis are preserved on Figma import.
       val tspans =
         lines.joinToString("") { line ->
           val lineStart = line.start

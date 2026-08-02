@@ -415,15 +415,15 @@ object ComposeSemanticsDataProducer {
         .distinct()
         .singleOrNull()
         ?.takeIf { it.isNotBlank() }
-    // Per-line geometry for wrapped text — only for a single [TextLayoutResult] (so line offsets
-    // share one origin, the node's top-left) that actually wrapped (2+ lines). Each line's visible
-    // substring + left edge + baseline, in px relative to the layout origin, lets the export place
-    // one run per line instead of collapsing the string onto a single baseline. An ellipsised line
-    // gets the "…" the render draws re-appended (the visible end excludes it).
+    // Per-line geometry for wrapped or ellipsised text — only for a single [TextLayoutResult] (so
+    // line offsets share one origin, the node's top-left). Wrapped text needs its exact break
+    // points; a single ellipsised line needs the visible substring rather than the full source
+    // string. An ellipsised line gets the "…" the render draws re-appended (the visible end
+    // excludes it).
     val lines =
       results
         .singleOrNull()
-        ?.takeIf { it.lineCount >= 2 }
+        ?.takeIf { r -> r.lineCount >= 2 || (r.lineCount == 1 && r.isLineEllipsized(0)) }
         ?.let { r ->
           val str = r.layoutInput.text.text
           (0 until r.lineCount).map { i ->

@@ -39,14 +39,19 @@ class GoogleFontsWoff2Resolver(
 ) : FigmaFontResolver {
 
   override fun woff2(family: String, weight: Int, italic: Boolean): ByteArray? {
-    val cacheFile = cacheDir?.let { File(it, cacheName(family, weight, italic)) }
+    // Compose exposes the full 1..1000 FontWeight range (Wear TimeText currently resolves to 599),
+    // while Google Fonts' CSS2 endpoint accepts the conventional 100-step instances for static
+    // families such as Roboto. Fetch the nearest supported instance; the SVG still declares the
+    // original weight, so CSS selects this closest face for the run.
+    val googleWeight = googleFontsWeight(weight)
+    val cacheFile = cacheDir?.let { File(it, cacheName(family, googleWeight, italic)) }
     cacheFile
       ?.takeIf { it.exists() && it.length() > 0 }
       ?.let {
         return runCatching { fileSystem.read(it.path.toPath()) { readByteArray() } }.getOrNull()
       }
     if (offline) return null
-    val bytes = downloadWithRetry(family, weight, italic) ?: return null
+    val bytes = downloadWithRetry(family, googleWeight, italic) ?: return null
     cacheFile?.let { f ->
       runCatching {
         f.parentFile?.mkdirs()
@@ -103,9 +108,14 @@ class GoogleFontsWoff2Resolver(
     /** CSS2 request for a single face; a modern UA gets WOFF2 `src` URLs back. */
     fun cssUrl(family: String, weight: Int, italic: Boolean): String {
       @Suppress("DEPRECATION") val fam = URLEncoder.encode(family, "UTF-8").replace("+", "%20")
-      val axis = if (italic) "ital,wght@1,$weight" else "wght@$weight"
+      val supportedWeight = googleFontsWeight(weight)
+      val axis = if (italic) "ital,wght@1,$supportedWeight" else "wght@$supportedWeight"
       return "https://fonts.googleapis.com/css2?family=$fam:$axis&display=swap"
     }
+
+    /** Nearest conventional Google Fonts weight, with ties biased upward (550 -> 600). */
+    internal fun googleFontsWeight(weight: Int): Int =
+      (((weight.coerceIn(1, 1000) + 50) / 100) * 100).coerceIn(100, 900)
 
     /**
      * Pick the WOFF2 `src` URL from a CSS2 response — preferring the `latin` subset block (the
