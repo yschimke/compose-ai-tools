@@ -95,7 +95,7 @@ class ServeCatalogStoreTest {
   }
 
   @Test
-  fun `catalog imports only canonical design rasters and keeps source URLs inert`() {
+  fun `catalog imports the published reference manifest and keeps source URLs inert`() {
     val root = tempRoot()
     val referencePng = png()
     val requested = mutableListOf<String>()
@@ -103,8 +103,12 @@ class ServeCatalogStoreTest {
       """
       {"schema":"design-parity-catalog/v1","system":"compose-m3",
        "components":[{"componentId":"Button/Filled","images":[
-         {"path":"images/button.png"}]}],
-       "references":[{
+         {"path":"images/button.png"}]}]}
+      """
+        .trimIndent()
+    val manifest =
+      """
+      {"schema":"compose-preview-references/v1","references":[{
          "id":"button-figma","previewId":"button","label":"Figma button",
          "raster":{"path":"design-references/button.png","width":2,"height":2},
          "source":{"provider":"figma","uri":"https://api.figma.com/v1/files/private"},
@@ -116,6 +120,7 @@ class ServeCatalogStoreTest {
       requested += url
       when {
         url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.encodeToByteArray()
+        url.endsWith("/references/index.json") -> manifest.encodeToByteArray()
         url.endsWith("/design-references/button.png") -> referencePng
         url.endsWith("/images/button.png") -> png()
         else -> null
@@ -136,8 +141,50 @@ class ServeCatalogStoreTest {
     assertEquals("figma", reference.source.provider)
     assertEquals("https://api.figma.com/v1/files/private", reference.source.uri)
     assertContentEquals(referencePng, host.designReferenceRaster("button-figma"))
+    assertTrue(requested.any { it.endsWith("/references/index.json") })
     assertFalse(requested.any { it.startsWith("https://api.figma.com") })
     assertFalse(requested.any { it.endsWith("mocks/button.html") })
+  }
+
+  @Test
+  fun `valid inline reference survives an invalid manifest duplicate`() {
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}],
+       "references":[{
+         "id":"button-design","previewId":"button","label":"Inline fallback",
+         "raster":{"path":"references/inline.png","width":2,"height":2},
+         "source":{"provider":"inline"}
+       }]}
+      """
+        .trimIndent()
+    val manifest =
+      """
+      {"schema":"compose-preview-references/v1","references":[{
+        "id":"button-design","previewId":"button","label":"Broken manifest entry",
+        "raster":{"path":"references/manifest.png","width":2,"height":2,
+          "sha256":"0000000000000000000000000000000000000000000000000000000000000000"},
+        "source":{"provider":"manifest"}
+      }]}
+      """
+        .trimIndent()
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.encodeToByteArray()
+        url.endsWith("/references/index.json") -> manifest.encodeToByteArray()
+        url.endsWith("/images/button.png") || url.endsWith("/references/manifest.png") -> png()
+        url.endsWith("/references/inline.png") -> png()
+        else -> null
+      }
+    }
+
+    assertTrue(store(TrustStore.EMPTY, fetch).load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    val reference = registered.getValue("compose-m3").designReferencesFor("button").single()
+    assertEquals("button-design", reference.id)
+    assertEquals("Inline fallback", reference.label)
+    assertEquals("inline", reference.source.provider)
   }
 
   @Test

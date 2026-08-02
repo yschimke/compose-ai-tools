@@ -1308,6 +1308,7 @@ class ServeHttpServer(
           moduleLabel = renderHost.label,
           preview = preview,
           reference = reference,
+          references = references,
           token = token,
           sessionId = webSessionId,
           basePath = basePath,
