@@ -136,6 +136,12 @@ inputs:
       Passthrough to the comment pipeline: post / update an empty-diff
       sticky comment instead of staying silent on no-change runs.
     default: 'false'
+  rerun-checkbox:
+    description: >
+      Add a "Re-run preview diff" task-list control to the compose sticky
+      comment. This is presentation only: enable it when the repository has
+      an issue_comment workflow that handles edits to the checked item.
+    default: 'false'
   mode:
     description: >
       Override the event-based mode selector: `auto` (default), `baseline`,
@@ -831,6 +837,7 @@ runs:
         RESOURCE_HEAD_BRANCH: 'compose-preview/resources/pr'
         AB_CONFIG: ${{ inputs.ab-config }}
         SCOPE_MODULES: ${{ steps.scope.outputs.modules }}
+        RERUN_CHECKBOX: ${{ inputs.rerun-checkbox }}
       run: |
         set -euo pipefail
         # Compose comment is only meaningful when the compose pipeline
@@ -863,6 +870,11 @@ runs:
           SCOPE_ARGS=(--scope-modules "$SCOPE_MODULES")
         fi
 
+        RERUN_ARGS=()
+        if [ "$RERUN_CHECKBOX" = "true" ]; then
+          RERUN_ARGS=(--rerun-checkbox)
+        fi
+
         python3 "$ACTION_PATH/../lib/compare-previews.py" compare _previews.json \
           --baselines _baselines/baselines.json \
           --baseline-renders _baselines/renders \
@@ -871,6 +883,7 @@ runs:
           --head-ref "$HEAD_REF" \
           "${AB_ARGS[@]}" \
           "${SCOPE_ARGS[@]}" \
+          "${RERUN_ARGS[@]}" \
           > _comment_body.md
 
     # Sibling step for the resources comment — separately gated on

@@ -345,6 +345,22 @@ Two caveats worth knowing:
   cached. Pinning faces by content hash — so a substitution is a hard failure
   rather than a silent metric change — needs a lockfile and is not part of this.
 
+## Re-run checkbox
+
+Set `rerun-checkbox: true` to put an unchecked **Re-run preview diff** item
+near the top of the compose sticky comment. The action only renders the
+control; the repository must handle the resulting `issue_comment: edited`
+event and authorize the actor before calling GitHub's workflow-run rerun API.
+Keeping this opt-in prevents consumers without that handler from receiving an
+inert checkbox.
+
+This repository's [pr-commands.yml](../../workflows/pr-commands.yml) is the
+reference handler. It accepts the checkbox only on the bot-authored
+`<!-- preview-diff -->` comment, checks the clicking actor has write-level
+repository access, updates the same comment with an in-progress status, and
+fully reruns the latest `compose-preview` workflow on the PR's current head
+SHA. The new render then replaces the sticky comment as usual.
+
 ## Related actions
 
 - [`install`](../install/) — just put the CLI on `$PATH`, no pipelines.

@@ -1134,6 +1134,8 @@ def cmd_compare(args: argparse.Namespace) -> int:
     # --- generate markdown ---
     marker = "<!-- preview-diff -->"
     lines = [marker, "## Preview Changes", ""]
+    if getattr(args, "rerun_checkbox", False):
+        lines.extend(["- [ ] Re-run preview diff", ""])
 
     if not new and not changed and not removed and not failures and not ab_groups \
             and not partial_render:
@@ -1920,6 +1922,9 @@ def main() -> int:
                           "for modules outside this set are treated as "
                           "unchanged instead of removed — they were never "
                           "rendered this run. Omit for full runs.")
+    cmp.add_argument("--rerun-checkbox", action="store_true",
+                     help="Add the task-list control consumed by a repository's "
+                          "issue_comment rerun workflow.")
 
     cp = sub.add_parser("copy-changed", help="Copy new/changed PNGs to output dir")
     cp.add_argument("cli_json", help="Path to compose-preview show --json output")
