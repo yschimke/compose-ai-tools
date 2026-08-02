@@ -1768,6 +1768,34 @@ object ServeWeb {
     """
       .trimIndent()
 
+  fun playgroundDisabledPage(
+    token: String,
+    isPublic: Boolean,
+    unfurl: UnfurlMetadata? = null,
+  ): String {
+    val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
+    return document(
+      title = "Playground unavailable — compose-preview",
+      unfurlDescription = "The playground is not enabled on this server.",
+      unfurl = unfurl,
+      body =
+        """
+        <h1 class="cp-head">Playground unavailable</h1>
+        <p class="cp-sub">
+          This server was started without a playground bundle, so it can browse design systems and
+          run live previews but cannot compile playground snippets.
+        </p>
+        <p class="cp-sub">
+          Configure <code>--playground-bundle</code> or
+          <code>--playground-android-bundle</code>, and on public servers also configure
+          <code>--playground-sandbox</code>.
+        </p>
+        <a class="cp-back" href="/$suffix">← All design systems</a>
+        """
+          .trimIndent(),
+    )
+  }
+
   /** The `<option>` value + label for a playground mode in the editor's selector. */
   private fun playgroundModeChoice(mode: PlaygroundMode): Pair<String, String> =
     when (mode) {

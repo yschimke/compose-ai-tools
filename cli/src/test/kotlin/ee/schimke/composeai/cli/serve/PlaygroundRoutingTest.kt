@@ -177,8 +177,15 @@ class PlaygroundRoutingTest {
   }
 
   @Test
-  fun `the editor page is absent when the playground lane isn't enabled`() {
-    get("/playground", plainServer.port).use { resp -> assertEquals(404, resp.code) }
+  fun `the editor page explains when the playground lane isn't enabled`() {
+    get("/playground", plainServer.port).use { resp ->
+      assertEquals(503, resp.code)
+      assertEquals("no-store", resp.header("Cache-Control"))
+      assertTrue(
+        resp.body!!.string().contains("Playground unavailable"),
+        "the reserved playground path explains the missing server config",
+      )
+    }
   }
 
   @Test

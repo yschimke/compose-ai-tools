@@ -196,6 +196,29 @@ if [[ "${SERVE_ALLOW_RENDER_TRUSTED}" == "1" || "${SERVE_ALLOW_RENDER_TRUSTED}" 
     args+=(--catalog-source-root "${src_root}")
   fi
 fi
+
+# Playground compile lane. Off by default because it compiles and runs visitor-supplied Kotlin.
+# A public server must set a sandbox profile that passes the CLI preflight, otherwise serve refuses
+# the lane and `/playground` shows an explanatory disabled page.
+[[ -n "${SERVE_PLAYGROUND_BUNDLE:-}" ]] &&
+  args+=(--playground-bundle "${SERVE_PLAYGROUND_BUNDLE}")
+[[ -n "${SERVE_PLAYGROUND_ANDROID_BUNDLE:-}" ]] &&
+  args+=(--playground-android-bundle "${SERVE_PLAYGROUND_ANDROID_BUNDLE}")
+[[ -n "${SERVE_PLAYGROUND_SANDBOX:-}" ]] &&
+  args+=(--playground-sandbox "${SERVE_PLAYGROUND_SANDBOX}")
+[[ -n "${SERVE_PLAYGROUND_SANDBOX_MEMORY_MB:-}" ]] &&
+  args+=(--playground-sandbox-memory-mb "${SERVE_PLAYGROUND_SANDBOX_MEMORY_MB}")
+[[ -n "${SERVE_PLAYGROUND_SANDBOX_CPUS:-}" ]] &&
+  args+=(--playground-sandbox-cpus "${SERVE_PLAYGROUND_SANDBOX_CPUS}")
+[[ -n "${SERVE_PLAYGROUND_SANDBOX_PIDS:-}" ]] &&
+  args+=(--playground-sandbox-pids "${SERVE_PLAYGROUND_SANDBOX_PIDS}")
+[[ -n "${SERVE_PLAYGROUND_SANDBOX_TTL:-}" ]] &&
+  args+=(--playground-sandbox-ttl "${SERVE_PLAYGROUND_SANDBOX_TTL}")
+[[ -n "${SERVE_PLAYGROUND_SANDBOX_RO:-}" ]] &&
+  args+=(--playground-sandbox-ro "${SERVE_PLAYGROUND_SANDBOX_RO}")
+[[ -n "${SERVE_PLAYGROUND_COMPILE_SLOTS:-}" ]] &&
+  args+=(--playground-compile-slots "${SERVE_PLAYGROUND_COMPILE_SLOTS}")
+
 # Bound concurrent live (daemon-backed) stream sessions by a PERMIT BUDGET — each live session
 # charges permits by backend weight (a desktop CMP daemon = 1, a heavier Robolectric Android one = 2,
 # see LiveSeatLimiter), so one heavy catalog can't hog a flat seat count and starve the cheap CMP
