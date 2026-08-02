@@ -285,6 +285,16 @@ test("returning overrides to identity restores the displayed SVG (not the last b
   assert.match(html, /img\.getAttribute\("src"\) !== svgPath/);
 });
 
+test("a lazy display SVG keeps its blob URL until the image settles", () => {
+  const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
+  // Below-fold images may not request their blob URL for an arbitrary amount of time. Revoke it
+  // only after this display image has loaded (or failed), rather than on a wall-clock timeout.
+  assert.match(html, /img\.addEventListener\("load", release\)/);
+  assert.match(html, /img\.addEventListener\("error", release\)/);
+  assert.match(html, /URL\.revokeObjectURL\(url\)/);
+  assert.doesNotMatch(html, /setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 4000\)/);
+});
+
 test("the theme override repoints the displayed PNG, not just the scored one", () => {
   const html = renderCompareHtml(catalog, { figmaSvgSlugs: new Set(["button-filled"]) });
   // The PNG column's <img> src follows the theme-selected path (guarded to avoid reloads).
