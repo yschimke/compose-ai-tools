@@ -376,14 +376,14 @@
     "serve-reference-compare.dark.png": {
       "fixture": "serve-reference-compare",
       "theme": "dark",
-      "sha256": "83f301681e2e1b98a5874413e6176f29eec536e4769c746af73b27f30841d128",
-      "size": 46913
+      "sha256": "9ec66f64afd05296b6a002f870c8e0d3addba7f0ceca15d50dfef53bd1fc1b60",
+      "size": 53542
     },
     "serve-reference-compare.light.png": {
       "fixture": "serve-reference-compare",
       "theme": "light",
-      "sha256": "16cbe0214159078b587044d93680ef2685a95180bc6a7c558f0420bf798b7ea7",
-      "size": 47154
+      "sha256": "2f8e407b38b5ae4abc6a9064c067f0da745f9a0ff9ebdf8fad201d836c63ecdc",
+      "size": 53828
     },
     "serve-status.dark.png": {
       "fixture": "serve-status",
