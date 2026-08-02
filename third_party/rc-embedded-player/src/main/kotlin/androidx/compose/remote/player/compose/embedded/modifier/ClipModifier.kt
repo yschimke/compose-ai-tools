@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
+import kotlin.math.min
 
 @Composable
 internal fun Modifier.clipRect(op: ClipRectModifierOperation): Modifier {
@@ -46,31 +47,27 @@ internal fun Modifier.clipRect(op: ClipRectModifierOperation): Modifier {
 @Composable
 internal fun Modifier.roundedClipRect(op: RoundedClipRectModifierOperation): Modifier {
     val data = op.readDataReflection()
-    // A corner is either a literal (a dp value the shape was authored with — a card's fixed corner,
-    // `RemoteRoundedCornerShape(4.dp)`) or a size-relative *variable* (a NaN-encoded expression over
-    // the component's measured size — `RemoteCircleShape`'s 50%). The raw bits (`data.x1` … `data.x2`)
-    // are NaN for a variable and finite for a literal — the same signal
-    // `RoundedClipRectModifierOperation.read` keeps upstream by reading ints, not floats.
     val behavior = LocalCoreDocument.current.densityBehavior
-    return this.clip(
+    val shape =
         RemoteRoundedClipShape(
-            topStart = ClipCorner(rememberRemoteFloatAsState(data.x1Value), !data.x1.isNaN()),
-            topEnd = ClipCorner(rememberRemoteFloatAsState(data.y1Value), !data.y1.isNaN()),
-            bottomEnd = ClipCorner(rememberRemoteFloatAsState(data.y2Value), !data.y2.isNaN()),
-            bottomStart = ClipCorner(rememberRemoteFloatAsState(data.x2Value), !data.x2.isNaN()),
+            topStart = rememberRemoteFloatAsState(data.x1Value),
+            topEnd = rememberRemoteFloatAsState(data.y1Value),
+            bottomEnd = rememberRemoteFloatAsState(data.y2Value),
+            bottomStart = rememberRemoteFloatAsState(data.x2Value),
             densityBehavior = behavior,
         )
-    )
+
+    // remote-core applies the rounded clip to the component's complete paint output. DrawContent
+    // precedes this operation in the wire modifier list, but appending Compose's clip would leave
+    // that draw node outside the clip. Prepend it so generated background paths are clipped too.
+    return Modifier.clip(shape).then(this)
 }
 
-/** One resolved corner radius plus whether it was authored as a dp literal (vs a size variable). */
-internal data class ClipCorner(val value: State<Float>, val literal: Boolean)
-
 internal data class RemoteRoundedClipShape(
-    val topStart: ClipCorner,
-    val topEnd: ClipCorner,
-    val bottomEnd: ClipCorner,
-    val bottomStart: ClipCorner,
+    val topStart: State<Float>,
+    val topEnd: State<Float>,
+    val bottomEnd: State<Float>,
+    val bottomStart: State<Float>,
     val densityBehavior: Int,
 ) : Shape {
     override fun createOutline(
@@ -80,39 +77,66 @@ internal data class RemoteRoundedClipShape(
     ): Outline {
         val minDimension = size.minDimension
         val fallback = minDimension / 2f
-        fun radius(corner: ClipCorner) =
-            corner.resolveRadius(fallback, minDimension, densityBehavior, density.density)
+        fun radius(corner: State<Float>) =
+            corner.value.resolveRadius(fallback, minDimension, densityBehavior, density.density)
+        val topStartRadius = radius(topStart)
+        val topEndRadius = radius(topEnd)
+        val bottomEndRadius = radius(bottomEnd)
+        val bottomStartRadius = radius(bottomStart)
+        val radiusScale =
+            roundedRectRadiusScale(
+                size,
+                topStartRadius,
+                topEndRadius,
+                bottomEndRadius,
+                bottomStartRadius,
+            )
 
         return Outline.Rounded(
             RoundRect(
                 rect = Rect(0f, 0f, size.width, size.height),
-                topLeft = CornerRadius(radius(topStart)),
-                topRight = CornerRadius(radius(topEnd)),
-                bottomRight = CornerRadius(radius(bottomEnd)),
-                bottomLeft = CornerRadius(radius(bottomStart)),
+                topLeft = CornerRadius(topStartRadius * radiusScale),
+                topRight = CornerRadius(topEndRadius * radiusScale),
+                bottomRight = CornerRadius(bottomEndRadius * radiusScale),
+                bottomLeft = CornerRadius(bottomStartRadius * radiusScale),
             )
         )
     }
 }
 
-internal fun ClipCorner.resolveRadius(
+/** Matches the radius normalization performed by Android's Path.addRoundRect in remote-core. */
+private fun roundedRectRadiusScale(
+    size: Size,
+    topStart: Float,
+    topEnd: Float,
+    bottomEnd: Float,
+    bottomStart: Float,
+): Float {
+    fun scaleFor(limit: Float, first: Float, second: Float): Float {
+        val sum = first + second
+        return if (sum > limit && sum != 0f) limit / sum else 1f
+    }
+
+    return min(
+        min(scaleFor(size.width, topStart, topEnd), scaleFor(size.width, bottomStart, bottomEnd)),
+        min(scaleFor(size.height, topStart, bottomStart), scaleFor(size.height, topEnd, bottomEnd)),
+    )
+}
+
+internal fun Float.resolveRadius(
     fallback: Float,
     minDimension: Float,
     densityBehavior: Int,
     density: Float,
 ): Float {
-    val v = value.value
-    return when {
-        !v.isFinite() -> fallback
-        // A literal corner is authored in dp; remote-core's `RoundedClipRectModifierOperation.paint`
-        // scales it by the document density under DP behavior (and treats it as raw pixels
-        // otherwise). Replicate that so a literal-cornered button/card matches the baked render and
-        // the TypeScript player instead of rendering density× under-rounded.
-        literal -> if (densityBehavior == CoreDocument.DENSITY_BEHAVIOR_DP) v * density else v
-        // A size-relative *variable* is computed from the component's measured size, which the engine
-        // already carries in pixels, so it is used as-is (scaling would double-apply the density).
-        // Percent corners can briefly arrive as 0..1 fractions before that expression settles.
-        v > 0f && v <= 1f -> v * minDimension
-        else -> v
-    }
+    if (!isFinite()) return fallback
+
+    // Percent corners can briefly arrive as 0..1 fractions before the component-size expression
+    // settles. RoundRect normalizes an oversized result, so this remains safe under DP scaling.
+    val resolved = if (this > 0f && this <= 1f) this * minDimension else this
+
+    // Match remote-core's RoundedClipRectModifierOperation.paint exactly: updateVariables first
+    // resolves literals and NaN-backed variables into mX1..mY2, then DP behavior scales every
+    // resolved corner. Legacy and pixel behavior both pass the resolved value through unchanged.
+    return if (densityBehavior == CoreDocument.DENSITY_BEHAVIOR_DP) resolved * density else resolved
 }
