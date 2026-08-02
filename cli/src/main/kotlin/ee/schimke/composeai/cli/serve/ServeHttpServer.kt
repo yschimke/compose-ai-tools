@@ -601,6 +601,8 @@ class ServeHttpServer(
         get("/") { handleLanding(sessionInPath = false) }
         get("/{system}") { handleLanding(sessionInPath = true) }
         get("/{system}/") { handleLanding(sessionInPath = true) }
+        get("/compare") { handleFormatComparison(sessionInPath = false) }
+        get("/{system}/compare") { handleFormatComparison(sessionInPath = true) }
 
         post("/refresh") { handleCatalogRefresh(sessionInPath = false) }
         post("/{system}/refresh") { handleCatalogRefresh(sessionInPath = true) }
@@ -1141,6 +1143,10 @@ class ServeHttpServer(
           // app-only server's landings still link home.
           hasHomeIndex = listedCatalogs().isNotEmpty() || unlistedCatalogs().isNotEmpty(),
           basePath = basePath,
+          hasFormatComparison =
+            renderHost.previews.any { preview ->
+              renderHost.hasSvgExportFor(preview.id) || renderHost.hasRemoteComposeDoc(preview.id)
+            },
           version = BUNDLE_VERSION,
           // Catalog provenance (delivery branch, generation date, tool versions) for the strip
           // under the header; null for a plain (non-catalog) module session.
@@ -1165,6 +1171,43 @@ class ServeHttpServer(
           engagement = previewEngagement(selectedSessionId, renderHost.previews),
           systemViews = systemViews,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = heroUrl),
+        ),
+        ContentType.Text.Html,
+      )
+    }
+  }
+
+  /** `GET /compare` and `GET /{system}/compare`: native format-fidelity comparison gallery. */
+  private suspend fun RoutingContext.handleFormatComparison(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    val sessionId = selectedSessionId(sessionInPath)
+    val (webSessionId, basePath) = webSessionAndBase(sessionInPath)
+    withLeasedSession(
+      sessionId,
+      onMissing = { respondNotFoundHtml("That design system was not found on this server.") },
+    ) { renderHost ->
+      val comparable =
+        renderHost.previews.any { preview ->
+          renderHost.hasSvgExportFor(preview.id) || renderHost.hasRemoteComposeDoc(preview.id)
+        }
+      if (!comparable) {
+        respondNotFoundHtml("This session has no SVG or Remote Compose formats to compare.")
+        return@withLeasedSession
+      }
+      markGeneration("static-page", pageCacheControl())
+      call.respondText(
+        ServeWeb.comparisonPage(
+          moduleLabel = renderHost.label,
+          previews = renderHost.previews,
+          token = token,
+          sessionId = webSessionId,
+          basePath = basePath,
+          isPublic = isPublic,
+          trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
+          declaredSurface = catalogBundleHost(renderHost)?.stageSurface,
+          hasSvgFor = renderHost::hasSvgExportFor,
+          hasRemoteComposeFor = renderHost::hasRemoteComposeDoc,
+          unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
         ),
         ContentType.Text.Html,
       )

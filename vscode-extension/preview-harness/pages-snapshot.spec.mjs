@@ -24,6 +24,21 @@ import { listThemes } from "./_fixtures.mjs";
 const harnessDir = dirname(fileURLToPath(import.meta.url));
 const outDir = resolve(harnessDir, "out");
 const pagesDir = resolve(harnessDir, "fixtures", "pages");
+const serveAssetsDir = resolve(
+    harnessDir,
+    "..",
+    "..",
+    "cli",
+    "src",
+    "main",
+    "resources",
+    "ee",
+    "schimke",
+    "composeai",
+    "cli",
+    "serve",
+    "assets",
+);
 
 // The serve pages point `<img>` / their viewer JS at two image lanes with no
 // backend in the harness: the daemon's `/render/<id>.png` endpoint, and the
@@ -31,7 +46,16 @@ const pagesDir = resolve(harnessDir, "fixtures", "pages");
 // the committed placeholder so the capture is deterministic and tiles render at
 // a realistic size instead of collapsing on broken images.
 const renderPlaceholder = resolve(pagesDir, "_render-placeholder.png");
+const renderSvgPlaceholder = resolve(pagesDir, "_render-placeholder.svg");
 const IMAGE_LANES = ["**/render/**", "**/hero/**"];
+const SERVE_ASSETS = [
+    ["serve.css", "text/css"],
+    ["viewer.js", "text/javascript"],
+    ["viewer-groups.js", "text/javascript"],
+    ["viewer-drawers.js", "text/javascript"],
+    ["backend-badge.js", "text/javascript"],
+    ["format-compare.js", "text/javascript"],
+];
 
 // Runtime *states* of a page fixture that the committed HTML can't express on its own, captured as
 // extra shots so they're diffed on every PR like any other fixture. Each entry names a base
@@ -80,13 +104,26 @@ function listPageFixtures() {
 for (const fixture of listPageFixtures()) {
     for (const theme of listThemes()) {
         test(`snapshot · ${fixture} · ${theme}`, async ({ page }) => {
+            // The comparison fixture exercises production CSS and JS (including its asynchronous
+            // scorer), while older static-page baselines retain their historical capture contract.
+            if (fixture === "serve-format-compare") {
+                for (const [name, contentType] of SERVE_ASSETS) {
+                    await page.route(`**/assets/serve/**/${name}`, (route) =>
+                        route.fulfill({
+                            path: resolve(serveAssetsDir, name),
+                            contentType,
+                        }),
+                    );
+                }
+            }
             for (const lane of IMAGE_LANES) {
-                await page.route(lane, (route) =>
-                    route.fulfill({
-                        path: renderPlaceholder,
-                        contentType: "image/png",
-                    }),
-                );
+                await page.route(lane, (route) => {
+                    const svg = new URL(route.request().url()).pathname.endsWith(".svg");
+                    return route.fulfill({
+                        path: svg ? renderSvgPlaceholder : renderPlaceholder,
+                        contentType: svg ? "image/svg+xml" : "image/png",
+                    });
+                });
             }
             await page.emulateMedia({ colorScheme: theme });
             await page.goto(`/preview-harness/fixtures/pages/${fixture}.html`);
@@ -102,6 +139,22 @@ for (const fixture of listPageFixtures()) {
                     { timeout: 5_000 },
                 )
                 .catch(() => {});
+
+            // Comparison scores are asynchronous (fetch + decode + SSIM). Capture the settled
+            // fidelity state, not the initial "waiting…" skeleton.
+            if (fixture === "serve-format-compare") {
+                await page
+                    .waitForFunction(() =>
+                        Array.from(
+                            document.querySelectorAll(".cp-compare-score"),
+                        ).every(
+                            (cell) =>
+                                cell.textContent !== "waiting…" &&
+                                cell.textContent !== "comparing…",
+                        ),
+                    )
+                    .catch(() => {});
+            }
 
             await page.screenshot({
                 path: resolve(outDir, `${fixture}.${theme}.png`),

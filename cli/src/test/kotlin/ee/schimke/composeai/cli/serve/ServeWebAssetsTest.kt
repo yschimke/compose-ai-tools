@@ -9,7 +9,14 @@ import kotlin.test.assertTrue
 class ServeWebAssetsTest {
   @Test
   fun `serve web frontend assets are packaged as classpath resources`() {
-    for (name in listOf("serve.css", "viewer.js", "viewer-groups.js", "viewer-drawers.js")) {
+    for (name in
+      listOf(
+        "serve.css",
+        "viewer.js",
+        "viewer-groups.js",
+        "viewer-drawers.js",
+        "format-compare.js",
+      )) {
       val asset = assertNotNull(ServeWebAssets.load(name), "$name should be loadable")
       assertTrue(asset.bytes.isNotEmpty(), "$name should not be empty")
       assertTrue(asset.etag.startsWith("\"") && asset.etag.endsWith("\""), "$name ETag")
@@ -35,11 +42,24 @@ class ServeWebAssetsTest {
       html.contains("""<script src="${ServeWebAssets.href("backend-badge.js")}"></script>"""),
       html,
     )
+    val svgHtml = ServeWeb.viewerPage(preview, token = "t", hasSvgExport = true)
+    assertTrue(
+      svgHtml.contains("""<script src="${ServeWebAssets.href("format-compare.js")}"></script>"""),
+      svgHtml,
+    )
+    assertTrue(svgHtml.contains("id=\"cp-svg-match\""), svgHtml)
   }
 
   @Test
   fun `extracted javascript assets pass syntax check when node is available`() {
-    for (name in listOf("viewer.js", "viewer-groups.js", "viewer-drawers.js", "backend-badge.js")) {
+    for (name in
+      listOf(
+        "viewer.js",
+        "viewer-groups.js",
+        "viewer-drawers.js",
+        "backend-badge.js",
+        "format-compare.js",
+      )) {
       val resource =
         assertNotNull(
           ServeWebAssets::class.java.getResource("/ee/schimke/composeai/cli/serve/assets/$name")

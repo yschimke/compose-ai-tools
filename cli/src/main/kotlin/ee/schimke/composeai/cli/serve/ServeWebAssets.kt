@@ -15,6 +15,7 @@ internal object ServeWebAssets {
       "viewer-groups.js" to "text/javascript; charset=utf-8",
       "viewer-drawers.js" to "text/javascript; charset=utf-8",
       "backend-badge.js" to "text/javascript; charset=utf-8",
+      "format-compare.js" to "text/javascript; charset=utf-8",
     )
 
   private val cache = java.util.concurrent.ConcurrentHashMap<String, Asset>()

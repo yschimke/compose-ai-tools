@@ -131,13 +131,15 @@ class ServeCatalogStoreTest {
 
   @Test
   fun `a catalog's baked figma svgs are fetched and served self-contained`() {
-    val svg = "<svg><image href=\"button-filled.figma-raster/n0.png\"/></svg>"
+    val flatSvg = "<svg><text>legacy light fallback</text></svg>"
+    val variantSvg = "<svg><image href=\"ideal__default__dark.figma-raster/n0.png\"/></svg>"
     val crop = byteArrayOf(7, 7, 7)
     val fetch: (String) -> ByteArray? = { url ->
       when {
         url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalogJson.toByteArray()
-        url.endsWith("figma/button-filled.svg") -> svg.toByteArray()
-        url.endsWith("figma/button-filled.figma-raster/n0.png") -> crop
+        url.endsWith("figma/button-filled.svg") -> flatSvg.toByteArray()
+        url.endsWith("figma/button-filled/ideal__default__dark.svg") -> variantSvg.toByteArray()
+        url.endsWith("figma/button-filled/ideal__default__dark.figma-raster/n0.png") -> crop
         url.endsWith(".png") -> png()
         else -> null
       }
@@ -151,8 +153,9 @@ class ServeCatalogStoreTest {
     val expected = java.util.Base64.getEncoder().encodeToString(crop)
     assertTrue(
       out.contains("data:image/png;base64,$expected"),
-      "crop inlined into served svg: $out",
+      "the exact dark-variant SVG is served and its sibling crop is inlined: $out",
     )
+    assertFalse(out.contains("legacy light fallback"), "the flat light SVG does not replace dark")
   }
 
   @Test

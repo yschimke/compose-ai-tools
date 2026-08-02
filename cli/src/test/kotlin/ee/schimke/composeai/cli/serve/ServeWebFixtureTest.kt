@@ -651,7 +651,22 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
         hasHomeIndex = true,
+        hasFormatComparison = true,
         version = version,
+      )
+    // The format-comparison surface introduced for issue #3158. Both targets are advertised so the
+    // visual fixture covers the format tabs; the light/dark pairs ensure the comparison theme
+    // control and strict same-theme URL wiring are captured too.
+    val formatComparison =
+      ServeWeb.comparisonPage(
+        "compose-m3",
+        themedPreviews,
+        token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
+        hasSvgFor = { it.startsWith("button-filled") || it.startsWith("switch-on") },
+        hasRemoteComposeFor = { it.startsWith("button-filled") },
       )
     // The same themed catalog served LIVE by a session whose app declares `@ThemeCatalog` themes:
     // the header's Theme control lists every configured theme (issue #2881) — the baked Light/Dark
@@ -974,6 +989,7 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-landing-path.html").writeText(landingPath)
       File(pagesDir, "serve-viewer-path.html").writeText(viewerPath)
       File(pagesDir, "serve-landing-themed.html").writeText(landingThemed)
+      File(pagesDir, "serve-format-compare.html").writeText(formatComparison)
       File(pagesDir, "serve-landing-declared-themes.html").writeText(landingDeclaredThemes)
       File(pagesDir, "serve-landing-states.html").writeText(landingStates)
       File(pagesDir, "serve-landing-sections.html").writeText(landingSections)
@@ -989,6 +1005,7 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-doc-lottie.html").writeText(docLottie)
       File(pagesDir, "serve-doc-remotecompose.html").writeText(docRemoteCompose)
       writePlaceholderPng(File(pagesDir, "_render-placeholder.png"))
+      File(pagesDir, "_render-placeholder.svg").writeText(renderPlaceholderSvg())
       return
     }
 
@@ -1087,6 +1104,36 @@ class ServeWebFixtureTest {
     assertGolden(File(pagesDir, "serve-landing-path.html"), landingPath)
     assertGolden(File(pagesDir, "serve-viewer-path.html"), viewerPath)
     assertGolden(File(pagesDir, "serve-landing-themed.html"), landingThemed)
+    assertGolden(File(pagesDir, "serve-format-compare.html"), formatComparison)
+    assertTrue(
+      landingThemed.contains("class=\"cp-format-link\" href=\"/compare?session=compose-m3\"") &&
+        landingThemed.contains(">compare formats</a>"),
+      "a catalog with alternate formats exposes the subtle comparison link",
+    )
+    assertTrue(
+      formatComparison.contains("data-compare-format=\"svg\"") &&
+        formatComparison.contains("data-compare-format=\"rc\"") &&
+        formatComparison.contains("data-compare-theme=\"light\"") &&
+        formatComparison.contains("data-compare-theme=\"dark\""),
+      "the comparison page exposes only its available formats and its baked theme pair",
+    )
+    val buttonComparison =
+      formatComparison.substringAfter("data-label=\"button-filled\"").substringBefore("</tr>")
+    assertTrue(
+      buttonComparison.contains(
+        "data-png-light=\"/render/button-filled__ideal__default__light.png?session=compose-m3\""
+      ) &&
+        buttonComparison.contains(
+          "data-svg-light=\"/render/button-filled__ideal__default__light.svg?session=compose-m3\""
+        ) &&
+        buttonComparison.contains(
+          "data-png-dark=\"/render/button-filled__ideal__default__dark.png?session=compose-m3\""
+        ) &&
+        buttonComparison.contains(
+          "data-svg-dark=\"/render/button-filled__ideal__default__dark.svg?session=compose-m3\""
+        ),
+      "each comparison row pairs PNG and SVG from the exact same baked theme variant",
+    )
     assertGolden(File(pagesDir, "serve-landing-declared-themes.html"), landingDeclaredThemes)
     // Issue #2881: the header control lists every CONFIGURED theme, not just Light/Dark — the baked
     // pair plus one chip per declared `@ThemeCatalog` theme, each carrying its provider FQN.
@@ -2950,4 +2997,19 @@ class ServeWebFixtureTest {
     g.dispose()
     ImageIO.write(img, "png", file)
   }
+
+  /** Deterministic vector counterpart used by the format-comparison page fixture. */
+  private fun renderPlaceholderSvg(): String =
+    """
+    <svg xmlns="http://www.w3.org/2000/svg" width="200" height="400" viewBox="0 0 200 400">
+      <rect width="200" height="400" rx="24" fill="#f2f0f7"/>
+      <rect x="18" y="24" width="164" height="28" rx="14" fill="#6750a4"/>
+      <rect x="18" y="72" width="112" height="14" rx="7" fill="#79747e"/>
+      <rect x="18" y="98" width="164" height="86" rx="16" fill="#e8def8"/>
+      <rect x="18" y="202" width="164" height="58" rx="16" fill="#ffffff"/>
+      <rect x="18" y="278" width="164" height="58" rx="16" fill="#ffffff"/>
+      <circle cx="100" cy="368" r="12" fill="#6750a4"/>
+    </svg>
+    """
+      .trimIndent()
 }

@@ -246,6 +246,9 @@ class ServeCatalogStore(
     var declaredImages = 0
     // The component slugs whose baked figma-svg to fetch (a slug is the preview id up to `__`).
     val slugs = LinkedHashSet<String>()
+    // Exact vectors mirror each successfully fetched images/<slug>/<variant>.png. Carrying these
+    // preserves the baked theme/locale/size axis; the flat slug vector is only a legacy fallback.
+    val variantSvgPaths = LinkedHashSet<String>()
     // Per-preview state/theme, carried to the host via `previews/variants.json` so the grid can
     // fold
     // non-default states into one card and the viewer can offer a state switcher. Only populated
@@ -276,6 +279,11 @@ class ServeCatalogStore(
         target.parentFile?.mkdirs()
         target.writeBytes(bytes)
         slugs.add(id.substringBefore(SLUG_SEPARATOR))
+        path
+          .removePrefix("$IMAGES_DIR/")
+          .removeSuffix(".png")
+          .takeIf { it.count { char -> char == '/' } == 1 }
+          ?.let { variantSvgPaths.add("$it.svg") }
         // Record variant metadata for any preview carrying state/theme OR a section/group tag. The
         // authored `order` (the image's 0-based position in the catalog's component list) rides
         // only
@@ -384,7 +392,7 @@ class ServeCatalogStore(
 
     // Fetch the catalog's baked editable vectors (figma/<slug>.svg + crops) so the host can serve
     // an SVG per preview; null when the branch carried none (host then 404s the .svg lane).
-    val figmaDir = fetchFigmaSvgs(slugs, base, dir)
+    val figmaDir = fetchFigmaSvgs(slugs, variantSvgPaths, base, dir)
 
     // The static baked-PNG host — the browse surface (grid, deep links, thumbnails), keyed by the
     // catalog ids. This is ALWAYS what a viewer sees; a live builder below fronts it with a daemon
@@ -947,15 +955,31 @@ class ServeCatalogStore(
    * component carried none); each write is path-contained like the images. Returns the local
    * `figma/` dir when at least one SVG was written, else null.
    */
-  private fun fetchFigmaSvgs(slugs: Set<String>, base: String, dir: File): File? {
+  private fun fetchFigmaSvgs(
+    slugs: Set<String>,
+    variantPaths: Set<String>,
+    base: String,
+    dir: File,
+  ): File? {
     val figmaDir = File(dir, FIGMA_DIR)
     val figmaRoot = figmaDir.canonicalFile.toPath()
     var wrote = 0
-    for (slug in slugs) {
-      if (slug.isEmpty() || "/" in slug || ".." in slug) continue
+    val candidates = buildList {
+      addAll(variantPaths)
+      addAll(slugs.map { "$it.svg" })
+    }
+    for (relativePath in candidates) {
+      val segments = relativePath.split("/")
+      if (
+        relativePath.isEmpty() ||
+          !relativePath.endsWith(".svg") ||
+          ".." in segments ||
+          segments.size !in 1..2
+      )
+        continue
       val svgBytes =
-        runCatching { fetchCatalogAsset("$base$FIGMA_DIR/$slug.svg") }.getOrNull() ?: continue
-      val svgFile = File(figmaDir, "$slug.svg")
+        runCatching { fetchCatalogAsset("$base$FIGMA_DIR/$relativePath") }.getOrNull() ?: continue
+      val svgFile = File(figmaDir, relativePath)
       if (!svgFile.canonicalFile.toPath().startsWith(figmaRoot)) continue
       svgFile.parentFile?.mkdirs()
       svgFile.writeBytes(svgBytes)
@@ -966,10 +990,12 @@ class ServeCatalogStore(
       // listing).
       for (href in figmaRasterHrefs(svgBytes.toString(Charsets.UTF_8))) {
         if (href.isEmpty() || ".." in href.split("/")) continue
-        val cropFile = File(figmaDir, href)
+        val cropFile = File(svgFile.parentFile, href)
         if (!cropFile.canonicalFile.toPath().startsWith(figmaRoot)) continue
+        val remoteParent = relativePath.substringBeforeLast('/', missingDelimiterValue = "")
+        val remoteCrop = if (remoteParent.isEmpty()) href else "$remoteParent/$href"
         val cropBytes =
-          runCatching { fetchCatalogAsset("$base$FIGMA_DIR/$href") }.getOrNull() ?: continue
+          runCatching { fetchCatalogAsset("$base$FIGMA_DIR/$remoteCrop") }.getOrNull() ?: continue
         cropFile.parentFile?.mkdirs()
         cropFile.writeBytes(cropBytes)
       }
