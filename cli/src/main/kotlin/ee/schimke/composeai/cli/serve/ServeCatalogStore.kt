@@ -343,7 +343,8 @@ class ServeCatalogStore(
     // and retain the source fields as provenance. In particular, source.uri and artifact.path are
     // never fetched here: an HTML/Figma reference cannot turn catalog refresh into code execution
     // or an authenticated remote request.
-    writeDesignReferences(catalog.references, base, staging)
+    val manifestReferences = fetchDesignReferences(base)
+    writeDesignReferences(manifestReferences + catalog.references, base, staging)
 
     // The staged catalog is usable — atomically replace the live dir with it. The delete + rename
     // is near-instant (same filesystem), so the window where `dir` is absent is microseconds, not
@@ -1016,6 +1017,27 @@ class ServeCatalogStore(
           DesignReferenceManifest(references = accepted),
         )
       )
+  }
+
+  /**
+   * Read the published provider-neutral manifest. Catalogs originally carried references inline in
+   * `catalog.json`, so [Catalog.references] remains a compatibility fallback at the call site.
+   */
+  private fun fetchDesignReferences(base: String): List<DesignReference> {
+    val manifestBytes =
+      runCatching {
+          fetchCatalogAsset(
+            "$base${ServeDesignReferenceStore.DIRECTORY}/${ServeDesignReferenceStore.INDEX_FILE}"
+          )
+        }
+        .getOrNull() ?: return emptyList()
+    return runCatching {
+        json.decodeFromString(DesignReferenceManifest.serializer(), manifestBytes.decodeToString())
+      }
+      .getOrNull()
+      ?.takeIf { it.schema == DesignReferenceManifest.SCHEMA }
+      ?.references
+      .orEmpty()
   }
 
   /**

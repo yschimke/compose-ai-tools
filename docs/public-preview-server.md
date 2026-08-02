@@ -148,7 +148,8 @@ against Compose, and the focused comparison shows **Reference / Diff / Actual** 
 overlay and source provenance.
 
 References use a provider-neutral `compose-preview-references/v1` manifest at
-`references/index.json`:
+`references/index.json`. Published catalogs fetch this manifest from their delivery branch;
+inline `catalog.json` references remain supported for older producers:
 
 ```json
 {

@@ -682,24 +682,35 @@ class ServeWebFixtureTest {
           else emptyList()
         },
       )
+    val comparisonReferences =
+      listOf(
+        DesignReference(
+          id = "design-button-filled-light",
+          previewId = themedPreviews.first().id,
+          label = "Figma filled button",
+          raster = DesignReferenceRaster("references/design-button-filled-light.png", 320, 160),
+          source =
+            DesignReferenceSource(
+              provider = "figma",
+              uri = "https://www.figma.com/file/example",
+              revision = "fixture-42",
+              attributes = mapOf("nodeId" to "12:34"),
+            ),
+        ),
+        DesignReference(
+          id = "design-button-filled-review",
+          previewId = themedPreviews.first().id,
+          label = "Review revision",
+          raster = DesignReferenceRaster("references/design-button-filled-review.png", 320, 160),
+          source = DesignReferenceSource(provider = "penpot", revision = "fixture-43"),
+        ),
+      )
     val referenceComparison =
       ServeWeb.referenceComparisonPage(
         moduleLabel = "compose-m3",
         preview = themedPreviews.first(),
-        reference =
-          DesignReference(
-            id = "design-button-filled-light",
-            previewId = themedPreviews.first().id,
-            label = "Figma filled button",
-            raster = DesignReferenceRaster("references/design-button-filled-light.png", 320, 160),
-            source =
-              DesignReferenceSource(
-                provider = "figma",
-                uri = "https://www.figma.com/file/example",
-                revision = "fixture-42",
-                attributes = mapOf("nodeId" to "12:34"),
-              ),
-          ),
+        reference = comparisonReferences.first(),
+        references = comparisonReferences,
         token = token,
         sessionId = "compose-m3",
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
@@ -1162,7 +1173,9 @@ class ServeWebFixtureTest {
       referenceComparison.contains(">Reference</h2>") &&
         referenceComparison.contains(">Diff</h2>") &&
         referenceComparison.contains(">Actual</h2>") &&
-        referenceComparison.contains("Source:</strong> figma · revision fixture-42"),
+        referenceComparison.contains("Source:</strong> figma · revision fixture-42") &&
+        referenceComparison.contains("aria-label=\"Design references\"") &&
+        referenceComparison.contains(">Review revision</a>"),
       "the focused comparison presents the handoff triptych and provenance",
     )
     val referencedState =

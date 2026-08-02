@@ -96,7 +96,15 @@ class ServeHttpRoutingTest {
                     raster =
                       DesignReferenceRaster("references/red-design.png", width = 2, height = 2),
                     source = DesignReferenceSource(provider = "figma", revision = "7"),
-                  )
+                  ),
+                  DesignReference(
+                    id = "red-design-review",
+                    previewId = previewId,
+                    label = "Red design review",
+                    raster =
+                      DesignReferenceRaster("references/red-design.png", width = 2, height = 2),
+                    source = DesignReferenceSource(provider = "penpot", revision = "8"),
+                  ),
                 )
             ),
           )
@@ -929,6 +937,15 @@ class ServeHttpRoutingTest {
     assertTrue(page.contains(">Diff</h2>"), "diff lane: $page")
     assertTrue(page.contains(">Actual</h2>"), "actual lane: $page")
     assertTrue(page.contains("Source:</strong> figma · revision 7"), "provenance: $page")
+    assertTrue(page.contains(">Red design review</a>"), "reference selector: $page")
+    assertTrue(
+      page.contains("reference=red-design-review"),
+      "selector links every reference for the preview: $page",
+    )
+
+    val (reviewCode, reviewPage) = get("/compose-m3/compare/$previewId?reference=red-design-review")
+    assertEquals(200, reviewCode)
+    assertTrue(reviewPage.contains("Source:</strong> penpot · revision 8"), reviewPage)
 
     val request =
       Request.Builder()

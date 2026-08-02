@@ -376,6 +376,14 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 #cp-compare[data-format="reference"] .cp-compare-target-head::after { content: "Design reference"; }
 #cp-compare[data-format="reference"] .cp-compare-vector { cursor: pointer; }
 .cp-reference-meta { margin: 12px 0 20px; color: #6b6b70; font-size: 0.82rem; }
+.cp-reference-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin: 14px 0 10px; color: #6b6b70; font-size: 0.8rem; }
+.cp-reference-picker > span { margin-right: 2px; font-weight: 650; }
+.cp-reference-choice { padding: 6px 10px; border: 1px solid #d7d7de; border-radius: 999px;
+  background: #fff; color: #50505a; text-decoration: none; }
+.cp-reference-choice:hover { border-color: #aaaadb; color: #3a3a8a; }
+.cp-reference-choice[aria-current="page"] { background: #ececff; border-color: #c5c5f0;
+  color: #3a3a8a; font-weight: 600; }
 .cp-reference-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
 .cp-reference-grid section h2 { margin: 0 0 8px; font-size: 0.8rem; color: #6b6b70;
   text-transform: uppercase; letter-spacing: 0.06em; }
@@ -465,6 +473,11 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-state-btn { background: #1d1d20; color: #a0a0a8; border-color: #34343a; }
   .cp-state-btn:hover { border-color: #4a4a55; color: #c9c9ff; }
   .cp-state-btn[aria-current="page"] { background: #26264a; border-color: #3a3a6a; color: #c9c9ff; }
+  .cp-reference-picker { color: #a0a0a8; }
+  .cp-reference-choice { background: #1d1d20; border-color: #34343a; color: #a0a0a8; }
+  .cp-reference-choice:hover { border-color: #4a4a55; color: #c9c9ff; }
+  .cp-reference-choice[aria-current="page"] { background: #26264a; border-color: #3a3a6a;
+    color: #c9c9ff; }
   .cp-note { background: #26262b; color: #a0a0a8; }
   .cp-drop { background: #1d1d20; border-color: #34343a; }
   .cp-drop:hover, .cp-drop.cp-drop-over { border-color: #6a6ad0; background: #22222c; }

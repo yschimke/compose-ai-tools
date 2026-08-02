@@ -3063,6 +3063,7 @@ object ServeWeb {
     moduleLabel: String,
     preview: ServePreview,
     reference: DesignReference,
+    references: List<DesignReference> = listOf(reference),
     token: String,
     sessionId: String? = null,
     basePath: String = "",
@@ -3079,6 +3080,35 @@ object ServeWeb {
         ?.takeIf { it.isNotBlank() }
         ?.let { " · revision ${WebEscaping.htmlEscape(it)}" }
         .orEmpty()
+    val referenceChoices = (references + reference).distinctBy { it.id }
+    val referencePicker =
+      if (referenceChoices.size <= 1) ""
+      else {
+        val baseQuery = linkQuery(token, sessionId, basePath, isPublic)
+        val links =
+          referenceChoices.joinToString("\n") { choice ->
+            val query =
+              listOf(
+                  baseQuery.takeIf { it.isNotEmpty() },
+                  "reference=${WebEscaping.urlEncodeSegment(choice.id)}",
+                )
+                .filterNotNull()
+                .joinToString("&")
+            val href =
+              WebEscaping.htmlEscape(
+                "$basePath/compare/${WebEscaping.urlEncodeSegment(preview.id)}?${query}"
+              )
+            val current = if (choice.id == reference.id) " aria-current=\"page\"" else ""
+            "<a class=\"cp-reference-choice\" href=\"$href\"$current>${WebEscaping.htmlEscape(choice.label)}</a>"
+          }
+        """
+        <nav class="cp-reference-picker" aria-label="Design references">
+          <span>Design references</span>
+          $links
+        </nav>
+        """
+          .trimIndent()
+      }
     return document(
       title = "${reference.label} — design comparison",
       unfurlTitle = "$moduleLabel design comparison",
@@ -3089,6 +3119,7 @@ object ServeWeb {
         <div id="cp-reference-compare" data-reference="$raster" data-actual="$actual">
           <h1 class="cp-head"><a href="$basePath/compare$q">← comparisons</a>${trustBadge(trust)}</h1>
           <p class="cp-sub">${WebEscaping.htmlEscape(reference.label)} · ${WebEscaping.htmlEscape(preview.id)}</p>
+          $referencePicker
           <div class="cp-reference-meta"><strong>Source:</strong> $source$revision</div>
           <div class="cp-reference-grid">
             <section><h2>Reference</h2><div class="cp-compare-shot"><img src="$raster" alt="Design reference"></div></section>
