@@ -288,7 +288,7 @@ object ServeWeb {
    * design-parity versions it was rendered with, and a link to re-run the `design-artifacts`
    * workflow that regenerates it. Empty [prov] fields drop their item.
    */
-  private fun provenanceSection(prov: CatalogProvenance): String {
+  private fun provenanceSection(prov: CatalogProvenance, refreshUrl: String?): String {
     val repo = WebEscaping.htmlEscape(prov.repo)
     val branch = WebEscaping.htmlEscape(prov.branch)
     // Branch names carry a `/` (`design-artifacts/compose-m3`); it's a valid path in a tree URL.
@@ -320,14 +320,52 @@ object ServeWeb {
         )
       }
       add("<span class=\"cp-prov-item\"><a href=\"$actionUrl\">regenerate ↗</a></span>")
+      refreshUrl?.let {
+        add(
+          "<span class=\"cp-prov-item\"><button type=\"button\" class=\"cp-prov-refresh\" " +
+            "data-refresh-url=\"${WebEscaping.htmlEscape(it)}\">refresh</button>" +
+            "<span class=\"cp-prov-refresh-status\" role=\"status\" aria-live=\"polite\"></span></span>"
+        )
+      }
     }
     return """
       <section class="cp-prov" aria-label="Catalog provenance">
         ${items.joinToString("\n        ")}
       </section>
+      ${if (refreshUrl == null) "" else provenanceRefreshScript()}
       """
       .trimIndent()
   }
+
+  private fun provenanceRefreshScript(): String =
+    """
+    <script>
+    (() => {
+      const button = document.querySelector('.cp-prov-refresh');
+      if (!button) return;
+      const status = document.querySelector('.cp-prov-refresh-status');
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        status.textContent = 'checking…';
+        try {
+          const response = await fetch(button.dataset.refreshUrl, { method: 'POST' });
+          const result = await response.json();
+          if (result.status === 'updated') {
+            status.textContent = 'updated';
+            window.location.reload();
+            return;
+          }
+          status.textContent = result.status === 'current' ? 'up to date' :
+            result.status === 'checking' ? 'check in progress' : 'check failed';
+        } catch (_) {
+          status.textContent = 'check failed';
+        }
+        button.disabled = false;
+      });
+    })();
+    </script>
+    """
+      .trimIndent()
 
   /**
    * The theme axis (`light`/`dark`) baked into a flattened catalog id, or null if it carries none.
@@ -2490,6 +2528,8 @@ object ServeWeb {
      * uploaded bundle / non-catalog module (no such metadata).
      */
     provenance: CatalogProvenance? = null,
+    /** POST URL that checks this catalog's delivery branch immediately. Null omits Refresh. */
+    refreshUrl: String? = null,
     /**
      * The catalog's declared stage surface (`catalog.json`'s `display.surface`: `"light"`/`"dark"`)
      * — decides whether unthemed cards sit on the dark stage. Null ⇒ fall back to the system-name
@@ -2700,7 +2740,7 @@ object ServeWeb {
     val back = if (hasHomeIndex) backButton(token, isPublic) + "\n" else ""
     // The catalog-provenance strip (delivery branch, generation date, tool versions, regenerate
     // link), shown under the header for a served design-system catalog.
-    val prov = provenance?.let { provenanceSection(it) + "\n" } ?: ""
+    val prov = provenance?.let { provenanceSection(it, refreshUrl) + "\n" } ?: ""
     // The Theme control shows when there is more than one theme to choose between: a baked
     // light/dark pair to swap, and/or the app-declared themes this session can re-render under. A
     // catalog with neither (mostly theme-neutral app screens on a static bundle) never sprouts a

@@ -384,6 +384,7 @@ class ServeWebFixtureTest {
         hasHomeIndex = true,
         version = version,
         provenance = provenance,
+        refreshUrl = "/compose-m3/refresh",
       )
     // The public preview server's FRONT DOOR: an index of the published design systems, each a card
     // with a meaningful hero preview, its title + library, trust badge, and a link to /<system>/.
@@ -2150,6 +2151,7 @@ class ServeWebFixtureTest {
             toolVersion = "0.16.54",
             designParityVersion = "0.1.25",
           ),
+        refreshUrl = "/compose-m3/refresh",
       )
     assertTrue(landing.contains("class=\"cp-prov\""), "the provenance strip renders")
     // Links to the delivery branch and the regenerating workflow.
@@ -2167,6 +2169,11 @@ class ServeWebFixtureTest {
     )
     // Friendly generation date + both tool versions.
     assertTrue(landing.contains("2026-07-17 09:30 UTC"), "the generation date is shown")
+    assertTrue(
+      landing.contains("class=\"cp-prov-refresh\"") &&
+        landing.contains("data-refresh-url=\"/compose-m3/refresh\""),
+      "the strip offers an immediate catalog refresh next to regenerate",
+    )
     assertTrue(
       landing.contains("compose-ai-tools <code>0.16.54</code>") &&
         landing.contains("design-parity <code>0.1.25</code>"),

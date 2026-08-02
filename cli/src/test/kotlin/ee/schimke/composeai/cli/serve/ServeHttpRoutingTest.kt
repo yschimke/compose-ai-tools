@@ -11,6 +11,9 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -19,6 +22,7 @@ import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
  * End-to-end routing check for [ServeHttpServer]: a real embedded server fronting two static
@@ -33,6 +37,10 @@ import okhttp3.Request
 class ServeHttpRoutingTest {
 
   private val previewId = "com.example.Red"
+  private val refreshes = mutableListOf<String>()
+  @Volatile private var blockRefresh = false
+  private val refreshStarted = CountDownLatch(1)
+  private val releaseRefresh = CountDownLatch(1)
 
   private fun png(): ByteArray =
     ByteArrayOutputStream()
@@ -112,6 +120,14 @@ class ServeHttpRoutingTest {
         defaultSessionId = "default-mod",
         isPublic = true,
         catalogSessions = listOf("compose-m3"),
+        catalogRefresh = { system ->
+          refreshes += system
+          if (blockRefresh) {
+            refreshStarted.countDown()
+            releaseRefresh.await(5, TimeUnit.SECONDS)
+          }
+          CatalogRefreshResult.CURRENT
+        },
       )
       .also { it.start() }
   }
@@ -120,6 +136,17 @@ class ServeHttpRoutingTest {
 
   private fun get(path: String): Pair<Int, String> {
     val req = Request.Builder().url("http://127.0.0.1:${server.port}$path").build()
+    client.newCall(req).execute().use { r ->
+      return r.code to (r.body?.string() ?: "")
+    }
+  }
+
+  private fun post(path: String): Pair<Int, String> {
+    val req =
+      Request.Builder()
+        .url("http://127.0.0.1:${server.port}$path")
+        .post(ByteArray(0).toRequestBody())
+        .build()
     client.newCall(req).execute().use { r ->
       return r.code to (r.body?.string() ?: "")
     }
@@ -146,6 +173,32 @@ class ServeHttpRoutingTest {
     val (code, body) = get("/version")
     assertEquals(200, code)
     assertTrue(body.contains("compose-preview-serve/version/v1"), "version json: $body")
+  }
+
+  @Test
+  fun `catalog refresh supports path and query session routes`() {
+    assertEquals(200 to "{\"status\":\"current\"}", post("/compose-m3/refresh"))
+    assertEquals(200 to "{\"status\":\"current\"}", post("/refresh?session=compose-m3"))
+    assertEquals(listOf("compose-m3", "compose-m3"), refreshes)
+  }
+
+  @Test
+  fun `concurrent catalog refresh requests coalesce before remote work`() {
+    blockRefresh = true
+    val executor = Executors.newSingleThreadExecutor()
+    try {
+      val first = executor.submit<Pair<Int, String>> { post("/compose-m3/refresh") }
+      assertTrue(refreshStarted.await(5, TimeUnit.SECONDS), "the first refresh started")
+
+      assertEquals(202 to "{\"status\":\"checking\"}", post("/compose-m3/refresh"))
+      assertEquals(listOf("compose-m3"), refreshes, "the second request did no remote work")
+
+      releaseRefresh.countDown()
+      assertEquals(200 to "{\"status\":\"current\"}", first.get(5, TimeUnit.SECONDS))
+    } finally {
+      releaseRefresh.countDown()
+      executor.shutdownNow()
+    }
   }
 
   @Test

@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.cli.serve.BundleVerifier
 import ee.schimke.composeai.cli.serve.CatalogLoadTracker
+import ee.schimke.composeai.cli.serve.CatalogRefreshResult
 import ee.schimke.composeai.cli.serve.DaemonStartupLog
 import ee.schimke.composeai.cli.serve.GitWorktrees
 import ee.schimke.composeai.cli.serve.GradleRevisionBuilder
@@ -770,6 +771,9 @@ class ServeCommand(args: List<String>) : Command(args) {
       if (needsCatalogMachinery) registerCatalogs(registry, catalogWorktrees, openHost) else null
     // Keep the catalogs fresh against their (routinely-changing) branches without a restart.
     val catalogRefresher = catalogReg?.let { buildCatalogRefresher(it.store, it.loads) }
+    // Make manual refresh + trust-revocation invalidation available as soon as any catalog page
+    // can be served. The background cadence is still seeded and started after the loader finishes.
+    activeRefresher = catalogRefresher
     // Runtime ingestion (--accept-bundles): clients POST a bundle (or a ?url= to one) and it's
     // registered as a pinned session. Unpacked under a temp dir for this server's lifetime.
     val bundleStore = if (acceptBundles) openUploadStore(registry) else null
@@ -797,12 +801,12 @@ class ServeCommand(args: List<String>) : Command(args) {
         ),
       catalogLoads = catalogReg?.loads,
       catalogStore = catalogReg?.store,
+      catalogRefresh = catalogRefresher?.let { refresher -> refresher::refresh },
       onStarted = {
         catalogReg?.loader?.start { loaded ->
           catalogRefresher?.let {
             it.seedInitialHeads(loaded)
             it.start()
-            activeRefresher = it
           }
         }
       },
@@ -835,6 +839,9 @@ class ServeCommand(args: List<String>) : Command(args) {
     // Keep the catalogs fresh against their (routinely-changing) branches without a restart — the
     // public preview server (preview.coo.ee) runs this module-less path.
     val catalogRefresher = catalogReg?.let { buildCatalogRefresher(it.store, it.loads) }
+    // A catalog registered early in the asynchronous startup load can already show Refresh; wire
+    // its immediate check now instead of waiting for every configured catalog to finish loading.
+    activeRefresher = catalogRefresher
     val bundleStore = if (acceptBundles) openUploadStore(registry) else null
 
     val wasmCatalogs = mergedWasmCatalogs(catalogReg)
@@ -890,12 +897,12 @@ class ServeCommand(args: List<String>) : Command(args) {
         listOfNotNull(catalogReg?.loader, catalogRefresher, catalogPerPreviewPoolsCloseable),
       catalogLoads = catalogReg?.loads,
       catalogStore = catalogReg?.store,
+      catalogRefresh = catalogRefresher?.let { refresher -> refresher::refresh },
       onStarted = {
         catalogReg?.loader?.start { loaded ->
           catalogRefresher?.let {
             it.seedInitialHeads(loaded)
             it.start()
-            activeRefresher = it
           }
         }
       },
@@ -1463,6 +1470,8 @@ class ServeCommand(args: List<String>) : Command(args) {
     catalogLoads: CatalogLoadTracker?,
     /** The catalog store an admin registration fetches through; null ⇒ no runtime admin. */
     catalogStore: ServeCatalogStore? = null,
+    /** Immediate branch-head check used by the Refresh control on catalog landing pages. */
+    catalogRefresh: ((String) -> CatalogRefreshResult)? = null,
     /** Called immediately after the HTTP listener binds, before the long blocking wait. */
     onStarted: () -> Unit = {},
   ) {
@@ -1520,6 +1529,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         catalogSessions = configuredCatalogs,
         appCatalogSessions = configuredApps,
         catalogLoads = catalogLoads,
+        catalogRefresh = catalogRefresh,
         maxLiveSeats = liveSeats,
         daemonLog = daemonLog,
         allowRenderTrusted = allowRenderTrusted,

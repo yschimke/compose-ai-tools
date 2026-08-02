@@ -41,6 +41,31 @@ class ServeCatalogRefresherTest {
   }
 
   @Test
+  fun `manual refresh reports whether a later version was found`() {
+    var head = "aaaaaaa"
+    val reloads = mutableListOf<String>()
+    val r =
+      ServeCatalogRefresher(
+        entries = { listOf(entry()) },
+        reload = { system, _ ->
+          reloads += system
+          true
+        },
+        intervalMillis = 1_000,
+        headResolver = { _, _ -> head },
+        onLog = {},
+      )
+    r.seedInitialHeads()
+
+    assertEquals(CatalogRefreshResult.CURRENT, r.refresh("compose-m3"))
+    head = "bbbbbbb"
+    assertEquals(CatalogRefreshResult.UPDATED, r.refresh("compose-m3"))
+    assertEquals(listOf("compose-m3"), reloads)
+    assertEquals(CatalogRefreshResult.NOT_FOUND, r.refresh("unknown"))
+    r.close()
+  }
+
+  @Test
   fun `a failed reload keeps the old head and retries next tick`() {
     var head = "aaaaaaa"
     var succeed = false
