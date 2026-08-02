@@ -52,10 +52,9 @@ services:
       SERVE_ADMIN_TOKEN: "${SERVE_ADMIN_TOKEN:-}"
       # Privacy-minimal aggregate app/catalog + preview views, persisted on preview_config.
       SERVE_ENGAGEMENT_FILE: "${SERVE_ENGAGEMENT_FILE:-}"
-      # Optional GitHub OAuth auth for code-running surfaces (live WebSockets and playground). Set
-      # the three secrets in .env to enable; the entrypoint uses this domain as the OAuth callback
-      # origin unless overridden. Empty values keep the public catalog browsing behaviour unchanged.
-      # Empty SERVE_GITHUB_AUTH_USERS allows any signed-in GitHub user; set it to narrow access.
+      # Optional GitHub OAuth auth for code-running surfaces. Empty values keep public catalog
+      # browsing unchanged. Empty SERVE_GITHUB_AUTH_USERS lets any signed-in GitHub user use live
+      # preview; playground also requires access to SERVE_GITHUB_AUTH_REPO.
       SERVE_GITHUB_AUTH_CLIENT_ID: "${SERVE_GITHUB_AUTH_CLIENT_ID:-}"
       SERVE_GITHUB_AUTH_CLIENT_SECRET: "${SERVE_GITHUB_AUTH_CLIENT_SECRET:-}"
       SERVE_GITHUB_AUTH_COOKIE_SECRET: "${SERVE_GITHUB_AUTH_COOKIE_SECRET:-}"

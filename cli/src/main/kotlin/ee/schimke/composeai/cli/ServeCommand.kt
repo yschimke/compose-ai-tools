@@ -2466,15 +2466,17 @@ class ServeCommand(args: List<String>) : Command(args) {
         --github-auth-cookie-secret <secret>
         --github-auth-repo <owner/repo>
                           Add GitHub OAuth on top of the browse gate for code-running surfaces:
-                          live preview WebSockets and the playground. After sign-in the server
-                          stores only a signed, expiring login cookie. All four flags are required
-                          together; <owner/repo> is kept as deployment context and for compatibility.
+                          live preview WebSockets and the playground. Live preview accepts any
+                          signed-in GitHub user (unless --github-auth-users narrows sign-in);
+                          playground additionally requires access to <owner/repo>. After sign-in
+                          the server stores only a signed, expiring login cookie plus the repo
+                          access verdict. All four flags are required together.
         --github-auth-callback-base-url <url>
                           External origin for the OAuth callback, e.g. https://preview.example.com.
                           Omit for local use; reverse-proxied deploys should set it explicitly.
         --github-auth-users <login>[,<login>…]
-                          Optional allowlist. Empty means any signed-in GitHub user may use live
-                          sessions/playground.
+                          Optional sign-in allowlist. Empty means any signed-in GitHub user may use
+                          live sessions; playground still requires access to --github-auth-repo.
         --export <path>   Don't serve: render every preview once and write a portable bundle (a
                           self-contained web gallery + PNGs) to <path>. A '.zip' path writes a zip;
                           any other path writes a directory. The live server also offers this at

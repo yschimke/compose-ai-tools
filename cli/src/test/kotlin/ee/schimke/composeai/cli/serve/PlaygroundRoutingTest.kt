@@ -9,8 +9,11 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
 
@@ -111,6 +114,34 @@ class PlaygroundRoutingTest {
       .also { it.start() }
   }
 
+  private val githubNoRepoServer: ServeHttpServer by lazy {
+    ServeHttpServer(
+        host = "127.0.0.1",
+        requestedPort = 0,
+        token = "unused-in-public",
+        sessions = registry,
+        defaultSessionId = "none",
+        isPublic = true,
+        playgroundService = playground,
+        githubAuth = githubAuth(repositoryAccess = false),
+      )
+      .also { it.start() }
+  }
+
+  private val githubRepoServer: ServeHttpServer by lazy {
+    ServeHttpServer(
+        host = "127.0.0.1",
+        requestedPort = 0,
+        token = "unused-in-public",
+        sessions = registry,
+        defaultSessionId = "none",
+        isPublic = true,
+        playgroundService = playground,
+        githubAuth = githubAuth(repositoryAccess = true),
+      )
+      .also { it.start() }
+  }
+
   private val client = OkHttpClient()
 
   @AfterTest
@@ -118,6 +149,8 @@ class PlaygroundRoutingTest {
     runCatching { server.stop() }
     runCatching { plainServer.stop() }
     runCatching { gatedServer.stop() }
+    runCatching { githubNoRepoServer.stop() }
+    runCatching { githubRepoServer.stop() }
     runCatching { registry.close() }
   }
 
@@ -158,6 +191,13 @@ class PlaygroundRoutingTest {
   private fun get(path: String, port: Int) =
     client.newCall(Request.Builder().url("http://127.0.0.1:$port$path").build()).execute()
 
+  private fun get(path: String, port: Int, cookie: String) =
+    client
+      .newCall(
+        Request.Builder().url("http://127.0.0.1:$port$path").header("Cookie", cookie).build()
+      )
+      .execute()
+
   @Test
   fun `the editor page is served when the playground lane is enabled`() {
     get("/playground", server.port).use { resp ->
@@ -173,6 +213,27 @@ class PlaygroundRoutingTest {
           html.contains("/api/1/compiler/run"),
         "the editor page exposes the source box, Run button, and the compile route",
       )
+    }
+  }
+
+  @Test
+  fun `github login without repo rights cannot open playground`() {
+    val cookie = githubSessionCookie(githubNoRepoServer.port)
+    get("/playground", githubNoRepoServer.port, cookie).use { resp ->
+      assertEquals(403, resp.code)
+      assertTrue(
+        resp.body!!.string().contains("Playground requires access to yschimke/compose-ai-tools"),
+        "playground explains the repo-rights gate",
+      )
+    }
+  }
+
+  @Test
+  fun `github login with repo rights can open playground`() {
+    val cookie = githubSessionCookie(githubRepoServer.port)
+    get("/playground", githubRepoServer.port, cookie).use { resp ->
+      assertEquals(200, resp.code)
+      assertTrue(resp.body!!.string().contains("id=\"pg-source\""))
     }
   }
 
@@ -229,6 +290,70 @@ class PlaygroundRoutingTest {
           resp.header("Location")?.contains("/p/") == true,
           "redirect targets the viewer /p/ route: ${resp.header("Location")}",
         )
+      }
+  }
+
+  private fun githubAuth(repositoryAccess: Boolean): ServeGithubAuth {
+    val fakeGitHub =
+      OkHttpClient.Builder()
+        .addInterceptor { chain ->
+          val request = chain.request()
+          val path = request.url.encodedPath
+          val body =
+            when {
+              path == "/login/oauth/access_token" -> """{"access_token":"token"}"""
+              path == "/user" -> """{"login":"octo"}"""
+              path.endsWith("/permission") ->
+                if (repositoryAccess) """{"permission":"write"}""" else """{"permission":"none"}"""
+              else -> "{}"
+            }
+          Response.Builder()
+            .request(request)
+            .protocol(Protocol.HTTP_1_1)
+            .code(200)
+            .message("OK")
+            .body(body.toResponseBody("application/json".toMediaType()))
+            .build()
+        }
+        .build()
+    return ServeGithubAuth(
+      ServeGithubAuthConfig(
+        clientId = "client",
+        clientSecret = "secret",
+        cookieSecret = "x".repeat(32),
+        repository = "yschimke/compose-ai-tools",
+      ),
+      verifier = GitHubOAuthVerifier(fakeGitHub),
+    )
+  }
+
+  private fun githubSessionCookie(port: Int): String {
+    val noRedirect = client.newBuilder().followRedirects(false).build()
+    val start =
+      noRedirect
+        .newCall(
+          Request.Builder()
+            .url("http://127.0.0.1:$port/auth/github/start?return=/playground")
+            .build()
+        )
+        .execute()
+        .use { resp ->
+          assertEquals(302, resp.code)
+          resp.header("Location").orEmpty() to
+            resp.header("Set-Cookie").orEmpty().substringBefore(";")
+        }
+    val state = start.first.substringAfter("state=").substringBefore("&")
+    return noRedirect
+      .newCall(
+        Request.Builder()
+          .url("http://127.0.0.1:$port/auth/github/callback?code=ok&state=$state")
+          .header("Cookie", start.second)
+          .build()
+      )
+      .execute()
+      .use { resp ->
+        assertEquals(302, resp.code)
+        resp.headers("Set-Cookie").first { it.startsWith("cp_gh_auth=") }.substringBefore(";")
       }
   }
 }

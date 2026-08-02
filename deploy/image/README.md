@@ -85,7 +85,9 @@ SERVE_GITHUB_AUTH_COOKIE_SECRET=... # openssl rand -hex 32
 
 The compose profile derives the callback base URL from `DOMAIN`; set
 `SERVE_GITHUB_AUTH_CALLBACK_BASE_URL` to override. Empty `SERVE_GITHUB_AUTH_USERS` allows any
-signed-in GitHub user; set it to a comma-separated login list to narrow access.
+signed-in GitHub user to use live previews; playground additionally requires access to
+`SERVE_GITHUB_AUTH_REPO` (default `yschimke/compose-ai-tools`). Set `SERVE_GITHUB_AUTH_USERS` to a
+comma-separated login list only if you want to narrow sign-in for both surfaces.
 
 ### Playground on `preview.coo.ee`
 
