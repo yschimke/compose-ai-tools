@@ -73,6 +73,10 @@ import {
   figmaVariantSvgPath,
   rewriteRasterHrefs,
 } from "./figma-svg-emit.mjs";
+import {
+  describeMismatchedRenders,
+  mismatchedVariantRenders,
+} from "./variant-render-pairing.mjs";
 import { buildCodeConnectManifest } from "./figma-code-connect-emit.mjs";
 import { targetsByFunction } from "./figma-code-connect-target.mjs";
 import { renderWireframeSvg, slug } from "./render-wireframe-svg.mjs";
@@ -1577,6 +1581,28 @@ if (figmaVariantGapCount) {
   console.warn(
     `[${spec.system}] ${figmaVariantGapCount} render(s) had no figma-svg carried for their ` +
       `previewId — no per-variant vector emitted for those`,
+  );
+}
+// Two stickers stamped with ONE previewId but built from renders of different sizes cannot both
+// have come from that render — so at least one of them is now paired with another variant's vector.
+// This is the signature the catalog-breakpoint half of #2883 shipped under for four releases (see
+// `variant-render-pairing.mjs`); print it so a regression shows up in the run log rather than only
+// as a sunk compare score.
+// Read from `indexManifest` (the written catalog.json), NOT the in-memory `catalog`: only the
+// manifest carries the flattened `images[]` with the `previewId` the stamp pass bridged on — see
+// its declaration above. Against `catalog.components` this check iterates nothing and reports
+// nothing, whatever the export actually emitted, which is the one way a checker can fail worst.
+const variantRenderMismatches = mismatchedVariantRenders(indexManifest.components);
+if (variantRenderMismatches.length) {
+  const shown = describeMismatchedRenders(variantRenderMismatches).slice(0, 8);
+  const more =
+    variantRenderMismatches.length > 8
+      ? `, +${variantRenderMismatches.length - 8} more`
+      : "";
+  console.warn(
+    `[${spec.system}] ${variantRenderMismatches.length} preview id(s) are stamped on stickers ` +
+      `of differing render sizes — those variants carry another render's figma-svg: ` +
+      `${shown.join("; ")}${more}`,
   );
 }
 // An image with NO previewId never even reaches the vector lookup. Some of that is deliberate

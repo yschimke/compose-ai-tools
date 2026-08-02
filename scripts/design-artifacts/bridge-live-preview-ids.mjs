@@ -156,40 +156,56 @@ function pickVariantId(candidates, image, widthForSize) {
   const wantWidth = widthForSize(image.size);
   const wantFontScale = requestedFontScale(image.props);
   let best;
-  let bestScore = -Infinity;
+  let bestConstraint = -Infinity;
+  let bestPreference = -Infinity;
   for (const candidate of candidates) {
-    let score = 0;
+    // Two SEPARATE tiers, compared lexicographically. `constraint` scores the axes the image
+    // actually states; `preference` only breaks ties between candidates the constraints rank
+    // equally. Summing the two into one number is what kept #2883 alive after the first two passes:
+    // a matching width (+2) with an unwanted font scale (-1) landed on exactly the same total as a
+    // candidate declaring neither (0 + 1), so the tie fell back to bundle order and Jetsnack's
+    // `compact` stickers took the *default* annotation's vector — a 412dp PNG paired with the
+    // intrinsic-width SVG. A preference must never be able to cancel a constraint, and no choice of
+    // weights within one number can guarantee that once several preferences stack.
+    let constraint = 0;
+    let preference = 0;
     if (wantNight !== null) {
-      if (candidate.night !== null) score += candidate.night === wantNight ? 2 : -2;
+      if (candidate.night !== null) constraint += candidate.night === wantNight ? 2 : -2;
     } else if (candidate.night === true) {
       // A sticker that names NO theme is the catalog's default one — its path is
       // `ideal__default__compact`, with no theme segment, precisely because light IS the default
       // (only the dark sibling gets tagged). Treating that as "unconstrained" let it tie with the
       // dark annotation and take whichever the bundle listed first, which is how Jetsnack's
       // Snack/Card and Search/Categories kept shipping the DARK vector against a light PNG after
-      // the first pass at #2883. Same shape as the font-scale preference below: absent means
-      // "prefer the untagged annotation", scored ±1 so it breaks the tie without ever outvoting a
-      // matching width or an explicit theme.
-      score -= 1;
+      // the first pass at #2883. Absent means "prefer the untagged annotation".
+      preference -= 1;
     } else {
-      score += 1;
+      preference += 1;
     }
+    // A size the image names resolves through the spec's breakpoints to a width, and the size axis
+    // was itself derived from a candidate's `@Preview(widthDp = …)` (see `applySpecBreakpoints`) —
+    // so a candidate declaring exactly that width IS, by construction, the annotation that rendered
+    // this sticker. A candidate declaring no width stays neutral rather than wrong: a
+    // single-annotation component whose sticker carries a size must still resolve.
     if (wantWidth !== null && candidate.widthDp !== null) {
-      score += candidate.widthDp === wantWidth ? 2 : -2;
+      constraint += candidate.widthDp === wantWidth ? 2 : -2;
     }
     // Font scale is the one axis with no dedicated image field, so a spec expresses it as a props
     // variant. It still has to be scored, or two annotations that differ ONLY by `fontScale` tie
-    // and the first id wins for both — the same collapse this function exists to prevent. Weaker
-    // than the other axes because the no-hint case is a preference, not a constraint: an image
-    // that asks for nothing should land on the unscaled annotation rather than an arbitrary one,
-    // but must not out-vote a matching theme or width.
+    // and the first id wins for both — the same collapse this function exists to prevent. Stated as
+    // a prop it's a constraint; unstated it's only a preference for the unscaled annotation, which
+    // is why the two land in different tiers.
     if (wantFontScale !== null) {
-      score += candidate.fontScale === wantFontScale ? 2 : -2;
+      constraint += candidate.fontScale === wantFontScale ? 2 : -2;
     } else {
-      score += candidate.fontScale === null ? 1 : -1;
+      preference += candidate.fontScale === null ? 1 : -1;
     }
-    if (score > bestScore) {
-      bestScore = score;
+    if (
+      constraint > bestConstraint ||
+      (constraint === bestConstraint && preference > bestPreference)
+    ) {
+      bestConstraint = constraint;
+      bestPreference = preference;
       best = candidate;
     }
   }
