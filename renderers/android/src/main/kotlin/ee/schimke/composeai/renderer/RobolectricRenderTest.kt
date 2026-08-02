@@ -2583,6 +2583,13 @@ private fun handleAnimatedCapture(
     repeat(totalFrames) {
       t += frameIntervalMs.toLong()
       rule.mainClock.advanceTimeBy(frameIntervalMs.toLong())
+      // Compose's test clock does not drive Android Views. Advance Robolectric's paused main
+      // looper by the same interval so View/Choreographer animations land on the same virtual
+      // timestamp as Compose animations. Remote Compose's preview wrapper also derives its
+      // injected player clock from shadowed uptime, avoiding the real System.nanoTime phase drift
+      // that made unchanged animated GIFs differ between renders (issue #3156).
+      org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+        .idleFor(java.time.Duration.ofMillis(frameIntervalMs.toLong()))
       captureFrame(virtualTimeMs = t)
     }
 
