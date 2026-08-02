@@ -16,6 +16,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontListFontFamily
@@ -1125,6 +1126,11 @@ internal object ComposeLayoutInspector {
     // Reflective + best-effort: any failure (or a bitmap/gradient/transformed painter) yields null
     // and the node simply rasters as before.
     val modifiers = modifierInfo
+    val retainsLayoutText = modifiers.any { info ->
+      val inspectable = info.modifier as? InspectableValue
+      inspectable?.nameFallback == "clearAndSetSemantics" ||
+        info.modifier.javaClass.simpleName.contains("ClearAndSetSemantics")
+    }
     val children = children.map { it.toWireNode(rootCoords, sources, density) }
     // An `Icon`/`Image`'s `ImageVector` (Tier 1). Failing that, a *leaf* node that paints its
     // chrome
@@ -1186,7 +1192,8 @@ internal object ComposeLayoutInspector {
       placed = placed,
       attached = attached,
       zIndex = zIndex,
-      modifiers = modifiers.mapNotNull { info -> info.toWireModifier(rootCoords) },
+      modifiers =
+        modifiers.mapNotNull { info -> info.toWireModifier(rootCoords, retainsLayoutText) },
       // Resolved tokens are computed by the shared resolver (issue #1903) from the same modifier
       // chain + measure policy + measured size this node already carries — `layout/inspector` is
       // the
@@ -1253,7 +1260,8 @@ internal object ComposeLayoutInspector {
   }
 
   private fun ModifierInfo.toWireModifier(
-    rootCoordinates: LayoutCoordinates?
+    rootCoordinates: LayoutCoordinates?,
+    retainsLayoutText: Boolean,
   ): LayoutInspectorModifier? {
     val inspectable = modifier as? InspectableValue
     val name =
@@ -1265,6 +1273,40 @@ internal object ComposeLayoutInspector {
         ?.associate { it.name to it.value.wireValue() }
         .orEmpty()
         .toMutableMap()
+    // `clearAndSetSemantics {}` deliberately removes Text + GetTextLayoutResult from a Text
+    // node's semantics. Horologist's TimePicker does exactly that to its visual ":" separator,
+    // which made the editable SVG silently omit a glyph that is plainly present in the PNG.
+    // Compose's text modifier still carries the authored string and TextStyle, so retain that
+    // small, stable projection on the layout modifier as a fallback for design-fidelity exports.
+    // Ordinary text continues to use the measured semantics path (resolved px, line geometry,
+    // spans); these fields are consulted only when that path has no text for the node.
+    val modifierClass = modifier.javaClass.simpleName
+    if (
+      retainsLayoutText &&
+        (modifierClass == "TextAnnotatedStringElement" ||
+          modifierClass == "TextStringSimpleElement")
+    ) {
+      val text = reflectedDeclaredField(modifier, "text")?.toString()?.takeIf { it.isNotBlank() }
+      val style = reflectedDeclaredField(modifier, "style") as? TextStyle
+      text?.let { properties["layoutText"] = it }
+      style?.let {
+        it.fontSize.toLayoutTextUnit()?.let { value -> properties["layoutTextFontSize"] = value }
+        it.fontFamily?.toString()?.let { family -> properties["layoutTextFontFamily"] = family }
+        it.fontWeight?.weight?.let { weight ->
+          properties["layoutTextFontWeight"] = weight.toString()
+        }
+        it.fontStyle?.toString()?.let { fontStyle -> properties["layoutTextFontStyle"] = fontStyle }
+        if (it.color != Color.Unspecified) {
+          properties["layoutTextColor"] = "#%08X".format(it.color.toArgb())
+        }
+        it.lineHeight.toLayoutTextUnit()?.let { value ->
+          properties["layoutTextLineHeight"] = value
+        }
+        it.letterSpacing.toLayoutTextUnit()?.let { value ->
+          properties["layoutTextLetterSpacing"] = value
+        }
+      }
+    }
     // Desktop/release Compose commonly compiles `BackgroundElement` inspector properties out, so
     // a `Modifier.background(Brush…)` otherwise serialises as an empty modifier and the figma-svg
     // model cannot distinguish a real gradient from an unpainted node. Carry only the presence /
@@ -1318,6 +1360,19 @@ internal object ComposeLayoutInspector {
       placeholder = ModifierTokenResolver.isPlaceholderElement(modifier),
     )
   }
+
+  private fun reflectedDeclaredField(instance: Any, name: String): Any? =
+    runCatching {
+        instance.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(instance)
+      }
+      .getOrNull()
+
+  private fun TextUnit.toLayoutTextUnit(): String? =
+    when (type) {
+      TextUnitType.Sp -> "${value}sp"
+      TextUnitType.Em -> "${value}em"
+      else -> null
+    }
 
   private fun LayoutCoordinates?.boundsIn(
     rootCoordinates: LayoutCoordinates?
@@ -1839,7 +1894,7 @@ internal object ComposeLayoutInspector {
       var c: Class<*>? = cls
       while (c != null) {
         runCatching {
-          return c!!.getDeclaredField(name).apply { isAccessible = true }
+          return c.getDeclaredField(name).apply { isAccessible = true }
         }
         c = c.superclass
       }

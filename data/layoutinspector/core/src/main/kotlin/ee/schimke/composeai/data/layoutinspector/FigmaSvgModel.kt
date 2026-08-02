@@ -527,7 +527,15 @@ data class FigmaSvgModel(
         semantics?.let { assignTextToLayers(layout.root, it, density, fontScale) } ?: emptyMap()
       val names = colorNames.mapKeys { it.key.uppercase() }
       val ctx =
-        BuildContext(textByNodeId, names, density, rasterComponents, rasterHref, captureCanvasDraws)
+        BuildContext(
+          textByNodeId,
+          names,
+          density,
+          fontScale,
+          rasterComponents,
+          rasterHref,
+          captureCanvasDraws,
+        )
       val rootLayer = collapsePassthroughGroups(layout.root.toLayer(ctx))
       // A round Wear device screen is masked to the inscribed circle of the frame (the root node's
       // bounds) — content outside it (the corners, and any list item scrolled below the frame) is
@@ -704,6 +712,7 @@ data class FigmaSvgModel(
       val textByNodeId: Map<String, FigmaSvgText>,
       val colorNames: Map<String, String>,
       val density: Float,
+      val fontScale: Float,
       val rasterComponents: Set<String>,
       val rasterHref: (String) -> String,
       val captureCanvasDraws: Boolean = false,
@@ -893,6 +902,27 @@ data class FigmaSvgModel(
             contentOpacity = contentOpacity,
           )
         }
+      // Wear Material's Picker applies its scaling edge fade and read-only center-row mask inside
+      // `drawWithContent`. Those draw-time effects are absent from the layout/semantics trees, so
+      // emitting the placed lazy options as vectors either reveals hidden rows or loses the fade.
+      // In hybrid mode preserve only the complex picker column from the captured frame; siblings
+      // such as Horologist's separator, title and confirmation button remain editable SVG.
+      if (ctx.captureCanvasDraws && hasWearPickerDrawMask()) {
+        val href = ctx.rasterHref(nodeId)
+        ctx.rasterTargets.add(
+          FigmaSvgRasterTarget(nodeId, href, bounds.left, bounds.top, bounds.right, bounds.bottom)
+        )
+        return FigmaSvgLayer(
+          name = layerName(),
+          left = bounds.left,
+          top = bounds.top,
+          right = bounds.right,
+          bottom = bounds.bottom,
+          raster = FigmaSvgRaster(href),
+          opacity = opacity,
+          contentOpacity = contentOpacity,
+        )
+      }
       // An opaque component matched by name (Image/Icon/TextField/…) can't be vectorised at all —
       // emit an <image> for the whole node and drop the subtree.
       val opaqueByName = isOpaque(ctx.rasterComponents)
@@ -1181,7 +1211,7 @@ data class FigmaSvgModel(
         // The captured typography is in *measured* sp/px, so a scaled node's glyphs are drawn
         // smaller than the capture says — scale the metrics with the box or the text overflows the
         // shrunken card it sits in (issue #2615).
-        text = ctx.textByNodeId[nodeId]?.scaledBy(scaleX, scaleY),
+        text = (ctx.textByNodeId[nodeId] ?: modifierText(ctx))?.scaledBy(scaleX, scaleY),
         background = background,
         elevationPx = elevationPx,
         opacity = opacity,
@@ -1199,6 +1229,44 @@ data class FigmaSvgModel(
             it.toLayer(ctx, bounds, childClip)
           },
       )
+    }
+
+    /**
+     * Editable-text fallback for a Compose Text whose semantics were intentionally cleared.
+     *
+     * The normal semantics match remains authoritative because it carries measured px, wrapping and
+     * spans. This path reads the compact TextStyle projection retained on the layout modifier only
+     * when semantics has no text at all (notably Horologist TimePicker's visual separator).
+     */
+    private fun LayoutInspectorNode.modifierText(ctx: BuildContext): FigmaSvgText? {
+      val props =
+        modifiers.firstNotNullOfOrNull { modifier ->
+          modifier.properties.takeIf { it["layoutText"]?.isNotBlank() == true }
+        } ?: return null
+      val content = props["layoutText"] ?: return null
+      val fontSize = props["layoutTextFontSize"]
+      return FigmaSvgText(
+        content = content,
+        fontSizePx = fontSize?.let { spToPx(it, ctx.density, ctx.fontScale) },
+        fontFamily = props["layoutTextFontFamily"],
+        fontWeight = props["layoutTextFontWeight"]?.toIntOrNull(),
+        italic = props["layoutTextFontStyle"]?.contains("Italic", ignoreCase = true) == true,
+        color = props["layoutTextColor"]?.let { argbToColor(it, emptyMap()) },
+        lineHeightPx =
+          props["layoutTextLineHeight"]?.let {
+            lineHeightToPx(it, fontSize, ctx.density, ctx.fontScale)
+          },
+        letterSpacingPx =
+          props["layoutTextLetterSpacing"]?.let {
+            lineHeightToPx(it, fontSize, ctx.density, ctx.fontScale)
+          },
+      )
+    }
+
+    /** A semantics-cleared Wear Picker whose custom draw applies scaling fade / row visibility. */
+    private fun LayoutInspectorNode.hasWearPickerDrawMask(): Boolean {
+      if (!hasCustomDraw()) return false
+      return modifiers.any { modifier -> modifier.name == "clearAndSetSemantics" }
     }
 
     /**
