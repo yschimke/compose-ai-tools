@@ -110,7 +110,7 @@ jobs:
             # the bot rather than the person who clicked. Authorize the event
             # actor directly, matching GitHub's own write-access rerun rule.
             permission=$(gh api "repos/${REPO}/collaborators/${ACTOR}/permission" \
-              --jq '.user.permission' 2>/dev/null || true)
+              --jq '.permission' 2>/dev/null || true)
             case "$permission" in
               admin|maintain|write) ;;
               *)
