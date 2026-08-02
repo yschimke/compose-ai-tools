@@ -824,6 +824,7 @@ class ServeHttpServer(
   private suspend fun RoutingContext.handlePlaygroundPage(service: PlaygroundCompileService) {
     if (rejectBadToken()) return
     if (rejectMissingGithubAuth()) return
+    if (rejectMissingGithubRepoAccess()) return
     markGeneration("static-page", pageCacheControl())
     call.respondText(
       ServeWeb.playgroundPage(
@@ -857,6 +858,7 @@ class ServeHttpServer(
   private suspend fun RoutingContext.handlePlaygroundRedeem(redeem: PlaygroundRedeemService) {
     if (rejectBadToken()) return
     if (rejectMissingGithubAuth()) return
+    if (rejectMissingGithubRepoAccess()) return
     // Read the PATH segment explicitly (see the route mount): it's named `{pgToken}` so it can't be
     // shadowed by the `?token=` access token that `call.parameters` also carries on a gated host.
     val id = call.parameters["pgToken"].orEmpty()
@@ -883,6 +885,7 @@ class ServeHttpServer(
   private suspend fun RoutingContext.handlePlaygroundRun(service: PlaygroundCompileService) {
     if (rejectBadToken()) return
     if (rejectMissingGithubAuth(api = true)) return
+    if (rejectMissingGithubRepoAccess(api = true)) return
     val body =
       withContext(Dispatchers.IO) {
         call.receiveStream().use { readCapped(it, MAX_PLAYGROUND_BYTES) }
@@ -2727,6 +2730,29 @@ class ServeHttpServer(
       call.respondText("GitHub sign-in required.", status = HttpStatusCode.Unauthorized)
     } else {
       call.respondRedirect(auth.loginPath(call))
+    }
+    return true
+  }
+
+  private suspend fun RoutingContext.rejectMissingGithubRepoAccess(api: Boolean = false): Boolean {
+    val auth = githubAuth ?: return false
+    if (auth.hasRepositoryAccess(call)) return false
+    val message =
+      "Playground requires access to ${auth.accessRepository()}. Live preview is available to any " +
+        "signed-in GitHub user."
+    if (api) {
+      call.respondText(message, status = HttpStatusCode.Forbidden)
+    } else {
+      call.respondText(
+        ServeWeb.notFoundPage(
+          message,
+          token,
+          isPublic,
+          unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+        ),
+        ContentType.Text.Html,
+        HttpStatusCode.Forbidden,
+      )
     }
     return true
   }

@@ -355,13 +355,18 @@ SERVE_GITHUB_AUTH_CLIENT_SECRET=...
 SERVE_GITHUB_AUTH_COOKIE_SECRET=... # at least 32 chars
 ```
 
-With those set, `/playground`, `POST /api/<version>/compiler/run`, `/pg/<token>`, and live preview
-WebSockets require a signed-in GitHub user. The browser cookie stores only a signed, expiring login.
+With those set, live preview WebSockets require a signed-in GitHub user. `/playground`,
+`POST /api/<version>/compiler/run`, and `/pg/<token>` require a signed-in GitHub user that also has
+access to `SERVE_GITHUB_AUTH_REPO` / `--github-auth-repo`. The browser cookie stores only a signed,
+expiring login plus the repo access verdict. The OAuth request includes GitHub's `repo` scope so
+private repository access can be checked during sign-in; the OAuth token is not stored.
 Reverse-proxied deployments should also set
 `SERVE_GITHUB_AUTH_CALLBACK_BASE_URL=https://preview.example.com` so the OAuth callback URL is stable.
 When `DOMAIN` is set, the prebuilt image derives
 `SERVE_GITHUB_AUTH_CALLBACK_BASE_URL=https://$DOMAIN`. Empty `SERVE_GITHUB_AUTH_USERS` allows any
-signed-in GitHub user; set `SERVE_GITHUB_AUTH_USERS=alice,bob` to narrow access to named logins.
+signed-in GitHub user to use live previews; playground still requires access to
+`SERVE_GITHUB_AUTH_REPO`. Set `SERVE_GITHUB_AUTH_USERS=alice,bob` to narrow sign-in to named logins
+for both surfaces.
 
 ### The catalog set is config, not image content
 

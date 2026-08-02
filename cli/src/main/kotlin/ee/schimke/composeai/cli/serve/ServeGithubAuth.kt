@@ -80,7 +80,7 @@ class ServeGithubAuth(
           call.respondText("GitHub sign-in failed.", status = HttpStatusCode.Forbidden)
           return
         }
-    val session = signedSession(user)
+    val session = signedSession(user.login, user.repositoryAccess)
     call.response.cookies.append(authCookie(session, maxAge = SESSION_TTL_SECONDS))
     call.response.cookies.append(stateCookie("", maxAge = 0))
     call.respondRedirect(statePayload.returnTo)
@@ -92,7 +92,12 @@ class ServeGithubAuth(
 
   fun currentLogin(call: ApplicationCall): String? {
     val cookie = call.request.cookieValue(AUTH_COOKIE) ?: return null
-    return verifySession(cookie)
+    return verifySession(cookie)?.login
+  }
+
+  fun hasRepositoryAccess(call: ApplicationCall): Boolean {
+    val cookie = call.request.cookieValue(AUTH_COOKIE) ?: return false
+    return verifySession(cookie)?.repositoryAccess == true
   }
 
   fun loginPath(call: ApplicationCall): String {
@@ -109,7 +114,7 @@ class ServeGithubAuth(
       listOf(
           "client_id" to config.clientId,
           "redirect_uri" to callbackUrl(call),
-          "scope" to "read:user",
+          "scope" to "read:user repo",
           "state" to state,
         )
         .joinToString("&") { (k, v) -> "$k=${urlEncode(v)}" }
@@ -131,17 +136,25 @@ class ServeGithubAuth(
     return StatePayload(returnTo)
   }
 
-  private fun signedSession(login: String): String {
+  private fun signedSession(login: String, repositoryAccess: Boolean): String {
     val expiresAt = clock.millis() + SESSION_TTL_SECONDS * 1000
-    return sign("${login.lowercase()}|$expiresAt")
+    val repoFlag = if (repositoryAccess) "repo" else "no-repo"
+    return sign("${login.lowercase()}|$repoFlag|$expiresAt")
   }
 
-  private fun verifySession(value: String): String? {
+  private fun verifySession(value: String): SessionPayload? {
     val payload = verifySigned(value) ?: return null
-    val parts = payload.split("|", limit = 2)
-    if (parts.size != 2) return null
-    val expiresAt = parts[1].toLongOrNull() ?: return null
-    return parts[0].takeIf { expiresAt > clock.millis() && it.isNotBlank() }
+    val parts = payload.split("|")
+    val (login, repositoryAccess, expiresAt) =
+      when (parts.size) {
+        // Backwards compatible with cookies minted before playground repo-rights gating. They stay
+        // authenticated for live preview, but do not satisfy the stricter playground gate.
+        2 -> Triple(parts[0], false, parts[1].toLongOrNull())
+        3 -> Triple(parts[0], parts[1] == "repo", parts[2].toLongOrNull())
+        else -> return null
+      }
+    if (expiresAt == null || expiresAt <= clock.millis() || login.isBlank()) return null
+    return SessionPayload(login, repositoryAccess)
   }
 
   private fun sign(payload: String): String {
@@ -194,6 +207,8 @@ class ServeGithubAuth(
 
   private data class StatePayload(val returnTo: String)
 
+  private data class SessionPayload(val login: String, val repositoryAccess: Boolean)
+
   companion object {
     const val START_PATH = "/auth/github/start"
     const val CALLBACK_PATH = "/auth/github/callback"
@@ -213,16 +228,24 @@ class ServeGithubAuth(
   }
 }
 
+data class GitHubOAuthUser(val login: String, val repositoryAccess: Boolean)
+
 class GitHubOAuthVerifier(private val client: OkHttpClient = OkHttpClient()) {
-  fun verify(code: String, redirectUri: String, config: ServeGithubAuthConfig): Result<String> =
-    runCatching {
-      val token = exchangeCode(code, redirectUri, config)
-      val login = fetchLogin(token)
-      if (config.allowedUsers.isNotEmpty() && login.lowercase() !in config.allowedUsers) {
-        error("GitHub user $login is not allowed")
-      }
-      login
+  fun verify(
+    code: String,
+    redirectUri: String,
+    config: ServeGithubAuthConfig,
+  ): Result<GitHubOAuthUser> = runCatching {
+    val token = exchangeCode(code, redirectUri, config)
+    val login = fetchLogin(token)
+    if (config.allowedUsers.isNotEmpty() && login.lowercase() !in config.allowedUsers) {
+      error("GitHub user $login is not allowed")
     }
+    GitHubOAuthUser(
+      login,
+      repositoryAccess = fetchRepositoryAccess(token, config.repository, login),
+    )
+  }
 
   private fun exchangeCode(
     code: String,
@@ -262,6 +285,24 @@ class GitHubOAuthVerifier(private val client: OkHttpClient = OkHttpClient()) {
     }
   }
 
+  private fun fetchRepositoryAccess(token: String, repository: String, login: String): Boolean {
+    val request =
+      Request.Builder()
+        .url("https://api.github.com/repos/$repository/collaborators/$login/permission")
+        .header(HttpHeaders.Authorization, "Bearer $token")
+        .header(HttpHeaders.Accept, "application/vnd.github+json")
+        .build()
+    return client.newCall(request).execute().use { response ->
+      if (response.code == 404) return@use false
+      if (!response.isSuccessful) return@use false
+      val permission =
+        JSON.decodeFromString(GitHubPermissionResponse.serializer(), response.body.string())
+          .permission
+          .lowercase()
+      permission != "none"
+    }
+  }
+
   companion object {
     private val JSON = Json { ignoreUnknownKeys = true }
   }
@@ -271,6 +312,8 @@ class GitHubOAuthVerifier(private val client: OkHttpClient = OkHttpClient()) {
 private data class GitHubTokenResponse(@SerialName("access_token") val accessToken: String? = null)
 
 @Serializable private data class GitHubUserResponse(val login: String)
+
+@Serializable private data class GitHubPermissionResponse(val permission: String = "none")
 
 private fun ApplicationCall.uriWithQuery(): String = request.uri
 
