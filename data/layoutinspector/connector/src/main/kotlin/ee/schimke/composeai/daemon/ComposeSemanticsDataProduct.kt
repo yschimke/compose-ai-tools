@@ -1144,11 +1144,6 @@ internal object ComposeLayoutInspector {
     // Reflective + best-effort: any failure (or a bitmap/gradient/transformed painter) yields null
     // and the node simply rasters as before.
     val modifiers = modifierInfo
-    val retainsLayoutText = modifiers.any { info ->
-      val inspectable = info.modifier as? InspectableValue
-      inspectable?.nameFallback == "clearAndSetSemantics" ||
-        info.modifier.javaClass.simpleName.contains("ClearAndSetSemantics")
-    }
     val children = children.map { it.toWireNode(rootCoords, sources, density, fontScale) }
     // An `Icon`/`Image`'s `ImageVector` (Tier 1). Failing that, a *leaf* node that paints its
     // chrome
@@ -1211,9 +1206,7 @@ internal object ComposeLayoutInspector {
       attached = attached,
       zIndex = zIndex,
       modifiers =
-        modifiers.mapNotNull { info ->
-          info.toWireModifier(rootCoords, retainsLayoutText, density, fontScale)
-        },
+        modifiers.mapNotNull { info -> info.toWireModifier(rootCoords, density, fontScale) },
       // Resolved tokens are computed by the shared resolver (issue #1903) from the same modifier
       // chain + measure policy + measured size this node already carries — `layout/inspector` is
       // the
@@ -1283,7 +1276,6 @@ internal object ComposeLayoutInspector {
 
   private fun ModifierInfo.toWireModifier(
     rootCoordinates: LayoutCoordinates?,
-    retainsLayoutText: Boolean,
     density: Float,
     fontScale: Float,
   ): LayoutInspectorModifier? {
@@ -1297,18 +1289,14 @@ internal object ComposeLayoutInspector {
         ?.associate { it.name to it.value.wireValue() }
         .orEmpty()
         .toMutableMap()
-    // `clearAndSetSemantics {}` deliberately removes Text + GetTextLayoutResult from a Text
-    // node's semantics. Horologist's TimePicker does exactly that to its visual ":" separator,
-    // which made the editable SVG silently omit a glyph that is plainly present in the PNG.
-    // Compose's text modifier still carries the authored string and TextStyle, so retain that
-    // small, stable projection on the layout modifier as a fallback for design-fidelity exports.
-    // Ordinary text continues to use the measured semantics path (resolved px, line geometry,
-    // spans); these fields are consulted only when that path has no text for the node.
+    // The Text modifier is the canonical owner of the visible string and authored TextStyle, so
+    // retain its compact projection for every Text node. The measured TextLayoutResult still wins
+    // when available because it carries resolved px, wrapping, baselines and spans; this projection
+    // covers a cleared layout-result hook and prevents accessibility semantics from replacing the
+    // visible glyphs.
     val modifierClass = modifier.javaClass.simpleName
     if (
-      retainsLayoutText &&
-        (modifierClass == "TextAnnotatedStringElement" ||
-          modifierClass == "TextStringSimpleElement")
+      modifierClass == "TextAnnotatedStringElement" || modifierClass == "TextStringSimpleElement"
     ) {
       val text = reflectedDeclaredField(modifier, "text")?.toString()?.takeIf { it.isNotBlank() }
       val style = reflectedDeclaredField(modifier, "style") as? TextStyle

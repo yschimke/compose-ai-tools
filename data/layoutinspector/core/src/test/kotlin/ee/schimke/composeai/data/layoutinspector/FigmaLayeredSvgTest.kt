@@ -2158,6 +2158,80 @@ class FigmaLayeredSvgTest {
     assertTrue(svg.contains("""fill="#202020""""))
   }
 
+  @Test
+  fun renderedTextLayoutWinsOverPlainSemanticsText() {
+    val layout =
+      layoutNode("Screen", 0, 0, 200, 100, children = listOf(layoutNode("Text", 8, 8, 192, 40)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Accessibility copy",
+              layoutText = "Visible copy",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp"),
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+
+    assertTrue(svg.contains(">Visible copy</text>"))
+    assertFalse(svg.contains("Accessibility copy"))
+  }
+
+  @Test
+  fun modifierTextWinsWhenOnlyPlainSemanticsTextRemains() {
+    val layout =
+      layoutNode(
+        "Screen",
+        0,
+        0,
+        200,
+        100,
+        children =
+          listOf(
+            layoutNode(
+              "Text",
+              8,
+              8,
+              192,
+              40,
+              modifiers =
+                listOf(
+                  LayoutInspectorModifier(
+                    name = "text",
+                    properties =
+                      mapOf("layoutText" to "Visible modifier", "layoutTextFontSizePx" to "16"),
+                  )
+                ),
+            )
+          ),
+      )
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,200,100",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,192,40",
+              text = "Accessibility copy",
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+
+    assertTrue(svg.contains(">Visible modifier</text>"))
+    assertFalse(svg.contains("Accessibility copy"))
+  }
+
   /**
    * Issue #2885: `TextAlign.Center` used to export as a left-anchored `<text>` at the start of the
    * paragraph's layout bounds, so a `Modifier.fillMaxWidth()` heading drifted hard left of where

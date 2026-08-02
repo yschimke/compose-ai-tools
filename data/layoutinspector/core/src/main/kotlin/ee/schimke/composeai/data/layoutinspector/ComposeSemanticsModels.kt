@@ -113,8 +113,8 @@ object LayoutInspectorProduct {
   // shape)` rounds its own fill but doesn't clip an overflowing child); the figma-svg export turns
   // it into an SVG `clipPath` so a child placed beyond the clip is masked instead of overflowing.
   // Additive — older entries decode with `clipsContent = null`.
-  // v13: each node may report `modifiesDrawnContent` when replaying its `drawWithContent` changes,
-  // clips, masks, transforms or overlays descendant pixels. The figma-svg exporter uses this
+  // v13: each node may report `modifiesDrawnContent` when replaying its `drawWithContent` clips,
+  // masks, fades, clears or omits descendant pixels. The figma-svg exporter uses this
   // capability signal to crop only that composited region from the frame; no component names are
   // involved. Additive — older entries decode it as false.
   const val SCHEMA_VERSION: Int = 13
@@ -656,11 +656,11 @@ data class LayoutInspectorNode(
    */
   val drawRaster: LayoutInspectorDrawRaster? = null,
   /**
-   * True when this node's `drawWithContent` changes the pixels produced by `drawContent()` through
-   * a clip, mask, transform, blend, alpha layer, omission, or over-content paint. Such an effect is
-   * not represented by the layout/semantics tree and cannot be layered beneath editable children; a
-   * fidelity export needs the node's composited frame region instead. Capability-based and
-   * component-agnostic; false for pass-through draws and draws that paint only behind content.
+   * True when this node's `drawWithContent` obscures pixels produced by `drawContent()` through a
+   * clip, mask, alpha fade, clear blend, or omission. Such an effect is not represented by the
+   * layout/semantics tree and cannot be layered beneath editable children; a fidelity export needs
+   * the node's composited frame region instead. Capability-based and component-agnostic; false for
+   * pass-through draws, background-only draws, and color overlays that leave content present.
    */
   val modifiesDrawnContent: Boolean = false,
   /**

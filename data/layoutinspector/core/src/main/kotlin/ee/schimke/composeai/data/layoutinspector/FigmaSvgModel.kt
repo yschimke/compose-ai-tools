@@ -902,12 +902,13 @@ data class FigmaSvgModel(
             contentOpacity = contentOpacity,
           )
         }
-      // A `drawWithContent` that clips, masks, transforms, blends or paints over its descendants
+      // A `drawWithContent` that clips, masks, fades, clears or omits its descendants
       // cannot be reconstructed by layering the node's isolated background under editable child
       // SVG. The connector detects that capability by replaying the draw with a calibration
       // pattern. In hybrid mode preserve this complex composited region from the frame.
-      // Pass-through draws and components that paint only behind content keep their editable
-      // descendants.
+      // Pass-through draws, background-only draws and color overlays keep their editable
+      // descendants; flattening those would discard representable vector structure for no
+      // visibility benefit.
       if (ctx.captureCanvasDraws && modifiesDrawnContent) {
         val href = ctx.rasterHref(nodeId)
         ctx.rasterTargets.add(
@@ -1797,6 +1798,7 @@ data class FigmaSvgModel(
       fontScale: Float,
     ): Map<String, FigmaSvgText> {
       val candidates = mutableListOf<Triple<String, IntArray, Int>>()
+      val nodesWithModifierText = mutableSetOf<String>()
       // The two producers disagree about clipping, and the disagreement is invisible until a node
       // straddles a clip edge. The layout-inspector records every node's UNCLIPPED box
       // (`localBoundingBoxOf(clipBounds = false)`), while a semantics node's `boundsInRoot` is
@@ -1807,6 +1809,11 @@ data class FigmaSvgModel(
       // ADDITIONAL candidate alongside the raw one lets an edge row match without loosening the
       // tolerance for anything else.
       fun collect(n: LayoutInspectorNode, depth: Int, clip: LayoutInspectorBounds?) {
+        if (
+          n.modifiers.any { modifier -> modifier.properties["layoutText"]?.isNotBlank() == true }
+        ) {
+          nodesWithModifierText += n.nodeId
+        }
         val candidateBounds =
           buildList {
               add(n.bounds)
@@ -1844,10 +1851,10 @@ data class FigmaSvgModel(
       val textByNodeId = HashMap<String, FigmaSvgText>()
       val bestDistForNode = HashMap<String, Int>()
       fun walk(node: ComposeSemanticsNode) {
-        val content =
-          node.text?.takeIf { it.isNotBlank() } ?: node.layoutText?.takeIf { it.isNotBlank() }
+        val measuredContent = node.layoutText?.takeIf { it.isNotBlank() }
+        val legacySemanticsContent = node.text?.takeIf { it.isNotBlank() }
         val b = parseBoundsList(node.boundsInRoot)
-        if (content != null && b != null) {
+        if ((measuredContent != null || legacySemanticsContent != null) && b != null) {
           var bestId: String? = null
           var bestDist = Int.MAX_VALUE
           var bestDepth = -1
@@ -1869,7 +1876,18 @@ data class FigmaSvgModel(
             }
           }
           val chosen = bestId
-          if (chosen != null && bestDist < (bestDistForNode[chosen] ?: Int.MAX_VALUE)) {
+          // TextLayoutResult is visual ground truth despite being exposed through a semantics
+          // action. Plain SemanticsProperties.Text is accessibility data and may be overridden or
+          // merged, so it is only a compatibility fallback for old layout captures that have no
+          // modifier text projection.
+          val content =
+            measuredContent
+              ?: legacySemanticsContent?.takeUnless { chosen in nodesWithModifierText }
+          if (
+            chosen != null &&
+              content != null &&
+              bestDist < (bestDistForNode[chosen] ?: Int.MAX_VALUE)
+          ) {
             textByNodeId[chosen] = textFrom(node, content, density, fontScale)
             bestDistForNode[chosen] = bestDist
           }
