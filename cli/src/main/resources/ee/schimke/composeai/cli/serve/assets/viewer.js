@@ -139,6 +139,7 @@
   }
   function cancelSnapshotLoading() {
     snapshotGen++;
+    status.textContent = "";
     setSnapshotLoading(false);
   }
 

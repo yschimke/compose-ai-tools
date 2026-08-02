@@ -2453,6 +2453,13 @@ class ServeWebFixtureTest {
         assetText("serve.css").contains("cp-reload-spin"),
       "snapshot overrides fade the current preview and show a spinner while re-rendering",
     )
+    assertTrue(
+      assetText("viewer.js")
+        .contains(
+          "function cancelSnapshotLoading() {\n    snapshotGen++;\n    status.textContent = \"\";"
+        ),
+      "cancelling a snapshot render clears its stale rendering status",
+    )
     // During an active Live (stream), the override map sent over the WebSocket must carry the knob
     // values too (as knob.<key> entries), not just the display fields — otherwise the daemon resets
     // an edited knob to its default. The setOverrides sends use liveOverrides(), which folds them
