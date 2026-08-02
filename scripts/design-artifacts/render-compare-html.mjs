@@ -246,16 +246,23 @@ const SCORER = String.raw`
   }
 
   // Point a display <img> at the overridden SVG so the column shows what was scored
-  // (glyphs overflowing at >1x, the substituted face with fonts off). Revoked after
-  // the browser has had a chance to decode it. Marks the row so a later return to
-  // identity knows to restore the original source.
+  // (glyphs overflowing at >1x, the substituted face with fonts off). Keep the blob
+  // alive until this display image actually settles: loading="lazy" can defer its
+  // request indefinitely while the row is below the fold. Marks the row so a later
+  // return to identity knows to restore the original source.
   function showSvg(tr, svgText) {
     const img = tr.querySelector(".col-svg .shot img");
     if (!img) return;
     const url = svgBlobUrl(svgText);
+    const release = () => {
+      img.removeEventListener("load", release);
+      img.removeEventListener("error", release);
+      URL.revokeObjectURL(url);
+    };
+    img.addEventListener("load", release);
+    img.addEventListener("error", release);
     img.src = url;
     tr.dataset.svgShown = "override";
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
   }
 
   // Put the display <img> back to the authored figma-svg once the overrides return to
