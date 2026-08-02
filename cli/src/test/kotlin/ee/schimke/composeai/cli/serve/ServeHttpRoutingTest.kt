@@ -19,6 +19,7 @@ import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
  * End-to-end routing check for [ServeHttpServer]: a real embedded server fronting two static
@@ -33,6 +34,7 @@ import okhttp3.Request
 class ServeHttpRoutingTest {
 
   private val previewId = "com.example.Red"
+  private val refreshes = mutableListOf<String>()
 
   private fun png(): ByteArray =
     ByteArrayOutputStream()
@@ -112,6 +114,10 @@ class ServeHttpRoutingTest {
         defaultSessionId = "default-mod",
         isPublic = true,
         catalogSessions = listOf("compose-m3"),
+        catalogRefresh = { system ->
+          refreshes += system
+          CatalogRefreshResult.CURRENT
+        },
       )
       .also { it.start() }
   }
@@ -120,6 +126,17 @@ class ServeHttpRoutingTest {
 
   private fun get(path: String): Pair<Int, String> {
     val req = Request.Builder().url("http://127.0.0.1:${server.port}$path").build()
+    client.newCall(req).execute().use { r ->
+      return r.code to (r.body?.string() ?: "")
+    }
+  }
+
+  private fun post(path: String): Pair<Int, String> {
+    val req =
+      Request.Builder()
+        .url("http://127.0.0.1:${server.port}$path")
+        .post(ByteArray(0).toRequestBody())
+        .build()
     client.newCall(req).execute().use { r ->
       return r.code to (r.body?.string() ?: "")
     }
@@ -146,6 +163,13 @@ class ServeHttpRoutingTest {
     val (code, body) = get("/version")
     assertEquals(200, code)
     assertTrue(body.contains("compose-preview-serve/version/v1"), "version json: $body")
+  }
+
+  @Test
+  fun `catalog refresh supports path and query session routes`() {
+    assertEquals(200 to "{\"status\":\"current\"}", post("/compose-m3/refresh"))
+    assertEquals(200 to "{\"status\":\"current\"}", post("/refresh?session=compose-m3"))
+    assertEquals(listOf("compose-m3", "compose-m3"), refreshes)
   }
 
   @Test

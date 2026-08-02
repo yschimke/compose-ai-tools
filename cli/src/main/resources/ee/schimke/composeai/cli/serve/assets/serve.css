@@ -37,6 +37,11 @@ a:hover { text-decoration: underline; }
 .cp-prov-item { display: inline-flex; align-items: center; gap: 5px; }
 .cp-prov-item .cp-prov-key { color: #8a8a92; }
 .cp-prov-item code { font-size: 0.74rem; padding: 0 4px; border-radius: 4px; background: #f0f0f3; }
+.cp-prov-refresh { appearance: none; border: 0; padding: 0; background: none; color: #5b5bd6;
+  font: inherit; cursor: pointer; }
+.cp-prov-refresh:hover { text-decoration: underline; }
+.cp-prov-refresh:disabled { color: #8a8a92; cursor: wait; text-decoration: none; }
+.cp-prov-refresh-status { color: #8a8a92; }
 .cp-systems { margin: 0 0 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
   font-size: 0.85rem; }
 .cp-systems-label { font-weight: 600; color: #6b6b70; }

@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.cli.serve.BundleVerifier
 import ee.schimke.composeai.cli.serve.CatalogLoadTracker
+import ee.schimke.composeai.cli.serve.CatalogRefreshResult
 import ee.schimke.composeai.cli.serve.DaemonStartupLog
 import ee.schimke.composeai.cli.serve.GitWorktrees
 import ee.schimke.composeai.cli.serve.GradleRevisionBuilder
@@ -797,6 +798,10 @@ class ServeCommand(args: List<String>) : Command(args) {
         ),
       catalogLoads = catalogReg?.loads,
       catalogStore = catalogReg?.store,
+      catalogRefresh =
+        catalogRefresher?.let {
+          { system -> activeRefresher?.refresh(system) ?: CatalogRefreshResult.UNAVAILABLE }
+        },
       onStarted = {
         catalogReg?.loader?.start { loaded ->
           catalogRefresher?.let {
@@ -890,6 +895,10 @@ class ServeCommand(args: List<String>) : Command(args) {
         listOfNotNull(catalogReg?.loader, catalogRefresher, catalogPerPreviewPoolsCloseable),
       catalogLoads = catalogReg?.loads,
       catalogStore = catalogReg?.store,
+      catalogRefresh =
+        catalogRefresher?.let {
+          { system -> activeRefresher?.refresh(system) ?: CatalogRefreshResult.UNAVAILABLE }
+        },
       onStarted = {
         catalogReg?.loader?.start { loaded ->
           catalogRefresher?.let {
@@ -1463,6 +1472,8 @@ class ServeCommand(args: List<String>) : Command(args) {
     catalogLoads: CatalogLoadTracker?,
     /** The catalog store an admin registration fetches through; null ⇒ no runtime admin. */
     catalogStore: ServeCatalogStore? = null,
+    /** Immediate branch-head check used by the Refresh control on catalog landing pages. */
+    catalogRefresh: ((String) -> CatalogRefreshResult)? = null,
     /** Called immediately after the HTTP listener binds, before the long blocking wait. */
     onStarted: () -> Unit = {},
   ) {
@@ -1520,6 +1531,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         catalogSessions = configuredCatalogs,
         appCatalogSessions = configuredApps,
         catalogLoads = catalogLoads,
+        catalogRefresh = catalogRefresh,
         maxLiveSeats = liveSeats,
         daemonLog = daemonLog,
         allowRenderTrusted = allowRenderTrusted,

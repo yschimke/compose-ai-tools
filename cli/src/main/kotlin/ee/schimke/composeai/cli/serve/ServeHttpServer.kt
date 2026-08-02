@@ -122,6 +122,8 @@ class ServeHttpServer(
    * explicit and recoverable. Null preserves the plain/test server behaviour.
    */
   private val catalogLoads: CatalogLoadTracker? = null,
+  /** Immediate catalog branch check exposed by `POST /{system}/refresh`. */
+  private val catalogRefresh: ((String) -> CatalogRefreshResult)? = null,
   portRange: Int = DEFAULT_PORT_RANGE,
   /**
    * Max renders in flight across the HTTP `/render` lane. Defaults to the host's CPU count so a
@@ -597,6 +599,9 @@ class ServeHttpServer(
         get("/{system}") { handleLanding(sessionInPath = true) }
         get("/{system}/") { handleLanding(sessionInPath = true) }
 
+        post("/refresh") { handleCatalogRefresh(sessionInPath = false) }
+        post("/{system}/refresh") { handleCatalogRefresh(sessionInPath = true) }
+
         get("/api/previews") { handleApiPreviews(sessionInPath = false) }
         get("/{system}/api/previews") { handleApiPreviews(sessionInPath = true) }
 
@@ -656,6 +661,32 @@ class ServeHttpServer(
     val system = if (sessionInPath) call.parameters["system"] else null
     return if (system != null) system to "/" + WebEscaping.urlEncodeSegment(system)
     else call.request.queryParameters["session"] to ""
+  }
+
+  /** `POST /{system}/refresh`: check the published catalog branch and reload it when newer. */
+  private suspend fun RoutingContext.handleCatalogRefresh(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    val system = selectedSessionId(sessionInPath)
+    val refresh = catalogRefresh
+    if (system.isEmpty() || refresh == null) {
+      call.respondText(
+        "{\"status\":\"unavailable\"}",
+        ContentType.Application.Json,
+        HttpStatusCode.NotFound,
+      )
+      return
+    }
+    val result = withContext(Dispatchers.IO) { refresh(system) }
+    val (status, code) =
+      when (result) {
+        CatalogRefreshResult.UPDATED -> "updated" to HttpStatusCode.OK
+        CatalogRefreshResult.CURRENT -> "current" to HttpStatusCode.OK
+        CatalogRefreshResult.UNAVAILABLE -> "unavailable" to HttpStatusCode.ServiceUnavailable
+        CatalogRefreshResult.FAILED -> "failed" to HttpStatusCode.BadGateway
+        CatalogRefreshResult.NOT_FOUND -> "not-found" to HttpStatusCode.NotFound
+      }
+    call.response.headers.append(HttpHeaders.CacheControl, "no-store")
+    call.respondText("{\"status\":\"$status\"}", ContentType.Application.Json, code)
   }
 
   /**
@@ -1096,6 +1127,8 @@ class ServeHttpServer(
           // Catalog provenance (delivery branch, generation date, tool versions) for the strip
           // under the header; null for a plain (non-catalog) module session.
           provenance = catalogBundleHost(renderHost)?.provenance,
+          refreshUrl =
+            if (catalogRefresh != null) "$basePath/refresh${requestQuerySuffix()}" else null,
           // Crop each card's thumbnail to the component's figma-svg content box (cheap baked
           // reads),
           // so a Wear sticker shows the component, not the empty watch canvas around it.

@@ -5,6 +5,14 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
+enum class CatalogRefreshResult {
+  UPDATED,
+  CURRENT,
+  UNAVAILABLE,
+  FAILED,
+  NOT_FOUND,
+}
+
 /**
  * Keeps a running `serve` fresh against routinely-changing catalog branches.
  *
@@ -94,14 +102,23 @@ internal class ServeCatalogRefresher(
    * One poll pass over every watched branch. Package-visible so a test can drive it
    * deterministically.
    */
+  @Synchronized
   fun tick() {
     for (e in entries()) checkOne(e)
   }
 
-  private fun checkOne(e: Entry) {
+  /** Check one catalog immediately, using the same branch-head + reload path as the poller. */
+  @Synchronized
+  fun refresh(system: String): CatalogRefreshResult {
+    val entry =
+      entries().firstOrNull { it.system == system } ?: return CatalogRefreshResult.NOT_FOUND
+    return checkOne(entry)
+  }
+
+  private fun checkOne(e: Entry): CatalogRefreshResult {
     // Can't resolve the head (offline / git missing / private) → leave what we serve untouched.
-    val head = headResolver(e.repo, e.branch) ?: return
-    if (head == lastHead[e.system]) return
+    val head = headResolver(e.repo, e.branch) ?: return CatalogRefreshResult.UNAVAILABLE
+    if (head == lastHead[e.system]) return CatalogRefreshResult.CURRENT
     val prev = lastHead[e.system]
     onLog(
       "serve: catalog ${e.system} (${e.branch}) moved ${prev?.take(7) ?: "?"}→${head.take(7)} — re-fetching"
@@ -110,8 +127,10 @@ internal class ServeCatalogRefresher(
       // Only advance the recorded head on success, so a failed reload retries next tick.
       lastHead[e.system] = head
       onLog("serve: catalog ${e.system} refreshed to ${head.take(7)}")
+      return CatalogRefreshResult.UPDATED
     } else {
       onLog("serve: catalog ${e.system} refresh failed — keeping the current copy, will retry")
+      return CatalogRefreshResult.FAILED
     }
   }
 
