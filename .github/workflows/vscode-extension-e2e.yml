@@ -18,11 +18,35 @@ name: VS Code Extension E2E
 #                       and CMP went unverified for ~60 commits.
 #   workflow_dispatch — manual one-off runs (any branch), e.g. to
 #                       reproduce a regression on a feature branch.
+#   pull_request      — runs the full sharded set when the extension or
+#                       its real Gradle/rendering fixtures change.
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
+  pull_request:
+    paths:
+      - 'vscode-extension/**'
+      - 'gradle-plugin/**'
+      - 'daemon/**'
+      - 'renderers/**'
+      - 'runtimes/**'
+      - 'data/**'
+      - 'api/preview-annotations/**'
+      - 'api/preview-data-api/**'
+      - 'samples/cmp/**'
+      - 'samples/android/**'
+      - 'samples/wear/**'
+      - 'build-logic/**'
+      - 'gradle/**'
+      - 'settings.gradle*'
+      - 'build.gradle*'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - '.github/actions/setup/**'
+      - '.github/workflows/vscode-extension-e2e.yml'
 
 permissions:
   contents: read
@@ -35,11 +59,31 @@ concurrency:
 
 jobs:
   e2e:
-    name: VS Code Extension E2E (real Gradle)
+    name: VS Code Extension E2E (${{ matrix.shard }})
     runs-on: ubuntu-latest
-    # 60 minutes ceiling — local cold runs land closer to 5-10 min, but a
-    # CI runner with no Gradle/Compose caches warm and a fresh
-    # @vscode/test-electron download can stretch.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: cmp-smoke
+            files: e2e.test.js
+            grep: ''
+          - shard: cached-preload
+            files: e2eCachedPreloadOnSwitch.test.js
+            grep: ''
+          - shard: interactive-a-d
+            files: e2eInteractive.test.js
+            grep: ' [A-D]\. '
+          - shard: interactive-e-g
+            files: e2eInteractive.test.js
+            grep: ' [E-G]\. '
+          # These suites intentionally share one host: e2eA11y warms the
+          # Wear daemon and e2eBundleChain reuses that state.
+          - shard: wear
+            files: e2eA11y.test.js,e2eBundleChain.test.js
+            grep: ''
+    # Per-shard ceiling. The complete suite is deliberately split because
+    # its serial worst case exceeds an hour; each shard remains bounded.
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -73,15 +117,19 @@ jobs:
 
       - name: Run e2e tests under xvfb
         working-directory: vscode-extension
+        env:
+          COMPOSE_PREVIEW_E2E_FILES: ${{ matrix.files }}
+          COMPOSE_PREVIEW_E2E_GREP: ${{ matrix.grep }}
         run: xvfb-run -a npm run test:e2e
 
       - name: Upload renders on failure
-        if: failure()
+        if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: e2e-renders
+          name: e2e-renders-${{ matrix.shard }}
           path: |
             samples/cmp/build/compose-previews/
+            samples/android/build/compose-previews/
             samples/wear/build/compose-previews/
             vscode-extension/.vscode-test/user-data/logs/
           if-no-files-found: ignore

@@ -132,6 +132,18 @@ async function main(): Promise<void> {
             ELECTRON_RUN_AS_NODE: undefined,
             COMPOSE_PREVIEW_TEST_MODE: "1",
             ...(e2eMode ? { COMPOSE_PREVIEW_E2E: "1" } : {}),
+            ...(process.env.COMPOSE_PREVIEW_E2E_FILES
+                ? {
+                      COMPOSE_PREVIEW_E2E_FILES:
+                          process.env.COMPOSE_PREVIEW_E2E_FILES,
+                  }
+                : {}),
+            ...(process.env.COMPOSE_PREVIEW_E2E_GREP
+                ? {
+                      COMPOSE_PREVIEW_E2E_GREP:
+                          process.env.COMPOSE_PREVIEW_E2E_GREP,
+                  }
+                : {}),
             // Forward the external-consumer flag (and the workspace
             // path, for diagnostic logs) into the extension host so the
             // gated `describeExternal(...)` actually runs. The

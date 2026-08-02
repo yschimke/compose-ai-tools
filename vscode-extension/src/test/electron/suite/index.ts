@@ -62,11 +62,37 @@ export async function run(): Promise<void> {
     // suite paying the wear composePreviewRenderAll's tax in its own 10-minute
     // budget. Plain lexical order runs the lighter cmp suite first.
     const files = (await glob(pattern, { cwd: testsRoot, ignore })).sort();
+    const selectedFiles = process.env.COMPOSE_PREVIEW_E2E_FILES;
+    const selected = selectedFiles
+        ? new Set(
+              selectedFiles
+                  .split(",")
+                  .map((file) => file.trim())
+                  .filter(Boolean),
+          )
+        : undefined;
+    const filteredFiles = selected
+        ? files.filter((file) => selected.has(path.basename(file)))
+        : files;
+    if (selected && filteredFiles.length !== selected.size) {
+        const found = new Set(filteredFiles.map((file) => path.basename(file)));
+        const missing = [...selected].filter((file) => !found.has(file));
+        throw new Error(
+            `COMPOSE_PREVIEW_E2E_FILES selected unknown test file(s): ${missing.join(", ")}`,
+        );
+    }
+
+    const grep = process.env.COMPOSE_PREVIEW_E2E_GREP;
+    if (grep) {
+        mocha.grep(new RegExp(grep));
+    }
     console.log(
-        `[suite] discovered ${files.length} test file(s) in ${testsRoot} ` +
-            `(e2e=${e2eMode} external=${e2eExternalMode})`,
+        `[suite] discovered ${filteredFiles.length}/${files.length} test file(s) in ${testsRoot} ` +
+            `(e2e=${e2eMode} external=${e2eExternalMode}` +
+            `${selectedFiles ? ` files=${selectedFiles}` : ""}` +
+            `${grep ? ` grep=${grep}` : ""})`,
     );
-    for (const f of files) {
+    for (const f of filteredFiles) {
         const abs = path.resolve(testsRoot, f);
         console.log(`[suite] add ${abs}`);
         mocha.addFile(abs);
