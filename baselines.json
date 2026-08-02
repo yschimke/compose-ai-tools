@@ -256,14 +256,14 @@
     "serve-landing-public.dark.png": {
       "fixture": "serve-landing-public",
       "theme": "dark",
-      "sha256": "77d5a706b6cbadfd9178434c86af85d4ebe1533eae339abc8127c4889fc31587",
-      "size": 201035
+      "sha256": "c6ee61aa97e4f19a07fe81505c954bdd8f046cca8d0a5a38bbc342d22180cc16",
+      "size": 201600
     },
     "serve-landing-public.light.png": {
       "fixture": "serve-landing-public",
       "theme": "light",
-      "sha256": "77d5a706b6cbadfd9178434c86af85d4ebe1533eae339abc8127c4889fc31587",
-      "size": 201035
+      "sha256": "c6ee61aa97e4f19a07fe81505c954bdd8f046cca8d0a5a38bbc342d22180cc16",
+      "size": 201600
     },
     "serve-landing-sections.dark.png": {
       "fixture": "serve-landing-sections",
