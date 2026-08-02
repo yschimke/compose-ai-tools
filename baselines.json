@@ -208,14 +208,14 @@
     "serve-format-compare.dark.png": {
       "fixture": "serve-format-compare",
       "theme": "dark",
-      "sha256": "c35ff3e515c44ef87d350e4a729859a7c0f9de836da11f054f6f4a7d95951f4a",
-      "size": 44404
+      "sha256": "1a93e0be14a01209cd4be61ae45a4418c0214b168963c942f54eadfe1489b211",
+      "size": 45842
     },
     "serve-format-compare.light.png": {
       "fixture": "serve-format-compare",
       "theme": "light",
-      "sha256": "a3dbc955a0efd2f72e4b6ca0365026a89c589fa1ce1d7fdc43bf22ff801d8ad7",
-      "size": 44458
+      "sha256": "4c2ef71aecdfb44d03391edc33d6af41317cdf464d5ad2c0d8084351b7bba0cf",
+      "size": 45887
     },
     "serve-home-index.dark.png": {
       "fixture": "serve-home-index",
@@ -372,6 +372,18 @@
       "theme": "light",
       "sha256": "340123c984c50545f5ea25bc569be61f4f2d0c0b374dbaa53e5654181b85b5eb",
       "size": 22891
+    },
+    "serve-reference-compare.dark.png": {
+      "fixture": "serve-reference-compare",
+      "theme": "dark",
+      "sha256": "83f301681e2e1b98a5874413e6176f29eec536e4769c746af73b27f30841d128",
+      "size": 46913
+    },
+    "serve-reference-compare.light.png": {
+      "fixture": "serve-reference-compare",
+      "theme": "light",
+      "sha256": "16cbe0214159078b587044d93680ef2685a95180bc6a7c558f0420bf798b7ea7",
+      "size": 47154
     },
     "serve-status.dark.png": {
       "fixture": "serve-status",

@@ -221,6 +221,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-playground-multifile/dark](renders/serve-playground-multifile.dark.png) |
 | `light` | ![serve-playground-multifile/light](renders/serve-playground-multifile.light.png) |
 
+## serve-reference-compare
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-reference-compare/dark](renders/serve-reference-compare.dark.png) |
+| `light` | ![serve-reference-compare/light](renders/serve-reference-compare.light.png) |
+
 ## serve-status
 
 | Theme | Capture |
