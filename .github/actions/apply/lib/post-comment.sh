@@ -51,7 +51,7 @@ if [ "$BODY_BYTES" -gt "$MAX_BYTES" ]; then
   # multi-byte character.
   head -c "$BUDGET" "$BODY_FILE" | sed '$d' > "$TRUNCATED"
   printf '%s\n' "$NOTICE" >> "$TRUNCATED"
-  echo "post-comment: body was ${BODY_BYTES} bytes; truncated to fit GitHub's 65,536-char comment limit." >&2
+  echo "::warning title=Preview comment truncated::The generated comment was ${BODY_BYTES} bytes and was truncated to fit GitHub's 65,536-character limit. Open the published render branch for the complete result." >&2
   BODY_FILE="$TRUNCATED"
 fi
 

@@ -30,7 +30,7 @@ if [ "${SKIP_RENDER:-false}" = "true" ]; then
   echo "resources pipeline: skip-render=true; reusing pre-staged _resources.json."
   echo "0" > "$GITHUB_WORKSPACE/_resources_render_rc"
 else
-  res_args=(show-resources --json --timeout "$RENDER_TIMEOUT")
+  res_args=(show-resources --json --progress --timeout "$RENDER_TIMEOUT")
   if [ -n "${MISSING_RENDERS:-}" ]; then
     res_args+=(--missing-renders "${MISSING_RENDERS}")
   fi

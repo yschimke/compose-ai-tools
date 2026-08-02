@@ -53,7 +53,7 @@ split_csv() {
 mapfile -t ALLOW_MODULES < <(split_csv "${A11Y_MODULES:-}")
 mapfile -t SKIP_MODULES < <(split_csv "${A11Y_SKIP_MODULES:-}")
 
-cli_args=(a11y)
+cli_args=(a11y --progress)
 if [ "${#ALLOW_MODULES[@]}" -gt 0 ]; then
   for m in "${ALLOW_MODULES[@]}"; do
     cli_args+=(--module ":${m}")

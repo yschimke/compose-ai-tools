@@ -225,6 +225,7 @@ private class PackSubcommand(private val args: List<String>) {
   private val withSemantics: Boolean = "--with-semantics" in args
   private val perPreview: Boolean = "--per-preview" in args
   private val verbose: Boolean = "--verbose" in args || "-v" in args
+  private val progress: Boolean = verbose || "--progress" in args
   private val timeout: String? = args.flagValue("--timeout")
   private val ids: List<String> =
     args
@@ -260,6 +261,7 @@ private class PackSubcommand(private val args: List<String>) {
         add(it)
       }
       if (verbose) add("--verbose")
+      if (progress && !verbose) add("--progress")
       timeout?.let {
         add("--timeout")
         add(it)
@@ -416,6 +418,7 @@ private class PackSubcommand(private val args: List<String>) {
         add(it)
       }
       if (verbose) add("--verbose")
+      if (progress && !verbose) add("--progress")
     }
     object : Command(cmdArgs) {
         override fun run() {

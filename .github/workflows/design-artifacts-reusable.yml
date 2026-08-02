@@ -255,7 +255,7 @@ jobs:
         working-directory: compose-ai-tools
         run: |
           set -euo pipefail
-          ./gradlew :cli:installDist --no-daemon
+          ./gradlew :cli:installDist --no-daemon --quiet
           echo "$GITHUB_WORKSPACE/compose-ai-tools/cli/build/install/compose-preview/bin" >> "$GITHUB_PATH"
 
       - name: Set up Node
@@ -264,7 +264,7 @@ jobs:
           node-version: 24
       - name: Install export engine (pinned npm packages)
         working-directory: compose-ai-tools/scripts/design-artifacts
-        run: npm ci
+        run: npm ci --no-audit --no-fund --loglevel=warn
 
       # Fast, build-free pre-flight: resolve every spec `preview` against the
       # module's @Preview functions BEFORE the (long) render, so a mistyped or
@@ -353,7 +353,7 @@ jobs:
           FONT_GLOBS: ${{ inputs.stage-font-globs }}
         run: |
           set -euo pipefail
-          command -v fc-cache >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y --no-install-recommends fontconfig; }
+          command -v fc-cache >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends fontconfig; }
           mkdir -p "$HOME/.local/share/fonts"
           shopt -s nullglob
           for g in $FONT_GLOBS; do cp $g "$HOME/.local/share/fonts/"; done
@@ -365,8 +365,8 @@ jobs:
       - name: Install desktop (Skiko) render deps
         if: ${{ inputs.desktop-render || inputs.rc-embedded-jvm-lane }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
             xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1 fontconfig
 
       # Restore the downloadable-font cache (the matching save runs after the render,
@@ -421,7 +421,7 @@ jobs:
           embed=(); if [ "${{ inputs.embed-deps }}" = "true" ]; then embed=(--embed-deps); fi
           exclude=(); if [ -n "${EXCLUDE_PREVIEW_IDS:-}" ]; then exclude=(--exclude-preview-id "$EXCLUDE_PREVIEW_IDS"); fi
           if [ -n "${EXCLUDE_PREVIEW_ROWS:-}" ]; then exclude+=(--exclude-preview-row "$EXCLUDE_PREVIEW_ROWS"); fi
-          run compose-preview bundle pack --module "${{ inputs.module }}" --with-semantics \
+          run compose-preview bundle pack --module "${{ inputs.module }}" --with-semantics --progress \
             "${embed[@]}" "${exclude[@]}" -o "$GITHUB_WORKSPACE/bundle.png" --timeout 600
 
       - name: Render extra module
@@ -431,7 +431,7 @@ jobs:
           set -euo pipefail
           run() { if [ "${{ inputs.desktop-render }}" = "true" ]; then xvfb-run -a -s "-screen 0 2000x1400x24" "$@"; else "$@"; fi; }
           embed=(); if [ "${{ inputs.embed-deps }}" = "true" ]; then embed=(--embed-deps); fi
-          run compose-preview bundle pack --module "${{ inputs.extra-module }}" --with-semantics \
+          run compose-preview bundle pack --module "${{ inputs.extra-module }}" --with-semantics --progress \
             "${embed[@]}" -o "$GITHUB_WORKSPACE/extra-bundle.png" --timeout 600
 
       # Save the font cache even when a render step FAILED. A cold-cache run that downloaded
@@ -558,7 +558,14 @@ jobs:
             echo "No ir/*.rc documents in the bundle — skipping the Remote Compose parity page."
             exit 0
           fi
-          npx playwright install --with-deps chromium
+          install_log="$RUNNER_TEMP/playwright-install.log"
+          echo "Installing Chromium and system dependencies…"
+          if ! npx playwright install --with-deps chromium >"$install_log" 2>&1; then
+            echo "::error title=Chromium install failed::Playwright could not install Chromium. The final 80 log lines follow." >&2
+            tail -n 80 "$install_log" >&2
+            exit 1
+          fi
+          echo "✓ Chromium ready."
 
           PLAYER="$GITHUB_WORKSPACE/compose-ai-tools/cli/src/main/resources/rc-player/bundle.js"
           EMBEDDED_ARGS=()
@@ -594,7 +601,7 @@ jobs:
             # `testDebugUnitTest UP-TO-DATE` and leaves RC_OUT empty. Ephemeral GitHub runners never
             # hit it, but `runs-on` is an input, so self-hosted callers would.
             if (cd "$GITHUB_WORKSPACE/compose-ai-tools" && \
-                ./gradlew :third-party-rc-embedded-player:testDebugUnitTest --no-daemon --rerun \
+                ./gradlew :third-party-rc-embedded-player:testDebugUnitTest --no-daemon --rerun --quiet \
                   -Prc.embedded.input="$RC_IN" -Prc.embedded.output="$RC_OUT") \
                && [ -n "$(find "$RC_OUT" -maxdepth 1 -name '*.png' -print -quit 2>/dev/null)" ]; then
               EMBEDDED_ARGS+=(--embedded "$RC_OUT")
@@ -614,7 +621,7 @@ jobs:
             rm -rf "$RC_JVM_OUT"
             if (cd "$GITHUB_WORKSPACE/compose-ai-tools" && \
                 xvfb-run -a -s "-screen 0 2000x1400x24" \
-                  ./gradlew :third-party-rc-embedded-player-jvm:test --no-daemon --rerun \
+                  ./gradlew :third-party-rc-embedded-player-jvm:test --no-daemon --rerun --quiet \
                     -Prc.jvm.input="$RC_IN" -Prc.jvm.output="$RC_JVM_OUT") \
                && [ -n "$(find "$RC_JVM_OUT" -maxdepth 1 -name '*.png' -print -quit 2>/dev/null)" ]; then
               EMBEDDED_ARGS+=(--embedded-jvm "$RC_JVM_OUT")
