@@ -1277,26 +1277,31 @@ object ServeWeb {
   }
 
   /**
-   * Viewer theme-sticky script: when the Theme select is set to light/dark, write it to this
-   * catalog's localStorage key so only this catalog remembers the last theme the visitor viewed a
-   * component in (the other half of its landing-page toggle's stickiness).
+   * Viewer half of the catalog-scoped sticky Theme control. The landing page and viewer use the
+   * same values: `light`, `dark`, or `theme:<provider FQN>`. A declared theme always wins over the
+   * baked light/dark token in a preview id; plain day/night choices retain the old behaviour where
+   * an explicit `__light` / `__dark` deep link opens on its baked pixels.
    */
   private fun viewerThemeStickyScript(themeStorageKey: String): String =
     """
     (function () {
-      var el = document.getElementById("cp-uiMode");
+      var el = document.getElementById("cp-theme");
       if (!el) return;
-      // Inherit the catalog's sticky theme on the first render — but ONLY for a theme-less preview
-      // (id carries no __light/__dark segment), which would otherwise open at (default). A themed
-      // variant's theme is explicit in its deep link, so it opens on its baked (instant) pixels and
-      // is not overridden by a remembered theme — seeding it would force a daemon re-render on a
-      // fresh deep link, defeating baked-until-changed. Runs before viewer.js' initial render.
+      // Runs before viewer.js' initial render. A declared app theme is intentionally inherited even
+      // by an explicit __light/__dark preview: that path token selects the baked fallback, while the
+      // catalog's Theme choice is the active override the visitor asked to keep while navigating.
       var root = document.querySelector(".cp-viewer");
       var pid = (root && root.getAttribute("data-preview-id")) || "";
       var themed = pid.split("__").some(function (s) { return s === "light" || s === "dark"; });
       try {
         var stored = localStorage.getItem("$themeStorageKey");
-        if (!themed && !el.value && (stored === "light" || stored === "dark")) el.value = stored;
+        var declared = stored && stored.indexOf("theme:") === 0;
+        var option = null;
+        Array.prototype.forEach.call(el.options, function (o) { if (o.value === stored) option = o; });
+        if (option && !option.disabled && (declared || (!themed && (stored === "light" || stored === "dark")))) {
+          el.value = stored;
+          el.setAttribute("data-theme-active", "1");
+        }
       } catch (e) {}
       // Keep the stage backing colour in step with the CHOSEN theme, so a re-render in the opposite
       // uiMode never lands a transparent sticker on a clashing surface. The server seeds
@@ -1315,12 +1320,10 @@ object ServeWeb {
         if (m) root.setAttribute("data-bg-theme", m);
         else root.removeAttribute("data-bg-theme");
       }
-      // Round-trip: a Theme change writes this catalog's key so it remembers it, and re-syncs
-      // the stage backing colour.
+      // Round-trip every unified choice, including `theme:<provider>`, to the catalog page.
       el.addEventListener("change", function () {
-        if (el.value === "light" || el.value === "dark") {
-          try { localStorage.setItem("$themeStorageKey", el.value); } catch (e) {}
-        }
+        el.setAttribute("data-theme-active", "1");
+        try { localStorage.setItem("$themeStorageKey", el.value); } catch (e) {}
         syncBg();
       });
       syncBg();
@@ -3260,6 +3263,9 @@ object ServeWeb {
     // confetti-wear live render.
     val wearAlwaysDark = SystemDisplay.isDarkFirst(basePath.trim('/').ifBlank { sessionId ?: "" })
     val alwaysDarkAttr = if (wearAlwaysDark) " data-always-dark=\"1\"" else ""
+    // The baked fallback shown before any override is chosen. The unified Theme selector displays
+    // this choice without sending a redundant uiMode override on first load.
+    val viewerTheme = bgTheme(preview.id, isDarkFirstSystem(basePath, sessionId, declaredSurface))
     // The Wasm tier is opt-in via a toggle (like "Live (stream)"), so the always-works PNG snapshot
     // stays the default. Both the iframe and the toggle are omitted entirely when no Wasm app backs
     // this session.
@@ -3441,17 +3447,6 @@ object ServeWeb {
     // backs
     // the session.
     val wasmDis = if (overridesLive || wasmSrc != null) "" else " disabled"
-    val uiModeSelectHtml =
-      if (wearAlwaysDark)
-        """<select id="cp-uiMode" disabled>
-                  <option value="dark" selected>Dark (Wear OS)</option>
-                </select>"""
-      else
-        """<select id="cp-uiMode"$wasmDis>
-                  <option value="">Auto</option>
-                  <option value="light">Light</option>
-                  <option value="dark">Dark</option>
-                </select>"""
     // The static-snapshot note is only shown when overrides genuinely can't re-render on the server
     // ([overridesLive] false): a plain static bundle, or a Wasm-only published catalog (where
     // day/night, font scale, locale &amp; knobs apply in the browser but size/device/orientation
@@ -3472,46 +3467,53 @@ object ServeWeb {
       }
     val backendLabel = WebEscaping.htmlEscape(snapshotBackend ?: "Snapshot")
     val liveLabel = WebEscaping.htmlEscape(liveBackend ?: "Live")
-    // The app-declared `@ThemeCatalog` theme selector — the discrete-theme axis. Rendered only when
-    // the module declares themes; selecting one re-renders the preview under that provider (the
-    // `themeProvider` override). Daemon-only, so it's disabled unless the host can render an
-    // override (`canApplyOverrides || canRenderOverrides`) — a knob-style control, not a
-    // client-side
-    // one. Options carry the provider FQN as their value; `@ThemeCatalog(group=…)` buckets them
-    // into
-    // <optgroup>s. Marked `.cp-knob-theme` so the JS routes its change through the daemon path.
-    val themeSelectorHtml =
-      if (declaredThemes.isEmpty()) ""
-      else {
-        val themeDis = if (canApplyOverrides || canRenderOverrides) "" else " disabled"
-        val grouped = declaredThemes.groupBy { it.group }
-        val optionsOf: (List<ServeTheme>) -> String = { list ->
-          list.joinToString("\n") { t ->
-            "<option value=\"${WebEscaping.htmlEscape(t.providerFqn)}\">" +
-              "${WebEscaping.htmlEscape(t.name)}</option>"
+    // One Theme axis replaces the separate Day/Night + app-theme controls. The two defaults map to
+    // uiMode; every `theme:<provider>` option maps to themeProvider and deliberately clears uiMode,
+    // because an app-declared theme already owns its day/night palette.
+    val themeSelectorHtml = run {
+      val themeDis =
+        if (
+          (!wearAlwaysDark && (overridesLive || wasmSrc != null)) ||
+            (declaredThemes.isNotEmpty() && overridesLive)
+        )
+          ""
+        else " disabled"
+      val providerDis = if (overridesLive) "" else " disabled"
+      val grouped = declaredThemes.groupBy { it.group }
+      val optionsOf: (List<ServeTheme>) -> String = { list ->
+        list.joinToString("\n") { t ->
+          "<option value=\"theme:${WebEscaping.htmlEscape(t.providerFqn)}\"$providerDis>" +
+            "${WebEscaping.htmlEscape(t.name)}</option>"
+        }
+      }
+      val body = buildString {
+        // Ungrouped themes first (flat), then one <optgroup> per declared group.
+        grouped[null]?.let { append(optionsOf(it)).append('\n') }
+        grouped
+          .filterKeys { it != null }
+          .forEach { (group, list) ->
+            append("<optgroup label=\"${WebEscaping.htmlEscape(group!!)}\">")
+              .append(optionsOf(list))
+              .append("</optgroup>\n")
           }
-        }
-        val body = buildString {
-          // Ungrouped themes first (flat), then one <optgroup> per declared group.
-          grouped[null]?.let { append(optionsOf(it)).append('\n') }
-          grouped
-            .filterKeys { it != null }
-            .forEach { (group, list) ->
-              append("<optgroup label=\"${WebEscaping.htmlEscape(group!!)}\">")
-                .append(optionsOf(list))
-                .append("</optgroup>\n")
-            }
-        }
-        """
+      }
+      val daySelected = if (viewerTheme != "dark") " selected" else ""
+      val nightSelected = if (viewerTheme == "dark") " selected" else ""
+      val defaults =
+        if (wearAlwaysDark) "<option value=\"dark\"$nightSelected>Night (Default)</option>"
+        else
+          "<option value=\"light\"$daySelected>Day (Default)</option>\n" +
+            "            <option value=\"dark\"$nightSelected>Night (Default)</option>"
+      val providerOptions = body.trimEnd().let { if (it.isEmpty()) "" else "\n            $it" }
+      """
         <label>Theme
-          <select id="cp-themeProvider" class="cp-knob-theme"$themeDis>
-            <option value="">(default)</option>
-            $body
+          <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="${declaredThemes.isNotEmpty()}"$themeDis>
+            $defaults$providerOptions
           </select>
         </label>
         """
-          .trimIndent()
-      }
+        .trimIndent()
+    }
     // Live-only overlay toggles (accessibility / touch visualization). The daemon composites these
     // onto the held session's frames, so they mean nothing on a baked PNG — offered only when a
     // Live
@@ -3580,7 +3582,6 @@ object ServeWeb {
     // The theme the viewer is showing: the preview's explicit light/dark token, else the dark-first
     // (Wear) default. Drives both the stage backing (below) and the collapsed component nav's link
     // theme, so navigating from a dark preview stays dark.
-    val viewerTheme = bgTheme(preview.id, isDarkFirstSystem(basePath, sessionId, declaredSurface))
     val navDrawer = navDrawerHtml(preview, siblings, basePath, q, viewerTheme)
     val navToggle =
       if (navDrawer.isEmpty()) ""
@@ -3624,9 +3625,6 @@ object ServeWeb {
           <details class="cp-group" data-cp-group="appearance">
             <summary>Appearance</summary>
             <div class="cp-group-body">
-              <label>Day / Night
-                $uiModeSelectHtml
-              </label>
               $themeSelectorHtml
               <label>Background
                 <select id="cp-background"$serverDis>

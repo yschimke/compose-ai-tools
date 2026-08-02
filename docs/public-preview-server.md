@@ -108,8 +108,8 @@ not just Light/Dark (issue #2881):
 - every app-declared **`@ThemeCatalog` / `@WearThemeCatalog` theme** the session carries
   (`ServeHost.declaredThemes`, read from the live bundle's `previews.json`). Picking one re-points
   each card's thumbnail at `/render/<id>.png?themeProvider=<providerFqn>`, so the whole grid redraws
-  under that theme through the carried daemon — the grid-wide counterpart of the viewer's App theme
-  select.
+  under that theme through the carried daemon — the grid-wide counterpart of the viewer's unified
+  Theme select.
 
 Declared themes are offered only when the session can actually render them (a trusted catalog served
 live, or a daemon-backed module); a static bundle keeps the baked light/dark chips alone, and an
@@ -135,6 +135,14 @@ the server's render-slot count. Other pages remain serial, queue completion/page
 lease early, and catalog replacement invalidates it because the grant is bound to that host
 instance. This burst changes admission only: the app/catalog still owns its bounded LRU pool of
 preview-scoped daemons.
+
+The individual preview's **Appearance → Theme** select uses that same axis: **Day (Default)** and
+**Night (Default)** map to the ordinary `uiMode` override, while each declared theme maps to
+`themeProvider` and therefore supplies its own day/night palette. A declared choice is restored when
+navigating from the catalog even when the destination id contains a baked `__light` / `__dark`
+fallback token.
+
+![Unified preview Theme selector](images/serve-viewer-unified-theme.png)
 
 ![Catalog theme selector (light)](images/serve-catalog-themes-light.png)
 

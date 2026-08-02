@@ -115,11 +115,24 @@
   // scale slider has no empty state, so it's gated separately: we only send fontScale once the
   // user moves it (fontScaleTouched), otherwise the slider's standing 1.0 would override a
   // preview's declared default font scale and the first render wouldn't match the thumbnail.
-  var fields = ["uiMode", "device", "localeTag", "orientation", "background"];
+  var fields = ["device", "localeTag", "orientation", "background"];
   var fs = document.getElementById("cp-fontScale");
   var fsVal = document.getElementById("cp-fontScale-val");
   var fontScaleTouched = false;
   var ws = null;
+  var themeChoice = document.getElementById("cp-theme");
+  function activeThemeChoice() {
+    return themeChoice && !themeChoice.disabled &&
+      themeChoice.getAttribute("data-theme-active") === "1" ? themeChoice.value : "";
+  }
+  function chosenUiMode() {
+    var value = activeThemeChoice();
+    return value === "light" || value === "dark" ? value : "";
+  }
+  function chosenThemeProvider() {
+    var value = activeThemeChoice();
+    return value.indexOf("theme:") === 0 ? value.substring(6) : "";
+  }
   // The snapshot lane serves either the raster PNG or the vector SVG through the same <img>.
   // The render-mode radio flips this (".png" default, ".svg" in SVG mode); refreshSnapshot and
   // the copyable links read it so a re-render / copied URL matches the on-screen format.
@@ -185,6 +198,8 @@
       var el = document.getElementById("cp-" + f);
       if (el && !el.disabled && el.value) o[f] = el.value;
     });
+    var uiMode = chosenUiMode();
+    if (uiMode) o.uiMode = uiMode;
     if (fontScaleTouched && fs) o.fontScale = fs.value;
     var size = sizeOverrides();
     Object.keys(size).forEach(function (k) { o[k] = size[k]; });
@@ -228,8 +243,8 @@
     });
     // App-declared theme (themeProvider = provider FQN). Only when a theme is picked and the
     // control is live; "(default)" (empty) leaves the daemon on the preview's own wrapper.
-    var tp = document.getElementById("cp-themeProvider");
-    if (tp && !tp.disabled && tp.value) o["themeProvider"] = tp.value;
+    var tp = chosenThemeProvider();
+    if (tp) o["themeProvider"] = tp;
     // Detected-feature: keyboard focus. Checked ⇒ focus the first focusable + draw the overlay
     // (focus=0). Daemon-only, so skipped when disabled.
     var fc = document.getElementById("cp-focus");
@@ -289,10 +304,8 @@
     // App-declared theme (themeProvider = provider FQN). Routes to the daemon like a knob; a
     // published catalog re-renders on demand. Omitted at "(default)" so the URL stays on the
     // instant baked snapshot until a theme is actually chosen.
-    var tp = document.getElementById("cp-themeProvider");
-    if (tp && !tp.disabled && tp.value) {
-      parts.push("themeProvider=" + encodeURIComponent(tp.value));
-    }
+    var tp = chosenThemeProvider();
+    if (tp) parts.push("themeProvider=" + encodeURIComponent(tp));
     // Detected-feature: keyboard focus (focus=0). Routes to the daemon like a knob; omitted when
     // unchecked so the URL stays on the baked snapshot.
     var fc = document.getElementById("cp-focus");
@@ -737,8 +750,8 @@
   }
   function wasmOverridePatch() {
     var parts = [];
-    var el = document.getElementById("cp-uiMode");
-    if (el && el.value) parts.push("uiMode=" + encodeURIComponent(el.value));
+    var uiMode = chosenUiMode();
+    if (uiMode) parts.push("uiMode=" + encodeURIComponent(uiMode));
     var loc = document.getElementById("cp-localeTag");
     if (loc && loc.value) parts.push("localeTag=" + encodeURIComponent(loc.value));
     if (fontScaleTouched && fs) parts.push("fontScale=" + encodeURIComponent(fs.value));
@@ -1149,7 +1162,7 @@
   var serverOnlyControlIds =
     ["device", "orientation", "background", "sizeMode",
      "fixedW", "fixedH", "minW", "minH", "maxW", "maxH"];
-  var wasmHonouredControlIds = ["uiMode", "localeTag", "fontScale"];
+  var wasmHonouredControlIds = ["localeTag", "fontScale"];
   var alwaysDark = root.getAttribute("data-always-dark") === "1";
   function syncServerControls() {
     // The in-browser Wasm lane only honours the wasm-honoured trio (uiMode/locale/fontScale) +
@@ -1173,16 +1186,22 @@
     // canvas lane, which doesn't map them onto the document.
     wasmHonouredControlIds.forEach(function (id) {
       var el = document.getElementById("cp-" + id);
-      if (el) el.disabled = (id === "uiMode" && alwaysDark) ||
-        !(canServerRender || (wasmSrc && !onRc));
+      if (el) el.disabled = !(canServerRender || (wasmSrc && !onRc));
     });
-    // The app-theme (themeProvider) selector is a daemon-only override the Wasm app doesn't
-    // honour: dead in the in-browser lane. Disable it there; otherwise mirror its server-side
-    // gate (enabled iff the host can render an override — canApplyOverrides || canRenderOverrides,
-    // i.e. !staticSnapshot || canRenderOverrides).
-    var themeProviderEl = document.getElementById("cp-themeProvider");
-    if (themeProviderEl) {
-      themeProviderEl.disabled = onWasm || onRc || !(!staticSnapshot || canRenderOverrides);
+    // Day/Night options work in Wasm; declared provider options need the daemon. Keep the unified
+    // select usable whenever at least one kind can work, and gate its individual option families.
+    if (themeChoice) {
+      var hasDeclaredThemes = themeChoice.getAttribute("data-has-declared-themes") === "true";
+      var canProviderTheme = hasDeclaredThemes && !onWasm && !onRc &&
+        (!staticSnapshot || canRenderOverrides);
+      // Wear has no day/night axis, but Night (Default) must remain selectable when provider
+      // themes are offered so the visitor can clear a chosen provider and return to the app.
+      var canDefaultTheme = !onRc &&
+        ((!alwaysDark && (canServerRender || !!wasmSrc)) || (alwaysDark && canProviderTheme));
+      Array.prototype.forEach.call(themeChoice.options, function (option) {
+        option.disabled = option.value.indexOf("theme:") === 0 ? !canProviderTheme : !canDefaultTheme;
+      });
+      themeChoice.disabled = !canDefaultTheme && !canProviderTheme;
     }
     // Remote Compose knobs are LIVE in the RC canvas lane — an edit applies client-side via
     // setNamed*Override + repaint (onRcKnobChanged), no daemon needed — so enable them whenever
@@ -1441,8 +1460,11 @@
       refreshSnapshot();
     }
   }
-  var themeSel = document.getElementById("cp-themeProvider");
-  if (themeSel) themeSel.addEventListener("change", onKnobChanged);
+  if (themeChoice) themeChoice.addEventListener("change", function () {
+    themeChoice.setAttribute("data-theme-active", "1");
+    if (chosenThemeProvider()) onKnobChanged();
+    else onControlsChanged();
+  });
   // Detected-feature toggles (Keyboard focus) re-render on the daemon like a knob — same routing,
   // never the wasm auto-enable path.
   document.querySelectorAll(".cp-feature").forEach(function (el) {
