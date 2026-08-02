@@ -75,6 +75,12 @@ data class RenderSessionConfig(
    * users so an internal `host.submit(...)` timeout cannot expire before the caller's wait does.
    */
   val maxRenderTime: Duration? = null,
+  /**
+   * Optional total budget for shutting down a subprocess-backed session. When absent, the backend
+   * keeps its normal graceful-shutdown policy. Short-lived batch clients may set this so a render
+   * that outlives their own inactivity timeout cannot add the backend's full shutdown grace.
+   */
+  val shutdownTimeout: Duration? = null,
 ) {
   companion object {
     private fun inferWorkspaceRoot(descriptorPath: File): File =

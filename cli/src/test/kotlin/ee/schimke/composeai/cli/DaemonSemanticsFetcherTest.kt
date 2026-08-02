@@ -34,6 +34,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
@@ -339,6 +340,7 @@ class DaemonSemanticsFetcherTest {
       .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("Preview"))
 
     assertEquals(600_000.milliseconds, factory.openedConfig?.maxRenderTime)
+    assertEquals(2.seconds, factory.openedConfig?.shutdownTimeout)
   }
 
   @Test
@@ -354,6 +356,7 @@ class DaemonSemanticsFetcherTest {
       .fetch(projectDir = projectDir, moduleName = "sample", previewIds = listOf("Preview"))
 
     assertEquals(300_000.milliseconds, factory.openedConfig?.maxRenderTime)
+    assertEquals(2.seconds, factory.openedConfig?.shutdownTimeout)
   }
 
   @Test
