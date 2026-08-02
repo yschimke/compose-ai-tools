@@ -72,6 +72,27 @@ class ServeBundleHostTest {
   }
 
   @Test
+  fun `preview uiMode is read from the bundle's previews_json`() {
+    val dir = bundle("com.example.NightCard" to byteArrayOf(1))
+    File(dir, "previews.json")
+      .writeText(
+        """
+        {
+          "module": ":samples:cmp",
+          "variant": "debug",
+          "previews": [
+            { "id": "com.example.NightCard", "functionName": "NightCard",
+              "className": "com.example.CardKt", "params": { "uiMode": 32 } }
+          ]
+        }
+        """
+          .trimIndent()
+      )
+
+    assertEquals(0x20, ServeBundleHost(dir, label = "b").previews.single().uiMode)
+  }
+
+  @Test
   fun `previews are discovered from the bundle's png files, sorted`() {
     val host =
       ServeBundleHost(

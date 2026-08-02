@@ -129,6 +129,24 @@ class ServeBundleHost(
   private val sourceFilesById: Map<String, String> = readSourceFiles()
 
   /**
+   * Per-preview discovery params from the bundle's root `previews.json`. Besides sizing Remote
+   * Compose replays, this preserves each baked preview's explicit `uiMode` for the viewer's
+   * Day/Night default. Empty when the bundle carries no manifest.
+   */
+  private val previewParamsById: Map<String, ee.schimke.composeai.cli.PreviewParams> by lazy {
+    val previewsJson = File(bundleDir, PREVIEWS_JSON).toOkioPath()
+    if (!fileSystem.exists(previewsJson)) return@lazy emptyMap()
+    try {
+      val text = fileSystem.read(previewsJson) { readUtf8() }
+      OVERRIDES_JSON.decodeFromString(ee.schimke.composeai.cli.PreviewManifest.serializer(), text)
+        .previews
+        .associate { it.id to it.params }
+    } catch (e: Exception) {
+      emptyMap()
+    }
+  }
+
+  /**
    * The live-only ids this host lists, minus any that turned out to have a baked PNG after all (a
    * catalog that both baked and deferred the same route — belt and braces: the baked pixels win, so
    * the id keeps its ordinary snapshot lane).
@@ -175,6 +193,7 @@ class ServeBundleHost(
           group = meta?.group,
           catalogOrder = meta?.order,
           sourceFile = sourceFilesById[id],
+          uiMode = previewParamsById[id]?.uiMode ?: 0,
         )
       }
       .toList()
@@ -343,21 +362,6 @@ class ServeBundleHost(
     return fileSystem.exists(File(irDir, "$previewId$RC_SUFFIX").toOkioPath())
   }
 
-  // Per-preview render params (dp size + density) from the bundle's `previews.json`, used to size a
-  // cmp-jvm render to match the baked capture. Empty when the bundle carries no manifest.
-  private val rcRenderParams: Map<String, ee.schimke.composeai.cli.PreviewParams> by lazy {
-    val previewsJson = File(bundleDir, PREVIEWS_JSON).toOkioPath()
-    if (!fileSystem.exists(previewsJson)) return@lazy emptyMap()
-    try {
-      val text = fileSystem.read(previewsJson) { readUtf8() }
-      OVERRIDES_JSON.decodeFromString(ee.schimke.composeai.cli.PreviewManifest.serializer(), text)
-        .previews
-        .associate { it.id to it.params }
-    } catch (e: Exception) {
-      emptyMap()
-    }
-  }
-
   // The cmp-jvm render is sized to the baked PNG's exact pixel dimensions — so the desktop-player
   // PNG lands at the same size the viewer shows the baked / View-player lane at — with the density
   // the capture used (from `previews.json`, else the renderer default). Null when the preview has
@@ -366,7 +370,7 @@ class ServeBundleHost(
   override fun remoteComposeRenderSpec(previewId: String): RcJvmRenderSpec? {
     if (!hasRemoteComposeDoc(previewId)) return null
     val (widthPx, heightPx) = readPngSize(File(previewsDir, "$previewId$PNG_SUFFIX")) ?: return null
-    val density = rcRenderParams[previewId]?.density ?: DEFAULT_RENDER_DENSITY
+    val density = previewParamsById[previewId]?.density ?: DEFAULT_RENDER_DENSITY
     return RcJvmRenderSpec(widthPx, heightPx, density)
   }
 

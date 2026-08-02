@@ -144,6 +144,8 @@ data class ServePreview(
    * live/local session with no published source to point at.
    */
   val sourceFile: String? = null,
+  /** Discovery-time `@Preview(uiMode=…)`; used to identify the baked Day/Night default. */
+  val uiMode: Int = 0,
 )
 
 /**

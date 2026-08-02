@@ -492,15 +492,14 @@ class ServeCatalogLiveHost(
   /**
    * Graft the daemon previews' per-preview metadata onto the baked browse surface. The daemon knows
    * its previews by descriptor id (`FilledButton_Dark`) and carries their author-declared knobs
-   * ([ServePreview.overrides] + [ServePreview.remoteComposeKnobs], from the bundle sidecars) plus
-   * the detected-feature flags ([ServePreview.supportsFocus] / [supportsGestures], from
-   * `@FocusedPreview` / `@GestureHintPreview` discovery); the baked catalog keys by catalog id
-   * (`button-filled__ideal__default__dark`) and carries neither. For each mapped baked preview,
-   * copy its daemon twin's knobs + feature flags across so `/api/previews` + the viewer advertise
-   * the editable knobs (both the plain-Compose and Remote Compose channels) AND the
-   * detected-feature controls (a mapped `@FocusedPreview` component's Keyboard focus toggle
-   * re-renders on the daemon). Unmapped previews (Android-only variants with no daemon lane) are
-   * returned unchanged.
+   * ([ServePreview.overrides] + [ServePreview.remoteComposeKnobs], from the bundle sidecars), its
+   * discovery-time [ServePreview.uiMode], and the detected-feature flags
+   * ([ServePreview.supportsFocus] / [supportsGestures], from `@FocusedPreview` /
+   * `@GestureHintPreview` discovery); the baked catalog keys by catalog id
+   * (`button-filled__ideal__default__dark`) and may carry none of them. For each mapped baked
+   * preview, copy its daemon twin's metadata across so `/api/previews` + the viewer advertise the
+   * editable knobs and detected-feature controls while retaining the actual baked Day/Night
+   * default. Unmapped previews (Android-only variants with no daemon lane) are returned unchanged.
    */
   private fun mergeDeclaredKnobs(
     bakedPreviews: List<ServePreview>,
@@ -514,6 +513,7 @@ class ServeCatalogLiveHost(
         remoteComposeKnobs = twin.remoteComposeKnobs,
         supportsFocus = twin.supportsFocus,
         supportsGestures = twin.supportsGestures,
+        uiMode = twin.uiMode,
       )
     }
   }

@@ -247,6 +247,21 @@ class ServeCatalogLiveHostTest {
   }
 
   @Test
+  fun `grafts the daemon's uiMode onto the mapped baked preview`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId, uiMode = 0x20)),
+        tag = "live",
+        streaming = true,
+      )
+
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    assertEquals(0x20, composite.previews.single().uiMode)
+  }
+
+  @Test
   fun `a knob-bearing render on a mapped id routes to the daemon`() {
     val (composite, live, baked) = host()
     val out = composite.render(catalogId, knobOverride()) as RenderOutcome.Ok

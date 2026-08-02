@@ -659,6 +659,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           ServePreview(
             id = it.id,
             label = it.functionName.ifBlank { it.id },
+            uiMode = it.params.uiMode,
             supportsFocus = focus,
             supportsGestures = gestures,
           )
