@@ -1418,6 +1418,7 @@ class RenderEngine(
                     root = semRoot,
                     slotTables = slotCapture.snapshot(),
                     density = spec.density,
+                    fontScale = spec.fontScale ?: 1f,
                   )
                     ?: error(
                       "RenderEngine: layout tree unreachable for scroll-slice capture of $previewId"

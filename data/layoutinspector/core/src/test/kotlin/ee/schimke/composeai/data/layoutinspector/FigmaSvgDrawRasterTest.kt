@@ -72,6 +72,35 @@ class FigmaSvgDrawRasterTest {
   }
 
   @Test
+  fun clearAndSetSemanticsDoesNotTurnAnArbitraryCustomDrawIntoAWearPicker() {
+    val remoteCompose =
+      capturedContainer()
+        .copy(
+          modifiers =
+            listOf(
+              LayoutInspectorModifier(
+                name = "clearAndSetSemantics",
+                bounds = bounds(0, 0, 200, 120),
+              ),
+              LayoutInspectorModifier(
+                name = "drawWithContent",
+                properties =
+                  mapOf(
+                    "onDraw" to "com.android.internal.widget.remotecompose.player.RcPlayerModifiers"
+                  ),
+                bounds = bounds(0, 0, 200, 120),
+              ),
+            )
+        )
+
+    val m = model(remoteCompose, captureCanvasDraws = true)
+
+    assertNull("the whole Remote Compose subtree must not become a frame crop", m.root.raster)
+    assertNotNull("its captured custom chrome remains a background", m.root.background)
+    assertEquals("its editable child survives", 1, m.root.children.size)
+  }
+
+  @Test
   fun theCapturedPixelsRideOnTheRasterTargetSoNoFrameCropIsNeeded() {
     val m = model(capturedContainer(), captureCanvasDraws = true)
     val target = m.rasterTargets.single()

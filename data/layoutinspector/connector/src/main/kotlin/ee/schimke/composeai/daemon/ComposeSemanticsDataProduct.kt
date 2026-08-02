@@ -984,10 +984,11 @@ object LayoutInspectorDataProducer {
     previewId: String,
     previewContext: PreviewContext,
     density: Float = 1f,
+    fontScale: Float = 1f,
     fileSystem: FileSystem = SystemFileSystem,
   ) {
     val capture = LayoutInspectorCaptureContext.from(previewContext) ?: return
-    write(rootDir, previewId, capture, density, fileSystem)
+    write(rootDir, previewId, capture, density, fontScale, fileSystem)
   }
 
   /**
@@ -1005,6 +1006,7 @@ object LayoutInspectorDataProducer {
     root: SemanticsNode,
     slotTables: List<CompositionData> = emptyList(),
     density: Float = 1f,
+    fontScale: Float = 1f,
     fileSystem: FileSystem = SystemFileSystem,
   ) {
     val capture =
@@ -1012,7 +1014,7 @@ object LayoutInspectorDataProducer {
         rootSemanticsNode = root,
         slotTables = ExtensionSlotTables.of(slotTables),
       )
-    write(rootDir, previewId, capture, density, fileSystem)
+    write(rootDir, previewId, capture, density, fontScale, fileSystem)
   }
 
   /**
@@ -1027,13 +1029,14 @@ object LayoutInspectorDataProducer {
     root: SemanticsNode,
     slotTables: List<CompositionData> = emptyList(),
     density: Float = 1f,
+    fontScale: Float = 1f,
   ): LayoutInspectorPayload? {
     val capture =
       LayoutInspectorCaptureContext(
         rootSemanticsNode = root,
         slotTables = ExtensionSlotTables.of(slotTables),
       )
-    val layoutRoot = ComposeLayoutInspector.inspect(capture, density) ?: return null
+    val layoutRoot = ComposeLayoutInspector.inspect(capture, density, fontScale) ?: return null
     return LayoutInspectorPayload(root = layoutRoot)
   }
 
@@ -1043,9 +1046,13 @@ object LayoutInspectorDataProducer {
    * walked tree without re-reading the serialized file. Returns null when the layout tree can't be
    * reached.
    */
-  fun buildPayload(previewContext: PreviewContext, density: Float = 1f): LayoutInspectorPayload? {
+  fun buildPayload(
+    previewContext: PreviewContext,
+    density: Float = 1f,
+    fontScale: Float = 1f,
+  ): LayoutInspectorPayload? {
     val capture = LayoutInspectorCaptureContext.from(previewContext) ?: return null
-    val layoutRoot = ComposeLayoutInspector.inspect(capture, density) ?: return null
+    val layoutRoot = ComposeLayoutInspector.inspect(capture, density, fontScale) ?: return null
     return LayoutInspectorPayload(root = layoutRoot)
   }
 
@@ -1054,9 +1061,10 @@ object LayoutInspectorDataProducer {
     previewId: String,
     capture: LayoutInspectorCaptureContext,
     density: Float,
+    fontScale: Float,
     fileSystem: FileSystem,
   ) {
-    val layoutRoot = ComposeLayoutInspector.inspect(capture, density) ?: return
+    val layoutRoot = ComposeLayoutInspector.inspect(capture, density, fontScale) ?: return
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
     val payload = LayoutInspectorPayload(root = layoutRoot)
     fileSystem.write(previewDir.resolve(FILE).path.toPath()) {
@@ -1097,16 +1105,26 @@ internal object ComposeLayoutInspector {
    * (`CircleShape`) into dp on the per-node [LayoutInspectorNode.tokens]; the default of `1f`
    * leaves px-equals-dp captures unchanged, matching [ComposeSemanticsDataProducer.buildPayload].
    */
-  fun inspect(context: LayoutInspectorCaptureContext, density: Float = 1f): LayoutInspectorNode? {
+  fun inspect(
+    context: LayoutInspectorCaptureContext,
+    density: Float = 1f,
+    fontScale: Float = 1f,
+  ): LayoutInspectorNode? {
     val root = LayoutTreeAccess.rootLayoutNode(context.rootSemanticsNode) ?: return null
     val sources = LayoutSourceIndex(context.slotTables)
-    return root.toWireNode(rootCoordinates = null, sources = sources, density = density)
+    return root.toWireNode(
+      rootCoordinates = null,
+      sources = sources,
+      density = density,
+      fontScale = fontScale,
+    )
   }
 
   private fun LayoutNodeFacade.toWireNode(
     rootCoordinates: LayoutCoordinates?,
     sources: LayoutSourceIndex,
     density: Float,
+    fontScale: Float,
   ): LayoutInspectorNode {
     val rootCoords = rootCoordinates ?: coordinates
     val source = sources.sourceFor(raw)
@@ -1131,7 +1149,7 @@ internal object ComposeLayoutInspector {
       inspectable?.nameFallback == "clearAndSetSemantics" ||
         info.modifier.javaClass.simpleName.contains("ClearAndSetSemantics")
     }
-    val children = children.map { it.toWireNode(rootCoords, sources, density) }
+    val children = children.map { it.toWireNode(rootCoords, sources, density, fontScale) }
     // An `Icon`/`Image`'s `ImageVector` (Tier 1). Failing that, a *leaf* node that paints its
     // chrome
     // via an imperative draw modifier (`Slider`/progress/`Checkbox`/`RadioButton` draw into a bare
@@ -1193,7 +1211,9 @@ internal object ComposeLayoutInspector {
       attached = attached,
       zIndex = zIndex,
       modifiers =
-        modifiers.mapNotNull { info -> info.toWireModifier(rootCoords, retainsLayoutText) },
+        modifiers.mapNotNull { info ->
+          info.toWireModifier(rootCoords, retainsLayoutText, density, fontScale)
+        },
       // Resolved tokens are computed by the shared resolver (issue #1903) from the same modifier
       // chain + measure policy + measured size this node already carries — `layout/inspector` is
       // the
@@ -1262,6 +1282,8 @@ internal object ComposeLayoutInspector {
   private fun ModifierInfo.toWireModifier(
     rootCoordinates: LayoutCoordinates?,
     retainsLayoutText: Boolean,
+    density: Float,
+    fontScale: Float,
   ): LayoutInspectorModifier? {
     val inspectable = modifier as? InspectableValue
     val name =
@@ -1290,7 +1312,9 @@ internal object ComposeLayoutInspector {
       val style = reflectedDeclaredField(modifier, "style") as? TextStyle
       text?.let { properties["layoutText"] = it }
       style?.let {
+        val fontSizePx = it.fontSize.resolveLayoutTextPx(density, fontScale)
         it.fontSize.toLayoutTextUnit()?.let { value -> properties["layoutTextFontSize"] = value }
+        fontSizePx?.let { value -> properties["layoutTextFontSizePx"] = value.toString() }
         it.fontFamily?.toString()?.let { family -> properties["layoutTextFontFamily"] = family }
         it.fontWeight?.weight?.let { weight ->
           properties["layoutTextFontWeight"] = weight.toString()
@@ -1302,8 +1326,14 @@ internal object ComposeLayoutInspector {
         it.lineHeight.toLayoutTextUnit()?.let { value ->
           properties["layoutTextLineHeight"] = value
         }
+        it.lineHeight.resolveLayoutTextPx(density, fontScale, fontSizePx)?.let { value ->
+          properties["layoutTextLineHeightPx"] = value.toString()
+        }
         it.letterSpacing.toLayoutTextUnit()?.let { value ->
           properties["layoutTextLetterSpacing"] = value
+        }
+        it.letterSpacing.resolveLayoutTextPx(density, fontScale, fontSizePx)?.let { value ->
+          properties["layoutTextLetterSpacingPx"] = value.toString()
         }
       }
     }
@@ -1373,6 +1403,50 @@ internal object ComposeLayoutInspector {
       TextUnitType.Em -> "${value}em"
       else -> null
     }
+
+  /**
+   * Resolves modifier-backed text with the nonlinear font-scale table Android Compose uses on API
+   * 34+. Desktop and older Android runtimes retain the legacy linear conversion. Reflection keeps
+   * this connector portable: its published JVM artifact cannot link Android's ui-unit variant, but
+   * that variant is present when the Android renderer invokes this path.
+   */
+  private fun TextUnit.resolveLayoutTextPx(
+    density: Float,
+    fontScale: Float,
+    fontSizePx: Double? = null,
+  ): Double? =
+    when (type) {
+      TextUnitType.Sp -> {
+        val dp = nonlinearSpToDp(value, fontScale) ?: (value * fontScale)
+        roundLayoutTextPx(dp.toDouble() * density)
+      }
+      TextUnitType.Em -> fontSizePx?.let { roundLayoutTextPx(value.toDouble() * it) }
+      else -> null
+    }
+
+  private fun nonlinearSpToDp(sp: Float, fontScale: Float): Float? {
+    if (fontScale == 1f || androidSdkInt()?.let { it < 34 } != false) return null
+    return runCatching {
+        val factoryClass =
+          Class.forName("androidx.compose.ui.unit.fontscaling.FontScaleConverterFactory")
+        val factory = factoryClass.getField("INSTANCE").get(null)
+        val converter =
+          factoryClass
+            .getMethod("forScale", Float::class.javaPrimitiveType)
+            .invoke(factory, fontScale) ?: return null
+        (converter.javaClass
+            .getMethod("convertSpToDp", Float::class.javaPrimitiveType)
+            .invoke(converter, sp) as Number)
+          .toFloat()
+      }
+      .getOrNull()
+  }
+
+  private fun androidSdkInt(): Int? =
+    runCatching { Class.forName("android.os.Build\$VERSION").getField("SDK_INT").getInt(null) }
+      .getOrNull()
+
+  private fun roundLayoutTextPx(value: Double): Double = (value * 100.0).roundToInt() / 100.0
 
   private fun LayoutCoordinates?.boundsIn(
     rootCoordinates: LayoutCoordinates?

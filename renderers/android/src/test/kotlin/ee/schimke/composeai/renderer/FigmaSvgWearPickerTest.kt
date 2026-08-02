@@ -14,10 +14,13 @@ import androidx.compose.runtime.tooling.LocalInspectionTables
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.node.RootForTest
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.PickerGroup
 import androidx.wear.compose.material.PickerGroupItem
@@ -118,8 +121,42 @@ class FigmaSvgWearPickerTest {
     )
   }
 
-  private fun renderSvg(previewId: String, content: @Composable () -> Unit): String {
+  @Test
+  fun `cleared-semantics text keeps the render's nonlinear resolved font size`() {
+    var resolvedFontSizePx = 0f
+    val svg =
+      renderSvg("wear-picker-font-scale", fontScale = 1.5f) {
+        MaterialTheme {
+          resolvedFontSizePx = with(LocalDensity.current) { 32.sp.toPx() }
+          Text(
+            ":",
+            modifier = Modifier.clearAndSetSemantics {},
+            style = TextStyle(fontSize = 32.sp),
+          )
+        }
+      }
+
+    val emittedFontSize =
+      Regex("""<text [^>]*font-size="([0-9.]+)"[^>]*>:</text>""")
+        .find(svg)
+        ?.groupValues
+        ?.get(1)
+        ?.toDouble()
+        ?: error("resolved separator font size is missing:\n$svg")
+    assertEquals(resolvedFontSizePx.toDouble(), emittedFontSize, 0.01)
+    assertTrue(
+      "API 34 nonlinear scaling should be smaller than the legacy 32sp × 2 × 1.5 result",
+      emittedFontSize < 96.0,
+    )
+  }
+
+  private fun renderSvg(
+    previewId: String,
+    fontScale: Float = 1f,
+    content: @Composable () -> Unit,
+  ): String {
     RuntimeEnvironment.setQualifiers("w227dp-h227dp-round-xhdpi")
+    RuntimeEnvironment.setFontScale(fontScale)
     @Suppress("DEPRECATION") val rule = createAndroidComposeRule<ComponentActivity>()
     var svg = ""
     val statement =
@@ -137,7 +174,12 @@ class FigmaSvgWearPickerTest {
               .addSlotTables(slots.toList())
               .parameterInformationCollected()
               .build()
-          val layout = LayoutInspectorDataProducer.buildPayload(ctx, density = 2f)!!
+          val layout =
+            LayoutInspectorDataProducer.buildPayload(
+              ctx,
+              density = 2f,
+              fontScale = fontScale,
+            )!!
           val semantics = ComposeSemanticsDataProducer.buildPayload(semRoot, density = 2f)
           ComposeFigmaSvgDataProducer.writeSvg(
             rootDir = rootDir,
@@ -145,6 +187,7 @@ class FigmaSvgWearPickerTest {
             layout = layout,
             semantics = semantics,
             density = 2f,
+            fontScale = fontScale,
             frameImage = frame,
             roundClip = true,
           )

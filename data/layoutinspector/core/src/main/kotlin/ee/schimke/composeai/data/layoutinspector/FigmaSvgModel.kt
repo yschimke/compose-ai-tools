@@ -1247,26 +1247,38 @@ data class FigmaSvgModel(
       val fontSize = props["layoutTextFontSize"]
       return FigmaSvgText(
         content = content,
-        fontSizePx = fontSize?.let { spToPx(it, ctx.density, ctx.fontScale) },
+        fontSizePx =
+          props["layoutTextFontSizePx"]?.toDoubleOrNull()
+            ?: fontSize?.let { spToPx(it, ctx.density, ctx.fontScale) },
         fontFamily = props["layoutTextFontFamily"],
         fontWeight = props["layoutTextFontWeight"]?.toIntOrNull(),
         italic = props["layoutTextFontStyle"]?.contains("Italic", ignoreCase = true) == true,
         color = props["layoutTextColor"]?.let { argbToColor(it, emptyMap()) },
         lineHeightPx =
-          props["layoutTextLineHeight"]?.let {
-            lineHeightToPx(it, fontSize, ctx.density, ctx.fontScale)
-          },
+          props["layoutTextLineHeightPx"]?.toDoubleOrNull()
+            ?: props["layoutTextLineHeight"]?.let {
+              lineHeightToPx(it, fontSize, ctx.density, ctx.fontScale)
+            },
         letterSpacingPx =
-          props["layoutTextLetterSpacing"]?.let {
-            lineHeightToPx(it, fontSize, ctx.density, ctx.fontScale)
-          },
+          props["layoutTextLetterSpacingPx"]?.toDoubleOrNull()
+            ?: props["layoutTextLetterSpacing"]?.let {
+              lineHeightToPx(it, fontSize, ctx.density, ctx.fontScale)
+            },
       )
     }
 
     /** A semantics-cleared Wear Picker whose custom draw applies scaling fade / row visibility. */
     private fun LayoutInspectorNode.hasWearPickerDrawMask(): Boolean {
       if (!hasCustomDraw()) return false
-      return modifiers.any { modifier -> modifier.name == "clearAndSetSemantics" }
+      val clearsSemantics = modifiers.any { modifier -> modifier.name == "clearAndSetSemantics" }
+      val pickerDraw = modifiers.any { modifier ->
+        modifier.name.startsWith("draw") &&
+          modifier.properties.values.any { value ->
+            value.contains("androidx.wear.compose.material.PickerKt") ||
+              value.contains("androidx.wear.compose.material3.PickerKt")
+          }
+      }
+      return clearsSemantics && pickerDraw
     }
 
     /**
