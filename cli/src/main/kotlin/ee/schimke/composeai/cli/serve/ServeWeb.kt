@@ -165,6 +165,11 @@ object ServeWeb {
   /** Canonical source repo, used for the "source" / branch / workflow links. */
   private const val SOURCE_REPO = "yschimke/compose-ai-tools"
 
+  // android.content.res.Configuration values, kept local so the CLI has no Android dependency.
+  private const val UI_MODE_NIGHT_MASK = 0x30
+  private const val UI_MODE_NIGHT_NO = 0x10
+  private const val UI_MODE_NIGHT_YES = 0x20
+
   /** Inline GitHub mark (Octicons, MIT). Rendered beside the "source" link and the version. */
   private const val GITHUB_ICON =
     "<svg class=\"cp-gh\" viewBox=\"0 0 16 16\" aria-hidden=\"true\" fill=\"currentColor\">" +
@@ -426,6 +431,14 @@ object ServeWeb {
    */
   private fun bgTheme(id: String, darkFirst: Boolean): String? =
     cardTheme(id) ?: if (darkFirst) "dark" else null
+
+  /** The preview's baked theme, preferring its actual discovery-time uiMode over id heuristics. */
+  private fun previewTheme(preview: ServePreview, darkFirst: Boolean): String? =
+    when (preview.uiMode and UI_MODE_NIGHT_MASK) {
+      UI_MODE_NIGHT_YES -> "dark"
+      UI_MODE_NIGHT_NO -> "light"
+      else -> bgTheme(preview.id, darkFirst)
+    }
 
   /** Stable, catalog-specific persistence key shared by that catalog's landing and viewer pages. */
   private fun themeStorageKey(sessionId: String?, basePath: String): String {
@@ -3380,7 +3393,7 @@ object ServeWeb {
     val alwaysDarkAttr = if (wearAlwaysDark) " data-always-dark=\"1\"" else ""
     // The baked fallback shown before any override is chosen. The unified Theme selector displays
     // this choice without sending a redundant uiMode override on first load.
-    val viewerTheme = bgTheme(preview.id, isDarkFirstSystem(basePath, sessionId, declaredSurface))
+    val viewerTheme = previewTheme(preview, isDarkFirstSystem(basePath, sessionId, declaredSurface))
     // The Wasm tier is opt-in via a toggle (like "Live (stream)"), so the always-works PNG snapshot
     // stays the default. Both the iframe and the toggle are omitted entirely when no Wasm app backs
     // this session.

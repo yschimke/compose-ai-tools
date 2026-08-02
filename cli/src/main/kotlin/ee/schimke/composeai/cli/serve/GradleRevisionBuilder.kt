@@ -54,6 +54,7 @@ class GradleRevisionBuilder(
           id = it.id,
           label = it.functionName.ifBlank { it.id },
           dataProductKinds = it.dataProducts.mapTo(LinkedHashSet()) { product -> product.kind },
+          uiMode = it.params.uiMode,
           supportsFocus = focus,
           supportsGestures = gestures,
         )

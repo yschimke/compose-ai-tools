@@ -596,7 +596,7 @@ class ServeWebFixtureTest {
     // selector.
     val viewerThemes =
       ServeWeb.viewerPage(
-        previews.first { it.id.endsWith("ProfileScreenPreview") },
+        previews.first { it.id.endsWith("ProfileScreenPreview") }.copy(uiMode = 0x20),
         token,
         sessionId = "compose-m3",
         canApplyOverrides = true,
@@ -3008,6 +3008,22 @@ class ServeWebFixtureTest {
     assertTrue(
       assetText("viewer.js").contains("parts.push(\"themeProvider=\""),
       "a chosen theme is appended to the /render URL as themeProvider",
+    )
+
+    val discoveredNightPreview =
+      ServeWeb.viewerPage(
+        ServePreview("com.example.PlainPreview", "Plain preview", uiMode = 0x20),
+        token,
+        canApplyOverrides = true,
+        declaredThemes = themes,
+      )
+    assertTrue(
+      discoveredNightPreview.contains("<option value=\"dark\" selected>Night (Default)</option>"),
+      "a preview discovered with night uiMode selects its actual baked default",
+    )
+    assertFalse(
+      discoveredNightPreview.contains("<option value=\"light\" selected>Day (Default)</option>"),
+      "a night preview does not fall back to the ID-based day heuristic",
     )
 
     // A static bundle can't load a provider, so the selector renders disabled (informational).

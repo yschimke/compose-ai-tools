@@ -141,7 +141,8 @@ class ServeBundleDaemonTest {
     val previews =
       """
       {"module":":remote","variant":"debug","previews":[
-        {"id":"$previewId","functionName":"RemotePreview","className":"com.example.CatalogKt"}]}
+        {"id":"$previewId","functionName":"RemotePreview","className":"com.example.CatalogKt",
+         "params":{"uiMode":32}}]}
       """
         .trimIndent()
         .toByteArray()
@@ -179,6 +180,7 @@ class ServeBundleDaemonTest {
       assertTrue(File(irDir, "$previewId.rc").readBytes().contentEquals(document))
       assertTrue(File(bundleManifest).readBytes().contentEquals(manifest))
       assertEquals(listOf(previewId), state.previews.map { it.id })
+      assertEquals(0x20, state.previews.single().uiMode)
     } finally {
       System.clearProperty("composeai.cli.libDaemonDesktopDir")
       System.clearProperty("composeai.cli.libRendererDir")
