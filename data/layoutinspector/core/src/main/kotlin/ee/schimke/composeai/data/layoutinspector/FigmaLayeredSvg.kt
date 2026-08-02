@@ -193,10 +193,14 @@ object FigmaLayeredSvg {
     // also
     // trims the corners of a child that merely fills the box, so both cases are covered (issue
     // #2852). A clip nothing reaches changes no pixels and stays clip-path-free.
+    // The mask is cut from [FigmaSvgLayer.clipBox] when the layer carries one — a layer whose own
+    // box was narrowed to what it paints inside a larger clipping coordinator still masks with the
+    // coordinator's rect, corners and all. For every ordinary layer this is the layer itself.
+    val maskLayer = layer.maskShape()
     val clipId =
-      if (layer.clipChildren && layer.clipsAnyDescendant()) "clip-${clipSeq[0]++}" else null
+      if (layer.clipChildren && maskLayer.clipsAnyDescendant()) "clip-${clipSeq[0]++}" else null
     if (clipId != null) {
-      sb.append(indent).append(clipPathDef(layer, clipId)).append('\n')
+      sb.append(indent).append(clipPathDef(maskLayer, clipId)).append('\n')
     }
     // The mask wraps the *children* (below), not this named group: attaching it to the whole group
     // would also clip the node's own background/border and its drop shadow, which in Compose's
@@ -762,6 +766,11 @@ object FigmaLayeredSvg {
    * Over-triggering is harmless (a mask nothing crosses is a no-op); under-triggering drops a clip
    * the render applied, so the corner test errs toward emitting.
    */
+  /** This layer as its own mask: its [FigmaSvgLayer.clipBox] rect when it has one, else itself. */
+  private fun FigmaSvgLayer.maskShape(): FigmaSvgLayer =
+    clipBox?.let { copy(left = it.left, top = it.top, right = it.right, bottom = it.bottom) }
+      ?: this
+
   private fun FigmaSvgLayer.clipsAnyDescendant(): Boolean {
     if (children.isEmpty()) return false
     fun overflows(l: Int, t: Int, r: Int, b: Int): Boolean =

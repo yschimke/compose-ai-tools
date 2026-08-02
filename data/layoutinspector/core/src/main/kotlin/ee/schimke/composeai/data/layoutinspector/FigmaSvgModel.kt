@@ -326,6 +326,18 @@ data class FigmaSvgLayer(
    * [paints]: a clip-only node draws no fill of its own but still masks its subtree.
    */
   val clipChildren: Boolean = false,
+  /**
+   * The box this layer masks its children to, when that is **not** its own box.
+   *
+   * Only a node whose own box was narrowed to its painted extent inside a larger clipping
+   * coordinator carries one (the `size(100.dp).clip(…).requiredSize(50.dp, 200.dp).background(…)`
+   * shape, and the lookahead scroll container of issue #3056 when its paint is narrower than the
+   * viewport). Keeping the two apart is what stops the narrowed fill from also shrinking the
+   * `<clipPath>` — a `clip(CircleShape)` would become a capsule, and a child drawing in the part of
+   * the viewport this node's own paint doesn't cover would be trimmed away. Null everywhere else,
+   * where the layer's own box *is* the mask.
+   */
+  val clipBox: LayoutInspectorBounds? = null,
   val children: List<FigmaSvgLayer> = emptyList(),
 ) {
   val width: Int
@@ -786,8 +798,19 @@ data class FigmaSvgModel(
       // the layout node, not its coordinates), so anchor a `size`-sized rect at the parent's placed
       // origin, clamped to the parent, and use it everywhere below. Best-effort geometry for a
       // pathological capture; a normally-placed node keeps its real `bounds` untouched.
-      val renderedClipBox = clipModifierBounds()
+      // The box the frame was MASKED in — the clipping coordinator's own rect. It is what the
+      // subtree inherits and what the emitted `<clipPath>` is cut from, so it stays whole: a
+      // `clip(CircleShape)` mask must keep the circle's real box, and a child that legitimately
+      // draws in a part of the viewport this node's own paint doesn't cover must not be trimmed.
+      val maskBox = clipModifierBounds()
+      // …while the node's OWN box is that mask narrowed to what it actually paints, so a node
+      // whose fill is smaller than its clip on the un-overflowing axis doesn't spread across
+      // margins the render leaves blank.
+      val renderedClipBox = maskBox?.let { intersectBounds(paintedExtent(), it) ?: it }
       val bounds = renderedClipBox ?: recoverBounds(parentBounds)
+      // Everything below this node — the mask, the inherited clip, the box children place
+      // against — is the container the render clipped in, not this node's narrower paint.
+      val containerBounds = maskBox ?: bounds
       // Anything the export derives from a *token* or from the measured `size` is an
       // un-transformed value, while `bounds` is the rect as **drawn**. Under a draw-time
       // `graphicsLayer` scale — a Wear `TransformingLazyColumn` item shrunk toward the curved edge
@@ -1220,15 +1243,20 @@ data class FigmaSvgModel(
         contentOpacity = contentOpacity,
         curvedTexts = curvedTexts,
         clipChildren = tokens?.clipsContent == true,
+        // Carried only when the mask really is a different rect from the layer's own box (the
+        // narrowed-to-paint case above); every ordinary layer masks with its own box and leaves
+        // this null.
+        clipBox = maskBox?.takeIf { it != bounds },
         children =
           children.map {
             // A `Modifier.clip` here becomes the clip box its subtree inherits; nested clips
             // intersect. Without one the subtree keeps whatever (if anything) clipped it above —
             // an ordinary container does NOT clip, and a child overflowing it still draws.
             val childClip =
-              if (tokens?.clipsContent == true) intersectOrNull(bounds, clipBounds) ?: bounds
+              if (tokens?.clipsContent == true)
+                intersectOrNull(containerBounds, clipBounds) ?: containerBounds
               else clipBounds
-            it.toLayer(ctx, bounds, childClip)
+            it.toLayer(ctx, containerBounds, childClip)
           },
       )
     }
@@ -1482,15 +1510,13 @@ data class FigmaSvgModel(
      * same time as it is shorter, and requiring `clip ⊆ bounds` rejected it — which is why the
      * first pass at this fixed the synthetic fixture but left the real screen leaking.
      *
-     * What comes back is the clip box ∩ the node's **painted** extent ([paintedExtent]), not the
-     * clip box whole. Both halves matter, and each covers a case the other gets wrong:
-     * - Jetsnack's sheet paints its `background` at the full 368dp-wide coordinator outside the
-     *   trailing padding, so the painted extent is as wide as the clip and the result keeps the
-     *   sheet's own margins — the box the PNG fills.
-     * - An ordinary `size(100.dp).clip(…).requiredSize(50.dp, 200.dp).background(…)` overflows its
-     *   fixed clip on one axis while staying narrower on the other. Its paint really is 50dp wide,
-     *   so the intersection clips the height to 100dp and leaves the width alone instead of
-     *   spreading the fill across margins Compose leaves blank.
+     * What comes back is the **mask**: the clipping coordinator's rect, whole. The caller narrows
+     * it by the node's [paintedExtent] to get the node's own box — a node whose paint is smaller
+     * than its clip on the un-overflowing axis must not have its fill spread across margins the
+     * render leaves blank — but keeps this rect for the emitted `<clipPath>`, the clip its subtree
+     * inherits and the box its children place against. Jetsnack's sheet has the two coincide (its
+     * `background` sits outside the trailing padding and is as wide as the clip); an ordinary
+     * `size(100.dp).clip(…).requiredSize(50.dp, 200.dp).background(…)` is where they part.
      *
      * Only ever fires when the clip box *shrinks* an axis, which keeps it a no-op on ordinary
      * nodes: a plain chain places every coordinator outside the innermost one at or around it, so
@@ -1521,7 +1547,7 @@ data class FigmaSvgModel(
           // Compose emits here, the smallest area is the tightest final rendered viewport.
           .minByOrNull { (it.right - it.left).toLong() * (it.bottom - it.top).toLong() }
           ?: return null
-      return intersectBounds(paintedExtent(), clip)
+      return clip
     }
 
     /**
@@ -2097,7 +2123,12 @@ data class FigmaSvgModel(
         l.background?.let { add(it.left, it.top, it.right, it.bottom, clip) }
         val childClip =
           if (l.clipChildren) {
-            val box = Extent(l.left, l.top, l.right, l.bottom)
+            // The mask box, which is the layer's own box for every layer that doesn't carry a
+            // separate one.
+            val m = l.clipBox
+            val box =
+              if (m != null) Extent(m.left, m.top, m.right, m.bottom)
+              else Extent(l.left, l.top, l.right, l.bottom)
             clip?.let {
               Extent(
                 maxOf(it.minX, box.minX),

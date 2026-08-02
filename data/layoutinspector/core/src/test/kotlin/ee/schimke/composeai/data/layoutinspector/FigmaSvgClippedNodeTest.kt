@@ -210,6 +210,18 @@ class FigmaSvgClippedNodeTest {
                   LayoutInspectorModifier(name = "background", bounds = bounds(25, 0, 75, 200)),
                 ),
               tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFFFF", clipsContent = true),
+              children =
+                listOf(
+                  // A child drawing across the FULL 100-wide viewport — past the parent's own
+                  // 50-wide paint, but well inside the mask. The render shows all 70px of it.
+                  LayoutInspectorNode(
+                    nodeId = "wide",
+                    component = "Box",
+                    bounds = bounds(25, 10, 95, 160),
+                    size = LayoutInspectorSize(70, 150),
+                    tokens = ComposeSemanticsTokens(backgroundColor = "#FF0000FF"),
+                  )
+                ),
             )
           ),
       )
@@ -218,16 +230,19 @@ class FigmaSvgClippedNodeTest {
         FigmaSvgModel.from(layout = LayoutInspectorPayload(overflowing), density = 1f)
       )
     assertTrue(
-      "the overflowing fill must be clipped to the 100px clip height:\n$svg",
-      svg.contains("""height="100""""),
+      "the fill must be the painted 50×100 box — clipped in height, never widened to the clip:" +
+        "\n$svg",
+      svg.contains("""<rect x="25" y="0" width="50" height="100" fill="#FFFFFF""""),
+    )
+    // The mask keeps the clipping coordinator's own rect: it is what the subtree is cut to, and
+    // shrinking it to the parent's narrower paint would trim a child the render draws in full.
+    assertTrue(
+      "the mask must stay the 100×100 clip box:\n$svg",
+      svg.contains("""<clipPath id="clip-0"><rect x="0" y="0" width="100" height="100"/>"""),
     )
     assertTrue(
-      "the fill must stay 50px wide — the clip must not spread it over the blank margins:\n$svg",
-      svg.contains("""width="50""""),
-    )
-    assertTrue(
-      "the fill must not be widened to the clip box:\n$svg",
-      !svg.contains("""width="100""""),
+      "the child spanning the viewport must keep its full 70px width:\n$svg",
+      svg.contains("""width="70""""),
     )
   }
 }
