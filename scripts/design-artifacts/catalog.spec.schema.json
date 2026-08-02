@@ -41,7 +41,7 @@
     },
     "breakpoints": {
       "type": "array",
-      "description": "Informational: the width breakpoints the sticker sheet documents.",
+      "description": "The named width breakpoints the sticker sheet documents and uses as image size axes. When omitted, a catalog whose library includes androidx.wear.compose defaults to smallRound at 192 dp and largeRound at 227 dp. An explicit array, including an empty array, overrides that Wear default.",
       "items": {
         "type": "object",
         "additionalProperties": false,

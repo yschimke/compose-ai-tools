@@ -101,7 +101,10 @@ import {
 } from "./catalog-image-path.mjs";
 import { applySpecSections } from "./apply-spec-sections.mjs";
 import { applySourceFiles } from "./apply-source-files.mjs";
-import { applySpecBreakpoints } from "./catalog-breakpoints.mjs";
+import {
+  applySpecBreakpoints,
+  catalogBreakpoints,
+} from "./catalog-breakpoints.mjs";
 import { applyCatalogPreviewAxes } from "./catalog-preview-axes.mjs";
 
 /**
@@ -649,6 +652,8 @@ const rendersPath = resolve(values.renders);
 const outPath = resolve(values.out);
 
 const spec = JSON.parse(await readFile(specPath, "utf8"));
+const effectiveBreakpoints = catalogBreakpoints(spec);
+if (effectiveBreakpoints !== undefined) spec.breakpoints = effectiveBreakpoints;
 // Read candidates with componentId resolved to the `@Preview` function name so
 // the join folds a function's theme/size multipreview variants (whose ids differ
 // only by an appended `_<mode>`) onto one component. See `loadCandidates` (which
