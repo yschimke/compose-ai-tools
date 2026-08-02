@@ -1111,6 +1111,12 @@ class ServeWebFixtureTest {
         landingDeclaredThemes.contains("job.src = job.src + \"&_retry=1\""),
       "themed renders are fetched serially with a retry, not fired as one burst",
     )
+    assertTrue(
+      landingDeclaredThemes.contains("c.classList.add(\"cp-reloading\")") &&
+        landingDeclaredThemes.contains("job.card.classList.remove(\"cp-reloading\")") &&
+        landingDeclaredThemes.contains("c.setAttribute(\"aria-busy\", \"true\")"),
+      "themed cards expose a busy treatment until each replacement thumbnail settles",
+    )
     // Re-pointing runs only when the theme itself changed, so a search keystroke (which also calls
     // apply()) never restarts an in-flight themed-render queue.
     assertTrue(
@@ -2440,6 +2446,12 @@ class ServeWebFixtureTest {
     assertTrue(
       assetText("viewer.js").contains("function onKnobEdited()"),
       "knob edits have a dedicated, transport-aware handler",
+    )
+    assertTrue(
+      assetText("viewer.js").contains("setSnapshotLoading(true)") &&
+        assetText("viewer.js").contains("data-reloading") &&
+        assetText("serve.css").contains("cp-reload-spin"),
+      "snapshot overrides fade the current preview and show a spinner while re-rendering",
     )
     // During an active Live (stream), the override map sent over the WebSocket must carry the knob
     // values too (as knob.<key> entries), not just the display fields — otherwise the daemon resets

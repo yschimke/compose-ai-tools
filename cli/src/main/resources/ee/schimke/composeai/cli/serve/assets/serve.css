@@ -123,7 +123,7 @@ html.cp-js .cp-section-head { display: none; }
 .cp-card { border: 1px solid #e3e3e8; border-radius: 10px; overflow: hidden; background: #fff;
   display: block; color: inherit; }
 .cp-card[hidden] { display: none; }
-.cp-imgwrap { display: flex; align-items: center; justify-content: center; min-height: 88px;
+.cp-imgwrap { position: relative; display: flex; align-items: center; justify-content: center; min-height: 88px;
   background: #fff; padding: 12px; }
 /* `width`/`height` stay auto so the max-* pair alone decides the used size and the image can
    never be stretched. The front door's prebaked heroes DO carry width/height attributes — they
@@ -175,6 +175,25 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   background: #fff; padding: 12px;
   display: flex; align-items: center; justify-content: center; min-height: 220px; }
 .cp-stage img, .cp-stage canvas { max-width: 100%; height: auto; }
+/* Override/theme renders can take a moment. Preserve the previous pixels as context, fade them
+   just enough to signal that they are stale, and layer a compact spinner over the affected
+   preview until its replacement image has loaded. */
+.cp-card.cp-reloading .cp-imgwrap img,
+.cp-viewer[data-reloading="true"] .cp-stage > img {
+  opacity: 0.55; transition: opacity 0.15s ease;
+}
+.cp-card.cp-reloading .cp-imgwrap::after,
+.cp-viewer[data-reloading="true"] .cp-stage::after {
+  content: ""; position: absolute; left: 50%; top: 50%; z-index: 2;
+  width: 24px; height: 24px; margin: -15px 0 0 -15px; border-radius: 50%;
+  border: 3px solid rgba(91, 91, 207, 0.25); border-top-color: #5b5bcf;
+  animation: cp-reload-spin 0.75s linear infinite; pointer-events: none;
+}
+@keyframes cp-reload-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .cp-card.cp-reloading .cp-imgwrap::after,
+  .cp-viewer[data-reloading="true"] .cp-stage::after { animation-duration: 1.5s; }
+}
 .cp-backend { position: absolute; top: 8px; right: 8px; font-size: 0.62rem; font-weight: 600;
   letter-spacing: 0.02em; padding: 2px 8px; border-radius: 999px; background: rgba(20,20,22,0.72);
   color: #fff; pointer-events: none; }

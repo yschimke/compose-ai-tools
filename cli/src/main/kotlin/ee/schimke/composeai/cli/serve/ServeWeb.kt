@@ -941,6 +941,8 @@ object ServeWeb {
               setTimeout(function () { runThemeQueue(queue, gen); }, 1500);
               return;
             }
+            job.card.classList.remove("cp-reloading");
+            job.card.removeAttribute("aria-busy");
             runThemeQueue(queue, gen);
           }
           img.onload = function () { next(true); };
@@ -968,13 +970,20 @@ object ServeWeb {
         themeGen++;
         var themeQueue = [];
         var themeQueueGen = themeGen;
+        cards.forEach(function (c) {
+          c.classList.remove("cp-reloading");
+          c.removeAttribute("aria-busy");
+        });
         if (provider) {
           cards.forEach(function (c, i) {
             if (c.getAttribute("data-swap") === "1") applyVariant(c, c.getAttribute("data-def") || "l", false);
             var img = c.querySelector("img");
             var base = themeBase[i];
             if (!img || !base) return;
+            c.classList.add("cp-reloading");
+            c.setAttribute("aria-busy", "true");
             themeQueue.push({
+              card: c,
               img: img,
               src: base + (base.indexOf("?") === -1 ? "?" : "&") + "themeProvider=" + encodeURIComponent(provider),
             });

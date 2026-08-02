@@ -2,6 +2,7 @@
   "use strict";
   var root = document.querySelector(".cp-viewer");
   var img = document.getElementById("cp-img");
+  var stage = document.querySelector(".cp-stage");
   var canvas = document.getElementById("cp-canvas");
   var status = document.getElementById("cp-status");
   var errorBox = document.getElementById("cp-error");
@@ -123,6 +124,23 @@
   // The render-mode radio flips this (".png" default, ".svg" in SVG mode); refreshSnapshot and
   // the copyable links read it so a re-render / copied URL matches the on-screen format.
   var snapshotExt = ".png";
+  // Keep the current frame visible while an override-triggered render is in flight. A generation
+  // token prevents an older, slower request from clearing the busy treatment (or replacing the
+  // pixels) after a newer control edit has already started another render.
+  var snapshotGen = 0;
+  function setSnapshotLoading(loading) {
+    if (loading) {
+      root.setAttribute("data-reloading", "true");
+      if (stage) stage.setAttribute("aria-busy", "true");
+    } else {
+      root.removeAttribute("data-reloading");
+      if (stage) stage.removeAttribute("aria-busy");
+    }
+  }
+  function cancelSnapshotLoading() {
+    snapshotGen++;
+    setSnapshotLoading(false);
+  }
 
   // Size overrides (the Fixed / Max / Min / Within modes). Which query params carry the numbers
   // is chosen by the mode: Fixed pins the frame via widthPx/heightPx; Max / Min / Within are
@@ -309,12 +327,22 @@
   }
   function refreshSnapshot() {
     status.textContent = "rendering…";
+    var gen = ++snapshotGen;
+    setSnapshotLoading(true);
     var qs = withScroll(snapshotExt, query());
     var url =
       base + "/render/" + encodeURIComponent(previewId) + snapshotExt + (qs ? "?" + qs : "");
     var next = new Image();
-    next.onload = function () { img.src = url; status.textContent = ""; clearModeError(); };
+    next.onload = function () {
+      if (gen !== snapshotGen) return;
+      img.src = url;
+      status.textContent = "";
+      setSnapshotLoading(false);
+      clearModeError();
+    };
     next.onerror = function () {
+      if (gen !== snapshotGen) return;
+      setSnapshotLoading(false);
       showModeError((snapshotExt === ".svg" ? "SVG" : "PNG") + " render failed for this preview.");
     };
     next.src = url;
@@ -995,18 +1023,21 @@
     // A mode switch always clears a prior lane's error; the new lane re-raises its own if it fails.
     clearModeError();
     if (m === "live") {
+      cancelSnapshotLoading();
       snapshotExt = ".png";
       if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
       closeWasm();
       closeRc();
       openStream();
     } else if (m === "wasm") {
+      cancelSnapshotLoading();
       snapshotExt = ".png";
       if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
       closeStream();
       closeRc();
       openWasm();
     } else if (m === "rc") {
+      cancelSnapshotLoading();
       snapshotExt = ".png";
       if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
       closeStream();
