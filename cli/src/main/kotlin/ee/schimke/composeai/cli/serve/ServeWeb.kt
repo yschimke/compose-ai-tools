@@ -963,12 +963,20 @@ object ServeWeb {
     // Under a DECLARED theme a swap card keeps its server-side default variant's metadata (label /
     // id / viewer link / stage backing, from `data-def`) — only the pixels come from the themed
     // render — so picking a theme never silently flips the light/dark axis too.
+    val correctInitialThemeVisibility =
+      if (hasTabs)
+        "\n            var themeSection = c.closest(\".cp-section\");" +
+          "\n            if (themeVisible && themeSection && (!input || input.value.trim() === \"\")) {" +
+          "\n              themeVisible = themeSection.getAttribute(\"data-section\") === current;" +
+          "\n            }"
+      else ""
     val applyDeclaredTheme =
       if (hasDeclaredThemes)
         """
         var provider = theme.indexOf("theme:") === 0 ? theme.slice(6) : "";
         themeGen++;
         var themeQueue = [];
+        var themeDeferredQueue = [];
         var themeQueueGen = themeGen;
         cards.forEach(function (c) {
           c.classList.remove("cp-reloading");
@@ -982,12 +990,19 @@ object ServeWeb {
             if (!img || !base) return;
             c.classList.add("cp-reloading");
             c.setAttribute("aria-busy", "true");
-            themeQueue.push({
+            var job = {
               card: c,
               img: img,
               src: base + (base.indexOf("?") === -1 ? "?" : "&") + "themeProvider=" + encodeURIComponent(provider),
-            });
+            };
+            // A tabbed catalog's hidden cards can take several daemon renders before the visitor
+            // sees any response to their click. On initial load c.hidden is not assigned yet, so
+            // also compare the card's section with the saved current tab. During a live search the
+            // existing hidden state already spans tabs and remains authoritative.
+            var themeVisible = !c.hidden;$correctInitialThemeVisibility
+            (themeVisible ? themeQueue : themeDeferredQueue).push(job);
           });
+          themeQueue = themeQueue.concat(themeDeferredQueue);
           runThemeQueue(themeQueue, themeQueueGen);
           return;
         }
