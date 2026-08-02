@@ -1149,6 +1149,58 @@ class ServeWebFixtureTest {
       variantComparisonIds.contains("button-filled__ideal__default__light__direction-rtl"),
       "a folded non-default variant deep-link aliases to its included component comparison row",
     )
+    val sizedVariantPreviews =
+      listOf("compact", "expanded").flatMap { size ->
+        listOf(
+          ServePreview(
+            "button-filled__ideal__default__light__$size",
+            "Button · Filled · $size",
+            state = "default",
+            theme = "light",
+          ),
+          ServePreview(
+            "button-filled__ideal__pressed__light__$size",
+            "Button · Filled · pressed · $size",
+            state = "pressed",
+            theme = "light",
+          ),
+          ServePreview(
+            "button-filled__ideal__default__light__${size}__direction-rtl",
+            "Button · Filled · RTL · $size",
+            state = "default",
+            theme = "light",
+            props = jsonProps("direction" to "rtl"),
+          ),
+        )
+      }
+    val sizedVariantComparison =
+      ServeWeb.comparisonPage(
+        "compose-m3",
+        sizedVariantPreviews,
+        token,
+        sessionId = "compose-m3",
+        hasSvgFor = { true },
+      )
+    val sizedComparisonIds =
+      Regex("data-preview-ids=\"([^\"]+)\"")
+        .findAll(sizedVariantComparison)
+        .map { it.groupValues[1] }
+        .toList()
+    assertEquals(2, sizedComparisonIds.size)
+    assertTrue(
+      sizedComparisonIds[0].contains("__compact") &&
+        sizedComparisonIds[0].contains("__pressed__light__compact") &&
+        sizedComparisonIds[0].contains("__compact__direction-rtl") &&
+        !sizedComparisonIds[0].contains("__expanded"),
+      "compact aliases fold state and props without selecting the expanded comparison row",
+    )
+    assertTrue(
+      sizedComparisonIds[1].contains("__expanded") &&
+        sizedComparisonIds[1].contains("__pressed__light__expanded") &&
+        sizedComparisonIds[1].contains("__expanded__direction-rtl") &&
+        !sizedComparisonIds[1].contains("__compact"),
+      "expanded aliases fold state and props without selecting the compact comparison row",
+    )
     assertGolden(File(pagesDir, "serve-landing-declared-themes.html"), landingDeclaredThemes)
     // Issue #2881: the header control lists every CONFIGURED theme, not just Light/Dark — the baked
     // pair plus one chip per declared `@ThemeCatalog` theme, each carrying its provider FQN.
