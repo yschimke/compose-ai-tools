@@ -126,6 +126,7 @@ dependencies {
   // selecting `player = embedded` there falls back to the view player instead of dying.
   compileOnly(project(":third-party-rc-embedded-player"))
   testImplementation(libs.compose.remote.player.core)
+  testImplementation(libs.compose.remote.core)
 
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.serialization.json)

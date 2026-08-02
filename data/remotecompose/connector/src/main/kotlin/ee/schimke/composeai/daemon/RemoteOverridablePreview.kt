@@ -9,6 +9,8 @@ import androidx.compose.remote.creation.compose.capture.captureSingleRemoteDocum
 import androidx.compose.remote.creation.compose.layout.RemoteComposable
 import androidx.compose.remote.creation.profile.Profile
 import androidx.compose.remote.creation.profile.RcPlatformProfiles
+import androidx.compose.remote.core.RemoteClock
+import androidx.compose.remote.core.SystemClock
 import androidx.compose.remote.player.compose.RemoteDocumentPlayer
 import androidx.compose.remote.player.compose.embedded.ExperimentalRemoteDocumentPlayer
 import androidx.compose.remote.player.core.RemoteDocument
@@ -23,6 +25,8 @@ import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
 import ee.schimke.composeai.data.render.IrSidecarChannel
 import kotlinx.coroutines.runBlocking
+import java.time.Clock
+import java.time.ZoneId
 
 /**
  * `PreviewWrapperProvider` that bridges `renderNow.overrides.remoteCompose.namedValues` into the
@@ -146,7 +150,7 @@ fun RemoteOverridablePreview(
           // current preview id). Best-effort — never fail the render over IR capture. See
           // IrSidecarChannel.
           runCatching { IrSidecarChannel.offer(IrSidecarChannel.FORMAT_REMOTECOMPOSE, stamped) }
-          RemoteDocument(bytes)
+          remoteDocumentForPreview(bytes)
         }
       }
     }
@@ -186,6 +190,47 @@ fun RemoteOverridablePreview(
         applyConnectorOverrides(remotePlayer.stateUpdater, seededOverrides)
       },
     )
+  }
+}
+
+/**
+ * Builds a player document whose time source is controllable by Robolectric's paused Android
+ * looper. Remote Compose's default [SystemClock] reads `java.time.Clock` / `System.nanoTime()`, so
+ * advancing Compose's test clock (or Robolectric's shadow looper) cannot move it and an animated
+ * View-backed preview is captured at whatever real-time phase the render happens to reach.
+ *
+ * Production keeps the upstream clock unchanged. Under Robolectric, elapsed time starts at zero
+ * when the document is created and advances only with `android.os.SystemClock.uptimeMillis()`. The
+ * animated renderer advances that shadow clock alongside Compose's `mainClock`, giving both the
+ * View-backed and Compose-backed players the same deterministic frame cadence.
+ */
+private fun remoteDocumentForPreview(bytes: ByteArray): RemoteDocument =
+  if (android.os.Build.FINGERPRINT == "robolectric") {
+    RemoteDocument(bytes.inputStream(), RobolectricRemoteClock())
+  } else {
+    RemoteDocument(bytes)
+  }
+
+internal class RobolectricRemoteClock(
+  private val startUptimeMillis: Long = android.os.SystemClock.uptimeMillis(),
+  private val uptimeMillis: () -> Long = android.os.SystemClock::uptimeMillis,
+  private val clockZoneId: ZoneId = ZoneId.of("UTC"),
+) : RemoteClock {
+  private val snapshotClock = SystemClock(Clock.fixed(java.time.Instant.EPOCH, clockZoneId))
+
+  private fun elapsedMillis(): Long = (uptimeMillis() - startUptimeMillis).coerceAtLeast(0L)
+
+  override fun millis(): Long = elapsedMillis()
+
+  override fun nanoTime(): Long = elapsedMillis() * NANOS_PER_MILLISECOND
+
+  override fun getZoneId(): String = clockZoneId.id
+
+  override fun snapshot(epochMillis: Long?): RemoteClock.TimeSnapshot =
+    snapshotClock.snapshot(epochMillis ?: millis())
+
+  private companion object {
+    const val NANOS_PER_MILLISECOND = 1_000_000L
   }
 }
 
