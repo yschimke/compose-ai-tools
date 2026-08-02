@@ -2338,8 +2338,7 @@ class ServeHttpServer(
           // `/render/<id>.rc`).
           hasRemoteComposeDoc = renderHost.hasRemoteComposeDoc(preview.id),
           // Per-preview: the Remote Compose backend selector's enabled lanes (js / java /
-          // cmp-android; cmp-jvm is always shown disabled). Empty for a non-RC preview ⇒ no
-          // selector.
+          // cmp-android / cmp-jvm). Empty for a non-RC preview ⇒ no selector.
           enabledRcPlayers = renderHost.enabledRcPlayersFor(preview.id).map { it.wire },
           wasmSrc = wasmSrc,
           wasmSameOrigin = wasmSameOrigin,

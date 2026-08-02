@@ -59,6 +59,7 @@ class ServeBundleDaemonTest {
         childDependencyJars = listOf(catalogSerialization),
         daemonSidecarClasspath = listOf(sidecarMaterial.absolutePath, daemon.absolutePath),
         androidResourceClasspath = listOf(androidResources.absolutePath),
+        hasIr = false,
       )
 
     assertEquals(
@@ -82,6 +83,106 @@ class ServeBundleDaemonTest {
       catalogMaterial.absolutePath !in result.userClassPath,
       "parent-loaded framework dependencies must not be duplicated in the user child loader",
     )
+  }
+
+  @Test
+  fun `IR replay dependencies are visible to the daemon parent after its sidecars`() {
+    val root = Files.createTempDirectory("serve-bundle-ir-classpaths").toFile()
+    val classes = File(root, "classes").apply { mkdirs() }
+    val embeddedPlayer = File(root, "embedded-player.jar")
+    val childRuntime = File(root, "child-runtime.jar")
+    val sharedOverlay = File(root, "shared-overlay.jar")
+    val daemon = File(root, "daemon.jar")
+
+    val result =
+      ServeBundleDaemon.bundleDaemonClasspaths(
+        classesDir = classes,
+        extraClasspathDirs = emptyList(),
+        embeddedLibJars = listOf(embeddedPlayer),
+        parentOverlayJars = listOf(sharedOverlay),
+        childDependencyJars = listOf(childRuntime),
+        daemonSidecarClasspath = listOf(daemon.absolutePath),
+        androidResourceClasspath = emptyList(),
+        hasIr = true,
+      )
+
+    assertEquals(
+      listOf(
+        sharedOverlay.absolutePath,
+        daemon.absolutePath,
+        embeddedPlayer.absolutePath,
+        childRuntime.absolutePath,
+      ),
+      result.daemonClasspath,
+      "IR replay connectors are parent-loaded and must see every carried player dependency",
+    )
+    assertTrue(embeddedPlayer.absolutePath in result.userClassPath)
+    assertTrue(childRuntime.absolutePath in result.userClassPath)
+  }
+
+  @Test
+  fun `materialize wires carried IR into the daemon descriptor`() {
+    val root = Files.createTempDirectory("serve-bundle-ir-descriptor").toFile()
+    val daemonDir = File(root, "daemon").apply { mkdirs() }
+    val rendererDir = File(root, "renderer").apply { mkdirs() }
+    File(daemonDir, "daemon.jar").writeBytes(byteArrayOf())
+    File(rendererDir, "renderer.jar").writeBytes(byteArrayOf())
+    val previewId = "com.example.CatalogKt.RemotePreview"
+    val document = byteArrayOf(0x52, 0x43, 0x01)
+    val manifest =
+      """
+      {"schemaVersion":8,"backend":"desktop","previewIds":["$previewId"],
+       "coverPreviewId":"$previewId","classpath":[],"modulePath":":remote",
+       "producedBy":"test","intermediateRepresentations":[
+         {"previewId":"$previewId","format":"remotecompose","path":"ir/$previewId.rc"}]}
+      """
+        .trimIndent()
+        .toByteArray()
+    val previews =
+      """
+      {"module":":remote","variant":"debug","previews":[
+        {"id":"$previewId","functionName":"RemotePreview","className":"com.example.CatalogKt"}]}
+      """
+        .trimIndent()
+        .toByteArray()
+    val bundle = File(root, "remote-bundle.zip")
+    java.util.zip.ZipOutputStream(bundle.outputStream()).use { zip ->
+      for ((name, bytes) in
+        listOf(
+          "bundle.json" to manifest,
+          "previews.json" to previews,
+          "ir/$previewId.rc" to document,
+        )) {
+        zip.putNextEntry(java.util.zip.ZipEntry(name))
+        zip.write(bytes)
+        zip.closeEntry()
+      }
+    }
+
+    System.setProperty("composeai.cli.libDaemonDesktopDir", daemonDir.absolutePath)
+    System.setProperty("composeai.cli.libRendererDir", rendererDir.absolutePath)
+    try {
+      val state =
+        assertNotNull(
+          ServeBundleDaemon.materialize(bundle, File(root, "session"), "remote"),
+          "a fully IR-backed bundle should materialize without classes/app.jar",
+        )
+      val descriptor =
+        descriptorJson.decodeFromString(
+          DaemonLaunchDescriptor.serializer(),
+          state.descriptor.readText(),
+        )
+      val irDir = assertNotNull(descriptor.systemProperties["composeai.daemon.irDir"])
+      val bundleManifest =
+        assertNotNull(descriptor.systemProperties["composeai.daemon.bundleManifestPath"])
+
+      assertTrue(File(irDir, "$previewId.rc").readBytes().contentEquals(document))
+      assertTrue(File(bundleManifest).readBytes().contentEquals(manifest))
+      assertEquals(listOf(previewId), state.previews.map { it.id })
+    } finally {
+      System.clearProperty("composeai.cli.libDaemonDesktopDir")
+      System.clearProperty("composeai.cli.libRendererDir")
+    }
   }
 
   @Test

@@ -1,12 +1,8 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.io.composeAiCacheDir
-import java.io.ByteArrayInputStream
 import java.io.File
-import java.util.zip.ZipInputStream
 import kotlin.system.exitProcess
-import okio.Path.Companion.toPath
-import okio.source
 
 /**
  * `compose-preview bundle daemon <bundle.png>` — spawn the preview daemon JVM bound to a packed
@@ -108,7 +104,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     val irDir = if (hasIr) workDir.resolve("ir").apply { mkdirs() } else null
     val bundleManifestFile = if (hasIr) workDir.resolve("bundle.json") else null
     if (hasIr) {
-      extractIrArtifacts(zipBytes, irDir!!, bundleManifestFile!!, file)
+      extractBundleIrArtifacts(zipBytes, irDir!!, bundleManifestFile!!, file, fileSystem)
     }
 
     // Android resource carriage (ungated by IR): any `backend == "android"` bundle carries the
@@ -384,45 +380,6 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       """
         .trimIndent()
     )
-  }
-
-  /**
-   * Extract the v5 IR artefacts from [zipBytes]: every `ir/<leaf>` entry into [irDir] (flattened to
-   * its basename, since `BundleIr.path` is `ir/<previewId>.<ext>` and the daemon resolves by leaf),
-   * plus `bundle.json` into [manifestFile] so the daemon can read `intermediateRepresentations`.
-   * Each `ir/` destination is verified to live inside [irDir] — defeats Zip Slip on a hostile
-   * bundle, same guard as [extractEmbeddedLibs] / [expandBundleJarBytesSafely].
-   */
-  private fun extractIrArtifacts(
-    zipBytes: ByteArray,
-    irDir: File,
-    manifestFile: File,
-    bundleFile: File,
-  ) {
-    val canonicalIr = irDir.canonicalFile
-    var sawManifest = false
-    ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
-      while (true) {
-        val entry = zin.nextEntry ?: break
-        val name = entry.name
-        when {
-          name == "bundle.json" -> {
-            fileSystem.write(manifestFile.path.toPath()) { write(zin.readBytes()) }
-            sawManifest = true
-          }
-          !entry.isDirectory && name.startsWith("ir/") -> {
-            val dest = File(irDir, File(name).name).canonicalFile
-            if (dest.path.startsWith(canonicalIr.path + File.separator)) {
-              fileSystem.write(dest.path.toPath()) { writeAll(zin.source()) }
-            }
-          }
-        }
-        zin.closeEntry()
-      }
-    }
-    require(sawManifest) {
-      "bundle daemon: bundle.json missing in ${bundleFile.path} — cannot resolve IR descriptors"
-    }
   }
 
   private fun createTempWorkDir(): File {

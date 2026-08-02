@@ -1,6 +1,9 @@
 package ee.schimke.composeai.cli
 
 import java.io.File
+import java.nio.file.Files
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -52,5 +55,34 @@ class BundleDaemonClasspathTest {
       sidecar,
       BundleDaemonCommand.composeDaemonClasspath(sidecar, emptyList(), hasIr = true),
     )
+  }
+
+  @Test
+  fun `shared IR extraction materializes the document and bundle manifest`() {
+    val root = Files.createTempDirectory("bundle-ir-extraction").toFile()
+    val bundle = File(root, "bundle.png")
+    val manifest = """{"schemaVersion":8,"intermediateRepresentations":[]}""".toByteArray()
+    val document = byteArrayOf(0x52, 0x43, 0x01)
+    val zipBytes =
+      java.io
+        .ByteArrayOutputStream()
+        .also { bytes ->
+          ZipOutputStream(bytes).use { zip ->
+            zip.putNextEntry(ZipEntry("bundle.json"))
+            zip.write(manifest)
+            zip.closeEntry()
+            zip.putNextEntry(ZipEntry("ir/com.example.Remote.rc"))
+            zip.write(document)
+            zip.closeEntry()
+          }
+        }
+        .toByteArray()
+    val irDir = File(root, "ir").apply { mkdirs() }
+    val extractedManifest = File(root, "bundle.json")
+
+    extractBundleIrArtifacts(zipBytes, irDir, extractedManifest, bundle)
+
+    assertTrue(extractedManifest.readBytes().contentEquals(manifest))
+    assertTrue(File(irDir, "com.example.Remote.rc").readBytes().contentEquals(document))
   }
 }

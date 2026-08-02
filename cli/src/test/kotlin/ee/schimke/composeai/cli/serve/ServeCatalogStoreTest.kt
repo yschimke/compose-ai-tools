@@ -395,7 +395,7 @@ class ServeCatalogStoreTest {
   }
 
   @Test
-  fun `a mixed liveBundle routes only class-backed previews to the daemon`() {
+  fun `a mixed liveBundle routes class-backed and IR previews to the daemon`() {
     val remoteId = "com.example.CatalogKt.RemotePreview"
     val widgetId = "com.example.WidgetKt.WidgetPreview"
     val rcBytes = byteArrayOf(0x52, 0x43, 0x01)
@@ -453,7 +453,11 @@ class ServeCatalogStoreTest {
       )
 
     assertTrue(store.load("remote-m3") is ServeCatalogStore.Result.Ok)
-    assertEquals(mapOf("widget__ideal__default" to widgetId), captured)
+    assertEquals(
+      mapOf("remote__ideal__default" to remoteId, "widget__ideal__default" to widgetId),
+      captured,
+      "the daemon replays IR previews from the carried document instead of reflecting a class",
+    )
     assertContentEquals(
       rcBytes,
       File(root, "remote-m3/ir/remote__ideal__default.rc").readBytes(),

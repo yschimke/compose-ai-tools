@@ -292,7 +292,7 @@ class ServeWebTest {
   @Test
   fun `the rc backend selector renders every backend with the unavailable ones disabled`() {
     // A Remote Compose preview on an Android daemon: js (client canvas) + java + cmp-android are
-    // enabled; cmp-jvm is always present-but-disabled (no Skiko draw path yet).
+    // enabled; cmp-jvm is present-but-disabled when the host doesn't advertise its sidecar lane.
     val preview = ServePreview(id = "widget.Chip", label = "chip")
     val html =
       ServeWeb.viewerPage(

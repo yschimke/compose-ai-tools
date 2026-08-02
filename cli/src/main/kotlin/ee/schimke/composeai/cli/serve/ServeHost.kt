@@ -194,8 +194,8 @@ interface ServeHost : AutoCloseable {
    * The Remote Compose render backends the viewer may offer for [previewId] as **enabled** options
    * — the subset of the fixed [RcPlayerBackend.UNIVERSE] this host can actually produce pixels
    * through. The viewer renders every backend as a chip and enables the ones returned here; the
-   * rest (e.g. [RcPlayerBackend.CMP_JVM], whose Skiko draw path isn't ported) are shown disabled,
-   * so a planned lane is visible without pretending it works.
+   * rest (e.g. [RcPlayerBackend.CMP_JVM] when its sidecar is not installed) are shown disabled, so
+   * an unavailable lane remains visible without pretending it works.
    *
    * Empty for a non–Remote Compose preview (the viewer then shows no backend selector at all).
    * Defaults to the client-side [RcPlayerBackend.JS] lane whenever [hasRemoteComposeDoc] is true —

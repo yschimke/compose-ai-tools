@@ -659,11 +659,13 @@ image pull "just works" with live CMP, no clone and no build. Set `SERVE_ALLOW_R
 opt out (the Wasm tier still carries CMP). The other published catalogs (`wear-m3`, `remote-m3`) are
 **Android** — no desktop-runnable bundle — so their live lane runs a heavier Robolectric daemon
 (2 live-seat permits) instead of the desktop one. The prebuilt `deploy/image` (**what `preview.coo.ee`
-runs**) bakes that Robolectric Android daemon + a minimal Android SDK, so `wear-m3` — which publishes
-an Android `liveBundle` — *can* be rendered live and per-variant there. A box **without** the Android
-runtime — the desktop-only from-source `deploy/vps` — instead falls back to baked PNGs for these
-catalogs, fail-closed: no error, just no daemon tier. (`remote-m3` carries no runnable bundle, so it
-stays baked-PNG on either box.)
+runs**) bakes that Robolectric Android daemon + a minimal Android SDK, so `wear-m3` and `remote-m3`
+— which publish Android `liveBundle`s — can be rendered live and per-variant there. `remote-m3` is
+fully IR-backed: its bundle carries `ir/*.rc` documents instead of preview classes, and the daemon
+replays those documents directly. A box **without** the Android runtime — the desktop-only
+from-source `deploy/vps` — instead falls back to baked PNGs for these catalogs, fail-closed: no
+error, just no daemon tier; browser-side JS and installed CMP JVM Remote Compose players remain
+available from the carried documents.
 
 > **The live lane also needs a `previewId` sticker→daemon mapping — and, for Android, the app's
 > resource table.** The viewer only exposes live/override controls for a preview whose baked sticker
@@ -680,7 +682,8 @@ stays baked-PNG on either box.)
 > crashing) as a safety net — shipped in **0.16.50**. So `wear-m3` renders live and per-variant once
 > the box has **rolled the 0.16.50 image** (Watchtower) **and** re-fetched the `design-artifacts/wear-m3`
 > bundle regenerated to carry the `android/` resources (catalog auto-refresh). `compose-m3` carried
-> `previewId` already; `remote-m3` stays baked-PNG — it publishes no runnable bundle.
+> `previewId` already. `remote-m3` also carries the mapping, but its daemon ids resolve through the
+> bundle's IR replay manifest rather than `classes/app.jar`.
 
 > **Font parity with the baked PNG.** A live daemon must resolve fonts the same way the render that
 > baked the PNG did, or the same preview shows two typefaces depending on which lane you're viewing.

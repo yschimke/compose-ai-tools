@@ -7,6 +7,7 @@ import ee.schimke.composeai.cli.CoordinateResolver
 import ee.schimke.composeai.cli.PreviewManifest
 import ee.schimke.composeai.cli.bundleSidecarSearchDescription
 import ee.schimke.composeai.cli.extractBundleClassesAndManifest
+import ee.schimke.composeai.cli.extractBundleIrArtifacts
 import ee.schimke.composeai.cli.locateBundleSidecarJars
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.io.composeAiCacheDir
@@ -143,9 +144,9 @@ internal object ServeBundleDaemon {
     val classesDir = File(destDir, "classes").apply { mkdirs() }
     val libsDir = File(destDir, "libs").apply { mkdirs() }
     val previewsJson = File(destDir, "previews.json")
-    // A fully IR-backed bundle (schema v5+) legitimately carries no classes/app.jar — mirrors
-    // BundleDaemonCommand's gate. Serve's live path doesn't replay IR (that's the Android/tile
-    // story), but a mixed bundle with at least one class-backed preview must still carry its jar.
+    // A fully IR-backed bundle (schema v5+) legitimately carries no classes/app.jar — its daemon
+    // replays the carried documents extracted below. A mixed bundle with at least one class-backed
+    // preview must still carry its jar.
     val irPreviewIds = manifest.intermediateRepresentations.mapTo(mutableSetOf()) { it.previewId }
     val requireAppJar = manifest.previewIds.any { it !in irPreviewIds }
     try {
@@ -160,6 +161,23 @@ internal object ServeBundleDaemon {
     } catch (e: Exception) {
       onLog("catalog $system: bundle extraction failed (${e.message})")
       return null
+    }
+
+    // v5+ IR replay: a Remote Compose preview has no consumer class to reflect. The Android
+    // daemon instead reads the captured document from `ir/` and resolves its descriptor through
+    // the carried bundle manifest. This is the same setup `compose-preview bundle daemon` uses;
+    // without it the public catalog path filtered IR previews out and falsely reported a daemon
+    // startup failure.
+    val hasIr = manifest.intermediateRepresentations.isNotEmpty()
+    val irDir = if (hasIr) File(destDir, "ir").apply { mkdirs() } else null
+    val bundleManifestFile = if (hasIr) File(destDir, "bundle.json") else null
+    if (hasIr) {
+      try {
+        extractBundleIrArtifacts(zipBytes, irDir!!, bundleManifestFile!!, bundleFile, fileSystem)
+      } catch (e: Exception) {
+        onLog("catalog $system: IR extraction failed (${e.message})")
+        return null
+      }
     }
 
     val libJars = BundleReader.extractEmbeddedLibs(zipBytes, libsDir, fileSystem)
@@ -212,6 +230,7 @@ internal object ServeBundleDaemon {
         childDependencyJars = childDependencies.map { it.file },
         daemonSidecarClasspath = backendLaunch.daemonClasspath,
         androidResourceClasspath = androidResourceClasspath,
+        hasIr = hasIr,
       )
     if (parentOverlayDependencies.isNotEmpty()) {
       onLog(
@@ -237,6 +256,8 @@ internal object ServeBundleDaemon {
           buildMap {
             put("composeai.daemon.userClassDirs", classpaths.userClassPath)
             put("composeai.daemon.previewsJsonPath", previewsJson.absolutePath)
+            irDir?.let { put(IR_DIR_PROPERTY, it.absolutePath) }
+            bundleManifestFile?.let { put(BUNDLE_MANIFEST_PATH_PROPERTY, it.absolutePath) }
             // Point the daemon's render output at `<destDir>/renders`. This is what makes
             // `DaemonMain.dataRoot` non-null (`<destDir>/data`), which is the gate that *registers*
             // the file-based data products — including `compose/figma-svg` (+ `-long`). Without it
@@ -368,6 +389,7 @@ internal object ServeBundleDaemon {
         childDependencyJars = childJars,
         daemonSidecarClasspath = backendLaunch.daemonClasspath,
         androidResourceClasspath = emptyList(),
+        hasIr = false,
       )
     val descriptor =
       DaemonLaunchDescriptor(
@@ -572,6 +594,10 @@ internal object ServeBundleDaemon {
    */
   private const val REMOTECOMPOSE_SUFFIX = ".remotecompose.json"
 
+  /** IR replay properties consumed by BundleIrReplayStore in the daemon. */
+  private const val IR_DIR_PROPERTY = "composeai.daemon.irDir"
+  private const val BUNDLE_MANIFEST_PATH_PROPERTY = "composeai.daemon.bundleManifestPath"
+
   private val json = Json { encodeDefaults = true }
   private val overridesJson = Json { ignoreUnknownKeys = true }
   private val previewsManifestJson = Json {
@@ -604,6 +630,7 @@ internal object ServeBundleDaemon {
     childDependencyJars: List<File>,
     daemonSidecarClasspath: List<String>,
     androidResourceClasspath: List<String>,
+    hasIr: Boolean,
   ): BundleDaemonClasspaths {
     // The carried r-classes.jar belongs to the catalog's AndroidX graph too. It must precede the
     // sidecar's generated R.jar or newer Compose UI bytecode can resolve an older R$id class and
@@ -611,7 +638,13 @@ internal object ServeBundleDaemon {
     val parentEntries =
       (parentOverlayJars.map { it.absolutePath } +
           androidResourceClasspath +
-          daemonSidecarClasspath)
+          daemonSidecarClasspath +
+          // Parent-loaded IR replay connectors link the carried player/runtime libraries
+          // directly. Mirror BundleDaemonCommand.composeDaemonClasspath by making every carried
+          // dependency visible to the parent after the authoritative daemon sidecars. Shared ABI
+          // overlays above still precede the sidecar and retain their version priority.
+          (if (hasIr) (embeddedLibJars + childDependencyJars).map { it.absolutePath }
+          else emptyList()))
         .distinct()
     // The rehydrated external-resource dirs go right after the bundle's own classes so a lifted
     // font resolves at the same `/fonts/…` path it did when carried inline.
