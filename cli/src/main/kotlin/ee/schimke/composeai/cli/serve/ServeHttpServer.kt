@@ -421,13 +421,19 @@ class ServeHttpServer(
         // path segment (e.g. `/api/1/compiler/run`) which we capture and ignore. The constant
         // `/api`
         // first segment outscores the `/{system}` catch-all. Never registered under `--public`.
-        playgroundService?.let { svc ->
+        if (playgroundService != null) {
+          val svc = playgroundService
           post("/api/{version}/compiler/run") { handlePlaygroundRun(svc) }
           // The Stage-1 editor page (`GET /playground`): the browser surface that POSTs to the run
           // route above and surfaces the diagnostics + first-frame + `/pg/` (live) or `/d/` (RC)
           // handoff. Only mounted when the lane is enabled, and — like the lane — never under
           // `--public`.
           get("/playground") { handlePlaygroundPage(svc) }
+        } else {
+          // Reserve the well-known page path even when the compile lane is disabled. Otherwise
+          // public catalog hosts route `/playground` through the `/{system}` catch-all and report
+          // that a design system named "playground" does not exist.
+          get("/playground") { handlePlaygroundDisabledPage() }
         }
 
         // Stage-2 redemption (`GET /pg/<token>`): redeem a preview token into a live streamed
@@ -827,6 +833,19 @@ class ServeHttpServer(
         unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
       ),
       ContentType.Text.Html,
+    )
+  }
+
+  private suspend fun RoutingContext.handlePlaygroundDisabledPage() {
+    markGeneration("static-page", DYNAMIC_RESOURCE_CACHE_CONTROL)
+    call.respondText(
+      ServeWeb.playgroundDisabledPage(
+        token = token,
+        isPublic = isPublic,
+        unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
+      ),
+      ContentType.Text.Html,
+      HttpStatusCode.ServiceUnavailable,
     )
   }
 

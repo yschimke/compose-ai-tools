@@ -87,6 +87,22 @@ The compose profile derives the callback base URL from `DOMAIN`; set
 `SERVE_GITHUB_AUTH_CALLBACK_BASE_URL` to override. Empty `SERVE_GITHUB_AUTH_USERS` allows any
 signed-in GitHub user; set it to a comma-separated login list to narrow access.
 
+### Playground on `preview.coo.ee`
+
+`/playground` is disabled unless the preview service is started with a catalog live bundle that can
+seed the snippet classpath. Add one or both bundle paths to `.env`; on public hosts also set a
+sandbox profile that passes startup preflight:
+
+```bash
+SERVE_PLAYGROUND_BUNDLE=/config/playground-cmp.bundle
+SERVE_PLAYGROUND_ANDROID_BUNDLE=/config/playground-android.bundle
+SERVE_PLAYGROUND_SANDBOX=bwrap
+SERVE_PLAYGROUND_COMPILE_SLOTS=1
+```
+
+If these are missing, `/playground` returns a styled “Playground unavailable” page instead of
+falling through as a missing design system.
+
 ## Auto-updates (zero-downtime)
 
 Updates are **rolling** — existing traffic keeps being served on the old
