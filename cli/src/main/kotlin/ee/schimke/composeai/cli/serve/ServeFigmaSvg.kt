@@ -158,16 +158,21 @@ internal fun googleFontsImportUrl(faces: List<WebFontFace>): String? {
     if (fs.any { it.italic }) {
       val tuples =
         fs
-          .map { (if (it.italic) 1 else 0) to it.weight }
+          .map { (if (it.italic) 1 else 0) to googleFontsWeight(it.weight) }
           .distinct()
           .sortedWith(compareBy({ it.first }, { it.second }))
       "family=$enc:ital,wght@" + tuples.joinToString(";") { "${it.first},${it.second}" }
     } else {
-      "family=$enc:wght@" + fs.map { it.weight }.distinct().sorted().joinToString(";")
+      "family=$enc:wght@" +
+        fs.map { googleFontsWeight(it.weight) }.distinct().sorted().joinToString(";")
     }
   }
   return "https://fonts.googleapis.com/css2?" + families.joinToString("&") + "&display=swap"
 }
+
+/** CSS2 static-family instances use conventional 100-step weights, unlike Compose's 1..1000. */
+private fun googleFontsWeight(weight: Int): Int =
+  (((weight.coerceIn(1, 1000) + 50) / 100) * 100).coerceIn(100, 900)
 
 /**
  * True when this path is [root] or a descendant of it (both normalized) — traversal containment.

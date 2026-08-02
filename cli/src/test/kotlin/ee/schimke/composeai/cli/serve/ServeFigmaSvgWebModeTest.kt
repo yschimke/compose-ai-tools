@@ -81,6 +81,21 @@ class ServeFigmaSvgWebModeTest {
   }
 
   @Test
+  fun `googleFontsImportUrl rounds Compose intermediate weights`() {
+    val url =
+      googleFontsImportUrl(
+        listOf(
+          WebFontFace("Roboto", 599, italic = false),
+          WebFontFace("Roboto", 550, italic = true),
+        )
+      )
+    assertEquals(
+      "https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,600;1,600&display=swap",
+      url,
+    )
+  }
+
+  @Test
   fun `generic families are not sent to Google Fonts`() {
     assertNull(googleFontsImportUrl(listOf(WebFontFace("sans-serif", 400, false))))
     // A mix keeps only the real family.

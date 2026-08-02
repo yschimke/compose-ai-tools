@@ -46,6 +46,16 @@ class FigmaFontEmbedTest {
   }
 
   @Test
+  fun cssUrlRoundsComposeIntermediateWeightsToAFontInstance() {
+    assertTrue(
+      GoogleFontsWoff2Resolver.cssUrl("Roboto", 599, false).contains("family=Roboto:wght@600")
+    )
+    assertTrue(
+      GoogleFontsWoff2Resolver.cssUrl("Roboto", 550, true).contains("family=Roboto:ital,wght@1,600")
+    )
+  }
+
+  @Test
   fun firstWoff2UrlPrefersLatinSubset() {
     val css =
       """

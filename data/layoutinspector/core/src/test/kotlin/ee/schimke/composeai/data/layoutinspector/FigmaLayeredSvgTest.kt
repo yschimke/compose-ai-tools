@@ -3000,6 +3000,54 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun singleLineEllipsisUsesTheCapturedVisibleRun() {
+    val layout =
+      layoutNode("Screen", 0, 0, 240, 80, children = listOf(layoutNode("Text", 8, 8, 160, 48)))
+    val semantics =
+      ComposeSemanticsNode(
+        nodeId = "root",
+        boundsInRoot = "0,0,240,80",
+        children =
+          listOf(
+            ComposeSemanticsNode(
+              nodeId = "t",
+              boundsInRoot = "8,8,160,48",
+              text = "Effectenbeurszaal",
+              typography = ComposeSemanticsTypography(fontSize = "16.0sp"),
+              textOverflow =
+                ComposeSemanticsTextOverflow(
+                  lineCount = 1,
+                  truncated = true,
+                  overflow = "Ellipsis",
+                  lines =
+                    listOf(
+                      ComposeSemanticsTextLine(
+                        text = "Effect…",
+                        left = 0,
+                        baseline = 24,
+                        start = 0,
+                        end = 6,
+                        width = 120,
+                      )
+                    ),
+                ),
+            )
+          ),
+      )
+
+    val svg = render(layout, semantics = semantics)
+    assertTrue(
+      svg.contains(
+        """<tspan x="8" y="32" textLength="120" lengthAdjust="spacing">Effect…</tspan>"""
+      )
+    )
+    assertFalse(
+      "full source string must not overflow its measured slot",
+      svg.contains("Effectenbeurszaal"),
+    )
+  }
+
+  @Test
   fun embedFamilyMapsGenericsToConcreteEmbeddableFaces() {
     // sans generics ride the default embedded face; serif/monospace get a real same-style face.
     assertEquals("Roboto", FigmaLayeredSvg.embedFamily(null, "Roboto"))

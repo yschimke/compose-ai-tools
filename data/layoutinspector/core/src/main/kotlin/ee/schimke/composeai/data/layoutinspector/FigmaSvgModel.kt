@@ -82,9 +82,10 @@ data class FigmaSvgText(
   /** Effective styled UTF-16 ranges for annotated text; null for a uniform/plain run. */
   val spans: List<FigmaSvgTextSpan>? = null,
   /**
-   * Per-line runs for wrapped text, in px relative to the layer's top-left, in draw order. When
-   * present (2+ lines) the renderer emits one positioned `<tspan>` per line instead of a single
-   * baseline — so text wraps exactly where the render wrapped it. Null for single-line text.
+   * Per-line runs for wrapped or ellipsised text, in px relative to the layer's top-left, in draw
+   * order. The renderer emits one positioned `<tspan>` per line instead of the full source string,
+   * so wrapping and a single-line ellipsis match the render exactly. Null for ordinary single-line
+   * text.
    */
   val lines: List<FigmaSvgTextLine>? = null,
 )
@@ -2046,13 +2047,13 @@ data class FigmaSvgModel(
               color = span.foregroundColor?.let { argbToColor(it, emptyMap()) },
             )
           },
-        // Carry per-line runs only for genuinely wrapped text (2+ lines). The captured offsets are
+        // Carry per-line runs for wrapped and single-line ellipsised text. The captured offsets are
         // already in render px (same space as the node bounds), so they map straight to layer space
         // with no density conversion.
         lines =
           node.textOverflow
             ?.lines
-            ?.takeIf { it.size > 1 }
+            ?.takeIf { it.isNotEmpty() }
             ?.map {
               FigmaSvgTextLine(
                 content = it.text,
