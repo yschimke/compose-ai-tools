@@ -333,6 +333,46 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   background: #fff; color: #45454c; cursor: pointer; }
 .cp-fmt-toggle:hover { background: #f0f0f3; }
 .cp-fmt-toggle[aria-pressed="true"] { background: #ececff; border-color: #c4c4f5; color: #3a3a8a; }
+.cp-format-link { color: #6b6b70; font-size: 0.75rem; white-space: nowrap; }
+.cp-format-link:hover { color: #3a3a8a; }
+.cp-match { display: inline-flex; align-items: center; min-height: 28px; padding: 4px 9px;
+  border-radius: 999px; font-size: 0.75rem; font-weight: 600; color: #6b6b70;
+  background: #f4f4f6; border: 1px solid #e3e3e8; }
+.cp-match[hidden] { display: none; }
+.cp-match--good { color: #1e7a34; background: #e7f4ea; border-color: #b6e0c2; }
+.cp-match--warn { color: #8a5300; background: #fdf0e3; border-color: #f0d3a8; }
+.cp-match--bad { color: #8a1c1c; background: #fdecec; border-color: #f3b6b6; }
+.cp-match--na { color: #6b6b70; }
+/* Native format-fidelity gallery. The site chrome follows prefers-color-scheme; the Theme control
+   selects compared artefacts and never changes the fixed scoring backdrop. */
+.cp-compare-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px;
+  margin: 0 0 14px; }
+.cp-compare-control-label { color: #6b6b70; font-size: 0.75rem; }
+.cp-compare-searchbar { max-width: 720px; }
+.cp-compare-table-wrap { overflow-x: auto; margin-top: 14px; }
+.cp-compare-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.cp-compare-table th, .cp-compare-table td { padding: 10px 12px; text-align: left;
+  vertical-align: middle; border-bottom: 1px solid #e3e3e8; }
+.cp-compare-table thead th { position: sticky; top: 0; z-index: 1; color: #6b6b70;
+  font-size: 0.72rem; background: #fafafa; }
+.cp-compare-table tbody th { min-width: 150px; font-weight: 600; word-break: break-word; }
+.cp-compare-shot { display: grid; place-items: center; width: min(260px, 30vw); min-width: 150px;
+  min-height: 92px; padding: 8px; border-radius: 8px; overflow: hidden;
+  background: repeating-conic-gradient(#f4f4f6 0% 25%, #fff 0% 50%) 50% / 14px 14px; }
+.cp-compare-row[data-bg-theme="dark"] .cp-compare-shot { background: #111113; }
+.cp-compare-shot img, .cp-compare-shot canvas { display: block; max-width: 100%; max-height: 220px;
+  width: auto; height: auto; object-fit: contain; }
+.cp-compare-shot [hidden] { display: none; }
+.cp-compare-score { min-width: 88px; text-align: right; white-space: nowrap; color: #6b6b70;
+  font-variant-numeric: tabular-nums; }
+.cp-compare-score--good { color: #1e7a34; }
+.cp-compare-score--warn { color: #8a5300; }
+.cp-compare-score--bad { color: #8a1c1c; }
+.cp-compare-score--na { color: #8a8a92; }
+#cp-compare .cp-compare-target-head { font-size: 0; }
+#cp-compare .cp-compare-target-head::after { font-size: 0.72rem; }
+#cp-compare[data-format="svg"] .cp-compare-target-head::after { content: "SVG"; }
+#cp-compare[data-format="rc"] .cp-compare-target-head::after { content: "Remote Compose"; }
 /* The mode radios are kept in the DOM (the transport JS drives them) but visually removed —
    the single toggle above is the only visible mode control. */
 .cp-modes-inputs { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
@@ -449,6 +489,20 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-fmt-toggle { background: #1d1d20; border-color: #34343a; color: #c9c9d0; }
   .cp-fmt-toggle:hover { background: #26262b; }
   .cp-fmt-toggle[aria-pressed="true"] { background: #26264a; border-color: #45458a; color: #c9c9ff; }
+  .cp-format-link { color: #a0a0a8; }
+  .cp-format-link:hover { color: #c9c9ff; }
+  .cp-match { color: #a0a0a8; background: #26262b; border-color: #34343a; }
+  .cp-match--good { color: #6cd98a; background: #14361f; border-color: #2c6b40; }
+  .cp-match--warn { color: #e6b067; background: #3a2a12; border-color: #6b4f24; }
+  .cp-match--bad { color: #ef9292; background: #3d1d1d; border-color: #713535; }
+  .cp-compare-control-label, .cp-compare-score { color: #a0a0a8; }
+  .cp-compare-table th, .cp-compare-table td { border-bottom-color: #34343a; }
+  .cp-compare-table thead th { color: #a0a0a8; background: #1d1d20; }
+  .cp-compare-shot { background: repeating-conic-gradient(#26262b 0% 25%, #1d1d20 0% 50%) 50% / 14px 14px; }
+  .cp-compare-row[data-bg-theme="dark"] .cp-compare-shot { background: #111113; }
+  .cp-compare-score--good { color: #6cd98a; }
+  .cp-compare-score--warn { color: #e6b067; }
+  .cp-compare-score--bad { color: #ef9292; }
   .cp-mode-hint { color: #a0a0a8; }
 }
 /* Mobile / narrow viewports. The viewer is a flex row of stage + overrides (+ optional nav);
@@ -496,6 +550,9 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-url { flex: 1 1 100%; }
   /* The paired Min/Max (and Fixed W/H) size inputs stack rather than sit side by side. */
   .cp-size-row:not([hidden]) { flex-direction: column; gap: 6px; }
+  .cp-compare-table th, .cp-compare-table td { padding: 8px; }
+  .cp-compare-table tbody th { min-width: 110px; }
+  .cp-compare-shot { width: 160px; min-width: 130px; min-height: 82px; }
 }
 /* Dark-mode surfaces for the mobile sticky bar + bottom sheets. */
 @media (max-width: 640px) and (prefers-color-scheme: dark) {

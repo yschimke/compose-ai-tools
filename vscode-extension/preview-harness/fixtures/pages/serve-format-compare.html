@@ -1,0 +1,52 @@
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>compose-m3 — format comparison</title>
+        <link rel="stylesheet" href="/assets/serve/9d6e-67732542004dab6b/serve.css">
+        <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
+        <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+      </head>
+      <body>
+        <main class="cp-main">
+                <div id="cp-compare" data-default-format="svg" data-default-theme="light" data-theme-key="cp-theme:compose-m3" data-has-svg="1" data-has-rc="1">
+          <h1 class="cp-head"><a href="/?session=compose-m3">← previews</a> <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ branch:yschimke/compose-ai-tools@design-artifacts/compose-m3</span></h1>
+          <p class="cp-sub">Format comparison · scores use structural similarity on a fixed backdrop</p>
+          <div class="cp-compare-controls">
+            <span class="cp-theme" role="group" aria-label="Comparison format"><button type="button" class="cp-theme-btn" data-compare-format="svg" aria-pressed="true">PNG ↔ SVG</button><button type="button" class="cp-theme-btn" data-compare-format="rc" aria-pressed="false">PNG ↔ Remote Compose</button></span>
+            <span class="cp-compare-control-label">Theme</span>
+<span class="cp-theme" role="group" aria-label="Comparison theme">
+  <button type="button" class="cp-theme-btn" data-compare-theme="light" aria-pressed="true">Light</button>
+  <button type="button" class="cp-theme-btn" data-compare-theme="dark" aria-pressed="false">Dark</button>
+</span>
+          </div>
+          <div class="cp-searchbar cp-compare-searchbar">
+            <input id="cp-compare-search" class="cp-search" type="search" placeholder="Filter comparisons…" aria-label="Filter comparisons">
+            <span id="cp-compare-count" class="cp-count" role="status"></span>
+          </div>
+                  <div class="cp-compare-table-wrap">
+          <table class="cp-compare-table">
+            <thead><tr><th>Preview</th><th>Rendered PNG</th><th class="cp-compare-target-head">SVG</th><th>Match</th></tr></thead>
+            <tbody><tr class="cp-compare-row" data-label="button-filled"
+  data-hay="button-filled button-filled__ideal__default__light button-filled__ideal__default__dark" data-preview-ids="button-filled__ideal__default__light button-filled__ideal__default__dark" data-png-light="/render/button-filled__ideal__default__light.png?session=compose-m3" data-png-dark="/render/button-filled__ideal__default__dark.png?session=compose-m3" data-svg-light="/render/button-filled__ideal__default__light.svg?session=compose-m3" data-svg-dark="/render/button-filled__ideal__default__dark.svg?session=compose-m3" data-rc-light="/render/button-filled__ideal__default__light.rc?session=compose-m3" data-rc-dark="/render/button-filled__ideal__default__dark.rc?session=compose-m3">
+  <th scope="row"><a href="/p/button-filled__ideal__default__light?session=compose-m3">button-filled</a></th>
+  <td><div class="cp-compare-shot"><img class="cp-compare-png" alt=""></div></td>
+  <td><div class="cp-compare-shot"><img class="cp-compare-vector" alt=""><canvas hidden></canvas></div></td>
+  <td class="cp-compare-score">waiting…</td>
+</tr>
+<tr class="cp-compare-row" data-label="switch-on"
+  data-hay="switch-on switch-on__ideal__default__light switch-on__ideal__default__dark" data-preview-ids="switch-on__ideal__default__light switch-on__ideal__default__dark" data-png-light="/render/switch-on__ideal__default__light.png?session=compose-m3" data-png-dark="/render/switch-on__ideal__default__dark.png?session=compose-m3" data-svg-light="/render/switch-on__ideal__default__light.svg?session=compose-m3" data-svg-dark="/render/switch-on__ideal__default__dark.svg?session=compose-m3">
+  <th scope="row"><a href="/p/switch-on__ideal__default__light?session=compose-m3">switch-on</a></th>
+  <td><div class="cp-compare-shot"><img class="cp-compare-png" alt=""></div></td>
+  <td><div class="cp-compare-shot"><img class="cp-compare-vector" alt=""><canvas hidden></canvas></div></td>
+  <td class="cp-compare-score">waiting…</td>
+</tr></tbody>
+          </table>
+        </div>
+        <p id="cp-compare-empty" class="cp-empty" hidden>No comparisons match this filter.</p>
+        </div>
+        <script src="/assets/serve/38c2-63624ebdf518c1a2/format-compare.js"></script>
+        </main>
+      </body>
+    </html>

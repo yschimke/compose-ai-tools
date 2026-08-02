@@ -848,6 +848,38 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `format comparison is available on canonical and query session lanes`() {
+    val (pathCode, pathBody) = get("/compose-m3/compare")
+    assertEquals(200, pathCode)
+    assertTrue(pathBody.contains("id=\"cp-compare\""), "canonical comparison page: $pathBody")
+    assertTrue(
+      pathBody.contains("data-compare-format=\"rc\"") &&
+        !pathBody.contains("data-compare-format=\"svg\""),
+      "the page exposes the carried RC format without a dead SVG tab: $pathBody",
+    )
+    assertTrue(
+      pathBody.contains("data-rc-neutral=\"/compose-m3/render/$previewId.rc\""),
+      "the path-mounted page keeps its RC document URL under the catalog path: $pathBody",
+    )
+
+    val (queryCode, queryBody) = get("/compare?session=compose-m3")
+    assertEquals(200, queryCode)
+    assertTrue(
+      queryBody.contains("data-rc-neutral=\"/render/$previewId.rc?session=compose-m3\""),
+      "the legacy page keeps its session query on the RC document URL: $queryBody",
+    )
+    assertTrue(
+      get("/compose-m3/").second.contains("href=\"/compose-m3/compare\""),
+      "the catalog landing links to the native comparison page",
+    )
+  }
+
+  @Test
+  fun `format comparison 404s when a session carries no alternate format`() {
+    assertEquals(404, get("/baked-only/compare").first)
+  }
+
+  @Test
   fun `an unknown system path 404s like a bad session`() {
     assertEquals(404, get("/no-such-system/").first)
     assertEquals(404, get("/no-such-system/p/$previewId").first)

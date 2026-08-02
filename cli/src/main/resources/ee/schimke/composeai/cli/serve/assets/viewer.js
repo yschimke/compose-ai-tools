@@ -381,6 +381,46 @@
         if (dl) dl.href = embed;
       }
     });
+    updateSvgMatch();
+  }
+  var svgMatch = document.getElementById("cp-svg-match");
+  var svgDiff = document.getElementById("cp-svg-diff");
+  var svgMatchGeneration = 0;
+  var svgMatchKey = "";
+  function updateSvgMatch() {
+    if (!svgMatch) return;
+    if (!svgOn()) {
+      svgMatch.hidden = true;
+      if (svgDiff) svgDiff.hidden = true;
+      return;
+    }
+    var png = document.getElementById("cp-url-png");
+    var svg = document.getElementById("cp-url-svg");
+    var svgUrl = svg && (svg.getAttribute("data-embed-url") || svg.value);
+    if (!png || !png.value || !svgUrl || !window.ComposePreviewCompare) return;
+    var key = png.value + "\n" + svgUrl;
+    if (key === svgMatchKey && svgMatch.textContent && svgMatch.textContent !== "comparing…") {
+      svgMatch.hidden = false;
+      if (svgDiff) svgDiff.hidden = false;
+      return;
+    }
+    svgMatchKey = key;
+    var generation = ++svgMatchGeneration;
+    svgMatch.hidden = false;
+    svgMatch.className = "cp-match";
+    svgMatch.textContent = "comparing…";
+    if (svgDiff) svgDiff.hidden = true;
+    window.ComposePreviewCompare.scoreSvgUrls(png.value, svgUrl).then(function (percent) {
+      if (generation !== svgMatchGeneration || !svgOn()) return;
+      svgMatch.textContent = percent.toFixed(1) + "% match";
+      svgMatch.className = "cp-match cp-match--" +
+        (percent >= 90 ? "good" : percent >= 75 ? "warn" : "bad");
+      if (svgDiff) svgDiff.hidden = false;
+    }, function () {
+      if (generation !== svgMatchGeneration || !svgOn()) return;
+      svgMatch.textContent = "match unavailable";
+      svgMatch.className = "cp-match cp-match--na";
+    });
   }
   // Click the read-only URL field to copy the /render URL to the clipboard (no separate button).
   // The text is selected either way as a fallback + visible affordance, and the field flashes via

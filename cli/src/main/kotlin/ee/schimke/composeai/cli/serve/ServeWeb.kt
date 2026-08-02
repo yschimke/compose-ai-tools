@@ -2507,6 +2507,8 @@ object ServeWeb {
      * `&session=` param (the path carries the session). Empty ⇒ links are exactly as before.
      */
     basePath: String = "",
+    /** Whether this session has at least one SVG or Remote Compose format to compare. */
+    hasFormatComparison: Boolean = false,
     /**
      * Per-preview thumbnail content-crop lookup — frames a card's render to its component box (a
      * Wear sticker on a 454² watch canvas shows just the component). Returns null for a card that
@@ -2780,6 +2782,10 @@ object ServeWeb {
           themeBaseJs,
         )}</script>"
       else ""
+    val formatLink =
+      if (hasFormatComparison)
+        " · <a class=\"cp-format-link\" href=\"$basePath/compare$q\">compare formats</a>"
+      else ""
     return document(
       title = "$moduleLabel — compose-preview",
       unfurlTitle = moduleLabel,
@@ -2789,8 +2795,150 @@ object ServeWeb {
         """
         $back<h1 class="cp-head">${WebEscaping.htmlEscape(moduleLabel)}${trustBadge(trust)}</h1>
         ${degradeBanner(degradations)}$prov$themeToggle<p class="cp-sub">${previews.size} preview(s)${if (systemViews > 0) " · ${formatViews(systemViews)}" else ""} · click one to view with overrides ·
-          <a href="$basePath/bundle.zip$q">download all (.zip)</a></p>
+          <a href="$basePath/bundle.zip$q">download all (.zip)</a>$formatLink</p>
         $searchBox$tabBar$gridBlock$emptyState$filterScript$about
+        """
+          .trimIndent(),
+    )
+  }
+
+  /** Native PNG↔SVG / PNG↔Remote Compose comparison page for one served session. */
+  fun comparisonPage(
+    moduleLabel: String,
+    previews: List<ServePreview>,
+    token: String,
+    sessionId: String? = null,
+    basePath: String = "",
+    isPublic: Boolean = false,
+    trust: String? = null,
+    declaredSurface: String? = null,
+    hasSvgFor: (String) -> Boolean = { false },
+    hasRemoteComposeFor: (String) -> Boolean = { false },
+    unfurl: UnfurlMetadata? = null,
+  ): String {
+    val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    val defaults = previews.filterNot { isNonDefaultState(it) || hasNonDefaultProps(it) }
+    val cards = groupPreviews(defaults)
+    val hasSvg = defaults.any { hasSvgFor(it.id) }
+    val hasRc = defaults.any { hasRemoteComposeFor(it.id) }
+    val defaultFormat = if (hasSvg) "svg" else "rc"
+    val darkFirst = isDarkFirstSystem(basePath, sessionId, declaredSurface)
+
+    fun path(preview: ServePreview, extension: String): String =
+      "$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.$extension$q"
+
+    fun attrs(
+      kind: String,
+      theme: String,
+      preview: ServePreview?,
+      available: (String) -> Boolean,
+    ): String {
+      if (preview == null || !available(preview.id)) return ""
+      return " data-$kind-$theme=\"${WebEscaping.htmlEscape(path(preview, if (kind == "png") "png" else if (kind == "svg") "svg" else "rc"))}\""
+    }
+
+    val rows =
+      cards
+        .filter { card ->
+          listOfNotNull(card.light, card.dark, card.neutral).any { p ->
+            hasSvgFor(p.id) || hasRemoteComposeFor(p.id)
+          }
+        }
+        .joinToString("\n") { card ->
+          val variants = listOfNotNull(card.light, card.dark, card.neutral)
+          val current = if (darkFirst) card.dark ?: card.default else card.default
+          val label = componentKey(current)
+          val viewer = "$basePath/p/${WebEscaping.urlEncodeSegment(current.id)}$q"
+          val ids = variants.joinToString(" ") { it.id }
+          val hay = (label + " " + ids).lowercase()
+          val pngAttrs =
+            attrs("png", "light", card.light) { true } +
+              attrs("png", "dark", card.dark) { true } +
+              attrs("png", "neutral", card.neutral) { true }
+          val svgAttrs =
+            attrs("svg", "light", card.light, hasSvgFor) +
+              attrs("svg", "dark", card.dark, hasSvgFor) +
+              attrs("svg", "neutral", card.neutral, hasSvgFor)
+          val rcAttrs =
+            attrs("rc", "light", card.light, hasRemoteComposeFor) +
+              attrs("rc", "dark", card.dark, hasRemoteComposeFor) +
+              attrs("rc", "neutral", card.neutral, hasRemoteComposeFor)
+          """
+          <tr class="cp-compare-row" data-label="${WebEscaping.htmlEscape(label)}"
+            data-hay="${WebEscaping.htmlEscape(hay)}" data-preview-ids="${WebEscaping.htmlEscape(ids)}"$pngAttrs$svgAttrs$rcAttrs>
+            <th scope="row"><a href="$viewer">${WebEscaping.htmlEscape(label)}</a></th>
+            <td><div class="cp-compare-shot"><img class="cp-compare-png" alt=""></div></td>
+            <td><div class="cp-compare-shot"><img class="cp-compare-vector" alt=""><canvas hidden></canvas></div></td>
+            <td class="cp-compare-score">waiting…</td>
+          </tr>
+          """
+            .trimIndent()
+        }
+
+    val formatControls = buildString {
+      if (hasSvg)
+        append(
+          "<button type=\"button\" class=\"cp-theme-btn\" data-compare-format=\"svg\" " +
+            "aria-pressed=\"${defaultFormat == "svg"}\">PNG ↔ SVG</button>"
+        )
+      if (hasRc)
+        append(
+          "<button type=\"button\" class=\"cp-theme-btn\" data-compare-format=\"rc\" " +
+            "aria-pressed=\"${defaultFormat == "rc"}\">PNG ↔ Remote Compose</button>"
+        )
+    }
+    val themeControls =
+      if (cards.any { it.swappable })
+        """
+        <span class="cp-compare-control-label">Theme</span>
+        <span class="cp-theme" role="group" aria-label="Comparison theme">
+          <button type="button" class="cp-theme-btn" data-compare-theme="light" aria-pressed="${!darkFirst}">Light</button>
+          <button type="button" class="cp-theme-btn" data-compare-theme="dark" aria-pressed="$darkFirst">Dark</button>
+        </span>
+        """
+          .trimIndent()
+      else ""
+
+    val empty =
+      if (rows.isEmpty())
+        "<p class=\"cp-empty\">No previews in this session carry a comparable format.</p>"
+      else
+        """
+        <div class="cp-compare-table-wrap">
+          <table class="cp-compare-table">
+            <thead><tr><th>Preview</th><th>Rendered PNG</th><th class="cp-compare-target-head">SVG</th><th>Match</th></tr></thead>
+            <tbody>$rows</tbody>
+          </table>
+        </div>
+        <p id="cp-compare-empty" class="cp-empty" hidden>No comparisons match this filter.</p>
+        """
+          .trimIndent()
+    val rootAttrs =
+      "data-default-format=\"$defaultFormat\" data-default-theme=\"${if (darkFirst) "dark" else "light"}\" " +
+        "data-theme-key=\"${WebEscaping.htmlEscape(themeStorageKey(sessionId, basePath))}\" " +
+        "data-has-svg=\"${if (hasSvg) "1" else "0"}\" data-has-rc=\"${if (hasRc) "1" else "0"}\""
+
+    return document(
+      title = "$moduleLabel — format comparison",
+      unfurlTitle = "$moduleLabel format comparison",
+      unfurlDescription = "Compare rendered PNG, SVG, and Remote Compose output for $moduleLabel",
+      unfurl = unfurl,
+      body =
+        """
+        <div id="cp-compare" $rootAttrs>
+          <h1 class="cp-head"><a href="$basePath/$q">← previews</a>${trustBadge(trust)}</h1>
+          <p class="cp-sub">Format comparison · scores use structural similarity on a fixed backdrop</p>
+          <div class="cp-compare-controls">
+            <span class="cp-theme" role="group" aria-label="Comparison format">$formatControls</span>
+            $themeControls
+          </div>
+          <div class="cp-searchbar cp-compare-searchbar">
+            <input id="cp-compare-search" class="cp-search" type="search" placeholder="Filter comparisons…" aria-label="Filter comparisons">
+            <span id="cp-compare-count" class="cp-count" role="status"></span>
+          </div>
+          $empty
+        </div>
+        ${scriptTag("format-compare.js")}
         """
           .trimIndent(),
     )
@@ -2989,6 +3137,19 @@ object ServeWeb {
         "<button type=\"button\" id=\"cp-svg-toggle\" class=\"cp-fmt-toggle\" " +
           "aria-pressed=\"false\" title=\"Show the vector (SVG) render\">SVG</button>"
       else ""
+    val svgMatch =
+      if (hasSvgExport) {
+        val compareQuery =
+          listOf(
+              "format=svg",
+              "preview=${WebEscaping.urlEncodeSegment(preview.id)}",
+              linkQuery(token, sessionId, basePath, isPublic),
+            )
+            .filter { it.isNotEmpty() }
+            .joinToString("&")
+        "<span id=\"cp-svg-match\" class=\"cp-match\" role=\"status\" aria-live=\"polite\" hidden></span>" +
+          "<a id=\"cp-svg-diff\" class=\"cp-format-link\" href=\"$basePath/compare?$compareQuery\" hidden>view diff →</a>"
+      } else ""
     // A dedicated "In-browser (Wasm)" toggle, shown only when the session carries BOTH a daemon
     // live
     // lane ([hasLiveStream]) and a Wasm app ([wasmSrc]). The single Static⇄Live toggle prefers the
@@ -3413,7 +3574,7 @@ object ServeWeb {
           $wasmToggleBtn
           $rcBackendSelector
           $svgFmtToggle
-          <span class="cp-mode-hint" id="cp-mode-hint"></span>
+          ${if (svgMatch.isNotEmpty()) "$svgMatch\n          " else ""}<span class="cp-mode-hint" id="cp-mode-hint"></span>
           <!-- The mode radios the transport JS drives; visually removed (the toggle above is the
                only visible mode control). png = static snapshot, live = daemon stream, wasm =
                in-browser app. -->
@@ -3433,7 +3594,7 @@ object ServeWeb {
       ${scriptTag("viewer-groups.js")}
       ${scriptTag("viewer-drawers.js")}
       <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>
-      ${scriptTag("viewer.js")}
+      ${if (hasSvgExport) "${scriptTag("format-compare.js")}\n      " else ""}${scriptTag("viewer.js")}
       ${scriptTag("backend-badge.js")}
       """
         .trimIndent()
