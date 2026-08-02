@@ -397,17 +397,29 @@
       "sha256": "ef4b98e2cd9ab5c5a80145472895892a626760613aa4dd9b9cd7e252c1afb523",
       "size": 128048
     },
+    "serve-viewer-catalog-knobs-scroll-full-page.dark.png": {
+      "fixture": "serve-viewer-catalog-knobs-scroll-full-page",
+      "theme": "dark",
+      "sha256": "75fc21c0737a507932d22bd03a74b6b7e0612443fca3603f9fccf1b673ef099b",
+      "size": 70387
+    },
+    "serve-viewer-catalog-knobs-scroll-full-page.light.png": {
+      "fixture": "serve-viewer-catalog-knobs-scroll-full-page",
+      "theme": "light",
+      "sha256": "aa5f4abd6201c21941b95feec917040678eca0084c85dbd0d93538a22bf35fd7",
+      "size": 70665
+    },
     "serve-viewer-catalog-knobs.dark.png": {
       "fixture": "serve-viewer-catalog-knobs",
       "theme": "dark",
-      "sha256": "36a871560c35bc77f28d20bb5973fc6b98c03278370b09dbc70eb0059e80ba46",
-      "size": 53597
+      "sha256": "6c7a38ac7135d5fe4f19c5bbdd1115d8b4b42808f4a6326da7c6aefaae521939",
+      "size": 64197
     },
     "serve-viewer-catalog-knobs.light.png": {
       "fixture": "serve-viewer-catalog-knobs",
       "theme": "light",
-      "sha256": "36a871560c35bc77f28d20bb5973fc6b98c03278370b09dbc70eb0059e80ba46",
-      "size": 53597
+      "sha256": "ca8427aa6e4f98de000f6a5205e94fac9f0c75dd3c98a0d8aa0134532dc7d0cb",
+      "size": 64315
     },
     "serve-viewer-connecting.dark.png": {
       "fixture": "serve-viewer-connecting",

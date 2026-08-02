@@ -249,6 +249,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-catalog-knobs/dark](renders/serve-viewer-catalog-knobs.dark.png) |
 | `light` | ![serve-viewer-catalog-knobs/light](renders/serve-viewer-catalog-knobs.light.png) |
 
+## serve-viewer-catalog-knobs-scroll-full-page
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-catalog-knobs-scroll-full-page/dark](renders/serve-viewer-catalog-knobs-scroll-full-page.dark.png) |
+| `light` | ![serve-viewer-catalog-knobs-scroll-full-page/light](renders/serve-viewer-catalog-knobs-scroll-full-page.light.png) |
+
 ## serve-viewer-connecting
 
 | Theme | Capture |
