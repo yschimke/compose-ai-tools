@@ -68,6 +68,12 @@ class InteractiveTouchOverlayTest {
           overrides = PreviewOverrides(touchOverlay = true),
         )
       try {
+        // Render once before dispatching input. RenderEngine.setUp() only seeds the composition;
+        // the first render installs pointerInput observers such as TouchOverlayExtension's. The
+        // real interactive flow also publishes an initial frame before accepting input. Sending
+        // the press before that bootstrap frame races observer installation on slower CI runners.
+        session.render(requestId = RenderHost.nextRequestId())
+
         // Push a single pointer down at the centre. The TouchOverlayExtension paints a cyan ring at
         // every currently-pressed pointer; rendering immediately after the press samples that ring.
         session.dispatch(
