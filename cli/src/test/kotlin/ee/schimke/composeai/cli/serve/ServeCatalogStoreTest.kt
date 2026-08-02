@@ -95,6 +95,52 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `catalog imports only canonical design rasters and keeps source URLs inert`() {
+    val root = tempRoot()
+    val referencePng = png()
+    val requested = mutableListOf<String>()
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[
+         {"path":"images/button.png"}]}],
+       "references":[{
+         "id":"button-figma","previewId":"button","label":"Figma button",
+         "raster":{"path":"design-references/button.png","width":2,"height":2},
+         "source":{"provider":"figma","uri":"https://api.figma.com/v1/files/private"},
+         "artifact":{"kind":"html","path":"mocks/button.html"}
+       }]}
+      """
+        .trimIndent()
+    val fetch: (String) -> ByteArray? = { url ->
+      requested += url
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.encodeToByteArray()
+        url.endsWith("/design-references/button.png") -> referencePng
+        url.endsWith("/images/button.png") -> png()
+        else -> null
+      }
+    }
+    val store =
+      ServeCatalogStore(
+        root = root,
+        register = { n, h -> registered[n] = h },
+        trust = { TrustStore.EMPTY },
+        fetch = fetch,
+      )
+
+    assertTrue(store.load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    val host = registered.getValue("compose-m3")
+    val reference = host.designReferencesFor("button").single()
+    assertEquals("figma", reference.source.provider)
+    assertEquals("https://api.figma.com/v1/files/private", reference.source.uri)
+    assertContentEquals(referencePng, host.designReferenceRaster("button-figma"))
+    assertFalse(requested.any { it.startsWith("https://api.figma.com") })
+    assertFalse(requested.any { it.endsWith("mocks/button.html") })
+  }
+
+  @Test
   fun `a failed re-load leaves the previously-served catalog intact`() {
     // The ServeCatalogRefresher re-runs load() on a live server; a transient total image outage
     // must NOT delete the currently-served catalog (which would 404 it until the next success).

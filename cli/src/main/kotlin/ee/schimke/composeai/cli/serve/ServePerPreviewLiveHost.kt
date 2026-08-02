@@ -86,6 +86,12 @@ class ServePerPreviewLiveHost(
 
   override val label: String = baked.label
 
+  override fun designReferencesFor(previewId: String): List<DesignReference> =
+    baked.designReferencesFor(previewId)
+
+  override fun designReferenceRaster(referenceId: String): ByteArray? =
+    baked.designReferenceRaster(referenceId)
+
   /**
    * The baked host's live-only (deferred) ids — listed previews with no PNG behind them, published
    * for on-demand render. Their requests always route to a per-preview daemon: there is no baked

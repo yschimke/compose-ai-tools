@@ -102,6 +102,13 @@ class ServeBundleHost(
   override val hasSvgExport: Boolean = figmaDir != null
 
   private val previewsDir = File(bundleDir, PREVIEWS_SUBDIR)
+  private val designReferences = ServeDesignReferenceStore.load(bundleDir, fileSystem)
+
+  override fun designReferencesFor(previewId: String): List<DesignReference> =
+    designReferences.forPreview(previewId)
+
+  override fun designReferenceRaster(referenceId: String): ByteArray? =
+    designReferences.raster(referenceId)
 
   /**
    * Per-preview `state`/`theme` from the catalog's `previews/variants.json` manifest (written by

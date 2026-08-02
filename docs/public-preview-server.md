@@ -126,6 +126,48 @@ declares themes gets a leading **Default** chip to return to. The choice persist
 
 ![Catalog theme selector (dark)](images/serve-catalog-themes-dark.png)
 
+## Design references and UI mocks
+
+A bundle or published catalog can map independently-authored UI mocks to exact preview ids. The
+landing links to **compare formats**; its **PNG ↔ Design reference** lane scores the canonical mock
+against Compose, and the focused comparison shows **Reference / Diff / Actual** plus an opacity
+overlay and source provenance.
+
+References use a provider-neutral `compose-preview-references/v1` manifest at
+`references/index.json`:
+
+```json
+{
+  "schema": "compose-preview-references/v1",
+  "references": [{
+    "id": "login-figma",
+    "previewId": "com.example.LoginPreview",
+    "label": "Login / signed out",
+    "raster": {
+      "path": "references/login-figma.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "<lowercase sha256>"
+    },
+    "source": {
+      "provider": "figma",
+      "uri": "https://www.figma.com/file/…",
+      "revision": "42",
+      "attributes": { "nodeId": "10:2" }
+    },
+    "artifact": { "kind": "html", "path": "mocks/login.html" }
+  }]
+}
+```
+
+Every producer—PNG, SVG, HTML, Figma, or another design tool—must normalize its output to the
+declared PNG before publication. `serve` reads only that inert raster. It never executes the
+artifact or follows `source.uri`; catalog import fetches the raster from the already-trusted catalog
+branch and rewrites it to a server-owned path. IDs and paths are contained, duplicate mappings are
+discarded, and an optional SHA-256 is verified before the reference is advertised. Comparisons are
+exact: a reference names one preview id, and differing image dimensions are reported rather than
+silently scaled into a misleading score.
+
 ## Two axes: trust × format
 
 These are orthogonal. **Trust** decides attribution; **format** decides what draws the pixels. Neither

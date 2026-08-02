@@ -667,6 +667,43 @@ class ServeWebFixtureTest {
         isPublic = true,
         hasSvgFor = { it.startsWith("button-filled") || it.startsWith("switch-on") },
         hasRemoteComposeFor = { it.startsWith("button-filled") },
+        referencesFor = { id ->
+          if (id.startsWith("button-filled"))
+            listOf(
+              DesignReference(
+                id = "design-$id",
+                previewId = id,
+                label = "Figma filled button",
+                raster =
+                  DesignReferenceRaster("references/design-$id.png", width = 320, height = 160),
+                source = DesignReferenceSource(provider = "figma", revision = "fixture-42"),
+              )
+            )
+          else emptyList()
+        },
+      )
+    val referenceComparison =
+      ServeWeb.referenceComparisonPage(
+        moduleLabel = "compose-m3",
+        preview = themedPreviews.first(),
+        reference =
+          DesignReference(
+            id = "design-button-filled-light",
+            previewId = themedPreviews.first().id,
+            label = "Figma filled button",
+            raster = DesignReferenceRaster("references/design-button-filled-light.png", 320, 160),
+            source =
+              DesignReferenceSource(
+                provider = "figma",
+                uri = "https://www.figma.com/file/example",
+                revision = "fixture-42",
+                attributes = mapOf("nodeId" to "12:34"),
+              ),
+          ),
+        token = token,
+        sessionId = "compose-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        isPublic = true,
       )
     // The same themed catalog served LIVE by a session whose app declares `@ThemeCatalog` themes:
     // the header's Theme control lists every configured theme (issue #2881) — the baked Light/Dark
@@ -991,6 +1028,7 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-viewer-path.html").writeText(viewerPath)
       File(pagesDir, "serve-landing-themed.html").writeText(landingThemed)
       File(pagesDir, "serve-format-compare.html").writeText(formatComparison)
+      File(pagesDir, "serve-reference-compare.html").writeText(referenceComparison)
       File(pagesDir, "serve-landing-declared-themes.html").writeText(landingDeclaredThemes)
       File(pagesDir, "serve-landing-states.html").writeText(landingStates)
       File(pagesDir, "serve-landing-sections.html").writeText(landingSections)
@@ -1106,6 +1144,7 @@ class ServeWebFixtureTest {
     assertGolden(File(pagesDir, "serve-viewer-path.html"), viewerPath)
     assertGolden(File(pagesDir, "serve-landing-themed.html"), landingThemed)
     assertGolden(File(pagesDir, "serve-format-compare.html"), formatComparison)
+    assertGolden(File(pagesDir, "serve-reference-compare.html"), referenceComparison)
     assertTrue(
       landingThemed.contains("class=\"cp-format-link\" href=\"/compare?session=compose-m3\"") &&
         landingThemed.contains(">compare formats</a>"),
@@ -1114,9 +1153,42 @@ class ServeWebFixtureTest {
     assertTrue(
       formatComparison.contains("data-compare-format=\"svg\"") &&
         formatComparison.contains("data-compare-format=\"rc\"") &&
+        formatComparison.contains("data-compare-format=\"reference\"") &&
         formatComparison.contains("data-compare-theme=\"light\"") &&
         formatComparison.contains("data-compare-theme=\"dark\""),
       "the comparison page exposes only its available formats and its baked theme pair",
+    )
+    assertTrue(
+      referenceComparison.contains(">Reference</h2>") &&
+        referenceComparison.contains(">Diff</h2>") &&
+        referenceComparison.contains(">Actual</h2>") &&
+        referenceComparison.contains("Source:</strong> figma · revision fixture-42"),
+      "the focused comparison presents the handoff triptych and provenance",
+    )
+    val referencedState =
+      ServePreview(
+        id = "button-filled__ideal__pressed__light",
+        label = "Button · Filled pressed",
+        state = "pressed",
+        theme = "light",
+      )
+    assertTrue(
+      ServeWeb.comparisonPage(
+          moduleLabel = "compose-m3",
+          previews = listOf(referencedState),
+          token = token,
+          referencesFor = { id ->
+            listOf(
+              DesignReference(
+                id = "pressed-reference",
+                previewId = id,
+                raster = DesignReferenceRaster("references/pressed.png"),
+              )
+            )
+          },
+        )
+        .contains("data-preview-ids=\"button-filled__ideal__pressed__light\""),
+      "an exactly referenced non-default state remains a comparison row",
     )
     val buttonComparison =
       formatComparison.substringAfter("data-label=\"button-filled\"").substringBefore("</tr>")
