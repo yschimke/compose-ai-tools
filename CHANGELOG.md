@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.19.18](https://github.com/yschimke/compose-ai-tools/compare/v0.19.17...v0.19.18) (2026-08-02)
+
+
+### Bug Fixes
+
+* **catalog:** pair a breakpoint sticker with its own render ([#2883](https://github.com/yschimke/compose-ai-tools/issues/2883)) ([#3155](https://github.com/yschimke/compose-ai-tools/issues/3155)) ([9cf3adc](https://github.com/yschimke/compose-ai-tools/commit/9cf3adc607dcae1a172aed76979981b5b74b976f))
+* **ci:** pin the JetStream XR consumer patch to our androidx.xr.compose ([#3152](https://github.com/yschimke/compose-ai-tools/issues/3152)) ([24634b9](https://github.com/yschimke/compose-ai-tools/commit/24634b92fd851aea28f7d5b1d782d9f77bf96788))
+* **daemon:** resolve a @Preview device to its own frame ([#2615](https://github.com/yschimke/compose-ai-tools/issues/2615)) ([#3151](https://github.com/yschimke/compose-ai-tools/issues/3151)) ([4a7430c](https://github.com/yschimke/compose-ai-tools/commit/4a7430c860dd39f676bcfeeb244a69128e0c39ea))
+* **daemon:** size a device frame from the catalog on the live lane too ([#3153](https://github.com/yschimke/compose-ai-tools/issues/3153)) ([98003e1](https://github.com/yschimke/compose-ai-tools/commit/98003e15315bd8449da5a39cbe47c787b6044f2f))
+* **serve:** always register the /wasm/ route ([#3150](https://github.com/yschimke/compose-ai-tools/issues/3150)) ([c131f95](https://github.com/yschimke/compose-ai-tools/commit/c131f956d7e8b18ae5c495195b8e860aa02be41c))
+
 ## [0.19.17](https://github.com/yschimke/compose-ai-tools/compare/v0.19.16...v0.19.17) (2026-08-01)
 
 
