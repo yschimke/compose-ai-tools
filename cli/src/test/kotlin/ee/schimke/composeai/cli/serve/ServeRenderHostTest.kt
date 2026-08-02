@@ -166,10 +166,15 @@ class ServeRenderHostTest {
       assertTrue(h.hasSvgExport, "a figma-svg-capable daemon advertises SVG export")
       assertTrue(
         session.enabledExtensionIds.containsAll(
-          listOf(ComposeFigmaSvgProduct.KIND, ComposeFigmaSvgProduct.KIND_LONG)
+          listOf(
+            ComposeFigmaSvgProduct.KIND,
+            ComposeFigmaSvgProduct.KIND_LONG,
+            ServeRenderHost.SCROLL_LONG_KIND,
+          )
         ),
-        "the host enables both figma-svg data products on open",
+        "the host enables the viewport and full-page export products on open",
       )
+      assertTrue(h.hasScrollExport, "the daemon advertises full-page PNG export")
     }
   }
 
@@ -179,6 +184,11 @@ class ServeRenderHostTest {
     // no SVG export rather than dead-ending an override .svg in a 500.
     host(FakeRenderSession(newRenderRoot(), figmaSvgAvailable = false)).use { h ->
       assertFalse(h.hasSvgExport, "no figma-svg producer ⇒ no advertised SVG export")
+      assertTrue(h.hasScrollExport, "full-page PNG remains available without figma-svg")
+      assertTrue(
+        h.renderScrollPng(previewId, PreviewOverrides()) is RenderOutcome.Ok,
+        "PNG tall capture must not depend on the SVG producer",
+      )
     }
   }
 
@@ -277,6 +287,39 @@ class ServeRenderHostTest {
     val session = FakeRenderSession(newRenderRoot())
     host(session).use { h ->
       assertTrue(h.renderScrollSvg("no.such.Preview", PreviewOverrides()) is SvgOutcome.NotFound)
+    }
+  }
+
+  @Test
+  fun `renderScrollPng returns an override-aware full-page PNG and caches it`() {
+    val session = FakeRenderSession(newRenderRoot())
+    host(session).use { h ->
+      val dark = h.renderScrollPng(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+      val light = h.renderScrollPng(previewId, PreviewOverrides(uiMode = UiMode.LIGHT))
+      val darkAgain = h.renderScrollPng(previewId, PreviewOverrides(uiMode = UiMode.DARK))
+
+      assertEquals(
+        "png-long:$previewId:DARK:null:null",
+        (dark as RenderOutcome.Ok).png.decodeToString(),
+      )
+      assertEquals(
+        "png-long:$previewId:LIGHT:null:null",
+        (light as RenderOutcome.Ok).png.decodeToString(),
+      )
+      assertContentEquals(dark.png, (darkAgain as RenderOutcome.Ok).png)
+      assertEquals(RenderOutcome.Generation.DAEMON_CACHE, darkAgain.generation)
+      assertEquals(2, session.scrollPngFetchCount.get())
+      val params = session.lastScrollPngFetchParams as JsonObject
+      assertEquals(JsonPrimitive(true), params[DataFetchParams.PARAM_FORCE_RERENDER])
+      assertNotNull(params[DataFetchParams.PARAM_OVERRIDES])
+    }
+  }
+
+  @Test
+  fun `renderScrollPng 404s an unknown preview`() {
+    val session = FakeRenderSession(newRenderRoot())
+    host(session).use { h ->
+      assertEquals(RenderOutcome.NotFound, h.renderScrollPng("no.such.Preview", PreviewOverrides()))
     }
   }
 

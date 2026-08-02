@@ -3146,6 +3146,8 @@ object ServeWeb {
      * SVG download URL alongside the PNG one. Defaults to false (a plain bundle has no SVG lane).
      */
     hasSvgExport: Boolean = false,
+    /** Whether the full-page raster/vector scroll export is available for this preview. */
+    hasScrollExport: Boolean = false,
     trust: String? = null,
     /**
      * Whether this preview carries a captured Remote Compose document
@@ -3731,7 +3733,7 @@ object ServeWeb {
             </div>
           </details>
           $sizeControlsHtml
-          ${scrollGroupHtml(hasSvgExport)}
+          ${scrollGroupHtml(hasScrollExport, hasSvgExport)}
           <details class="cp-group" data-cp-group="locale">
             <summary>Locale &amp; text</summary>
             <div class="cp-group-body">
@@ -4006,21 +4008,21 @@ $deviceControlsHtml
 
   /**
    * The overrides drawer's Scroll group: "Full page (scroll)", which points the copyable /
-   * downloadable SVG export at the full-page `?scroll=long` render of a scrolling preview (a tall
-   * Wear capsule / grown LazyColumn) instead of the viewport-sized SVG. It's an override on what
-   * gets rendered — not a link — so it sits with the other axes in the drawer rather than in the
-   * always-visible export section. The viewer JS (`withScroll`) folds it into the `.svg` URL only,
-   * hence the "SVG only" note; empty when the session can't export SVG at all.
+   * downloadable PNG and SVG exports at the full-page `?scroll=long` render of a scrolling preview
+   * (a tall Wear capsule / grown LazyColumn) instead of the viewport-sized image. It's an override
+   * on what gets rendered — not a link — so it sits with the other axes in the drawer rather than
+   * in the always-visible export section. The viewer JS (`withScroll`) folds it into both export
+   * URLs; empty when the session can't export SVG at all.
    */
-  private fun scrollGroupHtml(hasSvgExport: Boolean): String =
-    if (!hasSvgExport) ""
+  private fun scrollGroupHtml(hasScrollExport: Boolean, hasSvgExport: Boolean): String =
+    if (!hasScrollExport) ""
     else
       """
       <details class="cp-group" data-cp-group="scroll">
         <summary>Scroll</summary>
         <div class="cp-group-body">
           <label class="cp-live-row"><input id="cp-scroll-long" type="checkbox"> Full page (scroll)</label>
-          <div class="cp-knobs-head">Exports the whole scrollable page — SVG only.</div>
+          <div class="cp-knobs-head">Exports the whole scrollable page as PNG${if (hasSvgExport) " or SVG" else ""}.</div>
         </div>
       </details>
       """

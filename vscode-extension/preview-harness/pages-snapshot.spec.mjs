@@ -99,6 +99,15 @@ const FIXTURE_STATES = [
             });
         },
     },
+    {
+        // Keep the full-page export control expanded so its supported formats and future visual
+        // changes are visible to the screenshot diff instead of hidden in a closed <details>.
+        fixture: "serve-viewer-catalog-knobs",
+        suffix: "scroll-full-page",
+        apply: async (page) => {
+            await page.click('[data-cp-group="scroll"] > summary');
+        },
+    },
 ];
 
 /** Page fixtures = `fixtures/pages/*.html`, honouring the `HARNESS_FIXTURE` narrow. */
@@ -117,7 +126,8 @@ for (const fixture of listPageFixtures()) {
             // scorer), while older static-page baselines retain their historical capture contract.
             if (
                 fixture === "serve-format-compare" ||
-                fixture === "serve-reference-compare"
+                fixture === "serve-reference-compare" ||
+                fixture === "serve-viewer-catalog-knobs"
             ) {
                 for (const [name, contentType] of SERVE_ASSETS) {
                     await page.route(`**/assets/serve/**/${name}`, (route) =>

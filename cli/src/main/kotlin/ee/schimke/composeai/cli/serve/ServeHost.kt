@@ -160,6 +160,13 @@ interface ServeHost : AutoCloseable {
    */
   fun hasSvgExportFor(previewId: String): Boolean = hasSvgExport
 
+  /** Whether this host can produce the tall raster `render/scroll/long` export. */
+  val hasScrollExport: Boolean
+    get() = false
+
+  /** Per-preview refinement of [hasScrollExport]. */
+  fun hasScrollExportFor(previewId: String): Boolean = hasScrollExport
+
   /**
    * Whether a **live daemon stream** ("Live (stream)") is available for this session — distinct
    * from [canApplyOverrides], which governs whether the *snapshot* lane re-renders on override
@@ -279,6 +286,13 @@ interface ServeHost : AutoCloseable {
    */
   fun renderScrollSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome =
     SvgOutcome.NotFound
+
+  /**
+   * Render [previewId]'s full-page raster scroll capture (`render/scroll/long`) at [overrides], or
+   * [RenderOutcome.NotFound] when this host has no daemon-backed scroll producer.
+   */
+  fun renderScrollPng(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+    RenderOutcome.NotFound
 
   /**
    * Render [previewId] at [overrides] and return its declared preview slots as JSON, or

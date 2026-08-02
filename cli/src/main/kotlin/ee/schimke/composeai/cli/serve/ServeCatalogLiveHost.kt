@@ -239,6 +239,11 @@ class ServeCatalogLiveHost(
    */
   override val hasSvgExport: Boolean = baked.hasSvgExport || live.hasSvgExport
 
+  override val hasScrollExport: Boolean = live.hasScrollExport
+
+  override fun hasScrollExportFor(previewId: String): Boolean =
+    previewId in alias && live.hasScrollExportFor(alias.getValue(previewId))
+
   /**
    * Per-preview SVG availability (issue #2352): narrows [hasSvgExport] to a specific preview so the
    * viewer doesn't offer the SVG control where the `.svg` lane would 404. A daemon-twinned id can
@@ -415,6 +420,18 @@ class ServeCatalogLiveHost(
     val linked = baked.renderSvgForWeb(previewId, overrides)
     if (linked is SvgOutcome.Ok) return linked
     return renderSvg(previewId, overrides)
+  }
+
+  /** Full-page raster capture is daemon-produced; route every mapped catalog preview live. */
+  override fun renderScrollPng(previewId: String, overrides: PreviewOverrides): RenderOutcome {
+    val daemonId = alias[previewId] ?: return RenderOutcome.NotFound
+    return liveHostFor(daemonId).renderScrollPng(daemonId, overrides)
+  }
+
+  /** Full-page vector capture follows the same explicit live route as its raster counterpart. */
+  override fun renderScrollSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
+    val daemonId = alias[previewId] ?: return SvgOutcome.NotFound
+    return liveHostFor(daemonId).renderScrollSvg(daemonId, overrides)
   }
 
   /**

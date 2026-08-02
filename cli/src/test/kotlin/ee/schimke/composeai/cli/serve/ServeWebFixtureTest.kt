@@ -551,6 +551,7 @@ class ServeWebFixtureTest {
         canApplyOverrides = false,
         canRenderOverrides = true,
         hasSvgExport = true,
+        hasScrollExport = true,
         hasLiveStream = true,
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         wasmSrc = "/wasm/compose-m3/?id=button-filled",
@@ -2262,7 +2263,7 @@ class ServeWebFixtureTest {
     // format: a dedicated toggle beside the Live toggle swaps the static snapshot between the
     // raster
     // PNG and the vector SVG. Offered only when the session can export SVG (hasSvgExport).
-    val svgView = ServeWeb.viewerPage(card, token, hasSvgExport = true)
+    val svgView = ServeWeb.viewerPage(card, token, hasSvgExport = true, hasScrollExport = true)
     assertTrue(
       svgView.contains("id=\"cp-svg-toggle\"") && svgView.contains("class=\"cp-fmt-toggle\""),
       "an SVG-exporting session offers the on-screen SVG format toggle",
@@ -2285,11 +2286,22 @@ class ServeWebFixtureTest {
       "an SVG-exporting session offers the SVG download row and its Full-page toggle",
     )
 
-    // No SVG export → no SVG toggle, no SVG URL row, and no scroll toggle.
+    // Scroll export is its own capability: a PNG-only daemon still offers Full page.
+    val pngScrollView = ServeWeb.viewerPage(card, token, hasScrollExport = true)
+    assertTrue(
+      pngScrollView.contains("id=\"cp-scroll-long\"") &&
+        !pngScrollView.contains("id=\"cp-url-svg\""),
+      "a PNG-only scroll producer offers Full page without advertising SVG",
+    )
+
+    // No export capabilities → no SVG toggle, no SVG URL row, and no scroll toggle.
     val plain = ServeWeb.viewerPage(card, token)
     assertFalse(plain.contains("id=\"cp-svg-toggle\""), "no SVG toggle without SVG export")
     assertFalse(plain.contains("id=\"cp-url-svg\""), "no SVG export row without SVG support")
-    assertFalse(plain.contains("id=\"cp-scroll-long\""), "no Full-page toggle without SVG export")
+    assertFalse(
+      plain.contains("id=\"cp-scroll-long\""),
+      "no Full-page toggle without a scroll export",
+    )
   }
 
   @Test
@@ -2693,6 +2705,7 @@ class ServeWebFixtureTest {
         canApplyOverrides = false,
         canRenderOverrides = true,
         hasSvgExport = true,
+        hasScrollExport = true,
         hasLiveStream = true,
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
       )
