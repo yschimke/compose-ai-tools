@@ -29,10 +29,12 @@ on:
     paths:
       - 'vscode-extension/**'
       - 'gradle-plugin/**'
+      - 'common/**'
       - 'daemon/**'
       - 'renderers/**'
       - 'runtimes/**'
       - 'data/**'
+      - 'third_party/**'
       - 'api/preview-annotations/**'
       - 'api/preview-data-api/**'
       - 'samples/cmp/**'
