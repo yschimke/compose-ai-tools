@@ -59,29 +59,22 @@
           <details class="cp-group" data-cp-group="size">
             <summary>Size</summary>
             <div class="cp-group-body">
-              <div class="cp-size">
-                <label>Size mode
-                  <select id="cp-sizeMode" disabled>
-                    <option value="">(default)</option>
-                    <option value="fixed">Fixed size</option>
-                    <option value="max">Max</option>
-                    <option value="min">Min</option>
-                    <option value="within">Within (min–max)</option>
-                  </select>
-                </label>
-                <div class="cp-size-row" id="cp-size-fixed" hidden>
-                  <label>Width (dp)<input id="cp-fixedW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
-                  <label>Height (dp)<input id="cp-fixedH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
-                </div>
-                <div class="cp-size-row" id="cp-size-min" hidden>
-                  <label>Min width (dp)<input id="cp-minW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
-                  <label>Min height (dp)<input id="cp-minH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
-                </div>
-                <div class="cp-size-row" id="cp-size-max" hidden>
-                  <label>Max width (dp)<input id="cp-maxW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
-                  <label>Max height (dp)<input id="cp-maxH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
-                </div>
-              </div>
+              <label>Device size
+                <select id="cp-device" disabled>
+                  <option value="">(preview default)</option>
+                  <option value="id:pixel_5">Pixel 5 · compact phone (393 × 851 dp)</option>
+                  <option value="id:pixel_7">Pixel 7 · standard phone (411 × 914 dp)</option>
+                  <option value="id:pixel_fold">Pixel Fold · foldable (841 × 701 dp)</option>
+                  <option value="id:pixel_tablet">Pixel Tablet · tablet (1280 × 800 dp)</option>
+                </select>
+              </label>
+              <label>Orientation
+                <select id="cp-orientation" disabled>
+                  <option value="">(device default)</option>
+                  <option value="portrait">Portrait</option>
+                  <option value="landscape">Landscape</option>
+                </select>
+              </label>
             </div>
           </details>
           
@@ -119,29 +112,7 @@
               </label>
             </div>
           </details>
-          <details class="cp-group" data-cp-group="device">
-            <summary>Device</summary>
-            <div class="cp-group-body">
-              <label>Device
-                <select id="cp-device" disabled>
-                  <option value="">(default)</option>
-                  <option value="id:pixel_5">Pixel 5</option>
-<option value="id:pixel_7">Pixel 7</option>
-<option value="id:pixel_tablet">Pixel Tablet</option>
-<option value="id:pixel_fold">Pixel Fold</option>
-<option value="id:wearos_small_round">Wear OS (small round)</option>
-<option value="id:tv_1080p">TV 1080p</option>
-                </select>
-              </label>
-              <label>Orientation
-                <select id="cp-orientation" disabled>
-                  <option value="">(default)</option>
-                  <option value="portrait">Portrait</option>
-                  <option value="landscape">Landscape</option>
-                </select>
-              </label>
-            </div>
-          </details>
+
           
           
           
