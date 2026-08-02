@@ -32,6 +32,7 @@ class ServeCatalogLiveHostTest {
     private val streaming: Boolean = false,
     /** When true, `renderSvg` reports `NotFound` (a baked catalog missing this slug's vector). */
     private val svgNotFound: Boolean = false,
+    private val forcedRenderOutcome: RenderOutcome? = null,
     override val declaredThemes: List<ServeTheme> = emptyList(),
     override val gesturesRenderable: Boolean = false,
     /**
@@ -53,6 +54,9 @@ class ServeCatalogLiveHostTest {
       renderCalls++
       lastRenderId = previewId
       lastRenderOverrides = overrides
+      forcedRenderOutcome?.let {
+        return it
+      }
       if (previewId in liveOnlyPreviewIds) return RenderOutcome.NotFound
       return RenderOutcome.Ok("$tag:$previewId".encodeToByteArray())
     }
@@ -563,6 +567,29 @@ class ServeCatalogLiveHostTest {
         perPreviewResolve = { null },
       )
     assertEquals(5, pooled.themeRenderBurstCapacity)
+  }
+
+  @Test
+  fun `pure theme render propagates busy from monolithic fallback`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val monolithic =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "mono",
+        forcedRenderOutcome = RenderOutcome.Busy,
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = monolithic,
+        baked = baked,
+        perPreviewResolve = { null },
+      )
+
+    assertEquals(RenderOutcome.Busy, composite.render(catalogId, themeOverride()))
+    assertEquals(1, monolithic.renderCalls)
+    assertEquals(0, baked.renderCalls, "baked pixels must not masquerade as the requested theme")
   }
 
   @Test
