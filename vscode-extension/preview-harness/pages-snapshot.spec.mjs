@@ -183,6 +183,19 @@ test("contract · declared theme renders use bounded parallelism", async ({ page
     let maxActive = 0;
     let completed = 0;
     const attempts = new Map();
+    let released = false;
+
+    await page.route("**/api/theme-render-lease?*", async (route) => {
+        await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ lease: "page-lease", concurrency: 5 }),
+        });
+    });
+    await page.route("**/api/theme-render-lease/release?*", async (route) => {
+        released = true;
+        await route.fulfill({ status: 204, body: "" });
+    });
 
     await page.route("**/render/**", async (route) => {
         const url = new URL(route.request().url());
@@ -193,6 +206,7 @@ test("contract · declared theme renders use bounded parallelism", async ({ page
             });
             return;
         }
+        expect(url.searchParams.get("_themeLease")).toBe("page-lease");
 
         active++;
         maxActive = Math.max(maxActive, active);
@@ -219,6 +233,7 @@ test("contract · declared theme renders use bounded parallelism", async ({ page
     await page.getByRole("button", { name: "Brand Light" }).click();
 
     await expect.poll(() => completed, { timeout: 10_000 }).toBe(3);
-    expect(maxActive).toBe(2);
+    expect(maxActive).toBe(3);
     expect(Array.from(attempts.values())).toEqual([2, 2, 2]);
+    await expect.poll(() => released).toBe(true);
 });

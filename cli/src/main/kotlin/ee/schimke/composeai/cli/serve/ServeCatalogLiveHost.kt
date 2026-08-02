@@ -115,6 +115,18 @@ class ServeCatalogLiveHost(
   // per-variant.
   private val warmDaemonIds = ConcurrentHashMap.newKeySet<String>()
   private val warmingInFlight = ConcurrentHashMap.newKeySet<String>()
+
+  /**
+   * Completed catalog-grid theme renders, retained for this catalog host's lifetime. The
+   * per-preview daemon pool is deliberately LRU and may evict the daemon (and its local cache)
+   * between theme selections; keeping the pure `themeProvider` result here makes a repeat selection
+   * instant without pinning every preview daemon. A catalog refresh installs a new host that cannot
+   * observe this map, then closing the old host clears it. Only pure theme selections participate,
+   * so the key space is bounded by `previews × declaredThemes`; arbitrary knob combinations stay in
+   * the daemon's bounded cache.
+   */
+  private val themeRenderCache = ConcurrentHashMap<String, ByteArray>()
+  private val themeRendersInFlight = ConcurrentHashMap.newKeySet<String>()
   private val warmExecutor by lazy {
     Executors.newSingleThreadExecutor { r ->
       Thread(r, "serve-catalog-warm").apply { isDaemon = true }
@@ -208,8 +220,8 @@ class ServeCatalogLiveHost(
    */
   override fun canRenderOverridesFor(previewId: String): Boolean = previewId in alias
 
-  /** Parallel redraw is safe only when distinct previews have independent pooled daemons. */
-  override val themeRenderConcurrency: Int = if (perPreviewResolve != null) 2 else 1
+  /** A leased burst is safe only when distinct previews have independent pooled daemons. */
+  override val themeRenderBurstCapacity: Int = if (perPreviewResolve != null) 5 else 1
 
   /** The gesture override is honoured by the daemon lane, if that daemon is Android-backed. */
   override val gesturesRenderable: Boolean = live.gesturesRenderable
@@ -252,22 +264,60 @@ class ServeCatalogLiveHost(
    * re-render; an unmapped Android-only variant always replays baked.
    */
   override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
-    val daemonId =
-      daemonIdForOverrideRender(previewId, overrides) ?: return baked.render(previewId, overrides)
-    // A live-only (deferred) preview has NO baked PNG to fall back to — the daemon is its only
-    // lane, so it must be awaited even cold and its outcome returned as-is. Everything below is the
-    // baked-first routing, which such an id can't use.
-    if (previewId in liveOnlyPreviewIds) return liveHostFor(daemonId).render(daemonId, overrides)
-    // Only await the daemon when it's warm and free. A cold Android render can take minutes, and
-    // blocking the browse — and the HTTP render slot it holds — on it is what saturates the whole
-    // server. A not-yet-warm daemon serves baked now and warms in the background; a warm daemon
-    // that reports [RenderOutcome.Busy] (the bounded-lock back-off — another render in flight)
-    // likewise falls back to baked instead of pinning a slot. This mirrors [renderSvg]'s warm gate.
-    if (daemonWarmOrScheduling(daemonId)) {
-      val live = liveHostFor(daemonId).render(daemonId, overrides)
-      if (live !is RenderOutcome.Busy) return live
+    val themeCacheKey = themeCacheKey(previewId, overrides)
+    cachedRender(previewId, overrides)?.let {
+      return it
     }
-    return baked.render(previewId, overrides)
+    if (themeCacheKey != null && !themeRendersInFlight.add(themeCacheKey)) {
+      return RenderOutcome.Busy
+    }
+    try {
+      val daemonId =
+        daemonIdForOverrideRender(previewId, overrides) ?: return baked.render(previewId, overrides)
+      // A live-only (deferred) preview has NO baked PNG to fall back to — the daemon is its only
+      // lane, so it must be awaited even cold and its outcome returned as-is. Everything below is
+      // the baked-first routing, which such an id can't use.
+      if (previewId in liveOnlyPreviewIds) {
+        return cacheThemeRender(themeCacheKey, liveHostFor(daemonId).render(daemonId, overrides))
+      }
+      // Only await the daemon when it's warm and free. A cold Android render can take minutes, and
+      // blocking the browse — and the HTTP render slot it holds — on it is what saturates the whole
+      // server. Ordinary override requests may fall back to baked pixels while warming. A pure
+      // theme request must instead report Busy: returning baked pixels as a successful 200 would
+      // make the grid believe the requested theme had loaded and it would never retry.
+      if (daemonWarmOrScheduling(daemonId)) {
+        val live = liveHostFor(daemonId).render(daemonId, overrides)
+        if (live !is RenderOutcome.Busy) return cacheThemeRender(themeCacheKey, live)
+      }
+      if (themeCacheKey != null) return RenderOutcome.Busy
+      return baked.render(previewId, overrides)
+    } finally {
+      if (themeCacheKey != null) themeRendersInFlight.remove(themeCacheKey)
+    }
+  }
+
+  override fun cachedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? =
+    themeCacheKey(previewId, overrides)?.let(themeRenderCache::get)?.let { bytes ->
+      RenderOutcome.Ok(bytes, RenderOutcome.Generation.CATALOG_CACHE)
+    }
+
+  /** Cache only the catalog grid's pure theme selection, never a baked fallback or a failure. */
+  private fun cacheThemeRender(key: String?, outcome: RenderOutcome): RenderOutcome {
+    if (
+      key != null &&
+        outcome is RenderOutcome.Ok &&
+        outcome.generation != RenderOutcome.Generation.BAKED
+    ) {
+      themeRenderCache.putIfAbsent(key, outcome.png)
+    }
+    return outcome
+  }
+
+  private fun themeCacheKey(previewId: String, overrides: PreviewOverrides): String? {
+    val provider = overrides.themeProvider ?: return null
+    if (previewId !in alias || declaredThemes.none { it.providerFqn == provider }) return null
+    if (overrides != PreviewOverrides(themeProvider = provider)) return null
+    return ServeOverrides.cacheKey(previewId, overrides)
   }
 
   /**
@@ -446,6 +496,8 @@ class ServeCatalogLiveHost(
   }
 
   override fun close() {
+    themeRenderCache.clear()
+    themeRendersInFlight.clear()
     if (warmInBackground) {
       try {
         warmExecutor.shutdownNow()

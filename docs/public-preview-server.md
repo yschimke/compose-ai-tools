@@ -122,6 +122,20 @@ to an `<img src>` originates as DOM text. A theme-neutral module whose session
 declares themes gets a leading **Default** chip to return to. The choice persists per catalog
 (`cp-theme:<system>` in `localStorage`, shared with that catalog's viewer Theme select).
 
+Completed catalog-grid theme renders are cached on the catalog host, above the LRU pool of
+preview-scoped daemons. Re-selecting a theme therefore reuses its PNGs even if those daemons were
+evicted. Refreshing the catalog replaces the host, so the replacement starts with an empty cache;
+mixed theme-plus-knob renders remain in the daemon's bounded override cache rather than growing
+this catalog-lifetime cache. Dynamic theme URLs remain `no-store`, preventing a browser or shared
+proxy from replaying old-catalog pixels after refresh.
+
+The grid is serial by default. Selecting an app-declared theme asks the server for a fixed,
+60-second page lease; at most one page server-wide receives a burst, clamped to five workers and
+the server's render-slot count. Other pages remain serial, queue completion/page exit releases the
+lease early, and catalog replacement invalidates it because the grant is bound to that host
+instance. This burst changes admission only: the app/catalog still owns its bounded LRU pool of
+preview-scoped daemons.
+
 ![Catalog theme selector (light)](images/serve-catalog-themes-light.png)
 
 ![Catalog theme selector (dark)](images/serve-catalog-themes-dark.png)

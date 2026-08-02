@@ -201,6 +201,8 @@ sealed interface RenderOutcome {
   enum class Generation(val wire: String) {
     /** Read directly from a published bundle; no renderer was involved in this request. */
     BAKED("baked"),
+    /** Reused from the catalog host's theme cache, which survives per-preview daemon eviction. */
+    CATALOG_CACHE("catalog-cache"),
     /** Reused from the daemon host's in-memory override cache. */
     DAEMON_CACHE("daemon-cache"),
     /** Produced by a daemon render during this request. */
