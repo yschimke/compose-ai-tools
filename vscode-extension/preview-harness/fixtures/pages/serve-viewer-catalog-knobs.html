@@ -29,19 +29,12 @@
           <details class="cp-group" data-cp-group="appearance">
             <summary>Appearance</summary>
             <div class="cp-group-body">
-              <label>Day / Night
-                <select id="cp-uiMode">
-                  <option value="">Auto</option>
-                  <option value="light">Light</option>
-                  <option value="dark">Dark</option>
-                </select>
-              </label>
                       <label>Theme
-          <select id="cp-themeProvider" class="cp-knob-theme">
-            <option value="">(default)</option>
-            <optgroup label="Brand"><option value="com.example.BrandLightThemeCatalog">Brand Light</option>
-<option value="com.example.BrandDarkThemeCatalog">Brand Dark</option></optgroup>
-
+          <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="true">
+            <option value="light" selected>Day (Default)</option>
+            <option value="dark">Night (Default)</option>
+            <optgroup label="Brand"><option value="theme:com.example.BrandLightThemeCatalog">Brand Light</option>
+<option value="theme:com.example.BrandDarkThemeCatalog">Brand Dark</option></optgroup>
           </select>
         </label>
               <label>Background
@@ -250,19 +243,23 @@
       <script src="/assets/serve/22e-68c7d41937f0dccd/viewer-groups.js"></script>
       <script src="/assets/serve/c0f-86b66f86ed745fcf/viewer-drawers.js"></script>
       <script>(function () {
-  var el = document.getElementById("cp-uiMode");
+  var el = document.getElementById("cp-theme");
   if (!el) return;
-  // Inherit the catalog's sticky theme on the first render — but ONLY for a theme-less preview
-  // (id carries no __light/__dark segment), which would otherwise open at (default). A themed
-  // variant's theme is explicit in its deep link, so it opens on its baked (instant) pixels and
-  // is not overridden by a remembered theme — seeding it would force a daemon re-render on a
-  // fresh deep link, defeating baked-until-changed. Runs before viewer.js' initial render.
+  // Runs before viewer.js' initial render. A declared app theme is intentionally inherited even
+  // by an explicit __light/__dark preview: that path token selects the baked fallback, while the
+  // catalog's Theme choice is the active override the visitor asked to keep while navigating.
   var root = document.querySelector(".cp-viewer");
   var pid = (root && root.getAttribute("data-preview-id")) || "";
   var themed = pid.split("__").some(function (s) { return s === "light" || s === "dark"; });
   try {
     var stored = localStorage.getItem("cp-theme:compose-m3");
-    if (!themed && !el.value && (stored === "light" || stored === "dark")) el.value = stored;
+    var declared = stored && stored.indexOf("theme:") === 0;
+    var option = null;
+    Array.prototype.forEach.call(el.options, function (o) { if (o.value === stored) option = o; });
+    if (option && !option.disabled && (declared || (!themed && (stored === "light" || stored === "dark")))) {
+      el.value = stored;
+      el.setAttribute("data-theme-active", "1");
+    }
   } catch (e) {}
   // Keep the stage backing colour in step with the CHOSEN theme, so a re-render in the opposite
   // uiMode never lands a transparent sticker on a clashing surface. The server seeds
@@ -281,18 +278,16 @@
     if (m) root.setAttribute("data-bg-theme", m);
     else root.removeAttribute("data-bg-theme");
   }
-  // Round-trip: a Theme change writes this catalog's key so it remembers it, and re-syncs
-  // the stage backing colour.
+  // Round-trip every unified choice, including `theme:<provider>`, to the catalog page.
   el.addEventListener("change", function () {
-    if (el.value === "light" || el.value === "dark") {
-      try { localStorage.setItem("cp-theme:compose-m3", el.value); } catch (e) {}
-    }
+    el.setAttribute("data-theme-active", "1");
+    try { localStorage.setItem("cp-theme:compose-m3", el.value); } catch (e) {}
     syncBg();
   });
   syncBg();
 })();</script>
       <script src="/assets/serve/4ebf-c87fcc6525666985/format-compare.js"></script>
-      <script src="/assets/serve/1307f-2ecf5daf922b0713/viewer.js"></script>
+      <script src="/assets/serve/13416-ef7743bcf56a1e45/viewer.js"></script>
       <script src="/assets/serve/580-33b18e7b310ae1cc/backend-badge.js"></script>
         </main>
       </body>

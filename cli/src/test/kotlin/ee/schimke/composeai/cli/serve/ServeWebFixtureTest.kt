@@ -1917,8 +1917,9 @@ class ServeWebFixtureTest {
         landingThemed.contains("getElementById(\"cp-search\")"),
       "the themed landing's filter script drives both the theme toggle and the search box",
     )
-    // The viewer both seeds its Theme select from the catalog-scoped theme key on load (so a
-    // theme-less preview inherits the catalog choice) and writes it back on change.
+    // The viewer seeds the unified Theme select from the catalog-scoped key and writes every
+    // choice back. Declared themes are restored even for ids with an explicit baked light/dark
+    // token—the catalog selection is the active override while the id is only the fallback.
     assertTrue(
       viewer.contains("localStorage.getItem(\"cp-theme:default\""),
       "viewer seeds its Theme select from the catalog-scoped theme key on load",
@@ -1926,6 +1927,17 @@ class ServeWebFixtureTest {
     assertTrue(
       viewer.contains("localStorage.setItem(\"cp-theme:default\""),
       "viewer Theme change writes the catalog-scoped theme key",
+    )
+    assertTrue(
+      viewerThemes.contains("stored.indexOf(\"theme:\") === 0") &&
+        viewerThemes.contains("declared || (!themed") &&
+        viewerThemes.contains("el.setAttribute(\"data-theme-active\", \"1\")"),
+      "a declared catalog theme becomes the active viewer override even on a baked theme id",
+    )
+    assertTrue(
+      assetText("viewer.js").contains("return value.indexOf(\"theme:\") === 0") &&
+        assetText("viewer.js").contains("value === \"light\" || value === \"dark\""),
+      "the unified Theme value maps exclusively to themeProvider or uiMode",
     )
 
     // The backend-provenance badge names the active tier. The Wasm tier is always CMP-WASM; the
@@ -2131,8 +2143,8 @@ class ServeWebFixtureTest {
       "server-only controls are gated off while the Wasm lane is active",
     )
     assertTrue(
-      assetText("viewer.js").contains("themeProviderEl.disabled = onWasm ||"),
-      "the app-theme selector is disabled while the Wasm lane is active",
+      assetText("viewer.js").contains("var canProviderTheme = hasDeclaredThemes && !onWasm"),
+      "declared options in the unified Theme selector are disabled on the Wasm lane",
     )
 
     // Case B — wasm app but NO daemon lane: the single Static⇄Live toggle already drops into wasm
@@ -2533,16 +2545,17 @@ class ServeWebFixtureTest {
       "the Static⇄Live toggle is disabled on a pure static bundle",
     )
     assertTrue(
-      staticView.contains("id=\"cp-uiMode\" disabled"),
-      "Day/Night disabled without a Wasm app",
+      staticView.contains("data-has-declared-themes=\"false\" disabled"),
+      "Theme disabled without a renderer or Wasm app",
     )
     assertFalse(
       staticView.contains("id=\"cp-talkBack\""),
       "no live stream ⇒ the live-only overlay toggles are omitted entirely, not left dead",
     )
-    assertFalse(
-      staticView.contains("id=\"cp-themeProvider\""),
-      "no declared themes ⇒ the App theme selector is omitted entirely",
+    assertTrue(
+      staticView.contains(">Day (Default)</option>") &&
+        staticView.contains(">Night (Default)</option>"),
+      "the unified Theme selector always carries the two default modes",
     )
 
     // Static + Wasm: theme, font scale, and locale go LIVE (the in-browser app honours them) — only
@@ -2553,7 +2566,10 @@ class ServeWebFixtureTest {
         token,
         wasmSrc = "/wasm/compose-m3/?id=card-filled",
       )
-    assertTrue(wasmView.contains("id=\"cp-uiMode\">"), "Day/Night enabled with a Wasm app")
+    assertTrue(
+      wasmView.contains("data-has-declared-themes=\"false\">"),
+      "Theme is enabled with a Wasm app",
+    )
     assertTrue(
       wasmView.contains("step=\"0.1\" value=\"1.0\">"),
       "font scale enabled with a Wasm app",
@@ -2876,32 +2892,36 @@ class ServeWebFixtureTest {
         canApplyOverrides = true,
         declaredThemes = themes,
       )
-    // The selector exists and carries each provider FQN as an option value with the human name.
+    // One selector carries the default day/night modes and each provider FQN with its human name.
     assertTrue(
-      view.contains("id=\"cp-themeProvider\""),
-      "declared themes render an App theme select",
+      view.contains("id=\"cp-theme\"") &&
+        view.contains(">Day (Default)</option>") &&
+        view.contains(">Night (Default)</option>"),
+      "declared themes share one selector with the two default modes",
     )
     assertTrue(
-      view.contains("<option value=\"com.example.BrandLightThemeCatalog\">Brand Light</option>"),
+      view.contains(
+        "<option value=\"theme:com.example.BrandLightThemeCatalog\">Brand Light</option>"
+      ),
       "each declared theme is an option keyed by its provider FQN",
     )
     // `@ThemeCatalog(group=…)` buckets themes into <optgroup>s; an ungrouped theme stays flat.
     assertTrue(view.contains("<optgroup label=\"Brand\">"), "grouped themes get an <optgroup>")
     assertTrue(
       view.contains(
-        "<option value=\"com.example.HighContrastThemeCatalog\">High Contrast</option>"
+        "<option value=\"theme:com.example.HighContrastThemeCatalog\">High Contrast</option>"
       ),
       "an ungrouped theme is a flat option",
     )
     // Enabled on a daemon host and routed like a knob (the daemon path, never the wasm
     // auto-enable).
     assertFalse(
-      view.contains("id=\"cp-themeProvider\" class=\"cp-knob-theme\" disabled"),
+      view.contains("data-has-declared-themes=\"true\" disabled"),
       "the theme selector is enabled on a daemon-backed host",
     )
     assertTrue(
-      assetText("viewer.js").contains("themeSel.addEventListener(\"change\", onKnobChanged)"),
-      "the theme selector routes its change through the daemon (knob) path",
+      assetText("viewer.js").contains("if (chosenThemeProvider()) onKnobChanged();"),
+      "declared choices route through the daemon (knob) path",
     )
     assertTrue(
       assetText("viewer.js").contains("parts.push(\"themeProvider=\""),
@@ -2911,7 +2931,8 @@ class ServeWebFixtureTest {
     // A static bundle can't load a provider, so the selector renders disabled (informational).
     val staticThemed = ServeWeb.viewerPage(previews.first(), token, declaredThemes = themes)
     assertTrue(
-      staticThemed.contains("id=\"cp-themeProvider\" class=\"cp-knob-theme\" disabled"),
+      staticThemed.contains("data-has-declared-themes=\"true\" disabled") &&
+        staticThemed.contains("value=\"theme:com.example.BrandLightThemeCatalog\" disabled"),
       "the theme selector is disabled on a static bundle (no daemon to apply it)",
     )
   }
