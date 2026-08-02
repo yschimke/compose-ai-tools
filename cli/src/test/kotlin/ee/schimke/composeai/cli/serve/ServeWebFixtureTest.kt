@@ -690,7 +690,7 @@ class ServeWebFixtureTest {
             ServeTheme("High Contrast", "com.example.HighContrastThemeCatalog"),
           ),
         canRenderThemeFor = { true },
-        themeRenderConcurrency = 2,
+        themeRenderBurstCapacity = 5,
       )
     // A catalog whose components carry baked non-default states: the landing folds each to ONE card
     // (the default), the non-default states reachable via the viewer switcher.
@@ -1228,22 +1228,31 @@ class ServeWebFixtureTest {
       landingDeclaredThemes.contains("data-base-src"),
       "no render URL is round-tripped through a DOM attribute",
     )
-    // The catalog has a bounded per-preview daemon pool, so themed thumbnails use a conservative
-    // two-worker queue: enough parallelism to avoid multi-minute catalog redraws without firing a
-    // grid-sized burst. Each worker advances on image settlement and retries shed requests with
-    // bounded exponential backoff and a cache-busting URL.
+    // A declared-theme selection asks the server for one short-lived page lease. A grant may run
+    // five workers; denial/failure stays serial. Retries keep the same lease capability.
     assertTrue(
       landingDeclaredThemes.contains("var job = {") &&
-        landingDeclaredThemes.contains("var themeRenderConcurrency = 2") &&
+        landingDeclaredThemes.contains(
+          "var themeLeaseUrl = \"/api/theme-render-lease?session=compose-m3\""
+        ) &&
         landingDeclaredThemes.contains("var themeRenderRetries = 3") &&
-        landingDeclaredThemes.contains("function runThemeWorker(queue, gen)") &&
-        landingDeclaredThemes.contains("runThemeQueue(themeQueue, themeQueueGen)") &&
-        landingDeclaredThemes.contains("Math.min(themeRenderConcurrency, queue.length)") &&
+        landingDeclaredThemes.contains("function acquireThemeLease(gen, callback)") &&
+        landingDeclaredThemes.contains("Math.max(1, Math.min(5, grant.concurrency))") &&
+        landingDeclaredThemes.contains("function runThemeWorker(queue, gen, batch)") &&
+        landingDeclaredThemes.contains(
+          "runThemeQueue(themeQueue, themeQueueGen, lease, concurrency)"
+        ) &&
+        landingDeclaredThemes.contains("var workers = Math.min(concurrency, queue.length)") &&
+        landingDeclaredThemes.contains("&_themeLease=\" + encodeURIComponent(lease)") &&
         landingDeclaredThemes.contains("job.src = job.baseSrc + \"&_retry=\" + job.retries") &&
         landingDeclaredThemes.contains("if (gen !== themeGen) return;") &&
-        landingDeclaredThemes.contains("queue.push(job);\n        runThemeWorker(queue, gen)") &&
-        landingDeclaredThemes.contains("1000 * Math.pow(2, job.retries)"),
-      "themed renders use a bounded worker pool with bounded backoff retries",
+        landingDeclaredThemes.contains(
+          "queue.push(job);\n        runThemeWorker(queue, gen, batch)"
+        ) &&
+        landingDeclaredThemes.contains("1000 * Math.pow(2, job.retries)") &&
+        landingDeclaredThemes.contains("releaseThemeLease(batch.lease, false)") &&
+        landingDeclaredThemes.contains("navigator.sendBeacon(url, \"\")"),
+      "themed renders use a leased worker burst with bounded backoff retries",
     )
     assertTrue(
       landingDeclaredThemes.contains("c.classList.add(\"cp-reloading\")") &&

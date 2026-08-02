@@ -932,10 +932,10 @@ object ServeWeb {
      * emitted at all.
      */
     themeBaseJs: String = "",
-    themeRenderConcurrency: Int = 1,
+    themeLeaseUrl: String = "",
   ): String {
     val hasDeclaredThemes = themeBaseJs.isNotEmpty()
-    val safeThemeRenderConcurrency = themeRenderConcurrency.coerceIn(1, 2)
+    val themeLeaseUrlJs = WebEscaping.jsString(themeLeaseUrl)
     // The stored choice is one of `light` / `dark` (a baked swap), `default` (the catalog's own
     // renders), or `theme:<providerFqn>` (an app-declared @ThemeCatalog theme, applied by
     // re-pointing each daemon-twinned card's thumbnail at a `?themeProvider=` render).
@@ -960,21 +960,50 @@ object ServeWeb {
         """
           .trimIndent()
       else ""
-    // The declared-theme lane. A catalog host backed by a bounded pool of per-preview daemons may
-    // advertise a small amount of parallelism; a monolithic host advertises one and stays serial.
-    // Keep the browser cap deliberately below the server/pool caps: opening an Android daemon is
-    // expensive, and an unbounded grid burst would still shed requests (503 "render busy") or
-    // create a JVM storm. Each worker advances only after its image settles; failures get bounded
-    // delayed retries with cache-busting URLs. Baked light/dark swaps never queue: those bytes are
-    // already published. themeGen abandons all workers the moment a new theme is chosen.
+    // The declared-theme lane is serial unless the server grants this page a short-lived burst
+    // lease. The server clamps a grant to its render capacity and one page at a time, so opening
+    // another catalog tab cannot multiply a five-worker burst into a JVM storm. Each worker
+    // advances only after its image settles; failures get bounded delayed retries with
+    // cache-busting URLs. Baked light/dark swaps never queue. themeGen abandons all workers the
+    // moment a new theme is chosen and releases that generation's lease.
     val themeRenderInit =
       if (hasDeclaredThemes)
         """
         var themeBase = $themeBaseJs;
         var themeGen = 0;
-        var themeRenderConcurrency = $safeThemeRenderConcurrency;
+        var themeLeaseUrl = $themeLeaseUrlJs;
+        var themeLease = null;
         var themeRenderRetries = 3;
-        function runThemeWorker(queue, gen) {
+        function releaseThemeLease(lease, beacon) {
+          if (!lease || !themeLeaseUrl) return;
+          if (themeLease === lease) themeLease = null;
+          var queryAt = themeLeaseUrl.indexOf("?");
+          var url = queryAt === -1
+            ? themeLeaseUrl + "/release"
+            : themeLeaseUrl.slice(0, queryAt) + "/release" + themeLeaseUrl.slice(queryAt);
+          url += (url.indexOf("?") === -1 ? "?" : "&") + "lease=" + encodeURIComponent(lease);
+          if (beacon && navigator.sendBeacon) navigator.sendBeacon(url, "");
+          else fetch(url, { method: "POST", credentials: "same-origin", keepalive: true }).catch(function () {});
+        }
+        function acquireThemeLease(gen, callback) {
+          if (!themeLeaseUrl) { callback(null, 1); return; }
+          fetch(themeLeaseUrl, { method: "POST", credentials: "same-origin" })
+            .then(function (response) { return response.ok ? response.json() : null; })
+            .then(function (grant) {
+              var lease = grant && typeof grant.lease === "string" ? grant.lease : null;
+              var concurrency = grant && Number.isFinite(grant.concurrency)
+                ? Math.max(1, Math.min(5, grant.concurrency)) : 1;
+              if (gen !== themeGen) { releaseThemeLease(lease, false); return; }
+              themeLease = lease;
+              callback(lease, concurrency);
+            })
+            .catch(function () { if (gen === themeGen) callback(null, 1); });
+        }
+        function finishThemeJob(batch) {
+          batch.remaining--;
+          if (batch.remaining === 0) releaseThemeLease(batch.lease, false);
+        }
+        function runThemeWorker(queue, gen, batch) {
           if (gen !== themeGen) return;
           var job = queue.shift();
           if (!job) return;
@@ -993,22 +1022,26 @@ object ServeWeb {
               setTimeout(function () {
                 if (gen !== themeGen) return;
                 queue.push(job);
-                runThemeWorker(queue, gen);
+                runThemeWorker(queue, gen, batch);
               }, 1000 * Math.pow(2, job.retries));
               return;
             }
             job.card.classList.remove("cp-reloading");
             job.card.removeAttribute("aria-busy");
-            runThemeWorker(queue, gen);
+            finishThemeJob(batch);
+            runThemeWorker(queue, gen, batch);
           }
           img.onload = function () { next(true); };
           img.onerror = function () { next(false); };
           img.src = job.src;
         }
-        function runThemeQueue(queue, gen) {
-          var workers = Math.min(themeRenderConcurrency, queue.length);
-          for (var i = 0; i < workers; i++) runThemeWorker(queue, gen);
+        function runThemeQueue(queue, gen, lease, concurrency) {
+          var batch = { lease: lease, remaining: queue.length };
+          if (!batch.remaining) { releaseThemeLease(lease, false); return; }
+          var workers = Math.min(concurrency, queue.length);
+          for (var i = 0; i < workers; i++) runThemeWorker(queue, gen, batch);
         }
+        window.addEventListener("pagehide", function () { releaseThemeLease(themeLease, true); });
         """
           .trimIndent()
       else ""
@@ -1034,6 +1067,7 @@ object ServeWeb {
       if (hasDeclaredThemes)
         """
         var provider = theme.indexOf("theme:") === 0 ? theme.slice(6) : "";
+        releaseThemeLease(themeLease, false);
         themeGen++;
         var themeQueue = [];
         var themeDeferredQueue = [];
@@ -1066,7 +1100,15 @@ object ServeWeb {
             (themeVisible ? themeQueue : themeDeferredQueue).push(job);
           });
           themeQueue = themeQueue.concat(themeDeferredQueue);
-          runThemeQueue(themeQueue, themeQueueGen);
+          acquireThemeLease(themeQueueGen, function (lease, concurrency) {
+            if (lease) {
+              themeQueue.forEach(function (job) {
+                job.baseSrc += "&_themeLease=" + encodeURIComponent(lease);
+                job.src = job.baseSrc;
+              });
+            }
+            runThemeQueue(themeQueue, themeQueueGen, lease, concurrency);
+          });
           return;
         }
         """
@@ -2586,11 +2628,11 @@ object ServeWeb {
      */
     canRenderThemeFor: (String) -> Boolean = { false },
     /**
-     * Number of themed thumbnail workers this host can safely sustain. Monolithic daemons pass one;
-     * catalog composites with independent per-preview daemons pass a conservative two. Clamped so a
-     * future caller cannot accidentally turn a landing page into an unbounded render burst.
+     * Maximum themed-thumbnail burst supported by this host. Values above one enable the
+     * server-issued page lease endpoint; actual concurrency is granted dynamically and clamped by
+     * server render capacity. Monolithic daemons remain serial.
      */
-    themeRenderConcurrency: Int = 1,
+    themeRenderBurstCapacity: Int = 1,
     /**
      * Per-preview engagement counts for this running server. The map is additive UI/API metadata:
      * missing or zero entries render no badge.
@@ -2602,6 +2644,8 @@ object ServeWeb {
     unfurl: UnfurlMetadata? = null,
   ): String {
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
+    val themeLeaseUrl =
+      if (themeRenderBurstCapacity > 1) "$basePath/api/theme-render-lease$q" else ""
     // A dark-first system (Wear) puts every unthemed card on the dark stage; explicit light/dark
     // variants keep their own token. Only affects the background — the Light/Dark filter axis below
     // still keys off the explicit-only [cardTheme].
@@ -2811,7 +2855,7 @@ object ServeWeb {
           themeStorageKey(sessionId, basePath),
           tabStorageKey(sessionId, basePath),
           themeBaseJs,
-          themeRenderConcurrency,
+          themeLeaseUrl,
         )}</script>"
       else ""
     val formatLink =

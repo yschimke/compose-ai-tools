@@ -183,6 +183,13 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `theme burst lease routes deny hosts that only support serial rendering`() {
+    assertEquals(409, post("/compose-m3/api/theme-render-lease").first)
+    assertEquals(409, post("/api/theme-render-lease?session=compose-m3").first)
+    assertEquals(400, post("/compose-m3/api/theme-render-lease/release").first)
+  }
+
+  @Test
   fun `concurrent catalog refresh requests coalesce before remote work`() {
     blockRefresh = true
     val executor = Executors.newSingleThreadExecutor()

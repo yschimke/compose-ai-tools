@@ -226,6 +226,8 @@ class ServeHttpServer(
   private val startedAtMillis: Long = System.currentTimeMillis()
 
   private val renderSemaphore = Semaphore(renderSlots)
+  private val unleasedThemeSemaphore = Semaphore(1)
+  private val themeRenderLeases = ThemeRenderLeaseManager(renderSlots)
 
   /** Catalog ids with a manual branch check in flight; public callers coalesce at this boundary. */
   private val catalogRefreshesInFlight = ConcurrentHashMap.newKeySet<String>()
@@ -609,6 +611,10 @@ class ServeHttpServer(
 
         get("/api/previews") { handleApiPreviews(sessionInPath = false) }
         get("/{system}/api/previews") { handleApiPreviews(sessionInPath = true) }
+        post("/api/theme-render-lease") { handleThemeRenderLease(sessionInPath = false) }
+        post("/{system}/api/theme-render-lease") { handleThemeRenderLease(sessionInPath = true) }
+        post("/api/theme-render-lease/release") { handleThemeRenderLeaseRelease() }
+        post("/{system}/api/theme-render-lease/release") { handleThemeRenderLeaseRelease() }
 
         // Storybook-compatibility surface (see [StorybookCompat]). `/index.json` is the stories
         // index every downstream visual tool (Chromatic, Percy, storycap/reg-suit, BackstopJS, the
@@ -1168,7 +1174,7 @@ class ServeHttpServer(
           // a daemon-twinned card can actually re-render one, hence the per-preview predicate.
           declaredThemes = renderHost.declaredThemes,
           canRenderThemeFor = { id -> renderHost.canRenderOverridesFor(id) },
-          themeRenderConcurrency = renderHost.themeRenderConcurrency,
+          themeRenderBurstCapacity = renderHost.themeRenderBurstCapacity,
           engagement = previewEngagement(selectedSessionId, renderHost.previews),
           systemViews = systemViews,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = heroUrl),
@@ -1176,6 +1182,41 @@ class ServeHttpServer(
         ContentType.Text.Html,
       )
     }
+  }
+
+  /** Grant one catalog page a short-lived themed-thumbnail burst; all other pages stay serial. */
+  private suspend fun RoutingContext.handleThemeRenderLease(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    val sessionId = selectedSessionId(sessionInPath)
+    withLeasedSession(sessionId) { renderHost ->
+      val grant =
+        themeRenderLeases.acquire(
+          sessionId = sessionId,
+          hostIdentity = renderHost,
+          requestedCapacity = renderHost.themeRenderBurstCapacity,
+        )
+      if (grant == null) {
+        call.response.headers.append(HttpHeaders.RetryAfter, "2")
+        call.respondText("theme render burst unavailable", status = HttpStatusCode.Conflict)
+      } else {
+        call.respondText(
+          """{"lease":"${grant.token}","concurrency":${grant.concurrency},"expiresAt":${grant.expiresAtMillis}}""",
+          ContentType.Application.Json,
+        )
+      }
+    }
+  }
+
+  /** Best-effort page/queue release; fixed lease expiry remains authoritative. */
+  private suspend fun RoutingContext.handleThemeRenderLeaseRelease() {
+    if (rejectBadToken()) return
+    val lease = call.request.queryParameters["lease"]
+    if (lease.isNullOrBlank()) {
+      call.respondText("missing lease", status = HttpStatusCode.BadRequest)
+      return
+    }
+    themeRenderLeases.release(lease)
+    call.respond(HttpStatusCode.NoContent)
   }
 
   /** `GET /compare` and `GET /{system}/compare`: native format-fidelity comparison gallery. */
@@ -2474,17 +2515,59 @@ class ServeHttpServer(
           // concurrent renders (default = CPU count) so a small box sheds a storm instead of
           // thrashing: wait briefly for a slot, else 503 + Retry-After. A null outcome signals the
           // wait timed out.
+          // Catalog-host theme cache hits are memory reads and must not be rejected merely because
+          // unrelated live renders occupy every global slot. [render] rechecks after admission to
+          // close the race with a render that completes between these two calls.
+          val cached = renderHost.cachedRender(previewId, overrides)
+          val pureThemeProvider =
+            overrides.themeProvider?.takeIf {
+              overrides == PreviewOverrides(themeProvider = it) &&
+                renderHost.declaredThemes.any { theme -> theme.providerFqn == it }
+            }
+          val leaseToken = call.request.queryParameters["_themeLease"]
+          val leasePermit =
+            if (cached == null && pureThemeProvider != null && leaseToken != null) {
+              themeRenderLeases.admit(leaseToken, sessionId, renderHost)
+            } else {
+              null
+            }
+          if (
+            cached == null && pureThemeProvider != null && leaseToken != null && leasePermit == null
+          ) {
+            call.response.headers.append(HttpHeaders.RetryAfter, "2")
+            call.respondText(
+              "theme render lease expired or saturated",
+              status = HttpStatusCode.TooManyRequests,
+            )
+            return@withLeasedSession
+          }
+          val needsSerialThemePermit =
+            cached == null && pureThemeProvider != null && leaseToken == null
           val outcome =
-            withContext(Dispatchers.IO) {
-              if (!renderSemaphore.tryAcquire(RENDER_QUEUE_WAIT_SECONDS, TimeUnit.SECONDS)) {
-                null
-              } else {
-                try {
-                  renderHost.render(previewId, overrides)
-                } finally {
-                  renderSemaphore.release()
+            try {
+              cached
+                ?: withContext(Dispatchers.IO) {
+                  val serialAcquired =
+                    !needsSerialThemePermit ||
+                      unleasedThemeSemaphore.tryAcquire(RENDER_QUEUE_WAIT_SECONDS, TimeUnit.SECONDS)
+                  if (!serialAcquired) {
+                    null
+                  } else if (
+                    !renderSemaphore.tryAcquire(RENDER_QUEUE_WAIT_SECONDS, TimeUnit.SECONDS)
+                  ) {
+                    if (needsSerialThemePermit) unleasedThemeSemaphore.release()
+                    null
+                  } else {
+                    try {
+                      renderHost.render(previewId, overrides)
+                    } finally {
+                      renderSemaphore.release()
+                      if (needsSerialThemePermit) unleasedThemeSemaphore.release()
+                    }
+                  }
                 }
-              }
+            } finally {
+              leasePermit?.close()
             }
           when (outcome) {
             null -> {
@@ -2496,7 +2579,8 @@ class ServeHttpServer(
             }
             RenderOutcome.Busy -> {
               // Daemon mid-render; backed off in ~DAEMON_BUSY_WAIT instead of pinning this slot.
-              // A catalog host serves baked instead of returning Busy; a bare bundle host 503s.
+              // Pure catalog-theme requests also use this retry signal: serving baked pixels with
+              // a successful status would leave that thumbnail on the wrong theme permanently.
               call.response.headers.append(HttpHeaders.RetryAfter, "2")
               call.respondText(
                 "render busy; retry shortly",

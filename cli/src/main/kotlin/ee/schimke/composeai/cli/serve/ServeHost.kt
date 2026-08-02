@@ -93,13 +93,20 @@ interface ServeHost : AutoCloseable {
   fun canRenderOverridesFor(previewId: String): Boolean = canRenderOverrides
 
   /**
-   * Safe browser-side concurrency for a catalog-wide themed thumbnail redraw. A plain daemon has
-   * one render lock, so the default remains serial. A composite backed by independent per-preview
-   * daemons may opt into a small worker pool without making monolithic fallback hosts return baked
-   * pixels for concurrent override requests.
+   * Maximum browser-side concurrency a short-lived themed-thumbnail burst may request. A plain
+   * daemon has one render lock, so the default remains serial. A composite backed by independent
+   * per-preview daemons may opt into a larger temporary burst; the HTTP server still clamps it to
+   * its render slots and grants at most one page a burst lease at a time.
    */
-  val themeRenderConcurrency: Int
+  val themeRenderBurstCapacity: Int
     get() = 1
+
+  /**
+   * Return an already-materialised PNG without entering the HTTP render admission queue. Hosts with
+   * no cache return null. [render] remains the authoritative path and must recheck its cache after
+   * admission to close the lookup/render race.
+   */
+  fun cachedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? = null
 
   /**
    * Aggregate render-performance counters for this host's live render lane, surfaced on `/status`

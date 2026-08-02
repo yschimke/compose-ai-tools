@@ -98,9 +98,39 @@ if (!known && themeBtns.length) theme = themeBtns[0].getAttribute("data-theme-ch
 var appliedTheme = null;
 var themeBase = ["/render/button-filled__ideal__default__light.png?session=compose-m3", "/render/switch-on__ideal__default__light.png?session=compose-m3", "/render/badge.png?session=compose-m3"];
 var themeGen = 0;
-var themeRenderConcurrency = 2;
+var themeLeaseUrl = "/api/theme-render-lease?session=compose-m3";
+var themeLease = null;
 var themeRenderRetries = 3;
-function runThemeWorker(queue, gen) {
+function releaseThemeLease(lease, beacon) {
+  if (!lease || !themeLeaseUrl) return;
+  if (themeLease === lease) themeLease = null;
+  var queryAt = themeLeaseUrl.indexOf("?");
+  var url = queryAt === -1
+    ? themeLeaseUrl + "/release"
+    : themeLeaseUrl.slice(0, queryAt) + "/release" + themeLeaseUrl.slice(queryAt);
+  url += (url.indexOf("?") === -1 ? "?" : "&") + "lease=" + encodeURIComponent(lease);
+  if (beacon && navigator.sendBeacon) navigator.sendBeacon(url, "");
+  else fetch(url, { method: "POST", credentials: "same-origin", keepalive: true }).catch(function () {});
+}
+function acquireThemeLease(gen, callback) {
+  if (!themeLeaseUrl) { callback(null, 1); return; }
+  fetch(themeLeaseUrl, { method: "POST", credentials: "same-origin" })
+    .then(function (response) { return response.ok ? response.json() : null; })
+    .then(function (grant) {
+      var lease = grant && typeof grant.lease === "string" ? grant.lease : null;
+      var concurrency = grant && Number.isFinite(grant.concurrency)
+        ? Math.max(1, Math.min(5, grant.concurrency)) : 1;
+      if (gen !== themeGen) { releaseThemeLease(lease, false); return; }
+      themeLease = lease;
+      callback(lease, concurrency);
+    })
+    .catch(function () { if (gen === themeGen) callback(null, 1); });
+}
+function finishThemeJob(batch) {
+  batch.remaining--;
+  if (batch.remaining === 0) releaseThemeLease(batch.lease, false);
+}
+function runThemeWorker(queue, gen, batch) {
   if (gen !== themeGen) return;
   var job = queue.shift();
   if (!job) return;
@@ -119,22 +149,26 @@ function runThemeWorker(queue, gen) {
       setTimeout(function () {
         if (gen !== themeGen) return;
         queue.push(job);
-        runThemeWorker(queue, gen);
+        runThemeWorker(queue, gen, batch);
       }, 1000 * Math.pow(2, job.retries));
       return;
     }
     job.card.classList.remove("cp-reloading");
     job.card.removeAttribute("aria-busy");
-    runThemeWorker(queue, gen);
+    finishThemeJob(batch);
+    runThemeWorker(queue, gen, batch);
   }
   img.onload = function () { next(true); };
   img.onerror = function () { next(false); };
   img.src = job.src;
 }
-function runThemeQueue(queue, gen) {
-  var workers = Math.min(themeRenderConcurrency, queue.length);
-  for (var i = 0; i < workers; i++) runThemeWorker(queue, gen);
+function runThemeQueue(queue, gen, lease, concurrency) {
+  var batch = { lease: lease, remaining: queue.length };
+  if (!batch.remaining) { releaseThemeLease(lease, false); return; }
+  var workers = Math.min(concurrency, queue.length);
+  for (var i = 0; i < workers; i++) runThemeWorker(queue, gen, batch);
 }
+window.addEventListener("pagehide", function () { releaseThemeLease(themeLease, true); });
       function apply() {
         themeBtns.forEach(function (b) {
   b.setAttribute("aria-pressed", b.getAttribute("data-theme-choice") === theme ? "true" : "false");
@@ -160,6 +194,7 @@ function applyThemeChoice() {
   if (theme === appliedTheme) return;
   appliedTheme = theme;
   var provider = theme.indexOf("theme:") === 0 ? theme.slice(6) : "";
+  releaseThemeLease(themeLease, false);
   themeGen++;
   var themeQueue = [];
   var themeDeferredQueue = [];
@@ -192,7 +227,15 @@ function applyThemeChoice() {
       (themeVisible ? themeQueue : themeDeferredQueue).push(job);
     });
     themeQueue = themeQueue.concat(themeDeferredQueue);
-    runThemeQueue(themeQueue, themeQueueGen);
+    acquireThemeLease(themeQueueGen, function (lease, concurrency) {
+      if (lease) {
+        themeQueue.forEach(function (job) {
+          job.baseSrc += "&_themeLease=" + encodeURIComponent(lease);
+          job.src = job.baseSrc;
+        });
+      }
+      runThemeQueue(themeQueue, themeQueueGen, lease, concurrency);
+    });
     return;
   }
   var k = theme === "dark" ? "d" : "l";

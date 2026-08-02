@@ -32,6 +32,7 @@ class ServeCatalogLiveHostTest {
     private val streaming: Boolean = false,
     /** When true, `renderSvg` reports `NotFound` (a baked catalog missing this slug's vector). */
     private val svgNotFound: Boolean = false,
+    private val forcedRenderOutcome: RenderOutcome? = null,
     override val declaredThemes: List<ServeTheme> = emptyList(),
     override val gesturesRenderable: Boolean = false,
     /**
@@ -46,11 +47,16 @@ class ServeCatalogLiveHostTest {
     var lastRenderOverrides: PreviewOverrides? = null
     var lastSvgId: String? = null
     var lastStreamId: String? = null
+    var renderCalls = 0
     var closed = false
 
     override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
+      renderCalls++
       lastRenderId = previewId
       lastRenderOverrides = overrides
+      forcedRenderOutcome?.let {
+        return it
+      }
       if (previewId in liveOnlyPreviewIds) return RenderOutcome.NotFound
       return RenderOutcome.Ok("$tag:$previewId".encodeToByteArray())
     }
@@ -125,6 +131,11 @@ class ServeCatalogLiveHostTest {
   /** A knob-bearing override — the sole case the baked PNG can't satisfy. */
   private fun knobOverride() =
     PreviewOverrides(namedOverrides = mapOf("label" to PreviewOverrideValue.StringValue("Tap me")))
+
+  private fun themeOverride(provider: String = "com.example.BrandDark") =
+    PreviewOverrides(themeProvider = provider)
+
+  private val brandTheme = ServeTheme("Brand Dark", "com.example.BrandDark")
 
   @Test
   fun `canRenderOverridesFor is true only for aliased previews`() {
@@ -546,7 +557,7 @@ class ServeCatalogLiveHostTest {
   @Test
   fun `theme redraw is parallel only when the per-preview lane is available`() {
     val (monolithicOnly, live, baked) = host()
-    assertEquals(1, monolithicOnly.themeRenderConcurrency)
+    assertEquals(1, monolithicOnly.themeRenderBurstCapacity)
 
     val pooled =
       ServeCatalogLiveHost(
@@ -555,7 +566,102 @@ class ServeCatalogLiveHostTest {
         baked = baked,
         perPreviewResolve = { null },
       )
-    assertEquals(2, pooled.themeRenderConcurrency)
+    assertEquals(5, pooled.themeRenderBurstCapacity)
+  }
+
+  @Test
+  fun `pure theme render propagates busy from monolithic fallback`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val monolithic =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "mono",
+        forcedRenderOutcome = RenderOutcome.Busy,
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = monolithic,
+        baked = baked,
+        perPreviewResolve = { null },
+      )
+
+    assertEquals(RenderOutcome.Busy, composite.render(catalogId, themeOverride()))
+    assertEquals(1, monolithic.renderCalls)
+    assertEquals(0, baked.renderCalls, "baked pixels must not masquerade as the requested theme")
+  }
+
+  @Test
+  fun `pure theme renders stay cached across per-preview daemon reuse`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val monolithic =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "mono",
+        declaredThemes = listOf(brandTheme),
+      )
+    val perPreview = RecordingHost(previews = emptyList(), tag = "per")
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = monolithic,
+        baked = baked,
+        perPreviewResolve = { perPreview },
+      )
+
+    val first = composite.render(catalogId, themeOverride()) as RenderOutcome.Ok
+    val second = composite.render(catalogId, themeOverride()) as RenderOutcome.Ok
+
+    assertEquals("per:$daemonId", first.png.decodeToString())
+    assertEquals(RenderOutcome.Generation.CATALOG_CACHE, second.generation)
+    assertEquals(1, perPreview.renderCalls)
+    assertEquals(0, monolithic.renderCalls)
+    assertEquals(0, baked.renderCalls)
+  }
+
+  @Test
+  fun `catalog theme cache excludes mixed overrides`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val mixed =
+      themeOverride()
+        .copy(namedOverrides = mapOf("label" to PreviewOverrideValue.StringValue("First")))
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    composite.render(catalogId, mixed)
+    composite.render(catalogId, mixed)
+    assertEquals(2, live.renderCalls)
+  }
+
+  @Test
+  fun `catalog refresh starts a fresh theme cache generation`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val oldLive =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "old",
+        declaredThemes = listOf(brandTheme),
+      )
+    val oldHost = ServeCatalogLiveHost(mapOf(catalogId to daemonId), oldLive, baked)
+    oldHost.render(catalogId, themeOverride())
+    oldHost.render(catalogId, themeOverride())
+    assertEquals(1, oldLive.renderCalls)
+
+    val refreshedLive =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "new",
+        declaredThemes = listOf(brandTheme),
+      )
+    val refreshedHost = ServeCatalogLiveHost(mapOf(catalogId to daemonId), refreshedLive, baked)
+    refreshedHost.render(catalogId, themeOverride())
+    assertEquals(1, refreshedLive.renderCalls)
   }
 
   @Test
