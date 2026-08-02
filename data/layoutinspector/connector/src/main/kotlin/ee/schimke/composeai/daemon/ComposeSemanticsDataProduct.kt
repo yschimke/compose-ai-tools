@@ -1240,6 +1240,8 @@ internal object ComposeLayoutInspector {
           density = density,
         ),
       drawRaster = drawRaster,
+      modifiesDrawnContent =
+        DrawContentEffectProbe.modifiesContent(modifiers, captureW, captureH, density),
       transform = coordinates.scaleIn(rootCoords),
       children = children,
     )

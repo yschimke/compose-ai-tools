@@ -72,7 +72,7 @@ class FigmaSvgDrawRasterTest {
   }
 
   @Test
-  fun clearAndSetSemanticsDoesNotTurnAnArbitraryCustomDrawIntoAWearPicker() {
+  fun semanticsAndComponentIdentityDoNotDecideWhetherCustomDrawContentIsFlattened() {
     val remoteCompose =
       capturedContainer()
         .copy(
@@ -98,6 +98,31 @@ class FigmaSvgDrawRasterTest {
     assertNull("the whole Remote Compose subtree must not become a frame crop", m.root.raster)
     assertNotNull("its captured custom chrome remains a background", m.root.background)
     assertEquals("its editable child survives", 1, m.root.children.size)
+  }
+
+  @Test
+  fun anUnrepresentableDrawContentEffectUsesANarrowCompositedFrameCrop() {
+    val masked =
+      capturedContainer()
+        .copy(
+          component = "AnyFutureComponent",
+          modifiesDrawnContent = true,
+          modifiers =
+            listOf(
+              LayoutInspectorModifier(
+                name = "drawWithContent",
+                properties = mapOf("onDraw" to "anonymous.application.lambda"),
+                bounds = bounds(0, 0, 200, 120),
+              )
+            ),
+        )
+
+    val m = model(masked, captureCanvasDraws = true)
+
+    assertNotNull("the composited effect needs a frame crop", m.root.raster)
+    assertNull("the isolated background must not also be emitted", m.root.background)
+    assertTrue("descendants are already baked into the crop", m.root.children.isEmpty())
+    assertNull("a frame crop has no connector-owned PNG", m.rasterTargets.single().pngBase64)
   }
 
   @Test

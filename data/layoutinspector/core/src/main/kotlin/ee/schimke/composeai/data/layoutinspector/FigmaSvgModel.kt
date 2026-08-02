@@ -902,12 +902,13 @@ data class FigmaSvgModel(
             contentOpacity = contentOpacity,
           )
         }
-      // Wear Material's Picker applies its scaling edge fade and read-only center-row mask inside
-      // `drawWithContent`. Those draw-time effects are absent from the layout/semantics trees, so
-      // emitting the placed lazy options as vectors either reveals hidden rows or loses the fade.
-      // In hybrid mode preserve only the complex picker column from the captured frame; siblings
-      // such as Horologist's separator, title and confirmation button remain editable SVG.
-      if (ctx.captureCanvasDraws && hasWearPickerDrawMask()) {
+      // A `drawWithContent` that clips, masks, transforms, blends or paints over its descendants
+      // cannot be reconstructed by layering the node's isolated background under editable child
+      // SVG. The connector detects that capability by replaying the draw with a calibration
+      // pattern. In hybrid mode preserve this complex composited region from the frame.
+      // Pass-through draws and components that paint only behind content keep their editable
+      // descendants.
+      if (ctx.captureCanvasDraws && modifiesDrawnContent) {
         val href = ctx.rasterHref(nodeId)
         ctx.rasterTargets.add(
           FigmaSvgRasterTarget(nodeId, href, bounds.left, bounds.top, bounds.right, bounds.bottom)
@@ -1265,20 +1266,6 @@ data class FigmaSvgModel(
               lineHeightToPx(it, fontSize, ctx.density, ctx.fontScale)
             },
       )
-    }
-
-    /** A semantics-cleared Wear Picker whose custom draw applies scaling fade / row visibility. */
-    private fun LayoutInspectorNode.hasWearPickerDrawMask(): Boolean {
-      if (!hasCustomDraw()) return false
-      val clearsSemantics = modifiers.any { modifier -> modifier.name == "clearAndSetSemantics" }
-      val pickerDraw = modifiers.any { modifier ->
-        modifier.name.startsWith("draw") &&
-          modifier.properties.values.any { value ->
-            value.contains("androidx.wear.compose.material.PickerKt") ||
-              value.contains("androidx.wear.compose.material3.PickerKt")
-          }
-      }
-      return clearsSemantics && pickerDraw
     }
 
     /**

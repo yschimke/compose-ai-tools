@@ -15,6 +15,7 @@ import androidx.compose.runtime.tooling.LocalInspectionTables
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.node.RootForTest
@@ -171,6 +172,23 @@ class FigmaSvgDrawRasterRenderTest {
     // pure vector, exactly as before.
     assertFalse("a pass-through draw must not raster:\n$svg", svg.contains("<image "))
     assertTrue("the text is untouched:\n$svg", svg.contains(">Hi<"))
+  }
+
+  @Test
+  fun `a generic content clip is detected from behavior and uses a frame crop`() {
+    val svg =
+      exportSvg("content-clip", withFrame = true) {
+        Box(
+          Modifier.size(80.dp).drawWithContent {
+            clipRect(right = size.width / 2f) { this@drawWithContent.drawContent() }
+          }
+        ) {
+          Text("Hi")
+        }
+      }
+
+    assertEquals("the affected subtree becomes one composited image:\n$svg", 1, Regex("<image ").findAll(svg).count())
+    assertFalse("the clipped text is already inside the frame crop:\n$svg", svg.contains(">Hi<"))
   }
 
   /**
