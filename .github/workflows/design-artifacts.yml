@@ -151,7 +151,20 @@ jobs:
           esac
 
           if [ -n "$files" ]; then
-            printf 'Changed files:\n```\n%s\n```\n' "$files" >> "$GITHUB_STEP_SUMMARY"
+            file_count=$(printf '%s\n' "$files" | sed '/^$/d' | wc -l | xargs)
+            {
+              echo "Resolved ${file_count} changed file(s)."
+              echo
+              echo '<details><summary>Changed files (first 30)</summary>'
+              echo
+              echo '```'
+              printf '%s\n' "$files" | sed -n '1,30p'
+              if [ "$file_count" -gt 30 ]; then
+                echo "… $((file_count - 30)) more"
+              fi
+              echo '```'
+              echo '</details>'
+            } >> "$GITHUB_STEP_SUMMARY"
           else
             echo 'Could not resolve the changed files — regenerating every system.' >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -217,7 +230,7 @@ jobs:
       # Remote Android rows don't need them, but the packages are harmless there).
       - name: Install desktop (Skiko) render deps
         run: |
-          sudo apt-get update
+          sudo apt-get update -qq
           # `fonts-noto-*` are FALLBACK faces so a `@Preview(locale = "ja"/"ar"/…)`
           # catalog variant renders real glyphs instead of tofu on runners whose
           # base image lacks CJK/Arabic/emoji. A catalog's own declared FontFamily
@@ -236,7 +249,7 @@ jobs:
           : "${prev_sans:=DejaVu Sans}"
           : "${prev_serif:=DejaVu Serif}"
           : "${prev_mono:=DejaVu Sans Mono}"
-          sudo apt-get install -y --no-install-recommends \
+          sudo apt-get install -y -qq --no-install-recommends \
             xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libfreetype6 libfontconfig1 fontconfig \
             fonts-noto-cjk fonts-noto-core fonts-noto-color-emoji
           # Pin the generics back to the recorded defaults so Noto stays
@@ -269,7 +282,7 @@ jobs:
           node-version: 22
       - name: Install export engine (pinned npm packages)
         working-directory: scripts/design-artifacts
-        run: npm ci
+        run: npm ci --no-audit --no-fund --loglevel=warn
 
       # Fast, build-free pre-flight: resolve every spec `preview` against the
       # @Preview functions the module actually declares BEFORE the ~90-minute
@@ -330,23 +343,32 @@ jobs:
           set -euo pipefail
           version="$(grep -oP '(?<=^composeaiReleasedRuntimeVersion=).*' gradle.properties || true)"
           if [ -z "$version" ]; then
-            echo "no composeaiReleasedRuntimeVersion in gradle.properties" >&2
+            echo "::error title=Released runtime version missing::gradle.properties has no composeaiReleasedRuntimeVersion, so the catalog cannot resolve its published preview runtimes." >&2
             exit 1
           fi
           base="https://repo1.maven.org/maven2/ee/schimke/composeai"
-          echo "waiting for preview-runtimes $version on Maven Central…"
+          echo "Waiting for preview-runtimes $version on Maven Central (up to 60 minutes)…"
+          last_status=""
           for i in $(seq 1 60); do
             ok=1
+            statuses=()
             for a in data-preview-overrides-runtime slot-preview-runtime; do
               code="$(curl -s -o /dev/null -w '%{http_code}' \
                 "$base/$a/$version/$a-$version.pom" || true)"
-              [ "$code" = "200" ] || { ok=0; echo "  $a:$version -> HTTP ${code:-000}"; }
+              statuses+=("$a=HTTP ${code:-000}")
+              [ "$code" = "200" ] || ok=0
             done
-            if [ "$ok" = 1 ]; then echo "all preview-runtimes $version on Central (attempt $i)"; exit 0; fi
-            echo "attempt $i/60 — not fully propagated; retrying in 60s"
+            last_status=$(IFS=,; echo "${statuses[*]}")
+            if [ "$ok" = 1 ]; then
+              echo "✓ preview-runtimes $version available (attempt $i)."
+              exit 0
+            fi
+            if [ "$i" -eq 1 ] || [ $((i % 5)) -eq 0 ]; then
+              echo "Still waiting (attempt $i/60): $last_status"
+            fi
             sleep 60
           done
-          echo "preview-runtimes $version never fully appeared on Maven Central after ~60m" >&2
+          echo "::error title=Preview runtimes unavailable::Version $version did not fully appear on Maven Central after 60 minutes. Last response: $last_status" >&2
           exit 1
 
       - name: Render catalog bundle
@@ -395,7 +417,7 @@ jobs:
           exclude=(); if [ -n "${EXCLUDE_PREVIEW_IDS:-}" ]; then exclude=(--exclude-preview-id "$EXCLUDE_PREVIEW_IDS"); fi
           if [ -n "${EXCLUDE_PREVIEW_ROWS:-}" ]; then exclude+=(--exclude-preview-row "$EXCLUDE_PREVIEW_ROWS"); fi
           xvfb-run -a -s "-screen 0 2000x1400x24" \
-            compose-preview bundle pack --module "$MODULE" --with-semantics \
+            compose-preview bundle pack --module "$MODULE" --with-semantics --progress \
               "${exclude[@]}" -o "$GITHUB_WORKSPACE/$SYSTEM-bundle.png"
 
       # Android-only supplement (Robolectric): render the previews that need androidx
@@ -410,7 +432,7 @@ jobs:
           JAVA_TOOL_OPTIONS: -Dcomposeai.svg.embedFonts=true
         run: |
           set -euo pipefail
-          compose-preview bundle pack --module "$EXTRA_MODULE" --with-semantics \
+          compose-preview bundle pack --module "$EXTRA_MODULE" --with-semantics --progress \
             -o "$GITHUB_WORKSPACE/$SYSTEM-extra-bundle.png"
 
       # In-browser CMP tier: assemble the Kotlin/Wasm catalog app (webpack-free —
@@ -422,7 +444,7 @@ jobs:
         if: ${{ matrix.wasmModule != '' }}
         env:
           WASM_MODULE: ${{ matrix.wasmModule }}
-        run: ./gradlew ":${WASM_MODULE}:wasmCatalogDist"
+        run: ./gradlew ":${WASM_MODULE}:wasmCatalogDist" --quiet
 
       # The exporter gates on a complete render: `bundle pack --with-semantics`
       # is best-effort (exits 0 even if the daemon failed or captured zero

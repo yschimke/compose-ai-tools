@@ -90,6 +90,18 @@ import {
   candidatePreviewBundle,
   daemonPreviewIdsByFunction,
 } from "./bundle-previews.mjs";
+
+// CI warnings and fatal diagnostics should be visible as workflow annotations,
+// not buried among catalog-generation milestones. Keep local output unchanged.
+if (process.env.GITHUB_ACTIONS === "true") {
+  const annotate = (level, title, sink) => (...parts) => {
+    const escape = (value) =>
+      String(value).replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A");
+    sink(`::${level} title=${escape(title)}::${escape(parts.join(" "))}`);
+  };
+  console.warn = annotate("warning", "Design artifact warning", console.warn.bind(console));
+  console.error = annotate("error", "Design artifact failure", console.error.bind(console));
+}
 import { exportsNoSticker } from "./capture-mode.mjs";
 import {
   bridgeLivePreviewIds,

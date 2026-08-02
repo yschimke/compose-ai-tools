@@ -135,9 +135,11 @@ class GradleConnection(
 
         // Heartbeat so the user can see what is still running (Robolectric
         // can take minutes on a cold start with no output). Opt-in via
-        // --progress / --verbose so default CLI output stays quiet.
+        // --progress / --verbose so default CLI output stays quiet. CI gets
+        // a slower cadence: one useful heartbeat per minute without flooding
+        // a long design-catalog render with hundreds of near-identical lines.
         if (progress) {
-          val heartbeatMs = 15_000L
+          val heartbeatMs = if (System.getenv("CI") == "true") 60_000L else 15_000L
           schedule(
             object : java.util.TimerTask() {
               override fun run() {

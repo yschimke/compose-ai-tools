@@ -255,7 +255,7 @@ runs:
         echo "resources=$resources" >> "$GITHUB_OUTPUT"
         echo "a11y=$a11y" >> "$GITHUB_OUTPUT"
         echo "notifications=$notifications" >> "$GITHUB_OUTPUT"
-        echo "::notice::compose-preview/apply mode=$mode compose=$compose resources=$resources a11y=$a11y notifications=$notifications"
+        echo "compose-preview: mode=$mode; pipelines: compose=$compose resources=$resources a11y=$a11y notifications=$notifications"
         if [ "$mode" = "skip" ]; then
           echo "::notice::No pipeline applicable for event=$EVENT_NAME ref=$REF_NAME — skipping."
         fi
@@ -509,8 +509,8 @@ runs:
         : "${prev_mono:=DejaVu Sans Mono}"
 
         # 2. Install the Noto fallbacks.
-        sudo apt-get update
-        sudo apt-get install -y --no-install-recommends \
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq --no-install-recommends \
           fonts-noto-cjk fonts-noto-core fonts-noto-color-emoji
 
         # 3. Pin the generic families back to the recorded defaults so Noto stays
@@ -672,14 +672,40 @@ runs:
         fi
 
         worst=0
+        results="$GITHUB_WORKSPACE/_pipeline_results"
+        : > "$results"
+        {
+          echo "### Compose preview pipelines"
+          echo
+          echo "| Pipeline | Result | Time |"
+          echo "| --- | --- | ---: |"
+        } >> "$GITHUB_STEP_SUMMARY"
         run_one() {
           local name="$1"
+          local started=$SECONDS
+          echo "▶ ${name}: started"
           echo "::group::${name} pipeline"
           bash "$ACTION_PATH/pipelines/${name}.sh"
           local rc=$?
           echo "::endgroup::"
-          if [ "$rc" -ne 0 ] && [ "$worst" -eq 0 ]; then
-            worst="$rc"
+          local render_rc
+          render_rc=$(cat "$GITHUB_WORKSPACE/_${name}_render_rc" 2>/dev/null || echo 0)
+          local effective_rc="$rc"
+          if [ "$effective_rc" -eq 0 ] && [ "$render_rc" -ne 0 ]; then
+            effective_rc="$render_rc"
+          fi
+          local elapsed=$((SECONDS - started))
+          if [ "$effective_rc" -eq 0 ]; then
+            echo "✓ ${name}: completed in ${elapsed}s"
+            echo "| ${name} | ✓ passed | ${elapsed}s |" >> "$GITHUB_STEP_SUMMARY"
+            echo "${name}|passed|0|${elapsed}" >> "$results"
+          else
+            echo "✗ ${name}: failed with exit ${effective_rc} after ${elapsed}s" >&2
+            echo "| ${name} | ✗ failed (exit ${effective_rc}) | ${elapsed}s |" >> "$GITHUB_STEP_SUMMARY"
+            echo "${name}|failed|${effective_rc}|${elapsed}" >> "$results"
+          fi
+          if [ "$effective_rc" -ne 0 ] && [ "$worst" -eq 0 ]; then
+            worst="$effective_rc"
           fi
         }
 
@@ -689,6 +715,8 @@ runs:
         [ "$WANT_NOTIFICATIONS" = "1" ] && run_one notifications
 
         echo "worst=$worst" >> "$GITHUB_OUTPUT"
+        echo "compose_render_rc=$(cat "$GITHUB_WORKSPACE/_compose_render_rc" 2>/dev/null || echo 0)" >> "$GITHUB_OUTPUT"
+        echo "resources_render_rc=$(cat "$GITHUB_WORKSPACE/_resources_render_rc" 2>/dev/null || echo 0)" >> "$GITHUB_OUTPUT"
         # Don't fail here — the trailing "surface failures" step decides
         # after pushes + comments have run.
         exit 0
@@ -708,10 +736,12 @@ runs:
         key: composeai-fonts-${{ runner.os }}-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
 
     # Upload artifacts as top-level GHA steps (can't run from subshells).
-    # Fires whenever the relevant pipeline flagged a non-zero render rc,
-    # regardless of whether the orchestrator step itself succeeded.
+    # Fires only when the relevant pipeline flagged a non-zero render rc,
+    # regardless of whether the orchestrator step itself succeeded. Checking
+    # the output value (not merely whether the rc file exists) avoids noisy,
+    # empty artifact steps on every successful run.
     - name: Upload composePreviewRender reports
-      if: always() && hashFiles('_compose_render_rc') != ''
+      if: always() && steps.pipelines.outputs.compose_render_rc != '' && steps.pipelines.outputs.compose_render_rc != '0'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: composePreviewRender-reports
@@ -723,7 +753,7 @@ runs:
         retention-days: 14
 
     - name: Upload composePreviewRenderAndroidResources reports
-      if: always() && hashFiles('_resources_render_rc') != ''
+      if: always() && steps.pipelines.outputs.resources_render_rc != '' && steps.pipelines.outputs.resources_render_rc != '0'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: composePreviewRenderAndroidResources-reports
@@ -735,7 +765,7 @@ runs:
         retention-days: 14
 
     - name: Upload CLI JSON output on failure
-      if: failure()
+      if: always() && ((steps.pipelines.outputs.worst != '' && steps.pipelines.outputs.worst != '0') || (steps.pipelines.outputs.compose_render_rc != '' && steps.pipelines.outputs.compose_render_rc != '0') || (steps.pipelines.outputs.resources_render_rc != '' && steps.pipelines.outputs.resources_render_rc != '0'))
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: preview-cli-output
@@ -1140,6 +1170,14 @@ runs:
         WORST_RC: ${{ steps.pipelines.outputs.worst }}
       run: |
         rc="${WORST_RC:-0}"
+        failed=()
+        if [ -f "$GITHUB_WORKSPACE/_pipeline_results" ]; then
+          while IFS='|' read -r name status pipeline_rc elapsed; do
+            if [ "$status" = "failed" ]; then
+              failed+=("${name} (exit ${pipeline_rc})")
+            fi
+          done < "$GITHUB_WORKSPACE/_pipeline_results"
+        fi
         for p in compose resources a11y notifications; do
           extra=$(cat "$GITHUB_WORKSPACE/_${p}_render_rc" 2>/dev/null || echo 0)
           if [ "$extra" -ne 0 ] && [ "$rc" -eq 0 ]; then
@@ -1147,6 +1185,11 @@ runs:
           fi
         done
         if [ "$rc" -ne 0 ]; then
-          echo "::error::One or more compose-preview pipelines exited non-zero (rc=$rc). Pushes + comments have been published; see uploaded reports for per-task stack traces." >&2
+          if [ "${#failed[@]}" -gt 0 ]; then
+            cause=$(IFS=,; echo "${failed[*]}")
+          else
+            cause="render process (exit ${rc})"
+          fi
+          echo "::error title=Compose preview failed::Failed: ${cause}. PR comments and successful renders were still published. Open the failed pipeline group for the concise cause; download the matching composePreviewRender report artifact for full test output." >&2
           exit "$rc"
         fi

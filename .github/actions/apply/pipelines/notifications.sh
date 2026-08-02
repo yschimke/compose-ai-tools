@@ -77,13 +77,13 @@ fi
 # allowlist the missing task IS a misconfiguration and we let Gradle fail
 # the run as before.
 if [ "${#ALLOW_MODULES[@]}" -eq 0 ]; then
-  if ! ./gradlew "${gradle_args[@]}" --no-daemon; then
+  if ! ./gradlew "${gradle_args[@]}" --no-daemon --quiet; then
     echo "notifications pipeline: ./gradlew ${gradle_args[*]} failed (likely no module registers the task); skipping."
     echo "0" > "$GITHUB_WORKSPACE/_notifications_rc"
     exit 0
   fi
 else
-  ./gradlew "${gradle_args[@]}" --no-daemon
+  ./gradlew "${gradle_args[@]}" --no-daemon --quiet
 fi
 
 # Discover every module with notification PNG output under

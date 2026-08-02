@@ -165,8 +165,8 @@ if (values.json) {
           : " No @Preview function is wholly deferred, so the render set is unchanged."),
     );
   }
-  for (const w of warnings) console.log(`  warning: ${w}`);
-  for (const e of errors) console.log(`  error:   ${e}`);
+  for (const w of warnings) reportFinding("warning", "Catalog spec warning", w);
+  for (const e of errors) reportFinding("error", "Catalog spec error", e);
   console.log(
     errors.length === 0
       ? `OK — ${warnings.length} warning(s), 0 errors.`
@@ -177,6 +177,17 @@ if (values.json) {
 process.exit(errors.length === 0 ? 0 : 1);
 
 function fail(msg) {
-  console.error(`validate-catalog-spec: ${msg}`);
+  reportFinding("error", "Catalog spec validation failed", msg);
   process.exit(1);
+}
+
+function reportFinding(level, title, message) {
+  const sink = level === "error" ? console.error : console.log;
+  if (process.env.GITHUB_ACTIONS === "true") {
+    const escape = (value) =>
+      String(value).replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A");
+    sink(`::${level} title=${escape(title)}::${escape(message)}`);
+  } else {
+    sink(`  ${level}: ${message}`);
+  }
 }
