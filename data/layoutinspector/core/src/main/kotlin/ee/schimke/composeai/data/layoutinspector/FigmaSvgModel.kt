@@ -671,8 +671,14 @@ data class FigmaSvgModel(
               it.bottom > extent.minY &&
               it.top < extent.maxY)
         }
+      // Filtering only the write targets strands the corresponding `<image href>` in the layer
+      // tree: the producer correctly skips the crop, but the published SVG still requests it. This
+      // happened for every below-fold Image in a clamped lazy screen (issue #3147). Remove only the
+      // raster paint whose target was dropped; keep the layer's vector shape/text/children intact.
+      val retainedRasterHrefs = targets.mapTo(mutableSetOf()) { it.href }
+      val retainedRoot = rootLayer.withRasterHrefs(retainedRasterHrefs)
       return FigmaSvgModel(
-        root = rootLayer,
+        root = retainedRoot,
         minX = extent.minX,
         minY = extent.minY,
         width = (extent.maxX - extent.minX) + padding * 2,
@@ -685,6 +691,13 @@ data class FigmaSvgModel(
         backgroundRect = backgroundRect,
       )
     }
+
+    private fun FigmaSvgLayer.withRasterHrefs(retained: Set<String>): FigmaSvgLayer =
+      copy(
+        raster = raster?.takeIf { it.href in retained },
+        background = background?.takeIf { it.href in retained },
+        children = children.map { it.withRasterHrefs(retained) },
+      )
 
     /** Build inputs + the accumulating raster-target list, threaded through the walk. */
     private class BuildContext(
