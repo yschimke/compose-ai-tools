@@ -15,7 +15,7 @@
 // `harness:snapshot` invocation (the `snapshot` path filter matches this
 // file too) and the existing baseline/PR-comment actions — no CI change.
 
-import { test } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { readdirSync } from "node:fs";
@@ -177,3 +177,48 @@ for (const fixture of listPageFixtures()) {
         });
     }
 }
+
+test("contract · declared theme renders use bounded parallelism", async ({ page }) => {
+    let active = 0;
+    let maxActive = 0;
+    let completed = 0;
+    const attempts = new Map();
+
+    await page.route("**/render/**", async (route) => {
+        const url = new URL(route.request().url());
+        if (!url.searchParams.has("themeProvider")) {
+            await route.fulfill({
+                path: renderPlaceholder,
+                contentType: "image/png",
+            });
+            return;
+        }
+
+        active++;
+        maxActive = Math.max(maxActive, active);
+        const attempt = (attempts.get(url.pathname) ?? 0) + 1;
+        attempts.set(url.pathname, attempt);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        active--;
+
+        // Shed every card's first request. The page must retry it without exceeding the worker cap.
+        if (attempt === 1) {
+            await route.fulfill({ status: 503, body: "render busy" });
+        } else {
+            completed++;
+            await route.fulfill({
+                path: renderPlaceholder,
+                contentType: "image/png",
+            });
+        }
+    });
+
+    await page.goto(
+        "/preview-harness/fixtures/pages/serve-landing-declared-themes.html",
+    );
+    await page.getByRole("button", { name: "Brand Light" }).click();
+
+    await expect.poll(() => completed, { timeout: 10_000 }).toBe(3);
+    expect(maxActive).toBe(2);
+    expect(Array.from(attempts.values())).toEqual([2, 2, 2]);
+});

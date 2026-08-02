@@ -690,6 +690,7 @@ class ServeWebFixtureTest {
             ServeTheme("High Contrast", "com.example.HighContrastThemeCatalog"),
           ),
         canRenderThemeFor = { true },
+        themeRenderConcurrency = 2,
       )
     // A catalog whose components carry baked non-default states: the landing folds each to ONE card
     // (the default), the non-default states reachable via the viewer switcher.
@@ -1161,14 +1162,22 @@ class ServeWebFixtureTest {
       landingDeclaredThemes.contains("data-base-src"),
       "no render URL is round-tripped through a DOM attribute",
     )
-    // The daemon renders one at a time and sheds the overflow, so themed thumbnails are fetched
-    // serially (each queued, the next started on the previous image's load) with one delayed retry
-    // — otherwise a grid-sized burst would leave most cards on their pre-theme pixels.
+    // The catalog has a bounded per-preview daemon pool, so themed thumbnails use a conservative
+    // two-worker queue: enough parallelism to avoid multi-minute catalog redraws without firing a
+    // grid-sized burst. Each worker advances on image settlement and retries shed requests with
+    // bounded exponential backoff and a cache-busting URL.
     assertTrue(
       landingDeclaredThemes.contains("var job = {") &&
+        landingDeclaredThemes.contains("var themeRenderConcurrency = 2") &&
+        landingDeclaredThemes.contains("var themeRenderRetries = 3") &&
+        landingDeclaredThemes.contains("function runThemeWorker(queue, gen)") &&
         landingDeclaredThemes.contains("runThemeQueue(themeQueue, themeQueueGen)") &&
-        landingDeclaredThemes.contains("job.src = job.src + \"&_retry=1\""),
-      "themed renders are fetched serially with a retry, not fired as one burst",
+        landingDeclaredThemes.contains("Math.min(themeRenderConcurrency, queue.length)") &&
+        landingDeclaredThemes.contains("job.src = job.baseSrc + \"&_retry=\" + job.retries") &&
+        landingDeclaredThemes.contains("if (gen !== themeGen) return;") &&
+        landingDeclaredThemes.contains("queue.push(job);\n        runThemeWorker(queue, gen)") &&
+        landingDeclaredThemes.contains("1000 * Math.pow(2, job.retries)"),
+      "themed renders use a bounded worker pool with bounded backoff retries",
     )
     assertTrue(
       landingDeclaredThemes.contains("c.classList.add(\"cp-reloading\")") &&

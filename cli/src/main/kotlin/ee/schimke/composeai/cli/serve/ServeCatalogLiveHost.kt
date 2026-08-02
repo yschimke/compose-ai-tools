@@ -208,6 +208,9 @@ class ServeCatalogLiveHost(
    */
   override fun canRenderOverridesFor(previewId: String): Boolean = previewId in alias
 
+  /** Parallel redraw is safe only when distinct previews have independent pooled daemons. */
+  override val themeRenderConcurrency: Int = if (perPreviewResolve != null) 2 else 1
+
   /** The gesture override is honoured by the daemon lane, if that daemon is Android-backed. */
   override val gesturesRenderable: Boolean = live.gesturesRenderable
 

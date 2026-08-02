@@ -93,6 +93,15 @@ interface ServeHost : AutoCloseable {
   fun canRenderOverridesFor(previewId: String): Boolean = canRenderOverrides
 
   /**
+   * Safe browser-side concurrency for a catalog-wide themed thumbnail redraw. A plain daemon has
+   * one render lock, so the default remains serial. A composite backed by independent per-preview
+   * daemons may opt into a small worker pool without making monolithic fallback hosts return baked
+   * pixels for concurrent override requests.
+   */
+  val themeRenderConcurrency: Int
+    get() = 1
+
+  /**
    * Aggregate render-performance counters for this host's live render lane, surfaced on `/status`
    * + `/status.json` (`runningServers[].renderStats`). Null when the host has no live render lane
    *   to measure — a static baked bundle never renders. Daemon-backed hosts ([ServeRenderHost])
