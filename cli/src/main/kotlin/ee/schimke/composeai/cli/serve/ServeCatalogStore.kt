@@ -990,17 +990,13 @@ class ServeCatalogStore(
     if (references.isEmpty()) return
     val seen = HashSet<String>()
     val accepted = references.mapNotNull { reference ->
-      if (
-        !ServeDesignReferenceStore.isSafeId(reference.id) ||
-          !seen.add(reference.id) ||
-          reference.previewId.isBlank() ||
-          !ServeDesignReferenceStore.isSafeRelativePath(reference.raster.path)
-      ) {
+      if (!ServeDesignReferenceStore.isSafeRelativePath(reference.raster.path))
         return@mapNotNull null
-      }
       val bytes =
         runCatching { fetchCatalogAsset("$base${reference.raster.path}") }.getOrNull()
           ?: return@mapNotNull null
+      if (!ServeDesignReferenceStore.isValid(reference, bytes) || !seen.add(reference.id))
+        return@mapNotNull null
       val localPath = "${ServeDesignReferenceStore.DIRECTORY}/${reference.id}.png"
       val file = File(staging, localPath)
       file.parentFile?.mkdirs()

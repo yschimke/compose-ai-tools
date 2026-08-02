@@ -126,32 +126,13 @@ private constructor(
       val seen = HashSet<String>()
       val valid =
         manifest.references.filter { reference ->
-          if (
-            !SAFE_ID.matches(reference.id) ||
-              !seen.add(reference.id) ||
-              reference.previewId.isBlank() ||
-              !isSafeRelativePath(reference.raster.path) ||
-              reference.raster.width?.let { it <= 0 } == true ||
-              reference.raster.height?.let { it <= 0 } == true
-          ) {
-            return@filter false
-          }
+          if (!hasValidMetadata(reference)) return@filter false
           val rasterPath = root / reference.raster.path.toPath()
           if (!fileSystem.exists(rasterPath)) return@filter false
           val bytes =
             runCatching { fileSystem.read(rasterPath) { readByteArray() } }.getOrNull()
               ?: return@filter false
-          if (
-            bytes.size < PNG_SIGNATURE.size ||
-              PNG_SIGNATURE.indices.any { bytes[it] != PNG_SIGNATURE[it] }
-          ) {
-            return@filter false
-          }
-          val expected = reference.raster.sha256?.lowercase()
-          if (expected == null) return@filter true
-          if (!SHA256.matches(expected)) return@filter false
-          val actual = bytes.toByteString().sha256().hex()
-          actual == expected
+          hasValidRaster(reference, bytes) && seen.add(reference.id)
         }
       return ServeDesignReferenceStore(root, valid, fileSystem)
     }
@@ -162,6 +143,26 @@ private constructor(
       return value.replace('\\', '/').split('/').none { it.isBlank() || it == "." || it == ".." }
     }
 
-    internal fun isSafeId(value: String): Boolean = SAFE_ID.matches(value)
+    internal fun isValid(reference: DesignReference, bytes: ByteArray): Boolean =
+      hasValidMetadata(reference) && hasValidRaster(reference, bytes)
+
+    private fun hasValidMetadata(reference: DesignReference): Boolean =
+      SAFE_ID.matches(reference.id) &&
+        reference.previewId.isNotBlank() &&
+        isSafeRelativePath(reference.raster.path) &&
+        reference.raster.width?.let { it > 0 } != false &&
+        reference.raster.height?.let { it > 0 } != false
+
+    private fun hasValidRaster(reference: DesignReference, bytes: ByteArray): Boolean {
+      if (
+        bytes.size < PNG_SIGNATURE.size ||
+          PNG_SIGNATURE.indices.any { bytes[it] != PNG_SIGNATURE[it] }
+      ) {
+        return false
+      }
+      val expected = reference.raster.sha256?.lowercase() ?: return true
+      if (!SHA256.matches(expected)) return false
+      return bytes.toByteString().sha256().hex() == expected
+    }
   }
 }

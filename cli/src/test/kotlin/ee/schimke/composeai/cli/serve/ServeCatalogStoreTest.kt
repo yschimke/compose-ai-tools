@@ -147,6 +147,47 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `valid inline reference survives an invalid manifest duplicate`() {
+    val catalog =
+      """
+      {"schema":"design-parity-catalog/v1","system":"compose-m3",
+       "components":[{"componentId":"Button/Filled","images":[{"path":"images/button.png"}]}],
+       "references":[{
+         "id":"button-design","previewId":"button","label":"Inline fallback",
+         "raster":{"path":"references/inline.png","width":2,"height":2},
+         "source":{"provider":"inline"}
+       }]}
+      """
+        .trimIndent()
+    val manifest =
+      """
+      {"schema":"compose-preview-references/v1","references":[{
+        "id":"button-design","previewId":"button","label":"Broken manifest entry",
+        "raster":{"path":"references/manifest.png","width":2,"height":2,
+          "sha256":"0000000000000000000000000000000000000000000000000000000000000000"},
+        "source":{"provider":"manifest"}
+      }]}
+      """
+        .trimIndent()
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> catalog.encodeToByteArray()
+        url.endsWith("/references/index.json") -> manifest.encodeToByteArray()
+        url.endsWith("/images/button.png") || url.endsWith("/references/manifest.png") -> png()
+        url.endsWith("/references/inline.png") -> png()
+        else -> null
+      }
+    }
+
+    assertTrue(store(TrustStore.EMPTY, fetch).load("compose-m3") is ServeCatalogStore.Result.Ok)
+
+    val reference = registered.getValue("compose-m3").designReferencesFor("button").single()
+    assertEquals("button-design", reference.id)
+    assertEquals("Inline fallback", reference.label)
+    assertEquals("inline", reference.source.provider)
+  }
+
+  @Test
   fun `a failed re-load leaves the previously-served catalog intact`() {
     // The ServeCatalogRefresher re-runs load() on a live server; a transient total image outage
     // must NOT delete the currently-served catalog (which would 404 it until the next success).
