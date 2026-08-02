@@ -500,17 +500,17 @@ jobs:
       # maven-coordinate (re-resolved at serve time) and fonts resolve from the shared `bundle/res`
       # pool, a FULL split bundle stays small — only `classes/app.jar` repeats per preview.
       #
-      # The Android tiers (wear-m3 / remote-m3) have no runnable desktop daemon, so they stay
+      # An Android tier without `androidLiveBundle` has no runnable desktop daemon, so it stays
       # `--view-only`: the re-render classpath is dropped, keeping the baked image + every captured
-      # sidecar (semantics / layout / figma-svg, from the `--with-semantics` pack) at ~tens of KB —
-      # the right unit for an addressable, baked-only sticker.
+      # sidecar (semantics / layout / figma-svg, from the `--with-semantics` pack) at ~tens of KB.
+      # The reusable wear-m3 / remote-m3 jobs publish Android live bundles and split FULL instead.
       - name: Split into per-preview bundles
         env:
           SYSTEM: ${{ matrix.system }}
           EXTRA_RENDERS: ${{ matrix.androidExtraModule }}
           # FULL for any live-bundle tier (the CMP wasm row + an androidLiveBundle row),
           # so each per-preview bundle carries its re-render classpath; --view-only for
-          # the baked-only tiers (remote-m3).
+          # baked-only tiers.
           SPLIT_MODE: ${{ (matrix.wasmModule != '' || matrix.androidLiveBundle == '1') && 'full' || 'view-only' }}
         run: |
           set -euo pipefail

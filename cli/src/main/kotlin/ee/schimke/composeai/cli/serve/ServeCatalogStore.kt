@@ -163,35 +163,6 @@ class ServeCatalogStore(
     return previewIdFor(path)
   }
 
-  /**
-   * Restrict a carried bundle's server-side alias to previews that still have executable bytecode.
-   *
-   * An IR-backed preview (currently Remote Compose) is intentionally omitted from
-   * `classes/app.jar`: the bundle carries its captured document under `ir/` instead. It remains in
-   * the full alias while [extractCatalogRcDocs] re-keys that document for browser replay, but
-   * handing it to the daemon would deterministically fail with `ClassNotFoundException`.
-   *
-   * Metadata failures retain the original alias; the bundle builder owns diagnostics and rejection
-   * for malformed bundles, and this filter must not hide that more useful failure path.
-   */
-  private fun classBackedAliasForBundle(
-    bundleFile: File,
-    alias: Map<String, String>,
-  ): Map<String, String> {
-    val irPreviewIds =
-      try {
-        BundleReader.readMetadata(bundleFile).manifest.intermediateRepresentations.mapTo(
-          mutableSetOf()
-        ) {
-          it.previewId
-        }
-      } catch (_: Exception) {
-        return alias
-      }
-    if (irPreviewIds.isEmpty()) return alias
-    return alias.filterValues { it !in irPreviewIds }
-  }
-
   sealed interface Result {
     data class Ok(val system: String, val previewCount: Int, val trust: String) : Result
 
@@ -489,9 +460,9 @@ class ServeCatalogStore(
         // can serve them. Done regardless of the rehydrate/daemon outcome below — the client-side
         // `.rc` lane needs no daemon, so it must survive a live-tier fallback.
         extractCatalogRcDocs(bundleFile, alias, dir)
-        // IR-backed previews have no class in app.jar by design. Preserve their full alias above
-        // for `.rc` extraction, but never advertise them to either daemon lane.
-        val classBackedAlias = classBackedAliasForBundle(bundleFile, alias)
+        // IR-backed previews have no class in app.jar by design. The bundle daemon replays them
+        // from the extracted `ir/` document + bundle manifest, so they remain in this alias just
+        // like class-backed previews and can expose Java / CMP Android renderer selection.
         // Rehydrate any resources the bundle externalized (fonts lifted out of classes/app.jar)
         // from
         // the branch's content-addressed pool into a shared cache + a materialized classpath dir.
@@ -513,19 +484,19 @@ class ServeCatalogStore(
             // which suffix maps to which id without the publisher's ordering, so we only serve the
             // per-preview lane for ids with an unambiguous stem; a colliding id resolves null and
             // falls back to the monolithic daemon (which serves every preview correctly).
-            val safeStems = uniquePerPreviewStems(classBackedAlias.values)
+            val safeStems = uniquePerPreviewStems(alias.values)
             val fetchPerPreview: (String) -> File? = { daemonId ->
               safeStems[daemonId]?.let { stem ->
                 fetchPerPreviewBundle(stem, liveBundle, base, dir, safe)
               }
             }
             if (
-              classBackedAlias.isNotEmpty() &&
+              alias.isNotEmpty() &&
                 buildTrustedBundle(
                   safe,
                   bundleFile,
                   res.dir,
-                  classBackedAlias,
+                  alias,
                   { bakedFallback(emptyList(), deferredIds.toList()) },
                   fetchPerPreview,
                 )
@@ -586,7 +557,7 @@ class ServeCatalogStore(
     // Priority when we DO record one: a specific liveBundle failure (fetched/rehydrated/started) >
     // an
     // unverified catalog that DID declare a live lane (trust is the blocker) > the plain "no live
-    // bundle published" case (meshcore's app catalog, remote-m3, …).
+    // bundle published" case (meshcore's app catalog, …).
     // Recorded whenever the catalog declares live-only coverage this terminal (no server-side
     // daemon) registration can't produce: those previews are omitted rather than listed as cards
     // whose every request 404s, and this is what tells the visitor the sheet is thinner than the

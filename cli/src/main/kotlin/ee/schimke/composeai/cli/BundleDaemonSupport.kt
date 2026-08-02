@@ -58,6 +58,47 @@ internal fun extractBundleClassesAndManifest(
 }
 
 /**
+ * Extract the v5+ IR replay payload from [zipBytes]: every `ir/<leaf>` entry into [irDir]
+ * (flattened to its basename, matching [BundleIr.path]) plus `bundle.json` into [manifestFile].
+ *
+ * Both detached-daemon entry points need these files: `bundle daemon` passes them directly to its
+ * subprocess, while the public catalog server records them in `daemon-launch.json`. Keeping the
+ * extraction here prevents those two launch paths from silently diverging again.
+ */
+internal fun extractBundleIrArtifacts(
+  zipBytes: ByteArray,
+  irDir: File,
+  manifestFile: File,
+  bundleFile: File,
+  fileSystem: FileSystem = SystemFileSystem,
+) {
+  val canonicalIr = irDir.canonicalFile
+  var sawManifest = false
+  ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
+    while (true) {
+      val entry = zin.nextEntry ?: break
+      val name = entry.name.replace('\\', '/')
+      when {
+        name == "bundle.json" -> {
+          fileSystem.write(manifestFile.path.toPath()) { write(zin.readBytes()) }
+          sawManifest = true
+        }
+        !entry.isDirectory && name.startsWith("ir/") && ".." !in name.split("/") -> {
+          val dest = File(irDir, File(name).name).canonicalFile
+          if (dest.path.startsWith(canonicalIr.path + File.separator)) {
+            fileSystem.write(dest.path.toPath()) { writeAll(zin.source()) }
+          }
+        }
+      }
+      zin.closeEntry()
+    }
+  }
+  require(sawManifest) {
+    "bundle daemon: bundle.json missing in ${bundleFile.path} — cannot resolve IR descriptors"
+  }
+}
+
+/**
  * Unpack an app jar's bytes into [targetDir], rejecting Zip Slip. Shares its containment-check
  * shape with `BundleCommand`'s `safeExtractZip` (a bundle's own zip) — duplicated rather than
  * reused since this one unpacks an in-memory *jar's* bytes, a different call shape.

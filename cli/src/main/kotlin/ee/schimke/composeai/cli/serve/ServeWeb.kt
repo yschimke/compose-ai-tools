@@ -3159,10 +3159,10 @@ object ServeWeb {
      * **backend selector** — the [RcPlayerBackend.wire] ids the host reports via
      * [ServeHost.enabledRcPlayersFor]. Non-empty for a Remote Compose preview: the viewer renders
      * one chip per [RcPlayerBackend.UNIVERSE] entry, enables those in this list, and disables the
-     * rest (`cmp-jvm` is always disabled until its Skiko draw path lands). The `js` chip drives the
-     * client-side `<canvas>` lane (so [hasRemoteComposeDoc] is what carries the doc for it), while
-     * `java` / `cmp-android` re-render server-side via the `rcPlayer=<wire>` render param. Empty ⇒
-     * no selector at all (not a Remote Compose preview).
+     * rest. The `js` chip drives the client-side `<canvas>` lane (so [hasRemoteComposeDoc] is what
+     * carries the doc for it), while `java` / `cmp-android` re-render through the Android daemon
+     * and `cmp-jvm` through its isolated desktop-player subprocess. Empty ⇒ no selector at all (not
+     * a Remote Compose preview).
      */
     enabledRcPlayers: List<String> = emptyList(),
     wasmSrc: String? = null,
@@ -3345,8 +3345,7 @@ object ServeWeb {
     // enabled for those the host reports in [enabledRcPlayers] and disabled otherwise. It replaces
     // the former single "RC (browser)" button — the `js` chip drives the same in-browser canvas
     // lane (setMode("rc")), while `java` / `cmp-android` re-render the PNG server-side via
-    // `rcPlayer=<wire>`. `cmp-jvm` is present-but-disabled until its Skiko draw path lands.
-    // Rendered
+    // `rcPlayer=<wire>`. `cmp-jvm` uses the same URL through its isolated subprocess lane. Rendered
     // only for a Remote Compose preview (a non-empty enabled set). `data-default` seeds the
     // initially-current chip: the server-side `java` player when it's available (the default
     // snapshot lane), else the client `js` canvas.
@@ -3369,7 +3368,8 @@ object ServeWeb {
                 on ->
                   "Render this component's Remote Compose document with the ${backend.label} player"
                 backend == RcPlayerBackend.CMP_JVM ->
-                  "CMP JVM player — not available yet (its Skiko draw path isn't implemented)"
+                  "CMP JVM player — not available for this session (install lib-rcjvm and " +
+                    "lib-daemon-desktop)"
                 else -> "${backend.label} player — not available for this session"
               }
             "<button type=\"button\" class=\"cp-live-toggle cp-rc-backend\" " +
