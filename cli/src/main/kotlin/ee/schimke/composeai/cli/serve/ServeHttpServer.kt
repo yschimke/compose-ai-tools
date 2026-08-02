@@ -1168,6 +1168,7 @@ class ServeHttpServer(
           // a daemon-twinned card can actually re-render one, hence the per-preview predicate.
           declaredThemes = renderHost.declaredThemes,
           canRenderThemeFor = { id -> renderHost.canRenderOverridesFor(id) },
+          themeRenderConcurrency = renderHost.themeRenderConcurrency,
           engagement = previewEngagement(selectedSessionId, renderHost.previews),
           systemViews = systemViews,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = heroUrl),

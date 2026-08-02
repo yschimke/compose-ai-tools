@@ -922,8 +922,10 @@ object ServeWeb {
      * emitted at all.
      */
     themeBaseJs: String = "",
+    themeRenderConcurrency: Int = 1,
   ): String {
     val hasDeclaredThemes = themeBaseJs.isNotEmpty()
+    val safeThemeRenderConcurrency = themeRenderConcurrency.coerceIn(1, 2)
     // The stored choice is one of `light` / `dark` (a baked swap), `default` (the catalog's own
     // renders), or `theme:<providerFqn>` (an app-declared @ThemeCatalog theme, applied by
     // re-pointing each daemon-twinned card's thumbnail at a `?themeProvider=` render).
@@ -948,19 +950,21 @@ object ServeWeb {
         """
           .trimIndent()
       else ""
-    // The declared-theme lane. A declared theme re-renders on the daemon, which renders ONE AT A
-    // TIME and sheds the overflow (503 "render busy" on a bare daemon session; the baked PNG on a
-    // catalog-live one). Firing a whole grid's worth of themed thumbnails at once would therefore
-    // leave most cards on their pre-theme pixels, so they are fetched serially — each waits for the
-    // previous to load — with one delayed retry for a shed request. Baked light/dark swaps never
-    // queue: those bytes are already published. themeGen abandons an in-flight queue the moment a
-    // new theme is chosen.
+    // The declared-theme lane. A catalog host backed by a bounded pool of per-preview daemons may
+    // advertise a small amount of parallelism; a monolithic host advertises one and stays serial.
+    // Keep the browser cap deliberately below the server/pool caps: opening an Android daemon is
+    // expensive, and an unbounded grid burst would still shed requests (503 "render busy") or
+    // create a JVM storm. Each worker advances only after its image settles; failures get bounded
+    // delayed retries with cache-busting URLs. Baked light/dark swaps never queue: those bytes are
+    // already published. themeGen abandons all workers the moment a new theme is chosen.
     val themeRenderInit =
       if (hasDeclaredThemes)
         """
         var themeBase = $themeBaseJs;
         var themeGen = 0;
-        function runThemeQueue(queue, gen) {
+        var themeRenderConcurrency = $safeThemeRenderConcurrency;
+        var themeRenderRetries = 3;
+        function runThemeWorker(queue, gen) {
           if (gen !== themeGen) return;
           var job = queue.shift();
           if (!job) return;
@@ -971,21 +975,29 @@ object ServeWeb {
             settled = true;
             img.onload = null;
             img.onerror = null;
-            if (!ok && !job.retried) {
-              // Re-request rather than re-assign the identical (failed, uncached) URL.
-              job.retried = true;
-              job.src = job.src + "&_retry=1";
-              queue.unshift(job);
-              setTimeout(function () { runThemeQueue(queue, gen); }, 1500);
+            if (!ok && job.retries < themeRenderRetries) {
+              // Re-request rather than re-assign the identical (failed, uncached) URL. Exponential
+              // backoff gives a busy daemon time to finish without stalling the other worker.
+              job.retries++;
+              job.src = job.baseSrc + "&_retry=" + job.retries;
+              setTimeout(function () {
+                if (gen !== themeGen) return;
+                queue.push(job);
+                runThemeWorker(queue, gen);
+              }, 1000 * Math.pow(2, job.retries));
               return;
             }
             job.card.classList.remove("cp-reloading");
             job.card.removeAttribute("aria-busy");
-            runThemeQueue(queue, gen);
+            runThemeWorker(queue, gen);
           }
           img.onload = function () { next(true); };
           img.onerror = function () { next(false); };
           img.src = job.src;
+        }
+        function runThemeQueue(queue, gen) {
+          var workers = Math.min(themeRenderConcurrency, queue.length);
+          for (var i = 0; i < workers; i++) runThemeWorker(queue, gen);
         }
         """
           .trimIndent()
@@ -1028,10 +1040,13 @@ object ServeWeb {
             if (!img || !base) return;
             c.classList.add("cp-reloading");
             c.setAttribute("aria-busy", "true");
+            var themedSrc = base + (base.indexOf("?") === -1 ? "?" : "&") + "themeProvider=" + encodeURIComponent(provider);
             var job = {
               card: c,
               img: img,
-              src: base + (base.indexOf("?") === -1 ? "?" : "&") + "themeProvider=" + encodeURIComponent(provider),
+              baseSrc: themedSrc,
+              src: themedSrc,
+              retries: 0,
             };
             // A tabbed catalog's hidden cards can take several daemon renders before the visitor
             // sees any response to their click. On initial load c.hidden is not assigned yet, so
@@ -2561,6 +2576,12 @@ object ServeWeb {
      */
     canRenderThemeFor: (String) -> Boolean = { false },
     /**
+     * Number of themed thumbnail workers this host can safely sustain. Monolithic daemons pass one;
+     * catalog composites with independent per-preview daemons pass a conservative two. Clamped so a
+     * future caller cannot accidentally turn a landing page into an unbounded render burst.
+     */
+    themeRenderConcurrency: Int = 1,
+    /**
      * Per-preview engagement counts for this running server. The map is additive UI/API metadata:
      * missing or zero entries render no badge.
      */
@@ -2780,6 +2801,7 @@ object ServeWeb {
           themeStorageKey(sessionId, basePath),
           tabStorageKey(sessionId, basePath),
           themeBaseJs,
+          themeRenderConcurrency,
         )}</script>"
       else ""
     val formatLink =

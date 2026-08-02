@@ -98,7 +98,9 @@ if (!known && themeBtns.length) theme = themeBtns[0].getAttribute("data-theme-ch
 var appliedTheme = null;
 var themeBase = ["/render/button-filled__ideal__default__light.png?session=compose-m3", "/render/switch-on__ideal__default__light.png?session=compose-m3", "/render/badge.png?session=compose-m3"];
 var themeGen = 0;
-function runThemeQueue(queue, gen) {
+var themeRenderConcurrency = 2;
+var themeRenderRetries = 3;
+function runThemeWorker(queue, gen) {
   if (gen !== themeGen) return;
   var job = queue.shift();
   if (!job) return;
@@ -109,21 +111,29 @@ function runThemeQueue(queue, gen) {
     settled = true;
     img.onload = null;
     img.onerror = null;
-    if (!ok && !job.retried) {
-      // Re-request rather than re-assign the identical (failed, uncached) URL.
-      job.retried = true;
-      job.src = job.src + "&_retry=1";
-      queue.unshift(job);
-      setTimeout(function () { runThemeQueue(queue, gen); }, 1500);
+    if (!ok && job.retries < themeRenderRetries) {
+      // Re-request rather than re-assign the identical (failed, uncached) URL. Exponential
+      // backoff gives a busy daemon time to finish without stalling the other worker.
+      job.retries++;
+      job.src = job.baseSrc + "&_retry=" + job.retries;
+      setTimeout(function () {
+        if (gen !== themeGen) return;
+        queue.push(job);
+        runThemeWorker(queue, gen);
+      }, 1000 * Math.pow(2, job.retries));
       return;
     }
     job.card.classList.remove("cp-reloading");
     job.card.removeAttribute("aria-busy");
-    runThemeQueue(queue, gen);
+    runThemeWorker(queue, gen);
   }
   img.onload = function () { next(true); };
   img.onerror = function () { next(false); };
   img.src = job.src;
+}
+function runThemeQueue(queue, gen) {
+  var workers = Math.min(themeRenderConcurrency, queue.length);
+  for (var i = 0; i < workers; i++) runThemeWorker(queue, gen);
 }
       function apply() {
         themeBtns.forEach(function (b) {
@@ -166,10 +176,13 @@ function applyThemeChoice() {
       if (!img || !base) return;
       c.classList.add("cp-reloading");
       c.setAttribute("aria-busy", "true");
+      var themedSrc = base + (base.indexOf("?") === -1 ? "?" : "&") + "themeProvider=" + encodeURIComponent(provider);
       var job = {
         card: c,
         img: img,
-        src: base + (base.indexOf("?") === -1 ? "?" : "&") + "themeProvider=" + encodeURIComponent(provider),
+        baseSrc: themedSrc,
+        src: themedSrc,
+        retries: 0,
       };
       // A tabbed catalog's hidden cards can take several daemon renders before the visitor
       // sees any response to their click. On initial load c.hidden is not assigned yet, so

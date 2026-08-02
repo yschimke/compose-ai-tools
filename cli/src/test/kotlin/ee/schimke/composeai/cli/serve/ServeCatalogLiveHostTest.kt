@@ -544,6 +544,21 @@ class ServeCatalogLiveHostTest {
   // --- Per-preview lane (default, with monolithic fallback) -----------------------------------
 
   @Test
+  fun `theme redraw is parallel only when the per-preview lane is available`() {
+    val (monolithicOnly, live, baked) = host()
+    assertEquals(1, monolithicOnly.themeRenderConcurrency)
+
+    val pooled =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = baked,
+        perPreviewResolve = { null },
+      )
+    assertEquals(2, pooled.themeRenderConcurrency)
+  }
+
+  @Test
   fun `an override render prefers the per-preview daemon over the monolithic one`() {
     val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
     val monolithic =
