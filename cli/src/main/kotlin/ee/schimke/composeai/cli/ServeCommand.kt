@@ -2470,7 +2470,8 @@ class ServeCommand(args: List<String>) : Command(args) {
                           signed-in GitHub user (unless --github-auth-users narrows sign-in);
                           playground additionally requires access to <owner/repo>. After sign-in
                           the server stores only a signed, expiring login cookie plus the repo
-                          access verdict. All four flags are required together.
+                          access verdict. The OAuth request includes GitHub's repo scope so private
+                          repositories can be checked. All four flags are required together.
         --github-auth-callback-base-url <url>
                           External origin for the OAuth callback, e.g. https://preview.example.com.
                           Omit for local use; reverse-proxied deploys should set it explicitly.

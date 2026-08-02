@@ -358,7 +358,8 @@ SERVE_GITHUB_AUTH_COOKIE_SECRET=... # at least 32 chars
 With those set, live preview WebSockets require a signed-in GitHub user. `/playground`,
 `POST /api/<version>/compiler/run`, and `/pg/<token>` require a signed-in GitHub user that also has
 access to `SERVE_GITHUB_AUTH_REPO` / `--github-auth-repo`. The browser cookie stores only a signed,
-expiring login plus the repo access verdict.
+expiring login plus the repo access verdict. The OAuth request includes GitHub's `repo` scope so
+private repository access can be checked during sign-in; the OAuth token is not stored.
 Reverse-proxied deployments should also set
 `SERVE_GITHUB_AUTH_CALLBACK_BASE_URL=https://preview.example.com` so the OAuth callback URL is stable.
 When `DOMAIN` is set, the prebuilt image derives

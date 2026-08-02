@@ -114,7 +114,7 @@ class ServeGithubAuth(
       listOf(
           "client_id" to config.clientId,
           "redirect_uri" to callbackUrl(call),
-          "scope" to "read:user",
+          "scope" to "read:user repo",
           "state" to state,
         )
         .joinToString("&") { (k, v) -> "$k=${urlEncode(v)}" }

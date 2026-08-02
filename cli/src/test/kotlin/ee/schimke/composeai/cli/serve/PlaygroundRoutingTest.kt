@@ -342,6 +342,10 @@ class PlaygroundRoutingTest {
           resp.header("Location").orEmpty() to
             resp.header("Set-Cookie").orEmpty().substringBefore(";")
         }
+    assertTrue(
+      start.first.contains("scope=read%3Auser+repo"),
+      "GitHub OAuth requests repo scope so private-repo playground access can be checked: ${start.first}",
+    )
     val state = start.first.substringAfter("state=").substringBefore("&")
     return noRedirect
       .newCall(
