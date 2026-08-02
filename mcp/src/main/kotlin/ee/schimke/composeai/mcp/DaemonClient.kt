@@ -106,6 +106,7 @@ class DaemonClient(
     moduleProjectDir: String,
     capabilities: ClientCapabilities = ClientCapabilities(visibility = true, metrics = true),
     attachDataProducts: List<String>? = null,
+    maxRenderMs: Long? = null,
     timeout: Duration = 30.seconds,
   ): InitializeResult {
     val id = nextId.getAndIncrement()
@@ -117,13 +118,15 @@ class DaemonClient(
         moduleId = moduleId,
         moduleProjectDir = moduleProjectDir,
         capabilities = capabilities,
-        // D1 — only attach the option when the caller actually asked for ambient kinds; pre-D2
-        // daemons advertise nothing, so the daemon-side filter would silently drop these anyway,
-        // but keeping the field absent on `null` matches the `encodeDefaults = false` shape the
-        // rest of the protocol fixtures use.
+        // Keep options absent when the caller has no overrides. `encodeDefaults = false` then
+        // preserves the pre-options wire shape for ordinary interactive clients.
         options =
-          if (attachDataProducts.isNullOrEmpty()) null
-          else Options(attachDataProducts = attachDataProducts),
+          if (attachDataProducts.isNullOrEmpty() && maxRenderMs == null) null
+          else
+            Options(
+              attachDataProducts = attachDataProducts?.takeIf { it.isNotEmpty() },
+              maxRenderMs = maxRenderMs,
+            ),
       )
     val request =
       JsonRpcRequest(

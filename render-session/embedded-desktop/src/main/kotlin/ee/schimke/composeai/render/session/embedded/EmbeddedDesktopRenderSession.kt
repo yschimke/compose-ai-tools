@@ -138,6 +138,7 @@ object EmbeddedDesktopRenderSessions : RenderSessionFactory {
           workspaceRoot = canonicalRoot.absolutePath,
           moduleId = descriptor.modulePath,
           moduleProjectDir = descriptor.workingDirectory,
+          maxRenderMs = config.maxRenderTime?.inWholeMilliseconds,
           timeout = config.initializeTimeout,
         )
       } catch (e: Exception) {
