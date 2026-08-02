@@ -286,9 +286,17 @@
       return response.arrayBuffer();
     }).then(function (buffer) {
       var player = new window.RC.RcdPlayer(canvas);
+      // Artifact theme is an explicit comparison input; it must not inherit the site's / OS's
+      // prefers-color-scheme or a light PNG can be scored against a dark RC canvas.
+      player.setTheme(theme);
       return player.loadFromArrayBuffer(buffer).then(function () {
         if (player.repaint) player.repaint();
-        return nextFrame().then(nextFrame).then(function () { return scoreCanvas(pngUrl, canvas); });
+        // The first paint discovers named font families. Wait for those faces, repaint with the
+        // resolved glyphs, and only then take the single-shot fidelity measurement.
+        return player.fontsReady().then(function () {
+          if (player.repaint) player.repaint();
+          return nextFrame().then(nextFrame).then(function () { return scoreCanvas(pngUrl, canvas); });
+        });
       });
     });
   }

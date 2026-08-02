@@ -74,4 +74,22 @@ class ServeWebAssetsTest {
       assertEquals(0, result.waitFor(), "$name failed node --check:\n$output")
     }
   }
+
+  @Test
+  fun `remote compose comparison fixes theme and fonts before scoring`() {
+    val script = ServeWebAssets.load("format-compare.js")!!.bytes.decodeToString()
+    val theme = script.indexOf("player.setTheme(theme)")
+    val firstPaint = script.indexOf("player.repaint", startIndex = theme)
+    val fonts = script.indexOf("player.fontsReady()", startIndex = firstPaint)
+    val finalPaint = script.indexOf("player.repaint", startIndex = fonts)
+    val score = script.indexOf("scoreCanvas(pngUrl, canvas)", startIndex = finalPaint)
+    assertTrue(
+      theme >= 0 &&
+        theme < firstPaint &&
+        firstPaint < fonts &&
+        fonts < finalPaint &&
+        finalPaint < score,
+      "the RC player must apply artifact theme, discover and await fonts, then repaint before SSIM",
+    )
+  }
 }
