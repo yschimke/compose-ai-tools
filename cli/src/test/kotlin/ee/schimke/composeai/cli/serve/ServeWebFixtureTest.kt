@@ -702,6 +702,17 @@ class ServeWebFixtureTest {
         basePath = "/meshcore-mobile",
         version = version,
       )
+    // A tabbed declared-theme catalog exercises initial queue priority before apply() has assigned
+    // each card's hidden state (for a returning visitor whose saved tab is not the first one).
+    val landingDeclaredTabbedThemes =
+      ServeWeb.landingPage(
+        "meshcore-mobile",
+        sectionedPreviews,
+        token,
+        sessionId = "meshcore-mobile",
+        declaredThemes = listOf(ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog")),
+        canRenderThemeFor = { true },
+      )
     // The default-state viewer for that catalog: renders the `<nav class="cp-states">` switcher of
     // links to the component's other same-theme states, the current (Default) state marked active.
     val viewerStates =
@@ -1121,9 +1132,14 @@ class ServeWebFixtureTest {
     // daemon queue. Otherwise every hidden Theme/Component card renders before the selected tab's
     // first image request, making the theme control appear to do nothing.
     assertTrue(
-      landingDeclaredThemes.contains("(c.hidden ? themeDeferredQueue : themeQueue).push(job)") &&
-        landingDeclaredThemes.contains("themeQueue = themeQueue.concat(themeDeferredQueue)"),
-      "visible cards are rendered before hidden cards after a declared-theme change",
+      landingDeclaredTabbedThemes.contains(
+        "(themeVisible ? themeQueue : themeDeferredQueue).push(job)"
+      ) &&
+        landingDeclaredTabbedThemes.contains(
+          "themeVisible = themeSection.getAttribute(\"data-section\") === current"
+        ) &&
+        landingDeclaredTabbedThemes.contains("themeQueue = themeQueue.concat(themeDeferredQueue)"),
+      "current-tab cards are rendered first, including before hidden state is initialized",
     )
     // Re-pointing runs only when the theme itself changed, so a search keystroke (which also calls
     // apply()) never restarts an in-flight themed-render queue.
