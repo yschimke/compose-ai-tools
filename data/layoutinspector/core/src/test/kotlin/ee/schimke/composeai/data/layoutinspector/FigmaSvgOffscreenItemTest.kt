@@ -130,4 +130,48 @@ class FigmaSvgOffscreenItemTest {
       )
     }
   }
+
+  @Test
+  fun offscreenRasterLayersAreRemovedWithTheirDroppedTargets() {
+    val screen =
+      LayoutInspectorNode(
+        nodeId = "screen",
+        component = "Box",
+        bounds = bounds(0, 0, 400, 800),
+        size = LayoutInspectorSize(400, 800),
+        tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFFFF"),
+        children =
+          listOf(
+            LayoutInspectorNode(
+              nodeId = "visible-photo",
+              component = "Image",
+              bounds = bounds(24, 52, 144, 172),
+              size = LayoutInspectorSize(120, 120),
+            ),
+            LayoutInspectorNode(
+              nodeId = "below-fold-photo",
+              component = "Image",
+              bounds = bounds(24, 900, 144, 1020),
+              size = LayoutInspectorSize(120, 120),
+            ),
+          ),
+      )
+    val model =
+      FigmaSvgModel.from(
+        layout = LayoutInspectorPayload(screen),
+        density = 1f,
+        rasterComponents = FigmaSvgModel.DEFAULT_RASTER_COMPONENTS,
+        frameWidthPx = 400,
+        frameHeightPx = 800,
+      )
+
+    val svg = FigmaLayeredSvg.render(model)
+    val referenced = Regex("""href="([^"]+)"""").findAll(svg).map { it.groupValues[1] }.toList()
+    assertEquals(listOf("figma-raster/visible_photo.png"), referenced)
+    assertEquals(referenced, model.rasterTargets.map { it.href })
+    assertTrue(
+      "the offscreen crop must not remain as a dangling href:\n$svg",
+      "figma-raster/below_fold_photo.png" !in svg,
+    )
+  }
 }
