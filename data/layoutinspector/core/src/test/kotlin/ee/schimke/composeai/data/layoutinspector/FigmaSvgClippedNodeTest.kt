@@ -173,4 +173,76 @@ class FigmaSvgClippedNodeTest {
       !svg.contains("""height="300""""),
     )
   }
+
+  /**
+   * The narrowing must not *widen* a fill. `size(100.dp).clip(…).requiredSize(50.dp, 200.dp)
+   * .background(…)` overflows its fixed clip vertically while staying narrower than it horizontally
+   * — the same "shorter but wider" shape the lookahead chain presents, but here the node really
+   * does paint only 50 wide. Clipping the node's *painted* extent (its own box unioned with its
+   * paint modifiers' boxes) rather than substituting the clip box whole keeps the fill off the 25px
+   * margins on each side that Compose leaves blank.
+   */
+  @Test
+  fun aFixedClipAroundARequiredSizeOverflowDoesNotWidenTheFill() {
+    val overflowing =
+      LayoutInspectorNode(
+        nodeId = "screen",
+        component = "Box",
+        bounds = bounds(0, 0, 200, 400),
+        size = LayoutInspectorSize(200, 400),
+        children =
+          listOf(
+            LayoutInspectorNode(
+              nodeId = "tall",
+              component = "Box",
+              // `requiredSize(50, 200)`: narrower than the clip, and twice as tall.
+              bounds = bounds(25, 0, 75, 200),
+              size = LayoutInspectorSize(50, 200),
+              modifiers =
+                listOf(
+                  LayoutInspectorModifier(
+                    name = "graphicsLayer",
+                    properties = mapOf("clip" to "true"),
+                    bounds = bounds(0, 0, 100, 100),
+                  ),
+                  // The fill is on the innermost coordinator, so the painted extent is the node's
+                  // own 50-wide box.
+                  LayoutInspectorModifier(name = "background", bounds = bounds(25, 0, 75, 200)),
+                ),
+              tokens = ComposeSemanticsTokens(backgroundColor = "#FFFFFFFF", clipsContent = true),
+              children =
+                listOf(
+                  // A child drawing across the FULL 100-wide viewport — past the parent's own
+                  // 50-wide paint, but well inside the mask. The render shows all 70px of it.
+                  LayoutInspectorNode(
+                    nodeId = "wide",
+                    component = "Box",
+                    bounds = bounds(25, 10, 95, 160),
+                    size = LayoutInspectorSize(70, 150),
+                    tokens = ComposeSemanticsTokens(backgroundColor = "#FF0000FF"),
+                  )
+                ),
+            )
+          ),
+      )
+    val svg =
+      FigmaLayeredSvg.render(
+        FigmaSvgModel.from(layout = LayoutInspectorPayload(overflowing), density = 1f)
+      )
+    assertTrue(
+      "the fill must be the painted 50×100 box — clipped in height, never widened to the clip:" +
+        "\n$svg",
+      svg.contains("""<rect x="25" y="0" width="50" height="100" fill="#FFFFFF""""),
+    )
+    // The mask keeps the clipping coordinator's own rect: it is what the subtree is cut to, and
+    // shrinking it to the parent's narrower paint would trim a child the render draws in full.
+    assertTrue(
+      "the mask must stay the 100×100 clip box:\n$svg",
+      svg.contains("""<clipPath id="clip-0"><rect x="0" y="0" width="100" height="100"/>"""),
+    )
+    assertTrue(
+      "the child spanning the viewport must keep its full 70px width:\n$svg",
+      svg.contains("""width="70""""),
+    )
+  }
 }
