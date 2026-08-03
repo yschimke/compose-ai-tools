@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.19.25](https://github.com/yschimke/compose-ai-tools/compare/v0.19.24...v0.19.25) (2026-08-03)
+
+
+### Features
+
+* **rc:** Add CMP Wasm Remote Compose player ([#3201](https://github.com/yschimke/compose-ai-tools/issues/3201)) ([9bb93d9](https://github.com/yschimke/compose-ai-tools/commit/9bb93d9e12c9d13565ba4b35f1342aace1f48006))
+* **serve:** count live-seat refusals on status ([#3233](https://github.com/yschimke/compose-ai-tools/issues/3233)) ([3e2ad66](https://github.com/yschimke/compose-ai-tools/commit/3e2ad66f459c2349bbccc8b099ef71b2e2eb3c9c))
+* **serve:** grant two theme-render bursts instead of one ([#3231](https://github.com/yschimke/compose-ai-tools/issues/3231)) ([8f55512](https://github.com/yschimke/compose-ai-tools/commit/8f55512bcfa97a26f3f8acac290d5b80f4077601))
+
+
+### Bug Fixes
+
+* **samples:** Wear device dp is per-density, not panel px / 2 ([#3228](https://github.com/yschimke/compose-ai-tools/issues/3228)) ([3da4d14](https://github.com/yschimke/compose-ai-tools/commit/3da4d14556ee393a455f1d4a77eb5f8a5e013525))
+
+
+### Performance Improvements
+
+* **serve:** route snapshot renders back to the shared daemon ([#3232](https://github.com/yschimke/compose-ai-tools/issues/3232)) ([39322d9](https://github.com/yschimke/compose-ai-tools/commit/39322d9529567ad29fee3654fcf5db4e5d494803))
+* **serve:** serve baked pixels without entering render admission ([#3229](https://github.com/yschimke/compose-ai-tools/issues/3229)) ([8363d59](https://github.com/yschimke/compose-ai-tools/commit/8363d59d8daa5154f4b946ddd460e4104d165b24))
+
 ## [0.19.24](https://github.com/yschimke/compose-ai-tools/compare/v0.19.23...v0.19.24) (2026-08-03)
 
 
