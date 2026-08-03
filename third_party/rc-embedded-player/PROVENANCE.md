@@ -559,6 +559,54 @@ This closes the sequencing's step 3 draw half. What remains is wiring the render
 surface (the `compose-preview serve` `cmp-jvm` chip and/or an `rc-compare` jvm lane), not any missing
 player capability.
 
+#### Done: the `compose/figma-svg` export runs over the jvm player, and matches the Android one
+
+The vector export's second pass rests on a claim about the *player*, not the platform: the embedded
+player interprets a document into real Compose layout/draw nodes, so the layout-inspector walk sees
+interior structure and the export emits real vector content, where the View player is one opaque
+`AndroidView` that can only crop out as a flat `<image>` (`RcFigmaSvgExportTest`, above). The whole
+export pipeline that claim runs through — `LayoutInspectorDataProducer`,
+`ComposeSemanticsDataProducer`, `ComposeFigmaSvgDataProducer` — is a CMP/JVM module the desktop
+`RenderEngine` already calls, so nothing about it is Android-bound either.
+
+`RcJvmFigmaSvgExportTest` (in the jvm module) executes exactly that on the desktop: it composes
+`RcPlayerJvm` into an `ImageComposeScene`, reads the semantics root off `scene.semanticsOwners` (the
+same handle the desktop `RenderEngine` uses after `scene.render()` — desktop has no `RootForTest`),
+and runs the **production** export over the result, over the *same* committed
+`TitleCardRemote-640x480.rc` fixture at the same xhdpi density as the Android lanes. It asserts the
+same qualitative half the embedded lane does: real `<text>`, not-just-raster, issue #2937's drawn
+chrome present, that chrome *beneath* the editable text, and a canvas that covers the document.
+
+**What a run shows — the jvm export is the Android embedded export, to within text metrics.** Same
+tree shape (10 layout-inspector nodes, 2 semantics text nodes), same element mix (10 elements: 2
+`<text>`, 1 `<image>`, 6 `<g>`, 0 `<path>`/`<rect>`), same layer order (the isolated draw capture
+under both text runs). Everything that differs is downstream of skiko-vs-Robolectric text
+measurement, which decides the ink bounds the canvas and the drawn-content crop are sized from:
+
+| | CMP Android (embedded) | CMP JVM |
+| --- | --- | --- |
+| canvas | 672×206 | 672×204 |
+| drawn-content crop | 640×174 at y=153 | 640×172 at y=154 |
+| text baselines | 230.76 / 271.35 | 231.76 / 270.35 |
+| `font-family` | `FontFamily.Default, sans-serif` | `sans-serif` |
+| SVG bytes | 814 | 774 |
+
+Two of those are worth reading as findings rather than noise. The ±1px baselines / ±2px canvas are
+the documented text-parity limit (`RcPlayerTextLayoutJvm.kt` resolves the nearest standard family;
+the host's own faces measure it) — the same reason no test in this module pins text pixels. The
+`font-family` difference is the Android side being *worse*: its text style carries `FontFamily
+.Default`, whose `toString()` the capture writes verbatim into `layoutTextFontFamily`, so the export
+emits a font stack whose first name no importer can resolve and which is only saved by the
+`, sans-serif` generic `withGenericFallback` appends. The jvm text seam resolves to a real
+`GenericFontFamily`, so the same document exports the clean `sans-serif` the model intends. That is
+an Android-capture bug the jvm lane happens to expose; fixing it (mapping the `FontFamily.Default`
+sentinel to the default family in `resolveFamily`) touches every baked catalog's SVG, so it is left
+to its own change rather than smuggled in here.
+
+Rendered from each lane's `compose-figma.svg` (figma-raster crop inlined), for what the three
+actually look like: [`docs/renders/figma-svg-lanes.png`](../rc-embedded-player-jvm/docs/renders/figma-svg-lanes.png)
+in the jvm module.
+
 ### The source-set shape is `jvmCommon`, not `common`
 
 `remote-core` — the document and operation model the player reads throughout — is a plain

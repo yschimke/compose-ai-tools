@@ -1206,6 +1206,8 @@ class ServeHttpServer(
           // The catalog's declared stage surface (`display.surface`), so a dark-first system's
           // unthemed cards sit on the dark stage instead of the default white.
           declaredSurface = catalogBundleHost(renderHost)?.stageSurface,
+          // …and its own colour palette, so this system's pages are framed in its colours.
+          themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
           // Why the catalog is snapshot-only, when it is (no live bundle, unverified, …) — shown as
           // a banner under the header so a browser sees it before opening a preview.
           degradations = renderHost.degradations,
@@ -1290,6 +1292,8 @@ class ServeHttpServer(
           isPublic = isPublic,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           declaredSurface = catalogBundleHost(renderHost)?.stageSurface,
+          // …and its own colour palette, so this system's pages are framed in its colours.
+          themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
           hasSvgFor = renderHost::hasSvgExportFor,
           hasRemoteComposeFor = renderHost::hasRemoteComposeDoc,
           referencesFor = renderHost::designReferencesFor,
@@ -1350,6 +1354,9 @@ class ServeHttpServer(
           basePath = basePath,
           isPublic = isPublic,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
+          // Stepping from the themed comparison table into its focused Reference/Diff/Actual view
+          // must not drop back to the built-in chrome mid-journey.
+          themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           displayTitle = catalogBundleHost(renderHost)?.title,
         ),
@@ -1775,6 +1782,7 @@ class ServeHttpServer(
      */
     val loadError: String?,
     val lastLoadAttemptEpochMillis: Long?,
+    val themeOptimization: ThemeOptimizationSnapshot?,
     /**
      * The metadata above is a **last-known snapshot** of a now-suspended catalog
      * ([catalogMetaSeen]) rather than a live read, because the session's daemon is idle. Facts a
@@ -1825,6 +1833,7 @@ class ServeHttpServer(
     val darkStage: Boolean,
     val degradation: String?,
     val provenance: ServeWeb.CatalogProvenance?,
+    val themeOptimization: ThemeOptimizationSnapshot?,
   )
 
   init {
@@ -1856,6 +1865,7 @@ class ServeHttpServer(
         darkStage = ServeWeb.SystemDisplay.resolveDarkFirst(id, bundle.stageSurface),
         degradation = host.degradations.firstOrNull()?.detail,
         provenance = bundle.provenance,
+        themeOptimization = host.themeOptimizationSnapshot(),
       )
   }
 
@@ -1934,6 +1944,7 @@ class ServeHttpServer(
               loadState = c.loadState,
               loadError = c.loadError,
               lastLoadAttemptEpochMillis = c.lastLoadAttemptEpochMillis,
+              themeOptimization = c.themeOptimization,
             )
           },
         runningServers =
@@ -2040,6 +2051,7 @@ class ServeHttpServer(
                 },
               loadState = c.loadState,
               loadError = c.loadError,
+              themeOptimization = c.themeOptimization,
             )
           },
         servers =
@@ -2129,6 +2141,7 @@ class ServeHttpServer(
         available = available,
         loadError = load?.error,
         lastLoadAttemptEpochMillis = load?.lastAttemptEpochMillis,
+        themeOptimization = host?.themeOptimizationSnapshot() ?: seen?.themeOptimization,
         stale = seen != null,
       )
     }
@@ -2505,6 +2518,8 @@ class ServeHttpServer(
           // The catalog's declared stage surface (`display.surface`), so an unthemed preview backs
           // on the dark stage for a dark-first system instead of the default white.
           declaredSurface = catalogBundleHost(renderHost)?.stageSurface,
+          // …and its own colour palette, so this system's pages are framed in its colours.
+          themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
           // Why this session is snapshot-only, when it is — the banner under the header explains
           // the
           // catalog-level reason (no live bundle, unverified, …) alongside the per-control note.
@@ -2630,7 +2645,17 @@ class ServeHttpServer(
           // close the race with a render that completes between these two calls.
           // A full-page request is a distinct daemon data product; a cached viewport PNG cannot
           // satisfy it even when the preview + overrides key is otherwise identical.
-          val cached = if (scroll) null else renderHost.cachedRender(previewId, overrides)
+          // Answerable without entering admission: a completed theme-cache entry, or pixels
+          // already baked on disk. This is what lets a mostly-browsing box stay responsive under
+          // load — otherwise every thumbnail read competes for the same handful of global render
+          // slots as the daemon renders, and a few cold ones (which can take a minute each)
+          // head-of-line block dozens of readers whose answer was a local file, until they 503.
+          // A `?scroll=` request is a distinct full-page product that baked pixels cannot satisfy.
+          val cached =
+            if (scroll) null
+            else
+              renderHost.cachedRender(previewId, overrides)
+                ?: renderHost.bakedRender(previewId, overrides)
           val pureThemeProvider =
             overrides.themeProvider?.takeIf {
               overrides == PreviewOverrides(themeProvider = it) &&
@@ -3375,6 +3400,8 @@ private data class CatalogDto(
   /** Latest catalog fetch/parse/image error, null after a successful latest attempt. */
   val loadError: String? = null,
   val lastLoadAttemptEpochMillis: Long? = null,
+  /** Server-side idle theme-cache fill progress for this catalog generation. */
+  val themeOptimization: ThemeOptimizationSnapshot? = null,
 )
 
 @Serializable

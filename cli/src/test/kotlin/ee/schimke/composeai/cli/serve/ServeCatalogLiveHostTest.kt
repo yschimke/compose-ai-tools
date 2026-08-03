@@ -8,6 +8,11 @@ import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -60,6 +65,12 @@ class ServeCatalogLiveHostTest {
       if (previewId in liveOnlyPreviewIds) return RenderOutcome.NotFound
       return RenderOutcome.Ok("$tag:$previewId".encodeToByteArray())
     }
+
+    // Local pixels, served without admission. Deliberately does NOT count as a render call, so a
+    // test can assert the daemon was never reached.
+    override fun bakedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? =
+      if (previewId in liveOnlyPreviewIds) null
+      else RenderOutcome.Ok("$tag:$previewId".encodeToByteArray())
 
     override fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
       lastSvgId = previewId
@@ -580,6 +591,7 @@ class ServeCatalogLiveHostTest {
         live = live,
         baked = baked,
         perPreviewResolve = { null },
+        sharedDaemonRenders = false,
       )
     assertEquals(5, pooled.themeRenderBurstCapacity)
   }
@@ -623,6 +635,7 @@ class ServeCatalogLiveHostTest {
         live = monolithic,
         baked = baked,
         perPreviewResolve = { perPreview },
+        sharedDaemonRenders = false,
       )
 
     val first = composite.render(catalogId, themeOverride()) as RenderOutcome.Ok
@@ -680,7 +693,358 @@ class ServeCatalogLiveHostTest {
   }
 
   @Test
-  fun `an override render prefers the per-preview daemon over the monolithic one`() {
+  fun `idle optimizer fills every declared theme and reports completion`() {
+    val secondTheme = ServeTheme("Brand Light", "com.example.BrandLight")
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme, secondTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = baked,
+        serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationEnabled = true,
+        themeOptimizationIdleMillis = 0,
+      )
+
+    composite.prewarm()
+    val snapshot = awaitOptimization(composite)
+
+    assertEquals(2, live.renderCalls)
+    assertEquals(2, snapshot.total)
+    assertEquals(2, snapshot.cached)
+    assertTrue(snapshot.fullyOptimized)
+    assertEquals("complete", snapshot.state)
+    assertEquals(false, composite.backgroundWorkActive)
+  }
+
+  @Test
+  fun `idle optimizer waits for asynchronous cold warming without spending its retry budget`() {
+    val warmStarted = CountDownLatch(1)
+    val releaseWarm = CountDownLatch(1)
+    val delegate =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val slowColdLive =
+      object : ServeHost by delegate {
+        override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
+          if (overrides == PreviewOverrides()) {
+            warmStarted.countDown()
+            check(releaseWarm.await(5, TimeUnit.SECONDS)) { "test warm was not released" }
+          }
+          return delegate.render(previewId, overrides)
+        }
+      }
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = slowColdLive,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        warmInBackground = true,
+        serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationEnabled = true,
+        themeOptimizationIdleMillis = 0,
+      )
+
+    composite.prewarm()
+    assertTrue(warmStarted.await(2, TimeUnit.SECONDS))
+    Thread.sleep(750)
+    assertTrue(composite.backgroundWorkActive)
+    assertEquals(0, composite.themeOptimizationSnapshot()?.failed)
+    releaseWarm.countDown()
+
+    assertTrue(awaitOptimization(composite).fullyOptimized)
+    assertEquals(2, delegate.renderCalls, "one cold warm, then one theme render")
+  }
+
+  @Test
+  fun `idle optimizer renders all themes for a preview before opening the next daemon`() {
+    val secondCatalogId = "switch-on__ideal__default__dark"
+    val secondDaemonId = "SwitchOn_Dark"
+    val secondTheme = ServeTheme("Brand Light", "com.example.BrandLight")
+    val resolved = Collections.synchronizedList(mutableListOf<String>())
+    val perPreview = RecordingHost(previews = emptyList(), tag = "per")
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId, secondCatalogId to secondDaemonId),
+        live =
+          RecordingHost(
+            previews =
+              listOf(
+                ServePreview(daemonId, daemonId),
+                ServePreview(secondDaemonId, secondDaemonId),
+              ),
+            tag = "mono",
+            declaredThemes = listOf(brandTheme, secondTheme),
+          ),
+        baked =
+          RecordingHost(
+            previews =
+              listOf(
+                ServePreview(catalogId, catalogId),
+                ServePreview(secondCatalogId, secondCatalogId),
+              ),
+            tag = "baked",
+          ),
+        perPreviewResolve = { id ->
+          resolved += id
+          perPreview
+        },
+        sharedDaemonRenders = false,
+        serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationEnabled = true,
+        themeOptimizationIdleMillis = 0,
+      )
+
+    composite.prewarm()
+    awaitOptimization(composite)
+
+    assertEquals(listOf(daemonId, daemonId, secondDaemonId, secondDaemonId), resolved.toList())
+  }
+
+  @Test
+  fun `idle optimizer pauses for traffic and shared cache survives host replacement`() {
+    val idle = AtomicBoolean()
+    val cache = CatalogThemeCache()
+    val firstLive =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "first",
+        declaredThemes = listOf(brandTheme),
+      )
+    val first =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = firstLive,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        catalogThemeCache = cache,
+        serverIdleMillis = { if (idle.get()) Long.MAX_VALUE else null },
+        themeOptimizationEnabled = true,
+        themeOptimizationIdleMillis = 0,
+      )
+
+    first.prewarm()
+    Thread.sleep(50)
+    assertEquals(0, firstLive.renderCalls)
+    assertEquals("paused", first.themeOptimizationSnapshot()?.state)
+    assertTrue(first.backgroundWorkActive)
+    idle.set(true)
+    awaitOptimization(first)
+    first.close()
+
+    val replacementLive =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "replacement",
+        declaredThemes = listOf(brandTheme),
+      )
+    val replacement =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = replacementLive,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked2"),
+        catalogThemeCache = cache,
+      )
+    replacement.prewarm()
+
+    assertEquals(0, replacementLive.renderCalls)
+    val cached = replacement.render(catalogId, themeOverride()) as RenderOutcome.Ok
+    assertEquals(RenderOutcome.Generation.CATALOG_CACHE, cached.generation)
+  }
+
+  @Test
+  fun `the no-admission fast path serves baked pixels but never a daemon render`() {
+    // `bakedRender` is what lets a mostly-browsing box skip the global render-slot queue. It must
+    // answer exactly the requests `render` would have replayed from baked pixels — and refuse the
+    // ones that were supposed to reach a daemon, or the fast path would silently serve stale
+    // pixels for a re-render.
+    val baked =
+      RecordingHost(
+        previews =
+          listOf(ServePreview(catalogId, catalogId), ServePreview(androidOnlyId, androidOnlyId)),
+        tag = "baked",
+      )
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId, overrides = listOf(labelKnob))),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    // The default page view: no overrides, so it replays published pixels without admission.
+    assertTrue(composite.bakedRender(catalogId, PreviewOverrides()) != null)
+    // An unaliased variant has no daemon twin at all — always baked.
+    assertTrue(composite.bakedRender(androidOnlyId, PreviewOverrides()) != null)
+    // A knob and an app-declared theme both need the daemon, so the fast path must decline.
+    assertNull(composite.bakedRender(catalogId, knobOverride()))
+    assertNull(composite.bakedRender(catalogId, themeOverride()))
+    // None of that woke the daemon.
+    assertEquals(0, live.renderCalls)
+  }
+
+  @Test
+  fun `idle optimizer stays parked until the server has finished loading its catalogs`() {
+    val backgroundWork = ServeBackgroundWork()
+    backgroundWork.expectInitialCatalogLoad()
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        // An idle server by the registry's reckoning — startup draws no request traffic, which is
+        // exactly how the optimizer used to end up competing with the catalogs still loading.
+        serverIdleMillis = backgroundWork.idleClock { Long.MAX_VALUE },
+        themeOptimizationEnabled = true,
+        themeOptimizationIdleMillis = 0,
+        backgroundWork = backgroundWork,
+      )
+
+    composite.prewarm()
+    Thread.sleep(100)
+    assertEquals(0, live.renderCalls, "background renders must not run while catalogs load")
+    assertEquals("paused", composite.themeOptimizationSnapshot()?.state)
+
+    backgroundWork.initialCatalogLoadFinished()
+
+    assertTrue(awaitOptimization(composite).fullyOptimized)
+    assertEquals(1, live.renderCalls)
+  }
+
+  @Test
+  fun `catalog optimizers sharing one server render one at a time`() {
+    val inFlight = AtomicInteger()
+    val peak = AtomicInteger()
+    val backgroundWork = ServeBackgroundWork()
+    fun host(tag: String): ServeCatalogLiveHost {
+      val delegate =
+        RecordingHost(
+          previews = listOf(ServePreview(daemonId, daemonId)),
+          tag = tag,
+          declaredThemes = listOf(brandTheme, ServeTheme("Brand Light", "com.example.BrandLight")),
+        )
+      val counting =
+        object : ServeHost by delegate {
+          override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
+            peak.accumulateAndGet(inFlight.incrementAndGet()) { a, b -> maxOf(a, b) }
+            try {
+              Thread.sleep(25)
+              return delegate.render(previewId, overrides)
+            } finally {
+              inFlight.decrementAndGet()
+            }
+          }
+        }
+      return ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = counting,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked-$tag"),
+        serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationEnabled = true,
+        themeOptimizationIdleMillis = 0,
+        backgroundWork = backgroundWork,
+      )
+    }
+
+    val hosts = listOf(host("a"), host("b"), host("c"))
+    hosts.forEach { it.prewarm() }
+    hosts.forEach { assertTrue(awaitOptimization(it).fullyOptimized) }
+
+    assertEquals(1, peak.get(), "the background lane holds at most one render server-wide")
+  }
+
+  private fun awaitOptimization(host: ServeCatalogLiveHost): ThemeOptimizationSnapshot {
+    repeat(100) {
+      host
+        .themeOptimizationSnapshot()
+        ?.takeIf { it.fullyOptimized }
+        ?.let {
+          return it
+        }
+      Thread.sleep(25)
+    }
+    error("theme optimization did not finish: ${host.themeOptimizationSnapshot()}")
+  }
+
+  @Test
+  fun `burst capacity follows the lane snapshots actually render on`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live = RecordingHost(previews = listOf(ServePreview(daemonId, daemonId)), tag = "mono")
+    val perPreview = RecordingHost(previews = emptyList(), tag = "per")
+
+    // Sharing one daemon means one render lock: a wide burst would funnel workers into it, hand
+    // most of them Busy, and the page would exhaust its retries with cards still on baked pixels.
+    assertEquals(
+      1,
+      ServeCatalogLiveHost(
+          alias = mapOf(catalogId to daemonId),
+          live = live,
+          baked = baked,
+          perPreviewResolve = { perPreview },
+        )
+        .themeRenderBurstCapacity,
+    )
+    // Per-preview routing genuinely parallelises — one daemon per preview — so it keeps the burst.
+    assertEquals(
+      5,
+      ServeCatalogLiveHost(
+          alias = mapOf(catalogId to daemonId),
+          live = live,
+          baked = baked,
+          perPreviewResolve = { perPreview },
+          sharedDaemonRenders = false,
+        )
+        .themeRenderBurstCapacity,
+    )
+    // No pool at all was always serial.
+    assertEquals(
+      1,
+      ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked).themeRenderBurstCapacity,
+    )
+  }
+
+  @Test
+  fun `snapshot renders go to the shared daemon by default`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val monolithic =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId, overrides = listOf(labelKnob))),
+        tag = "mono",
+        streaming = true,
+      )
+    val perPreview = RecordingHost(previews = emptyList(), tag = "per")
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = monolithic,
+        baked = baked,
+        perPreviewResolve = { perPreview },
+      )
+
+    // A grid is a batch: one cold start on the shared daemon, then every remaining card is warm.
+    // Routing each card to its own per-preview daemon made every card pay its own cold start.
+    val out = composite.render(catalogId, knobOverride()) as RenderOutcome.Ok
+    assertEquals("mono:$daemonId", out.png.decodeToString())
+    assertEquals(daemonId, monolithic.lastRenderId)
+    assertNull(perPreview.lastRenderId)
+  }
+
+  @Test
+  fun `per-preview routing is still available behind its flag`() {
     val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
     val monolithic =
       RecordingHost(
@@ -695,10 +1059,11 @@ class ServeCatalogLiveHostTest {
         live = monolithic,
         baked = baked,
         perPreviewResolve = { id -> if (id == daemonId) perPreview else null },
+        sharedDaemonRenders = false,
       )
 
-    // A knob edit resolves the per-preview daemon FIRST — the monolithic one is never touched, so
-    // the small per-preview bundle is the routinely-exercised default lane.
+    // With per-preview routing selected, a knob edit resolves the per-preview daemon FIRST and the
+    // monolithic one is never touched.
     val out = composite.render(catalogId, knobOverride()) as RenderOutcome.Ok
     assertEquals("per:$daemonId", out.png.decodeToString())
     assertEquals(daemonId, perPreview.lastRenderId)
@@ -769,6 +1134,7 @@ class ServeCatalogLiveHostTest {
         live = monolithic,
         baked = baked,
         perPreviewResolve = { perPreview },
+        sharedDaemonRenders = false,
       )
     val handle = composite.subscribeStream(catalogId, PreviewOverrides(), null, null) {}
     assertTrue(handle != null)

@@ -296,6 +296,7 @@ class ServeSessionRegistry(
           !entry.pinned &&
             entry.leases == 0 &&
             host.activeStreamCount() == 0 &&
+            !host.backgroundWorkActive &&
             now - entry.lastAccess >= idleTimeoutMillis
         ) {
           entry.host = null

@@ -244,6 +244,60 @@ class DeviceDimensionsTest {
       .isGreaterThan(DeviceDimensions.resolve("id:wearos_large_round").widthDp)
   }
 
+  @Test
+  fun `custom round wear spec keeps its dp size and dpi-derived density`() {
+    // A Wear-shaped device larger than anything in the shipped catalog: 385dp round at
+    // 360dpi → 2.25x (866px). Guards the `:samples:wear` WearDeviceMatrixPreview fixture —
+    // a `spec:` string has to carry size, density AND shape through, not fall back to
+    // DEFAULT_WEAR just because the string contains "round".
+    val spec = DeviceDimensions.resolve("spec:width=385dp,height=385dp,dpi=360,isRound=true")
+    assertThat(spec.widthDp).isEqualTo(385)
+    assertThat(spec.heightDp).isEqualTo(385)
+    assertThat(spec.density).isEqualTo(2.25f)
+    assertThat(spec.isRound).isTrue()
+  }
+
+  @Test
+  fun `WearPreviewRealDevices spec strings keep their per-device density`() {
+    // Pins the four device strings behind `:samples:wear`'s @WearPreviewRealDevices. Each is a
+    // shipping watch's reported (screenWidthDp, densityDpi) pair, NOT a panel size divided by two
+    // — Google ships 320dpi and Samsung 340dpi, so the density has to survive the `spec:` parse
+    // for the render to match the device. Triple is (spec, expected density, panel px).
+    val devices =
+      listOf(
+        // Pixel Watch / Pixel Watch 2 — 450px panel, stock `wm density` 320.
+        Triple("spec:width=225dp,height=225dp,dpi=320,isRound=true", 2.0f, 450),
+        // Pixel Watch 3 45mm — 456px at the same 320dpi.
+        Triple("spec:width=228dp,height=228dp,dpi=320,isRound=true", 2.0f, 456),
+        // Galaxy Watch 4 / 5 44-45mm — same 450px panel as the Pixel Watch, but 340dpi.
+        Triple("spec:width=211dp,height=211dp,dpi=340,isRound=true", 2.125f, 450),
+        // Galaxy Watch 6 / 7 44mm + Watch Ultra — 480px at 340dpi.
+        Triple("spec:width=225dp,height=225dp,dpi=340,isRound=true", 2.125f, 480),
+      )
+    for ((device, expectedDensity, panelPx) in devices) {
+      val spec = DeviceDimensions.resolve(device)
+      assertThat(spec.density).isEqualTo(expectedDensity)
+      assertThat(spec.isRound).isTrue()
+      assertThat(spec.widthDp).isEqualTo(spec.heightDp)
+      // `screenWidthDp` is an int, so a device truncates (450/2.125 = 211.76 -> 211) and the last
+      // pixels aren't addressable in dp. Within 2px of the panel is as exact as dp allows.
+      assertThat(spec.widthDp * spec.density).isWithin(2.0f).of(panelPx.toFloat())
+    }
+  }
+
+  @Test
+  fun `the same wear panel resolves to different dp at different densities`() {
+    // The point of @WearPreviewRealDevices: dp is NOT derivable from pixels. One 450px round panel
+    // is 225dp on a Pixel Watch (320dpi) and 211dp on a Galaxy Watch 4/5 (340dpi) — both stock.
+    // Deriving dp as `px / 2` overstates every Samsung device by ~7%.
+    val pixelWatch = DeviceDimensions.resolve("spec:width=225dp,height=225dp,dpi=320,isRound=true")
+    val galaxyWatch = DeviceDimensions.resolve("spec:width=211dp,height=211dp,dpi=340,isRound=true")
+
+    assertThat(pixelWatch.widthDp - galaxyWatch.widthDp).isEqualTo(14)
+    assertThat(pixelWatch.widthDp * pixelWatch.density).isWithin(2.0f).of(450f)
+    assertThat(galaxyWatch.widthDp * galaxyWatch.density).isWithin(2.0f).of(450f)
+  }
+
   // -- resolveForRender (AS-parity sizing) --
 
   @Test

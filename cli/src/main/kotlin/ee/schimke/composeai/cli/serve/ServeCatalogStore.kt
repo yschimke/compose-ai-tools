@@ -6,6 +6,8 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
 import kotlinx.serialization.Serializable
@@ -47,6 +49,15 @@ class ServeCatalogStore(
   private val repo: String = DEFAULT_REPO,
   private val branchPrefix: String = DEFAULT_BRANCH_PREFIX,
   private val fetch: ((String) -> ByteArray?)? = null,
+  /**
+   * Runs the post-publish vector fills ([scheduleFigmaSvgFetch]). Single-threaded by default so the
+   * background lane can never outweigh the request path, and daemon so it never holds up shutdown.
+   * A test supplies a same-thread or capturing executor to make the pass deterministic.
+   */
+  private val figmaExecutor: java.util.concurrent.Executor =
+    Executors.newSingleThreadExecutor { r ->
+      Thread(r, "serve-catalog-figma").apply { isDaemon = true }
+    },
   private val networkFetch: (url: String, maxBytes: Long) -> ByteArray? = ::httpFetch,
   private val maxImages: Int = DEFAULT_MAX_IMAGES,
   /**
@@ -163,6 +174,38 @@ class ServeCatalogStore(
     return previewIdFor(path)
   }
 
+  /**
+   * One declared baked image, resolved to everything the load loop needs *before* any fetch: its
+   * route-safe [id], the staged [target] it writes to (null when that path escaped the previews dir
+   * — planned anyway so it still counts as declared, then skipped), and the component context that
+   * tags its variant metadata. Planning separately from fetching is what lets the fetch run
+   * concurrently while the loop that consumes it stays sequential and order-preserving.
+   */
+  private data class PlannedImage(
+    val path: String,
+    val id: String,
+    val target: File?,
+    val image: Image,
+    val section: String?,
+    val group: String?,
+    val componentSourceFile: String?,
+  )
+
+  /**
+   * The declared hero resolved against [bakedIds], or null when the catalog declares none / it
+   * matches nothing. Mirrors [ServeBundleHost.declaredHeroPreviewId]: an exact preview id wins,
+   * else a `componentId` / preview-function name is matched against the slug head using the same
+   * normalisation the exporter used, so a spec can name `"Template/TimeText"` and hit
+   * `template-timetext__ideal__…`. Kept in step with that resolver — they must agree, or the image
+   * fetched ahead of publishing is not the one the front door paints.
+   */
+  private fun heroPreviewIdFor(catalog: Catalog, bakedIds: Set<String>): String? {
+    val hero = catalog.display?.hero?.takeIf { it.isNotBlank() } ?: return null
+    if (hero in bakedIds) return hero
+    val wanted = heroSlugOf(hero)
+    return bakedIds.firstOrNull { heroSlugOf(it.substringBefore(SLUG_SEPARATOR)) == wanted }
+  }
+
   sealed interface Result {
     data class Ok(val system: String, val previewCount: Int, val trust: String) : Result
 
@@ -180,6 +223,9 @@ class ServeCatalogStore(
    */
   fun load(system: String, sourceRepo: String? = null, sourceBranchPrefix: String? = null): Result {
     val safe = ServeBundleStore.sanitizeName(system) ?: return Result.Failed(system, "invalid name")
+    // Bumped per load so a background pass started for an earlier generation of this catalog stops
+    // instead of writing its vectors into the refreshed one.
+    val generation = generations.merge(system, 1, Int::plus)!!
     val repo = sourceRepo?.takeIf { it.isNotBlank() } ?: this.repo
     val branchPrefix = sourceBranchPrefix?.takeIf { it.isNotBlank() } ?: this.branchPrefix
     val branch = "$branchPrefix$system"
@@ -226,31 +272,55 @@ class ServeCatalogStore(
     // for
     // renders that actually carry a state or theme; plain (stateless) previews stay out of the map.
     val variants = LinkedHashMap<String, VariantMeta>()
-    for (component in catalog.components) {
-      // The component's section/group tag every one of its previews (a component maps to one
-      // section + group), so the tabbed landing can bucket + sub-head + order them.
-      val section = component.section?.takeIf { it.isNotBlank() }
-      val group = component.group?.takeIf { it.isNotBlank() }
-      val componentSourceFile = component.sourceFile?.takeIf { it.isNotBlank() }
-      for (image in component.images) {
-        if (count >= maxImages) break
-        val path = image.path
-        // Only image-directory PNGs; reject traversal. The path is from a trusted branch, but a
-        // containment check costs nothing and guards a compromised/garbled catalog.
-        val segments = path.split("/")
-        if (!path.startsWith("$IMAGES_DIR/") || !path.endsWith(".png") || ".." in segments) continue
-        // Counted BEFORE the fetch: it's what the catalog claims to publish, which is how the
-        // completeness check below tells "this catalog bakes nothing" (legal, all-deferred) apart
-        // from "this catalog bakes things and none of them fetched" (an outage — must not swap).
-        declaredImages++
-        val bytes = runCatching { fetchCatalogAsset(base + path) }.getOrNull() ?: continue
-        val id = previewIdFor(path)
-        val target = File(previewsDir, "$id.png")
-        if (!target.canonicalFile.toPath().startsWith(previewsRoot)) continue
-        target.parentFile?.mkdirs()
-        target.writeBytes(bytes)
+    // Every baked image the catalog declares, flattened into catalog order with the component
+    // context each one needs, WITHOUT fetching anything yet. The same containment filter the
+    // original loop applied runs here (so nothing extra is ever requested); an image whose
+    // destination escapes the staged previews dir is planned with a null target so it still counts
+    // toward `declaredImages` and is then skipped, exactly as before.
+    val plannedImages =
+      catalog.components.flatMap { component ->
+        // The component's section/group tag every one of its previews (a component maps to one
+        // section + group), so the tabbed landing can bucket + sub-head + order them.
+        val section = component.section?.takeIf { it.isNotBlank() }
+        val group = component.group?.takeIf { it.isNotBlank() }
+        val componentSourceFile = component.sourceFile?.takeIf { it.isNotBlank() }
+        component.images.mapNotNull { image ->
+          val path = image.path
+          // Only image-directory PNGs; reject traversal. The path is from a trusted branch, but a
+          // containment check costs nothing and guards a compromised/garbled catalog.
+          val segments = path.split("/")
+          if (!path.startsWith("$IMAGES_DIR/") || !path.endsWith(".png") || ".." in segments)
+            return@mapNotNull null
+          val id = previewIdFor(path)
+          val target =
+            File(previewsDir, "$id.png").takeIf {
+              it.canonicalFile.toPath().startsWith(previewsRoot)
+            }
+          PlannedImage(path, id, target, image, section, group, componentSourceFile)
+        }
+      }
+
+    // Walk the plan for METADATA ONLY — no image is fetched here. `catalog.json` alone names every
+    // card, its state/theme/section and its ordering, which is everything the grid needs to be
+    // published; the pixels are what used to keep a catalog invisible for minutes after its
+    // metadata had arrived. Each id is recorded as declared-baked and handed to the host, which
+    // fetches its PNG on first use (see [ServeBundleHost.fetchBakedPng]). A visitor's first grid
+    // paint therefore fills the default previews concurrently through the ordinary request path —
+    // no separate background pass to schedule, cancel on refresh, or reason about.
+    val bakedPathById = LinkedHashMap<String, String>()
+    for (planned in plannedImages) {
+      if (count >= maxImages) break
+      // Counted as the catalog CLAIMS to publish it, which is how the completeness check below
+      // tells "this catalog bakes nothing" (legal, all-deferred) apart from "this catalog bakes
+      // things and the branch can't serve them" (an outage — must not swap).
+      declaredImages++
+      if (planned.target == null) continue
+      run {
+        val id = planned.id
+        val image = planned.image
+        bakedPathById[id] = planned.path
         slugs.add(id.substringBefore(SLUG_SEPARATOR))
-        path
+        planned.path
           .removePrefix("$IMAGES_DIR/")
           .removeSuffix(".png")
           .takeIf { it.count { char -> char == '/' } == 1 }
@@ -261,24 +331,24 @@ class ServeCatalogStore(
         // with the section/group tags — it exists purely to order the tabbed landing, so a plain
         // state/theme catalog (design systems) is unaffected and its manifest stays {state,theme}.
         // A catalog with neither state/theme nor a section records nothing and stays a flat grid.
-        val hasSectionInfo = section != null || group != null
+        val hasSectionInfo = planned.section != null || planned.group != null
         val props = image.props?.takeIf { it.isNotEmpty() }
         if (
           image.state != null ||
             image.theme != null ||
             props != null ||
             hasSectionInfo ||
-            componentSourceFile != null
+            planned.componentSourceFile != null
         ) {
           variants[id] =
             VariantMeta(
               state = image.state,
               theme = image.theme,
               props = props,
-              section = section,
-              group = group,
+              section = planned.section,
+              group = planned.group,
               order = if (hasSectionInfo) count else null,
-              sourceFile = componentSourceFile,
+              sourceFile = planned.componentSourceFile,
             )
         }
         count++
@@ -295,7 +365,10 @@ class ServeCatalogStore(
     for (record in catalog.deferred) {
       if (deferredIds.size >= maxImages) break
       val id = deferredPreviewIdOf(record) ?: continue
-      if (variants.containsKey(id) || File(previewsDir, "$id.png").isFile) continue
+      // Checked against the DECLARED baked set, not the previews dir: with images fetched lazily
+      // nothing is on disk yet at this point, and a flat catalog's baked previews carry no variant
+      // metadata either — so an on-disk test would let a deferred record shadow a baked preview.
+      if (variants.containsKey(id) || bakedPathById.containsKey(id)) continue
       if (!deferredIds.add(id)) continue
       val section = record.section?.takeIf { it.isNotBlank() }
       val group = record.group?.takeIf { it.isNotBlank() }
@@ -325,6 +398,32 @@ class ServeCatalogStore(
     if (count == 0 && (declaredImages > 0 || deferredIds.isEmpty())) {
       staging.deleteRecursively()
       return Result.Failed(system, "catalog had no usable images")
+    }
+
+    // The one image fetched before publishing: the catalog's hero, which the front-door card paints
+    // from. Two jobs in one round-trip.
+    //
+    // It is also what is left of the old completeness check. The bulk fetch used to prove the
+    // branch could actually serve pixels — "declared images, none fetched" meant an outage and the
+    // staged dir was thrown away rather than swapped over a healthy one. Fetching lazily gives that
+    // up unless something is fetched here, so a catalog that declares images must land its hero to
+    // publish. One request, and a branch serving 404s still can't replace a working catalog.
+    // Deliberately a small SAMPLE rather than one nominated image: keying the precondition on a
+    // single file would fail a whole catalog because one image happens to be missing, which is
+    // strictly worse than the bulk fetch it replaces (that one dropped the bad image and served the
+    // rest). The hero leads the sample so the front-door card is the one certainly present.
+    if (bakedPathById.isNotEmpty()) {
+      val heroPath = heroPreviewIdFor(catalog, bakedPathById.keys)?.let(bakedPathById::get)
+      val sample =
+        (listOfNotNull(heroPath) + bakedPathById.values).distinct().take(PUBLISH_SAMPLE_IMAGES)
+      val landed =
+        fetchCatalogAssetsToFiles(
+          sample.map { path -> (base + path) to File(previewsDir, "${previewIdFor(path)}.png") }
+        )
+      if (landed.isEmpty()) {
+        staging.deleteRecursively()
+        return Result.Failed(system, "catalog images could not be fetched from its branch")
+      }
     }
 
     // Write the state/theme manifest into the staged previews dir *before* the atomic swap, so a
@@ -371,7 +470,32 @@ class ServeCatalogStore(
 
     // Fetch the catalog's baked editable vectors (figma/<slug>.svg + crops) so the host can serve
     // an SVG per preview; null when the branch carried none (host then 404s the .svg lane).
-    val figmaDir = fetchFigmaSvgs(slugs, variantSvgPaths, base, dir)
+    // The baked vectors are the last bulk fetch on the publish path — one per image plus one per
+    // slug, ~240 for the largest catalog. They cannot be made lazy the way the PNGs were: nothing
+    // ever *requests* an SVG (the browser doesn't; it is a server-side input to thumbnail cropping
+    // and a download link), so fetching one on demand would simply mean never fetching it, and
+    // every card would stay uncropped. So they move off the publish path instead of onto the
+    // request path: probe one vector synchronously to learn whether this branch carries the lane at
+    // all, then fill the rest in the background while the catalog is already serving. Cards render
+    // uncropped for those few seconds and crop themselves once the pass lands.
+    // Probe a handful of components, hero first — not just one. A vector is published per
+    // component and any of them may legitimately have none, so a single miss says nothing about
+    // the branch; the bulk path this replaces enabled the lane if *any* candidate landed. Spread
+    // across distinct slugs so the sample is about the branch rather than one component.
+    val figmaProbeIds =
+      (listOfNotNull(heroPreviewIdFor(catalog, bakedPathById.keys)) + bakedPathById.keys)
+        .distinctBy { it.substringBefore(SLUG_SEPARATOR) }
+        .take(FIGMA_PROBE_SLUGS)
+    val figmaDir = probeFigmaSvg(figmaProbeIds.flatMap(::heroSvgCandidates), base, dir)
+    // Scheduled unconditionally: a probe that found nothing is not proof the branch carries none —
+    // the vectors may simply start at a component the sample missed. Filling anyway means the lane
+    // turns on at the next host build instead of being lost until someone republishes.
+    scheduleFigmaSvgFetch(system, generation, slugs, variantSvgPaths, base, dir)
+
+    // The catalog's OWN palette, so its pages are framed in its own colours (see [ServeThemeCss]).
+    // A few kB of JSON off the same branch as the images, and best-effort throughout: a missing /
+    // unfetchable / unparseable token file just leaves the pages on the built-in chrome.
+    val webThemeCss = fetchWebThemeCss(catalog.tokensFile, base)
 
     // The static baked-PNG host — the browse surface (grid, deep links, thumbnails), keyed by the
     // catalog ids. This is ALWAYS what a viewer sees; a live builder below fronts it with a daemon
@@ -399,6 +523,7 @@ class ServeCatalogStore(
           // the system's own choice instead of inferring it.
           stageSurface = catalog.display?.surface?.takeIf { it.isNotBlank() },
           declaredHero = catalog.display?.hero?.takeIf { it.isNotBlank() },
+          webThemeCss = webThemeCss,
           figmaDir = figmaDir,
           provenance =
             ServeWeb.CatalogProvenance(
@@ -423,6 +548,13 @@ class ServeCatalogStore(
               ?.let { ServeWeb.CatalogSource(it.repo, it.ref, it.module) },
           degradations = degradations,
           liveOnly = liveOnly,
+          // Every id the catalog bakes, so the grid is complete the moment `catalog.json` lands…
+          declaredBaked = bakedPathById.keys.toList(),
+          // …and the pixels follow on first use. The store keeps ownership of the network here: the
+          // host never builds a URL or applies a fetch policy, it just asks for an id it declared.
+          fetchBakedPng = { id ->
+            bakedPathById[id]?.let { path -> fetchCatalogAsset(base + path) }
+          },
         )
       }
 
@@ -939,6 +1071,7 @@ class ServeCatalogStore(
     variantPaths: Set<String>,
     base: String,
     dir: File,
+    stillCurrent: () -> Boolean = { true },
   ): File? {
     val figmaDir = File(dir, FIGMA_DIR)
     val figmaRoot = figmaDir.canonicalFile.toPath()
@@ -947,39 +1080,108 @@ class ServeCatalogStore(
       addAll(variantPaths)
       addAll(slugs.map { "$it.svg" })
     }
-    for (relativePath in candidates) {
+    // Same concurrent prefetch the baked images get, in two waves because the second is discovered
+    // by reading the first: a hybrid SVG names its `figma-raster/` crops inside its own markup, and
+    // raw.githubusercontent has no directory listing to enumerate them from.
+    val safeCandidates = candidates.filter { relativePath ->
       val segments = relativePath.split("/")
-      if (
-        relativePath.isEmpty() ||
-          !relativePath.endsWith(".svg") ||
-          ".." in segments ||
-          segments.size !in 1..2
+      relativePath.isNotEmpty() &&
+        relativePath.endsWith(".svg") &&
+        ".." !in segments &&
+        segments.size in 1..2
+    }
+    // Wave 1: the vectors themselves, written straight to disk by the workers (so a catalog's
+    // whole vector set is never resident at once) and path-contained before planning.
+    val writtenSvgs =
+      fetchCatalogAssetsToFiles(
+        stillWanted = stillCurrent,
+        plan =
+          safeCandidates.mapNotNull { relativePath ->
+            val svgFile = File(figmaDir, relativePath)
+            if (!svgFile.canonicalFile.toPath().startsWith(figmaRoot)) return@mapNotNull null
+            "$base$FIGMA_DIR/$relativePath" to svgFile
+          },
       )
-        continue
-      val svgBytes =
-        runCatching { fetchCatalogAsset("$base$FIGMA_DIR/$relativePath") }.getOrNull() ?: continue
+    // Wave 2: the crops, which can only be discovered by reading wave 1 — a hybrid SVG names its
+    // `figma-raster/` crops inside its own markup, and raw.githubusercontent has no directory
+    // listing. Each vector is re-read from the file just written (a local read, one at a time)
+    // rather than held from the fetch.
+    if (!stillCurrent()) return null
+    val cropPlan = safeCandidates.flatMap { relativePath ->
       val svgFile = File(figmaDir, relativePath)
-      if (!svgFile.canonicalFile.toPath().startsWith(figmaRoot)) continue
-      svgFile.parentFile?.mkdirs()
-      svgFile.writeBytes(svgBytes)
-      wrote++
-      // A hybrid SVG references external `figma-raster/<node>.png` crops; carry them so the host
-      // can
-      // inline them. Enumerate from the SVG itself (raw.githubusercontent has no directory
-      // listing).
-      for (href in figmaRasterHrefs(svgBytes.toString(Charsets.UTF_8))) {
-        if (href.isEmpty() || ".." in href.split("/")) continue
+      if ("$base$FIGMA_DIR/$relativePath" !in writtenSvgs) return@flatMap emptyList()
+      val svg = runCatching { svgFile.readText() }.getOrNull() ?: return@flatMap emptyList()
+      val remoteParent = relativePath.substringBeforeLast('/', missingDelimiterValue = "")
+      figmaRasterHrefs(svg).mapNotNull { href ->
+        if (href.isEmpty() || ".." in href.split("/")) return@mapNotNull null
         val cropFile = File(svgFile.parentFile, href)
-        if (!cropFile.canonicalFile.toPath().startsWith(figmaRoot)) continue
-        val remoteParent = relativePath.substringBeforeLast('/', missingDelimiterValue = "")
+        if (!cropFile.canonicalFile.toPath().startsWith(figmaRoot)) return@mapNotNull null
         val remoteCrop = if (remoteParent.isEmpty()) href else "$remoteParent/$href"
-        val cropBytes =
-          runCatching { fetchCatalogAsset("$base$FIGMA_DIR/$remoteCrop") }.getOrNull() ?: continue
-        cropFile.parentFile?.mkdirs()
-        cropFile.writeBytes(cropBytes)
+        "$base$FIGMA_DIR/$remoteCrop" to cropFile
       }
     }
+    fetchCatalogAssetsToFiles(cropPlan, stillWanted = stillCurrent)
+    wrote = writtenSvgs.size
     return if (wrote > 0) figmaDir else null
+  }
+
+  /**
+   * The vectors that would serve [heroId], most specific first: the per-variant
+   * `figma/<slug>/<variant>.svg` the exporter emits per image, then the back-compat per-component
+   * `figma/<slug>.svg`. Empty when the catalog named no hero.
+   */
+  private fun heroSvgCandidates(heroId: String?): List<String> {
+    val id = heroId ?: return emptyList()
+    val slug = id.substringBefore(SLUG_SEPARATOR)
+    val variant = id.substringAfter(SLUG_SEPARATOR, missingDelimiterValue = "")
+    return buildList {
+      if (variant.isNotEmpty()) add("$slug/$variant.svg")
+      add("$slug.svg")
+    }
+  }
+
+  /**
+   * Fetch the first of [candidates] that exists, to decide whether this branch carries the figma
+   * lane at all. Returns the local `figma/` dir when one landed, else null — which is what keeps a
+   * catalog with no published vectors from advertising an SVG control that would 404 on every
+   * preview. One or two requests; the rest of the set follows in [scheduleFigmaSvgFetch].
+   */
+  private fun probeFigmaSvg(candidates: List<String>, base: String, dir: File): File? {
+    val figmaDir = File(dir, FIGMA_DIR)
+    val figmaRoot = figmaDir.canonicalFile.toPath()
+    val plan = candidates.mapNotNull { relativePath ->
+      val svgFile = File(figmaDir, relativePath)
+      if (!svgFile.canonicalFile.toPath().startsWith(figmaRoot)) return@mapNotNull null
+      "$base$FIGMA_DIR/$relativePath" to svgFile
+    }
+    // One concurrent wave, so a catalog that publishes no vectors pays a single round-trip rather
+    // than one per candidate.
+    return figmaDir.takeIf { fetchCatalogAssetsToFiles(plan).isNotEmpty() }
+  }
+
+  /**
+   * Fill the catalog's remaining baked vectors off the publish path. Best-effort and fire-and-
+   * forget: the catalog is already registered and serving, and every consumer of a vector degrades
+   * to "no crop / no SVG download" until its file lands.
+   *
+   * Guarded by [generation]: a catalog refresh replaces `dir` under a new generation, so a pass
+   * started for the old one stops rather than writing superseded vectors into the fresh catalog.
+   */
+  private fun scheduleFigmaSvgFetch(
+    system: String,
+    generation: Int,
+    slugs: Set<String>,
+    variantPaths: Set<String>,
+    base: String,
+    dir: File,
+  ) {
+    figmaExecutor.execute {
+      if (generations[system] != generation) return@execute
+      runCatching {
+          fetchFigmaSvgs(slugs, variantPaths, base, dir) { generations[system] == generation }
+        }
+        .onFailure { System.err.println("serve: catalog $system figma vectors: ${it.message}") }
+    }
   }
 
   private fun writeDesignReferences(
@@ -989,20 +1191,28 @@ class ServeCatalogStore(
   ) {
     if (references.isEmpty()) return
     val seen = HashSet<String>()
-    val accepted = references.mapNotNull { reference ->
-      if (!ServeDesignReferenceStore.isSafeRelativePath(reference.raster.path))
-        return@mapNotNull null
-      val bytes =
-        runCatching { fetchCatalogAsset("$base${reference.raster.path}") }.getOrNull()
-          ?: return@mapNotNull null
-      if (!ServeDesignReferenceStore.isValid(reference, bytes) || !seen.add(reference.id))
-        return@mapNotNull null
-      val localPath = "${ServeDesignReferenceStore.DIRECTORY}/${reference.id}.png"
-      val file = File(staging, localPath)
-      file.parentFile?.mkdirs()
-      file.writeBytes(bytes)
-      reference.copy(raster = reference.raster.copy(path = localPath))
-    }
+    // Rasters are the one lane that genuinely needs the bytes in hand — a reference is accepted
+    // only if its declared dimensions and optional sha256 check out ([ServeDesignReferenceStore]) —
+    // so this keeps the byte-returning fetch, run one bounded wave at a time. Peak memory is a
+    // wave,
+    // not the catalog's whole reference set.
+    val accepted =
+      references
+        .filter { ServeDesignReferenceStore.isSafeRelativePath(it.raster.path) }
+        .chunked(ASSET_FETCH_CONCURRENCY)
+        .flatMap { wave ->
+          val fetched = fetchCatalogAssets(wave.map { "$base${it.raster.path}" })
+          wave.mapNotNull { reference ->
+            val bytes = fetched["$base${reference.raster.path}"] ?: return@mapNotNull null
+            if (!ServeDesignReferenceStore.isValid(reference, bytes) || !seen.add(reference.id))
+              return@mapNotNull null
+            val localPath = "${ServeDesignReferenceStore.DIRECTORY}/${reference.id}.png"
+            val file = File(staging, localPath)
+            file.parentFile?.mkdirs()
+            file.writeBytes(bytes)
+            reference.copy(raster = reference.raster.copy(path = localPath))
+          }
+        }
     if (accepted.isEmpty()) return
     val referenceDir = File(staging, ServeDesignReferenceStore.DIRECTORY)
     referenceDir.mkdirs()
@@ -1034,6 +1244,21 @@ class ServeCatalogStore(
       ?.takeIf { it.schema == DesignReferenceManifest.SCHEMA }
       ?.references
       .orEmpty()
+  }
+
+  /**
+   * Project the catalog's published design tokens onto the serve chrome (see [ServeThemeCss]), or
+   * null when [tokensFile] is absent, points outside the branch root, or the file can't be fetched
+   * / turned into a palette. Every failure mode is the same non-event: the system's pages fall back
+   * to the built-in chrome, exactly as they did before the catalog published tokens.
+   */
+  private fun fetchWebThemeCss(tokensFile: String?, base: String): String? {
+    val path = tokensFile?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    // Branch-relative only. The branch is trusted, but a garbled/hostile `tokensFile` must not be
+    // able to point the fetch at another host or walk out of the catalog.
+    if (path.startsWith("/") || "://" in path || ".." in path.split("/")) return null
+    val bytes = runCatching { fetchCatalogAsset(base + path) }.getOrNull() ?: return null
+    return runCatching { ServeThemeCss.fromDtcg(bytes.decodeToString()) }.getOrNull()
   }
 
   /**
@@ -1071,6 +1296,13 @@ class ServeCatalogStore(
      * inferring the stage / hero from the system name.
      */
     val display: CatalogDisplay? = null,
+    /**
+     * The branch-relative W3C DTCG token file (`tokens.dtcg.json`) holding the system's resolved
+     * `MaterialTheme` palette, written by `generate-design-catalog.mjs` for any catalog whose
+     * render carried theme tokens. Read by [fetchWebThemeCss] to theme this system's web pages in
+     * its own colours; absent for a catalog that publishes none.
+     */
+    val tokensFile: String? = null,
     /** Optional in-browser render descriptor (the CMP-Wasm app carried in the branch). */
     val webRender: WebRender? = null,
     /** Optional buildable source for trusted server-side re-render (`--allow-render-trusted`). */
@@ -1318,6 +1550,44 @@ class ServeCatalogStore(
 
     private const val DEFAULT_MAX_IMAGES = 1000
     private const val MAX_FETCH_BYTES = 25L * 1024 * 1024 // 25 MB per catalog asset
+
+    /**
+     * How many catalog assets to fetch at once ([fetchCatalogAssets]). Twelve measured as the knee
+     * against `raw.githubusercontent.com` — it takes the largest published catalog's 197 images
+     * from ~92 s to ~8 s — while staying far short of anything a single origin would consider a
+     * burst. Each worker holds one small response at a time, so the memory cost is bounded by this
+     * count times the per-asset cap, not by the catalog's size.
+     */
+    private const val ASSET_FETCH_CONCURRENCY = 12
+
+    /**
+     * Images planned per fetch wave. Each wave is additionally clamped to the images still needed,
+     * so the `maxImages` ceiling keeps counting *successes* — a wave that comes back short is
+     * followed by another rather than truncating the catalog.
+     */
+    private const val IMAGE_FETCH_WAVE = 64
+
+    /**
+     * Images fetched before a catalog publishes: its hero (which the front door paints) plus a
+     * couple of others, so "the branch can serve pixels" is proven without one missing file being
+     * able to fail the catalog. Everything else arrives on first use.
+     */
+    private const val PUBLISH_SAMPLE_IMAGES = 3
+
+    /**
+     * Components sampled when deciding whether a branch carries baked vectors at all. More than one
+     * because any single component may legitimately publish none; small because the background fill
+     * settles the question for real moments later.
+     */
+    private const val FIGMA_PROBE_SLUGS = 5
+
+    /**
+     * Slug normalisation shared with [ServeBundleHost]'s hero resolver — mirrors design-parity's
+     * `slug()` (non-`[a-zA-Z0-9._-]` → `-`, trim, lowercase).
+     */
+    private fun heroSlugOf(value: String): String =
+      value.replace(Regex("[^a-zA-Z0-9._-]+"), "-").trim('-').lowercase().ifBlank { "x" }
+
     internal const val MAX_LIVE_BUNDLE_FETCH_BYTES = 100L * 1024 * 1024
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -1352,9 +1622,98 @@ class ServeCatalogStore(
     }
   }
 
+  /** Current generation per system; see [scheduleFigmaSvgFetch]. */
+  private val generations = ConcurrentHashMap<String, Int>()
+
   /** Fetch an ordinary catalog asset using the existing tight per-file envelope. */
   private fun fetchCatalogAsset(url: String): ByteArray? =
     if (fetch != null) fetch.invoke(url) else networkFetch(url, MAX_FETCH_BYTES)
+
+  /**
+   * Fetch [urls] **concurrently**, returning `url → bytes` for the ones that came back. A URL that
+   * fails, throws, or 404s is simply absent from the map — exactly the `null` every call site
+   * already treats as "skip this asset", so the fail-soft behaviour per asset is unchanged.
+   *
+   * Why this exists: a catalog's assets are individually tiny and numerous — jetsnack publishes 197
+   * baked PNGs totalling 12 MB, plus a comparable number of figma vectors. Fetched one at a time
+   * against `raw.githubusercontent.com` that is ~0.5 s of round-trip each and ~130 s for the
+   * catalog; fetched twelve at a time it is ~8 s, because the cost was never bandwidth. Ordering is
+   * preserved by the callers, which keep their original sequential loop and merely read bytes out
+   * of this map instead of blocking on each request in turn — so preview ids, `count`, and the
+   * authored tab/group ordering are all computed exactly as before.
+   */
+  /**
+   * Concurrent fetch that **never accumulates**: each worker writes its bytes straight to the
+   * planned destination and drops them, so peak memory is the in-flight assets (at most
+   * [ASSET_FETCH_CONCURRENCY] of them) rather than the whole catalog. Returns the urls that were
+   * both fetched and written.
+   *
+   * This is the form every bulk lane uses. Returning a `url → bytes` map instead would hold the
+   * entire catalog resident — with the 1000-image ceiling and the 25 MB per-asset cap that is a
+   * multi-gigabyte worst case, where the original sequential loop held exactly one asset at a time.
+   * Destinations are path-contained by the caller before planning, so a worker never writes outside
+   * the staged catalog.
+   */
+  private fun fetchCatalogAssetsToFiles(
+    plan: List<Pair<String, File>>,
+    stillWanted: () -> Boolean = { true },
+  ): Set<String> {
+    if (plan.isEmpty()) return emptySet()
+    val pool =
+      Executors.newFixedThreadPool(minOf(ASSET_FETCH_CONCURRENCY, plan.size)) { r ->
+        Thread(r, "serve-catalog-fetch").apply { isDaemon = true }
+      }
+    return try {
+      val inFlight = plan.map { (url, target) ->
+        url to
+          pool.submit<Boolean> {
+            val bytes = runCatching { fetchCatalogAsset(url) }.getOrNull() ?: return@submit false
+            // Re-checked immediately before the write, not just once per wave: a fetch started for
+            // one catalog generation must not land in the directory a refresh has since swapped in.
+            // Checking only between waves leaves every worker in the current wave free to write
+            // after the swap, and nothing then removes what they wrote.
+            if (!stillWanted()) return@submit false
+            runCatching {
+                target.parentFile?.mkdirs()
+                target.writeBytes(bytes)
+              }
+              .isSuccess
+          }
+      }
+      buildSet {
+        for ((url, future) in inFlight) {
+          if (runCatching { future.get() }.getOrNull() == true) add(url)
+        }
+      }
+    } finally {
+      pool.shutdown()
+    }
+  }
+
+  private fun fetchCatalogAssets(urls: List<String>): Map<String, ByteArray> {
+    val distinct = urls.distinct()
+    if (distinct.size <= 1) {
+      val only = distinct.firstOrNull() ?: return emptyMap()
+      return runCatching { fetchCatalogAsset(only) }.getOrNull()?.let { mapOf(only to it) }
+        ?: emptyMap()
+    }
+    val pool =
+      Executors.newFixedThreadPool(minOf(ASSET_FETCH_CONCURRENCY, distinct.size)) { r ->
+        Thread(r, "serve-catalog-fetch").apply { isDaemon = true }
+      }
+    return try {
+      val inFlight = distinct.map { url ->
+        url to pool.submit<ByteArray?> { runCatching { fetchCatalogAsset(url) }.getOrNull() }
+      }
+      buildMap {
+        for ((url, future) in inFlight) {
+          runCatching { future.get() }.getOrNull()?.let { put(url, it) }
+        }
+      }
+    } finally {
+      pool.shutdown()
+    }
+  }
 
   /**
    * Fetch an executable bundle using the 100 MB envelope shared by uploaded and startup bundles. A

@@ -367,8 +367,9 @@ internal object ServeBundleDaemon {
     }
 
     // Partition the resolved catalog jars exactly as the bundle path does: the namespaces
-    // UserClassLoaderHolder delegates to the daemon parent (androidx.*, kotlinx-coroutines) must
-    // *precede* the sidecar on the parent -cp, or the daemon loads its own (possibly older) sidecar
+    // UserClassLoaderHolder delegates to the daemon parent (androidx.*, kotlinx-coroutines,
+    // kotlinx-io) must *precede* the sidecar on the parent -cp, or the daemon loads its own
+    // (possibly older) sidecar
     // versions and a snippet/catalog composable built against the catalog's newer AndroidX fails
     // with NoSuchMethodError/NoSuchFieldError. Everything else — including the snippet's own
     // classes
@@ -677,7 +678,8 @@ internal object ServeBundleDaemon {
       (coordinate.group == "org.jetbrains.compose.components" &&
         coordinate.artifact.startsWith("components-resources")) ||
       (coordinate.group == "org.jetbrains.kotlinx" &&
-        coordinate.artifact.startsWith("kotlinx-coroutines"))
+        (coordinate.artifact.startsWith("kotlinx-coroutines") ||
+          coordinate.artifact.startsWith("kotlinx-io")))
 
   /**
    * The [shouldPrecedeDaemonSidecar] rule applied to a resolved **jar path** rather than a
@@ -686,15 +688,22 @@ internal object ServeBundleDaemon {
    * Maven-local (`…/androidx/compose/…`) and Gradle-cache (`…/androidx.compose.material3/…`)
    * layouts put the dotted/slashed group right after a path separator, so a `/androidx` segment
    * identifies the AndroidX graph, `components-resources` the Compose resources runtime, and
-   * `kotlinx-coroutines` the coroutines artifacts — the namespaces `UserClassLoaderHolder`
-   * delegates to the daemon parent.
+   * `kotlinx-coroutines` / `kotlinx-io` the kotlinx artifacts whose namespaces
+   * `UserClassLoaderHolder` delegates to the daemon parent.
    */
   internal fun jarPrecedesDaemonSidecar(jar: File): Boolean {
     val path = jar.path.replace('\\', '/')
     return path.contains("/androidx") ||
       path.contains("components-resources") ||
-      path.contains("kotlinx-coroutines")
+      KOTLINX_SHARED_ARTIFACT_PATH.containsMatchIn(path)
   }
+
+  /** Matches Gradle-cache and Maven-local group layouts without inspecting unrelated path parts. */
+  private val KOTLINX_SHARED_ARTIFACT_PATH =
+    Regex(
+      "/(?:org\\.jetbrains\\.kotlinx|org/jetbrains/kotlinx)/" +
+        "kotlinx-(?:coroutines|io)(?:-[^/]+)?(?:/|$)"
+    )
 
   private data class ResolvedBundleDependency(
     val coordinate: BundleReader.ClasspathEntry.Maven,

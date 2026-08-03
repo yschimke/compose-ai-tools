@@ -5,6 +5,7 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
+import java.util.Collections
 import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -52,8 +53,13 @@ class ServeCatalogStoreTest {
     }
   }
 
+  // `fetch` stays the LAST parameter so the trailing-lambda call sites below keep binding to it.
   private fun store(
     trust: TrustStore,
+    maxImages: Int = 1000,
+    // The baked vectors are filled off the publish path, so tests run that pass inline by default
+    // and assert against a settled catalog exactly as they did when it was synchronous.
+    figmaExecutor: java.util.concurrent.Executor = java.util.concurrent.Executor { it.run() },
     fetch: (String) -> ByteArray? = fetcher(),
   ): ServeCatalogStore =
     ServeCatalogStore(
@@ -62,7 +68,195 @@ class ServeCatalogStoreTest {
       trust = { trust },
       fetch = fetch,
       registerWasm = { s, d -> registeredWasm[s] = d },
+      maxImages = maxImages,
+      figmaExecutor = figmaExecutor,
     )
+
+  @Test
+  fun `the image cap bounds the previews a catalog declares`() {
+    // Fetching lazily makes the ceiling count DECLARED previews rather than successfully fetched
+    // ones: whether an image can be had isn't known at load time any more, and finding out would
+    // mean fetching everything — the thing lazy loading exists to avoid. So a cap of two publishes
+    // the first two declarations, and a card whose image turns out to be missing reports NotFound
+    // on request instead of being silently replaced by a later one. The cap defaults to 1000 while
+    // the largest published catalog declares ~200, so it does not bind in practice.
+    val trust =
+      TrustStore(
+        branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
+      )
+    val missing = "images/button-filled/ideal__default__dark.png"
+    val result =
+      store(
+          trust,
+          fetch = { url ->
+            when {
+              url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+                threeImageCatalogJson.toByteArray()
+              url.endsWith(missing) -> null
+              url.endsWith(".png") -> png()
+              else -> null
+            }
+          },
+          maxImages = 2,
+        )
+        .load("compose-m3")
+
+    assertEquals(2, (result as ServeCatalogStore.Result.Ok).previewCount)
+    val host = registered.getValue("compose-m3")
+    assertEquals(
+      listOf("button-filled__ideal__default__dark", "button-filled__ideal__default__light"),
+      host.previews.map { it.id },
+    )
+    // The declared-but-unfetchable card reports NotFound; its sibling still serves.
+    assertEquals(
+      RenderOutcome.NotFound,
+      host.render("button-filled__ideal__default__dark", PreviewOverrides()),
+    )
+    assertTrue(
+      host.render("button-filled__ideal__default__light", PreviewOverrides()) is RenderOutcome.Ok
+    )
+  }
+
+  /** Eight baked images, comfortably more than the handful sampled before publishing. */
+  private val eightImageCatalogJson =
+    """
+    {"schema":"design-parity-catalog/v1","system":"compose-m3","components":[
+      {"componentId":"Button/Filled","images":[
+        ${(1..8).joinToString(",") { """{"path":"images/button-filled/v$it.png"}""" }}]}]}
+    """
+      .trimIndent()
+
+  @Test
+  fun `a catalog publishes every declared preview before its images are fetched`() {
+    val requested = Collections.synchronizedList(mutableListOf<String>())
+    val fetcher: (String) -> ByteArray? = { url ->
+      requested += url
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> eightImageCatalogJson.toByteArray()
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+    val result = store(TrustStore.EMPTY, fetch = fetcher).load("compose-m3")
+
+    // Every declared card is published…
+    assertEquals(8, (result as ServeCatalogStore.Result.Ok).previewCount)
+    val host = registered.getValue("compose-m3")
+    assertEquals(8, host.previews.size)
+    // …on a small sample of images, not all eight. This is the whole point: `catalog.json` names
+    // every card, so the grid is complete long before the pixels are.
+    val imagesAtPublish = requested.count { it.endsWith(".png") }
+    assertTrue(imagesAtPublish <= 3, "published after $imagesAtPublish image fetches")
+
+    // A card whose pixels were never fetched still renders — the host fills it on first use.
+    val cold = "button-filled__v8"
+    assertTrue(host.previews.any { it.id == cold })
+    assertTrue(host.render(cold, PreviewOverrides()) is RenderOutcome.Ok)
+    assertEquals(imagesAtPublish + 1, requested.count { it.endsWith(".png") })
+
+    // …and only once: the second read comes off disk.
+    assertTrue(host.render(cold, PreviewOverrides()) is RenderOutcome.Ok)
+    assertEquals(imagesAtPublish + 1, requested.count { it.endsWith(".png") })
+  }
+
+  @Test
+  fun `a catalog publishes before its baked vectors are fetched`() {
+    // The vectors are the last bulk fetch on the publish path — one per image plus one per slug.
+    // Publishing must not wait for them: the catalog serves (uncropped, briefly) and the pass fills
+    // them behind it. Captured rather than run so the assertion is about ordering, not timing.
+    val deferred = mutableListOf<Runnable>()
+    val requested = Collections.synchronizedList(mutableListOf<String>())
+    val result =
+      store(
+          TrustStore.EMPTY,
+          figmaExecutor = java.util.concurrent.Executor { deferred += it },
+          fetch = { url ->
+            requested += url
+            when {
+              url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+                eightImageCatalogJson.toByteArray()
+              url.endsWith(".svg") -> "<svg/>".toByteArray()
+              url.endsWith(".png") -> png()
+              else -> null
+            }
+          },
+        )
+        .load("compose-m3")
+
+    assertTrue(result is ServeCatalogStore.Result.Ok)
+    // One probe decided the lane exists; the other ~8 vectors have not been asked for yet.
+    // The probe samples this catalog's single component — its per-variant vector plus the slug
+    // fallback — and stops. The remaining ~8 vectors have not been asked for yet.
+    assertEquals(
+      2,
+      requested.count { it.endsWith(".svg") },
+      "only the probe runs before publishing",
+    )
+    assertEquals(1, deferred.size, "the rest is scheduled, not run")
+
+    deferred.forEach { it.run() }
+
+    assertTrue(
+      requested.count { it.endsWith(".svg") } > 1,
+      "the deferred pass fetches the remaining vectors",
+    )
+  }
+
+  @Test
+  fun `computing thumbnail crops never fetches a cold preview`() {
+    // The landing page computes a crop for EVERY card while building its HTML. If that filled
+    // missing pixels, the first page request would serially download a whole cold catalog on the
+    // request thread — reintroducing the stall this lazy path exists to remove, just moved.
+    val requested = Collections.synchronizedList(mutableListOf<String>())
+    store(
+        TrustStore.EMPTY,
+        fetch = { url ->
+          requested += url
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+              eightImageCatalogJson.toByteArray()
+            url.endsWith(".png") -> png()
+            else -> null
+          }
+        },
+      )
+      .load("compose-m3")
+    val host = registered.getValue("compose-m3") as ServeBundleHost
+    val afterPublish = requested.count { it.endsWith(".png") }
+
+    host.previews.forEach { host.contentCrop(it.id) }
+
+    assertEquals(afterPublish, requested.count { it.endsWith(".png") })
+  }
+
+  @Test
+  fun `a branch that cannot serve any image does not replace a healthy catalog`() {
+    // Lazy images give up the old "declared images, none fetched" outage check, so the publish-time
+    // sample is what keeps a 404ing branch from swapping over a working catalog.
+    val result =
+      store(
+          TrustStore.EMPTY,
+          fetch = { url ->
+            if (url.endsWith("/${ServeCatalogStore.CATALOG_FILE}")) {
+              eightImageCatalogJson.toByteArray()
+            } else null
+          },
+        )
+        .load("compose-m3")
+
+    assertTrue(result is ServeCatalogStore.Result.Failed, "expected failure, got $result")
+  }
+
+  /** Three baked images across one component, so a cap of two leaves something behind it. */
+  private val threeImageCatalogJson =
+    """
+    {"schema":"design-parity-catalog/v1","system":"compose-m3","components":[
+      {"componentId":"Button/Filled","images":[
+        {"path":"images/button-filled/ideal__default__dark.png","theme":"dark"},
+        {"path":"images/button-filled/ideal__default__light.png","theme":"light"},
+        {"path":"images/button-filled/ideal__hover__light.png","theme":"light"}]}]}
+    """
+      .trimIndent()
 
   @Test
   fun `a catalog from a trusted branch is served and attributed by origin`() {
@@ -179,7 +373,9 @@ class ServeCatalogStoreTest {
       }
     }
 
-    assertTrue(store(TrustStore.EMPTY, fetch).load("compose-m3") is ServeCatalogStore.Result.Ok)
+    assertTrue(
+      store(TrustStore.EMPTY, fetch = fetch).load("compose-m3") is ServeCatalogStore.Result.Ok
+    )
 
     val reference = registered.getValue("compose-m3").designReferencesFor("button").single()
     assertEquals("button-design", reference.id)
@@ -237,7 +433,7 @@ class ServeCatalogStoreTest {
         else -> null
       }
     }
-    store(TrustStore.EMPTY, fetch).load("compose-m3")
+    store(TrustStore.EMPTY, fetch = fetch).load("compose-m3")
 
     val host = registered.getValue("compose-m3")
     val ok =
@@ -249,6 +445,48 @@ class ServeCatalogStoreTest {
       "the exact dark-variant SVG is served and its sibling crop is inlined: $out",
     )
     assertFalse(out.contains("legacy light fallback"), "the flat light SVG does not replace dark")
+  }
+
+  @Test
+  fun `a catalog's published design tokens re-theme its web pages`() {
+    val tokens =
+      """{"color":{"primary":{"${'$'}type":"color","${'$'}value":"#bf0031ff"},
+         "surface":{"${'$'}type":"color","${'$'}value":"#fffbffff"},
+         "onSurface":{"${'$'}type":"color","${'$'}value":"#201a1aff"}}}"""
+    fun load(tokensFile: String): ServeBundleHost {
+      registered.clear()
+      val withTokens = catalogJson.dropLast(1) + ""","tokensFile":"$tokensFile"}"""
+      store(TrustStore.EMPTY) { url ->
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> withTokens.toByteArray()
+            url.endsWith("/tokens.dtcg.json") -> tokens.toByteArray()
+            url.endsWith(".png") -> png()
+            else -> null
+          }
+        }
+        .load("compose-m3")
+      return registered.getValue("compose-m3")
+    }
+
+    // The declared token file is fetched off the same branch as the images and projected onto the
+    // chrome's custom properties, so this system's pages carry its crimson rather than the
+    // built-in indigo.
+    val themed = load("tokens.dtcg.json").webThemeCss
+    assertTrue(
+      themed != null && themed.contains("--cp-accent: #bf0031;"),
+      "the catalog's own primary reaches the page palette: $themed",
+    )
+    // A `tokensFile` that tries to leave the catalog is not fetched at all — the branch is trusted,
+    // but a garbled/hostile value must not aim the fetch elsewhere. The pages then serve unthemed.
+    for (escape in listOf("../../secrets.json", "/etc/passwd", "https://elsewhere/tokens.json")) {
+      assertNull(load(escape).webThemeCss, "tokensFile '$escape' must not be fetched")
+    }
+  }
+
+  @Test
+  fun `a catalog with no design tokens serves the built-in chrome`() {
+    store(TrustStore.EMPTY).load("compose-m3")
+    assertNull(registered.getValue("compose-m3").webThemeCss)
   }
 
   @Test
@@ -1156,7 +1394,7 @@ class ServeCatalogStoreTest {
   @Test
   fun `a complete catalog webRender fetches the wasm app and registers its dir`() {
     val catalog = wasmCatalog("\"index.html\",\"composeApp.wasm\",\"skiko.wasm\"")
-    store(TrustStore.EMPTY, wasmFetcher(catalog)).load("compose-m3")
+    store(TrustStore.EMPTY, fetch = wasmFetcher(catalog)).load("compose-m3")
 
     val wasmDir = registeredWasm.getValue("compose-m3")
     assertTrue(File(wasmDir, "index.html").isFile, "index.html landed")
@@ -1174,7 +1412,7 @@ class ServeCatalogStoreTest {
   fun `a webRender with a failed required-file fetch registers nothing (fail closed)`() {
     val catalog = wasmCatalog("\"index.html\",\"composeApp.wasm\",\"skiko.wasm\"")
     // composeApp.wasm 404s → the app is incomplete → don't advertise a tier whose iframe would 404.
-    store(TrustStore.EMPTY, wasmFetcher(catalog, missing = setOf("composeApp.wasm")))
+    store(TrustStore.EMPTY, fetch = wasmFetcher(catalog, missing = setOf("composeApp.wasm")))
       .load("compose-m3")
     assertTrue(registeredWasm.isEmpty(), "incomplete app must not register")
     // With no live lane (Wasm failed to register, no liveBundle), the session IS baked-only and

@@ -129,6 +129,32 @@ mixed theme-plus-knob renders remain in the daemon's bounded override cache rath
 this catalog-lifetime cache. Dynamic theme URLs remain `no-store`, preventing a browser or shared
 proxy from replaying old-catalog pixels after refresh.
 
+The cache can also be filled **ahead of the first visitor** — an idle pass that walks each catalog's
+`previews × declaredThemes` set and renders the missing entries — but that pass is **off by
+default**. It is hundreds of daemon renders per catalog for pixels nobody has asked for, and on the
+public box it is what turned a quiet server into a permanently busy one. The reactive half is where
+the value was and is unchanged: a theme a visitor actually selects is cached on completion, so
+re-selecting it is instant. Turn the eager pass on with
+`-Dcomposeai.serve.themeOptimization=true`; when it runs, `/status` reports it per catalog
+(`themeOptimization`: `waiting` / `running` / `paused` / `complete`, plus cached/remaining counts).
+
+When enabled, it yields twice over — both learned from `preview.coo.ee`:
+
+- **It never runs while catalogs are loading.** A box brings its catalogs up one at a time, and each
+  load fetches a branch, resolves a live bundle's classpath and starts a render daemon. The idle
+  clock counts *request* traffic, so a freshly-rolled server with no visitors yet looks perfectly
+  idle — and the first catalog's optimizer used to start hundreds of renders while the remaining
+  catalogs were still loading, each loaded catalog adding another optimizer. The later a catalog sat
+  in the list, the longer its daemon start waited, and a slow enough start is recorded as
+  `livebundle-unavailable` — degrading that catalog to baked PNGs for the life of the process. The
+  whole startup pass (and any later refresh or admin registration) now reads as *busy*, so the
+  optimizers stay parked until the catalogs are up.
+- **Only one catalog optimizes at a time, server-wide.** Once loading ends every catalog's optimizer
+  becomes runnable at the same instant; the background lane holds a single render permit, so they
+  take turns instead of occupying every live seat, and a visitor's render is never queued behind
+  more than one background one. The permit is taken per render, so a catalog that parks for traffic
+  hands it straight to the next one.
+
 The grid is serial by default. Selecting an app-declared theme asks the server for a fixed,
 60-second page lease; at most one page server-wide receives a burst, clamped to five workers and
 the server's render-slot count. Other pages remain serial, queue completion/page exit releases the
@@ -147,6 +173,44 @@ fallback token.
 ![Catalog theme selector (light)](images/serve-catalog-themes-light.png)
 
 ![Catalog theme selector (dark)](images/serve-catalog-themes-dark.png)
+
+## The page wears the catalog's own palette
+
+The Theme selector above re-renders the *previews*. The **page around them** is themed from the same
+place: every `design-artifacts/<system>` branch publishes a `tokens.dtcg.json` beside `catalog.json`
+(the W3C DTCG projection of the resolved `MaterialTheme.colorScheme` the catalog was rendered with,
+lifted from the render's `compose/theme` data product), and the server projects it onto the CSS
+custom properties the site chrome is painted from. So `/wear-m3/` is framed in Wear M3's cyan on its
+own near-black surface, `/jetnews/` in JetNews's crimson — instead of every design system arriving
+inside the same fixed indigo-on-white shell.
+
+| Before — one fixed chrome for every system | After — `/jetnews/` in JetNews's own palette |
+| --- | --- |
+| ![The viewer in the built-in indigo chrome](images/serve-catalog-palette-before.png) | ![The same viewer painted from jetnews's tokens.dtcg.json](images/serve-catalog-palette-after.png) |
+
+![The wear-m3 catalog on its own near-black surface, in its own cyan](images/serve-catalog-palette-wear.png)
+
+It is a **sync**, not a second palette to maintain: re-publishing a catalog with a new brand colour
+re-themes its pages on the next catalog refresh, with nothing to edit in the server. A catalog that
+publishes no tokens (or an unfetchable / unparseable file) simply keeps the built-in chrome — every
+failure mode is the same non-event.
+
+Two details make it behave under a real visitor's settings:
+
+- **A catalog bakes one mode; a visitor arrives with their own.** The emitted CSS declares both. The
+  **matching** mode gets the full sync (surfaces, text and borders from the catalog's `surface` /
+  `onSurface`, plus its `surfaceContainer*` ladder when it publishes one, and its accent family);
+  the **opposite** mode keeps the built-in neutrals for that mode and takes only the accent family.
+  A dark-mode visitor browsing a light-first catalog therefore gets a dark page in the catalog's
+  brand colour, not a light page.
+
+- **Nothing themed is allowed to become unreadable.** Every colour that ends up carrying text is
+  pushed to a minimum contrast ratio against what it sits on, so a low-contrast brand colour is
+  deepened (or lightened) until it reads rather than being taken literally. What is *not* themed is
+  as deliberate: the trust badges and good/warn/bad scores stay literal because they mean the same
+  thing in every system, and so do the sticker stages — a light-rendered sticker keeps its white
+  backing and a dark-rendered one its dark backing, since those are pinned to the render's theme,
+  not the page's.
 
 ## Design references and UI mocks
 
@@ -190,6 +254,49 @@ branch and rewrites it to a server-owned path. IDs and paths are contained, dupl
 discarded, and an optional SHA-256 is verified before the reference is advertised. Comparisons are
 exact: a reference names one preview id, and differing image dimensions are reported rather than
 silently scaled into a misleading score.
+
+### Where a published catalog's references come from
+
+For a **published catalog**, the manifest is generated — you don't hand-write it. The
+`Publish design references` step of
+[`design-artifacts-reusable.yml`](../.github/workflows/design-artifacts-reusable.yml) runs
+[`emit-design-references.mjs`](../scripts/design-artifacts/emit-design-references.mjs) over the
+calling repo's [`design-map.json`](https://github.com/yschimke/design-parity) — design-parity's
+correspondence file, which most adopters already keep — and writes `references/` into the bundle
+just before it is force-pushed to `design-artifacts/<system>`.
+
+The join is by **`@Preview` function name**: a design-map entry's code handle
+(`ui/ChatBodyPreviews.kt#ContactChatDarkPreview`) names the same function that `catalog.spec.json`
+names for a component or one of its variants, which pins the exact sticker — and therefore the exact
+serve preview id (`chat-contact__ideal__default__dark__compact`). Keying off the function rather than
+the compose-preview discovery id is deliberate: the discovery id carries the `@Preview` `name=` and
+gets filename-sanitized on its way into a bundle, while the function name is the stable identity both
+files already agree on. A design-map entry that maps to no published sticker is a warning, not an
+error — a repo may map more components for its own parity run than it publishes.
+
+Pixels come from, in precedence order: a pre-rendered PNG under `--reference-images` (for a repo
+that already rasterizes references in an earlier job), a committed `.html` mock rasterized with
+Playwright's Chromium against the fonts the workflow already staged, a committed `.png`, or a
+`figma:<fileKey>/<nodeId>` node rendered over the Figma REST API when a `figma_token` secret is
+supplied. Each raster is then resampled to the sticker's exact dimensions and hashed — "exact" is
+load-bearing, because the comparison refuses a size-mismatched pair rather than scaling it, so an
+unresampled reference publishes as a dead row. An entry that can't be rasterized (a Figma reference
+in a run with no token, say) is dropped with a warning and the rest of the manifest still publishes;
+a catalog must never lose its render to a reference lane. Pass `--strict` to gate on that instead.
+
+A repo with no `design-map.json` is a clean no-op, so the step runs unconditionally for every
+catalog.
+
+The lane only appears once a catalog actually publishes references — before the producer existed
+every catalog served the format controls on the left:
+
+![Compare-format controls without any design references](images/serve-references-lane-before.png)
+
+![Compare-format controls with the PNG ↔ Design reference lane](images/serve-references-lane-after.png)
+
+and selecting it scores each mock against the sticker it is mapped to:
+
+![PNG ↔ Design reference lane on the meshcore-mobile catalog](images/serve-references-compare.png)
 
 ## Two axes: trust × format
 

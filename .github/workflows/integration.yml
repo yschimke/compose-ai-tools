@@ -23,6 +23,19 @@ name: Integration
 # Each external-repo job runs independently (`fail-fast: false`) so one broken
 # consumer does not mask regressions in the others.
 #
+# PRs run ONE cell, everything else runs on `main` + the nightly cron. The
+# matrix cell flagged `pr_blocking: true` — currently just `wear-os-samples
+# (ComposeStarter)` — is the only one that does build/discover/render work on
+# `pull_request`; `agp8-min` is skipped there too. ComposeStarter is both the
+# cheapest real cell and the widest one: measured on recent PR runs it takes
+# ~2.6 min (discover 53s + render 23s + daemon round-trip 34s) against
+# androidify ~3.4-4.1 min, nowinandroid ~3.4-3.6 min and agp8-min ~3.3-4.2 min,
+# while covering the full render pipeline, the daemon, and isolated-projects +
+# configuration-cache end-to-end. Every other cell still spins up on a PR (so
+# its check reports) but skips the expensive steps. The daily cron and pushes
+# to `main` run the full matrix, so consumer/AGP-floor drift still surfaces
+# within a day — it just doesn't sit on the PR critical path.
+#
 # Change-scoped on PRs (.github/ci/integration-safe-paths.json): the `changes` job
 # classifies the diff first. A PR that touches only paths which provably cannot
 # alter what the plugin discovers/renders in the external consumers — docs,
@@ -299,15 +312,20 @@ jobs:
             ref: main
             workdir: ComposeStarter
             module: app
-            # PR-blocking sample. All matrix cells run on the daily cron (drift
-            # signal against live upstream repos); on `pull_request` only the
-            # cells flagged `pr_blocking: true` do their build/discover/render
-            # work (gated at step level — see the `Discover`/`Verify`/`Render`
-            # steps below). The other cells still spin up but skip the expensive
-            # gradle steps, so their check still reports (branch-protection-safe)
-            # while ~5 external builds drop off the PR critical path. This cell is
-            # the widest coverage: full render pipeline + daemon round-trip +
-            # IP/CC end-to-end.
+            # THE PR cell — the only one flagged `pr_blocking: true`, so on
+            # `pull_request` this is the sole cell that does build/discover/
+            # render work (gated at step level — see the `Discover`/`Verify`/
+            # `Render` steps below). Every other cell still spins up but skips
+            # the expensive gradle steps, so its check still reports
+            # (branch-protection-safe) while the rest of the external builds
+            # drop off the PR critical path and run on push-to-main + the
+            # nightly cron instead.
+            #
+            # It earns the slot on both axes: cheapest real cell (~2.6 min
+            # measured, vs ~3.4-4.2 for androidify / nowinandroid / agp8-min)
+            # AND the widest coverage — full render pipeline + daemon
+            # round-trip + IP/CC end-to-end. Before adding a second
+            # `pr_blocking` cell, check it buys signal this one can't.
             pr_blocking: true
             # ComposeStarter enables isolated-projects + configuration-cache. The plugin used to
             # need `-Dorg.gradle.unsafe.isolated-projects=false -Dorg.gradle.isolated-projects
@@ -399,8 +417,11 @@ jobs:
             ref: main
             workdir: .
             module: app
-            # PR-blocking sample: a large modern single-module app.
-            pr_blocking: true
+            # Main-only (no `pr_blocking`): a large modern single-module app,
+            # ~3.4-4.1 min per run. Its coverage — a big AGP app configuring
+            # and discovering against the locally-published plugin — overlaps
+            # what the ComposeStarter PR cell already proves, so it rides the
+            # push-to-main + nightly-cron lane instead of the PR critical path.
             # No opt-outs after #1546's IP-cleanup pass (#1549 tracks the cross-project-metadata
             # follow-up). Re-add specific flags here (with a fresh comment naming the regression)
             # if the consumer's build surfaces a new CC / IP gap.
@@ -438,9 +459,11 @@ jobs:
             repo: android/nowinandroid
             ref: main
             workdir: .
-            # PR-blocking sample: flavored multi-module discovery (guards the
-            # #1546 variant-matching fix against a large real project).
-            pr_blocking: true
+            # Main-only (no `pr_blocking`): flavored multi-module discovery
+            # (guards the #1546 variant-matching fix against a large real
+            # project), ~3.4-3.6 min per run. The fix itself is pinned by unit
+            # tests in the plugin; this cell is the real-project confirmation,
+            # which the push-to-main + nightly lane catches within a day.
             # `:app` declares productFlavors `demo` / `prod` with build types
             # `debug` / `release`, so its variants are `demoDebug`, `prodDebug`,
             # `demoRelease`, `prodRelease` — no plain `debug`. `:app-nia-catalog`
@@ -747,7 +770,7 @@ jobs:
           echo "--- local.properties ---"
           cat local.properties
 
-      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         if: ${{ github.event_name != 'pull_request' || matrix.pr_blocking }}
         with:
           distribution: temurin
@@ -1444,10 +1467,16 @@ jobs:
           key: android-all-instrumented-${{ runner.os }}-${{ matrix.slug }}-${{ steps.android-all.outputs.coordinate }}
 
   agp8-min:
-    # Consumes build-plugin's bundle, so it rides the same change-scope gate:
-    # skipped on out-of-scope PRs (not a required check, so a plain skip is
-    # fine — nothing needs to re-emit it).
-    if: ${{ needs.changes.outputs.run == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    # Main-only, like every non-`pr_blocking` matrix cell: PRs run just the
+    # ComposeStarter cell, and this job's three-phase BOM-floor dance costs
+    # ~3.3-4.2 min. Skipping it on `pull_request` is safe for branch protection
+    # because it is not a required check (nothing needs to re-emit it, unlike
+    # the two `wear-os-samples` legs the gate jobs above cover). AGP-floor
+    # drift surfaces on the next push to main / nightly cron.
+    #
+    # Also consumes build-plugin's bundle, so it rides the same change-scope
+    # gate: skipped on out-of-scope PRs too.
+    if: ${{ github.event_name != 'pull_request' && needs.changes.outputs.run == 'true' }}
     # Floor-coverage job for AGP 8.x consumers. Uses the in-repo fixture under
     # `.github/ci/fixtures/agp8-min/` (Gradle 8.13 + AGP 8.13.0 + Kotlin 2.0.21
     # + compileSdk 36) so we exercise the bottom of our publicly-supported
@@ -1465,7 +1494,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           # JDK 17 — the realistic toolchain for an AGP 8.x consumer. The

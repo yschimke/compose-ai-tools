@@ -301,6 +301,34 @@ class ServeSessionRegistryTest {
   }
 
   @Test
+  fun `background optimization keeps an idle catalog resident until work finishes`() {
+    val clock = AtomicLong(0)
+    val optimizing = AtomicBoolean(true)
+    val delegate = RecordingHost()
+    val host =
+      object : ServeHost by delegate {
+        override val backgroundWorkActive: Boolean
+          get() = optimizing.get()
+      }
+    ServeSessionRegistry(
+        open = { null },
+        idleTimeoutMillis = 100,
+        reaperIntervalMillis = 0,
+        clock = clock::get,
+      )
+      .use { registry ->
+        registry.register("catalog", stateFor("catalog"), host = host)
+        clock.set(200)
+        assertEquals(0, registry.suspendIdle(), "background cache fill keeps its daemon resident")
+        assertEquals(false, delegate.closed)
+
+        optimizing.set(false)
+        assertEquals(1, registry.suspendIdle(), "the daemon may suspend after optimization")
+        assertTrue(delegate.closed)
+      }
+  }
+
+  @Test
   fun `a leased session is not suspended until the lease closes`() {
     val clock = AtomicLong(0)
     ServeSessionRegistry(

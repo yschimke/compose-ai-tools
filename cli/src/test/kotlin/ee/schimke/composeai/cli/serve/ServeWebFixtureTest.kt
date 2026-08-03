@@ -67,6 +67,37 @@ class ServeWebFixtureTest {
       designParityVersion = "0.1.25",
     )
 
+  // The colour half of two REAL published token files (`design-artifacts/<system>/tokens.dtcg.json`
+  // — the DTCG projection of the catalog's resolved MaterialTheme), trimmed to the roles the web
+  // projection reads. Kept verbatim so the themed fixtures below are the palettes a visitor to
+  // preview.coo.ee actually gets, not invented colours.
+  private val wearM3Tokens =
+    """
+    {"color":{
+      "primary":{"${'$'}type":"color","${'$'}value":"#4dd0e1ff"},
+      "primaryContainer":{"${'$'}type":"color","${'$'}value":"#4d3d76ff"},
+      "onPrimary":{"${'$'}type":"color","${'$'}value":"#210f48ff"},
+      "onPrimaryContainer":{"${'$'}type":"color","${'$'}value":"#f6edffff"},
+      "surface":{"${'$'}type":"color","${'$'}value":"#202124ff"},
+      "onSurface":{"${'$'}type":"color","${'$'}value":"#f6edffff"},
+      "surfaceContainerLow":{"${'$'}type":"color","${'$'}value":"#272430ff"},
+      "surfaceContainer":{"${'$'}type":"color","${'$'}value":"#332e3cff"}
+    }}
+    """
+      .trimIndent()
+
+  private val jetNewsTokens =
+    """
+    {"color":{
+      "primary":{"${'$'}type":"color","${'$'}value":"#bf0031ff"},
+      "onPrimary":{"${'$'}type":"color","${'$'}value":"#ffffffff"},
+      "primaryContainer":{"${'$'}type":"color","${'$'}value":"#ffdad9ff"},
+      "surface":{"${'$'}type":"color","${'$'}value":"#fffbffff"},
+      "onSurface":{"${'$'}type":"color","${'$'}value":"#201a1aff"}
+    }}
+    """
+      .trimIndent()
+
   // A representative spread: a few snapshot-only previews plus two that also advertise the future
   // `live` (CMP→JS) mode, so the captured chrome exercises the mode seam.
   private val previews =
@@ -657,6 +688,36 @@ class ServeWebFixtureTest {
         hasFormatComparison = true,
         version = version,
       )
+    // The catalog-theme sync: a served system's pages are framed in ITS colours, not the built-in
+    // indigo shell — the `:root` override `ServeThemeCss` projects from the delivery branch's
+    // `tokens.dtcg.json`. Two fixtures so the bot diffs both directions of the mode match: a
+    // dark-first catalog (wear-m3, cyan on near-black) on the landing, and a light-first one
+    // (jetnews, crimson) on the viewer. The harness shoots each in light AND dark, which is exactly
+    // where the "matching mode syncs surfaces, the other keeps built-in neutrals + the brand
+    // accent" rule shows up.
+    val landingCatalogPalette =
+      ServeWeb.landingPage(
+        "wear-m3",
+        themedPreviews,
+        token,
+        sessionId = "wear-m3",
+        trust = "branch:yschimke/compose-ai-tools@design-artifacts/wear-m3",
+        isPublic = true,
+        hasHomeIndex = true,
+        version = version,
+        declaredSurface = "dark",
+        themeCss = ServeThemeCss.fromDtcg(wearM3Tokens)!!,
+      )
+    val viewerCatalogPalette =
+      ServeWeb.viewerPage(
+        previews.first { it.id.endsWith("ProfileScreenPreview") },
+        token,
+        sessionId = "jetnews",
+        trust = "branch:yschimke/compose-samples@design-artifacts/jetnews",
+        siblings = previews,
+        catalogTitle = "JetNews",
+        themeCss = ServeThemeCss.fromDtcg(jetNewsTokens)!!,
+      )
     // The format-comparison surface introduced for issue #3158. Both targets are advertised so the
     // visual fixture covers the format tabs; the light/dark pairs ensure the comparison theme
     // control and strict same-theme URL wiring are captured too.
@@ -955,6 +1016,18 @@ class ServeWebFixtureTest {
                   degradation = null,
                   provenance =
                     "yschimke/compose-ai-tools@design-artifacts/compose-m3 · 2026-07-17T09:30:00.000Z",
+                  themeOptimization =
+                    ThemeOptimizationSnapshot(
+                      state = "complete",
+                      total = 168,
+                      cached = 168,
+                      remaining = 0,
+                      failed = 0,
+                      cachedBytes = 8_912_384,
+                      fullyOptimized = true,
+                      startedAtEpochMillis = 1_721_209_800_000,
+                      completedAtEpochMillis = 1_721_209_920_000,
+                    ),
                 ),
                 ServeWeb.StatusCatalog(
                   id = "remote-m3",
@@ -1041,6 +1114,8 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-landing-path.html").writeText(landingPath)
       File(pagesDir, "serve-viewer-path.html").writeText(viewerPath)
       File(pagesDir, "serve-landing-themed.html").writeText(landingThemed)
+      File(pagesDir, "serve-landing-catalog-palette.html").writeText(landingCatalogPalette)
+      File(pagesDir, "serve-viewer-catalog-palette.html").writeText(viewerCatalogPalette)
       File(pagesDir, "serve-format-compare.html").writeText(formatComparison)
       File(pagesDir, "serve-reference-compare.html").writeText(referenceComparison)
       File(pagesDir, "serve-landing-declared-themes.html").writeText(landingDeclaredThemes)
@@ -1157,6 +1232,43 @@ class ServeWebFixtureTest {
     assertGolden(File(pagesDir, "serve-landing-path.html"), landingPath)
     assertGolden(File(pagesDir, "serve-viewer-path.html"), viewerPath)
     assertGolden(File(pagesDir, "serve-landing-themed.html"), landingThemed)
+    assertGolden(File(pagesDir, "serve-landing-catalog-palette.html"), landingCatalogPalette)
+    assertGolden(File(pagesDir, "serve-viewer-catalog-palette.html"), viewerCatalogPalette)
+    // The projected palette is inlined AFTER serve.css, so it wins at equal specificity — and it
+    // carries both modes, so a dark-mode visitor to a light-first catalog still gets its brand.
+    assertTrue(
+      landingCatalogPalette.substringAfter("serve.css").startsWith("\">\n        <style>"),
+      "the catalog palette is inlined directly after the stylesheet link",
+    )
+    assertTrue(
+      viewerCatalogPalette.contains("--cp-accent: #bf0031;") &&
+        viewerCatalogPalette.contains("@media (prefers-color-scheme: dark)"),
+      "the viewer carries the catalog's accent in both modes",
+    )
+    // A plain (non-catalog) session inlines nothing at all.
+    assertFalse(landingThemed.contains("<style>"), "an unthemed page carries no inline palette")
+    // Every page a visitor can reach *inside* a catalog carries the palette — walking grid →
+    // compare formats → focused Reference/Diff/Actual must not drop back to the built-in chrome
+    // partway through.
+    val palette = ServeThemeCss.fromDtcg(jetNewsTokens)!!
+    val inCatalogPages =
+      mapOf(
+        "landing" to ServeWeb.landingPage("jetnews", themedPreviews, token, themeCss = palette),
+        "viewer" to ServeWeb.viewerPage(previews.first(), token, themeCss = palette),
+        "format comparison" to
+          ServeWeb.comparisonPage("jetnews", themedPreviews, token, themeCss = palette),
+        "reference comparison" to
+          ServeWeb.referenceComparisonPage(
+            moduleLabel = "jetnews",
+            preview = themedPreviews.first(),
+            reference = comparisonReferences.first(),
+            token = token,
+            themeCss = palette,
+          ),
+      )
+    for ((name, html) in inCatalogPages) {
+      assertTrue(html.contains("--cp-accent: #bf0031;"), "the $name page carries the palette")
+    }
     assertGolden(File(pagesDir, "serve-format-compare.html"), formatComparison)
     assertGolden(File(pagesDir, "serve-reference-compare.html"), referenceComparison)
     assertTrue(

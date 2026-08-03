@@ -115,6 +115,22 @@ interface ServeHost : AutoCloseable {
   fun cachedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? = null
 
   /**
+   * Serve [previewId] from pixels **already on this box** — a baked PNG on disk — or null when
+   * answering would need work: a daemon render, or a fetch for a preview whose pixels haven't
+   * arrived yet.
+   *
+   * This is what keeps a busy, mostly-browsing box responsive. Every `/render` request otherwise
+   * competes for the same small pool of global render slots, so a handful of cold daemon renders —
+   * which can take a minute each — head-of-line block dozens of readers whose answer is a local
+   * file, and those readers eventually 503. A host that can answer from disk says so here and is
+   * served without ever entering admission.
+   *
+   * Must be cheap and non-blocking: no daemon, no network, no waiting. Returning null is always
+   * safe — the caller falls back to the admitted [render] path.
+   */
+  fun bakedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? = null
+
+  /**
    * Aggregate render-performance counters for this host's live render lane, surfaced on `/status`
    * + `/status.json` (`runningServers[].renderStats`). Null when the host has no live render lane
    *   to measure — a static baked bundle never renders. Daemon-backed hosts ([ServeRenderHost])
@@ -129,6 +145,13 @@ interface ServeHost : AutoCloseable {
    * daemons are resident". Empty for ordinary hosts.
    */
   fun daemonPoolStats(): List<DaemonPoolSnapshot> = emptyList()
+
+  /** Server-side catalog theme optimization progress, or null for hosts without that cache. */
+  fun themeOptimizationSnapshot(): ThemeOptimizationSnapshot? = null
+
+  /** True while low-priority work still needs this host resident. */
+  val backgroundWorkActive: Boolean
+    get() = false
 
   /**
    * Whether this session's daemon can actually apply the **one-handed gesture** override

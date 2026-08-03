@@ -1,0 +1,285 @@
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Profile screen — compose-preview</title>
+        <link rel="stylesheet" href="/assets/serve/bfa1-6a3dccee97faf254/serve.css">
+        <style>
+        :root {
+          --cp-bg: #f8f4f8;
+          --cp-surface: #fffbff;
+          --cp-surface-2: #efebef;
+          --cp-fg: #201a1a;
+          --cp-fg-soft: #453f40;
+          --cp-fg-muted: #6c6668;
+          --cp-fg-faint: #8e898b;
+          --cp-border: #dedadd;
+          --cp-border-strong: #c8c4c7;
+          --cp-accent: #bf0031;
+          --cp-accent-strong: #680e24;
+          --cp-accent-soft: #ffdad9;
+          --cp-accent-ring: #e49fb2;
+          --cp-on-accent: #ffffff;
+          --cp-on-accent-soft: #680e24;
+        }
+        @media (prefers-color-scheme: dark) {
+          :root {
+            --cp-bg: #161618;
+            --cp-surface: #1d1d20;
+            --cp-surface-2: #26262b;
+            --cp-fg: #e6e6e9;
+            --cp-fg-soft: #c3c3c5;
+            --cp-fg-muted: #9d9da0;
+            --cp-fg-faint: #7c7c7e;
+            --cp-border: #2f2f31;
+            --cp-border-strong: #444446;
+            --cp-accent: #cd5171;
+            --cp-accent-strong: #dba3b3;
+            --cp-accent-soft: #301e24;
+            --cp-accent-ring: #562b37;
+            --cp-on-accent: #ffffff;
+            --cp-on-accent-soft: #dba3b3;
+          }
+        }
+        </style>
+        <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
+        <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+      </head>
+      <body>
+        <header class="cp-site-header">
+  <a class="cp-site-brand" href="/?token=demo-token-fixture" aria-label="compose-preview home">
+    <span class="cp-site-mark" aria-hidden="true">◇</span>
+    <span>compose-preview</span>
+  </a>
+  <nav class="cp-site-nav" aria-label="Primary navigation">
+    <a href="/?token=demo-token-fixture">Catalogs</a>
+    <a href="/status?token=demo-token-fixture">Status</a>
+    <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>
+  </nav>
+</header>
+        <main class="cp-main">
+              <p class="cp-breadcrumb"><a href="/?token=demo-token-fixture&session=jetnews">JetNews</a> / Component</p>
+      <h1 class="cp-head cp-preview-title">Profile screen <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-samples@design-artifacts/jetnews">✓ trusted</span></h1>
+      <p class="cp-preview-id" title="com.example.ProfileScreenPreview"><code>com.example.ProfileScreenPreview</code></p>
+
+
+
+      <div class="cp-preview-primary" aria-label="Preview renderer">
+      <button type="button" id="cp-live-toggle" class="cp-live-toggle" aria-pressed="false" disabled>
+            <span class="cp-live-dot" aria-hidden="true"></span>
+            <span id="cp-live-toggle-label">Live preview</span>
+          </button>
+        <span class="cp-mode-hint" id="cp-mode-hint"></span>
+        <span class="cp-modes-inputs" aria-hidden="true">
+      <input type="radio" name="cp-mode" value="png" id="cp-mode-png" tabindex="-1" checked>
+<input type="radio" name="cp-mode" value="live" id="cp-live" tabindex="-1" disabled>
+        </span>
+      </div>
+      <div class="cp-viewer-bar">
+        <button type="button" class="cp-drawer-toggle" id="cp-nav-toggle" aria-expanded="false" aria-controls="cp-nav">☰ Components</button>
+        <span class="cp-bg" role="group" aria-label="Preview zoom">
+          <button type="button" class="cp-bg-btn cp-zoom-btn" data-zoom-mode="fit" aria-pressed="true">Fit screen</button>
+          <button type="button" class="cp-bg-btn cp-zoom-btn" data-zoom-mode="width" aria-pressed="false">Fit width</button>
+        </span>
+        <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
+      </div>
+      <div class="cp-viewer cp-controls-open" data-preview-id="com.example.ProfileScreenPreview" data-mode="snapshot" data-modes="snapshot,live" data-static-snapshot="true" data-can-render-overrides="false" data-snapshot-backend="Snapshot" data-live-backend="Live" data-render-density="2">
+              <aside class="cp-nav" id="cp-nav" aria-label="Components">
+        <div class="cp-nav-head"><span>Components</span><button type="button" class="cp-nav-close" id="cp-nav-close" aria-label="Close component navigation">×</button></div>
+        <input type="search" class="cp-nav-search" id="cp-nav-search" placeholder="Filter components" autocomplete="off" aria-label="Filter components">
+        <ul class="cp-nav-list" id="cp-nav-list">
+        <li><a class="cp-nav-item" href="/p/com.example.ButtonPreview?token=demo-token-fixture&session=jetnews" title="com.example.ButtonPreview" data-search="Button com.example.ButtonPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ButtonPreview.png?token=demo-token-fixture&session=jetnews"><span class="cp-nav-name">Button</span></a></li>
+<li><a class="cp-nav-item" href="/p/com.example.CardPreview?token=demo-token-fixture&session=jetnews" title="com.example.CardPreview" data-search="Card com.example.CardPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.CardPreview.png?token=demo-token-fixture&session=jetnews"><span class="cp-nav-name">Card</span></a></li>
+<li><a class="cp-nav-item" href="/p/com.example.DialogPreview?token=demo-token-fixture&session=jetnews" title="com.example.DialogPreview" data-search="Dialog com.example.DialogPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.DialogPreview.png?token=demo-token-fixture&session=jetnews"><span class="cp-nav-name">Dialog</span></a></li>
+<li><a class="cp-nav-item" href="/p/com.example.ListScreenPreview?token=demo-token-fixture&session=jetnews" title="com.example.ListScreenPreview" data-search="List screen com.example.ListScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ListScreenPreview.png?token=demo-token-fixture&session=jetnews"><span class="cp-nav-name">List screen</span></a></li>
+<li><a class="cp-nav-item" href="/p/com.example.ProfileScreenPreview?token=demo-token-fixture&session=jetnews" aria-current="page" title="com.example.ProfileScreenPreview" data-search="Profile screen com.example.ProfileScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ProfileScreenPreview.png?token=demo-token-fixture&session=jetnews"><span class="cp-nav-name">Profile screen</span></a></li>
+<li><a class="cp-nav-item" href="/p/com.example.SettingsScreenPreview?token=demo-token-fixture&session=jetnews" title="com.example.SettingsScreenPreview" data-search="Settings screen com.example.SettingsScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.SettingsScreenPreview.png?token=demo-token-fixture&session=jetnews"><span class="cp-nav-name">Settings screen</span></a></li>
+        </ul>
+        <p class="cp-nav-empty" id="cp-nav-empty" hidden>No components match.</p>
+      </aside>
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="Profile screen"><canvas id="cp-canvas" hidden></canvas><div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-controls" id="cp-controls">
+          <details class="cp-group" data-cp-group="appearance">
+            <summary>Appearance</summary>
+            <div class="cp-group-body">
+              <label>Theme
+  <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="false" disabled>
+    <option value="light" selected>Day (Default)</option>
+    <option value="dark">Night (Default)</option>
+  </select>
+</label>
+              <label>Background
+                <select id="cp-background" disabled>
+                  <option value="">(default)</option>
+                  <option value="clear">Clear (crisp outline)</option>
+                </select>
+              </label>
+            </div>
+          </details>
+          <details class="cp-group" data-cp-group="size">
+            <summary>Size</summary>
+            <div class="cp-group-body">
+              <div class="cp-size">
+                <label>Size mode
+                  <select id="cp-sizeMode" disabled>
+                    <option value="">(default)</option>
+                    <option value="fixed">Fixed size</option>
+                    <option value="max">Max</option>
+                    <option value="min">Min</option>
+                    <option value="within">Within (min–max)</option>
+                  </select>
+                </label>
+                <div class="cp-size-row" id="cp-size-fixed" hidden>
+                  <label>Width (dp)<input id="cp-fixedW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                  <label>Height (dp)<input id="cp-fixedH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                </div>
+                <div class="cp-size-row" id="cp-size-min" hidden>
+                  <label>Min width (dp)<input id="cp-minW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                  <label>Min height (dp)<input id="cp-minH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                </div>
+                <div class="cp-size-row" id="cp-size-max" hidden>
+                  <label>Max width (dp)<input id="cp-maxW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                  <label>Max height (dp)<input id="cp-maxH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <details class="cp-group" data-cp-group="locale">
+            <summary>Locale &amp; text</summary>
+            <div class="cp-group-body">
+              <label>Locale
+                <input id="cp-localeTag" type="text" list="cp-localeTag-list" placeholder="e.g. en-GB, zh-Hant-TW" autocomplete="off" disabled>
+                <!-- A datalist, not a fixed <select>: the presets (pseudolocales, RTL, common
+                     tags) drop down for quick picking, but any valid BCP-47 tag the server
+                     accepts can still be typed in. -->
+                <datalist id="cp-localeTag-list">
+                  <option value="en-XA" label="Accented (pseudo)"></option>
+                  <option value="ar-XB" label="Bidi / RTL (pseudo)"></option>
+                  <option value="ar" label="Arabic (RTL)"></option>
+                  <option value="he" label="Hebrew (RTL)"></option>
+                  <option value="fa" label="Persian (RTL)"></option>
+                  <option value="en-US"></option>
+                  <option value="en-GB"></option>
+                  <option value="de-DE"></option>
+                  <option value="fr-FR"></option>
+                  <option value="es-ES"></option>
+                  <option value="pt-BR"></option>
+                  <option value="ru-RU"></option>
+                  <option value="ja-JP"></option>
+                  <option value="ko-KR"></option>
+                  <option value="zh-CN"></option>
+                  <option value="zh-Hant-TW"></option>
+                  <option value="hi-IN"></option>
+                  <option value="th-TH"></option>
+                </datalist>
+              </label>
+              <label>Font scale: <span id="cp-fontScale-val">default</span>
+                <input id="cp-fontScale" type="range" min="0.5" max="2.0" step="0.1" value="1.0" disabled>
+              </label>
+            </div>
+          </details>
+          <details class="cp-group" data-cp-group="device">
+            <summary>Device</summary>
+            <div class="cp-group-body">
+              <label>Device
+                <select id="cp-device" disabled>
+                  <option value="">(default)</option>
+                  <option value="id:pixel_5">Pixel 5</option>
+<option value="id:pixel_7">Pixel 7</option>
+<option value="id:pixel_tablet">Pixel Tablet</option>
+<option value="id:pixel_fold">Pixel Fold</option>
+<option value="id:wearos_small_round">Wear OS (small round)</option>
+<option value="id:tv_1080p">TV 1080p</option>
+                </select>
+              </label>
+              <label>Orientation
+                <select id="cp-orientation" disabled>
+                  <option value="">(default)</option>
+                  <option value="portrait">Portrait</option>
+                  <option value="landscape">Landscape</option>
+                </select>
+              </label>
+            </div>
+          </details>
+
+
+
+
+          <div class="cp-status" id="cp-status"></div>
+        </div>
+      </div>
+      <!-- Export remains below the workspace; renderer selection is kept beside the preview
+           heading so it is visible before a tall stage. -->
+      <div class="cp-below">
+        <div class="cp-note">Pre-rendered snapshot — overrides (size, device, locale, font scale, orientation) need the live server, not a published catalog. <a href="https://github.com/yschimke/compose-ai-tools/blob/main/docs/public-preview-server.md#running-one">Enable a local preview server.</a></div>
+              <details class="cp-export cp-disclosure">
+        <summary id="cp-export-head">Export &amp; direct links</summary>
+        <div class="cp-links cp-disclosure-body">
+          <div class="cp-knobs-head">The current view as a URL (overrides applied)</div>
+          <div class="cp-link-row">
+  <span class="cp-link-kind">PNG</span>
+  <input id="cp-url-png" class="cp-url" type="text" readonly aria-label="PNG URL"
+    title="Click to copy the URL">
+  <button type="button" class="cp-copyimg" data-copyimg-target="cp-url-png"
+    data-copyimg-ext=".png">Copy PNG</button>
+  <a id="cp-dl-png" class="cp-dl" download>Download</a>
+</div>
+        </div>
+      </details>
+      </div>
+      <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
+           tapping it dismisses the sheet. Inert on desktop. -->
+      <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
+      <script src="/assets/serve/22e-68c7d41937f0dccd/viewer-groups.js"></script>
+      <script src="/assets/serve/c0f-86b66f86ed745fcf/viewer-drawers.js"></script>
+      <script>(function () {
+  var el = document.getElementById("cp-theme");
+  if (!el) return;
+  // Runs before viewer.js' initial render. A declared app theme is intentionally inherited even
+  // by an explicit __light/__dark preview: that path token selects the baked fallback, while the
+  // catalog's Theme choice is the active override the visitor asked to keep while navigating.
+  var root = document.querySelector(".cp-viewer");
+  var pid = (root && root.getAttribute("data-preview-id")) || "";
+  var themed = pid.split("__").some(function (s) { return s === "light" || s === "dark"; });
+  try {
+    var stored = localStorage.getItem("cp-theme:jetnews");
+    var declared = stored && stored.indexOf("theme:") === 0;
+    var option = null;
+    Array.prototype.forEach.call(el.options, function (o) { if (o.value === stored) option = o; });
+    if (option && !option.disabled && (declared || (!themed && (stored === "light" || stored === "dark")))) {
+      el.value = stored;
+      el.setAttribute("data-theme-active", "1");
+    }
+  } catch (e) {}
+  // Keep the stage backing colour in step with the CHOSEN theme, so a re-render in the opposite
+  // uiMode never lands a transparent sticker on a clashing surface. The server seeds
+  // data-bg-theme from the baked variant (or the dark-first default); a light/dark Theme choice
+  // overrides it, and clearing it reverts to that default.
+  var bgDefault = (root && root.getAttribute("data-bg-theme")) || "";
+  function syncBg() {
+    if (!root) return;
+    // Only let the Theme choice drive the stage backing when the control can actually re-render
+    // (daemon or Wasm). On a static bundle the select is disabled but the seeding above may still
+    // have copied a remembered localStorage value into el.value — honoring it would tint the
+    // stage while ServeBundleHost keeps returning the UNCHANGED baked PNG. Keep bgDefault there.
+    var chosen =
+      !el.disabled && (el.value === "light" || el.value === "dark") ? el.value : "";
+    var m = chosen || bgDefault;
+    if (m) root.setAttribute("data-bg-theme", m);
+    else root.removeAttribute("data-bg-theme");
+  }
+  // Round-trip every unified choice, including `theme:<provider>`, to the catalog page.
+  el.addEventListener("change", function () {
+    el.setAttribute("data-theme-active", "1");
+    try { localStorage.setItem("cp-theme:jetnews", el.value); } catch (e) {}
+    syncBg();
+  });
+  syncBg();
+})();</script>
+      <script src="/assets/serve/1334c-24f5c1c28e157592/viewer.js"></script>
+      <script src="/assets/serve/580-33b18e7b310ae1cc/backend-badge.js"></script>
+        </main>
+      </body>
+    </html>

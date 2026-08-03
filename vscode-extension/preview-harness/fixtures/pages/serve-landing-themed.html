@@ -4,7 +4,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>compose-m3 — compose-preview</title>
-        <link rel="stylesheet" href="/assets/serve/b605-42bc3e3fba2c0ac3/serve.css">
+        <link rel="stylesheet" href="/assets/serve/bfa1-6a3dccee97faf254/serve.css">
         <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
@@ -94,9 +94,16 @@
       var stored = null;
 try { stored = localStorage.getItem("cp-theme:compose-m3"); } catch (e) {}
 var themeBtns = document.querySelectorAll(".cp-theme-btn");
+// The GRID always opens on published pixels. A stored app-declared theme
+// (`theme:<providerFqn>`) is deliberately NOT replayed here: restoring it would re-point
+// every card at a `?themeProvider=` render and put the whole grid through the daemon on
+// what is meant to be a default page view — the single most expensive thing an idle box
+// can be made to do, and it happened on every return visit. Only the baked chips, whose
+// pixels are already published, are restored. Stickiness for app-declared themes belongs
+// to the individual preview, which reads this same key for its own Theme select.
 function validTheme(t) {
   if (!t) return false;
-  return t === "light" || t === "dark" || t === "default" || t.indexOf("theme:") === 0;
+  return t === "light" || t === "dark" || t === "default";
 }
 var theme = validTheme(stored) ? stored
   : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
