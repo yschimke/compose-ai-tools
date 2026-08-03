@@ -6,6 +6,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.security.MessageDigest
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
 import kotlinx.serialization.Serializable
@@ -226,6 +227,23 @@ class ServeCatalogStore(
     // for
     // renders that actually carry a state or theme; plain (stateless) previews stay out of the map.
     val variants = LinkedHashMap<String, VariantMeta>()
+    // Every baked image the loop below could ask for, in catalog order, fetched concurrently up
+    // front. The loop then reads bytes out of this map rather than blocking on one request at a
+    // time — the single change that takes a large catalog's load from minutes to seconds. Planning
+    // applies the same containment filter the loop does (so nothing extra is fetched) and stops at
+    // [maxImages], the same ceiling the loop enforces.
+    val plannedImageUrls =
+      catalog.components
+        .asSequence()
+        .flatMap { it.images.asSequence() }
+        .map { it.path }
+        .filter { path ->
+          path.startsWith("$IMAGES_DIR/") && path.endsWith(".png") && ".." !in path.split("/")
+        }
+        .take(maxImages)
+        .map { base + it }
+        .toList()
+    val fetchedImages = fetchCatalogAssets(plannedImageUrls)
     for (component in catalog.components) {
       // The component's section/group tag every one of its previews (a component maps to one
       // section + group), so the tabbed landing can bucket + sub-head + order them.
@@ -243,7 +261,7 @@ class ServeCatalogStore(
         // completeness check below tells "this catalog bakes nothing" (legal, all-deferred) apart
         // from "this catalog bakes things and none of them fetched" (an outage — must not swap).
         declaredImages++
-        val bytes = runCatching { fetchCatalogAsset(base + path) }.getOrNull() ?: continue
+        val bytes = fetchedImages[base + path] ?: continue
         val id = previewIdFor(path)
         val target = File(previewsDir, "$id.png")
         if (!target.canonicalFile.toPath().startsWith(previewsRoot)) continue
@@ -953,17 +971,31 @@ class ServeCatalogStore(
       addAll(variantPaths)
       addAll(slugs.map { "$it.svg" })
     }
-    for (relativePath in candidates) {
+    // Same concurrent prefetch the baked images get, in two waves because the second is discovered
+    // by reading the first: a hybrid SVG names its `figma-raster/` crops inside its own markup, and
+    // raw.githubusercontent has no directory listing to enumerate them from.
+    val safeCandidates = candidates.filter { relativePath ->
       val segments = relativePath.split("/")
-      if (
-        relativePath.isEmpty() ||
-          !relativePath.endsWith(".svg") ||
-          ".." in segments ||
-          segments.size !in 1..2
+      relativePath.isNotEmpty() &&
+        relativePath.endsWith(".svg") &&
+        ".." !in segments &&
+        segments.size in 1..2
+    }
+    val fetchedSvgs = fetchCatalogAssets(safeCandidates.map { "$base$FIGMA_DIR/$it" })
+    val fetchedCrops =
+      fetchCatalogAssets(
+        safeCandidates.flatMap { relativePath ->
+          val svg = fetchedSvgs["$base$FIGMA_DIR/$relativePath"] ?: return@flatMap emptyList()
+          val remoteParent = relativePath.substringBeforeLast('/', missingDelimiterValue = "")
+          figmaRasterHrefs(svg.toString(Charsets.UTF_8))
+            .filter { it.isNotEmpty() && ".." !in it.split("/") }
+            .map { href ->
+              "$base$FIGMA_DIR/${if (remoteParent.isEmpty()) href else "$remoteParent/$href"}"
+            }
+        }
       )
-        continue
-      val svgBytes =
-        runCatching { fetchCatalogAsset("$base$FIGMA_DIR/$relativePath") }.getOrNull() ?: continue
+    for (relativePath in safeCandidates) {
+      val svgBytes = fetchedSvgs["$base$FIGMA_DIR/$relativePath"] ?: continue
       val svgFile = File(figmaDir, relativePath)
       if (!svgFile.canonicalFile.toPath().startsWith(figmaRoot)) continue
       svgFile.parentFile?.mkdirs()
@@ -979,8 +1011,7 @@ class ServeCatalogStore(
         if (!cropFile.canonicalFile.toPath().startsWith(figmaRoot)) continue
         val remoteParent = relativePath.substringBeforeLast('/', missingDelimiterValue = "")
         val remoteCrop = if (remoteParent.isEmpty()) href else "$remoteParent/$href"
-        val cropBytes =
-          runCatching { fetchCatalogAsset("$base$FIGMA_DIR/$remoteCrop") }.getOrNull() ?: continue
+        val cropBytes = fetchedCrops["$base$FIGMA_DIR/$remoteCrop"] ?: continue
         cropFile.parentFile?.mkdirs()
         cropFile.writeBytes(cropBytes)
       }
@@ -995,12 +1026,16 @@ class ServeCatalogStore(
   ) {
     if (references.isEmpty()) return
     val seen = HashSet<String>()
+    val fetchedRasters =
+      fetchCatalogAssets(
+        references
+          .filter { ServeDesignReferenceStore.isSafeRelativePath(it.raster.path) }
+          .map { "$base${it.raster.path}" }
+      )
     val accepted = references.mapNotNull { reference ->
       if (!ServeDesignReferenceStore.isSafeRelativePath(reference.raster.path))
         return@mapNotNull null
-      val bytes =
-        runCatching { fetchCatalogAsset("$base${reference.raster.path}") }.getOrNull()
-          ?: return@mapNotNull null
+      val bytes = fetchedRasters["$base${reference.raster.path}"] ?: return@mapNotNull null
       if (!ServeDesignReferenceStore.isValid(reference, bytes) || !seen.add(reference.id))
         return@mapNotNull null
       val localPath = "${ServeDesignReferenceStore.DIRECTORY}/${reference.id}.png"
@@ -1346,6 +1381,15 @@ class ServeCatalogStore(
 
     private const val DEFAULT_MAX_IMAGES = 1000
     private const val MAX_FETCH_BYTES = 25L * 1024 * 1024 // 25 MB per catalog asset
+
+    /**
+     * How many catalog assets to fetch at once ([fetchCatalogAssets]). Twelve measured as the knee
+     * against `raw.githubusercontent.com` — it takes the largest published catalog's 197 images
+     * from ~92 s to ~8 s — while staying far short of anything a single origin would consider a
+     * burst. Each worker holds one small response at a time, so the memory cost is bounded by this
+     * count times the per-asset cap, not by the catalog's size.
+     */
+    private const val ASSET_FETCH_CONCURRENCY = 12
     internal const val MAX_LIVE_BUNDLE_FETCH_BYTES = 100L * 1024 * 1024
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -1383,6 +1427,44 @@ class ServeCatalogStore(
   /** Fetch an ordinary catalog asset using the existing tight per-file envelope. */
   private fun fetchCatalogAsset(url: String): ByteArray? =
     if (fetch != null) fetch.invoke(url) else networkFetch(url, MAX_FETCH_BYTES)
+
+  /**
+   * Fetch [urls] **concurrently**, returning `url → bytes` for the ones that came back. A URL that
+   * fails, throws, or 404s is simply absent from the map — exactly the `null` every call site
+   * already treats as "skip this asset", so the fail-soft behaviour per asset is unchanged.
+   *
+   * Why this exists: a catalog's assets are individually tiny and numerous — jetsnack publishes 197
+   * baked PNGs totalling 12 MB, plus a comparable number of figma vectors. Fetched one at a time
+   * against `raw.githubusercontent.com` that is ~0.5 s of round-trip each and ~130 s for the
+   * catalog; fetched twelve at a time it is ~8 s, because the cost was never bandwidth. Ordering is
+   * preserved by the callers, which keep their original sequential loop and merely read bytes out
+   * of this map instead of blocking on each request in turn — so preview ids, `count`, and the
+   * authored tab/group ordering are all computed exactly as before.
+   */
+  private fun fetchCatalogAssets(urls: List<String>): Map<String, ByteArray> {
+    val distinct = urls.distinct()
+    if (distinct.size <= 1) {
+      val only = distinct.firstOrNull() ?: return emptyMap()
+      return runCatching { fetchCatalogAsset(only) }.getOrNull()?.let { mapOf(only to it) }
+        ?: emptyMap()
+    }
+    val pool =
+      Executors.newFixedThreadPool(minOf(ASSET_FETCH_CONCURRENCY, distinct.size)) { r ->
+        Thread(r, "serve-catalog-fetch").apply { isDaemon = true }
+      }
+    return try {
+      val inFlight = distinct.map { url ->
+        url to pool.submit<ByteArray?> { runCatching { fetchCatalogAsset(url) }.getOrNull() }
+      }
+      buildMap {
+        for ((url, future) in inFlight) {
+          runCatching { future.get() }.getOrNull()?.let { put(url, it) }
+        }
+      }
+    } finally {
+      pool.shutdown()
+    }
+  }
 
   /**
    * Fetch an executable bundle using the 100 MB envelope shared by uploaded and startup bundles. A
