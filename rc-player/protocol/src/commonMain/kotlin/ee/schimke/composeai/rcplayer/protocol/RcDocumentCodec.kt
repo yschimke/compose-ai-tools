@@ -74,6 +74,7 @@ public object RcDocumentCodec {
         id(RcOpcodes.CLIP_PATH, "ClipPath"),
         CanvasContentCodec,
         noArg(RcOpcodes.CANVAS_OPERATIONS, "CanvasOperations"),
+        noArg(RcOpcodes.MODIFIER_DRAW_CONTENT, "ModifierDrawContent"),
         noArg(RcOpcodes.DRAW_CONTENT, "DrawContent"),
         noArg(RcOpcodes.CONTAINER_END, "ContainerEnd"),
         four(RcOpcodes.DRAW_RECT, "DrawRect"),

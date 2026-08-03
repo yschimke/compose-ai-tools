@@ -217,6 +217,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcLoopOperation
 import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
 import ee.schimke.composeai.rcplayer.protocol.RcMultiClickModifier
 import ee.schimke.composeai.rcplayer.protocol.RcMultiClickType
+import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperationInventory
@@ -770,6 +771,20 @@ class AndroidxWireCompatibilityTest {
         it.name == "apply" && it.parameterCount == 1 && !Modifier.isStatic(it.modifiers)
       }
     assertEquals(null, apply.invoke(DrawContentOperation(), null))
+  }
+
+  @Test
+  fun androidXModifierDrawContentRoundTripsAsAZeroPayloadOperation() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    DrawContentOperation.apply(buffer)
+    FloatConstant.apply(buffer, 43, 7f)
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+
+    assertEquals(RcNoArg(RcOpcodes.MODIFIER_DRAW_CONTENT), document.operations[0])
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
   }
 
   @Test

@@ -1570,6 +1570,8 @@ public object RcOpcodes {
   public const val LAYOUT_COLUMN: Int = 204
   public const val LAYOUT_CANVAS: Int = 205
   public const val CANVAS_OPERATIONS: Int = 173
+  /** Alpha16's zero-payload DrawContentOperation modifier; the Java player treats it as a no-op. */
+  public const val MODIFIER_DRAW_CONTENT: Int = 174
   public const val LAYOUT_CANVAS_CONTENT: Int = 207
   public const val LAYOUT_TEXT: Int = 208
   public const val HOST_ACTION: Int = 209
