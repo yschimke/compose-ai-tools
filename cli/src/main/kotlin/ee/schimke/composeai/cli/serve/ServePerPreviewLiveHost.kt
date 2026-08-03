@@ -92,6 +92,12 @@ class ServePerPreviewLiveHost(
   override fun designReferenceRaster(referenceId: String): ByteArray? =
     baked.designReferenceRaster(referenceId)
 
+  override fun annotationsForPreview(previewId: String): List<DesignAnnotation> =
+    baked.annotationsForPreview(previewId)
+
+  override fun annotationsForReference(referenceId: String): List<DesignAnnotation> =
+    baked.annotationsForReference(referenceId)
+
   /**
    * The baked host's live-only (deferred) ids — listed previews with no PNG behind them, published
    * for on-demand render. Their requests always route to a per-preview daemon: there is no baked

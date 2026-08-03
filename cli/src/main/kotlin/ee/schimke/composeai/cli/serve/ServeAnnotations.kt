@@ -1,0 +1,153 @@
+package ee.schimke.composeai.cli.serve
+
+import java.io.File
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import okio.FileSystem
+import okio.Path
+import okio.Path.Companion.toOkioPath
+import okio.Path.Companion.toPath
+
+/**
+ * Design annotations — the typography and layout facts behind a rendered frame.
+ *
+ * The compare page can only diff pixels on its own: it shows that two frames differ, never *why*.
+ * An annotation carries the spec a designer reads off the mock — the type style and size, the
+ * padding and gap — anchored to a region so the page can draw it over either panel. With both sides
+ * annotated, "these look slightly off" becomes "reference says bodyLarge/16dp, actual says
+ * titleMedium/12dp".
+ *
+ * Producer-side, not inferred here. The reference layer comes from the design tool (the Figma
+ * adapter's captured layout geometry); the actual layer is walked from the Compose semantics tree.
+ * The serve host only transports and draws them, exactly as it does for design references — it never
+ * measures pixels or fetches design URLs itself.
+ */
+@Serializable
+data class AnnotationManifest(
+  val schema: String = SCHEMA,
+  /** Annotations over a preview's *rendered* frame, keyed by exact serve/catalog preview id. */
+  val previews: Map<String, List<DesignAnnotation>> = emptyMap(),
+  /** Annotations over a *reference* raster, keyed by [DesignReference.id]. */
+  val references: Map<String, List<DesignAnnotation>> = emptyMap(),
+) {
+  companion object {
+    const val SCHEMA = "compose-preview-annotations/v1"
+  }
+}
+
+/** Which spec layer an annotation belongs to; the compare page toggles them independently. */
+object AnnotationKind {
+  const val TYPOGRAPHY = "typography"
+  const val LAYOUT = "layout"
+
+  val KNOWN = setOf(TYPOGRAPHY, LAYOUT)
+}
+
+/**
+ * One annotation anchored to a region of the frame it describes.
+ *
+ * [bounds] are in the annotated image's own pixel space — the reference raster's for a reference
+ * annotation, the render's for a preview one. The two frames are usually different sizes, so the
+ * page scales each layer to its panel rather than assuming a shared coordinate space.
+ */
+@Serializable
+data class DesignAnnotation(
+  /** [AnnotationKind.TYPOGRAPHY] or [AnnotationKind.LAYOUT]. Unknown kinds are dropped on load. */
+  val kind: String,
+  val bounds: AnnotationBounds,
+  /** One-line spec as a designer would read it, e.g. `"bodyLarge 16sp/24"` or `"pad 16dp · gap 8dp"`. */
+  val label: String,
+  /** Optional node/slot name, shown as the annotation's title. */
+  val role: String? = null,
+  /** Structured payload (token name, measured dp, …) for machine consumers and the hover card. */
+  val detail: Map<String, String> = emptyMap(),
+)
+
+/** Both panels' layers, as embedded in the compare page for the client to draw. */
+@Serializable
+data class AnnotationPayload(
+  val reference: List<DesignAnnotation> = emptyList(),
+  val actual: List<DesignAnnotation> = emptyList(),
+)
+
+private val ANNOTATION_JSON = Json { encodeDefaults = false }
+
+/**
+ * Encode a payload for embedding in a `<script type="application/json">` block.
+ *
+ * HTML escaping would be wrong here — entities are not decoded inside a script element, so
+ * `&quot;` would reach `JSON.parse` verbatim and throw. The only real hazard is a `</script>` inside
+ * a string value, which ends the block early; `<` is a valid JSON escape for `<` and closes
+ * that hole without touching the parsed value.
+ */
+fun encodeAnnotationPayload(payload: AnnotationPayload): String =
+  ANNOTATION_JSON.encodeToString(payload).replace("<", "\\u003c")
+
+/** A region in the annotated image's pixel space. */
+@Serializable
+data class AnnotationBounds(
+  val x: Int,
+  val y: Int,
+  val width: Int,
+  val height: Int,
+)
+
+/**
+ * Validated, read-only view of a bundle/catalog's `annotations/index.json`.
+ *
+ * Fail-soft throughout, matching [ServeDesignReferenceStore]: a malformed manifest, an unknown kind,
+ * or a nonsensical box is dropped while the rest of the session serves normally. An annotation layer
+ * is a reading aid — losing one must never take the compare page down with it.
+ */
+class ServeAnnotationStore
+private constructor(
+  private val byPreview: Map<String, List<DesignAnnotation>>,
+  private val byReference: Map<String, List<DesignAnnotation>>,
+) {
+  fun forPreview(previewId: String): List<DesignAnnotation> = byPreview[previewId].orEmpty()
+
+  fun forReference(referenceId: String): List<DesignAnnotation> = byReference[referenceId].orEmpty()
+
+  val isEmpty: Boolean = byPreview.isEmpty() && byReference.isEmpty()
+
+  companion object {
+    const val DIRECTORY = "annotations"
+    const val INDEX_FILE = "index.json"
+    private val JSON = Json { ignoreUnknownKeys = true }
+
+    /** Empty store — a session that carries no annotations at all. */
+    val EMPTY = ServeAnnotationStore(emptyMap(), emptyMap())
+
+    fun load(bundleDir: File, fileSystem: FileSystem = FileSystem.SYSTEM): ServeAnnotationStore =
+      load(bundleDir.toOkioPath(), fileSystem)
+
+    fun load(bundleRoot: Path, fileSystem: FileSystem): ServeAnnotationStore {
+      val index = bundleRoot / DIRECTORY.toPath() / INDEX_FILE.toPath()
+      if (!fileSystem.exists(index)) return EMPTY
+      val manifest =
+        runCatching {
+            JSON.decodeFromString<AnnotationManifest>(
+              fileSystem.read(index) { readUtf8() },
+            )
+          }
+          .getOrNull() ?: return EMPTY
+      if (manifest.schema != AnnotationManifest.SCHEMA) return EMPTY
+      return ServeAnnotationStore(
+        byPreview = manifest.previews.mapValues { (_, list) -> list.filter { it.isUsable() } },
+        byReference = manifest.references.mapValues { (_, list) -> list.filter { it.isUsable() } },
+      )
+    }
+
+    /**
+     * A box with no area can't be drawn, and a negative origin would paint outside the panel. Both
+     * indicate a producer bug rather than something to render badly.
+     */
+    private fun DesignAnnotation.isUsable(): Boolean =
+      kind in AnnotationKind.KNOWN &&
+        label.isNotBlank() &&
+        bounds.width > 0 &&
+        bounds.height > 0 &&
+        bounds.x >= 0 &&
+        bounds.y >= 0
+  }
+}

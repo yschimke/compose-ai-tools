@@ -1359,6 +1359,8 @@ class ServeHttpServer(
           themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           displayTitle = catalogBundleHost(renderHost)?.title,
+          referenceAnnotations = renderHost.annotationsForReference(reference.id),
+          actualAnnotations = renderHost.annotationsForPreview(previewId),
         ),
         ContentType.Text.Html,
       )

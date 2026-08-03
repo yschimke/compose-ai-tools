@@ -460,6 +460,27 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   text-transform: uppercase; letter-spacing: 0.06em; }
 .cp-reference-grid .cp-compare-shot { width: 100%; min-height: 180px; box-sizing: border-box; }
 .cp-reference-result { font-weight: 650; font-variant-numeric: tabular-nums; }
+/* Annotation layers. The layer is absolutely positioned over its panel's image and sized in JS from
+   the image's rendered box, because annotation bounds arrive in the source frame's pixel space and
+   the reference and actual frames are routinely different sizes. */
+.cp-reference-grid .cp-compare-shot[data-cp-annotated] { position: relative; }
+.cp-annotation-layer { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  pointer-events: none; }
+.cp-annotation { position: absolute; box-sizing: border-box; display: none; }
+.cp-annotation-label { position: absolute; top: 0; left: 0; transform: translateY(-100%);
+  padding: 1px 4px; border-radius: 3px 3px 3px 0; font-size: 0.62rem; line-height: 1.35;
+  font-variant-numeric: tabular-nums; white-space: nowrap; color: #fff; }
+/* Layout is the redline layer, typography the type spec — distinct hues so both can be on at once
+   and still be told apart at a glance. */
+.cp-annotation--layout { border: 1px solid rgba(214, 51, 108, 0.9); }
+.cp-annotation--layout .cp-annotation-label { background: rgba(214, 51, 108, 0.92); }
+.cp-annotation--typography { border: 1px dashed rgba(37, 99, 235, 0.9); }
+.cp-annotation--typography .cp-annotation-label { background: rgba(37, 99, 235, 0.92); }
+#cp-reference-compare[data-annotate-layout="on"] .cp-annotation--layout,
+#cp-reference-compare[data-annotate-typography="on"] .cp-annotation--typography { display: block; }
+.cp-annotation-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 14px;
+  margin: 14px 0 0; color: var(--cp-fg-muted); font-size: 0.8rem; }
+.cp-annotation-toggle { display: inline-flex; align-items: center; gap: 6px; }
 .cp-overlay-control { display: flex; align-items: center; gap: 10px; max-width: 420px;
   margin: 22px 0 8px; color: var(--cp-fg-muted); font-size: 0.8rem; }
 .cp-overlay-control input { flex: 1; }

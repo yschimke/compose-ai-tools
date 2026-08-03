@@ -295,6 +295,94 @@
     }
     overlayRange.addEventListener("input", applyOverlay);
     applyOverlay();
+    setUpAnnotations(referenceRoot);
+  }
+
+  /**
+   * Draw the typography / layout annotation layers over the reference and actual panels.
+   *
+   * Annotation bounds are in each image's own pixel space, and the two frames are routinely
+   * different sizes, so every layer is scaled to its own panel's rendered size rather than to a
+   * shared coordinate space. The boxes are re-laid-out on resize and once the image has loaded,
+   * since natural dimensions are what the scale is computed from.
+   */
+  function setUpAnnotations(root) {
+    var payloadNode = document.getElementById("cp-annotations");
+    if (!payloadNode) return;
+    var payload;
+    try {
+      payload = JSON.parse(payloadNode.textContent);
+    } catch (error) {
+      return;
+    }
+    var toggles = root.querySelectorAll("[data-cp-annotation-kind]");
+    if (!toggles.length) return;
+
+    var panels = [];
+    Array.prototype.forEach.call(root.querySelectorAll("[data-cp-annotated]"), function (shot) {
+      var side = shot.getAttribute("data-cp-annotated");
+      var items = (payload[side] || []).filter(function (item) { return item && item.bounds; });
+      if (!items.length) return;
+      var image = shot.querySelector("img");
+      if (!image) return;
+      var layer = document.createElement("div");
+      layer.className = "cp-annotation-layer";
+      shot.appendChild(layer);
+      panels.push({ shot: shot, image: image, items: items, layer: layer, boxes: [] });
+    });
+    if (!panels.length) return;
+
+    panels.forEach(function (panel) {
+      panel.items.forEach(function (item) {
+        var box = document.createElement("div");
+        box.className = "cp-annotation cp-annotation--" + item.kind;
+        box.setAttribute("data-cp-kind", item.kind);
+        var caption = document.createElement("span");
+        caption.className = "cp-annotation-label";
+        caption.textContent = item.label;
+        if (item.role) box.title = item.role + " · " + item.label;
+        else box.title = item.label;
+        box.appendChild(caption);
+        panel.layer.appendChild(box);
+        panel.boxes.push({ node: box, bounds: item.bounds });
+      });
+    });
+
+    function place() {
+      panels.forEach(function (panel) {
+        var natural = panel.image.naturalWidth;
+        if (!natural) return;
+        // The image is width-constrained by the grid; scale uniformly off the rendered width so the
+        // boxes track it through any responsive resize.
+        var scale = panel.image.clientWidth / natural;
+        panel.layer.style.width = panel.image.clientWidth + "px";
+        panel.layer.style.height = panel.image.clientHeight + "px";
+        panel.boxes.forEach(function (box) {
+          box.node.style.left = (box.bounds.x * scale) + "px";
+          box.node.style.top = (box.bounds.y * scale) + "px";
+          box.node.style.width = (box.bounds.width * scale) + "px";
+          box.node.style.height = (box.bounds.height * scale) + "px";
+        });
+      });
+    }
+
+    function syncKinds() {
+      Array.prototype.forEach.call(toggles, function (toggle) {
+        var kind = toggle.getAttribute("data-cp-annotation-kind");
+        root.setAttribute("data-annotate-" + kind, toggle.checked ? "on" : "off");
+      });
+      place();
+    }
+
+    Array.prototype.forEach.call(toggles, function (toggle) {
+      toggle.addEventListener("change", syncKinds);
+    });
+    window.addEventListener("resize", place);
+    panels.forEach(function (panel) {
+      if (panel.image.complete) return;
+      panel.image.addEventListener("load", place);
+    });
+    syncKinds();
   }
 
   var root = document.getElementById("cp-compare");

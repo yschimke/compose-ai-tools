@@ -24,6 +24,15 @@ interface ServeHost : AutoCloseable {
   fun designReferenceRaster(referenceId: String): ByteArray? = null
 
   /**
+   * Typography / layout annotations over this preview's *rendered* frame, if the session carries
+   * any. Empty by default — a host with no annotation manifest serves the compare page unchanged.
+   */
+  fun annotationsForPreview(previewId: String): List<DesignAnnotation> = emptyList()
+
+  /** Typography / layout annotations over a design reference's raster. */
+  fun annotationsForReference(referenceId: String): List<DesignAnnotation> = emptyList()
+
+  /**
    * The app's declared `@ThemeCatalog` themes — module-global, so the viewer's Theme selector can
    * offer "render this preview under Brand Dark". Non-empty only for a daemon-backed host
    * ([ServeRenderHost]) whose module declares them; a static bundle carries no theme-apply lane
