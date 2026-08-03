@@ -625,5 +625,9 @@ jobs:
       # the Robolectric lane, and it exercises the platform-neutral draw path off Android — a jvm-only
       # divergence points at the desktop seam (text/image/skiko) rather than the shared evaluator.
       rc-embedded-jvm-lane: true
+      # The CMP/Wasm implementation under development in #3201, rendered in the same browser
+      # environment visitors use. This gives it an immediate per-document parity signal beside
+      # the established JS, Android embedded, and cmp-jvm lanes.
+      rc-cmp-wasm-lane: true
     secrets:
       buildfetch_ro_token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}

@@ -10,11 +10,27 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  hasCmpWasmLane,
   hasEmbeddedJvmLane,
   hasEmbeddedLane,
   renderRcCompareHtml,
   summarizeRcCompare,
 } from "./render-rc-compare-html.mjs";
+
+function withCmpWasm(base) {
+  return {
+    ...base,
+    rows: base.rows.map((r, index) => ({
+      ...r,
+      cmpWasmRendered: index !== 2,
+      cmpWasmMismatchPct: index !== 2 ? 3 + index : null,
+      cmpWasmMismatchPx: index !== 2 ? 8_268 + index : null,
+      cmpWasmNote: index === 2 ? "unsupported operation" : undefined,
+      cmpWasm: index !== 2 ? `rc-cmp-wasm/${r.id}.png` : "",
+      cmpWasmDiff: index !== 2 ? `rc-cmp-wasm-diff/${r.id}.png` : "",
+    })),
+  };
+}
 
 /** The same model with a cmp-jvm result on every row — for the desktop-lane assertions. */
 function withEmbeddedJvm(base) {
@@ -199,6 +215,28 @@ test("the cmp-jvm and embedded lanes coexist, each its own column and summary", 
   assert.match(html, /<strong>embedded player<\/strong>/);
   assert.match(html, /<strong>cmp-jvm player<\/strong>/);
   assert.match(html, /rows sort worst-match-first on the worst-scoring player/);
+});
+
+test("the cmp-wasm lane adds one folded-diff column and independent parity stats", () => {
+  const wasmModel = withCmpWasm(model);
+  const html = renderRcCompareHtml(wasmModel);
+  const stats = summarizeRcCompare(wasmModel.rows);
+  assert.equal(hasCmpWasmLane(wasmModel.rows), true);
+  assert.equal(stats.cmpWasmRendered, 2);
+  assert.equal(stats.cmpWasmUnsupported, 1);
+  assert.ok(Math.abs(stats.cmpWasmMeanPct - 3.5) < 1e-9);
+  assert.match(html, /RC · cmp-wasm player/);
+  assert.match(html, /<strong>cmp-wasm player:<\/strong>/);
+  assert.match(html, /<span class="scorelabel">cmp-wasm<\/span>/);
+  assert.match(html, /\(JS \+ cmp-wasm players\)/);
+  assert.match(html, /runs the new Compose Multiplatform \/ Skiko player in browser Wasm/);
+});
+
+test("all rc-compare lanes can coexist without hiding the cmp-wasm result", () => {
+  const html = renderRcCompareHtml(withCmpWasm(withEmbeddedJvm(withEmbedded(model))));
+  assert.match(html, /\(JS \+ embedded \+ cmp-jvm \+ cmp-wasm players\)/);
+  assert.equal((html.match(/<th>RC · cmp-wasm player<\/th>/g) || []).length, 1);
+  assert.match(html, /data-cmp-wasm-pct=/);
 });
 
 test("cmp-jvm is summarized independently, like the embedded lane", () => {

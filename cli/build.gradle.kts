@@ -406,6 +406,10 @@ val stageBtaLibs =
     }
   }
 
+val rcPlayerWasmDist =
+  files(project(":rc-player-wasm").layout.buildDirectory.dir("wasmDist"))
+    .builtBy(":rc-player-wasm:wasmPlayerDist")
+
 distributions {
   named("main") {
     contents {
@@ -413,6 +417,8 @@ distributions {
       into("lib-daemon-desktop") { from(stageDaemonDesktopLibs) }
       into("lib-rcjvm") { from(stageRcJvmLibs) }
       into("lib-bta") { from(stageBtaLibs) }
+      // Static browser sidecar: release-matched CMP/Skiko Remote Compose player assets.
+      into("rc-player-wasm") { from(rcPlayerWasmDist) }
     }
   }
 }

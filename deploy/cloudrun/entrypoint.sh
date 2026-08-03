@@ -19,6 +19,10 @@ args=(
   --port "${PORT}"
 )
 
+if [[ -f /app/cli/build/install/compose-preview/rc-player-wasm/index.html ]]; then
+  args+=(--rc-player-wasm-dir /app/cli/build/install/compose-preview/rc-player-wasm)
+fi
+
 # Two auth postures, chosen by SERVE_PUBLIC:
 #   - SERVE_PUBLIC=1  → the open public preview server (preview.coo.ee): every
 #     route is unauthenticated. Safe by construction — no server-side code exec,
