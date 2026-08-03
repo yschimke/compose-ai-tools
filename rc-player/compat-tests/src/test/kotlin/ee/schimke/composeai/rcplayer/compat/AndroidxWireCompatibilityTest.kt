@@ -81,6 +81,7 @@ import androidx.compose.remote.core.operations.layout.managers.ColumnLayout
 import androidx.compose.remote.core.operations.layout.managers.FitBoxLayout
 import androidx.compose.remote.core.operations.layout.managers.ImageLayout
 import androidx.compose.remote.core.operations.layout.managers.RowLayout
+import androidx.compose.remote.core.operations.layout.managers.TextLayout
 import androidx.compose.remote.core.operations.layout.modifiers.BackgroundModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.BorderModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ClipRectModifierOperation
@@ -160,6 +161,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
+import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import ee.schimke.composeai.rcplayer.protocol.RcVisibilityModifier
@@ -241,6 +243,38 @@ class AndroidxWireCompatibilityTest {
     assertEquals(101, assertIs<RcImageLayout>(document.operations[7]).bitmapId)
     assertEquals(43, assertIs<RcImageLayout>(document.operations[7]).alpha.referencedId)
     assertEquals(8, assertIs<RcCanvasContent>(document.operations[8]).componentId)
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
+  @Test
+  fun androidXTextLayoutRoundTripsExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 240, 80, 1f, 0L)
+    TextData.apply(buffer, 41, "AndroidX text layout")
+    TextLayout.apply(
+      buffer,
+      7,
+      70,
+      41,
+      0xff123456.toInt(),
+      Utils.asNan(42),
+      PaintBundle.FONT_BOLD_ITALIC,
+      Utils.asNan(43),
+      -1,
+      TextLayout.TEXT_ALIGN_CENTER or (TextLayout.FLAG_IS_DYNAMIC_COLOR shl 16),
+      TextLayout.OVERFLOW_ELLIPSIS,
+      2,
+    )
+    ContainerEnd.apply(buffer)
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+    val text = assertIs<RcTextLayout>(document.operations[1])
+
+    assertEquals(42, text.fontSize.referencedId)
+    assertEquals(43, text.fontWeight.referencedId)
+    assertEquals(RcTextLayout.ALIGN_CENTER, text.textAlign)
+    assertEquals(RcTextLayout.FLAG_DYNAMIC_COLOR, text.flags)
     assertContentEquals(bytes, RcDocumentCodec.encode(document))
   }
 

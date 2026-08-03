@@ -72,5 +72,6 @@ public object RcDocumentLinker {
       RcOpcodes.LAYOUT_CANVAS,
       RcOpcodes.LAYOUT_FIT_BOX,
       RcOpcodes.LAYOUT_IMAGE,
+      RcOpcodes.LAYOUT_TEXT,
     )
 }

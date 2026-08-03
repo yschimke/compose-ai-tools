@@ -91,6 +91,7 @@ public object RcDocumentCodec {
         ColumnLayoutCodec,
         FitBoxLayoutCodec,
         ImageLayoutCodec,
+        TextLayoutCodec,
         WidthModifierCodec,
         HeightModifierCodec,
         PaddingModifierCodec,
@@ -313,6 +314,39 @@ private object ImageLayoutCodec : RcOperationCodec<RcImageLayout> {
     output.writeInt(value.bitmapId)
     output.writeInt(value.scaleType)
     output.writeFloatWord(value.alpha)
+  }
+}
+
+private object TextLayoutCodec : RcOperationCodec<RcTextLayout> {
+  override val spec = RcOperationSpec(RcOpcodes.LAYOUT_TEXT, "TextLayout")
+
+  override fun decode(input: RcWireReader) =
+    RcTextLayout(
+      componentId = input.readInt("componentId"),
+      animationId = input.readInt("animationId"),
+      textId = input.readInt("textId"),
+      color = input.readInt("color"),
+      fontSize = input.readFloatWord("fontSize"),
+      fontStyle = input.readInt("fontStyle"),
+      fontWeight = input.readFloatWord("fontWeight"),
+      fontFamilyId = input.readInt("fontFamilyId"),
+      textAlignAndFlags = input.readInt("textAlignAndFlags"),
+      overflow = input.readInt("overflow"),
+      maxLines = input.readInt("maxLines"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcTextLayout) {
+    output.writeInt(value.componentId)
+    output.writeInt(value.animationId)
+    output.writeInt(value.textId)
+    output.writeInt(value.color)
+    output.writeFloatWord(value.fontSize)
+    output.writeInt(value.fontStyle)
+    output.writeFloatWord(value.fontWeight)
+    output.writeInt(value.fontFamilyId)
+    output.writeInt(value.textAlignAndFlags)
+    output.writeInt(value.overflow)
+    output.writeInt(value.maxLines)
   }
 }
 

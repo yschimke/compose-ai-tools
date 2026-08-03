@@ -24,6 +24,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcOperationProfile
 import ee.schimke.composeai.rcplayer.protocol.RcPaintData
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
+import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextMeasure
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.protocol.supportReport
@@ -58,6 +59,18 @@ public fun RcDocument.composeSupportReport(
 ): RcComposeSupportReport {
   val issues = mutableListOf<RcComposeSupportIssue>()
   val bitmapIds = operations.filterIsInstance<RcBitmapData>().mapTo(mutableSetOf()) { it.imageId }
+  val textIds =
+    operations.filterIsInstance<ee.schimke.composeai.rcplayer.protocol.RcTextData>().mapTo(
+      mutableSetOf()
+    ) {
+      it.id
+    }
+  val colorIds =
+    operations.filterIsInstance<ee.schimke.composeai.rcplayer.protocol.RcColorConstant>().mapTo(
+      mutableSetOf()
+    ) {
+      it.id
+    }
   supportReport().parseOnly.forEach { entry ->
     issues +=
       RcComposeSupportIssue(-1, entry.stableName, "operation is decoded but has no semantics")
@@ -138,6 +151,61 @@ public fun RcDocument.composeSupportReport(
             "ImageLayout",
             "scale type ${operation.scaleType} is not implemented",
           )
+      }
+    }
+    if (operation is RcTextLayout) {
+      when {
+        operation.textId !in textIds ->
+          issues +=
+            RcComposeSupportIssue(
+              index,
+              "TextLayout",
+              "text id ${operation.textId} is not declared",
+            )
+        operation.fontStyle !in 0..3 ->
+          issues +=
+            RcComposeSupportIssue(
+              index,
+              "TextLayout",
+              "font style ${operation.fontStyle} is not implemented",
+            )
+        operation.fontFamilyId != -1 ->
+          issues +=
+            RcComposeSupportIssue(
+              index,
+              "TextLayout",
+              "font family ${operation.fontFamilyId} requires DataFont",
+            )
+        operation.textAlign !in RcTextLayout.ALIGN_LEFT..RcTextLayout.ALIGN_END ->
+          issues +=
+            RcComposeSupportIssue(
+              index,
+              "TextLayout",
+              "text alignment ${operation.textAlign} is not implemented",
+            )
+        operation.flags and RcTextLayout.FLAG_DYNAMIC_COLOR.inv() != 0 ->
+          issues +=
+            RcComposeSupportIssue(
+              index,
+              "TextLayout",
+              "flags ${operation.flags} are not implemented",
+            )
+        operation.flags and RcTextLayout.FLAG_DYNAMIC_COLOR != 0 && operation.color !in colorIds ->
+          issues +=
+            RcComposeSupportIssue(
+              index,
+              "TextLayout",
+              "dynamic color id ${operation.color} is not declared",
+            )
+        operation.overflow !in RcTextLayout.OVERFLOW_CLIP..RcTextLayout.OVERFLOW_ELLIPSIS ->
+          issues +=
+            RcComposeSupportIssue(
+              index,
+              "TextLayout",
+              "overflow ${operation.overflow} is not implemented",
+            )
+        operation.maxLines <= 0 ->
+          issues += RcComposeSupportIssue(index, "TextLayout", "maxLines must be positive")
       }
     }
     if (operation is RcColorAttribute && operation.type !in 0..6) {

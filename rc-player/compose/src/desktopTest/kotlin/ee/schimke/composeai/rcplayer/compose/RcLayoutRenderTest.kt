@@ -29,6 +29,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcPaintData
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
+import ee.schimke.composeai.rcplayer.protocol.RcTextData
+import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import ee.schimke.composeai.rcplayer.protocol.RcVisibilityModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
@@ -36,9 +38,63 @@ import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import org.jetbrains.skia.Bitmap
 
 class RcLayoutRenderTest {
+  @Test
+  fun textLayoutMeasuresAndCentersAndroidxText() {
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 100, legacyHeight = 40, modern = false),
+        listOf(
+          RcTextData(10, "III"),
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcTextLayout(
+            componentId = 3,
+            animationId = 30,
+            textId = 10,
+            color = 0xffff0000.toInt(),
+            fontSize = RcFloatWord.literal(24f),
+            fontStyle = 0,
+            fontWeight = RcFloatWord.literal(400f),
+            fontFamilyId = -1,
+            textAlignAndFlags = RcTextLayout.ALIGN_CENTER,
+            overflow = RcTextLayout.OVERFLOW_CLIP,
+            maxLines = 1,
+          ),
+          width(100f),
+          height(40f),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        ),
+      )
+    val scene =
+      ImageComposeScene(width = 100, height = 40, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val image = scene.render()
+      val bitmap = Bitmap().apply { allocN32Pixels(100, 40) }
+      check(image.readPixels(bitmap))
+      val paintedX = buildList {
+        for (y in 0 until 40) {
+          for (x in 0 until 100) {
+            if (bitmap.getColor(x, y) ushr 24 != 0) add(x)
+          }
+        }
+      }
+
+      assertTrue(paintedX.size > 20)
+      assertTrue(paintedX.min() > 25)
+      assertTrue(paintedX.max() < 75)
+    } finally {
+      scene.close()
+    }
+  }
+
   @Test
   fun boxEndBottomPlacesCanvasAtAndroidxCoordinates() {
     val red = 0xffff0000.toInt()

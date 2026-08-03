@@ -8,6 +8,7 @@ import androidx.compose.remote.core.operations.DrawContent
 import androidx.compose.remote.core.operations.DrawRect
 import androidx.compose.remote.core.operations.Header
 import androidx.compose.remote.core.operations.PaintData
+import androidx.compose.remote.core.operations.TextData
 import androidx.compose.remote.core.operations.layout.CanvasContent
 import androidx.compose.remote.core.operations.layout.CanvasOperations
 import androidx.compose.remote.core.operations.layout.ContainerEnd
@@ -17,8 +18,10 @@ import androidx.compose.remote.core.operations.layout.managers.BoxLayout
 import androidx.compose.remote.core.operations.layout.managers.CanvasLayout
 import androidx.compose.remote.core.operations.layout.managers.ImageLayout
 import androidx.compose.remote.core.operations.layout.managers.RowLayout
+import androidx.compose.remote.core.operations.layout.managers.TextLayout
 import androidx.compose.remote.core.operations.layout.modifiers.DimensionModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HeightModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.OffsetModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation
 import androidx.compose.remote.core.operations.paint.PaintBundle
 import java.io.File
@@ -54,6 +57,7 @@ public fun main(args: Array<String>) {
       0xff.toByte(),
     ),
   )
+  TextData.apply(buffer, 1001, "CMP TEXT + IMAGE")
   RootLayoutComponent.apply(buffer, 1)
   LayoutComponentContent.apply(buffer, 2)
 
@@ -72,12 +76,31 @@ public fun main(args: Array<String>) {
   RowLayout.apply(buffer, 5, 50, RowLayout.SPACE_EVENLY, RowLayout.CENTER, 0f)
   exactWidth(buffer, 280f)
   exactHeight(buffer, 140f)
+  OffsetModifierOperation.apply(buffer, 0f, 20f)
   LayoutComponentContent.apply(buffer, 6)
   canvas(buffer, componentId = 7, animationId = 70, width = 54f, height = 76f, 0xff6750a4.toInt())
   canvas(buffer, componentId = 9, animationId = 90, width = 54f, height = 112f, 0xffffd8e4.toInt())
   image(buffer, componentId = 11, animationId = 110, width = 54f, height = 58f)
   ContainerEnd.apply(buffer) // row content
   ContainerEnd.apply(buffer) // row
+  TextLayout.apply(
+    buffer,
+    13,
+    130,
+    1001,
+    0xff21005d.toInt(),
+    22f,
+    PaintBundle.FONT_BOLD,
+    400f,
+    -1,
+    TextLayout.TEXT_ALIGN_CENTER,
+    TextLayout.OVERFLOW_CLIP,
+    1,
+  )
+  exactWidth(buffer, 240f)
+  exactHeight(buffer, 36f)
+  OffsetModifierOperation.apply(buffer, 0f, -60f)
+  ContainerEnd.apply(buffer) // text
   ContainerEnd.apply(buffer) // box content
   ContainerEnd.apply(buffer) // box
   ContainerEnd.apply(buffer) // root content

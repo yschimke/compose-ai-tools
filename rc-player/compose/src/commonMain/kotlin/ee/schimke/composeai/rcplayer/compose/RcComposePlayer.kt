@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.requiredHeightIn
 import androidx.compose.foundation.layout.requiredWidthIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -64,6 +65,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -123,6 +126,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcRootContentBehavior
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcTextFromFloat
+import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextLength
 import ee.schimke.composeai.rcplayer.protocol.RcTextLookup
 import ee.schimke.composeai.rcplayer.protocol.RcTextLookupInt
@@ -438,6 +442,41 @@ private fun RenderLayoutNode(
         }
       }
     }
+    is RcLayoutNode.Text -> {
+      val density = androidx.compose.ui.platform.LocalDensity.current
+      val operation = node.operation
+      val fontWeight = state.resolve(operation.fontWeight).roundToInt().coerceIn(1, 1000)
+      val boldWeight = if (operation.fontStyle and 1 != 0) 700 else fontWeight
+      BasicText(
+        text = state.text(operation.textId).orEmpty(),
+        modifier =
+          effectiveModifier.applyComponentModifiers(
+            node.modifiers,
+            state,
+            fillMissingDimensions = false,
+            canvasOperations = null,
+            textMeasurer,
+            images,
+            theme,
+          ),
+        style =
+          TextStyle(
+            color =
+              Color(
+                if (operation.flags and RcTextLayout.FLAG_DYNAMIC_COLOR != 0)
+                  state.color(operation.color)
+                else operation.color
+              ),
+            fontSize = (state.resolve(operation.fontSize) / density.density).sp,
+            fontWeight = FontWeight(boldWeight),
+            fontStyle = if (operation.fontStyle and 2 != 0) FontStyle.Italic else FontStyle.Normal,
+            fontFamily = FontFamily.Default,
+            textAlign = operation.composeTextAlign(),
+          ),
+        overflow = operation.composeTextOverflow(),
+        maxLines = operation.maxLines,
+      )
+    }
     is RcLayoutNode.FitBox -> {
       val alignment =
         boxAlignment(node.operation.horizontalPositioning, node.operation.verticalPositioning)
@@ -499,6 +538,25 @@ private fun RenderLayoutNode(
     }
   }
 }
+
+private fun RcTextLayout.composeTextAlign(): TextAlign =
+  when (textAlign) {
+    RcTextLayout.ALIGN_LEFT -> TextAlign.Left
+    RcTextLayout.ALIGN_RIGHT -> TextAlign.Right
+    RcTextLayout.ALIGN_CENTER -> TextAlign.Center
+    RcTextLayout.ALIGN_JUSTIFY -> TextAlign.Justify
+    RcTextLayout.ALIGN_START -> TextAlign.Start
+    RcTextLayout.ALIGN_END -> TextAlign.End
+    else -> error("Unknown AndroidX text alignment $textAlign")
+  }
+
+private fun RcTextLayout.composeTextOverflow(): TextOverflow =
+  when (overflow) {
+    RcTextLayout.OVERFLOW_CLIP -> TextOverflow.Clip
+    RcTextLayout.OVERFLOW_VISIBLE -> TextOverflow.Visible
+    RcTextLayout.OVERFLOW_ELLIPSIS -> TextOverflow.Ellipsis
+    else -> error("Unsupported AndroidX text overflow $overflow")
+  }
 
 /** Mirrors Component.Visibility, including the override-bit precedence used by AndroidX. */
 internal fun androidXVisibility(value: Int): Int =

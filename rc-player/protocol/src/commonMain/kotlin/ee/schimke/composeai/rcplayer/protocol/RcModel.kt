@@ -715,6 +715,47 @@ public data class RcImageLayout(
   override val opcode: Int = RcOpcodes.LAYOUT_IMAGE
 }
 
+/** AndroidX alpha16's original self-contained text layout component. */
+public data class RcTextLayout(
+  val componentId: Int,
+  val animationId: Int,
+  val textId: Int,
+  /** Literal ARGB unless [FLAG_DYNAMIC_COLOR] is present in [textAlignAndFlags]. */
+  val color: Int,
+  val fontSize: RcFloatWord,
+  val fontStyle: Int,
+  val fontWeight: RcFloatWord,
+  val fontFamilyId: Int,
+  val textAlignAndFlags: Int,
+  val overflow: Int,
+  val maxLines: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.LAYOUT_TEXT
+
+  public val textAlign: Int
+    get() = textAlignAndFlags and 0xffff
+
+  public val flags: Int
+    get() = textAlignAndFlags ushr 16
+
+  public companion object {
+    public const val ALIGN_LEFT: Int = 1
+    public const val ALIGN_RIGHT: Int = 2
+    public const val ALIGN_CENTER: Int = 3
+    public const val ALIGN_JUSTIFY: Int = 4
+    public const val ALIGN_START: Int = 5
+    public const val ALIGN_END: Int = 6
+
+    public const val OVERFLOW_CLIP: Int = 1
+    public const val OVERFLOW_VISIBLE: Int = 2
+    public const val OVERFLOW_ELLIPSIS: Int = 3
+    public const val OVERFLOW_START_ELLIPSIS: Int = 4
+    public const val OVERFLOW_MIDDLE_ELLIPSIS: Int = 5
+
+    public const val FLAG_DYNAMIC_COLOR: Int = 1
+  }
+}
+
 public data class RcWidthModifier(val type: Int, val value: RcFloatWord) : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_WIDTH
 }
@@ -976,6 +1017,7 @@ public object RcOpcodes {
   public const val LAYOUT_CANVAS: Int = 205
   public const val CANVAS_OPERATIONS: Int = 173
   public const val LAYOUT_CANVAS_CONTENT: Int = 207
+  public const val LAYOUT_TEXT: Int = 208
   public const val MODIFIER_VISIBILITY: Int = 211
   public const val CONTAINER_END: Int = 214
   public const val MODIFIER_OFFSET: Int = 221

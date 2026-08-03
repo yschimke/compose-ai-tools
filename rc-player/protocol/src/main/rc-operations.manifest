@@ -124,7 +124,7 @@
 205|LAYOUT_CANVAS|6|implemented
 206|SOUND_EXPRESSION|5|unsupported
 207|LAYOUT_CANVAS_CONTENT|1|implemented
-208|LAYOUT_TEXT|3|unsupported
+208|LAYOUT_TEXT|3|implemented
 209|HOST_ACTION|7|unsupported
 210|HOST_NAMED_ACTION|7|unsupported
 211|MODIFIER_VISIBILITY|6|implemented
