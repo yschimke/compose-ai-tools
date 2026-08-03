@@ -10,6 +10,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
+import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperation
 import ee.schimke.composeai.rcplayer.protocol.RcPaddingModifier
@@ -17,6 +18,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
+import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
 
 public data class RcLayoutModifiers(
   val width: RcWidthModifier? = null,
@@ -25,6 +27,8 @@ public data class RcLayoutModifiers(
   val padding: List<RcPaddingModifier> = emptyList(),
   /** Paint decorators retain wire order because nesting changes their result. */
   val paintDecorators: List<RcOperation> = emptyList(),
+  /** Placement and stacking modifiers retain wire order and compose cumulatively. */
+  val placementModifiers: List<RcOperation> = emptyList(),
 )
 
 public sealed interface RcLayoutNode {
@@ -238,6 +242,7 @@ public object RcLayoutTree {
             it is RcClipRectModifier ||
             it is RcRoundedClipRectModifier
         },
+      placementModifiers = operations.filter { it is RcOffsetModifier || it is RcZIndexModifier },
     )
   }
 

@@ -16,6 +16,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
+import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperation
 import ee.schimke.composeai.rcplayer.protocol.RcPaintData
@@ -23,6 +24,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
+import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import org.jetbrains.skia.Bitmap
@@ -309,6 +311,62 @@ class RcLayoutRenderTest {
       assertEquals(blue, bitmap.getColor(40, 1))
       assertEquals(0, bitmap.getColor(40, 40))
       assertEquals(0, bitmap.getColor(81, 40))
+    } finally {
+      scene.close()
+    }
+  }
+
+  @Test
+  fun offsetAndZIndexPlaceAndOrderOverlappingSiblings() {
+    val red = 0xffff0000.toInt()
+    val green = 0xff00ff00.toInt()
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 100, legacyHeight = 100, modern = false),
+        listOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcBoxLayout(3, 30, horizontalPositioning = 1, verticalPositioning = 4),
+          width(80f),
+          height(80f),
+          RcLayoutContent(4),
+          RcCanvasLayout(5, 50),
+          width(40f),
+          height(40f),
+          RcOffsetModifier(RcFloatWord.literal(20f), RcFloatWord.literal(20f)),
+          RcZIndexModifier(RcFloatWord.literal(2f)),
+          RcNoArg(RcOpcodes.CANVAS_OPERATIONS),
+          RcPaintData(listOf(4, red)),
+          rect(40f),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcCanvasLayout(6, 60),
+          width(40f),
+          height(40f),
+          RcZIndexModifier(RcFloatWord.literal(1f)),
+          RcNoArg(RcOpcodes.CANVAS_OPERATIONS),
+          RcPaintData(listOf(4, green)),
+          rect(40f),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        ),
+      )
+    val scene =
+      ImageComposeScene(width = 100, height = 100, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val image = scene.render()
+      val bitmap = Bitmap().apply { allocN32Pixels(100, 100) }
+      check(image.readPixels(bitmap))
+
+      assertEquals(green, bitmap.getColor(5, 5))
+      assertEquals(red, bitmap.getColor(25, 25))
+      assertEquals(red, bitmap.getColor(55, 55))
     } finally {
       scene.close()
     }

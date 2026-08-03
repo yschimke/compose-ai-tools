@@ -97,6 +97,8 @@ public object RcDocumentCodec {
         BackgroundModifierCodec,
         BorderModifierCodec,
         ClipRectModifierCodec,
+        OffsetModifierCodec,
+        ZIndexModifierCodec,
         four(RcOpcodes.CLIP_RECT, "ClipRect"),
         four(RcOpcodes.MATRIX_SCALE, "MatrixScale"),
         two(RcOpcodes.MATRIX_TRANSLATE, "MatrixTranslate"),
@@ -433,6 +435,27 @@ private object BorderModifierCodec : RcOperationCodec<RcBorderModifier> {
     output.writeFloatWord(value.alpha)
     output.writeInt(value.shapeType)
   }
+}
+
+private object OffsetModifierCodec : RcOperationCodec<RcOffsetModifier> {
+  override val spec = RcOperationSpec(RcOpcodes.MODIFIER_OFFSET, "OffsetModifierOperation")
+
+  override fun decode(input: RcWireReader) =
+    RcOffsetModifier(input.readFloatWord("x"), input.readFloatWord("y"))
+
+  override fun encode(output: RcWireWriter, value: RcOffsetModifier) {
+    output.writeFloatWord(value.x)
+    output.writeFloatWord(value.y)
+  }
+}
+
+private object ZIndexModifierCodec : RcOperationCodec<RcZIndexModifier> {
+  override val spec = RcOperationSpec(RcOpcodes.MODIFIER_ZINDEX, "ZIndexModifierOperation")
+
+  override fun decode(input: RcWireReader) = RcZIndexModifier(input.readFloatWord("value"))
+
+  override fun encode(output: RcWireWriter, value: RcZIndexModifier) =
+    output.writeFloatWord(value.value)
 }
 
 private object HeaderCodec : RcOperationCodec<RcHeader> {

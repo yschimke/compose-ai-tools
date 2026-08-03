@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
@@ -62,6 +63,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
@@ -96,6 +98,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcMatrixExpression
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixFromPath
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixVectorMath
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
+import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcPaintData
 import ee.schimke.composeai.rcplayer.protocol.RcPathAppend
@@ -119,6 +122,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextTransform
 import ee.schimke.composeai.rcplayer.protocol.RcTheme
 import ee.schimke.composeai.rcplayer.protocol.RcTransform2
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
+import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
 import ee.schimke.composeai.rcplayer.runtime.RcDocumentLinker
 import ee.schimke.composeai.rcplayer.runtime.RcLayoutModifiers
 import ee.schimke.composeai.rcplayer.runtime.RcLayoutNode
@@ -550,6 +554,20 @@ private fun Modifier.applyComponentModifiers(
   var result = this
   result = result.applyWidth(modifiers, state, density, fillMissingDimensions)
   result = result.applyHeight(modifiers, state, density, fillMissingDimensions)
+  modifiers.placementModifiers.forEach { placement ->
+    result =
+      when (placement) {
+        is RcOffsetModifier ->
+          result.offset {
+            IntOffset(
+              state.resolve(placement.x).roundToInt(),
+              state.resolve(placement.y).roundToInt(),
+            )
+          }
+        is RcZIndexModifier -> result.zIndex(state.resolve(placement.value))
+        else -> result
+      }
+  }
   modifiers.paintDecorators.forEach { decorator ->
     result = result.applyPaintDecorator(decorator, state)
   }

@@ -784,6 +784,14 @@ public data class RcBorderModifier(
     get() = flags and RcBackgroundModifier.COLOR_REFERENCE_FLAG != 0
 }
 
+public data class RcOffsetModifier(val x: RcFloatWord, val y: RcFloatWord) : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_OFFSET
+}
+
+public data class RcZIndexModifier(val value: RcFloatWord) : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_ZINDEX
+}
+
 public object RcDimensionType {
   public const val EXACT: Int = 0
   public const val FILL: Int = 1
@@ -888,6 +896,8 @@ public object RcOpcodes {
   public const val CANVAS_OPERATIONS: Int = 173
   public const val LAYOUT_CANVAS_CONTENT: Int = 207
   public const val CONTAINER_END: Int = 214
+  public const val MODIFIER_OFFSET: Int = 221
+  public const val MODIFIER_ZINDEX: Int = 223
 }
 
 public object RcPathCommands {

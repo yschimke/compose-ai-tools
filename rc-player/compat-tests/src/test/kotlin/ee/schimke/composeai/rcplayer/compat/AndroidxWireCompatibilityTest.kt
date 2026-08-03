@@ -84,9 +84,11 @@ import androidx.compose.remote.core.operations.layout.modifiers.BorderModifierOp
 import androidx.compose.remote.core.operations.layout.modifiers.ClipRectModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.DimensionModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HeightModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.OffsetModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.PaddingModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.RoundedClipRectModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.ZIndexModifierOperation
 import androidx.compose.remote.core.operations.matrix.MatrixConstant
 import androidx.compose.remote.core.operations.matrix.MatrixExpression
 import androidx.compose.remote.core.operations.matrix.MatrixVectorMath
@@ -135,6 +137,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
+import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperationInventory
 import ee.schimke.composeai.rcplayer.protocol.RcPaddingModifier
@@ -147,6 +150,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
+import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
 import ee.schimke.composeai.rcplayer.runtime.RcFloatExpressionEvaluator
 import ee.schimke.composeai.rcplayer.runtime.RcIntegerExpressionEvaluator
 import ee.schimke.composeai.rcplayer.runtime.RcPlayerState
@@ -222,6 +226,8 @@ class AndroidxWireCompatibilityTest {
       Utils.asNan(42),
     )
     PaddingModifierOperation.apply(buffer, 1f, 2f, Utils.asNan(43), 4f)
+    OffsetModifierOperation.apply(buffer, Utils.asNan(44), 6f)
+    ZIndexModifierOperation.apply(buffer, Utils.asNan(45))
     val bytes = buffer.buffer.copyOf(buffer.size())
 
     val document = RcDocumentCodec.decode(bytes)
@@ -229,6 +235,8 @@ class AndroidxWireCompatibilityTest {
     assertEquals(RcDimensionType.EXACT, assertIs<RcWidthModifier>(document.operations[0]).type)
     assertEquals(42, assertIs<RcHeightModifier>(document.operations[1]).value.referencedId)
     assertEquals(43, assertIs<RcPaddingModifier>(document.operations[2]).right.referencedId)
+    assertEquals(44, assertIs<RcOffsetModifier>(document.operations[3]).x.referencedId)
+    assertEquals(45, assertIs<RcZIndexModifier>(document.operations[4]).value.referencedId)
     assertContentEquals(bytes, RcDocumentCodec.encode(document))
   }
 
