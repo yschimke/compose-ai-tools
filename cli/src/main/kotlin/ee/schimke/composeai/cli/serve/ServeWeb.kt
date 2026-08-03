@@ -1416,6 +1416,22 @@ object ServeWeb {
    * - **Errors ignored.** A heartbeat is not something a page can act on — offline, a catalog since
    *   removed, a server restarted. The next one tries again.
    */
+  /**
+   * [presenceScript] as a standalone `<script>` tag, for a page that has no script of its own to
+   * splice it into (the viewer). Empty — not an empty tag — when there is no presence URL, so a
+   * page without the heartbeat is byte-for-byte what it always was.
+   */
+  private fun presenceScriptTag(presenceUrl: String): String {
+    val script = presenceScript(presenceUrl)
+    if (script.isEmpty()) return ""
+    // Emitted with the surrounding body's own indentation, including the leading newline: the tag
+    // is interpolated *adjacent* to the previous one rather than on a line of its own, so the empty
+    // case leaves no stray blank line, and every injected line stays at or past the template's
+    // common indent (which `trimIndent` measures across the interpolated result, not the source).
+    val indented = script.lines().joinToString("") { if (it.isEmpty()) "\n" else "\n        $it" }
+    return "\n      <script>(function () {$indented\n      })();</script>"
+  }
+
   private fun presenceScript(presenceUrl: String): String {
     if (presenceUrl.isEmpty()) return ""
     return """
@@ -3555,6 +3571,13 @@ object ServeWeb {
     liveAuthPrompt: LiveAuthPrompt? = null,
     /** Human catalog title used in the breadcrumb; falls back to a generic "Previews" label. */
     catalogTitle: String? = null,
+    /**
+     * `POST` URL that keeps this session (and its daemon) alive while the visitor has the viewer
+     * open — see [presenceScript]. The viewer needs this at least as much as the grid does: it is
+     * where someone settles on one preview, and where the theme and knob actions that *need* a warm
+     * daemon are taken. Empty (the default) omits the heartbeat.
+     */
+    presenceUrl: String = "",
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
@@ -4125,7 +4148,7 @@ $deviceControlsHtml
       <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
       ${scriptTag("viewer-groups.js")}
       ${scriptTag("viewer-drawers.js")}
-      <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>
+      <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>${presenceScriptTag(presenceUrl)}
       ${if (hasSvgExport) "${scriptTag("format-compare.js")}\n      " else ""}${scriptTag("viewer.js")}
       ${scriptTag("backend-badge.js")}
       """

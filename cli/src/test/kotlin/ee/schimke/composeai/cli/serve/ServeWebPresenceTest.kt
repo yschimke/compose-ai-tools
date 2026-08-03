@@ -67,4 +67,41 @@ class ServeWebPresenceTest {
     assertFalse(html.contains("presenceUrl"), "no heartbeat for a plain-module landing")
     assertFalse(html.contains("visibilitychange"), "and none of its wiring")
   }
+
+  @Test
+  fun `the viewer beats too — it is where a visitor actually settles`() {
+    // Following a card into the viewer must not drop the heartbeat. The viewer is where someone
+    // stops and reads one preview (making no further requests), and where the theme and knob
+    // actions that want a warm daemon are taken — so losing presence here would reintroduce
+    // exactly the cold start this exists to prevent, on the page it hurts most.
+    val html =
+      ServeWeb.viewerPage(
+        ServePreview(id = "filled-button", label = "Filled"),
+        token = "t",
+        isPublic = true,
+        basePath = "/compose-m3",
+        presenceUrl = "/compose-m3/api/presence",
+      )
+    assertTrue(html.contains("var presenceUrl = \"/compose-m3/api/presence\""), "viewer pings")
+    assertTrue(
+      html.contains("setInterval(ping, ${ServeWeb.PRESENCE_INTERVAL_SECONDS} * 1000)"),
+      "on the same interval as the grid",
+    )
+    assertTrue(
+      html.contains("if (document.visibilityState !== \"visible\") return;"),
+      "and skips hidden tabs the same way",
+    )
+  }
+
+  @Test
+  fun `a viewer with no presence URL emits no heartbeat tag at all`() {
+    val html =
+      ServeWeb.viewerPage(
+        ServePreview(id = "filled-button", label = "Filled"),
+        token = "t",
+        isPublic = true,
+        basePath = "/compose-m3",
+      )
+    assertFalse(html.contains("presenceUrl"), "no heartbeat, and no empty script tag either")
+  }
 }

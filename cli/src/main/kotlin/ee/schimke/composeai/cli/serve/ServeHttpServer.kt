@@ -2618,6 +2618,10 @@ class ServeHttpServer(
             },
           liveAuthPrompt = liveAuthPrompt,
           catalogTitle = catalogBundleHost(renderHost)?.title,
+          // The same heartbeat the grid sends. The viewer needs it at least as much: it is where a
+          // visitor settles on one preview and reads, making no further requests, and where the
+          // theme and knob actions that want a warm daemon are actually taken.
+          presenceUrl = "$basePath/api/presence${requestQuerySuffix()}",
         ),
         ContentType.Text.Html,
       )
