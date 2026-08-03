@@ -14,6 +14,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCollapsiblePriorityModifier
 import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
+import ee.schimke.composeai.rcplayer.protocol.RcComponentValue
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionConstraintsModifier
 import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
@@ -117,6 +118,8 @@ public sealed interface RcLayoutNode {
     override val componentId: Int,
     override val modifiers: RcLayoutModifiers,
     val children: List<RcLayoutNode>,
+    /** Non-component data/paint operations retained for CanvasLayout's legacy direct content. */
+    val operations: List<RcLinkedNode>,
   ) : RcLayoutNode {
     override val animationId: Int? = null
   }
@@ -257,7 +260,35 @@ public object RcLayoutTree {
     }
     val stylesById = styles.toMap()
     val seenIds = mutableSetOf<Int>()
-    return parse(roots.single(), seenIds, stylesById) as RcLayoutNode.Root
+    val root = parse(roots.single(), seenIds, stylesById) as RcLayoutNode.Root
+    validateComponentValues(
+      document.source.operations.filterIsInstance<RcComponentValue>(),
+      seenIds,
+    )
+    return root
+  }
+
+  private fun validateComponentValues(values: List<RcComponentValue>, componentIds: Set<Int>) {
+    values.forEach { value ->
+      if (value.type !in RcComponentValue.VALID_TYPES) {
+        throw RcLayoutException("ComponentValue ${value.valueId} has unknown type ${value.type}")
+      }
+      if (value.componentId !in componentIds) {
+        throw RcLayoutException(
+          "ComponentValue ${value.valueId} references missing component ${value.componentId}"
+        )
+      }
+    }
+    values
+      .groupBy { it.valueId }
+      .forEach { (valueId, bindings) ->
+        val targets = bindings.map { it.componentId to it.type }.distinct()
+        if (targets.size > 1) {
+          throw RcLayoutException(
+            "ComponentValue output $valueId has conflicting bindings $targets"
+          )
+        }
+      }
   }
 
   private fun parse(
@@ -280,6 +311,9 @@ public object RcLayoutTree {
             operation.componentId,
             modifiers,
             childComponents(container, seenIds, styles),
+            container.children.filterNot { child ->
+              child is RcLinkedNode.Container && child.operation.isLayoutComponent()
+            },
           )
         is RcCanvasLayout -> {
           RcLayoutNode.Canvas(

@@ -47,12 +47,19 @@ tasks.register<Sync>("wasmPlayerTestDist") {
   dependsOn(
     "wasmPlayerDist",
     ":rc-player-compat-tests:generateBaselineFixture",
+    ":rc-player-compat-tests:generateComponentValueFixture",
     ":rc-player-compat-tests:generateLayoutFixture",
     ":rc-player-compat-tests:generateScrollFixture",
   )
   from(layout.buildDirectory.dir("wasmDist"))
   from(
     project(":rc-player-compat-tests").layout.buildDirectory.file("fixtures/androidx-baseline.rc")
+  )
+  from(
+    project(":rc-player-compat-tests")
+      .layout
+      .buildDirectory
+      .file("fixtures/androidx-component-value.rc")
   )
   from(project(":rc-player-compat-tests").layout.buildDirectory.file("fixtures/androidx-layout.rc"))
   from(project(":rc-player-compat-tests").layout.buildDirectory.file("fixtures/androidx-scroll.rc"))

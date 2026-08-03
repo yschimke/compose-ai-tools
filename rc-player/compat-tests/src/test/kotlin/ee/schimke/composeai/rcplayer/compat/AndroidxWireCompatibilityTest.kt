@@ -12,6 +12,7 @@ import androidx.compose.remote.core.operations.ColorAttribute
 import androidx.compose.remote.core.operations.ColorConstant
 import androidx.compose.remote.core.operations.ColorExpression as AndroidxColorExpression
 import androidx.compose.remote.core.operations.ColorTheme as AndroidxColorTheme
+import androidx.compose.remote.core.operations.ComponentValue as AndroidxComponentValue
 import androidx.compose.remote.core.operations.ConditionalOperations as AndroidxConditionalOperations
 import androidx.compose.remote.core.operations.DataDynamicListFloat
 import androidx.compose.remote.core.operations.DataListFloat
@@ -172,6 +173,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
+import ee.schimke.composeai.rcplayer.protocol.RcComponentValue
 import ee.schimke.composeai.rcplayer.protocol.RcConditionalOperations
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDebugMessage
@@ -269,6 +271,39 @@ import kotlin.test.assertTrue
  * from this test module: AndroidX remote-core/Java player is the protocol authority.
  */
 class AndroidxWireCompatibilityTest {
+  @Test
+  fun androidXComponentValueBoundaryStreamsRoundTripExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    listOf(
+        AndroidxComponentValue.WIDTH,
+        AndroidxComponentValue.HEIGHT,
+        AndroidxComponentValue.POS_X,
+        AndroidxComponentValue.POS_Y,
+        AndroidxComponentValue.POS_ROOT_X,
+        AndroidxComponentValue.POS_ROOT_Y,
+        AndroidxComponentValue.CONTENT_WIDTH,
+        AndroidxComponentValue.CONTENT_HEIGHT,
+      )
+      .forEachIndexed { index, type ->
+        AndroidxComponentValue.apply(
+          buffer,
+          type,
+          if (index == 0) Int.MIN_VALUE else Int.MAX_VALUE,
+          index + 90,
+        )
+      }
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+    val values = document.operations.filterIsInstance<RcComponentValue>()
+
+    assertEquals(RcComponentValue.VALID_TYPES.toList(), values.map { it.type })
+    assertEquals(Int.MIN_VALUE, values.first().componentId)
+    assertEquals(Int.MAX_VALUE, values.last().componentId)
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
   @Test
   fun androidXConditionalAndLoopContainersRoundTripExactly() {
     val buffer = WireBuffer()

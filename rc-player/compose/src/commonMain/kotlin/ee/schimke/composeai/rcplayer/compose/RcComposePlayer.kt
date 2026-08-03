@@ -90,6 +90,9 @@ import androidx.compose.ui.layout.LastBaseline
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.LookaheadScope
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.node.CompositionLocalConsumerModifierNode
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
@@ -220,6 +223,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
 import ee.schimke.composeai.rcplayer.runtime.RcAnimationTimeline
 import ee.schimke.composeai.rcplayer.runtime.RcClickActionBlock
 import ee.schimke.composeai.rcplayer.runtime.RcClickActionType
+import ee.schimke.composeai.rcplayer.runtime.RcComponentGeometry
 import ee.schimke.composeai.rcplayer.runtime.RcDocumentLinker
 import ee.schimke.composeai.rcplayer.runtime.RcImpulsePhase
 import ee.schimke.composeai.rcplayer.runtime.RcLayoutModifiers
@@ -448,14 +452,21 @@ private fun RenderLayoutNode(
     } else {
       animateRcVisibility(visibility, node.modifiers.animationSpec, boundsModifier)
     }
-  if (!animatedVisibility.shouldRender) return
-  val effectiveModifier = animatedVisibility.modifier
+  val geometryIds = node.geometryComponentIds()
+  if (!animatedVisibility.shouldRender) {
+    if (geometryIds.any(state::hasComponentValues)) {
+      Layout(Modifier.trackComponentGeometry(geometryIds, state)) { _, _ -> layout(0, 0) {} }
+    }
+    return
+  }
+  val effectiveModifier = animatedVisibility.modifier.trackComponentGeometry(geometryIds, state)
   when (node) {
     is RcLayoutNode.Root ->
       Box(
         effectiveModifier.applyComponentModifiers(
           node.modifiers,
           state,
+          geometryIds,
           fillMissingDimensions = true,
           node.canvasOperations,
           textMeasurer,
@@ -492,6 +503,7 @@ private fun RenderLayoutNode(
         effectiveModifier.applyComponentModifiers(
           node.modifiers,
           state,
+          geometryIds,
           fillMissingDimensions = true,
           node.canvasOperations,
           textMeasurer,
@@ -499,6 +511,24 @@ private fun RenderLayoutNode(
           theme,
         )
       ) {
+        node.content
+          ?.operations
+          ?.takeIf { it.isNotEmpty() }
+          ?.let { operations ->
+            Canvas(Modifier.fillMaxSize()) {
+              drawOperations(
+                operations,
+                state,
+                RcPaintState(),
+                mutableMapOf(),
+                textMeasurer,
+                images,
+                RcFloatFunctionRuntime(),
+                theme,
+                filterTheme = true,
+              )
+            }
+          }
         node.content?.let {
           RenderLayoutNode(
             it,
@@ -528,6 +558,7 @@ private fun RenderLayoutNode(
         effectiveModifier.applyComponentModifiers(
           node.modifiers,
           state,
+          geometryIds,
           fillMissingDimensions = false,
           node.canvasOperations,
           textMeasurer,
@@ -552,6 +583,7 @@ private fun RenderLayoutNode(
         effectiveModifier.applyComponentModifiers(
           node.modifiers,
           state,
+          geometryIds,
           fillMissingDimensions = false,
           node.canvasOperations,
           textMeasurer,
@@ -594,6 +626,7 @@ private fun RenderLayoutNode(
         effectiveModifier.applyComponentModifiers(
           node.modifiers,
           state,
+          geometryIds,
           fillMissingDimensions = false,
           node.canvasOperations,
           textMeasurer,
@@ -620,6 +653,7 @@ private fun RenderLayoutNode(
         effectiveModifier.applyComponentModifiers(
           node.modifiers,
           state,
+          geometryIds,
           fillMissingDimensions = false,
           node.canvasOperations,
           textMeasurer,
@@ -654,6 +688,7 @@ private fun RenderLayoutNode(
           effectiveModifier.applyComponentModifiers(
             node.modifiers,
             state,
+            geometryIds,
             fillMissingDimensions = false,
             node.canvasOperations,
             textMeasurer,
@@ -678,6 +713,7 @@ private fun RenderLayoutNode(
           effectiveModifier.applyComponentModifiers(
             node.modifiers,
             state,
+            geometryIds,
             fillMissingDimensions = false,
             node.canvasOperations,
             textMeasurer,
@@ -697,6 +733,7 @@ private fun RenderLayoutNode(
         effectiveModifier.applyComponentModifiers(
           node.modifiers,
           state,
+          geometryIds,
           fillMissingDimensions = false,
           canvasOperations = null,
           textMeasurer,
@@ -748,6 +785,7 @@ private fun RenderLayoutNode(
           effectiveModifier.applyComponentModifiers(
             node.modifiers,
             state,
+            geometryIds,
             fillMissingDimensions = false,
             canvasOperations = null,
             textMeasurer,
@@ -787,6 +825,7 @@ private fun RenderLayoutNode(
           effectiveModifier.applyComponentModifiers(
             node.modifiers,
             state,
+            geometryIds,
             fillMissingDimensions = false,
             canvasOperations = null,
             textMeasurer,
@@ -818,6 +857,7 @@ private fun RenderLayoutNode(
           effectiveModifier.applyComponentModifiers(
             node.modifiers,
             state,
+            geometryIds,
             fillMissingDimensions = false,
             node.canvasOperations,
             textMeasurer,
@@ -1373,6 +1413,7 @@ internal fun arrangeLinear(
 private fun Modifier.applyComponentModifiers(
   modifiers: RcLayoutModifiers,
   state: RcPlayerState,
+  geometryComponentIds: List<Int>,
   fillMissingDimensions: Boolean,
   canvasOperations: List<RcLinkedNode>?,
   textMeasurer: TextMeasurer,
@@ -1397,7 +1438,7 @@ private fun Modifier.applyComponentModifiers(
   result = result.applyWidth(modifiers, state, density, fillMissingDimensions)
   result = result.applyHeight(modifiers, state, density, fillMissingDimensions)
   modifiers.marquee?.let { result = result.applyAndroidXMarquee(it, state) }
-  modifiers.scroll?.let { result = result.applyAndroidXScroll(it, state) }
+  modifiers.scroll?.let { result = result.applyAndroidXScroll(it, state, geometryComponentIds) }
   modifiers.graphicsLayer?.let { result = result.applyGraphicsLayer(it, state) }
   modifiers.placementModifiers.forEach { placement ->
     result =
@@ -1916,7 +1957,11 @@ private fun Modifier.applyAndroidXMarquee(
 }
 
 @Composable
-private fun Modifier.applyAndroidXScroll(block: RcScrollBlock, state: RcPlayerState): Modifier {
+private fun Modifier.applyAndroidXScroll(
+  block: RcScrollBlock,
+  state: RcPlayerState,
+  geometryComponentIds: List<Int> = emptyList(),
+): Modifier {
   val operation = block.operation
   val touch =
     block.children
@@ -1934,6 +1979,14 @@ private fun Modifier.applyAndroidXScroll(block: RcScrollBlock, state: RcPlayerSt
         operation.max.referencedId?.let { state.setFloat(it, maximum.toFloat()) }
         operation.notchMax.referencedId?.let {
           state.setFloat(it, (maximum + scrollState.viewportSize).toFloat())
+        }
+        val contentExtent = (maximum + scrollState.viewportSize).toFloat()
+        geometryComponentIds.forEach { componentId ->
+          if (operation.direction == RcScrollModifier.VERTICAL) {
+            state.publishComponentContentSize(componentId, height = contentExtent)
+          } else {
+            state.publishComponentContentSize(componentId, width = contentExtent)
+          }
         }
       }
   }
@@ -1964,6 +2017,44 @@ private fun Modifier.applyAndroidXScroll(block: RcScrollBlock, state: RcPlayerSt
     verticalScroll(scrollState)
   } else {
     horizontalScroll(scrollState)
+  }
+}
+
+private fun RcLayoutNode.geometryComponentIds(): List<Int> =
+  when (this) {
+    is RcLayoutNode.Root ->
+      listOf(componentId) + children.filterIsInstance<RcLayoutNode.Content>().map { it.componentId }
+    is RcLayoutNode.Canvas -> listOfNotNull(componentId, content?.componentId)
+    is RcLayoutNode.Box -> listOf(componentId, content.componentId)
+    is RcLayoutNode.Row -> listOf(componentId, content.componentId)
+    is RcLayoutNode.Column -> listOf(componentId, content.componentId)
+    is RcLayoutNode.Flow -> listOf(componentId, content.componentId)
+    is RcLayoutNode.CollapsibleRow -> listOf(componentId, content.componentId)
+    is RcLayoutNode.CollapsibleColumn -> listOf(componentId, content.componentId)
+    is RcLayoutNode.FitBox -> listOf(componentId, content.componentId)
+    is RcLayoutNode.Content -> emptyList() // Its layout manager publishes the wrapper geometry.
+    else -> listOf(componentId)
+  }
+
+private fun Modifier.trackComponentGeometry(
+  componentIds: List<Int>,
+  state: RcPlayerState,
+): Modifier {
+  val tracked = componentIds.distinct().filter(state::hasComponentValues)
+  if (tracked.isEmpty()) return this
+  return onGloballyPositioned { coordinates ->
+    val local = coordinates.positionInParent()
+    val root = coordinates.positionInRoot()
+    val geometry =
+      RcComponentGeometry(
+        width = coordinates.size.width.toFloat(),
+        height = coordinates.size.height.toFloat(),
+        localX = local.x,
+        localY = local.y,
+        rootX = root.x,
+        rootY = root.y,
+      )
+    tracked.forEach { state.publishComponentGeometry(it, geometry) }
   }
 }
 

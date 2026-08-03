@@ -7,6 +7,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
 import ee.schimke.composeai.rcplayer.protocol.RcClickModifier
 import ee.schimke.composeai.rcplayer.protocol.RcCollapsiblePriorityModifier
 import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleRowLayout
+import ee.schimke.composeai.rcplayer.protocol.RcComponentValue
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
@@ -43,6 +44,37 @@ import kotlin.test.assertIs
 
 class RcLayoutTreeTest {
   private val header = RcHeader(RcVersion(1, 0, 0), modern = false)
+
+  @Test
+  fun validatesNestedComponentValueTargetsAndConflictingOutputs() {
+    // CoreDocument discovers ComponentValue recursively, including inside CanvasOperations.
+    requireNotNull(
+      treeOf(
+        RcRootLayout(1),
+        RcLayoutContent(2),
+        RcCanvasLayout(3, 30),
+        RcNoArg(RcOpcodes.CANVAS_OPERATIONS),
+        RcComponentValue(RcComponentValue.WIDTH, componentId = 3, valueId = 90),
+        ends = 4,
+      )
+    )
+    assertFailsWith<RcLayoutException> {
+      treeOf(
+        RcRootLayout(1),
+        RcComponentValue(RcComponentValue.WIDTH, componentId = 404, valueId = 90),
+        ends = 1,
+      )
+    }
+    assertFailsWith<RcLayoutException> {
+      treeOf(
+        RcRootLayout(1),
+        RcLayoutContent(2),
+        RcComponentValue(RcComponentValue.WIDTH, componentId = 1, valueId = 90),
+        RcComponentValue(RcComponentValue.HEIGHT, componentId = 2, valueId = 90),
+        ends = 2,
+      )
+    }
+  }
 
   @Test
   fun retainsRippleInPaintDecoratorWireOrder() {

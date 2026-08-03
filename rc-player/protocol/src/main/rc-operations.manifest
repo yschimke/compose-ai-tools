@@ -66,7 +66,7 @@
 147|FLOAT_LIST|5|implemented
 148|DATA_LONG|5|implemented
 149|DRAW_BITMAP_SCALED|4|implemented
-150|COMPONENT_VALUE|5|unsupported
+150|COMPONENT_VALUE|5|implemented
 151|TEXT_LOOKUP|3|implemented
 152|DRAW_ARC|1|implemented
 153|TEXT_LOOKUP_INT|3|implemented

@@ -33,6 +33,7 @@ public object RcDocumentCodec {
         IntegerExpressionCodec,
         FloatFunctionDefineCodec,
         FloatFunctionCallCodec,
+        ComponentValueCodec,
         BooleanConstantCodec,
         LongConstantCodec,
         IdMapCodec,
@@ -212,6 +213,23 @@ public object RcDocumentCodec {
     operation: RcOperation,
   ) {
     (codec as RcOperationCodec<RcOperation>).encode(output, operation)
+  }
+}
+
+private object ComponentValueCodec : RcOperationCodec<RcComponentValue> {
+  override val spec = RcOperationSpec(RcOpcodes.COMPONENT_VALUE, "ComponentValue")
+
+  override fun decode(input: RcWireReader): RcComponentValue =
+    RcComponentValue(
+      type = input.readInt("type"),
+      componentId = input.readInt("componentId"),
+      valueId = input.readInt("valueId"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcComponentValue) {
+    output.writeInt(value.type)
+    output.writeInt(value.componentId)
+    output.writeInt(value.valueId)
   }
 }
 
