@@ -112,6 +112,7 @@ public object RcDocumentCodec {
         CollapsiblePriorityModifierCodec,
         AlignByModifierCodec,
         LayoutComputeCodec,
+        AccessibilitySemanticsCodec,
         VisibilityModifierCodec,
         GraphicsLayerModifierCodec,
         four(RcOpcodes.CLIP_RECT, "ClipRect"),
@@ -780,6 +781,31 @@ private object LayoutComputeCodec : RcOperationCodec<RcLayoutCompute> {
     output.writeInt(value.type)
     output.writeInt(value.boundsId)
     output.writeBoolean(value.animateChanges)
+  }
+}
+
+private object AccessibilitySemanticsCodec : RcOperationCodec<RcAccessibilitySemantics> {
+  override val spec = RcOperationSpec(RcOpcodes.ACCESSIBILITY_SEMANTICS, "CoreSemantics")
+
+  override fun decode(input: RcWireReader) =
+    RcAccessibilitySemantics(
+      contentDescriptionId = input.readInt("contentDescriptionId"),
+      role = input.readU8("role").toByte().toInt(),
+      textId = input.readInt("textId"),
+      stateDescriptionId = input.readInt("stateDescriptionId"),
+      mode = input.readU8("mode").toByte().toInt(),
+      enabled = input.readBoolean("enabled"),
+      clickable = input.readBoolean("clickable"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcAccessibilitySemantics) {
+    output.writeInt(value.contentDescriptionId)
+    output.writeU8(value.role)
+    output.writeInt(value.textId)
+    output.writeInt(value.stateDescriptionId)
+    output.writeU8(value.mode)
+    output.writeBoolean(value.enabled)
+    output.writeBoolean(value.clickable)
   }
 }
 

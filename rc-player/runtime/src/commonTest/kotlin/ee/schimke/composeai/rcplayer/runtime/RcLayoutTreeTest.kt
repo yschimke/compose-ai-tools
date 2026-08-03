@@ -1,5 +1,6 @@
 package ee.schimke.composeai.rcplayer.runtime
 
+import ee.schimke.composeai.rcplayer.protocol.RcAccessibilitySemantics
 import ee.schimke.composeai.rcplayer.protocol.RcAlignByModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
@@ -31,6 +32,22 @@ import kotlin.test.assertIs
 
 class RcLayoutTreeTest {
   private val header = RcHeader(RcVersion(1, 0, 0), modern = false)
+
+  @Test
+  fun extractsAccessibilityModifiersInWireOrder() {
+    val first =
+      RcAccessibilitySemantics(10, RcAccessibilitySemantics.ROLE_BUTTON, 11, 12, 0, true, false)
+    val second =
+      RcAccessibilitySemantics(20, RcAccessibilitySemantics.ROLE_IMAGE, 21, 22, 2, false, false)
+    val root =
+      requireNotNull(
+        treeOf(RcRootLayout(1), RcLayoutContent(2), RcCanvasLayout(3, 30), first, second, ends = 3)
+      )
+    val content = assertIs<RcLayoutNode.Content>(root.children.single())
+    val canvas = assertIs<RcLayoutNode.Canvas>(content.children.single())
+
+    assertEquals(listOf(first, second), canvas.modifiers.accessibility)
+  }
 
   @Test
   fun preservesAndEvaluatesLayoutComputeAsAnImmutableModifierBlock() {

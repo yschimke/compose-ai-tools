@@ -120,9 +120,11 @@ import androidx.compose.remote.core.operations.utilities.StringUtils
 import androidx.compose.remote.core.operations.utilities.easing.Easing
 import androidx.compose.remote.core.operations.utilities.easing.FloatAnimation
 import androidx.compose.remote.core.operations.utilities.easing.SpringStopEngine
+import androidx.compose.remote.core.semantics.CoreSemantics
 import androidx.compose.remote.core.types.BooleanConstant
 import androidx.compose.remote.core.types.IntegerConstant
 import androidx.compose.remote.core.types.LongConstant
+import ee.schimke.composeai.rcplayer.protocol.RcAccessibilitySemantics
 import ee.schimke.composeai.rcplayer.protocol.RcAlignByModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
@@ -203,6 +205,32 @@ import kotlin.test.assertTrue
  * from this test module: AndroidX remote-core/Java player is the protocol authority.
  */
 class AndroidxWireCompatibilityTest {
+  @Test
+  fun androidXAccessibilitySemanticsRoundTripsExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    CoreSemantics.apply(
+      buffer,
+      10,
+      RcAccessibilitySemantics.ROLE_SWITCH.toByte(),
+      11,
+      12,
+      RcAccessibilitySemantics.MODE_MERGE,
+      false,
+      true,
+    )
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+    val semantics = assertIs<RcAccessibilitySemantics>(document.operations.single())
+
+    assertEquals(RcAccessibilitySemantics.ROLE_SWITCH, semantics.role)
+    assertEquals(RcAccessibilitySemantics.MODE_MERGE, semantics.mode)
+    assertFalse(semantics.enabled)
+    assertTrue(semantics.clickable)
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
   @Test
   fun androidXLayoutComputeRoundTripsExactly() {
     val buffer = WireBuffer()

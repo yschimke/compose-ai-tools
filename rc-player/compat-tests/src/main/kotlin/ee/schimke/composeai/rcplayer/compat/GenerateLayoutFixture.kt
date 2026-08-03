@@ -27,6 +27,8 @@ import androidx.compose.remote.core.operations.layout.modifiers.HeightModifierOp
 import androidx.compose.remote.core.operations.layout.modifiers.OffsetModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation
 import androidx.compose.remote.core.operations.paint.PaintBundle
+import androidx.compose.remote.core.semantics.AccessibleComponent
+import androidx.compose.remote.core.semantics.CoreSemantics
 import java.io.File
 
 /** AndroidX-authored browser fixture for layout, DrawContent, and images. */
@@ -61,6 +63,8 @@ public fun main(args: Array<String>) {
     ),
   )
   TextData.apply(buffer, 1001, "CMP TEXT + IMAGE")
+  TextData.apply(buffer, 1004, "Remote Compose preview")
+  TextData.apply(buffer, 1005, "Rendered by Compose Multiplatform")
   TextStyle.apply(
     buffer,
     1002,
@@ -189,6 +193,16 @@ public fun main(args: Array<String>) {
   exactWidth(buffer, 240f)
   exactHeight(buffer, 36f)
   OffsetModifierOperation.apply(buffer, 0f, -60f)
+  CoreSemantics.apply(
+    buffer,
+    1004,
+    AccessibleComponent.Role.IMAGE.ordinal.toByte(),
+    1001,
+    1005,
+    AccessibleComponent.Mode.SET.ordinal,
+    true,
+    false,
+  )
   ContainerEnd.apply(buffer) // text
   ContainerEnd.apply(buffer) // box content
   ContainerEnd.apply(buffer) // box

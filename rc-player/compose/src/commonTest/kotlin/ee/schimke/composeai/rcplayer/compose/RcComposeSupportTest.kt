@@ -1,6 +1,8 @@
 package ee.schimke.composeai.rcplayer.compose
 
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
+import ee.schimke.composeai.rcplayer.protocol.RcAccessibilitySemantics
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
@@ -26,6 +28,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcPaintData
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
+import ee.schimke.composeai.rcplayer.protocol.RcTextData
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
@@ -37,6 +40,65 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RcComposeSupportTest {
+  @Test
+  fun mapsEveryAndroidXAccessibilityRoleToCompose() {
+    assertEquals(
+      listOf(
+        Role.Button,
+        Role.Checkbox,
+        Role.Switch,
+        Role.RadioButton,
+        Role.Tab,
+        Role.Image,
+        Role.DropdownList,
+        Role.ValuePicker,
+        Role.Carousel,
+        null,
+      ),
+      (0..RcAccessibilitySemantics.ROLE_UNKNOWN).map(::androidXSemanticsRole),
+    )
+  }
+
+  @Test
+  fun accessibilitySupportValidatesTextAndActionBoundaries() {
+    val semantics =
+      RcAccessibilitySemantics(
+        contentDescriptionId = 10,
+        role = RcAccessibilitySemantics.ROLE_BUTTON,
+        textId = 11,
+        stateDescriptionId = 12,
+        mode = RcAccessibilitySemantics.MODE_MERGE,
+        enabled = false,
+        clickable = false,
+      )
+    val valid =
+      RcDocument(
+        header,
+        listOf(
+          RcTextData(10, "Submit"),
+          RcTextData(11, "Send"),
+          RcTextData(12, "Unavailable"),
+          semantics,
+        ),
+      )
+    assertTrue(valid.composeSupportReport().fullyRenderable)
+
+    val issues =
+      RcDocument(header, listOf(semantics.copy(textId = 99, clickable = true)))
+        .composeSupportReport()
+        .issues
+        .map { it.detail }
+    assertEquals(
+      listOf(
+        "content description text id 10 is not declared",
+        "text text id 99 is not declared",
+        "state description text id 12 is not declared",
+        "accessibility click dispatch is not implemented",
+      ),
+      issues,
+    )
+  }
+
   @Test
   fun rejectsUnsupportedLayoutComputeVariantsPrecisely() {
     val document =

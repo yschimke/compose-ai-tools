@@ -1,5 +1,6 @@
 package ee.schimke.composeai.rcplayer.runtime
 
+import ee.schimke.composeai.rcplayer.protocol.RcAccessibilitySemantics
 import ee.schimke.composeai.rcplayer.protocol.RcAlignByModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
@@ -50,6 +51,7 @@ public data class RcLayoutModifiers(
   val collapsiblePriority: RcCollapsiblePriorityModifier? = null,
   val alignBy: RcAlignByModifier? = null,
   val layoutComputes: List<RcLayoutComputeBlock> = emptyList(),
+  val accessibility: List<RcAccessibilitySemantics> = emptyList(),
   val visibility: RcVisibilityModifier? = null,
   val graphicsLayer: RcGraphicsLayerModifier? = null,
 )
@@ -414,6 +416,7 @@ public object RcLayoutTree {
         container.children.filterIsInstance<RcLinkedNode.Container>().mapNotNull { child ->
           (child.operation as? RcLayoutCompute)?.let { RcLayoutComputeBlock(it, child.children) }
         },
+      accessibility = operations.filterIsInstance<RcAccessibilitySemantics>(),
     )
   }
 

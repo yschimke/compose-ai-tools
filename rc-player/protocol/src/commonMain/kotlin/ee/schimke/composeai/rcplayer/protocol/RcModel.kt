@@ -981,6 +981,36 @@ public data class RcLayoutCompute(val type: Int, val boundsId: Int, val animateC
   }
 }
 
+/** Accessibility metadata attached to a layout component by AndroidX `CoreSemantics`. */
+public data class RcAccessibilitySemantics(
+  val contentDescriptionId: Int,
+  val role: Int,
+  val textId: Int,
+  val stateDescriptionId: Int,
+  val mode: Int,
+  val enabled: Boolean,
+  val clickable: Boolean,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.ACCESSIBILITY_SEMANTICS
+
+  public companion object {
+    public const val ROLE_BUTTON: Int = 0
+    public const val ROLE_CHECKBOX: Int = 1
+    public const val ROLE_SWITCH: Int = 2
+    public const val ROLE_RADIO_BUTTON: Int = 3
+    public const val ROLE_TAB: Int = 4
+    public const val ROLE_IMAGE: Int = 5
+    public const val ROLE_DROPDOWN_LIST: Int = 6
+    public const val ROLE_PICKER: Int = 7
+    public const val ROLE_CAROUSEL: Int = 8
+    public const val ROLE_UNKNOWN: Int = 9
+
+    public const val MODE_SET: Int = 0
+    public const val MODE_CLEAR_AND_SET: Int = 1
+    public const val MODE_MERGE: Int = 2
+  }
+}
+
 /** Component visibility is read from the referenced AndroidX integer variable. */
 public data class RcVisibilityModifier(val visibilityId: Int) : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_VISIBILITY
@@ -1148,6 +1178,7 @@ public object RcOpcodes {
   public const val LAYOUT_FLOW: Int = 240
   public const val TEXT_STYLE: Int = 242
   public const val MODIFIER_DIMENSION_CONSTRAINTS: Int = 243
+  public const val ACCESSIBILITY_SEMANTICS: Int = 250
 }
 
 public object RcPathCommands {

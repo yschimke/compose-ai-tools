@@ -63,8 +63,17 @@ import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.LastBaseline
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsPropertyReceiver
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -83,6 +92,7 @@ import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import ee.schimke.composeai.rcplayer.protocol.RcAccessibilitySemantics
 import ee.schimke.composeai.rcplayer.protocol.RcAlignByModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
@@ -1149,8 +1159,52 @@ private fun Modifier.applyComponentModifiers(
         bottom = with(density) { state.resolve(padding.bottom).toDp() },
       )
   }
+  modifiers.accessibility.forEach { semantics ->
+    result = result.applyAccessibilitySemantics(semantics, state)
+  }
   return result
 }
+
+private fun Modifier.applyAccessibilitySemantics(
+  operation: RcAccessibilitySemantics,
+  state: RcPlayerState,
+): Modifier {
+  val properties: SemanticsPropertyReceiver.() -> Unit = {
+    operation.contentDescriptionId
+      .takeUnless { it == 0 }
+      ?.let { id -> state.text(id)?.let { contentDescription = it } }
+    operation.textId
+      .takeUnless { it == 0 }
+      ?.let { id -> state.text(id)?.let { text = AnnotatedString(it) } }
+    operation.stateDescriptionId
+      .takeUnless { it == 0 }
+      ?.let { id -> state.text(id)?.let { stateDescription = it } }
+    androidXSemanticsRole(operation.role)?.let { role = it }
+    if (!operation.enabled) disabled()
+    if (operation.clickable) onClick { false }
+  }
+  return when (operation.mode) {
+    RcAccessibilitySemantics.MODE_SET -> semantics(properties = properties)
+    RcAccessibilitySemantics.MODE_CLEAR_AND_SET -> clearAndSetSemantics(properties)
+    RcAccessibilitySemantics.MODE_MERGE ->
+      semantics(mergeDescendants = true, properties = properties)
+    else -> this
+  }
+}
+
+internal fun androidXSemanticsRole(role: Int): Role? =
+  when (role) {
+    RcAccessibilitySemantics.ROLE_BUTTON -> Role.Button
+    RcAccessibilitySemantics.ROLE_CHECKBOX -> Role.Checkbox
+    RcAccessibilitySemantics.ROLE_SWITCH -> Role.Switch
+    RcAccessibilitySemantics.ROLE_RADIO_BUTTON -> Role.RadioButton
+    RcAccessibilitySemantics.ROLE_TAB -> Role.Tab
+    RcAccessibilitySemantics.ROLE_IMAGE -> Role.Image
+    RcAccessibilitySemantics.ROLE_DROPDOWN_LIST -> Role.DropdownList
+    RcAccessibilitySemantics.ROLE_PICKER -> Role.ValuePicker
+    RcAccessibilitySemantics.ROLE_CAROUSEL -> Role.Carousel
+    else -> null
+  }
 
 private fun Modifier.applyLayoutComputes(
   modifiers: RcLayoutModifiers,

@@ -1,5 +1,6 @@
 package ee.schimke.composeai.rcplayer.compose
 
+import ee.schimke.composeai.rcplayer.protocol.RcAccessibilitySemantics
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
@@ -508,6 +509,36 @@ public fun RcDocument.composeSupportReport(
               "LayoutComputeOperation",
               "bounds list ${operation.boundsId} has length ${bounds.length.value.toInt()}, expected 6",
             )
+      }
+    }
+    if (operation is RcAccessibilitySemantics) {
+      if (operation.role !in -1..RcAccessibilitySemantics.ROLE_UNKNOWN) {
+        issues +=
+          RcComposeSupportIssue(index, "CoreSemantics", "role ${operation.role} is not implemented")
+      }
+      if (
+        operation.mode !in RcAccessibilitySemantics.MODE_SET..RcAccessibilitySemantics.MODE_MERGE
+      ) {
+        issues +=
+          RcComposeSupportIssue(index, "CoreSemantics", "mode ${operation.mode} is not implemented")
+      }
+      listOf(
+          "content description" to operation.contentDescriptionId,
+          "text" to operation.textId,
+          "state description" to operation.stateDescriptionId,
+        )
+        .filter { (_, id) -> id != 0 && id !in textIds }
+        .forEach { (name, id) ->
+          issues +=
+            RcComposeSupportIssue(index, "CoreSemantics", "$name text id $id is not declared")
+        }
+      if (operation.clickable) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "CoreSemantics",
+            "accessibility click dispatch is not implemented",
+          )
       }
     }
   }

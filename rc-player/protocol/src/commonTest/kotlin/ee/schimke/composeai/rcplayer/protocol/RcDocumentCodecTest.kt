@@ -9,6 +9,31 @@ import kotlin.test.assertTrue
 
 class RcDocumentCodecTest {
   @Test
+  fun accessibilitySemanticsPreservesSignedRoleAndEveryField() {
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), modern = false),
+        listOf(
+          RcAccessibilitySemantics(
+            contentDescriptionId = 10,
+            role = -1,
+            textId = 11,
+            stateDescriptionId = 12,
+            mode = RcAccessibilitySemantics.MODE_MERGE,
+            enabled = false,
+            clickable = true,
+          )
+        ),
+      )
+
+    val bytes = RcDocumentCodec.encode(document)
+    val decoded = RcDocumentCodec.decode(bytes)
+
+    assertEquals(document, decoded)
+    assertContentEquals(bytes, RcDocumentCodec.encode(decoded))
+  }
+
+  @Test
   fun layoutComputeRoundTripsItsExactImmutableHeader() {
     val document =
       RcDocument(
