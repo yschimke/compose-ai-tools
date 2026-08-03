@@ -83,6 +83,55 @@ import { RealGradleApi } from "../realGradleApi";
 const E2E = process.env.COMPOSE_PREVIEW_E2E === "1";
 const describeE2E = E2E ? describe : describe.skip;
 
+/**
+ * Preview-name filter (`-PcomposePreview.filter`, issue #2066) handed to
+ * every `gradlew` invocation this suite drives. Names exactly the previews
+ * the scenarios below display and assert on.
+ *
+ * Without it the disk assertions can't hold on CI hardware. `triggerRefresh`
+ * runs the production `composePreviewRenderAll`, which renders the *whole*
+ * module, and `gradleService` caps every Gradle task at `TASK_TIMEOUT_MS`
+ * (5 minutes) — `:samples:android` alone carries 160+ `@Preview`s behind
+ * Robolectric, so a cold full-module render is killed at the cap long before
+ * it reaches `TypographyGallery.kt`. The extension then behaves exactly as
+ * designed (`renderWithDiskFallback` paints the on-disk manifest and records
+ * a partial-render failure), which leaves scenario A's "every capture
+ * resolves to a PNG on disk" invariant a lottery over how far the truncated
+ * render happened to get — it lost 4 of 5 consecutive `main` runs.
+ *
+ * Filtering leaves the loop under test intact — real plugin, real
+ * Robolectric, real manifest, real panel — and only shrinks the render to
+ * something that finishes inside the cap, so the disk checks mean what they
+ * say. Only *rendering* is narrowed: `composePreviewDiscover` still writes
+ * the module's complete `previews.json`, so the id-set invariants (A2/A4)
+ * keep seeing every preview in the module, and unfiltered previews keep
+ * whatever PNGs they already had on disk. Full-module render coverage lives
+ * in the `cmp-smoke` shard (`e2e.test.ts`), which renders `:samples:cmp`
+ * unfiltered.
+ *
+ * Patterns are package-qualified so one can't substring-match a same-named
+ * preview elsewhere in the repo. A non-empty filter that matches *nothing*
+ * fails the render task outright, so every module this suite renders
+ * (`:samples:cmp`, `:samples:android`) must keep at least one entry here.
+ */
+const FIXTURE_PREVIEW_FILTER = [
+    // `samples/cmp/.../Previews.kt` — the cmp fixture every scenario
+    // refreshes on. The glob also covers scenario E's rename of
+    // `RedBoxPreview` → `RedBoxPreviewRenamed`.
+    "com.example.samplecmp.RedBoxPreview*",
+    "com.example.samplecmp.BlueBoxPreview",
+    "com.example.samplecmp.AppPreview",
+    "com.example.samplecmp.WallpaperDemoPreview",
+    "com.example.samplecmp.Pixel8SystemUiPreview",
+    // Scenario B appends `fun Interactive<timestamp>()` to that same file.
+    "com.example.samplecmp.Interactive*",
+    // `samples/android/.../TypographyGallery.kt` — the android fixture
+    // scenarios A/D/E switch to.
+    "com.example.sampleandroid.TypographySpecimenPreview",
+    "com.example.sampleandroid.FontFamilySpecimenPreview",
+    "com.example.sampleandroid.FallbackCoverageSpecimenPreview",
+];
+
 interface PostedMessage {
     command: string;
     [key: string]: unknown;
@@ -235,7 +284,9 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         assert.ok(exported, "activate() must return ComposePreviewTestApi");
         api = exported;
         api.injectGradleApi(
-            new RealGradleApi(repoRoot, (line) => console.log(line)),
+            new RealGradleApi(repoRoot, (line) => console.log(line), [
+                `-PcomposePreview.filter=${FIXTURE_PREVIEW_FILTER.join(",")}`,
+            ]),
         );
 
         await vscode.commands.executeCommand("composePreview.panel.focus");
@@ -348,7 +399,13 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         );
 
         // Invariant A3: every capture renderOutput resolves to a file under
-        // :samples:android's project dir and exists on disk.
+        // :samples:android's project dir and exists on disk. The
+        // "missing on disk" half only holds because `FIXTURE_PREVIEW_FILTER`
+        // keeps this module's render small enough to finish inside
+        // `gradleService`'s 5-minute task cap — if the whole set turns up
+        // missing, suspect a render killed at that cap (the log carries a
+        // `cancel :samples:android:composePreviewRenderAll` line ~300s after
+        // it started) before suspecting the panel.
         const androidBadCaptures: Array<{
             id: string;
             renderOutput: string;
