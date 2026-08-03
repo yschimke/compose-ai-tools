@@ -310,3 +310,136 @@ test("referenceManifest emits the served schema and drops driver-only fields", (
   assert.equal("origin" in manifest.references[0], false);
   assert.equal("rastered" in manifest.references[0], false);
 });
+
+// A multipreview component: light and dark are two @Preview annotations on ONE function, so
+// imagesByPreviewFunction cannot split them the way it splits a declared `variants` entry.
+const MULTIPREVIEW_SPEC = {
+  groups: [
+    {
+      name: "Contacts",
+      components: [{ componentId: "ContactRow/Chat", preview: "ContactRowChatPreview" }],
+    },
+  ],
+};
+
+const MULTIPREVIEW_CATALOG = {
+  components: [
+    {
+      componentId: "ContactRow/Chat",
+      images: [
+        {
+          path: "images/contactrow-chat/ideal__default__light__compact.png",
+          state: "default",
+          theme: "light",
+          size: "compact",
+          width: 805,
+          height: 147,
+          previewId: "ee.app.ui.ComponentPreviewsKt.ContactRowChatPreview_Light",
+        },
+        {
+          path: "images/contactrow-chat/ideal__default__dark__compact.png",
+          state: "default",
+          theme: "dark",
+          size: "compact",
+          width: 805,
+          height: 147,
+          previewId: "ee.app.ui.ComponentPreviewsKt.ContactRowChatPreview_Dark",
+        },
+      ],
+    },
+  ],
+};
+
+test("planDesignReferences narrows a multipreview function to the previewId the entry names", () => {
+  const designMap = {
+    components: [
+      {
+        code: "app/src/main/kotlin/ui/ComponentPreviews.kt#ContactRowChatPreview",
+        source: "figma",
+        ref: "figma:abc/87:477",
+        previewId: "ee.app.ui.ComponentPreviewsKt.ContactRowChatPreview_Light",
+      },
+    ],
+  };
+
+  const { records, warnings } = planDesignReferences({
+    designMap,
+    spec: MULTIPREVIEW_SPEC,
+    catalog: MULTIPREVIEW_CATALOG,
+  });
+
+  assert.deepEqual(warnings, []);
+  // Without the narrowing the light-only Figma node is published against the dark sticker too,
+  // and the server scores a dark render against a light design.
+  assert.deepEqual(
+    records.map((r) => r.previewId),
+    ["contactrow-chat__ideal__default__light__compact"],
+  );
+});
+
+test("planDesignReferences keeps both stickers when the entry names no previewId", () => {
+  const designMap = {
+    components: [
+      {
+        code: "app/src/main/kotlin/ui/ComponentPreviews.kt#ContactRowChatPreview",
+        source: "figma",
+        ref: "figma:abc/87:477",
+      },
+    ],
+  };
+
+  const { records } = planDesignReferences({
+    designMap,
+    spec: MULTIPREVIEW_SPEC,
+    catalog: MULTIPREVIEW_CATALOG,
+  });
+
+  assert.equal(records.length, 2);
+});
+
+test("planDesignReferences ignores previewId when the catalog images carry none", () => {
+  // The `--extra-renders` case: images folded in from a second module have no previewId, so
+  // narrowing on an absent field would silently unmap every one of them.
+  const designMap = {
+    components: [
+      {
+        code: "meshcore-components/src/commonMain/kotlin/ui/ChatBodyPreviews.kt#ContactChatPreview",
+        source: "figma",
+        ref: "figma:abc/73:5",
+        previewId: "ee.components.ui.ChatBodyPreviewsKt.ContactChatPreview_Contact chat",
+      },
+    ],
+  };
+
+  const { records, warnings } = planDesignReferences({ designMap, spec: SPEC, catalog: CATALOG });
+
+  assert.deepEqual(warnings, []);
+  assert.deepEqual(
+    records.map((r) => r.previewId),
+    ["chat-contact__ideal__default__compact"],
+  );
+});
+
+test("planDesignReferences warns when the entry's previewId matches no published sticker", () => {
+  const designMap = {
+    components: [
+      {
+        code: "app/src/main/kotlin/ui/ComponentPreviews.kt#ContactRowChatPreview",
+        source: "figma",
+        ref: "figma:abc/87:477",
+        previewId: "ee.app.ui.ComponentPreviewsKt.ContactRowChatPreview_Typo",
+      },
+    ],
+  };
+
+  const { records, warnings } = planDesignReferences({
+    designMap,
+    spec: MULTIPREVIEW_SPEC,
+    catalog: MULTIPREVIEW_CATALOG,
+  });
+
+  assert.deepEqual(records, []);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /ContactRowChatPreview_Typo/);
+  assert.match(warnings[0], /ContactRowChatPreview_Light/);
+});

@@ -159,6 +159,43 @@ function providerFor(source) {
 }
 
 /**
+ * Narrow a function's matched stickers to the one the design-map entry's `previewId` names.
+ *
+ * [imagesByPreviewFunction] partitions a component's images between its default `preview` and its
+ * declared `variants`, which separates light from dark when they are two *different* `@Preview`
+ * functions. It cannot separate them when they are two `@Preview` annotations on the SAME function
+ * — the multipreview shape (`@Preview(name = "Light")` + `@Preview(name = "Dark", uiMode = …)`),
+ * where both stickers legitimately belong to one function name. A design-map entry maps one code
+ * handle to one reference, so without this narrowing a light-only reference is published against
+ * the dark sticker too, and the server scores a dark render against a light design.
+ *
+ * The entry's `previewId` is exactly the discriminator: it names the rendered preview, so a
+ * component-level `…_Light` entry keeps the light sticker and drops the dark one.
+ *
+ * Applied only when the matched images actually carry `previewId`s. Renders folded in through the
+ * generator's `--extra-renders` don't, and narrowing on an absent field would silently unmap every
+ * one of them — so an unlabelled match set is passed through whole, exactly as before.
+ */
+function narrowToMappedPreviewId(matches, mappedPreviewId, fn, warnings) {
+  if (typeof mappedPreviewId !== "string" || mappedPreviewId === "") return matches;
+  const labelled = matches.filter(({ image }) => typeof image?.previewId === "string");
+  if (labelled.length === 0) return matches;
+
+  const narrowed = labelled.filter(({ image }) => image.previewId === mappedPreviewId);
+  if (narrowed.length === 0) {
+    warnings.push(
+      `design-map '${fn}' names previewId '${mappedPreviewId}', which matches none of its ` +
+        `published stickers (${labelled.map(({ image }) => image.previewId).join(", ")})`,
+    );
+    return [];
+  }
+  // Anything the catalog left unlabelled stays in: it can't be ruled out, and dropping it would
+  // lose a reference the old behaviour published.
+  const unlabelled = matches.filter(({ image }) => typeof image?.previewId !== "string");
+  return [...narrowed, ...unlabelled];
+}
+
+/**
  * Plan the reference records for a repo: which design-map entries map onto which published
  * stickers, and what each one's raster has to look like.
  *
@@ -185,14 +222,16 @@ export function planDesignReferences({ designMap, spec, catalog }) {
       warnings.push(`design-map entry has no 'path#Member' code handle: ${entry?.code ?? "?"}`);
       continue;
     }
-    const matches = index.get(fn);
-    if (!matches || matches.length === 0) {
+    const allMatches = index.get(fn);
+    if (!allMatches || allMatches.length === 0) {
       warnings.push(
         `design-map '${fn}' matches no published sticker — no catalog.spec.json ` +
           `preview names that @Preview function, or its component rendered nothing`,
       );
       continue;
     }
+    const matches = narrowToMappedPreviewId(allMatches, entry?.previewId, fn, warnings);
+    if (matches.length === 0) continue;
     for (const { componentId, image } of matches) {
       const previewId = servePreviewId(image.path);
       const ordinal = ordinals.get(previewId) ?? 0;
