@@ -534,6 +534,12 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `MainActivity` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/activity__MainActivity.png" width="150" /> |
 | `AmbientStatusAmbientPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/AmbientStatusAmbientPreview_Ambient_body_ambient.png" width="150" /> |
 | `AmbientStatusInteractivePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/AmbientStatusInteractivePreview_Ambient_body_interactive.png" width="150" /> |
+| `ActivityListDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListDeviceMatrixPreview_Activity_list_Custom_Round_385dp_2_25x.png" width="150" /> |
+| `ActivityListDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListDeviceMatrixPreview_Activity_list_XL_Round_240dp.png" width="150" /> |
+| `WearDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/WearDeviceMatrixPreview_Custom_Round_385dp_2_25x.png" width="150" /> |
+| `WearDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/WearDeviceMatrixPreview_Large_Round_227dp.png" width="150" /> |
+| `WearDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/WearDeviceMatrixPreview_Small_Round_192dp.png" width="150" /> |
+| `WearDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/WearDeviceMatrixPreview_XL_Round_240dp.png" width="150" /> |
 | `MediaGestureScreenHintPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/MediaGestureScreenHintPreview_Media_hints_on.png" width="150" /> |
 | `MediaGestureScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/MediaGestureScreenPreview_Media_hints_off.png" width="150" /> |
 | `ButtonHintScreenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ButtonHintScreenPreview_Devices_Large_Round.png" width="150" /> |
@@ -574,6 +580,14 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `HelloTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/HelloTilePreview_Small_Round.png" width="150" /> |
 | `StepsTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/StepsTilePreview_Large_Round.png" width="150" /> |
 | `StepsTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/StepsTilePreview_Small_Round.png" width="150" /> |
+| `ActivityListLargeDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListLargeDeviceMatrixPreview_450px_225dp_Pixel_Watch_Pixel_Watch_2.png" width="150" /> |
+| `ActivityListLargeDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListLargeDeviceMatrixPreview_456px_228dp_Pixel_Watch_3_45mm.png" width="150" /> |
+| `ActivityListLargeDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListLargeDeviceMatrixPreview_466px_233dp_OnePlus_Watch_2_TicWatch_Pro_5.png" width="150" /> |
+| `ActivityListLargeDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/ActivityListLargeDeviceMatrixPreview_480px_240dp_Galaxy_Watch_Ultra_Watch_7_44mm.png" width="150" /> |
+| `WearLargeDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/WearLargeDeviceMatrixPreview_450px_225dp_Pixel_Watch_Pixel_Watch_2.png" width="150" /> |
+| `WearLargeDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/WearLargeDeviceMatrixPreview_456px_228dp_Pixel_Watch_3_45mm.png" width="150" /> |
+| `WearLargeDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/WearLargeDeviceMatrixPreview_466px_233dp_OnePlus_Watch_2_TicWatch_Pro_5.png" width="150" /> |
+| `WearLargeDeviceMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/WearLargeDeviceMatrixPreview_480px_240dp_Galaxy_Watch_Ultra_Watch_7_44mm.png" width="150" /> |
 
 ## samples:wear-widget
 

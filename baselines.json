@@ -3679,6 +3679,54 @@
     "sha256": "73c466b8c22d6a5d8f2f00ea2e005025d80cd04d904f239c9476bef26293eafb",
     "sourceFile": "src/main/kotlin/com/example/samplewear/AmbientPreviews.kt"
   },
+  "samples:wear/com.example.samplewear.DeviceSpecPreviewsKt.ActivityListDeviceMatrixPreview_Activity list \u00b7 Custom Round 385dp 2.25x": {
+    "captureLabel": "",
+    "functionName": "ActivityListDeviceMatrixPreview",
+    "module": "samples:wear",
+    "renderBasename": "ActivityListDeviceMatrixPreview_Activity_list_Custom_Round_385dp_2_25x.png",
+    "sha256": "c4a94a715e9904d9e9ac6b5af733edb357ba37dc6b74304f65f2f5caf0f6843a",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/DeviceSpecPreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.DeviceSpecPreviewsKt.ActivityListDeviceMatrixPreview_Activity list \u00b7 XL Round 240dp": {
+    "captureLabel": "",
+    "functionName": "ActivityListDeviceMatrixPreview",
+    "module": "samples:wear",
+    "renderBasename": "ActivityListDeviceMatrixPreview_Activity_list_XL_Round_240dp.png",
+    "sha256": "f4023483f16ce8adaf53183596924acc1399f5182f7712a9c913a7ea1056f7ea",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/DeviceSpecPreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.DeviceSpecPreviewsKt.WearDeviceMatrixPreview_Custom Round 385dp 2.25x": {
+    "captureLabel": "",
+    "functionName": "WearDeviceMatrixPreview",
+    "module": "samples:wear",
+    "renderBasename": "WearDeviceMatrixPreview_Custom_Round_385dp_2_25x.png",
+    "sha256": "459105310b6e7e0ff03c9c8aeeaeabc2b7ac8ce7d0b043cda9d635f7bf75eac1",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/DeviceSpecPreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.DeviceSpecPreviewsKt.WearDeviceMatrixPreview_Large Round 227dp": {
+    "captureLabel": "",
+    "functionName": "WearDeviceMatrixPreview",
+    "module": "samples:wear",
+    "renderBasename": "WearDeviceMatrixPreview_Large_Round_227dp.png",
+    "sha256": "1b7fe1d07909e6213ae30cd75739826630c3222fe9dc5f58ed2d4b293dc0053b",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/DeviceSpecPreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.DeviceSpecPreviewsKt.WearDeviceMatrixPreview_Small Round 192dp": {
+    "captureLabel": "",
+    "functionName": "WearDeviceMatrixPreview",
+    "module": "samples:wear",
+    "renderBasename": "WearDeviceMatrixPreview_Small_Round_192dp.png",
+    "sha256": "a14bb941e7aa6b746fc4d74d456605e72e9a1c0f581e8a07ee659aa9eff30415",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/DeviceSpecPreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.DeviceSpecPreviewsKt.WearDeviceMatrixPreview_XL Round 240dp": {
+    "captureLabel": "",
+    "functionName": "WearDeviceMatrixPreview",
+    "module": "samples:wear",
+    "renderBasename": "WearDeviceMatrixPreview_XL_Round_240dp.png",
+    "sha256": "746c2995b3964984385d5da108439de4fc7d584bff8552616dd9bfda7e14e037",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/DeviceSpecPreviews.kt"
+  },
   "samples:wear/com.example.samplewear.GestureHintPreviewsKt.MediaGestureScreenHintPreview_Media \u2014 hints on": {
     "captureLabel": "",
     "functionName": "MediaGestureScreenHintPreview",
@@ -3998,6 +4046,70 @@
     "renderBasename": "StepsTilePreview_Small_Round.png",
     "sha256": "0251b3830c1e3be16ffbcef5f26aba4e1440473191a72f1c2db50bbf493c7f52",
     "sourceFile": "src/main/kotlin/com/example/samplewear/TilePreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.WearLargeDevicePreviewsKt.ActivityListLargeDeviceMatrixPreview_450px \u00b7 225dp (Pixel Watch, Pixel Watch 2)": {
+    "captureLabel": "",
+    "functionName": "ActivityListLargeDeviceMatrixPreview",
+    "module": "samples:wear",
+    "renderBasename": "ActivityListLargeDeviceMatrixPreview_450px_225dp_Pixel_Watch_Pixel_Watch_2.png",
+    "sha256": "345472989088fe459726a97bc30cc0c394124159673a9f0387c6d612cf0467f2",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/WearLargeDevicePreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.WearLargeDevicePreviewsKt.ActivityListLargeDeviceMatrixPreview_456px \u00b7 228dp (Pixel Watch 3 45mm)": {
+    "captureLabel": "",
+    "functionName": "ActivityListLargeDeviceMatrixPreview",
+    "module": "samples:wear",
+    "renderBasename": "ActivityListLargeDeviceMatrixPreview_456px_228dp_Pixel_Watch_3_45mm.png",
+    "sha256": "4e083aa300e731422dc6717761d7a89fb5c3b250bb7e74b73c709151e1e90c93",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/WearLargeDevicePreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.WearLargeDevicePreviewsKt.ActivityListLargeDeviceMatrixPreview_466px \u00b7 233dp (OnePlus Watch 2, TicWatch Pro 5)": {
+    "captureLabel": "",
+    "functionName": "ActivityListLargeDeviceMatrixPreview",
+    "module": "samples:wear",
+    "renderBasename": "ActivityListLargeDeviceMatrixPreview_466px_233dp_OnePlus_Watch_2_TicWatch_Pro_5.png",
+    "sha256": "daecf32804bc549bbf48b863876440577b646e678d151a823b5e9a41c9314c71",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/WearLargeDevicePreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.WearLargeDevicePreviewsKt.ActivityListLargeDeviceMatrixPreview_480px \u00b7 240dp (Galaxy Watch Ultra, Watch 7 44mm)": {
+    "captureLabel": "",
+    "functionName": "ActivityListLargeDeviceMatrixPreview",
+    "module": "samples:wear",
+    "renderBasename": "ActivityListLargeDeviceMatrixPreview_480px_240dp_Galaxy_Watch_Ultra_Watch_7_44mm.png",
+    "sha256": "f4023483f16ce8adaf53183596924acc1399f5182f7712a9c913a7ea1056f7ea",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/WearLargeDevicePreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.WearLargeDevicePreviewsKt.WearLargeDeviceMatrixPreview_450px \u00b7 225dp (Pixel Watch, Pixel Watch 2)": {
+    "captureLabel": "",
+    "functionName": "WearLargeDeviceMatrixPreview",
+    "module": "samples:wear",
+    "renderBasename": "WearLargeDeviceMatrixPreview_450px_225dp_Pixel_Watch_Pixel_Watch_2.png",
+    "sha256": "53d02e81a13b39a68cb1d0abd28890f24a79822c7b67a326bfb657e082414f78",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/WearLargeDevicePreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.WearLargeDevicePreviewsKt.WearLargeDeviceMatrixPreview_456px \u00b7 228dp (Pixel Watch 3 45mm)": {
+    "captureLabel": "",
+    "functionName": "WearLargeDeviceMatrixPreview",
+    "module": "samples:wear",
+    "renderBasename": "WearLargeDeviceMatrixPreview_456px_228dp_Pixel_Watch_3_45mm.png",
+    "sha256": "617e9a9e843f7ef50f7faaca3cadcd0b6868004934f81770fdd65e42976d0ae7",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/WearLargeDevicePreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.WearLargeDevicePreviewsKt.WearLargeDeviceMatrixPreview_466px \u00b7 233dp (OnePlus Watch 2, TicWatch Pro 5)": {
+    "captureLabel": "",
+    "functionName": "WearLargeDeviceMatrixPreview",
+    "module": "samples:wear",
+    "renderBasename": "WearLargeDeviceMatrixPreview_466px_233dp_OnePlus_Watch_2_TicWatch_Pro_5.png",
+    "sha256": "a2d8b97a5769210f99c6a80d63c27f17cae4543576e3df8e31890417c74109a1",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/WearLargeDevicePreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.WearLargeDevicePreviewsKt.WearLargeDeviceMatrixPreview_480px \u00b7 240dp (Galaxy Watch Ultra, Watch 7 44mm)": {
+    "captureLabel": "",
+    "functionName": "WearLargeDeviceMatrixPreview",
+    "module": "samples:wear",
+    "renderBasename": "WearLargeDeviceMatrixPreview_480px_240dp_Galaxy_Watch_Ultra_Watch_7_44mm.png",
+    "sha256": "746c2995b3964984385d5da108439de4fc7d584bff8552616dd9bfda7e14e037",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/WearLargeDevicePreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemDefault_Glimmer \u00b7 Default": {
     "captureLabel": "",
