@@ -3264,6 +3264,13 @@ object ServeWeb {
     themeCss: String = "",
     unfurl: UnfurlMetadata? = null,
     displayTitle: String? = null,
+    /**
+     * Typography / layout annotations for the reference raster and the rendered frame. Either side
+     * may be empty — a producer that annotates only one panel still gets that panel's layers, and a
+     * session with no annotations at all renders exactly as before (no toggles, no payload).
+     */
+    referenceAnnotations: List<DesignAnnotation> = emptyList(),
+    actualAnnotations: List<DesignAnnotation> = emptyList(),
   ): String {
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
     val navSuffix =
@@ -3271,6 +3278,33 @@ object ServeWeb {
     val heading = displayTitle?.takeIf { it.isNotBlank() } ?: moduleLabel
     val actual = "$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png$q"
     val raster = "$basePath/reference/${WebEscaping.urlEncodeSegment(reference.id)}.png$q"
+    // One toggle per kind, offered only when some panel actually carries that kind — a control that
+    // reveals nothing is worse than no control. The payload rides inline rather than behind a fetch
+    // so the layers are there on first paint, like the rest of this page's data.
+    val annotated = referenceAnnotations + actualAnnotations
+    val annotationControls =
+      if (annotated.isEmpty()) ""
+      else {
+        val toggles =
+          listOf(AnnotationKind.LAYOUT to "Layout", AnnotationKind.TYPOGRAPHY to "Typography")
+            .filter { (kind, _) -> annotated.any { it.kind == kind } }
+            .joinToString("\n") { (kind, label) ->
+              "<label class=\"cp-annotation-toggle\"><input type=\"checkbox\" " +
+                "data-cp-annotation-kind=\"$kind\"> ${WebEscaping.htmlEscape(label)}</label>"
+            }
+        """
+        <div class="cp-annotation-controls" role="group" aria-label="Annotation layers">
+          <span class="cp-compare-control-label">Annotations</span>
+          $toggles
+        </div>
+        <script type="application/json" id="cp-annotations">${
+          encodeAnnotationPayload(
+            AnnotationPayload(reference = referenceAnnotations, actual = actualAnnotations)
+          )
+        }</script>
+        """
+          .trimIndent()
+      }
     val source = WebEscaping.htmlEscape(reference.source.provider)
     val revision =
       reference.source.revision
@@ -3322,10 +3356,11 @@ object ServeWeb {
           $referencePicker
           <div class="cp-reference-meta"><strong>Source:</strong> $source$revision</div>
           <div class="cp-reference-grid">
-            <section><h2>Reference</h2><div class="cp-compare-shot"><img src="$raster" alt="Design reference"></div></section>
+            <section><h2>Reference</h2><div class="cp-compare-shot" data-cp-annotated="reference"><img src="$raster" alt="Design reference"></div></section>
             <section><h2>Diff</h2><div class="cp-compare-shot"><canvas class="cp-reference-diff" aria-label="Highlighted pixel difference"></canvas></div></section>
-            <section><h2>Actual</h2><div class="cp-compare-shot"><img src="$actual" alt="Actual Compose preview"></div></section>
+            <section><h2>Actual</h2><div class="cp-compare-shot" data-cp-annotated="actual"><img src="$actual" alt="Actual Compose preview"></div></section>
           </div>
+          $annotationControls
           <p class="cp-reference-result" role="status">comparing…</p>
           <label class="cp-overlay-control">Overlay <input class="cp-overlay-range" type="range" min="0" max="100" value="50"><span>50%</span></label>
           <div class="cp-reference-overlay"><img src="$raster" alt=""><img src="$actual" alt=""></div>

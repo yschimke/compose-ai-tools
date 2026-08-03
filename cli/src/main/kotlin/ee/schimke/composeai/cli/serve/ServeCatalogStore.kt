@@ -444,6 +444,7 @@ class ServeCatalogStore(
     // or an authenticated remote request.
     val manifestReferences = fetchDesignReferences(base)
     writeDesignReferences(manifestReferences + catalog.references, base, staging)
+    writeAnnotations(base, staging)
 
     // The staged catalog is usable — atomically replace the live dir with it. The delete + rename
     // is near-instant (same filesystem), so the window where `dir` is absent is microseconds, not
@@ -1182,6 +1183,36 @@ class ServeCatalogStore(
         }
         .onFailure { System.err.println("serve: catalog $system figma vectors: ${it.message}") }
     }
+  }
+
+  /**
+   * Stage the published annotation manifest, if the catalog has one.
+   *
+   * A served catalog is a fresh staging directory assembled from fetched parts, not the published
+   * tree — so anything not copied here is invisible to [ServeBundleHost] no matter what the
+   * producer published. Unlike design references there are no assets to fetch: annotations are pure
+   * geometry keyed by preview and reference id, so staging is a straight copy of the manifest.
+   *
+   * Fail-soft like the rest of the staging path: a catalog with no manifest, or an unreadable one,
+   * simply serves without annotation layers.
+   */
+  private fun writeAnnotations(base: String, staging: File) {
+    val bytes =
+      runCatching {
+          fetchCatalogAsset(
+            "$base${ServeAnnotationStore.DIRECTORY}/${ServeAnnotationStore.INDEX_FILE}"
+          )
+        }
+        .getOrNull() ?: return
+    val manifest =
+      runCatching { json.decodeFromString(AnnotationManifest.serializer(), bytes.decodeToString()) }
+        .getOrNull()
+        ?.takeIf { it.schema == AnnotationManifest.SCHEMA } ?: return
+    if (manifest.previews.isEmpty() && manifest.references.isEmpty()) return
+    val dir = File(staging, ServeAnnotationStore.DIRECTORY)
+    dir.mkdirs()
+    File(dir, ServeAnnotationStore.INDEX_FILE)
+      .writeText(json.encodeToString(AnnotationManifest.serializer(), manifest))
   }
 
   private fun writeDesignReferences(

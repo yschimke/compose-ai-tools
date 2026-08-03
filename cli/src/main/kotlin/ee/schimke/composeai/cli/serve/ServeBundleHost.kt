@@ -137,6 +137,14 @@ class ServeBundleHost(
   override fun designReferenceRaster(referenceId: String): ByteArray? =
     designReferences.raster(referenceId)
 
+  private val annotations = ServeAnnotationStore.load(bundleDir, fileSystem)
+
+  override fun annotationsForPreview(previewId: String): List<DesignAnnotation> =
+    annotations.forPreview(previewId)
+
+  override fun annotationsForReference(referenceId: String): List<DesignAnnotation> =
+    annotations.forReference(referenceId)
+
   /**
    * Per-preview `state`/`theme` from the catalog's `previews/variants.json` manifest (written by
    * [ServeCatalogStore]). Empty for a plain uploaded bundle that carries no manifest — every

@@ -779,6 +779,43 @@ class ServeWebFixtureTest {
         sessionId = "compose-m3",
         trust = "branch:yschimke/compose-ai-tools@design-artifacts/compose-m3",
         isPublic = true,
+        // Both panels annotated, so the fixture covers the case the layers exist for: reading the
+        // reference's spec against the actual's. The layout boxes agree here and the type styles
+        // don't, which is what the page is meant to make obvious.
+        referenceAnnotations =
+          listOf(
+            DesignAnnotation(
+              kind = AnnotationKind.LAYOUT,
+              bounds = AnnotationBounds(x = 12, y = 12, width = 196, height = 48),
+              label = "pad 16dp · gap 8dp",
+              role = "Button",
+              detail = mapOf("padding" to "16", "gap" to "8", "cornerRadius" to "20"),
+            ),
+            DesignAnnotation(
+              kind = AnnotationKind.TYPOGRAPHY,
+              bounds = AnnotationBounds(x = 46, y = 26, width = 128, height = 20),
+              label = "labelLarge 14sp/20",
+              role = "Label",
+              detail = mapOf("token" to "labelLarge", "size" to "14", "lineHeight" to "20"),
+            ),
+          ),
+        actualAnnotations =
+          listOf(
+            DesignAnnotation(
+              kind = AnnotationKind.LAYOUT,
+              bounds = AnnotationBounds(x = 12, y = 12, width = 196, height = 48),
+              label = "pad 16dp · gap 8dp",
+              role = "Button",
+              detail = mapOf("padding" to "16", "gap" to "8", "cornerRadius" to "20"),
+            ),
+            DesignAnnotation(
+              kind = AnnotationKind.TYPOGRAPHY,
+              bounds = AnnotationBounds(x = 46, y = 26, width = 128, height = 20),
+              label = "bodyMedium 14sp/20",
+              role = "Label",
+              detail = mapOf("token" to "bodyMedium", "size" to "14", "lineHeight" to "20"),
+            ),
+          ),
       )
     // The same themed catalog served LIVE by a session whose app declares `@ThemeCatalog` themes:
     // the header's Theme control lists every configured theme (issue #2881) — the baked Light/Dark

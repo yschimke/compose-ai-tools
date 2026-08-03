@@ -138,6 +138,12 @@ class ServeCatalogLiveHost(
   override fun designReferenceRaster(referenceId: String): ByteArray? =
     baked.designReferenceRaster(referenceId)
 
+  override fun annotationsForPreview(previewId: String): List<DesignAnnotation> =
+    baked.annotationsForPreview(previewId)
+
+  override fun annotationsForReference(referenceId: String): List<DesignAnnotation> =
+    baked.annotationsForReference(referenceId)
+
   /**
    * The baked host's live-only (deferred) ids — previews it lists with no PNG behind them, which
    * the catalog publishes for on-demand render. Carried through so the routing below sends them to
