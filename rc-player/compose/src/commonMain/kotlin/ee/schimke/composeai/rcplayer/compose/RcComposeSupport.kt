@@ -3,6 +3,9 @@ package ee.schimke.composeai.rcplayer.compose
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
+import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleColumnLayout
+import ee.schimke.composeai.rcplayer.protocol.RcCollapsiblePriorityModifier
+import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
@@ -420,6 +423,54 @@ public fun RcDocument.composeSupportReport(
           )
       }
     }
+    if (operation is RcCollapsibleRowLayout) {
+      if (operation.horizontalPositioning !in setOf(1, 2, 3, 6, 7, 8)) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "CollapsibleRowLayout",
+            "horizontal position ${operation.horizontalPositioning} is not implemented",
+          )
+      }
+      if (operation.verticalPositioning !in setOf(2, 4, 5)) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "CollapsibleRowLayout",
+            "vertical position ${operation.verticalPositioning} is not implemented",
+          )
+      }
+    }
+    if (operation is RcCollapsibleColumnLayout) {
+      if (operation.horizontalPositioning !in 1..3) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "CollapsibleColumnLayout",
+            "horizontal position ${operation.horizontalPositioning} is not implemented",
+          )
+      }
+      if (operation.verticalPositioning !in setOf(2, 4, 5, 6, 7, 8)) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "CollapsibleColumnLayout",
+            "vertical position ${operation.verticalPositioning} is not implemented",
+          )
+      }
+    }
+    if (
+      operation is RcCollapsiblePriorityModifier &&
+        operation.orientation !in
+          setOf(RcCollapsiblePriorityModifier.HORIZONTAL, RcCollapsiblePriorityModifier.VERTICAL)
+    ) {
+      issues +=
+        RcComposeSupportIssue(
+          index,
+          "CollapsiblePriorityModifierOperation",
+          "orientation ${operation.orientation} is not implemented",
+        )
+    }
   }
   val functions = operations.filterIsInstance<RcFloatFunctionDefine>().associateBy { it.id }
   operations.forEachIndexed { index, operation ->
@@ -552,6 +603,8 @@ private fun hasInvalidDrawContent(
               RcOpcodes.LAYOUT_ROW,
               RcOpcodes.LAYOUT_COLUMN,
               RcOpcodes.LAYOUT_FLOW,
+              RcOpcodes.LAYOUT_COLLAPSIBLE_ROW,
+              RcOpcodes.LAYOUT_COLLAPSIBLE_COLUMN,
               RcOpcodes.LAYOUT_CANVAS,
               RcOpcodes.LAYOUT_FIT_BOX,
             )

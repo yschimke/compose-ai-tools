@@ -2,6 +2,8 @@ package ee.schimke.composeai.rcplayer.runtime
 
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
+import ee.schimke.composeai.rcplayer.protocol.RcCollapsiblePriorityModifier
+import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
@@ -24,6 +26,30 @@ import kotlin.test.assertIs
 
 class RcLayoutTreeTest {
   private val header = RcHeader(RcVersion(1, 0, 0), modern = false)
+
+  @Test
+  fun extractsCollapsiblePriorityFromAChildWithoutMutatingTheTree() {
+    val root =
+      requireNotNull(
+        treeOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcCollapsibleRowLayout(3, 30, 1, 4, RcFloatWord.literal(0f)),
+          RcLayoutContent(4),
+          RcCanvasLayout(5, 50),
+          RcCollapsiblePriorityModifier(
+            RcCollapsiblePriorityModifier.HORIZONTAL,
+            RcFloatWord.literal(12f),
+          ),
+          ends = 5,
+        )
+      )
+
+    val outerContent = assertIs<RcLayoutNode.Content>(root.children.single())
+    val row = assertIs<RcLayoutNode.CollapsibleRow>(outerContent.children.single())
+    val child = assertIs<RcLayoutNode.Canvas>(row.content.children.single())
+    assertEquals(12f, child.modifiers.collapsiblePriority?.priority?.value)
+  }
 
   @Test
   fun linksFlowAsAnImmutableLayoutContainer() {

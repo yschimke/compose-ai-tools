@@ -77,6 +77,8 @@ import androidx.compose.remote.core.operations.layout.LayoutComponentContent
 import androidx.compose.remote.core.operations.layout.RootLayoutComponent
 import androidx.compose.remote.core.operations.layout.managers.BoxLayout
 import androidx.compose.remote.core.operations.layout.managers.CanvasLayout
+import androidx.compose.remote.core.operations.layout.managers.CollapsibleColumnLayout
+import androidx.compose.remote.core.operations.layout.managers.CollapsibleRowLayout
 import androidx.compose.remote.core.operations.layout.managers.ColumnLayout
 import androidx.compose.remote.core.operations.layout.managers.CoreText
 import androidx.compose.remote.core.operations.layout.managers.FitBoxLayout
@@ -88,6 +90,7 @@ import androidx.compose.remote.core.operations.layout.managers.TextStyle as Andr
 import androidx.compose.remote.core.operations.layout.modifiers.BackgroundModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.BorderModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ClipRectModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.CollapsiblePriorityModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ComponentVisibilityOperation
 import androidx.compose.remote.core.operations.layout.modifiers.DimensionConstraintsModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.DimensionModifierOperation
@@ -125,6 +128,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
 import ee.schimke.composeai.rcplayer.protocol.RcClipRectModifier
+import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleColumnLayout as PlayerCollapsibleColumnLayout
+import ee.schimke.composeai.rcplayer.protocol.RcCollapsiblePriorityModifier
+import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleRowLayout as PlayerCollapsibleRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
@@ -193,6 +199,39 @@ import kotlin.test.assertTrue
  * from this test module: AndroidX remote-core/Java player is the protocol authority.
  */
 class AndroidxWireCompatibilityTest {
+  @Test
+  fun androidXCollapsibleLayoutsAndPriorityRoundTripExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 180, 80, 1f, 0L)
+    CollapsibleRowLayout.apply(
+      buffer,
+      3,
+      30,
+      RowLayout.SPACE_BETWEEN,
+      RowLayout.CENTER,
+      Utils.asNan(42),
+    )
+    CollapsiblePriorityModifierOperation.apply(buffer, 0, Utils.asNan(43))
+    CollapsibleColumnLayout.apply(buffer, 4, 40, ColumnLayout.END, ColumnLayout.SPACE_AROUND, 6.5f)
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+
+    assertEquals(
+      42,
+      assertIs<PlayerCollapsibleRowLayout>(document.operations[0]).spacedBy.referencedId,
+    )
+    assertEquals(
+      43,
+      assertIs<RcCollapsiblePriorityModifier>(document.operations[1]).priority.referencedId,
+    )
+    assertEquals(
+      6.5f,
+      assertIs<PlayerCollapsibleColumnLayout>(document.operations[2]).spacedBy.value,
+    )
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
   private val onePixelPng =
     Base64.getDecoder()
       .decode(

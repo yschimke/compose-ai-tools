@@ -16,10 +16,12 @@ import androidx.compose.remote.core.operations.layout.LayoutComponentContent
 import androidx.compose.remote.core.operations.layout.RootLayoutComponent
 import androidx.compose.remote.core.operations.layout.managers.BoxLayout
 import androidx.compose.remote.core.operations.layout.managers.CanvasLayout
+import androidx.compose.remote.core.operations.layout.managers.CollapsibleRowLayout
 import androidx.compose.remote.core.operations.layout.managers.CoreText
 import androidx.compose.remote.core.operations.layout.managers.ImageLayout
 import androidx.compose.remote.core.operations.layout.managers.RowLayout
 import androidx.compose.remote.core.operations.layout.managers.TextStyle
+import androidx.compose.remote.core.operations.layout.modifiers.CollapsiblePriorityModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.DimensionModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HeightModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.OffsetModifierOperation
@@ -128,14 +130,30 @@ public fun main(args: Array<String>) {
   ContainerEnd.apply(buffer)
 
   LayoutComponentContent.apply(buffer, 4)
-  RowLayout.apply(buffer, 5, 50, RowLayout.SPACE_EVENLY, RowLayout.CENTER, 0f)
-  exactWidth(buffer, 280f)
+  CollapsibleRowLayout.apply(buffer, 5, 50, RowLayout.SPACE_BETWEEN, RowLayout.CENTER, 0f)
+  exactWidth(buffer, 150f)
   exactHeight(buffer, 140f)
   OffsetModifierOperation.apply(buffer, 0f, 20f)
   LayoutComponentContent.apply(buffer, 6)
-  canvas(buffer, componentId = 7, animationId = 70, width = 54f, height = 76f, 0xff6750a4.toInt())
-  canvas(buffer, componentId = 9, animationId = 90, width = 54f, height = 112f, 0xffffd8e4.toInt())
-  image(buffer, componentId = 11, animationId = 110, width = 54f, height = 58f)
+  canvas(
+    buffer,
+    componentId = 7,
+    animationId = 70,
+    width = 54f,
+    height = 76f,
+    color = 0xff6750a4.toInt(),
+    priority = 1f,
+  )
+  canvas(
+    buffer,
+    componentId = 9,
+    animationId = 90,
+    width = 54f,
+    height = 112f,
+    color = 0xffffd8e4.toInt(),
+    priority = 3f,
+  )
+  image(buffer, componentId = 11, animationId = 110, width = 54f, height = 58f, priority = 2f)
   ContainerEnd.apply(buffer) // row content
   ContainerEnd.apply(buffer) // row
   CoreText.apply(
@@ -187,10 +205,12 @@ private fun image(
   animationId: Int,
   width: Float,
   height: Float,
+  priority: Float,
 ) {
   ImageLayout.apply(buffer, componentId, animationId, 1000, 6, 1f)
   exactWidth(buffer, width)
   exactHeight(buffer, height)
+  CollapsiblePriorityModifierOperation.apply(buffer, 0, priority)
   ContainerEnd.apply(buffer)
 }
 
@@ -201,10 +221,12 @@ private fun canvas(
   width: Float,
   height: Float,
   color: Int,
+  priority: Float,
 ) {
   CanvasLayout.apply(buffer, componentId, animationId)
   exactWidth(buffer, width)
   exactHeight(buffer, height)
+  CollapsiblePriorityModifierOperation.apply(buffer, 0, priority)
   LayoutComponentContent.apply(buffer, componentId + 1)
   CanvasContent.apply(buffer, componentId + 100)
   paint(buffer, color)

@@ -90,6 +90,8 @@ public object RcDocumentCodec {
         RowLayoutCodec,
         ColumnLayoutCodec,
         FlowLayoutCodec,
+        CollapsibleRowLayoutCodec,
+        CollapsibleColumnLayoutCodec,
         FitBoxLayoutCodec,
         ImageLayoutCodec,
         TextLayoutCodec,
@@ -107,6 +109,7 @@ public object RcDocumentCodec {
         WidthInModifierCodec,
         HeightInModifierCodec,
         DimensionConstraintsModifierCodec,
+        CollapsiblePriorityModifierCodec,
         VisibilityModifierCodec,
         GraphicsLayerModifierCodec,
         four(RcOpcodes.CLIP_RECT, "ClipRect"),
@@ -302,6 +305,49 @@ private object FlowLayoutCodec : RcOperationCodec<RcFlowLayout> {
     output.writeFloatWord(value.spacedBy)
     output.writeInt(value.maxItemsInEachRow)
     output.writeInt(value.maxLines)
+  }
+}
+
+private object CollapsibleRowLayoutCodec : RcOperationCodec<RcCollapsibleRowLayout> {
+  override val spec = RcOperationSpec(RcOpcodes.LAYOUT_COLLAPSIBLE_ROW, "CollapsibleRowLayout")
+
+  override fun decode(input: RcWireReader) =
+    RcCollapsibleRowLayout(
+      input.readInt("componentId"),
+      input.readInt("animationId"),
+      input.readInt("horizontalPositioning"),
+      input.readInt("verticalPositioning"),
+      input.readFloatWord("spacedBy"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcCollapsibleRowLayout) {
+    output.writeInt(value.componentId)
+    output.writeInt(value.animationId)
+    output.writeInt(value.horizontalPositioning)
+    output.writeInt(value.verticalPositioning)
+    output.writeFloatWord(value.spacedBy)
+  }
+}
+
+private object CollapsibleColumnLayoutCodec : RcOperationCodec<RcCollapsibleColumnLayout> {
+  override val spec =
+    RcOperationSpec(RcOpcodes.LAYOUT_COLLAPSIBLE_COLUMN, "CollapsibleColumnLayout")
+
+  override fun decode(input: RcWireReader) =
+    RcCollapsibleColumnLayout(
+      input.readInt("componentId"),
+      input.readInt("animationId"),
+      input.readInt("horizontalPositioning"),
+      input.readInt("verticalPositioning"),
+      input.readFloatWord("spacedBy"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcCollapsibleColumnLayout) {
+    output.writeInt(value.componentId)
+    output.writeInt(value.animationId)
+    output.writeInt(value.horizontalPositioning)
+    output.writeInt(value.verticalPositioning)
+    output.writeFloatWord(value.spacedBy)
   }
 }
 
@@ -690,6 +736,19 @@ private object DimensionConstraintsModifierCodec :
     output.writeU8(value.type)
     output.writeFloatWord(value.minimum)
     output.writeFloatWord(value.maximum)
+  }
+}
+
+private object CollapsiblePriorityModifierCodec : RcOperationCodec<RcCollapsiblePriorityModifier> {
+  override val spec =
+    RcOperationSpec(RcOpcodes.MODIFIER_COLLAPSIBLE_PRIORITY, "CollapsiblePriorityModifierOperation")
+
+  override fun decode(input: RcWireReader) =
+    RcCollapsiblePriorityModifier(input.readInt("orientation"), input.readFloatWord("priority"))
+
+  override fun encode(output: RcWireWriter, value: RcCollapsiblePriorityModifier) {
+    output.writeInt(value.orientation)
+    output.writeFloatWord(value.priority)
   }
 }
 

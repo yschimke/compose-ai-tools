@@ -70,6 +70,8 @@ public object RcDocumentLinker {
       RcOpcodes.LAYOUT_ROW,
       RcOpcodes.LAYOUT_COLUMN,
       RcOpcodes.LAYOUT_FLOW,
+      RcOpcodes.LAYOUT_COLLAPSIBLE_ROW,
+      RcOpcodes.LAYOUT_COLLAPSIBLE_COLUMN,
       RcOpcodes.LAYOUT_CANVAS,
       RcOpcodes.LAYOUT_FIT_BOX,
       RcOpcodes.LAYOUT_IMAGE,

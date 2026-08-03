@@ -9,6 +9,33 @@ import kotlin.test.assertTrue
 
 class RcDocumentCodecTest {
   @Test
+  fun collapsibleLayoutsAndPriorityRoundTripWithoutLosingVariableBits() {
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), modern = false),
+        listOf(
+          RcCollapsibleRowLayout(1, 10, 6, 2, RcFloatWord(0x7fc0002a)),
+          RcCollapsiblePriorityModifier(
+            RcCollapsiblePriorityModifier.HORIZONTAL,
+            RcFloatWord(0x7fc0002b),
+          ),
+          RcCollapsibleColumnLayout(2, 20, 3, 8, RcFloatWord.literal(7.5f)),
+        ),
+      )
+
+    val bytes = RcDocumentCodec.encode(document)
+    val decoded = RcDocumentCodec.decode(bytes)
+
+    assertEquals(document, decoded)
+    assertContentEquals(bytes, RcDocumentCodec.encode(decoded))
+    assertEquals(42, assertIs<RcCollapsibleRowLayout>(decoded.operations[0]).spacedBy.referencedId)
+    assertEquals(
+      43,
+      assertIs<RcCollapsiblePriorityModifier>(decoded.operations[1]).priority.referencedId,
+    )
+  }
+
+  @Test
   fun foundationalLayoutOperationsRoundTripWithoutLosingFloatReferenceBits() {
     val operations =
       listOf(

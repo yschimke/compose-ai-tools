@@ -73,6 +73,8 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -80,6 +82,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
 import ee.schimke.composeai.rcplayer.protocol.RcClipRectModifier
+import ee.schimke.composeai.rcplayer.protocol.RcCollapsiblePriorityModifier
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
@@ -428,6 +431,54 @@ private fun RenderLayoutNode(
         )
       }
     }
+    is RcLayoutNode.CollapsibleRow -> {
+      val density = androidx.compose.ui.platform.LocalDensity.current
+      RcCollapsibleLayout(
+        children = node.content.children,
+        orientation = RcCollapseOrientation.Horizontal,
+        mainPositioning = node.operation.horizontalPositioning,
+        crossPositioning = node.operation.verticalPositioning,
+        spacing = with(density) { state.resolve(node.operation.spacedBy).dp.roundToPx() },
+        modifier =
+          effectiveModifier.applyComponentModifiers(
+            node.modifiers,
+            state,
+            fillMissingDimensions = false,
+            node.canvasOperations,
+            textMeasurer,
+            images,
+            theme,
+          ),
+        state = state,
+        textMeasurer = textMeasurer,
+        images = images,
+        theme = theme,
+      )
+    }
+    is RcLayoutNode.CollapsibleColumn -> {
+      val density = androidx.compose.ui.platform.LocalDensity.current
+      RcCollapsibleLayout(
+        children = node.content.children,
+        orientation = RcCollapseOrientation.Vertical,
+        mainPositioning = node.operation.verticalPositioning,
+        crossPositioning = node.operation.horizontalPositioning,
+        spacing = with(density) { state.resolve(node.operation.spacedBy).dp.roundToPx() },
+        modifier =
+          effectiveModifier.applyComponentModifiers(
+            node.modifiers,
+            state,
+            fillMissingDimensions = false,
+            node.canvasOperations,
+            textMeasurer,
+            images,
+            theme,
+          ),
+        state = state,
+        textMeasurer = textMeasurer,
+        images = images,
+        theme = theme,
+      )
+    }
     is RcLayoutNode.Image -> {
       val image = images[node.operation.bitmapId]
       val density = androidx.compose.ui.platform.LocalDensity.current
@@ -608,6 +659,133 @@ private fun RenderLayoutNode(
       }
     }
   }
+}
+
+private enum class RcCollapseOrientation {
+  Horizontal,
+  Vertical,
+}
+
+@Composable
+private fun RcCollapsibleLayout(
+  children: List<RcLayoutNode>,
+  orientation: RcCollapseOrientation,
+  mainPositioning: Int,
+  crossPositioning: Int,
+  spacing: Int,
+  modifier: Modifier,
+  state: RcPlayerState,
+  textMeasurer: TextMeasurer,
+  images: Map<Int, ImageBitmap>,
+  theme: Int,
+) {
+  Layout(
+    content = {
+      children.forEach { child ->
+        // Keep one measurable per wire child even when its visibility modifier resolves to gone.
+        Box {
+          RenderLayoutNode(
+            child,
+            state = state,
+            textMeasurer = textMeasurer,
+            images = images,
+            theme = theme,
+          )
+        }
+      }
+    },
+    modifier = modifier,
+  ) { measurables, constraints ->
+    val childConstraints = constraints.copy(minWidth = 0, minHeight = 0)
+    val placeables = measurables.map { it.measure(childConstraints) }
+    val mainSizes = placeables.map {
+      if (orientation == RcCollapseOrientation.Horizontal) it.width else it.height
+    }
+    val priorities = children.map { child ->
+      val priority = child.modifiers.collapsiblePriority
+      val expectedOrientation =
+        if (orientation == RcCollapseOrientation.Horizontal) {
+          RcCollapsiblePriorityModifier.HORIZONTAL
+        } else {
+          RcCollapsiblePriorityModifier.VERTICAL
+        }
+      if (priority?.orientation == expectedOrientation) state.resolve(priority.priority)
+      else Float.MAX_VALUE
+    }
+    val maximumMain =
+      if (orientation == RcCollapseOrientation.Horizontal) constraints.maxWidth
+      else constraints.maxHeight
+    val retained = selectCollapsibleChildren(mainSizes, priorities, maximumMain)
+    val retainedIndices = retained.indices.filter { retained[it] }
+    val retainedMainSizes = retainedIndices.map { mainSizes[it] }.toIntArray()
+    val retainedCrossSize =
+      retainedIndices.maxOfOrNull {
+        if (orientation == RcCollapseOrientation.Horizontal) placeables[it].height
+        else placeables[it].width
+      } ?: 0
+    val naturalMain =
+      retainedMainSizes.sum() + spacing * (retainedMainSizes.size - 1).coerceAtLeast(0)
+    val width =
+      constraints.constrainWidth(
+        if (orientation == RcCollapseOrientation.Horizontal) naturalMain else retainedCrossSize
+      )
+    val height =
+      constraints.constrainHeight(
+        if (orientation == RcCollapseOrientation.Horizontal) retainedCrossSize else naturalMain
+      )
+    val mainAvailable = if (orientation == RcCollapseOrientation.Horizontal) width else height
+    val mainPositions =
+      arrangeLinear(
+        mainAvailable,
+        retainedMainSizes,
+        mainPositioning,
+        spacing,
+        reverse =
+          orientation == RcCollapseOrientation.Horizontal && layoutDirection == LayoutDirection.Rtl,
+      )
+    layout(width, height) {
+      retainedIndices.forEachIndexed { retainedIndex, childIndex ->
+        val placeable = placeables[childIndex]
+        val crossAvailable = if (orientation == RcCollapseOrientation.Horizontal) height else width
+        val crossSize =
+          if (orientation == RcCollapseOrientation.Horizontal) placeable.height else placeable.width
+        val crossPosition =
+          arrangeLinear(
+            crossAvailable,
+            intArrayOf(crossSize),
+            crossPositioning,
+            spacing = 0,
+            reverse =
+              orientation == RcCollapseOrientation.Vertical &&
+                layoutDirection == LayoutDirection.Rtl,
+          )[0]
+        if (orientation == RcCollapseOrientation.Horizontal) {
+          placeable.place(mainPositions[retainedIndex], crossPosition)
+        } else {
+          placeable.place(crossPosition, mainPositions[retainedIndex])
+        }
+      }
+    }
+  }
+}
+
+/** AndroidX alpha16 priority sort and first-overflow cutoff; spacing is deliberately excluded. */
+internal fun selectCollapsibleChildren(
+  mainSizes: List<Int>,
+  priorities: List<Float>,
+  maximumMain: Int,
+): BooleanArray {
+  require(mainSizes.size == priorities.size)
+  val retained = BooleanArray(mainSizes.size)
+  val ranked =
+    mainSizes.indices.sortedWith { left, right -> (priorities[right] - priorities[left]).toInt() }
+  var used = 0
+  for (index in ranked) {
+    if (used + mainSizes[index] > maximumMain) break
+    retained[index] = true
+    used += mainSizes[index]
+  }
+  return retained
 }
 
 private fun RcTextLayout.composeTextAlign(): TextAlign = androidXTextAlign(textAlign)

@@ -708,6 +708,28 @@ public data class RcFlowLayout(
   override val opcode: Int = RcOpcodes.LAYOUT_FLOW
 }
 
+/** Row that omits lower-priority children when its measured width is exhausted. */
+public data class RcCollapsibleRowLayout(
+  val componentId: Int,
+  val animationId: Int,
+  val horizontalPositioning: Int,
+  val verticalPositioning: Int,
+  val spacedBy: RcFloatWord,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.LAYOUT_COLLAPSIBLE_ROW
+}
+
+/** Column that omits lower-priority children when its measured height is exhausted. */
+public data class RcCollapsibleColumnLayout(
+  val componentId: Int,
+  val animationId: Int,
+  val horizontalPositioning: Int,
+  val verticalPositioning: Int,
+  val spacedBy: RcFloatWord,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.LAYOUT_COLLAPSIBLE_COLUMN
+}
+
 /** Selects the first child that fits the available size. */
 public data class RcFitBoxLayout(
   val componentId: Int,
@@ -927,6 +949,17 @@ public data class RcDimensionConstraintsModifier(
   }
 }
 
+/** Orientation-specific retention priority used by collapsible row/column layouts. */
+public data class RcCollapsiblePriorityModifier(val orientation: Int, val priority: RcFloatWord) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_COLLAPSIBLE_PRIORITY
+
+  public companion object {
+    public const val HORIZONTAL: Int = 0
+    public const val VERTICAL: Int = 1
+  }
+}
+
 /** Component visibility is read from the referenced AndroidX integer variable. */
 public data class RcVisibilityModifier(val visibilityId: Int) : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_VISIBILITY
@@ -1082,9 +1115,12 @@ public object RcOpcodes {
   public const val MODIFIER_OFFSET: Int = 221
   public const val MODIFIER_ZINDEX: Int = 223
   public const val MODIFIER_GRAPHICS_LAYER: Int = 224
+  public const val LAYOUT_COLLAPSIBLE_ROW: Int = 230
   public const val MODIFIER_WIDTH_IN: Int = 231
   public const val MODIFIER_HEIGHT_IN: Int = 232
+  public const val LAYOUT_COLLAPSIBLE_COLUMN: Int = 233
   public const val LAYOUT_IMAGE: Int = 234
+  public const val MODIFIER_COLLAPSIBLE_PRIORITY: Int = 235
   public const val CORE_TEXT: Int = 239
   public const val LAYOUT_FLOW: Int = 240
   public const val TEXT_STYLE: Int = 242

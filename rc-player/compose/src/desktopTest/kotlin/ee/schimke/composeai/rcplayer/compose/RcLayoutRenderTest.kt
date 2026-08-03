@@ -8,6 +8,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
+import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleColumnLayout
+import ee.schimke.composeai.rcplayer.protocol.RcCollapsiblePriorityModifier
+import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionConstraintsModifier
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
@@ -41,11 +44,42 @@ import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.jetbrains.skia.Bitmap
 
 class RcLayoutRenderTest {
+  @Test
+  fun collapsibleSelectionUsesAndroidXPriorityOrderAndFirstOverflowCutoff() {
+    assertContentEquals(
+      booleanArrayOf(false, true, true),
+      selectCollapsibleChildren(
+        mainSizes = listOf(40, 40, 20),
+        priorities = listOf(1f, 3f, 2f),
+        maximumMain = 70,
+      ),
+    )
+    assertContentEquals(
+      booleanArrayOf(true, false),
+      selectCollapsibleChildren(
+        mainSizes = listOf(60, 20),
+        priorities = listOf(Float.MAX_VALUE, 100f),
+        maximumMain = 70,
+      ),
+    )
+  }
+
+  @Test
+  fun collapsibleRowRetainsRankedChildrenButPlacesThemInWireOrder() {
+    assertCollapsiblePixels(horizontal = true)
+  }
+
+  @Test
+  fun collapsibleColumnRetainsRankedChildrenButPlacesThemInWireOrder() {
+    assertCollapsiblePixels(horizontal = false)
+  }
+
   @Test
   fun flowWrapsAndHonorsMaximumItemsAndLines() {
     val green = 0xff00ff00.toInt()
@@ -763,6 +797,73 @@ class RcLayoutRenderTest {
         RcFloatWord.literal(size),
         RcFloatWord.literal(size),
       ),
+      RcNoArg(RcOpcodes.CONTAINER_END),
+      RcNoArg(RcOpcodes.CONTAINER_END),
+    )
+
+  private fun assertCollapsiblePixels(horizontal: Boolean) {
+    val red = 0xffff0000.toInt()
+    val green = 0xff00ff00.toInt()
+    val blue = 0xff0000ff.toInt()
+    val orientation =
+      if (horizontal) RcCollapsiblePriorityModifier.HORIZONTAL
+      else RcCollapsiblePriorityModifier.VERTICAL
+    val layout: RcOperation =
+      if (horizontal) {
+        RcCollapsibleRowLayout(3, 30, 1, 4, RcFloatWord.literal(0f))
+      } else {
+        RcCollapsibleColumnLayout(3, 30, 1, 4, RcFloatWord.literal(0f))
+      }
+    val width = if (horizontal) 70 else 40
+    val height = if (horizontal) 40 else 70
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = width, legacyHeight = height, modern = false),
+        listOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          layout,
+          width(width.toFloat()),
+          height(height.toFloat()),
+          RcLayoutContent(4),
+        ) +
+          collapsibleCanvas(5, 40f, red, orientation, 1f) +
+          collapsibleCanvas(6, 40f, green, orientation, 3f) +
+          collapsibleCanvas(7, 20f, blue, orientation, 2f) +
+          List(4) { RcNoArg(RcOpcodes.CONTAINER_END) },
+      )
+    val scene =
+      ImageComposeScene(width = width, height = height, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val image = scene.render()
+      val bitmap = Bitmap().apply { allocN32Pixels(width, height) }
+      check(image.readPixels(bitmap))
+
+      assertEquals(green, bitmap.getColor(5, 5))
+      assertEquals(blue, bitmap.getColor(if (horizontal) 45 else 5, if (horizontal) 5 else 45))
+      assertEquals(0, bitmap.getColor(if (horizontal) 65 else 5, if (horizontal) 5 else 65))
+    } finally {
+      scene.close()
+    }
+  }
+
+  private fun collapsibleCanvas(
+    componentId: Int,
+    size: Float,
+    color: Int,
+    orientation: Int,
+    priority: Float,
+  ): List<RcOperation> =
+    listOf(
+      RcCanvasLayout(componentId, componentId * 10),
+      width(size),
+      height(size),
+      RcCollapsiblePriorityModifier(orientation, RcFloatWord.literal(priority)),
+      RcNoArg(RcOpcodes.CANVAS_OPERATIONS),
+      RcPaintData(listOf(4, color)),
+      rect(size),
       RcNoArg(RcOpcodes.CONTAINER_END),
       RcNoArg(RcOpcodes.CONTAINER_END),
     )

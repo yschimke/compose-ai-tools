@@ -6,6 +6,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
 import ee.schimke.composeai.rcplayer.protocol.RcClipRectModifier
+import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleColumnLayout
+import ee.schimke.composeai.rcplayer.protocol.RcCollapsiblePriorityModifier
+import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionConstraintsModifier
@@ -42,6 +45,7 @@ public data class RcLayoutModifiers(
   val placementModifiers: List<RcOperation> = emptyList(),
   /** Extra size constraints are evaluated before the component's requested dimensions. */
   val dimensionConstraints: List<RcOperation> = emptyList(),
+  val collapsiblePriority: RcCollapsiblePriorityModifier? = null,
   val visibility: RcVisibilityModifier? = null,
   val graphicsLayer: RcGraphicsLayerModifier? = null,
 )
@@ -116,6 +120,26 @@ public sealed interface RcLayoutNode {
 
   public data class Flow(
     val operation: RcFlowLayout,
+    override val modifiers: RcLayoutModifiers,
+    val content: Content,
+    val canvasOperations: List<RcLinkedNode>?,
+  ) : RcLayoutNode {
+    override val componentId: Int = operation.componentId
+    override val animationId: Int = operation.animationId
+  }
+
+  public data class CollapsibleRow(
+    val operation: RcCollapsibleRowLayout,
+    override val modifiers: RcLayoutModifiers,
+    val content: Content,
+    val canvasOperations: List<RcLinkedNode>?,
+  ) : RcLayoutNode {
+    override val componentId: Int = operation.componentId
+    override val animationId: Int = operation.animationId
+  }
+
+  public data class CollapsibleColumn(
+    val operation: RcCollapsibleColumnLayout,
     override val modifiers: RcLayoutModifiers,
     val content: Content,
     val canvasOperations: List<RcLinkedNode>?,
@@ -246,6 +270,20 @@ public object RcLayoutTree {
             requiredContent(container, seenIds, styles),
             canvasOperations(container),
           )
+        is RcCollapsibleRowLayout ->
+          RcLayoutNode.CollapsibleRow(
+            operation,
+            modifiers,
+            requiredContent(container, seenIds, styles),
+            canvasOperations(container),
+          )
+        is RcCollapsibleColumnLayout ->
+          RcLayoutNode.CollapsibleColumn(
+            operation,
+            modifiers,
+            requiredContent(container, seenIds, styles),
+            canvasOperations(container),
+          )
         is RcFitBoxLayout ->
           RcLayoutNode.FitBox(
             operation,
@@ -360,6 +398,8 @@ public object RcLayoutTree {
         },
       visibility = operations.singleModifier<RcVisibilityModifier>(container.operation),
       graphicsLayer = operations.singleModifier<RcGraphicsLayerModifier>(container.operation),
+      collapsiblePriority =
+        operations.singleModifier<RcCollapsiblePriorityModifier>(container.operation),
     )
   }
 
@@ -391,6 +431,8 @@ public object RcLayoutTree {
       this is RcRowLayout ||
       this is RcColumnLayout ||
       this is RcFlowLayout ||
+      this is RcCollapsibleRowLayout ||
+      this is RcCollapsibleColumnLayout ||
       this is RcFitBoxLayout ||
       this is RcImageLayout ||
       this is RcTextLayout ||
