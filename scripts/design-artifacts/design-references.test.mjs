@@ -128,6 +128,100 @@ test("a dark sticker never lands on the light function", () => {
   assert.deepEqual(light, [undefined]);
 });
 
+test("two variants sharing a state but differing in props each claim their own sticker", () => {
+  // Matching on only the FIRST declared axis let the `icon+label` variant claim both
+  // disabled stickers — publishing its reference against the wrong one and leaving the
+  // `label` variant unmapped. Every declared axis has to match.
+  const spec = {
+    groups: [
+      {
+        components: [
+          {
+            componentId: "Button/Filled",
+            preview: "FilledButtonPreview",
+            variants: [
+              {
+                state: "disabled",
+                props: { content: "icon+label" },
+                preview: "FilledButtonDisabledIconPreview",
+              },
+              {
+                state: "disabled",
+                props: { content: "label" },
+                preview: "FilledButtonDisabledLabelPreview",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const catalog = {
+    components: [
+      {
+        componentId: "Button/Filled",
+        images: [
+          { path: "images/button-filled/ideal__default.png", state: "default" },
+          {
+            path: "images/button-filled/ideal__disabled__content-icon-label.png",
+            state: "disabled",
+            props: { content: "icon+label" },
+          },
+          {
+            path: "images/button-filled/ideal__disabled__content-label.png",
+            state: "disabled",
+            props: { content: "label" },
+          },
+        ],
+      },
+    ],
+  };
+
+  const index = imagesByPreviewFunction(spec, catalog);
+
+  assert.deepEqual(
+    index.get("FilledButtonDisabledIconPreview").map((m) => m.image.path),
+    ["images/button-filled/ideal__disabled__content-icon-label.png"],
+  );
+  assert.deepEqual(
+    index.get("FilledButtonDisabledLabelPreview").map((m) => m.image.path),
+    ["images/button-filled/ideal__disabled__content-label.png"],
+  );
+  assert.deepEqual(
+    index.get("FilledButtonPreview").map((m) => m.image.path),
+    ["images/button-filled/ideal__default.png"],
+  );
+});
+
+test("a variant that declares no axis claims nothing", () => {
+  const spec = {
+    groups: [
+      {
+        components: [
+          {
+            componentId: "Button/Filled",
+            preview: "FilledButtonPreview",
+            variants: [{ preview: "UnderSpecifiedPreview" }],
+          },
+        ],
+      },
+    ],
+  };
+  const catalog = {
+    components: [
+      {
+        componentId: "Button/Filled",
+        images: [{ path: "images/button-filled/ideal__default.png", state: "default" }],
+      },
+    ],
+  };
+
+  const index = imagesByPreviewFunction(spec, catalog);
+
+  assert.equal(index.has("UnderSpecifiedPreview"), false);
+  assert.equal(index.get("FilledButtonPreview").length, 1);
+});
+
 test("planDesignReferences maps design-map entries onto serve preview ids", () => {
   const designMap = {
     components: [

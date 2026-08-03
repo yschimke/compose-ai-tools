@@ -98,8 +98,17 @@ if (!fs.existsSync(catalogPath)) {
   process.exit(2);
 }
 
+// The spec is what joins a design-map code handle to a published sticker, so without it there is
+// nothing to map. Warn and stop rather than throwing ENOENT: a caller that points `--spec` at a
+// path this repo doesn't have must not take the catalog's publish down with it.
+const specPath = path.resolve(REPO, SPEC);
+if (!fs.existsSync(specPath)) {
+  warn(`no catalog spec at ${SPEC}; cannot map design references without one`);
+  process.exit(STRICT ? 1 : 0);
+}
+
 const catalog = readJson(catalogPath);
-const spec = readJson(path.resolve(REPO, SPEC), { comments: true });
+const spec = readJson(specPath, { comments: true });
 const designMap = readJson(designMapPath);
 
 // The serve preview id is derived by restating a Kotlin function; check that restatement against

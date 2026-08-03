@@ -30,6 +30,8 @@
  * `emit-design-references.mjs`, which drives this.
  */
 
+import { imageHasVariantAxes } from "./catalog-variants.mjs";
+
 /** The manifest `schema` the serve host requires; anything else is ignored wholesale. */
 export const REFERENCES_SCHEMA = "compose-preview-references/v1";
 
@@ -92,25 +94,6 @@ export function functionNameOf(code) {
   return member === "" ? null : member;
 }
 
-/** Does this image carry the props a spec variant declares? Extra image props are fine. */
-function propsMatch(image, props) {
-  const declared = Object.entries(props ?? {});
-  if (declared.length === 0) return true;
-  const actual = image?.props ?? {};
-  return declared.every(([k, v]) => String(actual[k] ?? "") === String(v));
-}
-
-/**
- * Whether `image` is the render of a spec `variant` — the inverse of `foldVariants`' re-tagging.
- * A `state` variant replaced `image.state`, a `props` variant merged onto `image.props` (keeping
- * the default state), and a `theme` variant replaced `image.theme`.
- */
-function matchesVariant(image, variant) {
-  if (variant.state !== undefined) return image?.state === variant.state;
-  if (variant.theme !== undefined) return image?.theme === variant.theme;
-  return propsMatch(image, variant.props);
-}
-
 /**
  * Index a catalog's images by the `@Preview` function that produced them:
  * `functionName -> [{ componentId, image }]`.
@@ -120,6 +103,12 @@ function matchesVariant(image, variant) {
  * default. Order matters only in that a variant claim wins — the default is the residue, which is
  * what keeps a component whose light/dark are two separate `@Preview`s from assigning both stickers
  * to the light function.
+ *
+ * The claim test is `foldVariants`' own [imageHasVariantAxes], which requires EVERY axis a variant
+ * declares. Matching on just the first declared axis would let two variants that share a `state`
+ * but differ in `props` collide — the first would claim both stickers and publish its reference
+ * against the wrong one, while the second went unmapped. Sharing the fold's predicate also keeps
+ * the `fontScale` numeric coercion in one place.
  */
 export function imagesByPreviewFunction(spec, catalog) {
   const byComponentId = new Map();
@@ -140,7 +129,7 @@ export function imagesByPreviewFunction(spec, catalog) {
       if (!component) continue;
       const variants = Array.isArray(specComponent.variants) ? specComponent.variants : [];
       for (const image of component.images ?? []) {
-        const variant = variants.find((v) => v?.preview && matchesVariant(image, v));
+        const variant = variants.find((v) => v?.preview && imageHasVariantAxes(image, v));
         if (variant) add(variant.preview, component.componentId, image);
         else add(specComponent.preview, component.componentId, image);
       }

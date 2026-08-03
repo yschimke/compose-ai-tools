@@ -582,9 +582,12 @@ jobs:
               tail -n 40 "$install_log" >&2
             fi
           fi
+          # `--spec` must be the caller's configured path, not the emitter's root default:
+          # this repo's own catalogs live at samples/design-catalog-*/catalog.spec.json.
           node compose-ai-tools/scripts/design-artifacts/emit-design-references.mjs \
             --out "$GITHUB_WORKSPACE/out" \
-            --repo "$GITHUB_WORKSPACE"
+            --repo "$GITHUB_WORKSPACE" \
+            --spec "${{ inputs.spec }}"
 
       # PNG ↔ Remote Compose parity page: for a catalog that ships `.rc`
       # documents (remote-m3), render each one client-side with the vendored
