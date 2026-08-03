@@ -591,6 +591,7 @@ class ServeCatalogLiveHostTest {
         live = live,
         baked = baked,
         perPreviewResolve = { null },
+        sharedDaemonRenders = false,
       )
     assertEquals(5, pooled.themeRenderBurstCapacity)
   }
@@ -634,6 +635,7 @@ class ServeCatalogLiveHostTest {
         live = monolithic,
         baked = baked,
         perPreviewResolve = { perPreview },
+        sharedDaemonRenders = false,
       )
 
     val first = composite.render(catalogId, themeOverride()) as RenderOutcome.Ok
@@ -796,6 +798,7 @@ class ServeCatalogLiveHostTest {
           resolved += id
           perPreview
         },
+        sharedDaemonRenders = false,
         serverIdleMillis = { Long.MAX_VALUE },
         themeOptimizationEnabled = true,
         themeOptimizationIdleMillis = 0,
@@ -978,7 +981,70 @@ class ServeCatalogLiveHostTest {
   }
 
   @Test
-  fun `an override render prefers the per-preview daemon over the monolithic one`() {
+  fun `burst capacity follows the lane snapshots actually render on`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live = RecordingHost(previews = listOf(ServePreview(daemonId, daemonId)), tag = "mono")
+    val perPreview = RecordingHost(previews = emptyList(), tag = "per")
+
+    // Sharing one daemon means one render lock: a wide burst would funnel workers into it, hand
+    // most of them Busy, and the page would exhaust its retries with cards still on baked pixels.
+    assertEquals(
+      1,
+      ServeCatalogLiveHost(
+          alias = mapOf(catalogId to daemonId),
+          live = live,
+          baked = baked,
+          perPreviewResolve = { perPreview },
+        )
+        .themeRenderBurstCapacity,
+    )
+    // Per-preview routing genuinely parallelises — one daemon per preview — so it keeps the burst.
+    assertEquals(
+      5,
+      ServeCatalogLiveHost(
+          alias = mapOf(catalogId to daemonId),
+          live = live,
+          baked = baked,
+          perPreviewResolve = { perPreview },
+          sharedDaemonRenders = false,
+        )
+        .themeRenderBurstCapacity,
+    )
+    // No pool at all was always serial.
+    assertEquals(
+      1,
+      ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked).themeRenderBurstCapacity,
+    )
+  }
+
+  @Test
+  fun `snapshot renders go to the shared daemon by default`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val monolithic =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId, overrides = listOf(labelKnob))),
+        tag = "mono",
+        streaming = true,
+      )
+    val perPreview = RecordingHost(previews = emptyList(), tag = "per")
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = monolithic,
+        baked = baked,
+        perPreviewResolve = { perPreview },
+      )
+
+    // A grid is a batch: one cold start on the shared daemon, then every remaining card is warm.
+    // Routing each card to its own per-preview daemon made every card pay its own cold start.
+    val out = composite.render(catalogId, knobOverride()) as RenderOutcome.Ok
+    assertEquals("mono:$daemonId", out.png.decodeToString())
+    assertEquals(daemonId, monolithic.lastRenderId)
+    assertNull(perPreview.lastRenderId)
+  }
+
+  @Test
+  fun `per-preview routing is still available behind its flag`() {
     val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
     val monolithic =
       RecordingHost(
@@ -993,10 +1059,11 @@ class ServeCatalogLiveHostTest {
         live = monolithic,
         baked = baked,
         perPreviewResolve = { id -> if (id == daemonId) perPreview else null },
+        sharedDaemonRenders = false,
       )
 
-    // A knob edit resolves the per-preview daemon FIRST — the monolithic one is never touched, so
-    // the small per-preview bundle is the routinely-exercised default lane.
+    // With per-preview routing selected, a knob edit resolves the per-preview daemon FIRST and the
+    // monolithic one is never touched.
     val out = composite.render(catalogId, knobOverride()) as RenderOutcome.Ok
     assertEquals("per:$daemonId", out.png.decodeToString())
     assertEquals(daemonId, perPreview.lastRenderId)
@@ -1067,6 +1134,7 @@ class ServeCatalogLiveHostTest {
         live = monolithic,
         baked = baked,
         perPreviewResolve = { perPreview },
+        sharedDaemonRenders = false,
       )
     val handle = composite.subscribeStream(catalogId, PreviewOverrides(), null, null) {}
     assertTrue(handle != null)
