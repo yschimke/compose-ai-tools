@@ -100,13 +100,17 @@ import androidx.compose.remote.core.operations.layout.modifiers.DrawContentOpera
 import androidx.compose.remote.core.operations.layout.modifiers.GraphicsLayerModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HeightInModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HeightModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.HostActionMetadataOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HostActionOperation
+import androidx.compose.remote.core.operations.layout.modifiers.HostNamedActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.LayoutComputeOperation
 import androidx.compose.remote.core.operations.layout.modifiers.OffsetModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.PaddingModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.RoundedClipRectModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ValueFloatChangeActionOperation
+import androidx.compose.remote.core.operations.layout.modifiers.ValueFloatExpressionChangeActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ValueIntegerChangeActionOperation
+import androidx.compose.remote.core.operations.layout.modifiers.ValueIntegerExpressionChangeActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ValueStringChangeActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.WidthInModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation
@@ -170,6 +174,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcHeightInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHostAction
+import ee.schimke.composeai.rcplayer.protocol.RcHostMetadataAction
+import ee.schimke.composeai.rcplayer.protocol.RcHostNamedAction
+import ee.schimke.composeai.rcplayer.protocol.RcHostNamedActionValue
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
@@ -190,7 +197,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcValueFloatChangeAction
+import ee.schimke.composeai.rcplayer.protocol.RcValueFloatExpressionChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerChangeAction
+import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerExpressionChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueStringChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import ee.schimke.composeai.rcplayer.protocol.RcVisibilityModifier
@@ -221,9 +230,13 @@ class AndroidxWireCompatibilityTest {
     Header.apply(buffer, 120, 60, 1f, 0L)
     ClickModifierOperation.apply(buffer)
     HostActionOperation.apply(buffer, 77)
+    HostNamedActionOperation.apply(buffer, 12, HostNamedActionOperation.INT_TYPE, 20)
+    HostActionMetadataOperation.apply(buffer, 78, 13)
     ValueIntegerChangeActionOperation.apply(buffer, 20, 4)
+    ValueIntegerExpressionChangeActionOperation.apply(buffer, 23L, 31L)
     ValueStringChangeActionOperation.apply(buffer, 21, 11)
     ValueFloatChangeActionOperation.apply(buffer, 22, Utils.asNan(42))
+    ValueFloatExpressionChangeActionOperation.apply(buffer, 24, 32)
     ContainerEnd.apply(buffer)
     val bytes = buffer.buffer.copyOf(buffer.size())
 
@@ -231,9 +244,22 @@ class AndroidxWireCompatibilityTest {
 
     assertIs<RcClickModifier>(document.operations[0])
     assertEquals(77, assertIs<RcHostAction>(document.operations[1]).actionId)
-    assertEquals(4, assertIs<RcValueIntegerChangeAction>(document.operations[2]).value)
-    assertEquals(11, assertIs<RcValueStringChangeAction>(document.operations[3]).valueId)
-    assertEquals(42, assertIs<RcValueFloatChangeAction>(document.operations[4]).value.referencedId)
+    assertEquals(
+      RcHostNamedActionValue.IntegerValue(20),
+      assertIs<RcHostNamedAction>(document.operations[2]).value,
+    )
+    assertEquals(13, assertIs<RcHostMetadataAction>(document.operations[3]).metadataTextId)
+    assertEquals(4, assertIs<RcValueIntegerChangeAction>(document.operations[4]).value)
+    assertEquals(
+      31L,
+      assertIs<RcValueIntegerExpressionChangeAction>(document.operations[5]).expressionId,
+    )
+    assertEquals(11, assertIs<RcValueStringChangeAction>(document.operations[6]).valueId)
+    assertEquals(42, assertIs<RcValueFloatChangeAction>(document.operations[7]).value.referencedId)
+    assertEquals(
+      32,
+      assertIs<RcValueFloatExpressionChangeAction>(document.operations[8]).expressionId,
+    )
     assertContentEquals(bytes, RcDocumentCodec.encode(document))
   }
 

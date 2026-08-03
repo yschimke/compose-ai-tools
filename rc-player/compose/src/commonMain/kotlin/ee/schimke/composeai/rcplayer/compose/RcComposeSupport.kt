@@ -22,6 +22,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHostAction
+import ee.schimke.composeai.rcplayer.protocol.RcHostMetadataAction
+import ee.schimke.composeai.rcplayer.protocol.RcHostNamedAction
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
@@ -38,7 +40,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextMeasure
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
 import ee.schimke.composeai.rcplayer.protocol.RcValueFloatChangeAction
+import ee.schimke.composeai.rcplayer.protocol.RcValueFloatExpressionChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerChangeAction
+import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerExpressionChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueStringChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.protocol.supportReport
@@ -87,6 +91,13 @@ public fun RcDocument.composeSupportReport(
       it.id
     }
   val dynamicLists = operations.filterIsInstance<RcDynamicFloatList>().associateBy { it.id }
+  val integerExpressionIds =
+    operations.filterIsInstance<RcIntegerExpression>().map { it.outId }.toSet()
+  val floatExpressionIds =
+    operations
+      .filterIsInstance<ee.schimke.composeai.rcplayer.protocol.RcFloatExpression>()
+      .map { it.id }
+      .toSet()
   supportReport().parseOnly.forEach { entry ->
     issues +=
       RcComposeSupportIssue(-1, entry.stableName, "operation is decoded but has no semantics")
@@ -545,6 +556,44 @@ public fun RcDocument.composeSupportReport(
           "value text id ${operation.valueId} is not declared",
         )
     }
+    if (operation is RcHostNamedAction && operation.nameTextId !in textIds) {
+      issues +=
+        RcComposeSupportIssue(
+          index,
+          "HostNamedActionOperation",
+          "name text id ${operation.nameTextId} is not declared",
+        )
+    }
+    if (operation is RcHostMetadataAction && operation.metadataTextId !in textIds) {
+      issues +=
+        RcComposeSupportIssue(
+          index,
+          "HostActionMetadataOperation",
+          "metadata text id ${operation.metadataTextId} is not declared",
+        )
+    }
+    if (
+      operation is RcValueIntegerExpressionChangeAction &&
+        operation.expressionId.toInt() !in integerExpressionIds
+    ) {
+      issues +=
+        RcComposeSupportIssue(
+          index,
+          "ValueIntegerExpressionChangeActionOperation",
+          "integer expression id ${operation.expressionId} is not declared",
+        )
+    }
+    if (
+      operation is RcValueFloatExpressionChangeAction &&
+        operation.expressionId !in floatExpressionIds
+    ) {
+      issues +=
+        RcComposeSupportIssue(
+          index,
+          "ValueFloatExpressionChangeActionOperation",
+          "float expression id ${operation.expressionId} is not declared",
+        )
+    }
   }
   val functions = operations.filterIsInstance<RcFloatFunctionDefine>().associateBy { it.id }
   operations.forEachIndexed { index, operation ->
@@ -626,9 +675,13 @@ private fun invalidClickChild(
         val operation = (child as? RcLinkedNode.Operation)?.operation ?: return child.operation()
         if (
           operation !is RcHostAction &&
+            operation !is RcHostMetadataAction &&
+            operation !is RcHostNamedAction &&
             operation !is RcValueIntegerChangeAction &&
+            operation !is RcValueIntegerExpressionChangeAction &&
             operation !is RcValueStringChangeAction &&
-            operation !is RcValueFloatChangeAction
+            operation !is RcValueFloatChangeAction &&
+            operation !is RcValueFloatExpressionChangeAction
         ) {
           return operation
         }

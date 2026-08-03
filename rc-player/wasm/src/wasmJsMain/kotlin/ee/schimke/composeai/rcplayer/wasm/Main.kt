@@ -20,6 +20,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
 import ee.schimke.composeai.rcplayer.protocol.RcOperationProfiles
 import ee.schimke.composeai.rcplayer.protocol.RcTheme
+import ee.schimke.composeai.rcplayer.runtime.RcHostActionValue
 import ee.schimke.composeai.rcplayer.runtime.RcPlayerEvent
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -140,6 +141,16 @@ private fun reportFailure(message: String): Unit =
 private fun postPlayerEvent(event: RcPlayerEvent) {
   when (event) {
     is RcPlayerEvent.HostAction -> postHostAction(event.actionId)
+    is RcPlayerEvent.HostActionMetadata -> postHostMetadataAction(event.actionId, event.metadata)
+    is RcPlayerEvent.HostNamedAction ->
+      when (val value = event.value) {
+        RcHostActionValue.None -> postHostNamedActionNone(event.name)
+        is RcHostActionValue.FloatValue -> postHostNamedActionFloat(event.name, value.value)
+        is RcHostActionValue.IntegerValue -> postHostNamedActionInt(event.name, value.value)
+        is RcHostActionValue.TextValue -> postHostNamedActionText(event.name, value.value)
+        is RcHostActionValue.FloatListValue ->
+          postHostNamedActionFloatList(event.name, value.value.joinToString(","))
+      }
   }
 }
 
@@ -147,4 +158,53 @@ private fun postHostAction(actionId: Int): Unit =
   js(
     "(document.documentElement.dataset.rcPlayerAction = String(actionId), " +
       "window.parent.postMessage({ type: 'cp-rc-host-action', actionId: actionId }, '*'))"
+  )
+
+private fun postHostMetadataAction(actionId: Int, metadata: String): Unit =
+  js(
+    "(document.documentElement.dataset.rcPlayerAction = String(actionId), " +
+      "document.documentElement.dataset.rcPlayerMetadata = metadata, " +
+      "window.parent.postMessage({ type: 'cp-rc-host-action', actionId: actionId, " +
+      "metadata: metadata }, '*'))"
+  )
+
+private fun postHostNamedActionNone(name: String): Unit =
+  js(
+    "(document.documentElement.dataset.rcPlayerNamedAction = name, " +
+      "document.documentElement.dataset.rcPlayerNamedActionValue = 'none', " +
+      "window.parent.postMessage({ type: 'cp-rc-host-named-action', name: name, " +
+      "valueType: 'none', value: null }, '*'))"
+  )
+
+private fun postHostNamedActionFloat(name: String, value: Float): Unit =
+  js(
+    "(document.documentElement.dataset.rcPlayerNamedAction = name, " +
+      "document.documentElement.dataset.rcPlayerNamedActionValue = 'float:' + String(value), " +
+      "window.parent.postMessage({ type: 'cp-rc-host-named-action', name: name, " +
+      "valueType: 'float', value: value }, '*'))"
+  )
+
+private fun postHostNamedActionInt(name: String, value: Int): Unit =
+  js(
+    "(document.documentElement.dataset.rcPlayerNamedAction = name, " +
+      "document.documentElement.dataset.rcPlayerNamedActionValue = 'int:' + String(value), " +
+      "window.parent.postMessage({ type: 'cp-rc-host-named-action', name: name, " +
+      "valueType: 'int', value: value }, '*'))"
+  )
+
+private fun postHostNamedActionText(name: String, value: String): Unit =
+  js(
+    "(document.documentElement.dataset.rcPlayerNamedAction = name, " +
+      "document.documentElement.dataset.rcPlayerNamedActionValue = 'string:' + value, " +
+      "window.parent.postMessage({ type: 'cp-rc-host-named-action', name: name, " +
+      "valueType: 'string', value: value }, '*'))"
+  )
+
+private fun postHostNamedActionFloatList(name: String, encoded: String): Unit =
+  js(
+    "(document.documentElement.dataset.rcPlayerNamedAction = name, " +
+      "document.documentElement.dataset.rcPlayerNamedActionValue = 'float-array:' + encoded, " +
+      "window.parent.postMessage({ type: 'cp-rc-host-named-action', name: name, " +
+      "valueType: 'float-array', " +
+      "value: encoded === '' ? [] : encoded.split(',').map(Number) }, '*'))"
   )

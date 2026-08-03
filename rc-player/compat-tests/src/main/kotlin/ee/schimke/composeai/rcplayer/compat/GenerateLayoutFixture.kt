@@ -7,6 +7,7 @@ import androidx.compose.remote.core.operations.BitmapData
 import androidx.compose.remote.core.operations.DrawContent
 import androidx.compose.remote.core.operations.DrawRect
 import androidx.compose.remote.core.operations.Header
+import androidx.compose.remote.core.operations.IntegerExpression
 import androidx.compose.remote.core.operations.PaintData
 import androidx.compose.remote.core.operations.TextData
 import androidx.compose.remote.core.operations.layout.CanvasContent
@@ -25,10 +26,14 @@ import androidx.compose.remote.core.operations.layout.managers.TextStyle
 import androidx.compose.remote.core.operations.layout.modifiers.CollapsiblePriorityModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.DimensionModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HeightModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.HostActionMetadataOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HostActionOperation
+import androidx.compose.remote.core.operations.layout.modifiers.HostNamedActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.OffsetModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.ValueIntegerExpressionChangeActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation
 import androidx.compose.remote.core.operations.paint.PaintBundle
+import androidx.compose.remote.core.operations.utilities.IntegerExpressionEvaluator
 import androidx.compose.remote.core.semantics.AccessibleComponent
 import androidx.compose.remote.core.semantics.CoreSemantics
 import java.io.File
@@ -67,6 +72,9 @@ public fun main(args: Array<String>) {
   TextData.apply(buffer, 1001, "CMP TEXT + IMAGE")
   TextData.apply(buffer, 1004, "Remote Compose preview")
   TextData.apply(buffer, 1005, "Rendered by Compose Multiplatform")
+  TextData.apply(buffer, 1006, "save-preview")
+  TextData.apply(buffer, 1007, "browser-fixture")
+  IntegerExpression.apply(buffer, 31, 1 shl 2, intArrayOf(2, 3, IntegerExpressionEvaluator.I_ADD))
   TextStyle.apply(
     buffer,
     1002,
@@ -206,6 +214,9 @@ public fun main(args: Array<String>) {
     true,
   )
   ClickModifierOperation.apply(buffer)
+  ValueIntegerExpressionChangeActionOperation.apply(buffer, 23L, 31L)
+  HostNamedActionOperation.apply(buffer, 1006, HostNamedActionOperation.INT_TYPE, 23)
+  HostActionMetadataOperation.apply(buffer, 78, 1007)
   HostActionOperation.apply(buffer, 77)
   ContainerEnd.apply(buffer) // click actions
   ContainerEnd.apply(buffer) // text

@@ -18,6 +18,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
+import ee.schimke.composeai.rcplayer.protocol.RcHostMetadataAction
+import ee.schimke.composeai.rcplayer.protocol.RcHostNamedAction
+import ee.schimke.composeai.rcplayer.protocol.RcHostNamedActionValue
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
@@ -31,6 +34,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcTextData
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
+import ee.schimke.composeai.rcplayer.protocol.RcValueFloatExpressionChangeAction
+import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerExpressionChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import kotlin.test.Test
@@ -40,6 +45,33 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RcComposeSupportTest {
+  @Test
+  fun actionSupportRejectsMissingNamesMetadataAndExpressionsPrecisely() {
+    val issues =
+      RcDocument(
+          header,
+          listOf(
+            RcHostNamedAction(10, RcHostNamedActionValue.None),
+            RcHostMetadataAction(77, 11),
+            RcValueIntegerExpressionChangeAction(20L, 31L),
+            RcValueFloatExpressionChangeAction(21, 32),
+          ),
+        )
+        .composeSupportReport()
+        .issues
+        .map { it.detail }
+
+    assertEquals(
+      listOf(
+        "name text id 10 is not declared",
+        "metadata text id 11 is not declared",
+        "integer expression id 31 is not declared",
+        "float expression id 32 is not declared",
+      ),
+      issues,
+    )
+  }
+
   @Test
   fun mapsEveryAndroidXAccessibilityRoleToCompose() {
     assertEquals(

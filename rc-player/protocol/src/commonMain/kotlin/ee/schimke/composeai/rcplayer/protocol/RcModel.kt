@@ -1020,6 +1020,63 @@ public data class RcHostAction(val actionId: Int) : RcOperation {
   override val opcode: Int = RcOpcodes.HOST_ACTION
 }
 
+/** Named host action with a closed AndroidX payload type instead of an untyped value. */
+public data class RcHostNamedAction(val nameTextId: Int, val value: RcHostNamedActionValue) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.HOST_NAMED_ACTION
+}
+
+public sealed interface RcHostNamedActionValue {
+  public val type: Int
+  public val valueId: Int
+
+  public data object None : RcHostNamedActionValue {
+    override val type: Int = TYPE_NONE
+    override val valueId: Int = -1
+  }
+
+  public data class FloatValue(override val valueId: Int) : RcHostNamedActionValue {
+    override val type: Int = TYPE_FLOAT
+  }
+
+  public data class IntegerValue(override val valueId: Int) : RcHostNamedActionValue {
+    override val type: Int = TYPE_INTEGER
+  }
+
+  public data class TextValue(override val valueId: Int) : RcHostNamedActionValue {
+    override val type: Int = TYPE_STRING
+  }
+
+  public data class FloatListValue(override val valueId: Int) : RcHostNamedActionValue {
+    override val type: Int = TYPE_FLOAT_ARRAY
+  }
+
+  public companion object {
+    public const val TYPE_NONE: Int = -1
+    public const val TYPE_FLOAT: Int = 0
+    public const val TYPE_INTEGER: Int = 1
+    public const val TYPE_STRING: Int = 2
+    public const val TYPE_FLOAT_ARRAY: Int = 3
+
+    public fun fromWire(type: Int, valueId: Int): RcHostNamedActionValue =
+      when (type) {
+        TYPE_NONE -> {
+          require(valueId == -1) { "AndroidX NONE host action must use value id -1" }
+          None
+        }
+        TYPE_FLOAT -> FloatValue(valueId)
+        TYPE_INTEGER -> IntegerValue(valueId)
+        TYPE_STRING -> TextValue(valueId)
+        TYPE_FLOAT_ARRAY -> FloatListValue(valueId)
+        else -> throw IllegalArgumentException("Unknown AndroidX host action value type $type")
+      }
+  }
+}
+
+public data class RcHostMetadataAction(val actionId: Int, val metadataTextId: Int) : RcOperation {
+  override val opcode: Int = RcOpcodes.HOST_METADATA_ACTION
+}
+
 public data class RcValueIntegerChangeAction(val targetValueId: Int, val value: Int) : RcOperation {
   override val opcode: Int = RcOpcodes.VALUE_INTEGER_CHANGE_ACTION
 }
@@ -1032,6 +1089,21 @@ public data class RcValueStringChangeAction(val targetValueId: Int, val valueId:
 public data class RcValueFloatChangeAction(val targetValueId: Int, val value: RcFloatWord) :
   RcOperation {
   override val opcode: Int = RcOpcodes.VALUE_FLOAT_CHANGE_ACTION
+}
+
+/** AndroidX deliberately encodes both integer ids as 64-bit NaN-id words. */
+public data class RcValueIntegerExpressionChangeAction(
+  val targetValueId: Long,
+  val expressionId: Long,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.VALUE_INTEGER_EXPRESSION_CHANGE_ACTION
+}
+
+public data class RcValueFloatExpressionChangeAction(
+  val targetValueId: Int,
+  val expressionId: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.VALUE_FLOAT_EXPRESSION_CHANGE_ACTION
 }
 
 /** Component visibility is read from the referenced AndroidX integer variable. */
@@ -1186,14 +1258,18 @@ public object RcOpcodes {
   public const val LAYOUT_CANVAS_CONTENT: Int = 207
   public const val LAYOUT_TEXT: Int = 208
   public const val HOST_ACTION: Int = 209
+  public const val HOST_NAMED_ACTION: Int = 210
   public const val VALUE_INTEGER_CHANGE_ACTION: Int = 212
   public const val VALUE_STRING_CHANGE_ACTION: Int = 213
   public const val MODIFIER_VISIBILITY: Int = 211
   public const val CONTAINER_END: Int = 214
+  public const val HOST_METADATA_ACTION: Int = 216
+  public const val VALUE_INTEGER_EXPRESSION_CHANGE_ACTION: Int = 218
   public const val MODIFIER_OFFSET: Int = 221
   public const val VALUE_FLOAT_CHANGE_ACTION: Int = 222
   public const val MODIFIER_ZINDEX: Int = 223
   public const val MODIFIER_GRAPHICS_LAYER: Int = 224
+  public const val VALUE_FLOAT_EXPRESSION_CHANGE_ACTION: Int = 227
   public const val LAYOUT_COLLAPSIBLE_ROW: Int = 230
   public const val MODIFIER_WIDTH_IN: Int = 231
   public const val MODIFIER_HEIGHT_IN: Int = 232

@@ -9,6 +9,24 @@ import kotlin.test.assertTrue
 
 class RcDocumentCodecTest {
   @Test
+  fun namedHostActionsRoundTripEveryClosedPayloadType() {
+    val actions =
+      listOf(
+        RcHostNamedAction(10, RcHostNamedActionValue.None),
+        RcHostNamedAction(10, RcHostNamedActionValue.FloatValue(20)),
+        RcHostNamedAction(10, RcHostNamedActionValue.IntegerValue(21)),
+        RcHostNamedAction(10, RcHostNamedActionValue.TextValue(22)),
+        RcHostNamedAction(10, RcHostNamedActionValue.FloatListValue(23)),
+      )
+    val document = RcDocument(RcHeader(RcVersion(1, 0, 0), modern = false), actions)
+
+    val bytes = RcDocumentCodec.encode(document)
+
+    assertEquals(document, RcDocumentCodec.decode(bytes))
+    assertContentEquals(bytes, RcDocumentCodec.encode(RcDocumentCodec.decode(bytes)))
+  }
+
+  @Test
   fun clickActionsRoundTripWithoutLosingFloatReferenceBits() {
     val document =
       RcDocument(
@@ -16,9 +34,13 @@ class RcDocumentCodecTest {
         listOf(
           RcClickModifier,
           RcHostAction(77),
+          RcHostNamedAction(12, RcHostNamedActionValue.IntegerValue(20)),
+          RcHostMetadataAction(78, 13),
           RcValueIntegerChangeAction(20, 4),
+          RcValueIntegerExpressionChangeAction(23L, 31L),
           RcValueStringChangeAction(21, 11),
           RcValueFloatChangeAction(22, RcFloatWord(0x7fc0002a)),
+          RcValueFloatExpressionChangeAction(24, 32),
           RcNoArg(RcOpcodes.CONTAINER_END),
         ),
       )
@@ -27,7 +49,15 @@ class RcDocumentCodecTest {
     val decoded = RcDocumentCodec.decode(bytes)
 
     assertEquals(document, decoded)
-    assertEquals(42, assertIs<RcValueFloatChangeAction>(decoded.operations[4]).value.referencedId)
+    assertEquals(42, assertIs<RcValueFloatChangeAction>(decoded.operations[7]).value.referencedId)
+    assertEquals(
+      RcHostNamedActionValue.IntegerValue(20),
+      assertIs<RcHostNamedAction>(decoded.operations[2]).value,
+    )
+    assertEquals(
+      31L,
+      assertIs<RcValueIntegerExpressionChangeAction>(decoded.operations[5]).expressionId,
+    )
     assertContentEquals(bytes, RcDocumentCodec.encode(decoded))
   }
 

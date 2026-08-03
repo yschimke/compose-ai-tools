@@ -14,6 +14,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatExpression
 import ee.schimke.composeai.rcplayer.protocol.RcFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
 import ee.schimke.composeai.rcplayer.protocol.RcHostAction
+import ee.schimke.composeai.rcplayer.protocol.RcHostMetadataAction
+import ee.schimke.composeai.rcplayer.protocol.RcHostNamedAction
+import ee.schimke.composeai.rcplayer.protocol.RcHostNamedActionValue
 import ee.schimke.composeai.rcplayer.protocol.RcIdList
 import ee.schimke.composeai.rcplayer.protocol.RcIdLookup
 import ee.schimke.composeai.rcplayer.protocol.RcIdMap
@@ -41,7 +44,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextTransform
 import ee.schimke.composeai.rcplayer.protocol.RcTheme
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcValueFloatChangeAction
+import ee.schimke.composeai.rcplayer.protocol.RcValueFloatExpressionChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerChangeAction
+import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerExpressionChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueStringChangeAction
 
 /** Typed runtime values for the CMP player; independent from AndroidX `RemoteContext`. */
@@ -72,6 +77,10 @@ public class RcPlayerState(
   private val floatExpressionEvaluator = RcFloatExpressionEvaluator(::floatArray)
   private val pathExpressionGenerator = RcPathExpressionGenerator(floatExpressionEvaluator)
   private val floatExpressionRuntimes = mutableMapOf<Int, RcFloatExpressionRuntime>()
+  private val floatExpressions =
+    document.operations.filterIsInstance<RcFloatExpression>().associateBy { it.id }
+  private val integerExpressions =
+    document.operations.filterIsInstance<RcIntegerExpression>().associateBy { it.outId }
   private var frameTimeSeconds: Float = 0f
 
   public val rootContentBehavior: RcRootContentBehavior? =
@@ -477,8 +486,36 @@ public class RcPlayerState(
           ?: error("Nested containers are not supported inside ClickModifier")
       when (operation) {
         is RcHostAction -> eventSink(RcPlayerEvent.HostAction(operation.actionId))
+        is RcHostMetadataAction ->
+          eventSink(
+            RcPlayerEvent.HostActionMetadata(
+              operation.actionId,
+              text(operation.metadataTextId).orEmpty(),
+            )
+          )
+        is RcHostNamedAction ->
+          eventSink(
+            RcPlayerEvent.HostNamedAction(
+              requireNotNull(text(operation.nameTextId)) {
+                "Missing host action name text ${operation.nameTextId}"
+              },
+              resolveHostActionValue(operation.value),
+            )
+          )
         is RcValueIntegerChangeAction -> {
           setInteger(operation.targetValueId, operation.value)
+          changed = true
+        }
+        is RcValueIntegerExpressionChangeAction -> {
+          val expressionId = operation.expressionId.toInt()
+          val expression =
+            requireNotNull(integerExpressions[expressionId]) {
+              "Missing integer action expression ${operation.expressionId}"
+            }
+          setInteger(
+            operation.targetValueId.toInt(),
+            RcIntegerExpressionEvaluator.evaluate(expression) { id -> integers[id] ?: 0 },
+          )
           changed = true
         }
         is RcValueStringChangeAction -> {
@@ -492,11 +529,47 @@ public class RcPlayerState(
           setFloat(operation.targetValueId, resolve(operation.value))
           changed = true
         }
+        is RcValueFloatExpressionChangeAction -> {
+          val expression =
+            requireNotNull(floatExpressions[operation.expressionId]) {
+              "Missing float action expression ${operation.expressionId}"
+            }
+          val runtime =
+            floatExpressionRuntimes.getOrPut(expression.id) {
+              RcFloatExpressionRuntime(expression, ::floatArray)
+            }
+          setFloat(operation.targetValueId, runtime.evaluate(frameTimeSeconds, ::resolve))
+          changed = true
+        }
         else -> error("Opcode ${operation.opcode} cannot execute inside ClickModifier")
       }
     }
     if (changed) onInvalidated()
   }
+
+  private fun resolveHostActionValue(value: RcHostNamedActionValue): RcHostActionValue =
+    when (value) {
+      RcHostNamedActionValue.None -> RcHostActionValue.None
+      is RcHostNamedActionValue.FloatValue ->
+        RcHostActionValue.FloatValue(
+          requireNotNull(floats[value.valueId]) { "Missing host action float ${value.valueId}" }
+        )
+      is RcHostNamedActionValue.IntegerValue ->
+        RcHostActionValue.IntegerValue(
+          requireNotNull(integers[value.valueId]) { "Missing host action integer ${value.valueId}" }
+        )
+      is RcHostNamedActionValue.TextValue ->
+        RcHostActionValue.TextValue(
+          requireNotNull(text(value.valueId)) { "Missing host action text ${value.valueId}" }
+        )
+      is RcHostNamedActionValue.FloatListValue ->
+        RcHostActionValue.FloatListValue(
+          requireNotNull(floatValues(value.valueId)) {
+              "Missing host action float list ${value.valueId}"
+            }
+            .toList()
+        )
+    }
 
   public fun integer(id: Int): Int? = integers[id]
 
@@ -619,4 +692,21 @@ public sealed interface RcNamedValue {
 
 public sealed interface RcPlayerEvent {
   public data class HostAction(val actionId: Int) : RcPlayerEvent
+
+  public data class HostActionMetadata(val actionId: Int, val metadata: String) : RcPlayerEvent
+
+  public data class HostNamedAction(val name: String, val value: RcHostActionValue) : RcPlayerEvent
+}
+
+public sealed interface RcHostActionValue {
+  public data object None : RcHostActionValue
+
+  public data class FloatValue(val value: Float) : RcHostActionValue
+
+  public data class IntegerValue(val value: Int) : RcHostActionValue
+
+  public data class TextValue(val value: String) : RcHostActionValue
+
+  /** Immutable snapshot: later document list mutations cannot change an already emitted event. */
+  public data class FloatListValue(val value: List<Float>) : RcHostActionValue
 }

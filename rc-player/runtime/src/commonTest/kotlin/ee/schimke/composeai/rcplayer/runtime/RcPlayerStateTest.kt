@@ -11,9 +11,13 @@ import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcFloatConstant
 import ee.schimke.composeai.rcplayer.protocol.RcFloatExpression
+import ee.schimke.composeai.rcplayer.protocol.RcFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcHostAction
+import ee.schimke.composeai.rcplayer.protocol.RcHostMetadataAction
+import ee.schimke.composeai.rcplayer.protocol.RcHostNamedAction
+import ee.schimke.composeai.rcplayer.protocol.RcHostNamedActionValue
 import ee.schimke.composeai.rcplayer.protocol.RcIdList
 import ee.schimke.composeai.rcplayer.protocol.RcIdLookup
 import ee.schimke.composeai.rcplayer.protocol.RcIdMap
@@ -36,7 +40,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextTransform
 import ee.schimke.composeai.rcplayer.protocol.RcTheme
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcValueFloatChangeAction
+import ee.schimke.composeai.rcplayer.protocol.RcValueFloatExpressionChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerChangeAction
+import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerExpressionChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueStringChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import kotlin.test.Test
@@ -46,13 +52,73 @@ import kotlin.test.assertFailsWith
 
 class RcPlayerStateTest {
   @Test
+  fun namedHostActionsSnapshotEveryAndroidXPayloadType() {
+    val events = mutableListOf<RcPlayerEvent>()
+    val state =
+      RcPlayerState(
+        RcDocument(
+          RcHeader(RcVersion(1, 0, 0)),
+          listOf(
+            RcTextData(10, "preview-action"),
+            RcTextData(11, "payload"),
+            RcFloatConstant(20, RcFloatWord.literal(2.5f)),
+            RcIntegerConstant(21, 7),
+            RcFloatList(22, listOf(RcFloatWord.literal(1f), RcFloatWord.literal(3f))),
+          ),
+        ),
+        eventSink = events::add,
+      )
+
+    state.executeClick(
+      RcClickActionBlock(
+        listOf(
+          RcLinkedNode.Operation(RcHostNamedAction(10, RcHostNamedActionValue.None)),
+          RcLinkedNode.Operation(RcHostNamedAction(10, RcHostNamedActionValue.FloatValue(20))),
+          RcLinkedNode.Operation(RcHostNamedAction(10, RcHostNamedActionValue.IntegerValue(21))),
+          RcLinkedNode.Operation(RcHostNamedAction(10, RcHostNamedActionValue.TextValue(11))),
+          RcLinkedNode.Operation(RcHostNamedAction(10, RcHostNamedActionValue.FloatListValue(22))),
+        )
+      )
+    )
+
+    assertEquals(
+      listOf<RcPlayerEvent>(
+        RcPlayerEvent.HostNamedAction("preview-action", RcHostActionValue.None),
+        RcPlayerEvent.HostNamedAction("preview-action", RcHostActionValue.FloatValue(2.5f)),
+        RcPlayerEvent.HostNamedAction("preview-action", RcHostActionValue.IntegerValue(7)),
+        RcPlayerEvent.HostNamedAction("preview-action", RcHostActionValue.TextValue("payload")),
+        RcPlayerEvent.HostNamedAction(
+          "preview-action",
+          RcHostActionValue.FloatListValue(listOf(1f, 3f)),
+        ),
+      ),
+      events,
+    )
+  }
+
+  @Test
   fun clickActionsMutateValuesInWireOrderAndEmitTypedHostEvents() {
     val events = mutableListOf<RcPlayerEvent>()
     var invalidations = 0
     val document =
       RcDocument(
         RcHeader(RcVersion(1, 0, 0)),
-        listOf(RcTextData(11, "selected"), RcFloatConstant(42, RcFloatWord.literal(7.5f))),
+        listOf(
+          RcTextData(11, "selected"),
+          RcTextData(12, "save"),
+          RcTextData(13, "from-preview"),
+          RcFloatConstant(42, RcFloatWord.literal(7.5f)),
+          RcIntegerExpression(31, 1 shl 2, listOf(2, 3, RcIntegerExpression.ADD)),
+          RcFloatExpression(
+            32,
+            listOf(
+              RcFloatWord.literal(2f),
+              RcFloatWord.literal(3f),
+              RcFloatExpressionEvaluator.operatorWord(RcFloatExpressionEvaluator.OFFSET + 1),
+            ),
+            null,
+          ),
+        ),
       )
     val state =
       RcPlayerState(document, eventSink = events::add, onInvalidated = { invalidations++ })
@@ -63,6 +129,10 @@ class RcPlayerStateTest {
           RcLinkedNode.Operation(RcValueIntegerChangeAction(20, 4)),
           RcLinkedNode.Operation(RcValueStringChangeAction(21, 11)),
           RcLinkedNode.Operation(RcValueFloatChangeAction(22, RcFloatWord(0x7fc0002a))),
+          RcLinkedNode.Operation(RcValueIntegerExpressionChangeAction(23L, 31L)),
+          RcLinkedNode.Operation(RcValueFloatExpressionChangeAction(24, 32)),
+          RcLinkedNode.Operation(RcHostNamedAction(12, RcHostNamedActionValue.IntegerValue(23))),
+          RcLinkedNode.Operation(RcHostMetadataAction(78, 13)),
           RcLinkedNode.Operation(RcHostAction(77)),
         )
       )
@@ -71,7 +141,16 @@ class RcPlayerStateTest {
     assertEquals(4, state.integer(20))
     assertEquals("selected", state.text(21))
     assertEquals(7.5f, state.resolve(RcFloatWord(0x7fc00016)))
-    assertEquals(listOf<RcPlayerEvent>(RcPlayerEvent.HostAction(77)), events)
+    assertEquals(5, state.integer(23))
+    assertEquals(5f, state.resolve(RcFloatWord(0x7fc00018)))
+    assertEquals(
+      listOf<RcPlayerEvent>(
+        RcPlayerEvent.HostNamedAction("save", RcHostActionValue.IntegerValue(5)),
+        RcPlayerEvent.HostActionMetadata(78, "from-preview"),
+        RcPlayerEvent.HostAction(77),
+      ),
+      events,
+    )
     assertEquals(1, invalidations)
   }
 

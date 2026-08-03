@@ -45,9 +45,13 @@ public object RcDocumentCodec {
         PathDataCodec,
         ClickModifierCodec,
         HostActionCodec,
+        HostNamedActionCodec,
+        HostMetadataActionCodec,
         ValueIntegerChangeActionCodec,
+        ValueIntegerExpressionChangeActionCodec,
         ValueStringChangeActionCodec,
         ValueFloatChangeActionCodec,
+        ValueFloatExpressionChangeActionCodec,
         id(RcOpcodes.DRAW_PATH, "DrawPath"),
         DrawTweenPathCodec,
         id(RcOpcodes.CLIP_PATH, "ClipPath"),
@@ -830,6 +834,41 @@ private object HostActionCodec : RcOperationCodec<RcHostAction> {
   override fun encode(output: RcWireWriter, value: RcHostAction) = output.writeInt(value.actionId)
 }
 
+private object HostNamedActionCodec : RcOperationCodec<RcHostNamedAction> {
+  override val spec = RcOperationSpec(RcOpcodes.HOST_NAMED_ACTION, "HostNamedActionOperation")
+
+  override fun decode(input: RcWireReader): RcHostNamedAction {
+    val textId = input.readInt("textId")
+    val type = input.readInt("type")
+    val valueId = input.readInt("valueId")
+    val value =
+      try {
+        RcHostNamedActionValue.fromWire(type, valueId)
+      } catch (failure: IllegalArgumentException) {
+        input.fail("type", failure.message ?: "Invalid host action value")
+      }
+    return RcHostNamedAction(textId, value)
+  }
+
+  override fun encode(output: RcWireWriter, value: RcHostNamedAction) {
+    output.writeInt(value.nameTextId)
+    output.writeInt(value.value.type)
+    output.writeInt(value.value.valueId)
+  }
+}
+
+private object HostMetadataActionCodec : RcOperationCodec<RcHostMetadataAction> {
+  override val spec = RcOperationSpec(RcOpcodes.HOST_METADATA_ACTION, "HostActionMetadataOperation")
+
+  override fun decode(input: RcWireReader) =
+    RcHostMetadataAction(input.readInt("actionId"), input.readInt("metadataTextId"))
+
+  override fun encode(output: RcWireWriter, value: RcHostMetadataAction) {
+    output.writeInt(value.actionId)
+    output.writeInt(value.metadataTextId)
+  }
+}
+
 private object ValueIntegerChangeActionCodec : RcOperationCodec<RcValueIntegerChangeAction> {
   override val spec =
     RcOperationSpec(RcOpcodes.VALUE_INTEGER_CHANGE_ACTION, "ValueIntegerChangeActionOperation")
@@ -840,6 +879,26 @@ private object ValueIntegerChangeActionCodec : RcOperationCodec<RcValueIntegerCh
   override fun encode(output: RcWireWriter, value: RcValueIntegerChangeAction) {
     output.writeInt(value.targetValueId)
     output.writeInt(value.value)
+  }
+}
+
+private object ValueIntegerExpressionChangeActionCodec :
+  RcOperationCodec<RcValueIntegerExpressionChangeAction> {
+  override val spec =
+    RcOperationSpec(
+      RcOpcodes.VALUE_INTEGER_EXPRESSION_CHANGE_ACTION,
+      "ValueIntegerExpressionChangeActionOperation",
+    )
+
+  override fun decode(input: RcWireReader) =
+    RcValueIntegerExpressionChangeAction(
+      input.readLong("targetValueId"),
+      input.readLong("expressionId"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcValueIntegerExpressionChangeAction) {
+    output.writeLong(value.targetValueId)
+    output.writeLong(value.expressionId)
   }
 }
 
@@ -866,6 +925,26 @@ private object ValueFloatChangeActionCodec : RcOperationCodec<RcValueFloatChange
   override fun encode(output: RcWireWriter, value: RcValueFloatChangeAction) {
     output.writeInt(value.targetValueId)
     output.writeFloatWord(value.value)
+  }
+}
+
+private object ValueFloatExpressionChangeActionCodec :
+  RcOperationCodec<RcValueFloatExpressionChangeAction> {
+  override val spec =
+    RcOperationSpec(
+      RcOpcodes.VALUE_FLOAT_EXPRESSION_CHANGE_ACTION,
+      "ValueFloatExpressionChangeActionOperation",
+    )
+
+  override fun decode(input: RcWireReader) =
+    RcValueFloatExpressionChangeAction(
+      input.readInt("targetValueId"),
+      input.readInt("expressionId"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcValueFloatExpressionChangeAction) {
+    output.writeInt(value.targetValueId)
+    output.writeInt(value.expressionId)
   }
 }
 
