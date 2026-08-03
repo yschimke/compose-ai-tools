@@ -156,7 +156,7 @@
 237|MODIFIER_ALIGN_BY|6|unsupported
 238|LAYOUT_COMPUTE|6|unsupported
 239|CORE_TEXT|3|implemented
-240|LAYOUT_FLOW|6|unsupported
+240|LAYOUT_FLOW|6|implemented
 241|SKIP|6|unsupported
 242|TEXT_STYLE|3|implemented
 243|MODIFIER_DIMENSION_CONSTRAINTS|6|implemented

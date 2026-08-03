@@ -15,6 +15,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDraw4
 import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
+import ee.schimke.composeai.rcplayer.protocol.RcFlowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
@@ -45,6 +46,44 @@ import kotlin.test.assertTrue
 import org.jetbrains.skia.Bitmap
 
 class RcLayoutRenderTest {
+  @Test
+  fun flowWrapsAndHonorsMaximumItemsAndLines() {
+    val green = 0xff00ff00.toInt()
+    val red = 0xffff0000.toInt()
+    val blue = 0xff0000ff.toInt()
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 70, legacyHeight = 50, modern = false),
+        listOf<RcOperation>(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcFlowLayout(3, 30, 1, 4, RcFloatWord.literal(10f), 2, 1),
+          width(70f),
+          height(50f),
+          RcLayoutContent(4),
+        ) +
+          canvas(5, 30f, green) +
+          canvas(6, 30f, red) +
+          canvas(7, 30f, blue) +
+          List(4) { RcNoArg(RcOpcodes.CONTAINER_END) },
+      )
+    val scene =
+      ImageComposeScene(width = 70, height = 50, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val image = scene.render()
+      val bitmap = Bitmap().apply { allocN32Pixels(70, 50) }
+      check(image.readPixels(bitmap))
+
+      assertEquals(green, bitmap.getColor(5, 5))
+      assertEquals(red, bitmap.getColor(45, 5))
+      assertEquals(0, bitmap.getColor(5, 35))
+    } finally {
+      scene.close()
+    }
+  }
+
   @Test
   fun coreTextRendersInheritedSparseStyle() {
     val document =

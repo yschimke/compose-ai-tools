@@ -10,6 +10,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionConstraintsModifier
 import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
+import ee.schimke.composeai.rcplayer.protocol.RcFlowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
@@ -105,6 +106,16 @@ public sealed interface RcLayoutNode {
 
   public data class Column(
     val operation: RcColumnLayout,
+    override val modifiers: RcLayoutModifiers,
+    val content: Content,
+    val canvasOperations: List<RcLinkedNode>?,
+  ) : RcLayoutNode {
+    override val componentId: Int = operation.componentId
+    override val animationId: Int = operation.animationId
+  }
+
+  public data class Flow(
+    val operation: RcFlowLayout,
     override val modifiers: RcLayoutModifiers,
     val content: Content,
     val canvasOperations: List<RcLinkedNode>?,
@@ -223,6 +234,13 @@ public object RcLayoutTree {
           )
         is RcColumnLayout ->
           RcLayoutNode.Column(
+            operation,
+            modifiers,
+            requiredContent(container, seenIds, styles),
+            canvasOperations(container),
+          )
+        is RcFlowLayout ->
+          RcLayoutNode.Flow(
             operation,
             modifiers,
             requiredContent(container, seenIds, styles),
@@ -372,6 +390,7 @@ public object RcLayoutTree {
       this is RcBoxLayout ||
       this is RcRowLayout ||
       this is RcColumnLayout ||
+      this is RcFlowLayout ||
       this is RcFitBoxLayout ||
       this is RcImageLayout ||
       this is RcTextLayout ||

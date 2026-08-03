@@ -6,6 +6,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
+import ee.schimke.composeai.rcplayer.protocol.RcFlowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
@@ -23,6 +24,27 @@ import kotlin.test.assertIs
 
 class RcLayoutTreeTest {
   private val header = RcHeader(RcVersion(1, 0, 0), modern = false)
+
+  @Test
+  fun linksFlowAsAnImmutableLayoutContainer() {
+    val root =
+      requireNotNull(
+        treeOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcFlowLayout(3, 30, 6, 2, RcFloatWord.literal(8f), 4, 3),
+          RcLayoutContent(4),
+          RcCanvasLayout(5, 50),
+          ends = 5,
+        )
+      )
+
+    val outerContent = assertIs<RcLayoutNode.Content>(root.children.single())
+    val flow = assertIs<RcLayoutNode.Flow>(outerContent.children.single())
+    assertEquals(4, flow.operation.maxItemsInEachRow)
+    assertEquals(3, flow.operation.maxLines)
+    assertIs<RcLayoutNode.Canvas>(flow.content.children.single())
+  }
 
   @Test
   fun extractsModifiersContentAndCanvasPaintWithoutMutatingTheLinkedTree() {

@@ -12,6 +12,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
+import ee.schimke.composeai.rcplayer.protocol.RcFlowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
@@ -385,6 +386,40 @@ public fun RcDocument.composeSupportReport(
           )
       }
     }
+    if (operation is RcFlowLayout) {
+      if (operation.horizontalPositioning !in setOf(1, 2, 3, 6, 7, 8)) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "FlowLayout",
+            "horizontal position ${operation.horizontalPositioning} is not implemented",
+          )
+      }
+      if (operation.verticalPositioning !in setOf(2, 4, 5)) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "FlowLayout",
+            "vertical position ${operation.verticalPositioning} is not implemented",
+          )
+      }
+      if (operation.maxItemsInEachRow <= 0) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "FlowLayout",
+            "maxItemsInEachRow ${operation.maxItemsInEachRow} must be positive",
+          )
+      }
+      if (operation.maxLines <= 0) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "FlowLayout",
+            "maxLines ${operation.maxLines} must be positive",
+          )
+      }
+    }
   }
   val functions = operations.filterIsInstance<RcFloatFunctionDefine>().associateBy { it.id }
   operations.forEachIndexed { index, operation ->
@@ -516,6 +551,7 @@ private fun hasInvalidDrawContent(
               RcOpcodes.LAYOUT_BOX,
               RcOpcodes.LAYOUT_ROW,
               RcOpcodes.LAYOUT_COLUMN,
+              RcOpcodes.LAYOUT_FLOW,
               RcOpcodes.LAYOUT_CANVAS,
               RcOpcodes.LAYOUT_FIT_BOX,
             )

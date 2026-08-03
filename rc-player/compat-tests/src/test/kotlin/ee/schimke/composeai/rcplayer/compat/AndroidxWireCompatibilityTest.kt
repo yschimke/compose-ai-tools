@@ -80,6 +80,7 @@ import androidx.compose.remote.core.operations.layout.managers.CanvasLayout
 import androidx.compose.remote.core.operations.layout.managers.ColumnLayout
 import androidx.compose.remote.core.operations.layout.managers.CoreText
 import androidx.compose.remote.core.operations.layout.managers.FitBoxLayout
+import androidx.compose.remote.core.operations.layout.managers.FlowLayout
 import androidx.compose.remote.core.operations.layout.managers.ImageLayout
 import androidx.compose.remote.core.operations.layout.managers.RowLayout
 import androidx.compose.remote.core.operations.layout.managers.TextLayout
@@ -145,6 +146,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatExpression as PlayerFloatEx
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
+import ee.schimke.composeai.rcplayer.protocol.RcFlowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
@@ -230,10 +232,20 @@ class AndroidxWireCompatibilityTest {
     BoxLayout.apply(buffer, 4, 40, BoxLayout.START, BoxLayout.BOTTOM)
     RowLayout.apply(buffer, 5, 50, RowLayout.SPACE_BETWEEN, RowLayout.CENTER, Utils.asNan(42))
     ColumnLayout.apply(buffer, 6, 60, ColumnLayout.END, ColumnLayout.SPACE_AROUND, 12.5f)
+    FlowLayout.apply(
+      buffer,
+      10,
+      100,
+      FlowLayout.SPACE_EVENLY,
+      FlowLayout.CENTER,
+      Utils.asNan(44),
+      3,
+      2,
+    )
     FitBoxLayout.apply(buffer, 7, 70, FitBoxLayout.CENTER, FitBoxLayout.TOP)
     ImageLayout.apply(buffer, 9, 90, 101, 4, Utils.asNan(43))
     CanvasContent.apply(buffer, 8)
-    repeat(9) { ContainerEnd.apply(buffer) }
+    repeat(10) { ContainerEnd.apply(buffer) }
     val bytes = buffer.buffer.copyOf(buffer.size())
 
     val document = RcDocumentCodec.decode(bytes)
@@ -244,10 +256,12 @@ class AndroidxWireCompatibilityTest {
     assertIs<RcBoxLayout>(document.operations[3])
     assertEquals(42, assertIs<RcRowLayout>(document.operations[4]).spacedBy.referencedId)
     assertEquals(12.5f, assertIs<RcColumnLayout>(document.operations[5]).spacedBy.value)
-    assertIs<RcFitBoxLayout>(document.operations[6])
-    assertEquals(101, assertIs<RcImageLayout>(document.operations[7]).bitmapId)
-    assertEquals(43, assertIs<RcImageLayout>(document.operations[7]).alpha.referencedId)
-    assertEquals(8, assertIs<RcCanvasContent>(document.operations[8]).componentId)
+    assertEquals(44, assertIs<RcFlowLayout>(document.operations[6]).spacedBy.referencedId)
+    assertEquals(3, assertIs<RcFlowLayout>(document.operations[6]).maxItemsInEachRow)
+    assertIs<RcFitBoxLayout>(document.operations[7])
+    assertEquals(101, assertIs<RcImageLayout>(document.operations[8]).bitmapId)
+    assertEquals(43, assertIs<RcImageLayout>(document.operations[8]).alpha.referencedId)
+    assertEquals(8, assertIs<RcCanvasContent>(document.operations[9]).componentId)
     assertContentEquals(bytes, RcDocumentCodec.encode(document))
   }
 

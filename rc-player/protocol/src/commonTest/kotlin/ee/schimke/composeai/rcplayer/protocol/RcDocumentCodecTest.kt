@@ -18,7 +18,9 @@ class RcDocumentCodecTest {
         RcBoxLayout(4, 40, 1, 5),
         RcRowLayout(5, 50, 6, 2, RcFloatWord(0x7fc0002a)),
         RcColumnLayout(6, 60, 3, 8, RcFloatWord.literal(12.5f)),
+        RcFlowLayout(8, 80, 6, 2, RcFloatWord(0x7fc0002b), 3, 2),
         RcFitBoxLayout(7, 70, 2, 4),
+        RcNoArg(RcOpcodes.CONTAINER_END),
         RcNoArg(RcOpcodes.CONTAINER_END),
         RcNoArg(RcOpcodes.CONTAINER_END),
         RcNoArg(RcOpcodes.CONTAINER_END),
@@ -35,6 +37,7 @@ class RcDocumentCodecTest {
     assertEquals(document, decoded)
     assertContentEquals(bytes, RcDocumentCodec.encode(decoded))
     assertEquals(42, assertIs<RcRowLayout>(decoded.operations[4]).spacedBy.referencedId)
+    assertEquals(43, assertIs<RcFlowLayout>(decoded.operations[6]).spacedBy.referencedId)
   }
 
   @Test

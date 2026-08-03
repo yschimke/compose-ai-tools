@@ -89,6 +89,7 @@ public object RcDocumentCodec {
         BoxLayoutCodec,
         RowLayoutCodec,
         ColumnLayoutCodec,
+        FlowLayoutCodec,
         FitBoxLayoutCodec,
         ImageLayoutCodec,
         TextLayoutCodec,
@@ -276,6 +277,31 @@ private object ColumnLayoutCodec : RcOperationCodec<RcColumnLayout> {
     output.writeInt(value.horizontalPositioning)
     output.writeInt(value.verticalPositioning)
     output.writeFloatWord(value.spacedBy)
+  }
+}
+
+private object FlowLayoutCodec : RcOperationCodec<RcFlowLayout> {
+  override val spec = RcOperationSpec(RcOpcodes.LAYOUT_FLOW, "FlowLayout")
+
+  override fun decode(input: RcWireReader) =
+    RcFlowLayout(
+      input.readInt("componentId"),
+      input.readInt("animationId"),
+      input.readInt("horizontalPositioning"),
+      input.readInt("verticalPositioning"),
+      input.readFloatWord("spacedBy"),
+      input.readInt("maxItemsInEachRow"),
+      input.readInt("maxLines"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcFlowLayout) {
+    output.writeInt(value.componentId)
+    output.writeInt(value.animationId)
+    output.writeInt(value.horizontalPositioning)
+    output.writeInt(value.verticalPositioning)
+    output.writeFloatWord(value.spacedBy)
+    output.writeInt(value.maxItemsInEachRow)
+    output.writeInt(value.maxLines)
   }
 }
 

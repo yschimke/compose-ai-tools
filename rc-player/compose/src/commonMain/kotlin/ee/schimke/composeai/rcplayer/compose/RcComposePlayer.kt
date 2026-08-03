@@ -4,6 +4,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -386,6 +388,36 @@ private fun RenderLayoutNode(
         ),
         verticalArrangement = RcVerticalArrangement(node.operation.verticalPositioning, spacing),
         horizontalAlignment = columnAlignment(node.operation.horizontalPositioning),
+      ) {
+        RenderLayoutNode(
+          node.content,
+          state = state,
+          textMeasurer = textMeasurer,
+          images = images,
+          theme = theme,
+        )
+      }
+    }
+    is RcLayoutNode.Flow -> {
+      val density = androidx.compose.ui.platform.LocalDensity.current
+      val spacing = with(density) { state.resolve(node.operation.spacedBy).dp.roundToPx() }
+      @OptIn(ExperimentalLayoutApi::class)
+      FlowRow(
+        effectiveModifier.applyComponentModifiers(
+          node.modifiers,
+          state,
+          fillMissingDimensions = false,
+          node.canvasOperations,
+          textMeasurer,
+          images,
+          theme,
+        ),
+        horizontalArrangement =
+          RcHorizontalArrangement(node.operation.horizontalPositioning, spacing),
+        verticalArrangement = RcVerticalArrangement(node.operation.verticalPositioning, 0),
+        itemVerticalAlignment = rowAlignment(node.operation.verticalPositioning),
+        maxItemsInEachRow = node.operation.maxItemsInEachRow,
+        maxLines = node.operation.maxLines,
       ) {
         RenderLayoutNode(
           node.content,

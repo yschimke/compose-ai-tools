@@ -695,6 +695,19 @@ public data class RcColumnLayout(
   override val opcode: Int = RcOpcodes.LAYOUT_COLUMN
 }
 
+/** Horizontal layout that wraps children into additional rows when space is exhausted. */
+public data class RcFlowLayout(
+  val componentId: Int,
+  val animationId: Int,
+  val horizontalPositioning: Int,
+  val verticalPositioning: Int,
+  val spacedBy: RcFloatWord,
+  val maxItemsInEachRow: Int,
+  val maxLines: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.LAYOUT_FLOW
+}
+
 /** Selects the first child that fits the available size. */
 public data class RcFitBoxLayout(
   val componentId: Int,
@@ -1073,6 +1086,7 @@ public object RcOpcodes {
   public const val MODIFIER_HEIGHT_IN: Int = 232
   public const val LAYOUT_IMAGE: Int = 234
   public const val CORE_TEXT: Int = 239
+  public const val LAYOUT_FLOW: Int = 240
   public const val TEXT_STYLE: Int = 242
   public const val MODIFIER_DIMENSION_CONSTRAINTS: Int = 243
 }
