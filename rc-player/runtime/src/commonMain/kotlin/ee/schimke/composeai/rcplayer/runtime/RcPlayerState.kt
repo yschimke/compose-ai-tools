@@ -84,6 +84,9 @@ public class RcPlayerState(
     document.operations.filterIsInstance<RcIntegerExpression>().associateBy { it.outId }
   private var frameTimeSeconds: Float = 0f
 
+  public val animationTimeSeconds: Float
+    get() = frameTimeSeconds
+
   public val rootContentBehavior: RcRootContentBehavior? =
     document.operations.filterIsInstance<RcRootContentBehavior>().lastOrNull()
 

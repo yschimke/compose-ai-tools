@@ -1146,6 +1146,18 @@ public data object RcRippleModifier : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_RIPPLE
 }
 
+/** Six-field AndroidX marquee decorator; alpha16's runtime uses its sinusoidal timeline. */
+public data class RcMarqueeModifier(
+  val iterations: Int,
+  val animationMode: Int,
+  val repeatDelayMillis: RcFloatWord,
+  val initialDelayMillis: RcFloatWord,
+  val spacing: RcFloatWord,
+  val velocity: RcFloatWord,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_MARQUEE
+}
+
 /** AndroidX scroll container; its immutable linked children include its touch expression. */
 public data class RcScrollModifier(
   val direction: Int,
@@ -1327,6 +1339,7 @@ public object RcOpcodes {
   public const val MODIFIER_GRAPHICS_LAYER: Int = 224
   public const val MODIFIER_SCROLL: Int = 226
   public const val VALUE_FLOAT_EXPRESSION_CHANGE_ACTION: Int = 227
+  public const val MODIFIER_MARQUEE: Int = 228
   public const val MODIFIER_RIPPLE: Int = 229
   public const val LAYOUT_COLLAPSIBLE_ROW: Int = 230
   public const val MODIFIER_WIDTH_IN: Int = 231

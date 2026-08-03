@@ -24,6 +24,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcHostNamedActionValue
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
+import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperationProfiles
@@ -45,6 +46,53 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RcComposeSupportTest {
+  @Test
+  fun marqueeIsSharedByWasmAndIosProfiles() {
+    val document =
+      RcDocument(
+        header,
+        listOf(
+          RcMarqueeModifier(
+            iterations = 3,
+            animationMode = 1,
+            repeatDelayMillis = RcFloatWord.literal(250f),
+            initialDelayMillis = RcFloatWord.literal(500f),
+            spacing = RcFloatWord.literal(12f),
+            velocity = RcFloatWord.literal(40f),
+          )
+        ),
+      )
+
+    assertTrue(document.composeSupportReport(RcOperationProfiles.CMP_WASM_ALPHA16).fullyRenderable)
+    assertTrue(document.composeSupportReport(RcOperationProfiles.CMP_IOS_ALPHA16).fullyRenderable)
+  }
+
+  @Test
+  fun rejectsInvalidMarqueeTimelineBeforeRendering() {
+    val issues =
+      RcDocument(
+          header,
+          listOf(
+            RcMarqueeModifier(
+              iterations = 1,
+              animationMode = 0,
+              repeatDelayMillis = RcFloatWord.literal(Float.NaN),
+              initialDelayMillis = RcFloatWord.literal(0f),
+              spacing = RcFloatWord.literal(0f),
+              velocity = RcFloatWord.literal(0f),
+            )
+          ),
+        )
+        .composeSupportReport()
+        .issues
+        .map { it.detail }
+
+    assertEquals(
+      listOf("repeat delay must be finite", "velocity must be greater than zero"),
+      issues,
+    )
+  }
+
   @Test
   fun actionSupportRejectsMissingNamesMetadataAndExpressionsPrecisely() {
     val issues =

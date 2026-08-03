@@ -54,6 +54,7 @@ public object RcDocumentCodec {
         ValueFloatChangeActionCodec,
         ValueFloatExpressionChangeActionCodec,
         RunActionCodec,
+        MarqueeModifierCodec,
         RippleModifierCodec,
         ScrollModifierCodec,
         id(RcOpcodes.DRAW_PATH, "DrawPath"),
@@ -966,6 +967,29 @@ private object RippleModifierCodec : RcOperationCodec<RcRippleModifier> {
   override fun decode(input: RcWireReader): RcRippleModifier = RcRippleModifier
 
   override fun encode(output: RcWireWriter, value: RcRippleModifier): Unit = Unit
+}
+
+private object MarqueeModifierCodec : RcOperationCodec<RcMarqueeModifier> {
+  override val spec = RcOperationSpec(RcOpcodes.MODIFIER_MARQUEE, "MarqueeModifierOperation")
+
+  override fun decode(input: RcWireReader): RcMarqueeModifier =
+    RcMarqueeModifier(
+      iterations = input.readInt("iterations"),
+      animationMode = input.readInt("animationMode"),
+      repeatDelayMillis = input.readFloatWord("repeatDelayMillis"),
+      initialDelayMillis = input.readFloatWord("initialDelayMillis"),
+      spacing = input.readFloatWord("spacing"),
+      velocity = input.readFloatWord("velocity"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcMarqueeModifier) {
+    output.writeInt(value.iterations)
+    output.writeInt(value.animationMode)
+    output.writeFloatWord(value.repeatDelayMillis)
+    output.writeFloatWord(value.initialDelayMillis)
+    output.writeFloatWord(value.spacing)
+    output.writeFloatWord(value.velocity)
+  }
 }
 
 private object ScrollModifierCodec : RcOperationCodec<RcScrollModifier> {

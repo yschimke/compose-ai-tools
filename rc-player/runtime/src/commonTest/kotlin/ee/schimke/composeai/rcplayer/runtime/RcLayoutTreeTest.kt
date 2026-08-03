@@ -17,6 +17,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcHostAction
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
+import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcPaddingModifier
@@ -121,6 +122,27 @@ class RcLayoutTreeTest {
       touch,
       assertIs<RcLinkedNode.Operation>(canvas.modifiers.scroll?.children?.single()).operation,
     )
+  }
+
+  @Test
+  fun extractsMarqueeAsAnImmutableModifier() {
+    val marquee =
+      RcMarqueeModifier(
+        iterations = 3,
+        animationMode = 1,
+        repeatDelayMillis = RcFloatWord.literal(250f),
+        initialDelayMillis = RcFloatWord.literal(500f),
+        spacing = RcFloatWord.literal(12f),
+        velocity = RcFloatWord.literal(40f),
+      )
+    val root =
+      requireNotNull(
+        treeOf(RcRootLayout(1), RcLayoutContent(2), RcCanvasLayout(3, 30), marquee, ends = 3)
+      )
+    val content = assertIs<RcLayoutNode.Content>(root.children.single())
+    val canvas = assertIs<RcLayoutNode.Canvas>(content.children.single())
+
+    assertEquals(marquee, canvas.modifiers.marquee)
   }
 
   @Test

@@ -148,6 +148,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcIdOperation
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
+import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixExpression
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixFromPath
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixVectorMath
@@ -192,6 +193,7 @@ import ee.schimke.composeai.rcplayer.runtime.RcPlayerEvent
 import ee.schimke.composeai.rcplayer.runtime.RcPlayerState
 import ee.schimke.composeai.rcplayer.runtime.RcScrollBlock
 import ee.schimke.composeai.rcplayer.runtime.RcTouchExpressionRuntime
+import ee.schimke.composeai.rcplayer.runtime.androidXMarqueeOffset
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.roundToInt
@@ -235,7 +237,8 @@ public fun RcComposePlayer(
   invalidationVersion // Subscribe composition to local action mutations.
   val hasAnimatedFloats =
     remember(document) {
-      document.operations.filterIsInstance<RcFloatExpression>().any { it.animation != null }
+      document.operations.filterIsInstance<RcFloatExpression>().any { it.animation != null } ||
+        document.operations.any { it is RcMarqueeModifier }
     }
   var frameNanos by remember { mutableLongStateOf(0L) }
   LaunchedEffect(hasAnimatedFloats) {
@@ -1153,6 +1156,7 @@ private fun Modifier.applyComponentModifiers(
   }
   result = result.applyWidth(modifiers, state, density, fillMissingDimensions)
   result = result.applyHeight(modifiers, state, density, fillMissingDimensions)
+  modifiers.marquee?.let { result = result.applyAndroidXMarquee(it, state) }
   modifiers.scroll?.let { result = result.applyAndroidXScroll(it, state) }
   modifiers.graphicsLayer?.let { result = result.applyGraphicsLayer(it, state) }
   modifiers.placementModifiers.forEach { placement ->
@@ -1209,6 +1213,37 @@ private fun Modifier.applyComponentModifiers(
       )
   }
   return result
+}
+
+@Composable
+private fun Modifier.applyAndroidXMarquee(
+  operation: RcMarqueeModifier,
+  state: RcPlayerState,
+): Modifier {
+  val density = androidx.compose.ui.platform.LocalDensity.current.density
+  val timeSeconds = state.animationTimeSeconds
+  return clipToBounds().layout { measurable, constraints ->
+    val placeable =
+      measurable.measure(
+        constraints.copy(minWidth = 0, maxWidth = androidx.compose.ui.unit.Constraints.Infinity)
+      )
+    val viewportWidth =
+      if (constraints.maxWidth == androidx.compose.ui.unit.Constraints.Infinity) placeable.width
+      else constraints.maxWidth
+    val width = constraints.constrainWidth(viewportWidth)
+    val height = constraints.constrainHeight(placeable.height)
+    val contentWidth = placeable.width + operation.spacing.value
+    val distance = (contentWidth - width).coerceAtLeast(0f)
+    val offset =
+      androidXMarqueeOffset(
+        overflowDistance = distance,
+        density = density,
+        velocity = operation.velocity.value,
+        initialDelayMillis = operation.initialDelayMillis.value,
+        timeSeconds = timeSeconds,
+      )
+    layout(width, height) { placeable.placeWithLayer(0, 0) { translationX = offset } }
+  }
 }
 
 @Composable

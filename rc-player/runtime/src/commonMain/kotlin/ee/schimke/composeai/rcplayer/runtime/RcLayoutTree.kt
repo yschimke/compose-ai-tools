@@ -23,6 +23,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
+import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
 import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperation
@@ -57,6 +58,7 @@ public data class RcLayoutModifiers(
   val accessibility: List<RcAccessibilitySemantics> = emptyList(),
   val clicks: List<RcClickActionBlock> = emptyList(),
   val scroll: RcScrollBlock? = null,
+  val marquee: RcMarqueeModifier? = null,
   val visibility: RcVisibilityModifier? = null,
   val graphicsLayer: RcGraphicsLayerModifier? = null,
 )
@@ -445,6 +447,7 @@ public object RcLayoutTree {
             }
             blocks.singleOrNull()
           },
+      marquee = operations.singleModifier<RcMarqueeModifier>(container.operation),
     )
   }
 

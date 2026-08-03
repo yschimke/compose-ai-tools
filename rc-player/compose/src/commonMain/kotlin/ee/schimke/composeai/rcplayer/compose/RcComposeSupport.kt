@@ -28,6 +28,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
+import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperationInventory
@@ -560,6 +561,26 @@ public fun RcDocument.composeSupportReport(
           "ScrollModifierOperation",
           "direction ${operation.direction} is not implemented",
         )
+    }
+    if (operation is RcMarqueeModifier) {
+      listOf(
+          "repeat delay" to operation.repeatDelayMillis.value,
+          "initial delay" to operation.initialDelayMillis.value,
+          "spacing" to operation.spacing.value,
+          "velocity" to operation.velocity.value,
+        )
+        .filter { (_, value) -> !value.isFinite() }
+        .forEach { (name, _) ->
+          issues += RcComposeSupportIssue(index, "MarqueeModifierOperation", "$name must be finite")
+        }
+      if (operation.velocity.value <= 0f) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "MarqueeModifierOperation",
+            "velocity must be greater than zero",
+          )
+      }
     }
     if (operation is RcTouchExpression) {
       when {

@@ -105,6 +105,7 @@ import androidx.compose.remote.core.operations.layout.modifiers.HostActionMetada
 import androidx.compose.remote.core.operations.layout.modifiers.HostActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HostNamedActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.LayoutComputeOperation
+import androidx.compose.remote.core.operations.layout.modifiers.MarqueeModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.OffsetModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.PaddingModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.RippleModifierOperation
@@ -186,6 +187,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
+import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
 import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperationInventory
@@ -232,6 +234,25 @@ import kotlin.test.assertTrue
  * from this test module: AndroidX remote-core/Java player is the protocol authority.
  */
 class AndroidxWireCompatibilityTest {
+  @Test
+  fun androidXMarqueeModifierRoundTripsExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    MarqueeModifierOperation.apply(buffer, 3, 1, 250f, 500f, 12f, 40f)
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+    val marquee = assertIs<RcMarqueeModifier>(document.operations.single())
+
+    assertEquals(3, marquee.iterations)
+    assertEquals(1, marquee.animationMode)
+    assertEquals(250f, marquee.repeatDelayMillis.value)
+    assertEquals(500f, marquee.initialDelayMillis.value)
+    assertEquals(12f, marquee.spacing.value)
+    assertEquals(40f, marquee.velocity.value)
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
   @Test
   fun androidXScrollAndTouchExpressionRoundTripExactly() {
     assertEquals(0, RcScrollModifier.VERTICAL)

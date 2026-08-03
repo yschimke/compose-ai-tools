@@ -37,6 +37,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerConstant
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
+import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
@@ -64,6 +65,48 @@ import kotlin.test.assertTrue
 import org.jetbrains.skia.Bitmap
 
 class RcLayoutRenderTest {
+  @Test
+  fun marqueeClipsOverflowingLayoutContent() {
+    val red = 0xffff0000.toInt()
+    val blue = 0xff0000ff.toInt()
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 80, legacyHeight = 20, modern = false),
+        listOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcRowLayout(3, 30, 1, 4, RcFloatWord.literal(0f)),
+          width(40f),
+          height(20f),
+          RcMarqueeModifier(
+            iterations = 1,
+            animationMode = 0,
+            repeatDelayMillis = RcFloatWord.literal(0f),
+            initialDelayMillis = RcFloatWord.literal(0f),
+            spacing = RcFloatWord.literal(0f),
+            velocity = RcFloatWord.literal(40f),
+          ),
+          RcLayoutContent(4),
+        ) +
+          canvas(5, 40f, red) +
+          canvas(6, 40f, blue) +
+          List(4) { RcNoArg(RcOpcodes.CONTAINER_END) },
+      )
+    val scene =
+      ImageComposeScene(width = 80, height = 20, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val bitmap = Bitmap().apply { allocN32Pixels(80, 20) }
+      check(scene.render(0L).readPixels(bitmap))
+
+      assertEquals(red, bitmap.getColor(20, 10))
+      assertEquals(0, bitmap.getColor(60, 10), "blue overflow must be clipped to the marquee width")
+    } finally {
+      scene.close()
+    }
+  }
+
   @OptIn(ExperimentalTestApi::class)
   @Test
   fun verticalScrollRevealsOverflowingContent() =
