@@ -34,11 +34,13 @@ import ee.schimke.composeai.rcplayer.protocol.RcOperationInventory
 import ee.schimke.composeai.rcplayer.protocol.RcOperationProfile
 import ee.schimke.composeai.rcplayer.protocol.RcPaintData
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
+import ee.schimke.composeai.rcplayer.protocol.RcScrollModifier
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextMeasure
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
+import ee.schimke.composeai.rcplayer.protocol.RcTouchExpression
 import ee.schimke.composeai.rcplayer.protocol.RcValueFloatChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueFloatExpressionChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerChangeAction
@@ -548,6 +550,47 @@ public fun RcDocument.composeSupportReport(
             RcComposeSupportIssue(index, "CoreSemantics", "$name text id $id is not declared")
         }
     }
+    if (
+      operation is RcScrollModifier &&
+        operation.direction !in RcScrollModifier.VERTICAL..RcScrollModifier.HORIZONTAL
+    ) {
+      issues +=
+        RcComposeSupportIssue(
+          index,
+          "ScrollModifierOperation",
+          "direction ${operation.direction} is not implemented",
+        )
+    }
+    if (operation is RcTouchExpression) {
+      when {
+        operation.touchEffects != 0 ->
+          issues +=
+            RcComposeSupportIssue(
+              index,
+              "TouchExpression",
+              "touch effects ${operation.touchEffects} are not implemented",
+            )
+        operation.easingSpec.isNotEmpty() ->
+          issues +=
+            RcComposeSupportIssue(
+              index,
+              "TouchExpression",
+              "custom velocity easing is not implemented",
+            )
+        operation.stopMode !in
+          RcTouchExpression.STOP_GENTLY..RcTouchExpression.STOP_NOTCHES_SINGLE_EVEN ->
+          issues +=
+            RcComposeSupportIssue(
+              index,
+              "TouchExpression",
+              "stop mode ${operation.stopMode} is not implemented",
+            )
+        operation.stopMode in
+          setOf(RcTouchExpression.STOP_NOTCHES_EVEN, RcTouchExpression.STOP_NOTCHES_SINGLE_EVEN) &&
+          operation.stopSpec.isEmpty() ->
+          issues += RcComposeSupportIssue(index, "TouchExpression", "even notches require a count")
+      }
+    }
     if (operation is RcValueStringChangeAction && operation.valueId !in textIds) {
       issues +=
         RcComposeSupportIssue(
@@ -644,6 +687,9 @@ public fun RcDocument.composeSupportReport(
               "nested opcode ${operation.opcode} is not an action",
             )
         }
+        invalidScrollChild(linked.operations)?.let { detail ->
+          issues += RcComposeSupportIssue(-1, "ScrollModifierOperation", detail)
+        }
         val layoutResult = runCatching { RcLayoutTree.build(linked) }
         layoutResult.exceptionOrNull()?.let {
           issues += RcComposeSupportIssue(-1, "LayoutStructure", it.message ?: "invalid")
@@ -672,6 +718,29 @@ public fun RcDocument.composeSupportReport(
       },
     )
   return RcComposeSupportReport(issues)
+}
+
+private fun invalidScrollChild(nodes: List<RcLinkedNode>, insideScroll: Boolean = false): String? {
+  nodes.forEach { node ->
+    if (node is RcLinkedNode.Operation && node.operation is RcTouchExpression && !insideScroll) {
+      return "TouchExpression is only implemented as a direct scroll child"
+    }
+    if (node is RcLinkedNode.Container && node.operation is RcScrollModifier) {
+      val children = node.children.map { it.operation() }
+      if (children.size != 1 || children.singleOrNull() !is RcTouchExpression) {
+        return "container requires exactly one TouchExpression child"
+      }
+      invalidScrollChild(node.children, insideScroll = true)?.let {
+        return it
+      }
+      return@forEach
+    }
+    if (node is RcLinkedNode.Container)
+      invalidScrollChild(node.children, insideScroll)?.let {
+        return it
+      }
+  }
+  return null
 }
 
 private fun invalidActionChild(

@@ -31,6 +31,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcRippleModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
+import ee.schimke.composeai.rcplayer.protocol.RcScrollModifier
 import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
@@ -55,6 +56,7 @@ public data class RcLayoutModifiers(
   val layoutComputes: List<RcLayoutComputeBlock> = emptyList(),
   val accessibility: List<RcAccessibilitySemantics> = emptyList(),
   val clicks: List<RcClickActionBlock> = emptyList(),
+  val scroll: RcScrollBlock? = null,
   val visibility: RcVisibilityModifier? = null,
   val graphicsLayer: RcGraphicsLayerModifier? = null,
 )
@@ -65,6 +67,8 @@ public data class RcLayoutComputeBlock(
 )
 
 public data class RcClickActionBlock(val children: List<RcLinkedNode>)
+
+public data class RcScrollBlock(val operation: RcScrollModifier, val children: List<RcLinkedNode>)
 
 public sealed interface RcLayoutNode {
   public val componentId: Int
@@ -427,6 +431,20 @@ public object RcLayoutTree {
         container.children.filterIsInstance<RcLinkedNode.Container>().mapNotNull { child ->
           if (child.operation is RcClickModifier) RcClickActionBlock(child.children) else null
         },
+      scroll =
+        container.children
+          .filterIsInstance<RcLinkedNode.Container>()
+          .mapNotNull { child ->
+            (child.operation as? RcScrollModifier)?.let { RcScrollBlock(it, child.children) }
+          }
+          .let { blocks ->
+            if (blocks.size > 1) {
+              throw RcLayoutException(
+                "${container.operation::class.simpleName} has ${blocks.size} RcScrollModifier operations"
+              )
+            }
+            blocks.singleOrNull()
+          },
     )
   }
 

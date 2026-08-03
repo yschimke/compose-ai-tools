@@ -21,6 +21,7 @@ public object RcDocumentCodec {
         BitmapDataCodec,
         FloatConstantCodec,
         FloatExpressionCodec,
+        TouchExpressionCodec,
         ColorConstantCodec,
         ColorExpressionCodec,
         ColorThemeCodec,
@@ -54,6 +55,7 @@ public object RcDocumentCodec {
         ValueFloatExpressionChangeActionCodec,
         RunActionCodec,
         RippleModifierCodec,
+        ScrollModifierCodec,
         id(RcOpcodes.DRAW_PATH, "DrawPath"),
         DrawTweenPathCodec,
         id(RcOpcodes.CLIP_PATH, "ClipPath"),
@@ -966,6 +968,25 @@ private object RippleModifierCodec : RcOperationCodec<RcRippleModifier> {
   override fun encode(output: RcWireWriter, value: RcRippleModifier): Unit = Unit
 }
 
+private object ScrollModifierCodec : RcOperationCodec<RcScrollModifier> {
+  override val spec = RcOperationSpec(RcOpcodes.MODIFIER_SCROLL, "ScrollModifierOperation")
+
+  override fun decode(input: RcWireReader): RcScrollModifier =
+    RcScrollModifier(
+      direction = input.readInt("direction"),
+      position = input.readFloatWord("position"),
+      max = input.readFloatWord("max"),
+      notchMax = input.readFloatWord("notchMax"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcScrollModifier) {
+    output.writeInt(value.direction)
+    output.writeFloatWord(value.position)
+    output.writeFloatWord(value.max)
+    output.writeFloatWord(value.notchMax)
+  }
+}
+
 private object VisibilityModifierCodec : RcOperationCodec<RcVisibilityModifier> {
   override val spec = RcOperationSpec(RcOpcodes.MODIFIER_VISIBILITY, "ComponentVisibilityOperation")
 
@@ -1173,6 +1194,67 @@ private object FloatExpressionCodec : RcOperationCodec<RcFloatExpression> {
     output.writeInt(value.expression.size or (animationCount shl 16))
     value.expression.forEach(output::writeFloatWord)
     value.animation?.forEach(output::writeFloatWord)
+  }
+}
+
+private object TouchExpressionCodec : RcOperationCodec<RcTouchExpression> {
+  override val spec = RcOperationSpec(RcOpcodes.TOUCH_EXPRESSION, "TouchExpression")
+
+  override fun decode(input: RcWireReader): RcTouchExpression {
+    val id = input.readInt("id")
+    val defaultValue = input.readFloatWord("defaultValue")
+    val min = input.readFloatWord("min")
+    val max = input.readFloatWord("max")
+    val velocityId = input.readFloatWord("velocityId")
+    val touchEffects = input.readInt("touchEffects")
+    val expressionCount = input.readInt("expression.count")
+    if (expressionCount !in 0..32) {
+      input.fail("expression.count", "Invalid TouchExpression length $expressionCount")
+    }
+    val expression = List(expressionCount) { input.readFloatWord("expression[$it]") }
+    val stopModeAndCount = input.readInt("stopModeAndCount")
+    val stopMode = stopModeAndCount shr 16
+    val stopCount = stopModeAndCount and 0xffff
+    if (stopCount > 200) input.fail("stopSpec.count", "Invalid stop spec length $stopCount")
+    val stopSpec = List(stopCount) { input.readFloatWord("stopSpec[$it]") }
+    val easingCount = input.readInt("easingSpec.count")
+    if (easingCount !in 0..200) {
+      input.fail("easingSpec.count", "Invalid easing spec length $easingCount")
+    }
+    val easingSpec = List(easingCount) { input.readFloatWord("easingSpec[$it]") }
+    return RcTouchExpression(
+      id,
+      defaultValue,
+      min,
+      max,
+      velocityId,
+      touchEffects,
+      expression,
+      stopMode,
+      stopSpec,
+      easingSpec,
+    )
+  }
+
+  override fun encode(output: RcWireWriter, value: RcTouchExpression) {
+    require(value.expression.size <= 32) { "TouchExpression exceeds AndroidX's 32-word limit" }
+    require(value.stopSpec.size <= 200) { "TouchExpression stop spec exceeds 200 words" }
+    require(value.easingSpec.size <= 200) { "TouchExpression easing spec exceeds 200 words" }
+    require(value.stopMode in Short.MIN_VALUE..Short.MAX_VALUE) {
+      "TouchExpression stop mode does not fit its signed 16-bit wire field"
+    }
+    output.writeInt(value.id)
+    output.writeFloatWord(value.defaultValue)
+    output.writeFloatWord(value.min)
+    output.writeFloatWord(value.max)
+    output.writeFloatWord(value.velocityId)
+    output.writeInt(value.touchEffects)
+    output.writeInt(value.expression.size)
+    value.expression.forEach(output::writeFloatWord)
+    output.writeInt((value.stopMode shl 16) or value.stopSpec.size)
+    value.stopSpec.forEach(output::writeFloatWord)
+    output.writeInt(value.easingSpec.size)
+    value.easingSpec.forEach(output::writeFloatWord)
   }
 }
 

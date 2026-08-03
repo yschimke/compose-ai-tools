@@ -22,8 +22,10 @@ import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcPaddingModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRippleModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
+import ee.schimke.composeai.rcplayer.protocol.RcScrollModifier
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
+import ee.schimke.composeai.rcplayer.protocol.RcTouchExpression
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
@@ -74,6 +76,50 @@ class RcLayoutTreeTest {
     assertEquals(
       RcHostAction(77),
       assertIs<RcLinkedNode.Operation>(canvas.modifiers.clicks.single().children.single()).operation,
+    )
+  }
+
+  @Test
+  fun preservesScrollTouchExpressionAsAnImmutableModifierBlock() {
+    val touch =
+      RcTouchExpression(
+        id = 41,
+        defaultValue = RcFloatWord.literal(0f),
+        min = RcFloatWord.literal(0f),
+        max = RcFloatWord.literal(100f),
+        velocityId = RcFloatWord.literal(Float.NaN),
+        touchEffects = 0,
+        expression = emptyList(),
+        stopMode = RcTouchExpression.STOP_INSTANTLY,
+        stopSpec = emptyList(),
+        easingSpec = emptyList(),
+      )
+    val scroll =
+      RcScrollModifier(
+        RcScrollModifier.VERTICAL,
+        RcFloatWord.literal(0f),
+        RcFloatWord.literal(100f),
+        RcFloatWord.literal(0f),
+      )
+    val root =
+      requireNotNull(
+        treeOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcCanvasLayout(3, 30),
+          scroll,
+          touch,
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          ends = 3,
+        )
+      )
+    val content = assertIs<RcLayoutNode.Content>(root.children.single())
+    val canvas = assertIs<RcLayoutNode.Canvas>(content.children.single())
+
+    assertEquals(scroll, canvas.modifiers.scroll?.operation)
+    assertEquals(
+      touch,
+      assertIs<RcLinkedNode.Operation>(canvas.modifiers.scroll?.children?.single()).operation,
     )
   }
 

@@ -7,6 +7,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,7 +25,9 @@ import androidx.compose.foundation.layout.requiredHeightIn
 import androidx.compose.foundation.layout.requiredWidthIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -36,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -161,6 +165,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcPathTween
 import ee.schimke.composeai.rcplayer.protocol.RcRippleModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRootContentBehavior
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
+import ee.schimke.composeai.rcplayer.protocol.RcScrollModifier
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcTextFromFloat
 import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
@@ -185,6 +190,8 @@ import ee.schimke.composeai.rcplayer.runtime.RcLinkedNode
 import ee.schimke.composeai.rcplayer.runtime.RcNamedValue
 import ee.schimke.composeai.rcplayer.runtime.RcPlayerEvent
 import ee.schimke.composeai.rcplayer.runtime.RcPlayerState
+import ee.schimke.composeai.rcplayer.runtime.RcScrollBlock
+import ee.schimke.composeai.rcplayer.runtime.RcTouchExpressionRuntime
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.roundToInt
@@ -1146,6 +1153,7 @@ private fun Modifier.applyComponentModifiers(
   }
   result = result.applyWidth(modifiers, state, density, fillMissingDimensions)
   result = result.applyHeight(modifiers, state, density, fillMissingDimensions)
+  modifiers.scroll?.let { result = result.applyAndroidXScroll(it, state) }
   modifiers.graphicsLayer?.let { result = result.applyGraphicsLayer(it, state) }
   modifiers.placementModifiers.forEach { placement ->
     result =
@@ -1201,6 +1209,58 @@ private fun Modifier.applyComponentModifiers(
       )
   }
   return result
+}
+
+@Composable
+private fun Modifier.applyAndroidXScroll(block: RcScrollBlock, state: RcPlayerState): Modifier {
+  val operation = block.operation
+  val touch =
+    block.children
+      .filterIsInstance<RcLinkedNode.Operation>()
+      .mapNotNull { it.operation as? ee.schimke.composeai.rcplayer.protocol.RcTouchExpression }
+      .singleOrNull()
+  val initialPosition = state.resolve(operation.position).takeIf(Float::isFinite)?.roundToInt() ?: 0
+  val scrollState = rememberScrollState(initialPosition.coerceAtLeast(0))
+  val touchRuntime = touch?.let { remember(it) { RcTouchExpressionRuntime(it) } }
+
+  LaunchedEffect(scrollState, operation, state) {
+    snapshotFlow { scrollState.value to scrollState.maxValue }
+      .collect { (position, maximum) ->
+        operation.position.referencedId?.let { state.setFloat(it, position.toFloat()) }
+        operation.max.referencedId?.let { state.setFloat(it, maximum.toFloat()) }
+        operation.notchMax.referencedId?.let {
+          state.setFloat(it, (maximum + scrollState.viewportSize).toFloat())
+        }
+      }
+  }
+  LaunchedEffect(scrollState, touchRuntime, touch, state) {
+    var wasScrolling = false
+    snapshotFlow { scrollState.isScrollInProgress }
+      .collect { scrolling ->
+        if (scrolling) {
+          wasScrolling = true
+        } else if (wasScrolling && touchRuntime != null) {
+          wasScrolling = false
+          val target =
+            touchRuntime
+              .stopTarget(
+                currentValue = scrollState.value.toFloat(),
+                minimum = 0f,
+                maximum = scrollState.maxValue.toFloat(),
+                resolve = state::resolve,
+              )
+              .roundToInt()
+              .coerceIn(0, scrollState.maxValue)
+          if (target != scrollState.value) scrollState.animateScrollTo(target)
+        }
+      }
+  }
+
+  return if (operation.direction == RcScrollModifier.VERTICAL) {
+    verticalScroll(scrollState)
+  } else {
+    horizontalScroll(scrollState)
+  }
 }
 
 private fun Modifier.applyAccessibilitySemantics(

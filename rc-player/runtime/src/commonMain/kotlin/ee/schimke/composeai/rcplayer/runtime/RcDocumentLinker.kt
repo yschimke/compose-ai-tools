@@ -63,6 +63,7 @@ public object RcDocumentLinker {
     setOf(
       RcOpcodes.CANVAS_OPERATIONS,
       RcOpcodes.MODIFIER_CLICK,
+      RcOpcodes.MODIFIER_SCROLL,
       RcOpcodes.RUN_ACTION,
       RcOpcodes.LAYOUT_CANVAS_CONTENT,
       RcOpcodes.FUNCTION_DEFINE,

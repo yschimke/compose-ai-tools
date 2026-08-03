@@ -1,6 +1,14 @@
 package ee.schimke.composeai.rcplayer.compose
 
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.runSkikoComposeUiTest
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.Density
 import ee.schimke.composeai.rcplayer.protocol.RcAlignByModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
@@ -37,10 +45,12 @@ import ee.schimke.composeai.rcplayer.protocol.RcPaintData
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
+import ee.schimke.composeai.rcplayer.protocol.RcScrollModifier
 import ee.schimke.composeai.rcplayer.protocol.RcTextData
 import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
+import ee.schimke.composeai.rcplayer.protocol.RcTouchExpression
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import ee.schimke.composeai.rcplayer.protocol.RcVisibilityModifier
@@ -54,6 +64,72 @@ import kotlin.test.assertTrue
 import org.jetbrains.skia.Bitmap
 
 class RcLayoutRenderTest {
+  @OptIn(ExperimentalTestApi::class)
+  @Test
+  fun verticalScrollRevealsOverflowingContent() =
+    runSkikoComposeUiTest(
+      size = androidx.compose.ui.geometry.Size(40f, 40f),
+      density = Density(1f),
+    ) {
+      val reference: (Int) -> RcFloatWord = { RcFloatWord(0x7fc00000 or it) }
+      val end = RcNoArg(RcOpcodes.CONTAINER_END)
+      val document =
+        RcDocument(
+          RcHeader(RcVersion(1, 0, 0), legacyWidth = 40, legacyHeight = 40, modern = false),
+          listOf(
+            RcRootLayout(1),
+            RcLayoutContent(2),
+            ee.schimke.composeai.rcplayer.protocol.RcColumnLayout(
+              3,
+              30,
+              1,
+              4,
+              RcFloatWord.literal(0f),
+            ),
+            width(40f),
+            height(40f),
+            RcScrollModifier(
+              RcScrollModifier.VERTICAL,
+              reference(41),
+              reference(42),
+              reference(43),
+            ),
+            RcTouchExpression(
+              id = 41,
+              defaultValue = RcFloatWord.literal(0f),
+              min = RcFloatWord.literal(0f),
+              max = reference(42),
+              velocityId = RcFloatWord.literal(Float.NaN),
+              touchEffects = 0,
+              expression = listOf(reference(14)),
+              stopMode = RcTouchExpression.STOP_INSTANTLY,
+              stopSpec = emptyList(),
+              easingSpec = emptyList(),
+            ),
+            end,
+            RcLayoutContent(4),
+            RcCanvasLayout(5, 50),
+            width(40f),
+            height(40f),
+            solidBackground(1f, 0f, 0f),
+            end,
+            RcCanvasLayout(6, 60),
+            width(40f),
+            height(40f),
+            solidBackground(0f, 0f, 1f),
+            end,
+            end,
+            end,
+            end,
+            end,
+          ),
+        )
+      setContent { RcComposePlayer(document) }
+      onRoot().performTouchInput { swipeUp(startY = 35f, endY = 5f, durationMillis = 100L) }
+
+      assertEquals(0xff0000ff.toInt(), onRoot().captureToImage().toPixelMap()[20, 20].toArgb())
+    }
+
   @Test
   fun layoutComputePositionMovesRenderedComponent() {
     val blue = 0xff0000ff.toInt()

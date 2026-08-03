@@ -134,6 +134,7 @@ private fun postReady(): Unit =
 private fun reportFailure(message: String): Unit =
   js(
     "(document.documentElement.dataset.rcPlayerState = 'error', " +
+      "document.documentElement.dataset.rcPlayerError = message, " +
       "console.error('[rc-player-wasm] ' + message), " +
       "window.parent.postMessage('cp-rc-wasm-error:' + message, '*'))"
   )

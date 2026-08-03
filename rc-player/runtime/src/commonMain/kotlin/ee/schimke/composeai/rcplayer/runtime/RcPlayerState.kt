@@ -42,6 +42,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextMerge
 import ee.schimke.composeai.rcplayer.protocol.RcTextSubtext
 import ee.schimke.composeai.rcplayer.protocol.RcTextTransform
 import ee.schimke.composeai.rcplayer.protocol.RcTheme
+import ee.schimke.composeai.rcplayer.protocol.RcTouchExpression
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcValueFloatChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueFloatExpressionChangeAction
@@ -115,6 +116,9 @@ public class RcPlayerState(
       }
     }
     document.operations.filterIsInstance<RcDynamicFloatList>().forEach(::applyDataOperation)
+    document.operations.filterIsInstance<RcTouchExpression>().forEach { operation ->
+      if (operation.id !in floats) floats[operation.id] = resolve(operation.defaultValue)
+    }
     namedValues.forEach { (name, value) -> setNamedValue(name, value) }
     beginFrame()
   }

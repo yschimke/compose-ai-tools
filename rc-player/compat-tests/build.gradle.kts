@@ -29,3 +29,12 @@ tasks.register<JavaExec>("generateLayoutFixture") {
   args(layout.buildDirectory.file("fixtures/androidx-layout.rc").get().asFile.absolutePath)
   outputs.file(layout.buildDirectory.file("fixtures/androidx-layout.rc"))
 }
+
+tasks.register<JavaExec>("generateScrollFixture") {
+  description = "Generate a scrolling .rc document using the authoritative AndroidX writer."
+  group = "verification"
+  classpath = sourceSets.main.get().runtimeClasspath
+  mainClass.set("ee.schimke.composeai.rcplayer.compat.GenerateScrollFixtureKt")
+  args(layout.buildDirectory.file("fixtures/androidx-scroll.rc").get().asFile.absolutePath)
+  outputs.file(layout.buildDirectory.file("fixtures/androidx-scroll.rc"))
+}

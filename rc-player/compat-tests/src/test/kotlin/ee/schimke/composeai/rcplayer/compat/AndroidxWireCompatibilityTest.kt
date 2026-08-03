@@ -68,6 +68,7 @@ import androidx.compose.remote.core.operations.TextMerge
 import androidx.compose.remote.core.operations.TextSubtext
 import androidx.compose.remote.core.operations.TextTransform
 import androidx.compose.remote.core.operations.Theme
+import androidx.compose.remote.core.operations.TouchExpression
 import androidx.compose.remote.core.operations.UpdateDynamicFloatList
 import androidx.compose.remote.core.operations.Utils
 import androidx.compose.remote.core.operations.layout.CanvasContent
@@ -109,6 +110,7 @@ import androidx.compose.remote.core.operations.layout.modifiers.PaddingModifierO
 import androidx.compose.remote.core.operations.layout.modifiers.RippleModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.RoundedClipRectModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.RunActionOperation
+import androidx.compose.remote.core.operations.layout.modifiers.ScrollModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ValueFloatChangeActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ValueFloatExpressionChangeActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ValueIntegerChangeActionOperation
@@ -195,10 +197,12 @@ import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRunAction
+import ee.schimke.composeai.rcplayer.protocol.RcScrollModifier
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
+import ee.schimke.composeai.rcplayer.protocol.RcTouchExpression
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcValueFloatChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueFloatExpressionChangeAction
@@ -228,6 +232,40 @@ import kotlin.test.assertTrue
  * from this test module: AndroidX remote-core/Java player is the protocol authority.
  */
 class AndroidxWireCompatibilityTest {
+  @Test
+  fun androidXScrollAndTouchExpressionRoundTripExactly() {
+    assertEquals(0, RcScrollModifier.VERTICAL)
+    assertEquals(1, RcScrollModifier.HORIZONTAL)
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    ScrollModifierOperation.apply(buffer, RcScrollModifier.VERTICAL, Utils.asNan(41), 120f, 4f)
+    TouchExpression.apply(
+      buffer,
+      41,
+      2f,
+      0f,
+      120f,
+      Utils.asNan(42),
+      3,
+      floatArrayOf(Utils.asNan(43)),
+      TouchExpression.STOP_NOTCHES_EVEN,
+      floatArrayOf(4f),
+      floatArrayOf(0f, 1f, 5f, 7f),
+    )
+    ContainerEnd.apply(buffer)
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+
+    val scroll = assertIs<RcScrollModifier>(document.operations[0])
+    assertEquals(RcScrollModifier.VERTICAL, scroll.direction)
+    val touch = assertIs<RcTouchExpression>(document.operations[1])
+    assertEquals(41, touch.id)
+    assertEquals(TouchExpression.STOP_NOTCHES_EVEN, touch.stopMode)
+    assertEquals(listOf(4f), touch.stopSpec.map { it.value })
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
   @Test
   fun androidXRippleModifierRoundTripsExactly() {
     val buffer = WireBuffer()

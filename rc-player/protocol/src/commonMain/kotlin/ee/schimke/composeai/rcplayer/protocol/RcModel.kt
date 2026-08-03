@@ -92,6 +92,36 @@ public data class RcFloatExpression(
   override val opcode: Int = RcOpcodes.ANIMATED_FLOAT
 }
 
+/**
+ * Immutable wire model for AndroidX `TouchExpression`. Float words remain raw so NaN-boxed variable
+ * references and the wrap-mode sentinel round-trip exactly.
+ */
+public data class RcTouchExpression(
+  val id: Int,
+  val defaultValue: RcFloatWord,
+  val min: RcFloatWord,
+  val max: RcFloatWord,
+  val velocityId: RcFloatWord,
+  val touchEffects: Int,
+  val expression: List<RcFloatWord>,
+  val stopMode: Int,
+  val stopSpec: List<RcFloatWord>,
+  val easingSpec: List<RcFloatWord>,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.TOUCH_EXPRESSION
+
+  public companion object {
+    public const val STOP_GENTLY: Int = 0
+    public const val STOP_INSTANTLY: Int = 1
+    public const val STOP_ENDS: Int = 2
+    public const val STOP_NOTCHES_EVEN: Int = 3
+    public const val STOP_NOTCHES_PERCENTS: Int = 4
+    public const val STOP_NOTCHES_ABSOLUTE: Int = 5
+    public const val STOP_ABSOLUTE_POS: Int = 6
+    public const val STOP_NOTCHES_SINGLE_EVEN: Int = 7
+  }
+}
+
 public data class RcColorConstant(val id: Int, val argb: Int) : RcOperation {
   override val opcode: Int = RcOpcodes.COLOR_CONSTANT
 }
@@ -1116,6 +1146,21 @@ public data object RcRippleModifier : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_RIPPLE
 }
 
+/** AndroidX scroll container; its immutable linked children include its touch expression. */
+public data class RcScrollModifier(
+  val direction: Int,
+  val position: RcFloatWord,
+  val max: RcFloatWord,
+  val notchMax: RcFloatWord,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_SCROLL
+
+  public companion object {
+    public const val VERTICAL: Int = 0
+    public const val HORIZONTAL: Int = 1
+  }
+}
+
 /** Component visibility is read from the referenced AndroidX integer variable. */
 public data class RcVisibilityModifier(val visibilityId: Int) : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_VISIBILITY
@@ -1233,6 +1278,7 @@ public object RcOpcodes {
   public const val TEXT_LOOKUP_INT: Int = 153
   public const val DATA_MAP_LOOKUP: Int = 154
   public const val TEXT_MEASURE: Int = 155
+  public const val TOUCH_EXPRESSION: Int = 157
   public const val ATTRIBUTE_TEXT: Int = 170
   public const val ATTRIBUTE_IMAGE: Int = 171
   public const val ATTRIBUTE_COLOR: Int = 180
@@ -1279,6 +1325,7 @@ public object RcOpcodes {
   public const val VALUE_FLOAT_CHANGE_ACTION: Int = 222
   public const val MODIFIER_ZINDEX: Int = 223
   public const val MODIFIER_GRAPHICS_LAYER: Int = 224
+  public const val MODIFIER_SCROLL: Int = 226
   public const val VALUE_FLOAT_EXPRESSION_CHANGE_ACTION: Int = 227
   public const val MODIFIER_RIPPLE: Int = 229
   public const val LAYOUT_COLLAPSIBLE_ROW: Int = 230
