@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.23](https://github.com/yschimke/compose-ai-tools/compare/v0.19.22...v0.19.23) (2026-08-03)
+
+
+### Performance Improvements
+
+* **serve:** fetch catalog assets concurrently and stop pre-rendering themes ([#3222](https://github.com/yschimke/compose-ai-tools/issues/3222)) ([d205488](https://github.com/yschimke/compose-ai-tools/commit/d20548885a2fa28d42fc8644bca9929c93bf1fa0))
+
 ## [0.19.22](https://github.com/yschimke/compose-ai-tools/compare/v0.19.21...v0.19.22) (2026-08-03)
 
 
