@@ -7,7 +7,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
 import ee.schimke.composeai.rcplayer.protocol.RcClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
+import ee.schimke.composeai.rcplayer.protocol.RcDimensionConstraintsModifier
 import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
+import ee.schimke.composeai.rcplayer.protocol.RcHeightInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
@@ -17,6 +19,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcPaddingModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
+import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
 
@@ -29,6 +32,8 @@ public data class RcLayoutModifiers(
   val paintDecorators: List<RcOperation> = emptyList(),
   /** Placement and stacking modifiers retain wire order and compose cumulatively. */
   val placementModifiers: List<RcOperation> = emptyList(),
+  /** Extra size constraints are evaluated before the component's requested dimensions. */
+  val dimensionConstraints: List<RcOperation> = emptyList(),
 )
 
 public sealed interface RcLayoutNode {
@@ -243,6 +248,12 @@ public object RcLayoutTree {
             it is RcRoundedClipRectModifier
         },
       placementModifiers = operations.filter { it is RcOffsetModifier || it is RcZIndexModifier },
+      dimensionConstraints =
+        operations.filter {
+          it is RcWidthInModifier ||
+            it is RcHeightInModifier ||
+            it is RcDimensionConstraintsModifier
+        },
     )
   }
 

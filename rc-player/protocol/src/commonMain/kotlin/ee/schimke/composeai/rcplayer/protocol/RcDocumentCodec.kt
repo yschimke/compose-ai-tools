@@ -99,6 +99,9 @@ public object RcDocumentCodec {
         ClipRectModifierCodec,
         OffsetModifierCodec,
         ZIndexModifierCodec,
+        WidthInModifierCodec,
+        HeightInModifierCodec,
+        DimensionConstraintsModifierCodec,
         four(RcOpcodes.CLIP_RECT, "ClipRect"),
         four(RcOpcodes.MATRIX_SCALE, "MatrixScale"),
         two(RcOpcodes.MATRIX_TRANSLATE, "MatrixTranslate"),
@@ -456,6 +459,56 @@ private object ZIndexModifierCodec : RcOperationCodec<RcZIndexModifier> {
 
   override fun encode(output: RcWireWriter, value: RcZIndexModifier) =
     output.writeFloatWord(value.value)
+}
+
+private object WidthInModifierCodec : RcOperationCodec<RcWidthInModifier> {
+  override val spec = RcOperationSpec(RcOpcodes.MODIFIER_WIDTH_IN, "WidthInModifierOperation")
+
+  override fun decode(input: RcWireReader) =
+    RcWidthInModifier(input.readFloatWord("minimum"), input.readFloatWord("maximum"))
+
+  override fun encode(output: RcWireWriter, value: RcWidthInModifier) {
+    output.writeFloatWord(value.minimum)
+    output.writeFloatWord(value.maximum)
+  }
+}
+
+private object HeightInModifierCodec : RcOperationCodec<RcHeightInModifier> {
+  override val spec = RcOperationSpec(RcOpcodes.MODIFIER_HEIGHT_IN, "HeightInModifierOperation")
+
+  override fun decode(input: RcWireReader) =
+    RcHeightInModifier(input.readFloatWord("minimum"), input.readFloatWord("maximum"))
+
+  override fun encode(output: RcWireWriter, value: RcHeightInModifier) {
+    output.writeFloatWord(value.minimum)
+    output.writeFloatWord(value.maximum)
+  }
+}
+
+private object DimensionConstraintsModifierCodec :
+  RcOperationCodec<RcDimensionConstraintsModifier> {
+  override val spec =
+    RcOperationSpec(
+      RcOpcodes.MODIFIER_DIMENSION_CONSTRAINTS,
+      "DimensionConstraintsModifierOperation",
+    )
+
+  override fun decode(input: RcWireReader): RcDimensionConstraintsModifier {
+    val type = input.readU8("type")
+    if (type !in 0..3) input.fail("type", "Unknown AndroidX dimension constraint type $type")
+    return RcDimensionConstraintsModifier(
+      type,
+      input.readFloatWord("minimum"),
+      input.readFloatWord("maximum"),
+    )
+  }
+
+  override fun encode(output: RcWireWriter, value: RcDimensionConstraintsModifier) {
+    require(value.type in 0..3) { "Unknown AndroidX dimension constraint type ${value.type}" }
+    output.writeU8(value.type)
+    output.writeFloatWord(value.minimum)
+    output.writeFloatWord(value.maximum)
+  }
 }
 
 private object HeaderCodec : RcOperationCodec<RcHeader> {

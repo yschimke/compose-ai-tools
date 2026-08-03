@@ -7,6 +7,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
+import ee.schimke.composeai.rcplayer.protocol.RcDimensionConstraintsModifier
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDraw4
@@ -23,6 +24,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcPaintData
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
+import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
 import kotlin.test.Test
@@ -367,6 +369,57 @@ class RcLayoutRenderTest {
       assertEquals(green, bitmap.getColor(5, 5))
       assertEquals(red, bitmap.getColor(25, 25))
       assertEquals(red, bitmap.getColor(55, 55))
+    } finally {
+      scene.close()
+    }
+  }
+
+  @Test
+  fun dimensionRangesClampRequestedCanvasSize() {
+    val red = 0xffff0000.toInt()
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 100, legacyHeight = 100, modern = false),
+        listOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcCanvasLayout(3, 30),
+          width(80f),
+          height(80f),
+          RcWidthInModifier(RcFloatWord.literal(-1f), RcFloatWord.literal(40f)),
+          RcDimensionConstraintsModifier(
+            RcDimensionConstraintsModifier.VERTICAL,
+            RcFloatWord.literal(-1f),
+            RcFloatWord.literal(30f),
+          ),
+          RcBackgroundModifier(
+            flags = 0,
+            colorId = 0,
+            reserved1 = 0,
+            reserved2 = 0,
+            red = RcFloatWord.literal(1f),
+            green = RcFloatWord.literal(0f),
+            blue = RcFloatWord.literal(0f),
+            alpha = RcFloatWord.literal(1f),
+            shapeType = RcBackgroundModifier.SHAPE_RECTANGLE,
+          ),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        ),
+      )
+    val scene =
+      ImageComposeScene(width = 100, height = 100, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val image = scene.render()
+      val bitmap = Bitmap().apply { allocN32Pixels(100, 100) }
+      check(image.readPixels(bitmap))
+
+      assertEquals(red, bitmap.getColor(39, 29))
+      assertEquals(0, bitmap.getColor(41, 29))
+      assertEquals(0, bitmap.getColor(39, 31))
     } finally {
       scene.close()
     }

@@ -792,6 +792,31 @@ public data class RcZIndexModifier(val value: RcFloatWord) : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_ZINDEX
 }
 
+public data class RcWidthInModifier(val minimum: RcFloatWord, val maximum: RcFloatWord) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_WIDTH_IN
+}
+
+public data class RcHeightInModifier(val minimum: RcFloatWord, val maximum: RcFloatWord) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_HEIGHT_IN
+}
+
+public data class RcDimensionConstraintsModifier(
+  val type: Int,
+  val minimum: RcFloatWord,
+  val maximum: RcFloatWord,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_DIMENSION_CONSTRAINTS
+
+  public companion object {
+    public const val HORIZONTAL: Int = 0
+    public const val VERTICAL: Int = 1
+    public const val REQUIRED_HORIZONTAL: Int = 2
+    public const val REQUIRED_VERTICAL: Int = 3
+  }
+}
+
 public object RcDimensionType {
   public const val EXACT: Int = 0
   public const val FILL: Int = 1
@@ -898,6 +923,9 @@ public object RcOpcodes {
   public const val CONTAINER_END: Int = 214
   public const val MODIFIER_OFFSET: Int = 221
   public const val MODIFIER_ZINDEX: Int = 223
+  public const val MODIFIER_WIDTH_IN: Int = 231
+  public const val MODIFIER_HEIGHT_IN: Int = 232
+  public const val MODIFIER_DIMENSION_CONSTRAINTS: Int = 243
 }
 
 public object RcPathCommands {

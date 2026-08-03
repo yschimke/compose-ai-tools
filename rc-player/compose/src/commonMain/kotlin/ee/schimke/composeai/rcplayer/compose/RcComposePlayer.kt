@@ -9,9 +9,13 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeightIn
+import androidx.compose.foundation.layout.requiredWidthIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -72,6 +76,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
 import ee.schimke.composeai.rcplayer.protocol.RcDataMapLookup
+import ee.schimke.composeai.rcplayer.protocol.RcDimensionConstraintsModifier
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
@@ -90,6 +95,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatExpression
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
+import ee.schimke.composeai.rcplayer.protocol.RcHeightInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcIdLookup
 import ee.schimke.composeai.rcplayer.protocol.RcIdOperation
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
@@ -122,6 +128,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextTransform
 import ee.schimke.composeai.rcplayer.protocol.RcTheme
 import ee.schimke.composeai.rcplayer.protocol.RcTransform2
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
+import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
 import ee.schimke.composeai.rcplayer.runtime.RcDocumentLinker
 import ee.schimke.composeai.rcplayer.runtime.RcLayoutModifiers
@@ -552,6 +559,9 @@ private fun Modifier.applyComponentModifiers(
 ): Modifier {
   val density = androidx.compose.ui.platform.LocalDensity.current
   var result = this
+  modifiers.dimensionConstraints.forEach { constraint ->
+    result = result.applyDimensionConstraint(constraint, state, density)
+  }
   result = result.applyWidth(modifiers, state, density, fillMissingDimensions)
   result = result.applyHeight(modifiers, state, density, fillMissingDimensions)
   modifiers.placementModifiers.forEach { placement ->
@@ -597,6 +607,87 @@ private fun Modifier.applyComponentModifiers(
       )
   }
   return result
+}
+
+private fun Modifier.applyDimensionConstraint(
+  operation: ee.schimke.composeai.rcplayer.protocol.RcOperation,
+  state: RcPlayerState,
+  density: Density,
+): Modifier =
+  when (operation) {
+    is RcWidthInModifier ->
+      applyWidthRange(state.resolve(operation.minimum), state.resolve(operation.maximum), density)
+    is RcHeightInModifier ->
+      applyHeightRange(state.resolve(operation.minimum), state.resolve(operation.maximum), density)
+    is RcDimensionConstraintsModifier ->
+      when (operation.type) {
+        RcDimensionConstraintsModifier.HORIZONTAL ->
+          applyWidthRange(
+            state.resolve(operation.minimum),
+            state.resolve(operation.maximum),
+            density,
+          )
+        RcDimensionConstraintsModifier.VERTICAL ->
+          applyHeightRange(
+            state.resolve(operation.minimum),
+            state.resolve(operation.maximum),
+            density,
+          )
+        RcDimensionConstraintsModifier.REQUIRED_HORIZONTAL ->
+          applyWidthRange(
+            state.resolve(operation.minimum),
+            state.resolve(operation.maximum),
+            density,
+            required = true,
+          )
+        RcDimensionConstraintsModifier.REQUIRED_VERTICAL ->
+          applyHeightRange(
+            state.resolve(operation.minimum),
+            state.resolve(operation.maximum),
+            density,
+            required = true,
+          )
+        else -> this
+      }
+    else -> this
+  }
+
+private fun Modifier.applyWidthRange(
+  minimum: Float,
+  maximum: Float,
+  density: Density,
+  required: Boolean = false,
+): Modifier {
+  val min = with(density) { minimum.toDp() }
+  val max = with(density) { maximum.toDp() }
+  return when {
+    minimum == -1f && maximum == -1f -> this
+    required && minimum == -1f -> requiredWidthIn(max = max)
+    required && maximum == -1f -> requiredWidthIn(min = min)
+    required -> requiredWidthIn(min = min, max = max)
+    minimum == -1f -> widthIn(max = max)
+    maximum == -1f -> widthIn(min = min)
+    else -> widthIn(min = min, max = max)
+  }
+}
+
+private fun Modifier.applyHeightRange(
+  minimum: Float,
+  maximum: Float,
+  density: Density,
+  required: Boolean = false,
+): Modifier {
+  val min = with(density) { minimum.toDp() }
+  val max = with(density) { maximum.toDp() }
+  return when {
+    minimum == -1f && maximum == -1f -> this
+    required && minimum == -1f -> requiredHeightIn(max = max)
+    required && maximum == -1f -> requiredHeightIn(min = min)
+    required -> requiredHeightIn(min = min, max = max)
+    minimum == -1f -> heightIn(max = max)
+    maximum == -1f -> heightIn(min = min)
+    else -> heightIn(min = min, max = max)
+  }
 }
 
 private fun Modifier.applyPaintDecorator(

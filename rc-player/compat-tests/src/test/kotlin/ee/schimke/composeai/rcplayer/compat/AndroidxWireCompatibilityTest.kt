@@ -82,11 +82,14 @@ import androidx.compose.remote.core.operations.layout.managers.RowLayout
 import androidx.compose.remote.core.operations.layout.modifiers.BackgroundModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.BorderModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ClipRectModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.DimensionConstraintsModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.DimensionModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.HeightInModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HeightModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.OffsetModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.PaddingModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.RoundedClipRectModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.WidthInModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ZIndexModifierOperation
 import androidx.compose.remote.core.operations.matrix.MatrixConstant
@@ -117,6 +120,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
+import ee.schimke.composeai.rcplayer.protocol.RcDimensionConstraintsModifier
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
@@ -133,6 +137,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
+import ee.schimke.composeai.rcplayer.protocol.RcHeightInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
@@ -149,6 +154,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
+import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
 import ee.schimke.composeai.rcplayer.runtime.RcFloatExpressionEvaluator
@@ -228,6 +234,9 @@ class AndroidxWireCompatibilityTest {
     PaddingModifierOperation.apply(buffer, 1f, 2f, Utils.asNan(43), 4f)
     OffsetModifierOperation.apply(buffer, Utils.asNan(44), 6f)
     ZIndexModifierOperation.apply(buffer, Utils.asNan(45))
+    WidthInModifierOperation.apply(buffer, 10f, -1f)
+    HeightInModifierOperation.apply(buffer, Utils.asNan(46), 70f)
+    DimensionConstraintsModifierOperation.apply(buffer, 2, 15f, Utils.asNan(47))
     val bytes = buffer.buffer.copyOf(buffer.size())
 
     val document = RcDocumentCodec.decode(bytes)
@@ -237,6 +246,11 @@ class AndroidxWireCompatibilityTest {
     assertEquals(43, assertIs<RcPaddingModifier>(document.operations[2]).right.referencedId)
     assertEquals(44, assertIs<RcOffsetModifier>(document.operations[3]).x.referencedId)
     assertEquals(45, assertIs<RcZIndexModifier>(document.operations[4]).value.referencedId)
+    assertEquals(-1f, assertIs<RcWidthInModifier>(document.operations[5]).maximum.value)
+    assertEquals(46, assertIs<RcHeightInModifier>(document.operations[6]).minimum.referencedId)
+    val constraints = assertIs<RcDimensionConstraintsModifier>(document.operations[7])
+    assertEquals(RcDimensionConstraintsModifier.REQUIRED_HORIZONTAL, constraints.type)
+    assertEquals(47, constraints.maximum.referencedId)
     assertContentEquals(bytes, RcDocumentCodec.encode(document))
   }
 
