@@ -1270,11 +1270,11 @@ class ServeCommand(args: List<String>) : Command(args) {
   /**
    * Open a bundle-less daemon for a first-frame render, partitioning the snippet's [userClasspath]
    * the way the live path ([ServeBundleDaemon.materializePlaygroundSnippet]) does: jars in the
-   * namespaces `UserClassLoaderHolder` delegates to the parent (`androidx.*`, `kotlinx-coroutines`)
-   * must precede the [sidecarClasspath] on the daemon (parent) `-cp`, or the daemon loads its own
-   * sidecar versions and a snippet built against the catalog's newer AndroidX fails with
-   * `NoSuchMethodError`/`NoSuchFieldError` (and the render service then silently returns no image).
-   * The snippet's own classes stay isolated on the child (user) loader.
+   * namespaces `UserClassLoaderHolder` delegates to the parent (`androidx.*`, `kotlinx-coroutines`,
+   * `kotlinx-io`) must precede the [sidecarClasspath] on the daemon (parent) `-cp`, or the daemon
+   * loads its own sidecar versions and a snippet built against the catalog's newer shared ABI fails
+   * with `NoSuchMethodError`/`NoSuchFieldError` (and the render service then silently returns no
+   * image). The snippet's own classes stay isolated on the child (user) loader.
    */
   private fun openPlaygroundFirstFrameDaemon(
     sidecarClasspath: List<String>,
