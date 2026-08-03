@@ -23,6 +23,7 @@ import ee.schimke.composeai.cli.serve.PlaygroundSandbox
 import ee.schimke.composeai.cli.serve.PlaygroundSandboxProbe
 import ee.schimke.composeai.cli.serve.PlaygroundTokenStore
 import ee.schimke.composeai.cli.serve.RenderOutcome
+import ee.schimke.composeai.cli.serve.ServeBackgroundWork
 import ee.schimke.composeai.cli.serve.ServeBundle
 import ee.schimke.composeai.cli.serve.ServeBundleDaemon
 import ee.schimke.composeai.cli.serve.ServeBundleHost
@@ -508,6 +509,13 @@ class ServeCommand(args: List<String>) : Command(args) {
   private val catalogRegistrationLock = Any()
 
   /**
+   * Server-wide admission for the catalogs' background theme optimization: it parks while any
+   * catalog is loading, and only one of them renders at a time. Shared by every catalog host this
+   * server opens — see [ServeBackgroundWork] for why both halves matter on a public box.
+   */
+  private val backgroundWork = ServeBackgroundWork()
+
+  /**
    * In-browser CMP tier (`--wasm-dir <system>=<dir>[,<system>=<dir>…]`): map a design system to the
    * assembled Wasm catalog app (`./gradlew :samples:cmp-wasm-catalog:wasmCatalogDist` →
    * `build/wasmDist`). Its viewer then offers a "Run in browser (Wasm)" toggle that mounts the app
@@ -943,6 +951,7 @@ class ServeCommand(args: List<String>) : Command(args) {
               perPreviewPoolStats = state.perPreviewPoolStats,
               catalogThemeCache = state.catalogThemeCache ?: CatalogThemeCache(),
               serverIdleMillis = state.serverIdleMillis,
+              backgroundWork = state.backgroundWork,
             )
             // Warm the daemon off the request path so the first browse already gets the per-variant
             // SVG lane instead of the baked fallback — critical for a slow-cold-starting Android
@@ -1857,6 +1866,12 @@ class ServeCommand(args: List<String>) : Command(args) {
     private val started = java.util.concurrent.atomic.AtomicBoolean(false)
     private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
 
+    init {
+      // Claimed at construction rather than at [start], so the window between the listener binding
+      // and the first catalog load isn't a gap the theme optimizer can start in.
+      backgroundWork.expectInitialCatalogLoad()
+    }
+
     fun start(onComplete: (Set<String>) -> Unit = {}) {
       if (!started.compareAndSet(false, true)) return
       executor.execute {
@@ -1894,6 +1909,9 @@ class ServeCommand(args: List<String>) : Command(args) {
           }
           System.err.println("serve: ${loads.startupSummary()}")
         } finally {
+          // However the pass ended — loaded, failed, or shut down mid-pass — background catalog
+          // work is free to start; leaving it claimed would park the optimizer forever.
+          backgroundWork.initialCatalogLoadFinished()
           if (!closed.get()) onComplete(loaded)
         }
       }
@@ -1901,6 +1919,7 @@ class ServeCommand(args: List<String>) : Command(args) {
 
     override fun close() {
       closed.set(true)
+      backgroundWork.initialCatalogLoadFinished()
       executor.shutdownNow()
     }
   }
@@ -2002,10 +2021,12 @@ class ServeCommand(args: List<String>) : Command(args) {
       configFile = catalogsFile,
       groups = catalogsConfig.groups,
       load = { system, repo ->
-        synchronized(catalogRegistrationLock) {
-          val result = store.load(system, sourceRepo = repo)
-          loads.record(result)
-          (result as? ServeCatalogStore.Result.Failed)?.reason
+        backgroundWork.whileLoadingCatalog {
+          synchronized(catalogRegistrationLock) {
+            val result = store.load(system, sourceRepo = repo)
+            loads.record(result)
+            (result as? ServeCatalogStore.Result.Failed)?.reason
+          }
         }
       },
       unload = { system ->
@@ -2051,13 +2072,14 @@ class ServeCommand(args: List<String>) : Command(args) {
     return ServeCatalogRefresher(
       entries = entries,
       reload = { system, repo ->
-        val result =
+        val result = backgroundWork.whileLoadingCatalog {
           synchronized(catalogRegistrationLock) {
             if (loads.configFor(system) == null) return@synchronized null
             val result = store.load(system, sourceRepo = repo)
             loads.record(result)
             result
           }
+        }
         if (result == null) {
           false
         } else if (result is ServeCatalogStore.Result.Failed) {
@@ -2145,7 +2167,8 @@ class ServeCommand(args: List<String>) : Command(args) {
           perPreviewRenderStats = perPreviewPool::renderPerfStats,
           perPreviewPoolStats = { listOf(perPreviewPool.snapshot()) },
           catalogThemeCache = CatalogThemeCache(),
-          serverIdleMillis = registry::idleMillis,
+          serverIdleMillis = backgroundWork.idleClock(registry::idleMillis),
+          backgroundWork = backgroundWork,
         ) ?: return false
     val host = openHost(state) ?: return false
     registry.register(system, state, host = host)
@@ -2229,7 +2252,8 @@ class ServeCommand(args: List<String>) : Command(args) {
         previewAliases = alias,
         bakedFallback = bakedFallback,
         catalogThemeCache = CatalogThemeCache(),
-        serverIdleMillis = registry::idleMillis,
+        serverIdleMillis = backgroundWork.idleClock(registry::idleMillis),
+        backgroundWork = backgroundWork,
         // A source-built Android/Robolectric catalog costs the same heavier live-seat weight as the
         // bundle path — read from the built daemon descriptor, since there's no bundle
         // manifest.backend here — so a from-source deployment keeps the OOM protection the

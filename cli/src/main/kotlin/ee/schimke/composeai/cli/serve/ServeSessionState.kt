@@ -70,8 +70,12 @@ data class ServeSessionState(
   val catalogThemeCache: CatalogThemeCache? = null,
   /**
    * Whole-server idle clock used by background catalog optimization; null means traffic is active.
+   * The server wraps the registry clock in [ServeBackgroundWork.idleClock], so a catalog load in
+   * progress reads as active too.
    */
   val serverIdleMillis: () -> Long? = { Long.MAX_VALUE },
+  /** Server-wide admission for background catalog work (see [ServeBackgroundWork]). */
+  val backgroundWork: ServeBackgroundWork = ServeBackgroundWork(),
   /**
    * Optional reclaim hook invoked when the registry **removes** this session entirely — the
    * second-level GC of a long-idle *suspended* forked session (issue #2022), NOT ordinary

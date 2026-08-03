@@ -12,6 +12,7 @@ import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -844,6 +845,80 @@ class ServeCatalogLiveHostTest {
     assertEquals(0, replacementLive.renderCalls)
     val cached = replacement.render(catalogId, themeOverride()) as RenderOutcome.Ok
     assertEquals(RenderOutcome.Generation.CATALOG_CACHE, cached.generation)
+  }
+
+  @Test
+  fun `idle optimizer stays parked until the server has finished loading its catalogs`() {
+    val backgroundWork = ServeBackgroundWork()
+    backgroundWork.expectInitialCatalogLoad()
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        // An idle server by the registry's reckoning — startup draws no request traffic, which is
+        // exactly how the optimizer used to end up competing with the catalogs still loading.
+        serverIdleMillis = backgroundWork.idleClock { Long.MAX_VALUE },
+        themeOptimizationIdleMillis = 0,
+        backgroundWork = backgroundWork,
+      )
+
+    composite.prewarm()
+    Thread.sleep(100)
+    assertEquals(0, live.renderCalls, "background renders must not run while catalogs load")
+    assertEquals("paused", composite.themeOptimizationSnapshot()?.state)
+
+    backgroundWork.initialCatalogLoadFinished()
+
+    assertTrue(awaitOptimization(composite).fullyOptimized)
+    assertEquals(1, live.renderCalls)
+  }
+
+  @Test
+  fun `catalog optimizers sharing one server render one at a time`() {
+    val inFlight = AtomicInteger()
+    val peak = AtomicInteger()
+    val backgroundWork = ServeBackgroundWork()
+    fun host(tag: String): ServeCatalogLiveHost {
+      val delegate =
+        RecordingHost(
+          previews = listOf(ServePreview(daemonId, daemonId)),
+          tag = tag,
+          declaredThemes = listOf(brandTheme, ServeTheme("Brand Light", "com.example.BrandLight")),
+        )
+      val counting =
+        object : ServeHost by delegate {
+          override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
+            peak.accumulateAndGet(inFlight.incrementAndGet()) { a, b -> maxOf(a, b) }
+            try {
+              Thread.sleep(25)
+              return delegate.render(previewId, overrides)
+            } finally {
+              inFlight.decrementAndGet()
+            }
+          }
+        }
+      return ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = counting,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked-$tag"),
+        serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationIdleMillis = 0,
+        backgroundWork = backgroundWork,
+      )
+    }
+
+    val hosts = listOf(host("a"), host("b"), host("c"))
+    hosts.forEach { it.prewarm() }
+    hosts.forEach { assertTrue(awaitOptimization(it).fullyOptimized) }
+
+    assertEquals(1, peak.get(), "the background lane holds at most one render server-wide")
   }
 
   private fun awaitOptimization(host: ServeCatalogLiveHost): ThemeOptimizationSnapshot {
