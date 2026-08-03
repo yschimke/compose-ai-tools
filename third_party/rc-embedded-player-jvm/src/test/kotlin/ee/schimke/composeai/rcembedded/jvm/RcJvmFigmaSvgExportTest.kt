@@ -131,7 +131,10 @@ class RcJvmFigmaSvgExportTest {
     }
     // …and it must not have bought that back by collapsing to a raster: an isolated capture sits
     // *under* the still-editable text, where a frame crop of the same node would have replaced it.
-    assert(lane.svg.indexOf("<image") < lane.svg.indexOf("<text")) {
+    // Compared against the *last* `<image>`, not the first: a raster emitted after a text run would
+    // paint over it, and that is exactly the layer-order regression this asserts against — a
+    // first-image-only comparison keeps passing while a later crop buries the editable text.
+    assert(lane.svg.lastIndexOf("<image") < lane.svg.indexOf("<text")) {
       "the drawn chrome must be exported beneath the editable text, not instead of it:\n" +
         lane.head()
     }
