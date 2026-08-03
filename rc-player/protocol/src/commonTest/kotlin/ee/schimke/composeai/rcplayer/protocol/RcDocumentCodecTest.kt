@@ -9,6 +9,31 @@ import kotlin.test.assertTrue
 
 class RcDocumentCodecTest {
   @Test
+  fun remarksAndDebugMessagesRoundTripExactUtf8AndFloatBits() {
+    val operations =
+      listOf(
+        RcRemark("CMP diagnostic: λ"),
+        RcDebugMessage(42, RcFloatWord(0x7fc0002a), RcDebugMessage.SHOW_USAGE or 4),
+      )
+    val document = RcDocument(RcHeader(RcVersion(1, 0, 0), modern = false), operations)
+
+    val bytes = RcDocumentCodec.encode(document)
+    val decoded = RcDocumentCodec.decode(bytes)
+
+    assertEquals(document, decoded)
+    assertEquals(42, assertIs<RcDebugMessage>(decoded.operations[1]).value.referencedId)
+    assertContentEquals(bytes, RcDocumentCodec.encode(decoded))
+  }
+
+  @Test
+  fun remarkRejectsTheAndroidXFourThousandByteBoundary() {
+    val document =
+      RcDocument(RcHeader(RcVersion(1, 0, 0), modern = false), listOf(RcRemark("x".repeat(4_001))))
+
+    assertFailsWith<IllegalArgumentException> { RcDocumentCodec.encode(document) }
+  }
+
+  @Test
   fun animationSpecRoundTripsExactFloatBitsAndFutureAnimationValues() {
     val spec =
       RcAnimationSpec(

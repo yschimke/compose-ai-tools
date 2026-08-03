@@ -18,6 +18,8 @@ public object RcDocumentCodec {
     listOf(
         HeaderCodec,
         TextDataCodec,
+        RemarkCodec,
+        DebugMessageCodec,
         BitmapDataCodec,
         FloatConstantCodec,
         FloatExpressionCodec,
@@ -1286,6 +1288,34 @@ private object TextDataCodec : RcOperationCodec<RcTextData> {
   override fun encode(output: RcWireWriter, value: RcTextData) {
     output.writeInt(value.id)
     output.writeUtf8(value.text)
+  }
+}
+
+private object RemarkCodec : RcOperationCodec<RcRemark> {
+  override val spec = RcOperationSpec(RcOpcodes.REM, "Rem")
+
+  override fun decode(input: RcWireReader): RcRemark = RcRemark(input.readUtf8("text", 4_000))
+
+  override fun encode(output: RcWireWriter, value: RcRemark) {
+    require(value.text.encodeToByteArray().size <= 4_000) { "Rem text exceeds AndroidX's 4K limit" }
+    output.writeUtf8(value.text)
+  }
+}
+
+private object DebugMessageCodec : RcOperationCodec<RcDebugMessage> {
+  override val spec = RcOperationSpec(RcOpcodes.DEBUG_MESSAGE, "DebugMessage")
+
+  override fun decode(input: RcWireReader): RcDebugMessage =
+    RcDebugMessage(
+      textId = input.readInt("textId"),
+      value = input.readFloatWord("value"),
+      flags = input.readInt("flags"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcDebugMessage) {
+    output.writeInt(value.textId)
+    output.writeFloatWord(value.value)
+    output.writeInt(value.flags)
   }
 }
 

@@ -12,6 +12,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
+import ee.schimke.composeai.rcplayer.protocol.RcDebugMessage
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDynamicFloatList
@@ -167,6 +168,10 @@ public fun RcDocument.composeSupportReport(
       paintIssue(operation)?.let { detail ->
         issues += RcComposeSupportIssue(index, "PaintData", detail)
       }
+    }
+    if (operation is RcDebugMessage && operation.textId !in textIds) {
+      issues +=
+        RcComposeSupportIssue(index, "DebugMessage", "text id ${operation.textId} is not declared")
     }
     val measurementType =
       when (operation) {

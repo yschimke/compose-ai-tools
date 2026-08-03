@@ -79,6 +79,21 @@ public data class RcTextData(val id: Int, val text: String) : RcOperation {
   override val opcode: Int = RcOpcodes.DATA_TEXT
 }
 
+/** AndroidX `Rem`: an inert UTF-8 comment retained in the document byte stream. */
+public data class RcRemark(val text: String) : RcOperation {
+  override val opcode: Int = RcOpcodes.REM
+}
+
+/** AndroidX `DebugMessage`; [value] may be a NaN-boxed dynamic float reference. */
+public data class RcDebugMessage(val textId: Int, val value: RcFloatWord, val flags: Int) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.DEBUG_MESSAGE
+
+  public companion object {
+    public const val SHOW_USAGE: Int = 1
+  }
+}
+
 public data class RcFloatConstant(val id: Int, val value: RcFloatWord) : RcOperation {
   override val opcode: Int = RcOpcodes.DATA_FLOAT
 }
@@ -1470,6 +1485,7 @@ public object RcOpcodes {
   public const val ATTRIBUTE_TEXT: Int = 170
   public const val ATTRIBUTE_IMAGE: Int = 171
   public const val ATTRIBUTE_TIME: Int = 172
+  public const val DEBUG_MESSAGE: Int = 179
   public const val ATTRIBUTE_COLOR: Int = 180
   public const val DRAW_CONTENT: Int = 139
   public const val NAMED_VARIABLE: Int = 137
@@ -1483,6 +1499,7 @@ public object RcOpcodes {
   public const val HAPTIC_FEEDBACK: Int = 177
   public const val LAYOUT_FIT_BOX: Int = 176
   public const val MATRIX_FROM_PATH: Int = 181
+  public const val REM: Int = 185
   public const val MATRIX_CONSTANT: Int = 186
   public const val MATRIX_EXPRESSION: Int = 187
   public const val MATRIX_VECTOR_MATH: Int = 188

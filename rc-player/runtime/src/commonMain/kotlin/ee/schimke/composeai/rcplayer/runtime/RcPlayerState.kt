@@ -8,6 +8,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorConstant
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
 import ee.schimke.composeai.rcplayer.protocol.RcDataMapLookup
+import ee.schimke.composeai.rcplayer.protocol.RcDebugMessage
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcFloatConstant
@@ -224,6 +225,17 @@ public class RcPlayerState(
 
   public fun requestWakeIn(operation: RcWakeIn) {
     effectSink(RcPlayerEffect.WakeIn(resolve(operation.seconds)))
+  }
+
+  /** Emits AndroidX `DebugMessage.apply` as a typed host diagnostic. */
+  public fun emitDebugMessage(operation: RcDebugMessage) {
+    eventSink(
+      RcPlayerEvent.DebugMessage(
+        message = text(operation.textId) ?: "null",
+        value = resolve(operation.value),
+        flags = operation.flags,
+      )
+    )
   }
 
   /**
@@ -855,6 +867,10 @@ public sealed interface RcPlayerEvent {
   public data class HostActionMetadata(val actionId: Int, val metadata: String) : RcPlayerEvent
 
   public data class HostNamedAction(val name: String, val value: RcHostActionValue) : RcPlayerEvent
+
+  /** AndroidX prints this to stdout; CMP exposes it without imposing a platform logging API. */
+  public data class DebugMessage(val message: String, val value: Float, val flags: Int) :
+    RcPlayerEvent
 }
 
 /** Effects fulfilled by the local CMP host rather than forwarded to the embedding application. */

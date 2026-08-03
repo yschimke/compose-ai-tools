@@ -8,6 +8,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
 import ee.schimke.composeai.rcplayer.protocol.RcDataMapEntry
 import ee.schimke.composeai.rcplayer.protocol.RcDataMapLookup
+import ee.schimke.composeai.rcplayer.protocol.RcDebugMessage
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcFloatConstant
@@ -58,6 +59,25 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class RcPlayerStateTest {
+  @Test
+  fun debugMessageResolvesTextAndDynamicFloatIntoATypedEvent() {
+    val events = mutableListOf<RcPlayerEvent>()
+    val state =
+      RcPlayerState(
+        RcDocument(
+          RcHeader(RcVersion(1, 0, 0)),
+          listOf(RcTextData(10, "layout bounds"), RcFloatConstant(11, RcFloatWord.literal(37.5f))),
+        ),
+        eventSink = events::add,
+      )
+
+    state.emitDebugMessage(
+      RcDebugMessage(10, RcFloatWord(0x7fc00000 or 11), RcDebugMessage.SHOW_USAGE)
+    )
+
+    assertEquals(RcPlayerEvent.DebugMessage("layout bounds", 37.5f, 1), events.single())
+  }
+
   @Test
   fun evaluatesEveryAndroidXTimeAttributeAgainstAnInjectedFrameClock() {
     val clock =

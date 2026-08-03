@@ -17,6 +17,7 @@ import androidx.compose.remote.core.operations.DataListFloat
 import androidx.compose.remote.core.operations.DataListIds
 import androidx.compose.remote.core.operations.DataMapIds
 import androidx.compose.remote.core.operations.DataMapLookup
+import androidx.compose.remote.core.operations.DebugMessage as AndroidxDebugMessage
 import androidx.compose.remote.core.operations.DrawArc
 import androidx.compose.remote.core.operations.DrawBitmap
 import androidx.compose.remote.core.operations.DrawBitmapInt as AndroidxDrawBitmapInt
@@ -57,6 +58,7 @@ import androidx.compose.remote.core.operations.PathCreate
 import androidx.compose.remote.core.operations.PathData
 import androidx.compose.remote.core.operations.PathExpression
 import androidx.compose.remote.core.operations.PathTween
+import androidx.compose.remote.core.operations.Rem as AndroidxRem
 import androidx.compose.remote.core.operations.RootContentBehavior
 import androidx.compose.remote.core.operations.RootContentDescription
 import androidx.compose.remote.core.operations.TextAttribute as AndroidxTextAttribute
@@ -169,6 +171,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
+import ee.schimke.composeai.rcplayer.protocol.RcDebugMessage
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionConstraintsModifier
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
@@ -214,6 +217,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcOperationInventory
 import ee.schimke.composeai.rcplayer.protocol.RcPaddingModifier
 import ee.schimke.composeai.rcplayer.protocol.RcPathData
 import ee.schimke.composeai.rcplayer.protocol.RcPathExpression as PlayerPathExpression
+import ee.schimke.composeai.rcplayer.protocol.RcRemark
 import ee.schimke.composeai.rcplayer.protocol.RcRippleModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
@@ -261,6 +265,24 @@ import kotlin.test.assertTrue
  * from this test module: AndroidX remote-core/Java player is the protocol authority.
  */
 class AndroidxWireCompatibilityTest {
+  @Test
+  fun androidXRemarksAndDebugMessagesRoundTripExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    TextData.apply(buffer, 20, "computed width")
+    AndroidxRem.apply(buffer, "diagnostic: λ")
+    AndroidxDebugMessage.apply(buffer, 20, Utils.asNan(42), AndroidxDebugMessage.SHOW_USAGE or 4)
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+    assertEquals("diagnostic: λ", document.operations.filterIsInstance<RcRemark>().single().text)
+    val debug = document.operations.filterIsInstance<RcDebugMessage>().single()
+    assertEquals(20, debug.textId)
+    assertEquals(42, debug.value.referencedId)
+    assertEquals(AndroidxDebugMessage.SHOW_USAGE or 4, debug.flags)
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
   @Test
   fun androidXAnimationSpecRoundTripsExactly() {
     val buffer = WireBuffer()

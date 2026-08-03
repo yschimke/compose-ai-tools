@@ -5,14 +5,18 @@ package ee.schimke.composeai.rcplayer.compat
 import androidx.compose.remote.core.WireBuffer
 import androidx.compose.remote.core.operations.BitmapData
 import androidx.compose.remote.core.operations.ClickArea
+import androidx.compose.remote.core.operations.DebugMessage
 import androidx.compose.remote.core.operations.DrawContent
 import androidx.compose.remote.core.operations.DrawRect
+import androidx.compose.remote.core.operations.FloatConstant
 import androidx.compose.remote.core.operations.HapticFeedback
 import androidx.compose.remote.core.operations.Header
 import androidx.compose.remote.core.operations.IntegerExpression
 import androidx.compose.remote.core.operations.PaintData
+import androidx.compose.remote.core.operations.Rem
 import androidx.compose.remote.core.operations.TextData
 import androidx.compose.remote.core.operations.TimeAttribute
+import androidx.compose.remote.core.operations.Utils
 import androidx.compose.remote.core.operations.WakeIn
 import androidx.compose.remote.core.operations.layout.CanvasContent
 import androidx.compose.remote.core.operations.layout.CanvasOperations
@@ -88,6 +92,9 @@ public fun main(args: Array<String>) {
   TextData.apply(buffer, 1007, "browser-fixture")
   TextData.apply(buffer, 1008, "Legacy click area")
   TextData.apply(buffer, 1009, "click-area-meta")
+  FloatConstant.apply(buffer, 30, 42f)
+  Rem.apply(buffer, "CMP browser diagnostic")
+  DebugMessage.apply(buffer, 1004, Utils.asNan(30), 0)
   ClickArea.apply(buffer, 85, 1008, 0f, 0f, 320f, 180f, 1009)
   IntegerExpression.apply(buffer, 31, 1 shl 2, intArrayOf(2, 3, IntegerExpressionEvaluator.I_ADD))
   TextStyle.apply(

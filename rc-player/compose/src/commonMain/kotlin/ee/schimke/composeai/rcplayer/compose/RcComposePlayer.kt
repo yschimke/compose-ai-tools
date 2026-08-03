@@ -145,6 +145,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
 import ee.schimke.composeai.rcplayer.protocol.RcDataMapLookup
+import ee.schimke.composeai.rcplayer.protocol.RcDebugMessage
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionConstraintsModifier
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
@@ -330,6 +331,17 @@ public fun RcComposePlayer(
   }
   val linkedDocument = remember(document) { RcDocumentLinker.link(document) }
   val layout = remember(linkedDocument) { RcLayoutTree.build(linkedDocument) }
+  LaunchedEffect(linkedDocument, layout) {
+    // Layout rendering consumes paint operations through component content rather than walking
+    // the document root. AndroidX still applies root-level diagnostics during document execution.
+    if (layout != null) {
+      linkedDocument.operations.forEach { node ->
+        ((node as? RcLinkedNode.Operation)?.operation as? RcDebugMessage)?.let(
+          state::emitDebugMessage
+        )
+      }
+    }
+  }
   val images = remember(document) { decodeInlineImages(document) }
   val textMeasurer = rememberTextMeasurer()
   val semanticsModifier =
@@ -2605,6 +2617,7 @@ private fun DrawScope.drawOperations(
       is RcHapticFeedback -> state.performHapticFeedback(operation)
       is RcTimeAttribute -> state.applyTimeAttribute(operation)
       is RcWakeIn -> state.requestWakeIn(operation)
+      is RcDebugMessage -> state.emitDebugMessage(operation)
       is RcDrawText -> drawTextOperation(operation, state, paint, textMeasurer)
       is RcDrawTextAnchored -> drawTextAnchored(operation, state, paint, textMeasurer)
       is RcDrawTextOnPath -> drawTextOnPath(operation, state, paint, computedPaths, textMeasurer)

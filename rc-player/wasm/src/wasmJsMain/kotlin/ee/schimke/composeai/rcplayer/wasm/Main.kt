@@ -141,6 +141,7 @@ private fun reportFailure(message: String): Unit =
 
 private fun postPlayerEvent(event: RcPlayerEvent) {
   when (event) {
+    is RcPlayerEvent.DebugMessage -> postDebugMessage(event.message, event.value, event.flags)
     is RcPlayerEvent.HostAction -> postHostAction(event.actionId)
     is RcPlayerEvent.HostActionMetadata -> postHostMetadataAction(event.actionId, event.metadata)
     is RcPlayerEvent.HostNamedAction ->
@@ -154,6 +155,16 @@ private fun postPlayerEvent(event: RcPlayerEvent) {
       }
   }
 }
+
+private fun postDebugMessage(message: String, value: Float, flags: Int): Unit =
+  js(
+    "(document.documentElement.dataset.rcPlayerDebugMessage = message, " +
+      "document.documentElement.dataset.rcPlayerDebugValue = String(value), " +
+      "document.documentElement.dataset.rcPlayerDebugFlags = String(flags), " +
+      "console.debug('[rc-player-wasm] ' + message + ' ' + String(value)), " +
+      "window.parent.postMessage({ type: 'cp-rc-debug-message', message: message, " +
+      "value: value, flags: flags }, '*'))"
+  )
 
 private fun postHostAction(actionId: Int): Unit =
   js(

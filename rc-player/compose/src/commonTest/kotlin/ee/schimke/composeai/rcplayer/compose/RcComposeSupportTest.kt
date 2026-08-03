@@ -58,6 +58,34 @@ import kotlin.test.assertTrue
 
 class RcComposeSupportTest {
   @Test
+  fun diagnosticsArePortableAndRequireTheirTextDeclaration() {
+    val valid =
+      RcDocument(
+        header,
+        listOf(
+          ee.schimke.composeai.rcplayer.protocol.RcTextData(10, "debug"),
+          ee.schimke.composeai.rcplayer.protocol.RcRemark("comment"),
+          ee.schimke.composeai.rcplayer.protocol.RcDebugMessage(10, RcFloatWord.literal(1f), 0),
+        ),
+      )
+
+    assertTrue(valid.composeSupportReport(RcOperationProfiles.CMP_WASM_ALPHA16).fullyRenderable)
+    assertTrue(valid.composeSupportReport(RcOperationProfiles.CMP_IOS_ALPHA16).fullyRenderable)
+
+    val invalid =
+      RcDocument(
+        header,
+        listOf(
+          ee.schimke.composeai.rcplayer.protocol.RcDebugMessage(99, RcFloatWord.literal(1f), 0)
+        ),
+      )
+    assertEquals(
+      "text id 99 is not declared",
+      invalid.composeSupportReport(RcOperationProfiles.CMP_WASM_ALPHA16).issues.single().detail,
+    )
+  }
+
+  @Test
   fun portableAnimationSpecsAreSharedByWasmAndIosProfiles() {
     val document = RcDocument(header, listOf(animationSpec()))
 

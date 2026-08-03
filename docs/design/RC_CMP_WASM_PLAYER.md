@@ -267,7 +267,7 @@ Current checkpoint:
   available independently.
 - The checked-in manifest exactly matches all 172 public integer entries in AndroidX alpha16
   `Operations.java`; generation fails on duplicate or invalid entries, and a reflection conformance
-  test prevents drift. The current disposition is 131 implemented, 0 parse-only, 30 pending,
+  test prevents drift. The current disposition is 133 implemented, 0 parse-only, 28 pending,
   6 unavailable, and 5 reserved operations.
 - Cluster 1 now includes path data/drawing/clipping, AndroidX theme filtering, root scaling and
   alignment, root accessibility description, typed named-value overrides, primitive constants,
@@ -342,6 +342,9 @@ Current checkpoint:
   behavior. Explicit `HapticFeedback` actions retain all raw AndroidX values and use a separate
   player-local effect channel, with the Java player's 21 haptic families mapped to portable CMP
   feedback. The same implementation links in the iOS framework.
+- Cluster 9 diagnostics include byte-exact UTF-8 `Rem` comments and typed `DebugMessage` events.
+  Dynamic float references resolve through shared state; Wasm forwards diagnostics to the browser
+  console and parent frame, while iOS callers receive the same event from the UIKit host callback.
 
 ### Operations unavailable in the authoritative Java profile
 
