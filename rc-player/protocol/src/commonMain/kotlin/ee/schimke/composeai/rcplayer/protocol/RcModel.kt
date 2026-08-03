@@ -685,6 +685,19 @@ public data class RcWakeIn(val seconds: RcFloatWord) : RcOperation {
   override val opcode: Int = RcOpcodes.WAKE_IN
 }
 
+/**
+ * Runs initialization children once, then its trailing [RcImpulseProcess] once per active frame.
+ */
+public data class RcImpulseStart(val duration: RcFloatWord, val startAt: RcFloatWord) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.IMPULSE_START
+}
+
+/** Delimits the per-frame children at the end of an [RcImpulseStart] container. */
+public data object RcImpulseProcess : RcOperation {
+  override val opcode: Int = RcOpcodes.IMPULSE_PROCESS
+}
+
 public data class RcDraw4(
   override val opcode: Int,
   val first: RcFloatWord,
@@ -1424,6 +1437,8 @@ public object RcOpcodes {
   public const val PATH_TWEEN: Int = 158
   public const val PATH_CREATE: Int = 159
   public const val PATH_ADD: Int = 160
+  public const val IMPULSE_START: Int = 164
+  public const val IMPULSE_PROCESS: Int = 165
   public const val PATH_COMBINE: Int = 175
   public const val HAPTIC_FEEDBACK: Int = 177
   public const val LAYOUT_FIT_BOX: Int = 176

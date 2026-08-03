@@ -13,6 +13,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHostAction
+import ee.schimke.composeai.rcplayer.protocol.RcImpulseProcess
+import ee.schimke.composeai.rcplayer.protocol.RcImpulseStart
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
@@ -26,6 +28,56 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 class RcRunActionRenderTest {
+  @OptIn(ExperimentalTestApi::class, ExperimentalComposeUiApi::class)
+  @Test
+  fun impulseInitializesOnceThenProcessesOnTheNextFrame() =
+    runSkikoComposeUiTest(size = Size(20f, 20f), density = Density(1f)) {
+      mainClock.autoAdvance = false
+      val events = mutableListOf<RcPlayerEvent>()
+      val end = RcNoArg(RcOpcodes.CONTAINER_END)
+      val document =
+        RcDocument(
+          RcHeader(RcVersion(1, 0, 0), legacyWidth = 20, legacyHeight = 20, modern = false),
+          listOf(
+            RcRootLayout(1),
+            RcLayoutContent(2),
+            RcCanvasLayout(3, 30),
+            RcWidthModifier(RcDimensionType.EXACT, RcFloatWord.literal(20f)),
+            RcHeightModifier(RcDimensionType.EXACT, RcFloatWord.literal(20f)),
+            RcNoArg(RcOpcodes.CANVAS_OPERATIONS),
+            RcImpulseStart(RcFloatWord.literal(1f), RcFloatWord.literal(0f)),
+            RcRunAction,
+            RcHostAction(77),
+            end,
+            RcImpulseProcess,
+            RcRunAction,
+            RcHostAction(78),
+            end,
+            end,
+            end,
+            end,
+            end,
+            end,
+            end,
+          ),
+        )
+      setContent { RcComposePlayer(document, onEvent = events::add) }
+      mainClock.advanceTimeByFrame()
+      waitForIdle()
+      assertTrue(RcPlayerEvent.HostAction(77) in events)
+      assertTrue(RcPlayerEvent.HostAction(78) in events)
+      assertTrue(
+        events.indexOf(RcPlayerEvent.HostAction(77)) < events.indexOf(RcPlayerEvent.HostAction(78))
+      )
+      val processCount = events.count { it == RcPlayerEvent.HostAction(78) }
+
+      mainClock.advanceTimeByFrame()
+      mainClock.advanceTimeByFrame()
+      waitForIdle()
+      assertTrue(events.count { it == RcPlayerEvent.HostAction(78) } > processCount)
+      assertTrue(events.count { it == RcPlayerEvent.HostAction(77) } == 1)
+    }
+
   @OptIn(ExperimentalTestApi::class, ExperimentalComposeUiApi::class)
   @Test
   fun wakeInSchedulesARepeatingComposeRepaint() =

@@ -79,6 +79,8 @@ import androidx.compose.remote.core.operations.layout.CanvasContent
 import androidx.compose.remote.core.operations.layout.CanvasOperations
 import androidx.compose.remote.core.operations.layout.ClickModifierOperation
 import androidx.compose.remote.core.operations.layout.ContainerEnd
+import androidx.compose.remote.core.operations.layout.ImpulseOperation as AndroidxImpulseOperation
+import androidx.compose.remote.core.operations.layout.ImpulseProcess as AndroidxImpulseProcess
 import androidx.compose.remote.core.operations.layout.LayoutComponentContent
 import androidx.compose.remote.core.operations.layout.MultiClickModifier
 import androidx.compose.remote.core.operations.layout.RootLayoutComponent
@@ -195,6 +197,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcHostNamedAction
 import ee.schimke.composeai.rcplayer.protocol.RcHostNamedActionValue
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
+import ee.schimke.composeai.rcplayer.protocol.RcImpulseProcess
+import ee.schimke.composeai.rcplayer.protocol.RcImpulseStart
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
@@ -253,6 +257,24 @@ import kotlin.test.assertTrue
  * from this test module: AndroidX remote-core/Java player is the protocol authority.
  */
 class AndroidxWireCompatibilityTest {
+  @Test
+  fun androidXImpulseContainersRoundTripExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    AndroidxImpulseOperation.apply(buffer, Utils.asNan(40), 1.5f)
+    AndroidxImpulseProcess.apply(buffer)
+    ContainerEnd.apply(buffer)
+    ContainerEnd.apply(buffer)
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+    val impulse = assertIs<RcImpulseStart>(document.operations[0])
+    assertEquals(40, impulse.duration.referencedId)
+    assertEquals(1.5f, impulse.startAt.value)
+    assertIs<RcImpulseProcess>(document.operations[1])
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
   @Test
   fun androidXTimeAttributeAndWakeInRoundTripExactly() {
     val buffer = WireBuffer()

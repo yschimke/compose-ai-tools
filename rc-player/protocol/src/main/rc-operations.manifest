@@ -80,8 +80,8 @@
 161|PARTICLE_DEFINE|8|unsupported
 162|PARTICLE_PROCESS|8|unavailable
 163|PARTICLE_LOOP|6|unsupported
-164|IMPULSE_START|8|unsupported
-165|IMPULSE_PROCESS|8|unsupported
+164|IMPULSE_START|8|implemented
+165|IMPULSE_PROCESS|8|implemented
 166|FUNCTION_CALL|8|implemented
 167|DATA_BITMAP_FONT|3|unsupported
 168|FUNCTION_DEFINE|8|implemented

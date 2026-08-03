@@ -71,6 +71,8 @@ public object RcDocumentLinker {
       RcOpcodes.RUN_ACTION,
       RcOpcodes.LAYOUT_CANVAS_CONTENT,
       RcOpcodes.FUNCTION_DEFINE,
+      RcOpcodes.IMPULSE_START,
+      RcOpcodes.IMPULSE_PROCESS,
       RcOpcodes.LAYOUT_ROOT,
       RcOpcodes.LAYOUT_CONTENT,
       RcOpcodes.LAYOUT_BOX,

@@ -104,6 +104,8 @@ public object RcDocumentCodec {
         TimeAttributeCodec,
         ImageAttributeCodec,
         ColorAttributeCodec,
+        ImpulseStartCodec,
+        ImpulseProcessCodec,
         WakeInCodec,
         RootLayoutCodec,
         LayoutContentCodec,
@@ -2379,6 +2381,26 @@ private object WakeInCodec : RcOperationCodec<RcWakeIn> {
   override fun encode(output: RcWireWriter, value: RcWakeIn) {
     output.writeFloatWord(value.seconds)
   }
+}
+
+private object ImpulseStartCodec : RcOperationCodec<RcImpulseStart> {
+  override val spec = RcOperationSpec(RcOpcodes.IMPULSE_START, "ImpulseOperation")
+
+  override fun decode(input: RcWireReader): RcImpulseStart =
+    RcImpulseStart(input.readFloatWord("duration"), input.readFloatWord("startAt"))
+
+  override fun encode(output: RcWireWriter, value: RcImpulseStart) {
+    output.writeFloatWord(value.duration)
+    output.writeFloatWord(value.startAt)
+  }
+}
+
+private object ImpulseProcessCodec : RcOperationCodec<RcImpulseProcess> {
+  override val spec = RcOperationSpec(RcOpcodes.IMPULSE_PROCESS, "ImpulseProcess")
+
+  override fun decode(input: RcWireReader): RcImpulseProcess = RcImpulseProcess
+
+  override fun encode(output: RcWireWriter, value: RcImpulseProcess): Unit = Unit
 }
 
 private fun four(opcode: Int, name: String): RcOperationCodec<RcDraw4> =

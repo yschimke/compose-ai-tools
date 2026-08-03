@@ -24,6 +24,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcIdList
 import ee.schimke.composeai.rcplayer.protocol.RcIdLookup
 import ee.schimke.composeai.rcplayer.protocol.RcIdMap
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
+import ee.schimke.composeai.rcplayer.protocol.RcImpulseStart
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerConstant
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLongConstant
@@ -89,6 +90,7 @@ public class RcPlayerState(
     document.operations.filterIsInstance<RcFloatExpression>().associateBy { it.id }
   private val integerExpressions =
     document.operations.filterIsInstance<RcIntegerExpression>().associateBy { it.outId }
+  private val impulseTimelines = mutableListOf<Pair<RcImpulseStart, RcImpulseTimeline>>()
   private val documentLoadTimeMillis = timeSource.currentTimeMillis()
   private var frameTimeSeconds: Float = 0f
   private var frameEpochMillis: Long = documentLoadTimeMillis
@@ -222,6 +224,24 @@ public class RcPlayerState(
 
   public fun requestWakeIn(operation: RcWakeIn) {
     effectSink(RcPlayerEffect.WakeIn(resolve(operation.seconds)))
+  }
+
+  /**
+   * Evaluates one immutable impulse container while keeping Java's per-instance initial-pass bit.
+   */
+  public fun evaluateImpulse(operation: RcImpulseStart): RcImpulsePhase {
+    val timeline =
+      impulseTimelines.firstOrNull { (candidate) -> candidate === operation }?.second
+        ?: RcImpulseTimeline().also { impulseTimelines += operation to it }
+    val startAt = resolve(operation.startAt)
+    val phase = timeline.evaluate(frameTimeSeconds, startAt, resolve(operation.duration))
+    when (phase) {
+      RcImpulsePhase.WAITING -> effectSink(RcPlayerEffect.WakeIn(startAt - frameTimeSeconds))
+      RcImpulsePhase.INITIALIZE,
+      RcImpulsePhase.PROCESS -> effectSink(RcPlayerEffect.NextFrame)
+      RcImpulsePhase.IDLE -> Unit
+    }
+    return phase
   }
 
   public fun applyTextOperation(operation: RcOperation) {
@@ -842,6 +862,8 @@ public sealed interface RcPlayerEffect {
   public data class HapticFeedback(val type: RcHapticType) : RcPlayerEffect
 
   public data class WakeIn(val seconds: Float) : RcPlayerEffect
+
+  public data object NextFrame : RcPlayerEffect
 }
 
 public sealed interface RcHostActionValue {

@@ -18,6 +18,8 @@ import androidx.compose.remote.core.operations.layout.CanvasContent
 import androidx.compose.remote.core.operations.layout.CanvasOperations
 import androidx.compose.remote.core.operations.layout.ClickModifierOperation
 import androidx.compose.remote.core.operations.layout.ContainerEnd
+import androidx.compose.remote.core.operations.layout.ImpulseOperation
+import androidx.compose.remote.core.operations.layout.ImpulseProcess
 import androidx.compose.remote.core.operations.layout.LayoutComponentContent
 import androidx.compose.remote.core.operations.layout.MultiClickModifier
 import androidx.compose.remote.core.operations.layout.RootLayoutComponent
@@ -39,6 +41,7 @@ import androidx.compose.remote.core.operations.layout.modifiers.HostActionOperat
 import androidx.compose.remote.core.operations.layout.modifiers.HostNamedActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.OffsetModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.RippleModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.RunActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ValueIntegerExpressionChangeActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation
 import androidx.compose.remote.core.operations.paint.PaintBundle
@@ -150,6 +153,16 @@ public fun main(args: Array<String>) {
   CanvasOperations.apply(buffer)
   TimeAttribute.apply(buffer, 34, 0, TimeAttribute.TIME_IN_SEC)
   WakeIn.apply(buffer, 60f)
+  ImpulseOperation.apply(buffer, .05f, 0f)
+  RunActionOperation.apply(buffer)
+  HostActionOperation.apply(buffer, 86)
+  ContainerEnd.apply(buffer)
+  ImpulseProcess.apply(buffer)
+  RunActionOperation.apply(buffer)
+  HostActionOperation.apply(buffer, 87)
+  ContainerEnd.apply(buffer)
+  ContainerEnd.apply(buffer)
+  ContainerEnd.apply(buffer)
   paint(buffer, 0xfff6f2ff.toInt())
   DrawRect.apply(buffer, 0f, 0f, 320f, 180f)
   DrawContent.apply(buffer)

@@ -24,6 +24,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcHostMetadataAction
 import ee.schimke.composeai.rcplayer.protocol.RcHostNamedAction
 import ee.schimke.composeai.rcplayer.protocol.RcHostNamedActionValue
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
+import ee.schimke.composeai.rcplayer.protocol.RcImpulseProcess
+import ee.schimke.composeai.rcplayer.protocol.RcImpulseStart
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
@@ -53,6 +55,24 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RcComposeSupportTest {
+  @Test
+  fun impulseContainersAreSharedByWasmAndIosProfiles() {
+    val end = RcNoArg(RcOpcodes.CONTAINER_END)
+    val document =
+      RcDocument(
+        header,
+        listOf(
+          RcImpulseStart(RcFloatWord.literal(1f), RcFloatWord.literal(0f)),
+          RcImpulseProcess,
+          end,
+          end,
+        ),
+      )
+
+    assertTrue(document.composeSupportReport(RcOperationProfiles.CMP_WASM_ALPHA16).fullyRenderable)
+    assertTrue(document.composeSupportReport(RcOperationProfiles.CMP_IOS_ALPHA16).fullyRenderable)
+  }
+
   @Test
   fun timeSchedulingIsSharedByWasmAndIosProfiles() {
     val document =

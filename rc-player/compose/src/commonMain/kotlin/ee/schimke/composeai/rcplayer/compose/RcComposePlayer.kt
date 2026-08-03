@@ -167,6 +167,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcHeightInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcIdLookup
 import ee.schimke.composeai.rcplayer.protocol.RcIdOperation
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
+import ee.schimke.composeai.rcplayer.protocol.RcImpulseProcess
+import ee.schimke.composeai.rcplayer.protocol.RcImpulseStart
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
 import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
@@ -209,6 +211,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
 import ee.schimke.composeai.rcplayer.runtime.RcClickActionBlock
 import ee.schimke.composeai.rcplayer.runtime.RcClickActionType
 import ee.schimke.composeai.rcplayer.runtime.RcDocumentLinker
+import ee.schimke.composeai.rcplayer.runtime.RcImpulsePhase
 import ee.schimke.composeai.rcplayer.runtime.RcLayoutModifiers
 import ee.schimke.composeai.rcplayer.runtime.RcLayoutNode
 import ee.schimke.composeai.rcplayer.runtime.RcLayoutTree
@@ -257,6 +260,7 @@ public fun RcComposePlayer(
   val latestHapticFeedback by rememberUpdatedState(LocalHapticFeedback.current)
   var invalidationVersion by remember { mutableIntStateOf(0) }
   var wakeIntervalSeconds by remember(document) { mutableStateOf<Float?>(null) }
+  var nextFrameRequestVersion by remember(document) { mutableIntStateOf(0) }
   val state =
     remember(document, namedValues) {
       RcPlayerState(
@@ -274,6 +278,7 @@ public fun RcComposePlayer(
                 wakeIntervalSeconds = effect.seconds
               }
             }
+            RcPlayerEffect.NextFrame -> nextFrameRequestVersion += 1
           }
         },
       )
@@ -286,23 +291,34 @@ public fun RcComposePlayer(
         }
     }
   var frameNanos by remember { mutableLongStateOf(0L) }
+  var frameOriginNanos by remember(document) { mutableLongStateOf(Long.MIN_VALUE) }
+  val recordFrame: (Long) -> Unit = { nanos ->
+    if (frameOriginNanos == Long.MIN_VALUE) frameOriginNanos = nanos
+    frameNanos = nanos - frameOriginNanos
+  }
+  LaunchedEffect(document) { withFrameNanos(recordFrame) }
   LaunchedEffect(needsContinuousFrames) {
     if (needsContinuousFrames) {
-      val start = withFrameNanos { it }
       while (true) {
-        withFrameNanos { frameNanos = it - start }
+        withFrameNanos(recordFrame)
       }
+    }
+  }
+  LaunchedEffect(nextFrameRequestVersion) {
+    if (nextFrameRequestVersion > 0) {
+      withFrameNanos(recordFrame)
+      invalidationVersion += 1
     }
   }
   LaunchedEffect(wakeIntervalSeconds) {
     val seconds = wakeIntervalSeconds ?: return@LaunchedEffect
-    while (true) {
-      val delayMillis =
-        if (!seconds.isFinite()) Int.MAX_VALUE.toLong()
-        else (seconds * 1_000f).toLong().coerceAtLeast(0L).coerceAtMost(Int.MAX_VALUE.toLong())
-      if (delayMillis == 0L) withFrameNanos {} else delay(delayMillis)
-      invalidationVersion += 1
-    }
+    val delayMillis =
+      if (!seconds.isFinite()) Int.MAX_VALUE.toLong()
+      else (seconds * 1_000f).toLong().coerceAtLeast(0L).coerceAtMost(Int.MAX_VALUE.toLong())
+    if (delayMillis > 0L) delay(delayMillis)
+    withFrameNanos(recordFrame)
+    wakeIntervalSeconds = null
+    invalidationVersion += 1
   }
   val linkedDocument = remember(document) { RcDocumentLinker.link(document) }
   val layout = remember(linkedDocument) { RcLayoutTree.build(linkedDocument) }
@@ -2267,6 +2283,58 @@ private fun DrawScope.drawOperations(
               drawContent = drawContent,
             )
           RcOpcodes.RUN_ACTION -> state.executeRunAction(node.children)
+          RcOpcodes.IMPULSE_START -> {
+            val impulse = node.operation as RcImpulseStart
+            val process =
+              (node.children.lastOrNull() as? RcLinkedNode.Container)?.takeIf {
+                it.operation === RcImpulseProcess
+              }
+            when (state.evaluateImpulse(impulse)) {
+              RcImpulsePhase.INITIALIZE ->
+                drawOperations(
+                  if (process == null) node.children else node.children.dropLast(1),
+                  state,
+                  paint,
+                  computedPaths,
+                  textMeasurer,
+                  images,
+                  functions,
+                  requestedTheme,
+                  filterTheme = false,
+                  drawContent = drawContent,
+                )
+              RcImpulsePhase.PROCESS ->
+                process?.let {
+                  drawOperations(
+                    it.children,
+                    state,
+                    paint,
+                    computedPaths,
+                    textMeasurer,
+                    images,
+                    functions,
+                    requestedTheme,
+                    filterTheme = false,
+                    drawContent = drawContent,
+                  )
+                }
+              RcImpulsePhase.WAITING,
+              RcImpulsePhase.IDLE -> Unit
+            }
+          }
+          RcOpcodes.IMPULSE_PROCESS ->
+            drawOperations(
+              node.children,
+              state,
+              paint,
+              computedPaths,
+              textMeasurer,
+              images,
+              functions,
+              requestedTheme,
+              filterTheme = false,
+              drawContent = drawContent,
+            )
           else -> error("Container opcode ${node.operation.opcode} is not renderable")
         }
       }
