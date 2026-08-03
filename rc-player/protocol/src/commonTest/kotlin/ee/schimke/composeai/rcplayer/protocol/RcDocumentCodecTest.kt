@@ -9,6 +9,17 @@ import kotlin.test.assertTrue
 
 class RcDocumentCodecTest {
   @Test
+  fun rippleModifierRoundTripsAsTheAndroidXPayloadFreeOperation() {
+    val document =
+      RcDocument(RcHeader(RcVersion(1, 0, 0), modern = false), listOf(RcRippleModifier))
+
+    val bytes = RcDocumentCodec.encode(document)
+
+    assertEquals(document, RcDocumentCodec.decode(bytes))
+    assertContentEquals(bytes, RcDocumentCodec.encode(RcDocumentCodec.decode(bytes)))
+  }
+
+  @Test
   fun runActionRoundTripsAsARealPayloadFreeContainerStart() {
     val document =
       RcDocument(

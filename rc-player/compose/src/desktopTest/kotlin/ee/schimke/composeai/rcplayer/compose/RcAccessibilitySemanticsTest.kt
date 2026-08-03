@@ -8,8 +8,9 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.compose.ui.unit.Density
 import ee.schimke.composeai.rcplayer.protocol.RcAccessibilitySemantics
@@ -24,6 +25,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcHostAction
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
+import ee.schimke.composeai.rcplayer.protocol.RcRippleModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextData
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
@@ -59,6 +61,7 @@ class RcAccessibilitySemanticsTest {
               enabled = false,
               clickable = true,
             ),
+            RcRippleModifier,
             RcClickModifier,
             RcHostAction(77),
             RcNoArg(RcOpcodes.CONTAINER_END),
@@ -75,7 +78,7 @@ class RcAccessibilitySemanticsTest {
           .assertIsNotEnabled()
           .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
           .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Unavailable"))
-      node.performClick()
+      node.performTouchInput { click() }
       assertEquals(listOf<RcPlayerEvent>(RcPlayerEvent.HostAction(77)), events)
     }
 }

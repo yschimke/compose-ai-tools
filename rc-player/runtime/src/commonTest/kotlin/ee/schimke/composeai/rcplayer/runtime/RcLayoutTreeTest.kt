@@ -20,6 +20,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcPaddingModifier
+import ee.schimke.composeai.rcplayer.protocol.RcRippleModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
@@ -34,6 +35,24 @@ import kotlin.test.assertIs
 
 class RcLayoutTreeTest {
   private val header = RcHeader(RcVersion(1, 0, 0), modern = false)
+
+  @Test
+  fun retainsRippleInPaintDecoratorWireOrder() {
+    val root =
+      requireNotNull(
+        treeOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcCanvasLayout(3, 30),
+          RcRippleModifier,
+          ends = 3,
+        )
+      )
+    val content = assertIs<RcLayoutNode.Content>(root.children.single())
+    val canvas = assertIs<RcLayoutNode.Canvas>(content.children.single())
+
+    assertEquals(listOf(RcRippleModifier), canvas.modifiers.paintDecorators)
+  }
 
   @Test
   fun preservesClickActionsAsAnImmutableModifierBlock() {

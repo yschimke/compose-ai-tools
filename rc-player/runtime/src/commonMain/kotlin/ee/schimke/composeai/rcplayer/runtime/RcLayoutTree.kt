@@ -27,6 +27,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperation
 import ee.schimke.composeai.rcplayer.protocol.RcPaddingModifier
+import ee.schimke.composeai.rcplayer.protocol.RcRippleModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
@@ -402,7 +403,8 @@ public object RcLayoutTree {
           it is RcBackgroundModifier ||
             it is RcBorderModifier ||
             it is RcClipRectModifier ||
-            it is RcRoundedClipRectModifier
+            it is RcRoundedClipRectModifier ||
+            it is RcRippleModifier
         },
       placementModifiers = operations.filter { it is RcOffsetModifier || it is RcZIndexModifier },
       dimensionConstraints =

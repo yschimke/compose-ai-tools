@@ -30,6 +30,7 @@ import androidx.compose.remote.core.operations.layout.modifiers.HostActionMetada
 import androidx.compose.remote.core.operations.layout.modifiers.HostActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HostNamedActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.OffsetModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.RippleModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ValueIntegerExpressionChangeActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation
 import androidx.compose.remote.core.operations.paint.PaintBundle
@@ -213,6 +214,7 @@ public fun main(args: Array<String>) {
     true,
     true,
   )
+  RippleModifierOperation.apply(buffer)
   ClickModifierOperation.apply(buffer)
   ValueIntegerExpressionChangeActionOperation.apply(buffer, 23L, 31L)
   HostNamedActionOperation.apply(buffer, 1006, HostNamedActionOperation.INT_TYPE, 23)

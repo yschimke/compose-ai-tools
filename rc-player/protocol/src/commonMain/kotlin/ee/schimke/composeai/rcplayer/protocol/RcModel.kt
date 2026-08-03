@@ -1111,6 +1111,11 @@ public data object RcRunAction : RcOperation {
   override val opcode: Int = RcOpcodes.RUN_ACTION
 }
 
+/** Payload-free touch-down ripple decorator defined by AndroidX alpha16. */
+public data object RcRippleModifier : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_RIPPLE
+}
+
 /** Component visibility is read from the referenced AndroidX integer variable. */
 public data class RcVisibilityModifier(val visibilityId: Int) : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_VISIBILITY
@@ -1275,6 +1280,7 @@ public object RcOpcodes {
   public const val MODIFIER_ZINDEX: Int = 223
   public const val MODIFIER_GRAPHICS_LAYER: Int = 224
   public const val VALUE_FLOAT_EXPRESSION_CHANGE_ACTION: Int = 227
+  public const val MODIFIER_RIPPLE: Int = 229
   public const val LAYOUT_COLLAPSIBLE_ROW: Int = 230
   public const val MODIFIER_WIDTH_IN: Int = 231
   public const val MODIFIER_HEIGHT_IN: Int = 232

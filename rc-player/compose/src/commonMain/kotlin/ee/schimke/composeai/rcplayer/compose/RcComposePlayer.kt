@@ -1,7 +1,12 @@
 package ee.schimke.composeai.rcplayer.compose
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,7 +31,9 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -60,12 +67,16 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.LastBaseline
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -147,6 +158,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcPathCreate
 import ee.schimke.composeai.rcplayer.protocol.RcPathData
 import ee.schimke.composeai.rcplayer.protocol.RcPathExpression
 import ee.schimke.composeai.rcplayer.protocol.RcPathTween
+import ee.schimke.composeai.rcplayer.protocol.RcRippleModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRootContentBehavior
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
@@ -176,6 +188,7 @@ import ee.schimke.composeai.rcplayer.runtime.RcPlayerState
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.Image
@@ -1378,6 +1391,7 @@ private fun Modifier.applyHeightRange(
   }
 }
 
+@Composable
 private fun Modifier.applyPaintDecorator(
   operation: ee.schimke.composeai.rcplayer.protocol.RcOperation,
   state: RcPlayerState,
@@ -1448,6 +1462,7 @@ private fun Modifier.applyPaintDecorator(
           }
         }
       }
+    RcRippleModifier -> applyAndroidXRipple()
     RcClipRectModifier ->
       drawWithContent {
         val contentScope = this
@@ -1479,6 +1494,38 @@ private fun Modifier.applyPaintDecorator(
       }
     else -> this
   }
+
+@Composable
+private fun Modifier.applyAndroidXRipple(): Modifier {
+  val hapticFeedback = LocalHapticFeedback.current
+  val colorProgress = remember { Animatable(1f) }
+  val radiusProgress = remember { Animatable(1f) }
+  val animationScope = rememberCoroutineScope()
+  var origin by remember { mutableStateOf(Offset.Zero) }
+  val standard = CubicBezierEasing(.4f, 0f, .2f, 1f)
+  return drawWithContent {
+      drawContent()
+      val color = lerp(Color(0xb4fafafa.toInt()), Color(0x00c8c8c8), colorProgress.value)
+      val radius = maxOf(size.width, size.height) * radiusProgress.value
+      val scope = this
+      clipRect { scope.drawCircle(color = color, radius = radius, center = origin) }
+    }
+    .pointerInput(Unit) {
+      awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        origin = down.position
+        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+        animationScope.launch {
+          colorProgress.snapTo(0f)
+          colorProgress.animateTo(1f, tween(durationMillis = 1_000, easing = standard))
+        }
+        animationScope.launch {
+          radiusProgress.snapTo(0f)
+          radiusProgress.animateTo(1f, tween(durationMillis = 500, easing = standard))
+        }
+      }
+    }
+}
 
 private fun Modifier.applyWidth(
   modifiers: RcLayoutModifiers,
