@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 300 preview(s) across 20 module(s) · 43 error(s) · 4 warning(s) · 38 info._
+_Auto-generated from `compose-preview/a11y/main`. 304 preview(s) across 20 module(s) · 43 error(s) · 4 warning(s) · 38 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -1745,6 +1745,12 @@ _No findings._
 
 ## wear
 
+### `ActivityListDeviceMatrixPreview` · `spec:width=385dp,height=385dp,dpi=360,isRound=true`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/ActivityListDeviceMatrixPreview_Activity_list_Custom_Round_385dp_2_25x.a11y.png" width="400" />
+
+_No findings._
+
 ### `ActivityListFontScalesPreview` · `wearos_small_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/ActivityListFontScalesPreview_Fonts_Large.a11y.png" width="400" />
@@ -1754,6 +1760,12 @@ _No findings._
 ### `ActivityListGifPreview` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/com.example.samplewear.PreviewsKt.ActivityListGifPreview_Devices - Large Round.a11y.png" width="400" />
+
+_No findings._
+
+### `ActivityListLargeDeviceMatrixPreview` · `spec:width=225dp,height=225dp,dpi=320,isRound=true`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/ActivityListLargeDeviceMatrixPreview_450px_225dp_Pixel_Watch_Pixel_Watch_2.a11y.png" width="400" />
 
 _No findings._
 
@@ -1905,6 +1917,18 @@ _No findings._
 ### `SettingsMainScreenLongPreview` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/com.example.samplewear.PreviewsKt.SettingsMainScreenLongPreview_Devices - Large Round.a11y.png" width="400" />
+
+_No findings._
+
+### `WearDeviceMatrixPreview` · `wearos_large_round`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/WearDeviceMatrixPreview_Large_Round_227dp.a11y.png" width="400" />
+
+_No findings._
+
+### `WearLargeDeviceMatrixPreview` · `spec:width=225dp,height=225dp,dpi=320,isRound=true`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/WearLargeDeviceMatrixPreview_450px_225dp_Pixel_Watch_Pixel_Watch_2.a11y.png" width="400" />
 
 _No findings._
 

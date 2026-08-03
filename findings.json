@@ -3268,6 +3268,16 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "ActivityListDeviceMatrixPreview_Activity_list_Custom_Round_385dp_2_25x.a11y.png",
+      "cleanBasename": "ActivityListDeviceMatrixPreview_Activity_list_Custom_Round_385dp_2_25x.png",
+      "findings": [],
+      "functionName": "ActivityListDeviceMatrixPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.DeviceSpecPreviewsKt.ActivityListDeviceMatrixPreview_Activity list \u00b7 Custom Round 385dp 2.25x",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/DeviceSpecPreviews.kt",
+      "variant": "spec:width=385dp,height=385dp,dpi=360,isRound=true"
+    },
+    {
       "annotatedBasename": "ActivityListFontScalesPreview_Fonts_Large.a11y.png",
       "cleanBasename": "ActivityListFontScalesPreview_Fonts_Large.png",
       "findings": [],
@@ -3286,6 +3296,16 @@
       "previewId": "com.example.samplewear.PreviewsKt.ActivityListGifPreview_Devices - Large Round",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "ActivityListLargeDeviceMatrixPreview_450px_225dp_Pixel_Watch_Pixel_Watch_2.a11y.png",
+      "cleanBasename": "ActivityListLargeDeviceMatrixPreview_450px_225dp_Pixel_Watch_Pixel_Watch_2.png",
+      "findings": [],
+      "functionName": "ActivityListLargeDeviceMatrixPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.WearLargeDevicePreviewsKt.ActivityListLargeDeviceMatrixPreview_450px \u00b7 225dp (Pixel Watch, Pixel Watch 2)",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/WearLargeDevicePreviews.kt",
+      "variant": "spec:width=225dp,height=225dp,dpi=320,isRound=true"
     },
     {
       "annotatedBasename": "com.example.samplewear.PreviewsKt.ActivityListLongPreview_Devices - Large Round.a11y.png",
@@ -3557,6 +3577,26 @@
       "previewId": "com.example.samplewear.PreviewsKt.SettingsMainScreenLongPreview_Devices - Large Round",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "WearDeviceMatrixPreview_Large_Round_227dp.a11y.png",
+      "cleanBasename": "WearDeviceMatrixPreview_Large_Round_227dp.png",
+      "findings": [],
+      "functionName": "WearDeviceMatrixPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.DeviceSpecPreviewsKt.WearDeviceMatrixPreview_Large Round 227dp",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/DeviceSpecPreviews.kt",
+      "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "WearLargeDeviceMatrixPreview_450px_225dp_Pixel_Watch_Pixel_Watch_2.a11y.png",
+      "cleanBasename": "WearLargeDeviceMatrixPreview_450px_225dp_Pixel_Watch_Pixel_Watch_2.png",
+      "findings": [],
+      "functionName": "WearLargeDeviceMatrixPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.WearLargeDevicePreviewsKt.WearLargeDeviceMatrixPreview_450px \u00b7 225dp (Pixel Watch, Pixel Watch 2)",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/WearLargeDevicePreviews.kt",
+      "variant": "spec:width=225dp,height=225dp,dpi=320,isRound=true"
     },
     {
       "annotatedBasename": "FocusableMenu_Glimmer_Input.a11y.png",
