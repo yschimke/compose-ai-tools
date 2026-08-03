@@ -165,6 +165,15 @@ object ServeWeb {
   /** Canonical source repo, used for the "source" / branch / workflow links. */
   private const val SOURCE_REPO = "yschimke/compose-ai-tools"
 
+  /**
+   * How often an open catalog page tells the server a visitor is still there ([presenceScript]).
+   *
+   * Comfortably under the session reaper's ten-minute idle window, and by enough that a single
+   * dropped ping — a sleeping laptop, a flaky connection, a tab briefly backgrounded — doesn't let
+   * the session lapse. Cheap at this rate: one empty POST per open tab per four minutes.
+   */
+  internal const val PRESENCE_INTERVAL_SECONDS = 240
+
   // android.content.res.Configuration values, kept local so the CLI has no Android dependency.
   private const val UI_MODE_NIGHT_MASK = 0x30
   private const val UI_MODE_NIGHT_NO = 0x10
@@ -1023,9 +1032,22 @@ object ServeWeb {
      */
     themeBaseJs: String = "",
     themeLeaseUrl: String = "",
+    /**
+     * `POST` URL that tells the server a visitor is still on this page ([presenceScript]). Empty
+     * omits the heartbeat entirely — the default, so a fixture golden or a plain-module landing
+     * emits exactly the script it always did.
+     */
+    presenceUrl: String = "",
   ): String {
     val hasDeclaredThemes = themeBaseJs.isNotEmpty()
     val themeLeaseUrlJs = WebEscaping.jsString(themeLeaseUrl)
+    // Spliced one level in, so a page with no presence URL emits the script byte-for-byte as
+    // before.
+    val presenceWiring =
+      presenceScript(presenceUrl).let { script ->
+        if (script.isEmpty()) ""
+        else script.lines().joinToString("") { if (it.isEmpty()) "\n" else "\n      $it" }
+      }
     // The stored choice is one of `light` / `dark` (a baked swap), `default` (the catalog's own
     // renders), or `theme:<providerFqn>` (an app-declared @ThemeCatalog theme, applied by
     // re-pointing each daemon-twinned card's thumbnail at a `?themeProvider=` render).
@@ -1367,8 +1389,61 @@ object ServeWeb {
         });
       });
       reflectBg();
-      apply();
+      apply();$presenceWiring
     })();
+    """
+      .trimIndent()
+  }
+
+  /**
+   * A heartbeat telling the server that a visitor is still on this catalog's pages.
+   *
+   * The server reaps an idle session — and the daemon behind it — after ten minutes, and measures
+   * idleness in *requests*. Someone reading one catalog page makes none: the grid's thumbnails and
+   * the front door's heroes are content-addressed and repaint from cache, which is the whole point
+   * of prebaking them. So a tab that has been open a quarter of an hour is indistinguishable from
+   * an abandoned one, and the visitor's next theme click pays a cold start. A ping every
+   * [PRESENCE_INTERVAL_SECONDS] says otherwise; see `handlePresence` for what the server does with
+   * it.
+   *
+   * Deliberately quiet about failure and about tabs nobody is looking at:
+   * - **Only while visible.** A backgrounded tab is not a visitor, and keeping a daemon resident
+   *   for one is exactly the waste the reaper exists to prevent. It resumes on `visibilitychange`,
+   *   and pings immediately on becoming visible so a tab returned to after an hour doesn't wait out
+   *   another interval before saying so.
+   * - **No first ping.** Loading the page *was* a request; the heartbeat only matters once the
+   *   visitor has gone quiet.
+   * - **Errors ignored.** A heartbeat is not something a page can act on — offline, a catalog since
+   *   removed, a server restarted. The next one tries again.
+   */
+  /**
+   * [presenceScript] as a standalone `<script>` tag, for a page that has no script of its own to
+   * splice it into (the viewer). Empty — not an empty tag — when there is no presence URL, so a
+   * page without the heartbeat is byte-for-byte what it always was.
+   */
+  private fun presenceScriptTag(presenceUrl: String): String {
+    val script = presenceScript(presenceUrl)
+    if (script.isEmpty()) return ""
+    // Emitted with the surrounding body's own indentation, including the leading newline: the tag
+    // is interpolated *adjacent* to the previous one rather than on a line of its own, so the empty
+    // case leaves no stray blank line, and every injected line stays at or past the template's
+    // common indent (which `trimIndent` measures across the interpolated result, not the source).
+    val indented = script.lines().joinToString("") { if (it.isEmpty()) "\n" else "\n        $it" }
+    return "\n      <script>(function () {$indented\n      })();</script>"
+  }
+
+  private fun presenceScript(presenceUrl: String): String {
+    if (presenceUrl.isEmpty()) return ""
+    return """
+
+      var presenceUrl = ${WebEscaping.jsString(presenceUrl)};
+      function ping() {
+        if (document.visibilityState !== "visible") return;
+        fetch(presenceUrl, { method: "POST", credentials: "same-origin", keepalive: true })
+          .catch(function () {});
+      }
+      setInterval(ping, ${PRESENCE_INTERVAL_SECONDS} * 1000);
+      document.addEventListener("visibilitychange", ping);
     """
       .trimIndent()
   }
@@ -2726,6 +2801,11 @@ object ServeWeb {
      */
     thumbHash: (String) -> String? = { null },
     /**
+     * `POST` URL that keeps this catalog's session (and its daemon) alive while a visitor has the
+     * page open — see [presenceScript]. Empty (the default) omits the heartbeat.
+     */
+    presenceUrl: String = "",
+    /**
      * Running server version (the CLI's `BUNDLE_VERSION`), surfaced in the (now bottom-of-page)
      * about box beside the source/`/version` links. Null omits it; the fixture golden passes a
      * fixed string so a release never churns the committed HTML.
@@ -3026,6 +3106,7 @@ object ServeWeb {
           tabStorageKey(sessionId, basePath),
           themeBaseJs,
           themeLeaseUrl,
+          presenceUrl,
         )}</script>"
       else ""
     val formatLink =
@@ -3525,6 +3606,13 @@ object ServeWeb {
     liveAuthPrompt: LiveAuthPrompt? = null,
     /** Human catalog title used in the breadcrumb; falls back to a generic "Previews" label. */
     catalogTitle: String? = null,
+    /**
+     * `POST` URL that keeps this session (and its daemon) alive while the visitor has the viewer
+     * open — see [presenceScript]. The viewer needs this at least as much as the grid does: it is
+     * where someone settles on one preview, and where the theme and knob actions that *need* a warm
+     * daemon are taken. Empty (the default) omits the heartbeat.
+     */
+    presenceUrl: String = "",
   ): String {
     val idSeg = WebEscaping.urlEncodeSegment(preview.id)
     val q = querySuffix(linkQuery(token, sessionId, basePath, isPublic))
@@ -4095,7 +4183,7 @@ $deviceControlsHtml
       <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
       ${scriptTag("viewer-groups.js")}
       ${scriptTag("viewer-drawers.js")}
-      <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>
+      <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>${presenceScriptTag(presenceUrl)}
       ${if (hasSvgExport) "${scriptTag("format-compare.js")}\n      " else ""}${scriptTag("viewer.js")}
       ${scriptTag("backend-badge.js")}
       """

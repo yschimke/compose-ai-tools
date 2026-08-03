@@ -649,6 +649,8 @@ class ServeHttpServer(
 
         get("/api/previews") { handleApiPreviews(sessionInPath = false) }
         get("/{system}/api/previews") { handleApiPreviews(sessionInPath = true) }
+        post("/api/presence") { handlePresence(sessionInPath = false) }
+        post("/{system}/api/presence") { handlePresence(sessionInPath = true) }
         post("/api/theme-render-lease") { handleThemeRenderLease(sessionInPath = false) }
         post("/{system}/api/theme-render-lease") { handleThemeRenderLease(sessionInPath = true) }
         post("/api/theme-render-lease/release") { handleThemeRenderLeaseRelease() }
@@ -1213,6 +1215,10 @@ class ServeHttpServer(
               .gridThumbFor(renderHost, id, catalogBundleHost(renderHost)?.contentCrop(id))
               ?.hash
           },
+          // A heartbeat while the tab is open, so a visitor reading the grid keeps their session —
+          // and its daemon — alive. Especially now: the cards above are cacheable, so browsing this
+          // page can make no requests at all for as long as someone cares to read it.
+          presenceUrl = "$basePath/api/presence${requestQuerySuffix()}",
           // The catalog's declared stage surface (`display.surface`), so a dark-first system's
           // unthemed cards sit on the dark stage instead of the default white.
           declaredSurface = catalogBundleHost(renderHost)?.stageSurface,
@@ -1257,6 +1263,44 @@ class ServeHttpServer(
           ContentType.Application.Json,
         )
       }
+    }
+  }
+
+  /**
+   * `POST /api/presence` (and its `/{system}/` form): a heartbeat from an open catalog tab.
+   *
+   * Sessions are reaped after an idle window ([ServeSessionRegistry.DEFAULT_IDLE_TIMEOUT_MILLIS]),
+   * and idleness is measured in *requests*. A visitor reading one catalog page makes none — the
+   * more so now that its thumbnails and heroes are `immutable` and repaint from cache — so a tab
+   * that has been open for a quarter of an hour looks exactly like an abandoned one, and the daemon
+   * behind it is shut down under a visitor who is still there. This is the signal that says
+   * otherwise.
+   *
+   * Two things happen, and the cheap one is the important one:
+   * - Leasing the session marks it as in use, which is what actually keeps it (and its daemon)
+   *   resident, and resumes it if it had already been suspended.
+   * - [ServeHost.keepLiveWarm] then gets its live lane ready, for the visitor who has only browsed
+   *   prebaked pixels and so has never woken a daemon at all — the common case by design.
+   *
+   * Deliberately silent: 204 with no body, no error surface. A heartbeat is not something a page
+   * can act on, and one that fails (offline, a catalog since removed) simply means the next one
+   * tries again.
+   */
+  private suspend fun RoutingContext.handlePresence(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    withLeasedSession(
+      selectedSessionId(sessionInPath),
+      onMissing = { call.respond(HttpStatusCode.NoContent) },
+    ) { renderHost ->
+      // Warming is the only part that can cost anything, so it is gated on the live-seat budget: on
+      // a busy box a browsing visitor's *convenience* ranks below someone else's actual request.
+      // A load signal, not a reservation — the warm runs off the request path and takes no seat of
+      // its own — but it is enough to stop a room full of idle tabs from each waking a daemon while
+      // the box is already saturated. The keepalive's other half (the lease above) is
+      // unconditional:
+      // holding on to a daemon that is already up costs nothing and is the whole point.
+      if (liveSeats.availablePermits() > 0) renderHost.keepLiveWarm()
+      call.respond(HttpStatusCode.NoContent)
     }
   }
 
@@ -2576,6 +2620,10 @@ class ServeHttpServer(
             },
           liveAuthPrompt = liveAuthPrompt,
           catalogTitle = catalogBundleHost(renderHost)?.title,
+          // The same heartbeat the grid sends. The viewer needs it at least as much: it is where a
+          // visitor settles on one preview and reads, making no further requests, and where the
+          // theme and knob actions that want a warm daemon are actually taken.
+          presenceUrl = "$basePath/api/presence${requestQuerySuffix()}",
         ),
         ContentType.Text.Html,
       )

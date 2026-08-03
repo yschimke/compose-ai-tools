@@ -140,6 +140,22 @@ interface ServeHost : AutoCloseable {
   fun bakedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? = null
 
   /**
+   * A visitor is present on this session's pages right now (see `POST /api/presence`) — get its
+   * live render lane ready, if it has one and isn't ready already.
+   *
+   * Leasing the session is what keeps it from being reaped; this is the other half, for the common
+   * case where the visitor has only browsed **prebaked** pixels and so has never woken a daemon at
+   * all. Their first live render — picking a declared theme, opening a knob — would otherwise pay a
+   * cold start (~68 s on Android) that no page-level retry outlasts. Warming while they read the
+   * grid turns that into the warm path (~350 ms).
+   *
+   * Best-effort, non-blocking and idempotent: called every few minutes by every open tab, so an
+   * implementation must return immediately and do nothing at all once its lane is ready. Hosts with
+   * no live lane (a static baked bundle) keep the default no-op.
+   */
+  fun keepLiveWarm() {}
+
+  /**
    * Aggregate render-performance counters for this host's live render lane, surfaced on `/status`
    * + `/status.json` (`runningServers[].renderStats`). Null when the host has no live render lane
    *   to measure — a static baked bundle never renders. Daemon-backed hosts ([ServeRenderHost])
