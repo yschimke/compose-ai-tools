@@ -400,7 +400,10 @@ class ServeBundleHost(
       // truncated PNG.
       return runCatching {
           path.parent?.let(fileSystem::createDirectories)
-          val partial = path.parent!!.resolve("${'$'}{path.name}$PARTIAL_SUFFIX")
+          // Named per destination, not a shared temp: two ids filling concurrently hold
+          // different locks, so a single shared partial name would let one preview's bytes be
+          // published under another's id.
+          val partial = path.parent!!.resolve(path.name + PARTIAL_SUFFIX)
           fileSystem.write(partial) { write(bytes) }
           fileSystem.atomicMove(partial, path)
           path
@@ -411,7 +414,7 @@ class ServeBundleHost(
 
   /** [previewId]'s baked PNG only if it is already local — never fetches. */
   private fun localBakedPng(previewId: String): okio.Path? =
-    File(previewsDir, "${'$'}previewId${'$'}PNG_SUFFIX").toOkioPath().takeIf(fileSystem::exists)
+    File(previewsDir, previewId + PNG_SUFFIX).toOkioPath().takeIf(fileSystem::exists)
 
   private val fillLocks = java.util.concurrent.ConcurrentHashMap<String, Any>()
 
