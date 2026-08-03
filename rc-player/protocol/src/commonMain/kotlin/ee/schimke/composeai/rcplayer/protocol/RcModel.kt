@@ -698,6 +698,45 @@ public data object RcImpulseProcess : RcOperation {
   override val opcode: Int = RcOpcodes.IMPULSE_PROCESS
 }
 
+/**
+ * Bounds and visibility animation policy attached to a layout component.
+ *
+ * Animation values retain their wire integers so malformed or future AndroidX values still
+ * round-trip without a mutable enum fallback changing the document.
+ */
+public data class RcAnimationSpec(
+  val animationId: Int,
+  val motionDurationMillis: RcFloatWord,
+  val motionEasingType: Int,
+  val visibilityDurationMillis: RcFloatWord,
+  val visibilityEasingType: Int,
+  val enterAnimation: RcLayoutAnimation,
+  val exitAnimation: RcLayoutAnimation,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.ANIMATION_SPEC
+
+  public val isEnabled: Boolean
+    get() = animationId != 0
+}
+
+/** AndroidX `AnimationSpec.ANIMATION` ordinal, retained exactly for symmetric serialization. */
+@JvmInline
+public value class RcLayoutAnimation(public val wireValue: Int) {
+  public val androidXValue: Int
+    get() = if (wireValue in 0..7) wireValue else 0
+
+  public companion object {
+    public val FadeIn: RcLayoutAnimation = RcLayoutAnimation(0)
+    public val FadeOut: RcLayoutAnimation = RcLayoutAnimation(1)
+    public val SlideLeft: RcLayoutAnimation = RcLayoutAnimation(2)
+    public val SlideRight: RcLayoutAnimation = RcLayoutAnimation(3)
+    public val SlideTop: RcLayoutAnimation = RcLayoutAnimation(4)
+    public val SlideBottom: RcLayoutAnimation = RcLayoutAnimation(5)
+    public val Rotate: RcLayoutAnimation = RcLayoutAnimation(6)
+    public val Particle: RcLayoutAnimation = RcLayoutAnimation(7)
+  }
+}
+
 public data class RcDraw4(
   override val opcode: Int,
   val first: RcFloatWord,
@@ -1370,6 +1409,7 @@ public data class RcDocument(val header: RcHeader, val operations: List<RcOperat
 /** Opcode values copied from AndroidX remote-core 1.0.0-alpha16 `Operations.java`. */
 public object RcOpcodes {
   public const val HEADER: Int = 0
+  public const val ANIMATION_SPEC: Int = 14
   public const val MODIFIER_WIDTH: Int = 16
   public const val THEME: Int = 63
   public const val ROOT_CONTENT_BEHAVIOR: Int = 65

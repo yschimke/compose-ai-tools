@@ -87,6 +87,7 @@ import androidx.compose.remote.core.operations.layout.RootLayoutComponent
 import androidx.compose.remote.core.operations.layout.TouchCancelModifierOperation
 import androidx.compose.remote.core.operations.layout.TouchDownModifierOperation
 import androidx.compose.remote.core.operations.layout.TouchUpModifierOperation
+import androidx.compose.remote.core.operations.layout.animation.AnimationSpec as AndroidxAnimationSpec
 import androidx.compose.remote.core.operations.layout.managers.BoxLayout
 import androidx.compose.remote.core.operations.layout.managers.CanvasLayout
 import androidx.compose.remote.core.operations.layout.managers.CollapsibleColumnLayout
@@ -150,6 +151,7 @@ import androidx.compose.remote.core.types.IntegerConstant
 import androidx.compose.remote.core.types.LongConstant
 import ee.schimke.composeai.rcplayer.protocol.RcAccessibilitySemantics
 import ee.schimke.composeai.rcplayer.protocol.RcAlignByModifier
+import ee.schimke.composeai.rcplayer.protocol.RcAnimationSpec
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
@@ -200,6 +202,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
 import ee.schimke.composeai.rcplayer.protocol.RcImpulseProcess
 import ee.schimke.composeai.rcplayer.protocol.RcImpulseStart
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
+import ee.schimke.composeai.rcplayer.protocol.RcLayoutAnimation
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
@@ -239,6 +242,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcWakeIn
 import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
+import ee.schimke.composeai.rcplayer.runtime.RcAnimationTimeline
 import ee.schimke.composeai.rcplayer.runtime.RcFloatExpressionEvaluator
 import ee.schimke.composeai.rcplayer.runtime.RcIntegerExpressionEvaluator
 import ee.schimke.composeai.rcplayer.runtime.RcPlayerState
@@ -257,6 +261,61 @@ import kotlin.test.assertTrue
  * from this test module: AndroidX remote-core/Java player is the protocol authority.
  */
 class AndroidxWireCompatibilityTest {
+  @Test
+  fun androidXAnimationSpecRoundTripsExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    AndroidxAnimationSpec.apply(
+      buffer,
+      42,
+      750f,
+      Easing.CUBIC_OVERSHOOT,
+      450f,
+      Easing.CUBIC_DECELERATE,
+      AndroidxAnimationSpec.animationToInt(AndroidxAnimationSpec.ANIMATION.SLIDE_TOP),
+      AndroidxAnimationSpec.animationToInt(AndroidxAnimationSpec.ANIMATION.ROTATE),
+    )
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+    val spec = assertIs<RcAnimationSpec>(document.operations.single())
+    assertEquals(42, spec.animationId)
+    assertEquals(750f, spec.motionDurationMillis.value)
+    assertEquals(Easing.CUBIC_OVERSHOOT, spec.motionEasingType)
+    assertEquals(RcLayoutAnimation.SlideTop, spec.enterAnimation)
+    assertEquals(RcLayoutAnimation.Rotate, spec.exitAnimation)
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
+  @Test
+  fun animationSpecTimelineMatchesAndroidXMillisecondConversionAtEveryFrame() {
+    val spec =
+      RcAnimationSpec(
+        animationId = 1,
+        motionDurationMillis = RcFloatWord.literal(750f),
+        motionEasingType = Easing.CUBIC_OVERSHOOT,
+        visibilityDurationMillis = RcFloatWord.literal(450f),
+        visibilityEasingType = Easing.CUBIC_DECELERATE,
+        enterAnimation = RcLayoutAnimation.FadeIn,
+        exitAnimation = RcLayoutAnimation.FadeOut,
+      )
+    val expectedMotion =
+      FloatAnimation(Easing.CUBIC_OVERSHOOT, .75f, null, 0f, Float.NaN).also {
+        it.setTargetValue(1f)
+      }
+    val expectedVisibility =
+      FloatAnimation(Easing.CUBIC_DECELERATE, .45f, null, 0f, Float.NaN).also {
+        it.setTargetValue(1f)
+      }
+    val actual = RcAnimationTimeline(spec)
+
+    (0..900 step 15).forEach { millis ->
+      val progress = actual.progress(millis.toFloat())
+      assertEquals(expectedMotion.get(millis / 1_000f), progress.motion, .0001f)
+      assertEquals(expectedVisibility.get(millis / 1_000f), progress.visibility, .0001f)
+    }
+  }
+
   @Test
   fun androidXImpulseContainersRoundTripExactly() {
     val buffer = WireBuffer()

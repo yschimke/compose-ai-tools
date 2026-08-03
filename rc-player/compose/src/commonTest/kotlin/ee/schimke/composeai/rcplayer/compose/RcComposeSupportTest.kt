@@ -3,6 +3,7 @@ package ee.schimke.composeai.rcplayer.compose
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.Role
 import ee.schimke.composeai.rcplayer.protocol.RcAccessibilitySemantics
+import ee.schimke.composeai.rcplayer.protocol.RcAnimationSpec
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
@@ -27,6 +28,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcImpulseProcess
 import ee.schimke.composeai.rcplayer.protocol.RcImpulseStart
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
+import ee.schimke.composeai.rcplayer.protocol.RcLayoutAnimation
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
 import ee.schimke.composeai.rcplayer.protocol.RcMultiClickModifier
@@ -55,6 +57,25 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RcComposeSupportTest {
+  @Test
+  fun portableAnimationSpecsAreSharedByWasmAndIosProfiles() {
+    val document = RcDocument(header, listOf(animationSpec()))
+
+    assertTrue(document.composeSupportReport(RcOperationProfiles.CMP_WASM_ALPHA16).fullyRenderable)
+    assertTrue(document.composeSupportReport(RcOperationProfiles.CMP_IOS_ALPHA16).fullyRenderable)
+  }
+
+  @Test
+  fun particleExitVariantsAreRejectedClearlyOnBothCmpProfiles() {
+    val document =
+      RcDocument(header, listOf(animationSpec().copy(exitAnimation = RcLayoutAnimation.Particle)))
+
+    val wasm = document.composeSupportReport(RcOperationProfiles.CMP_WASM_ALPHA16)
+    val ios = document.composeSupportReport(RcOperationProfiles.CMP_IOS_ALPHA16)
+    assertEquals("exit animation 7 requires ParticleAnimation", wasm.issues.single().detail)
+    assertEquals(wasm.issues, ios.issues)
+  }
+
   @Test
   fun impulseContainersAreSharedByWasmAndIosProfiles() {
     val end = RcNoArg(RcOpcodes.CONTAINER_END)
@@ -637,4 +658,15 @@ class RcComposeSupportTest {
         .single()
     assertEquals("2 arguments exceed 1 parameters", overApplied.detail)
   }
+
+  private fun animationSpec() =
+    RcAnimationSpec(
+      animationId = 1,
+      motionDurationMillis = RcFloatWord.literal(300f),
+      motionEasingType = 1,
+      visibilityDurationMillis = RcFloatWord.literal(300f),
+      visibilityEasingType = 1,
+      enterAnimation = RcLayoutAnimation.FadeIn,
+      exitAnimation = RcLayoutAnimation.FadeOut,
+    )
 }

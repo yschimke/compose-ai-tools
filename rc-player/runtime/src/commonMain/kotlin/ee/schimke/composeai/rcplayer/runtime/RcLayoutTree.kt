@@ -2,6 +2,7 @@ package ee.schimke.composeai.rcplayer.runtime
 
 import ee.schimke.composeai.rcplayer.protocol.RcAccessibilitySemantics
 import ee.schimke.composeai.rcplayer.protocol.RcAlignByModifier
+import ee.schimke.composeai.rcplayer.protocol.RcAnimationSpec
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
@@ -47,6 +48,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
 
 public data class RcLayoutModifiers(
+  /** Last AndroidX animation policy attached to this component. */
+  val animationSpec: RcAnimationSpec? = null,
   val width: RcWidthModifier? = null,
   val height: RcHeightModifier? = null,
   /** AndroidX applies padding modifiers cumulatively, in wire order. */
@@ -425,6 +428,7 @@ public object RcLayoutTree {
     val operations =
       container.children.filterIsInstance<RcLinkedNode.Operation>().map { it.operation }
     return RcLayoutModifiers(
+      animationSpec = operations.singleModifier<RcAnimationSpec>(container.operation),
       width = operations.singleModifier<RcWidthModifier>(container.operation),
       height = operations.singleModifier<RcHeightModifier>(container.operation),
       padding = operations.filterIsInstance<RcPaddingModifier>(),

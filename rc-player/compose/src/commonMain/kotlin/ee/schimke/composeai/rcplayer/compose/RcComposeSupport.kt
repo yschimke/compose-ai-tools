@@ -1,6 +1,7 @@
 package ee.schimke.composeai.rcplayer.compose
 
 import ee.schimke.composeai.rcplayer.protocol.RcAccessibilitySemantics
+import ee.schimke.composeai.rcplayer.protocol.RcAnimationSpec
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
@@ -54,6 +55,7 @@ import ee.schimke.composeai.rcplayer.runtime.RcDocumentLinker
 import ee.schimke.composeai.rcplayer.runtime.RcIntegerExpressionEvaluator
 import ee.schimke.composeai.rcplayer.runtime.RcLayoutTree
 import ee.schimke.composeai.rcplayer.runtime.RcLinkedNode
+import ee.schimke.composeai.rcplayer.runtime.hasPortableVisibilityAnimation
 import ee.schimke.composeai.rcplayer.runtime.isLayoutComputeExecutable
 
 public data class RcComposeSupportIssue(
@@ -120,6 +122,47 @@ public fun RcDocument.composeSupportReport(
     }
   }
   operations.forEachIndexed { index, operation ->
+    if (operation is RcAnimationSpec) {
+      when {
+        !operation.motionDurationMillis.value.isFinite() ||
+          operation.motionDurationMillis.value < 0f ->
+          issues +=
+            RcComposeSupportIssue(
+              index,
+              "AnimationSpec",
+              "motion duration ${operation.motionDurationMillis.value} is not supported",
+            )
+        !operation.visibilityDurationMillis.value.isFinite() ||
+          operation.visibilityDurationMillis.value < 0f ->
+          issues +=
+            RcComposeSupportIssue(
+              index,
+              "AnimationSpec",
+              "visibility duration ${operation.visibilityDurationMillis.value} is not supported",
+            )
+        operation.motionEasingType !in setOf(1, 2, 3, 4, 5, 6, 13, 14) ->
+          issues +=
+            RcComposeSupportIssue(
+              index,
+              "AnimationSpec",
+              "motion easing ${operation.motionEasingType} requires parameters or is unknown",
+            )
+        operation.visibilityEasingType !in setOf(1, 2, 3, 4, 5, 6, 13, 14) ->
+          issues +=
+            RcComposeSupportIssue(
+              index,
+              "AnimationSpec",
+              "visibility easing ${operation.visibilityEasingType} requires parameters or is unknown",
+            )
+        !operation.hasPortableVisibilityAnimation ->
+          issues +=
+            RcComposeSupportIssue(
+              index,
+              "AnimationSpec",
+              "exit animation ${operation.exitAnimation.wireValue} requires ParticleAnimation",
+            )
+      }
+    }
     if (operation is RcPaintData) {
       paintIssue(operation)?.let { detail ->
         issues += RcComposeSupportIssue(index, "PaintData", detail)

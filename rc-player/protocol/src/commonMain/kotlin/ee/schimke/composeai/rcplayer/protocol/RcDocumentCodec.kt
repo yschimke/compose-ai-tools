@@ -48,6 +48,7 @@ public object RcDocumentCodec {
         ClickModifierCodec,
         MultiClickModifierCodec,
         HapticFeedbackCodec,
+        AnimationSpecCodec,
         TouchDownModifierCodec,
         TouchUpModifierCodec,
         TouchCancelModifierCodec,
@@ -207,6 +208,31 @@ public object RcDocumentCodec {
     operation: RcOperation,
   ) {
     (codec as RcOperationCodec<RcOperation>).encode(output, operation)
+  }
+}
+
+private object AnimationSpecCodec : RcOperationCodec<RcAnimationSpec> {
+  override val spec = RcOperationSpec(RcOpcodes.ANIMATION_SPEC, "AnimationSpec")
+
+  override fun decode(input: RcWireReader): RcAnimationSpec =
+    RcAnimationSpec(
+      animationId = input.readInt("animationId"),
+      motionDurationMillis = input.readFloatWord("motionDurationMillis"),
+      motionEasingType = input.readInt("motionEasingType"),
+      visibilityDurationMillis = input.readFloatWord("visibilityDurationMillis"),
+      visibilityEasingType = input.readInt("visibilityEasingType"),
+      enterAnimation = RcLayoutAnimation(input.readInt("enterAnimation")),
+      exitAnimation = RcLayoutAnimation(input.readInt("exitAnimation")),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcAnimationSpec) {
+    output.writeInt(value.animationId)
+    output.writeFloatWord(value.motionDurationMillis)
+    output.writeInt(value.motionEasingType)
+    output.writeFloatWord(value.visibilityDurationMillis)
+    output.writeInt(value.visibilityEasingType)
+    output.writeInt(value.enterAnimation.wireValue)
+    output.writeInt(value.exitAnimation.wireValue)
   }
 }
 

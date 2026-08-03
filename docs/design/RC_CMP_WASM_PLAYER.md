@@ -267,7 +267,7 @@ Current checkpoint:
   available independently.
 - The checked-in manifest exactly matches all 172 public integer entries in AndroidX alpha16
   `Operations.java`; generation fails on duplicate or invalid entries, and a reflection conformance
-  test prevents drift. The current disposition is 130 implemented, 0 parse-only, 31 pending,
+  test prevents drift. The current disposition is 131 implemented, 0 parse-only, 30 pending,
   6 unavailable, and 5 reserved operations.
 - Cluster 1 now includes path data/drawing/clipping, AndroidX theme filtering, root scaling and
   alignment, root accessibility description, typed named-value overrides, primitive constants,
@@ -462,7 +462,9 @@ state switching, and stable Compose keys.
 
 - `TouchExpression`; scroll and marquee.
 - Host/named/run actions and integer/float/string/expression change actions.
-- Animation specifications and particle operations.
+- Particle operations. `AnimationSpec` bounds, fade, slide, and rotate branches are implemented;
+  particle-dependent exit variants are rejected explicitly by both CMP profiles until the particle
+  runtime exists.
 - `CoreSemantics` and content descriptions mapped to Compose semantics.
 
 Exit: browser pointer/keyboard tests drive real hit testing; manual-clock tests are deterministic;

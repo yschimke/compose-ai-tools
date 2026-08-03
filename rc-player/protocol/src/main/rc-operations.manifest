@@ -3,7 +3,7 @@
 0|HEADER|0|implemented
 2|COMPONENT_START|6|unsupported
 4|LOAD_BITMAP|4|unavailable
-14|ANIMATION_SPEC|6|unsupported
+14|ANIMATION_SPEC|6|implemented
 16|MODIFIER_WIDTH|6|implemented
 38|CLIP_PATH|1|implemented
 39|CLIP_RECT|1|implemented

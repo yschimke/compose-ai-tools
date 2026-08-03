@@ -2,6 +2,7 @@ package ee.schimke.composeai.rcplayer.compose
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
@@ -29,8 +30,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -85,6 +88,7 @@ import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.LastBaseline
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.LookaheadScope
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.node.CompositionLocalConsumerModifierNode
 import androidx.compose.ui.node.DrawModifierNode
@@ -130,6 +134,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import ee.schimke.composeai.rcplayer.protocol.RcAccessibilitySemantics
 import ee.schimke.composeai.rcplayer.protocol.RcAlignByModifier
+import ee.schimke.composeai.rcplayer.protocol.RcAnimationSpec
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
@@ -170,6 +175,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcImpulseProcess
 import ee.schimke.composeai.rcplayer.protocol.RcImpulseStart
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
+import ee.schimke.composeai.rcplayer.protocol.RcLayoutAnimation
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
 import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixExpression
@@ -208,6 +214,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcWakeIn
 import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
+import ee.schimke.composeai.rcplayer.runtime.RcAnimationTimeline
 import ee.schimke.composeai.rcplayer.runtime.RcClickActionBlock
 import ee.schimke.composeai.rcplayer.runtime.RcClickActionType
 import ee.schimke.composeai.rcplayer.runtime.RcDocumentLinker
@@ -225,6 +232,7 @@ import ee.schimke.composeai.rcplayer.runtime.RcTouchActionBlock
 import ee.schimke.composeai.rcplayer.runtime.RcTouchActionType
 import ee.schimke.composeai.rcplayer.runtime.RcTouchExpressionRuntime
 import ee.schimke.composeai.rcplayer.runtime.androidXMarqueeOffset
+import ee.schimke.composeai.rcplayer.runtime.visibilityTransform
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.roundToInt
@@ -341,15 +349,26 @@ public fun RcComposePlayer(
     drawContent()
   }
   if (layout != null) {
+    // Layout variables (visibility, dimensions, offsets, and constraints) are read during
+    // composition/measurement rather than painting, so action mutations must invalidate this
+    // branch as well as the draw layer.
+    invalidationVersion
     SideEffect { state.beginFrame(frameNanos / 1_000_000_000f) }
-    RenderLayoutNode(
-      node = layout,
-      modifier = redrawModifier,
-      state = state,
-      textMeasurer = textMeasurer,
-      images = images,
-      theme = theme,
-    )
+    LookaheadScope {
+      CompositionLocalProvider(
+        LocalRcLookaheadScope provides this,
+        LocalRcLayoutVersion provides invalidationVersion,
+      ) {
+        RenderLayoutNode(
+          node = layout,
+          modifier = redrawModifier,
+          state = state,
+          textMeasurer = textMeasurer,
+          images = images,
+          theme = theme,
+        )
+      }
+    }
   } else
     Canvas(redrawModifier) {
       val width = document.header.width.coerceAtLeast(1)
@@ -391,10 +410,32 @@ private fun RenderLayoutNode(
   images: Map<Int, ImageBitmap>,
   theme: Int,
 ) {
+  val layoutVersion = LocalRcLayoutVersion.current
+  val lookaheadScope = LocalRcLookaheadScope.current
   val visibility =
-    node.modifiers.visibility?.let { androidXVisibility(state.integer(it.visibilityId) ?: 0) } ?: 1
-  if (visibility == 0) return
-  val effectiveModifier = if (visibility == 2) modifier.alpha(0f) else modifier
+    if (layoutVersion == Int.MIN_VALUE) {
+      error("unreachable layout invalidation version")
+    } else {
+      node.modifiers.visibility?.let { androidXVisibility(state.integer(it.visibilityId) ?: 0) }
+        ?: 1
+    }
+  val boundsModifier =
+    if (node is RcLayoutNode.Content || lookaheadScope == null) {
+      modifier
+    } else {
+      modifier.animateRcBounds(
+        lookaheadScope,
+        node.modifiers.animationSpec ?: DefaultRcAnimationSpec,
+      )
+    }
+  val animatedVisibility =
+    if (node is RcLayoutNode.Content) {
+      RcAnimatedVisibility(visibility != 0, if (visibility == 2) modifier.alpha(0f) else modifier)
+    } else {
+      animateRcVisibility(visibility, node.modifiers.animationSpec, boundsModifier)
+    }
+  if (!animatedVisibility.shouldRender) return
+  val effectiveModifier = animatedVisibility.modifier
   when (node) {
     is RcLayoutNode.Root ->
       Box(
@@ -815,6 +856,108 @@ private fun RenderLayoutNode(
       }
     }
   }
+}
+
+private data class RcAnimatedVisibility(val shouldRender: Boolean, val modifier: Modifier)
+
+private val LocalRcLookaheadScope = compositionLocalOf<LookaheadScope?> { null }
+private val LocalRcLayoutVersion = compositionLocalOf { 0 }
+
+private val DefaultRcAnimationSpec =
+  RcAnimationSpec(
+    animationId = -1,
+    motionDurationMillis = RcFloatWord.literal(300f),
+    motionEasingType = 1,
+    visibilityDurationMillis = RcFloatWord.literal(300f),
+    visibilityEasingType = 1,
+    enterAnimation = RcLayoutAnimation.FadeIn,
+    exitAnimation = RcLayoutAnimation.FadeOut,
+  )
+
+@Composable
+private fun animateRcVisibility(
+  targetVisibility: Int,
+  operation: RcAnimationSpec?,
+  modifier: Modifier,
+): RcAnimatedVisibility {
+  val spec = operation ?: DefaultRcAnimationSpec
+  val maxDurationMillis =
+    maxOf(spec.motionDurationMillis.value, spec.visibilityDurationMillis.value).takeIf {
+      it.isFinite() && it > 0f
+    } ?: 0f
+  val timeline = remember(spec) { RcAnimationTimeline(spec) }
+  val elapsedMillis = remember(spec) { Animatable(maxDurationMillis) }
+  var previousVisibility by remember(spec) { mutableIntStateOf(targetVisibility) }
+  var animationTarget by remember(spec) { mutableIntStateOf(targetVisibility) }
+  val pending = animationTarget != targetVisibility
+  val fromVisibility = if (pending) animationTarget else previousVisibility
+  val elapsed = if (pending) 0f else elapsedMillis.value
+  val progress = timeline.progress(elapsed)
+  val entering = fromVisibility == 0 && targetVisibility == 1
+  val exiting = fromVisibility == 1 && targetVisibility == 0
+  val transitioning = (pending || !progress.isDone) && (entering || exiting)
+
+  LaunchedEffect(spec, targetVisibility) {
+    if (animationTarget == targetVisibility) return@LaunchedEffect
+    previousVisibility = animationTarget
+    animationTarget = targetVisibility
+    elapsedMillis.snapTo(0f)
+    if (spec.isEnabled && maxDurationMillis > 0f) {
+      elapsedMillis.animateTo(
+        maxDurationMillis,
+        tween(maxDurationMillis.roundToInt(), easing = LinearEasing),
+      )
+    } else {
+      elapsedMillis.snapTo(maxDurationMillis)
+    }
+  }
+
+  // AndroidX INVISIBLE participates in measure/layout exactly like VISIBLE, but skips paint.
+  // It does not run the GONE visibility transition.
+  if (targetVisibility == 2) return RcAnimatedVisibility(true, modifier.alpha(0f))
+
+  val shouldRender =
+    when (targetVisibility) {
+      1 -> true
+      else -> transitioning && exiting
+    }
+  if (!shouldRender) return RcAnimatedVisibility(false, modifier)
+  if (!transitioning || !spec.isEnabled) return RcAnimatedVisibility(true, modifier)
+
+  val transform = spec.visibilityTransform(entering, progress.visibility)
+  val transformed =
+    modifier
+      .graphicsLayer {
+        alpha = if (transform.paintsContent) transform.alpha else 0f
+        scaleX = transform.scale
+        scaleY = transform.scale
+        rotationZ = transform.rotationDegrees
+        transformOrigin = TransformOrigin.Center
+      }
+      .layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        val parentWidth =
+          if (constraints.maxWidth == androidx.compose.ui.unit.Constraints.Infinity) {
+            placeable.width
+          } else {
+            constraints.maxWidth
+          }
+        val parentHeight =
+          if (constraints.maxHeight == androidx.compose.ui.unit.Constraints.Infinity) {
+            placeable.height
+          } else {
+            constraints.maxHeight
+          }
+        val x = (transform.translationX * parentWidth).roundToInt()
+        val y = (transform.translationY * parentHeight).roundToInt()
+        layout(
+          width = if (exiting && isLookingAhead) 0 else placeable.width,
+          height = if (exiting && isLookingAhead) 0 else placeable.height,
+        ) {
+          placeable.placeRelative(x, y)
+        }
+      }
+  return RcAnimatedVisibility(true, transformed)
 }
 
 @Composable

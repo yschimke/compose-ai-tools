@@ -9,6 +9,32 @@ import kotlin.test.assertTrue
 
 class RcDocumentCodecTest {
   @Test
+  fun animationSpecRoundTripsExactFloatBitsAndFutureAnimationValues() {
+    val spec =
+      RcAnimationSpec(
+        animationId = 42,
+        motionDurationMillis = RcFloatWord(0x7fc0002a),
+        motionEasingType = 6,
+        visibilityDurationMillis = RcFloatWord.literal(450f),
+        visibilityEasingType = 3,
+        enterAnimation = RcLayoutAnimation.SlideTop,
+        exitAnimation = RcLayoutAnimation(99),
+      )
+    val document = RcDocument(RcHeader(RcVersion(1, 0, 0), modern = false), listOf(spec))
+
+    val bytes = RcDocumentCodec.encode(document)
+    val decoded = RcDocumentCodec.decode(bytes)
+
+    assertEquals(document, decoded)
+    assertEquals(
+      42,
+      assertIs<RcAnimationSpec>(decoded.operations.single()).motionDurationMillis.referencedId,
+    )
+    assertEquals(0, spec.exitAnimation.androidXValue)
+    assertContentEquals(bytes, RcDocumentCodec.encode(decoded))
+  }
+
+  @Test
   fun rippleModifierRoundTripsAsTheAndroidXPayloadFreeOperation() {
     val document =
       RcDocument(RcHeader(RcVersion(1, 0, 0), modern = false), listOf(RcRippleModifier))
