@@ -3298,16 +3298,6 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "ActivityListLargeDeviceMatrixPreview_450px_225dp_Pixel_Watch_Pixel_Watch_2.a11y.png",
-      "cleanBasename": "ActivityListLargeDeviceMatrixPreview_450px_225dp_Pixel_Watch_Pixel_Watch_2.png",
-      "findings": [],
-      "functionName": "ActivityListLargeDeviceMatrixPreview",
-      "module": "wear",
-      "previewId": "com.example.samplewear.WearLargeDevicePreviewsKt.ActivityListLargeDeviceMatrixPreview_450px \u00b7 225dp (Pixel Watch, Pixel Watch 2)",
-      "sourceFile": "src/main/kotlin/com/example/samplewear/WearLargeDevicePreviews.kt",
-      "variant": "spec:width=225dp,height=225dp,dpi=320,isRound=true"
-    },
-    {
       "annotatedBasename": "com.example.samplewear.PreviewsKt.ActivityListLongPreview_Devices - Large Round.a11y.png",
       "cleanBasename": "",
       "findings": [],
@@ -3336,6 +3326,16 @@
       "previewId": "com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "ActivityListRealDeviceMatrixPreview_Galaxy_Watch_5_44mm_450px_340dpi_211dp.a11y.png",
+      "cleanBasename": "ActivityListRealDeviceMatrixPreview_Galaxy_Watch_5_44mm_450px_340dpi_211dp.png",
+      "findings": [],
+      "functionName": "ActivityListRealDeviceMatrixPreview",
+      "module": "wear",
+      "previewId": "com.example.samplewear.WearRealDevicePreviewsKt.ActivityListRealDeviceMatrixPreview_Galaxy Watch 5 44mm \u00b7 450px @340dpi \u00b7 211dp",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/WearRealDevicePreviews.kt",
+      "variant": "spec:width=211dp,height=211dp,dpi=340,isRound=true"
     },
     {
       "annotatedBasename": "AmbientStatusAmbientPreview_Ambient_body_ambient.a11y.png",
@@ -3589,14 +3589,14 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "WearLargeDeviceMatrixPreview_450px_225dp_Pixel_Watch_Pixel_Watch_2.a11y.png",
-      "cleanBasename": "WearLargeDeviceMatrixPreview_450px_225dp_Pixel_Watch_Pixel_Watch_2.png",
+      "annotatedBasename": "WearRealDeviceMatrixPreview_Galaxy_Watch_5_44mm_450px_340dpi_211dp.a11y.png",
+      "cleanBasename": "WearRealDeviceMatrixPreview_Galaxy_Watch_5_44mm_450px_340dpi_211dp.png",
       "findings": [],
-      "functionName": "WearLargeDeviceMatrixPreview",
+      "functionName": "WearRealDeviceMatrixPreview",
       "module": "wear",
-      "previewId": "com.example.samplewear.WearLargeDevicePreviewsKt.WearLargeDeviceMatrixPreview_450px \u00b7 225dp (Pixel Watch, Pixel Watch 2)",
-      "sourceFile": "src/main/kotlin/com/example/samplewear/WearLargeDevicePreviews.kt",
-      "variant": "spec:width=225dp,height=225dp,dpi=320,isRound=true"
+      "previewId": "com.example.samplewear.WearRealDevicePreviewsKt.WearRealDeviceMatrixPreview_Galaxy Watch 5 44mm \u00b7 450px @340dpi \u00b7 211dp",
+      "sourceFile": "src/main/kotlin/com/example/samplewear/WearRealDevicePreviews.kt",
+      "variant": "spec:width=211dp,height=211dp,dpi=340,isRound=true"
     },
     {
       "annotatedBasename": "FocusableMenu_Glimmer_Input.a11y.png",

@@ -1763,12 +1763,6 @@ _No findings._
 
 _No findings._
 
-### `ActivityListLargeDeviceMatrixPreview` · `spec:width=225dp,height=225dp,dpi=320,isRound=true`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/ActivityListLargeDeviceMatrixPreview_450px_225dp_Pixel_Watch_Pixel_Watch_2.a11y.png" width="400" />
-
-_No findings._
-
 ### `ActivityListLongPreview` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/com.example.samplewear.PreviewsKt.ActivityListLongPreview_Devices - Large Round.a11y.png" width="400" />
@@ -1784,6 +1778,12 @@ _No findings._
 ### `ActivityListPreview` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/ActivityListPreview_Devices_Large_Round.a11y.png" width="400" />
+
+_No findings._
+
+### `ActivityListRealDeviceMatrixPreview` · `spec:width=211dp,height=211dp,dpi=340,isRound=true`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/ActivityListRealDeviceMatrixPreview_Galaxy_Watch_5_44mm_450px_340dpi_211dp.a11y.png" width="400" />
 
 _No findings._
 
@@ -1926,9 +1926,9 @@ _No findings._
 
 _No findings._
 
-### `WearLargeDeviceMatrixPreview` · `spec:width=225dp,height=225dp,dpi=320,isRound=true`
+### `WearRealDeviceMatrixPreview` · `spec:width=211dp,height=211dp,dpi=340,isRound=true`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/WearLargeDeviceMatrixPreview_450px_225dp_Pixel_Watch_Pixel_Watch_2.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/WearRealDeviceMatrixPreview_Galaxy_Watch_5_44mm_450px_340dpi_211dp.a11y.png" width="400" />
 
 _No findings._
 
