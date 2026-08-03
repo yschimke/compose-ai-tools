@@ -15,6 +15,31 @@ import kotlin.test.assertTrue
 class LiveSeatLimiterTest {
 
   @Test
+  fun `refusals are counted so seat pressure is visible after the fact`() {
+    val limiter = LiveSeatLimiter(totalPermits = 2)
+    assertEquals(0L, limiter.refusalCount())
+
+    val held = assertNotNull(limiter.acquire(2))
+    // Two refusals while the budget is fully held…
+    assertNull(limiter.acquire(1))
+    assertNull(limiter.acquire(1))
+    assertEquals(2L, limiter.refusalCount())
+
+    // …and the count is monotonic: releasing does not rewind history, which is the point of a
+    // counter over the availablePermits gauge beside it.
+    held.close()
+    assertNotNull(limiter.acquire(1)).close()
+    assertEquals(2L, limiter.refusalCount())
+  }
+
+  @Test
+  fun `an unbounded limiter never refuses and so never counts`() {
+    val limiter = LiveSeatLimiter(totalPermits = 0)
+    repeat(5) { assertNotNull(limiter.acquire(2)) }
+    assertEquals(0L, limiter.refusalCount())
+  }
+
+  @Test
   fun `zero budget is unbounded — every acquire is a free ticket`() {
     val limiter = LiveSeatLimiter(0)
     assertTrue(limiter.unbounded)

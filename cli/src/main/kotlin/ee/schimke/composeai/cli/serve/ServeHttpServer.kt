@@ -1877,6 +1877,7 @@ class ServeHttpServer(
             liveSeatsTotal = if (liveSeats.unbounded) 0 else liveSeats.totalPermits,
             liveSeatsAvailable = if (liveSeats.unbounded) -1 else liveSeats.availablePermits(),
             liveSeatsUnbounded = liveSeats.unbounded,
+            liveSeatRefusals = liveSeats.refusalCount(),
           ),
         config =
           ConfigDto(
@@ -3303,6 +3304,14 @@ private data class DaemonSummaryDto(
   /** Free permits; `-1` ⇒ unbounded. */
   val liveSeatsAvailable: Int,
   val liveSeatsUnbounded: Boolean,
+  /**
+   * Live sessions turned away for want of seats since startup, monotonic. A counter rather than a
+   * gauge because a refusal is an event: [liveSeatsAvailable] beside it is a level, and on a
+   * lightly-used box sampling that level almost never coincides with the pressure. Zero over a long
+   * uptime is the evidence that the seat budget is comfortable; a climbing figure is what would
+   * justify raising it, or evicting an idle daemon in favour of an active one.
+   */
+  val liveSeatRefusals: Long = 0,
 )
 
 @Serializable

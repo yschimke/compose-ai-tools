@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli.serve
 
 import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Bounds concurrent **live** (daemon-backed) stream sessions by a *permit budget* rather than a
@@ -47,11 +48,28 @@ class LiveSeatLimiter(val totalPermits: Int) {
     val sem = semaphore ?: return Ticket(0)
     if (weight <= 0) return Ticket(0)
     val permits = weight.coerceIn(1, totalPermits)
-    return if (sem.tryAcquire(permits)) Ticket(permits) else null
+    if (sem.tryAcquire(permits)) return Ticket(permits)
+    refusals.incrementAndGet()
+    return null
   }
 
   /** Permits currently available — for tests/diagnostics. */
   fun availablePermits(): Int = semaphore?.availablePermits() ?: Int.MAX_VALUE
+
+  /**
+   * How many live sessions this limiter has turned away since startup, monotonic.
+   *
+   * Deliberately a **counter, not a gauge**: a refusal is an event lasting as long as it takes the
+   * caller to give up, while [availablePermits] is a level you happen to sample. On a box with a
+   * handful of viewers, polling the level essentially never catches the moment of pressure, so "is
+   * the seat budget actually too small here?" was unanswerable from `/status` — you would read a
+   * comfortable-looking figure whatever the truth. This is the number that answers it, and it is
+   * the evidence any change to the budget (or to evicting an idle daemon in favour of an active
+   * one) should be argued from.
+   */
+  fun refusalCount(): Long = refusals.get()
+
+  private val refusals = AtomicLong()
 
   /** A held reservation of [permits] live-seat permits; [close] returns them (idempotent). */
   inner class Ticket internal constructor(val permits: Int) : AutoCloseable {
