@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
@@ -236,10 +237,14 @@ private fun RenderLayoutNode(
   images: Map<Int, ImageBitmap>,
   theme: Int,
 ) {
+  val visibility =
+    node.modifiers.visibility?.let { androidXVisibility(state.integer(it.visibilityId) ?: 0) } ?: 1
+  if (visibility == 0) return
+  val effectiveModifier = if (visibility == 2) modifier.alpha(0f) else modifier
   when (node) {
     is RcLayoutNode.Root ->
       Box(
-        modifier.applyComponentModifiers(
+        effectiveModifier.applyComponentModifiers(
           node.modifiers,
           state,
           fillMissingDimensions = true,
@@ -259,19 +264,23 @@ private fun RenderLayoutNode(
           )
         }
       }
-    is RcLayoutNode.Content ->
-      node.children.forEach {
-        RenderLayoutNode(
-          it,
-          state = state,
-          textMeasurer = textMeasurer,
-          images = images,
-          theme = theme,
-        )
+    is RcLayoutNode.Content -> {
+      val content: @Composable () -> Unit = {
+        node.children.forEach {
+          RenderLayoutNode(
+            it,
+            state = state,
+            textMeasurer = textMeasurer,
+            images = images,
+            theme = theme,
+          )
+        }
       }
+      if (visibility == 2) Box(effectiveModifier) { content() } else content()
+    }
     is RcLayoutNode.Canvas ->
       Box(
-        modifier.applyComponentModifiers(
+        effectiveModifier.applyComponentModifiers(
           node.modifiers,
           state,
           fillMissingDimensions = true,
@@ -307,7 +316,7 @@ private fun RenderLayoutNode(
       }
     is RcLayoutNode.Box ->
       Box(
-        modifier.applyComponentModifiers(
+        effectiveModifier.applyComponentModifiers(
           node.modifiers,
           state,
           fillMissingDimensions = false,
@@ -331,7 +340,7 @@ private fun RenderLayoutNode(
       val density = androidx.compose.ui.platform.LocalDensity.current
       val spacing = with(density) { state.resolve(node.operation.spacedBy).dp.roundToPx() }
       Row(
-        modifier.applyComponentModifiers(
+        effectiveModifier.applyComponentModifiers(
           node.modifiers,
           state,
           fillMissingDimensions = false,
@@ -357,7 +366,7 @@ private fun RenderLayoutNode(
       val density = androidx.compose.ui.platform.LocalDensity.current
       val spacing = with(density) { state.resolve(node.operation.spacedBy).dp.roundToPx() }
       Column(
-        modifier.applyComponentModifiers(
+        effectiveModifier.applyComponentModifiers(
           node.modifiers,
           state,
           fillMissingDimensions = false,
@@ -383,7 +392,7 @@ private fun RenderLayoutNode(
         boxAlignment(node.operation.horizontalPositioning, node.operation.verticalPositioning)
       Layout(
         modifier =
-          modifier.applyComponentModifiers(
+          effectiveModifier.applyComponentModifiers(
             node.modifiers,
             state,
             fillMissingDimensions = false,
@@ -439,6 +448,17 @@ private fun RenderLayoutNode(
     }
   }
 }
+
+/** Mirrors Component.Visibility, including the override-bit precedence used by AndroidX. */
+internal fun androidXVisibility(value: Int): Int =
+  when {
+    value and 32 == 32 -> 1
+    value and 16 == 16 -> 0
+    value and 64 == 64 -> 2
+    value == 1 -> 1
+    value == 2 -> 2
+    else -> 0
+  }
 
 internal fun boxAlignment(horizontal: Int, vertical: Int): Alignment =
   when (horizontal to vertical) {

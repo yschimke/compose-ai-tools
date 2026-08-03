@@ -82,6 +82,7 @@ import androidx.compose.remote.core.operations.layout.managers.RowLayout
 import androidx.compose.remote.core.operations.layout.modifiers.BackgroundModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.BorderModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ClipRectModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.ComponentVisibilityOperation
 import androidx.compose.remote.core.operations.layout.modifiers.DimensionConstraintsModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.DimensionModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HeightInModifierOperation
@@ -154,6 +155,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
+import ee.schimke.composeai.rcplayer.protocol.RcVisibilityModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
@@ -237,6 +239,7 @@ class AndroidxWireCompatibilityTest {
     WidthInModifierOperation.apply(buffer, 10f, -1f)
     HeightInModifierOperation.apply(buffer, Utils.asNan(46), 70f)
     DimensionConstraintsModifierOperation.apply(buffer, 2, 15f, Utils.asNan(47))
+    ComponentVisibilityOperation.apply(buffer, 48)
     val bytes = buffer.buffer.copyOf(buffer.size())
 
     val document = RcDocumentCodec.decode(bytes)
@@ -251,6 +254,7 @@ class AndroidxWireCompatibilityTest {
     val constraints = assertIs<RcDimensionConstraintsModifier>(document.operations[7])
     assertEquals(RcDimensionConstraintsModifier.REQUIRED_HORIZONTAL, constraints.type)
     assertEquals(47, constraints.maximum.referencedId)
+    assertEquals(48, assertIs<RcVisibilityModifier>(document.operations[8]).visibilityId)
     assertContentEquals(bytes, RcDocumentCodec.encode(document))
   }
 

@@ -102,6 +102,7 @@ public object RcDocumentCodec {
         WidthInModifierCodec,
         HeightInModifierCodec,
         DimensionConstraintsModifierCodec,
+        VisibilityModifierCodec,
         four(RcOpcodes.CLIP_RECT, "ClipRect"),
         four(RcOpcodes.MATRIX_SCALE, "MatrixScale"),
         two(RcOpcodes.MATRIX_TRANSLATE, "MatrixTranslate"),
@@ -509,6 +510,15 @@ private object DimensionConstraintsModifierCodec :
     output.writeFloatWord(value.minimum)
     output.writeFloatWord(value.maximum)
   }
+}
+
+private object VisibilityModifierCodec : RcOperationCodec<RcVisibilityModifier> {
+  override val spec = RcOperationSpec(RcOpcodes.MODIFIER_VISIBILITY, "ComponentVisibilityOperation")
+
+  override fun decode(input: RcWireReader) = RcVisibilityModifier(input.readInt("visibilityId"))
+
+  override fun encode(output: RcWireWriter, value: RcVisibilityModifier) =
+    output.writeInt(value.visibilityId)
 }
 
 private object HeaderCodec : RcOperationCodec<RcHeader> {

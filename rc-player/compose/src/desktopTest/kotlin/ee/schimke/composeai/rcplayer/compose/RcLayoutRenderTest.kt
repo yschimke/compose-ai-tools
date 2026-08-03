@@ -15,6 +15,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
+import ee.schimke.composeai.rcplayer.protocol.RcIntegerConstant
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
@@ -23,7 +24,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcOperation
 import ee.schimke.composeai.rcplayer.protocol.RcPaintData
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
+import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
+import ee.schimke.composeai.rcplayer.protocol.RcVisibilityModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
@@ -425,6 +428,52 @@ class RcLayoutRenderTest {
     }
   }
 
+  @Test
+  fun invisibleReservesLayoutSpaceWhileGoneDoesNot() {
+    val green = 0xff00ff00.toInt()
+    val red = 0xffff0000.toInt()
+    val yellow = 0xffffff00.toInt()
+    val blue = 0xff0000ff.toInt()
+    val operations =
+      listOf<RcOperation>(
+        RcIntegerConstant(10, 1),
+        RcIntegerConstant(11, 2),
+        RcIntegerConstant(12, 0),
+        RcRootLayout(1),
+        RcLayoutContent(2),
+        RcRowLayout(3, 30, 1, 4, RcFloatWord.literal(0f)),
+        width(100f),
+        height(20f),
+        RcLayoutContent(4),
+      ) +
+        visibilityCanvas(5, green, 10) +
+        visibilityCanvas(6, red, 11) +
+        visibilityCanvas(7, yellow, 12) +
+        visibilityCanvas(8, blue, 10) +
+        List(4) { RcNoArg(RcOpcodes.CONTAINER_END) }
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 100, legacyHeight = 20, modern = false),
+        operations,
+      )
+    val scene =
+      ImageComposeScene(width = 100, height = 20, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val image = scene.render()
+      val bitmap = Bitmap().apply { allocN32Pixels(100, 20) }
+      check(image.readPixels(bitmap))
+
+      assertEquals(green, bitmap.getColor(5, 5))
+      assertEquals(0, bitmap.getColor(25, 5))
+      assertEquals(blue, bitmap.getColor(45, 5))
+      assertEquals(0, bitmap.getColor(65, 5))
+    } finally {
+      scene.close()
+    }
+  }
+
   private fun canvas(componentId: Int, size: Float, color: Int): List<RcOperation> =
     listOf(
       RcCanvasLayout(componentId, componentId * 10),
@@ -439,6 +488,19 @@ class RcLayoutRenderTest {
         RcFloatWord.literal(size),
         RcFloatWord.literal(size),
       ),
+      RcNoArg(RcOpcodes.CONTAINER_END),
+      RcNoArg(RcOpcodes.CONTAINER_END),
+    )
+
+  private fun visibilityCanvas(componentId: Int, color: Int, visibilityId: Int): List<RcOperation> =
+    listOf(
+      RcCanvasLayout(componentId, componentId * 10),
+      width(20f),
+      height(20f),
+      RcVisibilityModifier(visibilityId),
+      RcNoArg(RcOpcodes.CANVAS_OPERATIONS),
+      RcPaintData(listOf(4, color)),
+      rect(20f),
       RcNoArg(RcOpcodes.CONTAINER_END),
       RcNoArg(RcOpcodes.CONTAINER_END),
     )

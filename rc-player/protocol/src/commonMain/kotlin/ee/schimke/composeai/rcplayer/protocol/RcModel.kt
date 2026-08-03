@@ -817,6 +817,11 @@ public data class RcDimensionConstraintsModifier(
   }
 }
 
+/** Component visibility is read from the referenced AndroidX integer variable. */
+public data class RcVisibilityModifier(val visibilityId: Int) : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_VISIBILITY
+}
+
 public object RcDimensionType {
   public const val EXACT: Int = 0
   public const val FILL: Int = 1
@@ -920,6 +925,7 @@ public object RcOpcodes {
   public const val LAYOUT_CANVAS: Int = 205
   public const val CANVAS_OPERATIONS: Int = 173
   public const val LAYOUT_CANVAS_CONTENT: Int = 207
+  public const val MODIFIER_VISIBILITY: Int = 211
   public const val CONTAINER_END: Int = 214
   public const val MODIFIER_OFFSET: Int = 221
   public const val MODIFIER_ZINDEX: Int = 223

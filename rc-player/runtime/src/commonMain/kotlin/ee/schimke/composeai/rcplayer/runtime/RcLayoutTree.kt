@@ -19,6 +19,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcPaddingModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
+import ee.schimke.composeai.rcplayer.protocol.RcVisibilityModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
@@ -34,6 +35,7 @@ public data class RcLayoutModifiers(
   val placementModifiers: List<RcOperation> = emptyList(),
   /** Extra size constraints are evaluated before the component's requested dimensions. */
   val dimensionConstraints: List<RcOperation> = emptyList(),
+  val visibility: RcVisibilityModifier? = null,
 )
 
 public sealed interface RcLayoutNode {
@@ -254,6 +256,7 @@ public object RcLayoutTree {
             it is RcHeightInModifier ||
             it is RcDimensionConstraintsModifier
         },
+      visibility = operations.singleModifier<RcVisibilityModifier>(container.operation),
     )
   }
 
