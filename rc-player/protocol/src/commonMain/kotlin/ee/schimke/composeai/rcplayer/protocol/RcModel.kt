@@ -764,6 +764,26 @@ public data class RcBackgroundModifier(
   }
 }
 
+/** AndroidX border record, including version and reserved integers for exact serialization. */
+public data class RcBorderModifier(
+  val flags: Int,
+  val colorId: Int,
+  val wireVersion: Int,
+  val reserved: Int,
+  val borderWidth: RcFloatWord,
+  val roundedCorner: RcFloatWord,
+  val red: RcFloatWord,
+  val green: RcFloatWord,
+  val blue: RcFloatWord,
+  val alpha: RcFloatWord,
+  val shapeType: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_BORDER
+
+  public val usesColorId: Boolean
+    get() = flags and RcBackgroundModifier.COLOR_REFERENCE_FLAG != 0
+}
+
 public object RcDimensionType {
   public const val EXACT: Int = 0
   public const val FILL: Int = 1
@@ -806,6 +826,7 @@ public object RcOpcodes {
   public const val DATA_BITMAP: Int = 101
   public const val DATA_TEXT: Int = 102
   public const val ROOT_CONTENT_DESCRIPTION: Int = 103
+  public const val MODIFIER_BORDER: Int = 107
   public const val MODIFIER_CLIP_RECT: Int = 108
   public const val DATA_PATH: Int = 123
   public const val DRAW_PATH: Int = 124

@@ -64,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
+import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
 import ee.schimke.composeai.rcplayer.protocol.RcClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
@@ -602,6 +603,52 @@ private fun Modifier.applyPaintDecorator(
           RcBackgroundModifier.SHAPE_RECTANGLE -> drawRect(color)
           RcBackgroundModifier.SHAPE_CIRCLE ->
             drawCircle(color, radius = minOf(size.width, size.height) / 2f)
+        }
+      }
+    is RcBorderModifier ->
+      drawBehind {
+        val color =
+          if (operation.usesColorId) {
+            Color(state.color(operation.colorId))
+          } else {
+            Color(
+              red = state.resolve(operation.red),
+              green = state.resolve(operation.green),
+              blue = state.resolve(operation.blue),
+              alpha = state.resolve(operation.alpha),
+            )
+          }
+        val borderWidth = state.resolve(operation.borderWidth).coerceAtLeast(0f)
+        val corner = state.resolve(operation.roundedCorner).coerceAtLeast(0f)
+        val halfSize = minOf(size.width, size.height) / 2f
+        if (operation.wireVersion != 0 && borderWidth >= halfSize) {
+          when (operation.shapeType) {
+            RcBackgroundModifier.SHAPE_RECTANGLE -> drawRect(color)
+            RcBackgroundModifier.SHAPE_CIRCLE -> drawCircle(color, radius = halfSize)
+            else -> drawRoundRect(color, cornerRadius = CornerRadius(corner))
+          }
+        } else {
+          val inset = if (operation.wireVersion == 0) 0f else borderWidth / 2f
+          val stroke = Stroke(width = borderWidth)
+          when (operation.shapeType) {
+            RcBackgroundModifier.SHAPE_RECTANGLE ->
+              drawRect(
+                color,
+                topLeft = Offset(inset, inset),
+                size = Size(size.width - inset * 2f, size.height - inset * 2f),
+                style = stroke,
+              )
+            RcBackgroundModifier.SHAPE_CIRCLE ->
+              drawCircle(color, radius = (halfSize - inset).coerceAtLeast(0f), style = stroke)
+            else ->
+              drawRoundRect(
+                color,
+                topLeft = Offset(inset, inset),
+                size = Size(size.width - inset * 2f, size.height - inset * 2f),
+                cornerRadius = CornerRadius((corner - inset).coerceAtLeast(0f)),
+                style = stroke,
+              )
+          }
         }
       }
     RcClipRectModifier ->

@@ -3,6 +3,7 @@ package ee.schimke.composeai.rcplayer.compose
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.unit.Density
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
+import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
@@ -261,6 +262,53 @@ class RcLayoutRenderTest {
 
       assertEquals(red, bitmap.getColor(0, 0))
       assertEquals(green, bitmap.getColor(40, 40))
+    } finally {
+      scene.close()
+    }
+  }
+
+  @Test
+  fun modernBorderPaintsInsideMeasuredComponentBounds() {
+    val blue = 0xff0000ff.toInt()
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 100, legacyHeight = 100, modern = false),
+        listOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcCanvasLayout(3, 30),
+          width(80f),
+          height(80f),
+          RcBorderModifier(
+            flags = 0,
+            colorId = 0,
+            wireVersion = 1,
+            reserved = 0,
+            borderWidth = RcFloatWord.literal(4f),
+            roundedCorner = RcFloatWord.literal(0f),
+            red = RcFloatWord.literal(0f),
+            green = RcFloatWord.literal(0f),
+            blue = RcFloatWord.literal(1f),
+            alpha = RcFloatWord.literal(1f),
+            shapeType = RcBackgroundModifier.SHAPE_RECTANGLE,
+          ),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        ),
+      )
+    val scene =
+      ImageComposeScene(width = 100, height = 100, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val image = scene.render()
+      val bitmap = Bitmap().apply { allocN32Pixels(100, 100) }
+      check(image.readPixels(bitmap))
+
+      assertEquals(blue, bitmap.getColor(40, 1))
+      assertEquals(0, bitmap.getColor(40, 40))
+      assertEquals(0, bitmap.getColor(81, 40))
     } finally {
       scene.close()
     }

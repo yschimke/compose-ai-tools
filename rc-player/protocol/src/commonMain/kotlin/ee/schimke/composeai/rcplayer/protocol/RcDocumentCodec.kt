@@ -95,6 +95,7 @@ public object RcDocumentCodec {
         PaddingModifierCodec,
         RoundedClipRectModifierCodec,
         BackgroundModifierCodec,
+        BorderModifierCodec,
         ClipRectModifierCodec,
         four(RcOpcodes.CLIP_RECT, "ClipRect"),
         four(RcOpcodes.MATRIX_SCALE, "MatrixScale"),
@@ -393,6 +394,39 @@ private object BackgroundModifierCodec : RcOperationCodec<RcBackgroundModifier> 
     output.writeInt(value.colorId)
     output.writeInt(value.reserved1)
     output.writeInt(value.reserved2)
+    output.writeFloatWord(value.red)
+    output.writeFloatWord(value.green)
+    output.writeFloatWord(value.blue)
+    output.writeFloatWord(value.alpha)
+    output.writeInt(value.shapeType)
+  }
+}
+
+private object BorderModifierCodec : RcOperationCodec<RcBorderModifier> {
+  override val spec = RcOperationSpec(RcOpcodes.MODIFIER_BORDER, "BorderModifierOperation")
+
+  override fun decode(input: RcWireReader) =
+    RcBorderModifier(
+      input.readInt("flags"),
+      input.readInt("colorId"),
+      input.readInt("wireVersion"),
+      input.readInt("reserved"),
+      input.readFloatWord("borderWidth"),
+      input.readFloatWord("roundedCorner"),
+      input.readFloatWord("red"),
+      input.readFloatWord("green"),
+      input.readFloatWord("blue"),
+      input.readFloatWord("alpha"),
+      input.readInt("shapeType"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcBorderModifier) {
+    output.writeInt(value.flags)
+    output.writeInt(value.colorId)
+    output.writeInt(value.wireVersion)
+    output.writeInt(value.reserved)
+    output.writeFloatWord(value.borderWidth)
+    output.writeFloatWord(value.roundedCorner)
     output.writeFloatWord(value.red)
     output.writeFloatWord(value.green)
     output.writeFloatWord(value.blue)

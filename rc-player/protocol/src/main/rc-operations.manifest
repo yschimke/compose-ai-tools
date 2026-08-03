@@ -37,7 +37,7 @@
 101|DATA_BITMAP|4|implemented
 102|DATA_TEXT|1|implemented
 103|ROOT_CONTENT_DESCRIPTION|1|implemented
-107|MODIFIER_BORDER|6|unsupported
+107|MODIFIER_BORDER|6|implemented
 108|MODIFIER_CLIP_RECT|6|implemented
 123|DATA_PATH|1|implemented
 124|DRAW_PATH|1|implemented

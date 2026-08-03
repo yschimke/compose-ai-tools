@@ -80,6 +80,7 @@ import androidx.compose.remote.core.operations.layout.managers.ColumnLayout
 import androidx.compose.remote.core.operations.layout.managers.FitBoxLayout
 import androidx.compose.remote.core.operations.layout.managers.RowLayout
 import androidx.compose.remote.core.operations.layout.modifiers.BackgroundModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.BorderModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ClipRectModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.DimensionModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HeightModifierOperation
@@ -105,6 +106,7 @@ import androidx.compose.remote.core.types.IntegerConstant
 import androidx.compose.remote.core.types.LongConstant
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
+import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
@@ -235,6 +237,7 @@ class AndroidxWireCompatibilityTest {
     val buffer = WireBuffer()
     Header.apply(buffer, 320, 180, 1f, 0L)
     BackgroundModifierOperation.apply(buffer, 2, 91, 12, 13, .1f, .2f, .3f, .4f, 1)
+    BorderModifierOperation.apply(buffer, 2, 92, 1, 14, 5f, 6f, .1f, .2f, .3f, .4f, 2)
     RoundedClipRectModifierOperation.apply(buffer, 1f, Utils.asNan(42), 3f, 4f)
     ClipRectModifierOperation.apply(buffer)
     val bytes = buffer.buffer.copyOf(buffer.size())
@@ -245,11 +248,14 @@ class AndroidxWireCompatibilityTest {
     assertTrue(background.usesColorId)
     assertEquals(91, background.colorId)
     assertEquals(12, background.reserved1)
+    val border = assertIs<RcBorderModifier>(document.operations[1])
+    assertEquals(1, border.wireVersion)
+    assertEquals(92, border.colorId)
     assertEquals(
       42,
-      assertIs<RcRoundedClipRectModifier>(document.operations[1]).topEnd.referencedId,
+      assertIs<RcRoundedClipRectModifier>(document.operations[2]).topEnd.referencedId,
     )
-    assertIs<RcClipRectModifier>(document.operations[2])
+    assertIs<RcClipRectModifier>(document.operations[3])
     assertContentEquals(bytes, RcDocumentCodec.encode(document))
   }
 

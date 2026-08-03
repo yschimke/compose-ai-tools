@@ -1,6 +1,7 @@
 package ee.schimke.composeai.rcplayer.runtime
 
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
+import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
@@ -232,7 +233,10 @@ public object RcLayoutTree {
       padding = operations.filterIsInstance<RcPaddingModifier>(),
       paintDecorators =
         operations.filter {
-          it is RcBackgroundModifier || it is RcClipRectModifier || it is RcRoundedClipRectModifier
+          it is RcBackgroundModifier ||
+            it is RcBorderModifier ||
+            it is RcClipRectModifier ||
+            it is RcRoundedClipRectModifier
         },
     )
   }
