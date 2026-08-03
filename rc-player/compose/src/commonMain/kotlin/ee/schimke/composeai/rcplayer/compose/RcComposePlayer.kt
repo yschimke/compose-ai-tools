@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextMeasurer
@@ -317,8 +318,57 @@ private fun RenderLayoutNode(
         )
       }
     }
-    is RcLayoutNode.FitBox ->
-      error("${node::class.simpleName} layout semantics are not implemented")
+    is RcLayoutNode.FitBox -> {
+      val alignment =
+        boxAlignment(node.operation.horizontalPositioning, node.operation.verticalPositioning)
+      Layout(
+        modifier =
+          modifier.applyLayoutModifiers(node.modifiers, state, fillMissingDimensions = false),
+        content = {
+          RenderLayoutNode(
+            node.content,
+            state = state,
+            textMeasurer = textMeasurer,
+            images = images,
+            theme = theme,
+          )
+        },
+      ) { measurables, constraints ->
+        val availableWidth = constraints.maxWidth
+        val availableHeight = constraints.maxHeight
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val selected = measurables.firstNotNullOfOrNull { measurable ->
+          val intrinsicWidth = measurable.minIntrinsicWidth(availableHeight)
+          val intrinsicHeight = measurable.minIntrinsicHeight(availableWidth)
+          if (intrinsicWidth > availableWidth || intrinsicHeight > availableHeight)
+            return@firstNotNullOfOrNull null
+          measurable.measure(loose).takeIf {
+            it.width <= availableWidth && it.height <= availableHeight
+          }
+        }
+        val width =
+          (selected?.width ?: constraints.minWidth).coerceIn(
+            constraints.minWidth,
+            constraints.maxWidth,
+          )
+        val height =
+          (selected?.height ?: constraints.minHeight).coerceIn(
+            constraints.minHeight,
+            constraints.maxHeight,
+          )
+        layout(width, height) {
+          selected?.let { placeable ->
+            val offset =
+              alignment.align(
+                IntSize(placeable.width, placeable.height),
+                IntSize(width, height),
+                layoutDirection,
+              )
+            placeable.place(offset.x, offset.y)
+          }
+        }
+      }
+    }
   }
 }
 

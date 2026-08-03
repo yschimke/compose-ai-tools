@@ -25,5 +25,8 @@ kotlin {
       @Suppress("DEPRECATION") implementation(compose.ui)
     }
     commonTest.dependencies { implementation(kotlin("test")) }
+    val desktopTest by getting {
+      dependencies { @Suppress("DEPRECATION") implementation(compose.desktop.currentOs) }
+    }
   }
 }

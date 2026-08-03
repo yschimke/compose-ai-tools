@@ -7,6 +7,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
+import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
@@ -157,6 +158,24 @@ public fun RcDocument.composeSupportReport(): RcComposeSupportReport {
           RcComposeSupportIssue(
             index,
             "BoxLayout",
+            "vertical position ${operation.verticalPositioning} is not implemented",
+          )
+      }
+    }
+    if (operation is RcFitBoxLayout) {
+      if (operation.horizontalPositioning !in 1..3) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "FitBoxLayout",
+            "horizontal position ${operation.horizontalPositioning} is not implemented",
+          )
+      }
+      if (operation.verticalPositioning !in setOf(2, 4, 5)) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "FitBoxLayout",
             "vertical position ${operation.verticalPositioning} is not implemented",
           )
       }
