@@ -191,6 +191,13 @@ on:
       buildfetch_ro_token:
         description: 'Optional read-only BuildFetch Gradle remote-cache token, to pull cached task outputs instead of building cold.'
         required: false
+      figma_token:
+        description: >-
+          Optional read-only Figma personal access token (`file_content:read`), used only to render
+          `figma:<fileKey>/<nodeId>` entries in the calling repo''s design-map.json into published
+          design references. Absent, those entries are skipped with a warning and every other
+          reference still publishes.
+        required: false
 
 permissions: {}
 
@@ -534,6 +541,53 @@ jobs:
             --into "$GITHUB_WORKSPACE/out" \
             --from "$GITHUB_WORKSPACE/out-fold" \
             --section "$FOLD_SECTION"
+
+      # PNG ↔ Design reference: publish `references/index.json` + one normalised
+      # PNG per reference, which is what turns on the serve host's **PNG ↔ Design
+      # reference** lane and the Reference / Diff / Actual page behind it. The
+      # server has read that manifest since ServeDesignReferences.kt landed, but
+      # nothing wrote one — so `data-has-reference` was `0` on every published
+      # catalog and the lane never rendered. This is the producer.
+      #
+      # Runs from the CALLING repo's checkout because that is where the inputs
+      # live (`design-map.json` and any committed HTML mocks); a repo with no
+      # design-map is a clean no-op, so every catalog can run it unconditionally.
+      # Placed after the fold-in so `catalog.json` is final — the references are
+      # keyed to the stickers it publishes — and before the upload/publish steps
+      # so both the artifact and the delivery branch carry them.
+      #
+      # Fail-soft on purpose: an unrenderable reference is dropped with a warning
+      # rather than costing the catalog its render.
+      - name: Publish design references
+        if: ${{ inputs.publish || inputs.upload-out }}
+        env:
+          # Only needed for `figma:` entries in a design-map — the adapter-free
+          # REST render this driver does itself. Absent (forks, PR runs, catalogs
+          # with no Figma references) those entries are skipped with a warning and
+          # the rest of the manifest still publishes.
+          FIGMA_TOKEN: ${{ secrets.figma_token }}
+        run: |
+          set -euo pipefail
+          if [ ! -f "design-map.json" ]; then
+            echo "No design-map.json in this repo — no design references to publish."
+            exit 0
+          fi
+          # Chromium rasterises committed HTML mocks. Idempotent: a no-op when the
+          # Remote Compose lane below already installed it in this job.
+          if grep -q '\.html"' design-map.json; then
+            install_log="$RUNNER_TEMP/playwright-install-references.log"
+            if ! (cd compose-ai-tools/scripts/design-artifacts &&
+                  npx playwright install --with-deps chromium) >"$install_log" 2>&1; then
+              echo "::warning title=Chromium install failed::HTML design references will be skipped."
+              tail -n 40 "$install_log" >&2
+            fi
+          fi
+          # `--spec` must be the caller's configured path, not the emitter's root default:
+          # this repo's own catalogs live at samples/design-catalog-*/catalog.spec.json.
+          node compose-ai-tools/scripts/design-artifacts/emit-design-references.mjs \
+            --out "$GITHUB_WORKSPACE/out" \
+            --repo "$GITHUB_WORKSPACE" \
+            --spec "${{ inputs.spec }}"
 
       # PNG ↔ Remote Compose parity page: for a catalog that ships `.rc`
       # documents (remote-m3), render each one client-side with the vendored

@@ -191,6 +191,49 @@ discarded, and an optional SHA-256 is verified before the reference is advertise
 exact: a reference names one preview id, and differing image dimensions are reported rather than
 silently scaled into a misleading score.
 
+### Where a published catalog's references come from
+
+For a **published catalog**, the manifest is generated — you don't hand-write it. The
+`Publish design references` step of
+[`design-artifacts-reusable.yml`](../.github/workflows/design-artifacts-reusable.yml) runs
+[`emit-design-references.mjs`](../scripts/design-artifacts/emit-design-references.mjs) over the
+calling repo's [`design-map.json`](https://github.com/yschimke/design-parity) — design-parity's
+correspondence file, which most adopters already keep — and writes `references/` into the bundle
+just before it is force-pushed to `design-artifacts/<system>`.
+
+The join is by **`@Preview` function name**: a design-map entry's code handle
+(`ui/ChatBodyPreviews.kt#ContactChatDarkPreview`) names the same function that `catalog.spec.json`
+names for a component or one of its variants, which pins the exact sticker — and therefore the exact
+serve preview id (`chat-contact__ideal__default__dark__compact`). Keying off the function rather than
+the compose-preview discovery id is deliberate: the discovery id carries the `@Preview` `name=` and
+gets filename-sanitized on its way into a bundle, while the function name is the stable identity both
+files already agree on. A design-map entry that maps to no published sticker is a warning, not an
+error — a repo may map more components for its own parity run than it publishes.
+
+Pixels come from, in precedence order: a pre-rendered PNG under `--reference-images` (for a repo
+that already rasterizes references in an earlier job), a committed `.html` mock rasterized with
+Playwright's Chromium against the fonts the workflow already staged, a committed `.png`, or a
+`figma:<fileKey>/<nodeId>` node rendered over the Figma REST API when a `figma_token` secret is
+supplied. Each raster is then resampled to the sticker's exact dimensions and hashed — "exact" is
+load-bearing, because the comparison refuses a size-mismatched pair rather than scaling it, so an
+unresampled reference publishes as a dead row. An entry that can't be rasterized (a Figma reference
+in a run with no token, say) is dropped with a warning and the rest of the manifest still publishes;
+a catalog must never lose its render to a reference lane. Pass `--strict` to gate on that instead.
+
+A repo with no `design-map.json` is a clean no-op, so the step runs unconditionally for every
+catalog.
+
+The lane only appears once a catalog actually publishes references — before the producer existed
+every catalog served the format controls on the left:
+
+![Compare-format controls without any design references](images/serve-references-lane-before.png)
+
+![Compare-format controls with the PNG ↔ Design reference lane](images/serve-references-lane-after.png)
+
+and selecting it scores each mock against the sticker it is mapped to:
+
+![PNG ↔ Design reference lane on the meshcore-mobile catalog](images/serve-references-compare.png)
+
 ## Two axes: trust × format
 
 These are orthogonal. **Trust** decides attribution; **format** decides what draws the pixels. Neither

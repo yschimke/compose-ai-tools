@@ -85,7 +85,17 @@ export function foldVariants(defaultImages, component, byFunction) {
   return { ideal, missing, noSticker };
 }
 
-function imageHasVariantAxes(image, variant) {
+/**
+ * Whether `image` already carries EVERY axis `variant` declares — the inverse of the re-tagging
+ * above. False for a variant that declares no axis at all, so an under-specified variant claims
+ * nothing rather than claiming the first image it sees.
+ *
+ * Exported because `design-references.mjs` needs the same inverse to decide which `@Preview`
+ * function produced a published sticker. Sharing it is the point: a second implementation would
+ * drift from the fold — miss the `fontScale` numeric coercion, or stop at the first declared axis
+ * and let one variant claim another's sticker.
+ */
+export function imageHasVariantAxes(image, variant) {
   let hasExplicitAxis = false;
   if (variant.state !== undefined) {
     hasExplicitAxis = true;
