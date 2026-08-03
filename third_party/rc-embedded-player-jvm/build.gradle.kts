@@ -163,7 +163,11 @@ sourceSets["test"].resources.srcDir("../rc-embedded-player/src/test/resources")
 // `rc.jvm.input` and writes `<id>.png` to `rc.jvm.output`; the `rc-compare.mjs --embedded-jvm` lane
 // diffs those against the baked PNG, the same shape as the embedded (Android) lane.
 tasks.withType<Test>().configureEach {
-  for (key in listOf("rc.jvm.input", "rc.jvm.output")) {
+  // `rc.jvm.svg.report` is `RcJvmFigmaSvgExportTest`'s: it writes the lane's report and the whole
+  // `compose-figma.svg` export beside that path, the jvm counterpart of the Android module's
+  // `rc.semantics.report` forwarding — so a run can be compared against the embedded lane's export
+  // file-for-file, not just by the counts both print.
+  for (key in listOf("rc.jvm.input", "rc.jvm.output", "rc.jvm.svg.report")) {
     (project.findProperty(key) as String?)?.let { systemProperty(key, it) }
   }
 }
@@ -194,6 +198,12 @@ dependencies {
   implementation(libs.androidx.collection)
 
   testImplementation(libs.junit)
+  // The production `compose/figma-svg` export pipeline, so `RcJvmFigmaSvgExportTest` can run the
+  // *real* producers over this player's composition rather than a test-local imitation of them —
+  // the same modules the desktop `RenderEngine` calls after `scene.render()`. Test-only: this is a
+  // player, and it has no business depending on the export at runtime.
+  testImplementation(project(":data-layoutinspector-connector"))
+  testImplementation(project(":data-layoutinspector-core"))
   // Manifest parsing for the rc-compare jvm render harness (RcJvmRenderHarness) — parsed via the
   // runtime `Json` API, so no serialization compiler plugin is needed.
   testImplementation(libs.kotlinx.serialization.json)
