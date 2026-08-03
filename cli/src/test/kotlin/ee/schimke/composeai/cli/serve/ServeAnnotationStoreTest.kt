@@ -73,6 +73,27 @@ class ServeAnnotationStoreTest {
   }
 
   /**
+   * A served catalog is a staging directory assembled from fetched parts, so the store has to read
+   * the manifest from wherever staging put it — the published tree is never what is loaded. This
+   * pins the directory/filename contract the staging step writes to; if the two ever disagree, a
+   * catalog serves silently without annotations, which is exactly the failure this guards.
+   */
+  @Test
+  fun `store reads the manifest from the staged bundle layout`() {
+    val root = Files.createTempDirectory("staging").toFile().also { it.deleteOnExit() }
+    val staged = File(root, "${ServeAnnotationStore.DIRECTORY}/${ServeAnnotationStore.INDEX_FILE}")
+    staged.parentFile.mkdirs()
+    staged.writeText(
+      """{"schema":"compose-preview-annotations/v1","previews":{"p":[
+         {"kind":"layout","bounds":{"x":0,"y":0,"width":8,"height":8},"label":"pad 8dp"}]}}"""
+    )
+    assertEquals(
+      "pad 8dp",
+      ServeAnnotationStore.load(root, FileSystem.SYSTEM).forPreview("p").single().label,
+    )
+  }
+
+  /**
    * The payload is embedded in a `<script type="application/json">` block, where a literal
    * `</script>` inside a string value would end the block early and truncate the JSON.
    */

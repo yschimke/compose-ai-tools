@@ -19,8 +19,8 @@ import okio.Path.Companion.toPath
  *
  * Producer-side, not inferred here. The reference layer comes from the design tool (the Figma
  * adapter's captured layout geometry); the actual layer is walked from the Compose semantics tree.
- * The serve host only transports and draws them, exactly as it does for design references — it never
- * measures pixels or fetches design URLs itself.
+ * The serve host only transports and draws them, exactly as it does for design references — it
+ * never measures pixels or fetches design URLs itself.
  */
 @Serializable
 data class AnnotationManifest(
@@ -55,7 +55,10 @@ data class DesignAnnotation(
   /** [AnnotationKind.TYPOGRAPHY] or [AnnotationKind.LAYOUT]. Unknown kinds are dropped on load. */
   val kind: String,
   val bounds: AnnotationBounds,
-  /** One-line spec as a designer would read it, e.g. `"bodyLarge 16sp/24"` or `"pad 16dp · gap 8dp"`. */
+  /**
+   * One-line spec as a designer would read it, e.g. `"bodyLarge 16sp/24"` or `"pad 16dp · gap
+   * 8dp"`.
+   */
   val label: String,
   /** Optional node/slot name, shown as the annotation's title. */
   val role: String? = null,
@@ -75,29 +78,23 @@ private val ANNOTATION_JSON = Json { encodeDefaults = false }
 /**
  * Encode a payload for embedding in a `<script type="application/json">` block.
  *
- * HTML escaping would be wrong here — entities are not decoded inside a script element, so
- * `&quot;` would reach `JSON.parse` verbatim and throw. The only real hazard is a `</script>` inside
- * a string value, which ends the block early; `<` is a valid JSON escape for `<` and closes
- * that hole without touching the parsed value.
+ * HTML escaping would be wrong here — entities are not decoded inside a script element, so `&quot;`
+ * would reach `JSON.parse` verbatim and throw. The only real hazard is a `</script>` inside a
+ * string value, which ends the block early; `<` is a valid JSON escape for `<` and closes that hole
+ * without touching the parsed value.
  */
 fun encodeAnnotationPayload(payload: AnnotationPayload): String =
   ANNOTATION_JSON.encodeToString(payload).replace("<", "\\u003c")
 
 /** A region in the annotated image's pixel space. */
-@Serializable
-data class AnnotationBounds(
-  val x: Int,
-  val y: Int,
-  val width: Int,
-  val height: Int,
-)
+@Serializable data class AnnotationBounds(val x: Int, val y: Int, val width: Int, val height: Int)
 
 /**
  * Validated, read-only view of a bundle/catalog's `annotations/index.json`.
  *
- * Fail-soft throughout, matching [ServeDesignReferenceStore]: a malformed manifest, an unknown kind,
- * or a nonsensical box is dropped while the rest of the session serves normally. An annotation layer
- * is a reading aid — losing one must never take the compare page down with it.
+ * Fail-soft throughout, matching [ServeDesignReferenceStore]: a malformed manifest, an unknown
+ * kind, or a nonsensical box is dropped while the rest of the session serves normally. An
+ * annotation layer is a reading aid — losing one must never take the compare page down with it.
  */
 class ServeAnnotationStore
 private constructor(
@@ -126,9 +123,7 @@ private constructor(
       if (!fileSystem.exists(index)) return EMPTY
       val manifest =
         runCatching {
-            JSON.decodeFromString<AnnotationManifest>(
-              fileSystem.read(index) { readUtf8() },
-            )
+            JSON.decodeFromString<AnnotationManifest>(fileSystem.read(index) { readUtf8() })
           }
           .getOrNull() ?: return EMPTY
       if (manifest.schema != AnnotationManifest.SCHEMA) return EMPTY
