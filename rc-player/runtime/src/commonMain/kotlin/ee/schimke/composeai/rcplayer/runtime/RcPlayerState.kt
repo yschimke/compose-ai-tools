@@ -486,7 +486,11 @@ public class RcPlayerState(
   public fun namedVariable(name: String): RcNamedVariable? = variableNames[name]
 
   public fun executeClick(block: RcClickActionBlock) {
-    executeActions(block.children, invalidateAfterChanges = true, containerName = "ClickModifier")
+    executeActions(
+      block.children,
+      invalidateAfterChanges = true,
+      containerName = "ClickModifier(${block.type})",
+    )
   }
 
   public fun executeTouch(block: RcTouchActionBlock) {

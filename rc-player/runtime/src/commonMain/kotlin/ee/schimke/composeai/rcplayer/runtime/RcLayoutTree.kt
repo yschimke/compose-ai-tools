@@ -24,6 +24,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
+import ee.schimke.composeai.rcplayer.protocol.RcMultiClickModifier
+import ee.schimke.composeai.rcplayer.protocol.RcMultiClickType
 import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperation
@@ -72,7 +74,17 @@ public data class RcLayoutComputeBlock(
   val children: List<RcLinkedNode>,
 )
 
-public data class RcClickActionBlock(val children: List<RcLinkedNode>)
+public data class RcClickActionBlock(
+  val children: List<RcLinkedNode>,
+  val type: RcClickActionType = RcClickActionType.CLICK,
+)
+
+public enum class RcClickActionType {
+  CLICK,
+  SINGLE,
+  LONG,
+  DOUBLE,
+}
 
 public enum class RcTouchActionType {
   DOWN,
@@ -443,7 +455,18 @@ public object RcLayoutTree {
       accessibility = operations.filterIsInstance<RcAccessibilitySemantics>(),
       clicks =
         container.children.filterIsInstance<RcLinkedNode.Container>().mapNotNull { child ->
-          if (child.operation is RcClickModifier) RcClickActionBlock(child.children) else null
+          val type =
+            when (val operation = child.operation) {
+              RcClickModifier -> RcClickActionType.CLICK
+              is RcMultiClickModifier ->
+                when (operation.type) {
+                  RcMultiClickType.SINGLE -> RcClickActionType.SINGLE
+                  RcMultiClickType.LONG -> RcClickActionType.LONG
+                  RcMultiClickType.DOUBLE -> RcClickActionType.DOUBLE
+                }
+              else -> null
+            }
+          type?.let { RcClickActionBlock(child.children, it) }
         },
       touchActions =
         container.children.filterIsInstance<RcLinkedNode.Container>().mapNotNull { child ->

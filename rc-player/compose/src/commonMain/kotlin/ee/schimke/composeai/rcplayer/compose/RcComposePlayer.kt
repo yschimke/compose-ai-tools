@@ -64,6 +64,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asSkiaPath
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -73,6 +74,7 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -84,16 +86,23 @@ import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.LastBaseline
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.node.CompositionLocalConsumerModifierNode
+import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.PointerInputModifierNode
+import androidx.compose.ui.node.SemanticsModifierNode
+import androidx.compose.ui.node.currentValueOf
+import androidx.compose.ui.node.invalidateSemantics
 import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -190,6 +199,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcTransform2
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
+import ee.schimke.composeai.rcplayer.runtime.RcClickActionBlock
+import ee.schimke.composeai.rcplayer.runtime.RcClickActionType
 import ee.schimke.composeai.rcplayer.runtime.RcDocumentLinker
 import ee.schimke.composeai.rcplayer.runtime.RcLayoutModifiers
 import ee.schimke.composeai.rcplayer.runtime.RcLayoutNode
@@ -206,6 +217,8 @@ import ee.schimke.composeai.rcplayer.runtime.androidXMarqueeOffset
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorType
@@ -1210,7 +1223,9 @@ private fun Modifier.applyComponentModifiers(
         bottom = with(density) { state.resolve(padding.bottom).toDp() },
       )
   }
-  if (modifiers.clicks.isNotEmpty()) {
+  if (modifiers.clicks.any { it.type != RcClickActionType.CLICK }) {
+    result = result.applyAndroidXMultiClick(modifiers.clicks, state)
+  } else if (modifiers.clicks.isNotEmpty()) {
     result = result.clickable { modifiers.clicks.forEach(state::executeClick) }
   }
   if (modifiers.touchActions.isNotEmpty()) {
@@ -1225,6 +1240,194 @@ private fun Modifier.applyComponentModifiers(
       )
   }
   return result
+}
+
+@Composable
+private fun Modifier.applyAndroidXMultiClick(
+  blocks: List<RcClickActionBlock>,
+  state: RcPlayerState,
+): Modifier {
+  val hapticFeedback = LocalHapticFeedback.current
+  return then(RcMultiClickElement(blocks, state, hapticFeedback))
+}
+
+private data class RcMultiClickElement(
+  val blocks: List<RcClickActionBlock>,
+  val state: RcPlayerState,
+  val hapticFeedback: HapticFeedback,
+) : ModifierNodeElement<RcMultiClickNode>() {
+  override fun create(): RcMultiClickNode = RcMultiClickNode(blocks, state, hapticFeedback)
+
+  override fun update(node: RcMultiClickNode) {
+    node.blocks = blocks
+    node.state = state
+    node.hapticFeedback = hapticFeedback
+    node.invalidateSemantics()
+  }
+
+  override fun InspectorInfo.inspectableProperties() {
+    name = "androidXMultiClick"
+  }
+}
+
+private class RcMultiClickNode(
+  var blocks: List<RcClickActionBlock>,
+  var state: RcPlayerState,
+  var hapticFeedback: HapticFeedback,
+) :
+  Modifier.Node(),
+  PointerInputModifierNode,
+  DrawModifierNode,
+  SemanticsModifierNode,
+  CompositionLocalConsumerModifierNode {
+  private var pressed = false
+  private var longPressDispatched = false
+  private var downPosition = Offset.Zero
+  private var waitingForSecondClick = false
+  private var longPressJob: Job? = null
+  private var singleClickJob: Job? = null
+  private val rippleColorProgress = Animatable(1f)
+  private val rippleRadiusProgress = Animatable(1f)
+
+  override fun onPointerEvent(pointerEvent: PointerEvent, pass: PointerEventPass, bounds: IntSize) {
+    if (pass != PointerEventPass.Main) return
+    val down = pointerEvent.changes.firstOrNull { it.changedToDownIgnoreConsumed() }
+    if (!pressed && down != null) {
+      pressed = true
+      longPressDispatched = false
+      downPosition = down.position
+      longPressJob?.cancel()
+      if (longActions.isNotEmpty()) {
+        longPressJob = coroutineScope.launch {
+          delay(currentValueOf(LocalViewConfiguration).longPressTimeoutMillis)
+          if (pressed) {
+            pressed = false
+            longPressDispatched = true
+            waitingForSecondClick = false
+            singleClickJob?.cancel()
+            startRipple()
+            dispatch(longActions)
+            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+          }
+        }
+      }
+    }
+    if (
+      pressed &&
+        pointerEvent.changes.any {
+          it.pressed &&
+            (it.position - downPosition).getDistance() >
+              currentValueOf(LocalViewConfiguration).touchSlop
+        }
+    ) {
+      pressed = false
+      longPressJob?.cancel()
+    }
+    if (pressed && pointerEvent.changes.isNotEmpty() && pointerEvent.changes.all { !it.pressed }) {
+      pressed = false
+      longPressJob?.cancel()
+      if (!longPressDispatched && pointerEvent.changes.all { it.changedToUpIgnoreConsumed() }) {
+        completeClick()
+      }
+    }
+  }
+
+  override fun onCancelPointerInput() {
+    pressed = false
+    longPressJob?.cancel()
+  }
+
+  override fun onDetach() {
+    longPressJob?.cancel()
+    singleClickJob?.cancel()
+    pressed = false
+    waitingForSecondClick = false
+  }
+
+  override fun ContentDrawScope.draw() {
+    drawContent()
+    if (rippleColorProgress.value < 1f || rippleRadiusProgress.value < 1f) {
+      val color = lerp(Color(0xb4fafafa.toInt()), Color(0x00c8c8c8), rippleColorProgress.value)
+      val radius = maxOf(size.width, size.height) * rippleRadiusProgress.value
+      clipRect { drawCircle(color = color, radius = radius, center = downPosition) }
+    }
+  }
+
+  override fun SemanticsPropertyReceiver.applySemantics() {
+    role = Role.Button
+    onClick {
+      startRipple()
+      dispatch(singleActions)
+      performSingleHaptic()
+      true
+    }
+    if (longActions.isNotEmpty()) {
+      onLongClick {
+        startRipple()
+        dispatch(longActions)
+        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+        true
+      }
+    }
+  }
+
+  private fun completeClick() {
+    if (doubleActions.isEmpty()) {
+      startRipple()
+      dispatch(singleActions)
+      performSingleHaptic()
+    } else if (waitingForSecondClick) {
+      waitingForSecondClick = false
+      singleClickJob?.cancel()
+      startRipple()
+      dispatch(doubleActions)
+      hapticFeedback.performHapticFeedback(HapticFeedbackType.KeyboardTap)
+    } else {
+      waitingForSecondClick = true
+      singleClickJob = coroutineScope.launch {
+        delay(currentValueOf(LocalViewConfiguration).doubleTapTimeoutMillis)
+        if (waitingForSecondClick) {
+          waitingForSecondClick = false
+          startRipple()
+          dispatch(singleActions)
+          performSingleHaptic()
+        }
+      }
+    }
+  }
+
+  private fun dispatch(actions: List<RcClickActionBlock>) {
+    actions.forEach(state::executeClick)
+  }
+
+  private fun performSingleHaptic() {
+    if (singleActions.any { it.type == RcClickActionType.SINGLE }) {
+      hapticFeedback.performHapticFeedback(HapticFeedbackType.KeyboardTap)
+    }
+  }
+
+  private fun startRipple() {
+    val easing = CubicBezierEasing(.4f, 0f, .2f, 1f)
+    coroutineScope.launch {
+      rippleColorProgress.snapTo(0f)
+      rippleColorProgress.animateTo(1f, tween(durationMillis = 1_000, easing = easing))
+    }
+    coroutineScope.launch {
+      rippleRadiusProgress.snapTo(0f)
+      rippleRadiusProgress.animateTo(1f, tween(durationMillis = 500, easing = easing))
+    }
+  }
+
+  private val singleActions: List<RcClickActionBlock>
+    get() = blocks.filter {
+      it.type == RcClickActionType.CLICK || it.type == RcClickActionType.SINGLE
+    }
+
+  private val longActions: List<RcClickActionBlock>
+    get() = blocks.filter { it.type == RcClickActionType.LONG }
+
+  private val doubleActions: List<RcClickActionBlock>
+    get() = blocks.filter { it.type == RcClickActionType.DOUBLE }
 }
 
 private fun Modifier.applyAndroidXTouchActions(

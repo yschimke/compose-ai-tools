@@ -267,7 +267,7 @@ Current checkpoint:
   available independently.
 - The checked-in manifest exactly matches all 172 public integer entries in AndroidX alpha16
   `Operations.java`; generation fails on duplicate or invalid entries, and a reflection conformance
-  test prevents drift. The current disposition is 96 implemented, 0 parse-only, 65 pending,
+  test prevents drift. The current disposition is 124 implemented, 0 parse-only, 37 pending,
   6 unavailable, and 5 reserved operations.
 - Cluster 1 now includes path data/drawing/clipping, AndroidX theme filtering, root scaling and
   alignment, root accessibility description, typed named-value overrides, primitive constants,
@@ -331,6 +331,13 @@ Current checkpoint:
   their host implementation lands.
   Typed `ImageLayout` components reuse the same decoder and authoritative eight-mode scaling math,
   provide bitmap intrinsic wrap size, clip to measured content bounds, and apply variable alpha.
+- Cluster 8 interaction now includes click, touch-down/up/cancel, and multi-click containers linked
+  as immutable, wire-ordered action blocks. Single, long, and double gestures share one common CMP
+  pointer recognizer so ordinary click and multi-click actions cannot compete or reorder. It uses
+  platform view-configuration timeouts, AndroidX haptic mappings, and the Java player's clipped
+  two-phase ripple. AndroidX-authored byte streams round-trip exactly; held-pointer and rapid-click
+  tests cover all gesture variants, and the Wasm browser fixture proves single and double dispatch
+  without action leakage. The same implementation links in the iOS framework.
 
 ### Operations unavailable in the authoritative Java profile
 

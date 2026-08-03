@@ -15,6 +15,7 @@ import androidx.compose.remote.core.operations.layout.CanvasOperations
 import androidx.compose.remote.core.operations.layout.ClickModifierOperation
 import androidx.compose.remote.core.operations.layout.ContainerEnd
 import androidx.compose.remote.core.operations.layout.LayoutComponentContent
+import androidx.compose.remote.core.operations.layout.MultiClickModifier
 import androidx.compose.remote.core.operations.layout.RootLayoutComponent
 import androidx.compose.remote.core.operations.layout.TouchCancelModifierOperation
 import androidx.compose.remote.core.operations.layout.TouchDownModifierOperation
@@ -226,6 +227,15 @@ public fun main(args: Array<String>) {
   ContainerEnd.apply(buffer)
   TouchCancelModifierOperation.apply(buffer)
   HostActionOperation.apply(buffer, 81)
+  ContainerEnd.apply(buffer)
+  MultiClickModifier.apply(buffer, MultiClickModifier.CLICK_TYPE_SINGLE)
+  HostActionOperation.apply(buffer, 82)
+  ContainerEnd.apply(buffer)
+  MultiClickModifier.apply(buffer, MultiClickModifier.CLICK_TYPE_LONG)
+  HostActionOperation.apply(buffer, 83)
+  ContainerEnd.apply(buffer)
+  MultiClickModifier.apply(buffer, MultiClickModifier.CLICK_TYPE_DOUBLE)
+  HostActionOperation.apply(buffer, 84)
   ContainerEnd.apply(buffer)
   ClickModifierOperation.apply(buffer)
   ValueIntegerExpressionChangeActionOperation.apply(buffer, 23L, 31L)

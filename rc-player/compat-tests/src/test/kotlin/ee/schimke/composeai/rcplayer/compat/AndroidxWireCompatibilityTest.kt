@@ -76,6 +76,7 @@ import androidx.compose.remote.core.operations.layout.CanvasOperations
 import androidx.compose.remote.core.operations.layout.ClickModifierOperation
 import androidx.compose.remote.core.operations.layout.ContainerEnd
 import androidx.compose.remote.core.operations.layout.LayoutComponentContent
+import androidx.compose.remote.core.operations.layout.MultiClickModifier
 import androidx.compose.remote.core.operations.layout.RootLayoutComponent
 import androidx.compose.remote.core.operations.layout.TouchCancelModifierOperation
 import androidx.compose.remote.core.operations.layout.TouchDownModifierOperation
@@ -191,6 +192,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
+import ee.schimke.composeai.rcplayer.protocol.RcMultiClickModifier
+import ee.schimke.composeai.rcplayer.protocol.RcMultiClickType
 import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperationInventory
@@ -240,6 +243,26 @@ import kotlin.test.assertTrue
  * from this test module: AndroidX remote-core/Java player is the protocol authority.
  */
 class AndroidxWireCompatibilityTest {
+  @Test
+  fun androidXMultiClickModifiersRoundTripExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    listOf(0 to 71, 1 to 72, 2 to 73).forEach { (type, actionId) ->
+      MultiClickModifier.apply(buffer, type)
+      HostActionOperation.apply(buffer, actionId)
+      ContainerEnd.apply(buffer)
+    }
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+
+    assertEquals(
+      listOf(RcMultiClickType.SINGLE, RcMultiClickType.LONG, RcMultiClickType.DOUBLE),
+      document.operations.filterIsInstance<RcMultiClickModifier>().map { it.type },
+    )
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
   @Test
   fun androidXTouchActionModifiersRoundTripExactly() {
     val buffer = WireBuffer()

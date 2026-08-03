@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
@@ -24,6 +25,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHostAction
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
+import ee.schimke.composeai.rcplayer.protocol.RcMultiClickModifier
+import ee.schimke.composeai.rcplayer.protocol.RcMultiClickType
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcRippleModifier
@@ -39,6 +42,58 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class RcAccessibilitySemanticsTest {
+  @OptIn(ExperimentalTestApi::class)
+  @Test
+  fun dispatchesSingleLongAndDoubleMultiClickContainersFromRealComposeInput() =
+    runSkikoComposeUiTest(size = Size(40f, 40f), density = Density(1f)) {
+      val events = mutableListOf<RcPlayerEvent>()
+      val end = RcNoArg(RcOpcodes.CONTAINER_END)
+      val document =
+        RcDocument(
+          RcHeader(RcVersion(1, 0, 0), legacyWidth = 40, legacyHeight = 40, modern = false),
+          listOf(
+            RcRootLayout(1),
+            RcLayoutContent(2),
+            RcCanvasLayout(3, 30),
+            RcWidthModifier(RcDimensionType.EXACT, RcFloatWord.literal(40f)),
+            RcHeightModifier(RcDimensionType.EXACT, RcFloatWord.literal(40f)),
+            RcMultiClickModifier(RcMultiClickType.SINGLE),
+            RcHostAction(71),
+            end,
+            RcMultiClickModifier(RcMultiClickType.LONG),
+            RcHostAction(72),
+            end,
+            RcMultiClickModifier(RcMultiClickType.DOUBLE),
+            RcHostAction(73),
+            end,
+            end,
+            end,
+            end,
+          ),
+        )
+      setContent { RcComposePlayer(document, onEvent = events::add) }
+
+      onRoot().performTouchInput { click() }
+      mainClock.advanceTimeBy(1_000)
+      waitForIdle()
+      onRoot().performTouchInput { down(center) }
+      mainClock.advanceTimeBy(1_000)
+      waitForIdle()
+      onRoot().performTouchInput { up() }
+      waitForIdle()
+      onRoot().performTouchInput { doubleClick() }
+      waitForIdle()
+
+      assertEquals(
+        listOf<RcPlayerEvent>(
+          RcPlayerEvent.HostAction(71),
+          RcPlayerEvent.HostAction(72),
+          RcPlayerEvent.HostAction(73),
+        ),
+        events,
+      )
+    }
+
   @OptIn(ExperimentalTestApi::class)
   @Test
   fun dispatchesTouchDownAndUpContainersFromRealComposeInput() =

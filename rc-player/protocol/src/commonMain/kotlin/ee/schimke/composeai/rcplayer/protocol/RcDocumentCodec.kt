@@ -45,6 +45,7 @@ public object RcDocumentCodec {
         NamedVariableCodec,
         PathDataCodec,
         ClickModifierCodec,
+        MultiClickModifierCodec,
         TouchDownModifierCodec,
         TouchUpModifierCodec,
         TouchCancelModifierCodec,
@@ -832,6 +833,16 @@ private object ClickModifierCodec : RcOperationCodec<RcClickModifier> {
   override fun decode(input: RcWireReader): RcClickModifier = RcClickModifier
 
   override fun encode(output: RcWireWriter, value: RcClickModifier): Unit = Unit
+}
+
+private object MultiClickModifierCodec : RcOperationCodec<RcMultiClickModifier> {
+  override val spec = RcOperationSpec(RcOpcodes.MODIFIER_MULTI_CLICK, "MultiClickModifier")
+
+  override fun decode(input: RcWireReader): RcMultiClickModifier =
+    RcMultiClickModifier(RcMultiClickType.fromWire(input.readInt("clickType")))
+
+  override fun encode(output: RcWireWriter, value: RcMultiClickModifier) =
+    output.writeInt(value.type.wireValue)
 }
 
 private object TouchDownModifierCodec : RcOperationCodec<RcTouchDownModifier> {

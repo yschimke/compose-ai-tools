@@ -18,6 +18,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcHostAction
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
+import ee.schimke.composeai.rcplayer.protocol.RcMultiClickModifier
+import ee.schimke.composeai.rcplayer.protocol.RcMultiClickType
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcPaddingModifier
@@ -179,6 +181,43 @@ class RcLayoutTreeTest {
     assertEquals(
       listOf(71, 72, 73),
       canvas.modifiers.touchActions.map {
+        assertIs<RcHostAction>(assertIs<RcLinkedNode.Operation>(it.children.single()).operation)
+          .actionId
+      },
+    )
+  }
+
+  @Test
+  fun preservesMultiClickActionsInWireOrder() {
+    val end = RcNoArg(RcOpcodes.CONTAINER_END)
+    val root =
+      requireNotNull(
+        treeOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcCanvasLayout(3, 30),
+          RcMultiClickModifier(RcMultiClickType.SINGLE),
+          RcHostAction(71),
+          end,
+          RcMultiClickModifier(RcMultiClickType.LONG),
+          RcHostAction(72),
+          end,
+          RcMultiClickModifier(RcMultiClickType.DOUBLE),
+          RcHostAction(73),
+          end,
+          ends = 3,
+        )
+      )
+    val content = assertIs<RcLayoutNode.Content>(root.children.single())
+    val canvas = assertIs<RcLayoutNode.Canvas>(content.children.single())
+
+    assertEquals(
+      listOf(RcClickActionType.SINGLE, RcClickActionType.LONG, RcClickActionType.DOUBLE),
+      canvas.modifiers.clicks.map { it.type },
+    )
+    assertEquals(
+      listOf(71, 72, 73),
+      canvas.modifiers.clicks.map {
         assertIs<RcHostAction>(assertIs<RcLinkedNode.Operation>(it.children.single()).operation)
           .actionId
       },

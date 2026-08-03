@@ -700,6 +700,14 @@ public fun RcDocument.composeSupportReport(
               "nested opcode ${operation.opcode} is not a click action",
             )
         }
+        invalidActionChild(linked.operations, RcOpcodes.MODIFIER_MULTI_CLICK)?.let { operation ->
+          issues +=
+            RcComposeSupportIssue(
+              -1,
+              "MultiClickModifier",
+              "nested opcode ${operation.opcode} is not an action",
+            )
+        }
         listOf(
             RcOpcodes.MODIFIER_TOUCH_DOWN to "TouchDownModifierOperation",
             RcOpcodes.MODIFIER_TOUCH_UP to "TouchUpModifierOperation",

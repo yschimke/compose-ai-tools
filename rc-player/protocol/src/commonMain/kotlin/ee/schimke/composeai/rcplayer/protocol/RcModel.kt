@@ -1046,6 +1046,23 @@ public data object RcClickModifier : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_CLICK
 }
 
+/** AndroidX multi-click action container. The wire value selects the gesture that dispatches it. */
+public data class RcMultiClickModifier(val type: RcMultiClickType) : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_MULTI_CLICK
+}
+
+public enum class RcMultiClickType(public val wireValue: Int) {
+  SINGLE(0),
+  LONG(1),
+  DOUBLE(2);
+
+  public companion object {
+    public fun fromWire(value: Int): RcMultiClickType =
+      entries.firstOrNull { it.wireValue == value }
+        ?: throw IllegalArgumentException("Unknown MultiClickModifier click type $value")
+  }
+}
+
 /** Payload-free action containers dispatched for the corresponding pointer lifecycle event. */
 public data object RcTouchDownModifier : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_TOUCH_DOWN
@@ -1263,6 +1280,7 @@ public object RcOpcodes {
   public const val DRAW_LINE: Int = 47
   public const val DRAW_ROUND_RECT: Int = 51
   public const val MODIFIER_CLICK: Int = 59
+  public const val MODIFIER_MULTI_CLICK: Int = 83
   public const val DRAW_SECTOR: Int = 52
   public const val DRAW_TEXT_ON_PATH: Int = 53
   public const val MODIFIER_ROUNDED_CLIP_RECT: Int = 54
