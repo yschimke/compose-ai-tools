@@ -267,7 +267,7 @@ Current checkpoint:
   available independently.
 - The checked-in manifest exactly matches all 172 public integer entries in AndroidX alpha16
   `Operations.java`; generation fails on duplicate or invalid entries, and a reflection conformance
-  test prevents drift. The current disposition is 84 implemented, 0 parse-only, 78 pending,
+  test prevents drift. The current disposition is 87 implemented, 0 parse-only, 75 pending,
   5 unavailable, and 5 reserved operations.
 - Cluster 1 now includes path data/drawing/clipping, AndroidX theme filtering, root scaling and
   alignment, root accessibility description, typed named-value overrides, primitive constants,
@@ -309,6 +309,10 @@ Current checkpoint:
   An AndroidX-authored browser fixture exercises those operations together with box, row, and canvas
   layouts; it renders in the Wasm host without console errors. All decoded operations now have
   executable semantics; the manifest has no parse-only entries.
+- Cluster 6 paint decorators have started with typed background, rectangular clip, and per-corner
+  rounded clip operations. Their immutable records retain AndroidX reserved wire fields and their
+  Compose application preserves wire order; byte-exact Java round trips and headless pixels cover
+  the slice, while the same source compiles for Wasm and iOS.
 - Cluster 4 has started with AndroidX `BitmapData`, `DrawBitmap`, `DrawBitmapInt`, and
   `DrawBitmapScaled`: inline encoded PNG variants decode through the CMP/Skiko image backend and
   render with variable destination bounds, integer source cropping, and all eight authoritative

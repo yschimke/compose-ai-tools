@@ -722,6 +722,48 @@ public data class RcPaddingModifier(
   override val opcode: Int = RcOpcodes.MODIFIER_PADDING
 }
 
+/** Clips component drawing and children to its measured rectangular bounds. */
+public data object RcClipRectModifier : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_CLIP_RECT
+}
+
+/** Per-corner component clip radii in AndroidX top-start/top-end/bottom-start/bottom-end order. */
+public data class RcRoundedClipRectModifier(
+  val topStart: RcFloatWord,
+  val topEnd: RcFloatWord,
+  val bottomStart: RcFloatWord,
+  val bottomEnd: RcFloatWord,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_ROUNDED_CLIP_RECT
+}
+
+/**
+ * AndroidX background wire record. Reserved integers are retained so decode/encode is byte exact.
+ * [flags] bit 1 selects [colorId]; otherwise the four float channels are used.
+ */
+public data class RcBackgroundModifier(
+  val flags: Int,
+  val colorId: Int,
+  val reserved1: Int,
+  val reserved2: Int,
+  val red: RcFloatWord,
+  val green: RcFloatWord,
+  val blue: RcFloatWord,
+  val alpha: RcFloatWord,
+  val shapeType: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_BACKGROUND
+
+  public val usesColorId: Boolean
+    get() = flags and COLOR_REFERENCE_FLAG != 0
+
+  public companion object {
+    public const val COLOR_REFERENCE_FLAG: Int = 2
+    public const val SHAPE_RECTANGLE: Int = 0
+    public const val SHAPE_CIRCLE: Int = 1
+  }
+}
+
 public object RcDimensionType {
   public const val EXACT: Int = 0
   public const val FILL: Int = 1
@@ -754,6 +796,8 @@ public object RcOpcodes {
   public const val DRAW_ROUND_RECT: Int = 51
   public const val DRAW_SECTOR: Int = 52
   public const val DRAW_TEXT_ON_PATH: Int = 53
+  public const val MODIFIER_ROUNDED_CLIP_RECT: Int = 54
+  public const val MODIFIER_BACKGROUND: Int = 55
   public const val DRAW_OVAL: Int = 56
   public const val MODIFIER_PADDING: Int = 58
   public const val MODIFIER_HEIGHT: Int = 67
@@ -762,6 +806,7 @@ public object RcOpcodes {
   public const val DATA_BITMAP: Int = 101
   public const val DATA_TEXT: Int = 102
   public const val ROOT_CONTENT_DESCRIPTION: Int = 103
+  public const val MODIFIER_CLIP_RECT: Int = 108
   public const val DATA_PATH: Int = 123
   public const val DRAW_PATH: Int = 124
   public const val DRAW_TWEEN_PATH: Int = 125

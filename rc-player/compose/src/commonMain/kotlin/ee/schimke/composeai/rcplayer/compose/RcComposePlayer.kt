@@ -21,9 +21,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.ClipOp
@@ -40,6 +42,8 @@ import androidx.compose.ui.graphics.asSkiaPath
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.layout.Layout
@@ -58,7 +62,9 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
+import ee.schimke.composeai.rcplayer.protocol.RcClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
@@ -99,6 +105,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcPathData
 import ee.schimke.composeai.rcplayer.protocol.RcPathExpression
 import ee.schimke.composeai.rcplayer.protocol.RcPathTween
 import ee.schimke.composeai.rcplayer.protocol.RcRootContentBehavior
+import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcTextFromFloat
 import ee.schimke.composeai.rcplayer.protocol.RcTextLength
@@ -542,6 +549,9 @@ private fun Modifier.applyComponentModifiers(
   var result = this
   result = result.applyWidth(modifiers, state, density, fillMissingDimensions)
   result = result.applyHeight(modifiers, state, density, fillMissingDimensions)
+  modifiers.paintDecorators.forEach { decorator ->
+    result = result.applyPaintDecorator(decorator, state)
+  }
   if (canvasOperations != null) {
     result = result.drawWithContent {
       drawOperations(
@@ -569,6 +579,62 @@ private fun Modifier.applyComponentModifiers(
   }
   return result
 }
+
+private fun Modifier.applyPaintDecorator(
+  operation: ee.schimke.composeai.rcplayer.protocol.RcOperation,
+  state: RcPlayerState,
+): Modifier =
+  when (operation) {
+    is RcBackgroundModifier ->
+      drawBehind {
+        val color =
+          if (operation.usesColorId) {
+            Color(state.color(operation.colorId))
+          } else {
+            Color(
+              red = state.resolve(operation.red),
+              green = state.resolve(operation.green),
+              blue = state.resolve(operation.blue),
+              alpha = state.resolve(operation.alpha),
+            )
+          }
+        when (operation.shapeType) {
+          RcBackgroundModifier.SHAPE_RECTANGLE -> drawRect(color)
+          RcBackgroundModifier.SHAPE_CIRCLE ->
+            drawCircle(color, radius = minOf(size.width, size.height) / 2f)
+        }
+      }
+    RcClipRectModifier ->
+      drawWithContent {
+        val contentScope = this
+        clipRect { contentScope.drawContent() }
+      }
+    is RcRoundedClipRectModifier ->
+      drawWithContent {
+        val topStart = state.resolve(operation.topStart).coerceAtLeast(0f)
+        val topEnd = state.resolve(operation.topEnd).coerceAtLeast(0f)
+        val bottomStart = state.resolve(operation.bottomStart).coerceAtLeast(0f)
+        val bottomEnd = state.resolve(operation.bottomEnd).coerceAtLeast(0f)
+        val path =
+          Path().apply {
+            addRoundRect(
+              RoundRect(
+                left = 0f,
+                top = 0f,
+                right = size.width,
+                bottom = size.height,
+                topLeftCornerRadius = CornerRadius(topStart),
+                topRightCornerRadius = CornerRadius(topEnd),
+                bottomRightCornerRadius = CornerRadius(bottomEnd),
+                bottomLeftCornerRadius = CornerRadius(bottomStart),
+              )
+            )
+          }
+        val contentScope = this
+        clipPath(path) { contentScope.drawContent() }
+      }
+    else -> this
+  }
 
 private fun Modifier.applyWidth(
   modifiers: RcLayoutModifiers,

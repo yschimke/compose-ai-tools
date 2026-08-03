@@ -79,9 +79,12 @@ import androidx.compose.remote.core.operations.layout.managers.CanvasLayout
 import androidx.compose.remote.core.operations.layout.managers.ColumnLayout
 import androidx.compose.remote.core.operations.layout.managers.FitBoxLayout
 import androidx.compose.remote.core.operations.layout.managers.RowLayout
+import androidx.compose.remote.core.operations.layout.modifiers.BackgroundModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.ClipRectModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.DimensionModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HeightModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.PaddingModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.RoundedClipRectModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation
 import androidx.compose.remote.core.operations.matrix.MatrixConstant
 import androidx.compose.remote.core.operations.matrix.MatrixExpression
@@ -100,10 +103,12 @@ import androidx.compose.remote.core.operations.utilities.easing.SpringStopEngine
 import androidx.compose.remote.core.types.BooleanConstant
 import androidx.compose.remote.core.types.IntegerConstant
 import androidx.compose.remote.core.types.LongConstant
+import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
+import ee.schimke.composeai.rcplayer.protocol.RcClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
@@ -134,6 +139,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcPaddingModifier
 import ee.schimke.composeai.rcplayer.protocol.RcPathData
 import ee.schimke.composeai.rcplayer.protocol.RcPathExpression as PlayerPathExpression
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
+import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
@@ -221,6 +227,29 @@ class AndroidxWireCompatibilityTest {
     assertEquals(RcDimensionType.EXACT, assertIs<RcWidthModifier>(document.operations[0]).type)
     assertEquals(42, assertIs<RcHeightModifier>(document.operations[1]).value.referencedId)
     assertEquals(43, assertIs<RcPaddingModifier>(document.operations[2]).right.referencedId)
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
+  @Test
+  fun androidXPaintDecoratorsRoundTripExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 320, 180, 1f, 0L)
+    BackgroundModifierOperation.apply(buffer, 2, 91, 12, 13, .1f, .2f, .3f, .4f, 1)
+    RoundedClipRectModifierOperation.apply(buffer, 1f, Utils.asNan(42), 3f, 4f)
+    ClipRectModifierOperation.apply(buffer)
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+
+    val background = assertIs<RcBackgroundModifier>(document.operations[0])
+    assertTrue(background.usesColorId)
+    assertEquals(91, background.colorId)
+    assertEquals(12, background.reserved1)
+    assertEquals(
+      42,
+      assertIs<RcRoundedClipRectModifier>(document.operations[1]).topEnd.referencedId,
+    )
+    assertIs<RcClipRectModifier>(document.operations[2])
     assertContentEquals(bytes, RcDocumentCodec.encode(document))
   }
 

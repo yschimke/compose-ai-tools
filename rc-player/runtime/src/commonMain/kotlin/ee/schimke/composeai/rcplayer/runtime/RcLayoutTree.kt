@@ -1,8 +1,10 @@
 package ee.schimke.composeai.rcplayer.runtime
 
+import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
+import ee.schimke.composeai.rcplayer.protocol.RcClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
@@ -11,6 +13,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperation
 import ee.schimke.composeai.rcplayer.protocol.RcPaddingModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
+import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 
@@ -19,6 +22,8 @@ public data class RcLayoutModifiers(
   val height: RcHeightModifier? = null,
   /** AndroidX applies padding modifiers cumulatively, in wire order. */
   val padding: List<RcPaddingModifier> = emptyList(),
+  /** Paint decorators retain wire order because nesting changes their result. */
+  val paintDecorators: List<RcOperation> = emptyList(),
 )
 
 public sealed interface RcLayoutNode {
@@ -225,6 +230,10 @@ public object RcLayoutTree {
       width = operations.singleModifier<RcWidthModifier>(container.operation),
       height = operations.singleModifier<RcHeightModifier>(container.operation),
       padding = operations.filterIsInstance<RcPaddingModifier>(),
+      paintDecorators =
+        operations.filter {
+          it is RcBackgroundModifier || it is RcClipRectModifier || it is RcRoundedClipRectModifier
+        },
     )
   }
 

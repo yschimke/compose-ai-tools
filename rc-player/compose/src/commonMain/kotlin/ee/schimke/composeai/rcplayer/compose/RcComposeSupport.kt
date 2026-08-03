@@ -1,5 +1,6 @@
 package ee.schimke.composeai.rcplayer.compose
 
+import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
@@ -107,6 +108,18 @@ public fun RcDocument.composeSupportReport(): RcComposeSupportReport {
     if (operation is RcColorExpression && operation.mode !in 0..6) {
       issues +=
         RcComposeSupportIssue(index, "ColorExpression", "mode ${operation.mode} is not implemented")
+    }
+    if (
+      operation is RcBackgroundModifier &&
+        operation.shapeType !in
+          RcBackgroundModifier.SHAPE_RECTANGLE..RcBackgroundModifier.SHAPE_CIRCLE
+    ) {
+      issues +=
+        RcComposeSupportIssue(
+          index,
+          "BackgroundModifier",
+          "shape type ${operation.shapeType} is not implemented",
+        )
     }
     if (operation is RcIntegerExpression) {
       RcIntegerExpressionEvaluator.validationError(operation)?.let { detail ->

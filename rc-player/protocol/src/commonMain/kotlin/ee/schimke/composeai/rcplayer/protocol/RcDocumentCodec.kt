@@ -93,6 +93,9 @@ public object RcDocumentCodec {
         WidthModifierCodec,
         HeightModifierCodec,
         PaddingModifierCodec,
+        RoundedClipRectModifierCodec,
+        BackgroundModifierCodec,
+        ClipRectModifierCodec,
         four(RcOpcodes.CLIP_RECT, "ClipRect"),
         four(RcOpcodes.MATRIX_SCALE, "MatrixScale"),
         two(RcOpcodes.MATRIX_TRANSLATE, "MatrixTranslate"),
@@ -338,6 +341,63 @@ private object PaddingModifierCodec : RcOperationCodec<RcPaddingModifier> {
     output.writeFloatWord(value.top)
     output.writeFloatWord(value.right)
     output.writeFloatWord(value.bottom)
+  }
+}
+
+private object ClipRectModifierCodec : RcOperationCodec<RcClipRectModifier> {
+  override val spec = RcOperationSpec(RcOpcodes.MODIFIER_CLIP_RECT, "ClipRectModifierOperation")
+
+  override fun decode(input: RcWireReader): RcClipRectModifier = RcClipRectModifier
+
+  override fun encode(output: RcWireWriter, value: RcClipRectModifier) = Unit
+}
+
+private object RoundedClipRectModifierCodec : RcOperationCodec<RcRoundedClipRectModifier> {
+  override val spec =
+    RcOperationSpec(RcOpcodes.MODIFIER_ROUNDED_CLIP_RECT, "RoundedClipRectModifierOperation")
+
+  override fun decode(input: RcWireReader) =
+    RcRoundedClipRectModifier(
+      input.readFloatWord("topStart"),
+      input.readFloatWord("topEnd"),
+      input.readFloatWord("bottomStart"),
+      input.readFloatWord("bottomEnd"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcRoundedClipRectModifier) {
+    output.writeFloatWord(value.topStart)
+    output.writeFloatWord(value.topEnd)
+    output.writeFloatWord(value.bottomStart)
+    output.writeFloatWord(value.bottomEnd)
+  }
+}
+
+private object BackgroundModifierCodec : RcOperationCodec<RcBackgroundModifier> {
+  override val spec = RcOperationSpec(RcOpcodes.MODIFIER_BACKGROUND, "BackgroundModifierOperation")
+
+  override fun decode(input: RcWireReader) =
+    RcBackgroundModifier(
+      input.readInt("flags"),
+      input.readInt("colorId"),
+      input.readInt("reserved1"),
+      input.readInt("reserved2"),
+      input.readFloatWord("red"),
+      input.readFloatWord("green"),
+      input.readFloatWord("blue"),
+      input.readFloatWord("alpha"),
+      input.readInt("shapeType"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcBackgroundModifier) {
+    output.writeInt(value.flags)
+    output.writeInt(value.colorId)
+    output.writeInt(value.reserved1)
+    output.writeInt(value.reserved2)
+    output.writeFloatWord(value.red)
+    output.writeFloatWord(value.green)
+    output.writeFloatWord(value.blue)
+    output.writeFloatWord(value.alpha)
+    output.writeInt(value.shapeType)
   }
 }
 

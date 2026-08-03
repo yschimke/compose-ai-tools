@@ -19,8 +19,8 @@
 51|DRAW_ROUND_RECT|1|implemented
 52|DRAW_SECTOR|1|implemented
 53|DRAW_TEXT_ON_PATH|2|implemented
-54|MODIFIER_ROUNDED_CLIP_RECT|6|unsupported
-55|MODIFIER_BACKGROUND|6|unsupported
+54|MODIFIER_ROUNDED_CLIP_RECT|6|implemented
+55|MODIFIER_BACKGROUND|6|implemented
 56|DRAW_OVAL|1|implemented
 57|DRAW_TEXT_ON_CIRCLE|3|unavailable
 58|MODIFIER_PADDING|6|implemented
@@ -38,7 +38,7 @@
 102|DATA_TEXT|1|implemented
 103|ROOT_CONTENT_DESCRIPTION|1|implemented
 107|MODIFIER_BORDER|6|unsupported
-108|MODIFIER_CLIP_RECT|6|unsupported
+108|MODIFIER_CLIP_RECT|6|implemented
 123|DATA_PATH|1|implemented
 124|DRAW_PATH|1|implemented
 125|DRAW_TWEEN_PATH|2|implemented
