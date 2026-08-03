@@ -488,6 +488,8 @@ class ServeWebFixtureTest {
         token,
         isPublic = true,
         version = version,
+        githubAuth =
+          ServeWeb.GitHubAuthStatus(loginHref = "/auth/github/start?return=%2F", login = "yschimke"),
       )
     val viewer =
       ServeWeb.viewerPage(
@@ -2481,7 +2483,7 @@ class ServeWebFixtureTest {
   }
 
   @Test
-  fun `the about box surfaces the server version with a GitHub icon`() {
+  fun `the home footer surfaces the server version with a GitHub icon`() {
     val home =
       ServeWeb.homeIndexPage(
         listOf(
@@ -2500,13 +2502,17 @@ class ServeWebFixtureTest {
       )
     assertTrue(home.contains(">server v1.2.3<"), "the running server version is shown")
     assertTrue(home.contains("class=\"cp-gh\""), "the source link carries the GitHub icon")
+    assertTrue(
+      home.indexOf("<footer class=\"cp-site-footer\">") < home.indexOf(">server v1.2.3<"),
+      "the running server version is in the footer",
+    )
     // A null version simply omits the pill (no dangling separator crash).
     val noVer = ServeWeb.homeIndexPage(emptyList(), token, isPublic = true)
     assertFalse(noVer.contains("class=\"cp-about-ver\""), "no version pill when version is null")
   }
 
   @Test
-  fun `the home about box shows GitHub login state when auth is configured`() {
+  fun `the home header shows GitHub login state when auth is configured`() {
     val unsigned =
       ServeWeb.homeIndexPage(
         emptyList(),
@@ -2519,6 +2525,12 @@ class ServeWebFixtureTest {
       "unsigned home page links to GitHub sign-in",
     )
     assertTrue(unsigned.contains("> Sign in with GitHub</a>"), unsigned)
+    assertTrue(
+      unsigned.indexOf("<header class=\"cp-site-header\">") <
+        unsigned.indexOf("> Sign in with GitHub</a>") &&
+        unsigned.indexOf("> Sign in with GitHub</a>") < unsigned.indexOf("</header>"),
+      "unsigned GitHub action is in the header",
+    )
 
     val signed =
       ServeWeb.homeIndexPage(
@@ -2533,6 +2545,18 @@ class ServeWebFixtureTest {
       "signed home page shows GitHub status",
     )
     assertTrue(signed.contains("Signed in as yschimke"), signed)
+    assertTrue(
+      signed.indexOf("<header class=\"cp-site-header\">") <
+        signed.indexOf("Signed in as yschimke") &&
+        signed.indexOf("Signed in as yschimke") < signed.indexOf("</header>"),
+      "signed GitHub identity is in the header",
+    )
+    val aboutEnd = signed.indexOf("</details>")
+    assertFalse(
+      signed.substring(0, aboutEnd).contains("server v") ||
+        signed.substring(0, aboutEnd).contains("href=\"/version\""),
+      "the home about disclosure no longer contains build metadata",
+    )
   }
 
   @Test

@@ -170,7 +170,7 @@ object ServeWeb {
   private const val UI_MODE_NIGHT_NO = 0x10
   private const val UI_MODE_NIGHT_YES = 0x20
 
-  /** Inline GitHub mark (Octicons, MIT). Rendered beside the "source" link and the version. */
+  /** Inline GitHub mark (Octicons, MIT). Rendered beside source and authentication links. */
   private const val GITHUB_ICON =
     "<svg class=\"cp-gh\" viewBox=\"0 0 16 16\" aria-hidden=\"true\" fill=\"currentColor\">" +
       "<path d=\"M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 " +
@@ -183,12 +183,10 @@ object ServeWeb {
 
   /**
    * Public-mode "about" intro: a short, static explanation of what the host is and its safety
-   * model, shown only when [landingPage] / [homeIndexPage] are asked for [isPublic]. The running
-   * server [version] (the CLI's `BUNDLE_VERSION`) is surfaced beside the `source` (GitHub) and
-   * `/version` links so the live build is visible on the front door; callers that want a stable
-   * golden pass a fixed string rather than the release version.
+   * model, shown on public catalog landing pages. The home page uses [homeAboutSection], keeping
+   * build links in [homeFooter].
    */
-  private fun aboutSection(version: String?, githubAuth: GitHubAuthStatus? = null): String {
+  private fun aboutSection(version: String?): String {
     val ver =
       version
         ?.takeIf { it.isNotBlank() }
@@ -196,21 +194,6 @@ object ServeWeb {
           " · <span class=\"cp-about-ver\" title=\"running preview-server build\">" +
             "server v${WebEscaping.htmlEscape(it)}</span>"
         } ?: ""
-    val auth =
-      githubAuth?.let {
-        val restricted =
-          if (it.restrictedToAllowedUsers)
-            " title=\"Live preview access is limited to configured GitHub users\""
-          else " title=\"Live previews require a GitHub sign-in\""
-        val login = it.login?.takeIf { name -> name.isNotBlank() }
-        if (login == null) {
-          " · <a class=\"cp-gh-auth\" href=\"${WebEscaping.htmlEscape(it.loginHref)}\"" +
-            "$restricted>$GITHUB_ICON Sign in with GitHub</a>"
-        } else {
-          " · <span class=\"cp-gh-auth cp-gh-auth--signed\"$restricted>$GITHUB_ICON " +
-            "Signed in as ${WebEscaping.htmlEscape(login)}</span>"
-        }
-      } ?: ""
     return """
     <details class="cp-about cp-disclosure">
       <summary>
@@ -224,7 +207,7 @@ object ServeWeb {
           <code>design-artifacts</code> branch, and anything unverified is badged.</p>
         <p class="cp-about-links">
           <a href="https://github.com/$SOURCE_REPO">$GITHUB_ICON source</a> ·
-          <a href="/version">/version</a>$ver$auth
+          <a href="/version">/version</a>$ver
         </p>
       </div>
     </details>
@@ -232,22 +215,77 @@ object ServeWeb {
       .trimIndent()
   }
 
-  /** Shared, intentionally compact navigation for every browser-facing page. */
-  private fun siteHeader(navSuffix: String): String =
+  /** Home-page safety explanation without account or build metadata. */
+  private fun homeAboutSection(): String =
     """
-    <header class="cp-site-header">
-      <a class="cp-site-brand" href="/$navSuffix" aria-label="compose-preview home">
-        <span class="cp-site-mark" aria-hidden="true">◇</span>
-        <span>compose-preview</span>
-      </a>
-      <nav class="cp-site-nav" aria-label="Primary navigation">
-        <a href="/$navSuffix">Catalogs</a>
-        <a href="/status$navSuffix">Status</a>
-        <a href="https://github.com/$SOURCE_REPO">GitHub</a>
-      </nav>
-    </header>
+    <details class="cp-about cp-disclosure">
+      <summary>
+        <span class="cp-about-title">About this preview server</span>
+        <span class="cp-disclosure-hint">How previews run and catalogs are trusted</span>
+      </summary>
+      <div class="cp-disclosure-body">
+        <p class="cp-about-body">Compose Multiplatform components can run <strong>in your browser</strong>
+          using sandboxed Kotlin/Wasm; other previews are published as pre-rendered snapshots. The
+          server never re-runs untrusted code. Catalogs are trusted by signature or their published
+          <code>design-artifacts</code> branch, and anything unverified is badged.</p>
+      </div>
+    </details>
     """
       .trimIndent()
+
+  /** GitHub session action shown in the home-page header when OAuth is configured. */
+  private fun githubAuthControl(status: GitHubAuthStatus?): String {
+    status ?: return ""
+    val restricted =
+      if (status.restrictedToAllowedUsers)
+        " title=\"Live preview access is limited to configured GitHub users\""
+      else " title=\"Live previews require a GitHub sign-in\""
+    val login = status.login?.takeIf { it.isNotBlank() }
+    return if (login == null) {
+      "<a class=\"cp-gh-auth\" href=\"${WebEscaping.htmlEscape(status.loginHref)}\"" +
+        "$restricted>$GITHUB_ICON Sign in with GitHub</a>"
+    } else {
+      "<span class=\"cp-gh-auth cp-gh-auth--signed\"$restricted>$GITHUB_ICON " +
+        "Signed in as ${WebEscaping.htmlEscape(login)}</span>"
+    }
+  }
+
+  /** Source and running-build metadata at the bottom of the public home page. */
+  private fun homeFooter(version: String?): String {
+    val ver =
+      version
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          " · <span class=\"cp-about-ver\" title=\"running preview-server build\">" +
+            "server v${WebEscaping.htmlEscape(it)}</span>"
+        } ?: ""
+    return """
+      <footer class="cp-site-footer">
+        <a href="https://github.com/$SOURCE_REPO">$GITHUB_ICON source</a> ·
+        <a href="/version">/version</a>$ver
+      </footer>
+      """
+      .trimIndent()
+  }
+
+  /** Shared, intentionally compact navigation for every browser-facing page. */
+  private fun siteHeader(navSuffix: String, action: String = ""): String {
+    val actionHtml = action.takeIf { it.isNotBlank() }?.let { "\n        $it" } ?: ""
+    return """
+      <header class="cp-site-header">
+        <a class="cp-site-brand" href="/$navSuffix" aria-label="compose-preview home">
+          <span class="cp-site-mark" aria-hidden="true">◇</span>
+          <span>compose-preview</span>
+        </a>
+        <nav class="cp-site-nav" aria-label="Primary navigation">
+          <a href="/$navSuffix">Catalogs</a>
+          <a href="/status$navSuffix">Status</a>
+          <a href="https://github.com/$SOURCE_REPO">GitHub</a>$actionHtml
+        </nav>
+      </header>
+      """
+      .trimIndent()
+  }
 
   /**
    * A "back to all design systems" button for a catalog landing — replaces the in-catalog
@@ -1513,7 +1551,7 @@ object ServeWeb {
     token: String,
     isPublic: Boolean = false,
     /**
-     * Running server version (the CLI's `BUNDLE_VERSION`), surfaced in the about box beside the
+     * Running server version (the CLI's `BUNDLE_VERSION`), surfaced in the home footer beside the
      * source/`/version` links so the live build is visible on the front door. Null omits it; the
      * fixture golden passes a fixed string so a release never churns the committed HTML.
      */
@@ -1522,7 +1560,9 @@ object ServeWeb {
     unfurl: UnfurlMetadata? = null,
     githubAuth: GitHubAuthStatus? = null,
   ): String {
-    val about = if (isPublic) aboutSection(version, githubAuth) + "\n" else ""
+    val about = if (isPublic) homeAboutSection() + "\n" else ""
+    val headerAction = githubAuthControl(githubAuth)
+    val footer = if (isPublic) homeFooter(version) else ""
     // Public routes are open — no token param on the cards; a token-gated box keeps it.
     val suffix = querySuffix(if (isPublic) "" else "token=" + WebEscaping.urlEncodeSegment(token))
     fun card(s: HomeSystem): String {
@@ -1607,6 +1647,8 @@ object ServeWeb {
         "Browse ${systems.size} published Compose design system and app catalogs.",
       unfurl = unfurl,
       navSuffix = suffix,
+      headerAction = headerAction,
+      footer = footer,
       body =
         """
         $about$body
@@ -4032,6 +4074,8 @@ $deviceControlsHtml
     unfurlDescription: String? = null,
     unfurl: UnfurlMetadata? = null,
     navSuffix: String = "",
+    headerAction: String = "",
+    footer: String = "",
   ): String {
     val unfurlHtml =
       if (unfurl == null) ""
@@ -4073,6 +4117,8 @@ $deviceControlsHtml
           .trimIndent()
       }
     val unfurlBlock = if (unfurlHtml.isEmpty()) "" else "\n${unfurlHtml.prependIndent("        ")}"
+    val footerBlock =
+      footer.takeIf { it.isNotBlank() }?.let { "\n${it.prependIndent("        ")}" } ?: ""
     return """
     <!doctype html>
     <html lang="en">
@@ -4085,10 +4131,10 @@ $deviceControlsHtml
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
-        ${siteHeader(navSuffix)}
+        ${siteHeader(navSuffix, headerAction)}
         <main class="cp-main">
         $body
-        </main>
+        </main>$footerBlock
       </body>
     </html>
     """
