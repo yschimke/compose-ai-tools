@@ -394,14 +394,24 @@ class ServeBundleHost(
     synchronized(fillLocks.computeIfAbsent(previewId) { Any() }) {
       if (fileSystem.exists(path)) return path
       val bytes = runCatching { fetch(previewId) }.getOrNull() ?: return null
+      // Written to a sibling and moved into place atomically. The existence check above is
+      // deliberately outside this lock (a warm read must not queue behind a cold fetch), so the
+      // destination must never exist in a half-written state — a reader that saw it would serve a
+      // truncated PNG.
       return runCatching {
           path.parent?.let(fileSystem::createDirectories)
-          fileSystem.write(path) { write(bytes) }
+          val partial = path.parent!!.resolve("${'$'}{path.name}$PARTIAL_SUFFIX")
+          fileSystem.write(partial) { write(bytes) }
+          fileSystem.atomicMove(partial, path)
           path
         }
         .getOrNull()
     }
   }
+
+  /** [previewId]'s baked PNG only if it is already local — never fetches. */
+  private fun localBakedPng(previewId: String): okio.Path? =
+    File(previewsDir, "${'$'}previewId${'$'}PNG_SUFFIX").toOkioPath().takeIf(fileSystem::exists)
 
   private val fillLocks = java.util.concurrent.ConcurrentHashMap<String, Any>()
 
@@ -542,10 +552,18 @@ class ServeBundleHost(
    * re-registers a fresh host (dropping this cache), so this stays a couple of small local reads
    * per preview across the whole life of a landing page — no daemon, no per-request re-read.
    */
-  fun contentCrop(previewId: String): ContentCrop? =
-    cropCache
-      .computeIfAbsent(previewId) { java.util.Optional.ofNullable(computeContentCrop(it)) }
-      .orElse(null)
+  fun contentCrop(previewId: String): ContentCrop? {
+    cropCache[previewId]?.let {
+      return it.orElse(null)
+    }
+    // A declared preview whose pixels haven't arrived yet has no crop *yet* — answer null without
+    // memoising, so the card starts cropping as soon as its PNG lands rather than staying uncropped
+    // until the next catalog refresh. Only a decision made against real pixels is cached.
+    if (localBakedPng(previewId) == null && previewId in declaredBakedIds) return null
+    val computed = java.util.Optional.ofNullable(computeContentCrop(previewId))
+    cropCache[previewId] = computed
+    return computed.orElse(null)
+  }
 
   private val cropCache =
     java.util.concurrent.ConcurrentHashMap<String, java.util.Optional<ContentCrop>>()
@@ -554,9 +572,12 @@ class ServeBundleHost(
     // Same per-variant-first resolution as `renderSvg` — a variant vector's viewBox reflects the
     // exact render this preview's PNG shows.
     val svgFile = figmaSvgFileFor(previewId) ?: return null
-    // Same fill-on-miss path as `render`: a card's crop must not depend on whether its pixels
-    // happen to have been fetched yet.
-    val png = bakedPngFile(previewId) ?: return null
+    // Deliberately the already-local file, NOT `bakedPngFile`: the landing page computes a crop for
+    // every card while building its HTML, so filling here would serially download a whole cold
+    // catalog on the first page request — the exact stall lazy fetching exists to remove, moved
+    // onto the request thread. A cold card simply renders uncropped; the browser's own
+    // `/render/<id>.png` request lands the file, and the next page build crops it.
+    val png = localBakedPng(previewId) ?: return null
     return try {
       val svg = fileSystem.read(svgFile) { readUtf8() }
       val bytes = fileSystem.read(png) { readByteArray() }
@@ -593,6 +614,8 @@ class ServeBundleHost(
   companion object {
     private const val PREVIEWS_SUBDIR = "previews"
     private const val PNG_SUFFIX = ".png"
+    /** Suffix of the sibling a lazy fill writes before moving it into place atomically. */
+    private const val PARTIAL_SUFFIX = ".partial"
 
     // Fallback render density for a cmp-jvm render when `previews.json` declares none — the desktop
     // renderer's own default (a 200dp preview bakes to 525px), so an unspecified preview still

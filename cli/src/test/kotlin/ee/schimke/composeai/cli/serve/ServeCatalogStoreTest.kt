@@ -69,10 +69,13 @@ class ServeCatalogStoreTest {
     )
 
   @Test
-  fun `a missing leading image does not cost the catalog the images behind it`() {
-    // The image cap counts previews actually served, not fetch attempts. With a cap of two and a
-    // first image that 404s, the catalog must still serve the two behind it — planning the fetch up
-    // front must not turn the ceiling into "the first two declared".
+  fun `the image cap bounds the previews a catalog declares`() {
+    // Fetching lazily makes the ceiling count DECLARED previews rather than successfully fetched
+    // ones: whether an image can be had isn't known at load time any more, and finding out would
+    // mean fetching everything — the thing lazy loading exists to avoid. So a cap of two publishes
+    // the first two declarations, and a card whose image turns out to be missing reports NotFound
+    // on request instead of being silently replaced by a later one. The cap defaults to 1000 while
+    // the largest published catalog declares ~200, so it does not bind in practice.
     val trust =
       TrustStore(
         branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
@@ -95,6 +98,19 @@ class ServeCatalogStoreTest {
         .load("compose-m3")
 
     assertEquals(2, (result as ServeCatalogStore.Result.Ok).previewCount)
+    val host = registered.getValue("compose-m3")
+    assertEquals(
+      listOf("button-filled__ideal__default__dark", "button-filled__ideal__default__light"),
+      host.previews.map { it.id },
+    )
+    // The declared-but-unfetchable card reports NotFound; its sibling still serves.
+    assertEquals(
+      RenderOutcome.NotFound,
+      host.render("button-filled__ideal__default__dark", PreviewOverrides()),
+    )
+    assertTrue(
+      host.render("button-filled__ideal__default__light", PreviewOverrides()) is RenderOutcome.Ok
+    )
   }
 
   /** Eight baked images, comfortably more than the handful sampled before publishing. */
@@ -137,6 +153,33 @@ class ServeCatalogStoreTest {
     // …and only once: the second read comes off disk.
     assertTrue(host.render(cold, PreviewOverrides()) is RenderOutcome.Ok)
     assertEquals(imagesAtPublish + 1, requested.count { it.endsWith(".png") })
+  }
+
+  @Test
+  fun `computing thumbnail crops never fetches a cold preview`() {
+    // The landing page computes a crop for EVERY card while building its HTML. If that filled
+    // missing pixels, the first page request would serially download a whole cold catalog on the
+    // request thread — reintroducing the stall this lazy path exists to remove, just moved.
+    val requested = Collections.synchronizedList(mutableListOf<String>())
+    store(
+        TrustStore.EMPTY,
+        fetch = { url ->
+          requested += url
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+              eightImageCatalogJson.toByteArray()
+            url.endsWith(".png") -> png()
+            else -> null
+          }
+        },
+      )
+      .load("compose-m3")
+    val host = registered.getValue("compose-m3") as ServeBundleHost
+    val afterPublish = requested.count { it.endsWith(".png") }
+
+    host.previews.forEach { host.contentCrop(it.id) }
+
+    assertEquals(afterPublish, requested.count { it.endsWith(".png") })
   }
 
   @Test
