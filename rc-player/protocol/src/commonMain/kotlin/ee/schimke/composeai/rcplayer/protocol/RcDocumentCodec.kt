@@ -92,6 +92,8 @@ public object RcDocumentCodec {
         FitBoxLayoutCodec,
         ImageLayoutCodec,
         TextLayoutCodec,
+        CoreTextCodec,
+        TextStyleCodec,
         WidthModifierCodec,
         HeightModifierCodec,
         PaddingModifierCodec,
@@ -347,6 +349,102 @@ private object TextLayoutCodec : RcOperationCodec<RcTextLayout> {
     output.writeInt(value.textAlignAndFlags)
     output.writeInt(value.overflow)
     output.writeInt(value.maxLines)
+  }
+}
+
+private object CoreTextCodec : RcOperationCodec<RcCoreText> {
+  override val spec = RcOperationSpec(RcOpcodes.CORE_TEXT, "CoreText")
+
+  override fun decode(input: RcWireReader) =
+    RcCoreText(input.readInt("textId"), input.readTextStyleProperties("properties"))
+
+  override fun encode(output: RcWireWriter, value: RcCoreText) {
+    output.writeInt(value.textId)
+    output.writeTextStyleProperties(value.properties)
+  }
+}
+
+private object TextStyleCodec : RcOperationCodec<RcTextStyle> {
+  override val spec = RcOperationSpec(RcOpcodes.TEXT_STYLE, "TextStyle")
+
+  override fun decode(input: RcWireReader) =
+    RcTextStyle(input.readTextStyleProperties("properties"))
+
+  override fun encode(output: RcWireWriter, value: RcTextStyle) {
+    output.writeTextStyleProperties(value.properties)
+  }
+}
+
+private val textStyleIntProperties: Set<Int> =
+  setOf(1, 2, 3, 4, 6, 8, 9, 10, 11, 15, 16, 17, 23, 24)
+private val textStyleFloatProperties: Set<Int> = setOf(5, 7, 12, 13, 14, 25, 26)
+private val textStyleBooleanProperties: Set<Int> = setOf(18, 19, 22)
+
+private fun RcWireReader.readTextStyleProperties(field: String): List<RcTextStyleProperty> {
+  val count = readU16("$field.count")
+  if (count > 26) fail("$field.count", "Invalid text property count $count")
+  return List(count) { index ->
+    val propertyField = "$field[$index]"
+    when (val id = readU8("$propertyField.id")) {
+      in textStyleIntProperties -> RcTextStyleProperty.IntValue(id, readInt("$propertyField.value"))
+      in textStyleFloatProperties ->
+        RcTextStyleProperty.FloatValue(id, readFloatWord("$propertyField.value"))
+      in textStyleBooleanProperties ->
+        RcTextStyleProperty.BooleanValue(id, readBoolean("$propertyField.value"))
+      20 -> {
+        val size = readU16("$propertyField.values.count")
+        if (size > limits.maxCollectionEntries) {
+          fail("$propertyField.values.count", "Invalid font-axis count $size")
+        }
+        RcTextStyleProperty.IntArrayValue(
+          id,
+          List(size) { item -> readInt("$propertyField.values[$item]") },
+        )
+      }
+      21 -> {
+        val size = readU16("$propertyField.values.count")
+        if (size > limits.maxCollectionEntries) {
+          fail("$propertyField.values.count", "Invalid font-axis value count $size")
+        }
+        RcTextStyleProperty.FloatArrayValue(
+          id,
+          List(size) { item -> readFloatWord("$propertyField.values[$item]") },
+        )
+      }
+      else -> fail("$propertyField.id", "Unknown AndroidX text property $id")
+    }
+  }
+}
+
+private fun RcWireWriter.writeTextStyleProperties(properties: List<RcTextStyleProperty>) {
+  require(properties.size <= 26) { "Too many AndroidX text properties" }
+  writeU16(properties.size)
+  properties.forEach { property ->
+    writeU8(property.id)
+    when (property) {
+      is RcTextStyleProperty.IntValue -> {
+        require(property.id in textStyleIntProperties)
+        writeInt(property.value)
+      }
+      is RcTextStyleProperty.FloatValue -> {
+        require(property.id in textStyleFloatProperties)
+        writeFloatWord(property.value)
+      }
+      is RcTextStyleProperty.BooleanValue -> {
+        require(property.id in textStyleBooleanProperties)
+        writeBoolean(property.value)
+      }
+      is RcTextStyleProperty.IntArrayValue -> {
+        require(property.id == 20 && property.values.size <= 0xffff)
+        writeU16(property.values.size)
+        property.values.forEach(::writeInt)
+      }
+      is RcTextStyleProperty.FloatArrayValue -> {
+        require(property.id == 21 && property.values.size <= 0xffff)
+        writeU16(property.values.size)
+        property.values.forEach(::writeFloatWord)
+      }
+    }
   }
 }
 

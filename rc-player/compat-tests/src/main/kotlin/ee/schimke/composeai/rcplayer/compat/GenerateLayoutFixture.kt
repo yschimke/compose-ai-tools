@@ -16,9 +16,10 @@ import androidx.compose.remote.core.operations.layout.LayoutComponentContent
 import androidx.compose.remote.core.operations.layout.RootLayoutComponent
 import androidx.compose.remote.core.operations.layout.managers.BoxLayout
 import androidx.compose.remote.core.operations.layout.managers.CanvasLayout
+import androidx.compose.remote.core.operations.layout.managers.CoreText
 import androidx.compose.remote.core.operations.layout.managers.ImageLayout
 import androidx.compose.remote.core.operations.layout.managers.RowLayout
-import androidx.compose.remote.core.operations.layout.managers.TextLayout
+import androidx.compose.remote.core.operations.layout.managers.TextStyle
 import androidx.compose.remote.core.operations.layout.modifiers.DimensionModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HeightModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.OffsetModifierOperation
@@ -58,6 +59,60 @@ public fun main(args: Array<String>) {
     ),
   )
   TextData.apply(buffer, 1001, "CMP TEXT + IMAGE")
+  TextStyle.apply(
+    buffer,
+    1002,
+    0xff21005d.toInt(),
+    null,
+    22f,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    false,
+    null,
+  )
+  TextStyle.apply(
+    buffer,
+    1003,
+    null,
+    null,
+    null,
+    null,
+    null,
+    PaintBundle.FONT_BOLD,
+    null,
+    null,
+    CoreText.TEXT_ALIGN_CENTER,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    false,
+    1002,
+  )
   RootLayoutComponent.apply(buffer, 1)
   LayoutComponentContent.apply(buffer, 2)
 
@@ -83,19 +138,35 @@ public fun main(args: Array<String>) {
   image(buffer, componentId = 11, animationId = 110, width = 54f, height = 58f)
   ContainerEnd.apply(buffer) // row content
   ContainerEnd.apply(buffer) // row
-  TextLayout.apply(
+  CoreText.apply(
     buffer,
     13,
     130,
     1001,
-    0xff21005d.toInt(),
-    22f,
-    PaintBundle.FONT_BOLD,
+    0xff000000.toInt(),
+    -1,
+    36f,
+    -1f,
+    -1f,
+    PaintBundle.FONT_NORMAL,
     400f,
     -1,
-    TextLayout.TEXT_ALIGN_CENTER,
-    TextLayout.OVERFLOW_CLIP,
-    1,
+    CoreText.TEXT_ALIGN_LEFT,
+    CoreText.OVERFLOW_CLIP,
+    Int.MAX_VALUE,
+    0f,
+    0f,
+    1f,
+    CoreText.BREAK_STRATEGY_SIMPLE,
+    CoreText.HYPHENATION_FREQUENCY_NONE,
+    CoreText.JUSTIFICATION_MODE_NONE,
+    false,
+    false,
+    null,
+    null,
+    false,
+    0,
+    1003,
   )
   exactWidth(buffer, 240f)
   exactHeight(buffer, 36f)

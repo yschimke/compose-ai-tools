@@ -8,6 +8,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
+import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionConstraintsModifier
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
@@ -31,6 +32,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextData
 import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
+import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
+import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import ee.schimke.composeai.rcplayer.protocol.RcVisibilityModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
@@ -42,6 +45,78 @@ import kotlin.test.assertTrue
 import org.jetbrains.skia.Bitmap
 
 class RcLayoutRenderTest {
+  @Test
+  fun coreTextRendersInheritedSparseStyle() {
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 100, legacyHeight = 40, modern = false),
+        listOf(
+          RcTextData(10, "III"),
+          RcTextStyle(
+            listOf(
+              RcTextStyleProperty.IntValue(1, 100),
+              RcTextStyleProperty.IntValue(3, 0xffff0000.toInt()),
+              RcTextStyleProperty.FloatValue(5, RcFloatWord.literal(24f)),
+            )
+          ),
+          RcTextStyle(
+            listOf(
+              RcTextStyleProperty.IntValue(1, 101),
+              RcTextStyleProperty.IntValue(24, 100),
+              RcTextStyleProperty.IntValue(9, RcTextLayout.ALIGN_CENTER),
+              RcTextStyleProperty.IntValue(6, 1),
+            )
+          ),
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcCoreText(
+            textId = 10,
+            properties =
+              listOf(
+                RcTextStyleProperty.IntValue(1, 3),
+                RcTextStyleProperty.IntValue(2, 30),
+                RcTextStyleProperty.IntValue(24, 101),
+              ),
+          ),
+          width(100f),
+          height(40f),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        ),
+      )
+    val scene =
+      ImageComposeScene(width = 100, height = 40, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val image = scene.render()
+      val bitmap = Bitmap().apply { allocN32Pixels(100, 40) }
+      check(image.readPixels(bitmap))
+      val painted = buildList {
+        for (y in 0 until 40) {
+          for (x in 0 until 100) {
+            val color = bitmap.getColor(x, y)
+            if (color ushr 24 != 0) add(x to color)
+          }
+        }
+      }
+
+      assertTrue(painted.size > 30)
+      assertTrue(painted.minOf { it.first } > 25)
+      assertTrue(painted.maxOf { it.first } < 75)
+      assertTrue(
+        painted.any { (_, color) ->
+          val red = color ushr 16 and 0xff
+          val green = color ushr 8 and 0xff
+          red > green
+        }
+      )
+    } finally {
+      scene.close()
+    }
+  }
+
   @Test
   fun textLayoutMeasuresAndCentersAndroidxText() {
     val document =

@@ -756,6 +756,52 @@ public data class RcTextLayout(
   }
 }
 
+public sealed interface RcTextStyleProperty {
+  public val id: Int
+
+  public data class IntValue(override val id: Int, val value: Int) : RcTextStyleProperty
+
+  public data class FloatValue(override val id: Int, val value: RcFloatWord) : RcTextStyleProperty
+
+  public data class BooleanValue(override val id: Int, val value: Boolean) : RcTextStyleProperty
+
+  public data class IntArrayValue(override val id: Int, val values: List<Int>) : RcTextStyleProperty
+
+  public data class FloatArrayValue(override val id: Int, val values: List<RcFloatWord>) :
+    RcTextStyleProperty
+}
+
+/** Sparse reusable style. Property 24 is the optional parent style id. */
+public data class RcTextStyle(val properties: List<RcTextStyleProperty>) : RcOperation {
+  override val opcode: Int = RcOpcodes.TEXT_STYLE
+
+  public val styleId: Int?
+    get() =
+      properties.filterIsInstance<RcTextStyleProperty.IntValue>().lastOrNull { it.id == 1 }?.value
+
+  public val parentStyleId: Int?
+    get() =
+      properties.filterIsInstance<RcTextStyleProperty.IntValue>().lastOrNull { it.id == 24 }?.value
+}
+
+/** New alpha16 text layout using the same sparse property vocabulary as [RcTextStyle]. */
+public data class RcCoreText(val textId: Int, val properties: List<RcTextStyleProperty>) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.CORE_TEXT
+
+  public val componentId: Int
+    get() = intProperty(1) ?: -1
+
+  public val animationId: Int
+    get() = intProperty(2) ?: -1
+
+  public val textStyleId: Int?
+    get() = intProperty(24)?.takeUnless { it == -1 }
+
+  private fun intProperty(id: Int): Int? =
+    properties.filterIsInstance<RcTextStyleProperty.IntValue>().lastOrNull { it.id == id }?.value
+}
+
 public data class RcWidthModifier(val type: Int, val value: RcFloatWord) : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_WIDTH
 }
@@ -1026,6 +1072,8 @@ public object RcOpcodes {
   public const val MODIFIER_WIDTH_IN: Int = 231
   public const val MODIFIER_HEIGHT_IN: Int = 232
   public const val LAYOUT_IMAGE: Int = 234
+  public const val CORE_TEXT: Int = 239
+  public const val TEXT_STYLE: Int = 242
   public const val MODIFIER_DIMENSION_CONSTRAINTS: Int = 243
 }
 

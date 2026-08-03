@@ -78,10 +78,12 @@ import androidx.compose.remote.core.operations.layout.RootLayoutComponent
 import androidx.compose.remote.core.operations.layout.managers.BoxLayout
 import androidx.compose.remote.core.operations.layout.managers.CanvasLayout
 import androidx.compose.remote.core.operations.layout.managers.ColumnLayout
+import androidx.compose.remote.core.operations.layout.managers.CoreText
 import androidx.compose.remote.core.operations.layout.managers.FitBoxLayout
 import androidx.compose.remote.core.operations.layout.managers.ImageLayout
 import androidx.compose.remote.core.operations.layout.managers.RowLayout
 import androidx.compose.remote.core.operations.layout.managers.TextLayout
+import androidx.compose.remote.core.operations.layout.managers.TextStyle as AndroidxTextStyle
 import androidx.compose.remote.core.operations.layout.modifiers.BackgroundModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.BorderModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ClipRectModifierOperation
@@ -126,6 +128,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
+import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionConstraintsModifier
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
@@ -162,6 +165,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
+import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
+import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import ee.schimke.composeai.rcplayer.protocol.RcVisibilityModifier
@@ -275,6 +280,92 @@ class AndroidxWireCompatibilityTest {
     assertEquals(43, text.fontWeight.referencedId)
     assertEquals(RcTextLayout.ALIGN_CENTER, text.textAlign)
     assertEquals(RcTextLayout.FLAG_DYNAMIC_COLOR, text.flags)
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
+  @Test
+  fun androidXCoreTextAndSparseStyleRoundTripExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 240, 80, 1f, 0L)
+    TextData.apply(buffer, 41, "Inherited AndroidX style")
+    AndroidxTextStyle.apply(
+      buffer,
+      700,
+      0xff345678.toInt(),
+      null,
+      18f,
+      null,
+      null,
+      PaintBundle.FONT_ITALIC,
+      500f,
+      null,
+      TextLayout.TEXT_ALIGN_CENTER,
+      TextLayout.OVERFLOW_ELLIPSIS,
+      2,
+      1f,
+      null,
+      null,
+      null,
+      null,
+      null,
+      true,
+      false,
+      null,
+      null,
+      false,
+      null,
+    )
+    RootLayoutComponent.apply(buffer, 1)
+    LayoutComponentContent.apply(buffer, 2)
+    CoreText.apply(
+      buffer,
+      3,
+      30,
+      41,
+      0xff000000.toInt(),
+      -1,
+      36f,
+      -1f,
+      -1f,
+      PaintBundle.FONT_NORMAL,
+      400f,
+      -1,
+      CoreText.TEXT_ALIGN_LEFT,
+      CoreText.OVERFLOW_CLIP,
+      Int.MAX_VALUE,
+      0f,
+      0f,
+      1f,
+      CoreText.BREAK_STRATEGY_SIMPLE,
+      CoreText.HYPHENATION_FREQUENCY_NONE,
+      CoreText.JUSTIFICATION_MODE_NONE,
+      false,
+      false,
+      null,
+      null,
+      false,
+      0,
+      700,
+    )
+    WidthModifierOperation.apply(buffer, DimensionModifierOperation.Type.EXACT.ordinal, 200f)
+    HeightModifierOperation.apply(buffer, DimensionModifierOperation.Type.EXACT.ordinal, 60f)
+    repeat(3) { ContainerEnd.apply(buffer) }
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+    val style = assertIs<RcTextStyle>(document.operations[1])
+    val core = assertIs<RcCoreText>(document.operations[4])
+
+    assertEquals(700, style.styleId)
+    assertEquals(700, core.textStyleId)
+    assertEquals(
+      18f,
+      style.properties
+        .filterIsInstance<RcTextStyleProperty.FloatValue>()
+        .single { it.id == 5 }
+        .value
+        .value,
+    )
     assertContentEquals(bytes, RcDocumentCodec.encode(document))
   }
 

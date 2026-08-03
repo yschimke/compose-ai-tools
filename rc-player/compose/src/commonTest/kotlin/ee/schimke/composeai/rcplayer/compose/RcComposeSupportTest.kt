@@ -26,6 +26,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcPaintData
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
+import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
+import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import kotlin.test.Test
@@ -68,6 +70,27 @@ class RcComposeSupportTest {
 
     assertEquals("ModifierGraphicsLayer", issue.operation)
     assertEquals("operation is excluded from the cmp-wasm-alpha16 profile", issue.detail)
+  }
+
+  @Test
+  fun rejectsExtendedCoreTextFieldsUntilTheyAreBrowserVerified() {
+    val document =
+      RcDocument(
+        header,
+        listOf(
+          RcTextStyle(
+            listOf(
+              RcTextStyleProperty.IntValue(1, 100),
+              RcTextStyleProperty.FloatValue(12, RcFloatWord.literal(1f)),
+            )
+          )
+        ),
+      )
+
+    val issue = document.composeSupportReport().issues.single()
+
+    assertEquals("TextStyle", issue.operation)
+    assertEquals("letter spacing is not implemented", issue.detail)
   }
 
   @Test

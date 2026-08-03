@@ -2,6 +2,7 @@ package ee.schimke.composeai.rcplayer.runtime
 
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
+import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
@@ -11,6 +12,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcPaddingModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
+import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
+import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import kotlin.test.Test
@@ -84,6 +87,65 @@ class RcLayoutTreeTest {
     assertFailsWith<RcLayoutException> {
       treeOf(RcRootLayout(1), RcLayoutContent(2), RcCanvasLayout(2, 20), ends = 3)
     }
+  }
+
+  @Test
+  fun resolvesImmutableTextStyleInheritanceBeforeCoreTextRendering() {
+    val parent =
+      RcTextStyle(
+        listOf(
+          RcTextStyleProperty.IntValue(1, 100),
+          RcTextStyleProperty.IntValue(3, 0xffff0000.toInt()),
+          RcTextStyleProperty.FloatValue(5, RcFloatWord.literal(18f)),
+        )
+      )
+    val child =
+      RcTextStyle(
+        listOf(
+          RcTextStyleProperty.IntValue(1, 101),
+          RcTextStyleProperty.IntValue(24, 100),
+          RcTextStyleProperty.FloatValue(7, RcFloatWord.literal(700f)),
+        )
+      )
+    val core =
+      RcCoreText(
+        textId = 7,
+        properties =
+          listOf(
+            RcTextStyleProperty.IntValue(1, 3),
+            RcTextStyleProperty.IntValue(2, 30),
+            RcTextStyleProperty.IntValue(24, 101),
+            RcTextStyleProperty.IntValue(3, 0xff0000ff.toInt()),
+          ),
+      )
+    val root =
+      requireNotNull(treeOf(parent, child, RcRootLayout(1), RcLayoutContent(2), core, ends = 3))
+    val content = assertIs<RcLayoutNode.Content>(root.children.single())
+    val text = assertIs<RcLayoutNode.CoreText>(content.children.single())
+
+    assertEquals(
+      0xff0000ff.toInt(),
+      text.resolvedStyle
+        .filterIsInstance<RcTextStyleProperty.IntValue>()
+        .single { it.id == 3 }
+        .value,
+    )
+    assertEquals(
+      18f,
+      text.resolvedStyle
+        .filterIsInstance<RcTextStyleProperty.FloatValue>()
+        .single { it.id == 5 }
+        .value
+        .value,
+    )
+    assertEquals(
+      700f,
+      text.resolvedStyle
+        .filterIsInstance<RcTextStyleProperty.FloatValue>()
+        .single { it.id == 7 }
+        .value
+        .value,
+    )
   }
 
   private fun treeOf(

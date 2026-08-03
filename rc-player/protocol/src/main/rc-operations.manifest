@@ -155,10 +155,10 @@
 236|RUN_ACTION|7|unsupported
 237|MODIFIER_ALIGN_BY|6|unsupported
 238|LAYOUT_COMPUTE|6|unsupported
-239|CORE_TEXT|3|unsupported
+239|CORE_TEXT|3|implemented
 240|LAYOUT_FLOW|6|unsupported
 241|SKIP|6|unsupported
-242|TEXT_STYLE|3|unsupported
+242|TEXT_STYLE|3|implemented
 243|MODIFIER_DIMENSION_CONSTRAINTS|6|implemented
 244|MACRO_FOR_EACH|8|unsupported
 245|INCLUDE_REFERENCED_OPERATIONS|8|unsupported

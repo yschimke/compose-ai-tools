@@ -132,6 +132,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextLookup
 import ee.schimke.composeai.rcplayer.protocol.RcTextLookupInt
 import ee.schimke.composeai.rcplayer.protocol.RcTextMeasure
 import ee.schimke.composeai.rcplayer.protocol.RcTextMerge
+import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
 import ee.schimke.composeai.rcplayer.protocol.RcTextSubtext
 import ee.schimke.composeai.rcplayer.protocol.RcTextTransform
 import ee.schimke.composeai.rcplayer.protocol.RcTheme
@@ -477,6 +478,44 @@ private fun RenderLayoutNode(
         maxLines = operation.maxLines,
       )
     }
+    is RcLayoutNode.CoreText -> {
+      val density = androidx.compose.ui.platform.LocalDensity.current
+      val properties = node.resolvedStyle
+      val fontSize = state.resolve(properties.floatProperty(5, 36f))
+      val fontStyle = properties.intProperty(6, 0)
+      val fontWeight =
+        state.resolve(properties.floatProperty(7, 400f)).roundToInt().coerceIn(1, 1000)
+      val boldWeight = if (fontStyle and 1 != 0) 700 else fontWeight
+      val colorId = properties.intProperty(4, -1)
+      BasicText(
+        text = state.text(node.operation.textId).orEmpty(),
+        modifier =
+          effectiveModifier.applyComponentModifiers(
+            node.modifiers,
+            state,
+            fillMissingDimensions = false,
+            canvasOperations = null,
+            textMeasurer,
+            images,
+            theme,
+          ),
+        style =
+          TextStyle(
+            color =
+              Color(
+                if (colorId == -1) properties.intProperty(3, 0xff000000.toInt())
+                else state.color(colorId)
+              ),
+            fontSize = (fontSize / density.density).sp,
+            fontWeight = FontWeight(boldWeight),
+            fontStyle = if (fontStyle and 2 != 0) FontStyle.Italic else FontStyle.Normal,
+            fontFamily = FontFamily.Default,
+            textAlign = androidXTextAlign(properties.intProperty(9, RcTextLayout.ALIGN_LEFT)),
+          ),
+        overflow = androidXTextOverflow(properties.intProperty(10, RcTextLayout.OVERFLOW_CLIP)),
+        maxLines = properties.intProperty(11, Int.MAX_VALUE),
+      )
+    }
     is RcLayoutNode.FitBox -> {
       val alignment =
         boxAlignment(node.operation.horizontalPositioning, node.operation.verticalPositioning)
@@ -539,24 +578,35 @@ private fun RenderLayoutNode(
   }
 }
 
-private fun RcTextLayout.composeTextAlign(): TextAlign =
-  when (textAlign) {
+private fun RcTextLayout.composeTextAlign(): TextAlign = androidXTextAlign(textAlign)
+
+private fun androidXTextAlign(value: Int): TextAlign =
+  when (value) {
     RcTextLayout.ALIGN_LEFT -> TextAlign.Left
     RcTextLayout.ALIGN_RIGHT -> TextAlign.Right
     RcTextLayout.ALIGN_CENTER -> TextAlign.Center
     RcTextLayout.ALIGN_JUSTIFY -> TextAlign.Justify
     RcTextLayout.ALIGN_START -> TextAlign.Start
     RcTextLayout.ALIGN_END -> TextAlign.End
-    else -> error("Unknown AndroidX text alignment $textAlign")
+    else -> error("Unknown AndroidX text alignment $value")
   }
 
-private fun RcTextLayout.composeTextOverflow(): TextOverflow =
-  when (overflow) {
+private fun RcTextLayout.composeTextOverflow(): TextOverflow = androidXTextOverflow(overflow)
+
+private fun androidXTextOverflow(value: Int): TextOverflow =
+  when (value) {
     RcTextLayout.OVERFLOW_CLIP -> TextOverflow.Clip
     RcTextLayout.OVERFLOW_VISIBLE -> TextOverflow.Visible
     RcTextLayout.OVERFLOW_ELLIPSIS -> TextOverflow.Ellipsis
-    else -> error("Unsupported AndroidX text overflow $overflow")
+    else -> error("Unsupported AndroidX text overflow $value")
   }
+
+private fun List<RcTextStyleProperty>.intProperty(id: Int, default: Int): Int =
+  filterIsInstance<RcTextStyleProperty.IntValue>().lastOrNull { it.id == id }?.value ?: default
+
+private fun List<RcTextStyleProperty>.floatProperty(id: Int, default: Float): RcFloatWord =
+  filterIsInstance<RcTextStyleProperty.FloatValue>().lastOrNull { it.id == id }?.value
+    ?: RcFloatWord.literal(default)
 
 /** Mirrors Component.Visibility, including the override-bit precedence used by AndroidX. */
 internal fun androidXVisibility(value: Int): Int =

@@ -6,6 +6,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
+import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
@@ -26,6 +27,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextMeasure
+import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
+import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.protocol.supportReport
 import ee.schimke.composeai.rcplayer.runtime.RcDocumentLinker
@@ -206,6 +209,22 @@ public fun RcDocument.composeSupportReport(
             )
         operation.maxLines <= 0 ->
           issues += RcComposeSupportIssue(index, "TextLayout", "maxLines must be positive")
+      }
+    }
+    if (operation is RcCoreText) {
+      when {
+        operation.textId !in textIds ->
+          issues +=
+            RcComposeSupportIssue(index, "CoreText", "text id ${operation.textId} is not declared")
+        else ->
+          textStyleIssue(operation.properties, colorIds)?.let { detail ->
+            issues += RcComposeSupportIssue(index, "CoreText", detail)
+          }
+      }
+    }
+    if (operation is RcTextStyle) {
+      textStyleIssue(operation.properties, colorIds)?.let { detail ->
+        issues += RcComposeSupportIssue(index, "TextStyle", detail)
       }
     }
     if (operation is RcColorAttribute && operation.type !in 0..6) {
@@ -409,6 +428,73 @@ public fun RcDocument.composeSupportReport(
       },
     )
   return RcComposeSupportReport(issues)
+}
+
+private fun textStyleIssue(properties: List<RcTextStyleProperty>, colorIds: Set<Int>): String? {
+  fun int(id: Int, default: Int): Int =
+    properties.filterIsInstance<RcTextStyleProperty.IntValue>().lastOrNull { it.id == id }?.value
+      ?: default
+  fun float(id: Int, default: Float): ee.schimke.composeai.rcplayer.protocol.RcFloatWord =
+    properties.filterIsInstance<RcTextStyleProperty.FloatValue>().lastOrNull { it.id == id }?.value
+      ?: ee.schimke.composeai.rcplayer.protocol.RcFloatWord.literal(default)
+  fun bool(id: Int, default: Boolean): Boolean =
+    properties
+      .filterIsInstance<RcTextStyleProperty.BooleanValue>()
+      .lastOrNull { it.id == id }
+      ?.value ?: default
+
+  val colorId = int(4, -1)
+  if (colorId != -1 && colorId !in colorIds) return "dynamic color id $colorId is not declared"
+  val fontStyle = int(6, 0)
+  if (fontStyle !in 0..3) return "font style $fontStyle is not implemented"
+  val fontFamily = int(8, -1)
+  if (fontFamily != -1) return "font family $fontFamily requires DataFont"
+  val alignment = int(9, RcTextLayout.ALIGN_LEFT)
+  if (alignment !in RcTextLayout.ALIGN_LEFT..RcTextLayout.ALIGN_END) {
+    return "text alignment $alignment is not implemented"
+  }
+  val overflow = int(10, RcTextLayout.OVERFLOW_CLIP)
+  if (overflow !in RcTextLayout.OVERFLOW_CLIP..RcTextLayout.OVERFLOW_ELLIPSIS) {
+    return "overflow $overflow is not implemented"
+  }
+  val maxLines = int(11, Int.MAX_VALUE)
+  if (maxLines <= 0) return "maxLines must be positive"
+  if (float(12, 0f) != ee.schimke.composeai.rcplayer.protocol.RcFloatWord.literal(0f)) {
+    return "letter spacing is not implemented"
+  }
+  if (float(13, 0f) != ee.schimke.composeai.rcplayer.protocol.RcFloatWord.literal(0f)) {
+    return "line height addition is not implemented"
+  }
+  if (float(14, 1f) != ee.schimke.composeai.rcplayer.protocol.RcFloatWord.literal(1f)) {
+    return "line height multiplier is not implemented"
+  }
+  val breakStrategy = int(15, 0)
+  if (breakStrategy != 0) return "line break strategy $breakStrategy is not implemented"
+  val hyphenation = int(16, 0)
+  if (hyphenation != 0) return "hyphenation frequency $hyphenation is not implemented"
+  val justification = int(17, 0)
+  if (justification != 0) return "justification mode $justification is not implemented"
+  if (bool(18, false)) return "underline is not implemented"
+  if (bool(19, false)) return "strikethrough is not implemented"
+  if (bool(22, false)) return "autosize is not implemented"
+  if (float(25, -1f) != ee.schimke.composeai.rcplayer.protocol.RcFloatWord.literal(-1f)) {
+    return "minimum autosize font size is not implemented"
+  }
+  if (float(26, -1f) != ee.schimke.composeai.rcplayer.protocol.RcFloatWord.literal(-1f)) {
+    return "maximum autosize font size is not implemented"
+  }
+  val axes =
+    properties.filterIsInstance<RcTextStyleProperty.IntArrayValue>().lastOrNull { it.id == 20 }
+  val axisValues =
+    properties.filterIsInstance<RcTextStyleProperty.FloatArrayValue>().lastOrNull { it.id == 21 }
+  if (!axes?.values.isNullOrEmpty() || !axisValues?.values.isNullOrEmpty()) {
+    return if (axes?.values?.size != axisValues?.values?.size)
+      "font axis arrays have different sizes"
+    else "font axes are not implemented"
+  }
+  val flags = int(23, 0)
+  if (flags != 0) return "flags $flags are not implemented"
+  return null
 }
 
 private fun hasInvalidDrawContent(

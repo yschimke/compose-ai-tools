@@ -7,6 +7,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
 import ee.schimke.composeai.rcplayer.protocol.RcClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
+import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionConstraintsModifier
 import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
@@ -22,6 +23,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
+import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
+import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
 import ee.schimke.composeai.rcplayer.protocol.RcVisibilityModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
@@ -131,6 +134,15 @@ public sealed interface RcLayoutNode {
     override val componentId: Int = operation.componentId
     override val animationId: Int = operation.animationId
   }
+
+  public data class CoreText(
+    val operation: RcCoreText,
+    override val modifiers: RcLayoutModifiers,
+    val resolvedStyle: List<RcTextStyleProperty>,
+  ) : RcLayoutNode {
+    override val componentId: Int = operation.componentId
+    override val animationId: Int = operation.animationId
+  }
 }
 
 public class RcLayoutException(message: String) : IllegalArgumentException(message)
@@ -152,11 +164,23 @@ public object RcLayoutTree {
       return null
     }
     if (roots.size != 1) throw RcLayoutException("Document has ${roots.size} layout roots")
+    val styles =
+      document.source.operations.filterIsInstance<RcTextStyle>().mapNotNull { style ->
+        style.styleId?.let { it to style }
+      }
+    if (styles.map { it.first }.distinct().size != styles.size) {
+      throw RcLayoutException("Duplicate TextStyle id")
+    }
+    val stylesById = styles.toMap()
     val seenIds = mutableSetOf<Int>()
-    return parse(roots.single(), seenIds) as RcLayoutNode.Root
+    return parse(roots.single(), seenIds, stylesById) as RcLayoutNode.Root
   }
 
-  private fun parse(container: RcLinkedNode.Container, seenIds: MutableSet<Int>): RcLayoutNode {
+  private fun parse(
+    container: RcLinkedNode.Container,
+    seenIds: MutableSet<Int>,
+    styles: Map<Int, RcTextStyle>,
+  ): RcLayoutNode {
     val modifiers = modifiers(container)
     val node =
       when (val operation = container.operation) {
@@ -164,14 +188,14 @@ public object RcLayoutTree {
           RcLayoutNode.Root(
             operation.componentId,
             modifiers,
-            childComponents(container, seenIds),
+            childComponents(container, seenIds, styles),
             canvasOperations(container),
           )
         is RcLayoutContent ->
           RcLayoutNode.Content(
             operation.componentId,
             modifiers,
-            childComponents(container, seenIds),
+            childComponents(container, seenIds, styles),
           )
         is RcCanvasLayout -> {
           RcLayoutNode.Canvas(
@@ -179,7 +203,7 @@ public object RcLayoutTree {
             operation.animationId,
             modifiers,
             canvasOperations(container),
-            optionalContent(container, seenIds),
+            optionalContent(container, seenIds, styles),
           )
         }
         is RcCanvasContent -> RcLayoutNode.CanvasContent(operation.componentId, container.children)
@@ -187,32 +211,34 @@ public object RcLayoutTree {
           RcLayoutNode.Box(
             operation,
             modifiers,
-            requiredContent(container, seenIds),
+            requiredContent(container, seenIds, styles),
             canvasOperations(container),
           )
         is RcRowLayout ->
           RcLayoutNode.Row(
             operation,
             modifiers,
-            requiredContent(container, seenIds),
+            requiredContent(container, seenIds, styles),
             canvasOperations(container),
           )
         is RcColumnLayout ->
           RcLayoutNode.Column(
             operation,
             modifiers,
-            requiredContent(container, seenIds),
+            requiredContent(container, seenIds, styles),
             canvasOperations(container),
           )
         is RcFitBoxLayout ->
           RcLayoutNode.FitBox(
             operation,
             modifiers,
-            requiredContent(container, seenIds),
+            requiredContent(container, seenIds, styles),
             canvasOperations(container),
           )
         is RcImageLayout -> RcLayoutNode.Image(operation, modifiers)
         is RcTextLayout -> RcLayoutNode.Text(operation, modifiers)
+        is RcCoreText ->
+          RcLayoutNode.CoreText(operation, modifiers, resolveTextStyle(operation, styles))
         else -> throw RcLayoutException("Opcode ${operation.opcode} is not a layout component")
       }
     if (!seenIds.add(node.componentId)) {
@@ -224,15 +250,17 @@ public object RcLayoutTree {
   private fun childComponents(
     container: RcLinkedNode.Container,
     seenIds: MutableSet<Int>,
+    styles: Map<Int, RcTextStyle>,
   ): List<RcLayoutNode> =
     container.children
       .filterIsInstance<RcLinkedNode.Container>()
       .filter { it.operation.isLayoutComponent() }
-      .map { parse(it, seenIds) }
+      .map { parse(it, seenIds, styles) }
 
   private fun optionalContent(
     container: RcLinkedNode.Container,
     seenIds: MutableSet<Int>,
+    styles: Map<Int, RcTextStyle>,
   ): RcLayoutNode.Content? {
     val contents =
       container.children.filterIsInstance<RcLinkedNode.Container>().filter {
@@ -241,17 +269,55 @@ public object RcLayoutTree {
     if (contents.size > 1) {
       throw RcLayoutException("Component has ${contents.size} LayoutComponentContent children")
     }
-    return contents.singleOrNull()?.let { parse(it, seenIds) as RcLayoutNode.Content }
+    return contents.singleOrNull()?.let { parse(it, seenIds, styles) as RcLayoutNode.Content }
   }
 
   private fun requiredContent(
     container: RcLinkedNode.Container,
     seenIds: MutableSet<Int>,
+    styles: Map<Int, RcTextStyle>,
   ): RcLayoutNode.Content =
-    optionalContent(container, seenIds)
+    optionalContent(container, seenIds, styles)
       ?: throw RcLayoutException(
         "${container.operation::class.simpleName} requires LayoutComponentContent"
       )
+
+  private fun resolveTextStyle(
+    operation: RcCoreText,
+    styles: Map<Int, RcTextStyle>,
+  ): List<RcTextStyleProperty> {
+    if (operation.componentId < 0 || operation.animationId < 0) {
+      throw RcLayoutException("CoreText requires component and animation ids")
+    }
+    val merged = linkedMapOf<Int, RcTextStyleProperty>()
+    operation.textStyleId?.let { styleId ->
+      resolveTextStyle(styleId, styles, linkedSetOf()).forEach { merged[it.id] = it }
+    }
+    operation.properties
+      .filterNot { it.id == 1 || it.id == 2 || it.id == 24 }
+      .forEach { merged[it.id] = it }
+    return merged.values.toList()
+  }
+
+  private fun resolveTextStyle(
+    styleId: Int,
+    styles: Map<Int, RcTextStyle>,
+    visiting: MutableSet<Int>,
+  ): List<RcTextStyleProperty> {
+    if (!visiting.add(styleId)) throw RcLayoutException("Cyclic TextStyle parent at id $styleId")
+    val style = styles[styleId] ?: throw RcLayoutException("Missing TextStyle id $styleId")
+    val merged = linkedMapOf<Int, RcTextStyleProperty>()
+    style.parentStyleId
+      ?.takeUnless { it == -1 }
+      ?.let { parentId ->
+        resolveTextStyle(parentId, styles, visiting).forEach { merged[it.id] = it }
+      }
+    style.properties
+      .filterNot { it.id == 1 || it.id == 2 || it.id == 23 || it.id == 24 }
+      .forEach { merged[it.id] = it }
+    visiting.remove(styleId)
+    return merged.values.toList()
+  }
 
   private fun modifiers(container: RcLinkedNode.Container): RcLayoutModifiers {
     val operations =
@@ -308,7 +374,8 @@ public object RcLayoutTree {
       this is RcColumnLayout ||
       this is RcFitBoxLayout ||
       this is RcImageLayout ||
-      this is RcTextLayout
+      this is RcTextLayout ||
+      this is RcCoreText
 
   private fun RcLinkedNode.containsLayoutComponent(): Boolean =
     this is RcLinkedNode.Container &&
