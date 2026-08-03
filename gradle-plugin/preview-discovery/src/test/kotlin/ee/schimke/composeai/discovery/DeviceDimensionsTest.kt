@@ -244,6 +244,19 @@ class DeviceDimensionsTest {
       .isGreaterThan(DeviceDimensions.resolve("id:wearos_large_round").widthDp)
   }
 
+  @Test
+  fun `custom round wear spec keeps its dp size and dpi-derived density`() {
+    // A Wear-shaped device larger than anything in the shipped catalog: 385dp round at
+    // 360dpi → 2.25x (866px). Guards the `:samples:wear` WearDeviceMatrixPreview fixture —
+    // a `spec:` string has to carry size, density AND shape through, not fall back to
+    // DEFAULT_WEAR just because the string contains "round".
+    val spec = DeviceDimensions.resolve("spec:width=385dp,height=385dp,dpi=360,isRound=true")
+    assertThat(spec.widthDp).isEqualTo(385)
+    assertThat(spec.heightDp).isEqualTo(385)
+    assertThat(spec.density).isEqualTo(2.25f)
+    assertThat(spec.isRound).isTrue()
+  }
+
   // -- resolveForRender (AS-parity sizing) --
 
   @Test
