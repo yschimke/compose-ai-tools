@@ -14,6 +14,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatConstant
 import ee.schimke.composeai.rcplayer.protocol.RcFloatExpression
 import ee.schimke.composeai.rcplayer.protocol.RcFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
+import ee.schimke.composeai.rcplayer.protocol.RcHapticFeedback
+import ee.schimke.composeai.rcplayer.protocol.RcHapticType
 import ee.schimke.composeai.rcplayer.protocol.RcHostAction
 import ee.schimke.composeai.rcplayer.protocol.RcHostMetadataAction
 import ee.schimke.composeai.rcplayer.protocol.RcHostNamedAction
@@ -57,6 +59,7 @@ public class RcPlayerState(
   namedValues: Map<String, RcNamedValue> = emptyMap(),
   private val eventSink: (RcPlayerEvent) -> Unit = {},
   private val onInvalidated: () -> Unit = {},
+  private val effectSink: (RcPlayerEffect) -> Unit = {},
 ) {
   private val floats = mutableMapOf<Int, Float>()
   private val colors = mutableMapOf<Int, Int>()
@@ -570,6 +573,7 @@ public class RcPlayerState(
               resolveHostActionValue(operation.value),
             )
           )
+        is RcHapticFeedback -> performHapticFeedback(operation)
         is RcValueIntegerChangeAction -> {
           setInteger(operation.targetValueId, operation.value)
           changed = true
@@ -613,6 +617,14 @@ public class RcPlayerState(
       }
     }
     if (changed && invalidateAfterChanges) onInvalidated()
+  }
+
+  /** Dispatches a player-local effect without exposing it as a host action callback. */
+  public fun performHapticFeedback(operation: RcHapticFeedback) {
+    require(operation.type.wireValue >= 0) {
+      "AndroidX haptic feedback type must be non-negative: ${operation.type.wireValue}"
+    }
+    effectSink(RcPlayerEffect.HapticFeedback(operation.type))
   }
 
   private fun resolveHostActionValue(value: RcHostNamedActionValue): RcHostActionValue =
@@ -764,6 +776,11 @@ public sealed interface RcPlayerEvent {
   public data class HostActionMetadata(val actionId: Int, val metadata: String) : RcPlayerEvent
 
   public data class HostNamedAction(val name: String, val value: RcHostActionValue) : RcPlayerEvent
+}
+
+/** Effects fulfilled by the local CMP host rather than forwarded to the embedding application. */
+public sealed interface RcPlayerEffect {
+  public data class HapticFeedback(val type: RcHapticType) : RcPlayerEffect
 }
 
 public sealed interface RcHostActionValue {

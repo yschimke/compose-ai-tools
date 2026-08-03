@@ -7,6 +7,7 @@ import androidx.compose.remote.core.operations.BitmapData
 import androidx.compose.remote.core.operations.ClickArea
 import androidx.compose.remote.core.operations.DrawContent
 import androidx.compose.remote.core.operations.DrawRect
+import androidx.compose.remote.core.operations.HapticFeedback
 import androidx.compose.remote.core.operations.Header
 import androidx.compose.remote.core.operations.IntegerExpression
 import androidx.compose.remote.core.operations.PaintData
@@ -233,6 +234,7 @@ public fun main(args: Array<String>) {
   HostActionOperation.apply(buffer, 81)
   ContainerEnd.apply(buffer)
   MultiClickModifier.apply(buffer, MultiClickModifier.CLICK_TYPE_SINGLE)
+  HapticFeedback.apply(buffer, 12)
   HostActionOperation.apply(buffer, 82)
   ContainerEnd.apply(buffer)
   MultiClickModifier.apply(buffer, MultiClickModifier.CLICK_TYPE_LONG)

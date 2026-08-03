@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.hapticfeedback.HapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -25,6 +27,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcClickModifier
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
+import ee.schimke.composeai.rcplayer.protocol.RcHapticType
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHostAction
@@ -47,6 +50,46 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class RcAccessibilitySemanticsTest {
+  @Test
+  fun mapsEveryAndroidXHapticFamilyToPortableCmpFeedback() {
+    val performed = mutableListOf<HapticFeedbackType>()
+    val haptics =
+      object : HapticFeedback {
+        override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) {
+          performed += hapticFeedbackType
+        }
+      }
+
+    (0..20).forEach { haptics.performAndroidXHaptic(RcHapticType(it)) }
+    haptics.performAndroidXHaptic(RcHapticType(42))
+
+    assertEquals(
+      listOf(
+        HapticFeedbackType.LongPress,
+        HapticFeedbackType.VirtualKey,
+        HapticFeedbackType.KeyboardTap,
+        HapticFeedbackType.SegmentTick,
+        HapticFeedbackType.ContextClick,
+        HapticFeedbackType.KeyboardTap,
+        HapticFeedbackType.KeyboardTap,
+        HapticFeedbackType.VirtualKey,
+        HapticFeedbackType.TextHandleMove,
+        HapticFeedbackType.GestureThresholdActivate,
+        HapticFeedbackType.GestureEnd,
+        HapticFeedbackType.Confirm,
+        HapticFeedbackType.Reject,
+        HapticFeedbackType.ToggleOn,
+        HapticFeedbackType.ToggleOff,
+        HapticFeedbackType.GestureThresholdActivate,
+        HapticFeedbackType.GestureEnd,
+        HapticFeedbackType.GestureThresholdActivate,
+        HapticFeedbackType.SegmentTick,
+        HapticFeedbackType.SegmentFrequentTick,
+      ),
+      performed,
+    )
+  }
+
   @OptIn(ExperimentalTestApi::class)
   @Test
   fun dispatchesLegacyClickAreaFromRealComposeInput() =

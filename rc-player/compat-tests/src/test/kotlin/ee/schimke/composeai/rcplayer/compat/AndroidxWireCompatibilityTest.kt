@@ -37,6 +37,7 @@ import androidx.compose.remote.core.operations.FloatConstant
 import androidx.compose.remote.core.operations.FloatExpression
 import androidx.compose.remote.core.operations.FloatFunctionCall as AndroidxFloatFunctionCall
 import androidx.compose.remote.core.operations.FloatFunctionDefine as AndroidxFloatFunctionDefine
+import androidx.compose.remote.core.operations.HapticFeedback as AndroidxHapticFeedback
 import androidx.compose.remote.core.operations.Header
 import androidx.compose.remote.core.operations.IdLookup
 import androidx.compose.remote.core.operations.ImageAttribute
@@ -181,6 +182,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
 import ee.schimke.composeai.rcplayer.protocol.RcFlowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
+import ee.schimke.composeai.rcplayer.protocol.RcHapticFeedback
+import ee.schimke.composeai.rcplayer.protocol.RcHapticType
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcHeightInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
@@ -278,6 +281,26 @@ class AndroidxWireCompatibilityTest {
     assertEquals(
       listOf(RcMultiClickType.SINGLE, RcMultiClickType.LONG, RcMultiClickType.DOUBLE),
       document.operations.filterIsInstance<RcMultiClickModifier>().map { it.type },
+    )
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
+  @Test
+  fun androidXHapticFeedbackRoundTripsEveryRawIntExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    listOf(0, 1, 20, 42, -1).forEach { AndroidxHapticFeedback.apply(buffer, it) }
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+
+    assertEquals(
+      listOf(0, 1, 20, 42, -1),
+      document.operations.filterIsInstance<RcHapticFeedback>().map { it.type.wireValue },
+    )
+    assertEquals(
+      RcHapticType.LongPress,
+      document.operations.filterIsInstance<RcHapticFeedback>()[1].type,
     )
     assertContentEquals(bytes, RcDocumentCodec.encode(document))
   }

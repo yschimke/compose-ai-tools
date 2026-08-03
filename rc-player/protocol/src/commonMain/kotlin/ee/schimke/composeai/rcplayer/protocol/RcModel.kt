@@ -1076,6 +1076,42 @@ public enum class RcMultiClickType(public val wireValue: Int) {
   }
 }
 
+/**
+ * AndroidX haptic request value. Unknown non-negative values remain representable because the Java
+ * player normalizes them modulo its 21-entry platform table at execution time.
+ */
+@JvmInline
+public value class RcHapticType(public val wireValue: Int) {
+  public companion object {
+    public val None: RcHapticType = RcHapticType(0)
+    public val LongPress: RcHapticType = RcHapticType(1)
+    public val VirtualKey: RcHapticType = RcHapticType(2)
+    public val KeyboardTap: RcHapticType = RcHapticType(3)
+    public val ClockTick: RcHapticType = RcHapticType(4)
+    public val ContextClick: RcHapticType = RcHapticType(5)
+    public val KeyboardPress: RcHapticType = RcHapticType(6)
+    public val KeyboardRelease: RcHapticType = RcHapticType(7)
+    public val VirtualKeyRelease: RcHapticType = RcHapticType(8)
+    public val TextHandleMove: RcHapticType = RcHapticType(9)
+    public val GestureStart: RcHapticType = RcHapticType(10)
+    public val GestureEnd: RcHapticType = RcHapticType(11)
+    public val Confirm: RcHapticType = RcHapticType(12)
+    public val Reject: RcHapticType = RcHapticType(13)
+    public val ToggleOn: RcHapticType = RcHapticType(14)
+    public val ToggleOff: RcHapticType = RcHapticType(15)
+    public val GestureThresholdActivate: RcHapticType = RcHapticType(16)
+    public val GestureThresholdDeactivate: RcHapticType = RcHapticType(17)
+    public val DragStart: RcHapticType = RcHapticType(18)
+    public val SegmentTick: RcHapticType = RcHapticType(19)
+    public val SegmentFrequentTick: RcHapticType = RcHapticType(20)
+  }
+}
+
+/** Imperative haptic operation, most commonly nested inside a click/touch action container. */
+public data class RcHapticFeedback(val type: RcHapticType) : RcOperation {
+  override val opcode: Int = RcOpcodes.HAPTIC_FEEDBACK
+}
+
 /** Payload-free action containers dispatched for the corresponding pointer lifecycle event. */
 public data object RcTouchDownModifier : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_TOUCH_DOWN
@@ -1346,6 +1382,7 @@ public object RcOpcodes {
   public const val PATH_CREATE: Int = 159
   public const val PATH_ADD: Int = 160
   public const val PATH_COMBINE: Int = 175
+  public const val HAPTIC_FEEDBACK: Int = 177
   public const val LAYOUT_FIT_BOX: Int = 176
   public const val MATRIX_FROM_PATH: Int = 181
   public const val MATRIX_CONSTANT: Int = 186

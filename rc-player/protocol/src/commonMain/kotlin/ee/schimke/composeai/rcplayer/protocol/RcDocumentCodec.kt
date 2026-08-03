@@ -47,6 +47,7 @@ public object RcDocumentCodec {
         ClickAreaCodec,
         ClickModifierCodec,
         MultiClickModifierCodec,
+        HapticFeedbackCodec,
         TouchDownModifierCodec,
         TouchUpModifierCodec,
         TouchCancelModifierCodec,
@@ -869,6 +870,17 @@ private object MultiClickModifierCodec : RcOperationCodec<RcMultiClickModifier> 
 
   override fun encode(output: RcWireWriter, value: RcMultiClickModifier) =
     output.writeInt(value.type.wireValue)
+}
+
+private object HapticFeedbackCodec : RcOperationCodec<RcHapticFeedback> {
+  override val spec = RcOperationSpec(RcOpcodes.HAPTIC_FEEDBACK, "HapticFeedback")
+
+  override fun decode(input: RcWireReader): RcHapticFeedback =
+    RcHapticFeedback(RcHapticType(input.readInt("hapticFeedbackType")))
+
+  override fun encode(output: RcWireWriter, value: RcHapticFeedback) {
+    output.writeInt(value.type.wireValue)
+  }
 }
 
 private object TouchDownModifierCodec : RcOperationCodec<RcTouchDownModifier> {

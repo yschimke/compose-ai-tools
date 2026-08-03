@@ -14,6 +14,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatConstant
 import ee.schimke.composeai.rcplayer.protocol.RcFloatExpression
 import ee.schimke.composeai.rcplayer.protocol.RcFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
+import ee.schimke.composeai.rcplayer.protocol.RcHapticFeedback
+import ee.schimke.composeai.rcplayer.protocol.RcHapticType
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcHostAction
 import ee.schimke.composeai.rcplayer.protocol.RcHostMetadataAction
@@ -138,6 +140,34 @@ class RcPlayerStateTest {
     assertEquals(4, state.integer(20))
     assertEquals(listOf<RcPlayerEvent>(RcPlayerEvent.HostAction(73)), events)
     assertEquals(1, invalidations)
+  }
+
+  @Test
+  fun hapticActionsUseTheLocalEffectChannelAndPreserveTheRawType() {
+    val effects = mutableListOf<RcPlayerEffect>()
+    val events = mutableListOf<RcPlayerEvent>()
+    val state =
+      RcPlayerState(
+        RcDocument(RcHeader(RcVersion(1, 0, 0)), emptyList()),
+        eventSink = events::add,
+        effectSink = effects::add,
+      )
+
+    state.executeClick(
+      RcClickActionBlock(
+        listOf(
+          RcLinkedNode.Operation(RcHapticFeedback(RcHapticType(42))),
+          RcLinkedNode.Operation(RcHostAction(73)),
+        ),
+        RcClickActionType.SINGLE,
+      )
+    )
+
+    assertEquals(listOf<RcPlayerEffect>(RcPlayerEffect.HapticFeedback(RcHapticType(42))), effects)
+    assertEquals(listOf<RcPlayerEvent>(RcPlayerEvent.HostAction(73)), events)
+    assertFailsWith<IllegalArgumentException> {
+      state.performHapticFeedback(RcHapticFeedback(RcHapticType(-1)))
+    }
   }
 
   @Test

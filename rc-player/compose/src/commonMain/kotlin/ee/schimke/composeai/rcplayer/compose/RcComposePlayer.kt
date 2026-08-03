@@ -161,6 +161,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
+import ee.schimke.composeai.rcplayer.protocol.RcHapticFeedback
+import ee.schimke.composeai.rcplayer.protocol.RcHapticType
 import ee.schimke.composeai.rcplayer.protocol.RcHeightInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcIdLookup
 import ee.schimke.composeai.rcplayer.protocol.RcIdOperation
@@ -210,6 +212,7 @@ import ee.schimke.composeai.rcplayer.runtime.RcLayoutNode
 import ee.schimke.composeai.rcplayer.runtime.RcLayoutTree
 import ee.schimke.composeai.rcplayer.runtime.RcLinkedNode
 import ee.schimke.composeai.rcplayer.runtime.RcNamedValue
+import ee.schimke.composeai.rcplayer.runtime.RcPlayerEffect
 import ee.schimke.composeai.rcplayer.runtime.RcPlayerEvent
 import ee.schimke.composeai.rcplayer.runtime.RcPlayerState
 import ee.schimke.composeai.rcplayer.runtime.RcScrollBlock
@@ -249,6 +252,7 @@ public fun RcComposePlayer(
   onEvent: (RcPlayerEvent) -> Unit = {},
 ) {
   val latestEventSink by rememberUpdatedState(onEvent)
+  val latestHapticFeedback by rememberUpdatedState(LocalHapticFeedback.current)
   var invalidationVersion by remember { mutableIntStateOf(0) }
   val state =
     remember(document, namedValues) {
@@ -257,6 +261,12 @@ public fun RcComposePlayer(
         namedValues,
         eventSink = { latestEventSink(it) },
         onInvalidated = { invalidationVersion += 1 },
+        effectSink = { effect ->
+          when (effect) {
+            is RcPlayerEffect.HapticFeedback ->
+              latestHapticFeedback.performAndroidXHaptic(effect.type)
+          }
+        },
       )
     }
   invalidationVersion // Subscribe composition to local action mutations.
@@ -1406,6 +1416,36 @@ private class RcClickAreasNode(
   }
 }
 
+/** AndroidX player-view's 21-entry haptic table mapped to the portable CMP vocabulary. */
+internal fun HapticFeedback.performAndroidXHaptic(type: RcHapticType) {
+  val composeType =
+    when (type.wireValue % 21) {
+      0 -> null
+      1 -> HapticFeedbackType.LongPress
+      2 -> HapticFeedbackType.VirtualKey
+      3 -> HapticFeedbackType.KeyboardTap
+      4 -> HapticFeedbackType.SegmentTick
+      5 -> HapticFeedbackType.ContextClick
+      6,
+      7 -> HapticFeedbackType.KeyboardTap
+      8 -> HapticFeedbackType.VirtualKey
+      9 -> HapticFeedbackType.TextHandleMove
+      10 -> HapticFeedbackType.GestureThresholdActivate
+      11 -> HapticFeedbackType.GestureEnd
+      12 -> HapticFeedbackType.Confirm
+      13 -> HapticFeedbackType.Reject
+      14 -> HapticFeedbackType.ToggleOn
+      15 -> HapticFeedbackType.ToggleOff
+      16 -> HapticFeedbackType.GestureThresholdActivate
+      17 -> HapticFeedbackType.GestureEnd
+      18 -> HapticFeedbackType.GestureThresholdActivate
+      19 -> HapticFeedbackType.SegmentTick
+      20 -> HapticFeedbackType.SegmentFrequentTick
+      else -> error("Negative AndroidX haptic type ${type.wireValue}")
+    }
+  if (composeType != null) performHapticFeedback(composeType)
+}
+
 @Composable
 private fun Modifier.applyAndroidXMultiClick(
   blocks: List<RcClickActionBlock>,
@@ -2327,6 +2367,7 @@ private fun DrawScope.drawOperations(
       is RcColorExpression -> state.applyColorExpression(operation)
       is RcColorTheme -> state.applyColorTheme(operation, requestedTheme)
       is RcIntegerExpression -> state.applyIntegerExpression(operation)
+      is RcHapticFeedback -> state.performHapticFeedback(operation)
       is RcDrawText -> drawTextOperation(operation, state, paint, textMeasurer)
       is RcDrawTextAnchored -> drawTextAnchored(operation, state, paint, textMeasurer)
       is RcDrawTextOnPath -> drawTextOnPath(operation, state, paint, computedPaths, textMeasurer)

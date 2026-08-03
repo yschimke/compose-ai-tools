@@ -17,6 +17,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
+import ee.schimke.composeai.rcplayer.protocol.RcHapticFeedback
+import ee.schimke.composeai.rcplayer.protocol.RcHapticType
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcHostMetadataAction
 import ee.schimke.composeai.rcplayer.protocol.RcHostNamedAction
@@ -25,6 +27,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
+import ee.schimke.composeai.rcplayer.protocol.RcMultiClickModifier
+import ee.schimke.composeai.rcplayer.protocol.RcMultiClickType
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperationProfiles
@@ -46,6 +50,22 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RcComposeSupportTest {
+  @Test
+  fun hapticFeedbackIsAnActionInBothCmpProfiles() {
+    val document =
+      RcDocument(
+        header,
+        listOf(
+          RcMultiClickModifier(RcMultiClickType.SINGLE),
+          RcHapticFeedback(RcHapticType.Confirm),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        ),
+      )
+
+    assertTrue(document.composeSupportReport(RcOperationProfiles.CMP_WASM_ALPHA16).fullyRenderable)
+    assertTrue(document.composeSupportReport(RcOperationProfiles.CMP_IOS_ALPHA16).fullyRenderable)
+  }
+
   @Test
   fun marqueeIsSharedByWasmAndIosProfiles() {
     val document =

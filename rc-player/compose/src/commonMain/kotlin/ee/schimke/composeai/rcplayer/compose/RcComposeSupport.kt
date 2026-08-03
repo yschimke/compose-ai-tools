@@ -20,6 +20,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcFlowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
+import ee.schimke.composeai.rcplayer.protocol.RcHapticFeedback
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHostAction
 import ee.schimke.composeai.rcplayer.protocol.RcHostMetadataAction
@@ -797,6 +798,7 @@ private fun invalidActionChild(
         val operation = (child as? RcLinkedNode.Operation)?.operation ?: return child.operation()
         if (
           operation !is RcHostAction &&
+            operation !is RcHapticFeedback &&
             operation !is RcHostMetadataAction &&
             operation !is RcHostNamedAction &&
             operation !is RcValueIntegerChangeAction &&
