@@ -107,6 +107,7 @@ import androidx.compose.remote.core.operations.layout.modifiers.LayoutComputeOpe
 import androidx.compose.remote.core.operations.layout.modifiers.OffsetModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.PaddingModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.RoundedClipRectModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.RunActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ValueFloatChangeActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ValueFloatExpressionChangeActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ValueIntegerChangeActionOperation
@@ -191,6 +192,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcPathExpression as PlayerPathExpr
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRoundedClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
+import ee.schimke.composeai.rcplayer.protocol.RcRunAction
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
@@ -224,6 +226,22 @@ import kotlin.test.assertTrue
  * from this test module: AndroidX remote-core/Java player is the protocol authority.
  */
 class AndroidxWireCompatibilityTest {
+  @Test
+  fun androidXRunActionContainerRoundTripsExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    RunActionOperation.apply(buffer)
+    HostActionOperation.apply(buffer, 77)
+    ContainerEnd.apply(buffer)
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+
+    assertIs<RcRunAction>(document.operations[0])
+    assertEquals(77, assertIs<RcHostAction>(document.operations[1]).actionId)
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
   @Test
   fun androidXClickActionsRoundTripExactly() {
     val buffer = WireBuffer()

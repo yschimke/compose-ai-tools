@@ -1628,6 +1628,7 @@ private fun DrawScope.drawOperations(
               filterTheme = false,
               drawContent = drawContent,
             )
+          RcOpcodes.RUN_ACTION -> state.executeRunAction(node.children)
           else -> error("Container opcode ${node.operation.opcode} is not renderable")
         }
       }

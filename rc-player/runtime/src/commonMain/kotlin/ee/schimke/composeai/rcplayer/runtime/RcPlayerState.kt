@@ -479,11 +479,24 @@ public class RcPlayerState(
   public fun namedVariable(name: String): RcNamedVariable? = variableNames[name]
 
   public fun executeClick(block: RcClickActionBlock) {
+    executeActions(block.children, invalidateAfterChanges = true, containerName = "ClickModifier")
+  }
+
+  /** AndroidX runs these during paint; values affect later paint operations in the same frame. */
+  public fun executeRunAction(children: List<RcLinkedNode>) {
+    executeActions(children, invalidateAfterChanges = false, containerName = "RunAction")
+  }
+
+  private fun executeActions(
+    children: List<RcLinkedNode>,
+    invalidateAfterChanges: Boolean,
+    containerName: String,
+  ) {
     var changed = false
-    block.children.forEach { child ->
+    children.forEach { child ->
       val operation =
         (child as? RcLinkedNode.Operation)?.operation
-          ?: error("Nested containers are not supported inside ClickModifier")
+          ?: error("Nested containers are not supported inside $containerName")
       when (operation) {
         is RcHostAction -> eventSink(RcPlayerEvent.HostAction(operation.actionId))
         is RcHostMetadataAction ->
@@ -541,10 +554,10 @@ public class RcPlayerState(
           setFloat(operation.targetValueId, runtime.evaluate(frameTimeSeconds, ::resolve))
           changed = true
         }
-        else -> error("Opcode ${operation.opcode} cannot execute inside ClickModifier")
+        else -> error("Opcode ${operation.opcode} cannot execute inside $containerName")
       }
     }
-    if (changed) onInvalidated()
+    if (changed && invalidateAfterChanges) onInvalidated()
   }
 
   private fun resolveHostActionValue(value: RcHostNamedActionValue): RcHostActionValue =

@@ -628,12 +628,20 @@ public fun RcDocument.composeSupportReport(
               "nested opcode ${operation.opcode} cannot execute during layout",
             )
         }
-        invalidClickChild(linked.operations)?.let { operation ->
+        invalidActionChild(linked.operations, RcOpcodes.MODIFIER_CLICK)?.let { operation ->
           issues +=
             RcComposeSupportIssue(
               -1,
               "ClickModifierOperation",
               "nested opcode ${operation.opcode} is not a click action",
+            )
+        }
+        invalidActionChild(linked.operations, RcOpcodes.RUN_ACTION)?.let { operation ->
+          issues +=
+            RcComposeSupportIssue(
+              -1,
+              "RunActionOperation",
+              "nested opcode ${operation.opcode} is not an action",
             )
         }
         val layoutResult = runCatching { RcLayoutTree.build(linked) }
@@ -666,11 +674,12 @@ public fun RcDocument.composeSupportReport(
   return RcComposeSupportReport(issues)
 }
 
-private fun invalidClickChild(
-  nodes: List<RcLinkedNode>
+private fun invalidActionChild(
+  nodes: List<RcLinkedNode>,
+  containerOpcode: Int,
 ): ee.schimke.composeai.rcplayer.protocol.RcOperation? {
   nodes.forEach { node ->
-    if (node is RcLinkedNode.Container && node.operation.opcode == RcOpcodes.MODIFIER_CLICK) {
+    if (node is RcLinkedNode.Container && node.operation.opcode == containerOpcode) {
       node.children.forEach { child ->
         val operation = (child as? RcLinkedNode.Operation)?.operation ?: return child.operation()
         if (
@@ -688,7 +697,7 @@ private fun invalidClickChild(
       }
     }
     if (node is RcLinkedNode.Container)
-      invalidClickChild(node.children)?.let {
+      invalidActionChild(node.children, containerOpcode)?.let {
         return it
       }
   }

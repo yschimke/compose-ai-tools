@@ -6,11 +6,13 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatConstant
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
+import ee.schimke.composeai.rcplayer.protocol.RcHostAction
 import ee.schimke.composeai.rcplayer.protocol.RcIdOperation
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
+import ee.schimke.composeai.rcplayer.protocol.RcRunAction
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -18,6 +20,22 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 
 class RcDocumentLinkerTest {
+  @Test
+  fun linksRunActionAsAnImmutableActionContainer() {
+    val action = RcHostAction(77)
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0)),
+        listOf(RcRunAction, action, RcNoArg(RcOpcodes.CONTAINER_END)),
+      )
+
+    val container =
+      assertIs<RcLinkedNode.Container>(RcDocumentLinker.link(document).operations.single())
+
+    assertEquals(RcRunAction, container.operation)
+    assertEquals(action, assertIs<RcLinkedNode.Operation>(container.children.single()).operation)
+  }
+
   @Test
   fun linksTheFoundationalLayoutTreeAsImmutableContainers() {
     val document =

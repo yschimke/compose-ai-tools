@@ -1106,6 +1106,11 @@ public data class RcValueFloatExpressionChangeAction(
   override val opcode: Int = RcOpcodes.VALUE_FLOAT_EXPRESSION_CHANGE_ACTION
 }
 
+/** Paint-time container whose immutable children are executed as action operations. */
+public data object RcRunAction : RcOperation {
+  override val opcode: Int = RcOpcodes.RUN_ACTION
+}
+
 /** Component visibility is read from the referenced AndroidX integer variable. */
 public data class RcVisibilityModifier(val visibilityId: Int) : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_VISIBILITY
@@ -1276,6 +1281,7 @@ public object RcOpcodes {
   public const val LAYOUT_COLLAPSIBLE_COLUMN: Int = 233
   public const val LAYOUT_IMAGE: Int = 234
   public const val MODIFIER_COLLAPSIBLE_PRIORITY: Int = 235
+  public const val RUN_ACTION: Int = 236
   public const val MODIFIER_ALIGN_BY: Int = 237
   public const val LAYOUT_COMPUTE: Int = 238
   public const val CORE_TEXT: Int = 239

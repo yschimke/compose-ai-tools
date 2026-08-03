@@ -52,6 +52,7 @@ public object RcDocumentCodec {
         ValueStringChangeActionCodec,
         ValueFloatChangeActionCodec,
         ValueFloatExpressionChangeActionCodec,
+        RunActionCodec,
         id(RcOpcodes.DRAW_PATH, "DrawPath"),
         DrawTweenPathCodec,
         id(RcOpcodes.CLIP_PATH, "ClipPath"),
@@ -946,6 +947,14 @@ private object ValueFloatExpressionChangeActionCodec :
     output.writeInt(value.targetValueId)
     output.writeInt(value.expressionId)
   }
+}
+
+private object RunActionCodec : RcOperationCodec<RcRunAction> {
+  override val spec = RcOperationSpec(RcOpcodes.RUN_ACTION, "RunActionOperation")
+
+  override fun decode(input: RcWireReader): RcRunAction = RcRunAction
+
+  override fun encode(output: RcWireWriter, value: RcRunAction): Unit = Unit
 }
 
 private object VisibilityModifierCodec : RcOperationCodec<RcVisibilityModifier> {

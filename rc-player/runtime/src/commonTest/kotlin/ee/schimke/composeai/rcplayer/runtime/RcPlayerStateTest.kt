@@ -52,6 +52,34 @@ import kotlin.test.assertFailsWith
 
 class RcPlayerStateTest {
   @Test
+  fun runActionExecutesInWireOrderWithoutSchedulingClickInvalidation() {
+    val events = mutableListOf<RcPlayerEvent>()
+    var invalidations = 0
+    val state =
+      RcPlayerState(
+        RcDocument(RcHeader(RcVersion(1, 0, 0)), listOf(RcTextData(10, "paint-action"))),
+        eventSink = events::add,
+        onInvalidated = { invalidations++ },
+      )
+
+    state.executeRunAction(
+      listOf(
+        RcLinkedNode.Operation(RcValueIntegerChangeAction(20, 4)),
+        RcLinkedNode.Operation(RcHostNamedAction(10, RcHostNamedActionValue.IntegerValue(20))),
+      )
+    )
+
+    assertEquals(4, state.integer(20))
+    assertEquals(
+      listOf<RcPlayerEvent>(
+        RcPlayerEvent.HostNamedAction("paint-action", RcHostActionValue.IntegerValue(4))
+      ),
+      events,
+    )
+    assertEquals(0, invalidations)
+  }
+
+  @Test
   fun namedHostActionsSnapshotEveryAndroidXPayloadType() {
     val events = mutableListOf<RcPlayerEvent>()
     val state =
