@@ -105,7 +105,7 @@
 186|MATRIX_CONSTANT|2|implemented
 187|MATRIX_EXPRESSION|2|implemented
 188|MATRIX_VECTOR_MATH|2|implemented
-189|DATA_FONT|3|unsupported
+189|DATA_FONT|3|implemented
 190|DRAW_TO_BITMAP|4|unsupported
 191|WAKE_IN|8|implemented
 192|ID_LOOKUP|5|implemented

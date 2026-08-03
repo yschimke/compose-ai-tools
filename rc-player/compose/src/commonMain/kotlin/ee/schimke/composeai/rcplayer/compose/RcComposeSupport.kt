@@ -21,6 +21,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcFlowLayout
+import ee.schimke.composeai.rcplayer.protocol.RcFontData
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHapticFeedback
@@ -83,16 +84,17 @@ public data class RcComposeSupportReport(val issues: List<RcComposeSupportIssue>
 
 /** Backend-specific coverage, including nested PaintBundle commands hidden behind one RC opcode. */
 public fun RcDocument.composeSupportReport(
-  profile: RcOperationProfile? = null
+  profile: RcOperationProfile? = null,
+  availableFontFamilies: Set<String> = emptySet(),
 ): RcComposeSupportReport {
   val issues = mutableListOf<RcComposeSupportIssue>()
   val bitmapIds = operations.filterIsInstance<RcBitmapData>().mapTo(mutableSetOf()) { it.imageId }
-  val textIds =
-    operations.filterIsInstance<ee.schimke.composeai.rcplayer.protocol.RcTextData>().mapTo(
-      mutableSetOf()
-    ) {
-      it.id
+  val fontIds = operations.filterIsInstance<RcFontData>().mapTo(mutableSetOf()) { it.fontId }
+  val texts =
+    operations.filterIsInstance<ee.schimke.composeai.rcplayer.protocol.RcTextData>().associate {
+      it.id to it.text
     }
+  val textIds = texts.keys
   val colorIds =
     operations.filterIsInstance<ee.schimke.composeai.rcplayer.protocol.RcColorConstant>().mapTo(
       mutableSetOf()
@@ -250,12 +252,14 @@ public fun RcDocument.composeSupportReport(
               "TextLayout",
               "font style ${operation.fontStyle} is not implemented",
             )
-        operation.fontFamilyId != -1 ->
+        fontFamilyIssue(operation.fontFamilyId, texts, fontIds, availableFontFamilies) != null ->
           issues +=
             RcComposeSupportIssue(
               index,
               "TextLayout",
-              "font family ${operation.fontFamilyId} requires DataFont",
+              requireNotNull(
+                fontFamilyIssue(operation.fontFamilyId, texts, fontIds, availableFontFamilies)
+              ),
             )
         operation.textAlign !in RcTextLayout.ALIGN_LEFT..RcTextLayout.ALIGN_END ->
           issues +=
@@ -295,13 +299,13 @@ public fun RcDocument.composeSupportReport(
           issues +=
             RcComposeSupportIssue(index, "CoreText", "text id ${operation.textId} is not declared")
         else ->
-          textStyleIssue(operation.properties, colorIds)?.let { detail ->
-            issues += RcComposeSupportIssue(index, "CoreText", detail)
-          }
+          textStyleIssue(operation.properties, colorIds, texts, fontIds, availableFontFamilies)
+            ?.let { detail -> issues += RcComposeSupportIssue(index, "CoreText", detail) }
       }
     }
     if (operation is RcTextStyle) {
-      textStyleIssue(operation.properties, colorIds)?.let { detail ->
+      textStyleIssue(operation.properties, colorIds, texts, fontIds, availableFontFamilies)?.let {
+        detail ->
         issues += RcComposeSupportIssue(index, "TextStyle", detail)
       }
     }
@@ -949,7 +953,13 @@ private fun RcLinkedNode.operation(): ee.schimke.composeai.rcplayer.protocol.RcO
     is RcLinkedNode.Container -> operation
   }
 
-private fun textStyleIssue(properties: List<RcTextStyleProperty>, colorIds: Set<Int>): String? {
+private fun textStyleIssue(
+  properties: List<RcTextStyleProperty>,
+  colorIds: Set<Int>,
+  texts: Map<Int, String>,
+  fontIds: Set<Int>,
+  availableFontFamilies: Set<String>,
+): String? {
   fun int(id: Int, default: Int): Int =
     properties.filterIsInstance<RcTextStyleProperty.IntValue>().lastOrNull { it.id == id }?.value
       ?: default
@@ -967,7 +977,9 @@ private fun textStyleIssue(properties: List<RcTextStyleProperty>, colorIds: Set<
   val fontStyle = int(6, 0)
   if (fontStyle !in 0..3) return "font style $fontStyle is not implemented"
   val fontFamily = int(8, -1)
-  if (fontFamily != -1) return "font family $fontFamily requires DataFont"
+  fontFamilyIssue(fontFamily, texts, fontIds, availableFontFamilies)?.let {
+    return it
+  }
   val alignment = int(9, RcTextLayout.ALIGN_LEFT)
   if (alignment !in RcTextLayout.ALIGN_LEFT..RcTextLayout.ALIGN_END) {
     return "text alignment $alignment is not implemented"
@@ -978,15 +990,6 @@ private fun textStyleIssue(properties: List<RcTextStyleProperty>, colorIds: Set<
   }
   val maxLines = int(11, Int.MAX_VALUE)
   if (maxLines <= 0) return "maxLines must be positive"
-  if (float(12, 0f) != ee.schimke.composeai.rcplayer.protocol.RcFloatWord.literal(0f)) {
-    return "letter spacing is not implemented"
-  }
-  if (float(13, 0f) != ee.schimke.composeai.rcplayer.protocol.RcFloatWord.literal(0f)) {
-    return "line height addition is not implemented"
-  }
-  if (float(14, 1f) != ee.schimke.composeai.rcplayer.protocol.RcFloatWord.literal(1f)) {
-    return "line height multiplier is not implemented"
-  }
   val breakStrategy = int(15, 0)
   if (breakStrategy != 0) return "line break strategy $breakStrategy is not implemented"
   val hyphenation = int(16, 0)
@@ -1013,6 +1016,26 @@ private fun textStyleIssue(properties: List<RcTextStyleProperty>, colorIds: Set<
   }
   val flags = int(23, 0)
   if (flags != 0) return "flags $flags are not implemented"
+  return null
+}
+
+private fun fontFamilyIssue(
+  fontFamilyId: Int,
+  texts: Map<Int, String>,
+  embeddedFontIds: Set<Int>,
+  availableFontFamilies: Set<String>,
+): String? {
+  if (fontFamilyId == -1) return null
+  val family = texts[fontFamilyId] ?: return "font family name id $fontFamilyId is not declared"
+  val normalized = family.lowercase().removePrefix("google:")
+  val available = availableFontFamilies.mapTo(mutableSetOf()) { it.lowercase() }
+  if (
+    normalized !in setOf("default", "sans-serif", "serif", "monospace") &&
+      normalized !in available &&
+      fontFamilyId !in embeddedFontIds
+  ) {
+    return "custom font family $family ($fontFamilyId) has no DataFont"
+  }
   return null
 }
 

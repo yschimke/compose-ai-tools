@@ -40,6 +40,7 @@ import androidx.compose.remote.core.operations.FloatConstant
 import androidx.compose.remote.core.operations.FloatExpression
 import androidx.compose.remote.core.operations.FloatFunctionCall as AndroidxFloatFunctionCall
 import androidx.compose.remote.core.operations.FloatFunctionDefine as AndroidxFloatFunctionDefine
+import androidx.compose.remote.core.operations.FontData as AndroidxFontData
 import androidx.compose.remote.core.operations.HapticFeedback as AndroidxHapticFeedback
 import androidx.compose.remote.core.operations.Header
 import androidx.compose.remote.core.operations.IdLookup
@@ -194,6 +195,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
 import ee.schimke.composeai.rcplayer.protocol.RcFlowLayout
+import ee.schimke.composeai.rcplayer.protocol.RcFontData
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHapticFeedback
@@ -272,6 +274,23 @@ import kotlin.test.assertTrue
  * from this test module: AndroidX remote-core/Java player is the protocol authority.
  */
 class AndroidxWireCompatibilityTest {
+  @Test
+  fun androidXEmbeddedFontPayloadRoundTripsExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    val data = byteArrayOf(0, 1, -1, 127)
+    AndroidxFontData.apply(buffer, 42, 7, data)
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+    val font = assertIs<RcFontData>(document.operations.single())
+
+    assertEquals(42, font.fontId)
+    assertEquals(7, font.type)
+    assertContentEquals(data, font.data)
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
   @Test
   fun androidXComponentValueBoundaryStreamsRoundTripExactly() {
     val buffer = WireBuffer()

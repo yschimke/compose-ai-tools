@@ -17,6 +17,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
+import ee.schimke.composeai.rcplayer.protocol.RcFontData
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHapticFeedback
@@ -439,10 +440,7 @@ class RcComposeSupportTest {
         header,
         listOf(
           RcTextStyle(
-            listOf(
-              RcTextStyleProperty.IntValue(1, 100),
-              RcTextStyleProperty.FloatValue(12, RcFloatWord.literal(1f)),
-            )
+            listOf(RcTextStyleProperty.IntValue(1, 100), RcTextStyleProperty.BooleanValue(18, true))
           )
         ),
       )
@@ -450,7 +448,36 @@ class RcComposeSupportTest {
     val issue = document.composeSupportReport().issues.single()
 
     assertEquals("TextStyle", issue.operation)
-    assertEquals("letter spacing is not implemented", issue.detail)
+    assertEquals("underline is not implemented", issue.detail)
+  }
+
+  @Test
+  fun acceptsEmbeddedFontReferencesAndRejectsMissingOnes() {
+    fun document(fonts: List<RcFontData>, family: String? = "BrandFace") =
+      RcDocument(
+        header,
+        fonts +
+          (family?.let { listOf(RcTextData(42, it)) } ?: emptyList()) +
+          RcTextStyle(
+            listOf(RcTextStyleProperty.IntValue(1, 100), RcTextStyleProperty.IntValue(8, 42))
+          ),
+      )
+
+    val missingName = document(emptyList(), family = null).composeSupportReport().issues.single()
+    assertEquals("TextStyle", missingName.operation)
+    assertEquals("font family name id 42 is not declared", missingName.detail)
+    val missing = document(emptyList()).composeSupportReport().issues.single()
+    assertEquals("TextStyle", missing.operation)
+    assertEquals("custom font family BrandFace (42) has no DataFont", missing.detail)
+    assertTrue(
+      document(listOf(RcFontData(42, 0, byteArrayOf(1)))).composeSupportReport().fullyRenderable
+    )
+    assertTrue(document(emptyList(), family = "sans-serif").composeSupportReport().fullyRenderable)
+    assertTrue(
+      document(emptyList(), family = "google:Orbitron")
+        .composeSupportReport(availableFontFamilies = setOf("Orbitron"))
+        .fullyRenderable
+    )
   }
 
   @Test

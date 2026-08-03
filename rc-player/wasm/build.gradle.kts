@@ -34,6 +34,13 @@ tasks.register<Sync>("wasmPlayerDist") {
   }
   from(layout.projectDirectory.dir("src/wasmJsMain/resources")) { include("index.html") }
   from(
+    rootProject.layout.projectDirectory.dir(
+      "samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts"
+    )
+  ) {
+    into("fonts")
+  }
+  from(
     rootProject.layout.projectDirectory.file(
       "samples/cmp-wasm-catalog/src/wasmJsMain/resources/js-joda.esm.js"
     )
