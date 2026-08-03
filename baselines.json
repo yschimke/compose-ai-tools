@@ -208,8 +208,8 @@
     "serve-format-compare.dark.png": {
       "fixture": "serve-format-compare",
       "theme": "dark",
-      "sha256": "f9fce4d4f63efcbc28a24c7e2b1a5e1e6368701499c8e009106b2f15eccdd97d",
-      "size": 53389
+      "sha256": "3f52b8c294144f4aca0f321aab10623e88a9d5f7a542fe116e95a1291eae05b3",
+      "size": 53538
     },
     "serve-format-compare.light.png": {
       "fixture": "serve-format-compare",
@@ -228,6 +228,18 @@
       "theme": "light",
       "sha256": "14be00939c72baa1b798d72da755b40c728f0b3fbe55a9cc5beabc55a700a2d4",
       "size": 182096
+    },
+    "serve-landing-catalog-palette.dark.png": {
+      "fixture": "serve-landing-catalog-palette",
+      "theme": "dark",
+      "sha256": "b46ad647398239bdc88fab3adb150a3108c06b9b0c4a8bd76d2454653f02d476",
+      "size": 45868
+    },
+    "serve-landing-catalog-palette.light.png": {
+      "fixture": "serve-landing-catalog-palette",
+      "theme": "light",
+      "sha256": "e256c473e589dec73b475b3c6ae8af2d486f36d237f8e7a95ca7044de5326591",
+      "size": 44630
     },
     "serve-landing-declared-themes.dark.png": {
       "fixture": "serve-landing-declared-themes",
@@ -376,8 +388,8 @@
     "serve-reference-compare.dark.png": {
       "fixture": "serve-reference-compare",
       "theme": "dark",
-      "sha256": "db548b69d3c51bfd8aefc160571654e1df0339b8cbac6526db06cb9ebc9e6831",
-      "size": 59298
+      "sha256": "8583fb6d7a363452577a3eddeec95db7766fe23c39db88915f3786bb20df31ca",
+      "size": 59629
     },
     "serve-reference-compare.light.png": {
       "fixture": "serve-reference-compare",
@@ -400,8 +412,8 @@
     "serve-viewer-catalog-knobs-scroll-full-page.dark.png": {
       "fixture": "serve-viewer-catalog-knobs-scroll-full-page",
       "theme": "dark",
-      "sha256": "8448ced307f037c930846016d65ef4e579427b3bf8cf7b29bdeb435cf1f46204",
-      "size": 56921
+      "sha256": "e54d12e44f56a3709b19672f2d1b8f56e8add9d987177d2acc310561b6921abc",
+      "size": 57731
     },
     "serve-viewer-catalog-knobs-scroll-full-page.light.png": {
       "fixture": "serve-viewer-catalog-knobs-scroll-full-page",
@@ -412,14 +424,26 @@
     "serve-viewer-catalog-knobs.dark.png": {
       "fixture": "serve-viewer-catalog-knobs",
       "theme": "dark",
-      "sha256": "c2af6cfcabbdedc13a5777a24d679eb01573e846578eb4f2617f6f3f4ecfec52",
-      "size": 51647
+      "sha256": "633d6ac2ff73e67540bbe13261583b04f6e3143e2ac36cb3911b772acaf631d6",
+      "size": 52201
     },
     "serve-viewer-catalog-knobs.light.png": {
       "fixture": "serve-viewer-catalog-knobs",
       "theme": "light",
       "sha256": "a29c33fd8e58e0ff7a6be721c4df28268c41650d24c3fd0a2027d96661b303f6",
       "size": 51490
+    },
+    "serve-viewer-catalog-palette.dark.png": {
+      "fixture": "serve-viewer-catalog-palette",
+      "theme": "dark",
+      "sha256": "488af22f4ac2834ae6bde13727993de510378695f29425a779514e7b575e1a2d",
+      "size": 53650
+    },
+    "serve-viewer-catalog-palette.light.png": {
+      "fixture": "serve-viewer-catalog-palette",
+      "theme": "light",
+      "sha256": "2c4fbd04b165b1acf53f5b0a20477be012dc227382b251086a645d946f23d2a7",
+      "size": 54471
     },
     "serve-viewer-connecting.dark.png": {
       "fixture": "serve-viewer-connecting",

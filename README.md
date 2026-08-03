@@ -144,6 +144,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing/dark](renders/serve-landing.dark.png) |
 | `light` | ![serve-landing/light](renders/serve-landing.light.png) |
 
+## serve-landing-catalog-palette
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-catalog-palette/dark](renders/serve-landing-catalog-palette.dark.png) |
+| `light` | ![serve-landing-catalog-palette/light](renders/serve-landing-catalog-palette.light.png) |
+
 ## serve-landing-declared-themes
 
 | Theme | Capture |
@@ -255,6 +262,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | --- | --- |
 | `dark` | ![serve-viewer-catalog-knobs-scroll-full-page/dark](renders/serve-viewer-catalog-knobs-scroll-full-page.dark.png) |
 | `light` | ![serve-viewer-catalog-knobs-scroll-full-page/light](renders/serve-viewer-catalog-knobs-scroll-full-page.light.png) |
+
+## serve-viewer-catalog-palette
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-catalog-palette/dark](renders/serve-viewer-catalog-palette.dark.png) |
+| `light` | ![serve-viewer-catalog-palette/light](renders/serve-viewer-catalog-palette.light.png) |
 
 ## serve-viewer-connecting
 
