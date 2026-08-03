@@ -955,6 +955,18 @@ class ServeWebFixtureTest {
                   degradation = null,
                   provenance =
                     "yschimke/compose-ai-tools@design-artifacts/compose-m3 · 2026-07-17T09:30:00.000Z",
+                  themeOptimization =
+                    ThemeOptimizationSnapshot(
+                      state = "complete",
+                      total = 168,
+                      cached = 168,
+                      remaining = 0,
+                      failed = 0,
+                      cachedBytes = 8_912_384,
+                      fullyOptimized = true,
+                      startedAtEpochMillis = 1_721_209_800_000,
+                      completedAtEpochMillis = 1_721_209_920_000,
+                    ),
                 ),
                 ServeWeb.StatusCatalog(
                   id = "remote-m3",

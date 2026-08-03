@@ -2326,6 +2326,8 @@ object ServeWeb {
     val loadState: String = "loaded",
     /** Latest catalog load/refresh error. */
     val loadError: String? = null,
+    /** Server-side idle theme-cache fill progress for this catalog generation. */
+    val themeOptimization: ThemeOptimizationSnapshot? = null,
     /**
      * The row's facts are a last-known snapshot of a catalog whose daemon is idle, not a live read
      * (`/status` never resumes one). Rendered as a "last known" qualifier next to the trust badge,
@@ -2424,6 +2426,18 @@ object ServeWeb {
             }
           val degrade = c.degradation?.let { "<div class=\"cp-muted\">${esc(it)}</div>" } ?: ""
           val loadError = c.loadError?.let { "<div class=\"cp-muted\">${esc(it)}</div>" } ?: ""
+          val themeOptimization =
+            c.themeOptimization?.let { optimization ->
+              val detail =
+                if (optimization.fullyOptimized) {
+                  "themes optimized ${optimization.cached}/${optimization.total}"
+                } else {
+                  "theme optimization ${optimization.state} · " +
+                    "${optimization.cached}/${optimization.total} cached" +
+                    if (optimization.failed > 0) " · ${optimization.failed} failed" else ""
+                }
+              "<div class=\"cp-muted\">${esc(detail)}</div>"
+            } ?: ""
           // An idle catalog's facts are last-known, not live — say so next to the badge rather than
           // leaving the cell blank, which would read as untrusted.
           val staleNote = if (c.stale) "<div class=\"cp-muted\">last known</div>" else ""
@@ -2437,7 +2451,7 @@ object ServeWeb {
             "<div class=\"cp-muted\">${esc(c.id)}</div>$prov</td>" +
             "<td>$trustCell</td>" +
             "<td>${c.previews}</td>" +
-            "<td>$stateCell$loadError$degrade</td>" +
+            "<td>$stateCell$themeOptimization$loadError$degrade</td>" +
             "</tr>"
         }
 

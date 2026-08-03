@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli
 import ee.schimke.composeai.cli.serve.BundleVerifier
 import ee.schimke.composeai.cli.serve.CatalogLoadTracker
 import ee.schimke.composeai.cli.serve.CatalogRefreshResult
+import ee.schimke.composeai.cli.serve.CatalogThemeCache
 import ee.schimke.composeai.cli.serve.DaemonStartupLog
 import ee.schimke.composeai.cli.serve.GitWorktrees
 import ee.schimke.composeai.cli.serve.GradleRevisionBuilder
@@ -940,6 +941,8 @@ class ServeCommand(args: List<String>) : Command(args) {
               perPreviewStreamCount = state.perPreviewStreamCount,
               perPreviewRenderStats = state.perPreviewRenderStats,
               perPreviewPoolStats = state.perPreviewPoolStats,
+              catalogThemeCache = state.catalogThemeCache ?: CatalogThemeCache(),
+              serverIdleMillis = state.serverIdleMillis,
             )
             // Warm the daemon off the request path so the first browse already gets the per-variant
             // SVG lane instead of the baked fallback — critical for a slow-cold-starting Android
@@ -2141,6 +2144,8 @@ class ServeCommand(args: List<String>) : Command(args) {
           perPreviewStreamCount = perPreviewPool::activeStreamCount,
           perPreviewRenderStats = perPreviewPool::renderPerfStats,
           perPreviewPoolStats = { listOf(perPreviewPool.snapshot()) },
+          catalogThemeCache = CatalogThemeCache(),
+          serverIdleMillis = registry::idleMillis,
         ) ?: return false
     val host = openHost(state) ?: return false
     registry.register(system, state, host = host)
@@ -2223,6 +2228,8 @@ class ServeCommand(args: List<String>) : Command(args) {
         // URLs and falls back to baked PNGs for ids it can't render.
         previewAliases = alias,
         bakedFallback = bakedFallback,
+        catalogThemeCache = CatalogThemeCache(),
+        serverIdleMillis = registry::idleMillis,
         // A source-built Android/Robolectric catalog costs the same heavier live-seat weight as the
         // bundle path — read from the built daemon descriptor, since there's no bundle
         // manifest.backend here — so a from-source deployment keeps the OOM protection the

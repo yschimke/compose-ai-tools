@@ -125,6 +125,59 @@ class ServeStatusTest {
   }
 
   @Test
+  fun `status_json tracks catalog theme optimization completion`() {
+    server = newServer(public = true, token = "unused")
+    val catalogId = "button-filled"
+    val daemonId = "FilledButton"
+    val theme = ServeTheme("Brand Dark", "com.example.BrandDark")
+    val overrides = PreviewOverrides(themeProvider = theme.providerFqn)
+    val cache = CatalogThemeCache()
+    val key = ServeOverrides.cacheKey(catalogId, overrides)
+    cache.configureTargets(listOf(key))
+    cache.put(key, png())
+    val live =
+      object : ServeHost {
+        override val previews = listOf(ServePreview(daemonId, daemonId))
+        override val label = "live"
+        override val declaredThemes = listOf(theme)
+
+        override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+          RenderOutcome.Ok(png())
+
+        override fun subscribeStream(
+          previewId: String,
+          overrides: PreviewOverrides,
+          codec: StreamCodec?,
+          maxFps: Int?,
+          onUnavailable: ((String) -> Unit)?,
+          onFrame: (StreamFrameParams) -> Unit,
+        ): StreamHandle? = null
+
+        override fun activeStreamCount(): Int = 0
+
+        override fun close() = Unit
+      }
+    registry.register(
+      "compose-m3",
+      host =
+        ServeCatalogLiveHost(
+          alias = mapOf(catalogId to daemonId),
+          live = live,
+          baked = bundle("compose-m3", listOf(catalogId), title = "Compose Material 3"),
+          catalogThemeCache = cache,
+        ),
+      pinned = true,
+    )
+
+    val (code, body) = get("/status.json")
+
+    assertEquals(200, code)
+    assertTrue(body.contains("\"themeOptimization\":{\"state\":\"complete\""), body)
+    assertTrue(body.contains("\"fullyOptimized\":true"), body)
+    assertTrue(body.contains("\"cached\":1"), body)
+  }
+
+  @Test
   fun `status_json includes per-preview daemon pool occupancy`() {
     val live =
       object : ServeHost {
