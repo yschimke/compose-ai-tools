@@ -37,7 +37,7 @@ class RcOperationInventoryTest {
 
   @Test
   fun profilesExcludeUnavailableReservedAndParseOnlyOperations() {
-    val unavailable = setOf(4, 57, 132, 162, 195)
+    val unavailable = setOf(4, 57, 132, 162, 174, 195)
     val reserved = (251..255).toSet()
 
     assertTrue(unavailable.none(RcOperationProfiles.ANDROIDX_JAVA_ALPHA16::supports))

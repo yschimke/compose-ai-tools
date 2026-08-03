@@ -3,6 +3,7 @@
 package ee.schimke.composeai.rcplayer.compat
 
 import androidx.compose.remote.core.Operations
+import androidx.compose.remote.core.PaintOperation
 import androidx.compose.remote.core.WireBuffer
 import androidx.compose.remote.core.operations.BitmapData
 import androidx.compose.remote.core.operations.ClipPath
@@ -85,6 +86,7 @@ import androidx.compose.remote.core.operations.layout.modifiers.ClipRectModifier
 import androidx.compose.remote.core.operations.layout.modifiers.ComponentVisibilityOperation
 import androidx.compose.remote.core.operations.layout.modifiers.DimensionConstraintsModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.DimensionModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.DrawContentOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HeightInModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HeightModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.OffsetModifierOperation
@@ -168,6 +170,7 @@ import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -193,6 +196,16 @@ class AndroidxWireCompatibilityTest {
     val manifest = RcOperationInventory.entries.associate { it.constantName to it.opcode }
 
     assertEquals(androidX, manifest)
+  }
+
+  @Test
+  fun androidXModifierDrawContentHasNoExecutablePaintContract() {
+    assertFalse(PaintOperation::class.java.isAssignableFrom(DrawContentOperation::class.java))
+    val apply =
+      DrawContentOperation::class.java.declaredMethods.single {
+        it.name == "apply" && it.parameterCount == 1 && !Modifier.isStatic(it.modifiers)
+      }
+    assertEquals(null, apply.invoke(DrawContentOperation(), null))
   }
 
   @Test

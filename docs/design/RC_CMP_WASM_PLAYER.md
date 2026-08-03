@@ -267,8 +267,8 @@ Current checkpoint:
   available independently.
 - The checked-in manifest exactly matches all 172 public integer entries in AndroidX alpha16
   `Operations.java`; generation fails on duplicate or invalid entries, and a reflection conformance
-  test prevents drift. The current disposition is 94 implemented, 0 parse-only, 68 pending,
-  5 unavailable, and 5 reserved operations.
+  test prevents drift. The current disposition is 94 implemented, 0 parse-only, 67 pending,
+  6 unavailable, and 5 reserved operations.
 - Cluster 1 now includes path data/drawing/clipping, AndroidX theme filtering, root scaling and
   alignment, root accessibility description, typed named-value overrides, primitive constants,
   and validated `CanvasOperations` container linking. Backend support reporting also inspects
@@ -329,8 +329,9 @@ Current checkpoint:
 ### Operations unavailable in the authoritative Java profile
 
 These are not implementation backlog. AndroidX alpha16 exposes their integer constants, but its
-Java operation maps cannot read them. The CMP player therefore publishes no support for them and
-must not invent a wire layout. Capability profiles should exclude all five:
+Java player cannot provide a readable wire operation with executable semantics. The CMP player
+therefore publishes no support for them and must not invent behavior. Capability profiles should
+exclude all six:
 
 | Opcode | Constant | Why unavailable |
 |---:|---|---|
@@ -338,11 +339,12 @@ must not invent a wire layout. Capability profiles should exclude all five:
 | 57 | `DRAW_TEXT_ON_CIRCLE` | A source class exists, but AndroidX deliberately comments its reader out of the default Java operation map. |
 | 132 | `MATRIX_SET` | Constant only; no registered reader or operation wire class. |
 | 162 | `PARTICLE_PROCESS` | Constant only; particle processing is represented by other registered operations. |
+| 174 | `MODIFIER_DRAW_CONTENT` | Its wire class is readable, but it is not a `PaintOperation`; `ComponentModifiers.paint()` never executes it and `LayoutComponent.inflate()` never attaches the parent required by its stated purpose. |
 | 195 | `UPDATE` | Constant only; no registered reader or operation wire class. |
 
 Opcodes 251–255 are separately classified as reserved extension markers. They are inventory rows,
-not player capabilities. If a later AndroidX release registers any unavailable opcode, the Java-map
-audit must supply its wire class and fixtures before its status can change.
+not player capabilities. If a later AndroidX release makes any unavailable opcode executable, the
+Java audit must supply its wire class, semantics, and fixtures before its status can change.
 
 ### 0. Foundation and executable spike
 
