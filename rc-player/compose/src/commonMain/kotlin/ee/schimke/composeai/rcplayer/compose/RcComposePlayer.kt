@@ -3632,6 +3632,10 @@ private fun applyPaint(operation: RcPaintData, state: RcPaintState, values: RcPl
             else -> StrokeCap.Butt
           }
       8 -> state.stroke = command ushr 16 == 1
+      9 -> {
+        val shaderId = operation.words[index++]
+        check(shaderId == 0) { "Shader id $shaderId is not implemented by the CMP backend" }
+      }
       12 ->
         state.alpha =
           values
@@ -3649,6 +3653,24 @@ private fun applyPaint(operation: RcPaintData, state: RcPaintState, values: RcPl
         state.blendMode = blendMode(state.blendModeValue)
       }
       19 -> state.color = values.color(operation.words[index++])
+      21 -> Unit // PaintBundle.CLEAR_COLOR_FILTER; no filter is active in the portable subset.
+      23 -> {
+        val count = command ushr 16
+        repeat(count) {
+          val axis = operation.words[index++]
+          val value =
+            values.resolve(
+              ee.schimke.composeai.rcplayer.protocol.RcFloatWord(operation.words[index++])
+            )
+          when (axis) {
+            FONT_AXIS_WEIGHT -> state.fontWeight = FontWeight(value.roundToInt().coerceIn(1, 1000))
+            FONT_AXIS_ITALIC ->
+              state.fontStyle = if (value >= 0.5f) FontStyle.Italic else FontStyle.Normal
+            FONT_AXIS_SLANT ->
+              state.fontStyle = if (value != 0f) FontStyle.Italic else FontStyle.Normal
+          }
+        }
+      }
       16 -> {
         val style = command ushr 16
         val fontType = operation.words[index++]
@@ -3668,6 +3690,10 @@ private fun applyPaint(operation: RcPaintData, state: RcPaintState, values: RcPl
     }
   }
 }
+
+private const val FONT_AXIS_WEIGHT = 0x77676874 // wght
+private const val FONT_AXIS_ITALIC = 0x6974616c // ital
+private const val FONT_AXIS_SLANT = 0x736c6e74 // slnt
 
 private fun blendMode(value: Int): BlendMode =
   when (value) {
