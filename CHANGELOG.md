@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.19.24](https://github.com/yschimke/compose-ai-tools/compare/v0.19.23...v0.19.24) (2026-08-03)
+
+
+### Features
+
+* **samples:** Wear device previews for xl_round, a custom spec device, and common large watches ([#3227](https://github.com/yschimke/compose-ai-tools/issues/3227)) ([dffd3bf](https://github.com/yschimke/compose-ai-tools/commit/dffd3bf6f381a96dd512d6af36faf18fe4b0e8ba))
+
+
+### Performance Improvements
+
+* **serve:** fill a catalog's baked vectors after it publishes ([#3226](https://github.com/yschimke/compose-ai-tools/issues/3226)) ([3dc387f](https://github.com/yschimke/compose-ai-tools/commit/3dc387f1e0ab0c22bbb6025bc475b665c4113d9b))
+* **serve:** publish a catalog on its metadata, fetch its images on use ([#3224](https://github.com/yschimke/compose-ai-tools/issues/3224)) ([eecaa80](https://github.com/yschimke/compose-ai-tools/commit/eecaa80de335780cae994ddd3a5165199b851e38))
+
 ## [0.19.23](https://github.com/yschimke/compose-ai-tools/compare/v0.19.22...v0.19.23) (2026-08-03)
 
 
