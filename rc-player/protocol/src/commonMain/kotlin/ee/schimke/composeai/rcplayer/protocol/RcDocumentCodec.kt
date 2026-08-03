@@ -83,6 +83,13 @@ public object RcDocumentCodec {
         TextAttributeCodec,
         ImageAttributeCodec,
         ColorAttributeCodec,
+        RootLayoutCodec,
+        LayoutContentCodec,
+        CanvasLayoutCodec,
+        BoxLayoutCodec,
+        RowLayoutCodec,
+        ColumnLayoutCodec,
+        FitBoxLayoutCodec,
         four(RcOpcodes.CLIP_RECT, "ClipRect"),
         four(RcOpcodes.MATRIX_SCALE, "MatrixScale"),
         two(RcOpcodes.MATRIX_TRANSLATE, "MatrixTranslate"),
@@ -151,6 +158,116 @@ public object RcDocumentCodec {
     operation: RcOperation,
   ) {
     (codec as RcOperationCodec<RcOperation>).encode(output, operation)
+  }
+}
+
+private object RootLayoutCodec : RcOperationCodec<RcRootLayout> {
+  override val spec = RcOperationSpec(RcOpcodes.LAYOUT_ROOT, "RootLayoutComponent")
+
+  override fun decode(input: RcWireReader) = RcRootLayout(input.readInt("componentId"))
+
+  override fun encode(output: RcWireWriter, value: RcRootLayout) =
+    output.writeInt(value.componentId)
+}
+
+private object LayoutContentCodec : RcOperationCodec<RcLayoutContent> {
+  override val spec = RcOperationSpec(RcOpcodes.LAYOUT_CONTENT, "LayoutComponentContent")
+
+  override fun decode(input: RcWireReader) = RcLayoutContent(input.readInt("componentId"))
+
+  override fun encode(output: RcWireWriter, value: RcLayoutContent) =
+    output.writeInt(value.componentId)
+}
+
+private object CanvasLayoutCodec : RcOperationCodec<RcCanvasLayout> {
+  override val spec = RcOperationSpec(RcOpcodes.LAYOUT_CANVAS, "CanvasLayout")
+
+  override fun decode(input: RcWireReader) =
+    RcCanvasLayout(input.readInt("componentId"), input.readInt("animationId"))
+
+  override fun encode(output: RcWireWriter, value: RcCanvasLayout) {
+    output.writeInt(value.componentId)
+    output.writeInt(value.animationId)
+  }
+}
+
+private object BoxLayoutCodec : RcOperationCodec<RcBoxLayout> {
+  override val spec = RcOperationSpec(RcOpcodes.LAYOUT_BOX, "BoxLayout")
+
+  override fun decode(input: RcWireReader) =
+    RcBoxLayout(
+      input.readInt("componentId"),
+      input.readInt("animationId"),
+      input.readInt("horizontalPositioning"),
+      input.readInt("verticalPositioning"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcBoxLayout) {
+    output.writeInt(value.componentId)
+    output.writeInt(value.animationId)
+    output.writeInt(value.horizontalPositioning)
+    output.writeInt(value.verticalPositioning)
+  }
+}
+
+private object RowLayoutCodec : RcOperationCodec<RcRowLayout> {
+  override val spec = RcOperationSpec(RcOpcodes.LAYOUT_ROW, "RowLayout")
+
+  override fun decode(input: RcWireReader) =
+    RcRowLayout(
+      input.readInt("componentId"),
+      input.readInt("animationId"),
+      input.readInt("horizontalPositioning"),
+      input.readInt("verticalPositioning"),
+      input.readFloatWord("spacedBy"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcRowLayout) {
+    output.writeInt(value.componentId)
+    output.writeInt(value.animationId)
+    output.writeInt(value.horizontalPositioning)
+    output.writeInt(value.verticalPositioning)
+    output.writeFloatWord(value.spacedBy)
+  }
+}
+
+private object ColumnLayoutCodec : RcOperationCodec<RcColumnLayout> {
+  override val spec = RcOperationSpec(RcOpcodes.LAYOUT_COLUMN, "ColumnLayout")
+
+  override fun decode(input: RcWireReader) =
+    RcColumnLayout(
+      input.readInt("componentId"),
+      input.readInt("animationId"),
+      input.readInt("horizontalPositioning"),
+      input.readInt("verticalPositioning"),
+      input.readFloatWord("spacedBy"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcColumnLayout) {
+    output.writeInt(value.componentId)
+    output.writeInt(value.animationId)
+    output.writeInt(value.horizontalPositioning)
+    output.writeInt(value.verticalPositioning)
+    output.writeFloatWord(value.spacedBy)
+  }
+}
+
+private object FitBoxLayoutCodec : RcOperationCodec<RcFitBoxLayout> {
+  override val spec = RcOperationSpec(RcOpcodes.LAYOUT_FIT_BOX, "FitBoxLayout")
+
+  override fun decode(input: RcWireReader) =
+    RcFitBoxLayout(
+      input.readInt("componentId"),
+      input.readInt("animationId"),
+      input.readInt("horizontalPositioning"),
+      input.readInt("verticalPositioning"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcFitBoxLayout) {
+    output.writeInt(value.componentId)
+    output.writeInt(value.animationId)
+    output.writeInt(value.horizontalPositioning)
+    output.writeInt(value.verticalPositioning)
   }
 }
 

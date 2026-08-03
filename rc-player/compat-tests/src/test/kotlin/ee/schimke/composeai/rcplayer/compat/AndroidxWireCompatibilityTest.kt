@@ -72,6 +72,13 @@ import androidx.compose.remote.core.operations.Utils
 import androidx.compose.remote.core.operations.layout.CanvasContent
 import androidx.compose.remote.core.operations.layout.CanvasOperations
 import androidx.compose.remote.core.operations.layout.ContainerEnd
+import androidx.compose.remote.core.operations.layout.LayoutComponentContent
+import androidx.compose.remote.core.operations.layout.RootLayoutComponent
+import androidx.compose.remote.core.operations.layout.managers.BoxLayout
+import androidx.compose.remote.core.operations.layout.managers.CanvasLayout
+import androidx.compose.remote.core.operations.layout.managers.ColumnLayout
+import androidx.compose.remote.core.operations.layout.managers.FitBoxLayout
+import androidx.compose.remote.core.operations.layout.managers.RowLayout
 import androidx.compose.remote.core.operations.matrix.MatrixConstant
 import androidx.compose.remote.core.operations.matrix.MatrixExpression
 import androidx.compose.remote.core.operations.matrix.MatrixVectorMath
@@ -90,9 +97,12 @@ import androidx.compose.remote.core.types.BooleanConstant
 import androidx.compose.remote.core.types.IntegerConstant
 import androidx.compose.remote.core.types.LongConstant
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
+import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
+import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
+import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
 import ee.schimke.composeai.rcplayer.protocol.RcDraw4
@@ -102,6 +112,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcDrawBitmapScaled
 import ee.schimke.composeai.rcplayer.protocol.RcDrawTextAnchored
 import ee.schimke.composeai.rcplayer.protocol.RcDrawTextOnPath
 import ee.schimke.composeai.rcplayer.protocol.RcDynamicFloatList
+import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcFloatExpression as PlayerFloatExpression
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
@@ -109,10 +120,13 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
+import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperationInventory
 import ee.schimke.composeai.rcplayer.protocol.RcPathData
 import ee.schimke.composeai.rcplayer.protocol.RcPathExpression as PlayerPathExpression
+import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
+import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
@@ -150,6 +164,32 @@ class AndroidxWireCompatibilityTest {
     val manifest = RcOperationInventory.entries.associate { it.constantName to it.opcode }
 
     assertEquals(androidX, manifest)
+  }
+
+  @Test
+  fun androidXFoundationalLayoutOperationsRoundTripExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 320, 180, 1f, 0L)
+    RootLayoutComponent.apply(buffer, 1)
+    LayoutComponentContent.apply(buffer, 2)
+    CanvasLayout.apply(buffer, 3, 30)
+    BoxLayout.apply(buffer, 4, 40, BoxLayout.START, BoxLayout.BOTTOM)
+    RowLayout.apply(buffer, 5, 50, RowLayout.SPACE_BETWEEN, RowLayout.CENTER, Utils.asNan(42))
+    ColumnLayout.apply(buffer, 6, 60, ColumnLayout.END, ColumnLayout.SPACE_AROUND, 12.5f)
+    FitBoxLayout.apply(buffer, 7, 70, FitBoxLayout.CENTER, FitBoxLayout.TOP)
+    repeat(7) { ContainerEnd.apply(buffer) }
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+
+    assertIs<RcRootLayout>(document.operations[0])
+    assertIs<RcLayoutContent>(document.operations[1])
+    assertIs<RcCanvasLayout>(document.operations[2])
+    assertIs<RcBoxLayout>(document.operations[3])
+    assertEquals(42, assertIs<RcRowLayout>(document.operations[4]).spacedBy.referencedId)
+    assertEquals(12.5f, assertIs<RcColumnLayout>(document.operations[5]).spacedBy.value)
+    assertIs<RcFitBoxLayout>(document.operations[6])
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
   }
 
   @Test

@@ -9,6 +9,35 @@ import kotlin.test.assertTrue
 
 class RcDocumentCodecTest {
   @Test
+  fun foundationalLayoutOperationsRoundTripWithoutLosingFloatReferenceBits() {
+    val operations =
+      listOf(
+        RcRootLayout(1),
+        RcLayoutContent(2),
+        RcCanvasLayout(3, 30),
+        RcBoxLayout(4, 40, 1, 5),
+        RcRowLayout(5, 50, 6, 2, RcFloatWord(0x7fc0002a)),
+        RcColumnLayout(6, 60, 3, 8, RcFloatWord.literal(12.5f)),
+        RcFitBoxLayout(7, 70, 2, 4),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+      )
+    val document = RcDocument(RcHeader(RcVersion(1, 0, 0), modern = false), operations)
+
+    val bytes = RcDocumentCodec.encode(document)
+    val decoded = RcDocumentCodec.decode(bytes)
+
+    assertEquals(document, decoded)
+    assertContentEquals(bytes, RcDocumentCodec.encode(decoded))
+    assertEquals(42, assertIs<RcRowLayout>(decoded.operations[4]).spacedBy.referencedId)
+  }
+
+  @Test
   fun textAttributePreservesItsReservedWireField() {
     val document =
       RcDocument(

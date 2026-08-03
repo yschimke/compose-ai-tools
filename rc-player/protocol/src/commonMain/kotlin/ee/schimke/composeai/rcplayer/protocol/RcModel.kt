@@ -646,6 +646,60 @@ public data class RcTransform2(
 
 public data class RcNoArg(override val opcode: Int) : RcOperation
 
+/** Component-tree root. Its body is terminated by [RcOpcodes.CONTAINER_END]. */
+public data class RcRootLayout(val componentId: Int) : RcOperation {
+  override val opcode: Int = RcOpcodes.LAYOUT_ROOT
+}
+
+/** Child-component group consumed by a layout manager. */
+public data class RcLayoutContent(val componentId: Int) : RcOperation {
+  override val opcode: Int = RcOpcodes.LAYOUT_CONTENT
+}
+
+/** Canvas component whose body contains drawing and modifier operations. */
+public data class RcCanvasLayout(val componentId: Int, val animationId: Int) : RcOperation {
+  override val opcode: Int = RcOpcodes.LAYOUT_CANVAS
+}
+
+public data class RcBoxLayout(
+  val componentId: Int,
+  val animationId: Int,
+  val horizontalPositioning: Int,
+  val verticalPositioning: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.LAYOUT_BOX
+}
+
+public data class RcRowLayout(
+  val componentId: Int,
+  val animationId: Int,
+  val horizontalPositioning: Int,
+  val verticalPositioning: Int,
+  val spacedBy: RcFloatWord,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.LAYOUT_ROW
+}
+
+public data class RcColumnLayout(
+  val componentId: Int,
+  val animationId: Int,
+  val horizontalPositioning: Int,
+  val verticalPositioning: Int,
+  val spacedBy: RcFloatWord,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.LAYOUT_COLUMN
+}
+
+/** Selects the first child that fits the available size. */
+public data class RcFitBoxLayout(
+  val componentId: Int,
+  val animationId: Int,
+  val horizontalPositioning: Int,
+  val verticalPositioning: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.LAYOUT_FIT_BOX
+}
+
 public data class RcDocument(val header: RcHeader, val operations: List<RcOperation>)
 
 /** Opcode values copied from AndroidX remote-core 1.0.0-alpha16 `Operations.java`. */
@@ -707,6 +761,7 @@ public object RcOpcodes {
   public const val PATH_CREATE: Int = 159
   public const val PATH_ADD: Int = 160
   public const val PATH_COMBINE: Int = 175
+  public const val LAYOUT_FIT_BOX: Int = 176
   public const val MATRIX_FROM_PATH: Int = 181
   public const val MATRIX_CONSTANT: Int = 186
   public const val MATRIX_EXPRESSION: Int = 187
@@ -721,6 +776,12 @@ public object RcOpcodes {
   public const val TEXT_LENGTH: Int = 156
   public const val TEXT_SUBTEXT: Int = 182
   public const val TEXT_TRANSFORM: Int = 199
+  public const val LAYOUT_ROOT: Int = 200
+  public const val LAYOUT_CONTENT: Int = 201
+  public const val LAYOUT_BOX: Int = 202
+  public const val LAYOUT_ROW: Int = 203
+  public const val LAYOUT_COLUMN: Int = 204
+  public const val LAYOUT_CANVAS: Int = 205
   public const val CANVAS_OPERATIONS: Int = 173
   public const val LAYOUT_CANVAS_CONTENT: Int = 207
   public const val CONTAINER_END: Int = 214

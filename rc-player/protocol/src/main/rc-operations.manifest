@@ -92,7 +92,7 @@
 173|CANVAS_OPERATIONS|1|implemented
 174|MODIFIER_DRAW_CONTENT|6|unsupported
 175|PATH_COMBINE|2|implemented
-176|LAYOUT_FIT_BOX|6|unsupported
+176|LAYOUT_FIT_BOX|6|parse_only
 177|HAPTIC_FEEDBACK|7|unsupported
 178|CONDITIONAL_OPERATIONS|8|unsupported
 179|DEBUG_MESSAGE|8|unsupported
@@ -116,12 +116,12 @@
 197|DYNAMIC_FLOAT_LIST|5|implemented
 198|UPDATE_DYNAMIC_FLOAT_LIST|5|implemented
 199|TEXT_TRANSFORM|3|implemented
-200|LAYOUT_ROOT|6|unsupported
-201|LAYOUT_CONTENT|6|unsupported
-202|LAYOUT_BOX|6|unsupported
-203|LAYOUT_ROW|6|unsupported
-204|LAYOUT_COLUMN|6|unsupported
-205|LAYOUT_CANVAS|6|unsupported
+200|LAYOUT_ROOT|6|parse_only
+201|LAYOUT_CONTENT|6|parse_only
+202|LAYOUT_BOX|6|parse_only
+203|LAYOUT_ROW|6|parse_only
+204|LAYOUT_COLUMN|6|parse_only
+205|LAYOUT_CANVAS|6|parse_only
 206|SOUND_EXPRESSION|5|unsupported
 207|LAYOUT_CANVAS_CONTENT|1|parse_only
 208|LAYOUT_TEXT|3|unsupported
