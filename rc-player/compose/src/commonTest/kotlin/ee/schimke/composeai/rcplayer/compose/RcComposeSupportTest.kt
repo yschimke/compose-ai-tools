@@ -84,7 +84,18 @@ class RcComposeSupportTest {
     assertTrue(valid.composeSupportReport().fullyRenderable)
 
     val issues =
-      RcDocument(header, listOf(semantics.copy(textId = 99, clickable = true)))
+      RcDocument(
+          header,
+          listOf(
+            RcRootLayout(1),
+            RcLayoutContent(2),
+            RcCanvasLayout(3, 30),
+            semantics.copy(textId = 99, clickable = true),
+            RcNoArg(RcOpcodes.CONTAINER_END),
+            RcNoArg(RcOpcodes.CONTAINER_END),
+            RcNoArg(RcOpcodes.CONTAINER_END),
+          ),
+        )
         .composeSupportReport()
         .issues
         .map { it.detail }
@@ -93,7 +104,7 @@ class RcComposeSupportTest {
         "content description text id 10 is not declared",
         "text text id 99 is not declared",
         "state description text id 12 is not declared",
-        "accessibility click dispatch is not implemented",
+        "clickable semantics requires a ClickModifierOperation on the same component",
       ),
       issues,
     )

@@ -1011,6 +1011,29 @@ public data class RcAccessibilitySemantics(
   }
 }
 
+/** Single-click modifier container; its immutable linked children are action operations. */
+public data object RcClickModifier : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_CLICK
+}
+
+public data class RcHostAction(val actionId: Int) : RcOperation {
+  override val opcode: Int = RcOpcodes.HOST_ACTION
+}
+
+public data class RcValueIntegerChangeAction(val targetValueId: Int, val value: Int) : RcOperation {
+  override val opcode: Int = RcOpcodes.VALUE_INTEGER_CHANGE_ACTION
+}
+
+public data class RcValueStringChangeAction(val targetValueId: Int, val valueId: Int) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.VALUE_STRING_CHANGE_ACTION
+}
+
+public data class RcValueFloatChangeAction(val targetValueId: Int, val value: RcFloatWord) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.VALUE_FLOAT_CHANGE_ACTION
+}
+
 /** Component visibility is read from the referenced AndroidX integer variable. */
 public data class RcVisibilityModifier(val visibilityId: Int) : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_VISIBILITY
@@ -1087,6 +1110,7 @@ public object RcOpcodes {
   public const val DRAW_BITMAP_INT: Int = 66
   public const val DRAW_LINE: Int = 47
   public const val DRAW_ROUND_RECT: Int = 51
+  public const val MODIFIER_CLICK: Int = 59
   public const val DRAW_SECTOR: Int = 52
   public const val DRAW_TEXT_ON_PATH: Int = 53
   public const val MODIFIER_ROUNDED_CLIP_RECT: Int = 54
@@ -1161,9 +1185,13 @@ public object RcOpcodes {
   public const val CANVAS_OPERATIONS: Int = 173
   public const val LAYOUT_CANVAS_CONTENT: Int = 207
   public const val LAYOUT_TEXT: Int = 208
+  public const val HOST_ACTION: Int = 209
+  public const val VALUE_INTEGER_CHANGE_ACTION: Int = 212
+  public const val VALUE_STRING_CHANGE_ACTION: Int = 213
   public const val MODIFIER_VISIBILITY: Int = 211
   public const val CONTAINER_END: Int = 214
   public const val MODIFIER_OFFSET: Int = 221
+  public const val VALUE_FLOAT_CHANGE_ACTION: Int = 222
   public const val MODIFIER_ZINDEX: Int = 223
   public const val MODIFIER_GRAPHICS_LAYER: Int = 224
   public const val LAYOUT_COLLAPSIBLE_ROW: Int = 230

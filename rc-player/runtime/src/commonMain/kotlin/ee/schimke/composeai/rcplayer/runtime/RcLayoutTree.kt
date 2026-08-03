@@ -7,6 +7,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
+import ee.schimke.composeai.rcplayer.protocol.RcClickModifier
 import ee.schimke.composeai.rcplayer.protocol.RcClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCollapsiblePriorityModifier
@@ -52,6 +53,7 @@ public data class RcLayoutModifiers(
   val alignBy: RcAlignByModifier? = null,
   val layoutComputes: List<RcLayoutComputeBlock> = emptyList(),
   val accessibility: List<RcAccessibilitySemantics> = emptyList(),
+  val clicks: List<RcClickActionBlock> = emptyList(),
   val visibility: RcVisibilityModifier? = null,
   val graphicsLayer: RcGraphicsLayerModifier? = null,
 )
@@ -60,6 +62,8 @@ public data class RcLayoutComputeBlock(
   val operation: RcLayoutCompute,
   val children: List<RcLinkedNode>,
 )
+
+public data class RcClickActionBlock(val children: List<RcLinkedNode>)
 
 public sealed interface RcLayoutNode {
   public val componentId: Int
@@ -417,6 +421,10 @@ public object RcLayoutTree {
           (child.operation as? RcLayoutCompute)?.let { RcLayoutComputeBlock(it, child.children) }
         },
       accessibility = operations.filterIsInstance<RcAccessibilitySemantics>(),
+      clicks =
+        container.children.filterIsInstance<RcLinkedNode.Container>().mapNotNull { child ->
+          if (child.operation is RcClickModifier) RcClickActionBlock(child.children) else null
+        },
     )
   }
 

@@ -1,6 +1,7 @@
 package ee.schimke.composeai.rcplayer.compose
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,8 +24,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -168,6 +171,7 @@ import ee.schimke.composeai.rcplayer.runtime.RcLayoutNode
 import ee.schimke.composeai.rcplayer.runtime.RcLayoutTree
 import ee.schimke.composeai.rcplayer.runtime.RcLinkedNode
 import ee.schimke.composeai.rcplayer.runtime.RcNamedValue
+import ee.schimke.composeai.rcplayer.runtime.RcPlayerEvent
 import ee.schimke.composeai.rcplayer.runtime.RcPlayerState
 import kotlin.math.PI
 import kotlin.math.atan2
@@ -183,9 +187,10 @@ public fun RcComposePlayer(
   modifier: Modifier = Modifier,
   theme: Int = RcTheme.UNSPECIFIED,
   namedValues: Map<String, RcNamedValue> = emptyMap(),
+  onEvent: (RcPlayerEvent) -> Unit = {},
 ) {
   val document = remember(bytes) { RcDocumentCodec.decode(bytes) }
-  RcComposePlayer(document, modifier, theme, namedValues)
+  RcComposePlayer(document, modifier, theme, namedValues, onEvent)
 }
 
 @Composable
@@ -194,8 +199,20 @@ public fun RcComposePlayer(
   modifier: Modifier = Modifier,
   theme: Int = RcTheme.UNSPECIFIED,
   namedValues: Map<String, RcNamedValue> = emptyMap(),
+  onEvent: (RcPlayerEvent) -> Unit = {},
 ) {
-  val state = remember(document, namedValues) { RcPlayerState(document, namedValues) }
+  val latestEventSink by rememberUpdatedState(onEvent)
+  var invalidationVersion by remember { mutableIntStateOf(0) }
+  val state =
+    remember(document, namedValues) {
+      RcPlayerState(
+        document,
+        namedValues,
+        eventSink = { latestEventSink(it) },
+        onInvalidated = { invalidationVersion += 1 },
+      )
+    }
+  invalidationVersion // Subscribe composition to local action mutations.
   val hasAnimatedFloats =
     remember(document) {
       document.operations.filterIsInstance<RcFloatExpression>().any { it.animation != null }
@@ -1159,8 +1176,16 @@ private fun Modifier.applyComponentModifiers(
         bottom = with(density) { state.resolve(padding.bottom).toDp() },
       )
   }
+  if (modifiers.clicks.isNotEmpty()) {
+    result = result.clickable { modifiers.clicks.forEach(state::executeClick) }
+  }
   modifiers.accessibility.forEach { semantics ->
-    result = result.applyAccessibilitySemantics(semantics, state)
+    result =
+      result.applyAccessibilitySemantics(
+        semantics,
+        state,
+        hasClickAction = modifiers.clicks.isNotEmpty(),
+      )
   }
   return result
 }
@@ -1168,6 +1193,7 @@ private fun Modifier.applyComponentModifiers(
 private fun Modifier.applyAccessibilitySemantics(
   operation: RcAccessibilitySemantics,
   state: RcPlayerState,
+  hasClickAction: Boolean,
 ): Modifier {
   val properties: SemanticsPropertyReceiver.() -> Unit = {
     operation.contentDescriptionId
@@ -1181,7 +1207,7 @@ private fun Modifier.applyAccessibilitySemantics(
       ?.let { id -> state.text(id)?.let { stateDescription = it } }
     androidXSemanticsRole(operation.role)?.let { role = it }
     if (!operation.enabled) disabled()
-    if (operation.clickable) onClick { false }
+    if (operation.clickable && !hasClickAction) onClick { false }
   }
   return when (operation.mode) {
     RcAccessibilitySemantics.MODE_SET -> semantics(properties = properties)

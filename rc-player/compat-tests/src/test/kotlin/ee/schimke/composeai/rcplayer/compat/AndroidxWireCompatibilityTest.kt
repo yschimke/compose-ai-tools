@@ -72,6 +72,7 @@ import androidx.compose.remote.core.operations.UpdateDynamicFloatList
 import androidx.compose.remote.core.operations.Utils
 import androidx.compose.remote.core.operations.layout.CanvasContent
 import androidx.compose.remote.core.operations.layout.CanvasOperations
+import androidx.compose.remote.core.operations.layout.ClickModifierOperation
 import androidx.compose.remote.core.operations.layout.ContainerEnd
 import androidx.compose.remote.core.operations.layout.LayoutComponentContent
 import androidx.compose.remote.core.operations.layout.RootLayoutComponent
@@ -99,10 +100,14 @@ import androidx.compose.remote.core.operations.layout.modifiers.DrawContentOpera
 import androidx.compose.remote.core.operations.layout.modifiers.GraphicsLayerModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HeightInModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HeightModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.HostActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.LayoutComputeOperation
 import androidx.compose.remote.core.operations.layout.modifiers.OffsetModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.PaddingModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.RoundedClipRectModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.ValueFloatChangeActionOperation
+import androidx.compose.remote.core.operations.layout.modifiers.ValueIntegerChangeActionOperation
+import androidx.compose.remote.core.operations.layout.modifiers.ValueStringChangeActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.WidthInModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ZIndexModifierOperation
@@ -132,6 +137,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
+import ee.schimke.composeai.rcplayer.protocol.RcClickModifier
 import ee.schimke.composeai.rcplayer.protocol.RcClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleColumnLayout as PlayerCollapsibleColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCollapsiblePriorityModifier
@@ -163,6 +169,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcHeightInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
+import ee.schimke.composeai.rcplayer.protocol.RcHostAction
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
@@ -182,6 +189,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
+import ee.schimke.composeai.rcplayer.protocol.RcValueFloatChangeAction
+import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerChangeAction
+import ee.schimke.composeai.rcplayer.protocol.RcValueStringChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import ee.schimke.composeai.rcplayer.protocol.RcVisibilityModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
@@ -205,6 +215,28 @@ import kotlin.test.assertTrue
  * from this test module: AndroidX remote-core/Java player is the protocol authority.
  */
 class AndroidxWireCompatibilityTest {
+  @Test
+  fun androidXClickActionsRoundTripExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    ClickModifierOperation.apply(buffer)
+    HostActionOperation.apply(buffer, 77)
+    ValueIntegerChangeActionOperation.apply(buffer, 20, 4)
+    ValueStringChangeActionOperation.apply(buffer, 21, 11)
+    ValueFloatChangeActionOperation.apply(buffer, 22, Utils.asNan(42))
+    ContainerEnd.apply(buffer)
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+
+    assertIs<RcClickModifier>(document.operations[0])
+    assertEquals(77, assertIs<RcHostAction>(document.operations[1]).actionId)
+    assertEquals(4, assertIs<RcValueIntegerChangeAction>(document.operations[2]).value)
+    assertEquals(11, assertIs<RcValueStringChangeAction>(document.operations[3]).valueId)
+    assertEquals(42, assertIs<RcValueFloatChangeAction>(document.operations[4]).value.referencedId)
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
   @Test
   fun androidXAccessibilitySemanticsRoundTripsExactly() {
     val buffer = WireBuffer()

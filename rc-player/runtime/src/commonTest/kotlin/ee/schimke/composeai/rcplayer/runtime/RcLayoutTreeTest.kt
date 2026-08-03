@@ -4,6 +4,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcAccessibilitySemantics
 import ee.schimke.composeai.rcplayer.protocol.RcAlignByModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
+import ee.schimke.composeai.rcplayer.protocol.RcClickModifier
 import ee.schimke.composeai.rcplayer.protocol.RcCollapsiblePriorityModifier
 import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
@@ -13,6 +14,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
 import ee.schimke.composeai.rcplayer.protocol.RcFlowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
+import ee.schimke.composeai.rcplayer.protocol.RcHostAction
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
@@ -32,6 +34,29 @@ import kotlin.test.assertIs
 
 class RcLayoutTreeTest {
   private val header = RcHeader(RcVersion(1, 0, 0), modern = false)
+
+  @Test
+  fun preservesClickActionsAsAnImmutableModifierBlock() {
+    val root =
+      requireNotNull(
+        treeOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcCanvasLayout(3, 30),
+          RcClickModifier,
+          RcHostAction(77),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          ends = 3,
+        )
+      )
+    val content = assertIs<RcLayoutNode.Content>(root.children.single())
+    val canvas = assertIs<RcLayoutNode.Canvas>(content.children.single())
+
+    assertEquals(
+      RcHostAction(77),
+      assertIs<RcLinkedNode.Operation>(canvas.modifiers.clicks.single().children.single()).operation,
+    )
+  }
 
   @Test
   fun extractsAccessibilityModifiersInWireOrder() {

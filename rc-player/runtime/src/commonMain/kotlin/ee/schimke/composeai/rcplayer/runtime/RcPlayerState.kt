@@ -13,6 +13,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatConstant
 import ee.schimke.composeai.rcplayer.protocol.RcFloatExpression
 import ee.schimke.composeai.rcplayer.protocol.RcFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
+import ee.schimke.composeai.rcplayer.protocol.RcHostAction
 import ee.schimke.composeai.rcplayer.protocol.RcIdList
 import ee.schimke.composeai.rcplayer.protocol.RcIdLookup
 import ee.schimke.composeai.rcplayer.protocol.RcIdMap
@@ -39,11 +40,16 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextSubtext
 import ee.schimke.composeai.rcplayer.protocol.RcTextTransform
 import ee.schimke.composeai.rcplayer.protocol.RcTheme
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
+import ee.schimke.composeai.rcplayer.protocol.RcValueFloatChangeAction
+import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerChangeAction
+import ee.schimke.composeai.rcplayer.protocol.RcValueStringChangeAction
 
 /** Typed runtime values for the CMP player; independent from AndroidX `RemoteContext`. */
 public class RcPlayerState(
   public val document: RcDocument,
   namedValues: Map<String, RcNamedValue> = emptyMap(),
+  private val eventSink: (RcPlayerEvent) -> Unit = {},
+  private val onInvalidated: () -> Unit = {},
 ) {
   private val floats = mutableMapOf<Int, Float>()
   private val colors = mutableMapOf<Int, Int>()
@@ -463,6 +469,35 @@ public class RcPlayerState(
 
   public fun namedVariable(name: String): RcNamedVariable? = variableNames[name]
 
+  public fun executeClick(block: RcClickActionBlock) {
+    var changed = false
+    block.children.forEach { child ->
+      val operation =
+        (child as? RcLinkedNode.Operation)?.operation
+          ?: error("Nested containers are not supported inside ClickModifier")
+      when (operation) {
+        is RcHostAction -> eventSink(RcPlayerEvent.HostAction(operation.actionId))
+        is RcValueIntegerChangeAction -> {
+          setInteger(operation.targetValueId, operation.value)
+          changed = true
+        }
+        is RcValueStringChangeAction -> {
+          setText(
+            operation.targetValueId,
+            requireNotNull(text(operation.valueId)) { "Missing action text ${operation.valueId}" },
+          )
+          changed = true
+        }
+        is RcValueFloatChangeAction -> {
+          setFloat(operation.targetValueId, resolve(operation.value))
+          changed = true
+        }
+        else -> error("Opcode ${operation.opcode} cannot execute inside ClickModifier")
+      }
+    }
+    if (changed) onInvalidated()
+  }
+
   public fun integer(id: Int): Int? = integers[id]
 
   public fun boolean(id: Int): Boolean? = booleans[id]
@@ -580,4 +615,8 @@ public sealed interface RcNamedValue {
   public data class Integer(val value: Int) : RcNamedValue
 
   public data class LongValue(val value: Long) : RcNamedValue
+}
+
+public sealed interface RcPlayerEvent {
+  public data class HostAction(val actionId: Int) : RcPlayerEvent
 }

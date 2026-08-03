@@ -20,6 +20,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
 import ee.schimke.composeai.rcplayer.protocol.RcOperationProfiles
 import ee.schimke.composeai.rcplayer.protocol.RcTheme
+import ee.schimke.composeai.rcplayer.runtime.RcPlayerEvent
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.io.encoding.Base64
@@ -67,7 +68,12 @@ public fun main() {
       LoadState.Loading -> Unit
       is LoadState.Failed -> LaunchedEffect(state.message) { reportFailure(state.message) }
       is LoadState.Ready -> {
-        RcComposePlayer(state.document, Modifier.fillMaxSize(), theme = theme)
+        RcComposePlayer(
+          state.document,
+          Modifier.fillMaxSize(),
+          theme = theme,
+          onEvent = ::postPlayerEvent,
+        )
         LaunchedEffect(state.document) {
           // Compose schedules Skiko's raster work after composition. One frame only proves the
           // composition ran; waiting through two further browser frames prevents the host from
@@ -129,4 +135,16 @@ private fun reportFailure(message: String): Unit =
     "(document.documentElement.dataset.rcPlayerState = 'error', " +
       "console.error('[rc-player-wasm] ' + message), " +
       "window.parent.postMessage('cp-rc-wasm-error:' + message, '*'))"
+  )
+
+private fun postPlayerEvent(event: RcPlayerEvent) {
+  when (event) {
+    is RcPlayerEvent.HostAction -> postHostAction(event.actionId)
+  }
+}
+
+private fun postHostAction(actionId: Int): Unit =
+  js(
+    "(document.documentElement.dataset.rcPlayerAction = String(actionId), " +
+      "window.parent.postMessage({ type: 'cp-rc-host-action', actionId: actionId }, '*'))"
   )

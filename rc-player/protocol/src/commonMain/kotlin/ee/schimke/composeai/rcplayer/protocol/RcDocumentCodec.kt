@@ -43,6 +43,11 @@ public object RcDocumentCodec {
         RootContentDescriptionCodec,
         NamedVariableCodec,
         PathDataCodec,
+        ClickModifierCodec,
+        HostActionCodec,
+        ValueIntegerChangeActionCodec,
+        ValueStringChangeActionCodec,
+        ValueFloatChangeActionCodec,
         id(RcOpcodes.DRAW_PATH, "DrawPath"),
         DrawTweenPathCodec,
         id(RcOpcodes.CLIP_PATH, "ClipPath"),
@@ -806,6 +811,61 @@ private object AccessibilitySemanticsCodec : RcOperationCodec<RcAccessibilitySem
     output.writeU8(value.mode)
     output.writeBoolean(value.enabled)
     output.writeBoolean(value.clickable)
+  }
+}
+
+private object ClickModifierCodec : RcOperationCodec<RcClickModifier> {
+  override val spec = RcOperationSpec(RcOpcodes.MODIFIER_CLICK, "ClickModifierOperation")
+
+  override fun decode(input: RcWireReader): RcClickModifier = RcClickModifier
+
+  override fun encode(output: RcWireWriter, value: RcClickModifier): Unit = Unit
+}
+
+private object HostActionCodec : RcOperationCodec<RcHostAction> {
+  override val spec = RcOperationSpec(RcOpcodes.HOST_ACTION, "HostActionOperation")
+
+  override fun decode(input: RcWireReader) = RcHostAction(input.readInt("actionId"))
+
+  override fun encode(output: RcWireWriter, value: RcHostAction) = output.writeInt(value.actionId)
+}
+
+private object ValueIntegerChangeActionCodec : RcOperationCodec<RcValueIntegerChangeAction> {
+  override val spec =
+    RcOperationSpec(RcOpcodes.VALUE_INTEGER_CHANGE_ACTION, "ValueIntegerChangeActionOperation")
+
+  override fun decode(input: RcWireReader) =
+    RcValueIntegerChangeAction(input.readInt("targetValueId"), input.readInt("value"))
+
+  override fun encode(output: RcWireWriter, value: RcValueIntegerChangeAction) {
+    output.writeInt(value.targetValueId)
+    output.writeInt(value.value)
+  }
+}
+
+private object ValueStringChangeActionCodec : RcOperationCodec<RcValueStringChangeAction> {
+  override val spec =
+    RcOperationSpec(RcOpcodes.VALUE_STRING_CHANGE_ACTION, "ValueStringChangeActionOperation")
+
+  override fun decode(input: RcWireReader) =
+    RcValueStringChangeAction(input.readInt("targetValueId"), input.readInt("valueId"))
+
+  override fun encode(output: RcWireWriter, value: RcValueStringChangeAction) {
+    output.writeInt(value.targetValueId)
+    output.writeInt(value.valueId)
+  }
+}
+
+private object ValueFloatChangeActionCodec : RcOperationCodec<RcValueFloatChangeAction> {
+  override val spec =
+    RcOperationSpec(RcOpcodes.VALUE_FLOAT_CHANGE_ACTION, "ValueFloatChangeActionOperation")
+
+  override fun decode(input: RcWireReader) =
+    RcValueFloatChangeAction(input.readInt("targetValueId"), input.readFloatWord("value"))
+
+  override fun encode(output: RcWireWriter, value: RcValueFloatChangeAction) {
+    output.writeInt(value.targetValueId)
+    output.writeFloatWord(value.value)
   }
 }
 

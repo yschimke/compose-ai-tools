@@ -9,6 +9,29 @@ import kotlin.test.assertTrue
 
 class RcDocumentCodecTest {
   @Test
+  fun clickActionsRoundTripWithoutLosingFloatReferenceBits() {
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), modern = false),
+        listOf(
+          RcClickModifier,
+          RcHostAction(77),
+          RcValueIntegerChangeAction(20, 4),
+          RcValueStringChangeAction(21, 11),
+          RcValueFloatChangeAction(22, RcFloatWord(0x7fc0002a)),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        ),
+      )
+
+    val bytes = RcDocumentCodec.encode(document)
+    val decoded = RcDocumentCodec.decode(bytes)
+
+    assertEquals(document, decoded)
+    assertEquals(42, assertIs<RcValueFloatChangeAction>(decoded.operations[4]).value.referencedId)
+    assertContentEquals(bytes, RcDocumentCodec.encode(decoded))
+  }
+
+  @Test
   fun accessibilitySemanticsPreservesSignedRoleAndEveryField() {
     val document =
       RcDocument(

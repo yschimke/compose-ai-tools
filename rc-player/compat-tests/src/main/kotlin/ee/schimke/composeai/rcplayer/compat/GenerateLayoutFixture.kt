@@ -11,6 +11,7 @@ import androidx.compose.remote.core.operations.PaintData
 import androidx.compose.remote.core.operations.TextData
 import androidx.compose.remote.core.operations.layout.CanvasContent
 import androidx.compose.remote.core.operations.layout.CanvasOperations
+import androidx.compose.remote.core.operations.layout.ClickModifierOperation
 import androidx.compose.remote.core.operations.layout.ContainerEnd
 import androidx.compose.remote.core.operations.layout.LayoutComponentContent
 import androidx.compose.remote.core.operations.layout.RootLayoutComponent
@@ -24,6 +25,7 @@ import androidx.compose.remote.core.operations.layout.managers.TextStyle
 import androidx.compose.remote.core.operations.layout.modifiers.CollapsiblePriorityModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.DimensionModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HeightModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.HostActionOperation
 import androidx.compose.remote.core.operations.layout.modifiers.OffsetModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation
 import androidx.compose.remote.core.operations.paint.PaintBundle
@@ -201,8 +203,11 @@ public fun main(args: Array<String>) {
     1005,
     AccessibleComponent.Mode.SET.ordinal,
     true,
-    false,
+    true,
   )
+  ClickModifierOperation.apply(buffer)
+  HostActionOperation.apply(buffer, 77)
+  ContainerEnd.apply(buffer) // click actions
   ContainerEnd.apply(buffer) // text
   ContainerEnd.apply(buffer) // box content
   ContainerEnd.apply(buffer) // box

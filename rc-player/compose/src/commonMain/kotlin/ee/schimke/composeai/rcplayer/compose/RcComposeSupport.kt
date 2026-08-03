@@ -21,6 +21,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcFlowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
+import ee.schimke.composeai.rcplayer.protocol.RcHostAction
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
@@ -36,6 +37,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextMeasure
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
+import ee.schimke.composeai.rcplayer.protocol.RcValueFloatChangeAction
+import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerChangeAction
+import ee.schimke.composeai.rcplayer.protocol.RcValueStringChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.protocol.supportReport
 import ee.schimke.composeai.rcplayer.runtime.RcDocumentLinker
@@ -532,14 +536,14 @@ public fun RcDocument.composeSupportReport(
           issues +=
             RcComposeSupportIssue(index, "CoreSemantics", "$name text id $id is not declared")
         }
-      if (operation.clickable) {
-        issues +=
-          RcComposeSupportIssue(
-            index,
-            "CoreSemantics",
-            "accessibility click dispatch is not implemented",
-          )
-      }
+    }
+    if (operation is RcValueStringChangeAction && operation.valueId !in textIds) {
+      issues +=
+        RcComposeSupportIssue(
+          index,
+          "ValueStringChangeActionOperation",
+          "value text id ${operation.valueId} is not declared",
+        )
     }
   }
   val functions = operations.filterIsInstance<RcFloatFunctionDefine>().associateBy { it.id }
@@ -575,9 +579,28 @@ public fun RcDocument.composeSupportReport(
               "nested opcode ${operation.opcode} cannot execute during layout",
             )
         }
-        runCatching { RcLayoutTree.build(linked) }
-          .exceptionOrNull()
-          ?.let { issues += RcComposeSupportIssue(-1, "LayoutStructure", it.message ?: "invalid") }
+        invalidClickChild(linked.operations)?.let { operation ->
+          issues +=
+            RcComposeSupportIssue(
+              -1,
+              "ClickModifierOperation",
+              "nested opcode ${operation.opcode} is not a click action",
+            )
+        }
+        val layoutResult = runCatching { RcLayoutTree.build(linked) }
+        layoutResult.exceptionOrNull()?.let {
+          issues += RcComposeSupportIssue(-1, "LayoutStructure", it.message ?: "invalid")
+        }
+        layoutResult.getOrNull()?.let { layout ->
+          if (hasUndispatchedAccessibilityClick(layout)) {
+            issues +=
+              RcComposeSupportIssue(
+                -1,
+                "CoreSemantics",
+                "clickable semantics requires a ClickModifierOperation on the same component",
+              )
+          }
+        }
         if (hasInvalidDrawContent(linked.operations)) {
           issues +=
             RcComposeSupportIssue(
@@ -592,6 +615,54 @@ public fun RcDocument.composeSupportReport(
       },
     )
   return RcComposeSupportReport(issues)
+}
+
+private fun invalidClickChild(
+  nodes: List<RcLinkedNode>
+): ee.schimke.composeai.rcplayer.protocol.RcOperation? {
+  nodes.forEach { node ->
+    if (node is RcLinkedNode.Container && node.operation.opcode == RcOpcodes.MODIFIER_CLICK) {
+      node.children.forEach { child ->
+        val operation = (child as? RcLinkedNode.Operation)?.operation ?: return child.operation()
+        if (
+          operation !is RcHostAction &&
+            operation !is RcValueIntegerChangeAction &&
+            operation !is RcValueStringChangeAction &&
+            operation !is RcValueFloatChangeAction
+        ) {
+          return operation
+        }
+      }
+    }
+    if (node is RcLinkedNode.Container)
+      invalidClickChild(node.children)?.let {
+        return it
+      }
+  }
+  return null
+}
+
+private fun hasUndispatchedAccessibilityClick(
+  node: ee.schimke.composeai.rcplayer.runtime.RcLayoutNode
+): Boolean {
+  if (node.modifiers.accessibility.any { it.clickable } && node.modifiers.clicks.isEmpty())
+    return true
+  val children =
+    when (node) {
+      is ee.schimke.composeai.rcplayer.runtime.RcLayoutNode.Root -> node.children
+      is ee.schimke.composeai.rcplayer.runtime.RcLayoutNode.Content -> node.children
+      is ee.schimke.composeai.rcplayer.runtime.RcLayoutNode.Canvas -> listOfNotNull(node.content)
+      is ee.schimke.composeai.rcplayer.runtime.RcLayoutNode.Box -> listOf(node.content)
+      is ee.schimke.composeai.rcplayer.runtime.RcLayoutNode.Row -> listOf(node.content)
+      is ee.schimke.composeai.rcplayer.runtime.RcLayoutNode.Column -> listOf(node.content)
+      is ee.schimke.composeai.rcplayer.runtime.RcLayoutNode.Flow -> listOf(node.content)
+      is ee.schimke.composeai.rcplayer.runtime.RcLayoutNode.CollapsibleRow -> listOf(node.content)
+      is ee.schimke.composeai.rcplayer.runtime.RcLayoutNode.CollapsibleColumn ->
+        listOf(node.content)
+      is ee.schimke.composeai.rcplayer.runtime.RcLayoutNode.FitBox -> listOf(node.content)
+      else -> emptyList()
+    }
+  return children.any(::hasUndispatchedAccessibilityClick)
 }
 
 private fun invalidLayoutComputeChild(

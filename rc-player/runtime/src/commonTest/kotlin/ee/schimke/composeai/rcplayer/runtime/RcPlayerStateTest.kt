@@ -13,6 +13,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatConstant
 import ee.schimke.composeai.rcplayer.protocol.RcFloatExpression
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
+import ee.schimke.composeai.rcplayer.protocol.RcHostAction
 import ee.schimke.composeai.rcplayer.protocol.RcIdList
 import ee.schimke.composeai.rcplayer.protocol.RcIdLookup
 import ee.schimke.composeai.rcplayer.protocol.RcIdMap
@@ -34,6 +35,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextSubtext
 import ee.schimke.composeai.rcplayer.protocol.RcTextTransform
 import ee.schimke.composeai.rcplayer.protocol.RcTheme
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
+import ee.schimke.composeai.rcplayer.protocol.RcValueFloatChangeAction
+import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerChangeAction
+import ee.schimke.composeai.rcplayer.protocol.RcValueStringChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -41,6 +45,36 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class RcPlayerStateTest {
+  @Test
+  fun clickActionsMutateValuesInWireOrderAndEmitTypedHostEvents() {
+    val events = mutableListOf<RcPlayerEvent>()
+    var invalidations = 0
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0)),
+        listOf(RcTextData(11, "selected"), RcFloatConstant(42, RcFloatWord.literal(7.5f))),
+      )
+    val state =
+      RcPlayerState(document, eventSink = events::add, onInvalidated = { invalidations++ })
+
+    state.executeClick(
+      RcClickActionBlock(
+        listOf(
+          RcLinkedNode.Operation(RcValueIntegerChangeAction(20, 4)),
+          RcLinkedNode.Operation(RcValueStringChangeAction(21, 11)),
+          RcLinkedNode.Operation(RcValueFloatChangeAction(22, RcFloatWord(0x7fc0002a))),
+          RcLinkedNode.Operation(RcHostAction(77)),
+        )
+      )
+    )
+
+    assertEquals(4, state.integer(20))
+    assertEquals("selected", state.text(21))
+    assertEquals(7.5f, state.resolve(RcFloatWord(0x7fc00016)))
+    assertEquals(listOf<RcPlayerEvent>(RcPlayerEvent.HostAction(77)), events)
+    assertEquals(1, invalidations)
+  }
+
   @Test
   fun dynamicFloatListsResolveReferencesUpdateAndResetWhenResized() {
     val state =

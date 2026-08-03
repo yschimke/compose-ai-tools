@@ -62,6 +62,7 @@ public object RcDocumentLinker {
   private val containerStartOpcodes =
     setOf(
       RcOpcodes.CANVAS_OPERATIONS,
+      RcOpcodes.MODIFIER_CLICK,
       RcOpcodes.LAYOUT_CANVAS_CONTENT,
       RcOpcodes.FUNCTION_DEFINE,
       RcOpcodes.LAYOUT_ROOT,
