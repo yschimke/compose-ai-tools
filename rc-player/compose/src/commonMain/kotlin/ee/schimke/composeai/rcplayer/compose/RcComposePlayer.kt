@@ -391,6 +391,53 @@ private fun RenderLayoutNode(
         )
       }
     }
+    is RcLayoutNode.Image -> {
+      val image = images[node.operation.bitmapId]
+      val density = androidx.compose.ui.platform.LocalDensity.current
+      var imageModifier =
+        effectiveModifier.applyComponentModifiers(
+          node.modifiers,
+          state,
+          fillMissingDimensions = false,
+          canvasOperations = null,
+          textMeasurer,
+          images,
+          theme,
+        )
+      if (image != null && node.modifiers.width == null) {
+        imageModifier = imageModifier.width(with(density) { image.width.toDp() })
+      }
+      if (image != null && node.modifiers.height == null) {
+        imageModifier = imageModifier.height(with(density) { image.height.toDp() })
+      }
+      Canvas(imageModifier) {
+        if (image == null) return@Canvas
+        val scaled =
+          computeImageScaling(
+            0f,
+            0f,
+            image.width.toFloat(),
+            image.height.toFloat(),
+            0f,
+            0f,
+            size.width,
+            size.height,
+            node.operation.scaleType,
+            1f,
+          ) ?: return@Canvas
+        clipRect(0f, 0f, size.width, size.height) {
+          drawImage(
+            image,
+            srcOffset = IntOffset(0, 0),
+            srcSize = IntSize(image.width, image.height),
+            dstOffset = IntOffset(scaled.left.toInt(), scaled.top.toInt()),
+            dstSize =
+              IntSize((scaled.right - scaled.left).toInt(), (scaled.bottom - scaled.top).toInt()),
+            alpha = state.resolve(node.operation.alpha),
+          )
+        }
+      }
+    }
     is RcLayoutNode.FitBox -> {
       val alignment =
         boxAlignment(node.operation.horizontalPositioning, node.operation.verticalPositioning)

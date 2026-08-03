@@ -705,6 +705,16 @@ public data class RcFitBoxLayout(
   override val opcode: Int = RcOpcodes.LAYOUT_FIT_BOX
 }
 
+public data class RcImageLayout(
+  val componentId: Int,
+  val animationId: Int,
+  val bitmapId: Int,
+  val scaleType: Int,
+  val alpha: RcFloatWord,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.LAYOUT_IMAGE
+}
+
 public data class RcWidthModifier(val type: Int, val value: RcFloatWord) : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_WIDTH
 }
@@ -973,6 +983,7 @@ public object RcOpcodes {
   public const val MODIFIER_GRAPHICS_LAYER: Int = 224
   public const val MODIFIER_WIDTH_IN: Int = 231
   public const val MODIFIER_HEIGHT_IN: Int = 232
+  public const val LAYOUT_IMAGE: Int = 234
   public const val MODIFIER_DIMENSION_CONSTRAINTS: Int = 243
 }
 

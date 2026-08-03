@@ -15,6 +15,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
+import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
@@ -52,6 +53,7 @@ public data class RcComposeSupportReport(val issues: List<RcComposeSupportIssue>
 /** Backend-specific coverage, including nested PaintBundle commands hidden behind one RC opcode. */
 public fun RcDocument.composeSupportReport(): RcComposeSupportReport {
   val issues = mutableListOf<RcComposeSupportIssue>()
+  val bitmapIds = operations.filterIsInstance<RcBitmapData>().mapTo(mutableSetOf()) { it.imageId }
   supportReport().parseOnly.forEach { entry ->
     issues +=
       RcComposeSupportIssue(-1, entry.stableName, "operation is decoded but has no semantics")
@@ -102,6 +104,24 @@ public fun RcDocument.composeSupportReport(): RcComposeSupportReport {
     if (operation is RcImageAttribute && operation.type !in 0..1) {
       issues +=
         RcComposeSupportIssue(index, "ImageAttribute", "type ${operation.type} is not implemented")
+    }
+    if (operation is RcImageLayout) {
+      if (operation.bitmapId !in bitmapIds) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "ImageLayout",
+            "bitmap id ${operation.bitmapId} is not declared",
+          )
+      }
+      if (operation.scaleType !in 0..7) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "ImageLayout",
+            "scale type ${operation.scaleType} is not implemented",
+          )
+      }
     }
     if (operation is RcColorAttribute && operation.type !in 0..6) {
       issues +=

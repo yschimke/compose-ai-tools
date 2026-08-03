@@ -3,6 +3,7 @@ package ee.schimke.composeai.rcplayer.compose
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.unit.Density
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
+import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
@@ -17,6 +18,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
+import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerConstant
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
@@ -528,6 +530,50 @@ class RcLayoutRenderTest {
       assertEquals(0, bitmap.getColor(5, 5))
       assertEquals(red, bitmap.getColor(35, 15))
       assertEquals(0, bitmap.getColor(55, 15))
+    } finally {
+      scene.close()
+    }
+  }
+
+  @Test
+  fun imageLayoutScalesInlineBitmapIntoMeasuredBounds() {
+    val red = 0xffff0000.toInt()
+    val green = 0xff00ff00.toInt()
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 60, legacyHeight = 30, modern = false),
+        listOf(
+          RcBitmapData(
+            imageId = 10,
+            width = 2,
+            height = 1,
+            type = RcBitmapData.TYPE_RAW8888,
+            encoding = RcBitmapData.ENCODING_INLINE,
+            data =
+              byteArrayOf(0xff.toByte(), 0, 0, 0xff.toByte(), 0, 0xff.toByte(), 0, 0xff.toByte()),
+          ),
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcImageLayout(3, 30, bitmapId = 10, scaleType = 6, alpha = RcFloatWord.literal(1f)),
+          width(40f),
+          height(20f),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        ),
+      )
+    val scene =
+      ImageComposeScene(width = 60, height = 30, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val image = scene.render()
+      val bitmap = Bitmap().apply { allocN32Pixels(60, 30) }
+      check(image.readPixels(bitmap))
+
+      assertEquals(red, bitmap.getColor(5, 10))
+      assertEquals(green, bitmap.getColor(35, 10))
+      assertEquals(0, bitmap.getColor(41, 10))
     } finally {
       scene.close()
     }

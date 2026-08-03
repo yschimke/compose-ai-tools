@@ -90,6 +90,7 @@ public object RcDocumentCodec {
         RowLayoutCodec,
         ColumnLayoutCodec,
         FitBoxLayoutCodec,
+        ImageLayoutCodec,
         WidthModifierCodec,
         HeightModifierCodec,
         PaddingModifierCodec,
@@ -291,6 +292,27 @@ private object FitBoxLayoutCodec : RcOperationCodec<RcFitBoxLayout> {
     output.writeInt(value.animationId)
     output.writeInt(value.horizontalPositioning)
     output.writeInt(value.verticalPositioning)
+  }
+}
+
+private object ImageLayoutCodec : RcOperationCodec<RcImageLayout> {
+  override val spec = RcOperationSpec(RcOpcodes.LAYOUT_IMAGE, "ImageLayout")
+
+  override fun decode(input: RcWireReader) =
+    RcImageLayout(
+      input.readInt("componentId"),
+      input.readInt("animationId"),
+      input.readInt("bitmapId"),
+      input.readInt("scaleType"),
+      input.readFloatWord("alpha"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcImageLayout) {
+    output.writeInt(value.componentId)
+    output.writeInt(value.animationId)
+    output.writeInt(value.bitmapId)
+    output.writeInt(value.scaleType)
+    output.writeFloatWord(value.alpha)
   }
 }
 

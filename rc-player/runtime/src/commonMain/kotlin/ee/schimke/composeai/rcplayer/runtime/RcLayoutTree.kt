@@ -12,6 +12,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
+import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
@@ -117,6 +118,12 @@ public sealed interface RcLayoutNode {
     override val componentId: Int = operation.componentId
     override val animationId: Int = operation.animationId
   }
+
+  public data class Image(val operation: RcImageLayout, override val modifiers: RcLayoutModifiers) :
+    RcLayoutNode {
+    override val componentId: Int = operation.componentId
+    override val animationId: Int = operation.animationId
+  }
 }
 
 public class RcLayoutException(message: String) : IllegalArgumentException(message)
@@ -197,6 +204,7 @@ public object RcLayoutTree {
             requiredContent(container, seenIds),
             canvasOperations(container),
           )
+        is RcImageLayout -> RcLayoutNode.Image(operation, modifiers)
         else -> throw RcLayoutException("Opcode ${operation.opcode} is not a layout component")
       }
     if (!seenIds.add(node.componentId)) {
@@ -290,7 +298,8 @@ public object RcLayoutTree {
       this is RcBoxLayout ||
       this is RcRowLayout ||
       this is RcColumnLayout ||
-      this is RcFitBoxLayout
+      this is RcFitBoxLayout ||
+      this is RcImageLayout
 
   private fun RcLinkedNode.containsLayoutComponent(): Boolean =
     this is RcLinkedNode.Container &&

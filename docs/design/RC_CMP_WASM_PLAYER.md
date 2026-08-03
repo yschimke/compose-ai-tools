@@ -267,7 +267,7 @@ Current checkpoint:
   available independently.
 - The checked-in manifest exactly matches all 172 public integer entries in AndroidX alpha16
   `Operations.java`; generation fails on duplicate or invalid entries, and a reflection conformance
-  test prevents drift. The current disposition is 95 implemented, 0 parse-only, 66 pending,
+  test prevents drift. The current disposition is 96 implemented, 0 parse-only, 65 pending,
   6 unavailable, and 5 reserved operations.
 - Cluster 1 now includes path data/drawing/clipping, AndroidX theme filtering, root scaling and
   alignment, root accessibility description, typed named-value overrides, primitive constants,
@@ -329,6 +329,8 @@ Current checkpoint:
   Java scale modes. Inline RGBA8888 and alpha-only raster payloads are also decoded with strict
   size checks. URL/file encodings remain explicitly rejected by document support reporting until
   their host implementation lands.
+  Typed `ImageLayout` components reuse the same decoder and authoritative eight-mode scaling math,
+  provide bitmap intrinsic wrap size, clip to measured content bounds, and apply variable alpha.
 
 ### Operations unavailable in the authoritative Java profile
 
