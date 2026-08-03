@@ -57,6 +57,9 @@ class ServeCatalogStoreTest {
   private fun store(
     trust: TrustStore,
     maxImages: Int = 1000,
+    // The baked vectors are filled off the publish path, so tests run that pass inline by default
+    // and assert against a settled catalog exactly as they did when it was synchronous.
+    figmaExecutor: java.util.concurrent.Executor = java.util.concurrent.Executor { it.run() },
     fetch: (String) -> ByteArray? = fetcher(),
   ): ServeCatalogStore =
     ServeCatalogStore(
@@ -66,6 +69,7 @@ class ServeCatalogStoreTest {
       fetch = fetch,
       registerWasm = { s, d -> registeredWasm[s] = d },
       maxImages = maxImages,
+      figmaExecutor = figmaExecutor,
     )
 
   @Test
@@ -153,6 +157,49 @@ class ServeCatalogStoreTest {
     // …and only once: the second read comes off disk.
     assertTrue(host.render(cold, PreviewOverrides()) is RenderOutcome.Ok)
     assertEquals(imagesAtPublish + 1, requested.count { it.endsWith(".png") })
+  }
+
+  @Test
+  fun `a catalog publishes before its baked vectors are fetched`() {
+    // The vectors are the last bulk fetch on the publish path — one per image plus one per slug.
+    // Publishing must not wait for them: the catalog serves (uncropped, briefly) and the pass fills
+    // them behind it. Captured rather than run so the assertion is about ordering, not timing.
+    val deferred = mutableListOf<Runnable>()
+    val requested = Collections.synchronizedList(mutableListOf<String>())
+    val result =
+      store(
+          TrustStore.EMPTY,
+          figmaExecutor = java.util.concurrent.Executor { deferred += it },
+          fetch = { url ->
+            requested += url
+            when {
+              url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+                eightImageCatalogJson.toByteArray()
+              url.endsWith(".svg") -> "<svg/>".toByteArray()
+              url.endsWith(".png") -> png()
+              else -> null
+            }
+          },
+        )
+        .load("compose-m3")
+
+    assertTrue(result is ServeCatalogStore.Result.Ok)
+    // One probe decided the lane exists; the other ~8 vectors have not been asked for yet.
+    // The probe samples this catalog's single component — its per-variant vector plus the slug
+    // fallback — and stops. The remaining ~8 vectors have not been asked for yet.
+    assertEquals(
+      2,
+      requested.count { it.endsWith(".svg") },
+      "only the probe runs before publishing",
+    )
+    assertEquals(1, deferred.size, "the rest is scheduled, not run")
+
+    deferred.forEach { it.run() }
+
+    assertTrue(
+      requested.count { it.endsWith(".svg") } > 1,
+      "the deferred pass fetches the remaining vectors",
+    )
   }
 
   @Test

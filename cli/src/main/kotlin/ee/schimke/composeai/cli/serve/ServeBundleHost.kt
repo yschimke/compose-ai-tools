@@ -556,10 +556,13 @@ class ServeBundleHost(
     cropCache[previewId]?.let {
       return it.orElse(null)
     }
-    // A declared preview whose pixels haven't arrived yet has no crop *yet* — answer null without
-    // memoising, so the card starts cropping as soon as its PNG lands rather than staying uncropped
-    // until the next catalog refresh. Only a decision made against real pixels is cached.
+    // A crop needs both the PNG and the component's vector, and either can still be in flight: the
+    // PNG fills on first use, and the vectors are filled by a background pass after the catalog
+    // publishes. Answer null without memoising while either is outstanding, so the card starts
+    // cropping as soon as they land rather than staying uncropped until the next catalog refresh.
+    // Only a decision made against files that are actually present is cached.
     if (localBakedPng(previewId) == null && previewId in declaredBakedIds) return null
+    if (figmaDir != null && figmaSvgFileFor(previewId) == null) return null
     val computed = java.util.Optional.ofNullable(computeContentCrop(previewId))
     cropCache[previewId] = computed
     return computed.orElse(null)
