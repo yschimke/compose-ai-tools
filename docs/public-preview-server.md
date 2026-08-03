@@ -129,6 +129,28 @@ mixed theme-plus-knob renders remain in the daemon's bounded override cache rath
 this catalog-lifetime cache. Dynamic theme URLs remain `no-store`, preventing a browser or shared
 proxy from replaying old-catalog pixels after refresh.
 
+That cache is also filled **ahead of the first visitor**: while the server is idle, each catalog
+walks its `previews × declaredThemes` set and renders the missing entries, so a theme selection on a
+warm box is served from cache rather than waiting on a daemon. `/status` reports the pass per catalog
+(`themeOptimization`: `waiting` / `running` / `paused` / `complete`, plus cached/remaining counts).
+
+Being background work, it yields twice over — both learned from `preview.coo.ee`:
+
+- **It never runs while catalogs are loading.** A box brings its catalogs up one at a time, and each
+  load fetches a branch, resolves a live bundle's classpath and starts a render daemon. The idle
+  clock counts *request* traffic, so a freshly-rolled server with no visitors yet looks perfectly
+  idle — and the first catalog's optimizer used to start hundreds of renders while the remaining
+  catalogs were still loading, each loaded catalog adding another optimizer. The later a catalog sat
+  in the list, the longer its daemon start waited, and a slow enough start is recorded as
+  `livebundle-unavailable` — degrading that catalog to baked PNGs for the life of the process. The
+  whole startup pass (and any later refresh or admin registration) now reads as *busy*, so the
+  optimizers stay parked until the catalogs are up.
+- **Only one catalog optimizes at a time, server-wide.** Once loading ends every catalog's optimizer
+  becomes runnable at the same instant; the background lane holds a single render permit, so they
+  take turns instead of occupying every live seat, and a visitor's render is never queued behind
+  more than one background one. The permit is taken per render, so a catalog that parks for traffic
+  hands it straight to the next one.
+
 The grid is serial by default. Selecting an app-declared theme asks the server for a fixed,
 60-second page lease; at most one page server-wide receives a burst, clamped to five workers and
 the server's render-slot count. Other pages remain serial, queue completion/page exit releases the

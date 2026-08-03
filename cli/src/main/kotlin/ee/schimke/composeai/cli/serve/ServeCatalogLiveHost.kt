@@ -89,6 +89,12 @@ class ServeCatalogLiveHost(
     System.getProperty("composeai.serve.warmInBackground")?.toBooleanStrictOrNull() ?: false,
   private val catalogThemeCache: CatalogThemeCache = CatalogThemeCache(),
   private val serverIdleMillis: () -> Long? = { Long.MAX_VALUE },
+  /**
+   * Server-wide admission for the idle theme optimizer below. Shared by every catalog host in a
+   * `serve` run, so their background passes take turns rather than each holding a live seat — see
+   * [ServeBackgroundWork].
+   */
+  private val backgroundWork: ServeBackgroundWork = ServeBackgroundWork(),
   private val themeOptimizationIdleMillis: Long =
     System.getProperty("composeai.serve.themeOptimizationIdleMillis")?.toLongOrNull() ?: 30_000L,
   private val clock: () -> Long = System::currentTimeMillis,
@@ -256,7 +262,11 @@ class ServeCatalogLiveHost(
           while (catalogThemeCache.get(job.cacheKey) == null && attempts < 3) {
             if (!awaitServerIdle()) return@execute
             catalogThemeCache.markRunning(clock())
-            val outcome = render(job.previewId, job.overrides)
+            // One background render server-wide: the permit is taken per job, not per pass, so a
+            // catalog that parks for traffic hands it straight to the next one.
+            val outcome =
+              backgroundWork.withRenderPermit { render(job.previewId, job.overrides) }
+                ?: return@execute
             if (outcome is RenderOutcome.Ok) break
             val daemonId = alias[job.previewId]
             if (
