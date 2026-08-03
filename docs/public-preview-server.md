@@ -804,9 +804,12 @@ There are two ways to stand that daemon up, both fail-closed on the `Trusted` ve
    Central + Google** (e.g. `meshcore-mobile`'s `jitpack.io` deps like `usb-serial-for-android`)
    needs those repos supplied via `--extra-maven-repos <url>[,<url>…]` (env `SERVE_EXTRA_MAVEN_REPOS`;
    the prebuilt image defaults it to the repos its baked catalogs need — `https://jitpack.io`
-   (meshcore-mobile) + the Apollo snapshots repo (Confetti); `none` to disable) — otherwise the
+   (meshcore-mobile), the Apollo snapshots repo (Confetti) and `https://a8c-libs.s3.amazonaws.com/android`
+   (Pocket Casts' `com.automattic:eventhorizon`); `none` to disable) — otherwise the
    resolver skips those coordinates and the daemon can't build its classpath, so the catalog falls
-   back to baked PNGs (`livebundle-unavailable`). Only list repos you trust; the server fetches
+   back to baked PNGs (`livebundle-unavailable`), or — when the missing class is only linked at
+   render time rather than at daemon bootstrap — every render fails with `NoClassDefFoundError`
+   while the daemon itself stays up. Only list repos you trust; the server fetches
    artifacts from them when resolving a trusted catalog's live bundle. Both backends are supported
    ([`ServeBundleDaemon.materialize`](../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt)):
    a **desktop** bundle spawns the Skiko desktop daemon, and an **android** bundle spawns the

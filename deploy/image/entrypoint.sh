@@ -292,10 +292,13 @@ fi
 # meshcore-mobile's jitpack.io deps like usb-serial-for-android) otherwise has those coordinates
 # skipped, so its live daemon can't build its classpath and the catalog falls back to baked PNGs.
 # Defaults to the repos every baked live catalog needs: jitpack.io (meshcore-mobile's
-# usb-serial-for-android etc.) and the Apollo snapshots repo (Confetti's mapped Apollo artifacts).
-# Override with your own comma list to add another catalog's repo, or set `none` to send only
-# Central + Google. Empty inherits this baked default.
-: "${SERVE_EXTRA_MAVEN_REPOS:=https://jitpack.io,https://storage.googleapis.com/apollo-snapshots/m2}"
+# usb-serial-for-android etc.), the Apollo snapshots repo (Confetti's mapped Apollo artifacts), and
+# Automattic's a8c-libs S3 repo (Pocket Casts' `com.automattic:eventhorizon`, which its
+# `Theme.ThemeType` links against — without it the /pocketcasts live daemon dies on
+# `NoClassDefFoundError: com/automattic/eventhorizon/AppThemeType` the moment a themed preview
+# renders). Override with your own comma list to add another catalog's repo, or set `none` to send
+# only Central + Google. Empty inherits this baked default.
+: "${SERVE_EXTRA_MAVEN_REPOS:=https://jitpack.io,https://storage.googleapis.com/apollo-snapshots/m2,https://a8c-libs.s3.amazonaws.com/android}"
 [[ "${SERVE_EXTRA_MAVEN_REPOS}" != "none" && -n "${SERVE_EXTRA_MAVEN_REPOS}" ]] &&
   args+=(--extra-maven-repos "${SERVE_EXTRA_MAVEN_REPOS}")
 
