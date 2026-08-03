@@ -91,6 +91,7 @@ internal object CliFlags {
       "--catalog-refresh-interval",
       "--catalog-source-root",
       "--wasm-dir",
+      "--rc-player-wasm-dir",
       "--revisions-allow",
       "--live-seats",
       // bundle sign / verify / keygen (producer trust)

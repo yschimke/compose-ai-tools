@@ -100,6 +100,11 @@ class ServeHttpServer(
    */
   private val wasmCatalogs: Map<String, File> = emptyMap(),
   /**
+   * Experimental non-JVM Remote Compose player distribution. When present, its static files are
+   * served from `/rc-player-wasm/` and RC previews advertise the `cmp-wasm` browser backend.
+   */
+  private val rcPlayerWasmDir: File? = null,
+  /**
    * Design-system catalog sessions that registered (`--catalogs`), e.g. `["compose-m3","wear-m3"]`.
    * Surfaced as `?session=<system>` nav links on the landing page so the public front door lists
    * the served systems instead of hiding them behind the query param. Empty ⇒ no nav row (the
@@ -379,6 +384,35 @@ class ServeHttpServer(
           // content-hashed, so pair a moderate max-age with a size+mtime ETag: within the window
           // the browser serves from cache (no request); after it, a conditional request gets a
           // cheap 304 instead of re-downloading megabytes.
+          val etag = "\"${file.length().toString(16)}-${file.lastModified().toString(16)}\""
+          call.response.headers.append(HttpHeaders.CacheControl, "public, max-age=3600")
+          call.response.headers.append(HttpHeaders.ETag, etag)
+          if (call.request.headers[HttpHeaders.IfNoneMatch] == etag) {
+            call.respond(HttpStatusCode.NotModified)
+            return@get
+          }
+          val bytes = withContext(Dispatchers.IO) { file.readBytes() }
+          call.respondBytes(bytes, wasmContentType(file.name))
+        }
+
+        // The CMP/Wasm Remote Compose player is a single shared app rather than a per-catalog app.
+        // Keep it opt-in while operation coverage is incomplete; an unset directory simply makes
+        // this route 404 and leaves the selector chip disabled.
+        get("/rc-player-wasm/{path...}") {
+          val dir = rcPlayerWasmDir
+          if (dir == null) {
+            call.respondText("not found", status = HttpStatusCode.NotFound)
+            return@get
+          }
+          val segments = call.parameters.getAll("path").orEmpty().filter { it.isNotEmpty() }
+          val rel = if (segments.isEmpty()) "index.html" else segments.joinToString("/")
+          val base = dir.toPath().toAbsolutePath().normalize()
+          val resolved = base.resolve(rel).normalize()
+          if (!resolved.startsWith(base) || !resolved.toFile().isFile) {
+            call.respondText("not found", status = HttpStatusCode.NotFound)
+            return@get
+          }
+          val file = resolved.toFile()
           val etag = "\"${file.length().toString(16)}-${file.lastModified().toString(16)}\""
           call.response.headers.append(HttpHeaders.CacheControl, "public, max-age=3600")
           call.response.headers.append(HttpHeaders.ETag, etag)
@@ -2461,9 +2495,16 @@ class ServeHttpServer(
           // carries a captured `.rc` document to replay (the browser fetches it from
           // `/render/<id>.rc`).
           hasRemoteComposeDoc = renderHost.hasRemoteComposeDoc(preview.id),
-          // Per-preview: the Remote Compose backend selector's enabled lanes (js / java /
-          // cmp-android / cmp-jvm). Empty for a non-RC preview ⇒ no selector.
-          enabledRcPlayers = renderHost.enabledRcPlayersFor(preview.id).map { it.wire },
+          // Per-preview: the Remote Compose backend selector's enabled lanes. The host advertises
+          // its server/client lanes; the opt-in CMP/Wasm distribution contributes the browser
+          // lane when this preview has an RC document. Empty for a non-RC preview ⇒ no selector.
+          enabledRcPlayers =
+            buildList {
+              addAll(renderHost.enabledRcPlayersFor(preview.id).map { it.wire })
+              if (rcPlayerWasmDir != null && renderHost.hasRemoteComposeDoc(preview.id)) {
+                add(RcPlayerBackend.CMP_WASM.wire)
+              }
+            },
           wasmSrc = wasmSrc,
           wasmSameOrigin = wasmSameOrigin,
           basePath = basePath,

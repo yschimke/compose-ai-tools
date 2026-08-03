@@ -68,6 +68,7 @@ specs the code actually depends on:
 - [design/DESIGN_CATALOGS.md](design/DESIGN_CATALOGS.md) — the code-led sticker-sheet catalog system.
 - [design/UI_BUILDER.md](design/UI_BUILDER.md) — **proposal**: assembling screens from catalog components (scaffold-first slots, a persisted composition document, Figma round-trip). Product analysis + phased plan; no code yet.
 - [design/PLAYGROUND.md](design/PLAYGROUND.md) — **proposal**: a hosted Kotlin/Compose editor over the `serve` preview server (compile-then-permalink handoff, CMP / Compose-Android / Remote-Compose modes, the preview-token capability, isolation requirements). Product analysis + phased plan; Phase 1 in progress.
+- [design/RC_CMP_WASM_PLAYER.md](design/RC_CMP_WASM_PLAYER.md) — **proposal**: an original non-JVM CMP player for Remote Compose documents, with a typed binary codec, Compose/Skiko rendering boundaries, operation clusters, and per-operation conformance gates.
 
 Component-level contracts (the XR semantics tree, `FigmaLayeredSvg`, the font
 preview wrapper, `@XrSubspacePreview`) now live as **KDoc on the owning class**,

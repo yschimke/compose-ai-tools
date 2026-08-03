@@ -22,7 +22,7 @@
  * Usage:
  *   node rc-compare.mjs --bundle <bundle.png> --player <rc-player bundle.js> \
  *     --out <dir> [--system <id>] [--title <t>] [--threshold 0.1] [--theme light] \
- *     [--fonts <dir>]
+ *     [--fonts <dir>] [--cmp-wasm <rc-player-wasm distribution>]
  *
  * `--fonts` defaults to the vendored faces the snapshot renderer itself rasterizes with (see
  * rc-fonts.mjs). Point it elsewhere to compare against a different font set, or at a
@@ -33,6 +33,7 @@
  * `ir/*.rc` + `previews/*.png` entries directly (no external unzip).
  */
 import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
 import zlib from "node:zlib";
 import { PNG } from "pngjs";
@@ -76,6 +77,10 @@ const EMBEDDED = arg("embedded");
 // embedded lane (`--stage-embedded` writes `<id>.rc` + `manifest.json` that both harnesses read), so
 // there is no separate stage flag — only a separate output dir to read PNGs back from.
 const EMBEDDED_JVM = arg("embedded-jvm");
+// The browser Wasm CMP player added by :rc-player-wasm. Unlike the JS player above, this is a
+// complete Compose/Skiko application, so the driver serves its distribution over localhost and
+// screenshots its viewport after the player's readiness marker appears.
+const CMP_WASM = arg("cmp-wasm");
 
 if (!BUNDLE || !PLAYER || !OUT) {
   console.error("rc-compare: --bundle, --player and --out are required");
@@ -147,6 +152,8 @@ const dirs = {
   embeddedDiff: path.join(OUT, "rc-embedded-diff"),
   embeddedJvm: path.join(OUT, "rc-embedded-jvm"),
   embeddedJvmDiff: path.join(OUT, "rc-embedded-jvm-diff"),
+  cmpWasm: path.join(OUT, "rc-cmp-wasm"),
+  cmpWasmDiff: path.join(OUT, "rc-cmp-wasm-diff"),
 };
 for (const d of Object.values(dirs)) fs.mkdirSync(d, { recursive: true });
 
@@ -302,6 +309,101 @@ function embeddedJvmFor(id, baked, width, height, referenceBlank) {
   };
 }
 
+function contentType(file) {
+  if (file.endsWith(".html")) return "text/html; charset=utf-8";
+  if (file.endsWith(".mjs") || file.endsWith(".js")) return "text/javascript; charset=utf-8";
+  if (file.endsWith(".wasm")) return "application/wasm";
+  return "application/octet-stream";
+}
+
+/** Serve the assembled Wasm player plus the currently-selected RC document on loopback only. */
+async function startCmpWasmServer(dir) {
+  const root = path.resolve(dir);
+  if (!fs.existsSync(path.join(root, "index.html"))) {
+    throw new Error(`rc-compare: --cmp-wasm ${dir} has no index.html`);
+  }
+  let document = Buffer.alloc(0);
+  const server = http.createServer((request, response) => {
+    const pathname = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
+    if (pathname === "/document.rc") {
+      response.writeHead(200, {
+        "Content-Type": "application/octet-stream",
+        "Cache-Control": "no-store",
+      });
+      response.end(document);
+      return;
+    }
+    const relative = pathname === "/" ? "index.html" : pathname.slice(1);
+    const file = path.resolve(root, relative);
+    if (file !== root && !file.startsWith(`${root}${path.sep}`)) {
+      response.writeHead(403).end();
+      return;
+    }
+    if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+      response.writeHead(404).end();
+      return;
+    }
+    response.writeHead(200, { "Content-Type": contentType(file), "Cache-Control": "no-store" });
+    fs.createReadStream(file).pipe(response);
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  return {
+    origin: `http://127.0.0.1:${server.address().port}`,
+    setDocument(bytes) {
+      document = bytes;
+    },
+    close: () => new Promise((resolve) => server.close(resolve)),
+  };
+}
+
+async function cmpWasmFor(id, bytes, baked, width, height, referenceBlank) {
+  if (!cmpWasmPage) return {};
+  try {
+    cmpWasmServer.setDocument(bytes);
+    await cmpWasmPage.setViewportSize({ width, height });
+    await cmpWasmPage.goto(
+      `${cmpWasmServer.origin}/index.html?src=${encodeURIComponent("/document.rc")}&theme=${encodeURIComponent(THEME)}`,
+    );
+    await cmpWasmPage.waitForFunction(
+      () => ["ready", "error"].includes(document.documentElement.dataset.rcPlayerState),
+      null,
+      { timeout: 30_000 },
+    );
+    const state = await cmpWasmPage.evaluate(() => ({
+      state: document.documentElement.dataset.rcPlayerState,
+      error: document.documentElement.dataset.rcPlayerError,
+    }));
+    if (state.state !== "ready") throw new Error(state.error || "player reported an error");
+    const png = flattenOnto(PNG.sync.read(await cmpWasmPage.screenshot({ omitBackground: true })), BG);
+    if (png.width !== width || png.height !== height) {
+      throw new Error(`size ${png.width}×${png.height} ≠ baked ${width}×${height}`);
+    }
+    const diff = new PNG({ width, height });
+    const px = pixelmatch(baked.data, png.data, diff.data, width, height, { threshold: THRESHOLD });
+    fs.writeFileSync(path.join(dirs.cmpWasm, `${id}.png`), PNG.sync.write(png));
+    fs.writeFileSync(path.join(dirs.cmpWasmDiff, `${id}.png`), PNG.sync.write(diff));
+    return {
+      cmpWasmRendered: true,
+      cmpWasmMismatchPct: referenceBlank ? null : (100 * px) / (width * height),
+      cmpWasmMismatchPx: referenceBlank ? null : px,
+      cmpWasm: `rc-cmp-wasm/${id}.png`,
+      cmpWasmDiff: `rc-cmp-wasm-diff/${id}.png`,
+    };
+  } catch (error) {
+    return {
+      cmpWasmRendered: false,
+      cmpWasmNote: String(error?.message || error).slice(0, 200),
+      cmpWasmMismatchPct: null,
+      cmpWasmMismatchPx: null,
+      cmpWasm: "",
+      cmpWasmDiff: "",
+    };
+  }
+}
+
 const bundleJs = fs.readFileSync(PLAYER, "utf8");
 
 const browser = await chromium.launch({
@@ -310,6 +412,10 @@ const browser = await chromium.launch({
   args: ["--enable-unsafe-swiftshader", "--no-sandbox"],
 });
 const page = await browser.newContext({ deviceScaleFactor: 1 }).then((c) => c.newPage());
+const cmpWasmServer = CMP_WASM ? await startCmpWasmServer(CMP_WASM) : null;
+const cmpWasmPage = CMP_WASM
+  ? await browser.newContext({ deviceScaleFactor: 1 }).then((context) => context.newPage())
+  : null;
 const pageWarnings = [];
 page.on("console", (m) => {
   if (m.type() === "warning" || m.type() === "error") pageWarnings.push(m.text());
@@ -372,6 +478,14 @@ for (const id of rcIds) {
   // player can render one the other chokes on, and the page scores them separately.
   const embedded = embeddedFor(id, baked, width, height, referenceBlank);
   const embeddedJvm = embeddedJvmFor(id, baked, width, height, referenceBlank);
+  const cmpWasm = await cmpWasmFor(
+    id,
+    entries.get(`ir/${id}.rc`)(),
+    baked,
+    width,
+    height,
+    referenceBlank,
+  );
 
   if (result.error || truncated) {
     rows.push({
@@ -390,6 +504,7 @@ for (const id of rcIds) {
       referenceBlank,
       ...embedded,
       ...embeddedJvm,
+      ...cmpWasm,
     });
     fs.writeFileSync(path.join(dirs.baked, `${id}.png`), PNG.sync.write(baked));
     console.log(`  ${name}: NOT RENDERED (${rows[rows.length - 1].note})`);
@@ -422,6 +537,7 @@ for (const id of rcIds) {
     referenceBlank,
     ...embedded,
     ...embeddedJvm,
+    ...cmpWasm,
   });
   if (referenceBlank) {
     // Worth a line of its own: a blank baked capture is a catalog bug, and it is exactly the case
@@ -441,11 +557,18 @@ for (const id of rcIds) {
       : embeddedJvm.embeddedJvmRendered
         ? `  |  cmp-jvm ${embeddedJvm.embeddedJvmMismatchPct.toFixed(2)}%`
         : `  |  cmp-jvm NOT RENDERED`;
+  const cmpWasmNote =
+    cmpWasm.cmpWasmRendered === undefined
+      ? ""
+      : cmpWasm.cmpWasmRendered
+        ? `  |  cmp-wasm ${cmpWasm.cmpWasmMismatchPct.toFixed(2)}%`
+        : `  |  cmp-wasm NOT RENDERED`;
   console.log(
-    `  ${name}: ${mismatchPct.toFixed(2)}% (${mismatchPx} px, ${width}×${height})${embNote}${embJvmNote}`,
+    `  ${name}: ${mismatchPct.toFixed(2)}% (${mismatchPx} px, ${width}×${height})${embNote}${embJvmNote}${cmpWasmNote}`,
   );
 }
 
+if (cmpWasmServer) await cmpWasmServer.close();
 await browser.close();
 
 const model = { system: SYSTEM, title: TITLE, rows };
@@ -494,6 +617,18 @@ fs.writeFileSync(
             })(),
           }
         : null,
+      cmpWasm: CMP_WASM
+        ? {
+            rendered: rows.filter((r) => r.cmpWasmRendered).length,
+            scored: rows.filter((r) => r.cmpWasmRendered && !r.referenceBlank).length,
+            meanMismatchPct: (() => {
+              const ok = rows.filter((r) => r.cmpWasmRendered && !r.referenceBlank);
+              return ok.length
+                ? ok.reduce((s, r) => s + r.cmpWasmMismatchPct, 0) / ok.length
+                : null;
+            })(),
+          }
+        : null,
       rows: rows.map((r) => ({
         id: r.id,
         rendered: r.rendered,
@@ -511,6 +646,10 @@ fs.writeFileSync(
         embeddedJvmMismatchPct: r.embeddedJvmMismatchPct ?? null,
         embeddedJvmMismatchPx: r.embeddedJvmMismatchPx ?? null,
         embeddedJvmNote: r.embeddedJvmNote ?? null,
+        cmpWasmRendered: r.cmpWasmRendered ?? null,
+        cmpWasmMismatchPct: r.cmpWasmMismatchPct ?? null,
+        cmpWasmMismatchPx: r.cmpWasmMismatchPx ?? null,
+        cmpWasmNote: r.cmpWasmNote ?? null,
       })),
     },
     null,

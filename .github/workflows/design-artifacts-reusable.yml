@@ -132,6 +132,11 @@ on:
         required: false
         type: boolean
         default: false
+      rc-cmp-wasm-lane:
+        description: "Add the CMP/Wasm player lane to rc-compare.html. Builds :rc-player-wasm:wasmPlayerDist, loads each ir/*.rc in the real browser player, screenshots it, and folds its pixel diff into one compact column. No-op for a catalog that ships no ir/*.rc."
+        required: false
+        type: boolean
+        default: false
       stage-font-globs:
         description: 'Whitespace-separated repo-relative globs of font files (.ttf/.otf) to stage into fontconfig BEFORE rendering — for a desktop (Skiko) render that must resolve glyphs (CJK/Arabic/…) from a bundled face rather than a system fallback. Empty ⇒ no staging.'
         required: false
@@ -623,6 +628,15 @@ jobs:
 
           PLAYER="$GITHUB_WORKSPACE/compose-ai-tools/cli/src/main/resources/rc-player/bundle.js"
           EMBEDDED_ARGS=()
+
+          if [ "${{ inputs.rc-cmp-wasm-lane }}" = "true" ]; then
+            if (cd "$GITHUB_WORKSPACE/compose-ai-tools" && \
+                ./gradlew :rc-player-wasm:wasmPlayerDist --no-daemon --quiet); then
+              EMBEDDED_ARGS+=(--cmp-wasm "$GITHUB_WORKSPACE/compose-ai-tools/rc-player/wasm/build/wasmDist")
+            else
+              echo "::warning::cmp-wasm player distribution failed to build; publishing rc-compare without the cmp-wasm column"
+            fi
+          fi
 
           # Optional embedded-player lanes. Both render the SAME staged ir/*.rc: the Robolectric
           # lane (rc-embedded-lane) through AndroidX's Compose-embedded RcPlayer, and the cmp-jvm

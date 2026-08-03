@@ -15,7 +15,7 @@
  * string emitter over the driver's result model, so it stays unit-testable with
  * a hand-built model and never touches a browser or the filesystem.
  *
- * Two players are compared against the same baked PNG, each with its own diff
+ * Player lanes are compared against the same baked PNG, each with its own diff
  * and its own mismatch %:
  *
  * * **JS player** — the vendored TypeScript `RC.RcdPlayer` on a `<canvas>`, the
@@ -25,8 +25,10 @@
  *   document. This is the lane that differs from `remote-player-view`'s
  *   `RemoteComposePlayer` (an Android `View` painting to a framework `Canvas`),
  *   so it shows what a host embedding RC content *inside* a Compose tree gets.
+ * * **cmp-jvm / cmp-wasm** — optional Compose Multiplatform / Skiko player lanes on desktop and
+ *   in browser Wasm. Their diffs fold beneath their renders so each costs only one extra column.
  *
- * A row is kept even when only one of the two players could render it — the
+ * A row is kept even when only one player could render it — the
  * per-player `rendered` flags are independent, and a player that could not
  * decode the document shows its note in place of a percentage.
  *
@@ -82,6 +84,11 @@ export function hasEmbeddedJvmLane(rows = []) {
   return rows.some((r) => r.embeddedJvmRendered !== undefined || r.embeddedJvm);
 }
 
+/** True when any row carries a CMP/Wasm browser-player result. */
+export function hasCmpWasmLane(rows = []) {
+  return rows.some((r) => r.cmpWasmRendered !== undefined || r.cmpWasm);
+}
+
 /**
  * Aggregate stats over the rows — mean mismatch across *scored* rows, counts.
  *
@@ -116,6 +123,13 @@ export function summarizeRcCompare(rows = []) {
       ? null
       : jvmScored.reduce((s, r) => s + (r.embeddedJvmMismatchPct ?? 0), 0) / jvmScored.length;
 
+  const wasmRendered = rows.filter((r) => r.cmpWasmRendered);
+  const wasmScored = wasmRendered.filter((r) => !r.referenceBlank);
+  const wasmMeanPct =
+    wasmScored.length === 0
+      ? null
+      : wasmScored.reduce((s, r) => s + (r.cmpWasmMismatchPct ?? 0), 0) / wasmScored.length;
+
   return {
     total: rows.length,
     rendered: rendered.length,
@@ -131,6 +145,10 @@ export function summarizeRcCompare(rows = []) {
     embeddedJvmScored: jvmScored.length,
     embeddedJvmUnsupported: hasEmbeddedJvmLane(rows) ? rows.length - jvmRendered.length : 0,
     embeddedJvmMeanPct: jvmMeanPct,
+    cmpWasmRendered: wasmRendered.length,
+    cmpWasmScored: wasmScored.length,
+    cmpWasmUnsupported: hasCmpWasmLane(rows) ? rows.length - wasmRendered.length : 0,
+    cmpWasmMeanPct: wasmMeanPct,
   };
 }
 
@@ -147,6 +165,7 @@ function worstPct(r) {
   if (r.rendered) scores.push(r.mismatchPct ?? 0);
   if (r.embeddedRendered) scores.push(r.embeddedMismatchPct ?? 0);
   if (r.embeddedJvmRendered) scores.push(r.embeddedJvmMismatchPct ?? 0);
+  if (r.cmpWasmRendered) scores.push(r.cmpWasmMismatchPct ?? 0);
   return scores.length ? Math.max(...scores) : null;
 }
 
@@ -218,9 +237,10 @@ function scoreBlock(label, rendered, pct, px, note, referenceBlank = false) {
     </div>`;
 }
 
-function rowHtml(r, withEmbedded, withEmbeddedJvm) {
+function rowHtml(r, withEmbedded, withEmbeddedJvm, withCmpWasm) {
   const dims = r.width && r.height ? `<span class="dims">${r.width}×${r.height}</span>` : "";
-  const anyRendered = r.rendered || r.embeddedRendered || r.embeddedJvmRendered;
+  const anyRendered =
+    r.rendered || r.embeddedRendered || r.embeddedJvmRendered || r.cmpWasmRendered;
   const scores =
     scoreBlock("js", r.rendered, r.mismatchPct, r.mismatchPx, r.note, r.referenceBlank) +
     (withEmbedded
@@ -243,6 +263,16 @@ function rowHtml(r, withEmbedded, withEmbeddedJvm) {
           r.referenceBlank,
         )
       : "") +
+    (withCmpWasm
+      ? scoreBlock(
+          "cmp-wasm",
+          r.cmpWasmRendered,
+          r.cmpWasmMismatchPct,
+          r.cmpWasmMismatchPx,
+          r.cmpWasmNote,
+          r.referenceBlank,
+        )
+      : "") +
     (r.referenceBlank
       ? `<div class="blanknote">baked PNG is fully transparent — nothing to compare against</div>`
       : "");
@@ -258,6 +288,10 @@ function rowHtml(r, withEmbedded, withEmbeddedJvm) {
     ? `
   <td>${cellWithDiff("RC · cmp-jvm player", r.embeddedJvm, r.embeddedJvmDiff, "rc")}</td>`
     : "";
+  const cmpWasmCell = withCmpWasm
+    ? `
+  <td>${cellWithDiff("RC · cmp-wasm player", r.cmpWasm, r.cmpWasmDiff, "rc")}</td>`
+    : "";
 
   const scorable = !r.referenceBlank;
   return `<tr class="row ${anyRendered ? "rendered" : "unsupported"}${
@@ -266,6 +300,8 @@ function rowHtml(r, withEmbedded, withEmbeddedJvm) {
     scorable && r.embeddedRendered ? (r.embeddedMismatchPct ?? 0) : ""
   }" data-embedded-jvm-pct="${
     scorable && r.embeddedJvmRendered ? (r.embeddedJvmMismatchPct ?? 0) : ""
+  }" data-cmp-wasm-pct="${
+    scorable && r.cmpWasmRendered ? (r.cmpWasmMismatchPct ?? 0) : ""
   }">
   <th class="meta">
     <div class="name">${esc(r.name)}</div>
@@ -275,7 +311,7 @@ function rowHtml(r, withEmbedded, withEmbeddedJvm) {
   </th>
   <td>${cell("baked PNG", r.baked)}</td>
   <td>${cell("RC · JS player", r.rc, "rc")}</td>
-  <td>${cell("pixel diff", r.diff, "diff")}</td>${embeddedCells}${embeddedJvmCell}
+  <td>${cell("pixel diff", r.diff, "diff")}</td>${embeddedCells}${embeddedJvmCell}${cmpWasmCell}
 </tr>`;
 }
 
@@ -289,13 +325,21 @@ export function renderRcCompareHtml(model, opts = {}) {
 
   const withEmbedded = hasEmbeddedLane(model.rows ?? []);
   const withEmbeddedJvm = hasEmbeddedJvmLane(model.rows ?? []);
+  const withCmpWasm = hasCmpWasmLane(model.rows ?? []);
   // "JS", "JS + embedded", "JS + embedded + cmp-jvm", … — the players this page actually compares.
-  const laneNames = ["JS", withEmbedded && "embedded", withEmbeddedJvm && "cmp-jvm"].filter(Boolean);
+  const laneNames = [
+    "JS",
+    withEmbedded && "embedded",
+    withEmbeddedJvm && "cmp-jvm",
+    withCmpWasm && "cmp-wasm",
+  ].filter(Boolean);
   const laneLabel = `${laneNames.join(" + ")} player${laneNames.length > 1 ? "s" : ""}`;
   const embMeanTxt =
     stats.embeddedMeanPct == null ? "n/a" : `${stats.embeddedMeanPct.toFixed(2)}%`;
   const jvmMeanTxt =
     stats.embeddedJvmMeanPct == null ? "n/a" : `${stats.embeddedJvmMeanPct.toFixed(2)}%`;
+  const wasmMeanTxt =
+    stats.cmpWasmMeanPct == null ? "n/a" : `${stats.cmpWasmMeanPct.toFixed(2)}%`;
 
   // Blank references are called out once, not per lane — the reference is shared, so a blank one
   // costs both players the same row.
@@ -316,6 +360,11 @@ export function renderRcCompareHtml(model, opts = {}) {
       ? `<br><strong>cmp-jvm player:</strong> ${stats.embeddedJvmScored} scored · mean mismatch <strong>${jvmMeanTxt}</strong>` +
         (stats.embeddedJvmUnsupported ? ` · ${stats.embeddedJvmUnsupported} not rendered` : "") +
         blankTxt
+      : "") +
+    (withCmpWasm
+      ? `<br><strong>cmp-wasm player:</strong> ${stats.cmpWasmScored} scored · mean mismatch <strong>${wasmMeanTxt}</strong>` +
+        (stats.cmpWasmUnsupported ? ` · ${stats.cmpWasmUnsupported} not rendered` : "") +
+        blankTxt
       : "");
 
   // The cmp-jvm lane adds a single column (its diff folds into the cell); the embedded lane keeps
@@ -324,6 +373,7 @@ export function renderRcCompareHtml(model, opts = {}) {
     `<tr><th>preview</th><th>baked PNG</th><th>RC · JS player</th><th>pixel diff</th>` +
     (withEmbedded ? `<th>RC · embedded player</th><th>pixel diff</th>` : "") +
     (withEmbeddedJvm ? `<th>RC · cmp-jvm player</th>` : "") +
+    (withCmpWasm ? `<th>RC · cmp-wasm player</th>` : "") +
     `</tr>`;
 
   const body =
@@ -332,7 +382,7 @@ export function renderRcCompareHtml(model, opts = {}) {
       : `<table class="grid">
   <thead>${head}</thead>
   <tbody>
-${rows.map((r) => rowHtml(r, withEmbedded, withEmbeddedJvm)).join("\n")}
+${rows.map((r) => rowHtml(r, withEmbedded, withEmbeddedJvm, withCmpWasm)).join("\n")}
   </tbody>
 </table>`;
 
@@ -403,6 +453,8 @@ ${[
     `the <strong>embedded player</strong> is AndroidX's <code>RcPlayer</code>, which interprets the document into Compose layout and draw nodes rather than painting into an Android <code>View</code> the way <code>remote-player-view</code> does`,
   withEmbeddedJvm &&
     `the <strong>cmp-jvm player</strong> runs that same <code>RcPlayer</code> draw path on Compose Desktop / Skiko, rasterizing offscreen`,
+  withCmpWasm &&
+    `the <strong>cmp-wasm player</strong> runs the new Compose Multiplatform / Skiko player in browser Wasm`,
 ]
   .filter(Boolean)
   .join("; ")}${laneNames.length > 1 ? " — so they diverge wherever those differences show." : "."}

@@ -292,6 +292,23 @@ include(":samples:cmp-shared")
 // renderable `@Preview`, so it sits outside the desktop/Android render path.
 include(":samples:cmp-wasm-catalog")
 
+// Original Kotlin Multiplatform Remote Compose player. Unlike the vendored Android/JVM embedded
+// player this implementation owns a platform-neutral wire model and can compile to Kotlin/Wasm.
+include(":rc-player-protocol")
+project(":rc-player-protocol").projectDir = file("rc-player/protocol")
+
+include(":rc-player-runtime")
+project(":rc-player-runtime").projectDir = file("rc-player/runtime")
+
+include(":rc-player-compose")
+project(":rc-player-compose").projectDir = file("rc-player/compose")
+
+include(":rc-player-wasm")
+project(":rc-player-wasm").projectDir = file("rc-player/wasm")
+
+include(":rc-player-compat-tests")
+project(":rc-player-compat-tests").projectDir = file("rc-player/compat-tests")
+
 // Non-renderable KMP-Android library (no `jvm("desktop")` target) — regression fixture for
 // #1852 / #1855. See its build.gradle.kts. Must coexist in the build without breaking CLI
 // discovery of the other sample modules.

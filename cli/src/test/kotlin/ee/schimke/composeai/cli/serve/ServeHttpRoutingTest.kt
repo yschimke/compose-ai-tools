@@ -131,6 +131,12 @@ class ServeHttpRoutingTest {
   }
 
   private val registry = ServeSessionRegistry(open = { null })
+  private val rcWasmDir =
+    Files.createTempDirectory("routing-rc-wasm").toFile().also { dir ->
+      dir.deleteOnExit()
+      File(dir, "index.html").writeText("<html>cmp wasm</html>")
+      File(dir, "rcPlayer.wasm").writeBytes(byteArrayOf(0x00, 0x61, 0x73, 0x6d))
+    }
   private val server: ServeHttpServer by lazy {
     registry.register("default-mod", host = bundle("default-mod"), pinned = true)
     registry.register(
@@ -160,6 +166,7 @@ class ServeHttpRoutingTest {
         sessions = registry,
         defaultSessionId = "default-mod",
         isPublic = true,
+        rcPlayerWasmDir = rcWasmDir,
         catalogSessions = listOf("compose-m3"),
         catalogRefresh = { system ->
           refreshes += system
@@ -703,12 +710,29 @@ class ServeHttpRoutingTest {
     // The backend selector replaces the old single toggle: a `js` chip drives the same canvas lane.
     assertTrue(html.contains("id=\"cp-rc-backends\""), "rc backend selector present")
     assertTrue(html.contains("data-rc-backend=\"js\""), "js backend chip present")
+    assertTrue(html.contains("data-rc-backend=\"cmp-wasm\""), "cmp-wasm backend chip present")
+    assertTrue(html.contains("id=\"cp-rc-wasm\""), "cmp-wasm iframe present")
     assertTrue(html.contains("value=\"rc\""), "rc mode radio present")
     // The client-side lane JS loads the player and applies knob edits without a daemon round-trip.
     val viewerJs = ServeWebAssets.load("viewer.js")!!.bytes.decodeToString()
     assertTrue(viewerJs.contains("/rc-player/bundle.js"), "the lane loads the player bundle")
     assertTrue(viewerJs.contains("RcdPlayer"), "the lane creates the Rc player")
     assertTrue(viewerJs.contains("setNamedFloatOverride"), "rc knob edits apply client-side")
+  }
+
+  @Test
+  fun `the cmp wasm player distribution is served with wasm content type`() {
+    assertEquals(200 to "<html>cmp wasm</html>", get("/rc-player-wasm/"))
+    val req =
+      Request.Builder().url("http://127.0.0.1:${server.port}/rc-player-wasm/rcPlayer.wasm").build()
+    client.newCall(req).execute().use { response ->
+      assertEquals(200, response.code)
+      assertEquals("application/wasm", response.body?.contentType().toString())
+      assertTrue(
+        byteArrayOf(0x00, 0x61, 0x73, 0x6d).contentEquals(response.body?.bytes()),
+        "wasm bytes served verbatim",
+      )
+    }
   }
 
   @Test

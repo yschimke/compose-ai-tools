@@ -895,6 +895,10 @@
   // round-trip. Opt-in like Live / Wasm, so the default PNG snapshot is untouched.
   var rcCanvasEl = document.getElementById("cp-rc-canvas");
   var rcToggle = document.getElementById("cp-rc-toggle");
+  var rcWasmFrame = document.getElementById("cp-rc-wasm");
+  var rcWasmToggle = document.getElementById("cp-rc-wasm-toggle");
+  var rcWasmReady = false;
+  var rcWasmBootTimer = null;
   var hasRcDoc = root.getAttribute("data-has-rc-doc") === "1";
   var rcBtn = document.getElementById("cp-rc-btn");
   var rcPlayer = null; // the RC.RcdPlayer instance (created lazily on first open)
@@ -904,6 +908,7 @@
   var rcScriptWaiters = [];
   function rcAvailable() { return !!(hasRcDoc && rcCanvasEl); }
   function rcActive() { return !!(rcToggle && rcToggle.checked); }
+  function rcWasmActive() { return !!(rcWasmToggle && rcWasmToggle.checked); }
   // Lazy-load the shared player bundle once (a constant, session-independent path); queue callers
   // while it loads so a fast re-open can't inject the script twice.
   function ensureRcScript(cb) {
@@ -1032,9 +1037,72 @@
     if (rcBtn) rcBtn.setAttribute("aria-pressed", "false");
   }
 
+  // AndroidX-conformant Compose Multiplatform/Wasm RC lane. This is an isolated app rather than
+  // another implementation hidden behind the legacy canvas API: it receives the document URL and
+  // explicitly announces its first rendered frame.
+  function positionRcWasmFrame() { if (rcWasmFrame) positionOverlay(rcWasmFrame); }
+  function rcWasmSrc() {
+    var absoluteDoc = new URL(rcDocUrl(), location.origin).href;
+    var src = "/rc-player-wasm/index.html?src=" + encodeURIComponent(absoluteDoc);
+    var uiMode = document.getElementById("cp-uiMode");
+    if (uiMode && (uiMode.value === "light" || uiMode.value === "dark")) {
+      src += "&theme=" + encodeURIComponent(uiMode.value);
+    }
+    return src;
+  }
+  function revealRcWasm() {
+    if (!rcWasmActive() || rcWasmReady) return;
+    rcWasmReady = true;
+    if (rcWasmBootTimer) { clearTimeout(rcWasmBootTimer); rcWasmBootTimer = null; }
+    clearModeError();
+    positionRcWasmFrame();
+    rcWasmFrame.classList.add("cp-wasm-live");
+    img.style.visibility = "hidden";
+    status.textContent = "";
+  }
+  function openRcWasm() {
+    if (!rcWasmFrame) return;
+    root.setAttribute("data-mode", "rc-wasm");
+    canvas.hidden = true;
+    positionRcWasmFrame();
+    rcWasmFrame.hidden = false;
+    rcWasmReady = false;
+    rcWasmFrame.src = rcWasmSrc();
+    status.textContent = "loading CMP Wasm RC player…";
+    if (rcWasmBootTimer) clearTimeout(rcWasmBootTimer);
+    rcWasmBootTimer = setTimeout(function () {
+      if (!rcWasmReady && rcWasmActive()) showModeError("CMP Wasm RC player didn't start.");
+    }, 20000);
+  }
+  function closeRcWasm() {
+    if (!rcWasmFrame) return;
+    rcWasmReady = false;
+    if (rcWasmBootTimer) { clearTimeout(rcWasmBootTimer); rcWasmBootTimer = null; }
+    rcWasmFrame.classList.remove("cp-wasm-live");
+    rcWasmFrame.hidden = true;
+    rcWasmFrame.removeAttribute("src");
+    img.style.removeProperty("visibility");
+  }
+  if (rcWasmFrame) {
+    window.addEventListener("message", function (e) {
+      if (e.source !== rcWasmFrame.contentWindow || typeof e.data !== "string") return;
+      if (e.data === "cp-rc-wasm-ready") revealRcWasm();
+      else if (e.data.indexOf("cp-rc-wasm-error:") === 0) {
+        showModeError("Rendering the Remote Compose document failed in CMP Wasm.");
+      }
+    });
+  }
+
   function onControlsChanged() {
     // Keep the copyable direct links current no matter which transport handles the change.
     refreshLinks();
+    if (rcWasmActive()) {
+      // Remote Compose currently consumes only Day/Night at this boundary. The control is the
+      // only wasm-honoured field enabled in this lane, so reload the isolated player with the
+      // new theme query while retaining the same tokened document URL.
+      openRcWasm();
+      return;
+    }
     if (wasmActive()) {
       // Recompose in place once the app is up; before it's ready, re-point the initial src (the
       // fragment carries the overrides) — the load handler re-syncs the final state either way.
@@ -1082,6 +1150,7 @@
       if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
       closeWasm();
       closeRc();
+      closeRcWasm();
       openStream();
     } else if (m === "wasm") {
       cancelSnapshotLoading();
@@ -1089,6 +1158,7 @@
       if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
       closeStream();
       closeRc();
+      closeRcWasm();
       openWasm();
     } else if (m === "rc") {
       cancelSnapshotLoading();
@@ -1096,11 +1166,21 @@
       if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
       closeStream();
       closeWasm();
+      closeRcWasm();
       openRc();
+    } else if (m === "rc-wasm") {
+      cancelSnapshotLoading();
+      snapshotExt = ".png";
+      if (svgToggle) svgToggle.setAttribute("aria-pressed", "false");
+      closeStream();
+      closeWasm();
+      closeRc();
+      openRcWasm();
     } else {
       closeStream();
       closeWasm();
       closeRc();
+      closeRcWasm();
       // Static snapshot lane: raster PNG, or the vector SVG when the format toggle is on.
       snapshotExt = svgOn() ? ".svg" : ".png";
       if (svgOn()) root.setAttribute("data-mode", "svg");
@@ -1116,7 +1196,7 @@
     // query() includes an rc.* value edited before the Wasm detour in the first snapshot render
     // (and its direct links) instead of skipping the still-disabled control. The live/wasm lanes
     // drive their own render (openStream / openWasm), so only the static lane renders here.
-    if (m !== "live" && m !== "wasm" && m !== "rc") refreshSnapshot();
+    if (m !== "live" && m !== "wasm" && m !== "rc" && m !== "rc-wasm") refreshSnapshot();
   }
   // SVG format toggle: swap the static snapshot between raster and vector. Pressing it while a
   // live lane is active drops back to the static vector render; pressing it in the static lane
@@ -1172,7 +1252,9 @@
     // The RC canvas lane, like Wasm, honours only its own overrides (the Remote Compose knobs,
     // applied client-side): size/device/locale/theme all re-point /render, which the painted
     // canvas ignores. So it's as "dead" for the server + wasm-honoured controls as the Wasm lane.
-    var onRc = rcActive();
+    var onRcCanvas = rcActive();
+    var onRcWasm = rcWasmActive();
+    var onRc = onRcCanvas || onRcWasm;
     var canServerRender =
       !onWasm && !onRc && (!staticSnapshot || canRenderOverrides || !!(live && live.checked));
     serverOnlyControlIds.forEach(function (id) {
@@ -1184,7 +1266,8 @@
     // canvas lane, which doesn't map them onto the document.
     wasmHonouredControlIds.forEach(function (id) {
       var el = document.getElementById("cp-" + id);
-      if (el) el.disabled = !(canServerRender || (wasmSrc && !onRc));
+      if (el) el.disabled = (id === "uiMode" && alwaysDark) ||
+        !(canServerRender || (wasmSrc && !onRc) || (id === "uiMode" && onRcWasm));
     });
     // Day/Night options work in Wasm; declared provider options need the daemon. Keep the unified
     // select usable whenever at least one kind can work, and gate its individual option families.
@@ -1207,7 +1290,8 @@
     // runtime), so, like the app-theme selector, they're dead in the Wasm lane and otherwise
     // gated on the host being able to render an override.
     document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
-      el.disabled = onRc ? false : (onWasm || !(!staticSnapshot || canRenderOverrides));
+      el.disabled = rcActive() ? false
+        : (onWasm || rcWasmActive() || !(!staticSnapshot || canRenderOverrides));
     });
   }
   // Programmatic switch (the live toggle, or a wasm-only control auto-enabling Wasm): tick the
@@ -1216,6 +1300,7 @@
     var r = document.getElementById(
       m === "live" ? "cp-live" :
       m === "wasm" ? "cp-wasm-toggle" :
+      m === "rc-wasm" ? "cp-rc-wasm-toggle" :
       m === "rc" ? "cp-rc-toggle" : "cp-mode-png");
     if (r) r.checked = true;
     enterMode(m);
@@ -1292,7 +1377,8 @@
       // picked server backend, or the default until the visitor picks one. Any OTHER active lane
       // (Live / Wasm) means no server backend is on screen, so no chip is marked current.
       var active =
-        rcActive() ? "js"
+        rcWasmActive() ? "cmp-wasm"
+        : rcActive() ? "js"
         : anyLiveActive() ? ""
         : (rcPlayerPicked ? rcPlayerBackend : rcDefaultBackend);
       Array.prototype.forEach.call(rcChips, function (c) {
@@ -1308,6 +1394,10 @@
         // reconcile the marker.
         rcPlayerPicked = false;
         if (!rcActive()) setMode("rc");
+        else syncRcBackendChips();
+      } else if (w === "cmp-wasm") {
+        rcPlayerPicked = false;
+        if (!rcWasmActive()) setMode("rc-wasm");
         else syncRcBackendChips();
       } else {
         // A server-side backend. Record the pick FIRST so the single static-lane render carries
@@ -1333,6 +1423,7 @@
   // overlay has its own resize hook below; this covers a live session with no Wasm app).
   window.addEventListener("resize", function () {
     if (live && live.checked && !canvas.hidden) fitLiveCanvas();
+    if (rcWasmActive()) positionRcWasmFrame();
   });
   // Re-pin the active overlay whenever the snapshot image itself loads — its first render, or a
   // re-render at a new size. positionOverlay/fitLiveCanvas measure `img.getBoundingClientRect()`,
@@ -1349,6 +1440,7 @@
         wasmFrame.contentWindow.postMessage(wasmOverridePatch(), "*");
       }
     }
+    if (rcWasmActive()) positionRcWasmFrame();
   });
   if (wasmToggle) {
     // The app posts "cp-wasm-ready" once its first frame is on the canvas — the swap signal.

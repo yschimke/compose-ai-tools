@@ -53,6 +53,12 @@ PORT="${PORT:-8080}"
 
 args=(serve --host 0.0.0.0 --port "${PORT}")
 
+# The release tarball carries the matching CMP/Wasm Remote Compose player as a static sidecar.
+# Older releases simply omit it and retain the existing player set.
+if [[ -f /opt/compose-preview/rc-player-wasm/index.html ]]; then
+  args+=(--rc-player-wasm-dir /opt/compose-preview/rc-player-wasm)
+fi
+
 # Auth posture (see deploy/cloudrun/entrypoint.sh): SERVE_PUBLIC=1 → the open
 # public preview server (preview.coo.ee); otherwise token-gated (SERVE_TOKEN
 # required, fail closed).
