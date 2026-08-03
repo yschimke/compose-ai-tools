@@ -26,8 +26,11 @@ The compatibility hierarchy is strict:
   passes the replacement gates below. Its TypeScript class hierarchy, codecs, and hand-built opcode
   registry are not inputs to the new implementation.
 
-The first delivery surface is an embeddable Wasm player. The model and interpreter should remain
-ordinary non-JVM CMP code so a later native target is possible without a redesign.
+The first delivery surface is an embeddable Wasm player, with iOS as the first native host. The
+model, interpreter, and Compose renderer are ordinary non-JVM CMP code; only browser fetch/iframe
+messaging is Wasm-specific. Protocol, runtime, and renderer publish iOS x64, device arm64, and
+simulator arm64 targets. The renderer also builds a static `RcComposePlayer` framework with a thin
+`RcComposeViewController` UIKit entry point.
 
 ### Why `third_party/remote-compose-player` still exists
 
@@ -62,13 +65,13 @@ public player API.
 Create original code outside `third_party`:
 
 ```text
-:rc-player-protocol       KMP: commonMain + desktop test target + wasmJs
+:rc-player-protocol       KMP: commonMain + desktop test target + wasmJs + iOS
   immutable operation IR, wire reader/writer, codecs, validation, debug JSON
 
-:rc-player-runtime        KMP: commonMain + desktop + wasmJs
+:rc-player-runtime        KMP: commonMain + desktop + wasmJs + iOS
   document linking, value store, expressions, clock, actions, invalidation
 
-:rc-player-compose        KMP/CMP: commonMain + desktop + wasmJs
+:rc-player-compose        KMP/CMP: commonMain + desktop + wasmJs + iOS framework
   operation interpreter, Compose layout, DrawScope renderer, input/semantics
 
 :rc-player-wasm           wasmJs executable

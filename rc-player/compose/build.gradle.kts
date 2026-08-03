@@ -8,6 +8,13 @@ plugins {
 kotlin {
   jvm("desktop")
 
+  listOf(iosX64(), iosArm64(), iosSimulatorArm64()).forEach { target ->
+    target.binaries.framework {
+      baseName = "RcComposePlayer"
+      isStatic = true
+    }
+  }
+
   @OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class) wasmJs { browser() }
 
   sourceSets {
