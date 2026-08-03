@@ -9,6 +9,24 @@ import kotlin.test.assertTrue
 
 class RcDocumentCodecTest {
   @Test
+  fun layoutComputeRoundTripsItsExactImmutableHeader() {
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), modern = false),
+        listOf(
+          RcLayoutCompute(RcLayoutCompute.POSITION, boundsId = 42, animateChanges = false),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        ),
+      )
+
+    val bytes = RcDocumentCodec.encode(document)
+    val decoded = RcDocumentCodec.decode(bytes)
+
+    assertEquals(document, decoded)
+    assertContentEquals(bytes, RcDocumentCodec.encode(decoded))
+  }
+
+  @Test
   fun alignByPreservesBaselineAndDynamicAnchorBits() {
     val document =
       RcDocument(

@@ -17,6 +17,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcDimensionConstraintsModifier
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDraw4
+import ee.schimke.composeai.rcplayer.protocol.RcDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
 import ee.schimke.composeai.rcplayer.protocol.RcFlowLayout
@@ -26,6 +27,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerConstant
+import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
@@ -39,6 +41,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextData
 import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
+import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import ee.schimke.composeai.rcplayer.protocol.RcVisibilityModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
@@ -51,6 +54,88 @@ import kotlin.test.assertTrue
 import org.jetbrains.skia.Bitmap
 
 class RcLayoutRenderTest {
+  @Test
+  fun layoutComputePositionMovesRenderedComponent() {
+    val blue = 0xff0000ff.toInt()
+    val operations =
+      listOf<RcOperation>(
+        RcDynamicFloatList(42, RcFloatWord.literal(6f)),
+        RcRootLayout(1),
+        RcLayoutContent(2),
+        RcCanvasLayout(3, 30),
+        width(20f),
+        height(20f),
+        RcLayoutCompute(RcLayoutCompute.POSITION, 42, animateChanges = false),
+        RcUpdateDynamicFloatList(42, RcFloatWord.literal(0f), RcFloatWord.literal(30f)),
+        RcUpdateDynamicFloatList(42, RcFloatWord.literal(1f), RcFloatWord.literal(25f)),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+        solidBackground(red = 0f, green = 0f, blue = 1f),
+      ) + List(3) { RcNoArg(RcOpcodes.CONTAINER_END) }
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 80, legacyHeight = 80, modern = false),
+        operations,
+      )
+    val scene =
+      ImageComposeScene(width = 80, height = 80, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val image = scene.render()
+      val bitmap = Bitmap().apply { allocN32Pixels(80, 80) }
+      check(image.readPixels(bitmap))
+      val pixels =
+        (0 until 80).flatMap { y ->
+          (0 until 80).mapNotNull { x -> if (bitmap.getColor(x, y) == blue) x to y else null }
+        }
+
+      assertEquals(30, pixels.minOf { it.first })
+      assertEquals(25, pixels.minOf { it.second })
+      assertEquals(20 * 20, pixels.size)
+    } finally {
+      scene.close()
+    }
+  }
+
+  @Test
+  fun layoutComputeMeasureChangesRenderedComponentBounds() {
+    val red = 0xffff0000.toInt()
+    val operations =
+      listOf<RcOperation>(
+        RcDynamicFloatList(42, RcFloatWord.literal(6f)),
+        RcRootLayout(1),
+        RcLayoutContent(2),
+        RcCanvasLayout(3, 30),
+        width(60f),
+        height(50f),
+        RcLayoutCompute(RcLayoutCompute.MEASURE, 42, animateChanges = false),
+        RcUpdateDynamicFloatList(42, RcFloatWord.literal(2f), RcFloatWord.literal(24f)),
+        RcUpdateDynamicFloatList(42, RcFloatWord.literal(3f), RcFloatWord.literal(18f)),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+        solidBackground(red = 1f, green = 0f, blue = 0f),
+      ) + List(3) { RcNoArg(RcOpcodes.CONTAINER_END) }
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 80, legacyHeight = 80, modern = false),
+        operations,
+      )
+    val scene =
+      ImageComposeScene(width = 80, height = 80, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val image = scene.render()
+      val bitmap = Bitmap().apply { allocN32Pixels(80, 80) }
+      check(image.readPixels(bitmap))
+      val redPixels =
+        (0 until 80).sumOf { y -> (0 until 80).count { x -> bitmap.getColor(x, y) == red } }
+
+      assertEquals(24 * 18, redPixels)
+    } finally {
+      scene.close()
+    }
+  }
+
   @Test
   fun rowAlignByFirstBaselineMovesTheSmallerTextComponentDown() {
     val green = 0xff00ff00.toInt()

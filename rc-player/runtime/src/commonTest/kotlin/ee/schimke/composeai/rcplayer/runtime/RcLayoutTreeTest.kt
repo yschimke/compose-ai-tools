@@ -8,9 +8,11 @@ import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
+import ee.schimke.composeai.rcplayer.protocol.RcDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
 import ee.schimke.composeai.rcplayer.protocol.RcFlowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
+import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
@@ -18,15 +20,48 @@ import ee.schimke.composeai.rcplayer.protocol.RcPaddingModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
+import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 
 class RcLayoutTreeTest {
   private val header = RcHeader(RcVersion(1, 0, 0), modern = false)
+
+  @Test
+  fun preservesAndEvaluatesLayoutComputeAsAnImmutableModifierBlock() {
+    val operations =
+      listOf(
+        RcDynamicFloatList(42, RcFloatWord.literal(6f)),
+        RcRootLayout(1),
+        RcLayoutContent(2),
+        RcCanvasLayout(3, 30),
+        RcLayoutCompute(RcLayoutCompute.MEASURE, boundsId = 42, animateChanges = false),
+        RcUpdateDynamicFloatList(42, RcFloatWord.literal(2f), RcFloatWord.literal(37f)),
+        RcUpdateDynamicFloatList(42, RcFloatWord.literal(3f), RcFloatWord.literal(19f)),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+      )
+    val document = RcDocument(header, operations)
+    val root = requireNotNull(RcLayoutTree.build(RcDocumentLinker.link(document)))
+    val content = assertIs<RcLayoutNode.Content>(root.children.single())
+    val canvas = assertIs<RcLayoutNode.Canvas>(content.children.single())
+    val block = canvas.modifiers.layoutComputes.single()
+
+    assertEquals(RcLayoutCompute.MEASURE, block.operation.type)
+    assertEquals(2, block.children.size)
+    assertContentEquals(
+      floatArrayOf(4f, 5f, 37f, 19f, 100f, 80f),
+      RcPlayerState(document)
+        .evaluateLayoutCompute(block, floatArrayOf(4f, 5f, 20f, 10f, 100f, 80f)),
+    )
+  }
 
   @Test
   fun extractsAlignByAsTypedChildLayoutMetadata() {

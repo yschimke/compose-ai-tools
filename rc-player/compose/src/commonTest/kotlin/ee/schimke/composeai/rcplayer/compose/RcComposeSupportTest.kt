@@ -38,6 +38,37 @@ import kotlin.test.assertTrue
 
 class RcComposeSupportTest {
   @Test
+  fun rejectsUnsupportedLayoutComputeVariantsPrecisely() {
+    val document =
+      RcDocument(
+        header,
+        listOf(
+          ee.schimke.composeai.rcplayer.protocol.RcDynamicFloatList(
+            42,
+            ee.schimke.composeai.rcplayer.protocol.RcFloatWord.literal(6f),
+          ),
+          ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute(
+            type = 9,
+            boundsId = 42,
+            animateChanges = true,
+          ),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        ),
+      )
+
+    val details =
+      document
+        .composeSupportReport()
+        .issues
+        .filter { it.operation == "LayoutComputeOperation" }
+        .map { it.detail }
+    assertEquals(
+      listOf("type 9 is not implemented", "animated measure transitions are not implemented"),
+      details,
+    )
+  }
+
+  @Test
   fun alignByUsesAndroidXMaximumAnchorForEveryRowChild() {
     assertContentEquals(
       intArrayOf(20, 0, 30),

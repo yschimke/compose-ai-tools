@@ -970,6 +970,17 @@ public data class RcAlignByModifier(val line: RcFloatWord, val flags: Int) : RcO
   }
 }
 
+/** Runs an immutable operation block against AndroidX's six-value component bounds list. */
+public data class RcLayoutCompute(val type: Int, val boundsId: Int, val animateChanges: Boolean) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.LAYOUT_COMPUTE
+
+  public companion object {
+    public const val MEASURE: Int = 0
+    public const val POSITION: Int = 1
+  }
+}
+
 /** Component visibility is read from the referenced AndroidX integer variable. */
 public data class RcVisibilityModifier(val visibilityId: Int) : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_VISIBILITY
@@ -1132,6 +1143,7 @@ public object RcOpcodes {
   public const val LAYOUT_IMAGE: Int = 234
   public const val MODIFIER_COLLAPSIBLE_PRIORITY: Int = 235
   public const val MODIFIER_ALIGN_BY: Int = 237
+  public const val LAYOUT_COMPUTE: Int = 238
   public const val CORE_TEXT: Int = 239
   public const val LAYOUT_FLOW: Int = 240
   public const val TEXT_STYLE: Int = 242

@@ -19,6 +19,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
+import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
@@ -48,8 +49,14 @@ public data class RcLayoutModifiers(
   val dimensionConstraints: List<RcOperation> = emptyList(),
   val collapsiblePriority: RcCollapsiblePriorityModifier? = null,
   val alignBy: RcAlignByModifier? = null,
+  val layoutComputes: List<RcLayoutComputeBlock> = emptyList(),
   val visibility: RcVisibilityModifier? = null,
   val graphicsLayer: RcGraphicsLayerModifier? = null,
+)
+
+public data class RcLayoutComputeBlock(
+  val operation: RcLayoutCompute,
+  val children: List<RcLinkedNode>,
 )
 
 public sealed interface RcLayoutNode {
@@ -403,6 +410,10 @@ public object RcLayoutTree {
       collapsiblePriority =
         operations.singleModifier<RcCollapsiblePriorityModifier>(container.operation),
       alignBy = operations.singleModifier<RcAlignByModifier>(container.operation),
+      layoutComputes =
+        container.children.filterIsInstance<RcLinkedNode.Container>().mapNotNull { child ->
+          (child.operation as? RcLayoutCompute)?.let { RcLayoutComputeBlock(it, child.children) }
+        },
     )
   }
 

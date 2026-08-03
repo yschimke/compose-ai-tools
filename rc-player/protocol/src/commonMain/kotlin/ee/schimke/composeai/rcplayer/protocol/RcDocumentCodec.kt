@@ -111,6 +111,7 @@ public object RcDocumentCodec {
         DimensionConstraintsModifierCodec,
         CollapsiblePriorityModifierCodec,
         AlignByModifierCodec,
+        LayoutComputeCodec,
         VisibilityModifierCodec,
         GraphicsLayerModifierCodec,
         four(RcOpcodes.CLIP_RECT, "ClipRect"),
@@ -762,6 +763,23 @@ private object AlignByModifierCodec : RcOperationCodec<RcAlignByModifier> {
   override fun encode(output: RcWireWriter, value: RcAlignByModifier) {
     output.writeFloatWord(value.line)
     output.writeInt(value.flags)
+  }
+}
+
+private object LayoutComputeCodec : RcOperationCodec<RcLayoutCompute> {
+  override val spec = RcOperationSpec(RcOpcodes.LAYOUT_COMPUTE, "LayoutComputeOperation")
+
+  override fun decode(input: RcWireReader) =
+    RcLayoutCompute(
+      input.readInt("type"),
+      input.readInt("boundsId"),
+      input.readBoolean("animateChanges"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcLayoutCompute) {
+    output.writeInt(value.type)
+    output.writeInt(value.boundsId)
+    output.writeBoolean(value.animateChanges)
   }
 }
 

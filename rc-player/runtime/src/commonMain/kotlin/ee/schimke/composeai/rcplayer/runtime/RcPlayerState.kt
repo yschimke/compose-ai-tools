@@ -99,6 +99,7 @@ public class RcPlayerState(
         else -> Unit
       }
     }
+    document.operations.filterIsInstance<RcDynamicFloatList>().forEach(::applyDataOperation)
     namedValues.forEach { (name, value) -> setNamedValue(name, value) }
     beginFrame()
   }
@@ -321,6 +322,68 @@ public class RcPlayerState(
   public fun floatValues(id: Int): FloatArray? =
     dynamicFloatLists[id]?.copyOf() ?: floatLists[id]?.values?.map(::resolve)?.toFloatArray()
 
+  public fun setDynamicFloatValues(id: Int, values: FloatArray) {
+    val target = requireNotNull(dynamicFloatLists[id]) { "Missing dynamic float list $id" }
+    require(target.size == values.size) {
+      "Dynamic float list $id has ${target.size} values; layout compute requires ${values.size}"
+    }
+    values.copyInto(target)
+  }
+
+  public fun executeLayoutCompute(children: List<RcLinkedNode>) {
+    children.forEach { child ->
+      val operation =
+        (child as? RcLinkedNode.Operation)?.operation
+          ?: error("Nested containers are not supported inside LayoutCompute")
+      when (operation) {
+        is RcFloatExpression -> applyFloatExpression(operation)
+        is RcIntegerExpression -> applyIntegerExpression(operation)
+        is RcDynamicFloatList,
+        is RcUpdateDynamicFloatList,
+        is RcIdLookup,
+        is RcDataMapLookup -> applyDataOperation(operation)
+        is RcTextMerge,
+        is RcTextLength,
+        is RcTextSubtext,
+        is RcTextTransform,
+        is RcTextFromFloat,
+        is RcTextLookup,
+        is RcTextLookupInt -> applyTextOperation(operation)
+        is RcColorExpression -> applyColorExpression(operation)
+        is RcImageAttribute -> applyImageAttribute(operation)
+        is RcColorAttribute -> applyColorAttribute(operation)
+        is RcMatrixExpression -> applyMatrixExpression(operation)
+        is RcMatrixVectorMath -> applyMatrixVectorMath(operation)
+        is RcPathExpression -> applyPathExpression(operation)
+        is RcFloatConstant,
+        is RcColorConstant,
+        is RcTextData,
+        is RcIntegerConstant,
+        is RcBooleanConstant,
+        is RcLongConstant,
+        is RcPathData,
+        is RcMatrixConstant,
+        is RcIdList,
+        is RcFloatList,
+        is RcIdMap,
+        is RcBitmapData,
+        is RcNamedVariable -> Unit // Immutable declarations were loaded when the state was created.
+        else -> error("Opcode ${operation.opcode} cannot execute inside LayoutCompute")
+      }
+    }
+  }
+
+  public fun evaluateLayoutCompute(block: RcLayoutComputeBlock, bounds: FloatArray): FloatArray {
+    require(bounds.size == 6) {
+      "LayoutCompute requires x, y, width, height, parent width, parent height"
+    }
+    setDynamicFloatValues(block.operation.boundsId, bounds)
+    executeLayoutCompute(block.children)
+    return requireNotNull(floatValues(block.operation.boundsId)) {
+      "Missing layout-compute bounds list ${block.operation.boundsId}"
+    }
+  }
+
   private fun floatArray(id: Int): FloatArray? =
     dynamicFloatLists[id] ?: floatLists[id]?.values?.map(::resolve)?.toFloatArray()
 
@@ -447,6 +510,43 @@ public class RcPlayerState(
     }
   }
 }
+
+public fun RcOperation.isLayoutComputeExecutable(): Boolean =
+  when (this) {
+    is RcFloatExpression,
+    is RcIntegerExpression,
+    is RcDynamicFloatList,
+    is RcUpdateDynamicFloatList,
+    is RcIdLookup,
+    is RcDataMapLookup,
+    is RcTextMerge,
+    is RcTextLength,
+    is RcTextSubtext,
+    is RcTextTransform,
+    is RcTextFromFloat,
+    is RcTextLookup,
+    is RcTextLookupInt,
+    is RcColorExpression,
+    is RcImageAttribute,
+    is RcColorAttribute,
+    is RcMatrixExpression,
+    is RcMatrixVectorMath,
+    is RcPathExpression,
+    is RcFloatConstant,
+    is RcColorConstant,
+    is RcTextData,
+    is RcIntegerConstant,
+    is RcBooleanConstant,
+    is RcLongConstant,
+    is RcPathData,
+    is RcMatrixConstant,
+    is RcIdList,
+    is RcFloatList,
+    is RcIdMap,
+    is RcBitmapData,
+    is RcNamedVariable -> true
+    else -> false
+  }
 
 private fun String.capitalizeWords(): String =
   buildString(length) {

@@ -12,6 +12,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
+import ee.schimke.composeai.rcplayer.protocol.RcDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
@@ -22,6 +23,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
+import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperationInventory
@@ -39,6 +41,7 @@ import ee.schimke.composeai.rcplayer.runtime.RcDocumentLinker
 import ee.schimke.composeai.rcplayer.runtime.RcIntegerExpressionEvaluator
 import ee.schimke.composeai.rcplayer.runtime.RcLayoutTree
 import ee.schimke.composeai.rcplayer.runtime.RcLinkedNode
+import ee.schimke.composeai.rcplayer.runtime.isLayoutComputeExecutable
 
 public data class RcComposeSupportIssue(
   val operationIndex: Int,
@@ -78,6 +81,7 @@ public fun RcDocument.composeSupportReport(
     ) {
       it.id
     }
+  val dynamicLists = operations.filterIsInstance<RcDynamicFloatList>().associateBy { it.id }
   supportReport().parseOnly.forEach { entry ->
     issues +=
       RcComposeSupportIssue(-1, entry.stableName, "operation is decoded but has no semantics")
@@ -471,6 +475,41 @@ public fun RcDocument.composeSupportReport(
           "orientation ${operation.orientation} is not implemented",
         )
     }
+    if (operation is RcLayoutCompute) {
+      if (operation.type !in setOf(RcLayoutCompute.MEASURE, RcLayoutCompute.POSITION)) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "LayoutComputeOperation",
+            "type ${operation.type} is not implemented",
+          )
+      }
+      if (operation.animateChanges) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "LayoutComputeOperation",
+            "animated measure transitions are not implemented",
+          )
+      }
+      val bounds = dynamicLists[operation.boundsId]
+      when {
+        bounds == null ->
+          issues +=
+            RcComposeSupportIssue(
+              index,
+              "LayoutComputeOperation",
+              "bounds id ${operation.boundsId} is not a dynamic float list",
+            )
+        bounds.length.referencedId == null && bounds.length.value.toInt() != 6 ->
+          issues +=
+            RcComposeSupportIssue(
+              index,
+              "LayoutComputeOperation",
+              "bounds list ${operation.boundsId} has length ${bounds.length.value.toInt()}, expected 6",
+            )
+      }
+    }
   }
   val functions = operations.filterIsInstance<RcFloatFunctionDefine>().associateBy { it.id }
   operations.forEachIndexed { index, operation ->
@@ -497,6 +536,14 @@ public fun RcDocument.composeSupportReport(
   runCatching { RcDocumentLinker.link(this) }
     .fold(
       onSuccess = { linked ->
+        invalidLayoutComputeChild(linked.operations)?.let { operation ->
+          issues +=
+            RcComposeSupportIssue(
+              -1,
+              "LayoutComputeOperation",
+              "nested opcode ${operation.opcode} cannot execute during layout",
+            )
+        }
         runCatching { RcLayoutTree.build(linked) }
           .exceptionOrNull()
           ?.let { issues += RcComposeSupportIssue(-1, "LayoutStructure", it.message ?: "invalid") }
@@ -515,6 +562,30 @@ public fun RcDocument.composeSupportReport(
     )
   return RcComposeSupportReport(issues)
 }
+
+private fun invalidLayoutComputeChild(
+  nodes: List<RcLinkedNode>
+): ee.schimke.composeai.rcplayer.protocol.RcOperation? {
+  nodes.forEach { node ->
+    if (node is RcLinkedNode.Container && node.operation is RcLayoutCompute) {
+      node.children.forEach { child ->
+        val operation = (child as? RcLinkedNode.Operation)?.operation ?: return child.operation()
+        if (!operation.isLayoutComputeExecutable()) return operation
+      }
+    }
+    if (node is RcLinkedNode.Container)
+      invalidLayoutComputeChild(node.children)?.let {
+        return it
+      }
+  }
+  return null
+}
+
+private fun RcLinkedNode.operation(): ee.schimke.composeai.rcplayer.protocol.RcOperation =
+  when (this) {
+    is RcLinkedNode.Operation -> operation
+    is RcLinkedNode.Container -> operation
+  }
 
 private fun textStyleIssue(properties: List<RcTextStyleProperty>, colorIds: Set<Int>): String? {
   fun int(id: Int, default: Int): Int =

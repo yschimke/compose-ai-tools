@@ -30,6 +30,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
@@ -61,6 +62,7 @@ import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.LastBaseline
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextMeasurer
@@ -117,6 +119,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcIdLookup
 import ee.schimke.composeai.rcplayer.protocol.RcIdOperation
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
+import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixExpression
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixFromPath
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixVectorMath
@@ -1087,7 +1090,17 @@ private fun Modifier.applyComponentModifiers(
   theme: Int,
 ): Modifier {
   val density = androidx.compose.ui.platform.LocalDensity.current
-  var result = this
+  var result =
+    if (modifiers.layoutComputes.isEmpty()) this
+    else {
+      val computeBase =
+        if (modifiers.layoutComputes.any { it.operation.type == RcLayoutCompute.MEASURE }) {
+          this.clipToBounds()
+        } else {
+          this
+        }
+      computeBase.applyLayoutComputes(modifiers, state)
+    }
   modifiers.dimensionConstraints.forEach { constraint ->
     result = result.applyDimensionConstraint(constraint, state, density)
   }
@@ -1137,6 +1150,44 @@ private fun Modifier.applyComponentModifiers(
       )
   }
   return result
+}
+
+private fun Modifier.applyLayoutComputes(
+  modifiers: RcLayoutModifiers,
+  state: RcPlayerState,
+): Modifier = layout { measurable, constraints ->
+  val placeable = measurable.measure(constraints)
+  val parentWidth = if (constraints.hasBoundedWidth) constraints.maxWidth else placeable.width
+  val parentHeight = if (constraints.hasBoundedHeight) constraints.maxHeight else placeable.height
+  var width = placeable.width
+  var height = placeable.height
+  var x = 0
+  var y = 0
+  modifiers.layoutComputes.forEach { block ->
+    val values =
+      state.evaluateLayoutCompute(
+        block,
+        floatArrayOf(
+          x.toFloat(),
+          y.toFloat(),
+          width.toFloat(),
+          height.toFloat(),
+          parentWidth.toFloat(),
+          parentHeight.toFloat(),
+        ),
+      )
+    when (block.operation.type) {
+      RcLayoutCompute.MEASURE -> {
+        width = constraints.constrainWidth(values[2].roundToInt().coerceAtLeast(0))
+        height = constraints.constrainHeight(values[3].roundToInt().coerceAtLeast(0))
+      }
+      RcLayoutCompute.POSITION -> {
+        x = values[0].roundToInt()
+        y = values[1].roundToInt()
+      }
+    }
+  }
+  layout(width, height) { placeable.placeRelative(x, y) }
 }
 
 private fun Modifier.applyGraphicsLayer(
