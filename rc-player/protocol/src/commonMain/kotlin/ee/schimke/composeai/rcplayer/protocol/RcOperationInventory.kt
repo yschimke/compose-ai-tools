@@ -24,6 +24,11 @@ public data class RcOperationProfile(val name: String, val opcodes: Set<Int>) {
 }
 
 public object RcOperationProfiles {
+  private val cmpImplementedOpcodes: Set<Int> =
+    RcOperationInventory.entries
+      .filter { it.status == RcOperationStatus.IMPLEMENTED }
+      .mapTo(linkedSetOf()) { it.opcode }
+
   /** Operations readable by the authoritative AndroidX alpha16 Java operation registry. */
   public val ANDROIDX_JAVA_ALPHA16: RcOperationProfile =
     RcOperationProfile(
@@ -35,19 +40,20 @@ public object RcOperationProfiles {
         .mapTo(linkedSetOf()) { it.opcode },
     )
 
-  /** Operations with executable semantics in this CMP/Wasm player; parse-only is excluded. */
+  /** Operations with executable semantics in the shared CMP renderer on iOS. */
+  public val CMP_IOS_ALPHA16: RcOperationProfile =
+    RcOperationProfile("cmp-ios-alpha16", cmpImplementedOpcodes)
+
+  /** Operations with executable semantics in the browser, excluding backend-specific gaps. */
   public val CMP_WASM_ALPHA16: RcOperationProfile =
     RcOperationProfile(
       "cmp-wasm-alpha16",
-      RcOperationInventory.entries
-        .filter {
-          it.status == RcOperationStatus.IMPLEMENTED &&
-            // Compose's current Wasm graphics-layer surface disappears when this modifier is
-            // present. Keep it available to the shared/iOS renderer but never advertise it to
-            // browser producers until that backend behavior is fixed.
-            it.opcode != RcOpcodes.MODIFIER_GRAPHICS_LAYER
-        }
-        .mapTo(linkedSetOf()) { it.opcode },
+      cmpImplementedOpcodes.filterTo(linkedSetOf()) {
+        // Compose's current Wasm graphics-layer surface disappears when this modifier is
+        // present. Keep it available to the shared/iOS renderer but never advertise it to
+        // browser producers until that backend behavior is fixed.
+        it != RcOpcodes.MODIFIER_GRAPHICS_LAYER
+      },
     )
 }
 

@@ -70,6 +70,10 @@ class RcComposeSupportTest {
 
     assertEquals("ModifierGraphicsLayer", issue.operation)
     assertEquals("operation is excluded from the cmp-wasm-alpha16 profile", issue.detail)
+    assertTrue(
+      document.composeSupportReport(RcOperationProfiles.CMP_IOS_ALPHA16).fullyRenderable,
+      "The shared iOS renderer supports graphics layers even though the Wasm backend does not",
+    )
   }
 
   @Test

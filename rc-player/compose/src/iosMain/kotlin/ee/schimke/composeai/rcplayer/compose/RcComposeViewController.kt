@@ -3,6 +3,8 @@ package ee.schimke.composeai.rcplayer.compose
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.window.ComposeUIViewController
+import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
+import ee.schimke.composeai.rcplayer.protocol.RcOperationProfiles
 import ee.schimke.composeai.rcplayer.protocol.RcTheme
 import platform.UIKit.UIViewController
 
@@ -10,6 +12,10 @@ import platform.UIKit.UIViewController
 public fun RcComposeViewController(
   bytes: ByteArray,
   theme: Int = RcTheme.UNSPECIFIED,
-): UIViewController = ComposeUIViewController {
-  RcComposePlayer(bytes, Modifier.fillMaxSize(), theme)
+): UIViewController {
+  val document =
+    RcDocumentCodec.decode(bytes).also {
+      it.composeSupportReport(RcOperationProfiles.CMP_IOS_ALPHA16).requireFullyRenderable()
+    }
+  return ComposeUIViewController { RcComposePlayer(document, Modifier.fillMaxSize(), theme) }
 }
