@@ -6,6 +6,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
@@ -48,6 +49,15 @@ class ServeCatalogStore(
   private val repo: String = DEFAULT_REPO,
   private val branchPrefix: String = DEFAULT_BRANCH_PREFIX,
   private val fetch: ((String) -> ByteArray?)? = null,
+  /**
+   * Runs the post-publish vector fills ([scheduleFigmaSvgFetch]). Single-threaded by default so the
+   * background lane can never outweigh the request path, and daemon so it never holds up shutdown.
+   * A test supplies a same-thread or capturing executor to make the pass deterministic.
+   */
+  private val figmaExecutor: java.util.concurrent.Executor =
+    Executors.newSingleThreadExecutor { r ->
+      Thread(r, "serve-catalog-figma").apply { isDaemon = true }
+    },
   private val networkFetch: (url: String, maxBytes: Long) -> ByteArray? = ::httpFetch,
   private val maxImages: Int = DEFAULT_MAX_IMAGES,
   /**
@@ -213,6 +223,9 @@ class ServeCatalogStore(
    */
   fun load(system: String, sourceRepo: String? = null, sourceBranchPrefix: String? = null): Result {
     val safe = ServeBundleStore.sanitizeName(system) ?: return Result.Failed(system, "invalid name")
+    // Bumped per load so a background pass started for an earlier generation of this catalog stops
+    // instead of writing its vectors into the refreshed one.
+    val generation = generations.merge(system, 1, Int::plus)!!
     val repo = sourceRepo?.takeIf { it.isNotBlank() } ?: this.repo
     val branchPrefix = sourceBranchPrefix?.takeIf { it.isNotBlank() } ?: this.branchPrefix
     val branch = "$branchPrefix$system"
@@ -457,7 +470,22 @@ class ServeCatalogStore(
 
     // Fetch the catalog's baked editable vectors (figma/<slug>.svg + crops) so the host can serve
     // an SVG per preview; null when the branch carried none (host then 404s the .svg lane).
-    val figmaDir = fetchFigmaSvgs(slugs, variantSvgPaths, base, dir)
+    // The baked vectors are the last bulk fetch on the publish path — one per image plus one per
+    // slug, ~240 for the largest catalog. They cannot be made lazy the way the PNGs were: nothing
+    // ever *requests* an SVG (the browser doesn't; it is a server-side input to thumbnail cropping
+    // and a download link), so fetching one on demand would simply mean never fetching it, and
+    // every card would stay uncropped. So they move off the publish path instead of onto the
+    // request path: probe one vector synchronously to learn whether this branch carries the lane at
+    // all, then fill the rest in the background while the catalog is already serving. Cards render
+    // uncropped for those few seconds and crop themselves once the pass lands.
+    // Probe the hero's vector, falling back to the first declared preview: most catalogs name no
+    // `display.hero`, and probing nothing would strip the SVG lane from every one of them.
+    val figmaProbeId =
+      heroPreviewIdFor(catalog, bakedPathById.keys) ?: bakedPathById.keys.firstOrNull()
+    val figmaDir = probeFigmaSvg(heroSvgCandidates(figmaProbeId), base, dir)
+    if (figmaDir != null) {
+      scheduleFigmaSvgFetch(system, generation, slugs, variantSvgPaths, base, dir)
+    }
 
     // The catalog's OWN palette, so its pages are framed in its own colours (see [ServeThemeCss]).
     // A few kB of JSON off the same branch as the images, and best-effort throughout: a missing /
@@ -1038,6 +1066,7 @@ class ServeCatalogStore(
     variantPaths: Set<String>,
     base: String,
     dir: File,
+    stillCurrent: () -> Boolean = { true },
   ): File? {
     val figmaDir = File(dir, FIGMA_DIR)
     val figmaRoot = figmaDir.canonicalFile.toPath()
@@ -1070,6 +1099,7 @@ class ServeCatalogStore(
     // `figma-raster/` crops inside its own markup, and raw.githubusercontent has no directory
     // listing. Each vector is re-read from the file just written (a local read, one at a time)
     // rather than held from the fetch.
+    if (!stillCurrent()) return null
     val cropPlan = safeCandidates.flatMap { relativePath ->
       val svgFile = File(figmaDir, relativePath)
       if ("$base$FIGMA_DIR/$relativePath" !in writtenSvgs) return@flatMap emptyList()
@@ -1086,6 +1116,66 @@ class ServeCatalogStore(
     fetchCatalogAssetsToFiles(cropPlan)
     wrote = writtenSvgs.size
     return if (wrote > 0) figmaDir else null
+  }
+
+  /**
+   * The vectors that would serve [heroId], most specific first: the per-variant
+   * `figma/<slug>/<variant>.svg` the exporter emits per image, then the back-compat per-component
+   * `figma/<slug>.svg`. Empty when the catalog named no hero.
+   */
+  private fun heroSvgCandidates(heroId: String?): List<String> {
+    val id = heroId ?: return emptyList()
+    val slug = id.substringBefore(SLUG_SEPARATOR)
+    val variant = id.substringAfter(SLUG_SEPARATOR, missingDelimiterValue = "")
+    return buildList {
+      if (variant.isNotEmpty()) add("$slug/$variant.svg")
+      add("$slug.svg")
+    }
+  }
+
+  /**
+   * Fetch the first of [candidates] that exists, to decide whether this branch carries the figma
+   * lane at all. Returns the local `figma/` dir when one landed, else null — which is what keeps a
+   * catalog with no published vectors from advertising an SVG control that would 404 on every
+   * preview. One or two requests; the rest of the set follows in [scheduleFigmaSvgFetch].
+   */
+  private fun probeFigmaSvg(candidates: List<String>, base: String, dir: File): File? {
+    val figmaDir = File(dir, FIGMA_DIR)
+    val figmaRoot = figmaDir.canonicalFile.toPath()
+    for (relativePath in candidates) {
+      val svgFile = File(figmaDir, relativePath)
+      if (!svgFile.canonicalFile.toPath().startsWith(figmaRoot)) continue
+      if (
+        fetchCatalogAssetsToFiles(listOf(("$base$FIGMA_DIR/$relativePath") to svgFile)).isNotEmpty()
+      )
+        return figmaDir
+    }
+    return null
+  }
+
+  /**
+   * Fill the catalog's remaining baked vectors off the publish path. Best-effort and fire-and-
+   * forget: the catalog is already registered and serving, and every consumer of a vector degrades
+   * to "no crop / no SVG download" until its file lands.
+   *
+   * Guarded by [generation]: a catalog refresh replaces `dir` under a new generation, so a pass
+   * started for the old one stops rather than writing superseded vectors into the fresh catalog.
+   */
+  private fun scheduleFigmaSvgFetch(
+    system: String,
+    generation: Int,
+    slugs: Set<String>,
+    variantPaths: Set<String>,
+    base: String,
+    dir: File,
+  ) {
+    figmaExecutor.execute {
+      if (generations[system] != generation) return@execute
+      runCatching {
+          fetchFigmaSvgs(slugs, variantPaths, base, dir) { generations[system] == generation }
+        }
+        .onFailure { System.err.println("serve: catalog $system figma vectors: ${it.message}") }
+    }
   }
 
   private fun writeDesignReferences(
@@ -1518,6 +1608,9 @@ class ServeCatalogStore(
       return out.toByteArray()
     }
   }
+
+  /** Current generation per system; see [scheduleFigmaSvgFetch]. */
+  private val generations = ConcurrentHashMap<String, Int>()
 
   /** Fetch an ordinary catalog asset using the existing tight per-file envelope. */
   private fun fetchCatalogAsset(url: String): ByteArray? =
