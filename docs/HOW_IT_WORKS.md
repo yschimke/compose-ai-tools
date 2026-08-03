@@ -157,10 +157,14 @@ Consumer (what your project needs to apply the plugin):
   by tapmoc on every plugin/renderer build)
 - Compose Multiplatform 1.10.3+ (Desktop projects)
 
-The bottom edge is exercised end-to-end on every push by the `agp8-min`
-job in [`.github/workflows/integration.yml`](../.github/workflows/integration.yml)
+The bottom edge is exercised end-to-end on every push to `main` (plus the
+nightly cron) by the `agp8-min` job in
+[`.github/workflows/integration.yml`](../.github/workflows/integration.yml)
 against the fixture under
-[`.github/ci/fixtures/agp8-min/`](../.github/ci/fixtures/agp8-min/). The
+[`.github/ci/fixtures/agp8-min/`](../.github/ci/fixtures/agp8-min/). It does
+not run on pull requests — PRs run a single cheap integration cell
+(`wear-os-samples (ComposeStarter)`) and everything else in that workflow
+lands on `main`. The
 project's own build toolchain (what contributors use) is documented in
 [`AGENTS.md`](AGENTS.md) and is intentionally much newer than the
 consumer floor.
