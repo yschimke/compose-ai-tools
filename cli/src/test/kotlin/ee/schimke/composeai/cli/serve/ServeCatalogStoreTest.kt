@@ -52,8 +52,10 @@ class ServeCatalogStoreTest {
     }
   }
 
+  // `fetch` stays the LAST parameter so the trailing-lambda call sites below keep binding to it.
   private fun store(
     trust: TrustStore,
+    maxImages: Int = 1000,
     fetch: (String) -> ByteArray? = fetcher(),
   ): ServeCatalogStore =
     ServeCatalogStore(
@@ -62,7 +64,48 @@ class ServeCatalogStoreTest {
       trust = { trust },
       fetch = fetch,
       registerWasm = { s, d -> registeredWasm[s] = d },
+      maxImages = maxImages,
     )
+
+  @Test
+  fun `a missing leading image does not cost the catalog the images behind it`() {
+    // The image cap counts previews actually served, not fetch attempts. With a cap of two and a
+    // first image that 404s, the catalog must still serve the two behind it — planning the fetch up
+    // front must not turn the ceiling into "the first two declared".
+    val trust =
+      TrustStore(
+        branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
+      )
+    val missing = "images/button-filled/ideal__default__dark.png"
+    val result =
+      store(
+          trust,
+          fetch = { url ->
+            when {
+              url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+                threeImageCatalogJson.toByteArray()
+              url.endsWith(missing) -> null
+              url.endsWith(".png") -> png()
+              else -> null
+            }
+          },
+          maxImages = 2,
+        )
+        .load("compose-m3")
+
+    assertEquals(2, (result as ServeCatalogStore.Result.Ok).previewCount)
+  }
+
+  /** Three baked images across one component, so a cap of two leaves something behind it. */
+  private val threeImageCatalogJson =
+    """
+    {"schema":"design-parity-catalog/v1","system":"compose-m3","components":[
+      {"componentId":"Button/Filled","images":[
+        {"path":"images/button-filled/ideal__default__dark.png","theme":"dark"},
+        {"path":"images/button-filled/ideal__default__light.png","theme":"light"},
+        {"path":"images/button-filled/ideal__hover__light.png","theme":"light"}]}]}
+    """
+      .trimIndent()
 
   @Test
   fun `a catalog from a trusted branch is served and attributed by origin`() {
@@ -179,7 +222,9 @@ class ServeCatalogStoreTest {
       }
     }
 
-    assertTrue(store(TrustStore.EMPTY, fetch).load("compose-m3") is ServeCatalogStore.Result.Ok)
+    assertTrue(
+      store(TrustStore.EMPTY, fetch = fetch).load("compose-m3") is ServeCatalogStore.Result.Ok
+    )
 
     val reference = registered.getValue("compose-m3").designReferencesFor("button").single()
     assertEquals("button-design", reference.id)
@@ -237,7 +282,7 @@ class ServeCatalogStoreTest {
         else -> null
       }
     }
-    store(TrustStore.EMPTY, fetch).load("compose-m3")
+    store(TrustStore.EMPTY, fetch = fetch).load("compose-m3")
 
     val host = registered.getValue("compose-m3")
     val ok =
@@ -1198,7 +1243,7 @@ class ServeCatalogStoreTest {
   @Test
   fun `a complete catalog webRender fetches the wasm app and registers its dir`() {
     val catalog = wasmCatalog("\"index.html\",\"composeApp.wasm\",\"skiko.wasm\"")
-    store(TrustStore.EMPTY, wasmFetcher(catalog)).load("compose-m3")
+    store(TrustStore.EMPTY, fetch = wasmFetcher(catalog)).load("compose-m3")
 
     val wasmDir = registeredWasm.getValue("compose-m3")
     assertTrue(File(wasmDir, "index.html").isFile, "index.html landed")
@@ -1216,7 +1261,7 @@ class ServeCatalogStoreTest {
   fun `a webRender with a failed required-file fetch registers nothing (fail closed)`() {
     val catalog = wasmCatalog("\"index.html\",\"composeApp.wasm\",\"skiko.wasm\"")
     // composeApp.wasm 404s → the app is incomplete → don't advertise a tier whose iframe would 404.
-    store(TrustStore.EMPTY, wasmFetcher(catalog, missing = setOf("composeApp.wasm")))
+    store(TrustStore.EMPTY, fetch = wasmFetcher(catalog, missing = setOf("composeApp.wasm")))
       .load("compose-m3")
     assertTrue(registeredWasm.isEmpty(), "incomplete app must not register")
     // With no live lane (Wasm failed to register, no liveBundle), the session IS baked-only and
