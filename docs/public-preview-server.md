@@ -223,6 +223,17 @@ a catalog must never lose its render to a reference lane. Pass `--strict` to gat
 A repo with no `design-map.json` is a clean no-op, so the step runs unconditionally for every
 catalog.
 
+The lane only appears once a catalog actually publishes references — before the producer existed
+every catalog served the format controls on the left:
+
+![Compare-format controls without any design references](images/serve-references-lane-before.png)
+
+![Compare-format controls with the PNG ↔ Design reference lane](images/serve-references-lane-after.png)
+
+and selecting it scores each mock against the sticker it is mapped to:
+
+![PNG ↔ Design reference lane on the meshcore-mobile catalog](images/serve-references-compare.png)
+
 ## Two axes: trust × format
 
 These are orthogonal. **Trust** decides attribution; **format** decides what draws the pixels. Neither
