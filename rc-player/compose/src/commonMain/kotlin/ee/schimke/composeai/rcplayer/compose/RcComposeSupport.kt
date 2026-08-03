@@ -3,17 +3,21 @@ package ee.schimke.composeai.rcplayer.compose
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
+import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
+import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcPaintData
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcTextMeasure
+import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.protocol.supportReport
 import ee.schimke.composeai.rcplayer.runtime.RcDocumentLinker
 import ee.schimke.composeai.rcplayer.runtime.RcIntegerExpressionEvaluator
+import ee.schimke.composeai.rcplayer.runtime.RcLayoutTree
 
 public data class RcComposeSupportIssue(
   val operationIndex: Int,
@@ -102,6 +106,40 @@ public fun RcDocument.composeSupportReport(): RcComposeSupportReport {
         issues += RcComposeSupportIssue(index, "IntegerExpression", detail)
       }
     }
+    if (
+      operation is RcWidthModifier &&
+        operation.type !in
+          setOf(
+            RcDimensionType.EXACT,
+            RcDimensionType.FILL,
+            RcDimensionType.EXACT_DP,
+            RcDimensionType.FILL_PARENT_MAX_WIDTH,
+          )
+    ) {
+      issues +=
+        RcComposeSupportIssue(
+          index,
+          "WidthModifier",
+          "dimension type ${operation.type} is not implemented",
+        )
+    }
+    if (
+      operation is RcHeightModifier &&
+        operation.type !in
+          setOf(
+            RcDimensionType.EXACT,
+            RcDimensionType.FILL,
+            RcDimensionType.EXACT_DP,
+            RcDimensionType.FILL_PARENT_MAX_HEIGHT,
+          )
+    ) {
+      issues +=
+        RcComposeSupportIssue(
+          index,
+          "HeightModifier",
+          "dimension type ${operation.type} is not implemented",
+        )
+    }
   }
   val functions = operations.filterIsInstance<RcFloatFunctionDefine>().associateBy { it.id }
   operations.forEachIndexed { index, operation ->
@@ -126,8 +164,16 @@ public fun RcDocument.composeSupportReport(): RcComposeSupportReport {
     }
   }
   runCatching { RcDocumentLinker.link(this) }
-    .exceptionOrNull()
-    ?.let { issues += RcComposeSupportIssue(-1, "ContainerStructure", it.message ?: "invalid") }
+    .fold(
+      onSuccess = { linked ->
+        runCatching { RcLayoutTree.build(linked) }
+          .exceptionOrNull()
+          ?.let { issues += RcComposeSupportIssue(-1, "LayoutStructure", it.message ?: "invalid") }
+      },
+      onFailure = {
+        issues += RcComposeSupportIssue(-1, "ContainerStructure", it.message ?: "invalid")
+      },
+    )
   return RcComposeSupportReport(issues)
 }
 

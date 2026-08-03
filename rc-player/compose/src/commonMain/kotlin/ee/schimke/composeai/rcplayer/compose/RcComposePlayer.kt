@@ -1,8 +1,16 @@
 package ee.schimke.composeai.rcplayer.compose
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
@@ -38,15 +46,18 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
 import ee.schimke.composeai.rcplayer.protocol.RcDataMapLookup
+import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
 import ee.schimke.composeai.rcplayer.protocol.RcDraw3
@@ -95,6 +106,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcTheme
 import ee.schimke.composeai.rcplayer.protocol.RcTransform2
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.runtime.RcDocumentLinker
+import ee.schimke.composeai.rcplayer.runtime.RcLayoutModifiers
+import ee.schimke.composeai.rcplayer.runtime.RcLayoutNode
+import ee.schimke.composeai.rcplayer.runtime.RcLayoutTree
 import ee.schimke.composeai.rcplayer.runtime.RcLinkedNode
 import ee.schimke.composeai.rcplayer.runtime.RcNamedValue
 import ee.schimke.composeai.rcplayer.runtime.RcPlayerState
@@ -138,42 +152,182 @@ public fun RcComposePlayer(
     }
   }
   val linkedDocument = remember(document) { RcDocumentLinker.link(document) }
+  val layout = remember(linkedDocument) { RcLayoutTree.build(linkedDocument) }
   val images = remember(document) { decodeInlineImages(document) }
   val textMeasurer = rememberTextMeasurer()
   val semanticsModifier =
     state.rootContentDescription?.let { description ->
       modifier.semantics { contentDescription = description }
     } ?: modifier
-  Canvas(semanticsModifier) {
-    val width = document.header.width.coerceAtLeast(1)
-    val height = document.header.height.coerceAtLeast(1)
-    val rootTransform =
-      computeRootTransform(
-        documentWidth = width.toFloat(),
-        documentHeight = height.toFloat(),
-        viewportWidth = size.width,
-        viewportHeight = size.height,
-        behavior = state.rootContentBehavior,
-      )
-    withTransform({
-      translate(rootTransform.translateX, rootTransform.translateY)
-      scale(rootTransform.scaleX, rootTransform.scaleY, Offset.Zero)
-    }) {
-      state.beginFrame(frameNanos / 1_000_000_000f)
-      drawOperations(
-        linkedDocument.operations,
-        state,
-        RcPaintState(),
-        mutableMapOf(),
-        textMeasurer,
-        images,
-        RcFloatFunctionRuntime(),
-        theme,
-        filterTheme = true,
-      )
+  if (layout != null) {
+    SideEffect { state.beginFrame(frameNanos / 1_000_000_000f) }
+    RenderLayoutNode(
+      node = layout,
+      modifier = semanticsModifier,
+      state = state,
+      textMeasurer = textMeasurer,
+      images = images,
+      theme = theme,
+    )
+  } else
+    Canvas(semanticsModifier) {
+      val width = document.header.width.coerceAtLeast(1)
+      val height = document.header.height.coerceAtLeast(1)
+      val rootTransform =
+        computeRootTransform(
+          documentWidth = width.toFloat(),
+          documentHeight = height.toFloat(),
+          viewportWidth = size.width,
+          viewportHeight = size.height,
+          behavior = state.rootContentBehavior,
+        )
+      withTransform({
+        translate(rootTransform.translateX, rootTransform.translateY)
+        scale(rootTransform.scaleX, rootTransform.scaleY, Offset.Zero)
+      }) {
+        state.beginFrame(frameNanos / 1_000_000_000f)
+        drawOperations(
+          linkedDocument.operations,
+          state,
+          RcPaintState(),
+          mutableMapOf(),
+          textMeasurer,
+          images,
+          RcFloatFunctionRuntime(),
+          theme,
+          filterTheme = true,
+        )
+      }
     }
+}
+
+@Composable
+private fun RenderLayoutNode(
+  node: RcLayoutNode,
+  modifier: Modifier = Modifier,
+  state: RcPlayerState,
+  textMeasurer: TextMeasurer,
+  images: Map<Int, ImageBitmap>,
+  theme: Int,
+) {
+  when (node) {
+    is RcLayoutNode.Root ->
+      Box(modifier.applyLayoutModifiers(node.modifiers, state, fillMissingDimensions = true)) {
+        node.children.forEach {
+          RenderLayoutNode(
+            it,
+            state = state,
+            textMeasurer = textMeasurer,
+            images = images,
+            theme = theme,
+          )
+        }
+      }
+    is RcLayoutNode.Content ->
+      node.children.forEach {
+        RenderLayoutNode(
+          it,
+          state = state,
+          textMeasurer = textMeasurer,
+          images = images,
+          theme = theme,
+        )
+      }
+    is RcLayoutNode.Canvas ->
+      Box(modifier.applyLayoutModifiers(node.modifiers, state, fillMissingDimensions = true)) {
+        Canvas(Modifier.fillMaxSize()) {
+          val paint = RcPaintState()
+          val paths = mutableMapOf<Int, Path>()
+          val functions = RcFloatFunctionRuntime()
+          node.paintBlocks.forEach { operations ->
+            drawOperations(
+              operations,
+              state,
+              paint,
+              paths,
+              textMeasurer,
+              images,
+              functions,
+              theme,
+              filterTheme = true,
+            )
+          }
+        }
+        node.content?.let {
+          RenderLayoutNode(
+            it,
+            state = state,
+            textMeasurer = textMeasurer,
+            images = images,
+            theme = theme,
+          )
+        }
+      }
+    is RcLayoutNode.Box,
+    is RcLayoutNode.Row,
+    is RcLayoutNode.Column,
+    is RcLayoutNode.FitBox ->
+      error("${node::class.simpleName} layout semantics are not implemented")
   }
 }
+
+@Composable
+private fun Modifier.applyLayoutModifiers(
+  modifiers: RcLayoutModifiers,
+  state: RcPlayerState,
+  fillMissingDimensions: Boolean,
+): Modifier {
+  val density = androidx.compose.ui.platform.LocalDensity.current
+  var result = this
+  result = result.applyWidth(modifiers, state, density, fillMissingDimensions)
+  result = result.applyHeight(modifiers, state, density, fillMissingDimensions)
+  modifiers.padding.forEach { padding ->
+    result =
+      result.padding(
+        start = with(density) { state.resolve(padding.left).toDp() },
+        top = with(density) { state.resolve(padding.top).toDp() },
+        end = with(density) { state.resolve(padding.right).toDp() },
+        bottom = with(density) { state.resolve(padding.bottom).toDp() },
+      )
+  }
+  return result
+}
+
+private fun Modifier.applyWidth(
+  modifiers: RcLayoutModifiers,
+  state: RcPlayerState,
+  density: Density,
+  fillMissing: Boolean,
+): Modifier =
+  when (val width = modifiers.width) {
+    null -> if (fillMissing) fillMaxWidth() else this
+    else ->
+      when (width.type) {
+        RcDimensionType.EXACT -> width(with(density) { state.resolve(width.value).toDp() })
+        RcDimensionType.EXACT_DP -> width(state.resolve(width.value).dp)
+        RcDimensionType.FILL,
+        RcDimensionType.FILL_PARENT_MAX_WIDTH -> fillMaxWidth()
+        else -> this
+      }
+  }
+
+private fun Modifier.applyHeight(
+  modifiers: RcLayoutModifiers,
+  state: RcPlayerState,
+  density: Density,
+  fillMissing: Boolean,
+): Modifier =
+  when (val height = modifiers.height) {
+    null -> if (fillMissing) fillMaxHeight() else this
+    else ->
+      when (height.type) {
+        RcDimensionType.EXACT -> height(with(density) { state.resolve(height.value).toDp() })
+        RcDimensionType.EXACT_DP -> height(state.resolve(height.value).dp)
+        RcDimensionType.FILL,
+        RcDimensionType.FILL_PARENT_MAX_HEIGHT -> fillMaxHeight()
+        else -> this
+      }
+  }
 
 internal data class RcRootTransform(
   val scaleX: Float,
