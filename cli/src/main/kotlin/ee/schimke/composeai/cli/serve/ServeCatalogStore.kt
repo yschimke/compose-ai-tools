@@ -181,6 +181,21 @@ class ServeCatalogStore(
     val componentSourceFile: String?,
   )
 
+  /**
+   * The declared hero resolved against [bakedIds], or null when the catalog declares none / it
+   * matches nothing. Mirrors [ServeBundleHost.declaredHeroPreviewId]: an exact preview id wins,
+   * else a `componentId` / preview-function name is matched against the slug head using the same
+   * normalisation the exporter used, so a spec can name `"Template/TimeText"` and hit
+   * `template-timetext__ideal__…`. Kept in step with that resolver — they must agree, or the image
+   * fetched ahead of publishing is not the one the front door paints.
+   */
+  private fun heroPreviewIdFor(catalog: Catalog, bakedIds: Set<String>): String? {
+    val hero = catalog.display?.hero?.takeIf { it.isNotBlank() } ?: return null
+    if (hero in bakedIds) return hero
+    val wanted = heroSlugOf(hero)
+    return bakedIds.firstOrNull { heroSlugOf(it.substringBefore(SLUG_SEPARATOR)) == wanted }
+  }
+
   sealed interface Result {
     data class Ok(val system: String, val previewCount: Int, val trust: String) : Result
 
@@ -272,29 +287,25 @@ class ServeCatalogStore(
         }
       }
 
-    // Fetch in waves, each sized to the images still needed. [maxImages] caps *successes*, not
-    // attempts — a wave that comes back short is followed by another — so a catalog whose leading
-    // images are missing still serves the ones behind them, as the sequential loop did. Peak memory
-    // stays at the in-flight assets because the workers write straight to disk.
-    var planIndex = 0
-    while (planIndex < plannedImages.size && count < maxImages) {
-      val waveSize = minOf(IMAGE_FETCH_WAVE, maxImages - count)
-      val wave = plannedImages.subList(planIndex, minOf(plannedImages.size, planIndex + waveSize))
-      planIndex += wave.size
-      val written =
-        fetchCatalogAssetsToFiles(
-          wave.mapNotNull { planned -> planned.target?.let { (base + planned.path) to it } }
-        )
-      for (planned in wave) {
-        if (count >= maxImages) break
-        // Counted BEFORE the fetch is consulted: it's what the catalog claims to publish, which is
-        // how the completeness check below tells "this catalog bakes nothing" (legal, all-deferred)
-        // apart from "this catalog bakes things and none of them fetched" (an outage — must not
-        // swap).
-        declaredImages++
-        if (planned.target == null || (base + planned.path) !in written) continue
+    // Walk the plan for METADATA ONLY — no image is fetched here. `catalog.json` alone names every
+    // card, its state/theme/section and its ordering, which is everything the grid needs to be
+    // published; the pixels are what used to keep a catalog invisible for minutes after its
+    // metadata had arrived. Each id is recorded as declared-baked and handed to the host, which
+    // fetches its PNG on first use (see [ServeBundleHost.fetchBakedPng]). A visitor's first grid
+    // paint therefore fills the default previews concurrently through the ordinary request path —
+    // no separate background pass to schedule, cancel on refresh, or reason about.
+    val bakedPathById = LinkedHashMap<String, String>()
+    for (planned in plannedImages) {
+      if (count >= maxImages) break
+      // Counted as the catalog CLAIMS to publish it, which is how the completeness check below
+      // tells "this catalog bakes nothing" (legal, all-deferred) apart from "this catalog bakes
+      // things and the branch can't serve them" (an outage — must not swap).
+      declaredImages++
+      if (planned.target == null) continue
+      run {
         val id = planned.id
         val image = planned.image
+        bakedPathById[id] = planned.path
         slugs.add(id.substringBefore(SLUG_SEPARATOR))
         planned.path
           .removePrefix("$IMAGES_DIR/")
@@ -341,7 +352,10 @@ class ServeCatalogStore(
     for (record in catalog.deferred) {
       if (deferredIds.size >= maxImages) break
       val id = deferredPreviewIdOf(record) ?: continue
-      if (variants.containsKey(id) || File(previewsDir, "$id.png").isFile) continue
+      // Checked against the DECLARED baked set, not the previews dir: with images fetched lazily
+      // nothing is on disk yet at this point, and a flat catalog's baked previews carry no variant
+      // metadata either — so an on-disk test would let a deferred record shadow a baked preview.
+      if (variants.containsKey(id) || bakedPathById.containsKey(id)) continue
       if (!deferredIds.add(id)) continue
       val section = record.section?.takeIf { it.isNotBlank() }
       val group = record.group?.takeIf { it.isNotBlank() }
@@ -371,6 +385,32 @@ class ServeCatalogStore(
     if (count == 0 && (declaredImages > 0 || deferredIds.isEmpty())) {
       staging.deleteRecursively()
       return Result.Failed(system, "catalog had no usable images")
+    }
+
+    // The one image fetched before publishing: the catalog's hero, which the front-door card paints
+    // from. Two jobs in one round-trip.
+    //
+    // It is also what is left of the old completeness check. The bulk fetch used to prove the
+    // branch could actually serve pixels — "declared images, none fetched" meant an outage and the
+    // staged dir was thrown away rather than swapped over a healthy one. Fetching lazily gives that
+    // up unless something is fetched here, so a catalog that declares images must land its hero to
+    // publish. One request, and a branch serving 404s still can't replace a working catalog.
+    // Deliberately a small SAMPLE rather than one nominated image: keying the precondition on a
+    // single file would fail a whole catalog because one image happens to be missing, which is
+    // strictly worse than the bulk fetch it replaces (that one dropped the bad image and served the
+    // rest). The hero leads the sample so the front-door card is the one certainly present.
+    if (bakedPathById.isNotEmpty()) {
+      val heroPath = heroPreviewIdFor(catalog, bakedPathById.keys)?.let(bakedPathById::get)
+      val sample =
+        (listOfNotNull(heroPath) + bakedPathById.values).distinct().take(PUBLISH_SAMPLE_IMAGES)
+      val landed =
+        fetchCatalogAssetsToFiles(
+          sample.map { path -> (base + path) to File(previewsDir, "${previewIdFor(path)}.png") }
+        )
+      if (landed.isEmpty()) {
+        staging.deleteRecursively()
+        return Result.Failed(system, "catalog images could not be fetched from its branch")
+      }
     }
 
     // Write the state/theme manifest into the staged previews dir *before* the atomic swap, so a
@@ -475,6 +515,13 @@ class ServeCatalogStore(
               ?.let { ServeWeb.CatalogSource(it.repo, it.ref, it.module) },
           degradations = degradations,
           liveOnly = liveOnly,
+          // Every id the catalog bakes, so the grid is complete the moment `catalog.json` lands…
+          declaredBaked = bakedPathById.keys.toList(),
+          // …and the pixels follow on first use. The store keeps ownership of the network here: the
+          // host never builds a URL or applies a fetch policy, it just asks for an id it declared.
+          fetchBakedPng = { id ->
+            bakedPathById[id]?.let { path -> fetchCatalogAsset(base + path) }
+          },
         )
       }
 
@@ -1423,6 +1470,21 @@ class ServeCatalogStore(
      * followed by another rather than truncating the catalog.
      */
     private const val IMAGE_FETCH_WAVE = 64
+
+    /**
+     * Images fetched before a catalog publishes: its hero (which the front door paints) plus a
+     * couple of others, so "the branch can serve pixels" is proven without one missing file being
+     * able to fail the catalog. Everything else arrives on first use.
+     */
+    private const val PUBLISH_SAMPLE_IMAGES = 3
+
+    /**
+     * Slug normalisation shared with [ServeBundleHost]'s hero resolver — mirrors design-parity's
+     * `slug()` (non-`[a-zA-Z0-9._-]` → `-`, trim, lowercase).
+     */
+    private fun heroSlugOf(value: String): String =
+      value.replace(Regex("[^a-zA-Z0-9._-]+"), "-").trim('-').lowercase().ifBlank { "x" }
+
     internal const val MAX_LIVE_BUNDLE_FETCH_BYTES = 100L * 1024 * 1024
 
     private val json = Json { ignoreUnknownKeys = true }

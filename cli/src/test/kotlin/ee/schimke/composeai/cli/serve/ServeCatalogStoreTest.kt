@@ -5,6 +5,7 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
+import java.util.Collections
 import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -68,10 +69,13 @@ class ServeCatalogStoreTest {
     )
 
   @Test
-  fun `a missing leading image does not cost the catalog the images behind it`() {
-    // The image cap counts previews actually served, not fetch attempts. With a cap of two and a
-    // first image that 404s, the catalog must still serve the two behind it — planning the fetch up
-    // front must not turn the ceiling into "the first two declared".
+  fun `the image cap bounds the previews a catalog declares`() {
+    // Fetching lazily makes the ceiling count DECLARED previews rather than successfully fetched
+    // ones: whether an image can be had isn't known at load time any more, and finding out would
+    // mean fetching everything — the thing lazy loading exists to avoid. So a cap of two publishes
+    // the first two declarations, and a card whose image turns out to be missing reports NotFound
+    // on request instead of being silently replaced by a later one. The cap defaults to 1000 while
+    // the largest published catalog declares ~200, so it does not bind in practice.
     val trust =
       TrustStore(
         branches = listOf(TrustedBranch("yschimke/compose-ai-tools", "design-artifacts/*"))
@@ -94,6 +98,106 @@ class ServeCatalogStoreTest {
         .load("compose-m3")
 
     assertEquals(2, (result as ServeCatalogStore.Result.Ok).previewCount)
+    val host = registered.getValue("compose-m3")
+    assertEquals(
+      listOf("button-filled__ideal__default__dark", "button-filled__ideal__default__light"),
+      host.previews.map { it.id },
+    )
+    // The declared-but-unfetchable card reports NotFound; its sibling still serves.
+    assertEquals(
+      RenderOutcome.NotFound,
+      host.render("button-filled__ideal__default__dark", PreviewOverrides()),
+    )
+    assertTrue(
+      host.render("button-filled__ideal__default__light", PreviewOverrides()) is RenderOutcome.Ok
+    )
+  }
+
+  /** Eight baked images, comfortably more than the handful sampled before publishing. */
+  private val eightImageCatalogJson =
+    """
+    {"schema":"design-parity-catalog/v1","system":"compose-m3","components":[
+      {"componentId":"Button/Filled","images":[
+        ${(1..8).joinToString(",") { """{"path":"images/button-filled/v$it.png"}""" }}]}]}
+    """
+      .trimIndent()
+
+  @Test
+  fun `a catalog publishes every declared preview before its images are fetched`() {
+    val requested = Collections.synchronizedList(mutableListOf<String>())
+    val fetcher: (String) -> ByteArray? = { url ->
+      requested += url
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> eightImageCatalogJson.toByteArray()
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+    val result = store(TrustStore.EMPTY, fetch = fetcher).load("compose-m3")
+
+    // Every declared card is published…
+    assertEquals(8, (result as ServeCatalogStore.Result.Ok).previewCount)
+    val host = registered.getValue("compose-m3")
+    assertEquals(8, host.previews.size)
+    // …on a small sample of images, not all eight. This is the whole point: `catalog.json` names
+    // every card, so the grid is complete long before the pixels are.
+    val imagesAtPublish = requested.count { it.endsWith(".png") }
+    assertTrue(imagesAtPublish <= 3, "published after $imagesAtPublish image fetches")
+
+    // A card whose pixels were never fetched still renders — the host fills it on first use.
+    val cold = "button-filled__v8"
+    assertTrue(host.previews.any { it.id == cold })
+    assertTrue(host.render(cold, PreviewOverrides()) is RenderOutcome.Ok)
+    assertEquals(imagesAtPublish + 1, requested.count { it.endsWith(".png") })
+
+    // …and only once: the second read comes off disk.
+    assertTrue(host.render(cold, PreviewOverrides()) is RenderOutcome.Ok)
+    assertEquals(imagesAtPublish + 1, requested.count { it.endsWith(".png") })
+  }
+
+  @Test
+  fun `computing thumbnail crops never fetches a cold preview`() {
+    // The landing page computes a crop for EVERY card while building its HTML. If that filled
+    // missing pixels, the first page request would serially download a whole cold catalog on the
+    // request thread — reintroducing the stall this lazy path exists to remove, just moved.
+    val requested = Collections.synchronizedList(mutableListOf<String>())
+    store(
+        TrustStore.EMPTY,
+        fetch = { url ->
+          requested += url
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") ->
+              eightImageCatalogJson.toByteArray()
+            url.endsWith(".png") -> png()
+            else -> null
+          }
+        },
+      )
+      .load("compose-m3")
+    val host = registered.getValue("compose-m3") as ServeBundleHost
+    val afterPublish = requested.count { it.endsWith(".png") }
+
+    host.previews.forEach { host.contentCrop(it.id) }
+
+    assertEquals(afterPublish, requested.count { it.endsWith(".png") })
+  }
+
+  @Test
+  fun `a branch that cannot serve any image does not replace a healthy catalog`() {
+    // Lazy images give up the old "declared images, none fetched" outage check, so the publish-time
+    // sample is what keeps a 404ing branch from swapping over a working catalog.
+    val result =
+      store(
+          TrustStore.EMPTY,
+          fetch = { url ->
+            if (url.endsWith("/${ServeCatalogStore.CATALOG_FILE}")) {
+              eightImageCatalogJson.toByteArray()
+            } else null
+          },
+        )
+        .load("compose-m3")
+
+    assertTrue(result is ServeCatalogStore.Result.Failed, "expected failure, got $result")
   }
 
   /** Three baked images across one component, so a cap of two leaves something behind it. */
