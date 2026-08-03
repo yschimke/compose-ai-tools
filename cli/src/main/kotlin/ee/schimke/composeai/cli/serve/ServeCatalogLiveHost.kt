@@ -241,6 +241,22 @@ class ServeCatalogLiveHost(
     alias.values.firstOrNull()?.let { scheduleWarm(it, live) }
   }
 
+  /**
+   * A visitor is on this catalog's pages: make sure the shared daemon is up, so their first theme
+   * selection is a warm render rather than a cold start.
+   *
+   * This is [prewarm]'s warming half without the theme-optimization pass — the same [scheduleWarm]
+   * call, under the same conditions. It is safe to call on every heartbeat because `scheduleWarm`
+   * returns immediately once the id is warm or a warm is already in flight; a suspended session is
+   * rebuilt with a fresh host (and so a fresh warm set) on resume, which is exactly when a
+   * heartbeat should warm it again.
+   */
+  override fun keepLiveWarm() {
+    if (!warmInBackground) return
+    if (perPreviewResolve != null && !sharedDaemonRenders) return
+    alias.values.firstOrNull()?.let { scheduleWarm(it, live) }
+  }
+
   override val label: String = baked.label
 
   /**

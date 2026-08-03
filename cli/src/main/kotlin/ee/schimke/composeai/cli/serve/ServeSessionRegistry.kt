@@ -466,8 +466,14 @@ class ServeSessionRegistry(
       .sortedBy { it.id }
   }
 
-  private companion object {
-    /** Default idle window before a resident session's daemon is suspended. */
+  internal companion object {
+    /**
+     * Default idle window before a resident session's daemon is suspended.
+     *
+     * Visible beyond this class because the page-side presence heartbeat
+     * ([ServeWeb.PRESENCE_INTERVAL_SECONDS]) has to fit inside it with room for a dropped ping — a
+     * relationship worth asserting rather than restating.
+     */
     const val DEFAULT_IDLE_TIMEOUT_MILLIS = 10 * 60 * 1000L
 
     /**

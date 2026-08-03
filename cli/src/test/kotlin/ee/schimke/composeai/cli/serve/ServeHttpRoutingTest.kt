@@ -905,6 +905,18 @@ class ServeHttpRoutingTest {
   }
 
   @Test
+  fun `a presence heartbeat keeps a session alive and answers with nothing`() {
+    // 204, no body: a heartbeat isn't something a page can act on. Leasing the session is the
+    // point — that is what stops the reaper closing a daemon under a visitor who is still reading.
+    val (code, body) = post("/compose-m3/api/presence")
+    assertEquals(204, code)
+    assertEquals("", body)
+    // A catalog this server doesn't have is not an error either: an open tab whose catalog was
+    // since removed should go quiet, not start reporting failures at the visitor.
+    assertEquals(204, post("/no-such-system/api/presence").first)
+  }
+
+  @Test
   fun `an unknown hero name 404s`() {
     assertEquals(404, get("/hero/compose-m3/0000000000000000.png").first)
   }

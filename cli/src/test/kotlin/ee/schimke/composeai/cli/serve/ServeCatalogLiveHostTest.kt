@@ -409,6 +409,34 @@ class ServeCatalogLiveHostTest {
   }
 
   @Test
+  fun `a presence heartbeat gets the daemon ready for a visitor who has only browsed baked pixels`() {
+    // The point of the keepalive's warming half. Browsing a catalog is entirely baked by design, so
+    // a visitor reading the grid has never woken the daemon — and their first theme click would pay
+    // its cold start. A heartbeat while they read turns that into a warm render.
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+      )
+    val composite =
+      ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked, warmInBackground = true)
+    // Every open tab calls this every few minutes, so it must be safe to repeat — the warm set and
+    // the in-flight guard collapse the repeats into the one render below.
+    repeat(5) { composite.keepLiveWarm() }
+
+    val out =
+      awaitOk(2_000) {
+        (composite.renderSvg(catalogId, PreviewOverrides()) as? SvgOutcome.Ok)?.takeIf {
+          it.svg.decodeToString() == "live-svg:$daemonId"
+        }
+      }
+    assertEquals("live-svg:$daemonId", out.svg.decodeToString())
+    assertEquals(daemonId, live.lastRenderId, "the warm went through the daemon")
+  }
+
+  @Test
   fun `prewarm does not open per-preview daemons eagerly`() {
     var resolved = false
     val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
