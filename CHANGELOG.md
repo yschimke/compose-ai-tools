@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.19.21](https://github.com/yschimke/compose-ai-tools/compare/v0.19.20...v0.19.21) (2026-08-03)
+
+
+### Features
+
+* **serve:** move home auth into header ([#3202](https://github.com/yschimke/compose-ai-tools/issues/3202)) ([01cff18](https://github.com/yschimke/compose-ai-tools/commit/01cff1829a106a2059a858f1c8d6f3bf434dbd6a))
+* **serve:** publish design references from design-map.json ([#3203](https://github.com/yschimke/compose-ai-tools/issues/3203)) ([0cfa127](https://github.com/yschimke/compose-ai-tools/commit/0cfa127ccd95a7d84dffa42c85c7ab34d1e87583))
+
+
+### Bug Fixes
+
+* **bundle:** preserve semantics inactivity timeout ([#3199](https://github.com/yschimke/compose-ai-tools/issues/3199)) ([2f6cda9](https://github.com/yschimke/compose-ai-tools/commit/2f6cda9e64c4ebdad6ae3aa7890f07043a8dbb85))
+* **serve:** align kotlinx-io for live bundles ([#3204](https://github.com/yschimke/compose-ai-tools/issues/3204)) ([a6f1cd7](https://github.com/yschimke/compose-ai-tools/commit/a6f1cd7ca56e2c707234b8350f196c302dcf1af5))
+* **serve:** optimize catalog themes while idle ([#3206](https://github.com/yschimke/compose-ai-tools/issues/3206)) ([b090b1e](https://github.com/yschimke/compose-ai-tools/commit/b090b1edd9b74b3ca3102e6fb11b4d269de812b6))
+* **serve:** scope kotlinx path matching ([#3207](https://github.com/yschimke/compose-ai-tools/issues/3207)) ([d8a5149](https://github.com/yschimke/compose-ai-tools/commit/d8a51497f9e08547fd601905951046b2dab78ff5))
+
 ## [0.19.20](https://github.com/yschimke/compose-ai-tools/compare/v0.19.19...v0.19.20) (2026-08-02)
 
 
