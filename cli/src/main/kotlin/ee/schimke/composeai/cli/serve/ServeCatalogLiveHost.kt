@@ -234,8 +234,8 @@ class ServeCatalogLiveHost(
   private fun startThemeOptimization() {
     val catalogIds =
       previews.asSequence().map { it.id }.filter(alias::containsKey).sorted().toList()
-    val jobs = declaredThemes.flatMap { theme ->
-      catalogIds.map { previewId ->
+    val jobs = catalogIds.flatMap { previewId ->
+      declaredThemes.map { theme ->
         val overrides = PreviewOverrides(themeProvider = theme.providerFqn)
         ThemeOptimizationJob(
           previewId = previewId,
@@ -256,7 +256,19 @@ class ServeCatalogLiveHost(
           while (catalogThemeCache.get(job.cacheKey) == null && attempts < 3) {
             if (!awaitServerIdle()) return@execute
             catalogThemeCache.markRunning(clock())
-            if (render(job.previewId, job.overrides) is RenderOutcome.Ok) break
+            val outcome = render(job.previewId, job.overrides)
+            if (outcome is RenderOutcome.Ok) break
+            val daemonId = alias[job.previewId]
+            if (
+              outcome == RenderOutcome.Busy &&
+                daemonId != null &&
+                warmingInFlight.contains(daemonId)
+            ) {
+              if (!awaitWarmCompletion(daemonId)) return@execute
+              // A successful cold warm should not consume the optimizer's retry budget: the Busy
+              // response only meant "warming asynchronously", not that the theme render failed.
+              if (warmDaemonIds.contains(daemonId)) continue
+            }
             attempts++
             if (attempts < 3 && !pauseOptimization(250)) return@execute
           }
@@ -279,6 +291,13 @@ class ServeCatalogLiveHost(
       catalogThemeCache.markPaused()
       if (!pauseOptimization(1_000)) return false
     }
+  }
+
+  private fun awaitWarmCompletion(daemonId: String): Boolean {
+    while (warmingInFlight.contains(daemonId)) {
+      if (Thread.currentThread().isInterrupted || !pauseOptimization(1_000)) return false
+    }
+    return true
   }
 
   private fun pauseOptimization(millis: Long): Boolean =

@@ -8,6 +8,9 @@ import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -708,6 +711,90 @@ class ServeCatalogLiveHostTest {
     assertTrue(snapshot.fullyOptimized)
     assertEquals("complete", snapshot.state)
     assertEquals(false, composite.backgroundWorkActive)
+  }
+
+  @Test
+  fun `idle optimizer waits for asynchronous cold warming without spending its retry budget`() {
+    val warmStarted = CountDownLatch(1)
+    val releaseWarm = CountDownLatch(1)
+    val delegate =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val slowColdLive =
+      object : ServeHost by delegate {
+        override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
+          if (overrides == PreviewOverrides()) {
+            warmStarted.countDown()
+            check(releaseWarm.await(5, TimeUnit.SECONDS)) { "test warm was not released" }
+          }
+          return delegate.render(previewId, overrides)
+        }
+      }
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = slowColdLive,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        warmInBackground = true,
+        serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationIdleMillis = 0,
+      )
+
+    composite.prewarm()
+    assertTrue(warmStarted.await(2, TimeUnit.SECONDS))
+    Thread.sleep(750)
+    assertTrue(composite.backgroundWorkActive)
+    assertEquals(0, composite.themeOptimizationSnapshot()?.failed)
+    releaseWarm.countDown()
+
+    assertTrue(awaitOptimization(composite).fullyOptimized)
+    assertEquals(2, delegate.renderCalls, "one cold warm, then one theme render")
+  }
+
+  @Test
+  fun `idle optimizer renders all themes for a preview before opening the next daemon`() {
+    val secondCatalogId = "switch-on__ideal__default__dark"
+    val secondDaemonId = "SwitchOn_Dark"
+    val secondTheme = ServeTheme("Brand Light", "com.example.BrandLight")
+    val resolved = Collections.synchronizedList(mutableListOf<String>())
+    val perPreview = RecordingHost(previews = emptyList(), tag = "per")
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId, secondCatalogId to secondDaemonId),
+        live =
+          RecordingHost(
+            previews =
+              listOf(
+                ServePreview(daemonId, daemonId),
+                ServePreview(secondDaemonId, secondDaemonId),
+              ),
+            tag = "mono",
+            declaredThemes = listOf(brandTheme, secondTheme),
+          ),
+        baked =
+          RecordingHost(
+            previews =
+              listOf(
+                ServePreview(catalogId, catalogId),
+                ServePreview(secondCatalogId, secondCatalogId),
+              ),
+            tag = "baked",
+          ),
+        perPreviewResolve = { id ->
+          resolved += id
+          perPreview
+        },
+        serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationIdleMillis = 0,
+      )
+
+    composite.prewarm()
+    awaitOptimization(composite)
+
+    assertEquals(listOf(daemonId, daemonId, secondDaemonId, secondDaemonId), resolved.toList())
   }
 
   @Test
