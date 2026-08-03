@@ -254,6 +254,18 @@ class ServeSessionRegistry(
   }
 
   /**
+   * Whether [sessionId] names a session this registry actually has. Cheap and non-opening — it does
+   * not lease, resume, or spawn anything.
+   *
+   * Exists so the live-seat budget can tell a real admission attempt from a request for something
+   * that was never here. The seat is reserved *before* the session is leased (leasing resumes the
+   * host and spawns its daemon, so a later check would be too late to bound anything), which means
+   * a request for a nonexistent session reaches the budget too — harmless for admission, but it
+   * would let anyone inflate the refusal counter that budget decisions are supposed to rest on.
+   */
+  fun isKnownSession(sessionId: String): Boolean = lock.withLock { sessions.containsKey(sessionId) }
+
+  /**
    * Live-seat cost of [sessionId]'s daemon in [LiveSeatLimiter] permits — its session state's
    * [ServeSessionState.liveSeatWeight], or `1` for an unknown / lazily-forked session (whose
    * on-demand build hasn't run yet, so it's treated as a default desktop-weight daemon). Read

@@ -44,12 +44,17 @@ class LiveSeatLimiter(val totalPermits: Int) {
    * coerced down to [totalPermits], so a backend heavier than the whole budget can still run alone
    * rather than being permanently refused.
    */
-  fun acquire(weight: Int): Ticket? {
+  fun acquire(weight: Int, verified: Boolean = true): Ticket? {
     val sem = semaphore ?: return Ticket(0)
     if (weight <= 0) return Ticket(0)
     val permits = weight.coerceIn(1, totalPermits)
     if (sem.tryAcquire(permits)) return Ticket(permits)
-    refusals.incrementAndGet()
+    // Seats are reserved before the session is leased (see the stream lane), so a request naming
+    // a session the registry doesn't have reaches the budget too. Those are split off rather than
+    // dropped: on a public box they are mostly noise anyone could generate, but on a `--revisions`
+    // box a valid revision is *legitimately* unknown until its first lease builds it, and its
+    // refusals are real demand. Two counters keep both readings honest.
+    if (verified) refusals.incrementAndGet() else unverifiedRefusals.incrementAndGet()
     return null
   }
 
@@ -69,7 +74,19 @@ class LiveSeatLimiter(val totalPermits: Int) {
    */
   fun refusalCount(): Long = refusals.get()
 
+  /**
+   * Refusals for a session id the registry did not have at admission time, monotonic.
+   *
+   * Two populations share this bucket and only the caller's deployment tells them apart: a request
+   * for something that was never here (noise on a public box — anyone can generate it, which is why
+   * it must not touch [refusalCount]), and a lazily-created session that is valid but unbuilt, as
+   * `--revisions` produces on its first request. Read it alongside [refusalCount] rather than
+   * instead of it.
+   */
+  fun unverifiedRefusalCount(): Long = unverifiedRefusals.get()
+
   private val refusals = AtomicLong()
+  private val unverifiedRefusals = AtomicLong()
 
   /** A held reservation of [permits] live-seat permits; [close] returns them (idempotent). */
   inner class Ticket internal constructor(val permits: Int) : AutoCloseable {

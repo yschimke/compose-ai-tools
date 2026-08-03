@@ -1912,6 +1912,7 @@ class ServeHttpServer(
             liveSeatsAvailable = if (liveSeats.unbounded) -1 else liveSeats.availablePermits(),
             liveSeatsUnbounded = liveSeats.unbounded,
             liveSeatRefusals = liveSeats.refusalCount(),
+            liveSeatRefusalsUnverified = liveSeats.unverifiedRefusalCount(),
           ),
         config =
           ConfigDto(
@@ -2931,7 +2932,11 @@ class ServeHttpServer(
     // --revisions), unregistered until its build runs, defaults to weight 1 — a desktop-cost
     // daemon.
     val weight = if (sessions.isKnownStatic(sessionId)) 0 else sessions.liveSeatWeight(sessionId)
-    val seatTicket = liveSeats.acquire(weight)
+    // The reservation happens before the lease, so a bogus id reaches the budget too. A refusal for
+    // a session the registry doesn't have is counted separately rather than as demand: an
+    // inflatable counter is not evidence, but a `--revisions` session is legitimately unknown until
+    // its first lease builds it, so the number is kept rather than dropped.
+    val seatTicket = liveSeats.acquire(weight, verified = sessions.isKnownSession(sessionId))
     if (seatTicket == null) {
       close(CloseReason(1013.toShort(), "live preview at capacity — try again shortly"))
       return
@@ -3353,6 +3358,13 @@ private data class DaemonSummaryDto(
    * justify raising it, or evicting an idle daemon in favour of an active one.
    */
   val liveSeatRefusals: Long = 0,
+  /**
+   * Refusals for a session id the registry did not have — see
+   * [LiveSeatLimiter.unverifiedRefusalCount]. Kept apart from [liveSeatRefusals] because anyone can
+   * generate these against a public box, while on a `--revisions` box they are genuine
+   * first-request demand.
+   */
+  val liveSeatRefusalsUnverified: Long = 0,
 )
 
 @Serializable
