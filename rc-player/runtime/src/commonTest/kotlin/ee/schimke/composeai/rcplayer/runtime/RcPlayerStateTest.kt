@@ -6,6 +6,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorConstant
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
+import ee.schimke.composeai.rcplayer.protocol.RcConditionalOperations
 import ee.schimke.composeai.rcplayer.protocol.RcDataMapEntry
 import ee.schimke.composeai.rcplayer.protocol.RcDataMapLookup
 import ee.schimke.composeai.rcplayer.protocol.RcDebugMessage
@@ -29,6 +30,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerConstant
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLongConstant
+import ee.schimke.composeai.rcplayer.protocol.RcLoopOperation
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixConstant
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixExpression
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixVectorMath
@@ -57,8 +59,90 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class RcPlayerStateTest {
+  @Test
+  fun evaluatesEveryAndroidXConditionalTypeIncludingChangedState() {
+    val state = RcPlayerState(RcDocument(RcHeader(RcVersion(1, 0, 0)), emptyList()))
+    fun condition(type: Int, left: Float = 2f, right: Float = 3f) =
+      RcConditionalOperations(type, RcFloatWord.literal(left), RcFloatWord.literal(right))
+
+    assertFalse(state.evaluateConditional(condition(RcConditionalOperations.EQUAL)))
+    assertTrue(state.evaluateConditional(condition(RcConditionalOperations.NOT_EQUAL)))
+    assertTrue(state.evaluateConditional(condition(RcConditionalOperations.LESS_THAN)))
+    assertTrue(state.evaluateConditional(condition(RcConditionalOperations.LESS_THAN_OR_EQUAL)))
+    assertFalse(state.evaluateConditional(condition(RcConditionalOperations.GREATER_THAN)))
+    assertFalse(state.evaluateConditional(condition(RcConditionalOperations.GREATER_THAN_OR_EQUAL)))
+    assertFalse(state.evaluateConditional(condition(99)))
+
+    val changed = condition(RcConditionalOperations.CHANGED, 0f, 0f)
+    assertFalse(state.evaluateConditional(changed))
+    state.setFloat(40, 1f)
+    val dynamicChanged =
+      RcConditionalOperations(
+        RcConditionalOperations.CHANGED,
+        RcFloatWord(0x7fc00000 or 40),
+        RcFloatWord.literal(0f),
+      )
+    assertTrue(state.evaluateConditional(dynamicChanged))
+    assertFalse(state.evaluateConditional(dynamicChanged))
+    state.setFloat(40, 2f)
+    assertTrue(state.evaluateConditional(dynamicChanged))
+  }
+
+  @Test
+  fun loopUsesExclusiveUntilDynamicValuesAndAResourceBound() {
+    val state =
+      RcPlayerState(
+        RcDocument(
+          RcHeader(RcVersion(1, 0, 0)),
+          listOf(
+            RcFloatConstant(10, RcFloatWord.literal(1f)),
+            RcFloatConstant(11, RcFloatWord.literal(2f)),
+            RcFloatConstant(12, RcFloatWord.literal(7f)),
+          ),
+        )
+      )
+    val operation =
+      RcLoopOperation(
+        20,
+        RcFloatWord(0x7fc00000 or 10),
+        RcFloatWord(0x7fc00000 or 11),
+        RcFloatWord(0x7fc00000 or 12),
+      )
+    val values = mutableListOf<Float>()
+
+    state.forEachLoopValue(operation) { value ->
+      assertEquals(value, state.resolve(RcFloatWord(0x7fc00000 or 20)))
+      values += value
+    }
+
+    assertEquals(listOf(1f, 3f, 5f), values)
+    assertFailsWith<IllegalArgumentException> {
+      state.forEachLoopValue(
+        RcLoopOperation(
+          0,
+          RcFloatWord.literal(0f),
+          RcFloatWord.literal(0.00001f),
+          RcFloatWord.literal(1f),
+        )
+      ) {}
+    }
+    val zeroIterations = mutableListOf<Float>()
+    state.forEachLoopValue(
+      RcLoopOperation(
+        0,
+        RcFloatWord.literal(3f),
+        RcFloatWord.literal(-1f),
+        RcFloatWord.literal(0f),
+      ),
+      zeroIterations::add,
+    )
+    assertTrue(zeroIterations.isEmpty())
+  }
+
   @Test
   fun debugMessageResolvesTextAndDynamicFloatIntoATypedEvent() {
     val events = mutableListOf<RcPlayerEvent>()

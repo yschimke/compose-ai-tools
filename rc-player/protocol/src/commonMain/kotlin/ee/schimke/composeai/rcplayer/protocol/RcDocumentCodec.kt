@@ -20,6 +20,8 @@ public object RcDocumentCodec {
         TextDataCodec,
         RemarkCodec,
         DebugMessageCodec,
+        ConditionalOperationsCodec,
+        LoopOperationCodec,
         BitmapDataCodec,
         FloatConstantCodec,
         FloatExpressionCodec,
@@ -1316,6 +1318,55 @@ private object DebugMessageCodec : RcOperationCodec<RcDebugMessage> {
     output.writeInt(value.textId)
     output.writeFloatWord(value.value)
     output.writeInt(value.flags)
+  }
+}
+
+private object ConditionalOperationsCodec : RcOperationCodec<RcConditionalOperations> {
+  override val spec = RcOperationSpec(RcOpcodes.CONDITIONAL_OPERATIONS, "ConditionalOperations")
+
+  override fun decode(input: RcWireReader): RcConditionalOperations =
+    RcConditionalOperations(
+      type = input.readU8("type").toByte().toInt(),
+      left = input.readFloatWord("left"),
+      right = input.readFloatWord("right"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcConditionalOperations) {
+    output.writeU8(value.type)
+    output.writeFloatWord(value.left)
+    output.writeFloatWord(value.right)
+  }
+}
+
+private object LoopOperationCodec : RcOperationCodec<RcLoopOperation> {
+  override val spec = RcOperationSpec(RcOpcodes.LOOP_START, "LoopOperation")
+
+  override fun decode(input: RcWireReader): RcLoopOperation {
+    val operation =
+      RcLoopOperation(
+        indexVariableId = input.readInt("indexVariableId"),
+        from = input.readFloatWord("from"),
+        step = input.readFloatWord("step"),
+        until = input.readFloatWord("until"),
+      )
+    if (
+      operation.from.referencedId == null &&
+        operation.step.referencedId == null &&
+        operation.until.referencedId == null
+    ) {
+      if (operation.step.value == 0f) input.fail("step", "Loop step cannot be zero")
+      if (operation.step.value < 0f && operation.from.value < operation.until.value) {
+        input.fail("step", "Loop step is negative but from < until")
+      }
+    }
+    return operation
+  }
+
+  override fun encode(output: RcWireWriter, value: RcLoopOperation) {
+    output.writeInt(value.indexVariableId)
+    output.writeFloatWord(value.from)
+    output.writeFloatWord(value.step)
+    output.writeFloatWord(value.until)
   }
 }
 

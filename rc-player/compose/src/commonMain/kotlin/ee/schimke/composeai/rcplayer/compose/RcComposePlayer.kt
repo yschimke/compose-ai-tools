@@ -144,6 +144,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcCollapsiblePriorityModifier
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
+import ee.schimke.composeai.rcplayer.protocol.RcConditionalOperations
 import ee.schimke.composeai.rcplayer.protocol.RcDataMapLookup
 import ee.schimke.composeai.rcplayer.protocol.RcDebugMessage
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionConstraintsModifier
@@ -178,6 +179,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcImpulseStart
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutAnimation
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
+import ee.schimke.composeai.rcplayer.protocol.RcLoopOperation
 import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixExpression
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixFromPath
@@ -2438,6 +2440,40 @@ private fun DrawScope.drawOperations(
               drawContent = drawContent,
             )
           RcOpcodes.RUN_ACTION -> state.executeRunAction(node.children)
+          RcOpcodes.CONDITIONAL_OPERATIONS -> {
+            val conditional = node.operation as RcConditionalOperations
+            if (state.evaluateConditional(conditional)) {
+              drawOperations(
+                node.children,
+                state,
+                paint,
+                computedPaths,
+                textMeasurer,
+                images,
+                functions,
+                requestedTheme,
+                filterTheme = false,
+                drawContent = drawContent,
+              )
+            }
+          }
+          RcOpcodes.LOOP_START -> {
+            val loop = node.operation as RcLoopOperation
+            state.forEachLoopValue(loop) {
+              drawOperations(
+                node.children,
+                state,
+                paint,
+                computedPaths,
+                textMeasurer,
+                images,
+                functions,
+                requestedTheme,
+                filterTheme = false,
+                drawContent = drawContent,
+              )
+            }
+          }
           RcOpcodes.IMPULSE_START -> {
             val impulse = node.operation as RcImpulseStart
             val process =

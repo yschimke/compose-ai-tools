@@ -94,6 +94,35 @@ public data class RcDebugMessage(val textId: Int, val value: RcFloatWord, val fl
   }
 }
 
+/** Immutable header for AndroidX's `ContainerEnd`-delimited conditional operation list. */
+public data class RcConditionalOperations(
+  val type: Int,
+  val left: RcFloatWord,
+  val right: RcFloatWord,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.CONDITIONAL_OPERATIONS
+
+  public companion object {
+    public const val EQUAL: Int = 0
+    public const val NOT_EQUAL: Int = 1
+    public const val LESS_THAN: Int = 2
+    public const val LESS_THAN_OR_EQUAL: Int = 3
+    public const val GREATER_THAN: Int = 4
+    public const val GREATER_THAN_OR_EQUAL: Int = 5
+    public const val CHANGED: Int = 6
+  }
+}
+
+/** Immutable header for AndroidX's exclusive-upper-bound paint loop. */
+public data class RcLoopOperation(
+  val indexVariableId: Int,
+  val from: RcFloatWord,
+  val step: RcFloatWord,
+  val until: RcFloatWord,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.LOOP_START
+}
+
 public data class RcFloatConstant(val id: Int, val value: RcFloatWord) : RcOperation {
   override val opcode: Int = RcOpcodes.DATA_FLOAT
 }
@@ -1496,6 +1525,7 @@ public object RcOpcodes {
   public const val IMPULSE_START: Int = 164
   public const val IMPULSE_PROCESS: Int = 165
   public const val PATH_COMBINE: Int = 175
+  public const val CONDITIONAL_OPERATIONS: Int = 178
   public const val HAPTIC_FEEDBACK: Int = 177
   public const val LAYOUT_FIT_BOX: Int = 176
   public const val MATRIX_FROM_PATH: Int = 181
@@ -1529,6 +1559,7 @@ public object RcOpcodes {
   public const val VALUE_STRING_CHANGE_ACTION: Int = 213
   public const val MODIFIER_VISIBILITY: Int = 211
   public const val CONTAINER_END: Int = 214
+  public const val LOOP_START: Int = 215
   public const val HOST_METADATA_ACTION: Int = 216
   public const val VALUE_INTEGER_EXPRESSION_CHANGE_ACTION: Int = 218
   public const val MODIFIER_TOUCH_DOWN: Int = 219

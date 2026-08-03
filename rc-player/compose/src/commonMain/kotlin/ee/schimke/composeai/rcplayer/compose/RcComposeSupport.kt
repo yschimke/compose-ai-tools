@@ -11,6 +11,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
+import ee.schimke.composeai.rcplayer.protocol.RcConditionalOperations
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDebugMessage
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
@@ -31,6 +32,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
+import ee.schimke.composeai.rcplayer.protocol.RcLoopOperation
 import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
@@ -322,6 +324,39 @@ public fun RcDocument.composeSupportReport(
           "BackgroundModifier",
           "shape type ${operation.shapeType} is not implemented",
         )
+    }
+    if (operation is RcConditionalOperations && operation.type !in 0..6) {
+      issues +=
+        RcComposeSupportIssue(
+          index,
+          "ConditionalOperations",
+          "condition type ${operation.type} is not implemented",
+        )
+    }
+    if (operation is RcLoopOperation) {
+      val from = operation.from.takeIf { it.referencedId == null }?.value
+      val step = operation.step.takeIf { it.referencedId == null }?.value
+      val until = operation.until.takeIf { it.referencedId == null }?.value
+      when {
+        listOfNotNull(from, step, until).any { !it.isFinite() } ->
+          issues += RcComposeSupportIssue(index, "LoopOperation", "literal values must be finite")
+        step == 0f ->
+          issues += RcComposeSupportIssue(index, "LoopOperation", "literal step cannot be zero")
+        step != null && from != null && until != null && step < 0f && from < until ->
+          issues +=
+            RcComposeSupportIssue(
+              index,
+              "LoopOperation",
+              "literal step is negative while from < until",
+            )
+        step != null &&
+          from != null &&
+          until != null &&
+          from < until &&
+          (until - from) / step > 10_000f ->
+          issues +=
+            RcComposeSupportIssue(index, "LoopOperation", "literal loop exceeds 10000 iterations")
+      }
     }
     if (operation is RcGraphicsLayerModifier) {
       val supported =

@@ -9,6 +9,61 @@ import kotlin.test.assertTrue
 
 class RcDocumentCodecTest {
   @Test
+  fun controlFlowContainersRoundTripSignedTypesAndFloatReferenceBits() {
+    val operations =
+      listOf(
+        RcConditionalOperations(-1, RcFloatWord(0x7fc0002a), RcFloatWord.literal(4f)),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+        RcLoopOperation(
+          20,
+          RcFloatWord.literal(1f),
+          RcFloatWord(0x7fc0002b),
+          RcFloatWord.literal(9f),
+        ),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+      )
+    val document = RcDocument(RcHeader(RcVersion(1, 0, 0), modern = false), operations)
+
+    val bytes = RcDocumentCodec.encode(document)
+    val decoded = RcDocumentCodec.decode(bytes)
+
+    assertEquals(document, decoded)
+    assertEquals(-1, assertIs<RcConditionalOperations>(decoded.operations[0]).type)
+    assertEquals(42, assertIs<RcConditionalOperations>(decoded.operations[0]).left.referencedId)
+    assertEquals(43, assertIs<RcLoopOperation>(decoded.operations[2]).step.referencedId)
+    assertContentEquals(bytes, RcDocumentCodec.encode(decoded))
+  }
+
+  @Test
+  fun loopDecodeRejectsTheSameLiteralZeroAndNegativeStepsAsAndroidX() {
+    listOf(
+        RcLoopOperation(
+          20,
+          RcFloatWord.literal(0f),
+          RcFloatWord.literal(0f),
+          RcFloatWord.literal(3f),
+        ),
+        RcLoopOperation(
+          20,
+          RcFloatWord.literal(0f),
+          RcFloatWord.literal(-1f),
+          RcFloatWord.literal(3f),
+        ),
+      )
+      .forEach { loop ->
+        val bytes =
+          RcDocumentCodec.encode(
+            RcDocument(
+              RcHeader(RcVersion(1, 0, 0), modern = false),
+              listOf(loop, RcNoArg(RcOpcodes.CONTAINER_END)),
+            )
+          )
+        val failure = assertFailsWith<RcWireException> { RcDocumentCodec.decode(bytes) }
+        assertEquals("step", failure.fieldName)
+      }
+  }
+
+  @Test
   fun remarksAndDebugMessagesRoundTripExactUtf8AndFloatBits() {
     val operations =
       listOf(

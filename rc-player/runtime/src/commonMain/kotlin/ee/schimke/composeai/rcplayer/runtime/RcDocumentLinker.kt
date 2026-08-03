@@ -73,6 +73,8 @@ public object RcDocumentLinker {
       RcOpcodes.FUNCTION_DEFINE,
       RcOpcodes.IMPULSE_START,
       RcOpcodes.IMPULSE_PROCESS,
+      RcOpcodes.CONDITIONAL_OPERATIONS,
+      RcOpcodes.LOOP_START,
       RcOpcodes.LAYOUT_ROOT,
       RcOpcodes.LAYOUT_CONTENT,
       RcOpcodes.LAYOUT_BOX,

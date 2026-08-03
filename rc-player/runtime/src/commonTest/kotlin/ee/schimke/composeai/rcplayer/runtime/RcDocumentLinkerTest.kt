@@ -1,6 +1,7 @@
 package ee.schimke.composeai.rcplayer.runtime
 
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
+import ee.schimke.composeai.rcplayer.protocol.RcConditionalOperations
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcFloatConstant
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
@@ -9,6 +10,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcHostAction
 import ee.schimke.composeai.rcplayer.protocol.RcIdOperation
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
+import ee.schimke.composeai.rcplayer.protocol.RcLoopOperation
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
@@ -20,6 +22,29 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 
 class RcDocumentLinkerTest {
+  @Test
+  fun linksNestedConditionalAndLoopBodiesImmutably() {
+    val conditional =
+      RcConditionalOperations(
+        RcConditionalOperations.EQUAL,
+        RcFloatWord.literal(1f),
+        RcFloatWord.literal(1f),
+      )
+    val loop =
+      RcLoopOperation(20, RcFloatWord.literal(0f), RcFloatWord.literal(1f), RcFloatWord.literal(3f))
+    val body = RcFloatConstant(30, RcFloatWord.literal(7f))
+    val end = RcNoArg(RcOpcodes.CONTAINER_END)
+    val document = RcDocument(header, listOf(conditional, loop, body, end, end))
+
+    val outer =
+      assertIs<RcLinkedNode.Container>(RcDocumentLinker.link(document).operations.single())
+    val inner = assertIs<RcLinkedNode.Container>(outer.children.single())
+
+    assertEquals(conditional, outer.operation)
+    assertEquals(loop, inner.operation)
+    assertEquals(body, assertIs<RcLinkedNode.Operation>(inner.children.single()).operation)
+  }
+
   @Test
   fun linksRunActionAsAnImmutableActionContainer() {
     val action = RcHostAction(77)

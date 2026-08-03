@@ -7,6 +7,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorConstant
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
+import ee.schimke.composeai.rcplayer.protocol.RcConditionalOperations
 import ee.schimke.composeai.rcplayer.protocol.RcDataMapLookup
 import ee.schimke.composeai.rcplayer.protocol.RcDebugMessage
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
@@ -29,6 +30,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcImpulseStart
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerConstant
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLongConstant
+import ee.schimke.composeai.rcplayer.protocol.RcLoopOperation
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixConstant
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixExpression
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixVectorMath
@@ -56,6 +58,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerExpressionChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueStringChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcWakeIn
+
+private const val MAX_LOOP_ITERATIONS = 10_000
 
 /** Typed runtime values for the CMP player; independent from AndroidX `RemoteContext`. */
 public class RcPlayerState(
@@ -92,6 +96,8 @@ public class RcPlayerState(
   private val integerExpressions =
     document.operations.filterIsInstance<RcIntegerExpression>().associateBy { it.outId }
   private val impulseTimelines = mutableListOf<Pair<RcImpulseStart, RcImpulseTimeline>>()
+  private val conditionalPreviousValues =
+    mutableListOf<Pair<RcConditionalOperations, Pair<Float, Float>>>()
   private val documentLoadTimeMillis = timeSource.currentTimeMillis()
   private var frameTimeSeconds: Float = 0f
   private var frameEpochMillis: Long = documentLoadTimeMillis
@@ -236,6 +242,58 @@ public class RcPlayerState(
         flags = operation.flags,
       )
     )
+  }
+
+  /** Evaluates AndroidX `ConditionalOperations.paint`, including its stateful CHANGED predicate. */
+  public fun evaluateConditional(operation: RcConditionalOperations): Boolean {
+    val left = resolve(operation.left)
+    val right = resolve(operation.right)
+    return when (operation.type) {
+      RcConditionalOperations.EQUAL -> left == right
+      RcConditionalOperations.NOT_EQUAL -> left != right
+      RcConditionalOperations.LESS_THAN -> left < right
+      RcConditionalOperations.LESS_THAN_OR_EQUAL -> left <= right
+      RcConditionalOperations.GREATER_THAN -> left > right
+      RcConditionalOperations.GREATER_THAN_OR_EQUAL -> left >= right
+      RcConditionalOperations.CHANGED -> {
+        val previous = conditionalPreviousValues.firstOrNull { it.first === operation }?.second
+        val changed =
+          if (previous == null) left != 0f || right != 0f
+          else previous.first != left || previous.second != right
+        conditionalPreviousValues.removeAll { it.first === operation }
+        conditionalPreviousValues += operation to (left to right)
+        changed
+      }
+      else -> false
+    }
+  }
+
+  /**
+   * Runs AndroidX's ascending exclusive-upper-bound loop with a hard resource bound.
+   *
+   * Java's loop condition is always `index < until`; negative steps therefore only produce zero
+   * iterations unless they would enter an infinite loop. Dynamic zero/non-finite steps are caught
+   * here because AndroidX only validates literal values while decoding.
+   */
+  public fun forEachLoopValue(operation: RcLoopOperation, block: (Float) -> Unit) {
+    val from = resolve(operation.from)
+    val until = resolve(operation.until)
+    val step = resolve(operation.step)
+    require(from.isFinite() && until.isFinite() && step.isFinite()) {
+      "Loop bounds and step must be finite"
+    }
+    if (!(from < until)) return
+    require(step > 0f) { "Loop step must be positive when from < until" }
+    var value = from
+    var iterations = 0
+    while (value < until) {
+      require(iterations++ < MAX_LOOP_ITERATIONS) { "Loop exceeds $MAX_LOOP_ITERATIONS iterations" }
+      if (operation.indexVariableId != 0) setFloat(operation.indexVariableId, value)
+      block(value)
+      val next = value + step
+      require(next > value) { "Loop step does not advance the index" }
+      value = next
+    }
   }
 
   /**

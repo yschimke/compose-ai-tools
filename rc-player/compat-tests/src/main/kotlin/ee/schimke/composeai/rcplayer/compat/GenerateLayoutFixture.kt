@@ -5,6 +5,7 @@ package ee.schimke.composeai.rcplayer.compat
 import androidx.compose.remote.core.WireBuffer
 import androidx.compose.remote.core.operations.BitmapData
 import androidx.compose.remote.core.operations.ClickArea
+import androidx.compose.remote.core.operations.ConditionalOperations
 import androidx.compose.remote.core.operations.DebugMessage
 import androidx.compose.remote.core.operations.DrawContent
 import androidx.compose.remote.core.operations.DrawRect
@@ -25,6 +26,7 @@ import androidx.compose.remote.core.operations.layout.ContainerEnd
 import androidx.compose.remote.core.operations.layout.ImpulseOperation
 import androidx.compose.remote.core.operations.layout.ImpulseProcess
 import androidx.compose.remote.core.operations.layout.LayoutComponentContent
+import androidx.compose.remote.core.operations.layout.LoopOperation
 import androidx.compose.remote.core.operations.layout.MultiClickModifier
 import androidx.compose.remote.core.operations.layout.RootLayoutComponent
 import androidx.compose.remote.core.operations.layout.TouchCancelModifierOperation
@@ -92,6 +94,8 @@ public fun main(args: Array<String>) {
   TextData.apply(buffer, 1007, "browser-fixture")
   TextData.apply(buffer, 1008, "Legacy click area")
   TextData.apply(buffer, 1009, "click-area-meta")
+  TextData.apply(buffer, 1010, "loop")
+  TextData.apply(buffer, 1011, "conditional")
   FloatConstant.apply(buffer, 30, 42f)
   Rem.apply(buffer, "CMP browser diagnostic")
   DebugMessage.apply(buffer, 1004, Utils.asNan(30), 0)
@@ -173,6 +177,12 @@ public fun main(args: Array<String>) {
   paint(buffer, 0xfff6f2ff.toInt())
   DrawRect.apply(buffer, 0f, 0f, 320f, 180f)
   DrawContent.apply(buffer)
+  LoopOperation.apply(buffer, 35, 0f, 1f, 3f)
+  DebugMessage.apply(buffer, 1010, Utils.asNan(35), 0)
+  ContainerEnd.apply(buffer)
+  ConditionalOperations.apply(buffer, ConditionalOperations.TYPE_EQ, 1f, 1f)
+  DebugMessage.apply(buffer, 1011, 42f, 0)
+  ContainerEnd.apply(buffer)
   paint(buffer, 0xff21005d.toInt(), stroke = true, strokeWidth = 6f)
   DrawRect.apply(buffer, 8f, 8f, 312f, 172f)
   ContainerEnd.apply(buffer)

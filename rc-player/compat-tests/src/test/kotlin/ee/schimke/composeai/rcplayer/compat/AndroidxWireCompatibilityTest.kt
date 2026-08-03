@@ -12,6 +12,7 @@ import androidx.compose.remote.core.operations.ColorAttribute
 import androidx.compose.remote.core.operations.ColorConstant
 import androidx.compose.remote.core.operations.ColorExpression as AndroidxColorExpression
 import androidx.compose.remote.core.operations.ColorTheme as AndroidxColorTheme
+import androidx.compose.remote.core.operations.ConditionalOperations as AndroidxConditionalOperations
 import androidx.compose.remote.core.operations.DataDynamicListFloat
 import androidx.compose.remote.core.operations.DataListFloat
 import androidx.compose.remote.core.operations.DataListIds
@@ -84,6 +85,7 @@ import androidx.compose.remote.core.operations.layout.ContainerEnd
 import androidx.compose.remote.core.operations.layout.ImpulseOperation as AndroidxImpulseOperation
 import androidx.compose.remote.core.operations.layout.ImpulseProcess as AndroidxImpulseProcess
 import androidx.compose.remote.core.operations.layout.LayoutComponentContent
+import androidx.compose.remote.core.operations.layout.LoopOperation as AndroidxLoopOperation
 import androidx.compose.remote.core.operations.layout.MultiClickModifier
 import androidx.compose.remote.core.operations.layout.RootLayoutComponent
 import androidx.compose.remote.core.operations.layout.TouchCancelModifierOperation
@@ -170,6 +172,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
+import ee.schimke.composeai.rcplayer.protocol.RcConditionalOperations
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDebugMessage
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionConstraintsModifier
@@ -208,6 +211,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutAnimation
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutCompute
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
+import ee.schimke.composeai.rcplayer.protocol.RcLoopOperation
 import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
 import ee.schimke.composeai.rcplayer.protocol.RcMultiClickModifier
 import ee.schimke.composeai.rcplayer.protocol.RcMultiClickType
@@ -265,6 +269,33 @@ import kotlin.test.assertTrue
  * from this test module: AndroidX remote-core/Java player is the protocol authority.
  */
 class AndroidxWireCompatibilityTest {
+  @Test
+  fun androidXConditionalAndLoopContainersRoundTripExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    AndroidxConditionalOperations.apply(
+      buffer,
+      AndroidxConditionalOperations.TYPE_GTE,
+      Utils.asNan(40),
+      2f,
+    )
+    AndroidxLoopOperation.apply(buffer, 41, 1f, Utils.asNan(42), 9f)
+    FloatConstant.apply(buffer, 43, 7f)
+    ContainerEnd.apply(buffer)
+    ContainerEnd.apply(buffer)
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+    val conditional = assertIs<RcConditionalOperations>(document.operations[0])
+    assertEquals(AndroidxConditionalOperations.TYPE_GTE.toInt(), conditional.type)
+    assertEquals(40, conditional.left.referencedId)
+    val loop = assertIs<RcLoopOperation>(document.operations[1])
+    assertEquals(41, loop.indexVariableId)
+    assertEquals(42, loop.step.referencedId)
+    assertEquals(9f, loop.until.value)
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
   @Test
   fun androidXRemarksAndDebugMessagesRoundTripExactly() {
     val buffer = WireBuffer()

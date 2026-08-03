@@ -11,6 +11,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
+import ee.schimke.composeai.rcplayer.protocol.RcConditionalOperations
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
@@ -30,6 +31,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcImpulseStart
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutAnimation
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
+import ee.schimke.composeai.rcplayer.protocol.RcLoopOperation
 import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
 import ee.schimke.composeai.rcplayer.protocol.RcMultiClickModifier
 import ee.schimke.composeai.rcplayer.protocol.RcMultiClickType
@@ -57,6 +59,57 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RcComposeSupportTest {
+  @Test
+  fun boundedControlFlowIsSharedByWasmAndIosProfiles() {
+    val end = RcNoArg(RcOpcodes.CONTAINER_END)
+    val document =
+      RcDocument(
+        header,
+        listOf(
+          RcConditionalOperations(
+            RcConditionalOperations.LESS_THAN,
+            RcFloatWord.literal(1f),
+            RcFloatWord.literal(2f),
+          ),
+          RcLoopOperation(
+            20,
+            RcFloatWord.literal(0f),
+            RcFloatWord.literal(1f),
+            RcFloatWord.literal(3f),
+          ),
+          end,
+          end,
+        ),
+      )
+
+    assertTrue(document.composeSupportReport(RcOperationProfiles.CMP_WASM_ALPHA16).fullyRenderable)
+    assertTrue(document.composeSupportReport(RcOperationProfiles.CMP_IOS_ALPHA16).fullyRenderable)
+  }
+
+  @Test
+  fun malformedOrUnboundedControlFlowIsRejectedClearly() {
+    val document =
+      RcDocument(
+        header,
+        listOf(
+          RcConditionalOperations(99, RcFloatWord.literal(1f), RcFloatWord.literal(2f)),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcLoopOperation(
+            20,
+            RcFloatWord.literal(0f),
+            RcFloatWord.literal(0f),
+            RcFloatWord.literal(3f),
+          ),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        ),
+      )
+
+    assertEquals(
+      listOf("condition type 99 is not implemented", "literal step cannot be zero"),
+      document.composeSupportReport(RcOperationProfiles.CMP_WASM_ALPHA16).issues.map { it.detail },
+    )
+  }
+
   @Test
   fun diagnosticsArePortableAndRequireTheirTextDeclaration() {
     val valid =
