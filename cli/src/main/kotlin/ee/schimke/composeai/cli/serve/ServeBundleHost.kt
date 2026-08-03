@@ -102,6 +102,25 @@ class ServeBundleHost(
    * it is the composite's job to reach the daemon.
    */
   liveOnly: List<String> = emptyList(),
+  /**
+   * Ids this catalog publishes a baked PNG for, **whether or not those pixels are local yet**.
+   *
+   * A plain uploaded bundle passes none and keeps the original identity model: its previews are
+   * exactly the PNGs under `previews/`. A **catalog** passes its full declared set, because
+   * [ServeCatalogStore] no longer downloads every image before publishing — `catalog.json` alone
+   * names every card, and fetching a couple of hundred PNGs one round-trip at a time is what kept a
+   * catalog invisible for minutes after its metadata had already arrived. Missing pixels arrive via
+   * [fetchBakedPng] on first use.
+   */
+  declaredBaked: List<String> = emptyList(),
+  /**
+   * Fetch one declared preview's baked PNG from the catalog's delivery branch, or null when it
+   * can't be had. Supplied by [ServeCatalogStore] so that network policy — the SSRF gate, the
+   * per-asset size cap, the test seam — stays in the one place that owns it; this host only ever
+   * calls it. Null for a plain bundle, whose pixels are all local already, which also keeps that
+   * path free of any network dependency.
+   */
+  private val fetchBakedPng: ((String) -> ByteArray?)? = null,
   private val fileSystem: FileSystem = SystemFileSystem,
 ) : ServeHost {
 
@@ -159,21 +178,31 @@ class ServeBundleHost(
    * catalog that both baked and deferred the same route — belt and braces: the baked pixels win, so
    * the id keeps its ordinary snapshot lane).
    */
+  /**
+   * The declared baked set. An id here is **not** live-only even while its file is missing — that
+   * is the whole point of declaring it — so it takes precedence over [liveOnly] below.
+   */
+  private val declaredBakedIds: Set<String> =
+    declaredBaked.filterTo(LinkedHashSet()) { it.isNotBlank() }
+
   override val liveOnlyPreviewIds: Set<String> =
     liveOnly.filterTo(LinkedHashSet()) {
-      it.isNotBlank() && !File(previewsDir, "$it$PNG_SUFFIX").isFile
+      it.isNotBlank() && it !in declaredBakedIds && !File(previewsDir, "$it$PNG_SUFFIX").isFile
     }
 
   override val previews: List<ServePreview> =
-    // Walk recursively: a preview id may contain '/', stored as a nested `previews/<id>.png`. Ids
-    // are reconstructed relative to `previews/` with '/' separators (matching the bundle layout).
-    // The live-only (deferred) ids carry no file, so they're appended to the walk before sorting —
-    // from there they're indistinguishable from a baked preview except that `render` finds no PNG.
+    // Three sources, deduped: the PNGs already on disk, the catalog's declared baked set (whose
+    // pixels may still be remote — see [declaredBaked]), and the live-only (deferred) ids, which
+    // carry no file by design. Walk recursively: a preview id may contain '/', stored as a nested
+    // `previews/<id>.png`, and ids are reconstructed relative to `previews/` with '/' separators
+    // (matching the bundle layout). From here the three are indistinguishable except in where
+    // `render` finds the bytes.
     (previewsDir
         .walkTopDown()
         .filter { it.isFile && it.name.endsWith(PNG_SUFFIX) }
         .map { it.relativeTo(previewsDir).invariantSeparatorsPath.removeSuffix(PNG_SUFFIX) }
-        .toList() + liveOnlyPreviewIds)
+        .toList() + declaredBakedIds + liveOnlyPreviewIds)
+      .distinct()
       .sorted()
       .map { id ->
         val meta = variantMeta[id]
@@ -342,10 +371,43 @@ class ServeBundleHost(
   // of `previews/`), the browser player's replayable input.
   private val irDir = File(bundleDir, IR_SUBDIR)
 
+  /**
+   * The local file holding [previewId]'s baked PNG, fetching it from the delivery branch first if
+   * it isn't there yet — the single point every pixel reader on this host goes through ([render],
+   * [readPngSize], [computeContentCrop]), so none of them can accidentally see a declared preview
+   * as pixel-less.
+   *
+   * Returns null when there are no pixels to be had: an unknown id, a live-only (deferred) id, or a
+   * declared one whose fetch failed. A failed fetch is not remembered — the next request retries,
+   * which is what makes a transient branch blip self-heal instead of stranding a card for the life
+   * of the host.
+   *
+   * Fetches are per-id serialised so a grid painting twenty cards at once issues one request per
+   * preview rather than one per reader; the double-check inside the lock means the second caller
+   * reads the file the first just wrote.
+   */
+  private fun bakedPngFile(previewId: String): okio.Path? {
+    val path = File(previewsDir, "$previewId$PNG_SUFFIX").toOkioPath()
+    if (fileSystem.exists(path)) return path
+    val fetch = fetchBakedPng ?: return null
+    if (previewId !in declaredBakedIds) return null
+    synchronized(fillLocks.computeIfAbsent(previewId) { Any() }) {
+      if (fileSystem.exists(path)) return path
+      val bytes = runCatching { fetch(previewId) }.getOrNull() ?: return null
+      return runCatching {
+          path.parent?.let(fileSystem::createDirectories)
+          fileSystem.write(path) { write(bytes) }
+          path
+        }
+        .getOrNull()
+    }
+  }
+
+  private val fillLocks = java.util.concurrent.ConcurrentHashMap<String, Any>()
+
   override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
     if (previewId !in previewIds) return RenderOutcome.NotFound
-    val png = File(previewsDir, "$previewId$PNG_SUFFIX").toOkioPath()
-    if (!fileSystem.exists(png)) return RenderOutcome.NotFound
+    val png = bakedPngFile(previewId) ?: return RenderOutcome.NotFound
     return RenderOutcome.Ok(
       fileSystem.read(png) { readByteArray() },
       RenderOutcome.Generation.BAKED,
@@ -377,15 +439,14 @@ class ServeBundleHost(
   // captured doc or no baked PNG to size against.
   override fun remoteComposeRenderSpec(previewId: String): RcJvmRenderSpec? {
     if (!hasRemoteComposeDoc(previewId)) return null
-    val (widthPx, heightPx) = readPngSize(File(previewsDir, "$previewId$PNG_SUFFIX")) ?: return null
+    // Sized against the baked PNG, so a declared-but-not-yet-local preview fills first.
+    val (widthPx, heightPx) = readPngSize(bakedPngFile(previewId) ?: return null) ?: return null
     val density = previewParamsById[previewId]?.density ?: DEFAULT_RENDER_DENSITY
     return RcJvmRenderSpec(widthPx, heightPx, density)
   }
 
   /** Read a PNG's pixel dimensions from its IHDR without decoding the image; null if unreadable. */
-  private fun readPngSize(pngFile: File): Pair<Int, Int>? {
-    val path = pngFile.toOkioPath()
-    if (!fileSystem.exists(path)) return null
+  private fun readPngSize(path: okio.Path): Pair<Int, Int>? {
     return try {
       val header = fileSystem.read(path) { readByteArray(24) }
       // 8-byte PNG signature, 4-byte IHDR length, 4-byte "IHDR", then width + height, big-endian.
@@ -493,8 +554,9 @@ class ServeBundleHost(
     // Same per-variant-first resolution as `renderSvg` — a variant vector's viewBox reflects the
     // exact render this preview's PNG shows.
     val svgFile = figmaSvgFileFor(previewId) ?: return null
-    val png = File(previewsDir, "$previewId$PNG_SUFFIX").toOkioPath()
-    if (!fileSystem.exists(png)) return null
+    // Same fill-on-miss path as `render`: a card's crop must not depend on whether its pixels
+    // happen to have been fetched yet.
+    val png = bakedPngFile(previewId) ?: return null
     return try {
       val svg = fileSystem.read(svgFile) { readUtf8() }
       val bytes = fileSystem.read(png) { readByteArray() }
