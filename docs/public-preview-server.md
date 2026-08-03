@@ -148,6 +148,44 @@ fallback token.
 
 ![Catalog theme selector (dark)](images/serve-catalog-themes-dark.png)
 
+## The page wears the catalog's own palette
+
+The Theme selector above re-renders the *previews*. The **page around them** is themed from the same
+place: every `design-artifacts/<system>` branch publishes a `tokens.dtcg.json` beside `catalog.json`
+(the W3C DTCG projection of the resolved `MaterialTheme.colorScheme` the catalog was rendered with,
+lifted from the render's `compose/theme` data product), and the server projects it onto the CSS
+custom properties the site chrome is painted from. So `/wear-m3/` is framed in Wear M3's cyan on its
+own near-black surface, `/jetnews/` in JetNews's crimson — instead of every design system arriving
+inside the same fixed indigo-on-white shell.
+
+| Before — one fixed chrome for every system | After — `/jetnews/` in JetNews's own palette |
+| --- | --- |
+| ![The viewer in the built-in indigo chrome](images/serve-catalog-palette-before.png) | ![The same viewer painted from jetnews's tokens.dtcg.json](images/serve-catalog-palette-after.png) |
+
+![The wear-m3 catalog on its own near-black surface, in its own cyan](images/serve-catalog-palette-wear.png)
+
+It is a **sync**, not a second palette to maintain: re-publishing a catalog with a new brand colour
+re-themes its pages on the next catalog refresh, with nothing to edit in the server. A catalog that
+publishes no tokens (or an unfetchable / unparseable file) simply keeps the built-in chrome — every
+failure mode is the same non-event.
+
+Two details make it behave under a real visitor's settings:
+
+- **A catalog bakes one mode; a visitor arrives with their own.** The emitted CSS declares both. The
+  **matching** mode gets the full sync (surfaces, text and borders from the catalog's `surface` /
+  `onSurface`, plus its `surfaceContainer*` ladder when it publishes one, and its accent family);
+  the **opposite** mode keeps the built-in neutrals for that mode and takes only the accent family.
+  A dark-mode visitor browsing a light-first catalog therefore gets a dark page in the catalog's
+  brand colour, not a light page.
+
+- **Nothing themed is allowed to become unreadable.** Every colour that ends up carrying text is
+  pushed to a minimum contrast ratio against what it sits on, so a low-contrast brand colour is
+  deepened (or lightened) until it reads rather than being taken literally. What is *not* themed is
+  as deliberate: the trust badges and good/warn/bad scores stay literal because they mean the same
+  thing in every system, and so do the sticker stages — a light-rendered sticker keeps its white
+  backing and a dark-rendered one its dark backing, since those are pinned to the render's theme,
+  not the page's.
+
 ## Design references and UI mocks
 
 A bundle or published catalog can map independently-authored UI mocks to exact preview ids. The

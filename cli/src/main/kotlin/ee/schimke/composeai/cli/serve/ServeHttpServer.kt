@@ -1172,6 +1172,8 @@ class ServeHttpServer(
           // The catalog's declared stage surface (`display.surface`), so a dark-first system's
           // unthemed cards sit on the dark stage instead of the default white.
           declaredSurface = catalogBundleHost(renderHost)?.stageSurface,
+          // …and its own colour palette, so this system's pages are framed in its colours.
+          themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
           // Why the catalog is snapshot-only, when it is (no live bundle, unverified, …) — shown as
           // a banner under the header so a browser sees it before opening a preview.
           degradations = renderHost.degradations,
@@ -1256,6 +1258,8 @@ class ServeHttpServer(
           isPublic = isPublic,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
           declaredSurface = catalogBundleHost(renderHost)?.stageSurface,
+          // …and its own colour palette, so this system's pages are framed in its colours.
+          themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
           hasSvgFor = renderHost::hasSvgExportFor,
           hasRemoteComposeFor = renderHost::hasRemoteComposeDoc,
           referencesFor = renderHost::designReferencesFor,
@@ -1316,6 +1320,9 @@ class ServeHttpServer(
           basePath = basePath,
           isPublic = isPublic,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
+          // Stepping from the themed comparison table into its focused Reference/Diff/Actual view
+          // must not drop back to the built-in chrome mid-journey.
+          themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           displayTitle = catalogBundleHost(renderHost)?.title,
         ),
@@ -2470,6 +2477,8 @@ class ServeHttpServer(
           // The catalog's declared stage surface (`display.surface`), so an unthemed preview backs
           // on the dark stage for a dark-first system instead of the default white.
           declaredSurface = catalogBundleHost(renderHost)?.stageSurface,
+          // …and its own colour palette, so this system's pages are framed in its colours.
+          themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
           // Why this session is snapshot-only, when it is — the banner under the header explains
           // the
           // catalog-level reason (no live bundle, unverified, …) alongside the per-control note.

@@ -114,6 +114,12 @@ For editable Figma layers the per-sticker `figma/<slug>.svg` is the
 rendered *variant matrices* onto a Figma canvas via the Figma MCP server for
 live review.
 
+`tokens.dtcg.json` has a second consumer beside the design tools: the preview
+server reads it back and paints that system's own pages in its own colours —
+see [the catalog palette](../public-preview-server.md#the-page-wears-the-catalogs-own-palette).
+Publishing a catalog with a new brand colour therefore re-themes its pages too,
+with nothing to change on the server.
+
 ## Publishing from another repo (reusable workflow)
 
 A consumer repo that owns a `catalog.spec.json` + a renderable `@Preview` module
