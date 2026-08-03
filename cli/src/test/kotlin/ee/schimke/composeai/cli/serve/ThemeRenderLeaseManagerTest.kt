@@ -19,15 +19,34 @@ class ThemeRenderLeaseManagerTest {
     )
 
   @Test
-  fun `one lease is active server-wide and is bound to session and host identity`() {
+  fun `two leases are active server-wide and each is bound to session and host identity`() {
     val manager = manager()
     val host = Any()
     val grant = assertNotNull(manager.acquire("wear", host, requestedCapacity = 5))
 
-    assertNull(manager.acquire("material", Any(), requestedCapacity = 5))
+    // A second page gets the narrower tier rather than falling back to the serial baseline…
+    val second = assertNotNull(manager.acquire("material", Any(), requestedCapacity = 5))
+    assertEquals(3, second.concurrency)
+    // …and a third finds no free tier.
+    assertNull(manager.acquire("third", Any(), requestedCapacity = 5))
     assertNull(manager.admit(grant.token, "material", host))
     assertNull(manager.admit(grant.token, "wear", Any()))
     assertNotNull(manager.admit(grant.token, "wear", host)).close()
+  }
+
+  @Test
+  fun `concurrent grants never promise more width than the server has slots`() {
+    // Eight slots is the real box: the tiers fit exactly, 5 + 3.
+    val roomy = manager(serverSlots = 8)
+    assertEquals(5, assertNotNull(roomy.acquire("a", Any(), requestedCapacity = 5)).concurrency)
+    assertEquals(3, assertNotNull(roomy.acquire("b", Any(), requestedCapacity = 5)).concurrency)
+
+    // Four slots: the first grant takes them all, so there is nothing left to promise a second
+    // page. Handing it 3 anyway would admit 7 renders against 4 permits and the extra three would
+    // queue on the global semaphore until they 503.
+    val tight = manager(serverSlots = 4)
+    assertEquals(4, assertNotNull(tight.acquire("a", Any(), requestedCapacity = 5)).concurrency)
+    assertNull(tight.acquire("b", Any(), requestedCapacity = 5))
   }
 
   @Test
@@ -60,6 +79,9 @@ class ThemeRenderLeaseManagerTest {
   @Test
   fun `release drains in-flight work before permitting a replacement`() {
     val manager = manager()
+    // Occupy the narrow tier so the assertions below are about the released tier draining, not
+    // about a spare tier being handed out.
+    manager.acquire("filler", Any(), requestedCapacity = 5)
     val host = Any()
     val grant = assertNotNull(manager.acquire("app", host, requestedCapacity = 5))
     val permit = assertNotNull(manager.admit(grant.token, "app", host))
@@ -89,6 +111,10 @@ class ThemeRenderLeaseManagerTest {
   @Test
   fun `expired lease with in-flight work drains before replacement`() {
     val manager = manager()
+    // Both tiers are occupied with work in flight, so no tier can be handed out until they drain.
+    val fillerHost = Any()
+    val filler = assertNotNull(manager.acquire("filler", fillerHost, requestedCapacity = 5))
+    val fillerPermit = assertNotNull(manager.admit(filler.token, "filler", fillerHost))
     val host = Any()
     val grant = assertNotNull(manager.acquire("app", host, requestedCapacity = 5))
     val permit = assertNotNull(manager.admit(grant.token, "app", host))
@@ -98,6 +124,7 @@ class ThemeRenderLeaseManagerTest {
     assertNull(manager.acquire("other", Any(), requestedCapacity = 5))
 
     permit.close()
+    fillerPermit.close()
     assertNotNull(manager.acquire("other", Any(), requestedCapacity = 5))
   }
 }
