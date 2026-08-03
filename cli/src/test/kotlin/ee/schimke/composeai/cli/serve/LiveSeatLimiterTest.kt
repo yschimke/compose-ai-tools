@@ -33,6 +33,23 @@ class LiveSeatLimiterTest {
   }
 
   @Test
+  fun `an attempt for an unknown session is refused without counting`() {
+    val limiter = LiveSeatLimiter(totalPermits = 1)
+    val held = assertNotNull(limiter.acquire(1))
+
+    // Seats are reserved before the session is leased, so a request naming a session this box does
+    // not have still reaches the budget. It is refused like any other — but it must not move the
+    // counter, or anyone could manufacture the evidence a capacity decision rests on.
+    assertNull(limiter.acquire(1, countRefusal = false))
+    assertEquals(0L, limiter.refusalCount())
+
+    // A real one still counts.
+    assertNull(limiter.acquire(1))
+    assertEquals(1L, limiter.refusalCount())
+    held.close()
+  }
+
+  @Test
   fun `an unbounded limiter never refuses and so never counts`() {
     val limiter = LiveSeatLimiter(totalPermits = 0)
     repeat(5) { assertNotNull(limiter.acquire(2)) }

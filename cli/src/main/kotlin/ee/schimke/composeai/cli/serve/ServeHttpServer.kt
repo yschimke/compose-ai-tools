@@ -2931,7 +2931,11 @@ class ServeHttpServer(
     // --revisions), unregistered until its build runs, defaults to weight 1 — a desktop-cost
     // daemon.
     val weight = if (sessions.isKnownStatic(sessionId)) 0 else sessions.liveSeatWeight(sessionId)
-    val seatTicket = liveSeats.acquire(weight)
+    // Only a request for a session this box actually has counts as real seat demand: the
+    // reservation
+    // happens before the lease, so a bogus id reaches the budget too, and an inflatable counter is
+    // not evidence.
+    val seatTicket = liveSeats.acquire(weight, countRefusal = sessions.isKnownSession(sessionId))
     if (seatTicket == null) {
       close(CloseReason(1013.toShort(), "live preview at capacity — try again shortly"))
       return

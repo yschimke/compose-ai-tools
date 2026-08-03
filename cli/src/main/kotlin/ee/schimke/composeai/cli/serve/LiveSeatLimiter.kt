@@ -44,12 +44,16 @@ class LiveSeatLimiter(val totalPermits: Int) {
    * coerced down to [totalPermits], so a backend heavier than the whole budget can still run alone
    * rather than being permanently refused.
    */
-  fun acquire(weight: Int): Ticket? {
+  fun acquire(weight: Int, countRefusal: Boolean = true): Ticket? {
     val sem = semaphore ?: return Ticket(0)
     if (weight <= 0) return Ticket(0)
     val permits = weight.coerceIn(1, totalPermits)
     if (sem.tryAcquire(permits)) return Ticket(permits)
-    refusals.incrementAndGet()
+    // [countRefusal] is false for an attempt that was never going to be served anyway — a request
+    // naming a session this box doesn't have. Seats are reserved before the session is leased (see
+    // the stream lane), so such requests do reach the budget; letting them move [refusalCount]
+    // would mean anyone could manufacture the evidence a capacity decision rests on.
+    if (countRefusal) refusals.incrementAndGet()
     return null
   }
 
