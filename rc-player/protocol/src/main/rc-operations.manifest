@@ -4,7 +4,7 @@
 2|COMPONENT_START|6|unsupported
 4|LOAD_BITMAP|4|unavailable
 14|ANIMATION_SPEC|6|unsupported
-16|MODIFIER_WIDTH|6|unsupported
+16|MODIFIER_WIDTH|6|parse_only
 38|CLIP_PATH|1|implemented
 39|CLIP_RECT|1|implemented
 40|PAINT_VALUES|1|implemented
@@ -23,13 +23,13 @@
 55|MODIFIER_BACKGROUND|6|unsupported
 56|DRAW_OVAL|1|implemented
 57|DRAW_TEXT_ON_CIRCLE|3|unavailable
-58|MODIFIER_PADDING|6|unsupported
+58|MODIFIER_PADDING|6|parse_only
 59|MODIFIER_CLICK|6|unsupported
 63|THEME|1|implemented
 64|CLICK_AREA|7|unsupported
 65|ROOT_CONTENT_BEHAVIOR|1|implemented
 66|DRAW_BITMAP_INT|4|implemented
-67|MODIFIER_HEIGHT|6|unsupported
+67|MODIFIER_HEIGHT|6|parse_only
 80|DATA_FLOAT|1|implemented
 81|ANIMATED_FLOAT|8|implemented
 83|MODIFIER_MULTI_CLICK|6|unsupported

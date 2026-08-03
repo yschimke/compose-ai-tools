@@ -90,6 +90,9 @@ public object RcDocumentCodec {
         RowLayoutCodec,
         ColumnLayoutCodec,
         FitBoxLayoutCodec,
+        WidthModifierCodec,
+        HeightModifierCodec,
+        PaddingModifierCodec,
         four(RcOpcodes.CLIP_RECT, "ClipRect"),
         four(RcOpcodes.MATRIX_SCALE, "MatrixScale"),
         two(RcOpcodes.MATRIX_TRANSLATE, "MatrixTranslate"),
@@ -268,6 +271,64 @@ private object FitBoxLayoutCodec : RcOperationCodec<RcFitBoxLayout> {
     output.writeInt(value.animationId)
     output.writeInt(value.horizontalPositioning)
     output.writeInt(value.verticalPositioning)
+  }
+}
+
+private object WidthModifierCodec : RcOperationCodec<RcWidthModifier> {
+  override val spec = RcOperationSpec(RcOpcodes.MODIFIER_WIDTH, "WidthModifierOperation")
+
+  override fun decode(input: RcWireReader) =
+    RcWidthModifier(input.readDimensionType(), input.readFloatWord("value"))
+
+  override fun encode(output: RcWireWriter, value: RcWidthModifier) {
+    requireDimensionType(value.type)
+    output.writeInt(value.type)
+    output.writeFloatWord(value.value)
+  }
+}
+
+private object HeightModifierCodec : RcOperationCodec<RcHeightModifier> {
+  override val spec = RcOperationSpec(RcOpcodes.MODIFIER_HEIGHT, "HeightModifierOperation")
+
+  override fun decode(input: RcWireReader) =
+    RcHeightModifier(input.readDimensionType(), input.readFloatWord("value"))
+
+  override fun encode(output: RcWireWriter, value: RcHeightModifier) {
+    requireDimensionType(value.type)
+    output.writeInt(value.type)
+    output.writeFloatWord(value.value)
+  }
+}
+
+private fun RcWireReader.readDimensionType(): Int =
+  readInt("type").also { type ->
+    if (type !in RcDimensionType.EXACT..RcDimensionType.FILL_PARENT_MAX_HEIGHT) {
+      fail("type", "Unknown AndroidX dimension type $type")
+    }
+  }
+
+private fun requireDimensionType(type: Int) {
+  require(type in RcDimensionType.EXACT..RcDimensionType.FILL_PARENT_MAX_HEIGHT) {
+    "Unknown AndroidX dimension type $type"
+  }
+}
+
+private object PaddingModifierCodec : RcOperationCodec<RcPaddingModifier> {
+  override val spec = RcOperationSpec(RcOpcodes.MODIFIER_PADDING, "PaddingModifierOperation")
+
+  override fun decode(input: RcWireReader) =
+    RcPaddingModifier(
+      input.readFloatWord("left"),
+      input.readFloatWord("top"),
+      input.readFloatWord("right"),
+      input.readFloatWord("bottom"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcPaddingModifier) {
+    output.writeFloatWord(value.left)
+    output.writeFloatWord(value.top)
+    output.writeFloatWord(value.right)
+    output.writeFloatWord(value.bottom)
   }
 }
 

@@ -38,6 +38,46 @@ class RcDocumentCodecTest {
   }
 
   @Test
+  fun foundationalLayoutModifiersRoundTripWithoutLosingFloatReferenceBits() {
+    val operations =
+      listOf(
+        RcWidthModifier(RcDimensionType.EXACT, RcFloatWord.literal(80f)),
+        RcHeightModifier(RcDimensionType.WEIGHT, RcFloatWord(0x7fc0002a)),
+        RcPaddingModifier(
+          RcFloatWord.literal(1f),
+          RcFloatWord.literal(2f),
+          RcFloatWord(0x7fc0002b),
+          RcFloatWord.literal(4f),
+        ),
+      )
+    val document = RcDocument(RcHeader(RcVersion(1, 0, 0), modern = false), operations)
+
+    val bytes = RcDocumentCodec.encode(document)
+    val decoded = RcDocumentCodec.decode(bytes)
+
+    assertEquals(document, decoded)
+    assertContentEquals(bytes, RcDocumentCodec.encode(decoded))
+    assertEquals(42, assertIs<RcHeightModifier>(decoded.operations[1]).value.referencedId)
+    assertEquals(43, assertIs<RcPaddingModifier>(decoded.operations[2]).right.referencedId)
+  }
+
+  @Test
+  fun layoutDimensionModifierRejectsUnknownAndroidXType() {
+    val header =
+      RcDocumentCodec.encode(RcDocument(RcHeader(RcVersion(1, 0, 0), modern = false), emptyList()))
+    val writer = RcWireWriter()
+    writer.writeU8(RcOpcodes.MODIFIER_WIDTH)
+    writer.writeInt(9)
+    writer.writeFloatWord(RcFloatWord.literal(10f))
+
+    val failure =
+      assertFailsWith<RcWireException> { RcDocumentCodec.decode(header + writer.toByteArray()) }
+
+    assertEquals("WidthModifierOperation", failure.operationName)
+    assertEquals("type", failure.fieldName)
+  }
+
+  @Test
   fun textAttributePreservesItsReservedWireField() {
     val document =
       RcDocument(

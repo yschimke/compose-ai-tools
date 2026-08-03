@@ -700,11 +700,41 @@ public data class RcFitBoxLayout(
   override val opcode: Int = RcOpcodes.LAYOUT_FIT_BOX
 }
 
+public data class RcWidthModifier(val type: Int, val value: RcFloatWord) : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_WIDTH
+}
+
+public data class RcHeightModifier(val type: Int, val value: RcFloatWord) : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_HEIGHT
+}
+
+public data class RcPaddingModifier(
+  val left: RcFloatWord,
+  val top: RcFloatWord,
+  val right: RcFloatWord,
+  val bottom: RcFloatWord,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_PADDING
+}
+
+public object RcDimensionType {
+  public const val EXACT: Int = 0
+  public const val FILL: Int = 1
+  public const val WRAP: Int = 2
+  public const val WEIGHT: Int = 3
+  public const val INTRINSIC_MIN: Int = 4
+  public const val INTRINSIC_MAX: Int = 5
+  public const val EXACT_DP: Int = 6
+  public const val FILL_PARENT_MAX_WIDTH: Int = 7
+  public const val FILL_PARENT_MAX_HEIGHT: Int = 8
+}
+
 public data class RcDocument(val header: RcHeader, val operations: List<RcOperation>)
 
 /** Opcode values copied from AndroidX remote-core 1.0.0-alpha16 `Operations.java`. */
 public object RcOpcodes {
   public const val HEADER: Int = 0
+  public const val MODIFIER_WIDTH: Int = 16
   public const val THEME: Int = 63
   public const val ROOT_CONTENT_BEHAVIOR: Int = 65
   public const val CLIP_RECT: Int = 39
@@ -720,6 +750,8 @@ public object RcOpcodes {
   public const val DRAW_SECTOR: Int = 52
   public const val DRAW_TEXT_ON_PATH: Int = 53
   public const val DRAW_OVAL: Int = 56
+  public const val MODIFIER_PADDING: Int = 58
+  public const val MODIFIER_HEIGHT: Int = 67
   public const val DATA_FLOAT: Int = 80
   public const val ANIMATED_FLOAT: Int = 81
   public const val DATA_BITMAP: Int = 101

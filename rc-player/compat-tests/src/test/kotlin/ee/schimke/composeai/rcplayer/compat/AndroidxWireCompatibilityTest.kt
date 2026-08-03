@@ -79,6 +79,10 @@ import androidx.compose.remote.core.operations.layout.managers.CanvasLayout
 import androidx.compose.remote.core.operations.layout.managers.ColumnLayout
 import androidx.compose.remote.core.operations.layout.managers.FitBoxLayout
 import androidx.compose.remote.core.operations.layout.managers.RowLayout
+import androidx.compose.remote.core.operations.layout.modifiers.DimensionModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.HeightModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.PaddingModifierOperation
+import androidx.compose.remote.core.operations.layout.modifiers.WidthModifierOperation
 import androidx.compose.remote.core.operations.matrix.MatrixConstant
 import androidx.compose.remote.core.operations.matrix.MatrixExpression
 import androidx.compose.remote.core.operations.matrix.MatrixVectorMath
@@ -103,6 +107,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
+import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
 import ee.schimke.composeai.rcplayer.protocol.RcDraw4
@@ -118,11 +123,13 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
+import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperationInventory
+import ee.schimke.composeai.rcplayer.protocol.RcPaddingModifier
 import ee.schimke.composeai.rcplayer.protocol.RcPathData
 import ee.schimke.composeai.rcplayer.protocol.RcPathExpression as PlayerPathExpression
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
@@ -130,6 +137,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
+import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.runtime.RcFloatExpressionEvaluator
 import ee.schimke.composeai.rcplayer.runtime.RcIntegerExpressionEvaluator
 import ee.schimke.composeai.rcplayer.runtime.RcPlayerState
@@ -189,6 +197,27 @@ class AndroidxWireCompatibilityTest {
     assertEquals(42, assertIs<RcRowLayout>(document.operations[4]).spacedBy.referencedId)
     assertEquals(12.5f, assertIs<RcColumnLayout>(document.operations[5]).spacedBy.value)
     assertIs<RcFitBoxLayout>(document.operations[6])
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
+  @Test
+  fun androidXFoundationalLayoutModifiersRoundTripExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 320, 180, 1f, 0L)
+    WidthModifierOperation.apply(buffer, DimensionModifierOperation.Type.EXACT.ordinal, 80f)
+    HeightModifierOperation.apply(
+      buffer,
+      DimensionModifierOperation.Type.WEIGHT.ordinal,
+      Utils.asNan(42),
+    )
+    PaddingModifierOperation.apply(buffer, 1f, 2f, Utils.asNan(43), 4f)
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+
+    assertEquals(RcDimensionType.EXACT, assertIs<RcWidthModifier>(document.operations[0]).type)
+    assertEquals(42, assertIs<RcHeightModifier>(document.operations[1]).value.referencedId)
+    assertEquals(43, assertIs<RcPaddingModifier>(document.operations[2]).right.referencedId)
     assertContentEquals(bytes, RcDocumentCodec.encode(document))
   }
 
