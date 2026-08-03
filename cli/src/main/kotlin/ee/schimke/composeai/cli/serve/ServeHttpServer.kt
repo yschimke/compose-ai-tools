@@ -1741,6 +1741,7 @@ class ServeHttpServer(
      */
     val loadError: String?,
     val lastLoadAttemptEpochMillis: Long?,
+    val themeOptimization: ThemeOptimizationSnapshot?,
     /**
      * The metadata above is a **last-known snapshot** of a now-suspended catalog
      * ([catalogMetaSeen]) rather than a live read, because the session's daemon is idle. Facts a
@@ -1791,6 +1792,7 @@ class ServeHttpServer(
     val darkStage: Boolean,
     val degradation: String?,
     val provenance: ServeWeb.CatalogProvenance?,
+    val themeOptimization: ThemeOptimizationSnapshot?,
   )
 
   init {
@@ -1822,6 +1824,7 @@ class ServeHttpServer(
         darkStage = ServeWeb.SystemDisplay.resolveDarkFirst(id, bundle.stageSurface),
         degradation = host.degradations.firstOrNull()?.detail,
         provenance = bundle.provenance,
+        themeOptimization = host.themeOptimizationSnapshot(),
       )
   }
 
@@ -1900,6 +1903,7 @@ class ServeHttpServer(
               loadState = c.loadState,
               loadError = c.loadError,
               lastLoadAttemptEpochMillis = c.lastLoadAttemptEpochMillis,
+              themeOptimization = c.themeOptimization,
             )
           },
         runningServers =
@@ -2006,6 +2010,7 @@ class ServeHttpServer(
                 },
               loadState = c.loadState,
               loadError = c.loadError,
+              themeOptimization = c.themeOptimization,
             )
           },
         servers =
@@ -2095,6 +2100,7 @@ class ServeHttpServer(
         available = available,
         loadError = load?.error,
         lastLoadAttemptEpochMillis = load?.lastAttemptEpochMillis,
+        themeOptimization = host?.themeOptimizationSnapshot() ?: seen?.themeOptimization,
         stale = seen != null,
       )
     }
@@ -3334,6 +3340,8 @@ private data class CatalogDto(
   /** Latest catalog fetch/parse/image error, null after a successful latest attempt. */
   val loadError: String? = null,
   val lastLoadAttemptEpochMillis: Long? = null,
+  /** Server-side idle theme-cache fill progress for this catalog generation. */
+  val themeOptimization: ThemeOptimizationSnapshot? = null,
 )
 
 @Serializable

@@ -9,8 +9,10 @@ import java.io.File
  * release its daemon subprocess and be brought back from this state alone — like an Activity
  * restoring from saved instance state rather than being recreated from scratch.
  *
- * Everything here already persists on disk (the `daemon-launch.json` descriptor + the discovered
- * preview list), so holding it costs almost nothing while the daemon is suspended.
+ * Most fields already persist on disk (the `daemon-launch.json` descriptor + the discovered preview
+ * list), so holding them costs almost nothing while the daemon is suspended. A trusted catalog may
+ * additionally retain its bounded `previews × declaredThemes` PNG cache here so idle daemon
+ * suspension does not discard completed optimization work.
  */
 data class ServeSessionState(
   /** `build/compose-previews/daemon-launch.json` the daemon relaunches from. */
@@ -64,6 +66,12 @@ data class ServeSessionState(
   val perPreviewRenderStats: () -> List<RenderPerfSnapshot> = { emptyList() },
   /** Occupancy snapshots of the pooled per-preview daemons, surfaced on `/status.json`. */
   val perPreviewPoolStats: () -> List<DaemonPoolSnapshot> = { emptyList() },
+  /** Theme PNG cache retained across this catalog generation's daemon suspend/resume cycles. */
+  val catalogThemeCache: CatalogThemeCache? = null,
+  /**
+   * Whole-server idle clock used by background catalog optimization; null means traffic is active.
+   */
+  val serverIdleMillis: () -> Long? = { Long.MAX_VALUE },
   /**
    * Optional reclaim hook invoked when the registry **removes** this session entirely — the
    * second-level GC of a long-idle *suspended* forked session (issue #2022), NOT ordinary

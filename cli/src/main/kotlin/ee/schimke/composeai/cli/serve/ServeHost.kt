@@ -130,6 +130,13 @@ interface ServeHost : AutoCloseable {
    */
   fun daemonPoolStats(): List<DaemonPoolSnapshot> = emptyList()
 
+  /** Server-side catalog theme optimization progress, or null for hosts without that cache. */
+  fun themeOptimizationSnapshot(): ThemeOptimizationSnapshot? = null
+
+  /** True while low-priority work still needs this host resident. */
+  val backgroundWorkActive: Boolean
+    get() = false
+
   /**
    * Whether this session's daemon can actually apply the **one-handed gesture** override
    * (`overrides.gestures`) — i.e. the daemon advertises `"gestures"` in its capabilities. Only the

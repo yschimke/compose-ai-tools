@@ -5,6 +5,7 @@ import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * A [ServeHost] that fronts a trusted design-system catalog with its baked-PNG render **and** an
@@ -86,6 +87,11 @@ class ServeCatalogLiveHost(
    */
   private val warmInBackground: Boolean =
     System.getProperty("composeai.serve.warmInBackground")?.toBooleanStrictOrNull() ?: false,
+  private val catalogThemeCache: CatalogThemeCache = CatalogThemeCache(),
+  private val serverIdleMillis: () -> Long? = { Long.MAX_VALUE },
+  private val themeOptimizationIdleMillis: Long =
+    System.getProperty("composeai.serve.themeOptimizationIdleMillis")?.toLongOrNull() ?: 30_000L,
+  private val clock: () -> Long = System::currentTimeMillis,
 ) : ServeHost {
 
   /**
@@ -123,21 +129,28 @@ class ServeCatalogLiveHost(
   private val warmingInFlight = ConcurrentHashMap.newKeySet<String>()
 
   /**
-   * Completed catalog-grid theme renders, retained for this catalog host's lifetime. The
-   * per-preview daemon pool is deliberately LRU and may evict the daemon (and its local cache)
-   * between theme selections; keeping the pure `themeProvider` result here makes a repeat selection
-   * instant without pinning every preview daemon. A catalog refresh installs a new host that cannot
-   * observe this map, then closing the old host clears it. Only pure theme selections participate,
-   * so the key space is bounded by `previews × declaredThemes`; arbitrary knob combinations stay in
-   * the daemon's bounded cache.
+   * Completed catalog-grid theme renders are retained in [catalogThemeCache] for this catalog
+   * generation. The per-preview daemon pool is deliberately LRU and may evict the daemon (and its
+   * local cache) between theme selections; keeping the pure `themeProvider` result here makes a
+   * repeat selection instant without pinning every preview daemon. The shared cache survives idle
+   * host suspension; a catalog refresh creates a new generation and cache. Only pure theme
+   * selections participate, so the key space is bounded by `previews × declaredThemes`; arbitrary
+   * knob combinations stay in the daemon's bounded cache.
    */
-  private val themeRenderCache = ConcurrentHashMap<String, ByteArray>()
   private val themeRendersInFlight = ConcurrentHashMap.newKeySet<String>()
+  private val optimizationStarted = AtomicBoolean()
+  private val optimizationActive = AtomicBoolean()
   private val warmExecutor by lazy {
     Executors.newSingleThreadExecutor { r ->
       Thread(r, "serve-catalog-warm").apply { isDaemon = true }
     }
   }
+  private val optimizationExecutorDelegate = lazy {
+    Executors.newSingleThreadExecutor { r ->
+      Thread(r, "serve-catalog-theme-optimize").apply { isDaemon = true }
+    }
+  }
+  private val optimizationExecutor by optimizationExecutorDelegate
 
   /**
    * True when [daemonId] is warm (a live render is safe to await now). When it isn't and
@@ -189,6 +202,7 @@ class ServeCatalogLiveHost(
    * [warmInBackground] is off.
    */
   fun prewarm() {
+    startThemeOptimization()
     if (!warmInBackground) return
     if (perPreviewResolve != null) return
     alias.values.firstOrNull()?.let { scheduleWarm(it, live) }
@@ -203,6 +217,78 @@ class ServeCatalogLiveHost(
    * theme via the carried daemon.
    */
   override val declaredThemes: List<ServeTheme> = live.declaredThemes
+
+  override fun themeOptimizationSnapshot(): ThemeOptimizationSnapshot? =
+    catalogThemeCache.snapshot().takeIf { it.total > 0 }
+
+  override val backgroundWorkActive: Boolean
+    get() = optimizationActive.get()
+
+  private data class ThemeOptimizationJob(
+    val previewId: String,
+    val overrides: PreviewOverrides,
+    val cacheKey: String,
+  )
+
+  /** Fill every catalog-preview × declared-theme cache entry while the whole server is idle. */
+  private fun startThemeOptimization() {
+    val catalogIds =
+      previews.asSequence().map { it.id }.filter(alias::containsKey).sorted().toList()
+    val jobs = declaredThemes.flatMap { theme ->
+      catalogIds.map { previewId ->
+        val overrides = PreviewOverrides(themeProvider = theme.providerFqn)
+        ThemeOptimizationJob(
+          previewId = previewId,
+          overrides = overrides,
+          cacheKey = ServeOverrides.cacheKey(previewId, overrides),
+        )
+      }
+    }
+    catalogThemeCache.configureTargets(jobs.map { it.cacheKey })
+    if (jobs.isEmpty() || catalogThemeCache.snapshot().fullyOptimized) return
+    if (!optimizationStarted.compareAndSet(false, true)) return
+    optimizationActive.set(true)
+    optimizationExecutor.execute {
+      try {
+        for (job in jobs) {
+          if (catalogThemeCache.get(job.cacheKey) != null) continue
+          var attempts = 0
+          while (catalogThemeCache.get(job.cacheKey) == null && attempts < 3) {
+            if (!awaitServerIdle()) return@execute
+            catalogThemeCache.markRunning(clock())
+            if (render(job.previewId, job.overrides) is RenderOutcome.Ok) break
+            attempts++
+            if (attempts < 3 && !pauseOptimization(250)) return@execute
+          }
+          if (catalogThemeCache.get(job.cacheKey) == null)
+            catalogThemeCache.markFailed(job.cacheKey)
+        }
+        catalogThemeCache.markPassFinished(clock())
+      } finally {
+        optimizationActive.set(false)
+        optimizationStarted.set(false)
+      }
+    }
+  }
+
+  private fun awaitServerIdle(): Boolean {
+    while (true) {
+      if (Thread.currentThread().isInterrupted) return false
+      val idleMillis = serverIdleMillis()
+      if (idleMillis != null && idleMillis >= themeOptimizationIdleMillis) return true
+      catalogThemeCache.markPaused()
+      if (!pauseOptimization(1_000)) return false
+    }
+  }
+
+  private fun pauseOptimization(millis: Long): Boolean =
+    try {
+      Thread.sleep(millis)
+      true
+    } catch (_: InterruptedException) {
+      Thread.currentThread().interrupt()
+      false
+    }
 
   /**
    * Snapshots stay static (baked PNGs) so browsing is instant and the viewer shows the published
@@ -308,7 +394,7 @@ class ServeCatalogLiveHost(
   }
 
   override fun cachedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? =
-    themeCacheKey(previewId, overrides)?.let(themeRenderCache::get)?.let { bytes ->
+    themeCacheKey(previewId, overrides)?.let(catalogThemeCache::get)?.let { bytes ->
       RenderOutcome.Ok(bytes, RenderOutcome.Generation.CATALOG_CACHE)
     }
 
@@ -319,7 +405,7 @@ class ServeCatalogLiveHost(
         outcome is RenderOutcome.Ok &&
         outcome.generation != RenderOutcome.Generation.BAKED
     ) {
-      themeRenderCache.putIfAbsent(key, outcome.png)
+      catalogThemeCache.put(key, outcome.png)
     }
     return outcome
   }
@@ -519,8 +605,14 @@ class ServeCatalogLiveHost(
   }
 
   override fun close() {
-    themeRenderCache.clear()
     themeRendersInFlight.clear()
+    if (optimizationExecutorDelegate.isInitialized()) {
+      try {
+        optimizationExecutor.shutdownNow()
+      } catch (_: Throwable) {
+        // ignore — best-effort shutdown of the daemon-thread optimization pool
+      }
+    }
     if (warmInBackground) {
       try {
         warmExecutor.shutdownNow()

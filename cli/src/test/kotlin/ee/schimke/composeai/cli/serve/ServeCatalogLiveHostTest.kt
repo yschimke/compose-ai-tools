@@ -8,6 +8,7 @@ import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -677,6 +678,98 @@ class ServeCatalogLiveHostTest {
     val refreshedHost = ServeCatalogLiveHost(mapOf(catalogId to daemonId), refreshedLive, baked)
     refreshedHost.render(catalogId, themeOverride())
     assertEquals(1, refreshedLive.renderCalls)
+  }
+
+  @Test
+  fun `idle optimizer fills every declared theme and reports completion`() {
+    val secondTheme = ServeTheme("Brand Light", "com.example.BrandLight")
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme, secondTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = baked,
+        serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationIdleMillis = 0,
+      )
+
+    composite.prewarm()
+    val snapshot = awaitOptimization(composite)
+
+    assertEquals(2, live.renderCalls)
+    assertEquals(2, snapshot.total)
+    assertEquals(2, snapshot.cached)
+    assertTrue(snapshot.fullyOptimized)
+    assertEquals("complete", snapshot.state)
+    assertEquals(false, composite.backgroundWorkActive)
+  }
+
+  @Test
+  fun `idle optimizer pauses for traffic and shared cache survives host replacement`() {
+    val idle = AtomicBoolean()
+    val cache = CatalogThemeCache()
+    val firstLive =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "first",
+        declaredThemes = listOf(brandTheme),
+      )
+    val first =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = firstLive,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        catalogThemeCache = cache,
+        serverIdleMillis = { if (idle.get()) Long.MAX_VALUE else null },
+        themeOptimizationIdleMillis = 0,
+      )
+
+    first.prewarm()
+    Thread.sleep(50)
+    assertEquals(0, firstLive.renderCalls)
+    assertEquals("paused", first.themeOptimizationSnapshot()?.state)
+    assertTrue(first.backgroundWorkActive)
+    idle.set(true)
+    awaitOptimization(first)
+    first.close()
+
+    val replacementLive =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "replacement",
+        declaredThemes = listOf(brandTheme),
+      )
+    val replacement =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = replacementLive,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked2"),
+        catalogThemeCache = cache,
+      )
+    replacement.prewarm()
+
+    assertEquals(0, replacementLive.renderCalls)
+    val cached = replacement.render(catalogId, themeOverride()) as RenderOutcome.Ok
+    assertEquals(RenderOutcome.Generation.CATALOG_CACHE, cached.generation)
+  }
+
+  private fun awaitOptimization(host: ServeCatalogLiveHost): ThemeOptimizationSnapshot {
+    repeat(100) {
+      host
+        .themeOptimizationSnapshot()
+        ?.takeIf { it.fullyOptimized }
+        ?.let {
+          return it
+        }
+      Thread.sleep(25)
+    }
+    error("theme optimization did not finish: ${host.themeOptimizationSnapshot()}")
   }
 
   @Test
