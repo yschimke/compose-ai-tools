@@ -235,6 +235,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-reference-compare/dark](renders/serve-reference-compare.dark.png) |
 | `light` | ![serve-reference-compare/light](renders/serve-reference-compare.light.png) |
 
+## serve-reference-compare-annotated
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-reference-compare-annotated/dark](renders/serve-reference-compare-annotated.dark.png) |
+| `light` | ![serve-reference-compare-annotated/light](renders/serve-reference-compare-annotated.light.png) |
+
 ## serve-status
 
 | Theme | Capture |
