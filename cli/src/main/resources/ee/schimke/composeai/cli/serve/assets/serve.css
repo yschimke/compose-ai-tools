@@ -467,9 +467,27 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 .cp-annotation-layer { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   pointer-events: none; }
 .cp-annotation { position: absolute; box-sizing: border-box; display: none; }
-.cp-annotation-label { position: absolute; top: 0; left: 0; transform: translateY(-100%);
-  padding: 1px 4px; border-radius: 3px 3px 3px 0; font-size: 0.62rem; line-height: 1.35;
-  font-variant-numeric: tabular-nums; white-space: nowrap; color: #fff; }
+/* Labels sit *inside* their box. Annotated regions are routinely flush with the top of the frame,
+   and a label hung above the box is clipped by the panel exactly when the region matters most. */
+/* Only an index on the box — the spec text lives in the legend below the panel. See the note in
+   format-compare.js: captions this size truncate each other wherever annotations nest. */
+.cp-annotation-badge { display: inline-flex; align-items: center; justify-content: center;
+  min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; font-size: 0.6rem;
+  font-weight: 700; line-height: 1; color: #fff; }
+.cp-annotation .cp-annotation-badge { position: absolute; top: -7px; left: -7px; }
+.cp-annotation--layout .cp-annotation-badge { background: rgba(214, 51, 108, 0.95); }
+.cp-annotation--typography .cp-annotation-badge { background: rgba(37, 99, 235, 0.95); }
+.cp-annotation-legend { display: none; margin: 8px 0 0; padding: 0; list-style: none;
+  font-size: 0.72rem; color: var(--cp-fg-muted); }
+.cp-annotation-entry { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+.cp-annotation-role { font-weight: 650; color: var(--cp-fg); }
+.cp-annotation-spec { font-variant-numeric: tabular-nums; }
+#cp-reference-compare[data-annotate-layout="on"] .cp-annotation-legend,
+#cp-reference-compare[data-annotate-typography="on"] .cp-annotation-legend { display: block; }
+.cp-annotation-entry { display: none; }
+#cp-reference-compare[data-annotate-layout="on"] .cp-annotation-entry--layout,
+#cp-reference-compare[data-annotate-typography="on"] .cp-annotation-entry--typography
+  { display: flex; }
 /* Layout is the redline layer, typography the type spec — distinct hues so both can be on at once
    and still be told apart at a glance. */
 .cp-annotation--layout { border: 1px solid rgba(214, 51, 108, 0.9); }

@@ -332,20 +332,46 @@
     });
     if (!panels.length) return;
 
+    // A spec label runs ~100px against panels ~200px wide, so an always-on caption per box cannot
+    // fit once two annotations overlap — they truncate each other exactly where the nesting is
+    // densest. The box therefore carries only an index badge, and the readable text goes in a
+    // legend under the panel, where it also stays selectable and reachable without a pointer.
     panels.forEach(function (panel) {
-      panel.items.forEach(function (item) {
+      var legend = document.createElement("ol");
+      legend.className = "cp-annotation-legend";
+      panel.items.forEach(function (item, index) {
+        var ordinal = String(index + 1);
         var box = document.createElement("div");
         box.className = "cp-annotation cp-annotation--" + item.kind;
         box.setAttribute("data-cp-kind", item.kind);
-        var caption = document.createElement("span");
-        caption.className = "cp-annotation-label";
-        caption.textContent = item.label;
-        if (item.role) box.title = item.role + " · " + item.label;
-        else box.title = item.label;
-        box.appendChild(caption);
+        box.title = item.role ? item.role + " · " + item.label : item.label;
+        var badge = document.createElement("span");
+        badge.className = "cp-annotation-badge";
+        badge.textContent = ordinal;
+        box.appendChild(badge);
         panel.layer.appendChild(box);
         panel.boxes.push({ node: box, bounds: item.bounds });
+
+        var row = document.createElement("li");
+        row.className = "cp-annotation-entry cp-annotation-entry--" + item.kind;
+        row.setAttribute("data-cp-kind", item.kind);
+        var marker = document.createElement("span");
+        marker.className = "cp-annotation-badge";
+        marker.textContent = ordinal;
+        row.appendChild(marker);
+        if (item.role) {
+          var role = document.createElement("span");
+          role.className = "cp-annotation-role";
+          role.textContent = item.role;
+          row.appendChild(role);
+        }
+        var text = document.createElement("span");
+        text.className = "cp-annotation-spec";
+        text.textContent = item.label;
+        row.appendChild(text);
+        legend.appendChild(row);
       });
+      panel.shot.parentNode.appendChild(legend);
     });
 
     function place() {

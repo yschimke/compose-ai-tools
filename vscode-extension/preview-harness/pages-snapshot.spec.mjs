@@ -119,6 +119,26 @@ const FIXTURE_STATES = [
             await page.click('[data-cp-group="scroll"] > summary');
         },
     },
+    {
+        // The annotation layers default to off — the page's first job is the pixel diff, and boxes
+        // drawn over both panels would obscure exactly what is being judged. That leaves the drawn
+        // state invisible to the diff bot unless it is captured deliberately, so switch both layers
+        // on here: every future change to the redline/type overlays (geometry, colours, label
+        // placement) is then diffed for free.
+        fixture: "serve-reference-compare",
+        suffix: "annotated",
+        apply: async (page) => {
+            for (const kind of ["layout", "typography"]) {
+                await page.check(`[data-cp-annotation-kind="${kind}"]`);
+            }
+            // The boxes are positioned from the image's rendered size, so hold until the panels
+            // have actually laid out rather than racing the placeholder's load.
+            await page.waitForFunction(() => {
+                const box = document.querySelector(".cp-annotation");
+                return box && box.getBoundingClientRect().width > 0;
+            });
+        },
+    },
 ];
 
 /** Page fixtures = `fixtures/pages/*.html`, honouring the `HARNESS_FIXTURE` narrow. */
