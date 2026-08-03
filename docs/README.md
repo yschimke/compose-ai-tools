@@ -35,6 +35,7 @@ else.
 - [NON_GRADLE_INTEGRATION.md](NON_GRADLE_INTEGRATION.md) — driving the renderer from non-Gradle builds.
 - [portable-bundles.md](portable-bundles.md) — the portable-bundle format across build systems.
 - [public-preview-server.md](public-preview-server.md) — the `serve` public preview server.
+- [HOSTED_SERVICE_PLAN.md](HOSTED_SERVICE_PLAN.md) — sketch: running `serve` as a hosted service (costs, scaling, precedents).
 - [isolated-projects-autoinject.md](isolated-projects-autoinject.md) — why Isolated Projects stays off.
 
 ## Process & policy
