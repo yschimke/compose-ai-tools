@@ -700,6 +700,7 @@ class ServeCatalogLiveHostTest {
         live = live,
         baked = baked,
         serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationEnabled = true,
         themeOptimizationIdleMillis = 0,
       )
 
@@ -741,6 +742,7 @@ class ServeCatalogLiveHostTest {
         baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
         warmInBackground = true,
         serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationEnabled = true,
         themeOptimizationIdleMillis = 0,
       )
 
@@ -789,6 +791,7 @@ class ServeCatalogLiveHostTest {
           perPreview
         },
         serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationEnabled = true,
         themeOptimizationIdleMillis = 0,
       )
 
@@ -815,6 +818,7 @@ class ServeCatalogLiveHostTest {
         baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
         catalogThemeCache = cache,
         serverIdleMillis = { if (idle.get()) Long.MAX_VALUE else null },
+        themeOptimizationEnabled = true,
         themeOptimizationIdleMillis = 0,
       )
 
@@ -865,6 +869,7 @@ class ServeCatalogLiveHostTest {
         // An idle server by the registry's reckoning — startup draws no request traffic, which is
         // exactly how the optimizer used to end up competing with the catalogs still loading.
         serverIdleMillis = backgroundWork.idleClock { Long.MAX_VALUE },
+        themeOptimizationEnabled = true,
         themeOptimizationIdleMillis = 0,
         backgroundWork = backgroundWork,
       )
@@ -909,6 +914,7 @@ class ServeCatalogLiveHostTest {
         live = counting,
         baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked-$tag"),
         serverIdleMillis = { Long.MAX_VALUE },
+        themeOptimizationEnabled = true,
         themeOptimizationIdleMillis = 0,
         backgroundWork = backgroundWork,
       )
