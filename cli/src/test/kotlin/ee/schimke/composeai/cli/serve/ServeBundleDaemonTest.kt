@@ -226,7 +226,7 @@ class ServeBundleDaemonTest {
   }
 
   @Test
-  fun `playground resource runtime overlays daemon sidecar`() {
+  fun `playground shared runtimes overlay daemon sidecar by artifact path`() {
     assertTrue(
       ServeBundleDaemon.jarPrecedesDaemonSidecar(
         File("/cache/org.jetbrains.compose.components/components-resources-desktop/library.jar")
@@ -236,6 +236,17 @@ class ServeBundleDaemonTest {
       ServeBundleDaemon.jarPrecedesDaemonSidecar(
         File("/cache/org.jetbrains.kotlinx/kotlinx-io-bytestring-jvm/0.9.1/library.jar")
       )
+    )
+    assertTrue(
+      ServeBundleDaemon.jarPrecedesDaemonSidecar(
+        File("/m2/org/jetbrains/kotlinx/kotlinx-io-core-jvm/0.9.1/library.jar")
+      )
+    )
+    assertTrue(
+      !ServeBundleDaemon.jarPrecedesDaemonSidecar(
+        File("/work/catalog-kotlinx-io-demo/cache/com.example/unrelated/library.jar")
+      ),
+      "a system or work-root name must not promote unrelated jars to the daemon parent",
     )
   }
 

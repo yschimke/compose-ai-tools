@@ -695,9 +695,15 @@ internal object ServeBundleDaemon {
     val path = jar.path.replace('\\', '/')
     return path.contains("/androidx") ||
       path.contains("components-resources") ||
-      path.contains("kotlinx-coroutines") ||
-      path.contains("kotlinx-io")
+      KOTLINX_SHARED_ARTIFACT_PATH.containsMatchIn(path)
   }
+
+  /** Matches Gradle-cache and Maven-local group layouts without inspecting unrelated path parts. */
+  private val KOTLINX_SHARED_ARTIFACT_PATH =
+    Regex(
+      "/(?:org\\.jetbrains\\.kotlinx|org/jetbrains/kotlinx)/" +
+        "kotlinx-(?:coroutines|io)(?:-[^/]+)?(?:/|$)"
+    )
 
   private data class ResolvedBundleDependency(
     val coordinate: BundleReader.ClasspathEntry.Maven,
