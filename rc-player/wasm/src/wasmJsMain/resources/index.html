@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Remote Compose CMP player</title>
+    <style>
+      html,
+      body,
+      #rcPlayer {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      #rcPlayer canvas {
+        display: block;
+      }
+    </style>
+    <script type="importmap">
+      { "imports": { "@js-joda/core": "./js-joda.esm.js" } }
+    </script>
+  </head>
+  <body>
+    <div id="rcPlayer"></div>
+    <script type="module" src="rcPlayer.mjs"></script>
+  </body>
+</html>

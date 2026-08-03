@@ -1,0 +1,1314 @@
+package ee.schimke.composeai.rcplayer.compose
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.ClipOp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Matrix
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.PathMeasure
+import androidx.compose.ui.graphics.PathOperation
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asSkiaPath
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.sp
+import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
+import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
+import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
+import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
+import ee.schimke.composeai.rcplayer.protocol.RcDataMapLookup
+import ee.schimke.composeai.rcplayer.protocol.RcDocument
+import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
+import ee.schimke.composeai.rcplayer.protocol.RcDraw3
+import ee.schimke.composeai.rcplayer.protocol.RcDraw4
+import ee.schimke.composeai.rcplayer.protocol.RcDraw6
+import ee.schimke.composeai.rcplayer.protocol.RcDrawBitmap
+import ee.schimke.composeai.rcplayer.protocol.RcDrawBitmapInt
+import ee.schimke.composeai.rcplayer.protocol.RcDrawBitmapScaled
+import ee.schimke.composeai.rcplayer.protocol.RcDrawText
+import ee.schimke.composeai.rcplayer.protocol.RcDrawTextAnchored
+import ee.schimke.composeai.rcplayer.protocol.RcDrawTextOnPath
+import ee.schimke.composeai.rcplayer.protocol.RcDrawTweenPath
+import ee.schimke.composeai.rcplayer.protocol.RcDynamicFloatList
+import ee.schimke.composeai.rcplayer.protocol.RcFloatExpression
+import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
+import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
+import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
+import ee.schimke.composeai.rcplayer.protocol.RcIdLookup
+import ee.schimke.composeai.rcplayer.protocol.RcIdOperation
+import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
+import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
+import ee.schimke.composeai.rcplayer.protocol.RcMatrixExpression
+import ee.schimke.composeai.rcplayer.protocol.RcMatrixFromPath
+import ee.schimke.composeai.rcplayer.protocol.RcMatrixVectorMath
+import ee.schimke.composeai.rcplayer.protocol.RcNoArg
+import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
+import ee.schimke.composeai.rcplayer.protocol.RcPaintData
+import ee.schimke.composeai.rcplayer.protocol.RcPathAppend
+import ee.schimke.composeai.rcplayer.protocol.RcPathCombine
+import ee.schimke.composeai.rcplayer.protocol.RcPathCommands
+import ee.schimke.composeai.rcplayer.protocol.RcPathCreate
+import ee.schimke.composeai.rcplayer.protocol.RcPathData
+import ee.schimke.composeai.rcplayer.protocol.RcPathExpression
+import ee.schimke.composeai.rcplayer.protocol.RcPathTween
+import ee.schimke.composeai.rcplayer.protocol.RcRootContentBehavior
+import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
+import ee.schimke.composeai.rcplayer.protocol.RcTextFromFloat
+import ee.schimke.composeai.rcplayer.protocol.RcTextLength
+import ee.schimke.composeai.rcplayer.protocol.RcTextLookup
+import ee.schimke.composeai.rcplayer.protocol.RcTextLookupInt
+import ee.schimke.composeai.rcplayer.protocol.RcTextMeasure
+import ee.schimke.composeai.rcplayer.protocol.RcTextMerge
+import ee.schimke.composeai.rcplayer.protocol.RcTextSubtext
+import ee.schimke.composeai.rcplayer.protocol.RcTextTransform
+import ee.schimke.composeai.rcplayer.protocol.RcTheme
+import ee.schimke.composeai.rcplayer.protocol.RcTransform2
+import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
+import ee.schimke.composeai.rcplayer.runtime.RcDocumentLinker
+import ee.schimke.composeai.rcplayer.runtime.RcLinkedNode
+import ee.schimke.composeai.rcplayer.runtime.RcNamedValue
+import ee.schimke.composeai.rcplayer.runtime.RcPlayerState
+import kotlin.math.PI
+import kotlin.math.atan2
+import org.jetbrains.skia.ColorAlphaType
+import org.jetbrains.skia.ColorType
+import org.jetbrains.skia.Image
+import org.jetbrains.skia.ImageInfo
+
+@Composable
+public fun RcComposePlayer(
+  bytes: ByteArray,
+  modifier: Modifier = Modifier,
+  theme: Int = RcTheme.UNSPECIFIED,
+  namedValues: Map<String, RcNamedValue> = emptyMap(),
+) {
+  val document = remember(bytes) { RcDocumentCodec.decode(bytes) }
+  RcComposePlayer(document, modifier, theme, namedValues)
+}
+
+@Composable
+public fun RcComposePlayer(
+  document: RcDocument,
+  modifier: Modifier = Modifier,
+  theme: Int = RcTheme.UNSPECIFIED,
+  namedValues: Map<String, RcNamedValue> = emptyMap(),
+) {
+  val state = remember(document, namedValues) { RcPlayerState(document, namedValues) }
+  val hasAnimatedFloats =
+    remember(document) {
+      document.operations.filterIsInstance<RcFloatExpression>().any { it.animation != null }
+    }
+  var frameNanos by remember { mutableLongStateOf(0L) }
+  LaunchedEffect(hasAnimatedFloats) {
+    if (hasAnimatedFloats) {
+      val start = withFrameNanos { it }
+      while (true) {
+        withFrameNanos { frameNanos = it - start }
+      }
+    }
+  }
+  val linkedDocument = remember(document) { RcDocumentLinker.link(document) }
+  val images = remember(document) { decodeInlineImages(document) }
+  val textMeasurer = rememberTextMeasurer()
+  val semanticsModifier =
+    state.rootContentDescription?.let { description ->
+      modifier.semantics { contentDescription = description }
+    } ?: modifier
+  Canvas(semanticsModifier) {
+    val width = document.header.width.coerceAtLeast(1)
+    val height = document.header.height.coerceAtLeast(1)
+    val rootTransform =
+      computeRootTransform(
+        documentWidth = width.toFloat(),
+        documentHeight = height.toFloat(),
+        viewportWidth = size.width,
+        viewportHeight = size.height,
+        behavior = state.rootContentBehavior,
+      )
+    withTransform({
+      translate(rootTransform.translateX, rootTransform.translateY)
+      scale(rootTransform.scaleX, rootTransform.scaleY, Offset.Zero)
+    }) {
+      state.beginFrame(frameNanos / 1_000_000_000f)
+      drawOperations(
+        linkedDocument.operations,
+        state,
+        RcPaintState(),
+        mutableMapOf(),
+        textMeasurer,
+        images,
+        RcFloatFunctionRuntime(),
+        theme,
+        filterTheme = true,
+      )
+    }
+  }
+}
+
+internal data class RcRootTransform(
+  val scaleX: Float,
+  val scaleY: Float,
+  val translateX: Float,
+  val translateY: Float,
+)
+
+/** AndroidX CoreDocument.computeScale/computeTranslate semantics for root canvas documents. */
+internal fun computeRootTransform(
+  documentWidth: Float,
+  documentHeight: Float,
+  viewportWidth: Float,
+  viewportHeight: Float,
+  behavior: RcRootContentBehavior?,
+): RcRootTransform {
+  if (behavior?.sizing != RcRootContentBehavior.SIZING_SCALE) {
+    return RcRootTransform(1f, 1f, 0f, 0f)
+  }
+  val widthRatio = viewportWidth / documentWidth.coerceAtLeast(1f)
+  val heightRatio = viewportHeight / documentHeight.coerceAtLeast(1f)
+  val scale =
+    when (behavior.mode) {
+      RcRootContentBehavior.SCALE_INSIDE -> minOf(1f, widthRatio, heightRatio)
+      RcRootContentBehavior.SCALE_FIT -> minOf(widthRatio, heightRatio)
+      RcRootContentBehavior.SCALE_FILL_WIDTH -> widthRatio
+      RcRootContentBehavior.SCALE_FILL_HEIGHT -> heightRatio
+      RcRootContentBehavior.SCALE_CROP -> maxOf(widthRatio, heightRatio)
+      else -> 1f
+    }
+  val scaleX = if (behavior.mode == RcRootContentBehavior.SCALE_FILL_BOUNDS) widthRatio else scale
+  val scaleY = if (behavior.mode == RcRootContentBehavior.SCALE_FILL_BOUNDS) heightRatio else scale
+  val contentWidth = documentWidth * scaleX
+  val contentHeight = documentHeight * scaleY
+  val translateX =
+    when (behavior.alignment and 0xf0) {
+      RcRootContentBehavior.ALIGNMENT_HORIZONTAL_CENTER -> (viewportWidth - contentWidth) / 2f
+      RcRootContentBehavior.ALIGNMENT_END -> viewportWidth - contentWidth
+      else -> 0f
+    }
+  val translateY =
+    when (behavior.alignment and 0x0f) {
+      RcRootContentBehavior.ALIGNMENT_VERTICAL_CENTER -> (viewportHeight - contentHeight) / 2f
+      RcRootContentBehavior.ALIGNMENT_BOTTOM -> viewportHeight - contentHeight
+      else -> 0f
+    }
+  return RcRootTransform(scaleX, scaleY, translateX, translateY)
+}
+
+private class RcPaintState {
+  var color: Int = 0xff000000.toInt()
+  var strokeWidth: Float = 1f
+  var stroke: Boolean = false
+  var strokeCap: StrokeCap = StrokeCap.Butt
+  var strokeJoin: StrokeJoin = StrokeJoin.Miter
+  var alpha: Float = 1f
+  var blendMode: BlendMode = BlendMode.SrcOver
+  var blendModeValue: Int = 3
+  var textSize: Float = 16f
+  var fontFamily: FontFamily = FontFamily.Default
+  var fontWeight: FontWeight = FontWeight.Normal
+  var fontStyle: FontStyle = FontStyle.Normal
+  var fontType: Int = 0
+
+  fun composeColor(): Color {
+    val color = Color(color)
+    return color.copy(alpha = color.alpha * alpha)
+  }
+
+  fun style() =
+    if (stroke) Stroke(width = strokeWidth, cap = strokeCap, join = strokeJoin) else Fill
+}
+
+private class RcFloatFunctionRuntime {
+  val definitions = mutableMapOf<Int, RcLinkedNode.Container>()
+  val executing = mutableSetOf<Int>()
+}
+
+private fun DrawScope.drawOperations(
+  operations: List<RcLinkedNode>,
+  state: RcPlayerState,
+  paint: RcPaintState,
+  computedPaths: MutableMap<Int, Path>,
+  textMeasurer: TextMeasurer,
+  images: Map<Int, ImageBitmap>,
+  functions: RcFloatFunctionRuntime,
+  requestedTheme: Int,
+  filterTheme: Boolean,
+) {
+  var currentTheme = RcTheme.UNSPECIFIED
+  for (node in operations) {
+    if (node is RcLinkedNode.Container) {
+      val functionDefinition = node.operation as? RcFloatFunctionDefine
+      if (functionDefinition != null) {
+        functions.definitions[functionDefinition.id] = node
+        continue
+      }
+      if (!filterTheme || isThemeVisible(requestedTheme, currentTheme)) {
+        when (node.operation.opcode) {
+          RcOpcodes.CANVAS_OPERATIONS ->
+            drawOperations(
+              node.children,
+              state,
+              paint,
+              computedPaths,
+              textMeasurer,
+              images,
+              functions,
+              requestedTheme,
+              filterTheme = false,
+            )
+          else -> error("Container opcode ${node.operation.opcode} is not renderable")
+        }
+      }
+      continue
+    }
+    val operation = (node as RcLinkedNode.Operation).operation
+    if (operation is RcTheme) {
+      currentTheme = operation.theme
+      continue
+    }
+    if (filterTheme && !isThemeVisible(requestedTheme, currentTheme)) continue
+    when (operation) {
+      is RcPaintData -> applyPaint(operation, paint, state)
+      is RcDraw4 -> draw4(operation, paint, state)
+      is RcDraw3 -> draw3(operation, paint, state)
+      is RcDraw6 -> draw6(operation, paint, state)
+      is RcTransform2 -> transform2(operation, state)
+      is RcIdOperation -> drawIdOperation(operation, paint, state, computedPaths)
+      is RcPathTween ->
+        state.setPath(
+          operation.outId,
+          tweenPathData(
+            operation.outId,
+            operation.path1Id,
+            operation.path2Id,
+            state.resolve(operation.tween),
+            state,
+          ),
+        )
+      is RcPathCreate ->
+        state.setPath(
+          operation.id,
+          RcPathData(
+            operation.id,
+            listOf(
+              RcFloatWord(0x7fc00000 or RcPathCommands.MOVE),
+              operation.startX,
+              operation.startY,
+            ),
+          ),
+        )
+      is RcPathAppend -> {
+        val firstCommand = operation.words.firstOrNull()?.referencedId
+        if (firstCommand == RcPathCommands.RESET) {
+          state.setPath(operation.id, RcPathData(operation.id, emptyList()))
+        } else {
+          val existing = state.path(operation.id)
+          state.setPath(
+            operation.id,
+            RcPathData(
+              existing?.idAndWinding ?: operation.id,
+              existing.orEmptyWords() + operation.words,
+            ),
+          )
+        }
+      }
+      is RcPathCombine -> {
+        val first = pathForId(operation.path1Id, state, computedPaths)
+        val second = pathForId(operation.path2Id, state, computedPaths)
+        val pathOperation =
+          when (operation.operation) {
+            0 -> PathOperation.Difference
+            1 -> PathOperation.Intersect
+            2 -> PathOperation.ReverseDifference
+            3 -> PathOperation.Union
+            4 -> PathOperation.Xor
+            else -> error("Unknown AndroidX path operation ${operation.operation}")
+          }
+        computedPaths[operation.outId] = Path().apply { op(first, second, pathOperation) }
+      }
+      is RcPathExpression -> state.applyPathExpression(operation)
+      is RcFloatExpression -> state.applyFloatExpression(operation)
+      is RcMatrixFromPath -> applyMatrixFromPath(operation, state, computedPaths)
+      is RcMatrixVectorMath -> state.applyMatrixVectorMath(operation)
+      is RcMatrixExpression -> state.applyMatrixExpression(operation)
+      is RcTextMerge,
+      is RcTextLength,
+      is RcTextSubtext -> state.applyTextOperation(operation)
+      is RcTextTransform -> state.applyTextOperation(operation)
+      is RcTextFromFloat -> state.applyTextOperation(operation)
+      is RcTextLookup -> state.applyTextOperation(operation)
+      is RcTextLookupInt -> state.applyTextOperation(operation)
+      is RcDataMapLookup -> state.applyDataOperation(operation)
+      is RcIdLookup -> state.applyDataOperation(operation)
+      is RcDynamicFloatList -> state.applyDataOperation(operation)
+      is RcUpdateDynamicFloatList -> state.applyDataOperation(operation)
+      is RcFloatFunctionCall -> {
+        val definition =
+          requireNotNull(functions.definitions[operation.functionId]) {
+            "Missing float function ${operation.functionId}"
+          }
+        val descriptor = definition.operation as RcFloatFunctionDefine
+        require(operation.arguments.size <= descriptor.parameterIds.size) {
+          "Float function ${operation.functionId} received ${operation.arguments.size} arguments " +
+            "for ${descriptor.parameterIds.size} parameters"
+        }
+        require(functions.executing.add(operation.functionId)) {
+          "Recursive float function ${operation.functionId} is not allowed"
+        }
+        try {
+          operation.arguments.forEachIndexed { index, argument ->
+            state.setFloat(descriptor.parameterIds[index], state.resolve(argument))
+          }
+          drawOperations(
+            definition.children,
+            state,
+            paint,
+            computedPaths,
+            textMeasurer,
+            images,
+            functions,
+            requestedTheme,
+            filterTheme = false,
+          )
+        } finally {
+          functions.executing.remove(operation.functionId)
+        }
+      }
+      is RcImageAttribute -> state.applyImageAttribute(operation)
+      is RcColorAttribute -> state.applyColorAttribute(operation)
+      is RcColorExpression -> state.applyColorExpression(operation)
+      is RcColorTheme -> state.applyColorTheme(operation, requestedTheme)
+      is RcIntegerExpression -> state.applyIntegerExpression(operation)
+      is RcDrawText -> drawTextOperation(operation, state, paint, textMeasurer)
+      is RcDrawTextAnchored -> drawTextAnchored(operation, state, paint, textMeasurer)
+      is RcDrawTextOnPath -> drawTextOnPath(operation, state, paint, computedPaths, textMeasurer)
+      is RcDrawBitmap -> drawBitmap(operation, state, paint, images)
+      is RcDrawBitmapInt -> drawBitmapInt(operation, paint, images)
+      is RcDrawBitmapScaled -> drawBitmapScaled(operation, state, paint, images)
+      is RcTextMeasure -> measureTextOperation(operation, state, paint, textMeasurer)
+      is RcTextAttribute ->
+        measureTextOperation(
+          operation.outId,
+          operation.textId,
+          operation.type,
+          state,
+          paint,
+          textMeasurer,
+        )
+      is RcDrawTweenPath -> drawTweenPath(operation, paint, state)
+      is RcNoArg ->
+        when (operation.opcode) {
+          RcOpcodes.MATRIX_SAVE -> drawContext.canvas.save()
+          RcOpcodes.MATRIX_RESTORE -> drawContext.canvas.restore()
+        }
+      else -> Unit // Constants/data have already populated RcPlayerState.
+    }
+  }
+}
+
+private fun decodeInlineImages(document: RcDocument): Map<Int, ImageBitmap> =
+  document.operations
+    .filterIsInstance<RcBitmapData>()
+    .mapNotNull { bitmap ->
+      if (bitmap.encoding != RcBitmapData.ENCODING_INLINE) null
+      else runCatching { bitmap.imageId to decodeInlineImage(bitmap) }.getOrNull()
+    }
+    .toMap()
+
+private fun decodeInlineImage(bitmap: RcBitmapData): ImageBitmap =
+  when (bitmap.type) {
+    RcBitmapData.TYPE_PNG_8888,
+    RcBitmapData.TYPE_PNG,
+    RcBitmapData.TYPE_PNG_ALPHA_8 -> Image.makeFromEncoded(bitmap.data).toComposeImageBitmap()
+    RcBitmapData.TYPE_RAW8888 -> {
+      val rowBytes = bitmap.width * 4
+      require(bitmap.data.size >= rowBytes * bitmap.height) { "Truncated RGBA bitmap" }
+      Image.makeRaster(
+          ImageInfo(bitmap.width, bitmap.height, ColorType.RGBA_8888, ColorAlphaType.UNPREMUL),
+          bitmap.data,
+          rowBytes,
+        )
+        .toComposeImageBitmap()
+    }
+    RcBitmapData.TYPE_RAW8 -> {
+      val rowBytes = bitmap.width
+      require(bitmap.data.size >= rowBytes * bitmap.height) { "Truncated alpha bitmap" }
+      Image.makeRaster(
+          ImageInfo(bitmap.width, bitmap.height, ColorType.ALPHA_8, ColorAlphaType.UNPREMUL),
+          bitmap.data,
+          rowBytes,
+        )
+        .toComposeImageBitmap()
+    }
+    else -> error("Unknown AndroidX bitmap type ${bitmap.type}")
+  }
+
+private fun DrawScope.drawBitmap(
+  operation: RcDrawBitmap,
+  state: RcPlayerState,
+  paint: RcPaintState,
+  images: Map<Int, ImageBitmap>,
+) {
+  val image = images[operation.imageId] ?: return
+  val left = state.resolve(operation.left)
+  val top = state.resolve(operation.top)
+  val width = state.resolve(operation.right) - left
+  val height = state.resolve(operation.bottom) - top
+  if (width == 0f || height == 0f) return
+  withTransform({
+    translate(left, top)
+    scale(width / image.width, height / image.height, Offset.Zero)
+  }) {
+    drawImage(
+      image = image,
+      topLeft = Offset.Zero,
+      alpha = paint.alpha,
+      blendMode = paint.blendMode,
+    )
+  }
+}
+
+private fun DrawScope.drawBitmapInt(
+  operation: RcDrawBitmapInt,
+  paint: RcPaintState,
+  images: Map<Int, ImageBitmap>,
+) {
+  val image = images[operation.imageId] ?: return
+  drawBitmapRegion(
+    image,
+    operation.srcLeft,
+    operation.srcTop,
+    operation.srcRight,
+    operation.srcBottom,
+    operation.dstLeft,
+    operation.dstTop,
+    operation.dstRight,
+    operation.dstBottom,
+    paint,
+  )
+}
+
+private fun DrawScope.drawBitmapScaled(
+  operation: RcDrawBitmapScaled,
+  state: RcPlayerState,
+  paint: RcPaintState,
+  images: Map<Int, ImageBitmap>,
+) {
+  val image = images[operation.imageId] ?: return
+  val sl = state.resolve(operation.srcLeft)
+  val st = state.resolve(operation.srcTop)
+  val sr = state.resolve(operation.srcRight)
+  val sb = state.resolve(operation.srcBottom)
+  val dl = state.resolve(operation.dstLeft)
+  val dt = state.resolve(operation.dstTop)
+  val dr = state.resolve(operation.dstRight)
+  val db = state.resolve(operation.dstBottom)
+  val scaled =
+    computeImageScaling(
+      sl,
+      st,
+      sr,
+      sb,
+      dl,
+      dt,
+      dr,
+      db,
+      operation.scaleType,
+      state.resolve(operation.scaleFactor),
+    ) ?: return
+  withTransform({ clipRect(dl, dt, dr, db) }) {
+    drawBitmapRegion(
+      image,
+      sl.toInt(),
+      st.toInt(),
+      sr.toInt(),
+      sb.toInt(),
+      scaled.left.toInt(),
+      scaled.top.toInt(),
+      scaled.right.toInt(),
+      scaled.bottom.toInt(),
+      paint,
+    )
+  }
+}
+
+private fun DrawScope.drawBitmapRegion(
+  image: ImageBitmap,
+  srcLeft: Int,
+  srcTop: Int,
+  srcRight: Int,
+  srcBottom: Int,
+  dstLeft: Int,
+  dstTop: Int,
+  dstRight: Int,
+  dstBottom: Int,
+  paint: RcPaintState,
+) {
+  val srcWidth = srcRight - srcLeft
+  val srcHeight = srcBottom - srcTop
+  val dstWidth = dstRight - dstLeft
+  val dstHeight = dstBottom - dstTop
+  if (srcWidth <= 0 || srcHeight <= 0 || dstWidth == 0 || dstHeight == 0) return
+  drawImage(
+    image = image,
+    srcOffset = IntOffset(srcLeft, srcTop),
+    srcSize = IntSize(srcWidth, srcHeight),
+    dstOffset = IntOffset(dstLeft, dstTop),
+    dstSize = IntSize(dstWidth, dstHeight),
+    alpha = paint.alpha,
+    blendMode = paint.blendMode,
+  )
+}
+
+internal data class RcScaledRect(
+  val left: Float,
+  val top: Float,
+  val right: Float,
+  val bottom: Float,
+)
+
+/** Exact integer-centering arithmetic from AndroidX ImageScaling.adjustDrawToType. */
+internal fun computeImageScaling(
+  srcLeft: Float,
+  srcTop: Float,
+  srcRight: Float,
+  srcBottom: Float,
+  dstLeft: Float,
+  dstTop: Float,
+  dstRight: Float,
+  dstBottom: Float,
+  scaleType: Int,
+  scaleFactor: Float,
+): RcScaledRect? {
+  val srcWidth = (srcRight - srcLeft).toInt()
+  val srcHeight = (srcBottom - srcTop).toInt()
+  if (srcWidth == 0 || srcHeight == 0) return null
+  val dstWidth = (dstRight - dstLeft).toInt()
+  val dstHeight = (dstBottom - dstTop).toInt()
+  var width = dstWidth
+  var height = dstHeight
+  when (scaleType) {
+    0 -> {
+      width = srcWidth
+      height = srcHeight
+    }
+    1 ->
+      if (!(dstHeight > srcHeight && dstWidth > srcWidth)) {
+        if (srcWidth.toFloat() * (dstBottom - dstTop) > (dstRight - dstLeft) * srcHeight) {
+          height = dstWidth * srcHeight / srcWidth
+        } else width = dstHeight * srcWidth / srcHeight
+      } else {
+        width = srcWidth
+        height = srcHeight
+      }
+    2 -> height = dstWidth * srcHeight / srcWidth
+    3 -> width = dstHeight * srcWidth / srcHeight
+    4 ->
+      if (srcWidth.toFloat() * (dstBottom - dstTop) > (dstRight - dstLeft) * srcHeight) {
+        height = dstWidth * srcHeight / srcWidth
+      } else width = dstHeight * srcWidth / srcHeight
+    5 ->
+      if (srcWidth.toFloat() * (dstBottom - dstTop) < (dstRight - dstLeft) * srcHeight) {
+        height = dstWidth * srcHeight / srcWidth
+      } else width = dstHeight * srcWidth / srcHeight
+    6 -> Unit
+    7 -> {
+      width = (srcWidth * scaleFactor).toInt()
+      height = (srcHeight * scaleFactor).toInt()
+    }
+    else -> error("Unknown AndroidX image scale type $scaleType")
+  }
+  val x = (dstWidth - width) / 2
+  val y = (dstHeight - height) / 2
+  return RcScaledRect(dstLeft + x, dstTop + y, dstLeft + x + width, dstTop + y + height)
+}
+
+private fun DrawScope.textStyle(paint: RcPaintState): TextStyle =
+  TextStyle(
+    color = paint.composeColor(),
+    fontSize = (paint.textSize / density).sp,
+    fontFamily = paint.fontFamily,
+    fontWeight = paint.fontWeight,
+    fontStyle = paint.fontStyle,
+  )
+
+private fun DrawScope.drawTextOperation(
+  operation: RcDrawText,
+  state: RcPlayerState,
+  paint: RcPaintState,
+  textMeasurer: TextMeasurer,
+) {
+  val source = state.text(operation.textId) ?: return
+  val end =
+    if (operation.end == -1 || operation.end > source.length) source.length else operation.end
+  val text = source.substring(operation.start, end)
+  val style = textStyle(paint)
+  val layout =
+    textMeasurer.measure(
+      text,
+      style,
+      layoutDirection = if (operation.rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
+    )
+  drawText(
+    textMeasurer = textMeasurer,
+    text = text,
+    topLeft = Offset(state.resolve(operation.x), state.resolve(operation.y) - layout.firstBaseline),
+    style = style,
+    blendMode = paint.blendMode,
+  )
+}
+
+internal data class RcAnchoredTextPosition(val x: Float, val baselineY: Float)
+
+internal fun computeAnchoredTextPosition(
+  anchorX: Float,
+  anchorY: Float,
+  panX: Float,
+  panY: Float,
+  left: Float,
+  top: Float,
+  right: Float,
+  bottom: Float,
+  baselineRelative: Boolean,
+): RcAnchoredTextPosition {
+  val width = right - left
+  val height = bottom - top
+  val x = anchorX - width * (1f + panX) / 2f - left
+  val y =
+    if (panY.isNaN()) anchorY
+    else anchorY - height * (1f - panY) / 2f + if (baselineRelative) height / 2f else -top
+  return RcAnchoredTextPosition(x, y)
+}
+
+private fun DrawScope.drawTextAnchored(
+  operation: RcDrawTextAnchored,
+  state: RcPlayerState,
+  paint: RcPaintState,
+  textMeasurer: TextMeasurer,
+) {
+  val text = state.text(operation.textId) ?: return
+  val style = textStyle(paint)
+  val rtl = operation.flags and RcDrawTextAnchored.TEXT_RTL != 0
+  val layout =
+    textMeasurer.measure(
+      text,
+      style,
+      layoutDirection = if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
+    )
+  val boxes = text.indices.map(layout::getBoundingBox)
+  val left = boxes.minOfOrNull { it.left } ?: 0f
+  val right = boxes.maxOfOrNull { it.right } ?: layout.size.width.toFloat()
+  val top = (boxes.minOfOrNull { it.top } ?: 0f) - layout.firstBaseline
+  val bottom =
+    (boxes.maxOfOrNull { it.bottom } ?: layout.size.height.toFloat()) - layout.firstBaseline
+  val position =
+    computeAnchoredTextPosition(
+      state.resolve(operation.x),
+      state.resolve(operation.y),
+      state.resolve(operation.panX),
+      state.resolve(operation.panY),
+      left,
+      top,
+      right,
+      bottom,
+      operation.flags and RcDrawTextAnchored.BASELINE_RELATIVE != 0,
+    )
+  drawText(
+    textMeasurer = textMeasurer,
+    text = text,
+    topLeft = Offset(position.x, position.baselineY - layout.firstBaseline),
+    style = style,
+    blendMode = paint.blendMode,
+  )
+}
+
+/** AndroidX-compatible glyph-centre placement implemented with Compose's cross-platform fonts. */
+private fun DrawScope.drawTextOnPath(
+  operation: RcDrawTextOnPath,
+  state: RcPlayerState,
+  paint: RcPaintState,
+  computedPaths: Map<Int, Path>,
+  textMeasurer: TextMeasurer,
+) {
+  val text = state.text(operation.textId).orEmpty()
+  if (text.isEmpty()) return
+  val path = pathForId(operation.pathId, state, computedPaths)
+  val measure = org.jetbrains.skia.PathMeasure(path.asSkiaPath(), false)
+  if (measure.length <= 0f) return
+  drawTextOnPathWithCompose(
+    text = text,
+    measure = measure,
+    horizontalOffset = state.resolve(operation.horizontalOffset),
+    verticalOffset = state.resolve(operation.verticalOffset),
+    paint = paint,
+    textMeasurer = textMeasurer,
+  )
+}
+
+/**
+ * Compose text layout supplies the same bundled/fallback fonts on desktop and Wasm. The AndroidX
+ * glyph-centre path placement rule is retained, and surrogate pairs are never split.
+ */
+private fun DrawScope.drawTextOnPathWithCompose(
+  text: String,
+  measure: org.jetbrains.skia.PathMeasure,
+  horizontalOffset: Float,
+  verticalOffset: Float,
+  paint: RcPaintState,
+  textMeasurer: TextMeasurer,
+) {
+  val style = textStyle(paint)
+  var contourLength = measure.length
+  var distance = horizontalOffset
+  for (segment in unicodeScalars(text)) {
+    val layout = textMeasurer.measure(segment, style)
+    val advance = layout.size.width.toFloat()
+    val center = distance + advance / 2f
+    if (center > contourLength) {
+      if (!measure.nextContour()) return
+      contourLength = measure.length
+      distance = 0f
+    }
+    val position = measure.getPosition(distance + advance / 2f)
+    val tangent = measure.getTangent(distance + advance / 2f)
+    if (position != null && tangent != null) {
+      val composePosition = Offset(position.x, position.y)
+      val placement =
+        computePathTextPlacement(
+          composePosition,
+          Offset(tangent.x, tangent.y),
+          advance,
+          verticalOffset,
+          layout.firstBaseline,
+        )
+      withTransform({ rotate(placement.angleDegrees, composePosition) }) {
+        drawText(
+          textMeasurer = textMeasurer,
+          text = segment,
+          topLeft = placement.topLeft,
+          style = style,
+          blendMode = paint.blendMode,
+        )
+      }
+    }
+    distance += advance
+  }
+}
+
+internal data class RcPathTextPlacement(val topLeft: Offset, val angleDegrees: Float)
+
+internal fun computePathTextPlacement(
+  position: Offset,
+  tangent: Offset,
+  advance: Float,
+  verticalOffset: Float,
+  firstBaseline: Float,
+): RcPathTextPlacement =
+  RcPathTextPlacement(
+    topLeft = Offset(position.x - advance / 2f, position.y + verticalOffset - firstBaseline),
+    angleDegrees = atan2(tangent.y, tangent.x) * 180f / PI.toFloat(),
+  )
+
+private fun unicodeScalars(text: String): List<String> = buildList {
+  var offset = 0
+  while (offset < text.length) {
+    val first = text[offset].code
+    val length =
+      if (
+        first in 0xd800..0xdbff &&
+          offset + 1 < text.length &&
+          text[offset + 1].code in 0xdc00..0xdfff
+      )
+        2
+      else 1
+    add(text.substring(offset, offset + length))
+    offset += length
+  }
+}
+
+private fun DrawScope.measureTextOperation(
+  operation: RcTextMeasure,
+  state: RcPlayerState,
+  paint: RcPaintState,
+  textMeasurer: TextMeasurer,
+) =
+  measureTextOperation(
+    operation.outId,
+    operation.textId,
+    operation.type,
+    state,
+    paint,
+    textMeasurer,
+  )
+
+private fun DrawScope.measureTextOperation(
+  outId: Int,
+  textId: Int,
+  type: Int,
+  state: RcPlayerState,
+  paint: RcPaintState,
+  textMeasurer: TextMeasurer,
+) {
+  val text = state.text(textId).orEmpty()
+  val layout = textMeasurer.measure(text, textStyle(paint))
+  var left = 0f
+  var right = layout.size.width.toFloat()
+  var top = -layout.firstBaseline
+  var bottom = layout.size.height - layout.firstBaseline
+  if (text.isNotEmpty()) {
+    val boxes = text.indices.map(layout::getBoundingBox)
+    left = boxes.minOf { it.left }
+    right = boxes.maxOf { it.right }
+    top = boxes.minOf { it.top } - layout.firstBaseline
+    bottom = boxes.maxOf { it.bottom } - layout.firstBaseline
+  }
+  val flags = type ushr 8
+  if (flags and 0x04 != 0) {
+    left = 0f
+    right = layout.size.width.toFloat()
+  } else if (flags and 0x01 != 0) {
+    right = layout.size.width.toFloat() - left
+  }
+  if (flags and 0x02 != 0) {
+    top = -layout.firstBaseline
+    bottom = layout.size.height - layout.firstBaseline
+  }
+  val value = selectTextMeasurement(type, left, top, right, bottom, text.length)
+  state.setFloat(outId, value)
+}
+
+internal fun selectTextMeasurement(
+  type: Int,
+  left: Float,
+  top: Float,
+  right: Float,
+  bottom: Float,
+  textLength: Int,
+): Float =
+  when (type and 0xff) {
+    0 -> right - left
+    1 -> bottom - top
+    2 -> left
+    3 -> right
+    4 -> top
+    5 -> bottom
+    6 -> textLength.toFloat()
+    else -> error("Unknown AndroidX text measurement ${type and 0xff}")
+  }
+
+private fun DrawScope.applyMatrixFromPath(
+  operation: RcMatrixFromPath,
+  state: RcPlayerState,
+  computedPaths: Map<Int, Path>,
+) {
+  val path = pathForId(operation.pathId, state, computedPaths)
+  val measure = PathMeasure().apply { setPath(path, forceClosed = false) }
+  if (measure.length <= 0f) return
+  // This modulo, and the currently unused vertical offset, intentionally match AndroidPaintContext.
+  val distance = (measure.length * state.resolve(operation.percent)) % measure.length
+  if (operation.flags and POSITION_MATRIX_FLAG != 0) {
+    val position = measure.getPosition(distance)
+    drawContext.transform.translate(position.x, position.y)
+  }
+  if (operation.flags and TANGENT_MATRIX_FLAG != 0) {
+    val tangent = measure.getTangent(distance)
+    val degrees = atan2(tangent.y, tangent.x) * 180f / PI.toFloat()
+    drawContext.transform.rotate(degrees, Offset.Zero)
+  }
+}
+
+private const val POSITION_MATRIX_FLAG = 0x01
+private const val TANGENT_MATRIX_FLAG = 0x02
+
+private fun RcPathData?.orEmptyWords(): List<RcFloatWord> = this?.words ?: emptyList()
+
+private fun DrawScope.drawTweenPath(
+  operation: RcDrawTweenPath,
+  paint: RcPaintState,
+  state: RcPlayerState,
+) {
+  val data =
+    tweenPathData(-1, operation.path1Id, operation.path2Id, state.resolve(operation.tween), state)
+  val path = buildPath(data, state)
+  val start = state.resolve(operation.start)
+  val stop = state.resolve(operation.stop)
+  val trimmed = trimPath(path, start, stop)
+  drawPath(
+    path = trimmed,
+    color = paint.composeColor(),
+    style = paint.style(),
+    blendMode = paint.blendMode,
+  )
+}
+
+internal fun tweenPathData(
+  outId: Int,
+  path1Id: Int,
+  path2Id: Int,
+  tween: Float,
+  state: RcPlayerState,
+): RcPathData {
+  val first = requireNotNull(state.path(path1Id)) { "Missing path $path1Id" }
+  val second = requireNotNull(state.path(path2Id)) { "Missing path $path2Id" }
+  if (tween == 0f) return first.copy(idAndWinding = outId)
+  if (tween == 1f) return second.copy(idAndWinding = outId)
+  require(first.words.size >= second.words.size) {
+    "Path $path1Id has fewer words than path $path2Id"
+  }
+  val commandIndexes = pathCommandIndexes(first.words)
+  val words =
+    List(second.words.size) { index ->
+      val firstWord = first.words[index]
+      val secondWord = second.words[index]
+      if (index in commandIndexes) {
+        firstWord
+      } else {
+        val start = state.resolve(firstWord)
+        val end = state.resolve(secondWord)
+        RcFloatWord.literal(start + (end - start) * tween)
+      }
+    }
+  return RcPathData(outId, words)
+}
+
+private fun pathCommandIndexes(words: List<RcFloatWord>): Set<Int> {
+  val indexes = mutableSetOf<Int>()
+  var index = 0
+  while (index < words.size) {
+    indexes += index
+    when (words[index].referencedId) {
+      RcPathCommands.MOVE -> index += 3
+      RcPathCommands.LINE -> index += 5
+      RcPathCommands.QUADRATIC -> index += 7
+      RcPathCommands.CONIC -> index += 8
+      RcPathCommands.CUBIC -> index += 9
+      RcPathCommands.CLOSE,
+      RcPathCommands.DONE -> index += 1
+      else -> error("Path command at word $index is invalid")
+    }
+  }
+  return indexes
+}
+
+private fun trimPath(path: Path, start: Float, stop: Float): Path {
+  if (start <= 0f && stop >= 1f) return path
+  val result = Path()
+  if (start < stop) {
+    val measure = PathMeasure().apply { setPath(path, forceClosed = false) }
+    measure.getSegment(
+      start.coerceAtLeast(0f) * measure.length,
+      stop.coerceAtMost(1f) * measure.length,
+      result,
+      startWithMoveTo = true,
+    )
+  }
+  return result
+}
+
+internal fun isThemeVisible(requestedTheme: Int, operationTheme: Int): Boolean =
+  requestedTheme == RcTheme.UNSPECIFIED ||
+    operationTheme == RcTheme.UNSPECIFIED ||
+    operationTheme == requestedTheme
+
+private fun DrawScope.drawIdOperation(
+  operation: RcIdOperation,
+  paint: RcPaintState,
+  state: RcPlayerState,
+  computedPaths: Map<Int, Path>,
+) {
+  when (operation.opcode) {
+    RcOpcodes.DRAW_PATH -> {
+      drawPath(
+        path = pathForId(operation.id, state, computedPaths),
+        color = paint.composeColor(),
+        style = paint.style(),
+        blendMode = paint.blendMode,
+      )
+    }
+    RcOpcodes.CLIP_PATH -> {
+      // AndroidX packs the path id in the low 20 bits and the Region.Op in the high byte.
+      val pathId = operation.id and 0x000fffff
+      val regionOp = operation.id shr 24
+      drawContext.canvas.clipPath(
+        pathForId(pathId, state, computedPaths),
+        if (regionOp == 1) ClipOp.Difference else ClipOp.Intersect,
+      )
+    }
+  }
+}
+
+private fun pathForId(id: Int, state: RcPlayerState, computedPaths: Map<Int, Path>): Path =
+  computedPaths[id] ?: state.path(id)?.let { buildPath(it, state) } ?: error("Missing path $id")
+
+/** Convert AndroidX's padded float-word path encoding without canonicalising command NaNs. */
+private fun buildPath(data: RcPathData, state: RcPlayerState): Path {
+  val path =
+    Path().apply {
+      fillType = if (data.winding == 1) PathFillType.EvenOdd else PathFillType.NonZero
+    }
+  var index = 0
+  fun argument(): Float {
+    if (index >= data.words.size) error("Truncated PathData ${data.id} at word $index")
+    return state.resolve(data.words[index++])
+  }
+  fun skipLegacyPadding() {
+    if (index + 2 > data.words.size) error("Truncated PathData ${data.id} legacy padding")
+    index += 2
+  }
+  while (index < data.words.size) {
+    val command =
+      data.words[index++].referencedId
+        ?: error("PathData ${data.id} command at word ${index - 1} is not NaN-encoded")
+    when (command) {
+      RcPathCommands.MOVE -> path.moveTo(argument(), argument())
+      RcPathCommands.LINE -> {
+        skipLegacyPadding()
+        path.lineTo(argument(), argument())
+      }
+      RcPathCommands.QUADRATIC -> {
+        skipLegacyPadding()
+        path.quadraticTo(argument(), argument(), argument(), argument())
+      }
+      RcPathCommands.CONIC -> {
+        skipLegacyPadding()
+        path.conicToSkia(argument(), argument(), argument(), argument(), argument())
+      }
+      RcPathCommands.CUBIC -> {
+        skipLegacyPadding()
+        path.cubicTo(argument(), argument(), argument(), argument(), argument(), argument())
+      }
+      RcPathCommands.CLOSE -> path.close()
+      RcPathCommands.DONE -> return path
+      else -> error("PathData ${data.id} has unknown command $command")
+    }
+  }
+  return path
+}
+
+/** Narrow platform seam for the one AndroidX path primitive absent from common Compose Path. */
+internal expect fun Path.conicToSkia(x1: Float, y1: Float, x2: Float, y2: Float, weight: Float)
+
+private fun DrawScope.draw4(operation: RcDraw4, paint: RcPaintState, state: RcPlayerState) {
+  val a = state.resolve(operation.first)
+  val b = state.resolve(operation.second)
+  val c = state.resolve(operation.third)
+  val d = state.resolve(operation.fourth)
+  when (operation.opcode) {
+    RcOpcodes.DRAW_RECT ->
+      drawRect(
+        paint.composeColor(),
+        Offset(a, b),
+        Size(c - a, d - b),
+        style = paint.style(),
+        blendMode = paint.blendMode,
+      )
+    RcOpcodes.DRAW_OVAL ->
+      drawOval(
+        paint.composeColor(),
+        Offset(a, b),
+        Size(c - a, d - b),
+        style = paint.style(),
+        blendMode = paint.blendMode,
+      )
+    RcOpcodes.DRAW_LINE ->
+      drawLine(
+        paint.composeColor(),
+        Offset(a, b),
+        Offset(c, d),
+        strokeWidth = paint.strokeWidth,
+        cap = paint.strokeCap,
+        blendMode = paint.blendMode,
+      )
+    RcOpcodes.CLIP_RECT -> drawContext.canvas.clipRect(a, b, c, d)
+    RcOpcodes.MATRIX_SCALE -> drawContext.transform.scale(a, b, Offset(c, d))
+  }
+}
+
+private fun DrawScope.draw3(operation: RcDraw3, paint: RcPaintState, state: RcPlayerState) {
+  val a = state.resolve(operation.first)
+  val b = state.resolve(operation.second)
+  val c = state.resolve(operation.third)
+  when (operation.opcode) {
+    RcOpcodes.DRAW_CIRCLE ->
+      drawCircle(
+        paint.composeColor(),
+        c,
+        Offset(a, b),
+        style = paint.style(),
+        blendMode = paint.blendMode,
+      )
+    RcOpcodes.MATRIX_ROTATE -> drawContext.transform.rotate(a, Offset(b, c))
+  }
+}
+
+private fun DrawScope.draw6(operation: RcDraw6, paint: RcPaintState, state: RcPlayerState) {
+  val a = state.resolve(operation.first)
+  val b = state.resolve(operation.second)
+  val c = state.resolve(operation.third)
+  val d = state.resolve(operation.fourth)
+  val e = state.resolve(operation.fifth)
+  val f = state.resolve(operation.sixth)
+  when (operation.opcode) {
+    RcOpcodes.DRAW_ROUND_RECT ->
+      drawRoundRect(
+        paint.composeColor(),
+        Offset(a, b),
+        Size(c - a, d - b),
+        CornerRadius(e, f),
+        style = paint.style(),
+        blendMode = paint.blendMode,
+      )
+    RcOpcodes.DRAW_ARC,
+    RcOpcodes.DRAW_SECTOR ->
+      drawArc(
+        paint.composeColor(),
+        e,
+        f,
+        useCenter = operation.opcode == RcOpcodes.DRAW_SECTOR,
+        topLeft = Offset(a, b),
+        size = Size(c - a, d - b),
+        style = paint.style(),
+        blendMode = paint.blendMode,
+      )
+  }
+}
+
+private fun DrawScope.transform2(operation: RcTransform2, state: RcPlayerState) {
+  val a = state.resolve(operation.first)
+  val b = state.resolve(operation.second)
+  when (operation.opcode) {
+    RcOpcodes.MATRIX_TRANSLATE -> drawContext.transform.translate(a, b)
+    RcOpcodes.MATRIX_SKEW -> {
+      val matrix =
+        Matrix().apply {
+          this[1, 0] = a
+          this[0, 1] = b
+        }
+      drawContext.transform.transform(matrix)
+    }
+  }
+}
+
+private fun applyPaint(operation: RcPaintData, state: RcPaintState, values: RcPlayerState) {
+  var index = 0
+  while (index < operation.words.size) {
+    val command = operation.words[index++]
+    when (command and 0xffff) {
+      1 ->
+        state.textSize =
+          values.resolve(
+            ee.schimke.composeai.rcplayer.protocol.RcFloatWord(operation.words[index++])
+          )
+      4 -> state.color = operation.words[index++] // PaintBundle.COLOR
+      5 ->
+        state.strokeWidth =
+          values.resolve(
+            ee.schimke.composeai.rcplayer.protocol.RcFloatWord(operation.words[index++])
+          )
+      7 ->
+        state.strokeCap =
+          when (command ushr 16) {
+            1 -> StrokeCap.Round
+            2 -> StrokeCap.Square
+            else -> StrokeCap.Butt
+          }
+      8 -> state.stroke = command ushr 16 == 1
+      12 ->
+        state.alpha =
+          values
+            .resolve(ee.schimke.composeai.rcplayer.protocol.RcFloatWord(operation.words[index++]))
+            .coerceIn(0f, 1f)
+      15 ->
+        state.strokeJoin =
+          when (command ushr 16) {
+            1 -> StrokeJoin.Round
+            2 -> StrokeJoin.Bevel
+            else -> StrokeJoin.Miter
+          }
+      18 -> {
+        state.blendModeValue = command ushr 16
+        state.blendMode = blendMode(state.blendModeValue)
+      }
+      19 -> state.color = values.color(operation.words[index++])
+      16 -> {
+        val style = command ushr 16
+        val fontType = operation.words[index++]
+        state.fontType = fontType
+        state.fontFamily =
+          when (fontType) {
+            0 -> FontFamily.Default
+            1 -> FontFamily.SansSerif
+            2 -> FontFamily.Serif
+            3 -> FontFamily.Monospace
+            else -> error("AndroidX font id $fontType is not implemented by the CMP backend")
+          }
+        state.fontWeight = FontWeight((style and 0x3ff).takeIf { it > 0 } ?: 400)
+        state.fontStyle = if (style and 0x800 != 0) FontStyle.Italic else FontStyle.Normal
+      }
+      else -> error("Paint command ${command and 0xffff} is not implemented by the baseline player")
+    }
+  }
+}
+
+private fun blendMode(value: Int): BlendMode =
+  when (value) {
+    0 -> BlendMode.Clear
+    1 -> BlendMode.Src
+    2 -> BlendMode.Dst
+    3 -> BlendMode.SrcOver
+    4 -> BlendMode.DstOver
+    5 -> BlendMode.SrcIn
+    6 -> BlendMode.DstIn
+    7 -> BlendMode.SrcOut
+    8 -> BlendMode.DstOut
+    9 -> BlendMode.SrcAtop
+    10 -> BlendMode.DstAtop
+    11 -> BlendMode.Xor
+    12 -> BlendMode.Plus
+    13 -> BlendMode.Modulate
+    14 -> BlendMode.Screen
+    15 -> BlendMode.Overlay
+    16 -> BlendMode.Darken
+    17 -> BlendMode.Lighten
+    18 -> BlendMode.ColorDodge
+    19 -> BlendMode.ColorBurn
+    20 -> BlendMode.Hardlight
+    21 -> BlendMode.Softlight
+    22 -> BlendMode.Difference
+    23 -> BlendMode.Exclusion
+    24 -> BlendMode.Multiply
+    25 -> BlendMode.Hue
+    26 -> BlendMode.Saturation
+    27 -> BlendMode.Color
+    28 -> BlendMode.Luminosity
+    else -> BlendMode.SrcOver
+  }

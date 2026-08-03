@@ -2913,6 +2913,13 @@ class ServeWebFixtureTest {
         assetText("viewer.js").contains("parts.push(\"knob.\" + encodeURIComponent(key)"),
       "the wasm override patch includes the author-declared knob values",
     )
+    val viewerScript = assetText("viewer.js")
+    assertTrue(
+      viewerScript.contains("src += \"&theme=\" + encodeURIComponent(uiMode.value)") &&
+        viewerScript.contains("if (rcWasmActive())") &&
+        viewerScript.contains("(id === \"uiMode\" && onRcWasm)"),
+      "the RC Wasm lane forwards Day/Night and keeps that control enabled while active",
+    )
     // Deep-link parity: the knob controls hydrate from the page URL's `knob.<key>` params on load,
     // so opening `/p/…?knob.label=Hello` (or a copied direct link) renders the override immediately
     // in every transport — including the Wasm iframe, whose patch is built purely from control

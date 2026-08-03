@@ -3513,10 +3513,24 @@ object ServeWeb {
     // Live / Wasm toggles.
     val rcAttr = if (hasRemoteComposeDoc) " data-has-rc-doc=\"1\"" else ""
     val rcCanvas = if (hasRemoteComposeDoc) "<canvas id=\"cp-rc-canvas\" hidden></canvas>" else ""
+    val hasRcWasm = RcPlayerBackend.CMP_WASM.wire in enabledRcPlayers
+    val rcWasmFrame =
+      if (hasRcWasm)
+        "<iframe id=\"cp-rc-wasm\" hidden sandbox=\"allow-scripts allow-same-origin\" " +
+          "title=\"$label (Remote Compose CMP Wasm)\"></iframe>"
+      else ""
     val rcModeInput =
       if (hasRemoteComposeDoc)
         "<input type=\"radio\" name=\"cp-mode\" value=\"rc\" id=\"cp-rc-toggle\" tabindex=\"-1\">"
       else ""
+    val rcWasmModeInput =
+      if (hasRcWasm)
+        "<input type=\"radio\" name=\"cp-mode\" value=\"rc-wasm\" id=\"cp-rc-wasm-toggle\" tabindex=\"-1\">"
+      else ""
+    val optionalModeInputs =
+      listOf(wasmModeInput, rcModeInput, rcWasmModeInput)
+        .filter(String::isNotEmpty)
+        .joinToString("\n            ")
     // The Remote Compose backend selector (#cp-rc-backends): one chip per RcPlayerBackend.UNIVERSE,
     // enabled for those the host reports in [enabledRcPlayers] and disabled otherwise. It replaces
     // the former single "RC (browser)" button — the `js` chip drives the same in-browser canvas
@@ -3908,7 +3922,7 @@ object ServeWeb {
       </div>
       <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr>
         $navDrawer
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         <div class="cp-controls" id="cp-controls">
           <details class="cp-group" data-cp-group="appearance">
             <summary>Appearance</summary>

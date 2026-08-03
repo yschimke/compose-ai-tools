@@ -292,7 +292,7 @@ class ServeWebTest {
   @Test
   fun `the rc backend selector renders every backend with the unavailable ones disabled`() {
     // A Remote Compose preview on an Android daemon: js (client canvas) + java + cmp-android are
-    // enabled; cmp-jvm is present-but-disabled when the host doesn't advertise its sidecar lane.
+    // enabled; the opt-in CMP/Wasm and unadvertised cmp-jvm lanes remain disabled.
     val preview = ServePreview(id = "widget.Chip", label = "chip")
     val html =
       ServeWeb.viewerPage(
@@ -306,7 +306,7 @@ class ServeWebTest {
 
     assertTrue(html.contains("id=\"cp-rc-backends\""), "selector rendered")
     // Every universe entry appears as a chip.
-    for (wire in listOf("js", "java", "cmp-android", "cmp-jvm")) {
+    for (wire in listOf("js", "cmp-wasm", "java", "cmp-android", "cmp-jvm")) {
       assertTrue(html.contains("data-rc-backend=\"$wire\""), "chip for $wire present")
     }
     // Java is the seeded default (the server-side snapshot player).
@@ -335,12 +335,33 @@ class ServeWebTest {
       )
 
     assertTrue(html.contains("data-default=\"js\""), "js is the default when it is the only lane")
-    for (wire in listOf("java", "cmp-android", "cmp-jvm")) {
+    for (wire in listOf("cmp-wasm", "java", "cmp-android", "cmp-jvm")) {
       val chip = Regex("<button[^>]*data-rc-backend=\"$wire\"[^>]*>").find(html)?.value ?: ""
       assertTrue(chip.contains(" disabled"), "$wire chip disabled on a js-only host: '$chip'")
     }
     val jsChip = Regex("<button[^>]*data-rc-backend=\"js\"[^>]*>").find(html)?.value ?: ""
     assertFalse(jsChip.contains(" disabled"), "js chip enabled: '$jsChip'")
+  }
+
+  @Test
+  fun `cmp wasm backend gets its own iframe and mode`() {
+    val preview = ServePreview(id = "widget.Chip", label = "chip")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        hasRemoteComposeDoc = true,
+        enabledRcPlayers = listOf("js", "cmp-wasm"),
+      )
+
+    val chip = Regex("<button[^>]*data-rc-backend=\"cmp-wasm\"[^>]*>").find(html)?.value ?: ""
+    assertFalse(chip.contains(" disabled"), "cmp-wasm chip enabled: '$chip'")
+    assertTrue(html.contains("id=\"cp-rc-wasm\""), "dedicated CMP/Wasm iframe is present")
+    assertTrue(html.contains("value=\"rc-wasm\""), "dedicated CMP/Wasm mode is present")
+    assertTrue(
+      html.contains("sandbox=\"allow-scripts allow-same-origin\""),
+      "repository-owned player can fetch the tokened document from its own origin",
+    )
   }
 
   @Test

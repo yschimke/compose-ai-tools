@@ -1,0 +1,738 @@
+package ee.schimke.composeai.rcplayer.protocol
+
+import kotlin.jvm.JvmInline
+
+/** Raw IEEE-754 word used by RC for both literal floats and NaN-boxed ids. */
+@JvmInline
+public value class RcFloatWord(public val bits: Int) {
+  public val value: Float
+    get() = Float.fromBits(bits)
+
+  public val isNaNEncoded: Boolean
+    get() = bits and 0x7f800000 == 0x7f800000 && bits and 0x007fffff != 0
+
+  public val referencedId: Int?
+    get() = if (isNaNEncoded) bits and 0x003fffff else null
+
+  public companion object {
+    public fun literal(value: Float): RcFloatWord = RcFloatWord(value.toRawBits())
+  }
+}
+
+public data class RcVersion(val major: Int, val minor: Int, val patch: Int)
+
+public sealed interface RcHeaderValue {
+  public data class IntValue(val value: Int) : RcHeaderValue
+
+  public data class FloatValue(val value: RcFloatWord) : RcHeaderValue
+
+  public data class LongValue(val value: Long) : RcHeaderValue
+
+  public data class StringValue(val value: String) : RcHeaderValue
+}
+
+public data class RcHeaderProperty(val key: Int, val value: RcHeaderValue)
+
+public sealed interface RcOperation {
+  public val opcode: Int
+}
+
+public data class RcHeader(
+  val version: RcVersion,
+  val properties: List<RcHeaderProperty> = emptyList(),
+  val legacyWidth: Int = 256,
+  val legacyHeight: Int = 256,
+  val legacyCapabilities: Long = 0,
+  val modern: Boolean = properties.isNotEmpty(),
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.HEADER
+
+  public val width: Int
+    get() = intProperty(DOC_WIDTH) ?: legacyWidth
+
+  public val height: Int
+    get() = intProperty(DOC_HEIGHT) ?: legacyHeight
+
+  public val density: Float
+    get() = floatProperty(DOC_DENSITY_AT_GENERATION) ?: 1f
+
+  public val capabilities: Long
+    get() = (property(DOC_CAPABILITIES) as? RcHeaderValue.LongValue)?.value ?: legacyCapabilities
+
+  private fun property(key: Int): RcHeaderValue? = properties.firstOrNull { it.key == key }?.value
+
+  private fun intProperty(key: Int): Int? = (property(key) as? RcHeaderValue.IntValue)?.value
+
+  private fun floatProperty(key: Int): Float? =
+    (property(key) as? RcHeaderValue.FloatValue)?.value?.value
+
+  public companion object {
+    public const val DOC_WIDTH: Int = 5
+    public const val DOC_HEIGHT: Int = 6
+    public const val DOC_DENSITY_AT_GENERATION: Int = 7
+    // Capabilities are part of the legacy header, not currently a documented map property.
+    private const val DOC_CAPABILITIES: Int = -1
+  }
+}
+
+public data class RcTextData(val id: Int, val text: String) : RcOperation {
+  override val opcode: Int = RcOpcodes.DATA_TEXT
+}
+
+public data class RcFloatConstant(val id: Int, val value: RcFloatWord) : RcOperation {
+  override val opcode: Int = RcOpcodes.DATA_FLOAT
+}
+
+/** AndroidX `FloatExpression`, including its optional packed animation description. */
+public data class RcFloatExpression(
+  val id: Int,
+  val expression: List<RcFloatWord>,
+  val animation: List<RcFloatWord>?,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.ANIMATED_FLOAT
+}
+
+public data class RcColorConstant(val id: Int, val argb: Int) : RcOperation {
+  override val opcode: Int = RcOpcodes.COLOR_CONSTANT
+}
+
+/**
+ * AndroidX ColorExpression's fixed five-word payload. [modeAndAlpha] keeps the packed mode and
+ * alpha/alpha-id bits intact; the remaining words are colors, ids, or raw float words by mode.
+ */
+public data class RcColorExpression(
+  val outId: Int,
+  val modeAndAlpha: Int,
+  val first: Int,
+  val second: Int,
+  val third: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.COLOR_EXPRESSIONS
+
+  public val mode: Int
+    get() = modeAndAlpha and 0xff
+
+  public companion object {
+    public const val COLOR_COLOR_INTERPOLATE: Int = 0
+    public const val ID_COLOR_INTERPOLATE: Int = 1
+    public const val COLOR_ID_INTERPOLATE: Int = 2
+    public const val ID_ID_INTERPOLATE: Int = 3
+    public const val HSV_MODE: Int = 4
+    public const val ARGB_MODE: Int = 5
+    public const val IDARGB_MODE: Int = 6
+  }
+}
+
+public data class RcColorTheme(
+  val outId: Int,
+  val colorGroupId: Int,
+  val lightModeIndex: Int,
+  val darkModeIndex: Int,
+  val lightModeFallback: Int,
+  val darkModeFallback: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.COLOR_THEME
+}
+
+public data class RcIntegerConstant(val id: Int, val value: Int) : RcOperation {
+  override val opcode: Int = RcOpcodes.DATA_INT
+}
+
+/**
+ * AndroidX integer RPN expression; [mask] marks operation/id slots and repeats every 32 entries.
+ */
+public data class RcIntegerExpression(val outId: Int, val mask: Int, val values: List<Int>) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.INTEGER_EXPRESSION
+
+  public fun isMarked(index: Int): Boolean = mask and (1 shl index) != 0
+
+  public companion object {
+    public const val OFFSET: Int = 65536
+    public const val ADD: Int = OFFSET + 1
+    public const val SUB: Int = OFFSET + 2
+    public const val MUL: Int = OFFSET + 3
+    public const val DIV: Int = OFFSET + 4
+    public const val MOD: Int = OFFSET + 5
+    public const val SHL: Int = OFFSET + 6
+    public const val SHR: Int = OFFSET + 7
+    public const val USHR: Int = OFFSET + 8
+    public const val OR: Int = OFFSET + 9
+    public const val AND: Int = OFFSET + 10
+    public const val XOR: Int = OFFSET + 11
+    public const val COPY_SIGN: Int = OFFSET + 12
+    public const val MIN: Int = OFFSET + 13
+    public const val MAX: Int = OFFSET + 14
+    public const val NEG: Int = OFFSET + 15
+    public const val ABS: Int = OFFSET + 16
+    public const val INCR: Int = OFFSET + 17
+    public const val DECR: Int = OFFSET + 18
+    public const val NOT: Int = OFFSET + 19
+    public const val SIGN: Int = OFFSET + 20
+    public const val CLAMP: Int = OFFSET + 21
+    public const val IFELSE: Int = OFFSET + 22
+    public const val MAD: Int = OFFSET + 23
+    public const val VAR1: Int = OFFSET + 24
+    public const val VAR2: Int = OFFSET + 25
+    public const val VAR3: Int = OFFSET + 26
+  }
+}
+
+/** Opens a ContainerEnd-delimited function body whose arguments are loaded into [parameterIds]. */
+public data class RcFloatFunctionDefine(val id: Int, val parameterIds: List<Int>) : RcOperation {
+  override val opcode: Int = RcOpcodes.FUNCTION_DEFINE
+}
+
+/** Invokes a linked [RcFloatFunctionDefine] body with literal or referenced float arguments. */
+public data class RcFloatFunctionCall(val functionId: Int, val arguments: List<RcFloatWord>) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.FUNCTION_CALL
+}
+
+public data class RcBooleanConstant(val id: Int, val value: Boolean) : RcOperation {
+  override val opcode: Int = RcOpcodes.DATA_BOOLEAN
+}
+
+public data class RcLongConstant(val id: Int, val value: Long) : RcOperation {
+  override val opcode: Int = RcOpcodes.DATA_LONG
+}
+
+public data class RcIdList(val id: Int, val ids: List<Int>) : RcOperation {
+  override val opcode: Int = RcOpcodes.ID_LIST
+}
+
+public data class RcFloatList(val id: Int, val values: List<RcFloatWord>) : RcOperation {
+  override val opcode: Int = RcOpcodes.FLOAT_LIST
+}
+
+/** A zero-initialized mutable float list whose length may reference a runtime float. */
+public data class RcDynamicFloatList(val id: Int, val length: RcFloatWord) : RcOperation {
+  override val opcode: Int = RcOpcodes.DYNAMIC_FLOAT_LIST
+}
+
+/** Updates one element of an [RcDynamicFloatList]; invalid indices are ignored by AndroidX. */
+public data class RcUpdateDynamicFloatList(
+  val listId: Int,
+  val index: RcFloatWord,
+  val value: RcFloatWord,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.UPDATE_DYNAMIC_FLOAT_LIST
+}
+
+public data class RcDataMapEntry(val name: String, val type: Int, val id: Int)
+
+public data class RcIdMap(val id: Int, val entries: List<RcDataMapEntry>) : RcOperation {
+  override val opcode: Int = RcOpcodes.ID_MAP
+
+  public companion object {
+    public const val TYPE_STRING: Int = 0
+    public const val TYPE_INT: Int = 1
+    public const val TYPE_FLOAT: Int = 2
+    public const val TYPE_LONG: Int = 3
+    public const val TYPE_BOOLEAN: Int = 4
+  }
+}
+
+public data class RcDataMapLookup(val outId: Int, val mapId: Int, val keyTextId: Int) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.DATA_MAP_LOOKUP
+}
+
+public data class RcIdLookup(val outId: Int, val listId: Int, val index: RcFloatWord) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.ID_LOOKUP
+}
+
+/** Raw AndroidX PaintBundle words. Paint interpretation deliberately lives in the renderer. */
+public data class RcPaintData(val words: List<Int>) : RcOperation {
+  override val opcode: Int = RcOpcodes.PAINT_VALUES
+}
+
+public data class RcTheme(val theme: Int) : RcOperation {
+  override val opcode: Int = RcOpcodes.THEME
+
+  public companion object {
+    public const val SYSTEM: Int = 0
+    public const val UNSPECIFIED: Int = -1
+    public const val DARK: Int = -2
+    public const val LIGHT: Int = -3
+  }
+}
+
+public data class RcRootContentBehavior(
+  val scroll: Int,
+  val alignment: Int,
+  val sizing: Int,
+  val mode: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.ROOT_CONTENT_BEHAVIOR
+
+  public companion object {
+    public const val NONE: Int = 0
+    public const val SIZING_LAYOUT: Int = 1
+    public const val SIZING_SCALE: Int = 2
+    public const val ALIGNMENT_TOP: Int = 1
+    public const val ALIGNMENT_VERTICAL_CENTER: Int = 2
+    public const val ALIGNMENT_BOTTOM: Int = 4
+    public const val ALIGNMENT_START: Int = 16
+    public const val ALIGNMENT_HORIZONTAL_CENTER: Int = 32
+    public const val ALIGNMENT_END: Int = 64
+    public const val ALIGNMENT_CENTER: Int = 34
+    public const val SCALE_INSIDE: Int = 1
+    public const val SCALE_FILL_WIDTH: Int = 2
+    public const val SCALE_FILL_HEIGHT: Int = 3
+    public const val SCALE_FIT: Int = 4
+    public const val SCALE_CROP: Int = 5
+    public const val SCALE_FILL_BOUNDS: Int = 6
+  }
+}
+
+public data class RcRootContentDescription(val textId: Int) : RcOperation {
+  override val opcode: Int = RcOpcodes.ROOT_CONTENT_DESCRIPTION
+}
+
+public data class RcNamedVariable(val id: Int, val type: Int, val name: String) : RcOperation {
+  override val opcode: Int = RcOpcodes.NAMED_VARIABLE
+
+  public companion object {
+    public const val STRING_TYPE: Int = 0
+    public const val FLOAT_TYPE: Int = 1
+    public const val COLOR_TYPE: Int = 2
+    public const val IMAGE_TYPE: Int = 3
+    public const val INT_TYPE: Int = 4
+    public const val LONG_TYPE: Int = 5
+    public const val FLOAT_ARRAY_TYPE: Int = 6
+  }
+}
+
+/** AndroidX PathData payload, including command markers and legacy padding words verbatim. */
+public data class RcPathData(val idAndWinding: Int, val words: List<RcFloatWord>) : RcOperation {
+  override val opcode: Int = RcOpcodes.DATA_PATH
+
+  public val id: Int
+    get() = idAndWinding and 0x00ffffff
+
+  public val winding: Int
+    get() = idAndWinding shr 24
+}
+
+public data class RcIdOperation(override val opcode: Int, val id: Int) : RcOperation
+
+public data class RcDrawTweenPath(
+  val path1Id: Int,
+  val path2Id: Int,
+  val tween: RcFloatWord,
+  val start: RcFloatWord,
+  val stop: RcFloatWord,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.DRAW_TWEEN_PATH
+}
+
+public data class RcPathTween(
+  val outId: Int,
+  val path1Id: Int,
+  val path2Id: Int,
+  val tween: RcFloatWord,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.PATH_TWEEN
+}
+
+public data class RcPathCreate(val id: Int, val startX: RcFloatWord, val startY: RcFloatWord) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.PATH_CREATE
+}
+
+public data class RcPathAppend(val id: Int, val words: List<RcFloatWord>) : RcOperation {
+  override val opcode: Int = RcOpcodes.PATH_ADD
+}
+
+public data class RcPathCombine(
+  val outId: Int,
+  val path1Id: Int,
+  val path2Id: Int,
+  val operation: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.PATH_COMBINE
+}
+
+/** AndroidX `PathExpression`: two RPN expressions sampled into a generated path. */
+public data class RcPathExpression(
+  val id: Int,
+  val flags: Int,
+  val min: RcFloatWord,
+  val max: RcFloatWord,
+  val count: RcFloatWord,
+  val expressionX: List<RcFloatWord>,
+  val expressionY: List<RcFloatWord>,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.PATH_EXPRESSION
+
+  public companion object {
+    public const val LOOP: Int = 1
+    public const val MONOTONIC: Int = 2
+    public const val LINEAR: Int = 4
+    public const val POLAR: Int = 8
+    public const val WINDING_MASK: Int = 0x03000000
+  }
+}
+
+public data class RcMatrixFromPath(
+  val pathId: Int,
+  val percent: RcFloatWord,
+  val verticalOffset: RcFloatWord,
+  val flags: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.MATRIX_FROM_PATH
+}
+
+public data class RcMatrixConstant(val id: Int, val type: Int, val values: List<RcFloatWord>) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.MATRIX_CONSTANT
+}
+
+public data class RcMatrixExpression(
+  val id: Int,
+  val type: Int,
+  val expression: List<RcFloatWord>,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.MATRIX_EXPRESSION
+}
+
+public data class RcMatrixVectorMath(
+  val type: Int,
+  val outputs: List<Int>,
+  val matrixId: Int,
+  val inputs: List<RcFloatWord>,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.MATRIX_VECTOR_MATH
+}
+
+public data class RcTextMerge(val outId: Int, val leftId: Int, val rightId: Int) : RcOperation {
+  override val opcode: Int = RcOpcodes.TEXT_MERGE
+}
+
+public data class RcTextLength(val outId: Int, val textId: Int) : RcOperation {
+  override val opcode: Int = RcOpcodes.TEXT_LENGTH
+}
+
+public data class RcTextSubtext(
+  val outId: Int,
+  val textId: Int,
+  val start: RcFloatWord,
+  val length: RcFloatWord,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.TEXT_SUBTEXT
+}
+
+public data class RcTextTransform(
+  val outId: Int,
+  val textId: Int,
+  val start: RcFloatWord,
+  val length: RcFloatWord,
+  val operation: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.TEXT_TRANSFORM
+}
+
+public data class RcTextFromFloat(
+  val outId: Int,
+  val value: RcFloatWord,
+  val digitsBefore: Int,
+  val digitsAfter: Int,
+  val flags: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.TEXT_FROM_FLOAT
+}
+
+public data class RcTextLookup(val outId: Int, val listId: Int, val index: RcFloatWord) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.TEXT_LOOKUP
+}
+
+public data class RcTextLookupInt(val outId: Int, val listId: Int, val indexId: Int) : RcOperation {
+  override val opcode: Int = RcOpcodes.TEXT_LOOKUP_INT
+}
+
+public data class RcDrawText(
+  val textId: Int,
+  val start: Int,
+  val end: Int,
+  val contextStart: Int,
+  val contextEnd: Int,
+  val x: RcFloatWord,
+  val y: RcFloatWord,
+  val rtl: Boolean,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.DRAW_TEXT_RUN
+}
+
+public data class RcDrawTextAnchored(
+  val textId: Int,
+  val x: RcFloatWord,
+  val y: RcFloatWord,
+  val panX: RcFloatWord,
+  val panY: RcFloatWord,
+  val flags: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.DRAW_TEXT_ANCHOR
+
+  public companion object {
+    public const val TEXT_RTL: Int = 1
+    public const val MONOSPACE_MEASURE: Int = 2
+    public const val MEASURE_EVERY_TIME: Int = 4
+    public const val BASELINE_RELATIVE: Int = 8
+  }
+}
+
+public data class RcDrawTextOnPath(
+  val textId: Int,
+  val pathId: Int,
+  val horizontalOffset: RcFloatWord,
+  val verticalOffset: RcFloatWord,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.DRAW_TEXT_ON_PATH
+}
+
+public data class RcBitmapData(
+  val imageId: Int,
+  val width: Int,
+  val height: Int,
+  val type: Int,
+  val encoding: Int,
+  val data: ByteArray,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.DATA_BITMAP
+
+  override fun equals(other: Any?): Boolean =
+    other is RcBitmapData &&
+      imageId == other.imageId &&
+      width == other.width &&
+      height == other.height &&
+      type == other.type &&
+      encoding == other.encoding &&
+      data.contentEquals(other.data)
+
+  override fun hashCode(): Int = 31 * imageId + data.contentHashCode()
+
+  public companion object {
+    public const val ENCODING_INLINE: Int = 0
+    public const val TYPE_PNG_8888: Int = 0
+    public const val TYPE_PNG: Int = 1
+    public const val TYPE_RAW8: Int = 2
+    public const val TYPE_RAW8888: Int = 3
+    public const val TYPE_PNG_ALPHA_8: Int = 4
+  }
+}
+
+public data class RcDrawBitmap(
+  val imageId: Int,
+  val left: RcFloatWord,
+  val top: RcFloatWord,
+  val right: RcFloatWord,
+  val bottom: RcFloatWord,
+  val contentDescriptionId: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.DRAW_BITMAP
+}
+
+public data class RcDrawBitmapInt(
+  val imageId: Int,
+  val srcLeft: Int,
+  val srcTop: Int,
+  val srcRight: Int,
+  val srcBottom: Int,
+  val dstLeft: Int,
+  val dstTop: Int,
+  val dstRight: Int,
+  val dstBottom: Int,
+  val contentDescriptionId: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.DRAW_BITMAP_INT
+}
+
+public data class RcDrawBitmapScaled(
+  val imageId: Int,
+  val srcLeft: RcFloatWord,
+  val srcTop: RcFloatWord,
+  val srcRight: RcFloatWord,
+  val srcBottom: RcFloatWord,
+  val dstLeft: RcFloatWord,
+  val dstTop: RcFloatWord,
+  val dstRight: RcFloatWord,
+  val dstBottom: RcFloatWord,
+  val scaleType: Int,
+  val scaleFactor: RcFloatWord,
+  val contentDescriptionId: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.DRAW_BITMAP_SCALED
+}
+
+public data class RcImageAttribute(
+  val outId: Int,
+  val imageId: Int,
+  val type: Int,
+  val args: List<Int>,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.ATTRIBUTE_IMAGE
+
+  public companion object {
+    public const val IMAGE_WIDTH: Int = 0
+    public const val IMAGE_HEIGHT: Int = 1
+  }
+}
+
+public data class RcColorAttribute(val outId: Int, val colorId: Int, val type: Int) : RcOperation {
+  override val opcode: Int = RcOpcodes.ATTRIBUTE_COLOR
+
+  public companion object {
+    public const val COLOR_HUE: Int = 0
+    public const val COLOR_SATURATION: Int = 1
+    public const val COLOR_BRIGHTNESS: Int = 2
+    public const val COLOR_RED: Int = 3
+    public const val COLOR_GREEN: Int = 4
+    public const val COLOR_BLUE: Int = 5
+    public const val COLOR_ALPHA: Int = 6
+  }
+}
+
+public data class RcTextMeasure(val outId: Int, val textId: Int, val type: Int) : RcOperation {
+  override val opcode: Int = RcOpcodes.TEXT_MEASURE
+}
+
+/** AndroidX TextAttribute keeps its trailing reserved short for byte-exact round trips. */
+public data class RcTextAttribute(
+  val outId: Int,
+  val textId: Int,
+  val type: Int,
+  val reserved: Int = 0,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.ATTRIBUTE_TEXT
+
+  public companion object {
+    public const val TEXT_LENGTH: Int = 6
+  }
+}
+
+public data class RcDraw4(
+  override val opcode: Int,
+  val first: RcFloatWord,
+  val second: RcFloatWord,
+  val third: RcFloatWord,
+  val fourth: RcFloatWord,
+) : RcOperation
+
+public data class RcDraw3(
+  override val opcode: Int,
+  val first: RcFloatWord,
+  val second: RcFloatWord,
+  val third: RcFloatWord,
+) : RcOperation
+
+public data class RcDraw6(
+  override val opcode: Int,
+  val first: RcFloatWord,
+  val second: RcFloatWord,
+  val third: RcFloatWord,
+  val fourth: RcFloatWord,
+  val fifth: RcFloatWord,
+  val sixth: RcFloatWord,
+) : RcOperation
+
+public data class RcTransform2(
+  override val opcode: Int,
+  val first: RcFloatWord,
+  val second: RcFloatWord,
+) : RcOperation
+
+public data class RcNoArg(override val opcode: Int) : RcOperation
+
+public data class RcDocument(val header: RcHeader, val operations: List<RcOperation>)
+
+/** Opcode values copied from AndroidX remote-core 1.0.0-alpha16 `Operations.java`. */
+public object RcOpcodes {
+  public const val HEADER: Int = 0
+  public const val THEME: Int = 63
+  public const val ROOT_CONTENT_BEHAVIOR: Int = 65
+  public const val CLIP_RECT: Int = 39
+  public const val CLIP_PATH: Int = 38
+  public const val PAINT_VALUES: Int = 40
+  public const val DRAW_RECT: Int = 42
+  public const val DRAW_TEXT_RUN: Int = 43
+  public const val DRAW_BITMAP: Int = 44
+  public const val DRAW_CIRCLE: Int = 46
+  public const val DRAW_BITMAP_INT: Int = 66
+  public const val DRAW_LINE: Int = 47
+  public const val DRAW_ROUND_RECT: Int = 51
+  public const val DRAW_SECTOR: Int = 52
+  public const val DRAW_TEXT_ON_PATH: Int = 53
+  public const val DRAW_OVAL: Int = 56
+  public const val DATA_FLOAT: Int = 80
+  public const val ANIMATED_FLOAT: Int = 81
+  public const val DATA_BITMAP: Int = 101
+  public const val DATA_TEXT: Int = 102
+  public const val ROOT_CONTENT_DESCRIPTION: Int = 103
+  public const val DATA_PATH: Int = 123
+  public const val DRAW_PATH: Int = 124
+  public const val DRAW_TWEEN_PATH: Int = 125
+  public const val MATRIX_SCALE: Int = 126
+  public const val MATRIX_TRANSLATE: Int = 127
+  public const val MATRIX_SKEW: Int = 128
+  public const val MATRIX_ROTATE: Int = 129
+  public const val MATRIX_SAVE: Int = 130
+  public const val MATRIX_RESTORE: Int = 131
+  public const val DRAW_TEXT_ANCHOR: Int = 133
+  public const val COLOR_EXPRESSIONS: Int = 134
+  public const val COLOR_CONSTANT: Int = 138
+  public const val DATA_INT: Int = 140
+  public const val DATA_BOOLEAN: Int = 143
+  public const val INTEGER_EXPRESSION: Int = 144
+  public const val FUNCTION_CALL: Int = 166
+  public const val FUNCTION_DEFINE: Int = 168
+  public const val ID_MAP: Int = 145
+  public const val ID_LIST: Int = 146
+  public const val FLOAT_LIST: Int = 147
+  public const val DATA_LONG: Int = 148
+  public const val DRAW_BITMAP_SCALED: Int = 149
+  public const val TEXT_LOOKUP: Int = 151
+  public const val TEXT_LOOKUP_INT: Int = 153
+  public const val DATA_MAP_LOOKUP: Int = 154
+  public const val TEXT_MEASURE: Int = 155
+  public const val ATTRIBUTE_TEXT: Int = 170
+  public const val ATTRIBUTE_IMAGE: Int = 171
+  public const val ATTRIBUTE_COLOR: Int = 180
+  public const val DRAW_CONTENT: Int = 139
+  public const val NAMED_VARIABLE: Int = 137
+  public const val DRAW_ARC: Int = 152
+  public const val PATH_TWEEN: Int = 158
+  public const val PATH_CREATE: Int = 159
+  public const val PATH_ADD: Int = 160
+  public const val PATH_COMBINE: Int = 175
+  public const val MATRIX_FROM_PATH: Int = 181
+  public const val MATRIX_CONSTANT: Int = 186
+  public const val MATRIX_EXPRESSION: Int = 187
+  public const val MATRIX_VECTOR_MATH: Int = 188
+  public const val ID_LOOKUP: Int = 192
+  public const val PATH_EXPRESSION: Int = 193
+  public const val COLOR_THEME: Int = 196
+  public const val DYNAMIC_FLOAT_LIST: Int = 197
+  public const val UPDATE_DYNAMIC_FLOAT_LIST: Int = 198
+  public const val TEXT_MERGE: Int = 136
+  public const val TEXT_FROM_FLOAT: Int = 135
+  public const val TEXT_LENGTH: Int = 156
+  public const val TEXT_SUBTEXT: Int = 182
+  public const val TEXT_TRANSFORM: Int = 199
+  public const val CANVAS_OPERATIONS: Int = 173
+  public const val LAYOUT_CANVAS_CONTENT: Int = 207
+  public const val CONTAINER_END: Int = 214
+}
+
+public object RcPathCommands {
+  public const val MOVE: Int = 10
+  public const val LINE: Int = 11
+  public const val QUADRATIC: Int = 12
+  public const val CONIC: Int = 13
+  public const val CUBIC: Int = 14
+  public const val CLOSE: Int = 15
+  public const val DONE: Int = 16
+  public const val RESET: Int = 17
+}

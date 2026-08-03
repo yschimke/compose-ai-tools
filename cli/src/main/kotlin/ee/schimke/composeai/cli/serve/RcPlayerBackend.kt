@@ -12,6 +12,10 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
  * * [JS] — the vendored TypeScript player (`RC.RcdPlayer`, `third_party/remote-compose-player`),
  *   run **client-side** in the viewer's `<canvas>`. Needs only the `.rc` bytes (served over `GET
  *   /render/<id>.rc`); no daemon, no server render. This is the long-standing in-browser lane.
+ * * [CMP_WASM] — this repository's non-JVM Compose Multiplatform player, compiled to Wasm and
+ *   painting through Skiko in a browser iframe. It consumes the same captured bytes as [JS], but
+ *   its codecs and behavior are implemented against AndroidX remote-core rather than the vendored
+ *   TypeScript player.
  * * [JAVA] — the AOSP `remote-player-view` `RemoteComposePlayer` (an Android `View` painting into a
  *   framework `Canvas`), driven **server-side** by the daemon via [RemoteComposePlayerKind.VIEW].
  *   The default snapshot player for a Remote Compose preview on an Android backend.
@@ -53,6 +57,7 @@ enum class RcPlayerBackend(
   val clientSide: Boolean,
 ) {
   JS("js", "JS", playerKind = null, clientSide = true),
+  CMP_WASM("cmp-wasm", "CMP Wasm", playerKind = null, clientSide = true),
   JAVA("java", "Java", playerKind = RemoteComposePlayerKind.VIEW, clientSide = false),
   CMP_ANDROID(
     "cmp-android",

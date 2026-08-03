@@ -522,6 +522,23 @@ class ServeCommand(args: List<String>) : Command(args) {
       }
       ?.toMap() ?: emptyMap()
 
+  /** Experimental AndroidX-conformant Remote Compose CMP/Wasm player distribution. */
+  private val rcPlayerWasmDir: File? =
+    args
+      .flagValue("--rc-player-wasm-dir")
+      ?.takeIf { it.isNotBlank() }
+      ?.let(::File)
+      ?.let { dir ->
+        if (File(dir, "index.html").isFile) dir
+        else {
+          System.err.println(
+            "serve: --rc-player-wasm-dir ${dir.path} has no index.html — skipping (build it with " +
+              ":rc-player-wasm:wasmPlayerDist)."
+          )
+          null
+        }
+      }
+
   private val catalogRepo: String =
     args.flagValue("--catalog-repo")?.takeIf { it.isNotBlank() } ?: ServeCatalogStore.DEFAULT_REPO
   private val catalogBranchPrefix: String =
@@ -1525,6 +1542,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         bundleStore = bundleStore,
         isPublic = public,
         wasmCatalogs = wasmCatalogs,
+        rcPlayerWasmDir = rcPlayerWasmDir,
         // Preserve the CONFIGURED set, not only startup successes. Failed rows then stay visible on
         // /status, and a catalog recovered by the refresher appears on the home index immediately.
         catalogSessions = configuredCatalogs,
@@ -2615,6 +2633,10 @@ class ServeCommand(args: List<String>) : Command(args) {
                           build/wasmDist). That session's viewer then offers a "Run in browser
                           (Wasm)" toggle that mounts the M3 components client-side (no server
                           round-trip), served read-only at /wasm/<system>/. Missing dirs are skipped.
+        --rc-player-wasm-dir <dir>
+                          Experimental non-JVM Remote Compose player produced by
+                          :rc-player-wasm:wasmPlayerDist. Serves it at /rc-player-wasm/ and enables
+                          the "CMP Wasm" RC backend for previews carrying a captured .rc document.
 
       The shareable link carries an unguessable token; requests without it get 404.
       """
