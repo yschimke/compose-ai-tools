@@ -3527,10 +3527,6 @@ object ServeWeb {
       if (hasRcWasm)
         "<input type=\"radio\" name=\"cp-mode\" value=\"rc-wasm\" id=\"cp-rc-wasm-toggle\" tabindex=\"-1\">"
       else ""
-    val optionalModeInputs =
-      listOf(wasmModeInput, rcModeInput, rcWasmModeInput)
-        .filter(String::isNotEmpty)
-        .joinToString("\n            ")
     // The Remote Compose backend selector (#cp-rc-backends): one chip per RcPlayerBackend.UNIVERSE,
     // enabled for those the host reports in [enabledRcPlayers] and disabled otherwise. It replaces
     // the former single "RC (browser)" button — the `js` chip drives the same in-browser canvas
@@ -3894,6 +3890,7 @@ object ServeWeb {
           "<input type=\"radio\" name=\"cp-mode\" value=\"live\" id=\"cp-live\" tabindex=\"-1\"$liveDis>",
           wasmModeInput,
           rcModeInput,
+          rcWasmModeInput,
         )
         .filter { it.isNotBlank() }
         .joinToString("\n")
