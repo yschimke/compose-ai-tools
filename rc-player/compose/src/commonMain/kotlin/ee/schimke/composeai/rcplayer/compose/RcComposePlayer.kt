@@ -1,7 +1,10 @@
 package ee.schimke.composeai.rcplayer.compose
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -115,6 +118,7 @@ import ee.schimke.composeai.rcplayer.runtime.RcNamedValue
 import ee.schimke.composeai.rcplayer.runtime.RcPlayerState
 import kotlin.math.PI
 import kotlin.math.atan2
+import kotlin.math.roundToInt
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.Image
@@ -278,8 +282,41 @@ private fun RenderLayoutNode(
           theme = theme,
         )
       }
-    is RcLayoutNode.Row,
-    is RcLayoutNode.Column,
+    is RcLayoutNode.Row -> {
+      val density = androidx.compose.ui.platform.LocalDensity.current
+      val spacing = with(density) { state.resolve(node.operation.spacedBy).dp.roundToPx() }
+      Row(
+        modifier.applyLayoutModifiers(node.modifiers, state, fillMissingDimensions = false),
+        horizontalArrangement =
+          RcHorizontalArrangement(node.operation.horizontalPositioning, spacing),
+        verticalAlignment = rowAlignment(node.operation.verticalPositioning),
+      ) {
+        RenderLayoutNode(
+          node.content,
+          state = state,
+          textMeasurer = textMeasurer,
+          images = images,
+          theme = theme,
+        )
+      }
+    }
+    is RcLayoutNode.Column -> {
+      val density = androidx.compose.ui.platform.LocalDensity.current
+      val spacing = with(density) { state.resolve(node.operation.spacedBy).dp.roundToPx() }
+      Column(
+        modifier.applyLayoutModifiers(node.modifiers, state, fillMissingDimensions = false),
+        verticalArrangement = RcVerticalArrangement(node.operation.verticalPositioning, spacing),
+        horizontalAlignment = columnAlignment(node.operation.horizontalPositioning),
+      ) {
+        RenderLayoutNode(
+          node.content,
+          state = state,
+          textMeasurer = textMeasurer,
+          images = images,
+          theme = theme,
+        )
+      }
+    }
     is RcLayoutNode.FitBox ->
       error("${node::class.simpleName} layout semantics are not implemented")
   }
@@ -298,6 +335,99 @@ internal fun boxAlignment(horizontal: Int, vertical: Int): Alignment =
     3 to 5 -> Alignment.BottomEnd
     else -> error("Unknown AndroidX box alignment horizontal=$horizontal vertical=$vertical")
   }
+
+internal fun rowAlignment(vertical: Int): Alignment.Vertical =
+  when (vertical) {
+    4 -> Alignment.Top
+    2 -> Alignment.CenterVertically
+    5 -> Alignment.Bottom
+    else -> error("Unknown AndroidX row vertical position $vertical")
+  }
+
+internal fun columnAlignment(horizontal: Int): Alignment.Horizontal =
+  when (horizontal) {
+    1 -> Alignment.Start
+    2 -> Alignment.CenterHorizontally
+    3 -> Alignment.End
+    else -> error("Unknown AndroidX column horizontal position $horizontal")
+  }
+
+private class RcHorizontalArrangement(private val positioning: Int, private val spacingPx: Int) :
+  Arrangement.Horizontal {
+  override fun Density.arrange(
+    totalSize: Int,
+    sizes: IntArray,
+    layoutDirection: LayoutDirection,
+    outPositions: IntArray,
+  ) {
+    arrangeLinear(
+      totalSize,
+      sizes,
+      positioning,
+      spacingPx,
+      reverse = layoutDirection == LayoutDirection.Rtl,
+      outPositions = outPositions,
+    )
+  }
+}
+
+private class RcVerticalArrangement(private val positioning: Int, private val spacingPx: Int) :
+  Arrangement.Vertical {
+  override fun Density.arrange(totalSize: Int, sizes: IntArray, outPositions: IntArray) {
+    arrangeLinear(
+      totalSize,
+      sizes,
+      positioning,
+      spacingPx,
+      reverse = false,
+      outPositions = outPositions,
+    )
+  }
+}
+
+/** AndroidX RowLayout/ColumnLayout positioning, including its additive spacedBy behaviour. */
+internal fun arrangeLinear(
+  totalSize: Int,
+  sizes: IntArray,
+  positioning: Int,
+  spacing: Int,
+  reverse: Boolean,
+  outPositions: IntArray = IntArray(sizes.size),
+): IntArray {
+  require(outPositions.size >= sizes.size)
+  if (sizes.isEmpty()) return outPositions
+  val childSize = sizes.sum().toFloat()
+  val contentSize = childSize + spacing * (sizes.size - 1)
+  var distributedGap = 0f
+  var current =
+    when (positioning) {
+      1,
+      4 -> 0f
+      2 -> (totalSize - contentSize) / 2f
+      3,
+      5 -> totalSize - contentSize
+      6 -> {
+        if (sizes.size > 1) distributedGap = (totalSize - childSize) / (sizes.size - 1)
+        if (sizes.size == 1) (totalSize - contentSize) / 2f else 0f
+      }
+      7 -> {
+        distributedGap = (totalSize - childSize) / (sizes.size + 1)
+        distributedGap
+      }
+      8 -> {
+        distributedGap = (totalSize - childSize) / sizes.size
+        distributedGap / 2f
+      }
+      else -> error("Unknown AndroidX linear position $positioning")
+    }
+  sizes.forEachIndexed { index, size ->
+    val position = current.roundToInt()
+    outPositions[index] = if (reverse) totalSize - position - size else position
+    current += size + spacing
+    if (positioning in 6..8) current += distributedGap
+  }
+  return outPositions
+}
 
 @Composable
 private fun Modifier.applyLayoutModifiers(

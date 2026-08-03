@@ -4,6 +4,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
+import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
@@ -12,6 +13,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcPaintData
+import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcTextMeasure
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
@@ -155,6 +157,42 @@ public fun RcDocument.composeSupportReport(): RcComposeSupportReport {
           RcComposeSupportIssue(
             index,
             "BoxLayout",
+            "vertical position ${operation.verticalPositioning} is not implemented",
+          )
+      }
+    }
+    if (operation is RcRowLayout) {
+      if (operation.horizontalPositioning !in setOf(1, 2, 3, 6, 7, 8)) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "RowLayout",
+            "horizontal position ${operation.horizontalPositioning} is not implemented",
+          )
+      }
+      if (operation.verticalPositioning !in setOf(2, 4, 5)) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "RowLayout",
+            "vertical position ${operation.verticalPositioning} is not implemented",
+          )
+      }
+    }
+    if (operation is RcColumnLayout) {
+      if (operation.horizontalPositioning !in 1..3) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "ColumnLayout",
+            "horizontal position ${operation.horizontalPositioning} is not implemented",
+          )
+      }
+      if (operation.verticalPositioning !in setOf(2, 4, 5, 6, 7, 8)) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "ColumnLayout",
             "vertical position ${operation.verticalPositioning} is not implemented",
           )
       }

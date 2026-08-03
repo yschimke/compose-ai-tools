@@ -6,6 +6,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
+import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
@@ -19,10 +20,12 @@ import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcPaintData
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
+import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -131,6 +134,38 @@ class RcComposeSupportTest {
       }
 
     assertEquals("horizontal position 8 is not implemented", issue.detail)
+  }
+
+  @Test
+  fun matchesAndroidxLinearPositioningIncludingAdditiveSpacing() {
+    val sizes = intArrayOf(10, 20)
+
+    assertContentEquals(intArrayOf(0, 15), arrangeLinear(100, sizes, 1, 5, false))
+    assertContentEquals(intArrayOf(33, 48), arrangeLinear(100, sizes, 2, 5, false))
+    assertContentEquals(intArrayOf(65, 80), arrangeLinear(100, sizes, 3, 5, false))
+    assertContentEquals(intArrayOf(0, 85), arrangeLinear(100, sizes, 6, 5, false))
+    assertContentEquals(intArrayOf(23, 62), arrangeLinear(100, sizes, 7, 5, false))
+    assertContentEquals(intArrayOf(18, 68), arrangeLinear(100, sizes, 8, 5, false))
+    assertContentEquals(intArrayOf(90, 65), arrangeLinear(100, sizes, 1, 5, true))
+  }
+
+  @Test
+  fun validatesRowAndColumnAxesBeforeRendering() {
+    val issues =
+      RcDocument(
+          header,
+          listOf(
+            RcRowLayout(2, 20, 4, 1, RcFloatWord.literal(0f)),
+            RcColumnLayout(3, 30, 4, 1, RcFloatWord.literal(0f)),
+          ),
+        )
+        .composeSupportReport()
+        .issues
+
+    assertTrue(issues.any { it.operation == "RowLayout" && "horizontal" in it.detail })
+    assertTrue(issues.any { it.operation == "RowLayout" && "vertical" in it.detail })
+    assertTrue(issues.any { it.operation == "ColumnLayout" && "horizontal" in it.detail })
+    assertTrue(issues.any { it.operation == "ColumnLayout" && "vertical" in it.detail })
   }
 
   @Test
