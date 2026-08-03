@@ -63,7 +63,14 @@ internal class ThemeRenderLeaseManager(
       val tier =
         LEASE_TIERS.indices.firstOrNull { t -> active.none { it.tier == t } } ?: return null
 
-      val concurrency = minOf(requestedCapacity, serverRenderSlots, LEASE_TIERS[tier])
+      // Sized from what is left of the shared budget, not from the whole of it. Clamping each
+      // grant independently would promise more total width than the server has permits for — a
+      // four-slot box would hand out 4 and then 3 — and the second page's renders would simply
+      // queue on the global semaphore and 503, which is the outcome the second tier exists to
+      // avoid. A tier that cannot beat the serial baseline out of the remainder is refused.
+      val promised = active.sumOf { it.concurrency }
+      val remaining = serverRenderSlots - promised
+      val concurrency = minOf(requestedCapacity, remaining, LEASE_TIERS[tier])
       if (concurrency <= BASELINE_CONCURRENCY) return null
 
       val lease =

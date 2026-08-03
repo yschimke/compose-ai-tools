@@ -35,6 +35,21 @@ class ThemeRenderLeaseManagerTest {
   }
 
   @Test
+  fun `concurrent grants never promise more width than the server has slots`() {
+    // Eight slots is the real box: the tiers fit exactly, 5 + 3.
+    val roomy = manager(serverSlots = 8)
+    assertEquals(5, assertNotNull(roomy.acquire("a", Any(), requestedCapacity = 5)).concurrency)
+    assertEquals(3, assertNotNull(roomy.acquire("b", Any(), requestedCapacity = 5)).concurrency)
+
+    // Four slots: the first grant takes them all, so there is nothing left to promise a second
+    // page. Handing it 3 anyway would admit 7 renders against 4 permits and the extra three would
+    // queue on the global semaphore until they 503.
+    val tight = manager(serverSlots = 4)
+    assertEquals(4, assertNotNull(tight.acquire("a", Any(), requestedCapacity = 5)).concurrency)
+    assertNull(tight.acquire("b", Any(), requestedCapacity = 5))
+  }
+
+  @Test
   fun `grant is capped by requested capacity server slots and the burst ceiling`() {
     assertEquals(3, manager().acquire("app", Any(), requestedCapacity = 3)?.concurrency)
     assertEquals(2, manager(serverSlots = 2).acquire("app", Any(), 5)?.concurrency)
