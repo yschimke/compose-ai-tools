@@ -192,7 +192,7 @@ class ServeCatalogLiveHost(
     if (warmingInFlight.add(daemonId)) {
       warmExecutor.execute {
         try {
-          if (renderHostFor(daemonId).render(daemonId, PreviewOverrides()) is RenderOutcome.Ok) {
+          if (renderDaemon(daemonId, PreviewOverrides()) is RenderOutcome.Ok) {
             warmDaemonIds.add(daemonId)
           }
         } catch (_: Throwable) {
@@ -232,7 +232,12 @@ class ServeCatalogLiveHost(
   fun prewarm() {
     startThemeOptimization()
     if (!warmInBackground) return
-    if (perPreviewResolve != null) return
+    // A per-preview catalog deliberately skips eager warming — one JVM per preview would make
+    // startup fan out into dozens of them. But when snapshots share the monolithic daemon, that
+    // daemon is exactly what the first theme selection will wait on, and its cold start (~68s on
+    // Android) outlasts the page's three 2/4/8s retries — so the grid would sit unchanged until
+    // someone selected the theme a second time. One warm render, off the request path, closes it.
+    if (perPreviewResolve != null && !sharedDaemonRenders) return
     alias.values.firstOrNull()?.let { scheduleWarm(it, live) }
   }
 
@@ -368,7 +373,15 @@ class ServeCatalogLiveHost(
   override fun canRenderOverridesFor(previewId: String): Boolean = previewId in alias
 
   /** A leased burst is safe only when distinct previews have independent pooled daemons. */
-  override val themeRenderBurstCapacity: Int = if (perPreviewResolve != null) 5 else 1
+  /**
+   * A burst is only real if the renders can actually proceed in parallel. The per-preview pool can
+   * — one daemon per preview — but the shared daemon has a single render lock, so advertising five
+   * there would funnel five workers into one lock, hand four of them `Busy`, and the page would
+   * exhaust its three retries and leave those cards on baked pixels. Worse than serial, not better.
+   * So capacity follows the lane snapshots actually use.
+   */
+  override val themeRenderBurstCapacity: Int =
+    if (perPreviewResolve != null && !sharedDaemonRenders) 5 else 1
 
   /** The gesture override is honoured by the daemon lane, if that daemon is Android-backed. */
   override val gesturesRenderable: Boolean = live.gesturesRenderable

@@ -591,6 +591,7 @@ class ServeCatalogLiveHostTest {
         live = live,
         baked = baked,
         perPreviewResolve = { null },
+        sharedDaemonRenders = false,
       )
     assertEquals(5, pooled.themeRenderBurstCapacity)
   }
@@ -977,6 +978,43 @@ class ServeCatalogLiveHostTest {
       Thread.sleep(25)
     }
     error("theme optimization did not finish: ${host.themeOptimizationSnapshot()}")
+  }
+
+  @Test
+  fun `burst capacity follows the lane snapshots actually render on`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live = RecordingHost(previews = listOf(ServePreview(daemonId, daemonId)), tag = "mono")
+    val perPreview = RecordingHost(previews = emptyList(), tag = "per")
+
+    // Sharing one daemon means one render lock: a wide burst would funnel workers into it, hand
+    // most of them Busy, and the page would exhaust its retries with cards still on baked pixels.
+    assertEquals(
+      1,
+      ServeCatalogLiveHost(
+          alias = mapOf(catalogId to daemonId),
+          live = live,
+          baked = baked,
+          perPreviewResolve = { perPreview },
+        )
+        .themeRenderBurstCapacity,
+    )
+    // Per-preview routing genuinely parallelises — one daemon per preview — so it keeps the burst.
+    assertEquals(
+      5,
+      ServeCatalogLiveHost(
+          alias = mapOf(catalogId to daemonId),
+          live = live,
+          baked = baked,
+          perPreviewResolve = { perPreview },
+          sharedDaemonRenders = false,
+        )
+        .themeRenderBurstCapacity,
+    )
+    // No pool at all was always serial.
+    assertEquals(
+      1,
+      ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked).themeRenderBurstCapacity,
+    )
   }
 
   @Test
