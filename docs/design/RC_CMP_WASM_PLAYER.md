@@ -267,7 +267,7 @@ Current checkpoint:
   available independently.
 - The checked-in manifest exactly matches all 172 public integer entries in AndroidX alpha16
   `Operations.java`; generation fails on duplicate or invalid entries, and a reflection conformance
-  test prevents drift. The current disposition is 124 implemented, 0 parse-only, 37 pending,
+  test prevents drift. The current disposition is 125 implemented, 0 parse-only, 36 pending,
   6 unavailable, and 5 reserved operations.
 - Cluster 1 now includes path data/drawing/clipping, AndroidX theme filtering, root scaling and
   alignment, root accessibility description, typed named-value overrides, primitive constants,
@@ -337,7 +337,9 @@ Current checkpoint:
   platform view-configuration timeouts, AndroidX haptic mappings, and the Java player's clipped
   two-phase ripple. AndroidX-authored byte streams round-trip exactly; held-pointer and rapid-click
   tests cover all gesture variants, and the Wasm browser fixture proves single and double dispatch
-  without action leakage. The same implementation links in the iOS framework.
+  without action leakage. Legacy document-level `ClickArea` registration now follows Java's
+  resolved-string replacement, half-open hit bounds, overlapping dispatch, and single-click-only
+  behavior. The same implementation links in the iOS framework.
 
 ### Operations unavailable in the authoritative Java profile
 
@@ -456,7 +458,7 @@ state switching, and stable Compose keys.
 
 ### 8. Interaction, actions, time, and semantics
 
-- Click areas; click/multi-click/touch modifiers; `TouchExpression`; scroll, marquee, ripple.
+- `TouchExpression`; scroll and marquee.
 - Host/named/run actions and integer/float/string/expression change actions.
 - `TimeAttribute`, `WakeIn`, impulse operations, animation specifications, haptics.
 - `CoreSemantics` and content descriptions mapped to Compose semantics.

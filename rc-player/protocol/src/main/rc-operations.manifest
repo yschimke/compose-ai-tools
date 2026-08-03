@@ -26,7 +26,7 @@
 58|MODIFIER_PADDING|6|implemented
 59|MODIFIER_CLICK|6|implemented
 63|THEME|1|implemented
-64|CLICK_AREA|7|unsupported
+64|CLICK_AREA|7|implemented
 65|ROOT_CONTENT_BEHAVIOR|1|implemented
 66|DRAW_BITMAP_INT|4|implemented
 67|MODIFIER_HEIGHT|6|implemented

@@ -1046,6 +1046,19 @@ public data object RcClickModifier : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_CLICK
 }
 
+/** Legacy document-space click region registered with AndroidX `CoreDocument`. */
+public data class RcClickArea(
+  val id: Int,
+  val contentDescriptionId: Int,
+  val left: RcFloatWord,
+  val top: RcFloatWord,
+  val right: RcFloatWord,
+  val bottom: RcFloatWord,
+  val metadataId: Int,
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.CLICK_AREA
+}
+
 /** AndroidX multi-click action container. The wire value selects the gesture that dispatches it. */
 public data class RcMultiClickModifier(val type: RcMultiClickType) : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_MULTI_CLICK
@@ -1280,6 +1293,7 @@ public object RcOpcodes {
   public const val DRAW_LINE: Int = 47
   public const val DRAW_ROUND_RECT: Int = 51
   public const val MODIFIER_CLICK: Int = 59
+  public const val CLICK_AREA: Int = 64
   public const val MODIFIER_MULTI_CLICK: Int = 83
   public const val DRAW_SECTOR: Int = 52
   public const val DRAW_TEXT_ON_PATH: Int = 53

@@ -6,6 +6,7 @@ import androidx.compose.remote.core.Operations
 import androidx.compose.remote.core.PaintOperation
 import androidx.compose.remote.core.WireBuffer
 import androidx.compose.remote.core.operations.BitmapData
+import androidx.compose.remote.core.operations.ClickArea as AndroidxClickArea
 import androidx.compose.remote.core.operations.ClipPath
 import androidx.compose.remote.core.operations.ColorAttribute
 import androidx.compose.remote.core.operations.ColorConstant
@@ -150,6 +151,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
+import ee.schimke.composeai.rcplayer.protocol.RcClickArea
 import ee.schimke.composeai.rcplayer.protocol.RcClickModifier
 import ee.schimke.composeai.rcplayer.protocol.RcClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleColumnLayout as PlayerCollapsibleColumnLayout
@@ -243,6 +245,23 @@ import kotlin.test.assertTrue
  * from this test module: AndroidX remote-core/Java player is the protocol authority.
  */
 class AndroidxWireCompatibilityTest {
+  @Test
+  fun androidXClickAreaRoundTripsExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    AndroidxClickArea.apply(buffer, 55, 10, Utils.asNan(42), 2f, 30f, 40f, 11)
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+    val area = assertIs<RcClickArea>(document.operations.single())
+
+    assertEquals(55, area.id)
+    assertEquals(42, area.left.referencedId)
+    assertEquals(2f, area.top.value)
+    assertEquals(11, area.metadataId)
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
   @Test
   fun androidXMultiClickModifiersRoundTripExactly() {
     val buffer = WireBuffer()

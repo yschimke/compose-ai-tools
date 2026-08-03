@@ -1,5 +1,8 @@
 package ee.schimke.composeai.rcplayer.compose
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -17,6 +20,7 @@ import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.compose.ui.unit.Density
 import ee.schimke.composeai.rcplayer.protocol.RcAccessibilitySemantics
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
+import ee.schimke.composeai.rcplayer.protocol.RcClickArea
 import ee.schimke.composeai.rcplayer.protocol.RcClickModifier
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
@@ -30,6 +34,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcMultiClickType
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcRippleModifier
+import ee.schimke.composeai.rcplayer.protocol.RcRootContentBehavior
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextData
 import ee.schimke.composeai.rcplayer.protocol.RcTouchCancelModifier
@@ -42,6 +47,59 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class RcAccessibilitySemanticsTest {
+  @OptIn(ExperimentalTestApi::class)
+  @Test
+  fun dispatchesLegacyClickAreaFromRealComposeInput() =
+    runSkikoComposeUiTest(size = Size(80f, 80f), density = Density(1f)) {
+      val events = mutableListOf<RcPlayerEvent>()
+      val document =
+        RcDocument(
+          RcHeader(RcVersion(1, 0, 0), legacyWidth = 40, legacyHeight = 40, modern = false),
+          listOf(
+            RcTextData(10, "Legacy area"),
+            RcTextData(11, "legacy-meta"),
+            RcRootContentBehavior(
+              scroll = 0,
+              alignment =
+                RcRootContentBehavior.ALIGNMENT_TOP or RcRootContentBehavior.ALIGNMENT_START,
+              sizing = RcRootContentBehavior.SIZING_SCALE,
+              mode = RcRootContentBehavior.SCALE_FIT,
+            ),
+            RcClickArea(
+              55,
+              10,
+              RcFloatWord.literal(0f),
+              RcFloatWord.literal(0f),
+              RcFloatWord.literal(20f),
+              RcFloatWord.literal(20f),
+              11,
+            ),
+          ),
+        )
+      setContent { RcComposePlayer(document, Modifier.fillMaxSize(), onEvent = events::add) }
+
+      onNodeWithContentDescription("Legacy area").performTouchInput { click(Offset(30f, 20f)) }
+      mainClock.advanceTimeBy(1_000)
+      waitForIdle()
+      onRoot().performTouchInput { click(Offset(40f, 20f)) }
+      mainClock.advanceTimeBy(1_000)
+      waitForIdle()
+      onRoot().performTouchInput { down(Offset(30f, 20f)) }
+      mainClock.advanceTimeBy(1_000)
+      waitForIdle()
+      onRoot().performTouchInput { up() }
+      waitForIdle()
+      onRoot().performTouchInput { click(Offset(30f, 20f)) }
+      onRoot().performTouchInput { click(Offset(30f, 20f)) }
+      mainClock.advanceTimeBy(1_000)
+      waitForIdle()
+
+      assertEquals(
+        listOf<RcPlayerEvent>(RcPlayerEvent.HostActionMetadata(55, "legacy-meta")),
+        events,
+      )
+    }
+
   @OptIn(ExperimentalTestApi::class)
   @Test
   fun dispatchesSingleLongAndDoubleMultiClickContainersFromRealComposeInput() =

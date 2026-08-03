@@ -167,6 +167,9 @@ private fun postHostAction(actionId: Int): Unit =
 private fun postHostMetadataAction(actionId: Int, metadata: String): Unit =
   js(
     "(document.documentElement.dataset.rcPlayerAction = String(actionId), " +
+      "document.documentElement.dataset.rcPlayerActionTrace = " +
+      "(document.documentElement.dataset.rcPlayerActionTrace ? " +
+      "document.documentElement.dataset.rcPlayerActionTrace + ',' : '') + String(actionId), " +
       "document.documentElement.dataset.rcPlayerMetadata = metadata, " +
       "window.parent.postMessage({ type: 'cp-rc-host-action', actionId: actionId, " +
       "metadata: metadata }, '*'))"

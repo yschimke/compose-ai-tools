@@ -2,6 +2,7 @@ package ee.schimke.composeai.rcplayer.runtime
 
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBooleanConstant
+import ee.schimke.composeai.rcplayer.protocol.RcClickArea
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorConstant
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
@@ -98,6 +99,19 @@ public class RcPlayerState(
         ?.textId
         ?.takeUnless { it == 0 }
         ?.let(texts::get)
+
+  /** AndroidX replaces an equal click-area registration before inserting its latest bounds. */
+  public val clickAreas: List<RcClickArea>
+    get() = buildList {
+      document.operations.filterIsInstance<RcClickArea>().forEach { area ->
+        removeAll {
+          it.id == area.id &&
+            text(it.contentDescriptionId) == text(area.contentDescriptionId) &&
+            text(it.metadataId) == text(area.metadataId)
+        }
+        add(area)
+      }
+    }
 
   init {
     for (operation in document.operations) {
@@ -491,6 +505,27 @@ public class RcPlayerState(
       invalidateAfterChanges = true,
       containerName = "ClickModifier(${block.type})",
     )
+  }
+
+  /** Dispatches every legacy click area containing the point, matching `CoreDocument.onClick`. */
+  public fun executeClickAreasAt(x: Float, y: Float): Int {
+    var dispatched = 0
+    clickAreas.forEach { area ->
+      if (
+        x >= resolve(area.left) &&
+          x < resolve(area.right) &&
+          y >= resolve(area.top) &&
+          y < resolve(area.bottom)
+      ) {
+        executeClickArea(area)
+        dispatched++
+      }
+    }
+    return dispatched
+  }
+
+  public fun executeClickArea(area: RcClickArea) {
+    eventSink(RcPlayerEvent.HostActionMetadata(area.id, text(area.metadataId).orEmpty()))
   }
 
   public fun executeTouch(block: RcTouchActionBlock) {

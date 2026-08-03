@@ -44,6 +44,7 @@ public object RcDocumentCodec {
         RootContentDescriptionCodec,
         NamedVariableCodec,
         PathDataCodec,
+        ClickAreaCodec,
         ClickModifierCodec,
         MultiClickModifierCodec,
         TouchDownModifierCodec,
@@ -833,6 +834,31 @@ private object ClickModifierCodec : RcOperationCodec<RcClickModifier> {
   override fun decode(input: RcWireReader): RcClickModifier = RcClickModifier
 
   override fun encode(output: RcWireWriter, value: RcClickModifier): Unit = Unit
+}
+
+private object ClickAreaCodec : RcOperationCodec<RcClickArea> {
+  override val spec = RcOperationSpec(RcOpcodes.CLICK_AREA, "ClickArea")
+
+  override fun decode(input: RcWireReader): RcClickArea =
+    RcClickArea(
+      id = input.readInt("id"),
+      contentDescriptionId = input.readInt("contentDescriptionId"),
+      left = input.readFloatWord("left"),
+      top = input.readFloatWord("top"),
+      right = input.readFloatWord("right"),
+      bottom = input.readFloatWord("bottom"),
+      metadataId = input.readInt("metadataId"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcClickArea) {
+    output.writeInt(value.id)
+    output.writeInt(value.contentDescriptionId)
+    output.writeFloatWord(value.left)
+    output.writeFloatWord(value.top)
+    output.writeFloatWord(value.right)
+    output.writeFloatWord(value.bottom)
+    output.writeInt(value.metadataId)
+  }
 }
 
 private object MultiClickModifierCodec : RcOperationCodec<RcMultiClickModifier> {

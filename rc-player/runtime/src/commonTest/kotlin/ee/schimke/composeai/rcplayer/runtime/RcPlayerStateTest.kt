@@ -1,6 +1,7 @@
 package ee.schimke.composeai.rcplayer.runtime
 
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
+import ee.schimke.composeai.rcplayer.protocol.RcClickArea
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorConstant
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
@@ -51,6 +52,68 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class RcPlayerStateTest {
+  @Test
+  fun clickAreasResolveBoundsReplaceEqualRegistrationsAndDispatchEveryOverlap() {
+    val events = mutableListOf<RcPlayerEvent>()
+    val first =
+      RcClickArea(
+        55,
+        10,
+        RcFloatWord.literal(0f),
+        RcFloatWord.literal(0f),
+        RcFloatWord.literal(20f),
+        RcFloatWord.literal(20f),
+        11,
+      )
+    val overlap =
+      RcClickArea(
+        56,
+        12,
+        RcFloatWord.literal(0f),
+        RcFloatWord.literal(0f),
+        RcFloatWord.literal(20f),
+        RcFloatWord.literal(20f),
+        13,
+      )
+    val replacement =
+      first.copy(
+        contentDescriptionId = 14,
+        left = RcFloatWord(0x7fc00000 or 30),
+        right = RcFloatWord.literal(15f),
+        metadataId = 15,
+      )
+    val state =
+      RcPlayerState(
+        RcDocument(
+          RcHeader(RcVersion(1, 0, 0)),
+          listOf(
+            RcTextData(10, "First"),
+            RcTextData(11, "first-meta"),
+            RcTextData(12, "Second"),
+            RcTextData(13, "second-meta"),
+            RcTextData(14, "First"),
+            RcTextData(15, "first-meta"),
+            RcFloatConstant(30, RcFloatWord.literal(5f)),
+            first,
+            overlap,
+            replacement,
+          ),
+        ),
+        eventSink = events::add,
+      )
+
+    assertEquals(2, state.clickAreas.size)
+    assertEquals(2, state.executeClickAreasAt(5f, 10f))
+    assertEquals(
+      listOf<RcPlayerEvent>(
+        RcPlayerEvent.HostActionMetadata(56, "second-meta"),
+        RcPlayerEvent.HostActionMetadata(55, "first-meta"),
+      ),
+      events,
+    )
+    assertEquals(0, state.executeClickAreasAt(20f, 10f))
+  }
+
   @Test
   fun multiClickActionsDispatchInWireOrderAndInvalidate() {
     val events = mutableListOf<RcPlayerEvent>()

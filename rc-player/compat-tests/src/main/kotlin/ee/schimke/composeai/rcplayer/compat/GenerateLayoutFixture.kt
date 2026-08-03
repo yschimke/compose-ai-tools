@@ -4,6 +4,7 @@ package ee.schimke.composeai.rcplayer.compat
 
 import androidx.compose.remote.core.WireBuffer
 import androidx.compose.remote.core.operations.BitmapData
+import androidx.compose.remote.core.operations.ClickArea
 import androidx.compose.remote.core.operations.DrawContent
 import androidx.compose.remote.core.operations.DrawRect
 import androidx.compose.remote.core.operations.Header
@@ -79,6 +80,9 @@ public fun main(args: Array<String>) {
   TextData.apply(buffer, 1005, "Rendered by Compose Multiplatform")
   TextData.apply(buffer, 1006, "save-preview")
   TextData.apply(buffer, 1007, "browser-fixture")
+  TextData.apply(buffer, 1008, "Legacy click area")
+  TextData.apply(buffer, 1009, "click-area-meta")
+  ClickArea.apply(buffer, 85, 1008, 0f, 0f, 320f, 180f, 1009)
   IntegerExpression.apply(buffer, 31, 1 shl 2, intArrayOf(2, 3, IntegerExpressionEvaluator.I_ADD))
   TextStyle.apply(
     buffer,

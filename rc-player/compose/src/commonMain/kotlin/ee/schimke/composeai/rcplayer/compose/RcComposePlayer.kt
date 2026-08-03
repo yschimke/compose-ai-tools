@@ -96,10 +96,12 @@ import androidx.compose.ui.node.invalidateSemantics
 import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
@@ -131,6 +133,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcAlignByModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
+import ee.schimke.composeai.rcplayer.protocol.RcClickArea
 import ee.schimke.composeai.rcplayer.protocol.RcClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcCollapsiblePriorityModifier
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
@@ -279,18 +282,26 @@ public fun RcComposePlayer(
     state.rootContentDescription?.let { description ->
       modifier.semantics { contentDescription = description }
     } ?: modifier
+  val interactiveModifier =
+    semanticsModifier.applyAndroidXClickAreas(
+      areas = state.clickAreas,
+      state = state,
+      documentWidth = document.header.width.coerceAtLeast(1).toFloat(),
+      documentHeight = document.header.height.coerceAtLeast(1).toFloat(),
+      rootContentBehavior = state.rootContentBehavior,
+    )
   if (layout != null) {
     SideEffect { state.beginFrame(frameNanos / 1_000_000_000f) }
     RenderLayoutNode(
       node = layout,
-      modifier = semanticsModifier,
+      modifier = interactiveModifier,
       state = state,
       textMeasurer = textMeasurer,
       images = images,
       theme = theme,
     )
   } else
-    Canvas(semanticsModifier) {
+    Canvas(interactiveModifier) {
       val width = document.header.width.coerceAtLeast(1)
       val height = document.header.height.coerceAtLeast(1)
       val rootTransform =
@@ -1240,6 +1251,159 @@ private fun Modifier.applyComponentModifiers(
       )
   }
   return result
+}
+
+private fun Modifier.applyAndroidXClickAreas(
+  areas: List<RcClickArea>,
+  state: RcPlayerState,
+  documentWidth: Float,
+  documentHeight: Float,
+  rootContentBehavior: RcRootContentBehavior?,
+): Modifier =
+  if (areas.isEmpty()) this
+  else then(RcClickAreasElement(areas, state, documentWidth, documentHeight, rootContentBehavior))
+
+private data class RcClickAreasElement(
+  val areas: List<RcClickArea>,
+  val state: RcPlayerState,
+  val documentWidth: Float,
+  val documentHeight: Float,
+  val rootContentBehavior: RcRootContentBehavior?,
+) : ModifierNodeElement<RcClickAreasNode>() {
+  override fun create(): RcClickAreasNode =
+    RcClickAreasNode(areas, state, documentWidth, documentHeight, rootContentBehavior)
+
+  override fun update(node: RcClickAreasNode) {
+    node.areas = areas
+    node.state = state
+    node.documentWidth = documentWidth
+    node.documentHeight = documentHeight
+    node.rootContentBehavior = rootContentBehavior
+    node.invalidateSemantics()
+  }
+
+  override fun InspectorInfo.inspectableProperties() {
+    name = "androidXClickAreas"
+  }
+}
+
+private class RcClickAreasNode(
+  var areas: List<RcClickArea>,
+  var state: RcPlayerState,
+  var documentWidth: Float,
+  var documentHeight: Float,
+  var rootContentBehavior: RcRootContentBehavior?,
+) :
+  Modifier.Node(),
+  PointerInputModifierNode,
+  SemanticsModifierNode,
+  CompositionLocalConsumerModifierNode {
+  private var pressed = false
+  private var longPressed = false
+  private var downPosition = Offset.Zero
+  private var pendingClickPosition = Offset.Zero
+  private var waitingForSecondClick = false
+  private var longPressJob: Job? = null
+  private var singleClickJob: Job? = null
+
+  override fun onPointerEvent(pointerEvent: PointerEvent, pass: PointerEventPass, bounds: IntSize) {
+    if (pass != PointerEventPass.Main) return
+    val down = pointerEvent.changes.firstOrNull { it.changedToDownIgnoreConsumed() }
+    if (!pressed && down != null) {
+      pressed = true
+      longPressed = false
+      downPosition = down.position
+      longPressJob?.cancel()
+      longPressJob = coroutineScope.launch {
+        delay(currentValueOf(LocalViewConfiguration).longPressTimeoutMillis)
+        if (pressed) {
+          pressed = false
+          longPressed = true
+          waitingForSecondClick = false
+          singleClickJob?.cancel()
+        }
+      }
+    }
+    if (
+      pressed &&
+        pointerEvent.changes.any {
+          it.pressed &&
+            (it.position - downPosition).getDistance() >
+              currentValueOf(LocalViewConfiguration).touchSlop
+        }
+    ) {
+      pressed = false
+      longPressJob?.cancel()
+    }
+    if (pressed && pointerEvent.changes.isNotEmpty() && pointerEvent.changes.all { !it.pressed }) {
+      pressed = false
+      longPressJob?.cancel()
+      val up = pointerEvent.changes.firstOrNull { it.changedToUpIgnoreConsumed() }
+      if (!longPressed && up != null) completeClick(up.position, bounds)
+    }
+  }
+
+  override fun onCancelPointerInput() {
+    pressed = false
+    longPressJob?.cancel()
+  }
+
+  override fun onDetach() {
+    pressed = false
+    waitingForSecondClick = false
+    longPressJob?.cancel()
+    singleClickJob?.cancel()
+  }
+
+  override fun SemanticsPropertyReceiver.applySemantics() {
+    val descriptions = areas.mapNotNull { state.text(it.contentDescriptionId) }
+    if (descriptions.isNotEmpty()) contentDescription = descriptions.joinToString(", ")
+    role = Role.Button
+    areas.firstOrNull()?.let { first ->
+      onClick {
+        state.executeClickArea(first)
+        true
+      }
+    }
+    customActions = areas.map { area ->
+      CustomAccessibilityAction(
+        label = state.text(area.contentDescriptionId).orEmpty(),
+        action = {
+          state.executeClickArea(area)
+          true
+        },
+      )
+    }
+  }
+
+  private fun completeClick(position: Offset, bounds: IntSize) {
+    if (waitingForSecondClick) {
+      waitingForSecondClick = false
+      singleClickJob?.cancel()
+      return
+    }
+    waitingForSecondClick = true
+    val transform =
+      computeRootTransform(
+        documentWidth = documentWidth,
+        documentHeight = documentHeight,
+        viewportWidth = bounds.width.toFloat(),
+        viewportHeight = bounds.height.toFloat(),
+        behavior = rootContentBehavior,
+      )
+    pendingClickPosition =
+      Offset(
+        (position.x - transform.translateX) / transform.scaleX,
+        (position.y - transform.translateY) / transform.scaleY,
+      )
+    singleClickJob = coroutineScope.launch {
+      delay(currentValueOf(LocalViewConfiguration).doubleTapTimeoutMillis)
+      if (waitingForSecondClick) {
+        waitingForSecondClick = false
+        state.executeClickAreasAt(pendingClickPosition.x, pendingClickPosition.y)
+      }
+    }
+  }
 }
 
 @Composable
