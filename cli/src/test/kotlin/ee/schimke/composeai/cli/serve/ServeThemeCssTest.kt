@@ -184,6 +184,36 @@ class ServeThemeCssTest {
   }
 
   @Test
+  fun `an unreadable published foreground never becomes the page's body text`() {
+    // A catalog is free to publish a syntactically valid `onSurface` that is unreadable on its own
+    // surface. Body text anchors the whole neutral ramp, so taking it literally would make the
+    // matching-mode page unreadable end to end.
+    val white =
+      vars(
+        assertNotNull(
+          ServeThemeCss.fromDtcg(
+            tokens("surface" to "#ffffff", "onSurface" to "#ffffff", "primary" to "#4b30edff")
+          )
+        ),
+        dark = false,
+      )
+    assertTrue(contrast(white.getValue("--cp-fg"), "#ffffff") >= 4.5, "white on white was accepted")
+    // A merely *weak* foreground is nudged rather than discarded — it keeps its hue.
+    val weak =
+      vars(
+        assertNotNull(
+          ServeThemeCss.fromDtcg(
+            tokens("surface" to "#ffffff", "onSurface" to "#8f8f5a", "primary" to "#4b30edff")
+          )
+        ),
+        dark = false,
+      )
+    val fg = rgb(weak.getValue("--cp-fg"))
+    assertTrue(contrast(weak.getValue("--cp-fg"), "#ffffff") >= 4.5)
+    assertTrue(fg.g > fg.b, "the darkened foreground keeps the published hue")
+  }
+
+  @Test
   fun `a colour that can never reach the contrast floor stays recognisably itself`() {
     // Near-white primary on a white page: no mix reaches 4:1, so it is darkened as far as the cap
     // allows rather than collapsing onto the text colour.

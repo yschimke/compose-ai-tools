@@ -1235,6 +1235,28 @@ class ServeWebFixtureTest {
     )
     // A plain (non-catalog) session inlines nothing at all.
     assertFalse(landingThemed.contains("<style>"), "an unthemed page carries no inline palette")
+    // Every page a visitor can reach *inside* a catalog carries the palette — walking grid →
+    // compare formats → focused Reference/Diff/Actual must not drop back to the built-in chrome
+    // partway through.
+    val palette = ServeThemeCss.fromDtcg(jetNewsTokens)!!
+    val inCatalogPages =
+      mapOf(
+        "landing" to ServeWeb.landingPage("jetnews", themedPreviews, token, themeCss = palette),
+        "viewer" to ServeWeb.viewerPage(previews.first(), token, themeCss = palette),
+        "format comparison" to
+          ServeWeb.comparisonPage("jetnews", themedPreviews, token, themeCss = palette),
+        "reference comparison" to
+          ServeWeb.referenceComparisonPage(
+            moduleLabel = "jetnews",
+            preview = themedPreviews.first(),
+            reference = comparisonReferences.first(),
+            token = token,
+            themeCss = palette,
+          ),
+      )
+    for ((name, html) in inCatalogPages) {
+      assertTrue(html.contains("--cp-accent: #bf0031;"), "the $name page carries the palette")
+    }
     assertGolden(File(pagesDir, "serve-format-compare.html"), formatComparison)
     assertGolden(File(pagesDir, "serve-reference-compare.html"), referenceComparison)
     assertTrue(

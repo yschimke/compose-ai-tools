@@ -59,6 +59,12 @@ internal object ServeThemeCss {
   private const val MIN_ACCENT_CONTRAST = 4.0
   private const val MIN_ON_ACCENT_CONTRAST = 4.0
 
+  /**
+   * …and for body text, which the whole neutral ramp is derived from — so it is held to WCAG AA for
+   * normal text rather than the 3:1-ish floor a decorative accent can live at.
+   */
+  private const val MIN_BODY_CONTRAST = 4.5
+
   private val json = Json { ignoreUnknownKeys = true }
 
   /**
@@ -119,10 +125,15 @@ internal object ServeThemeCss {
     // can be reasoned about, and the surface it is read on is the only sensible backdrop.
     val surface = flatten(surfaceToken, Rgb(255, 255, 255)) ?: return null
     val primary = flatten(primaryToken, surface) ?: return null
+    // Body text anchors the entire neutral ramp, so it gets the same treatment the accent does and
+    // then some: nudged toward the readable pole, and abandoned for that pole outright if even the
+    // nudge can't clear the floor. A catalog whose `onSurface` is (say) white on a white surface
+    // would otherwise publish an unreadable page.
     val text =
-      colors["onSurface"]?.let { flatten(it, surface) }
-        ?: colors["onBackground"]?.let { flatten(it, surface) }
-        ?: readableOn(surface)
+      (colors["onSurface"] ?: colors["onBackground"])
+        ?.let { flatten(it, surface) }
+        ?.let { ensureContrast(it, surface, MIN_BODY_CONTRAST, toward = readableOn(surface)) }
+        ?.takeIf { contrast(it, surface) >= MIN_BODY_CONTRAST } ?: readableOn(surface)
     // Which mode the catalog itself was rendered in — the mode that gets the full surface sync.
     val catalogIsDark = luminance(surface) < 0.45
 

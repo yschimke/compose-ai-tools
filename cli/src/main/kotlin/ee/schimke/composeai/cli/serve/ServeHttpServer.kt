@@ -1320,6 +1320,9 @@ class ServeHttpServer(
           basePath = basePath,
           isPublic = isPublic,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
+          // Stepping from the themed comparison table into its focused Reference/Diff/Actual view
+          // must not drop back to the built-in chrome mid-journey.
+          themeCss = catalogBundleHost(renderHost)?.webThemeCss.orEmpty(),
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl()),
           displayTitle = catalogBundleHost(renderHost)?.title,
         ),

@@ -3211,6 +3211,12 @@ object ServeWeb {
     basePath: String = "",
     isPublic: Boolean = false,
     trust: String? = null,
+    /**
+     * The served catalog's own palette as an inline `:root` override for the chrome's custom
+     * properties, built by [ServeThemeCss] from the branch's `tokens.dtcg.json`. Empty ⇒ the page
+     * keeps the built-in chrome (a plain module, or a catalog that publishes no tokens).
+     */
+    themeCss: String = "",
     unfurl: UnfurlMetadata? = null,
     displayTitle: String? = null,
   ): String {
@@ -3261,6 +3267,7 @@ object ServeWeb {
       unfurlDescription = "Reference, diff, and Compose output for ${preview.id}",
       unfurl = unfurl,
       navSuffix = navSuffix,
+      themeCss = themeCss,
       body =
         """
         <div id="cp-reference-compare" data-reference="$raster" data-actual="$actual">
