@@ -478,14 +478,19 @@ class ServeCatalogStore(
     // request path: probe one vector synchronously to learn whether this branch carries the lane at
     // all, then fill the rest in the background while the catalog is already serving. Cards render
     // uncropped for those few seconds and crop themselves once the pass lands.
-    // Probe the hero's vector, falling back to the first declared preview: most catalogs name no
-    // `display.hero`, and probing nothing would strip the SVG lane from every one of them.
-    val figmaProbeId =
-      heroPreviewIdFor(catalog, bakedPathById.keys) ?: bakedPathById.keys.firstOrNull()
-    val figmaDir = probeFigmaSvg(heroSvgCandidates(figmaProbeId), base, dir)
-    if (figmaDir != null) {
-      scheduleFigmaSvgFetch(system, generation, slugs, variantSvgPaths, base, dir)
-    }
+    // Probe a handful of components, hero first — not just one. A vector is published per
+    // component and any of them may legitimately have none, so a single miss says nothing about
+    // the branch; the bulk path this replaces enabled the lane if *any* candidate landed. Spread
+    // across distinct slugs so the sample is about the branch rather than one component.
+    val figmaProbeIds =
+      (listOfNotNull(heroPreviewIdFor(catalog, bakedPathById.keys)) + bakedPathById.keys)
+        .distinctBy { it.substringBefore(SLUG_SEPARATOR) }
+        .take(FIGMA_PROBE_SLUGS)
+    val figmaDir = probeFigmaSvg(figmaProbeIds.flatMap(::heroSvgCandidates), base, dir)
+    // Scheduled unconditionally: a probe that found nothing is not proof the branch carries none —
+    // the vectors may simply start at a component the sample missed. Filling anyway means the lane
+    // turns on at the next host build instead of being lost until someone republishes.
+    scheduleFigmaSvgFetch(system, generation, slugs, variantSvgPaths, base, dir)
 
     // The catalog's OWN palette, so its pages are framed in its own colours (see [ServeThemeCss]).
     // A few kB of JSON off the same branch as the images, and best-effort throughout: a missing /
@@ -1089,11 +1094,13 @@ class ServeCatalogStore(
     // whole vector set is never resident at once) and path-contained before planning.
     val writtenSvgs =
       fetchCatalogAssetsToFiles(
-        safeCandidates.mapNotNull { relativePath ->
-          val svgFile = File(figmaDir, relativePath)
-          if (!svgFile.canonicalFile.toPath().startsWith(figmaRoot)) return@mapNotNull null
-          "$base$FIGMA_DIR/$relativePath" to svgFile
-        }
+        stillWanted = stillCurrent,
+        plan =
+          safeCandidates.mapNotNull { relativePath ->
+            val svgFile = File(figmaDir, relativePath)
+            if (!svgFile.canonicalFile.toPath().startsWith(figmaRoot)) return@mapNotNull null
+            "$base$FIGMA_DIR/$relativePath" to svgFile
+          },
       )
     // Wave 2: the crops, which can only be discovered by reading wave 1 — a hybrid SVG names its
     // `figma-raster/` crops inside its own markup, and raw.githubusercontent has no directory
@@ -1113,7 +1120,7 @@ class ServeCatalogStore(
         "$base$FIGMA_DIR/$remoteCrop" to cropFile
       }
     }
-    fetchCatalogAssetsToFiles(cropPlan)
+    fetchCatalogAssetsToFiles(cropPlan, stillWanted = stillCurrent)
     wrote = writtenSvgs.size
     return if (wrote > 0) figmaDir else null
   }
@@ -1142,15 +1149,14 @@ class ServeCatalogStore(
   private fun probeFigmaSvg(candidates: List<String>, base: String, dir: File): File? {
     val figmaDir = File(dir, FIGMA_DIR)
     val figmaRoot = figmaDir.canonicalFile.toPath()
-    for (relativePath in candidates) {
+    val plan = candidates.mapNotNull { relativePath ->
       val svgFile = File(figmaDir, relativePath)
-      if (!svgFile.canonicalFile.toPath().startsWith(figmaRoot)) continue
-      if (
-        fetchCatalogAssetsToFiles(listOf(("$base$FIGMA_DIR/$relativePath") to svgFile)).isNotEmpty()
-      )
-        return figmaDir
+      if (!svgFile.canonicalFile.toPath().startsWith(figmaRoot)) return@mapNotNull null
+      "$base$FIGMA_DIR/$relativePath" to svgFile
     }
-    return null
+    // One concurrent wave, so a catalog that publishes no vectors pays a single round-trip rather
+    // than one per candidate.
+    return figmaDir.takeIf { fetchCatalogAssetsToFiles(plan).isNotEmpty() }
   }
 
   /**
@@ -1569,6 +1575,13 @@ class ServeCatalogStore(
     private const val PUBLISH_SAMPLE_IMAGES = 3
 
     /**
+     * Components sampled when deciding whether a branch carries baked vectors at all. More than one
+     * because any single component may legitimately publish none; small because the background fill
+     * settles the question for real moments later.
+     */
+    private const val FIGMA_PROBE_SLUGS = 5
+
+    /**
      * Slug normalisation shared with [ServeBundleHost]'s hero resolver — mirrors design-parity's
      * `slug()` (non-`[a-zA-Z0-9._-]` → `-`, trim, lowercase).
      */
@@ -1641,7 +1654,10 @@ class ServeCatalogStore(
    * Destinations are path-contained by the caller before planning, so a worker never writes outside
    * the staged catalog.
    */
-  private fun fetchCatalogAssetsToFiles(plan: List<Pair<String, File>>): Set<String> {
+  private fun fetchCatalogAssetsToFiles(
+    plan: List<Pair<String, File>>,
+    stillWanted: () -> Boolean = { true },
+  ): Set<String> {
     if (plan.isEmpty()) return emptySet()
     val pool =
       Executors.newFixedThreadPool(minOf(ASSET_FETCH_CONCURRENCY, plan.size)) { r ->
@@ -1652,6 +1668,11 @@ class ServeCatalogStore(
         url to
           pool.submit<Boolean> {
             val bytes = runCatching { fetchCatalogAsset(url) }.getOrNull() ?: return@submit false
+            // Re-checked immediately before the write, not just once per wave: a fetch started for
+            // one catalog generation must not land in the directory a refresh has since swapped in.
+            // Checking only between waves leaves every worker in the current wave free to write
+            // after the swap, and nothing then removes what they wrote.
+            if (!stillWanted()) return@submit false
             runCatching {
                 target.parentFile?.mkdirs()
                 target.writeBytes(bytes)

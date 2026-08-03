@@ -185,8 +185,10 @@ class ServeCatalogStoreTest {
 
     assertTrue(result is ServeCatalogStore.Result.Ok)
     // One probe decided the lane exists; the other ~8 vectors have not been asked for yet.
+    // The probe samples this catalog's single component — its per-variant vector plus the slug
+    // fallback — and stops. The remaining ~8 vectors have not been asked for yet.
     assertEquals(
-      1,
+      2,
       requested.count { it.endsWith(".svg") },
       "only the probe runs before publishing",
     )
