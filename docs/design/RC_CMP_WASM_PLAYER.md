@@ -267,7 +267,7 @@ Current checkpoint:
   available independently.
 - The checked-in manifest exactly matches all 172 public integer entries in AndroidX alpha16
   `Operations.java`; generation fails on duplicate or invalid entries, and a reflection conformance
-  test prevents drift. The current disposition is 94 implemented, 0 parse-only, 67 pending,
+  test prevents drift. The current disposition is 95 implemented, 0 parse-only, 66 pending,
   6 unavailable, and 5 reserved operations.
 - Cluster 1 now includes path data/drawing/clipping, AndroidX theme filtering, root scaling and
   alignment, root accessibility description, typed named-value overrides, primitive constants,
@@ -319,6 +319,10 @@ Current checkpoint:
   the component's requested size, with `-1` preserving AndroidX's unbounded sentinel.
   Variable-backed visibility implements AndroidX visible, invisible, gone, and override-bit
   precedence; render tests prove that invisible reserves layout space while gone removes it.
+  Sparse graphics-layer records preserve typed attributes in wire order. Scale, three-axis
+  rotation, transform origin, X/Y translation, elevation, alpha, and camera distance execute on the
+  shared Compose layer; translation-Z, compositing/color, blur, and shape attributes remain
+  document-level support errors until their backend semantics are implemented.
 - Cluster 4 has started with AndroidX `BitmapData`, `DrawBitmap`, `DrawBitmapInt`, and
   `DrawBitmapScaled`: inline encoded PNG variants decode through the CMP/Skiko image backend and
   render with variable destination bounds, integer source cropping, and all eight authoritative

@@ -103,6 +103,7 @@ public object RcDocumentCodec {
         HeightInModifierCodec,
         DimensionConstraintsModifierCodec,
         VisibilityModifierCodec,
+        GraphicsLayerModifierCodec,
         four(RcOpcodes.CLIP_RECT, "ClipRect"),
         four(RcOpcodes.MATRIX_SCALE, "MatrixScale"),
         two(RcOpcodes.MATRIX_TRANSLATE, "MatrixTranslate"),
@@ -519,6 +520,56 @@ private object VisibilityModifierCodec : RcOperationCodec<RcVisibilityModifier> 
 
   override fun encode(output: RcWireWriter, value: RcVisibilityModifier) =
     output.writeInt(value.visibilityId)
+}
+
+private object GraphicsLayerModifierCodec : RcOperationCodec<RcGraphicsLayerModifier> {
+  override val spec =
+    RcOperationSpec(RcOpcodes.MODIFIER_GRAPHICS_LAYER, "GraphicsLayerModifierOperation")
+
+  override fun decode(input: RcWireReader): RcGraphicsLayerModifier {
+    val count = input.readCount("attributes.count", RcGraphicsLayerModifier.ATTRIBUTE_COUNT)
+    return RcGraphicsLayerModifier(
+      List(count) { index ->
+        val key = input.readInt("attributes[$index].key")
+        val type = key ushr 10
+        val attributeIndex = key and 63
+        if (attributeIndex !in 0 until RcGraphicsLayerModifier.ATTRIBUTE_COUNT) {
+          input.fail("attributes[$index].key", "Unknown graphics-layer attribute $attributeIndex")
+        }
+        when (type) {
+          0 ->
+            RcGraphicsLayerAttribute.IntValue(
+              attributeIndex,
+              input.readInt("attributes[$index].intValue"),
+            )
+          1 ->
+            RcGraphicsLayerAttribute.FloatValue(
+              attributeIndex,
+              input.readFloatWord("attributes[$index].floatValue"),
+            )
+          else -> input.fail("attributes[$index].key", "Unknown graphics-layer value type $type")
+        }
+      }
+    )
+  }
+
+  override fun encode(output: RcWireWriter, value: RcGraphicsLayerModifier) {
+    require(value.attributes.size <= RcGraphicsLayerModifier.ATTRIBUTE_COUNT)
+    output.writeInt(value.attributes.size)
+    value.attributes.forEach { attribute ->
+      require(attribute.index in 0 until RcGraphicsLayerModifier.ATTRIBUTE_COUNT)
+      when (attribute) {
+        is RcGraphicsLayerAttribute.IntValue -> {
+          output.writeInt(attribute.index)
+          output.writeInt(attribute.value)
+        }
+        is RcGraphicsLayerAttribute.FloatValue -> {
+          output.writeInt(attribute.index or 1024)
+          output.writeFloatWord(attribute.value)
+        }
+      }
+    }
+  }
 }
 
 private object HeaderCodec : RcOperationCodec<RcHeader> {

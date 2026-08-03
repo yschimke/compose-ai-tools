@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asSkiaPath
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
@@ -51,6 +52,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.semantics.contentDescription
@@ -96,6 +98,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatExpression
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
+import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
+import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcIdLookup
 import ee.schimke.composeai.rcplayer.protocol.RcIdOperation
@@ -584,6 +588,7 @@ private fun Modifier.applyComponentModifiers(
   }
   result = result.applyWidth(modifiers, state, density, fillMissingDimensions)
   result = result.applyHeight(modifiers, state, density, fillMissingDimensions)
+  modifiers.graphicsLayer?.let { result = result.applyGraphicsLayer(it, state) }
   modifiers.placementModifiers.forEach { placement ->
     result =
       when (placement) {
@@ -627,6 +632,33 @@ private fun Modifier.applyComponentModifiers(
       )
   }
   return result
+}
+
+private fun Modifier.applyGraphicsLayer(
+  operation: RcGraphicsLayerModifier,
+  state: RcPlayerState,
+): Modifier {
+  val values = operation.attributes.associateBy { it.index }
+  fun float(index: Int, default: Float): Float =
+    (values[index] as? RcGraphicsLayerAttribute.FloatValue)?.let { state.resolve(it.value) }
+      ?: default
+  return graphicsLayer {
+    scaleX = float(RcGraphicsLayerModifier.SCALE_X, 1f)
+    scaleY = float(RcGraphicsLayerModifier.SCALE_Y, 1f)
+    rotationX = float(RcGraphicsLayerModifier.ROTATION_X, 0f)
+    rotationY = float(RcGraphicsLayerModifier.ROTATION_Y, 0f)
+    rotationZ = float(RcGraphicsLayerModifier.ROTATION_Z, 0f)
+    transformOrigin =
+      TransformOrigin(
+        float(RcGraphicsLayerModifier.TRANSFORM_ORIGIN_X, 0f),
+        float(RcGraphicsLayerModifier.TRANSFORM_ORIGIN_Y, 0f),
+      )
+    translationX = float(RcGraphicsLayerModifier.TRANSLATION_X, 0f)
+    translationY = float(RcGraphicsLayerModifier.TRANSLATION_Y, 0f)
+    shadowElevation = float(RcGraphicsLayerModifier.SHADOW_ELEVATION, 0f)
+    alpha = float(RcGraphicsLayerModifier.ALPHA, 1f)
+    cameraDistance = float(RcGraphicsLayerModifier.CAMERA_DISTANCE, 8f)
+  }
 }
 
 private fun Modifier.applyDimensionConstraint(

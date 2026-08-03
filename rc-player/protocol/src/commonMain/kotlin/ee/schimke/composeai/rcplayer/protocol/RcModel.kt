@@ -822,6 +822,47 @@ public data class RcVisibilityModifier(val visibilityId: Int) : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_VISIBILITY
 }
 
+public sealed interface RcGraphicsLayerAttribute {
+  public val index: Int
+
+  public data class FloatValue(override val index: Int, val value: RcFloatWord) :
+    RcGraphicsLayerAttribute
+
+  public data class IntValue(override val index: Int, val value: Int) : RcGraphicsLayerAttribute
+}
+
+/** Sparse graphics-layer attributes are retained in wire order for deterministic serialization. */
+public data class RcGraphicsLayerModifier(val attributes: List<RcGraphicsLayerAttribute>) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_GRAPHICS_LAYER
+
+  public companion object {
+    public const val SCALE_X: Int = 0
+    public const val SCALE_Y: Int = 1
+    public const val ROTATION_X: Int = 2
+    public const val ROTATION_Y: Int = 3
+    public const val ROTATION_Z: Int = 4
+    public const val TRANSFORM_ORIGIN_X: Int = 5
+    public const val TRANSFORM_ORIGIN_Y: Int = 6
+    public const val TRANSLATION_X: Int = 7
+    public const val TRANSLATION_Y: Int = 8
+    public const val TRANSLATION_Z: Int = 9
+    public const val SHADOW_ELEVATION: Int = 10
+    public const val ALPHA: Int = 11
+    public const val CAMERA_DISTANCE: Int = 12
+    public const val COMPOSITING_STRATEGY: Int = 13
+    public const val SPOT_SHADOW_COLOR: Int = 14
+    public const val AMBIENT_SHADOW_COLOR: Int = 15
+    public const val HAS_BLUR: Int = 16
+    public const val BLUR_RADIUS_X: Int = 17
+    public const val BLUR_RADIUS_Y: Int = 18
+    public const val BLUR_TILE_MODE: Int = 19
+    public const val SHAPE: Int = 20
+    public const val SHAPE_RADIUS: Int = 21
+    public const val ATTRIBUTE_COUNT: Int = 22
+  }
+}
+
 public object RcDimensionType {
   public const val EXACT: Int = 0
   public const val FILL: Int = 1
@@ -929,6 +970,7 @@ public object RcOpcodes {
   public const val CONTAINER_END: Int = 214
   public const val MODIFIER_OFFSET: Int = 221
   public const val MODIFIER_ZINDEX: Int = 223
+  public const val MODIFIER_GRAPHICS_LAYER: Int = 224
   public const val MODIFIER_WIDTH_IN: Int = 231
   public const val MODIFIER_HEIGHT_IN: Int = 232
   public const val MODIFIER_DIMENSION_CONSTRAINTS: Int = 243

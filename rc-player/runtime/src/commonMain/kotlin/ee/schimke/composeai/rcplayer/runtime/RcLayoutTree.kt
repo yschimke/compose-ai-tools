@@ -9,6 +9,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcClipRectModifier
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionConstraintsModifier
 import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
+import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
@@ -36,6 +37,7 @@ public data class RcLayoutModifiers(
   /** Extra size constraints are evaluated before the component's requested dimensions. */
   val dimensionConstraints: List<RcOperation> = emptyList(),
   val visibility: RcVisibilityModifier? = null,
+  val graphicsLayer: RcGraphicsLayerModifier? = null,
 )
 
 public sealed interface RcLayoutNode {
@@ -257,6 +259,7 @@ public object RcLayoutTree {
             it is RcDimensionConstraintsModifier
         },
       visibility = operations.singleModifier<RcVisibilityModifier>(container.operation),
+      graphicsLayer = operations.singleModifier<RcGraphicsLayerModifier>(container.operation),
     )
   }
 

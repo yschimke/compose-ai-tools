@@ -87,6 +87,7 @@ import androidx.compose.remote.core.operations.layout.modifiers.ComponentVisibil
 import androidx.compose.remote.core.operations.layout.modifiers.DimensionConstraintsModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.DimensionModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.DrawContentOperation
+import androidx.compose.remote.core.operations.layout.modifiers.GraphicsLayerModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HeightInModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.HeightModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.OffsetModifierOperation
@@ -139,6 +140,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatExpression as PlayerFloatEx
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
+import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
+import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcHeightInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
@@ -295,6 +298,32 @@ class AndroidxWireCompatibilityTest {
       assertIs<RcRoundedClipRectModifier>(document.operations[2]).topEnd.referencedId,
     )
     assertIs<RcClipRectModifier>(document.operations[3])
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
+  @Test
+  fun androidXGraphicsLayerAttributesRoundTripExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 100, 100, 1f, 0L)
+    GraphicsLayerModifierOperation.apply(
+      buffer,
+      hashMapOf(
+        GraphicsLayerModifierOperation.SCALE_X to 1.5f,
+        GraphicsLayerModifierOperation.TRANSLATION_X to Utils.asNan(42),
+        GraphicsLayerModifierOperation.TRANSLATION_Y to 10f,
+        GraphicsLayerModifierOperation.ALPHA to .5f,
+      ),
+    )
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+
+    val layer = assertIs<RcGraphicsLayerModifier>(document.operations.single())
+    val translation =
+      assertIs<RcGraphicsLayerAttribute.FloatValue>(
+        layer.attributes.single { it.index == RcGraphicsLayerModifier.TRANSLATION_X }
+      )
+    assertEquals(42, translation.value.referencedId)
     assertContentEquals(bytes, RcDocumentCodec.encode(document))
   }
 

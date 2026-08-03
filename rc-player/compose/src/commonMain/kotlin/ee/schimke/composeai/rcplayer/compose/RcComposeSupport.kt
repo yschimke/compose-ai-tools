@@ -11,6 +11,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
+import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
+import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
@@ -120,6 +122,33 @@ public fun RcDocument.composeSupportReport(): RcComposeSupportReport {
           "BackgroundModifier",
           "shape type ${operation.shapeType} is not implemented",
         )
+    }
+    if (operation is RcGraphicsLayerModifier) {
+      val supported =
+        setOf(
+          RcGraphicsLayerModifier.SCALE_X,
+          RcGraphicsLayerModifier.SCALE_Y,
+          RcGraphicsLayerModifier.ROTATION_X,
+          RcGraphicsLayerModifier.ROTATION_Y,
+          RcGraphicsLayerModifier.ROTATION_Z,
+          RcGraphicsLayerModifier.TRANSFORM_ORIGIN_X,
+          RcGraphicsLayerModifier.TRANSFORM_ORIGIN_Y,
+          RcGraphicsLayerModifier.TRANSLATION_X,
+          RcGraphicsLayerModifier.TRANSLATION_Y,
+          RcGraphicsLayerModifier.SHADOW_ELEVATION,
+          RcGraphicsLayerModifier.ALPHA,
+          RcGraphicsLayerModifier.CAMERA_DISTANCE,
+        )
+      operation.attributes
+        .firstOrNull { it.index !in supported || it !is RcGraphicsLayerAttribute.FloatValue }
+        ?.let { attribute ->
+          issues +=
+            RcComposeSupportIssue(
+              index,
+              "GraphicsLayerModifier",
+              "attribute ${attribute.index} is not implemented by the CMP graphics backend",
+            )
+        }
     }
     if (operation is RcIntegerExpression) {
       RcIntegerExpressionEvaluator.validationError(operation)?.let { detail ->
