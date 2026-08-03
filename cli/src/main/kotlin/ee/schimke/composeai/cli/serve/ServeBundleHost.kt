@@ -400,7 +400,10 @@ class ServeBundleHost(
       // truncated PNG.
       return runCatching {
           path.parent?.let(fileSystem::createDirectories)
-          val partial = path.parent!!.resolve("${'$'}{path.name}$PARTIAL_SUFFIX")
+          // Named per destination, not a shared temp: two ids filling concurrently hold
+          // different locks, so a single shared partial name would let one preview's bytes be
+          // published under another's id.
+          val partial = path.parent!!.resolve(path.name + PARTIAL_SUFFIX)
           fileSystem.write(partial) { write(bytes) }
           fileSystem.atomicMove(partial, path)
           path
@@ -411,9 +414,24 @@ class ServeBundleHost(
 
   /** [previewId]'s baked PNG only if it is already local — never fetches. */
   private fun localBakedPng(previewId: String): okio.Path? =
-    File(previewsDir, "${'$'}previewId${'$'}PNG_SUFFIX").toOkioPath().takeIf(fileSystem::exists)
+    File(previewsDir, previewId + PNG_SUFFIX).toOkioPath().takeIf(fileSystem::exists)
 
   private val fillLocks = java.util.concurrent.ConcurrentHashMap<String, Any>()
+
+  /**
+   * The local-pixels fast path. Deliberately [localBakedPng], not [bakedPngFile]: a declared
+   * preview whose PNG hasn't arrived yet needs a fetch, and fetching is work that belongs behind
+   * admission like any other. Answering null sends it down the ordinary [render] path, which fills
+   * it.
+   */
+  override fun bakedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? {
+    if (previewId !in previewIds) return null
+    val png = localBakedPng(previewId) ?: return null
+    return RenderOutcome.Ok(
+      fileSystem.read(png) { readByteArray() },
+      RenderOutcome.Generation.BAKED,
+    )
+  }
 
   override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
     if (previewId !in previewIds) return RenderOutcome.NotFound

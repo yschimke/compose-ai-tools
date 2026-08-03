@@ -2604,7 +2604,17 @@ class ServeHttpServer(
           // close the race with a render that completes between these two calls.
           // A full-page request is a distinct daemon data product; a cached viewport PNG cannot
           // satisfy it even when the preview + overrides key is otherwise identical.
-          val cached = if (scroll) null else renderHost.cachedRender(previewId, overrides)
+          // Answerable without entering admission: a completed theme-cache entry, or pixels
+          // already baked on disk. This is what lets a mostly-browsing box stay responsive under
+          // load — otherwise every thumbnail read competes for the same handful of global render
+          // slots as the daemon renders, and a few cold ones (which can take a minute each)
+          // head-of-line block dozens of readers whose answer was a local file, until they 503.
+          // A `?scroll=` request is a distinct full-page product that baked pixels cannot satisfy.
+          val cached =
+            if (scroll) null
+            else
+              renderHost.cachedRender(previewId, overrides)
+                ?: renderHost.bakedRender(previewId, overrides)
           val pureThemeProvider =
             overrides.themeProvider?.takeIf {
               overrides == PreviewOverrides(themeProvider = it) &&

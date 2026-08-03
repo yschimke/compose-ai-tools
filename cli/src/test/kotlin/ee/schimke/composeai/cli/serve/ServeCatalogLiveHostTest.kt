@@ -66,6 +66,12 @@ class ServeCatalogLiveHostTest {
       return RenderOutcome.Ok("$tag:$previewId".encodeToByteArray())
     }
 
+    // Local pixels, served without admission. Deliberately does NOT count as a render call, so a
+    // test can assert the daemon was never reached.
+    override fun bakedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? =
+      if (previewId in liveOnlyPreviewIds) null
+      else RenderOutcome.Ok("$tag:$previewId".encodeToByteArray())
+
     override fun renderSvg(previewId: String, overrides: PreviewOverrides): SvgOutcome {
       lastSvgId = previewId
       lastRenderOverrides = overrides
@@ -849,6 +855,37 @@ class ServeCatalogLiveHostTest {
     assertEquals(0, replacementLive.renderCalls)
     val cached = replacement.render(catalogId, themeOverride()) as RenderOutcome.Ok
     assertEquals(RenderOutcome.Generation.CATALOG_CACHE, cached.generation)
+  }
+
+  @Test
+  fun `the no-admission fast path serves baked pixels but never a daemon render`() {
+    // `bakedRender` is what lets a mostly-browsing box skip the global render-slot queue. It must
+    // answer exactly the requests `render` would have replayed from baked pixels — and refuse the
+    // ones that were supposed to reach a daemon, or the fast path would silently serve stale
+    // pixels for a re-render.
+    val baked =
+      RecordingHost(
+        previews =
+          listOf(ServePreview(catalogId, catalogId), ServePreview(androidOnlyId, androidOnlyId)),
+        tag = "baked",
+      )
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId, overrides = listOf(labelKnob))),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    // The default page view: no overrides, so it replays published pixels without admission.
+    assertTrue(composite.bakedRender(catalogId, PreviewOverrides()) != null)
+    // An unaliased variant has no daemon twin at all — always baked.
+    assertTrue(composite.bakedRender(androidOnlyId, PreviewOverrides()) != null)
+    // A knob and an app-declared theme both need the daemon, so the fast path must decline.
+    assertNull(composite.bakedRender(catalogId, knobOverride()))
+    assertNull(composite.bakedRender(catalogId, themeOverride()))
+    // None of that woke the daemon.
+    assertEquals(0, live.renderCalls)
   }
 
   @Test

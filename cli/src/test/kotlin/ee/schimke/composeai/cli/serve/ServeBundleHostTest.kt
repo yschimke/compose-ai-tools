@@ -21,6 +21,24 @@ class ServeBundleHostTest {
   }
 
   @Test
+  fun `the no-admission fast path serves real local pixels`() {
+    // Against the REAL host, not a fake. The fast path is only worth anything if it actually finds
+    // the file: a fake that returns bytes regardless would pass while the production path silently
+    // fell through to the admitted render queue for every request.
+    val host = ServeBundleHost(bundle("com.example.Red" to byteArrayOf(4, 2)), label = "b")
+
+    val ok = host.bakedRender("com.example.Red", PreviewOverrides())
+    assertTrue(ok != null, "local pixels must be servable without admission")
+    assertTrue(byteArrayOf(4, 2).contentEquals(ok!!.png))
+    assertEquals(RenderOutcome.Generation.BAKED, ok.generation)
+    // Nested ids resolve the same way.
+    val nested = ServeBundleHost(bundle("group/com.example.Blue" to byteArrayOf(7)), label = "b")
+    assertTrue(nested.bakedRender("group/com.example.Blue", PreviewOverrides()) != null)
+    // An id this host does not carry has nothing to serve.
+    assertNull(host.bakedRender("com.example.Missing", PreviewOverrides()))
+  }
+
+  @Test
   fun `nested preview ids (with slashes) are discovered and rendered`() {
     val host = ServeBundleHost(bundle("group/com.example.Red" to byteArrayOf(4, 2)), label = "b")
     assertEquals(listOf("group/com.example.Red"), host.previews.map { it.id })

@@ -408,6 +408,21 @@ class ServeCatalogLiveHost(
    * pixels, while the default browse stays baked-instant. Only the mapped (daemon-twinned) ids can
    * re-render; an unmapped Android-only variant always replays baked.
    */
+  /**
+   * Answerable without admission only when this request would not have reached a daemon at all —
+   * the same [daemonIdForOverrideRender] predicate `render` routes on, so the fast path can never
+   * silently serve baked pixels for something that was supposed to be re-rendered. An override-free
+   * browse (the default page) always lands here, which is the point: a default page view must
+   * replay published pixels, never generate them.
+   */
+  override fun bakedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? {
+    cachedRender(previewId, overrides)?.let {
+      return it
+    }
+    if (daemonIdForOverrideRender(previewId, overrides) != null) return null
+    return baked.bakedRender(previewId, overrides)
+  }
+
   override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
     val themeCacheKey = themeCacheKey(previewId, overrides)
     cachedRender(previewId, overrides)?.let {
