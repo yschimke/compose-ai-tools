@@ -69,9 +69,16 @@
       var stored = null;
 try { stored = localStorage.getItem("cp-theme:default"); } catch (e) {}
 var themeBtns = document.querySelectorAll(".cp-theme-btn");
+// The GRID always opens on published pixels. A stored app-declared theme
+// (`theme:<providerFqn>`) is deliberately NOT replayed here: restoring it would re-point
+// every card at a `?themeProvider=` render and put the whole grid through the daemon on
+// what is meant to be a default page view — the single most expensive thing an idle box
+// can be made to do, and it happened on every return visit. Only the baked chips, whose
+// pixels are already published, are restored. Stickiness for app-declared themes belongs
+// to the individual preview, which reads this same key for its own Theme select.
 function validTheme(t) {
   if (!t) return false;
-  return t === "light" || t === "dark" || t === "default" || t.indexOf("theme:") === 0;
+  return t === "light" || t === "dark" || t === "default";
 }
 var theme = validTheme(stored) ? stored
   : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");

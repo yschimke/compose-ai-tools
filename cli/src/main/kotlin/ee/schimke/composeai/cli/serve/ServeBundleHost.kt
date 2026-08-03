@@ -415,6 +415,21 @@ class ServeBundleHost(
 
   private val fillLocks = java.util.concurrent.ConcurrentHashMap<String, Any>()
 
+  /**
+   * The local-pixels fast path. Deliberately [localBakedPng], not [bakedPngFile]: a declared
+   * preview whose PNG hasn't arrived yet needs a fetch, and fetching is work that belongs behind
+   * admission like any other. Answering null sends it down the ordinary [render] path, which fills
+   * it.
+   */
+  override fun bakedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? {
+    if (previewId !in previewIds) return null
+    val png = localBakedPng(previewId) ?: return null
+    return RenderOutcome.Ok(
+      fileSystem.read(png) { readByteArray() },
+      RenderOutcome.Generation.BAKED,
+    )
+  }
+
   override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
     if (previewId !in previewIds) return RenderOutcome.NotFound
     val png = bakedPngFile(previewId) ?: return RenderOutcome.NotFound
