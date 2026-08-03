@@ -52,6 +52,32 @@ import kotlin.test.assertFailsWith
 
 class RcPlayerStateTest {
   @Test
+  fun touchLifecycleActionsDispatchAndInvalidate() {
+    val events = mutableListOf<RcPlayerEvent>()
+    var invalidations = 0
+    val state =
+      RcPlayerState(
+        RcDocument(RcHeader(RcVersion(1, 0, 0)), emptyList()),
+        eventSink = events::add,
+        onInvalidated = { invalidations++ },
+      )
+
+    state.executeTouch(
+      RcTouchActionBlock(
+        RcTouchActionType.CANCEL,
+        listOf(
+          RcLinkedNode.Operation(RcValueIntegerChangeAction(20, 4)),
+          RcLinkedNode.Operation(RcHostAction(73)),
+        ),
+      )
+    )
+
+    assertEquals(4, state.integer(20))
+    assertEquals(listOf<RcPlayerEvent>(RcPlayerEvent.HostAction(73)), events)
+    assertEquals(1, invalidations)
+  }
+
+  @Test
   fun runActionExecutesInWireOrderWithoutSchedulingClickInvalidation() {
     val events = mutableListOf<RcPlayerEvent>()
     var invalidations = 0

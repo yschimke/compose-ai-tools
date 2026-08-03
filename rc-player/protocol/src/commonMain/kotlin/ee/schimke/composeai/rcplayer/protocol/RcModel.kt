@@ -1046,6 +1046,19 @@ public data object RcClickModifier : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_CLICK
 }
 
+/** Payload-free action containers dispatched for the corresponding pointer lifecycle event. */
+public data object RcTouchDownModifier : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_TOUCH_DOWN
+}
+
+public data object RcTouchUpModifier : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_TOUCH_UP
+}
+
+public data object RcTouchCancelModifier : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_TOUCH_CANCEL
+}
+
 public data class RcHostAction(val actionId: Int) : RcOperation {
   override val opcode: Int = RcOpcodes.HOST_ACTION
 }
@@ -1333,10 +1346,13 @@ public object RcOpcodes {
   public const val CONTAINER_END: Int = 214
   public const val HOST_METADATA_ACTION: Int = 216
   public const val VALUE_INTEGER_EXPRESSION_CHANGE_ACTION: Int = 218
+  public const val MODIFIER_TOUCH_DOWN: Int = 219
+  public const val MODIFIER_TOUCH_UP: Int = 220
   public const val MODIFIER_OFFSET: Int = 221
   public const val VALUE_FLOAT_CHANGE_ACTION: Int = 222
   public const val MODIFIER_ZINDEX: Int = 223
   public const val MODIFIER_GRAPHICS_LAYER: Int = 224
+  public const val MODIFIER_TOUCH_CANCEL: Int = 225
   public const val MODIFIER_SCROLL: Int = 226
   public const val VALUE_FLOAT_EXPRESSION_CHANGE_ACTION: Int = 227
   public const val MODIFIER_MARQUEE: Int = 228

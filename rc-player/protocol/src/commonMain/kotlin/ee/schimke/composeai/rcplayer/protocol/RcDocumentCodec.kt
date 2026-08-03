@@ -45,6 +45,9 @@ public object RcDocumentCodec {
         NamedVariableCodec,
         PathDataCodec,
         ClickModifierCodec,
+        TouchDownModifierCodec,
+        TouchUpModifierCodec,
+        TouchCancelModifierCodec,
         HostActionCodec,
         HostNamedActionCodec,
         HostMetadataActionCodec,
@@ -829,6 +832,31 @@ private object ClickModifierCodec : RcOperationCodec<RcClickModifier> {
   override fun decode(input: RcWireReader): RcClickModifier = RcClickModifier
 
   override fun encode(output: RcWireWriter, value: RcClickModifier): Unit = Unit
+}
+
+private object TouchDownModifierCodec : RcOperationCodec<RcTouchDownModifier> {
+  override val spec = RcOperationSpec(RcOpcodes.MODIFIER_TOUCH_DOWN, "TouchDownModifierOperation")
+
+  override fun decode(input: RcWireReader): RcTouchDownModifier = RcTouchDownModifier
+
+  override fun encode(output: RcWireWriter, value: RcTouchDownModifier): Unit = Unit
+}
+
+private object TouchUpModifierCodec : RcOperationCodec<RcTouchUpModifier> {
+  override val spec = RcOperationSpec(RcOpcodes.MODIFIER_TOUCH_UP, "TouchUpModifierOperation")
+
+  override fun decode(input: RcWireReader): RcTouchUpModifier = RcTouchUpModifier
+
+  override fun encode(output: RcWireWriter, value: RcTouchUpModifier): Unit = Unit
+}
+
+private object TouchCancelModifierCodec : RcOperationCodec<RcTouchCancelModifier> {
+  override val spec =
+    RcOperationSpec(RcOpcodes.MODIFIER_TOUCH_CANCEL, "TouchCancelModifierOperation")
+
+  override fun decode(input: RcWireReader): RcTouchCancelModifier = RcTouchCancelModifier
+
+  override fun encode(output: RcWireWriter, value: RcTouchCancelModifier): Unit = Unit
 }
 
 private object HostActionCodec : RcOperationCodec<RcHostAction> {

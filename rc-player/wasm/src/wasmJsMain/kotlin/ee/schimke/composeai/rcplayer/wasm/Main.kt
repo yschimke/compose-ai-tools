@@ -158,6 +158,9 @@ private fun postPlayerEvent(event: RcPlayerEvent) {
 private fun postHostAction(actionId: Int): Unit =
   js(
     "(document.documentElement.dataset.rcPlayerAction = String(actionId), " +
+      "document.documentElement.dataset.rcPlayerActionTrace = " +
+      "(document.documentElement.dataset.rcPlayerActionTrace ? " +
+      "document.documentElement.dataset.rcPlayerActionTrace + ',' : '') + String(actionId), " +
       "window.parent.postMessage({ type: 'cp-rc-host-action', actionId: actionId }, '*'))"
   )
 

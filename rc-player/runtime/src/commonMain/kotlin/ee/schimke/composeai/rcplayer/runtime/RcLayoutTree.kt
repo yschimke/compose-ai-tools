@@ -36,6 +36,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcScrollModifier
 import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
+import ee.schimke.composeai.rcplayer.protocol.RcTouchCancelModifier
+import ee.schimke.composeai.rcplayer.protocol.RcTouchDownModifier
+import ee.schimke.composeai.rcplayer.protocol.RcTouchUpModifier
 import ee.schimke.composeai.rcplayer.protocol.RcVisibilityModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
@@ -57,6 +60,7 @@ public data class RcLayoutModifiers(
   val layoutComputes: List<RcLayoutComputeBlock> = emptyList(),
   val accessibility: List<RcAccessibilitySemantics> = emptyList(),
   val clicks: List<RcClickActionBlock> = emptyList(),
+  val touchActions: List<RcTouchActionBlock> = emptyList(),
   val scroll: RcScrollBlock? = null,
   val marquee: RcMarqueeModifier? = null,
   val visibility: RcVisibilityModifier? = null,
@@ -69,6 +73,14 @@ public data class RcLayoutComputeBlock(
 )
 
 public data class RcClickActionBlock(val children: List<RcLinkedNode>)
+
+public enum class RcTouchActionType {
+  DOWN,
+  UP,
+  CANCEL,
+}
+
+public data class RcTouchActionBlock(val type: RcTouchActionType, val children: List<RcLinkedNode>)
 
 public data class RcScrollBlock(val operation: RcScrollModifier, val children: List<RcLinkedNode>)
 
@@ -432,6 +444,17 @@ public object RcLayoutTree {
       clicks =
         container.children.filterIsInstance<RcLinkedNode.Container>().mapNotNull { child ->
           if (child.operation is RcClickModifier) RcClickActionBlock(child.children) else null
+        },
+      touchActions =
+        container.children.filterIsInstance<RcLinkedNode.Container>().mapNotNull { child ->
+          val type =
+            when (child.operation) {
+              RcTouchDownModifier -> RcTouchActionType.DOWN
+              RcTouchUpModifier -> RcTouchActionType.UP
+              RcTouchCancelModifier -> RcTouchActionType.CANCEL
+              else -> null
+            }
+          type?.let { RcTouchActionBlock(it, child.children) }
         },
       scroll =
         container.children

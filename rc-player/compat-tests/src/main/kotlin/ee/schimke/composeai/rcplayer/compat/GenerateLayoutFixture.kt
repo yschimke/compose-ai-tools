@@ -16,6 +16,9 @@ import androidx.compose.remote.core.operations.layout.ClickModifierOperation
 import androidx.compose.remote.core.operations.layout.ContainerEnd
 import androidx.compose.remote.core.operations.layout.LayoutComponentContent
 import androidx.compose.remote.core.operations.layout.RootLayoutComponent
+import androidx.compose.remote.core.operations.layout.TouchCancelModifierOperation
+import androidx.compose.remote.core.operations.layout.TouchDownModifierOperation
+import androidx.compose.remote.core.operations.layout.TouchUpModifierOperation
 import androidx.compose.remote.core.operations.layout.managers.BoxLayout
 import androidx.compose.remote.core.operations.layout.managers.CanvasLayout
 import androidx.compose.remote.core.operations.layout.managers.CollapsibleRowLayout
@@ -215,6 +218,15 @@ public fun main(args: Array<String>) {
     true,
   )
   RippleModifierOperation.apply(buffer)
+  TouchDownModifierOperation.apply(buffer)
+  HostActionOperation.apply(buffer, 79)
+  ContainerEnd.apply(buffer)
+  TouchUpModifierOperation.apply(buffer)
+  HostActionOperation.apply(buffer, 80)
+  ContainerEnd.apply(buffer)
+  TouchCancelModifierOperation.apply(buffer)
+  HostActionOperation.apply(buffer, 81)
+  ContainerEnd.apply(buffer)
   ClickModifierOperation.apply(buffer)
   ValueIntegerExpressionChangeActionOperation.apply(buffer, 23L, 31L)
   HostNamedActionOperation.apply(buffer, 1006, HostNamedActionOperation.INT_TYPE, 23)

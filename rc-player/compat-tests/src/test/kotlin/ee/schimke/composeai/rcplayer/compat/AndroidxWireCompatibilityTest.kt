@@ -77,6 +77,9 @@ import androidx.compose.remote.core.operations.layout.ClickModifierOperation
 import androidx.compose.remote.core.operations.layout.ContainerEnd
 import androidx.compose.remote.core.operations.layout.LayoutComponentContent
 import androidx.compose.remote.core.operations.layout.RootLayoutComponent
+import androidx.compose.remote.core.operations.layout.TouchCancelModifierOperation
+import androidx.compose.remote.core.operations.layout.TouchDownModifierOperation
+import androidx.compose.remote.core.operations.layout.TouchUpModifierOperation
 import androidx.compose.remote.core.operations.layout.managers.BoxLayout
 import androidx.compose.remote.core.operations.layout.managers.CanvasLayout
 import androidx.compose.remote.core.operations.layout.managers.CollapsibleColumnLayout
@@ -204,7 +207,10 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
+import ee.schimke.composeai.rcplayer.protocol.RcTouchCancelModifier
+import ee.schimke.composeai.rcplayer.protocol.RcTouchDownModifier
 import ee.schimke.composeai.rcplayer.protocol.RcTouchExpression
+import ee.schimke.composeai.rcplayer.protocol.RcTouchUpModifier
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcValueFloatChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueFloatExpressionChangeAction
@@ -234,6 +240,29 @@ import kotlin.test.assertTrue
  * from this test module: AndroidX remote-core/Java player is the protocol authority.
  */
 class AndroidxWireCompatibilityTest {
+  @Test
+  fun androidXTouchActionModifiersRoundTripExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    TouchDownModifierOperation.apply(buffer)
+    HostActionOperation.apply(buffer, 71)
+    ContainerEnd.apply(buffer)
+    TouchUpModifierOperation.apply(buffer)
+    HostActionOperation.apply(buffer, 72)
+    ContainerEnd.apply(buffer)
+    TouchCancelModifierOperation.apply(buffer)
+    HostActionOperation.apply(buffer, 73)
+    ContainerEnd.apply(buffer)
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+
+    assertIs<RcTouchDownModifier>(document.operations[0])
+    assertIs<RcTouchUpModifier>(document.operations[3])
+    assertIs<RcTouchCancelModifier>(document.operations[6])
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
   @Test
   fun androidXMarqueeModifierRoundTripsExactly() {
     val buffer = WireBuffer()

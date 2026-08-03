@@ -489,6 +489,15 @@ public class RcPlayerState(
     executeActions(block.children, invalidateAfterChanges = true, containerName = "ClickModifier")
   }
 
+  public fun executeTouch(block: RcTouchActionBlock) {
+    executeActions(
+      block.children,
+      invalidateAfterChanges = true,
+      containerName =
+        "Touch${block.type.name.lowercase().replaceFirstChar(Char::uppercase)}Modifier",
+    )
+  }
+
   /** AndroidX runs these during paint; values affect later paint operations in the same frame. */
   public fun executeRunAction(children: List<RcLinkedNode>) {
     executeActions(children, invalidateAfterChanges = false, containerName = "RunAction")

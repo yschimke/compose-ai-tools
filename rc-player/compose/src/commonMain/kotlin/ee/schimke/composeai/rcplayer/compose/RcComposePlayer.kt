@@ -74,12 +74,19 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.LastBaseline
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.PointerInputModifierNode
+import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
@@ -192,6 +199,8 @@ import ee.schimke.composeai.rcplayer.runtime.RcNamedValue
 import ee.schimke.composeai.rcplayer.runtime.RcPlayerEvent
 import ee.schimke.composeai.rcplayer.runtime.RcPlayerState
 import ee.schimke.composeai.rcplayer.runtime.RcScrollBlock
+import ee.schimke.composeai.rcplayer.runtime.RcTouchActionBlock
+import ee.schimke.composeai.rcplayer.runtime.RcTouchActionType
 import ee.schimke.composeai.rcplayer.runtime.RcTouchExpressionRuntime
 import ee.schimke.composeai.rcplayer.runtime.androidXMarqueeOffset
 import kotlin.math.PI
@@ -1204,6 +1213,9 @@ private fun Modifier.applyComponentModifiers(
   if (modifiers.clicks.isNotEmpty()) {
     result = result.clickable { modifiers.clicks.forEach(state::executeClick) }
   }
+  if (modifiers.touchActions.isNotEmpty()) {
+    result = result.applyAndroidXTouchActions(modifiers, state)
+  }
   modifiers.accessibility.forEach { semantics ->
     result =
       result.applyAccessibilitySemantics(
@@ -1213,6 +1225,59 @@ private fun Modifier.applyComponentModifiers(
       )
   }
   return result
+}
+
+private fun Modifier.applyAndroidXTouchActions(
+  modifiers: RcLayoutModifiers,
+  state: RcPlayerState,
+): Modifier = then(RcTouchActionsElement(modifiers.touchActions, state))
+
+private data class RcTouchActionsElement(
+  val actions: List<RcTouchActionBlock>,
+  val state: RcPlayerState,
+) : ModifierNodeElement<RcTouchActionsNode>() {
+  override fun create(): RcTouchActionsNode = RcTouchActionsNode(actions, state)
+
+  override fun update(node: RcTouchActionsNode) {
+    node.actions = actions
+    node.state = state
+  }
+
+  override fun InspectorInfo.inspectableProperties() {
+    name = "androidXTouchActions"
+  }
+}
+
+private class RcTouchActionsNode(var actions: List<RcTouchActionBlock>, var state: RcPlayerState) :
+  Modifier.Node(), PointerInputModifierNode {
+  private var pressed: Boolean = false
+
+  override fun onPointerEvent(pointerEvent: PointerEvent, pass: PointerEventPass, bounds: IntSize) {
+    if (pass != PointerEventPass.Main) return
+    if (!pressed && pointerEvent.changes.any { it.changedToDownIgnoreConsumed() }) {
+      pressed = true
+      dispatch(RcTouchActionType.DOWN)
+    }
+    if (pressed && pointerEvent.changes.isNotEmpty() && pointerEvent.changes.all { !it.pressed }) {
+      pressed = false
+      if (pointerEvent.changes.all { it.changedToUpIgnoreConsumed() }) {
+        dispatch(RcTouchActionType.UP)
+      } else {
+        dispatch(RcTouchActionType.CANCEL)
+      }
+    }
+  }
+
+  override fun onCancelPointerInput() {
+    if (pressed) {
+      pressed = false
+      dispatch(RcTouchActionType.CANCEL)
+    }
+  }
+
+  private fun dispatch(type: RcTouchActionType) {
+    actions.filter { it.type == type }.forEach(state::executeTouch)
+  }
 }
 
 @Composable

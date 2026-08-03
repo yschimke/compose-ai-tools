@@ -10,6 +10,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.compose.ui.unit.Density
@@ -28,6 +29,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcRippleModifier
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextData
+import ee.schimke.composeai.rcplayer.protocol.RcTouchCancelModifier
+import ee.schimke.composeai.rcplayer.protocol.RcTouchDownModifier
+import ee.schimke.composeai.rcplayer.protocol.RcTouchUpModifier
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.runtime.RcPlayerEvent
@@ -35,6 +39,45 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class RcAccessibilitySemanticsTest {
+  @OptIn(ExperimentalTestApi::class)
+  @Test
+  fun dispatchesTouchDownAndUpContainersFromRealComposeInput() =
+    runSkikoComposeUiTest(size = Size(40f, 40f), density = Density(1f)) {
+      val events = mutableListOf<RcPlayerEvent>()
+      val end = RcNoArg(RcOpcodes.CONTAINER_END)
+      val document =
+        RcDocument(
+          RcHeader(RcVersion(1, 0, 0), legacyWidth = 40, legacyHeight = 40, modern = false),
+          listOf(
+            RcRootLayout(1),
+            RcLayoutContent(2),
+            RcCanvasLayout(3, 30),
+            RcWidthModifier(RcDimensionType.EXACT, RcFloatWord.literal(40f)),
+            RcHeightModifier(RcDimensionType.EXACT, RcFloatWord.literal(40f)),
+            RcTouchDownModifier,
+            RcHostAction(71),
+            end,
+            RcTouchUpModifier,
+            RcHostAction(72),
+            end,
+            RcTouchCancelModifier,
+            RcHostAction(73),
+            end,
+            end,
+            end,
+            end,
+          ),
+        )
+      setContent { RcComposePlayer(document, onEvent = events::add) }
+
+      onRoot().performTouchInput { click() }
+
+      assertEquals(
+        listOf<RcPlayerEvent>(RcPlayerEvent.HostAction(71), RcPlayerEvent.HostAction(72)),
+        events,
+      )
+    }
+
   @OptIn(ExperimentalTestApi::class)
   @Test
   fun exposesAndroidXSemanticsThroughTheComposeTree() =

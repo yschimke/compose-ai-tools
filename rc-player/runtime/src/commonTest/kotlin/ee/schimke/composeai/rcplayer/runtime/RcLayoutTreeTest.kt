@@ -26,7 +26,10 @@ import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcScrollModifier
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
+import ee.schimke.composeai.rcplayer.protocol.RcTouchCancelModifier
+import ee.schimke.composeai.rcplayer.protocol.RcTouchDownModifier
 import ee.schimke.composeai.rcplayer.protocol.RcTouchExpression
+import ee.schimke.composeai.rcplayer.protocol.RcTouchUpModifier
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
@@ -143,6 +146,43 @@ class RcLayoutTreeTest {
     val canvas = assertIs<RcLayoutNode.Canvas>(content.children.single())
 
     assertEquals(marquee, canvas.modifiers.marquee)
+  }
+
+  @Test
+  fun preservesTouchLifecycleActionsInWireOrder() {
+    val end = RcNoArg(RcOpcodes.CONTAINER_END)
+    val root =
+      requireNotNull(
+        treeOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcCanvasLayout(3, 30),
+          RcTouchDownModifier,
+          RcHostAction(71),
+          end,
+          RcTouchUpModifier,
+          RcHostAction(72),
+          end,
+          RcTouchCancelModifier,
+          RcHostAction(73),
+          end,
+          ends = 3,
+        )
+      )
+    val content = assertIs<RcLayoutNode.Content>(root.children.single())
+    val canvas = assertIs<RcLayoutNode.Canvas>(content.children.single())
+
+    assertEquals(
+      listOf(RcTouchActionType.DOWN, RcTouchActionType.UP, RcTouchActionType.CANCEL),
+      canvas.modifiers.touchActions.map { it.type },
+    )
+    assertEquals(
+      listOf(71, 72, 73),
+      canvas.modifiers.touchActions.map {
+        assertIs<RcHostAction>(assertIs<RcLinkedNode.Operation>(it.children.single()).operation)
+          .actionId
+      },
+    )
   }
 
   @Test
