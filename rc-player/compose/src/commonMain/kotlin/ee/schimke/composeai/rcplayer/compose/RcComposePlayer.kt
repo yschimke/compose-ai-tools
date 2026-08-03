@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -263,13 +264,40 @@ private fun RenderLayoutNode(
           )
         }
       }
-    is RcLayoutNode.Box,
+    is RcLayoutNode.Box ->
+      Box(
+        modifier.applyLayoutModifiers(node.modifiers, state, fillMissingDimensions = false),
+        contentAlignment =
+          boxAlignment(node.operation.horizontalPositioning, node.operation.verticalPositioning),
+      ) {
+        RenderLayoutNode(
+          node.content,
+          state = state,
+          textMeasurer = textMeasurer,
+          images = images,
+          theme = theme,
+        )
+      }
     is RcLayoutNode.Row,
     is RcLayoutNode.Column,
     is RcLayoutNode.FitBox ->
       error("${node::class.simpleName} layout semantics are not implemented")
   }
 }
+
+internal fun boxAlignment(horizontal: Int, vertical: Int): Alignment =
+  when (horizontal to vertical) {
+    1 to 4 -> Alignment.TopStart
+    2 to 4 -> Alignment.TopCenter
+    3 to 4 -> Alignment.TopEnd
+    1 to 2 -> Alignment.CenterStart
+    2 to 2 -> Alignment.Center
+    3 to 2 -> Alignment.CenterEnd
+    1 to 5 -> Alignment.BottomStart
+    2 to 5 -> Alignment.BottomCenter
+    3 to 5 -> Alignment.BottomEnd
+    else -> error("Unknown AndroidX box alignment horizontal=$horizontal vertical=$vertical")
+  }
 
 @Composable
 private fun Modifier.applyLayoutModifiers(

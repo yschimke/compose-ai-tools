@@ -1,6 +1,8 @@
 package ee.schimke.composeai.rcplayer.compose
 
+import androidx.compose.ui.Alignment
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
+import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
@@ -99,6 +101,36 @@ class RcComposeSupportTest {
 
     assertEquals("WidthModifier", issue.operation)
     assertEquals("dimension type 3 is not implemented", issue.detail)
+  }
+
+  @Test
+  fun mapsEveryAndroidxBoxAlignment() {
+    val expected =
+      mapOf(
+        (1 to 4) to Alignment.TopStart,
+        (2 to 4) to Alignment.TopCenter,
+        (3 to 4) to Alignment.TopEnd,
+        (1 to 2) to Alignment.CenterStart,
+        (2 to 2) to Alignment.Center,
+        (3 to 2) to Alignment.CenterEnd,
+        (1 to 5) to Alignment.BottomStart,
+        (2 to 5) to Alignment.BottomCenter,
+        (3 to 5) to Alignment.BottomEnd,
+      )
+
+    expected.forEach { (positions, alignment) ->
+      assertEquals(alignment, boxAlignment(positions.first, positions.second))
+    }
+  }
+
+  @Test
+  fun rejectsUnknownBoxAlignmentBeforeRendering() {
+    val issue =
+      RcDocument(header, listOf(RcBoxLayout(2, 20, 8, 4))).composeSupportReport().issues.first {
+        it.operation == "BoxLayout"
+      }
+
+    assertEquals("horizontal position 8 is not implemented", issue.detail)
   }
 
   @Test

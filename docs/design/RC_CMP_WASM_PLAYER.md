@@ -267,7 +267,7 @@ Current checkpoint:
   available independently.
 - The checked-in manifest exactly matches all 172 public integer entries in AndroidX alpha16
   `Operations.java`; generation fails on duplicate or invalid entries, and a reflection conformance
-  test prevents drift. The current disposition is 78 implemented, 6 parse-only, 78 pending,
+  test prevents drift. The current disposition is 79 implemented, 5 parse-only, 78 pending,
   5 unavailable, and 5 reserved operations.
 - Cluster 1 now includes path data/drawing/clipping, AndroidX theme filtering, root scaling and
   alignment, root accessibility description, typed named-value overrides, primitive constants,
@@ -300,8 +300,9 @@ Current checkpoint:
   dimension-type validation and variable-valued dimensions. The shared Compose renderer executes
   the baseline root/content/canvas tree with exact-pixel, exact-dp, fill, and cumulative-padding
   semantics on Wasm and iOS. Unsupported dimension modes are rejected by backend support reporting.
-  Box, row, column, fit-box, `DrawContent`, and `LayoutCanvasContent` remain parse-only—and therefore
-  excluded from the CMP profile—until their measurement and rendering semantics land.
+  Box layout also implements all nine AndroidX horizontal/vertical alignment combinations. Row,
+  column, fit-box, `DrawContent`, and `LayoutCanvasContent` remain parse-only—and therefore excluded
+  from the CMP profile—until their measurement and rendering semantics land.
 - Cluster 4 has started with AndroidX `BitmapData`, `DrawBitmap`, `DrawBitmapInt`, and
   `DrawBitmapScaled`: inline encoded PNG variants decode through the CMP/Skiko image backend and
   render with variable destination bounds, integer source cropping, and all eight authoritative

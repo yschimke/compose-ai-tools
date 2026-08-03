@@ -118,7 +118,7 @@
 199|TEXT_TRANSFORM|3|implemented
 200|LAYOUT_ROOT|6|implemented
 201|LAYOUT_CONTENT|6|implemented
-202|LAYOUT_BOX|6|parse_only
+202|LAYOUT_BOX|6|implemented
 203|LAYOUT_ROW|6|parse_only
 204|LAYOUT_COLUMN|6|parse_only
 205|LAYOUT_CANVAS|6|implemented

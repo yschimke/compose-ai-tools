@@ -1,6 +1,7 @@
 package ee.schimke.composeai.rcplayer.compose
 
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
+import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
@@ -139,6 +140,24 @@ public fun RcDocument.composeSupportReport(): RcComposeSupportReport {
           "HeightModifier",
           "dimension type ${operation.type} is not implemented",
         )
+    }
+    if (operation is RcBoxLayout) {
+      if (operation.horizontalPositioning !in 1..3) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "BoxLayout",
+            "horizontal position ${operation.horizontalPositioning} is not implemented",
+          )
+      }
+      if (operation.verticalPositioning !in setOf(2, 4, 5)) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            "BoxLayout",
+            "vertical position ${operation.verticalPositioning} is not implemented",
+          )
+      }
     }
   }
   val functions = operations.filterIsInstance<RcFloatFunctionDefine>().associateBy { it.id }
