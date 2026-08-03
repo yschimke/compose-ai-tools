@@ -39,9 +39,12 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcTextData
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
+import ee.schimke.composeai.rcplayer.protocol.RcTimeAttribute
+import ee.schimke.composeai.rcplayer.protocol.RcTimeAttributeType
 import ee.schimke.composeai.rcplayer.protocol.RcValueFloatExpressionChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerExpressionChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
+import ee.schimke.composeai.rcplayer.protocol.RcWakeIn
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -50,6 +53,21 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RcComposeSupportTest {
+  @Test
+  fun timeSchedulingIsSharedByWasmAndIosProfiles() {
+    val document =
+      RcDocument(
+        header,
+        listOf(
+          RcTimeAttribute(20, 0, RcTimeAttributeType.Second),
+          RcWakeIn(RcFloatWord.literal(.5f)),
+        ),
+      )
+
+    assertTrue(document.composeSupportReport(RcOperationProfiles.CMP_WASM_ALPHA16).fullyRenderable)
+    assertTrue(document.composeSupportReport(RcOperationProfiles.CMP_IOS_ALPHA16).fullyRenderable)
+  }
+
   @Test
   fun hapticFeedbackIsAnActionInBothCmpProfiles() {
     val document =

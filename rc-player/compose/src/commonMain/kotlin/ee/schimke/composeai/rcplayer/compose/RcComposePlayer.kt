@@ -200,8 +200,10 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
 import ee.schimke.composeai.rcplayer.protocol.RcTextSubtext
 import ee.schimke.composeai.rcplayer.protocol.RcTextTransform
 import ee.schimke.composeai.rcplayer.protocol.RcTheme
+import ee.schimke.composeai.rcplayer.protocol.RcTimeAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcTransform2
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
+import ee.schimke.composeai.rcplayer.protocol.RcWakeIn
 import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
 import ee.schimke.composeai.rcplayer.runtime.RcClickActionBlock
@@ -254,6 +256,7 @@ public fun RcComposePlayer(
   val latestEventSink by rememberUpdatedState(onEvent)
   val latestHapticFeedback by rememberUpdatedState(LocalHapticFeedback.current)
   var invalidationVersion by remember { mutableIntStateOf(0) }
+  var wakeIntervalSeconds by remember(document) { mutableStateOf<Float?>(null) }
   val state =
     remember(document, namedValues) {
       RcPlayerState(
@@ -265,23 +268,40 @@ public fun RcComposePlayer(
           when (effect) {
             is RcPlayerEffect.HapticFeedback ->
               latestHapticFeedback.performAndroidXHaptic(effect.type)
+            is RcPlayerEffect.WakeIn -> {
+              val current = wakeIntervalSeconds
+              if (!effect.seconds.isNaN() && (current == null || effect.seconds < current)) {
+                wakeIntervalSeconds = effect.seconds
+              }
+            }
           }
         },
       )
     }
-  invalidationVersion // Subscribe composition to local action mutations.
-  val hasAnimatedFloats =
+  val needsContinuousFrames =
     remember(document) {
       document.operations.filterIsInstance<RcFloatExpression>().any { it.animation != null } ||
-        document.operations.any { it is RcMarqueeModifier }
+        document.operations.any {
+          it is RcMarqueeModifier || (it is RcTimeAttribute && it.type.requiresContinuousFrames)
+        }
     }
   var frameNanos by remember { mutableLongStateOf(0L) }
-  LaunchedEffect(hasAnimatedFloats) {
-    if (hasAnimatedFloats) {
+  LaunchedEffect(needsContinuousFrames) {
+    if (needsContinuousFrames) {
       val start = withFrameNanos { it }
       while (true) {
         withFrameNanos { frameNanos = it - start }
       }
+    }
+  }
+  LaunchedEffect(wakeIntervalSeconds) {
+    val seconds = wakeIntervalSeconds ?: return@LaunchedEffect
+    while (true) {
+      val delayMillis =
+        if (!seconds.isFinite()) Int.MAX_VALUE.toLong()
+        else (seconds * 1_000f).toLong().coerceAtLeast(0L).coerceAtMost(Int.MAX_VALUE.toLong())
+      if (delayMillis == 0L) withFrameNanos {} else delay(delayMillis)
+      invalidationVersion += 1
     }
   }
   val linkedDocument = remember(document) { RcDocumentLinker.link(document) }
@@ -300,18 +320,22 @@ public fun RcComposePlayer(
       documentHeight = document.header.height.coerceAtLeast(1).toFloat(),
       rootContentBehavior = state.rootContentBehavior,
     )
+  val redrawModifier = interactiveModifier.drawWithContent {
+    invalidationVersion // Subscribe the draw layer to action and WakeIn invalidations.
+    drawContent()
+  }
   if (layout != null) {
     SideEffect { state.beginFrame(frameNanos / 1_000_000_000f) }
     RenderLayoutNode(
       node = layout,
-      modifier = interactiveModifier,
+      modifier = redrawModifier,
       state = state,
       textMeasurer = textMeasurer,
       images = images,
       theme = theme,
     )
   } else
-    Canvas(interactiveModifier) {
+    Canvas(redrawModifier) {
       val width = document.header.width.coerceAtLeast(1)
       val height = document.header.height.coerceAtLeast(1)
       val rootTransform =
@@ -2368,6 +2392,8 @@ private fun DrawScope.drawOperations(
       is RcColorTheme -> state.applyColorTheme(operation, requestedTheme)
       is RcIntegerExpression -> state.applyIntegerExpression(operation)
       is RcHapticFeedback -> state.performHapticFeedback(operation)
+      is RcTimeAttribute -> state.applyTimeAttribute(operation)
+      is RcWakeIn -> state.requestWakeIn(operation)
       is RcDrawText -> drawTextOperation(operation, state, paint, textMeasurer)
       is RcDrawTextAnchored -> drawTextAnchored(operation, state, paint, textMeasurer)
       is RcDrawTextOnPath -> drawTextOnPath(operation, state, paint, computedPaths, textMeasurer)

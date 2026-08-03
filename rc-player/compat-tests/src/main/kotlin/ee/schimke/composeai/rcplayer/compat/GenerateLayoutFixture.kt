@@ -12,6 +12,8 @@ import androidx.compose.remote.core.operations.Header
 import androidx.compose.remote.core.operations.IntegerExpression
 import androidx.compose.remote.core.operations.PaintData
 import androidx.compose.remote.core.operations.TextData
+import androidx.compose.remote.core.operations.TimeAttribute
+import androidx.compose.remote.core.operations.WakeIn
 import androidx.compose.remote.core.operations.layout.CanvasContent
 import androidx.compose.remote.core.operations.layout.CanvasOperations
 import androidx.compose.remote.core.operations.layout.ClickModifierOperation
@@ -146,6 +148,8 @@ public fun main(args: Array<String>) {
   exactWidth(buffer, 320f)
   exactHeight(buffer, 180f)
   CanvasOperations.apply(buffer)
+  TimeAttribute.apply(buffer, 34, 0, TimeAttribute.TIME_IN_SEC)
+  WakeIn.apply(buffer, 60f)
   paint(buffer, 0xfff6f2ff.toInt())
   DrawRect.apply(buffer, 0f, 0f, 320f, 180f)
   DrawContent.apply(buffer)

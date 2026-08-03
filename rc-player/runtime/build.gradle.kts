@@ -12,7 +12,10 @@ kotlin {
   @OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class) wasmJs { browser() }
 
   sourceSets {
-    commonMain.dependencies { api(project(":rc-player-protocol")) }
+    commonMain.dependencies {
+      api(project(":rc-player-protocol"))
+      implementation(libs.kotlinx.datetime)
+    }
     commonTest.dependencies { implementation(kotlin("test")) }
   }
 }

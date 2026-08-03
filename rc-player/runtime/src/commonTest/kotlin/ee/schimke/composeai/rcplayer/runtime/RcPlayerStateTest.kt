@@ -27,6 +27,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcIdMap
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerConstant
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
+import ee.schimke.composeai.rcplayer.protocol.RcLongConstant
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixConstant
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixExpression
 import ee.schimke.composeai.rcplayer.protocol.RcMatrixVectorMath
@@ -41,6 +42,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextMerge
 import ee.schimke.composeai.rcplayer.protocol.RcTextSubtext
 import ee.schimke.composeai.rcplayer.protocol.RcTextTransform
 import ee.schimke.composeai.rcplayer.protocol.RcTheme
+import ee.schimke.composeai.rcplayer.protocol.RcTimeAttribute
+import ee.schimke.composeai.rcplayer.protocol.RcTimeAttributeType
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcValueFloatChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueFloatExpressionChangeAction
@@ -48,12 +51,91 @@ import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerExpressionChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueStringChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
+import ee.schimke.composeai.rcplayer.protocol.RcWakeIn
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class RcPlayerStateTest {
+  @Test
+  fun evaluatesEveryAndroidXTimeAttributeAgainstAnInjectedFrameClock() {
+    val clock =
+      object : RcTimeSource {
+        override fun currentTimeMillis(): Long = 1_000_000L
+
+        override fun snapshot(epochMillis: Long) =
+          RcTimeSnapshot(
+            epochMillis = epochMillis,
+            year = 2026,
+            month = 8,
+            dayOfMonth = 3,
+            dayOfYear = 215,
+            hour = 16,
+            minute = 30,
+            second = 45,
+            isoDayOfWeek = 1,
+          )
+      }
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0)),
+        listOf(RcLongConstant(10, 2_000_000L), RcLongConstant(11, 200_000L)),
+      )
+    val state = RcPlayerState(document, timeSource = clock)
+    state.beginFrame(epochMillis = 1_500_000L)
+
+    val cases =
+      listOf(
+        RcTimeAttributeType.FromNowSeconds to 500_000L.toFloat() * .001f,
+        RcTimeAttributeType.FromNowMinutes to (500.0 / 60.0).toFloat(),
+        RcTimeAttributeType.FromNowHours to (500.0 / 3600.0).toFloat(),
+        RcTimeAttributeType.FromArgumentSeconds to 1_800_000L.toFloat() * .001f,
+        RcTimeAttributeType.FromArgumentMinutes to 30f,
+        RcTimeAttributeType.FromArgumentHours to .5f,
+        RcTimeAttributeType.Second to 45f,
+        RcTimeAttributeType.Minute to 30f,
+        RcTimeAttributeType.Hour to 16f,
+        RcTimeAttributeType.DayOfMonth to 3f,
+        RcTimeAttributeType.MonthZeroBased to 7f,
+        RcTimeAttributeType.DayOfWeekZeroBased to 0f,
+        RcTimeAttributeType.Year to 2026f,
+        RcTimeAttributeType.FromDocumentLoadSeconds to 1_000_000L.toFloat() * .001f,
+        RcTimeAttributeType.DayOfYear to 215f,
+      )
+    cases.forEachIndexed { index, (type, expected) ->
+      val operation = RcTimeAttribute(100 + index, 10, type, listOf(11))
+      state.applyTimeAttribute(operation)
+      assertEquals(expected, state.resolve(RcFloatWord(0x7fc00000 or operation.outId)))
+    }
+
+    state.setFloat(150, 77f)
+    state.applyTimeAttribute(RcTimeAttribute(150, 10, RcTimeAttributeType(13), emptyList()))
+    assertEquals(77f, state.resolve(RcFloatWord(0x7fc00000 or 150)))
+    assertFailsWith<IllegalArgumentException> {
+      state.applyTimeAttribute(
+        RcTimeAttribute(151, 10, RcTimeAttributeType.FromArgumentSeconds, emptyList())
+      )
+    }
+  }
+
+  @Test
+  fun wakeInResolvesDynamicFloatsAsALocalPlayerEffect() {
+    val effects = mutableListOf<RcPlayerEffect>()
+    val state =
+      RcPlayerState(
+        RcDocument(
+          RcHeader(RcVersion(1, 0, 0)),
+          listOf(RcFloatConstant(12, RcFloatWord.literal(.25f))),
+        ),
+        effectSink = effects::add,
+      )
+
+    state.requestWakeIn(RcWakeIn(RcFloatWord(0x7fc00000 or 12)))
+
+    assertEquals(RcPlayerEffect.WakeIn(.25f), effects.single())
+  }
+
   @Test
   fun clickAreasResolveBoundsReplaceEqualRegistrationsAndDispatchEveryOverlap() {
     val events = mutableListOf<RcPlayerEvent>()

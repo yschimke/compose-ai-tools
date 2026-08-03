@@ -88,7 +88,7 @@
 169|DATA_SOUND|5|unsupported
 170|ATTRIBUTE_TEXT|3|implemented
 171|ATTRIBUTE_IMAGE|4|implemented
-172|ATTRIBUTE_TIME|5|unsupported
+172|ATTRIBUTE_TIME|5|implemented
 173|CANVAS_OPERATIONS|1|implemented
 174|MODIFIER_DRAW_CONTENT|6|unavailable
 175|PATH_COMBINE|2|implemented
@@ -107,7 +107,7 @@
 188|MATRIX_VECTOR_MATH|2|implemented
 189|DATA_FONT|3|unsupported
 190|DRAW_TO_BITMAP|4|unsupported
-191|WAKE_IN|8|unsupported
+191|WAKE_IN|8|implemented
 192|ID_LOOKUP|5|implemented
 193|PATH_EXPRESSION|2|implemented
 194|PARTICLE_COMPARE|8|unsupported

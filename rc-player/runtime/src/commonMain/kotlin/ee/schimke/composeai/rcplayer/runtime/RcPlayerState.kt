@@ -45,6 +45,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextMerge
 import ee.schimke.composeai.rcplayer.protocol.RcTextSubtext
 import ee.schimke.composeai.rcplayer.protocol.RcTextTransform
 import ee.schimke.composeai.rcplayer.protocol.RcTheme
+import ee.schimke.composeai.rcplayer.protocol.RcTimeAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcTouchExpression
 import ee.schimke.composeai.rcplayer.protocol.RcUpdateDynamicFloatList
 import ee.schimke.composeai.rcplayer.protocol.RcValueFloatChangeAction
@@ -52,6 +53,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcValueFloatExpressionChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerExpressionChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueStringChangeAction
+import ee.schimke.composeai.rcplayer.protocol.RcWakeIn
 
 /** Typed runtime values for the CMP player; independent from AndroidX `RemoteContext`. */
 public class RcPlayerState(
@@ -60,6 +62,7 @@ public class RcPlayerState(
   private val eventSink: (RcPlayerEvent) -> Unit = {},
   private val onInvalidated: () -> Unit = {},
   private val effectSink: (RcPlayerEffect) -> Unit = {},
+  private val timeSource: RcTimeSource = RcTimeSource.System,
 ) {
   private val floats = mutableMapOf<Int, Float>()
   private val colors = mutableMapOf<Int, Int>()
@@ -86,7 +89,9 @@ public class RcPlayerState(
     document.operations.filterIsInstance<RcFloatExpression>().associateBy { it.id }
   private val integerExpressions =
     document.operations.filterIsInstance<RcIntegerExpression>().associateBy { it.outId }
+  private val documentLoadTimeMillis = timeSource.currentTimeMillis()
   private var frameTimeSeconds: Float = 0f
+  private var frameEpochMillis: Long = documentLoadTimeMillis
 
   public val animationTimeSeconds: Float
     get() = frameTimeSeconds
@@ -155,14 +160,68 @@ public class RcPlayerState(
     paths[id] = path
   }
 
-  public fun beginFrame(timeSeconds: Float = 0f) {
+  public fun beginFrame(
+    timeSeconds: Float = 0f,
+    epochMillis: Long = timeSource.currentTimeMillis(),
+  ) {
     frameTimeSeconds = timeSeconds
+    frameEpochMillis = epochMillis
     paths.clear()
     paths.putAll(basePaths)
     texts.clear()
     texts.putAll(baseTexts)
     texts.putAll(textOverrides)
     computedMatrices.clear()
+  }
+
+  /** Evaluates AndroidX `TimeAttribute.paint` against one wall-clock snapshot for this frame. */
+  public fun applyTimeAttribute(operation: RcTimeAttribute) {
+    val type = operation.type.executionValue
+    val now = timeSource.snapshot(frameEpochMillis)
+    val selectedMillis = longs[operation.timeId] ?: frameEpochMillis
+    val selected =
+      if (selectedMillis == frameEpochMillis) now else timeSource.snapshot(selectedMillis)
+    val deltaMillis =
+      when (type) {
+        0,
+        1,
+        2 -> selected.epochMillis - now.epochMillis
+        3,
+        4,
+        5 -> {
+          val argumentId =
+            requireNotNull(operation.argumentIds.firstOrNull()) {
+              "TimeAttribute type $type requires one argument id"
+            }
+          selected.epochMillis -
+            requireNotNull(longs[argumentId]) { "Missing TimeAttribute long argument $argumentId" }
+        }
+        else -> 0L
+      }
+    val value =
+      when (type) {
+        0,
+        3 -> deltaMillis.toFloat() * 0.001f
+        1,
+        4 -> (deltaMillis.toDouble() * 0.001 / 60.0).toFloat()
+        2,
+        5 -> (deltaMillis.toDouble() * 0.001 / 3600.0).toFloat()
+        6 -> selected.second.toFloat()
+        7 -> selected.minute.toFloat()
+        8 -> selected.hour.toFloat()
+        9 -> selected.dayOfMonth.toFloat()
+        10 -> (selected.month - 1).toFloat()
+        11 -> (selected.isoDayOfWeek - 1).toFloat()
+        12 -> selected.year.toFloat()
+        14 -> (selected.epochMillis - documentLoadTimeMillis).toFloat() * 0.001f
+        15 -> selected.dayOfYear.toFloat()
+        else -> return
+      }
+    setFloat(operation.outId, value)
+  }
+
+  public fun requestWakeIn(operation: RcWakeIn) {
+    effectSink(RcPlayerEffect.WakeIn(resolve(operation.seconds)))
   }
 
   public fun applyTextOperation(operation: RcOperation) {
@@ -781,6 +840,8 @@ public sealed interface RcPlayerEvent {
 /** Effects fulfilled by the local CMP host rather than forwarded to the embedding application. */
 public sealed interface RcPlayerEffect {
   public data class HapticFeedback(val type: RcHapticType) : RcPlayerEffect
+
+  public data class WakeIn(val seconds: Float) : RcPlayerEffect
 }
 
 public sealed interface RcHostActionValue {

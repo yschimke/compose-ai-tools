@@ -643,6 +643,48 @@ public data class RcTextAttribute(
   }
 }
 
+/** AndroidX wall-clock attribute; the low byte selects the Java `TimeAttribute` behavior. */
+public data class RcTimeAttribute(
+  val outId: Int,
+  val timeId: Int,
+  val type: RcTimeAttributeType,
+  val argumentIds: List<Int> = emptyList(),
+) : RcOperation {
+  override val opcode: Int = RcOpcodes.ATTRIBUTE_TIME
+}
+
+@JvmInline
+public value class RcTimeAttributeType(public val wireValue: Int) {
+  public val executionValue: Int
+    get() = wireValue and 0xff
+
+  public val requiresContinuousFrames: Boolean
+    get() = executionValue == 0 || executionValue == 1 || executionValue == 14
+
+  public companion object {
+    public val FromNowSeconds: RcTimeAttributeType = RcTimeAttributeType(0)
+    public val FromNowMinutes: RcTimeAttributeType = RcTimeAttributeType(1)
+    public val FromNowHours: RcTimeAttributeType = RcTimeAttributeType(2)
+    public val FromArgumentSeconds: RcTimeAttributeType = RcTimeAttributeType(3)
+    public val FromArgumentMinutes: RcTimeAttributeType = RcTimeAttributeType(4)
+    public val FromArgumentHours: RcTimeAttributeType = RcTimeAttributeType(5)
+    public val Second: RcTimeAttributeType = RcTimeAttributeType(6)
+    public val Minute: RcTimeAttributeType = RcTimeAttributeType(7)
+    public val Hour: RcTimeAttributeType = RcTimeAttributeType(8)
+    public val DayOfMonth: RcTimeAttributeType = RcTimeAttributeType(9)
+    public val MonthZeroBased: RcTimeAttributeType = RcTimeAttributeType(10)
+    public val DayOfWeekZeroBased: RcTimeAttributeType = RcTimeAttributeType(11)
+    public val Year: RcTimeAttributeType = RcTimeAttributeType(12)
+    public val FromDocumentLoadSeconds: RcTimeAttributeType = RcTimeAttributeType(14)
+    public val DayOfYear: RcTimeAttributeType = RcTimeAttributeType(15)
+  }
+}
+
+/** Requests another paint after the resolved number of seconds. */
+public data class RcWakeIn(val seconds: RcFloatWord) : RcOperation {
+  override val opcode: Int = RcOpcodes.WAKE_IN
+}
+
 public data class RcDraw4(
   override val opcode: Int,
   val first: RcFloatWord,
@@ -1374,6 +1416,7 @@ public object RcOpcodes {
   public const val TOUCH_EXPRESSION: Int = 157
   public const val ATTRIBUTE_TEXT: Int = 170
   public const val ATTRIBUTE_IMAGE: Int = 171
+  public const val ATTRIBUTE_TIME: Int = 172
   public const val ATTRIBUTE_COLOR: Int = 180
   public const val DRAW_CONTENT: Int = 139
   public const val NAMED_VARIABLE: Int = 137
@@ -1388,6 +1431,7 @@ public object RcOpcodes {
   public const val MATRIX_CONSTANT: Int = 186
   public const val MATRIX_EXPRESSION: Int = 187
   public const val MATRIX_VECTOR_MATH: Int = 188
+  public const val WAKE_IN: Int = 191
   public const val ID_LOOKUP: Int = 192
   public const val PATH_EXPRESSION: Int = 193
   public const val COLOR_THEME: Int = 196

@@ -101,8 +101,10 @@ public object RcDocumentCodec {
         DrawTextOnPathCodec,
         TextMeasureCodec,
         TextAttributeCodec,
+        TimeAttributeCodec,
         ImageAttributeCodec,
         ColorAttributeCodec,
+        WakeInCodec,
         RootLayoutCodec,
         LayoutContentCodec,
         CanvasLayoutCodec,
@@ -2300,6 +2302,31 @@ private object TextAttributeCodec : RcOperationCodec<RcTextAttribute> {
   }
 }
 
+private object TimeAttributeCodec : RcOperationCodec<RcTimeAttribute> {
+  override val spec = RcOperationSpec(RcOpcodes.ATTRIBUTE_TIME, "TimeAttribute")
+
+  override fun decode(input: RcWireReader): RcTimeAttribute {
+    val outId = input.readInt("outId")
+    val timeId = input.readInt("timeId")
+    val type = RcTimeAttributeType(input.readU16("type").toShort().toInt())
+    val count = input.readU16("arguments.count").toShort().toInt()
+    if (count !in 0..32) input.fail("arguments.count", "Invalid time argument count $count")
+    return RcTimeAttribute(outId, timeId, type, List(count) { input.readInt("arguments[$it]") })
+  }
+
+  override fun encode(output: RcWireWriter, value: RcTimeAttribute) {
+    require(value.type.wireValue in Short.MIN_VALUE..Short.MAX_VALUE) {
+      "TimeAttribute type does not fit a short"
+    }
+    require(value.argumentIds.size <= 32) { "Too many TimeAttribute arguments" }
+    output.writeInt(value.outId)
+    output.writeInt(value.timeId)
+    output.writeU16(value.type.wireValue)
+    output.writeU16(value.argumentIds.size)
+    value.argumentIds.forEach(output::writeInt)
+  }
+}
+
 private object ImageAttributeCodec : RcOperationCodec<RcImageAttribute> {
   override val spec = RcOperationSpec(RcOpcodes.ATTRIBUTE_IMAGE, "ImageAttribute")
 
@@ -2341,6 +2368,16 @@ private object ColorAttributeCodec : RcOperationCodec<RcColorAttribute> {
     output.writeInt(value.outId)
     output.writeInt(value.colorId)
     output.writeU16(value.type)
+  }
+}
+
+private object WakeInCodec : RcOperationCodec<RcWakeIn> {
+  override val spec = RcOperationSpec(RcOpcodes.WAKE_IN, "WakeIn")
+
+  override fun decode(input: RcWireReader): RcWakeIn = RcWakeIn(input.readFloatWord("wake"))
+
+  override fun encode(output: RcWireWriter, value: RcWakeIn) {
+    output.writeFloatWord(value.seconds)
   }
 }
 

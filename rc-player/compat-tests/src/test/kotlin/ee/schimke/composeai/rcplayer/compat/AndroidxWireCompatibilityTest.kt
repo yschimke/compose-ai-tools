@@ -70,9 +70,11 @@ import androidx.compose.remote.core.operations.TextMerge
 import androidx.compose.remote.core.operations.TextSubtext
 import androidx.compose.remote.core.operations.TextTransform
 import androidx.compose.remote.core.operations.Theme
+import androidx.compose.remote.core.operations.TimeAttribute as AndroidxTimeAttribute
 import androidx.compose.remote.core.operations.TouchExpression
 import androidx.compose.remote.core.operations.UpdateDynamicFloatList
 import androidx.compose.remote.core.operations.Utils
+import androidx.compose.remote.core.operations.WakeIn as AndroidxWakeIn
 import androidx.compose.remote.core.operations.layout.CanvasContent
 import androidx.compose.remote.core.operations.layout.CanvasOperations
 import androidx.compose.remote.core.operations.layout.ClickModifierOperation
@@ -215,6 +217,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcTextLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyle
 import ee.schimke.composeai.rcplayer.protocol.RcTextStyleProperty
+import ee.schimke.composeai.rcplayer.protocol.RcTimeAttribute
+import ee.schimke.composeai.rcplayer.protocol.RcTimeAttributeType
 import ee.schimke.composeai.rcplayer.protocol.RcTouchCancelModifier
 import ee.schimke.composeai.rcplayer.protocol.RcTouchDownModifier
 import ee.schimke.composeai.rcplayer.protocol.RcTouchExpression
@@ -227,6 +231,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerExpressionChangeActi
 import ee.schimke.composeai.rcplayer.protocol.RcValueStringChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcVersion
 import ee.schimke.composeai.rcplayer.protocol.RcVisibilityModifier
+import ee.schimke.composeai.rcplayer.protocol.RcWakeIn
 import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
@@ -248,6 +253,31 @@ import kotlin.test.assertTrue
  * from this test module: AndroidX remote-core/Java player is the protocol authority.
  */
 class AndroidxWireCompatibilityTest {
+  @Test
+  fun androidXTimeAttributeAndWakeInRoundTripExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    AndroidxTimeAttribute.apply(
+      buffer,
+      20,
+      21,
+      AndroidxTimeAttribute.TIME_FROM_ARG_MIN,
+      intArrayOf(22, 23),
+    )
+    AndroidxTimeAttribute.apply(buffer, 24, 0, (-1).toShort(), IntArray(32) { it + 100 })
+    AndroidxWakeIn.apply(buffer, Utils.asNan(42))
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+    val times = document.operations.filterIsInstance<RcTimeAttribute>()
+    assertEquals(RcTimeAttributeType.FromArgumentMinutes, times[0].type)
+    assertEquals(listOf(22, 23), times[0].argumentIds)
+    assertEquals(-1, times[1].type.wireValue)
+    assertEquals(32, times[1].argumentIds.size)
+    assertEquals(42, document.operations.filterIsInstance<RcWakeIn>().single().seconds.referencedId)
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
   @Test
   fun androidXClickAreaRoundTripsExactly() {
     val buffer = WireBuffer()
