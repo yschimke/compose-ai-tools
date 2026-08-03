@@ -20,14 +20,16 @@ Not a wishlist — this is running.
 | `preview.coo.ee` | ~17 catalogs, 8 GB host, 5 auto-derived live seats | A live reference deployment with real content on it. |
 | Trust store (Ed25519 / branch / OIDC) | Fail-closed, gates server-side re-render | The security model for "run a stranger's UI" is already decided and enforced. |
 | Live-seat permit budget (`SERVE_LIVE_SEATS`) | Weighted (CMP 1, Android/Robolectric 2), auto-sized from container memory, refuses with WS `1013` | This is the meter. Billing has a unit already. |
-| GitHub OAuth gate (`SERVE_GITHUB_AUTH_*`) | Signed cookie, repo-access verdict, per-user allowlist | Accounts + entitlement exist. No auth work to start charging. |
+| GitHub OAuth gate (`SERVE_GITHUB_AUTH_*`) | Signed cookie, repo-access verdict, per-user allowlist | Sign-in exists. **Not** yet accounts: the cookie carries one login plus one Boolean for a single globally-configured repo (`SessionPayload(login, repositoryAccess)`) — no org, tenant, plan, or per-catalog mapping. Real work before charging. |
 | Admin API (`/admin/catalogs`, `/admin/trust`, `/admin/groups`) | Live mutation, written back to `/config` | Self-serve onboarding is an HTTP call, not a redeploy. |
 | Storybook-compatible surface (`/index.json`, `/iframe.html`, `&format=svg`) | Shipped | Percy / Chromatic / BackstopJS / Applitools can crawl a serve host with no Compose-specific code. |
 | Wasm tier (CMP in-browser) | Shipped, cached + ETag'd | Free-tier browsing costs ~nothing server-side. |
 | Playground (jailed snippet compile+run) | Gated on sandbox preflight, hard TTL, compile slots | The one genuinely expensive surface — and it is already opt-in and capped. |
 
-The gaps for a *service* (not a deployment) are narrower than the list above: multi-tenant identity,
-per-tenant storage/retention, a receive-artefacts endpoint for CI, billing, and an SLA story.
+The gaps for a *service* (not a deployment) are narrower than the list above, but they are real:
+multi-tenant identity (an org/plan/entitlement model the current single-repo verdict doesn't
+provide), per-tenant storage/retention, a receive-artefacts endpoint for CI, billing, and an SLA
+story.
 
 ## 2. What it would actually sell
 
@@ -112,10 +114,15 @@ Staged, cheapest fix first. Nothing here needs a rewrite.
 2. **Origin bandwidth on the gallery.** Wasm bundles are ~8 MB gzipped. Front it with a CDN before
    this matters; the caching headers are already right.
 3. **One box = one failure domain.** The live daemon is already a separate process per session, so
-   horizontal is a router with session affinity plus N identical image pulls — the seat budget
-   auto-sizes per container. Config (`/config/catalogs.json`, `producers.json`) has to move from a
-   host volume to shared storage at this point; the admin API already writes it, so this is a
-   storage swap, not a redesign.
+   the *render* tier goes horizontal cheaply: a router with session affinity plus N identical image
+   pulls, seat budget auto-sizing per container. **Config is the hard part, and it is not a storage
+   swap.** `ServeCatalogAdmin` and `ServeTrustAdmin` hold `@Volatile` in-memory state and serialise
+   whole-file read-modify-write on a JVM-local `synchronized(configLock)` — correct for one process,
+   wrong for several. Across replicas that loses concurrent writes and, worse, leaves a **trust
+   revocation applied on one replica stale on the others** — and trust is eligibility for
+   server-side code execution, so this one is a security property, not a consistency nicety.
+   Multi-replica needs a centralised store or cross-process coordination plus invalidation. Budget
+   it as real work, and note it is only owed once replica #2 exists — a single box is unaffected.
 4. **Cold catalog fetch / live-bundle Maven resolution.** External dependency (GitHub raw, Central,
    Google Maven, jitpack). Cache aggressively; treat a fetch failure as the documented
    `livebundle-unavailable` degradation rather than an outage — the fallback to baked PNGs already
@@ -193,8 +200,9 @@ signal: third-party repos publishing their own catalogs. **This is the phase tha
 there is a business** — if nobody publishes, the answer is "keep it as a great free demo", which is
 a perfectly good outcome.
 
-**Phase 2 — charge for private and durable.** Private catalogs (GitHub repo-access verdict already
-computed), retained PR baselines and history, dedicated live seats. Price it like the precedents
+**Phase 2 — charge for private and durable.** Private catalogs (the OAuth flow already checks repo
+access, but the single-repo verdict has to grow into an org/plan model first — see §1), retained PR
+baselines and history, dedicated live seats. Price it like the precedents
 suggest: free for public/OSS, roughly $20–50/mo per org for private, self-hosted stays free forever
 (the image is public — the paid thing is *not running it yourself*, plus support and SSO). Deliberately
 do **not** price per snapshot; per-*repo* or per-*concurrency* matches the actual cost shape and
