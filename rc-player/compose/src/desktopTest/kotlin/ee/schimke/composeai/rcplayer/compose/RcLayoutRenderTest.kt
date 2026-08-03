@@ -3,6 +3,7 @@ package ee.schimke.composeai.rcplayer.compose
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.unit.Density
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
+import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
@@ -110,6 +111,104 @@ class RcLayoutRenderTest {
     }
   }
 
+  @Test
+  fun drawContentComposesComponentChildrenAtItsExactPaintPosition() {
+    val red = 0xffff0000.toInt()
+    val green = 0xff00ff00.toInt()
+    val blue = 0xff0000ff.toInt()
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 120, legacyHeight = 120, modern = false),
+        listOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcBoxLayout(3, 30, horizontalPositioning = 2, verticalPositioning = 2),
+          width(100f),
+          height(100f),
+          RcNoArg(RcOpcodes.CANVAS_OPERATIONS),
+          RcPaintData(listOf(4, red)),
+          rect(100f),
+          RcNoArg(RcOpcodes.DRAW_CONTENT),
+          RcPaintData(listOf(4, blue)),
+          rect(10f),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcLayoutContent(4),
+          RcCanvasLayout(5, 50),
+          width(20f),
+          height(20f),
+          RcNoArg(RcOpcodes.CANVAS_OPERATIONS),
+          RcPaintData(listOf(4, green)),
+          rect(20f),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        ),
+      )
+    val scene =
+      ImageComposeScene(width = 120, height = 120, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val image = scene.render()
+      val bitmap = Bitmap().apply { allocN32Pixels(120, 120) }
+      check(image.readPixels(bitmap))
+
+      assertEquals(blue, bitmap.getColor(5, 5))
+      assertEquals(red, bitmap.getColor(20, 20))
+      assertEquals(green, bitmap.getColor(50, 50))
+    } finally {
+      scene.close()
+    }
+  }
+
+  @Test
+  fun canvasContentReceivesTheCanvasLayoutContentBounds() {
+    val green = 0xff00ff00.toInt()
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 120, legacyHeight = 120, modern = false),
+        listOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcCanvasLayout(3, 30),
+          width(100f),
+          height(80f),
+          RcLayoutContent(4),
+          RcCanvasContent(5),
+          RcPaintData(listOf(4, green)),
+          RcDraw4(
+            RcOpcodes.DRAW_RECT,
+            RcFloatWord.literal(0f),
+            RcFloatWord.literal(0f),
+            RcFloatWord.literal(100f),
+            RcFloatWord.literal(80f),
+          ),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        ),
+      )
+    val scene =
+      ImageComposeScene(width = 120, height = 120, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val image = scene.render()
+      val bitmap = Bitmap().apply { allocN32Pixels(120, 120) }
+      check(image.readPixels(bitmap))
+
+      assertEquals(green, bitmap.getColor(99, 79))
+      assertEquals(0, bitmap.getColor(101, 81))
+    } finally {
+      scene.close()
+    }
+  }
+
   private fun canvas(componentId: Int, size: Float, color: Int): List<RcOperation> =
     listOf(
       RcCanvasLayout(componentId, componentId * 10),
@@ -126,6 +225,15 @@ class RcLayoutRenderTest {
       ),
       RcNoArg(RcOpcodes.CONTAINER_END),
       RcNoArg(RcOpcodes.CONTAINER_END),
+    )
+
+  private fun rect(size: Float) =
+    RcDraw4(
+      RcOpcodes.DRAW_RECT,
+      RcFloatWord.literal(0f),
+      RcFloatWord.literal(0f),
+      RcFloatWord.literal(size),
+      RcFloatWord.literal(size),
     )
 
   private fun width(value: Float) =

@@ -60,7 +60,9 @@ class RcLayoutTreeTest {
     assertEquals(listOf(1f, 5f), box.modifiers.padding.map { it.left.value })
     assertEquals(
       RcOpcodes.MATRIX_SAVE,
-      assertIs<RcLinkedNode.Operation>(canvas.paintBlocks.single().single()).operation.opcode,
+      assertIs<RcLinkedNode.Operation>(requireNotNull(canvas.canvasOperations).single())
+        .operation
+        .opcode,
     )
     assertEquals(operations, linked.source.operations)
   }

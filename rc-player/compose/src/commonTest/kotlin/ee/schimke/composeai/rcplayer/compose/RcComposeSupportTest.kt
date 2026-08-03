@@ -3,6 +3,7 @@ package ee.schimke.composeai.rcplayer.compose
 import androidx.compose.ui.Alignment
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
+import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
@@ -44,20 +45,57 @@ class RcComposeSupportTest {
   }
 
   @Test
-  fun reportsParseOnlyContainerOperations() {
-    val document =
-      RcDocument(
-        header,
-        listOf(
-          ee.schimke.composeai.rcplayer.protocol.RcIdOperation(RcOpcodes.LAYOUT_CANVAS_CONTENT, 3),
-          RcNoArg(RcOpcodes.CONTAINER_END),
-        ),
-      )
+  fun rejectsLayoutComponentsOutsideARoot() {
+    val document = RcDocument(header, listOf(RcCanvasContent(3), RcNoArg(RcOpcodes.CONTAINER_END)))
 
     val support = document.composeSupportReport()
 
     assertFalse(support.fullyRenderable)
-    assertEquals("LayoutCanvasContent", support.issues.single().operation)
+    assertEquals("LayoutStructure", support.issues.single().operation)
+    assertEquals(
+      "Layout component appears outside a RootLayoutComponent",
+      support.issues.single().detail,
+    )
+  }
+
+  @Test
+  fun acceptsCanvasContentWithinCanvasLayout() {
+    val operations =
+      listOf(
+        RcRootLayout(1),
+        RcLayoutContent(2),
+        RcCanvasLayout(3, 30),
+        RcLayoutContent(4),
+        RcCanvasContent(5),
+      ) + List(5) { RcNoArg(RcOpcodes.CONTAINER_END) }
+
+    assertTrue(RcDocument(header, operations).composeSupportReport().fullyRenderable)
+  }
+
+  @Test
+  fun acceptsDrawContentOnlyWhenAttachedToAComponentCanvasBlock() {
+    val valid =
+      listOf(
+        RcRootLayout(1),
+        RcLayoutContent(2),
+        RcBoxLayout(3, 30, 1, 4),
+        RcNoArg(RcOpcodes.CANVAS_OPERATIONS),
+        RcNoArg(RcOpcodes.DRAW_CONTENT),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+        RcLayoutContent(4),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+      )
+    assertTrue(RcDocument(header, valid).composeSupportReport().fullyRenderable)
+
+    val issue =
+      RcDocument(header, listOf(RcNoArg(RcOpcodes.DRAW_CONTENT)))
+        .composeSupportReport()
+        .issues
+        .single()
+    assertEquals("DrawContent", issue.operation)
   }
 
   @Test

@@ -102,6 +102,7 @@ import androidx.compose.remote.core.types.IntegerConstant
 import androidx.compose.remote.core.types.LongConstant
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
+import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
@@ -185,7 +186,8 @@ class AndroidxWireCompatibilityTest {
     RowLayout.apply(buffer, 5, 50, RowLayout.SPACE_BETWEEN, RowLayout.CENTER, Utils.asNan(42))
     ColumnLayout.apply(buffer, 6, 60, ColumnLayout.END, ColumnLayout.SPACE_AROUND, 12.5f)
     FitBoxLayout.apply(buffer, 7, 70, FitBoxLayout.CENTER, FitBoxLayout.TOP)
-    repeat(7) { ContainerEnd.apply(buffer) }
+    CanvasContent.apply(buffer, 8)
+    repeat(8) { ContainerEnd.apply(buffer) }
     val bytes = buffer.buffer.copyOf(buffer.size())
 
     val document = RcDocumentCodec.decode(bytes)
@@ -197,6 +199,7 @@ class AndroidxWireCompatibilityTest {
     assertEquals(42, assertIs<RcRowLayout>(document.operations[4]).spacedBy.referencedId)
     assertEquals(12.5f, assertIs<RcColumnLayout>(document.operations[5]).spacedBy.value)
     assertIs<RcFitBoxLayout>(document.operations[6])
+    assertEquals(8, assertIs<RcCanvasContent>(document.operations[7]).componentId)
     assertContentEquals(bytes, RcDocumentCodec.encode(document))
   }
 

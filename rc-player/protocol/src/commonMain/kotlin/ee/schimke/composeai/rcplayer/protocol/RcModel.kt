@@ -661,6 +661,11 @@ public data class RcCanvasLayout(val componentId: Int, val animationId: Int) : R
   override val opcode: Int = RcOpcodes.LAYOUT_CANVAS
 }
 
+/** Canvas child component whose body is painted in wire order. */
+public data class RcCanvasContent(val componentId: Int) : RcOperation {
+  override val opcode: Int = RcOpcodes.LAYOUT_CANVAS_CONTENT
+}
+
 public data class RcBoxLayout(
   val componentId: Int,
   val animationId: Int,

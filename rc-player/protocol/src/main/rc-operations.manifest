@@ -55,7 +55,7 @@
 136|TEXT_MERGE|3|implemented
 137|NAMED_VARIABLE|1|implemented
 138|COLOR_CONSTANT|1|implemented
-139|DRAW_CONTENT|1|parse_only
+139|DRAW_CONTENT|1|implemented
 140|DATA_INT|5|implemented
 141|PLAY_SOUND|8|unsupported
 142|REFERENCED_OPERATIONS|8|unsupported
@@ -123,7 +123,7 @@
 204|LAYOUT_COLUMN|6|implemented
 205|LAYOUT_CANVAS|6|implemented
 206|SOUND_EXPRESSION|5|unsupported
-207|LAYOUT_CANVAS_CONTENT|1|parse_only
+207|LAYOUT_CANVAS_CONTENT|1|implemented
 208|LAYOUT_TEXT|3|unsupported
 209|HOST_ACTION|7|unsupported
 210|HOST_NAMED_ACTION|7|unsupported

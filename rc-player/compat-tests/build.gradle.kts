@@ -20,3 +20,12 @@ tasks.register<JavaExec>("generateBaselineFixture") {
   args(layout.buildDirectory.file("fixtures/androidx-baseline.rc").get().asFile.absolutePath)
   outputs.file(layout.buildDirectory.file("fixtures/androidx-baseline.rc"))
 }
+
+tasks.register<JavaExec>("generateLayoutFixture") {
+  description = "Generate a layout .rc document using the authoritative AndroidX writer."
+  group = "verification"
+  classpath = sourceSets.main.get().runtimeClasspath
+  mainClass.set("ee.schimke.composeai.rcplayer.compat.GenerateLayoutFixtureKt")
+  args(layout.buildDirectory.file("fixtures/androidx-layout.rc").get().asFile.absolutePath)
+  outputs.file(layout.buildDirectory.file("fixtures/androidx-layout.rc"))
+}

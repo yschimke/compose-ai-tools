@@ -13,6 +13,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcHeightModifier
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
+import ee.schimke.composeai.rcplayer.protocol.RcNoArg
+import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcPaintData
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
@@ -22,6 +24,7 @@ import ee.schimke.composeai.rcplayer.protocol.supportReport
 import ee.schimke.composeai.rcplayer.runtime.RcDocumentLinker
 import ee.schimke.composeai.rcplayer.runtime.RcIntegerExpressionEvaluator
 import ee.schimke.composeai.rcplayer.runtime.RcLayoutTree
+import ee.schimke.composeai.rcplayer.runtime.RcLinkedNode
 
 public data class RcComposeSupportIssue(
   val operationIndex: Int,
@@ -245,12 +248,50 @@ public fun RcDocument.composeSupportReport(): RcComposeSupportReport {
         runCatching { RcLayoutTree.build(linked) }
           .exceptionOrNull()
           ?.let { issues += RcComposeSupportIssue(-1, "LayoutStructure", it.message ?: "invalid") }
+        if (hasInvalidDrawContent(linked.operations)) {
+          issues +=
+            RcComposeSupportIssue(
+              -1,
+              "DrawContent",
+              "operation must be inside CanvasOperations attached to a layout component",
+            )
+        }
       },
       onFailure = {
         issues += RcComposeSupportIssue(-1, "ContainerStructure", it.message ?: "invalid")
       },
     )
   return RcComposeSupportReport(issues)
+}
+
+private fun hasInvalidDrawContent(
+  nodes: List<RcLinkedNode>,
+  hasLayoutComponent: Boolean = false,
+  drawContentAvailable: Boolean = false,
+): Boolean = nodes.any { node ->
+  when (node) {
+    is RcLinkedNode.Operation ->
+      node.operation is RcNoArg &&
+        node.operation.opcode == RcOpcodes.DRAW_CONTENT &&
+        !drawContentAvailable
+    is RcLinkedNode.Container -> {
+      val component =
+        hasLayoutComponent ||
+          node.operation.opcode in
+            setOf(
+              RcOpcodes.LAYOUT_ROOT,
+              RcOpcodes.LAYOUT_BOX,
+              RcOpcodes.LAYOUT_ROW,
+              RcOpcodes.LAYOUT_COLUMN,
+              RcOpcodes.LAYOUT_CANVAS,
+              RcOpcodes.LAYOUT_FIT_BOX,
+            )
+      val available =
+        if (node.operation.opcode == RcOpcodes.CANVAS_OPERATIONS) component
+        else drawContentAvailable
+      hasInvalidDrawContent(node.children, component, available)
+    }
+  }
 }
 
 private fun paintIssue(paint: RcPaintData): String? {

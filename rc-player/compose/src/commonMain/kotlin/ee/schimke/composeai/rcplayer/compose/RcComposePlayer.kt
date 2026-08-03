@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -218,7 +219,17 @@ private fun RenderLayoutNode(
 ) {
   when (node) {
     is RcLayoutNode.Root ->
-      Box(modifier.applyLayoutModifiers(node.modifiers, state, fillMissingDimensions = true)) {
+      Box(
+        modifier.applyComponentModifiers(
+          node.modifiers,
+          state,
+          fillMissingDimensions = true,
+          node.canvasOperations,
+          textMeasurer,
+          images,
+          theme,
+        )
+      ) {
         node.children.forEach {
           RenderLayoutNode(
             it,
@@ -240,25 +251,17 @@ private fun RenderLayoutNode(
         )
       }
     is RcLayoutNode.Canvas ->
-      Box(modifier.applyLayoutModifiers(node.modifiers, state, fillMissingDimensions = true)) {
-        Canvas(Modifier.fillMaxSize()) {
-          val paint = RcPaintState()
-          val paths = mutableMapOf<Int, Path>()
-          val functions = RcFloatFunctionRuntime()
-          node.paintBlocks.forEach { operations ->
-            drawOperations(
-              operations,
-              state,
-              paint,
-              paths,
-              textMeasurer,
-              images,
-              functions,
-              theme,
-              filterTheme = true,
-            )
-          }
-        }
+      Box(
+        modifier.applyComponentModifiers(
+          node.modifiers,
+          state,
+          fillMissingDimensions = true,
+          node.canvasOperations,
+          textMeasurer,
+          images,
+          theme,
+        )
+      ) {
         node.content?.let {
           RenderLayoutNode(
             it,
@@ -269,9 +272,31 @@ private fun RenderLayoutNode(
           )
         }
       }
+    is RcLayoutNode.CanvasContent ->
+      Canvas(Modifier.fillMaxSize()) {
+        drawOperations(
+          node.operations,
+          state,
+          RcPaintState(),
+          mutableMapOf(),
+          textMeasurer,
+          images,
+          RcFloatFunctionRuntime(),
+          theme,
+          filterTheme = true,
+        )
+      }
     is RcLayoutNode.Box ->
       Box(
-        modifier.applyLayoutModifiers(node.modifiers, state, fillMissingDimensions = false),
+        modifier.applyComponentModifiers(
+          node.modifiers,
+          state,
+          fillMissingDimensions = false,
+          node.canvasOperations,
+          textMeasurer,
+          images,
+          theme,
+        ),
         contentAlignment =
           boxAlignment(node.operation.horizontalPositioning, node.operation.verticalPositioning),
       ) {
@@ -287,7 +312,15 @@ private fun RenderLayoutNode(
       val density = androidx.compose.ui.platform.LocalDensity.current
       val spacing = with(density) { state.resolve(node.operation.spacedBy).dp.roundToPx() }
       Row(
-        modifier.applyLayoutModifiers(node.modifiers, state, fillMissingDimensions = false),
+        modifier.applyComponentModifiers(
+          node.modifiers,
+          state,
+          fillMissingDimensions = false,
+          node.canvasOperations,
+          textMeasurer,
+          images,
+          theme,
+        ),
         horizontalArrangement =
           RcHorizontalArrangement(node.operation.horizontalPositioning, spacing),
         verticalAlignment = rowAlignment(node.operation.verticalPositioning),
@@ -305,7 +338,15 @@ private fun RenderLayoutNode(
       val density = androidx.compose.ui.platform.LocalDensity.current
       val spacing = with(density) { state.resolve(node.operation.spacedBy).dp.roundToPx() }
       Column(
-        modifier.applyLayoutModifiers(node.modifiers, state, fillMissingDimensions = false),
+        modifier.applyComponentModifiers(
+          node.modifiers,
+          state,
+          fillMissingDimensions = false,
+          node.canvasOperations,
+          textMeasurer,
+          images,
+          theme,
+        ),
         verticalArrangement = RcVerticalArrangement(node.operation.verticalPositioning, spacing),
         horizontalAlignment = columnAlignment(node.operation.horizontalPositioning),
       ) {
@@ -323,7 +364,15 @@ private fun RenderLayoutNode(
         boxAlignment(node.operation.horizontalPositioning, node.operation.verticalPositioning)
       Layout(
         modifier =
-          modifier.applyLayoutModifiers(node.modifiers, state, fillMissingDimensions = false),
+          modifier.applyComponentModifiers(
+            node.modifiers,
+            state,
+            fillMissingDimensions = false,
+            node.canvasOperations,
+            textMeasurer,
+            images,
+            theme,
+          ),
         content = {
           RenderLayoutNode(
             node.content,
@@ -480,15 +529,35 @@ internal fun arrangeLinear(
 }
 
 @Composable
-private fun Modifier.applyLayoutModifiers(
+private fun Modifier.applyComponentModifiers(
   modifiers: RcLayoutModifiers,
   state: RcPlayerState,
   fillMissingDimensions: Boolean,
+  canvasOperations: List<RcLinkedNode>?,
+  textMeasurer: TextMeasurer,
+  images: Map<Int, ImageBitmap>,
+  theme: Int,
 ): Modifier {
   val density = androidx.compose.ui.platform.LocalDensity.current
   var result = this
   result = result.applyWidth(modifiers, state, density, fillMissingDimensions)
   result = result.applyHeight(modifiers, state, density, fillMissingDimensions)
+  if (canvasOperations != null) {
+    result = result.drawWithContent {
+      drawOperations(
+        canvasOperations,
+        state,
+        RcPaintState(),
+        mutableMapOf(),
+        textMeasurer,
+        images,
+        RcFloatFunctionRuntime(),
+        theme,
+        filterTheme = true,
+        drawContent = { drawContent() },
+      )
+    }
+  }
   modifiers.padding.forEach { padding ->
     result =
       result.padding(
@@ -624,6 +693,7 @@ private fun DrawScope.drawOperations(
   functions: RcFloatFunctionRuntime,
   requestedTheme: Int,
   filterTheme: Boolean,
+  drawContent: (() -> Unit)? = null,
 ) {
   var currentTheme = RcTheme.UNSPECIFIED
   for (node in operations) {
@@ -646,6 +716,7 @@ private fun DrawScope.drawOperations(
               functions,
               requestedTheme,
               filterTheme = false,
+              drawContent = drawContent,
             )
           else -> error("Container opcode ${node.operation.opcode} is not renderable")
         }
@@ -760,6 +831,7 @@ private fun DrawScope.drawOperations(
             functions,
             requestedTheme,
             filterTheme = false,
+            drawContent = drawContent,
           )
         } finally {
           functions.executing.remove(operation.functionId)
@@ -791,6 +863,7 @@ private fun DrawScope.drawOperations(
         when (operation.opcode) {
           RcOpcodes.MATRIX_SAVE -> drawContext.canvas.save()
           RcOpcodes.MATRIX_RESTORE -> drawContext.canvas.restore()
+          RcOpcodes.DRAW_CONTENT -> drawContent?.invoke()
         }
       else -> Unit // Constants/data have already populated RcPlayerState.
     }

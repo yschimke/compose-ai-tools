@@ -2,7 +2,6 @@ package ee.schimke.composeai.rcplayer.protocol
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class RcOperationInventoryTest {
@@ -32,18 +31,8 @@ class RcOperationInventoryTest {
   }
 
   @Test
-  fun parseOnlyOperationsCannotBeMistakenForRenderableSupport() {
-    val document =
-      RcDocument(
-        RcHeader(RcVersion(1, 0, 0), modern = false),
-        listOf(RcTheme(-2), RcNoArg(RcOpcodes.DRAW_CONTENT)),
-      )
-
-    val support = document.supportReport()
-
-    assertEquals(listOf("DrawContent"), support.parseOnly.map { it.stableName })
-    assertTrue(!support.fullyRenderable)
-    assertFailsWith<IllegalArgumentException> { support.requireFullyRenderable() }
+  fun inventoryHasNoTemporaryParseOnlyOperations() {
+    assertTrue(RcOperationInventory.entries.none { it.status == RcOperationStatus.PARSE_ONLY })
   }
 
   @Test

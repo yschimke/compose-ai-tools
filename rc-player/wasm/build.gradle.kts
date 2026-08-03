@@ -44,10 +44,15 @@ tasks.register<Sync>("wasmPlayerDist") {
 tasks.register<Sync>("wasmPlayerTestDist") {
   description = "Assemble the Wasm player with an AndroidX-generated browser smoke fixture."
   group = "verification"
-  dependsOn("wasmPlayerDist", ":rc-player-compat-tests:generateBaselineFixture")
+  dependsOn(
+    "wasmPlayerDist",
+    ":rc-player-compat-tests:generateBaselineFixture",
+    ":rc-player-compat-tests:generateLayoutFixture",
+  )
   from(layout.buildDirectory.dir("wasmDist"))
   from(
     project(":rc-player-compat-tests").layout.buildDirectory.file("fixtures/androidx-baseline.rc")
   )
+  from(project(":rc-player-compat-tests").layout.buildDirectory.file("fixtures/androidx-layout.rc"))
   into(layout.buildDirectory.dir("wasmTestDist"))
 }

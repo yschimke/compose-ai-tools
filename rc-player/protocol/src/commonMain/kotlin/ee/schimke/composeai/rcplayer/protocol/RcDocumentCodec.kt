@@ -46,7 +46,7 @@ public object RcDocumentCodec {
         id(RcOpcodes.DRAW_PATH, "DrawPath"),
         DrawTweenPathCodec,
         id(RcOpcodes.CLIP_PATH, "ClipPath"),
-        id(RcOpcodes.LAYOUT_CANVAS_CONTENT, "CanvasContent"),
+        CanvasContentCodec,
         noArg(RcOpcodes.CANVAS_OPERATIONS, "CanvasOperations"),
         noArg(RcOpcodes.DRAW_CONTENT, "DrawContent"),
         noArg(RcOpcodes.CONTAINER_END, "ContainerEnd"),
@@ -192,6 +192,15 @@ private object CanvasLayoutCodec : RcOperationCodec<RcCanvasLayout> {
     output.writeInt(value.componentId)
     output.writeInt(value.animationId)
   }
+}
+
+private object CanvasContentCodec : RcOperationCodec<RcCanvasContent> {
+  override val spec = RcOperationSpec(RcOpcodes.LAYOUT_CANVAS_CONTENT, "CanvasContent")
+
+  override fun decode(input: RcWireReader) = RcCanvasContent(input.readInt("componentId"))
+
+  override fun encode(output: RcWireWriter, value: RcCanvasContent) =
+    output.writeInt(value.componentId)
 }
 
 private object BoxLayoutCodec : RcOperationCodec<RcBoxLayout> {

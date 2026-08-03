@@ -1,6 +1,7 @@
 package ee.schimke.composeai.rcplayer.runtime
 
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
+import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
@@ -29,6 +30,7 @@ public sealed interface RcLayoutNode {
     override val componentId: Int,
     override val modifiers: RcLayoutModifiers,
     val children: List<RcLayoutNode>,
+    val canvasOperations: List<RcLinkedNode>?,
   ) : RcLayoutNode {
     override val animationId: Int? = null
   }
@@ -45,14 +47,23 @@ public sealed interface RcLayoutNode {
     override val componentId: Int,
     override val animationId: Int,
     override val modifiers: RcLayoutModifiers,
-    val paintBlocks: List<List<RcLinkedNode>>,
+    val canvasOperations: List<RcLinkedNode>?,
     val content: Content?,
   ) : RcLayoutNode
+
+  public data class CanvasContent(
+    override val componentId: Int,
+    val operations: List<RcLinkedNode>,
+  ) : RcLayoutNode {
+    override val animationId: Int? = null
+    override val modifiers: RcLayoutModifiers = RcLayoutModifiers()
+  }
 
   public data class Box(
     val operation: RcBoxLayout,
     override val modifiers: RcLayoutModifiers,
     val content: Content,
+    val canvasOperations: List<RcLinkedNode>?,
   ) : RcLayoutNode {
     override val componentId: Int = operation.componentId
     override val animationId: Int = operation.animationId
@@ -62,6 +73,7 @@ public sealed interface RcLayoutNode {
     val operation: RcRowLayout,
     override val modifiers: RcLayoutModifiers,
     val content: Content,
+    val canvasOperations: List<RcLinkedNode>?,
   ) : RcLayoutNode {
     override val componentId: Int = operation.componentId
     override val animationId: Int = operation.animationId
@@ -71,6 +83,7 @@ public sealed interface RcLayoutNode {
     val operation: RcColumnLayout,
     override val modifiers: RcLayoutModifiers,
     val content: Content,
+    val canvasOperations: List<RcLinkedNode>?,
   ) : RcLayoutNode {
     override val componentId: Int = operation.componentId
     override val animationId: Int = operation.animationId
@@ -80,6 +93,7 @@ public sealed interface RcLayoutNode {
     val operation: RcFitBoxLayout,
     override val modifiers: RcLayoutModifiers,
     val content: Content,
+    val canvasOperations: List<RcLinkedNode>?,
   ) : RcLayoutNode {
     override val componentId: Int = operation.componentId
     override val animationId: Int = operation.animationId
@@ -98,7 +112,12 @@ public object RcLayoutTree {
       document.operations.filterIsInstance<RcLinkedNode.Container>().filter {
         it.operation is RcRootLayout
       }
-    if (roots.isEmpty()) return null
+    if (roots.isEmpty()) {
+      if (document.operations.any { it.containsLayoutComponent() }) {
+        throw RcLayoutException("Layout component appears outside a RootLayoutComponent")
+      }
+      return null
+    }
     if (roots.size != 1) throw RcLayoutException("Document has ${roots.size} layout roots")
     val seenIds = mutableSetOf<Int>()
     return parse(roots.single(), seenIds) as RcLayoutNode.Root
@@ -109,7 +128,12 @@ public object RcLayoutTree {
     val node =
       when (val operation = container.operation) {
         is RcRootLayout ->
-          RcLayoutNode.Root(operation.componentId, modifiers, childComponents(container, seenIds))
+          RcLayoutNode.Root(
+            operation.componentId,
+            modifiers,
+            childComponents(container, seenIds),
+            canvasOperations(container),
+          )
         is RcLayoutContent ->
           RcLayoutNode.Content(
             operation.componentId,
@@ -117,27 +141,43 @@ public object RcLayoutTree {
             childComponents(container, seenIds),
           )
         is RcCanvasLayout -> {
-          val paintBlocks =
-            container.children
-              .filterIsInstance<RcLinkedNode.Container>()
-              .filter { it.operation.opcode == RcOpcodes.CANVAS_OPERATIONS }
-              .map { it.children }
           RcLayoutNode.Canvas(
             operation.componentId,
             operation.animationId,
             modifiers,
-            paintBlocks,
+            canvasOperations(container),
             optionalContent(container, seenIds),
           )
         }
+        is RcCanvasContent -> RcLayoutNode.CanvasContent(operation.componentId, container.children)
         is RcBoxLayout ->
-          RcLayoutNode.Box(operation, modifiers, requiredContent(container, seenIds))
+          RcLayoutNode.Box(
+            operation,
+            modifiers,
+            requiredContent(container, seenIds),
+            canvasOperations(container),
+          )
         is RcRowLayout ->
-          RcLayoutNode.Row(operation, modifiers, requiredContent(container, seenIds))
+          RcLayoutNode.Row(
+            operation,
+            modifiers,
+            requiredContent(container, seenIds),
+            canvasOperations(container),
+          )
         is RcColumnLayout ->
-          RcLayoutNode.Column(operation, modifiers, requiredContent(container, seenIds))
+          RcLayoutNode.Column(
+            operation,
+            modifiers,
+            requiredContent(container, seenIds),
+            canvasOperations(container),
+          )
         is RcFitBoxLayout ->
-          RcLayoutNode.FitBox(operation, modifiers, requiredContent(container, seenIds))
+          RcLayoutNode.FitBox(
+            operation,
+            modifiers,
+            requiredContent(container, seenIds),
+            canvasOperations(container),
+          )
         else -> throw RcLayoutException("Opcode ${operation.opcode} is not a layout component")
       }
     if (!seenIds.add(node.componentId)) {
@@ -188,6 +228,13 @@ public object RcLayoutTree {
     )
   }
 
+  /** CoreDocument assigns the last CanvasOperations container to its enclosing component. */
+  private fun canvasOperations(container: RcLinkedNode.Container): List<RcLinkedNode>? =
+    container.children
+      .filterIsInstance<RcLinkedNode.Container>()
+      .lastOrNull { it.operation.opcode == RcOpcodes.CANVAS_OPERATIONS }
+      ?.children
+
   private inline fun <reified T : RcOperation> List<RcOperation>.singleModifier(
     component: RcOperation
   ): T? {
@@ -204,8 +251,13 @@ public object RcLayoutTree {
     this is RcRootLayout ||
       this is RcLayoutContent ||
       this is RcCanvasLayout ||
+      this is RcCanvasContent ||
       this is RcBoxLayout ||
       this is RcRowLayout ||
       this is RcColumnLayout ||
       this is RcFitBoxLayout
+
+  private fun RcLinkedNode.containsLayoutComponent(): Boolean =
+    this is RcLinkedNode.Container &&
+      (operation.isLayoutComponent() || children.any { it.containsLayoutComponent() })
 }
