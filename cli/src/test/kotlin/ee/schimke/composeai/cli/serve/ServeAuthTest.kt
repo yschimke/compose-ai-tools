@@ -23,6 +23,20 @@ class ServeAuthTest {
   }
 
   @Test
+  fun `a private server never lets a shared cache keep its prebaked imagery`() {
+    // The prebaked hero + grid-thumbnail URLs are content-addressed, so on the public server they
+    // are `immutable` — that is what makes a repeat visit paint from cache with no requests. On a
+    // token-gated server the same URLs carry the bearer token, and licensing a shared proxy to keep
+    // those pixels for a year would outlive the token itself: revoking it would not stop the proxy
+    // handing private catalog imagery to anyone with the URL.
+    assertEquals(
+      "public, max-age=31536000, immutable",
+      ServeHttpServer.prebakedImageCacheControl(isPublic = true),
+    )
+    assertEquals("no-store", ServeHttpServer.prebakedImageCacheControl(isPublic = false))
+  }
+
+  @Test
   fun `public mode authorizes every request regardless of token`() {
     assertTrue(ServeHttpServer.isAuthorized(token, null, isPublic = true))
     assertTrue(ServeHttpServer.isAuthorized(token, "wrong", isPublic = true))

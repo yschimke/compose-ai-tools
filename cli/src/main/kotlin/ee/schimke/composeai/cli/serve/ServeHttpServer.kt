@@ -1646,7 +1646,7 @@ class ServeHttpServer(
       call.respondText("no such hero image", status = HttpStatusCode.NotFound)
       return
     }
-    call.response.headers.append(HttpHeaders.CacheControl, HERO_CACHE_CONTROL)
+    call.response.headers.append(HttpHeaders.CacheControl, prebakedImageCacheControl())
     call.response.headers.append(HttpHeaders.ETag, hero.etag)
     if (call.request.headers[HttpHeaders.IfNoneMatch] == hero.etag) {
       call.respond(HttpStatusCode.NotModified)
@@ -1671,7 +1671,7 @@ class ServeHttpServer(
    * its grid from cache.
    */
   private suspend fun RoutingContext.respondGridThumb(thumb: ServeHeroImages.Thumb) {
-    call.response.headers.append(HttpHeaders.CacheControl, HERO_CACHE_CONTROL)
+    call.response.headers.append(HttpHeaders.CacheControl, prebakedImageCacheControl())
     call.response.headers.append(HttpHeaders.ETag, thumb.etag)
     if (call.request.headers[HttpHeaders.IfNoneMatch] == thumb.etag) {
       call.respond(HttpStatusCode.NotModified)
@@ -2882,6 +2882,8 @@ class ServeHttpServer(
   private fun pageCacheControl(): String =
     if (isPublic) STATIC_PAGE_CACHE_CONTROL else DYNAMIC_RESOURCE_CACHE_CONTROL
 
+  private fun prebakedImageCacheControl(): String = prebakedImageCacheControl(isPublic)
+
   /**
    * SVG lane of [handleRender]: load-shed like the PNG lane, then respond the figma-svg bytes. When
    * [scroll] is set, serves the full-page (`compose/figma-svg-long`) export of a scrolling preview
@@ -3256,6 +3258,22 @@ class ServeHttpServer(
      * catalog changes the hash, hence the URL, so there is nothing to invalidate.
      */
     private const val HERO_CACHE_CONTROL = "public, max-age=31536000, immutable"
+
+    /**
+     * Caching for the prebaked image lanes: `/hero/` and `?thumb=` on the render lane.
+     *
+     * Content-addressed and therefore `immutable` — but only on a **public** server. On a
+     * token-gated one those URLs carry the bearer token, and `public, immutable` would license a
+     * shared proxy to keep the pixels for a year and hand them to anyone presenting the URL, long
+     * after the token was revoked. Private catalog imagery is exactly what the token exists to
+     * gate, so it follows the same `no-store` policy as every other private response
+     * ([pageCacheControl]). The ETag is still sent; a private response simply isn't stored to
+     * revalidate against.
+     *
+     * Pure, like [isAuthorized], so the policy is unit-testable without standing up a server.
+     */
+    internal fun prebakedImageCacheControl(isPublic: Boolean): String =
+      if (isPublic) HERO_CACHE_CONTROL else DYNAMIC_RESOURCE_CACHE_CONTROL
 
     private val JSON = Json { encodeDefaults = true }
 
