@@ -12,9 +12,11 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -55,8 +57,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Matrix
 import androidx.compose.ui.graphics.Path
@@ -65,6 +69,7 @@ import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asSkiaPath
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
@@ -619,13 +624,16 @@ private fun RenderLayoutNode(
             RcHorizontalArrangement(node.operation.horizontalPositioning, spacing),
           verticalAlignment = rowAlignment(node.operation.verticalPositioning),
         ) {
-          RenderLayoutNode(
-            node.content,
-            state = state,
-            textMeasurer = textMeasurer,
-            images = images,
-            theme = theme,
-          )
+          node.content.children.forEach { child ->
+            RenderLayoutNode(
+              child,
+              modifier = rowWeightModifier(child, state),
+              state = state,
+              textMeasurer = textMeasurer,
+              images = images,
+              theme = theme,
+            )
+          }
         }
       }
     }
@@ -646,13 +654,16 @@ private fun RenderLayoutNode(
         verticalArrangement = RcVerticalArrangement(node.operation.verticalPositioning, spacing),
         horizontalAlignment = columnAlignment(node.operation.horizontalPositioning),
       ) {
-        RenderLayoutNode(
-          node.content,
-          state = state,
-          textMeasurer = textMeasurer,
-          images = images,
-          theme = theme,
-        )
+        node.content.children.forEach { child ->
+          RenderLayoutNode(
+            child,
+            modifier = columnWeightModifier(child, state),
+            state = state,
+            textMeasurer = textMeasurer,
+            images = images,
+            theme = theme,
+          )
+        }
       }
     }
     is RcLayoutNode.Flow -> {
@@ -2050,6 +2061,7 @@ private fun RcLayoutNode.geometryComponentIds(): List<Int> =
     is RcLayoutNode.Root ->
       listOf(componentId) + children.filterIsInstance<RcLayoutNode.Content>().map { it.componentId }
     is RcLayoutNode.Canvas -> listOfNotNull(componentId, content?.componentId)
+    is RcLayoutNode.CanvasContent -> listOf(componentId)
     is RcLayoutNode.Box -> listOf(componentId, content.componentId)
     is RcLayoutNode.Row -> listOf(componentId, content.componentId)
     is RcLayoutNode.Column -> listOf(componentId, content.componentId)
@@ -2058,7 +2070,9 @@ private fun RcLayoutNode.geometryComponentIds(): List<Int> =
     is RcLayoutNode.CollapsibleColumn -> listOf(componentId, content.componentId)
     is RcLayoutNode.FitBox -> listOf(componentId, content.componentId)
     is RcLayoutNode.Content -> emptyList() // Its layout manager publishes the wrapper geometry.
-    else -> listOf(componentId)
+    is RcLayoutNode.Image -> listOfNotNull(componentId, contentComponentId)
+    is RcLayoutNode.Text -> listOfNotNull(componentId, contentComponentId)
+    is RcLayoutNode.CoreText -> listOfNotNull(componentId, contentComponentId)
   }
 
 private fun Modifier.trackComponentGeometry(
@@ -2425,6 +2439,24 @@ private fun Modifier.applyWidth(
       }
   }
 
+private fun RowScope.rowWeightModifier(node: RcLayoutNode, state: RcPlayerState): Modifier {
+  val width = node.modifiers.width
+  return if (width?.type == RcDimensionType.WEIGHT) {
+    Modifier.weight(state.resolve(width.value).coerceAtLeast(Float.MIN_VALUE))
+  } else {
+    Modifier
+  }
+}
+
+private fun ColumnScope.columnWeightModifier(node: RcLayoutNode, state: RcPlayerState): Modifier {
+  val height = node.modifiers.height
+  return if (height?.type == RcDimensionType.WEIGHT) {
+    Modifier.weight(state.resolve(height.value).coerceAtLeast(Float.MIN_VALUE))
+  } else {
+    Modifier
+  }
+}
+
 private fun Modifier.applyHeight(
   modifiers: RcLayoutModifiers,
   state: RcPlayerState,
@@ -2500,6 +2532,8 @@ private class RcPaintState {
   var alpha: Float = 1f
   var blendMode: BlendMode = BlendMode.SrcOver
   var blendModeValue: Int = 3
+  var brush: Brush? = null
+  var colorFilter: ColorFilter? = null
   var textSize: Float = 16f
   var fontFamily: FontFamily = FontFamily.Default
   var fontWeight: FontWeight = FontWeight.Normal
@@ -3356,6 +3390,7 @@ private fun DrawScope.drawTweenPath(
     path = trimmed,
     color = paint.composeColor(),
     style = paint.style(),
+    colorFilter = paint.colorFilter,
     blendMode = paint.blendMode,
   )
 }
@@ -3441,6 +3476,7 @@ private fun DrawScope.drawIdOperation(
         path = pathForId(operation.id, state, computedPaths),
         color = paint.composeColor(),
         style = paint.style(),
+        colorFilter = paint.colorFilter,
         blendMode = paint.blendMode,
       )
     }
@@ -3513,14 +3549,31 @@ private fun DrawScope.draw4(operation: RcDraw4, paint: RcPaintState, state: RcPl
   val c = state.resolve(operation.third)
   val d = state.resolve(operation.fourth)
   when (operation.opcode) {
-    RcOpcodes.DRAW_RECT ->
-      drawRect(
-        paint.composeColor(),
-        Offset(a, b),
-        Size(c - a, d - b),
-        style = paint.style(),
-        blendMode = paint.blendMode,
-      )
+    RcOpcodes.DRAW_RECT -> {
+      val topLeft = Offset(a, b)
+      val size = Size(c - a, d - b)
+      val brush = paint.brush
+      if (brush == null) {
+        drawRect(
+          paint.composeColor(),
+          topLeft,
+          size,
+          style = paint.style(),
+          colorFilter = paint.colorFilter,
+          blendMode = paint.blendMode,
+        )
+      } else {
+        drawRect(
+          brush,
+          topLeft,
+          size,
+          alpha = paint.alpha,
+          style = paint.style(),
+          colorFilter = paint.colorFilter,
+          blendMode = paint.blendMode,
+        )
+      }
+    }
     RcOpcodes.DRAW_OVAL ->
       drawOval(
         paint.composeColor(),
@@ -3635,7 +3688,9 @@ private fun applyPaint(operation: RcPaintData, state: RcPaintState, values: RcPl
       9 -> {
         val shaderId = operation.words[index++]
         check(shaderId == 0) { "Shader id $shaderId is not implemented by the CMP backend" }
+        state.brush = null
       }
+      11 -> index = applyGradient(operation.words, index, command, state, values)
       12 ->
         state.alpha =
           values
@@ -3653,7 +3708,18 @@ private fun applyPaint(operation: RcPaintData, state: RcPaintState, values: RcPl
         state.blendMode = blendMode(state.blendModeValue)
       }
       19 -> state.color = values.color(operation.words[index++])
-      21 -> Unit // PaintBundle.CLEAR_COLOR_FILTER; no filter is active in the portable subset.
+      13 -> {
+        state.colorFilter =
+          ColorFilter.tint(Color(operation.words[index++]), blendMode(command ushr 16))
+      }
+      20 -> {
+        state.colorFilter =
+          ColorFilter.tint(
+            Color(values.color(operation.words[index++])),
+            blendMode(command ushr 16),
+          )
+      }
+      21 -> state.colorFilter = null
       23 -> {
         val count = command ushr 16
         repeat(count) {
@@ -3690,6 +3756,75 @@ private fun applyPaint(operation: RcPaintData, state: RcPaintState, values: RcPl
     }
   }
 }
+
+private fun applyGradient(
+  words: List<Int>,
+  startIndex: Int,
+  command: Int,
+  state: RcPaintState,
+  values: RcPlayerState,
+): Int {
+  var index = startIndex
+  val descriptor = words[index++]
+  val colorCount = descriptor and 0xff
+  val colorIdMask = descriptor ushr 16
+  val colors =
+    List(colorCount) { colorIndex ->
+      val word = words[index++]
+      Color(if (colorIdMask and (1 shl colorIndex) != 0) values.color(word) else word)
+    }
+  val stopCount = words[index++]
+  val stops = List(stopCount) { values.resolve(RcFloatWord(words[index++])) }
+  fun coordinate(): Float = values.resolve(RcFloatWord(words[index++]))
+  state.brush =
+    when (command ushr 16) {
+      0 -> {
+        val start = Offset(coordinate(), coordinate())
+        val end = Offset(coordinate(), coordinate())
+        val tileMode = gradientTileMode(words[index++])
+        if (stops.isEmpty()) Brush.linearGradient(colors, start, end, tileMode)
+        else
+          Brush.linearGradient(
+            *stops.zip(colors).map { it.first to it.second }.toTypedArray(),
+            start = start,
+            end = end,
+            tileMode = tileMode,
+          )
+      }
+      1 -> {
+        val center = Offset(coordinate(), coordinate())
+        val radius = coordinate()
+        val tileMode = gradientTileMode(words[index++])
+        if (stops.isEmpty()) Brush.radialGradient(colors, center, radius, tileMode)
+        else
+          Brush.radialGradient(
+            *stops.zip(colors).map { it.first to it.second }.toTypedArray(),
+            center = center,
+            radius = radius,
+            tileMode = tileMode,
+          )
+      }
+      2 -> {
+        val center = Offset(coordinate(), coordinate())
+        if (stops.isEmpty()) Brush.sweepGradient(colors, center)
+        else
+          Brush.sweepGradient(
+            *stops.zip(colors).map { it.first to it.second }.toTypedArray(),
+            center = center,
+          )
+      }
+      else -> error("Gradient type ${command ushr 16} is not implemented")
+    }
+  return index
+}
+
+private fun gradientTileMode(value: Int): TileMode =
+  when (value) {
+    1 -> TileMode.Repeated
+    2 -> TileMode.Mirror
+    3 -> TileMode.Decal
+    else -> TileMode.Clamp
+  }
 
 private const val FONT_AXIS_WEIGHT = 0x77676874 // wght
 private const val FONT_AXIS_ITALIC = 0x6974616c // ital

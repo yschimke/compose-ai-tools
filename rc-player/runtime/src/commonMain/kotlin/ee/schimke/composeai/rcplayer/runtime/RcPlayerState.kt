@@ -740,6 +740,9 @@ public class RcPlayerState(
             )
           )
         is RcHapticFeedback -> performHapticFeedback(operation)
+        // AndroidX applies nested TextData while inflating ClickModifier, then ignores it during
+        // onClick. RcPlayerState already loaded the flat document's text before layout.
+        is RcTextData -> Unit
         is RcValueIntegerChangeAction -> {
           setInteger(operation.targetValueId, operation.value)
           changed = true

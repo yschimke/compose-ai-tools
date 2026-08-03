@@ -414,22 +414,57 @@ class RcLayoutTreeTest {
   }
 
   @Test
-  fun rejectsMissingContentDuplicateModifiersAndDuplicateIds() {
+  fun rejectsMissingContentAndDuplicateIdsButKeepsFirstRequiredDimension() {
     assertFailsWith<RcLayoutException> {
       treeOf(RcRootLayout(1), RcBoxLayout(2, 20, 1, 4), ends = 2)
     }
-    assertFailsWith<RcLayoutException> {
-      treeOf(
-        RcRootLayout(1),
-        RcCanvasLayout(2, 20),
-        RcWidthModifier(RcDimensionType.EXACT, RcFloatWord.literal(10f)),
-        RcWidthModifier(RcDimensionType.EXACT, RcFloatWord.literal(20f)),
-        ends = 2,
+    val repeatedDimensions =
+      requireNotNull(
+        treeOf(
+          RcRootLayout(1),
+          RcCanvasLayout(2, 20),
+          RcWidthModifier(RcDimensionType.EXACT, RcFloatWord.literal(10f)),
+          RcWidthModifier(RcDimensionType.FILL, RcFloatWord.literal(1f)),
+          ends = 2,
+        )
       )
-    }
+    assertEquals(
+      10f,
+      assertIs<RcLayoutNode.Canvas>(repeatedDimensions.children.single())
+        .modifiers
+        .width
+        ?.value
+        ?.value,
+    )
     assertFailsWith<RcLayoutException> {
       treeOf(RcRootLayout(1), RcLayoutContent(2), RcCanvasLayout(2, 20), ends = 3)
     }
+  }
+
+  @Test
+  fun retainsLeafLayoutContentIdsForComponentValues() {
+    val coreText =
+      RcCoreText(
+        42,
+        listOf(
+          RcTextStyleProperty.IntValue(1, 3),
+          RcTextStyleProperty.IntValue(4, 0xff000000.toInt()),
+        ),
+      )
+    val root =
+      requireNotNull(
+        treeOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          coreText,
+          RcLayoutContent(4),
+          RcComponentValue(RcComponentValue.WIDTH, componentId = 4, valueId = 90),
+          ends = 4,
+        )
+      )
+
+    val content = assertIs<RcLayoutNode.Content>(root.children.single())
+    assertEquals(4, assertIs<RcLayoutNode.CoreText>(content.children.single()).contentComponentId)
   }
 
   @Test

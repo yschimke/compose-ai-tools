@@ -400,6 +400,7 @@ public fun RcDocument.composeSupportReport(
           setOf(
             RcDimensionType.EXACT,
             RcDimensionType.FILL,
+            RcDimensionType.WEIGHT,
             RcDimensionType.EXACT_DP,
             RcDimensionType.FILL_PARENT_MAX_WIDTH,
           )
@@ -417,6 +418,7 @@ public fun RcDocument.composeSupportReport(
           setOf(
             RcDimensionType.EXACT,
             RcDimensionType.FILL,
+            RcDimensionType.WEIGHT,
             RcDimensionType.EXACT_DP,
             RcDimensionType.FILL_PARENT_MAX_HEIGHT,
           )
@@ -888,6 +890,7 @@ private fun invalidActionChild(
             operation !is RcHapticFeedback &&
             operation !is RcHostMetadataAction &&
             operation !is RcHostNamedAction &&
+            operation !is ee.schimke.composeai.rcplayer.protocol.RcTextData &&
             operation !is RcValueIntegerChangeAction &&
             operation !is RcValueIntegerExpressionChangeAction &&
             operation !is RcValueStringChangeAction &&
@@ -1080,29 +1083,59 @@ private fun paintIssue(paint: RcPaintData): String? {
     if (type == PAINT_FONT_AXIS && command ushr 16 !in 0..8) {
       return "font axis count ${command ushr 16} is invalid"
     }
-    val argumentWords =
-      when (type) {
-        PAINT_TEXT_SIZE,
-        PAINT_COLOR,
-        PAINT_STROKE_WIDTH,
-        PAINT_ALPHA,
-        PAINT_COLOR_ID,
-        PAINT_TYPEFACE,
-        PAINT_SHADER -> 1
-        PAINT_STROKE_CAP,
-        PAINT_STYLE,
-        PAINT_STROKE_JOIN,
-        PAINT_BLEND_MODE,
-        PAINT_CLEAR_COLOR_FILTER -> 0
-        PAINT_FONT_AXIS -> (command ushr 16) * 2
-        else -> return "paint command $type is not implemented"
+    val gradientWords =
+      if (type == PAINT_GRADIENT) {
+        if (command ushr 16 !in 0..2) return "gradient type ${command ushr 16} is not implemented"
+        if (index >= paint.words.size) return "paint command $type is truncated"
+        val colorCount = paint.words[index] and 0xff
+        if (colorCount !in 1..16) return "gradient color count $colorCount is invalid"
+        val stopCountIndex = index + 1 + colorCount
+        if (stopCountIndex >= paint.words.size) return "paint command $type is truncated"
+        val stopCount = paint.words[stopCountIndex]
+        if (stopCount != 0 && stopCount != colorCount) {
+          return "gradient stop count $stopCount does not match $colorCount colors"
+        }
+        1 +
+          colorCount +
+          1 +
+          stopCount +
+          when (command ushr 16) {
+            0 -> 5
+            1 -> 4
+            else -> 2
+          }
+      } else {
+        null
       }
+    val argumentWords =
+      gradientWords
+        ?: when (type) {
+          PAINT_TEXT_SIZE,
+          PAINT_COLOR,
+          PAINT_STROKE_WIDTH,
+          PAINT_ALPHA,
+          PAINT_COLOR_ID,
+          PAINT_TYPEFACE,
+          PAINT_SHADER,
+          PAINT_COLOR_FILTER,
+          PAINT_COLOR_FILTER_ID -> 1
+          PAINT_STROKE_CAP,
+          PAINT_STYLE,
+          PAINT_STROKE_JOIN,
+          PAINT_BLEND_MODE,
+          PAINT_CLEAR_COLOR_FILTER -> 0
+          PAINT_FONT_AXIS -> (command ushr 16) * 2
+          else -> return "paint command $type is not implemented"
+        }
     if (index + argumentWords > paint.words.size) return "paint command $type is truncated"
     if (type == PAINT_STYLE && command ushr 16 !in 0..1) {
       return "paint style ${command ushr 16} is not implemented"
     }
     if (type == PAINT_BLEND_MODE && command ushr 16 !in 0..28) {
       return "blend mode ${command ushr 16} is not implemented"
+    }
+    if (type in setOf(PAINT_COLOR_FILTER, PAINT_COLOR_FILTER_ID) && command ushr 16 !in 0..28) {
+      return "color filter mode ${command ushr 16} is not implemented"
     }
     if (type == PAINT_TYPEFACE && paint.words[index] !in 0..3) {
       return "font id ${paint.words[index]} is not implemented"
@@ -1127,10 +1160,13 @@ private const val PAINT_STROKE_WIDTH = 5
 private const val PAINT_STROKE_CAP = 7
 private const val PAINT_STYLE = 8
 private const val PAINT_SHADER = 9
+private const val PAINT_GRADIENT = 11
 private const val PAINT_ALPHA = 12
+private const val PAINT_COLOR_FILTER = 13
 private const val PAINT_STROKE_JOIN = 15
 private const val PAINT_BLEND_MODE = 18
 private const val PAINT_COLOR_ID = 19
+private const val PAINT_COLOR_FILTER_ID = 20
 private const val PAINT_TYPEFACE = 16
 private const val PAINT_CLEAR_COLOR_FILTER = 21
 private const val PAINT_FONT_AXIS = 23
