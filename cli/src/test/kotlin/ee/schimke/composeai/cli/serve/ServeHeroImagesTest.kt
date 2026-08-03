@@ -11,6 +11,7 @@ import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -41,6 +42,30 @@ class ServeHeroImagesTest {
   }
 
   private fun decode(bytes: ByteArray): BufferedImage = ImageIO.read(ByteArrayInputStream(bytes))!!
+
+  /**
+   * A render-shaped image: flat panels on a plain surface, which is how a real preview compresses.
+   * [png]'s per-pixel gradient is deliberately the opposite — incompressible noise — which makes it
+   * the right source for "does the bake shrink it" but the wrong one anywhere the *chosen* encoding
+   * matters: a modest downscale of pure noise can legitimately encode larger than the original, and
+   * the bake then keeps the original (see `a render already small enough…`).
+   */
+  private fun uiPng(width: Int, height: Int): ByteArray {
+    val img = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
+    val g = img.createGraphics()
+    g.color = Color(250, 250, 250)
+    g.fillRect(0, 0, width, height)
+    var row = 0
+    while (row * height / 10 < height) {
+      g.color = Color(30 + row * 37 % 200, 60 + row * 53 % 180, 90 + row * 29 % 160)
+      g.fillRect(width / 10, row * height / 10 + height / 40, width * 8 / 10, height / 16)
+      row++
+    }
+    g.dispose()
+    val out = ByteArrayOutputStream()
+    ImageIO.write(img, "png", out)
+    return out.toByteArray()
+  }
 
   @Test
   fun `a full-resolution render bakes down to a card-sized thumbnail`() {
@@ -127,10 +152,20 @@ class ServeHeroImagesTest {
     override val label = "counting"
     var renders = 0
 
+    /**
+     * Pixels already on disk, as [bakedRender] answers them — null models a card whose image the
+     * catalog hasn't filled in yet. Deliberately separate from [bytes]: the grid lane must be shown
+     * to read *this*, never the render lane, which would fetch.
+     */
+    var baked: ByteArray? = null
+
     override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
       renders++
       return if (previewId == "hero") RenderOutcome.Ok(bytes) else RenderOutcome.NotFound
     }
+
+    override fun bakedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? =
+      baked?.takeIf { previewId == "hero" }?.let { RenderOutcome.Ok(it) }
 
     override fun subscribeStream(
       previewId: String,
@@ -186,5 +221,84 @@ class ServeHeroImagesTest {
   fun `a preview the host cannot render bakes to nothing`() {
     val heroes = ServeHeroImages()
     assertNull(heroes.heroFor(CountingHost(png(100, 100)), "missing", crop = null))
+  }
+
+  @Test
+  fun `a grid card ships a downscaled copy of its render, not the full one`() {
+    val source = png(1000, 2000)
+    val thumb = ServeHeroImages().bakeGridThumb(source, crop = null)!!
+    val baked = decode(thumb.bytes)
+    // Scaled so the long edge lands at the card cap × the retina factor — and no further.
+    assertEquals(480, baked.height, "rasterised at 2x the card's 240px cap")
+    assertEquals(240, baked.width, "aspect ratio preserved")
+    assertTrue(
+      thumb.bytes.size < source.size / 4,
+      "the card ships a fraction of the render (${thumb.bytes.size} vs ${source.size} bytes)",
+    )
+  }
+
+  @Test
+  fun `a framed card keeps its whole canvas, leaving the crop to the page`() {
+    // The crop window shows a 1000x1000 component on a 2000x2000 canvas. A HERO would bake those
+    // pixels down to the component alone; a grid card must not, because the same <img> is
+    // re-pointed
+    // at a full, uncropped render the moment the visitor picks a declared theme — the page's clip
+    // window has to keep framing both identically.
+    val crop =
+      ContentCrop(boxW = 1000, boxH = 1000, imgW = 2000, imgH = 2000, left = -500, top = -500)
+    val baked = decode(ServeHeroImages().bakeGridThumb(uiPng(2000, 2000), crop)!!.bytes)
+    // The visible region — not the canvas — is what lands at the cap, so the cropped component is
+    // as crisp as an uncropped one; the canvas around it rides along at the same scale.
+    assertEquals(960, baked.width, "the whole canvas is still there, at the region's scale")
+    assertEquals(960, baked.height)
+  }
+
+  @Test
+  fun `a render already small enough is served as-is rather than re-encoded larger`() {
+    // Re-encoding costs CPU and can *grow* a tightly-packed PNG. This lane exists to cut bytes, so
+    // it must never ship more of them than the render it replaces.
+    val source = png(120, 120)
+    val thumb = ServeHeroImages().bakeGridThumb(source, crop = null)!!
+    assertTrue(thumb.bytes.size <= source.size, "never bigger than the render it stands in for")
+    assertEquals(120, decode(thumb.bytes).width, "and never upscaled")
+  }
+
+  @Test
+  fun `grid thumbnails are content-addressed, so their URLs can be cached forever`() {
+    val thumbs = ServeHeroImages()
+    val a = thumbs.bakeGridThumb(png(600, 600), crop = null)!!
+    val again = thumbs.bakeGridThumb(png(600, 600), crop = null)!!
+    val different = thumbs.bakeGridThumb(png(600, 601), crop = null)!!
+    assertEquals(a.hash, again.hash, "identical pixels hash to the same immutable URL")
+    assertNotEquals(a.hash, different.hash, "different pixels get a different URL")
+    assertEquals("\"${a.hash}\"", a.etag, "the ETag is the content hash")
+  }
+
+  @Test
+  fun `baking a grid thumbnail reads local pixels and never the render lane`() {
+    // The catalog page bakes one of these per card while building its HTML, on the request thread.
+    // `render` fetches a cold preview over the network, so a page build that reached it would turn
+    // into dozens of serial round-trips — the whole reason this lane is on `bakedRender`.
+    val thumbs = ServeHeroImages()
+    val host = CountingHost(png(500, 500)).apply { baked = png(500, 500) }
+    val first = thumbs.gridThumbFor(host, "hero", crop = null)!!
+    repeat(20) { assertSame(first, thumbs.gridThumbFor(host, "hero", crop = null)) }
+    assertEquals(0, host.renders, "building a page never reaches the fetching lane")
+  }
+
+  @Test
+  fun `a card with no pixels yet gains a thumbnail once they land`() {
+    // Images are filled in after a catalog loads. A miss must not be memoised, or a card that was
+    // cold on the first page build would stay full-resolution until the catalog is republished.
+    val thumbs = ServeHeroImages()
+    val host = CountingHost(png(500, 500))
+    assertNull(thumbs.gridThumbFor(host, "hero", crop = null), "nothing baked locally yet")
+    host.baked = png(500, 500)
+    assertNotNull(thumbs.gridThumbFor(host, "hero", crop = null), "picked up on the next build")
+  }
+
+  @Test
+  fun `undecodable pixels bake to no thumbnail so the card keeps the render lane`() {
+    assertNull(ServeHeroImages().bakeGridThumb("not a png".encodeToByteArray(), crop = null))
   }
 }

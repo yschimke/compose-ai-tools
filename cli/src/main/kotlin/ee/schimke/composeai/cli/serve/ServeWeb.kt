@@ -2714,6 +2714,18 @@ object ServeWeb {
      */
     thumbCrop: (String) -> ContentCrop? = { null },
     /**
+     * Per-preview **prebaked thumbnail** lookup ([ServeHeroImages.gridThumbFor]), returning the
+     * baked bytes' content hash. When a card has one, every URL that points at that card's pixels
+     * carries `?thumb=<hash>` and the render lane answers it from memory with a downscaled image,
+     * instead of shipping the full-resolution render (a catalog page is ~2 MB of them). Returns
+     * null for a card whose pixels aren't baked locally yet — it keeps the plain render URL and
+     * picks a thumbnail up on a later page build.
+     *
+     * The default `{ null }` leaves every card on the full render — used by the plain-module
+     * landing and by the fixture goldens, which must not churn with the bake.
+     */
+    thumbHash: (String) -> String? = { null },
+    /**
      * Running server version (the CLI's `BUNDLE_VERSION`), surfaced in the (now bottom-of-page)
      * about box beside the source/`/version` links. Null omits it; the fixture golden passes a
      * fixed string so a release never churns the committed HTML.
@@ -2803,7 +2815,18 @@ object ServeWeb {
     // props) pass straight through.
     val groups =
       groupPreviews(previews.filterNot { isNonDefaultState(it) || hasNonDefaultProps(it) })
-    fun renderSrc(p: ServePreview) = "$basePath/render/${WebEscaping.urlEncodeSegment(p.id)}.png$q"
+    // A card's pixel URL. With a prebaked thumbnail it carries `?thumb=<hash>`, which the render
+    // lane answers from memory with the downscaled image; the id and every other param stay
+    // identical, so the SAME URL still serves a full render once anything is layered on it (a
+    // declared theme appends `themeProvider=`, and an override present means the thumbnail can't
+    // answer). That is what lets one helper feed the card's `src`, its light/dark swap targets and
+    // its themed-render base without any of them having to know which lane will answer.
+    fun renderSrc(p: ServePreview): String {
+      val base = "$basePath/render/${WebEscaping.urlEncodeSegment(p.id)}.png$q"
+      val hash = thumbHash(p.id) ?: return base
+      val sep = if (base.contains('?')) "&" else "?"
+      return "$base$sep${ServeHeroImages.THUMB_PARAM}=${WebEscaping.urlEncodeSegment(hash)}"
+    }
     fun viewerHref(p: ServePreview) = "$basePath/p/${WebEscaping.urlEncodeSegment(p.id)}$q"
     // The app-declared themes join the header's Theme control only when this session can actually
     // re-render a card under one — otherwise the chips would redraw nothing.
@@ -2856,13 +2879,14 @@ object ServeWeb {
     fun singleCard(p: ServePreview): String {
       val idSeg = WebEscaping.urlEncodeSegment(p.id)
       val label = WebEscaping.htmlEscape(previewDisplayName(p))
+      val src = renderSrc(p)
       val idText = WebEscaping.htmlEscape(p.id)
       // data-bg-theme is the thumbnail's background (explicit token, else the dark-first default).
       val bgAttr = bgTheme(p.id, darkFirst)?.let { " data-bg-theme=\"$it\"" } ?: ""
       return """
           <a class="cp-card"$bgAttr href="$basePath/p/$idSeg$q">
             <div class="cp-imgwrap">
-              ${thumbImg("$basePath/render/$idSeg.png$q", label, " loading=\"lazy\"", thumbCrop(p.id))}
+              ${thumbImg(src, label, " loading=\"lazy\"", thumbCrop(p.id))}
             </div>
             <div class="cp-meta">
               <div class="cp-label" title="$idText">$label</div>

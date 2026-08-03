@@ -1203,6 +1203,16 @@ class ServeHttpServer(
           // reads),
           // so a Wear sticker shows the component, not the empty watch canvas around it.
           thumbCrop = { id -> catalogBundleHost(renderHost)?.contentCrop(id) },
+          // …and point each card at a prebaked, downscaled copy of its render where one can be
+          // baked from local pixels, so the page ships a few hundred kB of thumbnails instead of a
+          // couple of MB of full-resolution PNGs. Baking reads only what is already on disk (see
+          // [ServeHeroImages.gridThumbFor]) — this runs per card on the request thread, so it must
+          // never fetch.
+          thumbHash = { id ->
+            heroImages
+              .gridThumbFor(renderHost, id, catalogBundleHost(renderHost)?.contentCrop(id))
+              ?.hash
+          },
           // The catalog's declared stage surface (`display.surface`), so a dark-first system's
           // unthemed cards sit on the dark stage instead of the default white.
           declaredSurface = catalogBundleHost(renderHost)?.stageSurface,
@@ -1636,13 +1646,38 @@ class ServeHttpServer(
       call.respondText("no such hero image", status = HttpStatusCode.NotFound)
       return
     }
-    call.response.headers.append(HttpHeaders.CacheControl, HERO_CACHE_CONTROL)
+    call.response.headers.append(HttpHeaders.CacheControl, prebakedImageCacheControl())
     call.response.headers.append(HttpHeaders.ETag, hero.etag)
     if (call.request.headers[HttpHeaders.IfNoneMatch] == hero.etag) {
       call.respond(HttpStatusCode.NotModified)
       return
     }
     call.respondBytes(hero.bytes, ContentType.Image.PNG)
+  }
+
+  /**
+   * Whether this render request asks for the base preview and nothing else — the only shape a
+   * prebaked grid thumbnail can answer. See the `?thumb=` lane in [handleRender] for why.
+   */
+  private fun RoutingContext.plainThumbRequest(): Boolean =
+    call.request.queryParameters.entries().none { (key, _) ->
+      ServeOverrides.isOverrideParam(key) || key == "scroll" || key == "rcPlayer" || key == "mode"
+    }
+
+  /**
+   * Respond a prebaked grid thumbnail ([ServeHeroImages.gridThumbFor]). Cached exactly like the
+   * `/hero/` lane and for the same reason: the URL carries the bytes' content hash, so what it
+   * names can never change and the browser need not revalidate — a second visit to a catalog paints
+   * its grid from cache.
+   */
+  private suspend fun RoutingContext.respondGridThumb(thumb: ServeHeroImages.Thumb) {
+    call.response.headers.append(HttpHeaders.CacheControl, prebakedImageCacheControl())
+    call.response.headers.append(HttpHeaders.ETag, thumb.etag)
+    if (call.request.headers[HttpHeaders.IfNoneMatch] == thumb.etag) {
+      call.respond(HttpStatusCode.NotModified)
+      return
+    }
+    call.respondBytes(thumb.bytes, ContentType.Image.PNG)
   }
 
   /**
@@ -2567,6 +2602,36 @@ class ServeHttpServer(
       val wantRcDoc = rawName.endsWith(".rc")
       val previewId =
         rawName.removeSuffix(".png").removeSuffix(".svg").removeSuffix(".slots").removeSuffix(".rc")
+      // The prebaked grid-thumbnail lane: a catalog card asks for `?thumb=<hash>` and gets a
+      // downscaled copy of its render straight out of memory — no override parse, no admission, no
+      // disk read, no chance of waking a daemon. This is the whole point of the lane: a catalog
+      // page is ~42 cards, and serving each of them a full-resolution PNG is both the page's bulk
+      // and 42 trips through the render machinery.
+      //
+      // The hash must match what this host bakes today. A stale URL (the catalog was republished
+      // under the visitor's open tab) simply falls through to the normal render, which is correct
+      // rather than merely safe: the bytes behind a `thumb=` URL never change, which is what makes
+      // the response `immutable`.
+      //
+      // Only a request that asks for *nothing else* can be answered here. A thumbnail is the base
+      // render at a smaller size, so anything that shapes the pixels — a declared theme or any
+      // other override, a full-page `scroll=` export, the cmp-jvm player lane — has to go the
+      // normal way. Those params ride on the same URL by design (the grid appends `themeProvider=`
+      // to the card's `src` when the visitor picks a theme), so this check is what keeps a themed
+      // render from being answered with an unthemed thumbnail.
+      val thumbHash = call.request.queryParameters[ServeHeroImages.THUMB_PARAM]
+      if (thumbHash != null && !wantSvg && !wantSlots && !wantRcDoc && plainThumbRequest()) {
+        val thumb =
+          heroImages.gridThumbFor(
+            renderHost,
+            previewId,
+            catalogBundleHost(renderHost)?.contentCrop(previewId),
+          )
+        if (thumb != null && thumb.hash == thumbHash) {
+          respondGridThumb(thumb)
+          return@withLeasedSession
+        }
+      }
       // The `.rc` lane serves the captured Remote Compose document bytes verbatim (no override
       // pass — the in-browser player replays the doc and applies knob edits client-side), so it
       // short-circuits ahead of the override parse. A host with no `ir/<id>.rc` sidecar (a
@@ -2816,6 +2881,8 @@ class ServeHttpServer(
 
   private fun pageCacheControl(): String =
     if (isPublic) STATIC_PAGE_CACHE_CONTROL else DYNAMIC_RESOURCE_CACHE_CONTROL
+
+  private fun prebakedImageCacheControl(): String = prebakedImageCacheControl(isPublic)
 
   /**
    * SVG lane of [handleRender]: load-shed like the PNG lane, then respond the figma-svg bytes. When
@@ -3191,6 +3258,22 @@ class ServeHttpServer(
      * catalog changes the hash, hence the URL, so there is nothing to invalidate.
      */
     private const val HERO_CACHE_CONTROL = "public, max-age=31536000, immutable"
+
+    /**
+     * Caching for the prebaked image lanes: `/hero/` and `?thumb=` on the render lane.
+     *
+     * Content-addressed and therefore `immutable` — but only on a **public** server. On a
+     * token-gated one those URLs carry the bearer token, and `public, immutable` would license a
+     * shared proxy to keep the pixels for a year and hand them to anyone presenting the URL, long
+     * after the token was revoked. Private catalog imagery is exactly what the token exists to
+     * gate, so it follows the same `no-store` policy as every other private response
+     * ([pageCacheControl]). The ETag is still sent; a private response simply isn't stored to
+     * revalidate against.
+     *
+     * Pure, like [isAuthorized], so the policy is unit-testable without standing up a server.
+     */
+    internal fun prebakedImageCacheControl(isPublic: Boolean): String =
+      if (isPublic) HERO_CACHE_CONTROL else DYNAMIC_RESOURCE_CACHE_CONTROL
 
     private val JSON = Json { encodeDefaults = true }
 
