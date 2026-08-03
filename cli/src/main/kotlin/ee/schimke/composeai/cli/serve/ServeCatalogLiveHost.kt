@@ -88,6 +88,21 @@ class ServeCatalogLiveHost(
   private val warmInBackground: Boolean =
     System.getProperty("composeai.serve.warmInBackground")?.toBooleanStrictOrNull() ?: false,
   private val catalogThemeCache: CatalogThemeCache = CatalogThemeCache(),
+  /**
+   * Whether to **eagerly** fill [catalogThemeCache] on the idle pass below — off by default.
+   *
+   * The pass renders `previews × declaredThemes` for every catalog: hundreds of daemon renders,
+   * server-wide, for pixels no visitor has asked for. Even parked behind [ServeBackgroundWork] it
+   * competes with the work that is actually on a request path, and on the public box it is what
+   * turned a quiet server into a permanently busy one. The *reactive* half of the cache is
+   * untouched and is where the value was: a theme a visitor actually selects is still cached on
+   * completion (see [cachedRender]), so re-selecting it stays instant.
+   *
+   * `-Dcomposeai.serve.themeOptimization=true` turns the eager pass back on for a deployment that
+   * wants it.
+   */
+  private val themeOptimizationEnabled: Boolean =
+    System.getProperty("composeai.serve.themeOptimization")?.toBooleanStrictOrNull() ?: false,
   private val serverIdleMillis: () -> Long? = { Long.MAX_VALUE },
   /**
    * Server-wide admission for the idle theme optimizer below. Shared by every catalog host in a
@@ -238,6 +253,10 @@ class ServeCatalogLiveHost(
 
   /** Fill every catalog-preview × declared-theme cache entry while the whole server is idle. */
   private fun startThemeOptimization() {
+    // Off by default — see [themeOptimizationEnabled]. Returning before `configureTargets` leaves
+    // the cache with no targets, so `themeOptimizationSnapshot()` reports null and `/status` shows
+    // no optimization row at all rather than one stuck at "waiting" forever.
+    if (!themeOptimizationEnabled) return
     val catalogIds =
       previews.asSequence().map { it.id }.filter(alias::containsKey).sorted().toList()
     val jobs = catalogIds.flatMap { previewId ->

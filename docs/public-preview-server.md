@@ -129,12 +129,16 @@ mixed theme-plus-knob renders remain in the daemon's bounded override cache rath
 this catalog-lifetime cache. Dynamic theme URLs remain `no-store`, preventing a browser or shared
 proxy from replaying old-catalog pixels after refresh.
 
-That cache is also filled **ahead of the first visitor**: while the server is idle, each catalog
-walks its `previews × declaredThemes` set and renders the missing entries, so a theme selection on a
-warm box is served from cache rather than waiting on a daemon. `/status` reports the pass per catalog
+The cache can also be filled **ahead of the first visitor** — an idle pass that walks each catalog's
+`previews × declaredThemes` set and renders the missing entries — but that pass is **off by
+default**. It is hundreds of daemon renders per catalog for pixels nobody has asked for, and on the
+public box it is what turned a quiet server into a permanently busy one. The reactive half is where
+the value was and is unchanged: a theme a visitor actually selects is cached on completion, so
+re-selecting it is instant. Turn the eager pass on with
+`-Dcomposeai.serve.themeOptimization=true`; when it runs, `/status` reports it per catalog
 (`themeOptimization`: `waiting` / `running` / `paused` / `complete`, plus cached/remaining counts).
 
-Being background work, it yields twice over — both learned from `preview.coo.ee`:
+When enabled, it yields twice over — both learned from `preview.coo.ee`:
 
 - **It never runs while catalogs are loading.** A box brings its catalogs up one at a time, and each
   load fetches a branch, resolves a live bundle's classpath and starts a render daemon. The idle
