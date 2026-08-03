@@ -2,6 +2,7 @@ package ee.schimke.composeai.rcplayer.compose
 
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.unit.Density
+import ee.schimke.composeai.rcplayer.protocol.RcAlignByModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
@@ -50,6 +51,54 @@ import kotlin.test.assertTrue
 import org.jetbrains.skia.Bitmap
 
 class RcLayoutRenderTest {
+  @Test
+  fun rowAlignByFirstBaselineMovesTheSmallerTextComponentDown() {
+    val green = 0xff00ff00.toInt()
+    val red = 0xffff0000.toInt()
+    val operations =
+      listOf<RcOperation>(
+        RcTextData(10, "A"),
+        RcRootLayout(1),
+        RcLayoutContent(2),
+        RcRowLayout(3, 30, 1, 4, RcFloatWord.literal(0f)),
+        width(80f),
+        height(80f),
+        RcLayoutContent(4),
+        textLayout(5, 10, 10f),
+        width(40f),
+        height(20f),
+        RcAlignByModifier(RcFloatWord(0x7fc00001), 0),
+        solidBackground(red = 0f, green = 1f, blue = 0f),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+        textLayout(6, 10, 30f),
+        width(40f),
+        height(50f),
+        RcAlignByModifier(RcFloatWord(0x7fc00001), 0),
+        solidBackground(red = 1f, green = 0f, blue = 0f),
+        RcNoArg(RcOpcodes.CONTAINER_END),
+      ) + List(4) { RcNoArg(RcOpcodes.CONTAINER_END) }
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 80, legacyHeight = 80, modern = false),
+        operations,
+      )
+    val scene =
+      ImageComposeScene(width = 80, height = 80, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      val image = scene.render()
+      val bitmap = Bitmap().apply { allocN32Pixels(80, 80) }
+      check(image.readPixels(bitmap))
+      fun topOf(color: Int): Int =
+        (0 until 80).first { y -> (0 until 80).any { x -> bitmap.getColor(x, y) == color } }
+
+      assertTrue(topOf(green) > topOf(red))
+    } finally {
+      scene.close()
+    }
+  }
+
   @Test
   fun collapsibleSelectionUsesAndroidXPriorityOrderAndFirstOverflowCutoff() {
     assertContentEquals(
@@ -888,6 +937,34 @@ class RcLayoutRenderTest {
       RcFloatWord.literal(0f),
       RcFloatWord.literal(size),
       RcFloatWord.literal(size),
+    )
+
+  private fun textLayout(componentId: Int, textId: Int, fontSize: Float) =
+    RcTextLayout(
+      componentId = componentId,
+      animationId = componentId * 10,
+      textId = textId,
+      color = 0xff000000.toInt(),
+      fontSize = RcFloatWord.literal(fontSize),
+      fontStyle = 0,
+      fontWeight = RcFloatWord.literal(400f),
+      fontFamilyId = -1,
+      textAlignAndFlags = RcTextLayout.ALIGN_LEFT,
+      overflow = RcTextLayout.OVERFLOW_CLIP,
+      maxLines = 1,
+    )
+
+  private fun solidBackground(red: Float, green: Float, blue: Float) =
+    RcBackgroundModifier(
+      flags = 0,
+      colorId = 0,
+      reserved1 = 0,
+      reserved2 = 0,
+      red = RcFloatWord.literal(red),
+      green = RcFloatWord.literal(green),
+      blue = RcFloatWord.literal(blue),
+      alpha = RcFloatWord.literal(1f),
+      shapeType = RcBackgroundModifier.SHAPE_RECTANGLE,
     )
 
   private fun width(value: Float) =

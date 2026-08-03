@@ -1,5 +1,6 @@
 package ee.schimke.composeai.rcplayer.runtime
 
+import ee.schimke.composeai.rcplayer.protocol.RcAlignByModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
@@ -46,6 +47,7 @@ public data class RcLayoutModifiers(
   /** Extra size constraints are evaluated before the component's requested dimensions. */
   val dimensionConstraints: List<RcOperation> = emptyList(),
   val collapsiblePriority: RcCollapsiblePriorityModifier? = null,
+  val alignBy: RcAlignByModifier? = null,
   val visibility: RcVisibilityModifier? = null,
   val graphicsLayer: RcGraphicsLayerModifier? = null,
 )
@@ -400,6 +402,7 @@ public object RcLayoutTree {
       graphicsLayer = operations.singleModifier<RcGraphicsLayerModifier>(container.operation),
       collapsiblePriority =
         operations.singleModifier<RcCollapsiblePriorityModifier>(container.operation),
+      alignBy = operations.singleModifier<RcAlignByModifier>(container.operation),
     )
   }
 

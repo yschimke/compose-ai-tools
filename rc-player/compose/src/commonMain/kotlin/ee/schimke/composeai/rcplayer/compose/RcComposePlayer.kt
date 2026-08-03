@@ -57,6 +57,9 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.layout.AlignmentLine
+import androidx.compose.ui.layout.FirstBaseline
+import androidx.compose.ui.layout.LastBaseline
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -78,6 +81,7 @@ import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import ee.schimke.composeai.rcplayer.protocol.RcAlignByModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
@@ -353,7 +357,7 @@ private fun RenderLayoutNode(
     is RcLayoutNode.Row -> {
       val density = androidx.compose.ui.platform.LocalDensity.current
       val spacing = with(density) { state.resolve(node.operation.spacedBy).dp.roundToPx() }
-      Row(
+      val rowModifier =
         effectiveModifier.applyComponentModifiers(
           node.modifiers,
           state,
@@ -362,18 +366,34 @@ private fun RenderLayoutNode(
           textMeasurer,
           images,
           theme,
-        ),
-        horizontalArrangement =
-          RcHorizontalArrangement(node.operation.horizontalPositioning, spacing),
-        verticalAlignment = rowAlignment(node.operation.verticalPositioning),
-      ) {
-        RenderLayoutNode(
-          node.content,
+        )
+      if (node.content.children.any { it.modifiers.alignBy != null }) {
+        RcAlignedRow(
+          children = node.content.children,
+          horizontalPositioning = node.operation.horizontalPositioning,
+          verticalPositioning = node.operation.verticalPositioning,
+          spacing = spacing,
+          modifier = rowModifier,
           state = state,
           textMeasurer = textMeasurer,
           images = images,
           theme = theme,
         )
+      } else {
+        Row(
+          rowModifier,
+          horizontalArrangement =
+            RcHorizontalArrangement(node.operation.horizontalPositioning, spacing),
+          verticalAlignment = rowAlignment(node.operation.verticalPositioning),
+        ) {
+          RenderLayoutNode(
+            node.content,
+            state = state,
+            textMeasurer = textMeasurer,
+            images = images,
+            theme = theme,
+          )
+        }
       }
     }
     is RcLayoutNode.Column -> {
@@ -661,6 +681,121 @@ private fun RenderLayoutNode(
   }
 }
 
+@Composable
+private fun RcAlignedRow(
+  children: List<RcLayoutNode>,
+  horizontalPositioning: Int,
+  verticalPositioning: Int,
+  spacing: Int,
+  modifier: Modifier,
+  state: RcPlayerState,
+  textMeasurer: TextMeasurer,
+  images: Map<Int, ImageBitmap>,
+  theme: Int,
+) {
+  Layout(
+    content = {
+      children.forEach { child -> RcLayoutChild(child, state, textMeasurer, images, theme) }
+    },
+    modifier = modifier,
+  ) { measurables, constraints ->
+    val loose = constraints.copy(minWidth = 0, minHeight = 0)
+    val placeables = measurables.map { it.measure(loose) }
+    val widths = placeables.map { it.width }.toIntArray()
+    val naturalWidth = widths.sum() + spacing * (widths.size - 1).coerceAtLeast(0)
+    val width = constraints.constrainWidth(naturalWidth)
+    val maximumChildHeight = placeables.maxOfOrNull { it.height } ?: 0
+    val height = constraints.constrainHeight(maximumChildHeight)
+    val xPositions =
+      arrangeLinear(
+        width,
+        widths,
+        horizontalPositioning,
+        spacing,
+        reverse = layoutDirection == LayoutDirection.Rtl,
+      )
+    val anchors = children.mapIndexed { index, child ->
+      resolveAlignByAnchor(child.modifiers.alignBy, placeables[index], state)
+    }
+    val yPositions = alignByCrossPositions(height, maximumChildHeight, verticalPositioning, anchors)
+    layout(width, height) {
+      placeables.forEachIndexed { index, placeable ->
+        placeable.place(xPositions[index], yPositions[index])
+      }
+    }
+  }
+}
+
+@Composable
+private fun RcLayoutChild(
+  child: RcLayoutNode,
+  state: RcPlayerState,
+  textMeasurer: TextMeasurer,
+  images: Map<Int, ImageBitmap>,
+  theme: Int,
+) {
+  Layout(
+    content = {
+      RenderLayoutNode(
+        child,
+        state = state,
+        textMeasurer = textMeasurer,
+        images = images,
+        theme = theme,
+      )
+    }
+  ) { measurables, constraints ->
+    val placeable =
+      measurables.singleOrNull()?.measure(constraints.copy(minWidth = 0, minHeight = 0))
+    val alignmentLines =
+      buildMap<AlignmentLine, Int> {
+        placeable
+          ?.get(FirstBaseline)
+          ?.takeUnless { it == AlignmentLine.Unspecified }
+          ?.let { put(FirstBaseline, it) }
+        placeable
+          ?.get(LastBaseline)
+          ?.takeUnless { it == AlignmentLine.Unspecified }
+          ?.let { put(LastBaseline, it) }
+      }
+    layout(placeable?.width ?: 0, placeable?.height ?: 0, alignmentLines = alignmentLines) {
+      placeable?.place(0, 0)
+    }
+  }
+}
+
+private fun resolveAlignByAnchor(
+  modifier: RcAlignByModifier?,
+  placeable: androidx.compose.ui.layout.Placeable,
+  state: RcPlayerState,
+): Float =
+  when (modifier?.line?.referencedId) {
+    null -> modifier?.line?.value ?: 0f
+    RcAlignByModifier.FIRST_BASELINE_ID ->
+      placeable[FirstBaseline].takeUnless { it == AlignmentLine.Unspecified }?.toFloat() ?: 0f
+    RcAlignByModifier.LAST_BASELINE_ID ->
+      placeable[LastBaseline].takeUnless { it == AlignmentLine.Unspecified }?.toFloat() ?: 0f
+    else -> state.resolve(modifier.line)
+  }
+
+/** AndroidX RowLayout aligns all children, including unanchored ones, to the maximum anchor. */
+internal fun alignByCrossPositions(
+  totalSize: Int,
+  maximumChildSize: Int,
+  verticalPositioning: Int,
+  anchors: List<Float>,
+): IntArray {
+  val maximumAnchor = anchors.maxOrNull() ?: 0f
+  val base =
+    when (verticalPositioning) {
+      4 -> 0f
+      2 -> (totalSize - maximumChildSize) / 2f
+      5 -> (totalSize - maximumChildSize).toFloat()
+      else -> error("Unknown AndroidX row vertical position $verticalPositioning")
+    }
+  return IntArray(anchors.size) { index -> (base + maximumAnchor - anchors[index]).roundToInt() }
+}
+
 private enum class RcCollapseOrientation {
   Horizontal,
   Vertical,
@@ -683,15 +818,7 @@ private fun RcCollapsibleLayout(
     content = {
       children.forEach { child ->
         // Keep one measurable per wire child even when its visibility modifier resolves to gone.
-        Box {
-          RenderLayoutNode(
-            child,
-            state = state,
-            textMeasurer = textMeasurer,
-            images = images,
-            theme = theme,
-          )
-        }
+        RcLayoutChild(child, state, textMeasurer, images, theme)
       }
     },
     modifier = modifier,
@@ -743,6 +870,18 @@ private fun RcCollapsibleLayout(
         reverse =
           orientation == RcCollapseOrientation.Horizontal && layoutDirection == LayoutDirection.Rtl,
       )
+    val alignedCrossPositions =
+      if (
+        orientation == RcCollapseOrientation.Horizontal &&
+          retainedIndices.any { children[it].modifiers.alignBy != null }
+      ) {
+        val retainedAnchors = retainedIndices.map { index ->
+          resolveAlignByAnchor(children[index].modifiers.alignBy, placeables[index], state)
+        }
+        alignByCrossPositions(height, retainedCrossSize, crossPositioning, retainedAnchors)
+      } else {
+        null
+      }
     layout(width, height) {
       retainedIndices.forEachIndexed { retainedIndex, childIndex ->
         val placeable = placeables[childIndex]
@@ -750,15 +889,16 @@ private fun RcCollapsibleLayout(
         val crossSize =
           if (orientation == RcCollapseOrientation.Horizontal) placeable.height else placeable.width
         val crossPosition =
-          arrangeLinear(
-            crossAvailable,
-            intArrayOf(crossSize),
-            crossPositioning,
-            spacing = 0,
-            reverse =
-              orientation == RcCollapseOrientation.Vertical &&
-                layoutDirection == LayoutDirection.Rtl,
-          )[0]
+          alignedCrossPositions?.get(retainedIndex)
+            ?: arrangeLinear(
+              crossAvailable,
+              intArrayOf(crossSize),
+              crossPositioning,
+              spacing = 0,
+              reverse =
+                orientation == RcCollapseOrientation.Vertical &&
+                  layoutDirection == LayoutDirection.Rtl,
+            )[0]
         if (orientation == RcCollapseOrientation.Horizontal) {
           placeable.place(mainPositions[retainedIndex], crossPosition)
         } else {

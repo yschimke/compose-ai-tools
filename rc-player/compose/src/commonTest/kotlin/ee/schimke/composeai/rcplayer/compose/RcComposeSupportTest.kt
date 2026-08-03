@@ -37,6 +37,18 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RcComposeSupportTest {
+  @Test
+  fun alignByUsesAndroidXMaximumAnchorForEveryRowChild() {
+    assertContentEquals(
+      intArrayOf(20, 0, 30),
+      alignByCrossPositions(100, 40, 4, listOf(10f, 30f, 0f)),
+    )
+    assertContentEquals(
+      intArrayOf(50, 30, 60),
+      alignByCrossPositions(100, 40, 2, listOf(10f, 30f, 0f)),
+    )
+  }
+
   private val header = RcHeader(RcVersion(0, 1, 0), modern = false)
 
   @Test

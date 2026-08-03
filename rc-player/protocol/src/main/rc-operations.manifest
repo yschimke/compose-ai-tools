@@ -153,7 +153,7 @@
 234|LAYOUT_IMAGE|4|implemented
 235|MODIFIER_COLLAPSIBLE_PRIORITY|6|implemented
 236|RUN_ACTION|7|unsupported
-237|MODIFIER_ALIGN_BY|6|unsupported
+237|MODIFIER_ALIGN_BY|6|implemented
 238|LAYOUT_COMPUTE|6|unsupported
 239|CORE_TEXT|3|implemented
 240|LAYOUT_FLOW|6|implemented

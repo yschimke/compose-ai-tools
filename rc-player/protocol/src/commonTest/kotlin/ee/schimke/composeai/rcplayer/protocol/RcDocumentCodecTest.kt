@@ -9,6 +9,29 @@ import kotlin.test.assertTrue
 
 class RcDocumentCodecTest {
   @Test
+  fun alignByPreservesBaselineAndDynamicAnchorBits() {
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), modern = false),
+        listOf(
+          RcAlignByModifier(RcFloatWord(0x7fc00001), flags = 17),
+          RcAlignByModifier(RcFloatWord(0x7fc0002a), flags = 0),
+        ),
+      )
+
+    val bytes = RcDocumentCodec.encode(document)
+    val decoded = RcDocumentCodec.decode(bytes)
+
+    assertEquals(document, decoded)
+    assertEquals(
+      RcAlignByModifier.FIRST_BASELINE_ID,
+      assertIs<RcAlignByModifier>(decoded.operations[0]).line.referencedId,
+    )
+    assertEquals(42, assertIs<RcAlignByModifier>(decoded.operations[1]).line.referencedId)
+    assertContentEquals(bytes, RcDocumentCodec.encode(decoded))
+  }
+
+  @Test
   fun collapsibleLayoutsAndPriorityRoundTripWithoutLosingVariableBits() {
     val document =
       RcDocument(

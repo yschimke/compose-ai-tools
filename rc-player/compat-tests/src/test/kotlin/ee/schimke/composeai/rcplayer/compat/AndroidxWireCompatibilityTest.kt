@@ -87,6 +87,7 @@ import androidx.compose.remote.core.operations.layout.managers.ImageLayout
 import androidx.compose.remote.core.operations.layout.managers.RowLayout
 import androidx.compose.remote.core.operations.layout.managers.TextLayout
 import androidx.compose.remote.core.operations.layout.managers.TextStyle as AndroidxTextStyle
+import androidx.compose.remote.core.operations.layout.modifiers.AlignByModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.BackgroundModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.BorderModifierOperation
 import androidx.compose.remote.core.operations.layout.modifiers.ClipRectModifierOperation
@@ -121,6 +122,7 @@ import androidx.compose.remote.core.operations.utilities.easing.SpringStopEngine
 import androidx.compose.remote.core.types.BooleanConstant
 import androidx.compose.remote.core.types.IntegerConstant
 import androidx.compose.remote.core.types.LongConstant
+import ee.schimke.composeai.rcplayer.protocol.RcAlignByModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBackgroundModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBorderModifier
@@ -199,6 +201,25 @@ import kotlin.test.assertTrue
  * from this test module: AndroidX remote-core/Java player is the protocol authority.
  */
 class AndroidxWireCompatibilityTest {
+  @Test
+  fun androidXAlignByRoundTripsExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    AlignByModifierOperation.apply(buffer, AlignByModifierOperation.FIRST_BASELINE, 0x1234)
+    AlignByModifierOperation.apply(buffer, Utils.asNan(42), 7)
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+
+    assertEquals(
+      RcAlignByModifier.FIRST_BASELINE_ID,
+      assertIs<RcAlignByModifier>(document.operations[0]).line.referencedId,
+    )
+    assertEquals(0x1234, assertIs<RcAlignByModifier>(document.operations[0]).flags)
+    assertEquals(42, assertIs<RcAlignByModifier>(document.operations[1]).line.referencedId)
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
   @Test
   fun androidXCollapsibleLayoutsAndPriorityRoundTripExactly() {
     val buffer = WireBuffer()

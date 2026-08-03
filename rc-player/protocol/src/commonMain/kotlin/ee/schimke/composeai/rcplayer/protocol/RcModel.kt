@@ -960,6 +960,16 @@ public data class RcCollapsiblePriorityModifier(val orientation: Int, val priori
   }
 }
 
+/** Row alignment anchor; NaN ids 1 and 2 select the first and last text baselines. */
+public data class RcAlignByModifier(val line: RcFloatWord, val flags: Int) : RcOperation {
+  override val opcode: Int = RcOpcodes.MODIFIER_ALIGN_BY
+
+  public companion object {
+    public const val FIRST_BASELINE_ID: Int = 1
+    public const val LAST_BASELINE_ID: Int = 2
+  }
+}
+
 /** Component visibility is read from the referenced AndroidX integer variable. */
 public data class RcVisibilityModifier(val visibilityId: Int) : RcOperation {
   override val opcode: Int = RcOpcodes.MODIFIER_VISIBILITY
@@ -1121,6 +1131,7 @@ public object RcOpcodes {
   public const val LAYOUT_COLLAPSIBLE_COLUMN: Int = 233
   public const val LAYOUT_IMAGE: Int = 234
   public const val MODIFIER_COLLAPSIBLE_PRIORITY: Int = 235
+  public const val MODIFIER_ALIGN_BY: Int = 237
   public const val CORE_TEXT: Int = 239
   public const val LAYOUT_FLOW: Int = 240
   public const val TEXT_STYLE: Int = 242

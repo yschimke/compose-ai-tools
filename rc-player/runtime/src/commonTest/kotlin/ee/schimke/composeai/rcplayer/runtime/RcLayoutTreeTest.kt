@@ -1,5 +1,6 @@
 package ee.schimke.composeai.rcplayer.runtime
 
+import ee.schimke.composeai.rcplayer.protocol.RcAlignByModifier
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCollapsiblePriorityModifier
@@ -26,6 +27,25 @@ import kotlin.test.assertIs
 
 class RcLayoutTreeTest {
   private val header = RcHeader(RcVersion(1, 0, 0), modern = false)
+
+  @Test
+  fun extractsAlignByAsTypedChildLayoutMetadata() {
+    val root =
+      requireNotNull(
+        treeOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcCanvasLayout(3, 30),
+          RcAlignByModifier(RcFloatWord(0x7fc00001), flags = 5),
+          ends = 3,
+        )
+      )
+
+    val content = assertIs<RcLayoutNode.Content>(root.children.single())
+    val canvas = assertIs<RcLayoutNode.Canvas>(content.children.single())
+    assertEquals(RcAlignByModifier.FIRST_BASELINE_ID, canvas.modifiers.alignBy?.line?.referencedId)
+    assertEquals(5, canvas.modifiers.alignBy?.flags)
+  }
 
   @Test
   fun extractsCollapsiblePriorityFromAChildWithoutMutatingTheTree() {
