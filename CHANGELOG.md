@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.19.22](https://github.com/yschimke/compose-ai-tools/compare/v0.19.21...v0.19.22) (2026-08-03)
+
+
+### Features
+
+* **serve:** paint a catalog's pages in its own design tokens ([#3208](https://github.com/yschimke/compose-ai-tools/issues/3208)) ([6c3634e](https://github.com/yschimke/compose-ai-tools/commit/6c3634eab190d8cfa19fdde615b2ad414682f8d9))
+
+
+### Bug Fixes
+
+* **serve:** park background theme optimization while catalogs load ([#3220](https://github.com/yschimke/compose-ai-tools/issues/3220)) ([6d84dbb](https://github.com/yschimke/compose-ai-tools/commit/6d84dbb12c6c44a746c111163fed48fc0630069e))
+
 ## [0.19.21](https://github.com/yschimke/compose-ai-tools/compare/v0.19.20...v0.19.21) (2026-08-03)
 
 
