@@ -4,7 +4,8 @@ body { margin: 0; padding: 24px; font-family: system-ui, -apple-system, Segoe UI
   color: #1b1b1f; background: #fafafb; }
 a { color: #5b5bd6; text-decoration: none; }
 a:hover { text-decoration: underline; }
-.cp-main, .cp-site-header { width: 100%; max-width: 1440px; margin-left: auto; margin-right: auto; }
+.cp-main, .cp-site-header, .cp-site-footer { width: 100%; max-width: 1440px;
+  margin-left: auto; margin-right: auto; }
 .cp-site-header { min-height: 44px; margin-bottom: 24px; padding: 0 0 12px; border-bottom: 1px solid #e3e3e8;
   display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .cp-site-brand { display: inline-flex; align-items: center; gap: 8px; color: #1b1b1f;
@@ -14,6 +15,10 @@ a:hover { text-decoration: underline; }
   color: #fff; background: #5b5bd6; font-size: 0.9rem; }
 .cp-site-nav { display: flex; align-items: center; gap: 18px; font-size: 0.8rem; }
 .cp-site-nav a { color: #56565f; }
+.cp-site-nav .cp-gh-auth { color: #45454c; }
+.cp-site-footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid #e3e3e8;
+  color: #6b6b70; font-size: 0.8rem; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cp-site-footer a { display: inline-flex; align-items: center; gap: 4px; }
 .cp-head { margin: 0 0 4px; font-size: 1.2rem; font-weight: 600; }
 .cp-sub { margin: 0 0 20px; font-size: 0.82rem; color: #6b6b70; }
 .cp-breadcrumb { margin: 0 0 8px; color: #8a8a92; font-size: 0.78rem; }
@@ -470,8 +475,10 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
 @media (prefers-color-scheme: dark) {
   body { color: #e6e6e9; background: #161618; }
   .cp-site-header { border-bottom-color: #34343a; }
+  .cp-site-footer { border-top-color: #34343a; color: #a0a0a8; }
   .cp-site-brand { color: #e6e6e9; }
   .cp-site-nav a { color: #b6b6bf; }
+  .cp-site-nav .cp-gh-auth { color: #c9c9d0; }
   .cp-sub, .cp-id, .cp-status, .cp-about-links, .cp-sys-desc, .cp-sys-foot { color: #a0a0a8; }
   .cp-engage, .cp-viewer-engage { color: #7a7a82; }
   .cp-card, .cp-stage, .cp-knobs, .cp-links, .cp-about { border-color: #34343a; }
@@ -588,10 +595,10 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
    grids, size rows and copyable link rows to fit a ~320px screen without horizontal scrolling. */
 @media (max-width: 640px) {
   body { padding: 14px; }
-  .cp-site-header { margin-bottom: 18px; }
+  .cp-site-header { margin-bottom: 18px; flex-wrap: wrap; }
   .cp-site-mark { width: 22px; height: 22px; }
   .cp-site-nav { gap: 12px; }
-  .cp-site-nav a:last-child { display: none; }
+  .cp-site-nav > a[href^="https://github.com/"] { display: none; }
   .cp-disclosure > summary { align-items: flex-start; }
   .cp-disclosure-hint { display: none; }
   .cp-section-title { margin-bottom: 10px; }
