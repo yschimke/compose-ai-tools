@@ -112,6 +112,13 @@ class ServeCatalogLiveHost(
   private val backgroundWork: ServeBackgroundWork = ServeBackgroundWork(),
   private val themeOptimizationIdleMillis: Long =
     System.getProperty("composeai.serve.themeOptimizationIdleMillis")?.toLongOrNull() ?: 30_000L,
+  /**
+   * Route snapshot renders to the shared monolithic daemon rather than the per-preview pool — see
+   * [renderHostFor]. `-Dcomposeai.serve.sharedDaemonRenders=false` restores per-preview routing for
+   * a deployment that wants each preview isolated at the cost of a cold start per card.
+   */
+  private val sharedDaemonRenders: Boolean =
+    System.getProperty("composeai.serve.sharedDaemonRenders")?.toBooleanStrictOrNull() ?: true,
   private val clock: () -> Long = System::currentTimeMillis,
 ) : ServeHost {
 
@@ -185,7 +192,7 @@ class ServeCatalogLiveHost(
     if (warmingInFlight.add(daemonId)) {
       warmExecutor.execute {
         try {
-          if (liveHostFor(daemonId).render(daemonId, PreviewOverrides()) is RenderOutcome.Ok) {
+          if (renderHostFor(daemonId).render(daemonId, PreviewOverrides()) is RenderOutcome.Ok) {
             warmDaemonIds.add(daemonId)
           }
         } catch (_: Throwable) {
@@ -438,7 +445,7 @@ class ServeCatalogLiveHost(
       // lane, so it must be awaited even cold and its outcome returned as-is. Everything below is
       // the baked-first routing, which such an id can't use.
       if (previewId in liveOnlyPreviewIds) {
-        return cacheThemeRender(themeCacheKey, liveHostFor(daemonId).render(daemonId, overrides))
+        return cacheThemeRender(themeCacheKey, renderDaemon(daemonId, overrides))
       }
       // Only await the daemon when it's warm and free. A cold Android render can take minutes, and
       // blocking the browse — and the HTTP render slot it holds — on it is what saturates the whole
@@ -446,7 +453,7 @@ class ServeCatalogLiveHost(
       // theme request must instead report Busy: returning baked pixels as a successful 200 would
       // make the grid believe the requested theme had loaded and it would never retry.
       if (daemonWarmOrScheduling(daemonId)) {
-        val live = liveHostFor(daemonId).render(daemonId, overrides)
+        val live = renderDaemon(daemonId, overrides)
         if (live !is RenderOutcome.Busy) return cacheThemeRender(themeCacheKey, live)
       }
       if (themeCacheKey != null) return RenderOutcome.Busy
@@ -523,6 +530,39 @@ class ServeCatalogLiveHost(
    * that one preview's closure — so callers pass the daemon id either way.
    */
   private fun liveHostFor(daemonId: String): ServeHost = perPreviewResolve?.invoke(daemonId) ?: live
+
+  /**
+   * Which daemon answers a **snapshot render** — the grid, and every themed thumbnail on it.
+   *
+   * The shared monolithic daemon, by default, because a grid is a *batch*: one cold start and then
+   * every remaining card is warm. Routing these to the per-preview pool instead made each card pay
+   * its own cold start, which on an Android catalog is tens of seconds apiece — measured at 68s
+   * cold against 356ms warm — so selecting a theme across a 42-card grid went from "fills in at
+   * about one a second" to "mostly stalled". The pool's LRU cap of 8 made it worse than linear: a
+   * grid larger than the cap evicts daemons while the same page is still using them, so scrolling
+   * back can pay the cold start a second time.
+   *
+   * Interactive streams keep the per-preview lane ([liveHostFor]) — there the isolation is the
+   * point, one long-lived session per preview being edited, and there is no batch to amortise.
+   *
+   * A per-preview daemon that the monolithic one cannot serve still resolves: an id the shared
+   * daemon reports as unknown falls back to the pool rather than failing.
+   */
+  /**
+   * Render [daemonId] on the shared daemon, falling back to its per-preview daemon for an id the
+   * shared one doesn't carry (a split/IR-backed bundle the monolithic descriptor never listed).
+   * Only [RenderOutcome.NotFound] falls through — a Busy or a failure is that daemon's real answer
+   * and re-running it elsewhere would just double the work.
+   */
+  private fun renderDaemon(daemonId: String, overrides: PreviewOverrides): RenderOutcome {
+    val outcome = renderHostFor(daemonId).render(daemonId, overrides)
+    if (outcome != RenderOutcome.NotFound || !sharedDaemonRenders) return outcome
+    val perPreview = perPreviewResolve?.invoke(daemonId) ?: return outcome
+    return perPreview.render(daemonId, overrides)
+  }
+
+  private fun renderHostFor(daemonId: String): ServeHost =
+    if (sharedDaemonRenders) live else liveHostFor(daemonId)
 
   /**
    * SVG export mirrors [render]'s knob routing, plus a fallback: the SVG row is advertised whenever
