@@ -3,8 +3,46 @@
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>compose-m3 — compose-preview</title>
+        <title>wear-m3 — compose-preview</title>
         <link rel="stylesheet" href="/assets/serve/bfa1-6a3dccee97faf254/serve.css">
+        <style>
+        :root {
+          --cp-bg: #fafafb;
+          --cp-surface: #ffffff;
+          --cp-surface-2: #f0f0f3;
+          --cp-fg: #1b1b1f;
+          --cp-fg-soft: #414144;
+          --cp-fg-muted: #69696c;
+          --cp-fg-faint: #8d8d8f;
+          --cp-border: #dfdfe1;
+          --cp-border-strong: #c9c9cb;
+          --cp-accent: #377f8a;
+          --cp-accent-strong: #28484f;
+          --cp-accent-soft: #dfe9eb;
+          --cp-accent-ring: #b6cfd3;
+          --cp-on-accent: #ffffff;
+          --cp-on-accent-soft: #28484f;
+        }
+        @media (prefers-color-scheme: dark) {
+          :root {
+            --cp-bg: #202124;
+            --cp-surface: #272430;
+            --cp-surface-2: #332e3c;
+            --cp-fg: #f6edff;
+            --cp-fg-soft: #d2cada;
+            --cp-fg-muted: #aba6b2;
+            --cp-fg-faint: #89858f;
+            --cp-border: #3a393e;
+            --cp-border-strong: #4f4e54;
+            --cp-accent: #4dd0e1;
+            --cp-accent-strong: #aae0f2;
+            --cp-accent-soft: #4d3d76;
+            --cp-accent-ring: #305e66;
+            --cp-on-accent: #210f48;
+            --cp-on-accent-soft: #f6edff;
+          }
+        }
+        </style>
         <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
@@ -22,9 +60,9 @@
 </header>
         <main class="cp-main">
                 <a class="cp-back" href="/">← All design systems</a>
-<h1 class="cp-head cp-catalog-head">compose-m3 <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/compose-m3">✓ trusted</span></h1>
-        <p class="cp-sub">14 preview(s) ·
-          <a href="/bundle.zip">download all (.zip)</a></p>
+<h1 class="cp-head cp-catalog-head">wear-m3 <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-ai-tools@design-artifacts/wear-m3">✓ trusted</span></h1>
+        <p class="cp-sub">5 preview(s) ·
+          <a href="/bundle.zip?session=wear-m3">download all (.zip)</a></p>
         <div class="cp-catalog-tools">
         <div class="cp-toolbar">
   <span class="cp-theme" role="group" aria-label="Preview theme">
@@ -35,140 +73,55 @@
 <div class="cp-searchbar">
   <input id="cp-search" class="cp-search" type="search" placeholder="Filter previews…"
     autocomplete="off" spellcheck="false" aria-label="Filter previews" aria-controls="cp-grid">
-  <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="14"></span>
+  <span id="cp-count" class="cp-count" role="status" aria-live="polite" data-total="5"></span>
   <span class="cp-bg" role="group" aria-label="Sticker background">
     <button type="button" class="cp-bg-btn" data-bg-choice="on">Background</button>
     <button type="button" class="cp-bg-btn" data-bg-choice="off">Transparent</button>
   </span>
 </div>
 </div>
-        <div class="cp-grid-groups" id="cp-grid">
-<div class="cp-subgroup">
-<h2 class="cp-group-head">Button</h2>
-<div class="cp-cards">
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/button-filled__ideal__default__light.png" data-l-href="/p/button-filled__ideal__default__light"
-  data-l-id="button-filled__ideal__default__light" data-l-label="Button filled (light)"
-  data-d-src="/render/button-filled__ideal__default__dark.png" data-d-href="/p/button-filled__ideal__default__dark"
-  data-d-id="button-filled__ideal__default__dark" data-d-label="Button filled (dark)"
-  href="/p/button-filled__ideal__default__light">
+        <div class="cp-grid" id="cp-grid">
+        <a class="cp-card" data-swap="1" data-bg-theme="dark" data-def="d"
+  data-l-src="/render/button-filled__ideal__default__light.png?session=wear-m3" data-l-href="/p/button-filled__ideal__default__light?session=wear-m3"
+  data-l-id="button-filled__ideal__default__light" data-l-label="Button · Filled (light)"
+  data-d-src="/render/button-filled__ideal__default__dark.png?session=wear-m3" data-d-href="/p/button-filled__ideal__default__dark?session=wear-m3"
+  data-d-id="button-filled__ideal__default__dark" data-d-label="Button · Filled (dark)"
+  href="/p/button-filled__ideal__default__dark?session=wear-m3">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Button filled (light)" src="/render/button-filled__ideal__default__light.png">
+    <img loading="lazy" alt="Button · Filled (dark)" src="/render/button-filled__ideal__default__dark.png?session=wear-m3">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="button-filled__ideal__default__light">Button filled (light)</div>
-    <div class="cp-id">button-filled__ideal__default__light</div>
+    <div class="cp-label" title="button-filled__ideal__default__dark">Button · Filled (dark)</div>
+    <div class="cp-id">button-filled__ideal__default__dark</div>
     
   </div>
 </a>
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/button-outlined__ideal__default__light.png" data-l-href="/p/button-outlined__ideal__default__light"
-  data-l-id="button-outlined__ideal__default__light" data-l-label="Button outlined (light)"
-  data-d-src="/render/button-outlined__ideal__default__dark.png" data-d-href="/p/button-outlined__ideal__default__dark"
-  data-d-id="button-outlined__ideal__default__dark" data-d-label="Button outlined (dark)"
-  href="/p/button-outlined__ideal__default__light">
+<a class="cp-card" data-swap="1" data-bg-theme="dark" data-def="d"
+  data-l-src="/render/switch-on__ideal__default__light.png?session=wear-m3" data-l-href="/p/switch-on__ideal__default__light?session=wear-m3"
+  data-l-id="switch-on__ideal__default__light" data-l-label="Switch · On (light)"
+  data-d-src="/render/switch-on__ideal__default__dark.png?session=wear-m3" data-d-href="/p/switch-on__ideal__default__dark?session=wear-m3"
+  data-d-id="switch-on__ideal__default__dark" data-d-label="Switch · On (dark)"
+  href="/p/switch-on__ideal__default__dark?session=wear-m3">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Button outlined (light)" src="/render/button-outlined__ideal__default__light.png">
+    <img loading="lazy" alt="Switch · On (dark)" src="/render/switch-on__ideal__default__dark.png?session=wear-m3">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="button-outlined__ideal__default__light">Button outlined (light)</div>
-    <div class="cp-id">button-outlined__ideal__default__light</div>
+    <div class="cp-label" title="switch-on__ideal__default__dark">Switch · On (dark)</div>
+    <div class="cp-id">switch-on__ideal__default__dark</div>
     
   </div>
 </a>
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/button-tonal__ideal__default__light.png" data-l-href="/p/button-tonal__ideal__default__light"
-  data-l-id="button-tonal__ideal__default__light" data-l-label="Button tonal (light)"
-  data-d-src="/render/button-tonal__ideal__default__dark.png" data-d-href="/p/button-tonal__ideal__default__dark"
-  data-d-id="button-tonal__ideal__default__dark" data-d-label="Button tonal (dark)"
-  href="/p/button-tonal__ideal__default__light">
+<a class="cp-card" data-bg-theme="dark" href="/p/badge?session=wear-m3">
   <div class="cp-imgwrap">
-    <img loading="lazy" alt="Button tonal (light)" src="/render/button-tonal__ideal__default__light.png">
+    <img loading="lazy" alt="Badge" src="/render/badge.png?session=wear-m3">
   </div>
   <div class="cp-meta">
-    <div class="cp-label" title="button-tonal__ideal__default__light">Button tonal (light)</div>
-    <div class="cp-id">button-tonal__ideal__default__light</div>
+    <div class="cp-label" title="badge">Badge</div>
+    <div class="cp-id">badge</div>
     
   </div>
 </a>
-</div>
-</div>
-<div class="cp-subgroup">
-<h2 class="cp-group-head">Card</h2>
-<div class="cp-cards">
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/card-elevated__ideal__default__light.png" data-l-href="/p/card-elevated__ideal__default__light"
-  data-l-id="card-elevated__ideal__default__light" data-l-label="Card elevated (light)"
-  data-d-src="/render/card-elevated__ideal__default__dark.png" data-d-href="/p/card-elevated__ideal__default__dark"
-  data-d-id="card-elevated__ideal__default__dark" data-d-label="Card elevated (dark)"
-  href="/p/card-elevated__ideal__default__light">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="Card elevated (light)" src="/render/card-elevated__ideal__default__light.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="card-elevated__ideal__default__light">Card elevated (light)</div>
-    <div class="cp-id">card-elevated__ideal__default__light</div>
-    
-  </div>
-</a>
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/card-filled__ideal__default__light.png" data-l-href="/p/card-filled__ideal__default__light"
-  data-l-id="card-filled__ideal__default__light" data-l-label="Card filled (light)"
-  data-d-src="/render/card-filled__ideal__default__dark.png" data-d-href="/p/card-filled__ideal__default__dark"
-  data-d-id="card-filled__ideal__default__dark" data-d-label="Card filled (dark)"
-  href="/p/card-filled__ideal__default__light">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="Card filled (light)" src="/render/card-filled__ideal__default__light.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="card-filled__ideal__default__light">Card filled (light)</div>
-    <div class="cp-id">card-filled__ideal__default__light</div>
-    
-  </div>
-</a>
-</div>
-</div>
-<div class="cp-subgroup">
-<h2 class="cp-group-head">FAB</h2>
-<div class="cp-cards">
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/fab__ideal__default__light.png" data-l-href="/p/fab__ideal__default__light"
-  data-l-id="fab__ideal__default__light" data-l-label="FAB (light)"
-  data-d-src="/render/fab__ideal__default__dark.png" data-d-href="/p/fab__ideal__default__dark"
-  data-d-id="fab__ideal__default__dark" data-d-label="FAB (dark)"
-  href="/p/fab__ideal__default__light">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="FAB (light)" src="/render/fab__ideal__default__light.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="fab__ideal__default__light">FAB (light)</div>
-    <div class="cp-id">fab__ideal__default__light</div>
-    
-  </div>
-</a>
-</div>
-</div>
-<div class="cp-subgroup">
-<h2 class="cp-group-head">Badge</h2>
-<div class="cp-cards">
-<a class="cp-card" data-swap="1" data-bg-theme="light" data-def="l"
-  data-l-src="/render/badge__ideal__default__light.png" data-l-href="/p/badge__ideal__default__light"
-  data-l-id="badge__ideal__default__light" data-l-label="Badge (light)"
-  data-d-src="/render/badge__ideal__default__dark.png" data-d-href="/p/badge__ideal__default__dark"
-  data-d-id="badge__ideal__default__dark" data-d-label="Badge (dark)"
-  href="/p/badge__ideal__default__light">
-  <div class="cp-imgwrap">
-    <img loading="lazy" alt="Badge (light)" src="/render/badge__ideal__default__light.png">
-  </div>
-  <div class="cp-meta">
-    <div class="cp-label" title="badge__ideal__default__light">Badge (light)</div>
-    <div class="cp-id">badge__ideal__default__light</div>
-    
-  </div>
-</a>
-</div>
-</div>
-</div>
+        </div>
 <p id="cp-empty" class="cp-empty" hidden>No previews match your filter.</p>
 <script>    (function () {
       var cards = document.querySelectorAll(".cp-card");
@@ -176,9 +129,8 @@
       var count = document.getElementById("cp-count");
       var empty = document.getElementById("cp-empty");
       var total = cards.length;
-      var navGroups = document.querySelectorAll(".cp-subgroup");
       var stored = null;
-try { stored = localStorage.getItem("cp-theme:default"); } catch (e) {}
+try { stored = localStorage.getItem("cp-theme:wear-m3"); } catch (e) {}
 var themeBtns = document.querySelectorAll(".cp-theme-btn");
 function validTheme(t) {
   if (!t) return false;
@@ -235,13 +187,12 @@ applyThemeChoice();
         });
         if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
         if (empty) empty.hidden = shown !== 0;
-        navGroups.forEach(function (g) { g.hidden = !g.querySelector(".cp-card:not([hidden])"); });
       }
       if (input) input.addEventListener("input", apply);
       themeBtns.forEach(function (b) {
         b.addEventListener("click", function () {
           theme = b.getAttribute("data-theme-choice");
-          try { localStorage.setItem("cp-theme:default", theme); } catch (e) {}
+          try { localStorage.setItem("cp-theme:wear-m3", theme); } catch (e) {}
           apply();
         });
       });

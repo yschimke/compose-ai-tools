@@ -252,6 +252,48 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `a catalog's published design tokens re-theme its web pages`() {
+    val tokens =
+      """{"color":{"primary":{"${'$'}type":"color","${'$'}value":"#bf0031ff"},
+         "surface":{"${'$'}type":"color","${'$'}value":"#fffbffff"},
+         "onSurface":{"${'$'}type":"color","${'$'}value":"#201a1aff"}}}"""
+    fun load(tokensFile: String): ServeBundleHost {
+      registered.clear()
+      val withTokens = catalogJson.dropLast(1) + ""","tokensFile":"$tokensFile"}"""
+      store(TrustStore.EMPTY) { url ->
+          when {
+            url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> withTokens.toByteArray()
+            url.endsWith("/tokens.dtcg.json") -> tokens.toByteArray()
+            url.endsWith(".png") -> png()
+            else -> null
+          }
+        }
+        .load("compose-m3")
+      return registered.getValue("compose-m3")
+    }
+
+    // The declared token file is fetched off the same branch as the images and projected onto the
+    // chrome's custom properties, so this system's pages carry its crimson rather than the
+    // built-in indigo.
+    val themed = load("tokens.dtcg.json").webThemeCss
+    assertTrue(
+      themed != null && themed.contains("--cp-accent: #bf0031;"),
+      "the catalog's own primary reaches the page palette: $themed",
+    )
+    // A `tokensFile` that tries to leave the catalog is not fetched at all — the branch is trusted,
+    // but a garbled/hostile value must not aim the fetch elsewhere. The pages then serve unthemed.
+    for (escape in listOf("../../secrets.json", "/etc/passwd", "https://elsewhere/tokens.json")) {
+      assertNull(load(escape).webThemeCss, "tokensFile '$escape' must not be fetched")
+    }
+  }
+
+  @Test
+  fun `a catalog with no design tokens serves the built-in chrome`() {
+    store(TrustStore.EMPTY).load("compose-m3")
+    assertNull(registered.getValue("compose-m3").webThemeCss)
+  }
+
+  @Test
   fun `preview ids are flattened to a single route-safe segment`() {
     assertEquals(
       "button-filled__ideal__default__dark",

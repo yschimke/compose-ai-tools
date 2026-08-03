@@ -49,6 +49,14 @@ class ServeBundleHost(
    */
   val stageSurface: String? = null,
   /**
+   * The catalog's own colour palette, projected onto the serve chrome's CSS custom properties by
+   * [ServeThemeCss] from the delivery branch's `tokens.dtcg.json` — so this system's pages are
+   * framed in its own colours rather than the built-in indigo shell. Null for a plain uploaded
+   * bundle, or a catalog that publishes no (usable) tokens; the pages then keep the built-in
+   * chrome.
+   */
+  val webThemeCss: String? = null,
+  /**
    * The hero preview the catalog declared (`display.hero`) — a `componentId` (e.g.
    * `"Template/TimeText"`) or a flattened preview id. Resolved against [previews] by
    * [declaredHeroPreviewId]; null ⇒ the server picks a representative itself.

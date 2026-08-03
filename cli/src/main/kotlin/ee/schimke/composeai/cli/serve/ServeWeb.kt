@@ -2715,6 +2715,12 @@ object ServeWeb {
      */
     declaredSurface: String? = null,
     /**
+     * The served catalog's own palette as an inline `:root` override for the chrome's custom
+     * properties, built by [ServeThemeCss] from the branch's `tokens.dtcg.json`. Empty ⇒ the page
+     * keeps the built-in chrome (a plain module, or a catalog that publishes no tokens).
+     */
+    themeCss: String = "",
+    /**
      * Why this catalog is snapshot-only, when it is (no live bundle, unverified, …). When
      * non-empty, a banner under the header explains it. Empty ⇒ no banner (a fully-live session, or
      * a plain module). See [ServeDegradation] / [degradeBanner].
@@ -2987,6 +2993,7 @@ object ServeWeb {
       unfurlDescription = "${previews.size} Compose previews in $heading",
       unfurl = unfurl,
       navSuffix = navSuffix,
+      themeCss = themeCss,
       body =
         """
         $back<h1 class="cp-head cp-catalog-head">${WebEscaping.htmlEscape(heading)}${compactTrustBadge(trust)}</h1>
@@ -3010,6 +3017,12 @@ object ServeWeb {
     isPublic: Boolean = false,
     trust: String? = null,
     declaredSurface: String? = null,
+    /**
+     * The served catalog's own palette as an inline `:root` override for the chrome's custom
+     * properties, built by [ServeThemeCss] from the branch's `tokens.dtcg.json`. Empty ⇒ the page
+     * keeps the built-in chrome (a plain module, or a catalog that publishes no tokens).
+     */
+    themeCss: String = "",
     hasSvgFor: (String) -> Boolean = { false },
     hasRemoteComposeFor: (String) -> Boolean = { false },
     referencesFor: (String) -> List<DesignReference> = { emptyList() },
@@ -3164,6 +3177,7 @@ object ServeWeb {
       unfurlDescription = "Compare rendered PNG, SVG, and Remote Compose output for $heading",
       unfurl = unfurl,
       navSuffix = navSuffix,
+      themeCss = themeCss,
       body =
         """
         <div id="cp-compare" $rootAttrs>
@@ -3395,6 +3409,12 @@ object ServeWeb {
      * an unthemed preview's stage backs on dark. Null ⇒ the system-name dark-first heuristic.
      */
     declaredSurface: String? = null,
+    /**
+     * The served catalog's own palette as an inline `:root` override for the chrome's custom
+     * properties, built by [ServeThemeCss] from the branch's `tokens.dtcg.json`. Empty ⇒ the page
+     * keeps the built-in chrome (a plain module, or a catalog that publishes no tokens).
+     */
+    themeCss: String = "",
     /**
      * Why this session is snapshot-only, when it is (no live bundle, unverified, …). When
      * non-empty, a banner under the header explains the catalog-level reason — complementing the
@@ -3991,6 +4011,7 @@ $deviceControlsHtml
       unfurlDescription = "Compose preview for $displayName",
       unfurl = unfurl,
       navSuffix = navSuffix,
+      themeCss = themeCss,
     )
   }
 
@@ -4076,6 +4097,12 @@ $deviceControlsHtml
     navSuffix: String = "",
     headerAction: String = "",
     footer: String = "",
+    /**
+     * The served catalog's own palette, projected onto the chrome's custom properties by
+     * [ServeThemeCss] and inlined after `serve.css` so it wins at equal specificity. Empty for a
+     * plain module / a catalog that publishes no tokens — the page then uses the built-in chrome.
+     */
+    themeCss: String = "",
   ): String {
     val unfurlHtml =
       if (unfurl == null) ""
@@ -4119,6 +4146,10 @@ $deviceControlsHtml
     val unfurlBlock = if (unfurlHtml.isEmpty()) "" else "\n${unfurlHtml.prependIndent("        ")}"
     val footerBlock =
       footer.takeIf { it.isNotBlank() }?.let { "\n${it.prependIndent("        ")}" } ?: ""
+    val themeBlock =
+      themeCss
+        .takeIf { it.isNotBlank() }
+        ?.let { "\n" + ("<style>\n" + it.trimEnd() + "\n</style>").prependIndent("        ") } ?: ""
     return """
     <!doctype html>
     <html lang="en">
@@ -4126,7 +4157,7 @@ $deviceControlsHtml
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">$unfurlBlock
         <title>${WebEscaping.htmlEscape(title)}</title>
-        <link rel="stylesheet" href="${assetHref("serve.css")}">
+        <link rel="stylesheet" href="${assetHref("serve.css")}">$themeBlock
         <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>

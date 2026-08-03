@@ -5,6 +5,44 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Profile screen — compose-preview</title>
         <link rel="stylesheet" href="/assets/serve/bfa1-6a3dccee97faf254/serve.css">
+        <style>
+        :root {
+          --cp-bg: #f8f4f8;
+          --cp-surface: #fffbff;
+          --cp-surface-2: #efebef;
+          --cp-fg: #201a1a;
+          --cp-fg-soft: #453f40;
+          --cp-fg-muted: #6c6668;
+          --cp-fg-faint: #8e898b;
+          --cp-border: #dedadd;
+          --cp-border-strong: #c8c4c7;
+          --cp-accent: #bf0031;
+          --cp-accent-strong: #680e24;
+          --cp-accent-soft: #ffdad9;
+          --cp-accent-ring: #e49fb2;
+          --cp-on-accent: #ffffff;
+          --cp-on-accent-soft: #680e24;
+        }
+        @media (prefers-color-scheme: dark) {
+          :root {
+            --cp-bg: #161618;
+            --cp-surface: #1d1d20;
+            --cp-surface-2: #26262b;
+            --cp-fg: #e6e6e9;
+            --cp-fg-soft: #c3c3c5;
+            --cp-fg-muted: #9d9da0;
+            --cp-fg-faint: #7c7c7e;
+            --cp-border: #2f2f31;
+            --cp-border-strong: #444446;
+            --cp-accent: #cd5171;
+            --cp-accent-strong: #dba3b3;
+            --cp-accent-soft: #301e24;
+            --cp-accent-ring: #562b37;
+            --cp-on-accent: #ffffff;
+            --cp-on-accent-soft: #dba3b3;
+          }
+        }
+        </style>
         <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
@@ -21,11 +59,10 @@
   </nav>
 </header>
         <main class="cp-main">
-              <p class="cp-breadcrumb"><a href="/?token=demo-token-fixture">Previews</a> / Component</p>
-      <h1 class="cp-head cp-preview-title">Profile screen <span class="cp-badge cp-badge--unverified" title="producer trust: unverified">⚠ unverified</span></h1>
+              <p class="cp-breadcrumb"><a href="/?token=demo-token-fixture&session=jetnews">JetNews</a> / Component</p>
+      <h1 class="cp-head cp-preview-title">Profile screen <span class="cp-badge cp-badge--trusted" title="producer trust: branch:yschimke/compose-samples@design-artifacts/jetnews">✓ trusted</span></h1>
       <p class="cp-preview-id" title="com.example.ProfileScreenPreview"><code>com.example.ProfileScreenPreview</code></p>
 
-      <p class="cp-source"><a class="cp-source-link" href="https://github.com/yschimke/compose-ai-tools/blob/design-artifacts-source/samples/design-catalog-compose-m3/src/main/kotlin/com/example/ProfileScreen.kt" title="src/main/kotlin/com/example/ProfileScreen.kt"><svg class="cp-gh" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> source</a></p>
 
 
       <div class="cp-preview-primary" aria-label="Preview renderer">
@@ -52,12 +89,12 @@
         <div class="cp-nav-head"><span>Components</span><button type="button" class="cp-nav-close" id="cp-nav-close" aria-label="Close component navigation">×</button></div>
         <input type="search" class="cp-nav-search" id="cp-nav-search" placeholder="Filter components" autocomplete="off" aria-label="Filter components">
         <ul class="cp-nav-list" id="cp-nav-list">
-        <li><a class="cp-nav-item" href="/p/com.example.ButtonPreview?token=demo-token-fixture" title="com.example.ButtonPreview" data-search="Button com.example.ButtonPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ButtonPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Button</span></a></li>
-<li><a class="cp-nav-item" href="/p/com.example.CardPreview?token=demo-token-fixture" title="com.example.CardPreview" data-search="Card com.example.CardPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.CardPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Card</span></a></li>
-<li><a class="cp-nav-item" href="/p/com.example.DialogPreview?token=demo-token-fixture" title="com.example.DialogPreview" data-search="Dialog com.example.DialogPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.DialogPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Dialog</span></a></li>
-<li><a class="cp-nav-item" href="/p/com.example.ListScreenPreview?token=demo-token-fixture" title="com.example.ListScreenPreview" data-search="List screen com.example.ListScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ListScreenPreview.png?token=demo-token-fixture"><span class="cp-nav-name">List screen</span></a></li>
-<li><a class="cp-nav-item" href="/p/com.example.ProfileScreenPreview?token=demo-token-fixture" aria-current="page" title="com.example.ProfileScreenPreview" data-search="Profile screen com.example.ProfileScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ProfileScreenPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Profile screen</span></a></li>
-<li><a class="cp-nav-item" href="/p/com.example.SettingsScreenPreview?token=demo-token-fixture" title="com.example.SettingsScreenPreview" data-search="Settings screen com.example.SettingsScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.SettingsScreenPreview.png?token=demo-token-fixture"><span class="cp-nav-name">Settings screen</span></a></li>
+        <li><a class="cp-nav-item" href="/p/com.example.ButtonPreview?token=demo-token-fixture&session=jetnews" title="com.example.ButtonPreview" data-search="Button com.example.ButtonPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ButtonPreview.png?token=demo-token-fixture&session=jetnews"><span class="cp-nav-name">Button</span></a></li>
+<li><a class="cp-nav-item" href="/p/com.example.CardPreview?token=demo-token-fixture&session=jetnews" title="com.example.CardPreview" data-search="Card com.example.CardPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.CardPreview.png?token=demo-token-fixture&session=jetnews"><span class="cp-nav-name">Card</span></a></li>
+<li><a class="cp-nav-item" href="/p/com.example.DialogPreview?token=demo-token-fixture&session=jetnews" title="com.example.DialogPreview" data-search="Dialog com.example.DialogPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.DialogPreview.png?token=demo-token-fixture&session=jetnews"><span class="cp-nav-name">Dialog</span></a></li>
+<li><a class="cp-nav-item" href="/p/com.example.ListScreenPreview?token=demo-token-fixture&session=jetnews" title="com.example.ListScreenPreview" data-search="List screen com.example.ListScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ListScreenPreview.png?token=demo-token-fixture&session=jetnews"><span class="cp-nav-name">List screen</span></a></li>
+<li><a class="cp-nav-item" href="/p/com.example.ProfileScreenPreview?token=demo-token-fixture&session=jetnews" aria-current="page" title="com.example.ProfileScreenPreview" data-search="Profile screen com.example.ProfileScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.ProfileScreenPreview.png?token=demo-token-fixture&session=jetnews"><span class="cp-nav-name">Profile screen</span></a></li>
+<li><a class="cp-nav-item" href="/p/com.example.SettingsScreenPreview?token=demo-token-fixture&session=jetnews" title="com.example.SettingsScreenPreview" data-search="Settings screen com.example.SettingsScreenPreview"><img class="cp-nav-thumb" loading="lazy" alt="" src="/render/com.example.SettingsScreenPreview.png?token=demo-token-fixture&session=jetnews"><span class="cp-nav-name">Settings screen</span></a></li>
         </ul>
         <p class="cp-nav-empty" id="cp-nav-empty" hidden>No components match.</p>
       </aside>
@@ -83,22 +120,29 @@
           <details class="cp-group" data-cp-group="size">
             <summary>Size</summary>
             <div class="cp-group-body">
-              <label>Device size
-                <select id="cp-device" disabled>
-                  <option value="">(preview default)</option>
-                  <option value="id:pixel_5">Pixel 5 · compact phone (393 × 851 dp)</option>
-                  <option value="id:pixel_7">Pixel 7 · standard phone (411 × 914 dp)</option>
-                  <option value="id:pixel_fold">Pixel Fold · foldable (841 × 701 dp)</option>
-                  <option value="id:pixel_tablet">Pixel Tablet · tablet (1280 × 800 dp)</option>
-                </select>
-              </label>
-              <label>Orientation
-                <select id="cp-orientation" disabled>
-                  <option value="">(device default)</option>
-                  <option value="portrait">Portrait</option>
-                  <option value="landscape">Landscape</option>
-                </select>
-              </label>
+              <div class="cp-size">
+                <label>Size mode
+                  <select id="cp-sizeMode" disabled>
+                    <option value="">(default)</option>
+                    <option value="fixed">Fixed size</option>
+                    <option value="max">Max</option>
+                    <option value="min">Min</option>
+                    <option value="within">Within (min–max)</option>
+                  </select>
+                </label>
+                <div class="cp-size-row" id="cp-size-fixed" hidden>
+                  <label>Width (dp)<input id="cp-fixedW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                  <label>Height (dp)<input id="cp-fixedH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                </div>
+                <div class="cp-size-row" id="cp-size-min" hidden>
+                  <label>Min width (dp)<input id="cp-minW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                  <label>Min height (dp)<input id="cp-minH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                </div>
+                <div class="cp-size-row" id="cp-size-max" hidden>
+                  <label>Max width (dp)<input id="cp-maxW" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                  <label>Max height (dp)<input id="cp-maxH" type="number" min="1" step="1" inputmode="numeric" placeholder="auto" autocomplete="off" disabled></label>
+                </div>
+              </div>
             </div>
           </details>
 
@@ -136,7 +180,29 @@
               </label>
             </div>
           </details>
-
+          <details class="cp-group" data-cp-group="device">
+            <summary>Device</summary>
+            <div class="cp-group-body">
+              <label>Device
+                <select id="cp-device" disabled>
+                  <option value="">(default)</option>
+                  <option value="id:pixel_5">Pixel 5</option>
+<option value="id:pixel_7">Pixel 7</option>
+<option value="id:pixel_tablet">Pixel Tablet</option>
+<option value="id:pixel_fold">Pixel Fold</option>
+<option value="id:wearos_small_round">Wear OS (small round)</option>
+<option value="id:tv_1080p">TV 1080p</option>
+                </select>
+              </label>
+              <label>Orientation
+                <select id="cp-orientation" disabled>
+                  <option value="">(default)</option>
+                  <option value="portrait">Portrait</option>
+                  <option value="landscape">Landscape</option>
+                </select>
+              </label>
+            </div>
+          </details>
 
 
 
@@ -178,7 +244,7 @@
   var pid = (root && root.getAttribute("data-preview-id")) || "";
   var themed = pid.split("__").some(function (s) { return s === "light" || s === "dark"; });
   try {
-    var stored = localStorage.getItem("cp-theme:default");
+    var stored = localStorage.getItem("cp-theme:jetnews");
     var declared = stored && stored.indexOf("theme:") === 0;
     var option = null;
     Array.prototype.forEach.call(el.options, function (o) { if (o.value === stored) option = o; });
@@ -207,7 +273,7 @@
   // Round-trip every unified choice, including `theme:<provider>`, to the catalog page.
   el.addEventListener("change", function () {
     el.setAttribute("data-theme-active", "1");
-    try { localStorage.setItem("cp-theme:default", el.value); } catch (e) {}
+    try { localStorage.setItem("cp-theme:jetnews", el.value); } catch (e) {}
     syncBg();
   });
   syncBg();

@@ -57,6 +57,17 @@ const REFERENCE_PLACEHOLDER = `
   <rect x="20" y="258" width="160" height="64" rx="18" fill="#ffffff"/>
   <circle cx="100" cy="378" r="18" fill="#7657b5"/>
 </svg>`;
+// Fixtures captured with the REAL production CSS/JS routed in, rather than the older static-page
+// contract (bare HTML). Anything whose whole point is how the page is *painted* has to be here —
+// the catalog-palette pair exists to show a served design system re-theming the chrome from its own
+// `tokens.dtcg.json`, which is invisible without the stylesheet the palette overrides.
+const STYLED_FIXTURES = new Set([
+    "serve-format-compare",
+    "serve-reference-compare",
+    "serve-viewer-catalog-knobs",
+    "serve-landing-catalog-palette",
+    "serve-viewer-catalog-palette",
+]);
 const SERVE_ASSETS = [
     ["serve.css", "text/css"],
     ["viewer.js", "text/javascript"],
@@ -124,11 +135,7 @@ for (const fixture of listPageFixtures()) {
         test(`snapshot · ${fixture} · ${theme}`, async ({ page }) => {
             // The comparison fixture exercises production CSS and JS (including its asynchronous
             // scorer), while older static-page baselines retain their historical capture contract.
-            if (
-                fixture === "serve-format-compare" ||
-                fixture === "serve-reference-compare" ||
-                fixture === "serve-viewer-catalog-knobs"
-            ) {
+            if (STYLED_FIXTURES.has(fixture)) {
                 for (const [name, contentType] of SERVE_ASSETS) {
                     await page.route(`**/assets/serve/**/${name}`, (route) =>
                         route.fulfill({

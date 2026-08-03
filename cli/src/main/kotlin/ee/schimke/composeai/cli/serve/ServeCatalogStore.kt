@@ -373,6 +373,11 @@ class ServeCatalogStore(
     // an SVG per preview; null when the branch carried none (host then 404s the .svg lane).
     val figmaDir = fetchFigmaSvgs(slugs, variantSvgPaths, base, dir)
 
+    // The catalog's OWN palette, so its pages are framed in its own colours (see [ServeThemeCss]).
+    // A few kB of JSON off the same branch as the images, and best-effort throughout: a missing /
+    // unfetchable / unparseable token file just leaves the pages on the built-in chrome.
+    val webThemeCss = fetchWebThemeCss(catalog.tokensFile, base)
+
     // The static baked-PNG host — the browse surface (grid, deep links, thumbnails), keyed by the
     // catalog ids. This is ALWAYS what a viewer sees; a live builder below fronts it with a daemon
     // rather than replacing it, so the published /p/<id> links keep resolving. Built lazily so the
@@ -399,6 +404,7 @@ class ServeCatalogStore(
           // the system's own choice instead of inferring it.
           stageSurface = catalog.display?.surface?.takeIf { it.isNotBlank() },
           declaredHero = catalog.display?.hero?.takeIf { it.isNotBlank() },
+          webThemeCss = webThemeCss,
           figmaDir = figmaDir,
           provenance =
             ServeWeb.CatalogProvenance(
@@ -1037,6 +1043,21 @@ class ServeCatalogStore(
   }
 
   /**
+   * Project the catalog's published design tokens onto the serve chrome (see [ServeThemeCss]), or
+   * null when [tokensFile] is absent, points outside the branch root, or the file can't be fetched
+   * / turned into a palette. Every failure mode is the same non-event: the system's pages fall back
+   * to the built-in chrome, exactly as they did before the catalog published tokens.
+   */
+  private fun fetchWebThemeCss(tokensFile: String?, base: String): String? {
+    val path = tokensFile?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    // Branch-relative only. The branch is trusted, but a garbled/hostile `tokensFile` must not be
+    // able to point the fetch at another host or walk out of the catalog.
+    if (path.startsWith("/") || "://" in path || ".." in path.split("/")) return null
+    val bytes = runCatching { fetchCatalogAsset(base + path) }.getOrNull() ?: return null
+    return runCatching { ServeThemeCss.fromDtcg(bytes.decodeToString()) }.getOrNull()
+  }
+
+  /**
    * Minimal mirror of the `design-parity-catalog/v1` schema — only the bits we serve are needed.
    */
   @Serializable
@@ -1071,6 +1092,13 @@ class ServeCatalogStore(
      * inferring the stage / hero from the system name.
      */
     val display: CatalogDisplay? = null,
+    /**
+     * The branch-relative W3C DTCG token file (`tokens.dtcg.json`) holding the system's resolved
+     * `MaterialTheme` palette, written by `generate-design-catalog.mjs` for any catalog whose
+     * render carried theme tokens. Read by [fetchWebThemeCss] to theme this system's web pages in
+     * its own colours; absent for a catalog that publishes none.
+     */
+    val tokensFile: String? = null,
     /** Optional in-browser render descriptor (the CMP-Wasm app carried in the branch). */
     val webRender: WebRender? = null,
     /** Optional buildable source for trusted server-side re-render (`--allow-render-trusted`). */
