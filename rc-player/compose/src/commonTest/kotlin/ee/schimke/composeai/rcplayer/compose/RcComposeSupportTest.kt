@@ -13,12 +13,15 @@ import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
+import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
+import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHeader
 import ee.schimke.composeai.rcplayer.protocol.RcImageAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcLayoutContent
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
+import ee.schimke.composeai.rcplayer.protocol.RcOperationProfiles
 import ee.schimke.composeai.rcplayer.protocol.RcPaintData
 import ee.schimke.composeai.rcplayer.protocol.RcRootLayout
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
@@ -42,6 +45,29 @@ class RcComposeSupportTest {
 
     assertFalse(support.fullyRenderable)
     assertEquals("paint command 11 is not implemented", support.issues.single().detail)
+  }
+
+  @Test
+  fun wasmProfileRejectsGraphicsLayersBeforeRendering() {
+    val document =
+      RcDocument(
+        header,
+        listOf(
+          RcGraphicsLayerModifier(
+            listOf(
+              RcGraphicsLayerAttribute.FloatValue(
+                RcGraphicsLayerModifier.ROTATION_Z,
+                RcFloatWord.literal(-8f),
+              )
+            )
+          )
+        ),
+      )
+
+    val issue = document.composeSupportReport(RcOperationProfiles.CMP_WASM_ALPHA16).issues.single()
+
+    assertEquals("ModifierGraphicsLayer", issue.operation)
+    assertEquals("operation is excluded from the cmp-wasm-alpha16 profile", issue.detail)
   }
 
   @Test

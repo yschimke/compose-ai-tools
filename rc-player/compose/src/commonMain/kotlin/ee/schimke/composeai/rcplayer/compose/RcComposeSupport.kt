@@ -19,6 +19,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcImageLayout
 import ee.schimke.composeai.rcplayer.protocol.RcIntegerExpression
 import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
+import ee.schimke.composeai.rcplayer.protocol.RcOperationInventory
+import ee.schimke.composeai.rcplayer.protocol.RcOperationProfile
 import ee.schimke.composeai.rcplayer.protocol.RcPaintData
 import ee.schimke.composeai.rcplayer.protocol.RcRowLayout
 import ee.schimke.composeai.rcplayer.protocol.RcTextAttribute
@@ -51,12 +53,27 @@ public data class RcComposeSupportReport(val issues: List<RcComposeSupportIssue>
 }
 
 /** Backend-specific coverage, including nested PaintBundle commands hidden behind one RC opcode. */
-public fun RcDocument.composeSupportReport(): RcComposeSupportReport {
+public fun RcDocument.composeSupportReport(
+  profile: RcOperationProfile? = null
+): RcComposeSupportReport {
   val issues = mutableListOf<RcComposeSupportIssue>()
   val bitmapIds = operations.filterIsInstance<RcBitmapData>().mapTo(mutableSetOf()) { it.imageId }
   supportReport().parseOnly.forEach { entry ->
     issues +=
       RcComposeSupportIssue(-1, entry.stableName, "operation is decoded but has no semantics")
+  }
+  if (profile != null) {
+    operations.forEachIndexed { index, operation ->
+      if (!profile.supports(operation.opcode)) {
+        issues +=
+          RcComposeSupportIssue(
+            index,
+            RcOperationInventory.byOpcode[operation.opcode]?.stableName
+              ?: "Opcode${operation.opcode}",
+            "operation is excluded from the ${profile.name} profile",
+          )
+      }
+    }
   }
   operations.forEachIndexed { index, operation ->
     if (operation is RcPaintData) {

@@ -18,6 +18,7 @@ import ee.schimke.composeai.rcplayer.compose.RcComposePlayer
 import ee.schimke.composeai.rcplayer.compose.composeSupportReport
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcDocumentCodec
+import ee.schimke.composeai.rcplayer.protocol.RcOperationProfiles
 import ee.schimke.composeai.rcplayer.protocol.RcTheme
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -51,7 +52,9 @@ public fun main() {
         else
           runCatching {
               RcDocumentCodec.decode(fetchBytes(source)).also {
-                it.composeSupportReport().requireFullyRenderable()
+                it
+                  .composeSupportReport(RcOperationProfiles.CMP_WASM_ALPHA16)
+                  .requireFullyRenderable()
               }
             }
             .fold(

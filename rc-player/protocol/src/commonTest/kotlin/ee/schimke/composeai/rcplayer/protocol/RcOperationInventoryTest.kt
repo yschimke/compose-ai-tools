@@ -2,6 +2,7 @@ package ee.schimke.composeai.rcplayer.protocol
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RcOperationInventoryTest {
@@ -44,13 +45,14 @@ class RcOperationInventoryTest {
     assertTrue(reserved.none(RcOperationProfiles.ANDROIDX_JAVA_ALPHA16::supports))
     assertTrue(unavailable.none(RcOperationProfiles.CMP_WASM_ALPHA16::supports))
     assertTrue(reserved.none(RcOperationProfiles.CMP_WASM_ALPHA16::supports))
+    assertFalse(RcOperationProfiles.CMP_WASM_ALPHA16.supports(RcOpcodes.MODIFIER_GRAPHICS_LAYER))
     assertTrue(
       RcOperationInventory.entries
         .filter { it.status == RcOperationStatus.PARSE_ONLY }
         .none { RcOperationProfiles.CMP_WASM_ALPHA16.supports(it.opcode) }
     )
     assertEquals(
-      RcOperationInventory.entries.count { it.status == RcOperationStatus.IMPLEMENTED },
+      RcOperationInventory.entries.count { it.status == RcOperationStatus.IMPLEMENTED } - 1,
       RcOperationProfiles.CMP_WASM_ALPHA16.opcodes.size,
     )
   }

@@ -40,7 +40,13 @@ public object RcOperationProfiles {
     RcOperationProfile(
       "cmp-wasm-alpha16",
       RcOperationInventory.entries
-        .filter { it.status == RcOperationStatus.IMPLEMENTED }
+        .filter {
+          it.status == RcOperationStatus.IMPLEMENTED &&
+            // Compose's current Wasm graphics-layer surface disappears when this modifier is
+            // present. Keep it available to the shared/iOS renderer but never advertise it to
+            // browser producers until that backend behavior is fixed.
+            it.opcode != RcOpcodes.MODIFIER_GRAPHICS_LAYER
+        }
         .mapTo(linkedSetOf()) { it.opcode },
     )
 }
