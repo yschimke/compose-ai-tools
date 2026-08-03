@@ -8,6 +8,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
+import ee.schimke.composeai.rcplayer.protocol.RcClickModifier
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
@@ -398,12 +399,12 @@ class RcComposeSupportTest {
 
   @Test
   fun reportsPaintSubcommandsThatTheRendererCannotHonor() {
-    val document = RcDocument(header, listOf(RcPaintData(listOf(11))))
+    val document = RcDocument(header, listOf(RcPaintData(listOf(10))))
 
     val support = document.composeSupportReport()
 
     assertFalse(support.fullyRenderable)
-    assertEquals("paint command 11 is not implemented", support.issues.single().detail)
+    assertEquals("paint command 10 is not implemented", support.issues.single().detail)
   }
 
   @Test
@@ -459,6 +460,50 @@ class RcComposeSupportTest {
         .issues
         .single()
     assertEquals("font axis wdth is not implemented", unsupported.detail)
+  }
+
+  @Test
+  fun acceptsInlineGradientsAndColorFilters() {
+    val document =
+      RcDocument(
+        header,
+        listOf(
+          RcPaintData(
+            listOf(
+              11,
+              2,
+              0xffff0000.toInt(),
+              0xff0000ff.toInt(),
+              0,
+              RcFloatWord.literal(0f).bits,
+              RcFloatWord.literal(0f).bits,
+              RcFloatWord.literal(100f).bits,
+              RcFloatWord.literal(100f).bits,
+              0,
+              13 or (5 shl 16),
+              0xffffffff.toInt(),
+              20 or (5 shl 16),
+              42,
+            )
+          )
+        ),
+      )
+
+    assertTrue(document.composeSupportReport().fullyRenderable)
+  }
+
+  @Test
+  fun rejectsMalformedGradientStops() {
+    val issue =
+      RcDocument(
+          header,
+          listOf(RcPaintData(listOf(11, 2, 0xffff0000.toInt(), 0xff0000ff.toInt(), 1, 0))),
+        )
+        .composeSupportReport()
+        .issues
+        .single()
+
+    assertEquals("gradient stop count 1 does not match 2 colors", issue.detail)
   }
 
   @Test
@@ -624,15 +669,25 @@ class RcComposeSupportTest {
   }
 
   @Test
-  fun rejectsDimensionModesWithoutComposeSemantics() {
-    val issue =
-      RcDocument(header, listOf(RcWidthModifier(RcDimensionType.WEIGHT, RcFloatWord.literal(1f))))
-        .composeSupportReport()
-        .issues
-        .single()
+  fun acceptsWeightDimensionsAndTextDataInsideClickActions() {
+    val document =
+      RcDocument(
+        header,
+        listOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcCanvasLayout(3, 30),
+          RcWidthModifier(RcDimensionType.WEIGHT, RcFloatWord.literal(1f)),
+          RcClickModifier,
+          RcTextData(42, "actionName"),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        ),
+      )
 
-    assertEquals("WidthModifier", issue.operation)
-    assertEquals("dimension type 3 is not implemented", issue.detail)
+    assertTrue(document.composeSupportReport().fullyRenderable)
   }
 
   @Test

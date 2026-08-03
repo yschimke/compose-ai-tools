@@ -1074,6 +1074,9 @@ class AndroidxWireCompatibilityTest {
         setStyle(PaintBundle.STYLE_FILL)
         clearColorFilter()
         setTextAxis(intArrayOf(0x77676874, 0x6974616c, 0x736c6e74), floatArrayOf(650f, 1f, 0f))
+        setLinearGradient(intArrayOf(0xffff0000.toInt(), 43), 2, null, 0f, 0f, 100f, 80f, 0)
+        setColorFilter(0xffffffff.toInt(), PaintBundle.BLEND_MODE_SRC_IN)
+        setColorFilterId(43, PaintBundle.BLEND_MODE_SRC_IN)
       }
     PaintData.apply(buffer, paint)
     DrawRect.apply(buffer, Utils.asNan(42), 4f, 100f, 80f)

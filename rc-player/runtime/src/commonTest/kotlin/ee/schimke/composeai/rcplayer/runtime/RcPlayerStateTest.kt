@@ -349,6 +349,7 @@ class RcPlayerStateTest {
     state.executeClick(
       RcClickActionBlock(
         listOf(
+          RcLinkedNode.Operation(RcTextData(90, "preloaded action data")),
           RcLinkedNode.Operation(RcValueIntegerChangeAction(20, 4)),
           RcLinkedNode.Operation(RcHostAction(73)),
         ),
