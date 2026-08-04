@@ -1,6 +1,9 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
+import ee.schimke.composeai.daemon.protocol.StreamCodec
+import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
 import ee.schimke.composeai.data.overrides.PreviewOverrideType
 import ee.schimke.composeai.data.overrides.PreviewOverrideValue
@@ -14,12 +17,15 @@ import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import javax.imageio.ImageIO
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -41,6 +47,39 @@ class ServeHttpRoutingTest {
   @Volatile private var blockRefresh = false
   private val refreshStarted = CountDownLatch(1)
   private val releaseRefresh = CountDownLatch(1)
+  private val ordinaryBurstHostRenders = AtomicInteger()
+  private val leasedBurstHostRenders = AtomicInteger()
+
+  private val burstHost =
+    object : ServeHost {
+      override val previews = listOf(ServePreview(previewId, previewId))
+      override val label = "burst"
+      override val declaredThemes = listOf(ServeTheme("Brand", "com.example.Brand"))
+      override val themeRenderBurstCapacity = 5
+
+      override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
+        ordinaryBurstHostRenders.incrementAndGet()
+        return RenderOutcome.Ok(png())
+      }
+
+      override fun renderLeased(previewId: String, overrides: PreviewOverrides): RenderOutcome {
+        leasedBurstHostRenders.incrementAndGet()
+        return RenderOutcome.Ok(png())
+      }
+
+      override fun subscribeStream(
+        previewId: String,
+        overrides: PreviewOverrides,
+        codec: StreamCodec?,
+        maxFps: Int?,
+        onUnavailable: ((String) -> Unit)?,
+        onFrame: (StreamFrameParams) -> Unit,
+      ): StreamHandle? = null
+
+      override fun activeStreamCount(): Int = 0
+
+      override fun close() {}
+    }
 
   private fun png(): ByteArray =
     ByteArrayOutputStream()
@@ -159,6 +198,7 @@ class ServeHttpRoutingTest {
       host = bundle("baked-only", degradations = listOf(ServeDegradation.catalogBakedOnly())),
       pinned = true,
     )
+    registry.register("burst", host = burstHost, pinned = true)
     ServeHttpServer(
         host = "127.0.0.1",
         requestedPort = 0,
@@ -235,6 +275,21 @@ class ServeHttpRoutingTest {
     assertEquals(409, post("/compose-m3/api/theme-render-lease").first)
     assertEquals(409, post("/api/theme-render-lease?session=compose-m3").first)
     assertEquals(400, post("/compose-m3/api/theme-render-lease/release").first)
+  }
+
+  @Test
+  fun `a valid theme lease routes the render through the leased host lane`() {
+    val (grantCode, grantBody) = post("/burst/api/theme-render-lease")
+    assertEquals(200, grantCode)
+    val lease =
+      Json.parseToJsonElement(grantBody).jsonObject.getValue("lease").jsonPrimitive.content
+
+    val (renderCode, _) =
+      get("/burst/render/$previewId.png" + "?themeProvider=com.example.Brand&_themeLease=$lease")
+
+    assertEquals(200, renderCode)
+    assertEquals(1, leasedBurstHostRenders.get())
+    assertEquals(0, ordinaryBurstHostRenders.get())
   }
 
   @Test

@@ -57,9 +57,15 @@ object SubprocessRenderSessions : RenderSessionFactory {
           cause = e,
         )
       }
-    val effectiveDescriptor =
+    var effectiveDescriptor =
       if (config.forceEnabled && !descriptor.enabled) descriptor.copy(enabled = true)
       else descriptor
+    if (config.systemPropertyOverrides.isNotEmpty()) {
+      effectiveDescriptor =
+        effectiveDescriptor.copy(
+          systemProperties = effectiveDescriptor.systemProperties + config.systemPropertyOverrides
+        )
+    }
     val workspaceRoot = config.workspaceRoot
     val canonicalRoot =
       runCatching { workspaceRoot.canonicalFile }.getOrDefault(workspaceRoot.absoluteFile)

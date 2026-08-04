@@ -625,6 +625,41 @@ class ServeCatalogLiveHostTest {
   }
 
   @Test
+  fun `shared replica pool enables a five-wide lease and is used only by leased renders`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val primary =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId, overrides = listOf(labelKnob))),
+        tag = "primary",
+        declaredThemes = listOf(brandTheme),
+      )
+    val replica =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "replica",
+        declaredThemes = listOf(brandTheme),
+      )
+    val pool = ServeSharedDaemonPool(primary = primary, openReplica = { replica })
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = primary,
+        baked = baked,
+        sharedDaemonPool = pool,
+      )
+
+    assertEquals(5, composite.themeRenderBurstCapacity)
+
+    composite.render(catalogId, knobOverride())
+    assertEquals(1, primary.renderCalls)
+    assertEquals(0, replica.renderCalls)
+
+    composite.renderLeased(catalogId, themeOverride())
+    assertEquals(2, primary.renderCalls, "a sequential lease reuses the warm primary")
+    assertEquals(0, replica.renderCalls, "replicas open only when leased requests overlap")
+  }
+
+  @Test
   fun `pure theme render propagates busy from monolithic fallback`() {
     val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
     val monolithic =
@@ -1014,8 +1049,7 @@ class ServeCatalogLiveHostTest {
     val live = RecordingHost(previews = listOf(ServePreview(daemonId, daemonId)), tag = "mono")
     val perPreview = RecordingHost(previews = emptyList(), tag = "per")
 
-    // Sharing one daemon means one render lock: a wide burst would funnel workers into it, hand
-    // most of them Busy, and the page would exhaust its retries with cards still on baked pixels.
+    // A shared daemon without replicas still has one render lock.
     assertEquals(
       1,
       ServeCatalogLiveHost(
@@ -1023,6 +1057,17 @@ class ServeCatalogLiveHostTest {
           live = live,
           baked = baked,
           perPreviewResolve = { perPreview },
+        )
+        .themeRenderBurstCapacity,
+    )
+    // Shared mode becomes genuinely parallel when it carries identical monolithic replicas.
+    assertEquals(
+      5,
+      ServeCatalogLiveHost(
+          alias = mapOf(catalogId to daemonId),
+          live = live,
+          baked = baked,
+          sharedDaemonPool = ServeSharedDaemonPool(live, openReplica = { perPreview }),
         )
         .themeRenderBurstCapacity,
     )

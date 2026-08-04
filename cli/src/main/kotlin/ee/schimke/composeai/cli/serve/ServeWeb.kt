@@ -1102,9 +1102,9 @@ object ServeWeb {
         """
           .trimIndent()
       else ""
-    // The declared-theme lane is serial unless the server grants this page a short-lived burst
-    // lease. The server clamps a grant to its render capacity and one page at a time, so opening
-    // another catalog tab cannot multiply a five-worker burst into a JVM storm. Each worker
+    // The declared-theme lane is serial unless the server grants this page a short-lived claim on
+    // its catalog's burst allocation. All users and tabs for that catalog share the same width, so
+    // opening another page cannot multiply a five-worker burst into a JVM storm. Each worker
     // advances only after its image settles; failures get bounded delayed retries with
     // cache-busting URLs. Baked light/dark swaps never queue. themeGen abandons all workers the
     // moment a new theme is chosen and releases that generation's lease.
@@ -1606,7 +1606,7 @@ object ServeWeb {
         el.textContent = label;
         el.setAttribute("data-cp-daemon-running", state.running ? "1" : "0");
         el.title = state.pooled
-          ? state.pooled + " of " + state.poolCapacity + " per-preview daemons resident"
+          ? state.pooled + " of " + state.poolCapacity + " pooled daemons resident"
           : "";
       }
       function pollDaemons() {

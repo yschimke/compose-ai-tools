@@ -50,6 +50,7 @@ import ee.schimke.composeai.cli.serve.ServeRevisionFactory
 import ee.schimke.composeai.cli.serve.ServeSessionFactory
 import ee.schimke.composeai.cli.serve.ServeSessionRegistry
 import ee.schimke.composeai.cli.serve.ServeSessionState
+import ee.schimke.composeai.cli.serve.ServeSharedDaemonPool
 import ee.schimke.composeai.cli.serve.ServeStartupBundles
 import ee.schimke.composeai.cli.serve.ServeTrustAdmin
 import ee.schimke.composeai.cli.serve.ServeTrustStoreFile
@@ -58,6 +59,7 @@ import ee.schimke.composeai.cli.serve.ServeWeb
 import ee.schimke.composeai.cli.serve.TrustStore
 import ee.schimke.composeai.cli.serve.declaredThemesFromPreviews
 import ee.schimke.composeai.cli.serve.detectedFeaturesOf
+import ee.schimke.composeai.cli.serve.openIsolatedSharedDaemonReplica
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.render.session.RenderSessionException
 import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
@@ -946,7 +948,7 @@ class ServeCommand(args: List<String>) : Command(args) {
    */
   private fun openHost(state: ServeSessionState): ServeHost? =
     runCatching {
-        val daemon =
+        fun openDaemon(systemPropertyOverrides: Map<String, String> = emptyMap()): ServeRenderHost =
           ServeRenderHost.open(
             descriptorPath = state.descriptor,
             workspaceRoot = state.workspaceRoot,
@@ -954,8 +956,10 @@ class ServeCommand(args: List<String>) : Command(args) {
             previews = state.previews,
             label = state.label,
             declaredThemes = state.declaredThemes,
+            systemPropertyOverrides = systemPropertyOverrides,
             onLog = { System.err.println("[daemon serve] $it") },
           )
+        val daemon = openDaemon()
         val fallback = state.bakedFallback
         if (fallback != null)
           ServeCatalogLiveHost(
@@ -966,6 +970,15 @@ class ServeCommand(args: List<String>) : Command(args) {
               perPreviewStreamCount = state.perPreviewStreamCount,
               perPreviewRenderStats = state.perPreviewRenderStats,
               perPreviewPoolStats = state.perPreviewPoolStats,
+              sharedDaemonPool =
+                ServeSharedDaemonPool(primary = daemon) {
+                  // Every daemon writes <outputBaseName>.png and its data products below the
+                  // descriptor's output root. Replicas therefore need separate roots even though
+                  // they share the catalog classpath; otherwise overlapping themes can overwrite
+                  // one another between a completion notification and ServeRenderHost reading the
+                  // file.
+                  openIsolatedSharedDaemonReplica(state.descriptor, ::openDaemon)
+                },
               catalogThemeCache = state.catalogThemeCache ?: CatalogThemeCache(),
               serverIdleMillis = state.serverIdleMillis,
               backgroundWork = state.backgroundWork,

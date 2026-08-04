@@ -1248,7 +1248,7 @@ class ServeHttpServer(
     }
   }
 
-  /** Grant one catalog page a short-lived themed-thumbnail burst; all other pages stay serial. */
+  /** Join this page to its catalog's short-lived themed-thumbnail burst allocation. */
   private suspend fun RoutingContext.handleThemeRenderLease(sessionInPath: Boolean) {
     if (rejectBadToken()) return
     val sessionId = selectedSessionId(sessionInPath)
@@ -2854,6 +2854,7 @@ class ServeHttpServer(
                   } else {
                     try {
                       if (scroll) renderHost.renderScrollPng(previewId, overrides)
+                      else if (leasePermit != null) renderHost.renderLeased(previewId, overrides)
                       else renderHost.render(previewId, overrides)
                     } finally {
                       renderSemaphore.release()

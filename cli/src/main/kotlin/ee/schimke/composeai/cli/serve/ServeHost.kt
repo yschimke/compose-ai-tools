@@ -111,7 +111,7 @@ interface ServeHost : AutoCloseable {
    * Maximum browser-side concurrency a short-lived themed-thumbnail burst may request. A plain
    * daemon has one render lock, so the default remains serial. A composite backed by independent
    * per-preview daemons may opt into a larger temporary burst; the HTTP server still clamps it to
-   * its render slots and grants at most one page a burst lease at a time.
+   * its render slots and shares that burst across every active page for the same catalog.
    */
   val themeRenderBurstCapacity: Int
     get() = 1
@@ -252,6 +252,14 @@ interface ServeHost : AutoCloseable {
 
   /** Render [previewId] at [overrides] (cached where possible). */
   fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome
+
+  /**
+   * Render a request admitted by the server's short-lived catalog theme lease. Hosts that cannot
+   * parallelise keep the ordinary [render] behaviour. A catalog backed by a replica pool overrides
+   * this to borrow an independent shared daemon, so only explicitly leased batches grow the pool.
+   */
+  fun renderLeased(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+    render(previewId, overrides)
 
   /**
    * The captured Remote Compose document bytes for [previewId] — the bundle's `ir/<id>.rc` sidecar

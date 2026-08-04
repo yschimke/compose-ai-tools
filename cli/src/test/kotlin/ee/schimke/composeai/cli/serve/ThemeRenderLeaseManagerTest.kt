@@ -19,19 +19,42 @@ class ThemeRenderLeaseManagerTest {
     )
 
   @Test
-  fun `two leases are active server-wide and each is bound to session and host identity`() {
+  fun `users and tabs share one catalog allocation while another catalog gets the narrow tier`() {
     val manager = manager()
     val host = Any()
     val grant = assertNotNull(manager.acquire("wear", host, requestedCapacity = 5))
+    val sameCatalog = assertNotNull(manager.acquire("wear", host, requestedCapacity = 5))
+    assertEquals(5, sameCatalog.concurrency)
 
-    // A second page gets the narrower tier rather than falling back to the serial baseline…
+    // A second catalog gets the narrower tier rather than falling back to the serial baseline…
     val second = assertNotNull(manager.acquire("material", Any(), requestedCapacity = 5))
     assertEquals(3, second.concurrency)
     // …and a third finds no free tier.
     assertNull(manager.acquire("third", Any(), requestedCapacity = 5))
     assertNull(manager.admit(grant.token, "material", host))
     assertNull(manager.admit(grant.token, "wear", Any()))
-    assertNotNull(manager.admit(grant.token, "wear", host)).close()
+    val sharedPermits =
+      List(3) { assertNotNull(manager.admit(grant.token, "wear", host)) } +
+        List(2) { assertNotNull(manager.admit(sameCatalog.token, "wear", host)) }
+    assertNull(
+      manager.admit(sameCatalog.token, "wear", host),
+      "all page claims share the catalog's five in-flight slots",
+    )
+    sharedPermits.forEach { it.close() }
+  }
+
+  @Test
+  fun `releasing one page claim does not release its catalog allocation`() {
+    val manager = manager()
+    val host = Any()
+    val first = assertNotNull(manager.acquire("wear", host, requestedCapacity = 5))
+    val second = assertNotNull(manager.acquire("wear", host, requestedCapacity = 5))
+
+    assertTrue(manager.release(first.token))
+    assertNull(manager.admit(first.token, "wear", host))
+    assertNotNull(manager.admit(second.token, "wear", host)).close()
+    assertEquals(3, assertNotNull(manager.acquire("material", Any(), 5)).concurrency)
+    assertNull(manager.acquire("third", Any(), 5))
   }
 
   @Test
