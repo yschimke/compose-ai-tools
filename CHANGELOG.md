@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.19.28](https://github.com/yschimke/compose-ai-tools/compare/v0.19.27...v0.19.28) (2026-08-04)
+
+
+### Features
+
+* **design-artifacts:** give an extra-module render its own live lane ([#3264](https://github.com/yschimke/compose-ai-tools/issues/3264)) ([1784e06](https://github.com/yschimke/compose-ai-tools/commit/1784e06ca8f3589ecef9e82d5d84081c0bcf0810))
+
+
+### Bug Fixes
+
+* export the resting corner of a wrapped Wear M3 button shape ([#3262](https://github.com/yschimke/compose-ai-tools/issues/3262)) ([74b8a9a](https://github.com/yschimke/compose-ai-tools/commit/74b8a9afa066f77fcc49e59238f4ed5286d385f9))
+* **serve:** revalidate stable CMP Wasm assets ([#3260](https://github.com/yschimke/compose-ai-tools/issues/3260)) ([ba7b73e](https://github.com/yschimke/compose-ai-tools/commit/ba7b73e071e703132f268de5ca18c5e3f5d4ae3e))
+
+
+### Performance Improvements
+
+* **serve:** warm a catalog's daemon on arrival, not at boot ([#3258](https://github.com/yschimke/compose-ai-tools/issues/3258)) ([2602842](https://github.com/yschimke/compose-ai-tools/commit/26028429a9ac5e1c79506a1be9b094e6d5c89ef4))
+
 ## [0.19.27](https://github.com/yschimke/compose-ai-tools/compare/v0.19.26...v0.19.27) (2026-08-04)
 
 
