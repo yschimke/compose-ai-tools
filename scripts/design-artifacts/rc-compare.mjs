@@ -22,7 +22,8 @@
  * Usage:
  *   node rc-compare.mjs --bundle <bundle.png> --player <rc-player bundle.js> \
  *     --out <dir> [--system <id>] [--title <t>] [--threshold 0.1] [--theme light] \
- *     [--fonts <dir>] [--cmp-wasm <rc-player-wasm distribution>]
+ *     [--fonts <dir>] [--cmp-wasm <rc-player-wasm distribution>] \
+ *     [--require-cmp-wasm] [--cmp-wasm-allowlist <json>]
  *
  * `--fonts` defaults to the vendored faces the snapshot renderer itself rasterizes with (see
  * rc-fonts.mjs). Point it elsewhere to compare against a different font set, or at a
@@ -41,6 +42,11 @@ import pixelmatch from "pixelmatch";
 import { chromium } from "playwright";
 
 import { renderRcCompareHtml } from "./render-rc-compare-html.mjs";
+import {
+  evaluateCmpWasmGate,
+  formatCmpWasmGate,
+  readCmpWasmAllowlist,
+} from "./rc-compare-gate.mjs";
 import { BG, flattenOnto, isFullyTransparent } from "./rc-compare-pixels.mjs";
 import { DEFAULT_FONTS_DIR, fontFaceCss, loadAndVerifyFonts } from "./rc-fonts.mjs";
 
@@ -81,9 +87,15 @@ const EMBEDDED_JVM = arg("embedded-jvm");
 // complete Compose/Skiko application, so the driver serves its distribution over localhost and
 // screenshots its viewport after the player's readiness marker appears.
 const CMP_WASM = arg("cmp-wasm");
+const REQUIRE_CMP_WASM = process.argv.includes("--require-cmp-wasm");
+const CMP_WASM_ALLOWLIST = arg("cmp-wasm-allowlist");
 
 if (!BUNDLE || !PLAYER || !OUT) {
   console.error("rc-compare: --bundle, --player and --out are required");
+  process.exit(2);
+}
+if (REQUIRE_CMP_WASM && !CMP_WASM) {
+  console.error("rc-compare: --require-cmp-wasm requires --cmp-wasm");
   process.exit(2);
 }
 
@@ -154,6 +166,7 @@ const dirs = {
   embeddedJvmDiff: path.join(OUT, "rc-embedded-jvm-diff"),
   cmpWasm: path.join(OUT, "rc-cmp-wasm"),
   cmpWasmDiff: path.join(OUT, "rc-cmp-wasm-diff"),
+  cmpWasmErrors: path.join(OUT, "rc-cmp-wasm-errors"),
 };
 for (const d of Object.values(dirs)) fs.mkdirSync(d, { recursive: true });
 
@@ -362,6 +375,7 @@ async function startCmpWasmServer(dir) {
 async function cmpWasmFor(id, bytes, baked, width, height, referenceBlank) {
   if (!cmpWasmPage) return {};
   try {
+    cmpWasmConsoleErrors.length = 0;
     cmpWasmServer.setDocument(bytes);
     await cmpWasmPage.setViewportSize({ width, height });
     await cmpWasmPage.goto(
@@ -378,6 +392,9 @@ async function cmpWasmFor(id, bytes, baked, width, height, referenceBlank) {
     }));
     if (state.state !== "ready") throw new Error(state.error || "player reported an error");
     const png = flattenOnto(PNG.sync.read(await cmpWasmPage.screenshot({ omitBackground: true })), BG);
+    if (cmpWasmConsoleErrors.length) {
+      throw new Error(`unexpected console error: ${cmpWasmConsoleErrors.join(" | ")}`);
+    }
     if (png.width !== width || png.height !== height) {
       throw new Error(`size ${png.width}×${png.height} ≠ baked ${width}×${height}`);
     }
@@ -393,9 +410,13 @@ async function cmpWasmFor(id, bytes, baked, width, height, referenceBlank) {
       cmpWasmDiff: `rc-cmp-wasm-diff/${id}.png`,
     };
   } catch (error) {
+    const detail = String(error?.stack || error?.message || error);
+    const errorFile = `${encodeURIComponent(id)}.txt`;
+    fs.writeFileSync(path.join(dirs.cmpWasmErrors, errorFile), detail);
     return {
       cmpWasmRendered: false,
-      cmpWasmNote: String(error?.message || error).slice(0, 200),
+      cmpWasmNote: String(error?.message || error).slice(0, 500),
+      cmpWasmError: `rc-cmp-wasm-errors/${errorFile}`,
       cmpWasmMismatchPct: null,
       cmpWasmMismatchPx: null,
       cmpWasm: "",
@@ -416,6 +437,10 @@ const cmpWasmServer = CMP_WASM ? await startCmpWasmServer(CMP_WASM) : null;
 const cmpWasmPage = CMP_WASM
   ? await browser.newContext({ deviceScaleFactor: 1 }).then((context) => context.newPage())
   : null;
+const cmpWasmConsoleErrors = [];
+cmpWasmPage?.on("console", (message) => {
+  if (message.type() === "error") cmpWasmConsoleErrors.push(message.text());
+});
 const pageWarnings = [];
 page.on("console", (m) => {
   if (m.type() === "warning" || m.type() === "error") pageWarnings.push(m.text());
@@ -582,6 +607,19 @@ const rendered = rows.filter((r) => r.rendered);
 // `isFullyTransparent`. Left in `rendered` because the player did in fact render them.
 const scored = rendered.filter((r) => !r.referenceBlank);
 const meanPct = scored.length ? scored.reduce((s, r) => s + r.mismatchPct, 0) / scored.length : null;
+let cmpWasmGate = null;
+if (REQUIRE_CMP_WASM) {
+  try {
+    cmpWasmGate = evaluateCmpWasmGate(rcIds, rows, readCmpWasmAllowlist(CMP_WASM_ALLOWLIST));
+  } catch (error) {
+    cmpWasmGate = evaluateCmpWasmGate(rcIds, rows);
+    cmpWasmGate.passed = false;
+    cmpWasmGate.failures.unshift({
+      id: "allowlist",
+      note: String(error?.message || error),
+    });
+  }
+}
 fs.writeFileSync(
   path.join(OUT, "rc-compare-summary.json"),
   JSON.stringify(
@@ -595,6 +633,7 @@ fs.writeFileSync(
       meanMismatchPct: meanPct,
       threshold: THRESHOLD,
       theme: THEME,
+      cmpWasmGate,
       embedded: EMBEDDED
         ? {
             rendered: rows.filter((r) => r.embeddedRendered).length,
@@ -650,6 +689,7 @@ fs.writeFileSync(
         cmpWasmMismatchPct: r.cmpWasmMismatchPct ?? null,
         cmpWasmMismatchPx: r.cmpWasmMismatchPx ?? null,
         cmpWasmNote: r.cmpWasmNote ?? null,
+        cmpWasmError: r.cmpWasmError ?? null,
       })),
     },
     null,
@@ -679,3 +719,12 @@ console.log(
       : `, ${rendered.length - scored.length} unscored (blank reference)`) +
     (meanPct == null ? "" : `, mean mismatch ${meanPct.toFixed(2)}%`),
 );
+
+if (REQUIRE_CMP_WASM) {
+  const message = formatCmpWasmGate(cmpWasmGate);
+  console.log(message);
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\n### Remote Compose CMP/Wasm\n\n${message}\n`);
+  }
+  if (!cmpWasmGate.passed) process.exitCode = 1;
+}

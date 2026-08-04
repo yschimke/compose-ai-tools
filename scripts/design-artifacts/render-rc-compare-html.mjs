@@ -221,7 +221,7 @@ function cellWithDiff(label, src, diffSrc, extraClass = "") {
  * `referenceBlank` short-circuits both players: the baked PNG is empty, so there is no comparison to
  * report and any number here would be a lie in either direction.
  */
-function scoreBlock(label, rendered, pct, px, note, referenceBlank = false) {
+function scoreBlock(label, rendered, pct, px, note, referenceBlank = false, errorHref = "") {
   const scorable = rendered && !referenceBlank;
   const text = scorable
     ? `${(pct ?? 0).toFixed(2)}%`
@@ -230,10 +230,12 @@ function scoreBlock(label, rendered, pct, px, note, referenceBlank = false) {
       : note || "no render";
   const pxTxt =
     scorable && px != null ? `<span class="px">${px.toLocaleString("en-US")} px</span>` : "";
+  const detail = !rendered && errorHref ? `<a href="${esc(errorHref)}">details</a>` : "";
   return `<div class="scoreline">
       <span class="scorelabel">${esc(label)}</span>
       <span class="score ${band(scorable ? pct : null)}">${esc(text)}</span>
       ${pxTxt}
+      ${detail}
     </div>`;
 }
 
@@ -271,6 +273,7 @@ function rowHtml(r, withEmbedded, withEmbeddedJvm, withCmpWasm) {
           r.cmpWasmMismatchPx,
           r.cmpWasmNote,
           r.referenceBlank,
+          r.cmpWasmError,
         )
       : "") +
     (r.referenceBlank

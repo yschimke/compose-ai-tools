@@ -133,10 +133,15 @@ on:
         type: boolean
         default: false
       rc-cmp-wasm-lane:
-        description: "Add the CMP/Wasm player lane to rc-compare.html. Builds :rc-player-wasm:wasmPlayerDist, loads each ir/*.rc in the real browser player, screenshots it, and folds its pixel diff into one compact column. No-op for a catalog that ships no ir/*.rc."
+        description: "Add the required CMP/Wasm player lane to rc-compare.html. When enabled, its distribution must build and every ir/*.rc must render unless named in rc-cmp-wasm-allowlist. Evidence is uploaded before a failed gate stops publication. No-op for a catalog that ships no ir/*.rc."
         required: false
         type: boolean
         default: false
+      rc-cmp-wasm-allowlist:
+        description: 'Optional caller-repo-relative JSON file containing temporary CMP/Wasm exceptions. Every entry requires id, reason, and a non-expired YYYY-MM-DD expires date.'
+        required: false
+        type: string
+        default: ''
       stage-font-globs:
         description: 'Whitespace-separated repo-relative globs of font files (.ttf/.otf) to stage into fontconfig BEFORE rendering — for a desktop (Skiko) render that must resolve glyphs (CJK/Arabic/…) from a bundled face rather than a system fallback. Empty ⇒ no staging.'
         required: false
@@ -600,8 +605,12 @@ jobs:
       # PNG — the browser-render-lane counterpart of the PNG↔figma-svg compare.
       # A no-op (and no Chromium download) for catalogs without `ir/*.rc`.
       - name: PNG vs Remote Compose parity page
+        id: rc-compare
         if: ${{ inputs.publish || inputs.upload-out }}
+        continue-on-error: ${{ inputs.rc-cmp-wasm-lane }}
         working-directory: compose-ai-tools/scripts/design-artifacts
+        env:
+          RC_CMP_WASM_ALLOWLIST: ${{ inputs.rc-cmp-wasm-allowlist }}
         run: |
           set -euo pipefail
           if ! python3 - "$GITHUB_WORKSPACE/bundle.png" <<'PY'
@@ -630,11 +639,26 @@ jobs:
           EMBEDDED_ARGS=()
 
           if [ "${{ inputs.rc-cmp-wasm-lane }}" = "true" ]; then
+            mkdir -p "$GITHUB_WORKSPACE/out/rc-cmp-wasm-errors"
+            wasm_build_log="$GITHUB_WORKSPACE/out/rc-cmp-wasm-errors/distribution-build.log"
             if (cd "$GITHUB_WORKSPACE/compose-ai-tools" && \
-                ./gradlew :rc-player-wasm:wasmPlayerDist --no-daemon --quiet); then
-              EMBEDDED_ARGS+=(--cmp-wasm "$GITHUB_WORKSPACE/compose-ai-tools/rc-player/wasm/build/wasmDist")
+                ./gradlew :rc-player-wasm:wasmPlayerDist --no-daemon --quiet) >"$wasm_build_log" 2>&1; then
+              EMBEDDED_ARGS+=(
+                --cmp-wasm "$GITHUB_WORKSPACE/compose-ai-tools/rc-player/wasm/build/wasmDist"
+                --require-cmp-wasm
+              )
+              if [ -n "$RC_CMP_WASM_ALLOWLIST" ]; then
+                EMBEDDED_ARGS+=(--cmp-wasm-allowlist "$GITHUB_WORKSPACE/$RC_CMP_WASM_ALLOWLIST")
+              fi
             else
-              echo "::warning::cmp-wasm player distribution failed to build; publishing rc-compare without the cmp-wasm column"
+              echo "::error title=CMP/Wasm distribution failed::The required player distribution did not build; see the uploaded distribution-build.log." >&2
+              tail -n 80 "$wasm_build_log" >&2
+              {
+                echo '### Remote Compose CMP/Wasm'
+                echo
+                echo '❌ Player distribution failed to build. See `distribution-build.log` in the evidence artifact.'
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 1
             fi
           fi
 
@@ -705,6 +729,27 @@ jobs:
             --system "${{ inputs.system }}" \
             --title "${{ inputs.system }}" \
             ${EMBEDDED_ARGS[@]+"${EMBEDDED_ARGS[@]}"}
+
+      - name: Upload CMP/Wasm parity evidence
+        if: ${{ always() && inputs.rc-cmp-wasm-lane && (inputs.publish || inputs.upload-out) }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.system }}-rc-cmp-wasm-evidence
+          path: |
+            ${{ github.workspace }}/out/rc-compare-summary.json
+            ${{ github.workspace }}/out/rc-compare.html
+            ${{ github.workspace }}/out/rc-cmp-wasm
+            ${{ github.workspace }}/out/rc-cmp-wasm-diff
+            ${{ github.workspace }}/out/rc-cmp-wasm-errors
+          if-no-files-found: warn
+
+      # `continue-on-error` above exists only so the evidence upload gets a chance to run. Convert
+      # the recorded outcome back into a hard gate before either artifact handoff or publication.
+      - name: Enforce required CMP/Wasm lane
+        if: ${{ always() && inputs.rc-cmp-wasm-lane && (inputs.publish || inputs.upload-out) && steps.rc-compare.outcome == 'failure' }}
+        run: |
+          echo "::error title=CMP/Wasm parity gate failed::The enabled lane did not build or render every non-allowlisted Remote Compose document."
+          exit 1
 
       - name: Upload catalog bundle
         if: ${{ inputs.upload-out }}

@@ -26,6 +26,7 @@ function withCmpWasm(base) {
       cmpWasmMismatchPct: index !== 2 ? 3 + index : null,
       cmpWasmMismatchPx: index !== 2 ? 8_268 + index : null,
       cmpWasmNote: index === 2 ? "unsupported operation" : undefined,
+      cmpWasmError: index === 2 ? `rc-cmp-wasm-errors/${r.id}.txt` : undefined,
       cmpWasm: index !== 2 ? `rc-cmp-wasm/${r.id}.png` : "",
       cmpWasmDiff: index !== 2 ? `rc-cmp-wasm-diff/${r.id}.png` : "",
     })),
@@ -230,6 +231,10 @@ test("the cmp-wasm lane adds one folded-diff column and independent parity stats
   assert.match(html, /<span class="scorelabel">cmp-wasm<\/span>/);
   assert.match(html, /\(JS \+ cmp-wasm players\)/);
   assert.match(html, /runs the new Compose Multiplatform \/ Skiko player in browser Wasm/);
+  assert.match(
+    html,
+    /href="rc-cmp-wasm-errors\/pkg\.CatalogPreviewsKt\.Undecodable\.txt">details<\/a>/,
+  );
 });
 
 test("all rc-compare lanes can coexist without hiding the cmp-wasm result", () => {
