@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.19.26](https://github.com/yschimke/compose-ai-tools/compare/v0.19.25...v0.19.26) (2026-08-04)
+
+
+### Features
+
+* implement alpha16 ComponentValue in CMP player ([#3244](https://github.com/yschimke/compose-ai-tools/issues/3244)) ([8031e81](https://github.com/yschimke/compose-ai-tools/commit/8031e81213ec839ddea071a13f506e07858bd1de))
+* **serve:** keep a catalog's session alive while a visitor is reading it ([#3243](https://github.com/yschimke/compose-ai-tools/issues/3243)) ([a6946fa](https://github.com/yschimke/compose-ai-tools/commit/a6946faaf6c32c2f9a59062bd9e5bc1745a5058d))
+* **serve:** typography and layout annotation layers on the compare page ([#3242](https://github.com/yschimke/compose-ai-tools/issues/3242)) ([1f674ec](https://github.com/yschimke/compose-ai-tools/commit/1f674eceab55e722c5174821492009738065013f))
+
+
+### Bug Fixes
+
+* **design-artifacts:** don't publish a light reference against a dark sticker ([#3238](https://github.com/yschimke/compose-ai-tools/issues/3238)) ([daf6800](https://github.com/yschimke/compose-ai-tools/commit/daf68000c846a8be9d8522896a2e1e9f62658c85))
+* **serve:** count only real seat demand as a refusal ([#3235](https://github.com/yschimke/compose-ai-tools/issues/3235)) ([000df00](https://github.com/yschimke/compose-ai-tools/commit/000df007fe0b211844c5d997f356418616034147))
+* **serve:** resolve Pocket Casts' eventhorizon from a8c-libs ([#3237](https://github.com/yschimke/compose-ai-tools/issues/3237)) ([74004f9](https://github.com/yschimke/compose-ai-tools/commit/74004f923e72323e3075d2a126063ca9c7bea96b))
+
+
+### Performance Improvements
+
+* **serve:** prebake catalog grid thumbnails ([#3240](https://github.com/yschimke/compose-ai-tools/issues/3240)) ([7a3ff5d](https://github.com/yschimke/compose-ai-tools/commit/7a3ff5dd3cb89bbcbb5df662585cca463ed5e047))
+
 ## [0.19.25](https://github.com/yschimke/compose-ai-tools/compare/v0.19.24...v0.19.25) (2026-08-03)
 
 
