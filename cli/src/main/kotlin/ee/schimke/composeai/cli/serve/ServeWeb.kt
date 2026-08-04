@@ -1471,8 +1471,9 @@ object ServeWeb {
    *   for one is exactly the waste the reaper exists to prevent. It resumes on `visibilitychange`,
    *   and pings immediately on becoming visible so a tab returned to after an hour doesn't wait out
    *   another interval before saying so.
-   * - **No first ping.** Loading the page *was* a request; the heartbeat only matters once the
-   *   visitor has gone quiet.
+   * - **Fires on arrival.** The page load itself is a request, but a *baked* one — it warms no
+   *   daemon. Since catalogs are no longer warmed at boot, this first ping is what readies the one
+   *   the visitor actually opened.
    * - **Errors ignored.** A heartbeat is not something a page can act on — offline, a catalog since
    *   removed, a server restarted. The next one tries again.
    */
@@ -1504,6 +1505,11 @@ object ServeWeb {
       }
       setInterval(ping, ${PRESENCE_INTERVAL_SECONDS} * 1000);
       document.addEventListener("visibilitychange", ping);
+      // Fired on arrival, not only every interval. Catalogs are no longer warmed at boot (see
+      // ServeCatalogLiveHost.eagerWarmOnOpen), so this ping is what gets a daemon ready for the
+      // catalog the visitor actually opened — while they read the grid, rather than when they
+      // first click a theme and wait out a cold start.
+      ping();
     """
       .trimIndent()
   }
