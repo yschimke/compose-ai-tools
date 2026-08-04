@@ -127,16 +127,13 @@ jobs:
 
   # Flip the draft Release to published once every required artifact is verified
   # present — the gate that makes a release atomic from a consumer's view.
-  # `needs: release` so the whole release.yml run (asset upload + the irreversible
-  # Maven Central publish) is done first. Two checks:
-  #   1. Required GitHub Release assets are attached (HARD gate — a missing CLI
-  #      tarball is exactly the "release not found" install failure, so we refuse
-  #      to publish and leave the draft for a human / re-run).
-  #   2. Maven Central is serving the published plugin (ADVISORY — the publish
-  #      task already succeeded, so propagation is eventual; we poll, then publish
-  #      anyway with a warning rather than wedge the release on CDN lag).
-  # Only then `gh release edit --draft=false --latest`, so `/releases/latest` and
-  # `latest/download/…` flip atomically to a fully-populated release.
+  # `needs: release` means the whole release.yml run (asset upload + the
+  # irreversible Maven Central publish) succeeded first. We deliberately do not
+  # poll Central's CDN here: propagation is eventual and took 14 minutes for
+  # v0.19.32 even though the publish task had succeeded. The bootstrap installer
+  # independently requires both the CLI tarball and matching plugin marker to be
+  # downloadable before offering a version, while Maven-consuming downstream jobs
+  # retain their own readiness waits.
   # The `!cancelled()` override tolerates a post-cut crash in the `release-please`
   # JOB — but it must NOT tolerate a failed `release`. `release.yml` decouples the
   # GitHub asset upload from the Maven Central publish, so `release` can fail with
@@ -175,21 +172,6 @@ jobs:
           done
           [ "$missing" -eq 0 ] \
             || { echo "::error::$TAG missing required assets — leaving it as a draft"; exit 1; }
-      - name: Wait for Maven Central to serve the published plugin (advisory)
-        run: |
-          set -u
-          V="${TAG#v}"
-          pom="https://repo1.maven.org/maven2/ee/schimke/composeai/preview/ee.schimke.composeai.preview.gradle.plugin/${V}/ee.schimke.composeai.preview.gradle.plugin-${V}.pom"
-          for i in $(seq 1 20); do
-            code=$(curl -sSL -o /dev/null -w '%{http_code}' "$pom" 2>/dev/null || echo 000)
-            if [ "$code" = 200 ]; then
-              echo "plugin ${V} is live on Maven Central."
-              exit 0
-            fi
-            echo "waiting for Maven Central to serve plugin ${V} (attempt ${i}/20, http ${code})…"
-            sleep 60
-          done
-          echo "::warning::plugin ${V} not visible on Maven Central after ~20 min — publishing the GitHub release anyway (the publish task already succeeded; Central propagation is eventual)."
       - name: Publish the release (un-draft + mark latest)
         run: |
           set -euo pipefail
@@ -227,10 +209,10 @@ jobs:
   # GITHUB_TOKEN dispatch wouldn't start design-artifacts' run.
   #
   # Gated exactly like `reconcile-release-pr`: only after `finalize-release` succeeded, so
-  # the release is published AND its runtime cleared finalize's Maven Central wait — then
-  # design-artifacts' own "Wait for released preview-runtimes on Maven Central" step
-  # resolves immediately instead of polling. Root train only: the design catalogs track
-  # the root CLI/runtime version, not the `clients` train.
+  # the release is published. Maven Central propagation is not part of finalization;
+  # design-artifacts' own "Wait for released preview-runtimes on Maven Central" step owns
+  # that consumer-specific readiness check. Root train only: the design catalogs track the
+  # root CLI/runtime version, not the `clients` train.
   regenerate-design-artifacts:
     needs: [release-please, finalize-release]
     if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' && needs.finalize-release.result == 'success' }}
