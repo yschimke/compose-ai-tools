@@ -427,6 +427,10 @@ class ServeCatalogLiveHost(
   // costs nothing until someone needs a live render — and an eager `val` here would have undone
   // that at construction, which is exactly where every catalog builds its host. The browse surface
   // never touches them; the viewer chrome that does is already a per-preview request.
+  /** The composite is only as started as its daemon lane; the baked lane never has a subprocess. */
+  override val daemonStarted: Boolean
+    get() = live.daemonStarted
+
   override val gesturesRenderable: Boolean by lazy { live.gesturesRenderable }
 
   /**

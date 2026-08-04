@@ -450,6 +450,10 @@ class ServeSessionRegistry(
     sessions
       .mapNotNull { (id, entry) ->
         val host = entry.host ?: return@mapNotNull null
+        // A registered-but-never-woken catalog carries a host object and no subprocess. Reporting
+        // it here would keep the running count (and its `startedAt` uptime) tied to registration,
+        // which is precisely what the lazy open exists to decouple.
+        if (!host.daemonStarted) return@mapNotNull null
         RunningDaemon(
           id = id,
           label = host.label,
