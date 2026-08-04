@@ -1151,11 +1151,9 @@ object ServeWeb {
           if (!job) return;
           var img = job.img;
           var settled = false;
-          function next(ok) {
+          function finish(ok) {
             if (settled || gen !== themeGen) return;
             settled = true;
-            img.onload = null;
-            img.onerror = null;
             if (!ok && job.retries < themeRenderRetries) {
               // Re-request rather than re-assign the identical (failed, uncached) URL. Exponential
               // backoff gives a busy daemon time to finish without stalling the other worker.
@@ -1173,9 +1171,35 @@ object ServeWeb {
             finishThemeJob(batch);
             runThemeWorker(queue, gen, batch);
           }
-          img.onload = function () { next(true); };
-          img.onerror = function () { next(false); };
-          img.src = job.src;
+          // Fetch the bytes FIRST and only then put them on the card.
+          //
+          // Assigning `src` on the live <img> dropped the pixels it was showing the instant the
+          // request started, so the visitor watched the old theme's render vanish and sat looking
+          // at a broken-image glyph under the spinner for the whole ~1s daemon round trip. Holding
+          // the previous render until the new one is in hand means the card only ever shows real
+          // pixels: the old theme's, then the new theme's, swapped in a single paint.
+          //
+          // A detached `new Image()` preload would do the same job, except a themed render is
+          // `no-store` (it carries overrides), so handing its URL to the visible <img> afterwards
+          // is not reliably a cache hit and can cost a second round trip. Fetching to a blob is one
+          // request by construction.
+          fetch(job.src, { credentials: "same-origin" })
+            .then(function (response) {
+              if (!response.ok) throw new Error("render " + response.status);
+              return response.blob();
+            })
+            .then(function (blob) {
+              if (gen !== themeGen) return;
+              var url = URL.createObjectURL(blob);
+              // Release the blob this card was holding, if any. Without this every theme switch
+              // would strand one object URL per card for the life of the page.
+              var previous = img.getAttribute("data-cp-blob");
+              img.src = url;
+              img.setAttribute("data-cp-blob", url);
+              if (previous) URL.revokeObjectURL(previous);
+              finish(true);
+            })
+            .catch(function () { finish(false); });
         }
         function runThemeQueue(queue, gen, lease, concurrency) {
           var batch = { lease: lease, remaining: queue.length };
@@ -1533,6 +1557,61 @@ object ServeWeb {
       // catalog the visitor actually opened — while they read the grid, rather than when they
       // first click a theme and wait out a cold start.
       ping();
+
+      // Render-server badge. Catalogs open their daemon on first real use, so whether one is up is
+      // now a genuine question with a visible answer — a theme switch is instant against a warm
+      // daemon and pays a cold start against none. Same URL family as the presence ping, and the
+      // endpoint reads through `peekHost`, so polling it never wakes what it is reporting on.
+      var daemonUrl = presenceUrl.replace("/api/presence", "/api/daemons");
+      var daemonBadge = null;
+      function daemonBadgeEl() {
+        if (daemonBadge) return daemonBadge;
+        daemonBadge = document.getElementById("cp-daemon-status");
+        if (!daemonBadge) {
+          daemonBadge = document.createElement("span");
+          daemonBadge.id = "cp-daemon-status";
+          daemonBadge.className = "cp-daemon-status";
+          var host = document.querySelector(".cp-header-meta") || document.querySelector("header");
+          (host || document.body).appendChild(daemonBadge);
+        }
+        return daemonBadge;
+      }
+      function paintDaemonStatus(state) {
+        var el = daemonBadgeEl();
+        if (!state) { el.hidden = true; return; }
+        el.hidden = false;
+        // "not running" is a normal resting state, not a fault — a catalog nobody has rendered on
+        // simply has no process yet. Word it so it doesn't read as an error.
+        var label = state.running
+          ? "Render server: connected"
+          : "Render server: not running";
+        var count = state.instances || 0;
+        if (state.running) {
+          label += " \u00b7 " + count + (count === 1 ? " instance" : " instances");
+          if (state.activeStreams > 0) label += ", " + state.activeStreams + " live";
+        }
+        el.textContent = label;
+        el.setAttribute("data-cp-daemon-running", state.running ? "1" : "0");
+        el.title = state.pooled
+          ? state.pooled + " of " + state.poolCapacity + " per-preview daemons resident"
+          : "";
+      }
+      function pollDaemons() {
+        if (!daemonUrl || document.visibilityState !== "visible") return;
+        fetch(daemonUrl, { credentials: "same-origin" })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(paintDaemonStatus)
+          .catch(function () {});
+      }
+      setInterval(pollDaemons, 20000);
+      document.addEventListener("visibilitychange", pollDaemons);
+      pollDaemons();
+      // A theme switch is exactly when the daemon comes up, so refresh the badge shortly after one.
+      document.addEventListener("click", function (e) {
+        if (e.target && e.target.closest && e.target.closest(".cp-theme-btn")) {
+          setTimeout(pollDaemons, 1500);
+        }
+      });
     """
       .trimIndent()
   }

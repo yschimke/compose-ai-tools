@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -97,5 +98,24 @@ class ServeWebDeferredThemeTest {
     // Each theme choice bumps themeGen; a stale observer must not paint the previous theme's pixels
     // over the new one as the visitor scrolls.
     assertTrue(page().contains("stopDeferredTheme();"), "torn down on a theme change")
+  }
+
+  @Test
+  fun `a themed card keeps its old pixels until the new render has arrived`() {
+    // Assigning `src` on the live <img> drops what it is showing the moment the request starts, so
+    // the card went blank and showed a broken-image glyph under the spinner for the whole ~1s
+    // daemon round trip. The bytes are fetched first and only then handed to the element.
+    val html = page()
+    assertTrue(html.contains("fetch(job.src, { credentials: \"same-origin\" })"), "bytes first")
+    assertTrue(html.contains("URL.createObjectURL(blob)"), "swapped from the fetched blob")
+    assertFalse(html.contains("img.src = job.src"), "never assigned straight to the visible image")
+  }
+
+  @Test
+  fun `each theme switch releases the blob the card was holding`() {
+    // One object URL per card per switch would otherwise be stranded for the life of the page.
+    val html = page()
+    assertTrue(html.contains("img.getAttribute(\"data-cp-blob\")"))
+    assertTrue(html.contains("URL.revokeObjectURL(previous)"))
   }
 }
