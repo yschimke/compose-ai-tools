@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.19.32](https://github.com/yschimke/compose-ai-tools/compare/v0.19.31...v0.19.32) (2026-08-04)
+
+
+### Features
+
+* **catalog:** declare a component's breakpoints on @CatalogComponent ([#3285](https://github.com/yschimke/compose-ai-tools/issues/3285)) ([74b3822](https://github.com/yschimke/compose-ai-tools/commit/74b38227cc8203c48283b3f85cdb537622689b87))
+* **wear-m3:** publish the full-screen components as a card per breakpoint ([#3288](https://github.com/yschimke/compose-ai-tools/issues/3288)) ([047d6a0](https://github.com/yschimke/compose-ai-tools/commit/047d6a03ac970eb2ce83bcd27cd5e112404c8483))
+
+
+### Bug Fixes
+
+* **serve:** humanize catalog component names ([#3291](https://github.com/yschimke/compose-ai-tools/issues/3291)) ([0cbfb46](https://github.com/yschimke/compose-ai-tools/commit/0cbfb46cd0683d6e45693d4b3aa5ae855550a09d))
+* **serve:** publish supplement preview controls ([#3279](https://github.com/yschimke/compose-ai-tools/issues/3279)) ([9544c96](https://github.com/yschimke/compose-ai-tools/commit/9544c969e20aae5b8baef5e7d3be9637324e9814))
+* **serve:** support shared daemon lease bursts ([#3289](https://github.com/yschimke/compose-ai-tools/issues/3289)) ([4dfdbe4](https://github.com/yschimke/compose-ai-tools/commit/4dfdbe4af71e41cc7a25dab8914d514307c505ba))
+
 ## [0.19.31](https://github.com/yschimke/compose-ai-tools/compare/v0.19.30...v0.19.31) (2026-08-04)
 
 
