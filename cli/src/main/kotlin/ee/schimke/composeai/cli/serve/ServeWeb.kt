@@ -1159,10 +1159,32 @@ object ServeWeb {
           batch.remaining--;
           if (batch.remaining === 0) releaseThemeLease(batch.lease, false);
         }
+        function clearThemeError(card) {
+          card.classList.remove("cp-theme-render-error");
+          var error = card.querySelector(".cp-theme-error");
+          if (error) error.remove();
+        }
+        function showThemeError(card) {
+          clearThemeError(card);
+          card.classList.add("cp-theme-render-error");
+          var error = document.createElement("span");
+          error.className = "cp-theme-error";
+          error.setAttribute("role", "status");
+          error.textContent = "Theme preview unavailable";
+          var wrap = card.querySelector(".cp-imgwrap");
+          if (wrap) wrap.appendChild(error);
+        }
         function runThemeWorker(queue, gen, batch) {
           if (gen !== themeGen) return;
           var job = queue.shift();
           if (!job) return;
+          // A deferred card is not loading yet: it deliberately has no request until its tab or
+          // viewport reaches it. Mark it busy only when a worker actually starts the fetch. Doing
+          // this while every job was being classified left hidden-tab cards aria-busy forever,
+          // making a completed cold daemon burst look as though it had never woken the page.
+          clearThemeError(job.card);
+          job.card.classList.add("cp-reloading");
+          job.card.setAttribute("aria-busy", "true");
           var img = job.img;
           var settled = false;
           function finish(ok) {
@@ -1182,6 +1204,7 @@ object ServeWeb {
             }
             job.card.classList.remove("cp-reloading");
             job.card.removeAttribute("aria-busy");
+            if (!ok) showThemeError(job.card);
             finishThemeJob(batch);
             runThemeWorker(queue, gen, batch);
           }
@@ -1301,6 +1324,7 @@ object ServeWeb {
         cards.forEach(function (c) {
           c.classList.remove("cp-reloading");
           c.removeAttribute("aria-busy");
+          clearThemeError(c);
         });
         if (provider) {
           cards.forEach(function (c, i) {
@@ -1308,8 +1332,6 @@ object ServeWeb {
             var img = c.querySelector("img");
             var base = themeBase[i];
             if (!img || !base) return;
-            c.classList.add("cp-reloading");
-            c.setAttribute("aria-busy", "true");
             var themedSrc = base + (base.indexOf("?") === -1 ? "?" : "&") + "themeProvider=" + encodeURIComponent(provider);
             var job = {
               card: c,
@@ -1323,7 +1345,16 @@ object ServeWeb {
             // also compare the card's section with the saved current tab. During a live search the
             // existing hidden state already spans tabs and remains authoritative.
             var themeVisible = !c.hidden && nearViewport(c);$correctInitialThemeVisibility
-            (themeVisible ? themeQueue : themeDeferredQueue).push(job);
+            if (themeVisible) {
+              // Visible work is queued now even when the lease falls back to one worker. Mark the
+              // whole on-screen batch busy immediately so cards waiting behind that worker cannot
+              // pass their old-theme pixels off as finished.
+              c.classList.add("cp-reloading");
+              c.setAttribute("aria-busy", "true");
+              themeQueue.push(job);
+            } else {
+              themeDeferredQueue.push(job);
+            }
           });
           // Off-screen cards are NOT rendered up front. A catalog is commonly 80+ cards and the
           // shared daemon renders them one at a time (~1s each), so draining the whole grid costs a

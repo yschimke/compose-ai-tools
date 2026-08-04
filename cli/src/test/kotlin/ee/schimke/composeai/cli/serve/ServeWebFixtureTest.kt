@@ -1510,9 +1510,9 @@ class ServeWebFixtureTest {
       "themed renders use a leased worker burst with bounded backoff retries",
     )
     assertTrue(
-      landingDeclaredThemes.contains("c.classList.add(\"cp-reloading\")") &&
+      landingDeclaredThemes.contains("job.card.classList.add(\"cp-reloading\")") &&
         landingDeclaredThemes.contains("job.card.classList.remove(\"cp-reloading\")") &&
-        landingDeclaredThemes.contains("c.setAttribute(\"aria-busy\", \"true\")"),
+        landingDeclaredThemes.contains("job.card.setAttribute(\"aria-busy\", \"true\")"),
       "themed cards expose a busy treatment until each replacement thumbnail settles",
     )
     // Issue #3160: when the visitor is on a later tab, its visible cards must lead the serial
@@ -1525,9 +1525,9 @@ class ServeWebFixtureTest {
     // #3160's intent more strictly than the concat did, since a hidden tab's cards are not rendered
     // at all until that tab is opened, rather than merely rendered last.
     assertTrue(
-      landingDeclaredTabbedThemes.contains(
-        "(themeVisible ? themeQueue : themeDeferredQueue).push(job)"
-      ) &&
+      landingDeclaredTabbedThemes.contains("if (themeVisible) {") &&
+        landingDeclaredTabbedThemes.contains("themeQueue.push(job)") &&
+        landingDeclaredTabbedThemes.contains("themeDeferredQueue.push(job)") &&
         landingDeclaredTabbedThemes.contains(
           "themeVisible = themeSection.getAttribute(\"data-section\") === current"
         ) &&
