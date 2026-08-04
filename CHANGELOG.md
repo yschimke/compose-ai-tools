@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.19.31](https://github.com/yschimke/compose-ai-tools/compare/v0.19.30...v0.19.31) (2026-08-04)
+
+
+### Features
+
+* **catalog:** select one breakpoint of a multipreview without splitting the @Preview ([#3282](https://github.com/yschimke/compose-ai-tools/issues/3282)) ([f1969d0](https://github.com/yschimke/compose-ai-tools/commit/f1969d0161c98c26ebe08eefd3e29f9e7e6098dc))
+
+
+### Bug Fixes
+
+* **daemon:** honour the wrap sandbox in PreviewIndex-backed resolvers ([#3283](https://github.com/yschimke/compose-ai-tools/issues/3283)) ([a844116](https://github.com/yschimke/compose-ai-tools/commit/a844116aa3d1176e1938d30508416b5c9f01dab6))
+
 ## [0.19.30](https://github.com/yschimke/compose-ai-tools/compare/v0.19.29...v0.19.30) (2026-08-04)
 
 
