@@ -13,6 +13,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.window.ComposeViewport
 import ee.schimke.composeai.rcplayer.compose.RcComposePlayer
 import ee.schimke.composeai.rcplayer.compose.composeSupportReport
@@ -28,11 +32,12 @@ import kotlin.io.encoding.Base64
 import kotlin.js.Promise
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeout
 
 private sealed interface LoadState {
   data object Loading : LoadState
 
-  data class Ready(val document: RcDocument) : LoadState
+  data class Ready(val document: RcDocument, val fontFamilies: Map<String, FontFamily>) : LoadState
 
   data class Failed(val message: String) : LoadState
 }
@@ -53,16 +58,17 @@ public fun main() {
         if (source == null) LoadState.Failed("Missing ?src=<document.rc>")
         else
           runCatching {
-              RcDocumentCodec.decode(fetchBytes(source)).also {
-                it
-                  .composeSupportReport(RcOperationProfiles.CMP_WASM_ALPHA16)
-                  .requireFullyRenderable()
-              }
+              val document = RcDocumentCodec.decode(fetchBytes(source))
+              val fontFamilies = withTimeout(8_000) { loadHostFontFamilies() }
+              document
+                .composeSupportReport(
+                  RcOperationProfiles.CMP_WASM_ALPHA16,
+                  availableFontFamilies = fontFamilies.keys,
+                )
+                .requireFullyRenderable()
+              LoadState.Ready(document, fontFamilies)
             }
-            .fold(
-              onSuccess = LoadState::Ready,
-              onFailure = { LoadState.Failed(it.message ?: "load failed") },
-            )
+            .fold(onSuccess = { it }, onFailure = { LoadState.Failed(it.message ?: "load failed") })
     }
 
     when (val state = loadState) {
@@ -74,6 +80,7 @@ public fun main() {
           Modifier.fillMaxSize(),
           theme = theme,
           onEvent = ::postPlayerEvent,
+          fontFamilies = state.fontFamilies,
         )
         LaunchedEffect(state.document) {
           // Compose schedules Skiko's raster work after composition. One frame only proves the
@@ -118,6 +125,95 @@ private suspend fun fetchBytes(url: String): ByteArray =
         null
       }
   }
+
+private data class ManifestFont(
+  val role: String,
+  val family: String,
+  val file: String,
+  val weight: Int,
+  val italic: Boolean,
+)
+
+private suspend fun loadHostFontFamilies(): Map<String, FontFamily> {
+  val rawBase = queryParameter("fontsBase") ?: "./fonts/"
+  val base =
+    (if (rawBase.endsWith('/')) rawBase else "$rawBase/").takeIf {
+      !it.contains(':') || it.startsWith("http:") || it.startsWith("https:")
+    } ?: "./fonts/"
+  val entries = parseFontsManifest(fetchText(base + "fonts.json"))
+  suspend fun load(entry: ManifestFont) =
+    Font(
+      identity = entry.file,
+      data = fetchBytes(base + entry.file),
+      weight = FontWeight(entry.weight),
+      style = if (entry.italic) FontStyle.Italic else FontStyle.Normal,
+    )
+  return buildMap {
+    entries
+      .filter { it.role == "named" || it.role == "generic" }
+      .groupBy { it.family }
+      .forEach { (family, faces) ->
+        runCatching { FontFamily(faces.map { load(it) }) }.onSuccess { put(family.lowercase(), it) }
+      }
+  }
+}
+
+private fun parseFontsManifest(json: String): List<ManifestFont> {
+  val flat = flattenFontsManifest(json)?.toString().orEmpty()
+  if (flat.isEmpty()) return emptyList()
+  return flat.split('\u0001').mapNotNull { row ->
+    val fields = row.split('\u0000')
+    if (fields.size != 5) return@mapNotNull null
+    val file =
+      fields[2].takeIf { it.isNotEmpty() && ".." !in it.split('/') && !it.contains(':') }
+        ?: return@mapNotNull null
+    ManifestFont(
+      role = fields[0],
+      family = fields[1],
+      file = file,
+      weight = fields[3].toIntOrNull()?.coerceIn(1, 1000) ?: 400,
+      italic = fields[4] == "italic",
+    )
+  }
+}
+
+private fun flattenFontsManifest(json: String): JsString? =
+  js(
+    """(function () {
+      try {
+        var manifest = JSON.parse(json), rows = [];
+        (manifest.families || []).forEach(function (family) {
+          (family.fonts || []).forEach(function (font) {
+            rows.push([family.role || 'default', family.name || '', String(font.file || ''),
+              String(font.weight || 400), String(font.style || 'normal')].join('\u0000'));
+          });
+        });
+        return rows.join('\u0001');
+      } catch (error) { return null; }
+    })()"""
+  )
+
+private fun fetchTextPromise(url: String): Promise<JsString> =
+  js(
+    """fetch(url).then(function (response) {
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.text();
+    })"""
+  )
+
+private suspend fun fetchText(url: String): String = suspendCancellableCoroutine { continuation ->
+  fetchTextPromise(url)
+    .then { value ->
+      if (continuation.isActive) continuation.resume(value.toString())
+      null
+    }
+    .catch { failure ->
+      if (continuation.isActive) {
+        continuation.resumeWithException(IllegalStateException(failure.toString()))
+      }
+      null
+    }
+}
 
 private fun queryParameter(name: String): String? =
   queryParameterFromLocation(name).toString().takeUnless { it == "null" }

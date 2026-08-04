@@ -491,6 +491,23 @@ class RcLayoutTreeTest {
     )
   }
 
+  @Test
+  fun acceptsAlpha16CoreTextWithoutOptionalComponentOrAnimationIds() {
+    val core =
+      RcCoreText(
+        textId = 7,
+        properties = listOf(RcTextStyleProperty.FloatValue(5, RcFloatWord.literal(18f))),
+      )
+
+    val root = requireNotNull(treeOf(RcRootLayout(1), RcLayoutContent(2), core, ends = 3))
+    val content = assertIs<RcLayoutNode.Content>(root.children.single())
+    val text = assertIs<RcLayoutNode.CoreText>(content.children.single())
+
+    assertEquals(-1, text.operation.componentId)
+    assertEquals(-1, text.operation.animationId)
+    assertEquals(core.properties, text.resolvedStyle)
+  }
+
   private fun treeOf(
     vararg operations: ee.schimke.composeai.rcplayer.protocol.RcOperation,
     ends: Int,

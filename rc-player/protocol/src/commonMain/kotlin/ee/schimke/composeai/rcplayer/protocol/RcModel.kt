@@ -616,6 +616,23 @@ public data class RcBitmapData(
   }
 }
 
+/** Embedded font bytes loaded by AndroidX's alpha16 `FontData` operation. */
+public class RcFontData(public val fontId: Int, public val type: Int, public val data: ByteArray) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.DATA_FONT
+
+  override fun equals(other: Any?): Boolean =
+    other is RcFontData &&
+      fontId == other.fontId &&
+      type == other.type &&
+      data.contentEquals(other.data)
+
+  override fun hashCode(): Int = 31 * (31 * fontId + type) + data.contentHashCode()
+
+  override fun toString(): String =
+    "RcFontData(fontId=$fontId, type=$type, data=${data.size} bytes)"
+}
+
 public data class RcDrawBitmap(
   val imageId: Int,
   val left: RcFloatWord,
@@ -1568,6 +1585,7 @@ public object RcOpcodes {
   public const val LAYOUT_BOX: Int = 202
   public const val LAYOUT_ROW: Int = 203
   public const val LAYOUT_COLUMN: Int = 204
+  public const val DATA_FONT: Int = 189
   public const val LAYOUT_CANVAS: Int = 205
   public const val CANVAS_OPERATIONS: Int = 173
   /** Alpha16's zero-payload DrawContentOperation modifier; the Java player treats it as a no-op. */

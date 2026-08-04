@@ -425,9 +425,6 @@ public object RcLayoutTree {
     operation: RcCoreText,
     styles: Map<Int, RcTextStyle>,
   ): List<RcTextStyleProperty> {
-    if (operation.componentId < 0 || operation.animationId < 0) {
-      throw RcLayoutException("CoreText requires component and animation ids")
-    }
     val merged = linkedMapOf<Int, RcTextStyleProperty>()
     operation.textStyleId?.let { styleId ->
       resolveTextStyle(styleId, styles, linkedSetOf()).forEach { merged[it.id] = it }

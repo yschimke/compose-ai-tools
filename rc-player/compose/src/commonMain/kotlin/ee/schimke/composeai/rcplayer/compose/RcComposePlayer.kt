@@ -123,6 +123,7 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -130,6 +131,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
@@ -169,6 +171,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatExpression
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
+import ee.schimke.composeai.rcplayer.protocol.RcFontData
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHapticFeedback
@@ -258,9 +261,10 @@ public fun RcComposePlayer(
   theme: Int = RcTheme.UNSPECIFIED,
   namedValues: Map<String, RcNamedValue> = emptyMap(),
   onEvent: (RcPlayerEvent) -> Unit = {},
+  fontFamilies: Map<String, FontFamily> = emptyMap(),
 ) {
   val document = remember(bytes) { RcDocumentCodec.decode(bytes) }
-  RcComposePlayer(document, modifier, theme, namedValues, onEvent)
+  RcComposePlayer(document, modifier, theme, namedValues, onEvent, fontFamilies)
 }
 
 @Composable
@@ -270,6 +274,7 @@ public fun RcComposePlayer(
   theme: Int = RcTheme.UNSPECIFIED,
   namedValues: Map<String, RcNamedValue> = emptyMap(),
   onEvent: (RcPlayerEvent) -> Unit = {},
+  fontFamilies: Map<String, FontFamily> = emptyMap(),
 ) {
   val latestEventSink by rememberUpdatedState(onEvent)
   val latestHapticFeedback by rememberUpdatedState(LocalHapticFeedback.current)
@@ -349,6 +354,7 @@ public fun RcComposePlayer(
     }
   }
   val images = remember(document) { decodeInlineImages(document) }
+  val fonts = remember(document) { decodeInlineFonts(document) }
   val textMeasurer = rememberTextMeasurer()
   val semanticsModifier =
     state.rootContentDescription?.let { description ->
@@ -376,6 +382,8 @@ public fun RcComposePlayer(
       CompositionLocalProvider(
         LocalRcLookaheadScope provides this,
         LocalRcLayoutVersion provides invalidationVersion,
+        LocalRcFonts provides fonts,
+        LocalRcNamedFonts provides fontFamilies,
       ) {
         RenderLayoutNode(
           node = layout,
@@ -430,6 +438,8 @@ private fun RenderLayoutNode(
 ) {
   val layoutVersion = LocalRcLayoutVersion.current
   val lookaheadScope = LocalRcLookaheadScope.current
+  val fontFamilies = LocalRcFonts.current
+  val namedFontFamilies = LocalRcNamedFonts.current
   val visibility =
     if (layoutVersion == Int.MIN_VALUE) {
       error("unreachable layout invalidation version")
@@ -803,7 +813,8 @@ private fun RenderLayoutNode(
             fontSize = (state.resolve(operation.fontSize) / density.density).sp,
             fontWeight = FontWeight(boldWeight),
             fontStyle = if (operation.fontStyle and 2 != 0) FontStyle.Italic else FontStyle.Normal,
-            fontFamily = FontFamily.Default,
+            fontFamily =
+              resolveFontFamily(operation.fontFamilyId, state, fontFamilies, namedFontFamilies),
             textAlign = operation.composeTextAlign(),
           ),
         overflow = operation.composeTextOverflow(),
@@ -814,6 +825,8 @@ private fun RenderLayoutNode(
       val density = androidx.compose.ui.platform.LocalDensity.current
       val properties = node.resolvedStyle
       val fontSize = state.resolve(properties.floatProperty(5, 36f))
+      val lineHeightAdd = state.resolve(properties.floatProperty(13, 0f))
+      val lineHeightMultiplier = state.resolve(properties.floatProperty(14, 1f))
       val fontStyle = properties.intProperty(6, 0)
       val fontWeight =
         state.resolve(properties.floatProperty(7, 400f)).roundToInt().coerceIn(1, 1000)
@@ -840,9 +853,19 @@ private fun RenderLayoutNode(
                 else state.color(colorId)
               ),
             fontSize = (fontSize / density.density).sp,
+            letterSpacing = (state.resolve(properties.floatProperty(12, 0f)) / density.density).sp,
+            lineHeight =
+              if (lineHeightAdd == 0f && lineHeightMultiplier == 1f) TextUnit.Unspecified
+              else ((fontSize * lineHeightMultiplier + lineHeightAdd) / density.density).sp,
             fontWeight = FontWeight(boldWeight),
             fontStyle = if (fontStyle and 2 != 0) FontStyle.Italic else FontStyle.Normal,
-            fontFamily = FontFamily.Default,
+            fontFamily =
+              resolveFontFamily(
+                properties.intProperty(8, -1),
+                state,
+                fontFamilies,
+                namedFontFamilies,
+              ),
             textAlign = androidXTextAlign(properties.intProperty(9, RcTextLayout.ALIGN_LEFT)),
           ),
         overflow = androidXTextOverflow(properties.intProperty(10, RcTextLayout.OVERFLOW_CLIP)),
@@ -916,6 +939,8 @@ private data class RcAnimatedVisibility(val shouldRender: Boolean, val modifier:
 
 private val LocalRcLookaheadScope = compositionLocalOf<LookaheadScope?> { null }
 private val LocalRcLayoutVersion = compositionLocalOf { 0 }
+private val LocalRcFonts = compositionLocalOf<Map<Int, FontFamily>> { emptyMap() }
+private val LocalRcNamedFonts = compositionLocalOf<Map<String, FontFamily>> { emptyMap() }
 
 private val DefaultRcAnimationSpec =
   RcAnimationSpec(
@@ -2781,6 +2806,33 @@ private fun decodeInlineImages(document: RcDocument): Map<Int, ImageBitmap> =
       else runCatching { bitmap.imageId to decodeInlineImage(bitmap) }.getOrNull()
     }
     .toMap()
+
+private fun decodeInlineFonts(document: RcDocument): Map<Int, FontFamily> =
+  document.operations
+    .filterIsInstance<RcFontData>()
+    .mapNotNull { font ->
+      runCatching { font.fontId to FontFamily(Font("remote-compose-${font.fontId}", font.data)) }
+        .getOrNull()
+    }
+    .toMap()
+
+private fun resolveFontFamily(
+  fontFamilyId: Int,
+  state: RcPlayerState,
+  embeddedFonts: Map<Int, FontFamily>,
+  namedFonts: Map<String, FontFamily>,
+): FontFamily =
+  when (val family = state.text(fontFamilyId)?.lowercase()) {
+    null,
+    "default" -> FontFamily.Default
+    "sans-serif" -> namedFonts[family] ?: FontFamily.SansSerif
+    "serif" -> namedFonts[family] ?: FontFamily.Serif
+    "monospace" -> namedFonts[family] ?: FontFamily.Monospace
+    else ->
+      embeddedFonts[fontFamilyId]
+        ?: namedFonts[family.removePrefix("google:")]
+        ?: FontFamily.Default
+  }
 
 private fun decodeInlineImage(bitmap: RcBitmapData): ImageBitmap =
   when (bitmap.type) {
