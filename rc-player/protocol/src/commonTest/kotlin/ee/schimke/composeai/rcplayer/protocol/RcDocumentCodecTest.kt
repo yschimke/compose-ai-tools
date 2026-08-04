@@ -9,6 +9,24 @@ import kotlin.test.assertTrue
 
 class RcDocumentCodecTest {
   @Test
+  fun componentValuesRoundTripEveryAlpha16GeometryKindAndSignedIds() {
+    val values =
+      RcComponentValue.VALID_TYPES.map { type ->
+        RcComponentValue(
+          type,
+          componentId = if (type == 0) Int.MIN_VALUE else 42,
+          valueId = type + 90,
+        )
+      }
+    val document = RcDocument(RcHeader(RcVersion(1, 0, 0), modern = false), values)
+
+    val bytes = RcDocumentCodec.encode(document)
+
+    assertEquals(document, RcDocumentCodec.decode(bytes))
+    assertContentEquals(bytes, RcDocumentCodec.encode(RcDocumentCodec.decode(bytes)))
+  }
+
+  @Test
   fun controlFlowContainersRoundTripSignedTypesAndFloatReferenceBits() {
     val operations =
       listOf(

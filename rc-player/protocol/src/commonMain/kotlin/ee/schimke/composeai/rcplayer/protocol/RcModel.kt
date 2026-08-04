@@ -263,6 +263,24 @@ public data class RcFloatFunctionCall(val functionId: Int, val arguments: List<R
   override val opcode: Int = RcOpcodes.FUNCTION_CALL
 }
 
+/** Publishes one alpha16 component geometry property into a runtime float id. */
+public data class RcComponentValue(val type: Int, val componentId: Int, val valueId: Int) :
+  RcOperation {
+  override val opcode: Int = RcOpcodes.COMPONENT_VALUE
+
+  public companion object {
+    public const val WIDTH: Int = 0
+    public const val HEIGHT: Int = 1
+    public const val LOCAL_X: Int = 2
+    public const val LOCAL_Y: Int = 3
+    public const val ROOT_X: Int = 4
+    public const val ROOT_Y: Int = 5
+    public const val CONTENT_WIDTH: Int = 6
+    public const val CONTENT_HEIGHT: Int = 7
+    public val VALID_TYPES: IntRange = WIDTH..CONTENT_HEIGHT
+  }
+}
+
 public data class RcBooleanConstant(val id: Int, val value: Boolean) : RcOperation {
   override val opcode: Int = RcOpcodes.DATA_BOOLEAN
 }
@@ -1506,6 +1524,7 @@ public object RcOpcodes {
   public const val FLOAT_LIST: Int = 147
   public const val DATA_LONG: Int = 148
   public const val DRAW_BITMAP_SCALED: Int = 149
+  public const val COMPONENT_VALUE: Int = 150
   public const val TEXT_LOOKUP: Int = 151
   public const val TEXT_LOOKUP_INT: Int = 153
   public const val DATA_MAP_LOOKUP: Int = 154

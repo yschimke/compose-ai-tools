@@ -38,3 +38,12 @@ tasks.register<JavaExec>("generateScrollFixture") {
   args(layout.buildDirectory.file("fixtures/androidx-scroll.rc").get().asFile.absolutePath)
   outputs.file(layout.buildDirectory.file("fixtures/androidx-scroll.rc"))
 }
+
+tasks.register<JavaExec>("generateComponentValueFixture") {
+  description = "Generate a ComponentValue .rc document using the authoritative AndroidX writer."
+  group = "verification"
+  classpath = sourceSets.main.get().runtimeClasspath
+  mainClass.set("ee.schimke.composeai.rcplayer.compat.GenerateComponentValueFixtureKt")
+  args(layout.buildDirectory.file("fixtures/androidx-component-value.rc").get().asFile.absolutePath)
+  outputs.file(layout.buildDirectory.file("fixtures/androidx-component-value.rc"))
+}

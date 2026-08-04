@@ -20,6 +20,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCollapsiblePriorityModifier
 import ee.schimke.composeai.rcplayer.protocol.RcCollapsibleRowLayout
+import ee.schimke.composeai.rcplayer.protocol.RcComponentValue
 import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionConstraintsModifier
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
@@ -675,6 +676,56 @@ class RcLayoutRenderTest {
 
       assertEquals(green, bitmap.getColor(99, 79))
       assertEquals(0, bitmap.getColor(101, 81))
+    } finally {
+      scene.close()
+    }
+  }
+
+  @Test
+  fun nestedComponentValuesDriveDirectLayoutContentDrawingAfterGeometrySettles() {
+    val green = 0xff00ff00.toInt()
+    val reference: (Int) -> RcFloatWord = { RcFloatWord(0x7fc00000 or it) }
+    val document =
+      RcDocument(
+        RcHeader(RcVersion(1, 0, 0), legacyWidth = 80, legacyHeight = 60, modern = false),
+        listOf(
+          RcRootLayout(-2),
+          RcLayoutContent(-3),
+          RcCanvasLayout(-4, 40),
+          width(40f),
+          height(30f),
+          RcOffsetModifier(RcFloatWord.literal(7f), RcFloatWord.literal(9f)),
+          RcLayoutContent(-6),
+          RcComponentValue(RcComponentValue.WIDTH, componentId = -6, valueId = 42),
+          RcComponentValue(RcComponentValue.HEIGHT, componentId = -6, valueId = 43),
+          RcPaintData(listOf(4, green)),
+          RcDraw4(
+            RcOpcodes.DRAW_RECT,
+            RcFloatWord.literal(0f),
+            RcFloatWord.literal(0f),
+            reference(42),
+            reference(43),
+          ),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        ),
+      )
+    val scene =
+      ImageComposeScene(width = 80, height = 60, density = Density(1f)) {
+        RcComposePlayer(document)
+      }
+    try {
+      // The first layout publishes geometry; subsequent frames observe the stable dynamic floats.
+      scene.render()
+      val image = scene.render()
+      val bitmap = Bitmap().apply { allocN32Pixels(80, 60) }
+      check(image.readPixels(bitmap))
+
+      assertEquals(green, bitmap.getColor(7, 9))
+      assertEquals(green, bitmap.getColor(46, 38))
+      assertEquals(0, bitmap.getColor(47, 39))
     } finally {
       scene.close()
     }

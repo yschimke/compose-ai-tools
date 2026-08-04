@@ -6,6 +6,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorConstant
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
+import ee.schimke.composeai.rcplayer.protocol.RcComponentValue
 import ee.schimke.composeai.rcplayer.protocol.RcConditionalOperations
 import ee.schimke.composeai.rcplayer.protocol.RcDataMapEntry
 import ee.schimke.composeai.rcplayer.protocol.RcDataMapLookup
@@ -63,6 +64,38 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RcPlayerStateTest {
+  @Test
+  fun componentGeometryPublishesAllEightKindsAndConverges() {
+    var invalidations = 0
+    val bindings =
+      RcComponentValue.VALID_TYPES.map { RcComponentValue(it, componentId = 7, valueId = 100 + it) }
+    val state =
+      RcPlayerState(
+        RcDocument(RcHeader(RcVersion(0, 1, 0)), bindings),
+        onInvalidated = { invalidations += 1 },
+      )
+    val first = RcComponentGeometry(40f, 30f, 2f, 3f, 12f, 13f)
+
+    assertTrue(state.publishComponentGeometry(7, first))
+    assertEquals(
+      listOf(40f, 30f, 2f, 3f, 12f, 13f, 40f, 30f),
+      RcComponentValue.VALID_TYPES.map { state.resolve(RcFloatWord(0x7fc00000 or (100 + it))) },
+    )
+    assertEquals(1, invalidations)
+    assertFalse(state.publishComponentGeometry(7, first))
+    assertEquals(1, invalidations, "stable geometry must not schedule another measure pass")
+
+    assertTrue(state.publishComponentContentSize(7, width = 75f, height = 80f))
+    assertEquals(75f, state.resolve(RcFloatWord(0x7fc00000 or 106)))
+    assertEquals(80f, state.resolve(RcFloatWord(0x7fc00000 or 107)))
+    assertEquals(2, invalidations)
+
+    assertTrue(state.publishComponentGeometry(7, first.copy(width = 41f)))
+    assertEquals(41f, state.resolve(RcFloatWord(0x7fc00000 or 100)))
+    assertEquals(75f, state.resolve(RcFloatWord(0x7fc00000 or 106)))
+    assertEquals(3, invalidations)
+  }
+
   @Test
   fun evaluatesEveryAndroidXConditionalTypeIncludingChangedState() {
     val state = RcPlayerState(RcDocument(RcHeader(RcVersion(1, 0, 0)), emptyList()))

@@ -7,6 +7,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorConstant
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColorTheme
+import ee.schimke.composeai.rcplayer.protocol.RcComponentValue
 import ee.schimke.composeai.rcplayer.protocol.RcConditionalOperations
 import ee.schimke.composeai.rcplayer.protocol.RcDataMapLookup
 import ee.schimke.composeai.rcplayer.protocol.RcDebugMessage
@@ -61,6 +62,16 @@ import ee.schimke.composeai.rcplayer.protocol.RcWakeIn
 
 private const val MAX_LOOP_ITERATIONS = 10_000
 
+/** Final component geometry in Remote Compose's pixel coordinate space. */
+public data class RcComponentGeometry(
+  val width: Float,
+  val height: Float,
+  val localX: Float,
+  val localY: Float,
+  val rootX: Float,
+  val rootY: Float,
+)
+
 /** Typed runtime values for the CMP player; independent from AndroidX `RemoteContext`. */
 public class RcPlayerState(
   public val document: RcDocument,
@@ -71,6 +82,11 @@ public class RcPlayerState(
   private val timeSource: RcTimeSource = RcTimeSource.System,
 ) {
   private val floats = mutableMapOf<Int, Float>()
+  private val componentValues =
+    document.operations.filterIsInstance<RcComponentValue>().distinct().groupBy { it.componentId }
+  private val componentGeometries = mutableMapOf<Int, RcComponentGeometry>()
+  private val componentContentWidths = mutableMapOf<Int, Float>()
+  private val componentContentHeights = mutableMapOf<Int, Float>()
   private val colors = mutableMapOf<Int, Int>()
   private val baseTexts = mutableMapOf<Int, String>()
   private val textOverrides = mutableMapOf<Int, String>()
@@ -149,6 +165,7 @@ public class RcPlayerState(
         else -> Unit
       }
     }
+    componentValues.values.flatten().forEach { if (it.valueId !in floats) floats[it.valueId] = 0f }
     document.operations.filterIsInstance<RcDynamicFloatList>().forEach(::applyDataOperation)
     document.operations.filterIsInstance<RcTouchExpression>().forEach { operation ->
       if (operation.id !in floats) floats[operation.id] = resolve(operation.defaultValue)
@@ -808,6 +825,53 @@ public class RcPlayerState(
 
   public fun setFloat(id: Int, value: Float) {
     floats[id] = value
+  }
+
+  public fun hasComponentValues(componentId: Int): Boolean = componentId in componentValues
+
+  /**
+   * Publishes geometry after placement. The callback fires only when an exposed float changes, so
+   * the first layout schedules one settling pass and stable geometry cannot form a measure loop.
+   */
+  public fun publishComponentGeometry(componentId: Int, geometry: RcComponentGeometry): Boolean {
+    componentGeometries[componentId] = geometry
+    return publishComponentValues(componentId, geometry)
+  }
+
+  /** Supplies the scrollable content extent used by alpha16 CONTENT_WIDTH/CONTENT_HEIGHT. */
+  public fun publishComponentContentSize(
+    componentId: Int,
+    width: Float? = null,
+    height: Float? = null,
+  ): Boolean {
+    width?.let { componentContentWidths[componentId] = it }
+    height?.let { componentContentHeights[componentId] = it }
+    return componentGeometries[componentId]?.let { publishComponentValues(componentId, it) }
+      ?: false
+  }
+
+  private fun publishComponentValues(componentId: Int, geometry: RcComponentGeometry): Boolean {
+    var changed = false
+    componentValues[componentId].orEmpty().forEach { binding ->
+      val value =
+        when (binding.type) {
+          RcComponentValue.WIDTH -> geometry.width
+          RcComponentValue.HEIGHT -> geometry.height
+          RcComponentValue.LOCAL_X -> geometry.localX
+          RcComponentValue.LOCAL_Y -> geometry.localY
+          RcComponentValue.ROOT_X -> geometry.rootX
+          RcComponentValue.ROOT_Y -> geometry.rootY
+          RcComponentValue.CONTENT_WIDTH -> componentContentWidths[componentId] ?: geometry.width
+          RcComponentValue.CONTENT_HEIGHT -> componentContentHeights[componentId] ?: geometry.height
+          else -> error("Unknown ComponentValue type ${binding.type}")
+        }
+      if (floats[binding.valueId]?.toRawBits() != value.toRawBits()) {
+        floats[binding.valueId] = value
+        changed = true
+      }
+    }
+    if (changed) onInvalidated()
+    return changed
   }
 
   public fun setColor(id: Int, argb: Int) {
