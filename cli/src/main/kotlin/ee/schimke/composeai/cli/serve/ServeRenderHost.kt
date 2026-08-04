@@ -275,7 +275,18 @@ sealed interface SlotsOutcome {
  */
 class ServeRenderHost
 internal constructor(
-  private val session: RenderSession,
+  /**
+   * Opens the daemon session — called **once, on first use**, not at construction.
+   *
+   * Spawning here rather than in [Companion.open] is what keeps a registered catalog from costing a
+   * JVM nobody asked for. Every catalog registers its live host at startup and again on each
+   * republish, so an eager spawn meant ~18 daemons resident on the public box with zero active
+   * streams and the live-seat budget reading fully free. Everything the browse surface needs
+   * ([previews], [label], [declaredThemes]) comes from the module manifest via the constructor, so
+   * a visitor can browse a catalog end-to-end without waking anything; the first request that
+   * genuinely needs the daemon forces it.
+   */
+  openSession: () -> RenderSession,
   override val previews: List<ServePreview>,
   /** Human label for this tenant (e.g. the module's Gradle path); shown in the served pages. */
   override val label: String = "",
@@ -287,6 +298,52 @@ internal constructor(
   private val frameRenderTimeoutSeconds: Long = FRAME_RENDER_TIMEOUT_SECONDS,
 ) : ServeHost {
 
+  /**
+   * Wrap an already-open session. Nothing is deferred — the session exists — but the lazies below
+   * are shared with the deferred path, so their RPCs fire on first access rather than here.
+   */
+  internal constructor(
+    session: RenderSession,
+    previews: List<ServePreview>,
+    label: String = "",
+    declaredThemes: List<ServeTheme> = emptyList(),
+    fileSystem: FileSystem = SystemFileSystem,
+    onLog: (String) -> Unit = {},
+    renderTimeoutSeconds: Long = RENDER_TIMEOUT_SECONDS,
+    frameRenderTimeoutSeconds: Long = FRAME_RENDER_TIMEOUT_SECONDS,
+  ) : this(
+    { session },
+    previews,
+    label,
+    declaredThemes,
+    fileSystem,
+    onLog,
+    renderTimeoutSeconds,
+    frameRenderTimeoutSeconds,
+  )
+
+  /**
+   * Registered inside [sessionDelegate]'s initializer rather than as its own lazy, so it is always
+   * hooked up before any caller can issue a render — a `renderFinished` that arrived before the
+   * listener existed would strand that render waiting for an event already delivered.
+   */
+  private var notificationHandle: AutoCloseable? = null
+
+  private val sessionDelegate = lazy {
+    val opened = openSession()
+    notificationHandle = opened.onNotification(::onDaemonNotification)
+    opened
+  }
+
+  private val session: RenderSession by sessionDelegate
+
+  /**
+   * Whether the daemon subprocess has actually been started. Lets `/status` and [close] reason
+   * about a host that is registered but never woken, without waking it to find out.
+   */
+  internal val sessionStarted: Boolean
+    get() = sessionDelegate.isInitialized()
+
   // A daemon backs this host, so an override edit actually re-renders (unlike a static bundle).
   override val canApplyOverrides: Boolean = true
 
@@ -297,7 +354,7 @@ internal constructor(
   // `hasSvgExport` on whether the daemon actually has them (a backend without figma-svg reports
   // them in `unknown`), so a non-figma backend cleanly offers no SVG rather than dead-ending in a
   // 500. Best-effort: an enable RPC failure disables the export, it doesn't break the host.
-  private val exportEnableResult: ExtensionsEnableResult =
+  private val exportEnableResult: ExtensionsEnableResult by lazy {
     runCatching {
         session.enableExtensions(
           listOf(ComposeFigmaSvgProduct.KIND, ComposeFigmaSvgProduct.KIND_LONG, SCROLL_EXTENSION_ID)
@@ -314,12 +371,16 @@ internal constructor(
             )
         )
       }
+  }
 
-  override val hasSvgExport: Boolean = ComposeFigmaSvgProduct.KIND !in exportEnableResult.unknown
+  override val hasSvgExport: Boolean by lazy {
+    ComposeFigmaSvgProduct.KIND !in exportEnableResult.unknown
+  }
 
-  override val hasScrollExport: Boolean =
+  override val hasScrollExport: Boolean by lazy {
     SCROLL_EXTENSION_ID !in exportEnableResult.unknown &&
       exportEnableResult.dataProducts.any { it.kind == SCROLL_LONG_KIND }
+  }
 
   override fun hasScrollExportFor(previewId: String): Boolean =
     hasScrollExport &&
@@ -329,16 +390,18 @@ internal constructor(
   // The one-handed gesture override is honoured only by the Android (Robolectric) backend — the
   // desktop backend ignores `overrides.gestures`. Read the daemon's advertised capabilities so the
   // viewer offers the "Show gesture hints" control only when it would actually re-render.
-  override val gesturesRenderable: Boolean =
+  override val gesturesRenderable: Boolean by lazy {
     "gestures" in session.initializeResult.capabilities.supportedOverrides
+  }
 
   // The Remote Compose `player` override (VIEW ⇄ EMBEDDED server-side player) is meaningful only on
   // the Android backend, which is the only one carrying the Remote Compose runtime — the desktop
   // backend has no runtime and ignores it. Read the daemon's declared backend so the viewer offers
   // the server-side java / cmp-android backend chips only where they actually re-render.
-  override val remoteComposePlayerSelectable: Boolean =
+  override val remoteComposePlayerSelectable: Boolean by lazy {
     session.initializeResult.capabilities.backend ==
       ee.schimke.composeai.daemon.protocol.BackendKind.ANDROID
+  }
 
   /**
    * A daemon-backed host offers the server-side [RcPlayerBackend.JAVA] /
@@ -443,20 +506,25 @@ internal constructor(
   private val broadcast = ServeBroadcastHub(::startStream)
 
   private val closed = AtomicBoolean(false)
-  private val notificationHandle: AutoCloseable = session.onNotification { method, params ->
-    if (params == null) return@onNotification
+
+  /**
+   * Daemon render lifecycle events. A method rather than an inline lambda so [sessionDelegate] can
+   * register it the instant the session opens — see [notificationHandle].
+   */
+  private fun onDaemonNotification(method: String, params: JsonObject?) {
+    if (params == null) return
     val isFinished = method == "renderFinished"
     val isFailed = method == "renderFailed"
-    if (!isFinished && !isFailed) return@onNotification
-    val id = params["id"]?.jsonPrimitive?.contentOrNull ?: return@onNotification
+    if (!isFinished && !isFailed) return
+    val id = params["id"]?.jsonPrimitive?.contentOrNull ?: return
     // Drain the late event of a previously timed-out render (FIFO: it arrives before the current
     // render's own event) so it can't complete a fresh same-id render's latch with a stale PNG.
     // Either terminal event drains — the daemon owes exactly one (finished OR failed) per render.
     if ((staleRenders[id] ?: 0) > 0) {
       staleRenders.compute(id) { _, v -> ((v ?: 0) - 1).takeIf { it > 0 } }
-      return@onNotification
+      return
     }
-    if (id != pendingPreviewId.get()) return@onNotification
+    if (id != pendingPreviewId.get()) return
     if (isFinished) {
       // `unchanged` renders still carry a (re-used) pngPath, so this captures bytes either way.
       params["pngPath"]?.jsonPrimitive?.contentOrNull?.let { pendingPngPath.set(it) }
@@ -1039,8 +1107,13 @@ internal constructor(
 
   override fun close() {
     if (!closed.compareAndSet(false, true)) return
+    // A host that was never used has no subprocess to tear down — and touching `session` here would
+    // spawn one only to kill it, which on an Android backend is tens of seconds of pure waste. This
+    // is the common case now that catalogs register without opening: a republish closes and
+    // replaces every host, most of which nobody visited.
+    if (!sessionDelegate.isInitialized()) return
     try {
-      notificationHandle.close()
+      notificationHandle?.close()
     } catch (_: Exception) {
       // best effort
     }
@@ -1097,7 +1170,10 @@ internal constructor(
     /**
      * Open a long-lived session against a daemon launch descriptor and wrap it. Mirrors
      * [ee.schimke.composeai.cli.MatrixRenderFetcher] config; the caller supplies the servable
-     * [previews] read from the module manifest. Throws [RenderSessionException] on open failure.
+     * [previews] read from the module manifest.
+     *
+     * Does NOT spawn the daemon — the session opens on first use, so [RenderSessionException] now
+     * surfaces at the first request that needs it rather than here.
      */
     fun open(
       descriptorPath: File,
@@ -1109,17 +1185,15 @@ internal constructor(
       onLog: (String) -> Unit = {},
       factory: RenderSessionFactory = SubprocessRenderSessions,
     ): ServeRenderHost {
-      val session =
-        factory.open(
-          RenderSessionConfig(
-            descriptorPath = descriptorPath,
-            workspaceRoot = workspaceRoot.absoluteFile,
-            workspaceName = workspaceName.ifBlank { workspaceRoot.name },
-            logSink = onLog,
-          )
+      val config =
+        RenderSessionConfig(
+          descriptorPath = descriptorPath,
+          workspaceRoot = workspaceRoot.absoluteFile,
+          workspaceName = workspaceName.ifBlank { workspaceRoot.name },
+          logSink = onLog,
         )
       return ServeRenderHost(
-        session = session,
+        openSession = { factory.open(config) },
         previews = previews,
         label = label,
         declaredThemes = declaredThemes,

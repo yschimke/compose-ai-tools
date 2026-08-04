@@ -422,16 +422,21 @@ class ServeCatalogLiveHost(
     if (perPreviewResolve != null && !sharedDaemonRenders) 5 else 1
 
   /** The gesture override is honoured by the daemon lane, if that daemon is Android-backed. */
-  override val gesturesRenderable: Boolean = live.gesturesRenderable
+  // The four capability flags below are `by lazy` for one reason: reading them forces the daemon
+  // session open. `ServeRenderHost` defers its subprocess to first use so a registered catalog
+  // costs nothing until someone needs a live render — and an eager `val` here would have undone
+  // that at construction, which is exactly where every catalog builds its host. The browse surface
+  // never touches them; the viewer chrome that does is already a per-preview request.
+  override val gesturesRenderable: Boolean by lazy { live.gesturesRenderable }
 
   /**
    * SVG is exportable when either lane can produce it — the baked catalog carries
    * `figma/<slug>.svg` vectors, and the daemon exports a `compose/figma-svg` for a knob-bearing
    * render.
    */
-  override val hasSvgExport: Boolean = baked.hasSvgExport || live.hasSvgExport
+  override val hasSvgExport: Boolean by lazy { baked.hasSvgExport || live.hasSvgExport }
 
-  override val hasScrollExport: Boolean = live.hasScrollExport
+  override val hasScrollExport: Boolean by lazy { live.hasScrollExport }
 
   override fun hasScrollExportFor(previewId: String): Boolean =
     previewId in alias && live.hasScrollExportFor(alias.getValue(previewId))
@@ -559,7 +564,7 @@ class ServeCatalogLiveHost(
     baked.remoteComposeRenderSpec(previewId)
 
   /** The daemon lane honours the RC player override when the carried daemon is Android-backed. */
-  override val remoteComposePlayerSelectable: Boolean = live.remoteComposePlayerSelectable
+  override val remoteComposePlayerSelectable: Boolean by lazy { live.remoteComposePlayerSelectable }
 
   /**
    * The RC backend selector unions the two lanes: the client-side [RcPlayerBackend.JS] canvas
