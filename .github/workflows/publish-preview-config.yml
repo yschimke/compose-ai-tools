@@ -1,0 +1,37 @@
+name: Publish preview deployment config
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - deploy/preview.coo.ee/catalogs.json
+      - deploy/preview.coo.ee/producers.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-preview-deployment-config
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Reconcile deployment config
+        env:
+          BASE_URL: ${{ vars.DEPLOY_BASE_URL || 'https://preview.coo.ee' }}
+          DEPLOY_CONFIG_DIR: ${{ vars.DEPLOY_CONFIG_DIR || 'deploy/preview.coo.ee' }}
+          ADMIN_TOKEN: ${{ secrets.SERVE_ADMIN_TOKEN }}
+        run: |
+          if [ -z "${ADMIN_TOKEN}" ]; then
+            echo "::error::SERVE_ADMIN_TOKEN is required to publish deployment config."
+            exit 1
+          fi
+          DEPLOY_CONFIG_DIR="$(cd "${DEPLOY_CONFIG_DIR}" && pwd)" \
+            bash .github/scripts/publish-config-to-box.sh

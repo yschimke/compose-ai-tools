@@ -580,7 +580,7 @@ Two different things, kept in two different places on purpose:
 | | Lives in | Is |
 |---|---|---|
 | **Image seed** | [`deploy/image/catalogs.json`](../deploy/image/catalogs.json) + [`deploy/image/trust/producers.json`](../deploy/image/trust/producers.json) | Baked into the image; copied to `/config/…` on **first boot only**. What an operator adopting the prebuilt image starts with. |
-| **Deployment config** | `deploy/<deployment>/catalogs.json` + `producers.json` (e.g. [`deploy/preview.coo.ee/`](../deploy/preview.coo.ee)) | One box's published set. Applied over the admin API after each publish; never baked. |
+| **Deployment config** | `deploy/<deployment>/catalogs.json` + `producers.json` (e.g. [`deploy/preview.coo.ee/`](../deploy/preview.coo.ee)) | One box's published set. Applied over the admin API when config changes on `main`, with image publishes as a fallback; never baked. |
 
 The seed carries **`compose-m3` only**, plus the single producer that publishes it — enough that a
 bare `docker compose up -d` shows something real, and nothing that presumes a relationship with any
