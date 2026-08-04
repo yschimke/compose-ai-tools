@@ -958,7 +958,16 @@ abstract class BundlePreviewTask : DefaultTask() {
     // is left byte-for-byte intact — this only stops shipping file bytes nothing resolves — and
     // every file resource authored in this build (this module's AND its sibling project modules')
     // is retained. See [AndroidResourcePruner] and [MergedResourceOwnership].
-    val prunedApk = AndroidResourcePruner.prune(apkFile.readBytes(), firstPartyFileResourceKeys())
+    val apkBytes = apkFile.readBytes()
+    val firstPartyFileResources = firstPartyFileResourceKeys()
+    val prunedApk =
+      if (firstPartyFileResources != null) {
+        AndroidResourcePruner.prune(apkBytes, firstPartyFileResources)
+      } else {
+        // Without usable merge ownership metadata we cannot distinguish sibling-project resources
+        // from dependency resources. Keep the full APK rather than create dangling table entries.
+        AndroidResourcePruner.Result(apkBytes, droppedEntries = 0, bytesSaved = 0)
+      }
     zipFiles[ANDROID_RESOURCE_APK_PATH] = prunedApk.bytes
     zipFiles[ANDROID_MERGED_MANIFEST_PATH] = manifestFile.readBytes()
     val rClassesJar = packAndroidRClasses()
@@ -988,15 +997,15 @@ abstract class BundlePreviewTask : DefaultTask() {
    * **sibling project modules** a real app's catalog renders against — Pocket Casts renders from
    * `:modules:services:compose` while its icons live in `:modules:services:ui`, and pruning those
    * left the live daemon throwing `NotFoundException: File res/drawable/ic_play.xml …` on the first
-   * `painterResource` (issue #3260). The `src/<sourceSet>/res` scan below is the fallback for when
-   * no blame file was written, and keeps this correct for a module whose own resources haven't been
-   * merged yet.
+   * `painterResource` (issue #3260). Null means the blame metadata is unavailable or unusable and
+   * disables pruning; an empty non-null set means metadata successfully proved that the build has
+   * no first-party file resources, so pruning remains safe.
    */
-  private fun firstPartyFileResourceKeys(): Set<String> {
+  private fun firstPartyFileResourceKeys(): Set<String>? {
     val buildDir =
       moduleBuildDir.asFile.orNull ?: moduleProjectDir.asFile.orNull?.let { File(it, "build") }
     val fromBlame =
-      buildDir?.let { MergedResourceOwnership.firstPartyFileResourceKeys(it) } ?: emptySet()
+      buildDir?.let { MergedResourceOwnership.firstPartyFileResourceKeys(it) } ?: return null
     return fromBlame + moduleOwnSourceSetResourceKeys()
   }
 
