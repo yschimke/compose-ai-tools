@@ -292,6 +292,10 @@ test("contract · declared theme renders use bounded parallelism", async ({ page
         }
     });
 
+    // Tall enough that all three cards are on screen. Off-screen cards deliberately do NOT join the
+    // leased burst — they trickle in one at a time as the viewport reaches them — so a short
+    // viewport would measure the deferral, not the parallelism this test is about.
+    await page.setViewportSize({ width: 1280, height: 2200 });
     await page.goto(
         "/preview-harness/fixtures/pages/serve-landing-declared-themes.html",
     );

@@ -298,15 +298,23 @@ function applyThemeChoice() {
     // cards they ARE looking at wait behind them. They queue against the viewport instead and
     // render as they come into view, which is also what makes an emptied search or a newly
     // opened tab render just its own cards.
-    deferTheme(themeDeferredQueue, themeQueueGen);
     acquireThemeLease(themeQueueGen, function (lease, concurrency) {
       if (lease) {
-        themeQueue.forEach(function (job) {
+        // Deferred jobs are stamped with the SAME page lease. They run one at a time, so they
+        // need none of its burst — but an unleased render queues on the server's single
+        // unleased-render semaphore, shared with every other page, where a scrolling visitor
+        // would be starved behind unrelated traffic. The grant is what says these renders
+        // belong to a page that was admitted.
+        themeQueue.concat(themeDeferredQueue).forEach(function (job) {
           job.baseSrc += "&_themeLease=" + encodeURIComponent(lease);
           job.src = job.baseSrc;
         });
       }
       runThemeQueue(themeQueue, themeQueueGen, lease, concurrency);
+      // Passed WITHOUT the lease as the batch's own: the visible batch releases the grant
+      // when it drains, and a deferred batch must never release it a second time (nor hold
+      // it open across an idle scroll). The stamped URL above is what carries the token.
+      deferTheme(themeDeferredQueue, themeQueueGen);
     });
     return;
   }
