@@ -1150,3 +1150,106 @@ test("a record that already names a font scale selects that annotation, keeping 
     [["2.0", "Filled_Light_2x"]],
   );
 });
+
+test("a Wear sticker resolves by device id, not by the width two devices share", () => {
+  // `@WearPreviewDevices` fans one function across two round devices. Scoring on width alone was
+  // enough while the two widths differed, but the axis the annotations actually vary is the device
+  // — and a catalog can document a breakpoint (a square face, a custom device spec) whose width
+  // collides with a sibling's. The device is the annotation's own identity; the width is a
+  // fingerprint.
+  const spec = {
+    system: "confetti-wear",
+    breakpoints: [
+      { size: "smallRound", device: "id:wearos_small_round", widthDp: 192 },
+      { size: "smallSquare", device: "id:wearos_square", widthDp: 192 },
+    ],
+    groups: [
+      { components: [{ componentId: "Screens/Home", preview: "HomeListViewPreview" }] },
+    ],
+  };
+  const bundle = {
+    previews: [
+      {
+        id: "wear.HomeScreenKt.HomeListViewPreview_Devices - Small Round",
+        functionName: "HomeListViewPreview",
+        params: { device: "id:wearos_small_round", widthDp: 192 },
+      },
+      {
+        id: "wear.HomeScreenKt.HomeListViewPreview_Devices - Small Square",
+        functionName: "HomeListViewPreview",
+        params: { device: "id:wearos_square", widthDp: 192 },
+      },
+    ],
+  };
+  const manifest = {
+    system: "confetti-wear",
+    components: [
+      {
+        componentId: "Screens/Home",
+        images: [
+          { state: "default", size: "smallRound" },
+          { state: "default", size: "smallSquare" },
+        ],
+      },
+    ],
+  };
+
+  bridgeLivePreviewIds(manifest, spec, bundle, new Set());
+
+  assert.deepEqual(
+    manifest.components[0].images.map((i) => i.previewId),
+    [
+      "wear.HomeScreenKt.HomeListViewPreview_Devices - Small Round",
+      "wear.HomeScreenKt.HomeListViewPreview_Devices - Small Square",
+    ],
+  );
+});
+
+test("a Wear catalog that declares no breakpoints still resolves through the default table", () => {
+  // The baked stickers are tagged with the default Wear names (`catalogBreakpoints`), so resolving
+  // the live lane against `spec.breakpoints` alone left every size unconstrained on exactly the
+  // catalogs the axis matters most to — and both stickers took the first-listed annotation.
+  const spec = {
+    system: "confetti-wear",
+    library: ["androidx.wear.compose:compose-material3"],
+    groups: [
+      { components: [{ componentId: "Screens/Home", preview: "HomeListViewPreview" }] },
+    ],
+  };
+  const bundle = {
+    previews: [
+      {
+        id: "wear.HomeScreenKt.HomeListViewPreview_Devices - Large Round",
+        functionName: "HomeListViewPreview",
+        params: { device: "id:wearos_large_round", widthDp: 227 },
+      },
+      {
+        id: "wear.HomeScreenKt.HomeListViewPreview_Devices - Small Round",
+        functionName: "HomeListViewPreview",
+        params: { device: "id:wearos_small_round", widthDp: 192 },
+      },
+    ],
+  };
+  const manifest = {
+    system: "confetti-wear",
+    components: [
+      {
+        componentId: "Screens/Home",
+        images: [
+          { state: "default", size: "smallRound" },
+          { state: "default", size: "largeRound" },
+        ],
+      },
+    ],
+  };
+
+  bridgeLivePreviewIds(manifest, spec, bundle, new Set());
+
+  assert.deepEqual(
+    manifest.components[0].images.map((i) => i.previewId),
+    [
+      "wear.HomeScreenKt.HomeListViewPreview_Devices - Small Round",
+      "wear.HomeScreenKt.HomeListViewPreview_Devices - Large Round",
+    ],
+  );
+});

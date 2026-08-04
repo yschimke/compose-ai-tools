@@ -1,4 +1,5 @@
 import { exportsNoSticker } from "./capture-mode.mjs";
+import { selectImages, selectLabel, selectOf } from "./catalog-select.mjs";
 
 /**
  * Fold a catalog spec component's `variants` onto its default render.
@@ -52,7 +53,13 @@ export function foldVariants(defaultImages, component, byFunction) {
   }
   for (const variant of component.variants ?? []) {
     const candidate = byFunction.get(variant.preview);
-    if (!candidate || candidate.images.length === 0) {
+    // A variant may `select` ONE value of a multipreview's fan-out (a single breakpoint out of
+    // `@WearPreviewDevices`, say), so a spec can fold one device's render onto a component without
+    // the module splitting that function into per-device siblings. Applied before the emptiness
+    // check below so a selection that matches nothing is reported as the missing render it is,
+    // with the same label and through the same gate as an unrendered variant.
+    const images = candidate ? selectImages(candidate.images, selectOf(variant)) : [];
+    if (images.length === 0) {
       // A variant that declares `"capture": "none"` has no sticker to fold in by design — record it
       // so the export can say so, but keep it out of the completeness gate.
       const label = `${component.componentId} [${variantLabel(variant)}]`;
@@ -67,13 +74,16 @@ export function foldVariants(defaultImages, component, byFunction) {
     // variant axes and create duplicate output keys. Treat an already-tagged image as satisfying
     // the same-function variant; variants backed by a different function still retain the
     // authoritative re-tagging behavior below.
+    // `candidate.images === defaultImages` holds whenever the two name the same function AND the
+    // component selected nothing; the name comparison keeps the check true for a component whose
+    // `select` handed this fold a filtered view of the very same candidate.
     if (
-      candidate.images === defaultImages &&
+      (candidate.images === defaultImages || variant.preview === component.preview) &&
       defaultImages.some((image) => imageHasVariantAxes(image, variant))
     ) {
       continue;
     }
-    for (const image of candidate.images) {
+    for (const image of images) {
       const tagged = { ...image };
       if (variant.state !== undefined) tagged.state = variant.state;
       if (variant.props) tagged.props = { ...image.props, ...variant.props };
@@ -97,6 +107,14 @@ export function foldVariants(defaultImages, component, byFunction) {
  */
 export function imageHasVariantAxes(image, variant) {
   let hasExplicitAxis = false;
+  // A `select` is an axis like any other here: a same-function variant that picks one breakpoint is
+  // satisfied by the default images ALREADY carrying that breakpoint's render, which is the whole
+  // point of selecting instead of splitting the function. Without this the fold would re-tag and
+  // re-append the very image it matched.
+  for (const [axis, expected] of Object.entries(selectOf(variant) ?? {})) {
+    hasExplicitAxis = true;
+    if (image?.[axis] !== expected) return false;
+  }
   if (variant.state !== undefined) {
     hasExplicitAxis = true;
     if ((image.state ?? "default") !== variant.state) return false;
@@ -155,6 +173,7 @@ export function variantLabel(variant) {
     ...(variant.state ? [variant.state] : []),
     ...Object.entries(variant.props ?? {}).map(([k, v]) => `${k}=${v}`),
     ...(variant.theme ? [variant.theme] : []),
+    ...(selectOf(variant) ? [selectLabel(selectOf(variant))] : []),
   ];
   return parts.join(", ") || variant.preview;
 }

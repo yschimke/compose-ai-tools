@@ -120,8 +120,10 @@ import { applySourceFiles } from "./apply-source-files.mjs";
 import {
   applySpecBreakpoints,
   catalogBreakpoints,
+  undeclaredBreakpointDevices,
 } from "./catalog-breakpoints.mjs";
 import { applyCatalogPreviewAxes } from "./catalog-preview-axes.mjs";
+import { selectComponentImages, selectOf } from "./catalog-select.mjs";
 
 /**
  * Best-effort fetch + parse of a JSON URL, with a short timeout. Returns null on
@@ -227,6 +229,19 @@ async function loadCandidates(path, breakpoints) {
     candidateBundle.previews,
     breakpoints,
   );
+  // A `@Preview(device = …)` the breakpoints don't name leaves its render on the generic width
+  // class, where it is indistinguishable from the sibling expansion that DID match — the collapse
+  // that otherwise surfaces much later as an overwritten sticker or a duplicate-axis failure. Say so
+  // here, while the fix (one more `breakpoints` entry) is still obvious.
+  const undeclaredDevices = undeclaredBreakpointDevices(candidateBundle.previews, breakpoints);
+  if (undeclaredDevices.length > 0) {
+    console.warn(
+      `[${basename(path)}] ${undeclaredDevices.length} @Preview device id(s) match no declared ` +
+        `breakpoint, so their renders keep the generic width class: ${undeclaredDevices.join(", ")}. ` +
+        `Add them to the spec's \`breakpoints\` (\`{ "size": …, "device": … }\`) to give each its ` +
+        `own size axis.`,
+    );
+  }
   // Return the ORIGINAL (unfiltered) bundle: its raw `entries` carry the per-preview
   // `previews/<id>.layout.json` (layout-inspector tree) the wireframe is built from, and its full
   // `previews` list carries the catalog-token sheets `catalogTokensFromBundle` needs.
@@ -488,6 +503,15 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
         else missing.push(component.componentId);
         continue;
       }
+      // An entry may `select` ONE value of a multipreview's fan-out, so two entries can share a
+      // `@Preview` function and still be separate cards with their own ids and captions — the
+      // alternative being to split the function in the module (see catalog-select.mjs).
+      const select = selectOf(component);
+      const { images: selected, missing: unselected } = selectComponentImages(component, candidate);
+      if (unselected) {
+        missing.push(unselected);
+        continue;
+      }
       if (!hasSemantics(candidate))
         withoutSemantics.push(component.componentId);
       // Fold the component's state `variants` (pressed / focused / disabled / off
@@ -499,7 +523,7 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
         ideal,
         missing: missingVariants,
         noSticker: noStickerVariants,
-      } = foldVariants(candidate.images, component, byFunction);
+      } = foldVariants(selected, component, byFunction);
       missing.push(...missingVariants);
       noSticker.push(...noStickerVariants);
       // Thin the palette fan-out per `modePriority`: a themed sticker whose mode is deferred is
@@ -538,13 +562,16 @@ function catalogFromCandidates(candidates, spec, opts = {}) {
           .filter((image) => image.theme)
           .map((image) => deferralAxisKey(image.theme, image.state, image.props, image.size)),
       );
+      // A `select`ed entry covers ONE breakpoint of its function, so its deferred-mode record has to
+      // name that size — otherwise the sibling entry selecting the other breakpoint dedupes against
+      // the same axis key and only one of the two is declared live-only.
       const modeSources = [
-        { preview: component.preview },
+        { preview: component.preview, size: select?.size },
         ...(component.variants ?? []).map((v) => ({
           preview: v.preview,
           state: v.state,
           props: v.props,
-          size: v.size,
+          size: selectOf(v)?.size ?? v.size,
         })),
       ];
       for (const source of modeSources) {

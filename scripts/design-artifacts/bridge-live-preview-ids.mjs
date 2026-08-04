@@ -10,6 +10,8 @@
  * driver so it is unit-testable (the driver runs top-level on import).
  */
 
+import { breakpointMatcher, catalogBreakpoints } from "./catalog-breakpoints.mjs";
+
 /**
  * Theme of a daemon preview id. The catalog's multipreview (`@CatalogModes` /
  * `@CatalogTemplate`) renders each function in `name = "Light"` / `name = "Dark"`
@@ -100,6 +102,10 @@ function variantIdentity(preview) {
   return {
     id: preview.id,
     night,
+    // The annotation's own device id — the axis a multipreview expansion actually varies. Scored
+    // ahead of width below: two Wear round devices can render at the same width, and a device the
+    // annotation names is a statement rather than a fingerprint.
+    device: typeof params.device === "string" ? params.device : null,
     widthDp: typeof params.widthDp === "number" ? params.widthDp : null,
     fontScale:
       typeof params.fontScale === "number" && params.fontScale !== 1
@@ -148,12 +154,14 @@ function resolveFunction(previewForState, componentId, image, state) {
   return undefined;
 }
 
-function pickVariantId(candidates, image, widthForSize) {
+function pickVariantId(candidates, image, breakpointForSize) {
   if (candidates.length === 0) return undefined;
   if (candidates.length === 1) return candidates[0].id;
   const wantNight =
     image.theme === "dark" ? true : image.theme === "light" ? false : null;
-  const wantWidth = widthForSize(image.size);
+  const wantBreakpoint = breakpointForSize(image.size);
+  const wantDevice = wantBreakpoint.device ?? null;
+  const wantWidth = wantBreakpoint.widthDp ?? null;
   const wantFontScale = requestedFontScale(image.props);
   let best;
   let bestConstraint = -Infinity;
@@ -187,6 +195,9 @@ function pickVariantId(candidates, image, widthForSize) {
     // so a candidate declaring exactly that width IS, by construction, the annotation that rendered
     // this sticker. A candidate declaring no width stays neutral rather than wrong: a
     // single-annotation component whose sticker carries a size must still resolve.
+    if (wantDevice !== null && candidate.device !== null) {
+      constraint += candidate.device === wantDevice ? 2 : -2;
+    }
     if (wantWidth !== null && candidate.widthDp !== null) {
       constraint += candidate.widthDp === wantWidth ? 2 : -2;
     }
@@ -254,27 +265,34 @@ function previewsByFunction(bundles, allPreviewIds = new Set()) {
 }
 
 /**
- * `size` → the width the spec's breakpoints declare for it, so a sticker's size axis can be compared
- * against a candidate's `@Preview(widthDp = …)`. Yields null for a spec with no breakpoints, in
- * which case the size axis simply doesn't constrain the pick.
+ * `size` → the breakpoint the spec declares for it, so a sticker's size axis can be compared against
+ * a candidate's `@Preview(device = …)` / `@Preview(widthDp = …)`. Yields an empty breakpoint for a
+ * spec that declares none (or a size it doesn't name), in which case the size axis simply doesn't
+ * constrain the pick.
+ *
+ * Reads `catalogBreakpoints`, not `spec.breakpoints`: a Wear catalog that declares none is tagged
+ * with the standard round table when its stickers are baked, so resolving the live lane against an
+ * empty table would leave every size unconstrained on exactly the catalogs the axis matters most to.
  */
-function widthForSizeOf(spec) {
-  const widthBySize = new Map(
-    (spec?.breakpoints ?? [])
-      .filter((b) => typeof b?.size === "string" && typeof b?.widthDp === "number")
-      .map((b) => [b.size, b.widthDp]),
+function breakpointForSizeOf(spec) {
+  const bySize = new Map(
+    (catalogBreakpoints(spec) ?? [])
+      .filter((b) => typeof b?.size === "string")
+      .map((b) => [b.size, b]),
   );
-  return (size) => (size == null ? null : (widthBySize.get(size) ?? null));
+  return (size) => (size == null ? EMPTY_BREAKPOINT : (bySize.get(size) ?? EMPTY_BREAKPOINT));
 }
 
-/** The breakpoint `size` a candidate's `@Preview(widthDp = …)` renders, or undefined. */
-function sizeForWidthOf(spec) {
-  const sizeByWidth = new Map(
-    (spec?.breakpoints ?? [])
-      .filter((b) => typeof b?.size === "string" && typeof b?.widthDp === "number")
-      .map((b) => [b.widthDp, b.size]),
-  );
-  return (widthDp) => (widthDp == null ? undefined : sizeByWidth.get(widthDp));
+const EMPTY_BREAKPOINT = Object.freeze({});
+
+/**
+ * The breakpoint `size` a candidate annotation renders, or undefined — by its `@Preview(device = …)`
+ * id first, then its width, through the same matcher that tagged the baked stickers.
+ */
+function sizeForCandidateOf(spec) {
+  const matcher = breakpointMatcher(catalogBreakpoints(spec));
+  return (candidate) =>
+    matcher ? matcher({ device: candidate?.device, widthDp: candidate?.widthDp }) : undefined;
 }
 
 /**
@@ -301,8 +319,8 @@ function sizeForWidthOf(spec) {
  */
 export function expandDeferredRecords(deferred, spec, bundles) {
   const previewsByFn = previewsByFunction(bundles);
-  const widthForSize = widthForSizeOf(spec);
-  const sizeForWidth = sizeForWidthOf(spec);
+  const breakpointForSize = breakpointForSizeOf(spec);
+  const sizeForCandidate = sizeForCandidateOf(spec);
   const out = [];
   for (const record of deferred ?? []) {
     const candidates = previewsByFn.get(record?.preview) ?? [];
@@ -313,7 +331,7 @@ export function expandDeferredRecords(deferred, spec, bundles) {
     // Axes already known (a mode deferral), or a single-annotation function: one record, routed to
     // the annotation those axes select — exactly a baked sticker's resolution.
     if (record?.theme || candidates.length === 1) {
-      const daemonId = pickVariantId(candidates, record ?? {}, widthForSize);
+      const daemonId = pickVariantId(candidates, record ?? {}, breakpointForSize);
       out.push(daemonId ? { ...record, previewId: daemonId } : { ...record });
       continue;
     }
@@ -331,7 +349,7 @@ export function expandDeferredRecords(deferred, spec, bundles) {
     for (const candidate of pool) {
       const theme =
         candidate.night === true ? "dark" : candidate.night === false ? "light" : undefined;
-      const size = record?.size ?? sizeForWidth(candidate.widthDp);
+      const size = record?.size ?? sizeForCandidate(candidate);
       // Only a RECOVERED scale becomes props; a record that named its own keeps it verbatim, so the
       // spec's exact spelling ("1.5x", "2.0") is what reaches the path.
       const scale = wantedScale === null ? candidate.fontScale : null;
@@ -413,7 +431,7 @@ export function bridgeLivePreviewIds(
   // as `previewsByFunction` folds the bundles.
   const allPreviewIds = new Set();
   const previewsByFn = previewsByFunction(bundles, allPreviewIds);
-  const widthForSize = widthForSizeOf(spec);
+  const breakpointForSize = breakpointForSizeOf(spec);
   let mapped = 0;
   for (const component of manifest.components ?? []) {
     for (const image of component.images ?? []) {
@@ -430,7 +448,7 @@ export function bridgeLivePreviewIds(
         const daemonId = pickVariantId(
           previewsByFn.get(fn) ?? [],
           image,
-          widthForSize,
+          breakpointForSize,
         );
         if (daemonId) {
           image.previewId = daemonId;
@@ -457,7 +475,7 @@ export function bridgeLivePreviewIds(
           const baseDaemonId = pickVariantId(
             previewsByFn.get(baseFn) ?? [],
             image,
-            widthForSize,
+            breakpointForSize,
           );
           const variantId = baseDaemonId && `${baseDaemonId}_VARIANT_${state}`;
           if (variantId && allPreviewIds.has(variantId)) {
