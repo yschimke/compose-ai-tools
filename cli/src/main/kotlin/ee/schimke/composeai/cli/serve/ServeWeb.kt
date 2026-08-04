@@ -908,6 +908,19 @@ object ServeWeb {
     }
   }
 
+  /** A compact human label for the size/breakpoint token carried in a flattened catalog id. */
+  private fun previewSizeVariantLabel(id: String): String? =
+    id.split("__").asReversed().firstNotNullOfOrNull { token ->
+      when (token.lowercase()) {
+        "compact" -> "Compact"
+        "expanded" -> "Expanded"
+        "smallround" -> "Small Round"
+        "largeround" -> "Large Round"
+        "xlround" -> "XL Round"
+        else -> null
+      }
+    }
+
   /**
    * A **synthesized** sub-grouping for a section-less catalog: bucket [cards] by [cardFamily] so
    * the flat grid gains labelled dividers (Buttons, Cards, Text fields, …) like an authored catalog
@@ -951,6 +964,8 @@ object ServeWeb {
    * Progressive enhancement throughout — a no-JS client sees the full grid on its baked renders.
    */
   private fun themePickerHtml(hasBaked: Boolean, declared: List<ServeTheme>): String {
+    val builtInLabels = if (hasBaked) setOf("light", "dark") else setOf("default")
+    val declaredNameCounts = declared.groupingBy { it.name.lowercase() }.eachCount()
     val chips = buildString {
       if (hasBaked) {
         append("<button type=\"button\" class=\"cp-theme-btn\" data-theme-choice=\"light\">")
@@ -962,8 +977,16 @@ object ServeWeb {
         append("Default</button>")
       }
       declared.forEach { t ->
-        val label = WebEscaping.htmlEscape(t.name)
-        val title = t.group?.let { " title=\"${WebEscaping.htmlEscape(it)} · $label\"" } ?: ""
+        val qualified =
+          t.name.lowercase() in builtInLabels || declaredNameCounts.getValue(t.name.lowercase()) > 1
+        val displayName =
+          if (qualified) "${t.group?.takeIf { it.isNotBlank() } ?: "Custom"} · ${t.name}"
+          else t.name
+        val label = WebEscaping.htmlEscape(displayName)
+        val title =
+          t.group
+            ?.takeIf { !qualified }
+            ?.let { " title=\"${WebEscaping.htmlEscape(it)} · $label\"" } ?: ""
         append("\n        <button type=\"button\" class=\"cp-theme-btn\"")
         append(" data-theme-choice=\"theme:${WebEscaping.htmlEscape(t.providerFqn)}\"$title>")
         append("$label</button>")
@@ -2961,6 +2984,17 @@ object ServeWeb {
     // props) pass straight through.
     val groups =
       groupPreviews(previews.filterNot { isNonDefaultState(it) || hasNonDefaultProps(it) })
+    // Size/breakpoint variants intentionally remain separate cards, but catalog-authored labels
+    // often omit that axis (for example three "Edgebutton" cards at Small/Large/XL Round). Add a
+    // qualifier only when the base label actually collides, keeping ordinary one-card labels terse.
+    val duplicateGridLabels =
+      groups.groupingBy { previewDisplayName(it.default) }.eachCount().filterValues { it > 1 }.keys
+    fun gridDisplayName(preview: ServePreview): String {
+      val label = previewDisplayName(preview)
+      if (label !in duplicateGridLabels) return label
+      val size = previewSizeVariantLabel(preview.id) ?: return label
+      return "$label · $size"
+    }
     // A card's pixel URL. With a prebaked thumbnail it carries `?thumb=<hash>`, which the render
     // lane answers from memory with the downscaled image; the id and every other param stay
     // identical, so the SAME URL still serves a full render once anything is layered on it (a
@@ -2998,9 +3032,9 @@ object ServeWeb {
       // no URL-building in the browser.
       val def = if (darkFirst) d else l
       val defTheme = if (darkFirst) "dark" else "light"
-      val lightLabel = previewDisplayName(l)
-      val darkLabel = previewDisplayName(d)
-      val defaultLabel = previewDisplayName(def)
+      val lightLabel = gridDisplayName(l)
+      val darkLabel = gridDisplayName(d)
+      val defaultLabel = gridDisplayName(def)
       // `data-def` is the variant a DECLARED theme re-renders (the server-side default), so picking
       // one doesn't also flip the card's light/dark base.
       return """
@@ -3024,7 +3058,7 @@ object ServeWeb {
     }
     fun singleCard(p: ServePreview): String {
       val idSeg = WebEscaping.urlEncodeSegment(p.id)
-      val label = WebEscaping.htmlEscape(previewDisplayName(p))
+      val label = WebEscaping.htmlEscape(gridDisplayName(p))
       val src = renderSrc(p)
       val idText = WebEscaping.htmlEscape(p.id)
       // data-bg-theme is the thumbnail's background (explicit token, else the dark-first default).

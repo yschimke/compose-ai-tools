@@ -108,4 +108,50 @@ class ServeWebGridThumbnailTest {
       "the themed-render base is the card's own thumbnail URL",
     )
   }
+
+  @Test
+  fun `declared theme labels are qualified when they collide with baked modes`() {
+    val html =
+      ServeWeb.landingPage(
+        "compose-m3",
+        listOf(
+          ServePreview("button__ideal__default__light", "Button", theme = "light"),
+          ServePreview("button__ideal__default__dark", "Button", theme = "dark"),
+        ),
+        token = "t",
+        declaredThemes =
+          listOf(
+            ServeTheme("Light", "com.example.LightTheme", group = "Example"),
+            ServeTheme("Dark", "com.example.DarkTheme", group = "Example"),
+          ),
+        canRenderThemeFor = { true },
+      )
+
+    assertTrue(html.contains("data-theme-choice=\"light\">Light</button>"))
+    assertTrue(html.contains("data-theme-choice=\"dark\">Dark</button>"))
+    assertTrue(
+      html.contains("data-theme-choice=\"theme:com.example.LightTheme\">Example · Light</button>")
+    )
+    assertTrue(
+      html.contains("data-theme-choice=\"theme:com.example.DarkTheme\">Example · Dark</button>")
+    )
+  }
+
+  @Test
+  fun `duplicate breakpoint cards include their size in the label`() {
+    val html =
+      ServeWeb.landingPage(
+        "wear-m3",
+        listOf(
+          ServePreview("edgebutton__ideal__default__smallround", "Edgebutton"),
+          ServePreview("edgebutton__ideal__default__largeround", "Edgebutton"),
+          ServePreview("edgebutton__ideal__default__xlround", "Edgebutton"),
+        ),
+        token = "t",
+      )
+
+    assertTrue(html.contains(">Edgebutton · Small Round</div>"))
+    assertTrue(html.contains(">Edgebutton · Large Round</div>"))
+    assertTrue(html.contains(">Edgebutton · XL Round</div>"))
+  }
 }
