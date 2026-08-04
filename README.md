@@ -172,6 +172,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing-declared-themes-daemon-idle/dark](renders/serve-landing-declared-themes-daemon-idle.dark.png) |
 | `light` | ![serve-landing-declared-themes-daemon-idle/light](renders/serve-landing-declared-themes-daemon-idle.light.png) |
 
+## serve-landing-declared-themes-theme-error
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-declared-themes-theme-error/dark](renders/serve-landing-declared-themes-theme-error.dark.png) |
+| `light` | ![serve-landing-declared-themes-theme-error/light](renders/serve-landing-declared-themes-theme-error.light.png) |
+
 ## serve-landing-declared-themes-theme-inflight
 
 | Theme | Capture |
