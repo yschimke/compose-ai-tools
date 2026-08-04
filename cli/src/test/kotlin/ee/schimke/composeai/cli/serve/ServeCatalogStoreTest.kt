@@ -1369,7 +1369,10 @@ class ServeCatalogStoreTest {
 
   @Test
   fun `a per-system sourceRepo override fetches from that repo and attributes to it`() {
-    val urls = mutableListOf<String>()
+    // Catalog vectors continue fetching on the background executor after load() publishes the
+    // host. Keep the recorder safe while that pass appends, then assert against one locked
+    // snapshot rather than iterating a list that can still be changing.
+    val urls = Collections.synchronizedList(mutableListOf<String>())
     val trust =
       TrustStore(branches = listOf(TrustedBranch("yschimke/meshcore-mobile", "design-artifacts/*")))
     val store =
@@ -1383,15 +1386,16 @@ class ServeCatalogStoreTest {
         },
       )
     val result = store.load("meshcore-mobile", sourceRepo = "yschimke/meshcore-mobile")
+    val fetchedUrls = synchronized(urls) { urls.toList() }
 
     // Every fetch went to the override repo's design-artifacts/<system> branch, not the default.
     assertTrue(
-      urls.all {
+      fetchedUrls.all {
         it.startsWith(
           "https://raw.githubusercontent.com/yschimke/meshcore-mobile/design-artifacts/meshcore-mobile/"
         )
       },
-      "fetched from the override repo: $urls",
+      "fetched from the override repo: $fetchedUrls",
     )
     assertTrue(
       result is ServeCatalogStore.Result.Ok &&
