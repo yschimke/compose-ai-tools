@@ -4,7 +4,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>compose-m3 — compose-preview</title>
-        <link rel="stylesheet" href="/assets/serve/cb81-5672d1e3fedc454c/serve.css">
+        <link rel="stylesheet" href="/assets/serve/cd3b-09f02ab04f95830d/serve.css">
         <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
@@ -156,11 +156,9 @@ function runThemeWorker(queue, gen, batch) {
   if (!job) return;
   var img = job.img;
   var settled = false;
-  function next(ok) {
+  function finish(ok) {
     if (settled || gen !== themeGen) return;
     settled = true;
-    img.onload = null;
-    img.onerror = null;
     if (!ok && job.retries < themeRenderRetries) {
       // Re-request rather than re-assign the identical (failed, uncached) URL. Exponential
       // backoff gives a busy daemon time to finish without stalling the other worker.
@@ -178,9 +176,35 @@ function runThemeWorker(queue, gen, batch) {
     finishThemeJob(batch);
     runThemeWorker(queue, gen, batch);
   }
-  img.onload = function () { next(true); };
-  img.onerror = function () { next(false); };
-  img.src = job.src;
+  // Fetch the bytes FIRST and only then put them on the card.
+  //
+  // Assigning `src` on the live <img> dropped the pixels it was showing the instant the
+  // request started, so the visitor watched the old theme's render vanish and sat looking
+  // at a broken-image glyph under the spinner for the whole ~1s daemon round trip. Holding
+  // the previous render until the new one is in hand means the card only ever shows real
+  // pixels: the old theme's, then the new theme's, swapped in a single paint.
+  //
+  // A detached `new Image()` preload would do the same job, except a themed render is
+  // `no-store` (it carries overrides), so handing its URL to the visible <img> afterwards
+  // is not reliably a cache hit and can cost a second round trip. Fetching to a blob is one
+  // request by construction.
+  fetch(job.src, { credentials: "same-origin" })
+    .then(function (response) {
+      if (!response.ok) throw new Error("render " + response.status);
+      return response.blob();
+    })
+    .then(function (blob) {
+      if (gen !== themeGen) return;
+      var url = URL.createObjectURL(blob);
+      // Release the blob this card was holding, if any. Without this every theme switch
+      // would strand one object URL per card for the life of the page.
+      var previous = img.getAttribute("data-cp-blob");
+      img.src = url;
+      img.setAttribute("data-cp-blob", url);
+      if (previous) URL.revokeObjectURL(previous);
+      finish(true);
+    })
+    .catch(function () { finish(false); });
 }
 function runThemeQueue(queue, gen, lease, concurrency) {
   var batch = { lease: lease, remaining: queue.length };
@@ -240,6 +264,19 @@ window.addEventListener("pagehide", function () { releaseThemeLease(themeLease, 
 });
 // Point a swap card at one of its baked variants ("l"/"d"): pixels (unless the caller is
 // supplying themed ones), alt text, label, id, viewer link and stage backing.
+// Point a card's <img> at a plain URL, releasing whatever blob it was holding first.
+// A themed render is handed over as an object URL (see runThemeWorker); leaving a declared
+// theme for Light / Dark / Default replaces that source, and without this the blob behind
+// it would stay resident until the page unloaded — one full-resolution PNG per card, on
+// catalogs that routinely run to 80+ cards.
+function setCardSrc(img, url) {
+  var previous = img.getAttribute("data-cp-blob");
+  img.src = url;
+  if (previous) {
+    img.removeAttribute("data-cp-blob");
+    URL.revokeObjectURL(previous);
+  }
+}
 function applyVariant(c, k, withSrc) {
   var src = c.getAttribute("data-" + k + "-src");
   if (!src) return;
@@ -247,7 +284,7 @@ function applyVariant(c, k, withSrc) {
   var lab = c.querySelector(".cp-label");
   var idn = c.querySelector(".cp-id");
   var lbl = c.getAttribute("data-" + k + "-label");
-  if (img) { if (withSrc) img.src = src; img.setAttribute("alt", lbl); }
+  if (img) { if (withSrc) setCardSrc(img, src); img.setAttribute("alt", lbl); }
   c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
   if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
   if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
@@ -323,7 +360,7 @@ function applyThemeChoice() {
     if (c.getAttribute("data-swap") === "1") { applyVariant(c, k, true); return; }
     var img = c.querySelector("img");
     var base = themeBase[i];
-    if (img && base) img.src = base;
+    if (img && base) setCardSrc(img, base);
   });
 }
 applyThemeChoice();
