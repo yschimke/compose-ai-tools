@@ -550,6 +550,11 @@ internal object ComposePreviewTasks {
       // (v6 Android) base dir for resolving test_config.properties' module-relative apk/manifest
       // paths. Harmless on desktop. See [BundlePreviewTask.moduleProjectDir].
       moduleProjectDir.set(project.layout.projectDirectory)
+      // Where AGP's resource-merge blame files actually land. Read from the layout rather than
+      // assumed to be `<projectDir>/build` — a consumer that relocates `buildDirectory` would
+      // otherwise silently lose the sibling-module retain-set. See
+      // [BundlePreviewTask.moduleBuildDir].
+      moduleBuildDir.set(project.layout.buildDirectory)
       backend.set(backendId)
       producedBy.set("compose-preview $pluginVersionProperty")
       output.set(project.layout.file(resolvedOutput))

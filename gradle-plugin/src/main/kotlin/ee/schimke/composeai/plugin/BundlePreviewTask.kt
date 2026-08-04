@@ -202,6 +202,18 @@ abstract class BundlePreviewTask : DefaultTask() {
   @get:Internal abstract val moduleProjectDir: DirectoryProperty
 
   /**
+   * (v6 Android) The consumer module's **configured** build directory — where
+   * [MergedResourceOwnership] looks for AGP's resource-merge blame files. Wired from
+   * `project.layout.buildDirectory` rather than assumed to be `<moduleProjectDir>/build`, because a
+   * consumer is free to relocate it (a shared root-level build dir is the common case) and AGP
+   * writes `intermediates/incremental/**/merger.xml` wherever it actually points. Getting this
+   * wrong is silent: the blame lookup finds nothing, the retain-set quietly narrows to the
+   * module-own source scan, and the sibling drawables this task exists to keep get pruned again.
+   * `@Internal` for the same reason as [moduleProjectDir] — a resolution base, not carried content.
+   */
+  @get:Internal abstract val moduleBuildDir: DirectoryProperty
+
+  /**
    * Renders directory from the preceding `composePreviewRender` task. Each selected preview's PNG
    * is read from here: the cover is prepended to the polyglot, and every selected preview is baked
    * into `previews/<id>.png`. When missing or empty, the cover falls back to a stub gray PNG so the
@@ -981,10 +993,10 @@ abstract class BundlePreviewTask : DefaultTask() {
    * merged yet.
    */
   private fun firstPartyFileResourceKeys(): Set<String> {
+    val buildDir =
+      moduleBuildDir.asFile.orNull ?: moduleProjectDir.asFile.orNull?.let { File(it, "build") }
     val fromBlame =
-      moduleProjectDir.asFile.orNull?.let {
-        MergedResourceOwnership.firstPartyFileResourceKeys(File(it, "build"))
-      } ?: emptySet()
+      buildDir?.let { MergedResourceOwnership.firstPartyFileResourceKeys(it) } ?: emptySet()
     return fromBlame + moduleOwnSourceSetResourceKeys()
   }
 
