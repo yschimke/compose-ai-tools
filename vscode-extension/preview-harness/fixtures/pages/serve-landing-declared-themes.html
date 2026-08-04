@@ -188,6 +188,37 @@ function runThemeQueue(queue, gen, lease, concurrency) {
   var workers = Math.min(concurrency, queue.length);
   for (var i = 0; i < workers; i++) runThemeWorker(queue, gen, batch);
 }
+// Themed renders for cards that are off-screen (or hidden by search / another tab), held
+// until the viewport reaches them. `rootMargin` starts a card a screenful early so scrolling
+// meets finished pixels rather than a spinner. No lease is taken: this is a trickle behind
+// the visitor's scroll, not the burst the visible batch asks for.
+var themeObserver = null;
+var themePending = [];
+function stopDeferredTheme() {
+  if (themeObserver) themeObserver.disconnect();
+  themeObserver = null;
+  themePending = [];
+}
+function deferTheme(jobs, gen) {
+  themePending = jobs;
+  if (!jobs.length) return;
+  // No IntersectionObserver (old browser): fall back to rendering them, serially, rather
+  // than leaving those cards stuck on the wrong theme forever.
+  if (!window.IntersectionObserver) { runThemeQueue(jobs, gen, null, 1); return; }
+  themeObserver = new IntersectionObserver(function (entries) {
+    if (gen !== themeGen) { stopDeferredTheme(); return; }
+    var due = [];
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      themeObserver.unobserve(e.target);
+      for (var i = 0; i < themePending.length; i++) {
+        if (themePending[i].card === e.target) { due.push(themePending.splice(i, 1)[0]); break; }
+      }
+    });
+    if (due.length) runThemeQueue(due, gen, null, 1);
+  }, { rootMargin: "400px" });
+  jobs.forEach(function (job) { themeObserver.observe(job.card); });
+}
 window.addEventListener("pagehide", function () { releaseThemeLease(themeLease, true); });
       function apply() {
         themeBtns.forEach(function (b) {
@@ -216,6 +247,7 @@ function applyThemeChoice() {
   var provider = theme.indexOf("theme:") === 0 ? theme.slice(6) : "";
   releaseThemeLease(themeLease, false);
   themeGen++;
+  stopDeferredTheme();
   var themeQueue = [];
   var themeDeferredQueue = [];
   var themeQueueGen = themeGen;
@@ -246,7 +278,13 @@ function applyThemeChoice() {
       var themeVisible = !c.hidden;
       (themeVisible ? themeQueue : themeDeferredQueue).push(job);
     });
-    themeQueue = themeQueue.concat(themeDeferredQueue);
+    // Off-screen cards are NOT rendered up front. A catalog is commonly 80+ cards and the
+    // shared daemon renders them one at a time (~1s each), so draining the whole grid costs a
+    // minute of daemon time — most of it for pixels the visitor never scrolls to, while the
+    // cards they ARE looking at wait behind them. They queue against the viewport instead and
+    // render as they come into view, which is also what makes an emptied search or a newly
+    // opened tab render just its own cards.
+    deferTheme(themeDeferredQueue, themeQueueGen);
     acquireThemeLease(themeQueueGen, function (lease, concurrency) {
       if (lease) {
         themeQueue.forEach(function (job) {

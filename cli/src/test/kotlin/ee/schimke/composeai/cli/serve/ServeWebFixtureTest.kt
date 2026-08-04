@@ -1513,6 +1513,12 @@ class ServeWebFixtureTest {
     // Issue #3160: when the visitor is on a later tab, its visible cards must lead the serial
     // daemon queue. Otherwise every hidden Theme/Component card renders before the selected tab's
     // first image request, making the theme control appear to do nothing.
+    //
+    // The deferred half is no longer appended onto that queue once the visible cards are enqueued:
+    // a large catalog is 80+ cards through a one-at-a-time daemon, so draining it spends a minute
+    // rendering pixels nobody scrolled to. It now waits on the viewport instead — which serves
+    // #3160's intent more strictly than the concat did, since a hidden tab's cards are not rendered
+    // at all until that tab is opened, rather than merely rendered last.
     assertTrue(
       landingDeclaredTabbedThemes.contains(
         "(themeVisible ? themeQueue : themeDeferredQueue).push(job)"
@@ -1520,7 +1526,7 @@ class ServeWebFixtureTest {
         landingDeclaredTabbedThemes.contains(
           "themeVisible = themeSection.getAttribute(\"data-section\") === current"
         ) &&
-        landingDeclaredTabbedThemes.contains("themeQueue = themeQueue.concat(themeDeferredQueue)"),
+        landingDeclaredTabbedThemes.contains("deferTheme(themeDeferredQueue, themeQueueGen)"),
       "current-tab cards are rendered first, including before hidden state is initialized",
     )
     // Re-pointing runs only when the theme itself changed, so a search keystroke (which also calls
