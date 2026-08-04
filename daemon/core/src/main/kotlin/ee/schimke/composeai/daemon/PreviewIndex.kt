@@ -173,6 +173,22 @@ data class ScrollCaptureDto(
 data class PreviewParamsDto(
   val widthDp: Int? = null,
   val heightDp: Int? = null,
+  /**
+   * Bound a **wrapped** axis is measured against, replacing
+   * [PreviewManifestEntry.WRAP_SANDBOX_WIDTH_DP] / `WRAP_SANDBOX_HEIGHT_DP`. Mirrors the plugin's
+   * `PreviewParams.wrapSandboxWidthDp`: unlike [widthDp] it does NOT pin the axis, so
+   * `renderSpecFromInfo` still reports `wrapWidth = true` and the capture still crops to measured
+   * size.
+   *
+   * Must be declared here, not just on the manifest router's own DTO: `bundle daemon` and
+   * `compose-preview serve` launch with only `composeai.daemon.previewsJsonPath`, so they resolve
+   * through [PreviewIndex] rather than the router. Without these fields `ignoreUnknownKeys` drops
+   * them and a Wear `fillMaxWidth` sticker measures against 400 dp live while its baked render used
+   * 227 dp — the exact PNG↔Live divergence the wrap plumbing exists to prevent.
+   */
+  val wrapSandboxWidthDp: Int? = null,
+  /** See [wrapSandboxWidthDp]. */
+  val wrapSandboxHeightDp: Int? = null,
   val density: Float? = null,
   val fontScale: Float? = null,
   /** BCP-47 locale tag — the plugin's `PreviewParams.locale`. */
