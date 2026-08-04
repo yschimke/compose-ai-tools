@@ -130,7 +130,7 @@ Two properties fall out of this split:
 | Live, daemon-backed streaming session | `cli/.../serve/ServeLiveSession.kt`, `ServeStreamSession.kt`, per-preview pool | **Shipped.** `compose-m3` (desktop) and `wear-m3` (Android) run live on `preview.coo.ee`. |
 | Interactive `input` protocol (click / pointer / rotary / key) | `docs/serve/SESSION-VIEWER-PROTOCOL.md` §`input`, `ServeStreamProtocol.parseClient` | **Shipped.** Dispatched into the live composition; snapshot lane ignores it. |
 | Expiring capability permalink (id = 128-bit `SecureRandom`, TTL, `private,no-store`) | `cli/.../serve/ServeDocStore.kt` | **Shipped.** The literal template for the preview-token store. |
-| Remote Compose document → browser playback | `--accept-docs`, `ServeDocFormats`, vendored `RcdPlayer` (`cli/src/main/resources/rc-player/`) | **Shipped.** RC-in-browser needs no server round-trip per interaction. |
+| Remote Compose document → browser playback | `--accept-docs`, `ServeDocFormats`, CMP/Wasm (`rc-player/wasm`) | **Shipped.** RC-in-browser needs no server round-trip per interaction. |
 | Live-seat admission budget (desktop = 1 permit, Android = 2) | `cli/.../serve/LiveSeatLimiter.kt` | **Shipped**, but sized for *trusted catalogs* — see [§6](#6-isolation-the-actual-hard-part). |
 
 ### 2.2 What is new
@@ -167,15 +167,15 @@ serving side is already public-safe (the vendored player runs in the *viewer's*
 browser); only *producing* the document runs snippet code on the server, and that
 is the same isolation problem all three share.
 
-**On "CMP Remote Compose in future":** separate *authoring* from *playback*. The
-browser `RcdPlayer` is already platform-neutral — it plays a byte stream and does
+**On CMP Remote Compose:** separate *authoring* from *playback*. The CMP/Wasm
+player is platform-neutral — it plays a byte stream and does
 not care that the document was authored through Android APIs. So RC-in-browser
 works for a playground **now**; what is Android-bound is the *authoring* side of
 `data/remotecompose`. The playground's RC mode does not have to wait on
 CMP-authored Remote Compose — it can offer Android authoring today and pick up
 CMP authoring when the connector does. (There is also an AndroidX
 Compose-embedded player, `:third-party-rc-embedded-player`, used for CI fidelity
-diffs; the browser player is the one the playground uses.)
+diffs; CMP/Wasm is the browser player the playground uses.)
 
 ---
 
@@ -411,8 +411,8 @@ Each phase is independently shippable and useful on its own.
    Compose Android snippets against `wear-m3` / an Android catalog classpath.
 
 3. **Phase 3 — Remote Compose mode.** Compile+run → `.rc` → hand off to the
-   existing `/d/<id>` document permalink and `RcdPlayer`. Reuses `ServeDocStore`,
-   `ServeDocFormats`, `rc-player`. No live seat. **This is the first mode safe to
+   existing `/d/<id>` document permalink and CMP/Wasm player. Reuses `ServeDocStore`,
+   `ServeDocFormats`, `rc-player-wasm`. No live seat. **This is the first mode safe to
    expose to a wider (still gated) audience**, because its serving side already is.
 
 4. **Phase 4 — per-session sandbox (shipped).** Namespace/cgroup isolation, no

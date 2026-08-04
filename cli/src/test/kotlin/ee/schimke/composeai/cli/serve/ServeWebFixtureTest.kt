@@ -1773,8 +1773,7 @@ class ServeWebFixtureTest {
       )
     }
     assertTrue(docUpload.contains("expires after 1h"), "the upload page states the link TTL")
-    // A permalink page mounts its format's vendored player against the document's own bytes, and
-    // never a different format's.
+    // A permalink page mounts the supported player for its format against the document's bytes.
     assertTrue(
       docLottie.contains(ServeDocFormats.LOTTIE.playerPath) &&
         !docLottie.contains(ServeDocFormats.REMOTE_COMPOSE.playerPath),
@@ -1783,7 +1782,7 @@ class ServeWebFixtureTest {
     assertTrue(
       docRemoteCompose.contains(ServeDocFormats.REMOTE_COMPOSE.playerPath) &&
         docRemoteCompose.contains("width=\"384\" height=\"384\""),
-      "the Remote Compose page loads the RC player onto a canvas sized from the document",
+      "the Remote Compose page loads CMP/Wasm at the document size",
     )
     assertTrue(
       docLottie.contains("expires in 1h") && docLottie.contains("2026-07-28T22:15:00Z"),

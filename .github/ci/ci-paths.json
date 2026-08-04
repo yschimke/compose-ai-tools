@@ -99,7 +99,6 @@
     ],
     "design_artifacts": [
       "scripts/design-artifacts/**",
-      "cli/src/main/resources/rc-player/**",
       ".github/actions/lib/**"
     ]
   }

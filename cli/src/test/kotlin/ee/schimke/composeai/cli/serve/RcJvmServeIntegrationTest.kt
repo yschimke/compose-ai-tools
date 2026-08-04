@@ -107,7 +107,7 @@ class RcJvmServeIntegrationTest {
   }
 
   @Test
-  fun `rc colors are opaque for six-digit hex, matching the JS parseRcColor`() {
+  fun `rc colors are opaque for six-digit hex`() {
     // 6-digit #RRGGBB → opaque (alpha FF), not 0x00RRGGBB (fully transparent).
     assertEquals(0xFFFF8800.toInt(), RcJvmServerRenderer.rcColorToArgb("#FF8800"))
     // 8-digit #AARRGGBB is taken as-is.
@@ -115,7 +115,7 @@ class RcJvmServeIntegrationTest {
     // A URL-encoded '#', and a bare (unprefixed) 6-digit value both normalize the same way.
     assertEquals(0xFFFF8800.toInt(), RcJvmServerRenderer.rcColorToArgb("%23FF8800"))
     assertEquals(0xFFFF8800.toInt(), RcJvmServerRenderer.rcColorToArgb("FF8800"))
-    // Non-hex / wrong-length values don't parse (matching parseRcColor's 8-length requirement).
+    // Non-hex / wrong-length values don't parse.
     assertNull(RcJvmServerRenderer.rcColorToArgb("nothex"))
     assertNull(RcJvmServerRenderer.rcColorToArgb("#FFF"))
   }
@@ -123,8 +123,8 @@ class RcJvmServeIntegrationTest {
   @Test
   fun `cmp-jvm chip is enabled only when the desktop-player sidecar is installed`() {
     val host = ServeBundleHost(bundle(120, 80, 3.0f), label = "b")
-    // The JS lane always rides on a carried doc; cmp-jvm needs the sidecar, absent here.
-    assertTrue(RcPlayerBackend.JS in host.enabledRcPlayersFor("Foo"))
+    // Browser playback is supplied by the HTTP server's CMP/Wasm distribution; this host reports
+    // only server-rendered lanes. cmp-jvm needs the sidecar, absent here.
     assertFalse(RcPlayerBackend.CMP_JVM in host.enabledRcPlayersFor("Foo"))
 
     // Point both sidecar dirs at (empty-jar) temp dirs so RcJvmServerRenderer.isAvailable() is

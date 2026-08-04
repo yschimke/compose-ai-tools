@@ -531,7 +531,7 @@ class ServeCommand(args: List<String>) : Command(args) {
       }
       ?.toMap() ?: emptyMap()
 
-  /** Experimental AndroidX-conformant Remote Compose CMP/Wasm player distribution. */
+  /** Installed AndroidX-conformant Remote Compose CMP/Wasm player distribution. */
   private val rcPlayerWasmDir: File? =
     args
       .flagValue("--rc-player-wasm-dir")
@@ -2665,7 +2665,7 @@ class ServeCommand(args: List<String>) : Command(args) {
                           (Wasm)" toggle that mounts the M3 components client-side (no server
                           round-trip), served read-only at /wasm/<system>/. Missing dirs are skipped.
         --rc-player-wasm-dir <dir>
-                          Experimental non-JVM Remote Compose player produced by
+                          Non-JVM Remote Compose browser player produced by
                           :rc-player-wasm:wasmPlayerDist. Serves it at /rc-player-wasm/ and enables
                           the "CMP Wasm" RC backend for previews carrying a captured .rc document.
 

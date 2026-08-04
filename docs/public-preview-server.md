@@ -481,11 +481,11 @@ curl -sS --data-binary @loading.json 'https://preview.coo.ee/docs?name=loading.j
 ```
 
 **Known formats** ([`ServeDocFormats`](../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeDocFormats.kt)) —
-adding one is a registry entry plus its player bundle, not a new route:
+adding one is a registry entry plus a supported browser player, not a new route:
 
 | Format | Sniffed by | Played by | Player bundle |
 |---|---|---|---|
-| **Remote Compose** (`.rc`) | the `Header` op's `0x048C` magic | `RC.RcdPlayer` on a `<canvas>` | the same vendored player the preview viewer's canvas lane uses |
+| **Remote Compose** (`.rc`) | the `Header` op's `0x048C` magic | CMP/Wasm in an isolated iframe | installed `rc-player-wasm` distribution |
 | **Lottie** (`.json`) | a Bodymovin object (`layers` + `fr`/`ip`/`op`) | `lottie-web` (SVG renderer) | vendored MIT build, `cli/src/main/resources/lottie-player/` |
 
 Why this is safe to leave open on a public box, and where its limits are:
@@ -839,7 +839,7 @@ runs**) bakes that Robolectric Android daemon + a minimal Android SDK, so `wear-
 fully IR-backed: its bundle carries `ir/*.rc` documents instead of preview classes, and the daemon
 replays those documents directly. A box **without** the Android runtime — the desktop-only
 from-source `deploy/vps` — instead falls back to baked PNGs for these catalogs, fail-closed: no
-error, just no daemon tier; browser-side JS and installed CMP JVM Remote Compose players remain
+error, just no daemon tier; browser-side CMP/Wasm and installed CMP JVM Remote Compose players remain
 available from the carried documents.
 
 > **The live lane also needs a `previewId` sticker→daemon mapping — and, for Android, the app's
@@ -903,7 +903,8 @@ indexed here); otherwise the served module's preview grid · `GET /p/{id}?sessio
 `GET /api/previews` JSON (now includes `trust`) · `POST /bundles/{name}` upload (returns `trust`) ·
 `GET /docs` document drop zone · `POST /docs` document ingest (returns an expiring `/d/<id>`) ·
 `GET /d/{id}` document permalink · `GET /d/{id}/raw` document bytes ·
-`GET /doc-player/{format}/bundle.js` the format's browser player (ungated static asset) ·
+`GET /doc-player/{format}/bundle.js` vendored format players such as Lottie (ungated static asset) ·
+`GET /rc-player-wasm/…` the Remote Compose CMP/Wasm player (ungated static assets) ·
 `GET /wasm/{system}/…` in-browser CMP app (ungated static assets) · `GET /status` server status
 (HTML, or JSON with `?format=json`) · `GET /status.json` server status JSON · `GET /healthz`
 liveness · `GET /readyz` readiness (green only once a preview actually renders — the docker-rollout

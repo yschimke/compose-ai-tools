@@ -348,50 +348,42 @@
     });
   }
 
-  function ensureRcPlayer() {
-    if (window.RC) return Promise.resolve();
-    return new Promise(function (resolve, reject) {
-      var existing = document.querySelector("script[data-cp-rc-compare]");
-      if (existing) {
-        existing.addEventListener("load", resolve, { once: true });
-        existing.addEventListener("error", reject, { once: true });
-        return;
-      }
-      var script = document.createElement("script");
-      script.src = "/rc-player/bundle.js";
-      script.setAttribute("data-cp-rc-compare", "1");
-      script.onload = resolve;
-      script.onerror = reject;
-      document.head.appendChild(script);
-    });
-  }
-
-  function nextFrame() {
-    return new Promise(function (resolve) { requestAnimationFrame(function () { resolve(); }); });
-  }
-
   function renderRc(row, pngUrl, documentUrl) {
-    var canvas = row.querySelector("canvas");
-    return Promise.all([ensureRcPlayer(), loadImage(pngUrl), fetch(documentUrl)]).then(function (values) {
-      var png = values[1];
-      var response = values[2];
-      if (!response.ok) throw new Error("RC " + response.status);
-      canvas.width = png.naturalWidth || png.width;
-      canvas.height = png.naturalHeight || png.height;
-      return response.arrayBuffer();
-    }).then(function (buffer) {
-      var player = new window.RC.RcdPlayer(canvas);
-      // Artifact theme is an explicit comparison input; it must not inherit the site's / OS's
-      // prefers-color-scheme or a light PNG can be scored against a dark RC canvas.
-      player.setTheme(theme);
-      return player.loadFromArrayBuffer(buffer).then(function () {
-        if (player.repaint) player.repaint();
-        // The first paint discovers named font families. Wait for those faces, repaint with the
-        // resolved glyphs, and only then take the single-shot fidelity measurement.
-        return player.fontsReady().then(function () {
-          if (player.repaint) player.repaint();
-          return nextFrame().then(nextFrame).then(function () { return scoreCanvas(pngUrl, canvas); });
-        });
+    var oldCanvas = row.querySelector("canvas");
+    var frame = row.querySelector("iframe.cp-compare-rc");
+    if (!frame) {
+      frame = document.createElement("iframe");
+      frame.className = "cp-compare-rc";
+      frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
+      oldCanvas.parentNode.insertBefore(frame, oldCanvas);
+    }
+    oldCanvas.hidden = true;
+    return loadImage(pngUrl).then(function (png) {
+      frame.width = png.naturalWidth || png.width;
+      frame.height = png.naturalHeight || png.height;
+      return new Promise(function (resolve, reject) {
+        var timer = setTimeout(function () {
+          window.removeEventListener("message", ready);
+          reject(new Error("CMP/Wasm player timed out"));
+        }, 30000);
+        function ready(event) {
+          if (event.source !== frame.contentWindow || event.origin !== location.origin) return;
+          if (event.data === "cp-rc-wasm-ready") {
+            clearTimeout(timer);
+            window.removeEventListener("message", ready);
+            var canvas = frame.contentDocument && frame.contentDocument.querySelector("canvas");
+            if (!canvas) { reject(new Error("CMP/Wasm player produced no canvas")); return; }
+            scoreCanvas(pngUrl, canvas).then(resolve, reject);
+          } else if (typeof event.data === "string" && event.data.indexOf("cp-rc-wasm-error:") === 0) {
+            clearTimeout(timer);
+            window.removeEventListener("message", ready);
+            reject(new Error("CMP/Wasm player failed"));
+          }
+        }
+        window.addEventListener("message", ready);
+        var absolute = new URL(documentUrl, location.origin).href;
+        frame.src = "/rc-player-wasm/index.html?src=" + encodeURIComponent(absolute) +
+          "&theme=" + encodeURIComponent(theme);
       });
     });
   }
@@ -414,9 +406,11 @@
     png.alt = row.getAttribute("data-label") + " rendered PNG";
     score.textContent = "comparing…";
     score.className = "cp-compare-score";
+    var rcFrame = row.querySelector("iframe.cp-compare-rc");
     if (format === "svg" || format === "reference") {
       vector.hidden = false;
       canvas.hidden = true;
+      if (rcFrame) rcFrame.hidden = true;
       vector.src = candidateUrl;
       vector.alt = row.getAttribute("data-label") + (format === "svg" ? " SVG" : " design reference");
       vector.title = format === "reference" ? "Open Reference / Diff / Actual" : "";
@@ -426,6 +420,7 @@
     } else {
       vector.hidden = true;
       canvas.hidden = false;
+      if (rcFrame) rcFrame.hidden = false;
     }
     var result = format === "svg"
       ? scoreSvgUrls(pngUrl, candidateUrl)

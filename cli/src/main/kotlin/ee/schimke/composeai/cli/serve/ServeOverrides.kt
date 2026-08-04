@@ -99,9 +99,9 @@ object ServeOverrides {
       "rcProfile",
       // Remote Compose render backend (the viewer's per-preview backend selector). Selects which
       // *server-side* player draws the replayed `ir/<id>.rc` document: `java`/`view` →
-      // `RemoteComposePlayerKind.VIEW`, `cmp-android`/`embedded` → `EMBEDDED`. The client-side `js`
-      // canvas lane and the not-yet-renderable `cmp-jvm` lane never ride this param (js replays the
-      // doc in-browser; cmp-jvm has no draw path), so those values are rejected. Daemon-only +
+      // `RemoteComposePlayerKind.VIEW`, `cmp-android`/`embedded` → `EMBEDDED`. The client-side
+      // `cmp-wasm` lane and isolated `cmp-jvm` lane never ride this daemon param, so those values
+      // are rejected. Daemon-only +
       // Android-only — a desktop/static session has no Remote Compose runtime and ignores it.
       "rcPlayer",
     )
@@ -573,7 +573,7 @@ object ServeOverrides {
     // Remote Compose render backend (`rcPlayer=<backend>`). Maps a server-side backend id onto the
     // daemon's `RemoteComposePlayerKind` (`java`/`view` → VIEW, `cmp-android`/`embedded` →
     // EMBEDDED).
-    // The client-side `js` canvas and the not-yet-renderable `cmp-jvm` lane never ride the PNG
+    // The client-side `cmp-wasm` and isolated `cmp-jvm` lanes never ride the daemon PNG
     // render param, so those (and any other value) are a hard Invalid rather than a silent default.
     val rcPlayer =
       params["rcPlayer"]

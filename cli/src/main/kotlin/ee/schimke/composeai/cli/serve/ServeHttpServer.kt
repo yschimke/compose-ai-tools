@@ -100,8 +100,8 @@ class ServeHttpServer(
    */
   private val wasmCatalogs: Map<String, File> = emptyMap(),
   /**
-   * Experimental non-JVM Remote Compose player distribution. When present, its static files are
-   * served from `/rc-player-wasm/` and RC previews advertise the `cmp-wasm` browser backend.
+   * Non-JVM Remote Compose browser player distribution. When present, its static files are served
+   * from `/rc-player-wasm/` and RC previews advertise the `cmp-wasm` browser backend.
    */
   private val rcPlayerWasmDir: File? = null,
   /**
@@ -396,8 +396,8 @@ class ServeHttpServer(
         }
 
         // The CMP/Wasm Remote Compose player is a single shared app rather than a per-catalog app.
-        // Keep it opt-in while operation coverage is incomplete; an unset directory simply makes
-        // this route 404 and leaves the selector chip disabled.
+        // An unset directory means this installation omitted the browser distribution; fail
+        // closed by leaving the route unavailable and the selector chip disabled.
         get("/rc-player-wasm/{path...}") {
           val dir = rcPlayerWasmDir
           if (dir == null) {
@@ -432,15 +432,6 @@ class ServeHttpServer(
         // A constant first segment, so it outscores the `/{system}` catch-all in Ktor routing.
         get("/hero/{system}/{name}") { handleHeroImage() }
 
-        // The in-browser Remote Compose player: a single shared IIFE bundle (global `RC`), baked
-        // into the CLI jar as a classpath resource and served here so the viewer's client-side
-        // `<canvas>` render lane (fetch `/render/<id>.rc` → `RC.RcdPlayer`) can load it. Always
-        // available (unlike the operator-gated Wasm apps) — the bundle rides in the jar, not a
-        // per-catalog dir. Ungated (generic client code, no session data) and CORS-open like the
-        // Wasm assets so a sandboxed viewer iframe can pull it. A constant first segment, so it
-        // outscores the `/{system}` catch-all in Ktor routing.
-        get("/rc-player/bundle.js") { respondPlayerAsset(playerAsset(RC_PLAYER_RESOURCE)) }
-
         // The document lane (`--accept-docs`): ingest one **known document format** (Remote Compose
         // or Lottie — see [ServeDocFormats]) and hand back an expiring permalink that plays it in
         // the browser. Registered only when the operator opts in. Constant first segments, so they
@@ -451,8 +442,7 @@ class ServeHttpServer(
           get("/d/{id}") { handleDocPage(store) }
           get("/d/{id}/raw") { handleDocRaw(store) }
           // Each format's vendored browser player, looked up in the registry rather than routed
-          // per-format. Ungated + CORS-open like `/rc-player/bundle.js` (generic client code, no
-          // session data).
+          // per-format. Ungated + CORS-open (generic client code, no session data).
           get("/doc-player/{format}/bundle.js") { handleDocPlayer() }
         }
 
@@ -1094,7 +1084,12 @@ class ServeHttpServer(
       call.respondText("not found", status = HttpStatusCode.NotFound)
       return
     }
-    respondPlayerAsset(playerAsset(format.playerResource))
+    val resource = format.playerResource
+    if (resource == null) {
+      call.respondText("not found", status = HttpStatusCode.NotFound)
+      return
+    }
+    respondPlayerAsset(playerAsset(resource))
   }
 
   /** `GET /assets/serve/{version}/{name}`: static ServeWeb CSS/JS extracted from raw strings. */
@@ -2493,12 +2488,8 @@ class ServeHttpServer(
           hasScrollExport = renderHost.hasScrollExportFor(preview.id),
           hasLiveStream = renderHost.hasLiveStream,
           trust = catalogBundleHost(renderHost)?.let { BundleVerifier.summary(it.trust) },
-          // Per-preview: offer the in-browser Remote Compose canvas lane only when this preview
-          // carries a captured `.rc` document to replay (the browser fetches it from
-          // `/render/<id>.rc`).
-          hasRemoteComposeDoc = renderHost.hasRemoteComposeDoc(preview.id),
           // Per-preview: the Remote Compose backend selector's enabled lanes. The host advertises
-          // its server/client lanes; the opt-in CMP/Wasm distribution contributes the browser
+          // its server lanes; the installed CMP/Wasm distribution contributes the browser
           // lane when this preview has an RC document. Empty for a non-RC preview ⇒ no selector.
           enabledRcPlayers =
             buildList {
@@ -3110,9 +3101,6 @@ class ServeHttpServer(
       if (githubAuthConfigured && hasLiveStream) DYNAMIC_RESOURCE_CACHE_CONTROL
       else if (isPublic) STATIC_PAGE_CACHE_CONTROL else DYNAMIC_RESOURCE_CACHE_CONTROL
 
-    /** Classpath location of the vendored Remote Compose player IIFE bundle (global `RC`). */
-    private const val RC_PLAYER_RESOURCE = "/rc-player/bundle.js"
-
     /**
      * A vendored browser player bundle baked into the CLI jar: its bytes plus a content-hash ETag.
      * The bundles are fixed at build time, so a strong hash makes conditional requests cheap (a 304
@@ -3139,13 +3127,6 @@ class ServeHttpServer(
             "\""
         PlayerAsset(bytes, etag)
       }
-
-    /** The Remote Compose player, kept as a named handle for the preview viewer's canvas lane. */
-    internal val rcPlayerBundle: ByteArray
-      get() = playerAsset(RC_PLAYER_RESOURCE).bytes
-
-    internal val rcPlayerEtag: String
-      get() = playerAsset(RC_PLAYER_RESOURCE).etag
 
     /** Max accepted upload-body size for `POST /docs` (matches the document store's own cap). */
     private val MAX_DOC_BYTES: Long = ServeDocStore.DEFAULT_MAX_DOC_BYTES.toLong()

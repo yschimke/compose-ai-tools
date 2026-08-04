@@ -123,7 +123,7 @@ on:
         type: boolean
         default: false
       rc-embedded-lane:
-        description: "Add the embedded-player lane to rc-compare.html, making it a three-way page: baked PNG vs the vendored TypeScript RcdPlayer vs AndroidX's Compose-embedded RcPlayer. Off by default because it is the only part of this workflow that needs a Gradle/Android toolchain — it stages the bundle's ir/*.rc, renders them through :third-party-rc-embedded-player (Robolectric), and diffs the result. Requires an Android SDK on the runner; a runner without one (or a harness failure) degrades to the usual two-lane page rather than failing the render. No-op for a catalog that ships no ir/*.rc."
+        description: "Add the Android embedded-player lane to rc-compare.html alongside the primary CMP/Wasm browser result. Off by default because it needs a Gradle/Android toolchain: it stages the bundle's ir/*.rc, renders them through :third-party-rc-embedded-player (Robolectric), and diffs the result. Requires an Android SDK; a harness failure degrades to a page without this optional column."
         required: false
         type: boolean
         default: false
@@ -615,13 +615,12 @@ jobs:
             --spec "${{ inputs.spec }}"
 
       # PNG ↔ Remote Compose parity page: for a catalog that ships `.rc`
-      # documents (remote-m3), render each one client-side with the vendored
-      # TypeScript player (headless Chromium) and pixel-diff it against the baked
-      # PNG — the browser-render-lane counterpart of the PNG↔figma-svg compare.
+      # documents (remote-m3), render each one with CMP/Wasm in headless Chromium and pixel-diff it
+      # against the baked PNG — the browser-render-lane counterpart of the PNG↔figma-svg compare.
       # A no-op (and no Chromium download) for catalogs without `ir/*.rc`.
       - name: PNG vs Remote Compose parity page
         id: rc-compare
-        if: ${{ inputs.publish || inputs.upload-out }}
+        if: ${{ inputs.rc-cmp-wasm-lane && (inputs.publish || inputs.upload-out) }}
         continue-on-error: ${{ inputs.rc-cmp-wasm-lane }}
         working-directory: compose-ai-tools/scripts/design-artifacts
         env:
@@ -651,7 +650,6 @@ jobs:
           fi
           echo "✓ Chromium ready."
 
-          PLAYER="$GITHUB_WORKSPACE/compose-ai-tools/cli/src/main/resources/rc-player/bundle.js"
           EMBEDDED_ARGS=()
 
           if [ "${{ inputs.rc-cmp-wasm-lane }}" = "true" ]; then
@@ -698,7 +696,6 @@ jobs:
             rm -rf "$RC_IN"
             node rc-compare.mjs \
               --bundle "$GITHUB_WORKSPACE/bundle.png" \
-              --player "$PLAYER" \
               --out "$GITHUB_WORKSPACE/out" \
               --stage-embedded "$RC_IN"
           fi
@@ -745,7 +742,6 @@ jobs:
 
           node rc-compare.mjs \
             --bundle "$GITHUB_WORKSPACE/bundle.png" \
-            --player "$PLAYER" \
             --out "$GITHUB_WORKSPACE/out" \
             --system "${{ inputs.system }}" \
             --title "${{ inputs.system }}" \
@@ -759,8 +755,8 @@ jobs:
           path: |
             ${{ github.workspace }}/out/rc-compare-summary.json
             ${{ github.workspace }}/out/rc-compare.html
-            ${{ github.workspace }}/out/rc-cmp-wasm
-            ${{ github.workspace }}/out/rc-cmp-wasm-diff
+            ${{ github.workspace }}/out/rc
+            ${{ github.workspace }}/out/rc-diff
             ${{ github.workspace }}/out/rc-cmp-wasm-errors
           if-no-files-found: warn
 

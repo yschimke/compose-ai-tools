@@ -6,16 +6,12 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposePlayerKind
  * A Remote Compose render backend the `compose-preview serve` viewer can offer as a per-preview
  * option — the live counterpart of the columns the offline `rc-compare` pipeline diffs.
  *
- * The four are genuinely different renderers of the *same* captured `ir/<id>.rc` document, not
+ * The entries are genuinely different renderers of the *same* captured `ir/<id>.rc` document, not
  * skins over one engine, so a preview can look different under each:
  *
- * * [JS] — the vendored TypeScript player (`RC.RcdPlayer`, `third_party/remote-compose-player`),
- *   run **client-side** in the viewer's `<canvas>`. Needs only the `.rc` bytes (served over `GET
- *   /render/<id>.rc`); no daemon, no server render. This is the long-standing in-browser lane.
  * * [CMP_WASM] — this repository's non-JVM Compose Multiplatform player, compiled to Wasm and
- *   painting through Skiko in a browser iframe. It consumes the same captured bytes as [JS], but
- *   its codecs and behavior are implemented against AndroidX remote-core rather than the vendored
- *   TypeScript player.
+ *   painting through Skiko in a browser iframe. Its codecs and behavior are implemented against
+ *   AndroidX remote-core and it is the supported browser player.
  * * [JAVA] — the AOSP `remote-player-view` `RemoteComposePlayer` (an Android `View` painting into a
  *   framework `Canvas`), driven **server-side** by the daemon via [RemoteComposePlayerKind.VIEW].
  *   The default snapshot player for a Remote Compose preview on an Android backend.
@@ -45,18 +41,18 @@ enum class RcPlayerBackend(
   val label: String,
   /**
    * The daemon player kind a **server-side** backend renders through, or null for the lanes that
-   * don't ride the daemon `remoteCompose.player` override: the client-side [JS] lane and the
+   * don't ride the daemon `remoteCompose.player` override: the client-side [CMP_WASM] lane and the
    * [CMP_JVM] lane (which renders in its own isolated subprocess, see [RcJvmServerRenderer]).
    * Drives [ServeOverrides]'s mapping of the `rcPlayer=` param onto
    * [ee.schimke.composeai.daemon.protocol.RemoteComposeOverride.player].
    */
   val playerKind: RemoteComposePlayerKind?,
   /**
-   * True when the browser plays the `.rc` document itself (the [JS] lane); false for a PNG lane.
+   * True when the browser plays the `.rc` document itself (the [CMP_WASM] lane); false for a PNG
+   * lane.
    */
   val clientSide: Boolean,
 ) {
-  JS("js", "JS", playerKind = null, clientSide = true),
   CMP_WASM("cmp-wasm", "CMP Wasm", playerKind = null, clientSide = true),
   JAVA("java", "Java", playerKind = RemoteComposePlayerKind.VIEW, clientSide = false),
   CMP_ANDROID(
@@ -79,9 +75,9 @@ enum class RcPlayerBackend(
      * The server-side backend a `rcPlayer=` render param selects **through the daemon**, or null
      * otherwise. Accepts the backend [wire] ids (`java`, `cmp-android`) and the daemon-native
      * player-kind spellings (`view`, `embedded`) as aliases, so a link can be written either way.
-     * `js` (client-side) and `cmp-jvm` yield null: `js` replays in-browser, and `cmp-jvm` renders
-     * in its own subprocess lane ([ServeHttpServer] handles `rcPlayer=cmp-jvm` directly), so
-     * neither rides the daemon override this maps.
+     * `cmp-wasm` (client-side) and `cmp-jvm` yield null: the former replays in-browser, and the
+     * latter renders in its own subprocess lane ([ServeHttpServer] handles `rcPlayer=cmp-jvm`
+     * directly), so neither rides the daemon override this maps.
      */
     fun serverSideFromParam(raw: String): RcPlayerBackend? =
       when (raw.lowercase()) {

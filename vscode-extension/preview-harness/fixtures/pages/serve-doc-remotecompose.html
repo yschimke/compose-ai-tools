@@ -4,7 +4,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>watchface.rc — compose-preview</title>
-        <link rel="stylesheet" href="/assets/serve/bfa1-6a3dccee97faf254/serve.css">
+        <link rel="stylesheet" href="/assets/serve/bffa-4ad4bd52ba6a23da/serve.css">
         <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
         <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
@@ -25,7 +25,7 @@
         <p class="cp-sub">Remote Compose · 12 kB
           <span class="cp-doc-expiry" title="2026-07-28T22:13:00Z">expires in 58m</span></p>
         <div class="cp-doc-stage" id="cp-doc-stage" data-format="remotecompose">
-          <canvas id="cp-doc-mount" width="384" height="384"></canvas>
+          <iframe id="cp-doc-mount" width="384" height="384" sandbox="allow-scripts allow-same-origin" title="Remote Compose CMP Wasm player"></iframe>
         </div>
         <p class="cp-doc-status" id="cp-doc-status">Loading the Remote Compose player…</p>
         <div class="cp-doc-facts">
@@ -43,24 +43,17 @@
           <a href="/docs">Share another</a>
         </p>
         <script>(function () {
-  var raw = "/d/Tz3l9WcAq0Xj5RmB7dPuKw/raw";
   var mount = document.getElementById("cp-doc-mount");
   var status = document.getElementById("cp-doc-status");
-  function done() { status.textContent = ""; }
-  function fail() { status.textContent = "This document could not be played back in your browser."; }
-  var s = document.createElement("script");
-  s.src = "/doc-player/remotecompose/bundle.js";
-  s.onerror = function () { status.textContent = "The player failed to load."; };
-  s.onload = function () {
-      fetch(raw).then(function (r) { return r.arrayBuffer(); }).then(function (buf) {
-  var player = new window.RC.RcdPlayer(mount);
-  return Promise.resolve(player.loadFromArrayBuffer(buf)).then(function () {
-    if (player.repaint) player.repaint();
-    done();
+  var raw = new URL("/d/Tz3l9WcAq0Xj5RmB7dPuKw/raw", location.origin).href;
+  window.addEventListener("message", function (e) {
+    if (e.source !== mount.contentWindow || e.origin !== location.origin) return;
+    if (e.data === "cp-rc-wasm-ready") status.textContent = "";
+    else if (typeof e.data === "string" && e.data.indexOf("cp-rc-wasm-error:") === 0) {
+      status.textContent = "This document could not be played back in your browser.";
+    }
   });
-}).catch(fail);
-  };
-  document.head.appendChild(s);
+  mount.src = "/rc-player-wasm/index.html?src=" + encodeURIComponent(raw);
 })();</script>
         </main>
       </body>

@@ -453,8 +453,8 @@ class ServeBundleHost(
     }
   }
 
-  // Cheap existence check (no read) so the per-preview page render can gate the client-side canvas
-  // lane without pulling the whole document — the browser fetches the bytes over `/render/<id>.rc`.
+  // Cheap existence check (no read) so the page can gate CMP/Wasm without pulling the whole
+  // document — the browser fetches the bytes over `/render/<id>.rc`.
   override fun hasRemoteComposeDoc(previewId: String): Boolean {
     if (previewId !in previewIds) return false
     return fileSystem.exists(File(irDir, "$previewId$RC_SUFFIX").toOkioPath())

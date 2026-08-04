@@ -58,11 +58,11 @@ function withEmbeddedJvm(base) {
 /** The same model with an embedded-player result on every row — the two-player page. */
 function withEmbedded(base) {
   const emb = {
-    // clean in JS, badly off in the embedded player: exercises independent scoring + sorting
+    // clean in CMP/Wasm, badly off in the embedded player: exercises independent scoring + sorting
     TextRemoteButton: { embeddedRendered: true, embeddedMismatchPct: 41.5, embeddedMismatchPx: 114_318 },
-    // the reverse: the JS player is the bad one here
+    // the reverse: the browser player is the bad one here
     ShaderGradientSticker: { embeddedRendered: true, embeddedMismatchPct: 1.2, embeddedMismatchPx: 3_307 },
-    // JS could not decode it; the embedded player could
+    // CMP/Wasm could not decode it; the embedded player could
     Undecodable: { embeddedRendered: true, embeddedMismatchPct: 8, embeddedMismatchPx: 22_050 },
     // a blank baked reference: the embedded player renders it and "matches" for the wrong reason
     BrandedTextRemote: { embeddedRendered: true, embeddedMismatchPct: 0, embeddedMismatchPx: 0 },
@@ -144,20 +144,20 @@ test("the page is a self-contained document with the three-column header", () =>
   const html = renderRcCompareHtml(model);
   assert.match(html, /^<!doctype html>/);
   assert.match(html, /baked PNG/);
-  assert.match(html, /RC · JS player/);
+  assert.match(html, /RC · CMP\/Wasm/);
   assert.match(html, /pixel diff/);
   // summary line reflects the counts
   assert.match(html, /mean mismatch <strong>38\.15%<\/strong>/);
   assert.match(html, /1 not decodable/);
 });
 
-test("a model with no embedded results renders the JS-only page — no empty embedded columns", () => {
+test("a model with no embedded results renders only the primary CMP Wasm lane", () => {
   const html = renderRcCompareHtml(model);
   assert.equal(hasEmbeddedLane(model.rows), false);
   assert.doesNotMatch(html, /RC · embedded player/);
   assert.doesNotMatch(html, /embedded player:<\/strong>/);
   // exactly the original four columns
-  assert.match(html, /<thead><tr><th>preview<\/th><th>baked PNG<\/th><th>RC · JS player<\/th><th>pixel diff<\/th><\/tr><\/thead>/);
+  assert.match(html, /<thead><tr><th>preview<\/th><th>baked PNG<\/th><th>RC · CMP\/Wasm<\/th><th>pixel diff<\/th><\/tr><\/thead>/);
 });
 
 test("rows sort worst-match-first, and unrenderable rows sink to the bottom", () => {
@@ -186,7 +186,7 @@ test("the embedded lane adds two columns and its own summary line", () => {
   assert.match(html, /RC · embedded player/);
   assert.match(html, /<strong>embedded player:<\/strong>/);
   // both players keep their own score chip on every row
-  assert.match(html, /<span class="scorelabel">js<\/span>/);
+  assert.match(html, /<span class="scorelabel">cmp-wasm<\/span>/);
   assert.match(html, /<span class="scorelabel">embedded<\/span>/);
 });
 
@@ -201,7 +201,7 @@ test("the cmp-jvm lane adds one column with a folded diff, a score chip and its 
   // Header carries exactly one cmp-jvm column (no standalone "pixel diff" th for it).
   assert.equal((html.match(/<th>RC · cmp-jvm player<\/th>/g) || []).length, 1);
   // The lede must describe the cmp-jvm player even when the Android embedded lane is off —
-  // otherwise it falls into the JS-only branch and claims the TypeScript player is the only one.
+  // otherwise it could fall into a primary-lane-only description.
   assert.match(html, /<strong>cmp-jvm player<\/strong> runs that same/);
   assert.doesNotMatch(html, /The player is the vendored TypeScript/);
 });
@@ -210,15 +210,15 @@ test("the cmp-jvm and embedded lanes coexist, each its own column and summary", 
   const html = renderRcCompareHtml(withEmbeddedJvm(withEmbedded(model)));
   assert.match(html, /RC · embedded player/);
   assert.match(html, /RC · cmp-jvm player/);
-  assert.match(html, /\(JS \+ embedded \+ cmp-jvm players\)/);
-  // The lede names all three players and the worst-scoring sort, not just JS + embedded.
-  assert.match(html, /<strong>JS player<\/strong>/);
+  assert.match(html, /\(CMP\/Wasm \+ embedded \+ cmp-jvm players\)/);
+  // The lede names all three players and the worst-scoring sort.
+  assert.match(html, /<strong>CMP\/Wasm player<\/strong>/);
   assert.match(html, /<strong>embedded player<\/strong>/);
   assert.match(html, /<strong>cmp-jvm player<\/strong>/);
   assert.match(html, /rows sort worst-match-first on the worst-scoring player/);
 });
 
-test("the cmp-wasm lane adds one folded-diff column and independent parity stats", () => {
+test("legacy cmp-wasm aliases retain independent gate stats without a duplicate column", () => {
   const wasmModel = withCmpWasm(model);
   const html = renderRcCompareHtml(wasmModel);
   const stats = summarizeRcCompare(wasmModel.rows);
@@ -226,21 +226,15 @@ test("the cmp-wasm lane adds one folded-diff column and independent parity stats
   assert.equal(stats.cmpWasmRendered, 2);
   assert.equal(stats.cmpWasmUnsupported, 1);
   assert.ok(Math.abs(stats.cmpWasmMeanPct - 3.5) < 1e-9);
-  assert.match(html, /RC · cmp-wasm player/);
-  assert.match(html, /<strong>cmp-wasm player:<\/strong>/);
   assert.match(html, /<span class="scorelabel">cmp-wasm<\/span>/);
-  assert.match(html, /\(JS \+ cmp-wasm players\)/);
-  assert.match(html, /runs the new Compose Multiplatform \/ Skiko player in browser Wasm/);
-  assert.match(
-    html,
-    /href="rc-cmp-wasm-errors\/pkg\.CatalogPreviewsKt\.Undecodable\.txt">details<\/a>/,
-  );
+  assert.match(html, /\(CMP\/Wasm player\)/);
+  assert.doesNotMatch(html, /<th>RC · cmp-wasm player<\/th>/);
 });
 
-test("all rc-compare lanes can coexist without hiding the cmp-wasm result", () => {
+test("all server lanes coexist with the primary cmp-wasm result", () => {
   const html = renderRcCompareHtml(withCmpWasm(withEmbeddedJvm(withEmbedded(model))));
-  assert.match(html, /\(JS \+ embedded \+ cmp-jvm \+ cmp-wasm players\)/);
-  assert.equal((html.match(/<th>RC · cmp-wasm player<\/th>/g) || []).length, 1);
+  assert.match(html, /\(CMP\/Wasm \+ embedded \+ cmp-jvm players\)/);
+  assert.equal((html.match(/<th>RC · cmp-wasm player<\/th>/g) || []).length, 0);
   assert.match(html, /data-cmp-wasm-pct=/);
 });
 
@@ -256,11 +250,11 @@ test("cmp-jvm is summarized independently, like the embedded lane", () => {
 
 test("each player is summarized independently — one lane's failures don't touch the other's mean", () => {
   const s = summarizeRcCompare(withEmbedded(model).rows);
-  // JS side is unchanged by the embedded results
+  // Primary browser results are unchanged by the embedded results.
   assert.equal(s.rendered, 2);
   assert.equal(s.unsupported, 1);
   assert.ok(Math.abs(s.meanPct - 38.15) < 1e-9);
-  // embedded rendered all three, including the one the JS player could not decode
+  // embedded rendered all three, including the one CMP/Wasm could not decode
   assert.equal(s.embeddedRendered, 3);
   assert.equal(s.embeddedUnsupported, 0);
   assert.ok(Math.abs(s.embeddedMeanPct - (41.5 + 1.2 + 8) / 3) < 1e-9);
@@ -270,10 +264,10 @@ test("rows sort on the worse of the two players, so an embedded-only regression 
   const html = renderRcCompareHtml(withEmbedded(model));
   const iText = html.indexOf("TextRemoteButton");
   const iShader = html.indexOf("ShaderGradientSticker");
-  // TextRemoteButton is 0% in JS but 41.5% embedded; ShaderGradientSticker is 76.3% in JS.
+  // TextRemoteButton is 0% in CMP/Wasm but 41.5% embedded; ShaderGradientSticker is 76.3% there.
   // 76.3 still beats 41.5, so Shader stays first — but Text must now outrank the 8% row.
   const iUndecodable = html.indexOf("Undecodable");
-  assert.ok(iShader < iText, "76.3% (js) sorts above 41.5% (embedded)");
+  assert.ok(iShader < iText, "76.3% (cmp-wasm) sorts above 41.5% (embedded)");
   assert.ok(iText < iUndecodable, "41.5% (embedded) sorts above 8% (embedded)");
 });
 

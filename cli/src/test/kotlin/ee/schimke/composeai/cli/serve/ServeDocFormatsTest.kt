@@ -91,16 +91,17 @@ class ServeDocFormatsTest {
   }
 
   @Test
-  fun `every format resolves by id and mounts its player under a distinct path`() {
+  fun `every format resolves by id and mounts a supported player`() {
     for (format in ServeDocFormats.ALL) {
       assertEquals(format, ServeDocFormats.byId(format.id))
-      assertEquals("/doc-player/${format.id}/bundle.js", format.playerPath)
     }
+    assertEquals("/rc-player-wasm/index.html", ServeDocFormats.REMOTE_COMPOSE.playerPath)
+    assertEquals("/doc-player/lottie/bundle.js", ServeDocFormats.LOTTIE.playerPath)
     assertNull(ServeDocFormats.byId("../../etc/passwd"))
     assertEquals(
       ServeDocFormats.ALL.size,
       ServeDocFormats.ALL.map { it.playerPath }.distinct().size,
-      "each format serves its own player path",
+      "each format has its own player path",
     )
   }
 }

@@ -343,10 +343,9 @@ internal constructor(
   /**
    * A daemon-backed host offers the server-side [RcPlayerBackend.JAVA] /
    * [RcPlayerBackend.CMP_ANDROID] lanes for a Remote Compose preview when its backend honours the
-   * player override ([remoteComposePlayerSelectable]); the client-side [RcPlayerBackend.JS] lane
-   * rides on top whenever the host can also hand back the `.rc` document. RC-ness is taken from the
-   * preview's declared Remote Compose knobs (populated for a Remote Compose preview) or a carried
-   * `.rc` doc.
+   * player override ([remoteComposePlayerSelectable]). The HTTP server adds the CMP/Wasm browser
+   * lane when its distribution is installed. RC-ness is taken from the preview's declared Remote
+   * Compose knobs (populated for a Remote Compose preview) or a carried `.rc` doc.
    */
   override fun enabledRcPlayersFor(previewId: String): List<RcPlayerBackend> {
     val isRemoteCompose =
@@ -354,7 +353,6 @@ internal constructor(
         previews.firstOrNull { it.id == previewId }?.remoteComposeKnobs?.isNotEmpty() == true
     if (!isRemoteCompose) return emptyList()
     return buildList {
-      if (hasRemoteComposeDoc(previewId)) add(RcPlayerBackend.JS)
       if (remoteComposePlayerSelectable) {
         add(RcPlayerBackend.JAVA)
         add(RcPlayerBackend.CMP_ANDROID)

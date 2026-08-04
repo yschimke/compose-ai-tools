@@ -15,10 +15,10 @@ data class ServeDocSize(val width: Int, val height: Int)
  * A **known document format** the serve host can ingest ([ServeDocStore]) and hand back as an
  * expiring permalink. Each format is data-only — a document is a *description* of what to draw, not
  * code — so the server never executes it: it stores the bytes, sniffs which format they are, and
- * the browser plays them back with the format's vendored player.
+ * the browser plays them back with a supported player.
  *
  * Everything per-format lives here, in the registry, rather than as branches in the store or the
- * HTTP routes: adding a format is one [ServeDocFormat] entry plus its player bundle. The route
+ * HTTP routes: adding a format is one [ServeDocFormat] entry plus its supported player. The route
  * layer only ever looks a format up by [id] and reads these fields.
  *
  * @param id stable wire id (`remotecompose`, `lottie`) — appears in the upload response and in the
@@ -26,8 +26,8 @@ data class ServeDocSize(val width: Int, val height: Int)
  * @param label human name for the document page.
  * @param extension canonical file extension, used for the raw download's filename.
  * @param contentType what `GET /d/<id>/raw` responds with.
- * @param playerResource classpath path of the vendored browser player bundle served at
- *   `/doc-player/<id>/bundle.js`.
+ * @param playerResource optional classpath path of a vendored browser player bundle. Remote Compose
+ *   uses the installed CMP/Wasm application instead of a JavaScript bundle.
  * @param detect content sniff — true when [ByteArray] really is this format. Runs before anything
  *   else touches the upload, so a mislabelled or hostile file is rejected on shape, not on its
  *   name.
@@ -43,14 +43,14 @@ data class ServeDocFormat(
   val label: String,
   val extension: String,
   val contentType: String,
-  val playerResource: String,
+  val playerResource: String?,
   val detect: (ByteArray) -> Boolean,
   val describe: (ByteArray) -> List<ServeDocFact>,
   val size: (ByteArray) -> ServeDocSize?,
 ) {
-  /** URL of this format's browser player bundle (mounted by `ServeHttpServer`). */
+  /** URL of this format's browser player entry point (mounted by `ServeHttpServer`). */
   val playerPath: String
-    get() = "/doc-player/$id/bundle.js"
+    get() = playerResource?.let { "/doc-player/$id/bundle.js" } ?: "/rc-player-wasm/index.html"
 }
 
 /**
@@ -64,8 +64,7 @@ object ServeDocFormats {
 
   /**
    * Remote Compose document (`.rc`) — the `RemoteDocument` byte stream the Compose connector
-   * captures, played back by the same vendored `RC.RcdPlayer` the preview viewer's canvas lane
-   * uses.
+   * captures, played back by the AndroidX-conformant CMP/Wasm player.
    *
    * The stream opens with the `Header` operation: opcode `0x00`, then a big-endian int whose high
    * 16 bits are the format magic (`0x048C`) and whose low 16 are the major version. That is the
@@ -78,7 +77,7 @@ object ServeDocFormats {
       label = "Remote Compose",
       extension = ".rc",
       contentType = "application/octet-stream",
-      playerResource = "/rc-player/bundle.js",
+      playerResource = null,
       detect = ::isRemoteComposeDoc,
       describe = ::describeRemoteCompose,
       size = ::remoteComposeSize,

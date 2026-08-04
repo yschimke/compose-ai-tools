@@ -700,24 +700,15 @@ class ServeHttpRoutingTest {
   }
 
   @Test
-  fun `the viewer offers the in-browser canvas lane when a preview carries an rc document`() {
-    // compose-m3's preview has an `ir/<id>.rc` sidecar, so its viewer page advertises the RC canvas
-    // lane: the flag the transport JS keys on, the canvas, the mode radio, and the toggle button.
+  fun `the viewer offers the cmp wasm lane when a preview carries an rc document`() {
     val (code, html) = get("/compose-m3/p/$previewId")
     assertEquals(200, code)
-    assertTrue(html.contains("data-has-rc-doc=\"1\""), "viewer flags the rc document: $html")
-    assertTrue(html.contains("id=\"cp-rc-canvas\""), "rc canvas element present")
-    // The backend selector replaces the old single toggle: a `js` chip drives the same canvas lane.
     assertTrue(html.contains("id=\"cp-rc-backends\""), "rc backend selector present")
-    assertTrue(html.contains("data-rc-backend=\"js\""), "js backend chip present")
     assertTrue(html.contains("data-rc-backend=\"cmp-wasm\""), "cmp-wasm backend chip present")
     assertTrue(html.contains("id=\"cp-rc-wasm\""), "cmp-wasm iframe present")
-    assertTrue(html.contains("value=\"rc\""), "rc mode radio present")
-    // The client-side lane JS loads the player and applies knob edits without a daemon round-trip.
     val viewerJs = ServeWebAssets.load("viewer.js")!!.bytes.decodeToString()
-    assertTrue(viewerJs.contains("/rc-player/bundle.js"), "the lane loads the player bundle")
-    assertTrue(viewerJs.contains("RcdPlayer"), "the lane creates the Rc player")
-    assertTrue(viewerJs.contains("setNamedFloatOverride"), "rc knob edits apply client-side")
+    assertTrue(viewerJs.contains("/rc-player-wasm/index.html"), "the lane loads CMP/Wasm")
+    assertTrue(!viewerJs.contains("RcdPlayer"), "the retired TypeScript player is absent")
   }
 
   @Test
@@ -736,48 +727,13 @@ class ServeHttpRoutingTest {
   }
 
   @Test
-  fun `the viewer omits the canvas lane when the preview has no rc document`() {
-    // default-mod carries no `.rc` document, so the RC canvas lane's HTML (flag, canvas, toggle) is
-    // absent and its Remote Compose knobs stay on the daemon path.
+  fun `the viewer omits the rc selector when the preview has no rc document`() {
     val (code, html) = get("/p/$previewId?session=default-mod")
     assertEquals(200, code)
-    // The transport JS always *reads* `data-has-rc-doc`, so assert the attribute form (`="1"`) is
-    // absent rather than the bare name, plus the lane's HTML elements.
-    assertTrue(
-      !html.contains("data-has-rc-doc=\"1\""),
-      "no rc-doc flag on a docless preview: $html",
-    )
-    assertTrue(!html.contains("id=\"cp-rc-canvas\""), "no rc canvas on a docless preview")
     assertTrue(
       !html.contains("id=\"cp-rc-backends\""),
       "no rc backend selector on a docless preview",
     )
-  }
-
-  @Test
-  fun `the rc player bundle is served as javascript with a conditional-request etag`() {
-    // The vendored Remote Compose player rides in the CLI jar and is served over
-    // `/rc-player/bundle.js` (a constant segment, session-independent) so the viewer's client-side
-    // canvas lane can load the `RC` global. Served as JS (so the browser executes it) with a
-    // content-hash ETag for cheap conditional requests.
-    val etag: String
-    val req = Request.Builder().url("http://127.0.0.1:${server.port}/rc-player/bundle.js").build()
-    client.newCall(req).execute().use { r ->
-      assertEquals(200, r.code)
-      assertEquals("text/javascript", r.body?.contentType()?.let { "${it.type}/${it.subtype}" })
-      val body = r.body?.string() ?: ""
-      assertTrue(body.contains("RcdPlayer"), "the bundle exposes the RcdPlayer entry point")
-      etag = r.header("ETag") ?: ""
-      assertTrue(etag.isNotEmpty(), "carries a content-hash ETag")
-    }
-    // A conditional GET carrying the matching ETag gets a cheap 304 instead of re-downloading the
-    // ~640 KB bundle.
-    val conditional =
-      Request.Builder()
-        .url("http://127.0.0.1:${server.port}/rc-player/bundle.js")
-        .header("If-None-Match", etag)
-        .build()
-    client.newCall(conditional).execute().use { r -> assertEquals(304, r.code) }
   }
 
   @Test

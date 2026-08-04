@@ -2,10 +2,9 @@
  * Render a self-contained `rc-compare.html` for a design-artifact catalog that
  * ships Remote Compose documents (`ir/<id>.rc`): every preview on one row, its
  * baked **PNG** (the Robolectric/Skiko render, source of truth) in one column,
- * the same document **rendered client-side by the vendored TypeScript player**
- * (`RC.RcdPlayer` on a `<canvas>`, the browser render lane) in a second, and a
+ * the same document **rendered client-side by the CMP/Wasm player** in a second, and a
  * **pixel-diff** in a third. A per-row mismatch % (fraction of pixels the diff
- * flags, `pixelmatch` at the driver's threshold) says how close the JS player
+ * flags, `pixelmatch` at the driver's threshold) says how close the browser player
  * gets to the baked capture; rows sort **worst-match-first** so the biggest
  * divergences surface first.
  *
@@ -18,8 +17,7 @@
  * Player lanes are compared against the same baked PNG, each with its own diff
  * and its own mismatch %:
  *
- * * **JS player** — the vendored TypeScript `RC.RcdPlayer` on a `<canvas>`, the
- *   browser render lane.
+ * * **CMP/Wasm** — the supported AndroidX-conformant browser render lane.
  * * **embedded player** — the vendored AndroidX `RcPlayer`
  *   (`:third-party-rc-embedded-player`), a pure-Compose interpreter of the same
  *   document. This is the lane that differs from `remote-player-view`'s
@@ -38,7 +36,7 @@
  *     rows: [{
  *       id, name, group,
  *       width, height,
- *       rendered,            // false when the JS player could not decode the doc
+ *       rendered,            // false when CMP/Wasm could not decode the doc
  *       note,                // optional reason when !rendered
  *       mismatchPct,         // 0..100, null when !rendered
  *       mismatchPx,          // integer, null when !rendered
@@ -55,7 +53,7 @@
  *   }
  *
  * The embedded fields are optional: a model without them (an older summary, or a
- * run where the embedded lane was skipped) renders the JS-only page unchanged,
+ * run where the embedded lane was skipped) renders the CMP/Wasm page unchanged,
  * with the embedded columns omitted entirely rather than shown empty.
  *
  * `referenceBlank` marks a preview whose baked PNG carries no opaque pixel at all
@@ -106,8 +104,7 @@ export function summarizeRcCompare(rows = []) {
   const meanPct =
     scored.length === 0 ? null : scored.reduce((s, r) => s + (r.mismatchPct ?? 0), 0) / scored.length;
 
-  // Embedded lane is summarized independently: its render can succeed on a document the JS player
-  // chokes on and vice versa, so counting them together would hide which player is behind.
+  // Embedded lanes are summarized independently from the primary CMP/Wasm browser lane.
   const embRendered = rows.filter((r) => r.embeddedRendered);
   const embScored = embRendered.filter((r) => !r.referenceBlank);
   const embMeanPct =
@@ -154,7 +151,7 @@ export function summarizeRcCompare(rows = []) {
 
 /**
  * Worst score on a row — the *worse* of the two players when both ran, so a row where only the
- * embedded lane diverges still sorts to the top rather than hiding behind a clean JS render.
+ * embedded lane diverges still sorts to the top rather than hiding behind a clean browser render.
  * Returns null when neither player produced a render.
  */
 function worstPct(r) {
@@ -197,7 +194,7 @@ function cell(label, src, extraClass = "") {
 
 /**
  * A render cell whose pixel diff sits in a **collapsed** `<details>` beneath the image, so adding a
- * player lane costs one column rather than two — the page already carries baked + JS (+ embedded)
+ * player lane costs one column rather than two — the page already carries baked + CMP/Wasm
  * columns, and a full diff column per new lane would quickly overwhelm. The mismatch % is always
  * visible as a score chip; the diff image is one click away when a divergence needs locating.
  */
@@ -244,7 +241,7 @@ function rowHtml(r, withEmbedded, withEmbeddedJvm, withCmpWasm) {
   const anyRendered =
     r.rendered || r.embeddedRendered || r.embeddedJvmRendered || r.cmpWasmRendered;
   const scores =
-    scoreBlock("js", r.rendered, r.mismatchPct, r.mismatchPx, r.note, r.referenceBlank) +
+    scoreBlock("cmp-wasm", r.rendered, r.mismatchPct, r.mismatchPx, r.note, r.referenceBlank) +
     (withEmbedded
       ? scoreBlock(
           "embedded",
@@ -313,7 +310,7 @@ function rowHtml(r, withEmbedded, withEmbeddedJvm, withCmpWasm) {
     ${dims}
   </th>
   <td>${cell("baked PNG", r.baked)}</td>
-  <td>${cell("RC · JS player", r.rc, "rc")}</td>
+  <td>${cell("RC · CMP/Wasm", r.rc, "rc")}</td>
   <td>${cell("pixel diff", r.diff, "diff")}</td>${embeddedCells}${embeddedJvmCell}${cmpWasmCell}
 </tr>`;
 }
@@ -328,10 +325,12 @@ export function renderRcCompareHtml(model, opts = {}) {
 
   const withEmbedded = hasEmbeddedLane(model.rows ?? []);
   const withEmbeddedJvm = hasEmbeddedJvmLane(model.rows ?? []);
-  const withCmpWasm = hasCmpWasmLane(model.rows ?? []);
-  // "JS", "JS + embedded", "JS + embedded + cmp-jvm", … — the players this page actually compares.
+  // CMP/Wasm is the primary browser column. Legacy summaries may also carry cmpWasm* aliases for
+  // the strict gate, but those are not rendered as a duplicate lane.
+  const withCmpWasm = false;
+  // The players this page actually compares.
   const laneNames = [
-    "JS",
+    "CMP/Wasm",
     withEmbedded && "embedded",
     withEmbeddedJvm && "cmp-jvm",
     withCmpWasm && "cmp-wasm",
@@ -351,7 +350,7 @@ export function renderRcCompareHtml(model, opts = {}) {
     : "";
 
   const summary =
-    `<strong>JS player:</strong> ${stats.scored} scored · mean mismatch <strong>${meanTxt}</strong>` +
+    `<strong>CMP/Wasm:</strong> ${stats.scored} scored · mean mismatch <strong>${meanTxt}</strong>` +
     (stats.unsupported ? ` · ${stats.unsupported} not decodable` : "") +
     blankTxt +
     (withEmbedded
@@ -373,7 +372,7 @@ export function renderRcCompareHtml(model, opts = {}) {
   // The cmp-jvm lane adds a single column (its diff folds into the cell); the embedded lane keeps
   // its own diff column, as before.
   const head =
-    `<tr><th>preview</th><th>baked PNG</th><th>RC · JS player</th><th>pixel diff</th>` +
+    `<tr><th>preview</th><th>baked PNG</th><th>RC · CMP/Wasm</th><th>pixel diff</th>` +
     (withEmbedded ? `<th>RC · embedded player</th><th>pixel diff</th>` : "") +
     (withEmbeddedJvm ? `<th>RC · cmp-jvm player</th>` : "") +
     (withCmpWasm ? `<th>RC · cmp-wasm player</th>` : "") +
@@ -451,7 +450,7 @@ ${rows.map((r) => rowHtml(r, withEmbedded, withEmbeddedJvm, withCmpWasm)).join("
 <p class="lede">Each preview's baked <strong>PNG</strong> (the offline Robolectric/Skiko render) next to the
 same <code>ir/*.rc</code> document as each player renders it, with a per-pixel diff after each.
 ${[
-  `The <strong>JS player</strong> is the vendored TypeScript <code>RC.RcdPlayer</code> on a <code>&lt;canvas&gt;</code>`,
+  `The <strong>CMP/Wasm player</strong> is the AndroidX-conformant browser implementation`,
   withEmbedded &&
     `the <strong>embedded player</strong> is AndroidX's <code>RcPlayer</code>, which interprets the document into Compose layout and draw nodes rather than painting into an Android <code>View</code> the way <code>remote-player-view</code> does`,
   withEmbeddedJvm &&

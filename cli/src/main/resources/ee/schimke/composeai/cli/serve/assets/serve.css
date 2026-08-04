@@ -431,8 +431,9 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   min-height: 92px; padding: 8px; border-radius: 8px; overflow: hidden;
   background: repeating-conic-gradient(var(--cp-surface-2) 0% 25%, var(--cp-surface) 0% 50%) 50% / 14px 14px; }
 .cp-compare-row[data-bg-theme="dark"] .cp-compare-shot { background: #111113; }
-.cp-compare-shot img, .cp-compare-shot canvas { display: block; max-width: 100%; max-height: 220px;
+.cp-compare-shot img, .cp-compare-shot canvas, .cp-compare-shot iframe { display: block; max-width: 100%; max-height: 220px;
   width: auto; height: auto; object-fit: contain; }
+.cp-compare-shot iframe { border: 0; background: transparent; }
 .cp-compare-shot [hidden] { display: none; }
 .cp-compare-score { min-width: 88px; text-align: right; white-space: nowrap; color: var(--cp-fg-muted);
   font-variant-numeric: tabular-nums; }

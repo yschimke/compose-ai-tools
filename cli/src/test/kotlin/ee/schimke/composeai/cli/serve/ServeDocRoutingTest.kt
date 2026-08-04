@@ -130,7 +130,7 @@ class ServeDocRoutingTest {
 
     get(path).use { response ->
       val html = response.body!!.string()
-      assertTrue(html.contains("/doc-player/remotecompose/bundle.js"))
+      assertTrue(html.contains("/rc-player-wasm/index.html"))
       // The stage is sized from the document's declared header size before the player loads.
       assertTrue(html.contains("width=\"320\" height=\"320\""), html.take(400))
     }
@@ -191,13 +191,14 @@ class ServeDocRoutingTest {
         "a host that allows URL fetches does render the URL form",
       )
     }
-    for (format in ServeDocFormats.ALL) {
+    for (format in ServeDocFormats.ALL.filter { it.playerResource != null }) {
       get(format.playerPath).use { response ->
         assertEquals(200, response.code, "${format.id} player")
         assertTrue(response.body!!.contentType().toString().startsWith("text/javascript"))
         assertTrue(response.body!!.bytes().size > 1000, "${format.id} bundle is vendored")
       }
     }
+    get("/doc-player/remotecompose/bundle.js").use { assertEquals(404, it.code) }
     get("/doc-player/nope/bundle.js").use { assertEquals(404, it.code) }
   }
 

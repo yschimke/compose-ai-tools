@@ -1,6 +1,6 @@
 # Remote Compose CMP/Wasm player plan
 
-Status: implementation in progress (foundation and baseline canvas)
+Status: browser replacement complete; additional protocol breadth continues incrementally
 
 ## Goal
 
@@ -19,12 +19,9 @@ The compatibility hierarchy is strict:
   Conformance fixtures and expected operation behaviour come from them.
 - `third_party/rc-embedded-player-jvm` is a useful cross-platform pixel comparison, but a mismatch is
   resolved against the AndroidX Java player rather than assuming the JVM embedded result is correct.
-- `third_party/remote-compose-player` is the currently shipped client-side JavaScript player used
-  by `compose-preview serve` and a useful inventory of browser concerns. It is not a protocol or
-  behavioural oracle: local fixes and incomplete operations mean its output cannot establish
-  correctness. Keep it working until the CMP/Wasm player satisfies the same embed contract and
-  passes the replacement gates below. Its TypeScript class hierarchy, codecs, and hand-built opcode
-  registry are not inputs to the new implementation.
+- Historical TypeScript-player evidence may help explain old browser issues, but it is not a
+  protocol or behavioural oracle. The production browser lane is CMP/Wasm and conformance remains
+  anchored to AndroidX `remote-core` and the Android Java player.
 
 The first delivery surface is an embeddable Wasm player, with iOS as the first native host. The
 model, interpreter, and Compose renderer are ordinary non-JVM CMP code; only browser fetch/iframe
@@ -32,15 +29,12 @@ messaging is Wasm-specific. Protocol, runtime, and renderer publish iOS x64, dev
 simulator arm64 targets. The renderer also builds a static `RcComposePlayer` framework with a thin
 `RcComposeViewController` UIKit entry point.
 
-### Why `third_party/remote-compose-player` still exists
+### Browser replacement
 
-It predates this CMP/Wasm player and currently supplies the CLI's zero-daemon browser lane. The
-upstream TypeScript library is not published to npm, so its source was vendored and its generated
-IIFE bundle was committed under `cli/src/main/resources/rc-player/`; that keeps Node/npm out of the
-CLI's pure-JVM Gradle build. It remains during migration because it supports more operations today
-and gives users a fallback. Remove it only after the CMP/Wasm lane passes the replacement gates,
-then remove both the vendored source and committed bundle together. Historical availability is the
-reason for the directory; it confers no specification status.
+The replacement gates below passed across the full 24-document corpus. The CLI viewer, comparison
+driver, and document permalink now use the installed CMP/Wasm distribution. The vendored
+TypeScript source and committed IIFE bundle were removed together; historical evidence remains in
+`docs/design/evidence/` where it is explicitly archival.
 
 ## Decision: use Compose graphics, with Skiko underneath
 
@@ -565,11 +559,8 @@ After cluster 1, wire the player behind an experimental viewer flag so real docu
 unknown operations early. Keep the static/snapshot player visible until the Wasm player posts a
 successful first-frame signal, matching the existing catalog's no-flash handoff.
 
-The existing `JS` backend remains available during this rollout. Replace it only after the CMP/Wasm
-lane supports its document corpus, named overrides, browser-host features, and first-frame contract,
-and the comparison catalog shows no unexplained regression. At that point remove the committed
-TypeScript bundle and vendored sources together; until then they are production code, not merely
-test scaffolding.
+The CMP/Wasm lane is now the sole browser backend. Static snapshots remain visible until it posts a
+successful first-frame signal, so a load or decode failure stays bounded and recoverable.
 
 ## Initial implementation slices
 

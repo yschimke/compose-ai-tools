@@ -293,8 +293,7 @@ class ServeWebTest {
 
   @Test
   fun `the rc backend selector renders every backend with the unavailable ones disabled`() {
-    // A Remote Compose preview on an Android daemon: js (client canvas) + java + cmp-android are
-    // enabled; the opt-in CMP/Wasm and unadvertised cmp-jvm lanes remain disabled.
+    // A Remote Compose preview on an Android daemon with the CMP/Wasm distribution installed.
     val preview = ServePreview(id = "widget.Chip", label = "chip")
     val html =
       ServeWeb.viewerPage(
@@ -302,13 +301,12 @@ class ServeWebTest {
         token = "t",
         basePath = "/remote-m3",
         siblings = listOf(preview),
-        hasRemoteComposeDoc = true,
-        enabledRcPlayers = listOf("js", "java", "cmp-android"),
+        enabledRcPlayers = listOf("cmp-wasm", "java", "cmp-android"),
       )
 
     assertTrue(html.contains("id=\"cp-rc-backends\""), "selector rendered")
     // Every universe entry appears as a chip.
-    for (wire in listOf("js", "cmp-wasm", "java", "cmp-android", "cmp-jvm")) {
+    for (wire in listOf("cmp-wasm", "java", "cmp-android", "cmp-jvm")) {
       assertTrue(html.contains("data-rc-backend=\"$wire\""), "chip for $wire present")
     }
     // Java is the seeded default (the server-side snapshot player).
@@ -322,9 +320,7 @@ class ServeWebTest {
   }
 
   @Test
-  fun `a js-only host disables the server-side backend chips`() {
-    // A static bundle carries the `.rc` doc (js works client-side) but has no daemon, so the
-    // server-side java / cmp-android lanes are disabled alongside the never-available cmp-jvm.
+  fun `a cmp wasm only host disables the server-side backend chips`() {
     val preview = ServePreview(id = "widget.Chip", label = "chip")
     val html =
       ServeWeb.viewerPage(
@@ -332,17 +328,16 @@ class ServeWebTest {
         token = "t",
         basePath = "/remote-m3",
         siblings = listOf(preview),
-        hasRemoteComposeDoc = true,
-        enabledRcPlayers = listOf("js"),
+        enabledRcPlayers = listOf("cmp-wasm"),
       )
 
-    assertTrue(html.contains("data-default=\"js\""), "js is the default when it is the only lane")
-    for (wire in listOf("cmp-wasm", "java", "cmp-android", "cmp-jvm")) {
+    assertTrue(html.contains("data-default=\"cmp-wasm\""), "cmp-wasm is the only lane")
+    for (wire in listOf("java", "cmp-android", "cmp-jvm")) {
       val chip = Regex("<button[^>]*data-rc-backend=\"$wire\"[^>]*>").find(html)?.value ?: ""
-      assertTrue(chip.contains(" disabled"), "$wire chip disabled on a js-only host: '$chip'")
+      assertTrue(chip.contains(" disabled"), "$wire chip disabled on a browser-only host: '$chip'")
     }
-    val jsChip = Regex("<button[^>]*data-rc-backend=\"js\"[^>]*>").find(html)?.value ?: ""
-    assertFalse(jsChip.contains(" disabled"), "js chip enabled: '$jsChip'")
+    val wasmChip = Regex("<button[^>]*data-rc-backend=\"cmp-wasm\"[^>]*>").find(html)?.value ?: ""
+    assertFalse(wasmChip.contains(" disabled"), "cmp-wasm chip enabled: '$wasmChip'")
   }
 
   @Test
@@ -354,13 +349,7 @@ class ServeWebTest {
         remoteComposeKnobs =
           listOf(RemoteComposeKnobDeclaration("label", RemoteNamedValue.StringValue("Hello"))),
       )
-    val html =
-      ServeWeb.viewerPage(
-        preview,
-        token = "t",
-        hasRemoteComposeDoc = true,
-        enabledRcPlayers = listOf("js", "cmp-wasm"),
-      )
+    val html = ServeWeb.viewerPage(preview, token = "t", enabledRcPlayers = listOf("cmp-wasm"))
 
     val chip = Regex("<button[^>]*data-rc-backend=\"cmp-wasm\"[^>]*>").find(html)?.value ?: ""
     assertFalse(chip.contains(" disabled"), "cmp-wasm chip enabled: '$chip'")

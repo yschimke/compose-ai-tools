@@ -216,10 +216,10 @@ interface ServeHost : AutoCloseable {
 
   /**
    * Whether [previewId] carries a captured Remote Compose document ([remoteComposeDoc]) the viewer
-   * can render client-side in its `<canvas>` lane. Drives whether the viewer offers the "RC
-   * (browser)" toggle and its live-in-browser knob controls for this preview. Defaults to reading
-   * [remoteComposeDoc]; a bundle host overrides it with a cheap existence check so the per-preview
-   * page render doesn't read the whole doc just to know it's there.
+   * can render in the CMP/Wasm browser lane. Drives whether the viewer can offer browser playback
+   * and its live knob controls for this preview. Defaults to reading [remoteComposeDoc]; a bundle
+   * host overrides it with a cheap existence check so the per-preview page render doesn't read the
+   * whole doc just to know it's there.
    */
   fun hasRemoteComposeDoc(previewId: String): Boolean = remoteComposeDoc(previewId) != null
 
@@ -249,17 +249,13 @@ interface ServeHost : AutoCloseable {
    * rest (e.g. [RcPlayerBackend.CMP_JVM] when its sidecar is not installed) are shown disabled, so
    * an unavailable lane remains visible without pretending it works.
    *
-   * Empty for a non–Remote Compose preview (the viewer then shows no backend selector at all).
-   * Defaults to the client-side [RcPlayerBackend.JS] lane whenever [hasRemoteComposeDoc] is true —
-   * the in-browser player needs only the `.rc` bytes, so any host that carries the document
-   * supports it. A daemon-backed Android host ([ServeRenderHost]) adds the server-side
-   * [RcPlayerBackend.JAVA] / [RcPlayerBackend.CMP_ANDROID] lanes (they ride
-   * `remoteCompose.player`).
+   * Empty for a non–Remote Compose preview (the viewer then shows no backend selector at all). A
+   * daemon-backed Android host ([ServeRenderHost]) adds the server-side [RcPlayerBackend.JAVA] /
+   * [RcPlayerBackend.CMP_ANDROID] lanes (they ride `remoteCompose.player`).
    */
   fun enabledRcPlayersFor(previewId: String): List<RcPlayerBackend> =
     if (hasRemoteComposeDoc(previewId)) {
       buildList {
-        add(RcPlayerBackend.JS)
         // The desktop embedded player renders the same `.rc` server-side via an isolated
         // subprocess; enable it wherever the sidecar player is installed and a render spec exists.
         if (supportsCmpJvm(previewId)) add(RcPlayerBackend.CMP_JVM)

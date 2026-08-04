@@ -907,13 +907,9 @@ jobs:
       - name: Run publish-config reconcile tests
         run: ./.github/scripts/test-publish-config-to-box.sh
 
-  # The design-artifacts driver's own `node --test` suite, including the browser tests that drive the
-  # built Remote Compose player bundle (`cli/src/main/resources/rc-player/bundle.js`) in headless
-  # Chromium. Those tests existed but nothing ran them, which is how a player bug that renders a
-  # whole document as a blank canvas reached a published catalog unnoticed (#2930): the pixels are
-  # the only signal — the document parses and warns about nothing — and the weekly render is the
-  # only place anyone was looking. They self-skip when playwright or a browser is unavailable, so
-  # the browser install is what makes them actually assert.
+  # The design-artifacts driver's `node --test` suite. Browser parity itself runs against the
+  # production CMP/Wasm distribution in the catalog workflow; these tests cover the comparison
+  # model, strict gate, and pixel preprocessing.
   design-artifacts-driver-tests:
     name: Design Artifacts Driver Tests
     needs: changes

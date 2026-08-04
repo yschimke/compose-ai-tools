@@ -4,9 +4,8 @@
  *
  * For every preview a catalog bundle carries as both a baked raster
  * (`previews/<id>.png`) and a Remote Compose document (`ir/<id>.rc`), this
- * renders the `.rc` client-side with the vendored TypeScript player
- * (`RC.RcdPlayer`) in headless Chromium — the exact code path the browser
- * render lane (`compose-preview serve`, viewer `rc` mode) uses — sizes the
+ * renders the `.rc` with the Compose Multiplatform/Wasm player in headless Chromium — the exact
+ * code path the supported browser lane uses — sizes the
  * canvas to the baked PNG, pixel-diffs the two (`pixelmatch`), and emits:
  *
  *   <out>/rc/<id>.png            client-side render
@@ -20,17 +19,12 @@
  * unconditionally in the shared reusable workflow.
  *
  * Usage:
- *   node rc-compare.mjs --bundle <bundle.png> --player <rc-player bundle.js> \
- *     --out <dir> [--system <id>] [--title <t>] [--threshold 0.1] [--theme light] \
- *     [--fonts <dir>] [--cmp-wasm <rc-player-wasm distribution>] \
+ *   node rc-compare.mjs --bundle <bundle.png> --out <dir> \
+ *     --cmp-wasm <rc-player-wasm distribution> [--system <id>] [--title <t>] \
+ *     [--threshold 0.1] [--theme light] \
  *     [--require-cmp-wasm] [--cmp-wasm-allowlist <json>] \
  *     [--cmp-wasm-pixel-tolerances <json>] \
  *     [--cmp-wasm-max-cold-first-frame-ms <ms>] [--cmp-wasm-max-warm-first-frame-ms <ms>]
- *
- * `--fonts` defaults to the vendored faces the snapshot renderer itself rasterizes with (see
- * rc-fonts.mjs). Point it elsewhere to compare against a different font set, or at a
- * non-existent path to fall back to the host's generic families — which renders every string in a
- * substituted typeface and inflates the mismatch for anything containing text.
  *
  * The polyglot `bundle.png` is a PNG with a ZIP appended; we read the ZIP's
  * `ir/*.rc` + `previews/*.png` entries directly (no external unzip).
@@ -53,7 +47,6 @@ import {
   readCmpWasmPixelTolerances,
 } from "./rc-compare-gate.mjs";
 import { BG, flattenOnto, isFullyTransparent } from "./rc-compare-pixels.mjs";
-import { DEFAULT_FONTS_DIR, fontFaceCss, loadAndVerifyFonts } from "./rc-fonts.mjs";
 
 function arg(name, def = undefined) {
   const i = process.argv.indexOf(`--${name}`);
@@ -61,14 +54,12 @@ function arg(name, def = undefined) {
 }
 
 const BUNDLE = arg("bundle");
-const PLAYER = arg("player");
 const OUT = arg("out");
 const SYSTEM = arg("system", "");
 const TITLE = arg("title", SYSTEM);
 const THRESHOLD = Number(arg("threshold", "0.1"));
 const THEME = arg("theme", "light");
 const EXEC = arg("chromium", process.env.RC_COMPARE_CHROMIUM || undefined);
-const FONTS = arg("fonts", DEFAULT_FONTS_DIR);
 // Embedded-player lane (`:third-party-rc-embedded-player`). Two halves, because the render itself
 // is a Gradle/Robolectric step that has no business living inside a Playwright driver:
 //
@@ -88,8 +79,8 @@ const EMBEDDED = arg("embedded");
 // embedded lane (`--stage-embedded` writes `<id>.rc` + `manifest.json` that both harnesses read), so
 // there is no separate stage flag — only a separate output dir to read PNGs back from.
 const EMBEDDED_JVM = arg("embedded-jvm");
-// The browser Wasm CMP player added by :rc-player-wasm. Unlike the JS player above, this is a
-// complete Compose/Skiko application, so the driver serves its distribution over localhost and
+// The browser Wasm CMP player added by :rc-player-wasm is a complete Compose/Skiko application, so
+// the driver serves its distribution over localhost and
 // screenshots its viewport after the player's readiness marker appears.
 const CMP_WASM = arg("cmp-wasm");
 const REQUIRE_CMP_WASM = process.argv.includes("--require-cmp-wasm");
@@ -113,8 +104,8 @@ function optionalNumber(name) {
   return parsed;
 }
 
-if (!BUNDLE || !PLAYER || !OUT) {
-  console.error("rc-compare: --bundle, --player and --out are required");
+if (!BUNDLE || !OUT || (!STAGE_EMBEDDED && !CMP_WASM)) {
+  console.error("rc-compare: --bundle, --out and --cmp-wasm are required");
   process.exit(2);
 }
 if (REQUIRE_CMP_WASM && !CMP_WASM) {
@@ -194,8 +185,6 @@ const dirs = {
   embeddedDiff: path.join(OUT, "rc-embedded-diff"),
   embeddedJvm: path.join(OUT, "rc-embedded-jvm"),
   embeddedJvmDiff: path.join(OUT, "rc-embedded-jvm-diff"),
-  cmpWasm: path.join(OUT, "rc-cmp-wasm"),
-  cmpWasmDiff: path.join(OUT, "rc-cmp-wasm-diff"),
   cmpWasmErrors: path.join(OUT, "rc-cmp-wasm-errors"),
 };
 for (const d of Object.values(dirs)) fs.mkdirSync(d, { recursive: true });
@@ -438,22 +427,35 @@ async function cmpWasmFor(id, bytes, baked, width, height, referenceBlank, previ
     }
     const diff = new PNG({ width, height });
     const px = pixelmatch(baked.data, png.data, diff.data, width, height, { threshold: THRESHOLD });
-    fs.writeFileSync(path.join(dirs.cmpWasm, `${id}.png`), PNG.sync.write(png));
-    fs.writeFileSync(path.join(dirs.cmpWasmDiff, `${id}.png`), PNG.sync.write(diff));
+    fs.writeFileSync(path.join(dirs.rc, `${id}.png`), PNG.sync.write(png));
+    fs.writeFileSync(path.join(dirs.diff, `${id}.png`), PNG.sync.write(diff));
+    const mismatchPct = referenceBlank ? null : (100 * px) / (width * height);
+    const mismatchPx = referenceBlank ? null : px;
     return {
+      rendered: true,
+      mismatchPct,
+      mismatchPx,
+      rc: `rc/${id}.png`,
+      diff: `rc-diff/${id}.png`,
       cmpWasmRendered: true,
-      cmpWasmMismatchPct: referenceBlank ? null : (100 * px) / (width * height),
-      cmpWasmMismatchPx: referenceBlank ? null : px,
+      cmpWasmMismatchPct: mismatchPct,
+      cmpWasmMismatchPx: mismatchPx,
       cmpWasmFirstFrameMs: firstFrameMs,
       cmpWasmStartup: startup,
-      cmpWasm: `rc-cmp-wasm/${id}.png`,
-      cmpWasmDiff: `rc-cmp-wasm-diff/${id}.png`,
+      cmpWasm: `rc/${id}.png`,
+      cmpWasmDiff: `rc-diff/${id}.png`,
     };
   } catch (error) {
     const detail = String(error?.stack || error?.message || error);
     const errorFile = `${encodeURIComponent(id)}.txt`;
     fs.writeFileSync(path.join(dirs.cmpWasmErrors, errorFile), detail);
     return {
+      rendered: false,
+      note: String(error?.message || error).slice(0, 500),
+      mismatchPct: null,
+      mismatchPx: null,
+      rc: "",
+      diff: "",
       cmpWasmRendered: false,
       cmpWasmNote: String(error?.message || error).slice(0, 500),
       cmpWasmError: `rc-cmp-wasm-errors/${errorFile}`,
@@ -465,15 +467,12 @@ async function cmpWasmFor(id, bytes, baked, width, height, referenceBlank, previ
   }
 }
 
-const bundleJs = fs.readFileSync(PLAYER, "utf8");
-
 const browser = await chromium.launch({
   headless: true,
   ...(EXEC ? { executablePath: EXEC } : {}),
   args: ["--enable-unsafe-swiftshader", "--no-sandbox"],
 });
-const page = await browser.newContext({ deviceScaleFactor: 1 }).then((c) => c.newPage());
-const cmpWasmServer = CMP_WASM ? await startCmpWasmServer(CMP_WASM) : null;
+const cmpWasmServer = await startCmpWasmServer(CMP_WASM);
 const cmpWasmPages = new Map();
 async function cmpWasmPageFor(density) {
   if (cmpWasmPages.has(density)) return cmpWasmPages.get(density);
@@ -487,15 +486,6 @@ async function cmpWasmPageFor(density) {
   cmpWasmPages.set(density, value);
   return value;
 }
-const pageWarnings = [];
-page.on("console", (m) => {
-  if (m.type() === "warning" || m.type() === "error") pageWarnings.push(m.text());
-});
-const fontCss = fontFaceCss(FONTS);
-await page.setContent(`<!doctype html><html><head>${fontCss}</head><body></body></html>`);
-if (fontCss) await loadAndVerifyFonts(page);
-await page.addScriptTag({ content: bundleJs });
-
 const rows = [];
 for (const id of rcIds) {
   const pngName = `previews/${id}.png`;
@@ -507,46 +497,9 @@ for (const id of rcIds) {
   const bakedRaw = PNG.sync.read(entries.get(pngName)());
   const referenceBlank = isFullyTransparent(bakedRaw);
   const baked = flattenOnto(bakedRaw, BG);
-  const rcB64 = entries.get(`ir/${id}.rc`)().toString("base64");
   const { width, height } = baked;
-
-  pageWarnings.length = 0;
-  const result = await page.evaluate(
-    async ({ b64, w, h, theme }) => {
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      document.body.appendChild(canvas);
-      const bin = atob(b64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      try {
-        const player = new window.RcdPlayer(canvas);
-        player.setTheme(theme);
-        await player.loadFromArrayBuffer(bytes.buffer);
-        await new Promise((r) => setTimeout(r, 250));
-        // The first paint is what *discovers* which named font families the document asks for —
-        // resolution happens mid-paint, per TYPEFACE op — so the wait has to come after it. A
-        // single-shot render has no later frame in which a face could appear, so without this the
-        // branded text would screenshot in the fallback typeface.
-        player.repaint();
-        await player.fontsReady();
-        player.repaint();
-        return { dataUrl: canvas.toDataURL("image/png") };
-      } catch (e) {
-        return { error: String((e && e.stack) || e) };
-      } finally {
-        canvas.remove();
-      }
-    },
-    { b64: rcB64, w: width, h: height, theme: THEME },
-  );
-
   const name = id.split(".").pop();
-  const truncated = pageWarnings.some((t) => /Unknown operation opcode/.test(t));
-
-  // Embedded lane, computed independently of whether the JS player managed this document — either
-  // player can render one the other chokes on, and the page scores them separately.
+  // Server-side embedded lanes are computed independently of the browser player.
   const embedded = embeddedFor(id, baked, width, height, referenceBlank);
   const embeddedJvm = embeddedJvmFor(id, baked, width, height, referenceBlank);
   const cmpWasm = await cmpWasmFor(
@@ -559,58 +512,23 @@ for (const id of rcIds) {
     previewParameters.get(id),
   );
 
-  if (result.error || truncated) {
-    rows.push({
-      id,
-      name,
-      group: "",
-      width,
-      height,
-      rendered: false,
-      note: truncated ? "player could not decode the document" : "render error",
-      mismatchPct: null,
-      mismatchPx: null,
-      baked: `rc-baked/${id}.png`,
-      rc: "",
-      diff: "",
-      referenceBlank,
-      ...embedded,
-      ...embeddedJvm,
-      ...cmpWasm,
-    });
-    fs.writeFileSync(path.join(dirs.baked, `${id}.png`), PNG.sync.write(baked));
-    console.log(`  ${name}: NOT RENDERED (${rows[rows.length - 1].note})`);
-    continue;
-  }
-
-  const rcPng = flattenOnto(PNG.sync.read(Buffer.from(result.dataUrl.split(",")[1], "base64")), BG);
-  const diff = new PNG({ width, height });
-  const mismatchPx = pixelmatch(baked.data, rcPng.data, diff.data, width, height, {
-    threshold: THRESHOLD,
-  });
-  const mismatchPct = (100 * mismatchPx) / (width * height);
-
   fs.writeFileSync(path.join(dirs.baked, `${id}.png`), PNG.sync.write(baked));
-  fs.writeFileSync(path.join(dirs.rc, `${id}.png`), PNG.sync.write(rcPng));
-  fs.writeFileSync(path.join(dirs.diff, `${id}.png`), PNG.sync.write(diff));
-
   rows.push({
     id,
     name,
     group: "",
     width,
     height,
-    rendered: true,
-    mismatchPct: referenceBlank ? null : mismatchPct,
-    mismatchPx: referenceBlank ? null : mismatchPx,
     baked: `rc-baked/${id}.png`,
-    rc: `rc/${id}.png`,
-    diff: `rc-diff/${id}.png`,
     referenceBlank,
     ...embedded,
     ...embeddedJvm,
     ...cmpWasm,
   });
+  if (!cmpWasm.rendered) {
+    console.log(`  ${name}: NOT RENDERED (${cmpWasm.note})`);
+    continue;
+  }
   if (referenceBlank) {
     // Worth a line of its own: a blank baked capture is a catalog bug, and it is exactly the case
     // that used to disappear into a green 0.00%.
@@ -637,7 +555,7 @@ for (const id of rcIds) {
           `(${cmpWasm.cmpWasmStartup} ${cmpWasm.cmpWasmFirstFrameMs.toFixed(0)} ms)`
         : `  |  cmp-wasm NOT RENDERED`;
   console.log(
-    `  ${name}: ${mismatchPct.toFixed(2)}% (${mismatchPx} px, ${width}×${height})${embNote}${embJvmNote}${cmpWasmNote}`,
+    `  ${name}: ${cmpWasm.mismatchPct.toFixed(2)}% (${cmpWasm.mismatchPx} px, ${width}×${height})${embNote}${embJvmNote}${cmpWasmNote}`,
   );
 }
 

@@ -2044,7 +2044,7 @@ object ServeWeb {
     /** [ServeDocFormat.id] — picks the player + the mount code. */
     val formatId: String,
     val formatLabel: String,
-    /** Where the browser player bundle for this format is served. */
+    /** Where this format's browser player entry point is served. */
     val playerPath: String,
     /** Where the document bytes are served (`/d/<id>/raw`). */
     val rawPath: String,
@@ -2191,8 +2191,8 @@ object ServeWeb {
 
   /**
    * `GET /d/<id>` — the **expiring permalink page** for one ingested document: the document itself,
-   * played back client-side by its format's vendored player, plus what the server could read out of
-   * it and how long the link has left.
+   * played back client-side by its supported player, plus what the server could read out of it and
+   * how long the link has left.
    */
   fun docPage(
     doc: DocView,
@@ -2239,20 +2239,40 @@ object ServeWeb {
     )
   }
 
-  /** The element the format's player paints into — a canvas for RC, a container div for Lottie. */
+  /** The element the format's player paints into. */
   private fun docStageElement(doc: DocView): String =
     when (doc.formatId) {
       ServeDocFormats.LOTTIE.id -> "<div id=\"cp-doc-mount\"></div>"
       else ->
-        "<canvas id=\"cp-doc-mount\" width=\"${doc.width ?: 512}\" height=\"${doc.height ?: 512}\"></canvas>"
+        "<iframe id=\"cp-doc-mount\" width=\"${doc.width ?: 512}\" " +
+          "height=\"${doc.height ?: 512}\" sandbox=\"allow-scripts allow-same-origin\" " +
+          "title=\"Remote Compose CMP Wasm player\"></iframe>"
     }
 
   /**
-   * Load the format's player bundle, fetch the document, and mount it. The per-format mount is the
-   * one place formats differ on this page; everything around it (load, error reporting, the stage)
-   * is shared, and the bundle URL comes from the registry rather than being written in here.
+   * Load the format's player, fetch the document, and mount it. The per-format mount is the one
+   * place formats differ on this page; everything around it (load, error reporting, the stage) is
+   * shared, and the player URL comes from the registry rather than being written in here.
    */
   private fun docPlayerScript(doc: DocView, rawUrl: String): String {
+    if (doc.formatId == ServeDocFormats.REMOTE_COMPOSE.id) {
+      return """
+        (function () {
+          var mount = document.getElementById("cp-doc-mount");
+          var status = document.getElementById("cp-doc-status");
+          var raw = new URL(${jsString(rawUrl)}, location.origin).href;
+          window.addEventListener("message", function (e) {
+            if (e.source !== mount.contentWindow || e.origin !== location.origin) return;
+            if (e.data === "cp-rc-wasm-ready") status.textContent = "";
+            else if (typeof e.data === "string" && e.data.indexOf("cp-rc-wasm-error:") === 0) {
+              status.textContent = "This document could not be played back in your browser.";
+            }
+          });
+          mount.src = "/rc-player-wasm/index.html?src=" + encodeURIComponent(raw);
+        })();
+      """
+        .trimIndent()
+    }
     val mount =
       when (doc.formatId) {
         ServeDocFormats.LOTTIE.id ->
@@ -2265,17 +2285,7 @@ object ServeWeb {
           }).catch(fail);
           """
             .trimIndent()
-        else ->
-          """
-          fetch(raw).then(function (r) { return r.arrayBuffer(); }).then(function (buf) {
-            var player = new window.RC.RcdPlayer(mount);
-            return Promise.resolve(player.loadFromArrayBuffer(buf)).then(function () {
-              if (player.repaint) player.repaint();
-              done();
-            });
-          }).catch(fail);
-          """
-            .trimIndent()
+        else -> error("Unsupported document format: ${doc.formatId}")
       }
     return """
       (function () {
@@ -3354,24 +3364,13 @@ object ServeWeb {
     hasScrollExport: Boolean = false,
     trust: String? = null,
     /**
-     * Whether this preview carries a captured Remote Compose document
-     * ([ServeHost.hasRemoteComposeDoc]) the viewer can render client-side in its `<canvas>` lane.
-     * When true the viewer adds the "RC (browser)" toggle + `#cp-rc-canvas`: it loads the vendored
-     * player (`/rc-player/bundle.js`), fetches `/render/<id>.rc`, and paints the document in the
-     * browser with no daemon — and Remote Compose knob edits apply live via `setNamed*Override` +
-     * `repaint()` instead of a server round-trip. Defaults false (no doc ⇒ no canvas lane, knobs
-     * stay daemon-routed).
-     */
-    hasRemoteComposeDoc: Boolean = false,
-    /**
      * The Remote Compose render backends the viewer may offer for this preview as a per-preview
      * **backend selector** — the [RcPlayerBackend.wire] ids the host reports via
      * [ServeHost.enabledRcPlayersFor]. Non-empty for a Remote Compose preview: the viewer renders
      * one chip per [RcPlayerBackend.UNIVERSE] entry, enables those in this list, and disables the
-     * rest. The `js` chip drives the client-side `<canvas>` lane (so [hasRemoteComposeDoc] is what
-     * carries the doc for it), while `java` / `cmp-android` re-render through the Android daemon
-     * and `cmp-jvm` through its isolated desktop-player subprocess. Empty ⇒ no selector at all (not
-     * a Remote Compose preview).
+     * rest. `cmp-wasm` drives the supported browser player, while `java` / `cmp-android` re-render
+     * through the Android daemon and `cmp-jvm` through its isolated desktop-player subprocess.
+     * Empty means no selector.
      */
     enabledRcPlayers: List<String> = emptyList(),
     wasmSrc: String? = null,
@@ -3550,39 +3549,20 @@ object ServeWeb {
           "<span class=\"cp-live-dot\" aria-hidden=\"true\"></span><span>In-browser (Wasm)</span>" +
           "</button>"
       else ""
-    // The in-browser Remote Compose canvas lane. Offered (a `#cp-rc-canvas`, a hidden mode radio,
-    // and
-    // a toggle button) only when this preview carries a captured `.rc` document
-    // ([hasRemoteComposeDoc]): the client loads the vendored player and paints the document with no
-    // daemon. `data-has-rc-doc` flags the page so the transport JS wires the lane; the doc + player
-    // URLs are built at runtime (the doc from the same `base` as the snapshot, the player from the
-    // constant `/rc-player/bundle.js`). Reuses `.cp-live-toggle` styling so it reads as a peer of
-    // the
-    // Live / Wasm toggles.
-    val rcAttr = if (hasRemoteComposeDoc) " data-has-rc-doc=\"1\"" else ""
-    val rcCanvas = if (hasRemoteComposeDoc) "<canvas id=\"cp-rc-canvas\" hidden></canvas>" else ""
+    // The supported in-browser Remote Compose lane is the isolated CMP/Wasm player.
     val hasRcWasm = RcPlayerBackend.CMP_WASM.wire in enabledRcPlayers
     val rcWasmFrame =
       if (hasRcWasm)
         "<iframe id=\"cp-rc-wasm\" hidden sandbox=\"allow-scripts allow-same-origin\" " +
           "title=\"$label (Remote Compose CMP Wasm)\"></iframe>"
       else ""
-    val rcModeInput =
-      if (hasRemoteComposeDoc)
-        "<input type=\"radio\" name=\"cp-mode\" value=\"rc\" id=\"cp-rc-toggle\" tabindex=\"-1\">"
-      else ""
     val rcWasmModeInput =
       if (hasRcWasm)
         "<input type=\"radio\" name=\"cp-mode\" value=\"rc-wasm\" id=\"cp-rc-wasm-toggle\" tabindex=\"-1\">"
       else ""
     // The Remote Compose backend selector (#cp-rc-backends): one chip per RcPlayerBackend.UNIVERSE,
-    // enabled for those the host reports in [enabledRcPlayers] and disabled otherwise. It replaces
-    // the former single "RC (browser)" button — the `js` chip drives the same in-browser canvas
-    // lane (setMode("rc")), while `java` / `cmp-android` re-render the PNG server-side via
-    // `rcPlayer=<wire>`. `cmp-jvm` uses the same URL through its isolated subprocess lane. Rendered
-    // only for a Remote Compose preview (a non-empty enabled set). `data-default` seeds the
-    // initially-current chip: the server-side `java` player when it's available (the default
-    // snapshot lane), else the client `js` canvas.
+    // enabled for those the host reports in [enabledRcPlayers] and disabled otherwise. CMP/Wasm is
+    // the browser lane; java / cmp-android / cmp-jvm are server-rendered PNG lanes.
     val rcBackendSelector =
       if (enabledRcPlayers.isEmpty()) ""
       else {
@@ -3590,7 +3570,7 @@ object ServeWeb {
         val defaultBackend =
           when {
             RcPlayerBackend.JAVA.wire in enabled -> RcPlayerBackend.JAVA.wire
-            RcPlayerBackend.JS.wire in enabled -> RcPlayerBackend.JS.wire
+            RcPlayerBackend.CMP_WASM.wire in enabled -> RcPlayerBackend.CMP_WASM.wire
             else -> enabled.first()
           }
         val chips =
@@ -3937,7 +3917,6 @@ object ServeWeb {
           "<input type=\"radio\" name=\"cp-mode\" value=\"png\" id=\"cp-mode-png\" tabindex=\"-1\" checked>",
           "<input type=\"radio\" name=\"cp-mode\" value=\"live\" id=\"cp-live\" tabindex=\"-1\"$liveDis>",
           wasmModeInput,
-          rcModeInput,
           rcWasmModeInput,
         )
         .filter { it.isNotBlank() }
@@ -3965,9 +3944,9 @@ object ServeWeb {
         </span>
         <button type="button" class="cp-drawer-toggle" id="cp-controls-toggle" aria-expanded="true" aria-controls="cp-controls">⚙ Overrides</button>
       </div>
-      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr$rcAttr>
+      <div class="cp-viewer cp-controls-open"$bgThemeAttr$alwaysDarkAttr data-preview-id="$idText" data-mode="snapshot" data-modes="$modes" data-static-snapshot="$staticSnapshot" data-can-render-overrides="$canRenderOverrides" data-snapshot-backend="$backendLabel" data-live-backend="$liveLabel" data-render-density="$RENDER_DENSITY"$wasmAttr>
         $navDrawer
-        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$rcCanvas$wasmFrame$rcWasmFrame<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
+        <div class="cp-stage"><span class="cp-backend" id="cp-backend" role="status" aria-live="polite"></span><img id="cp-img" alt="$label"><canvas id="cp-canvas" hidden></canvas>$wasmFrame$rcWasmFrame<div class="cp-error" id="cp-error" role="alert" hidden></div></div>
         <div class="cp-controls" id="cp-controls">
           <details class="cp-group" data-cp-group="appearance">
             <summary>Appearance</summary>
