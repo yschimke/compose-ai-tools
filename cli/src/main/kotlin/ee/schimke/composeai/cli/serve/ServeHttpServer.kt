@@ -414,7 +414,10 @@ class ServeHttpServer(
           }
           val file = resolved.toFile()
           val etag = "\"${file.length().toString(16)}-${file.lastModified().toString(16)}\""
-          call.response.headers.append(HttpHeaders.CacheControl, "public, max-age=3600")
+          // These filenames are stable across preview-host releases. Revalidate every use so a
+          // rollout cannot leave an already-open browser executing an older protocol decoder for
+          // another hour; unchanged multi-megabyte assets still take the cheap ETag/304 path.
+          call.response.headers.append(HttpHeaders.CacheControl, "no-cache")
           call.response.headers.append(HttpHeaders.ETag, etag)
           if (call.request.headers[HttpHeaders.IfNoneMatch] == etag) {
             call.respond(HttpStatusCode.NotModified)
