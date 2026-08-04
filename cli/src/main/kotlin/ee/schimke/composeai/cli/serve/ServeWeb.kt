@@ -145,14 +145,14 @@ object ServeWeb {
   }
 
   /**
-   * The public front door is discovery, not a trust decision: keep its catalog cards deliberately
-   * orange and labelled `untrusted`. The real producer verdict remains available on `/status` and
-   * on the catalog's own pages, where there is enough context to explain its basis.
+   * The public front door only calls out a negative producer verdict: unverified catalogs are
+   * orange and labelled `untrusted`, while trusted catalogs carry no badge. The full verdict and
+   * its basis remain available on `/status` and on the catalog's own pages.
    */
   private fun homeTrustBadge(trust: String?): String {
-    if (trust.isNullOrBlank()) return ""
+    if (trust != "unverified") return ""
     return " <span class=\"cp-badge cp-badge--unverified\" " +
-      "title=\"Producer trust details are available on /status\">⚠ untrusted</span>"
+      "title=\"producer trust: unverified\">⚠ untrusted</span>"
   }
 
   /**
