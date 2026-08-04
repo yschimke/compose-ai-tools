@@ -2276,8 +2276,9 @@ private fun Modifier.applyHeightRange(
 private fun Modifier.applyPaintDecorator(
   operation: ee.schimke.composeai.rcplayer.protocol.RcOperation,
   state: RcPlayerState,
-): Modifier =
-  when (operation) {
+): Modifier {
+  val density = androidx.compose.ui.platform.LocalDensity.current.density
+  return when (operation) {
     is RcBackgroundModifier ->
       drawBehind {
         val color =
@@ -2351,10 +2352,13 @@ private fun Modifier.applyPaintDecorator(
       }
     is RcRoundedClipRectModifier ->
       drawWithContent {
-        val topStart = state.resolve(operation.topStart).coerceAtLeast(0f)
-        val topEnd = state.resolve(operation.topEnd).coerceAtLeast(0f)
-        val bottomStart = state.resolve(operation.bottomStart).coerceAtLeast(0f)
-        val bottomEnd = state.resolve(operation.bottomEnd).coerceAtLeast(0f)
+        val topStart =
+          rcRoundedClipRadius(operation.topStart, state.resolve(operation.topStart), density)
+        val topEnd = rcRoundedClipRadius(operation.topEnd, state.resolve(operation.topEnd), density)
+        val bottomStart =
+          rcRoundedClipRadius(operation.bottomStart, state.resolve(operation.bottomStart), density)
+        val bottomEnd =
+          rcRoundedClipRadius(operation.bottomEnd, state.resolve(operation.bottomEnd), density)
         val path =
           Path().apply {
             addRoundRect(
@@ -2375,6 +2379,11 @@ private fun Modifier.applyPaintDecorator(
       }
     else -> this
   }
+}
+
+/** Fixed radii are authored in dp; size-derived references already resolve to physical pixels. */
+internal fun rcRoundedClipRadius(word: RcFloatWord, resolved: Float, density: Float): Float =
+  (resolved * if (word.referencedId == null) density else 1f).coerceAtLeast(0f)
 
 @Composable
 private fun Modifier.applyAndroidXRipple(): Modifier {
@@ -3589,7 +3598,7 @@ private fun DrawScope.draw4(operation: RcDraw4, paint: RcPaintState, state: RcPl
         blendMode = paint.blendMode,
       )
     RcOpcodes.CLIP_RECT -> drawContext.canvas.clipRect(a, b, c, d)
-    RcOpcodes.MATRIX_SCALE -> drawContext.transform.scale(a, b, Offset(c, d))
+    RcOpcodes.MATRIX_SCALE -> drawContext.transform.scale(a, b, rcMatrixPivot(c, d))
   }
 }
 
@@ -3606,9 +3615,13 @@ private fun DrawScope.draw3(operation: RcDraw3, paint: RcPaintState, state: RcPl
         style = paint.style(),
         blendMode = paint.blendMode,
       )
-    RcOpcodes.MATRIX_ROTATE -> drawContext.transform.rotate(a, Offset(b, c))
+    RcOpcodes.MATRIX_ROTATE -> drawContext.transform.rotate(a, rcMatrixPivot(b, c))
   }
 }
+
+/** AndroidX encodes an omitted matrix pivot as NaN in the first pivot coordinate. */
+internal fun rcMatrixPivot(x: Float, y: Float): Offset =
+  if (x.isNaN()) Offset.Zero else Offset(x, y)
 
 private fun DrawScope.draw6(operation: RcDraw6, paint: RcPaintState, state: RcPlayerState) {
   val a = state.resolve(operation.first)

@@ -1,6 +1,7 @@
 package ee.schimke.composeai.rcplayer.compose
 
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.Role
 import ee.schimke.composeai.rcplayer.protocol.RcAccessibilitySemantics
 import ee.schimke.composeai.rcplayer.protocol.RcAnimationSpec
@@ -61,6 +62,19 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RcComposeSupportTest {
+  @Test
+  fun omittedMatrixPivotUsesTheOrigin() {
+    assertEquals(Offset.Zero, rcMatrixPivot(Float.NaN, Float.NaN))
+    assertEquals(Offset.Zero, rcMatrixPivot(Float.NaN, 12f))
+    assertEquals(Offset(3f, 4f), rcMatrixPivot(3f, 4f))
+  }
+
+  @Test
+  fun fixedRoundedClipRadiiScaleButSizeDerivedRadiiDoNot() {
+    assertEquals(104f, rcRoundedClipRadius(RcFloatWord.literal(52f), resolved = 52f, density = 2f))
+    assertEquals(110f, rcRoundedClipRadius(RcFloatWord(0x7fc0002a), resolved = 110f, density = 2f))
+  }
+
   @Test
   fun boundedControlFlowIsSharedByWasmAndIosProfiles() {
     val end = RcNoArg(RcOpcodes.CONTAINER_END)

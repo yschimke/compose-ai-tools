@@ -1041,12 +1041,29 @@
   // another implementation hidden behind the legacy canvas API: it receives the document URL and
   // explicitly announces its first rendered frame.
   function positionRcWasmFrame() { if (rcWasmFrame) positionOverlay(rcWasmFrame); }
+  function rcWasmNamedValues() {
+    var values = [];
+    document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
+      var name = el.getAttribute("data-rc-name");
+      if (!name) return;
+      values.push({
+        name: name,
+        kind: el.getAttribute("data-rc-kind") || "string",
+        value: el.type === "checkbox" ? (el.checked ? "true" : "false") : el.value
+      });
+    });
+    return values;
+  }
   function rcWasmSrc() {
     var absoluteDoc = new URL(rcDocUrl(), location.origin).href;
     var src = "/rc-player-wasm/index.html?src=" + encodeURIComponent(absoluteDoc);
     var uiMode = document.getElementById("cp-uiMode");
     if (uiMode && (uiMode.value === "light" || uiMode.value === "dark")) {
       src += "&theme=" + encodeURIComponent(uiMode.value);
+    }
+    var namedValues = rcWasmNamedValues();
+    if (namedValues.length) {
+      src += "&namedValues=" + encodeURIComponent(JSON.stringify(namedValues));
     }
     return src;
   }
@@ -1085,10 +1102,18 @@
   }
   if (rcWasmFrame) {
     window.addEventListener("message", function (e) {
-      if (e.source !== rcWasmFrame.contentWindow || typeof e.data !== "string") return;
+      if (e.source !== rcWasmFrame.contentWindow || e.origin !== location.origin) return;
       if (e.data === "cp-rc-wasm-ready") revealRcWasm();
-      else if (e.data.indexOf("cp-rc-wasm-error:") === 0) {
+      else if (typeof e.data === "string" && e.data.indexOf("cp-rc-wasm-error:") === 0) {
         showModeError("Rendering the Remote Compose document failed in CMP Wasm.");
+      } else if (e.data && (e.data.type === "cp-rc-host-action" ||
+          e.data.type === "cp-rc-host-named-action")) {
+        // The viewer never executes an action payload. It exposes the validated event to an
+        // embedding host and leaves policy/navigation to that host.
+        window.dispatchEvent(new CustomEvent(e.data.type, { detail: e.data }));
+        status.textContent = e.data.type === "cp-rc-host-action"
+          ? "Remote Compose host action " + String(e.data.actionId)
+          : "Remote Compose named action “" + String(e.data.name || "") + "”";
       }
     });
   }
@@ -1286,12 +1311,11 @@
     }
     // Remote Compose knobs are LIVE in the RC canvas lane — an edit applies client-side via
     // setNamed*Override + repaint (onRcKnobChanged), no daemon needed — so enable them whenever
-    // that lane is active. Outside it they're daemon-only (Remote Compose has no in-browser
-    // runtime), so, like the app-theme selector, they're dead in the Wasm lane and otherwise
-    // gated on the host being able to render an override.
+    // that lane is active. The CMP/Wasm lane applies the same typed values while reloading its
+    // isolated document; outside either browser RC lane they're gated on server rendering.
     document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
-      el.disabled = rcActive() ? false
-        : (onWasm || rcWasmActive() || !(!staticSnapshot || canRenderOverrides));
+      el.disabled = (rcActive() || rcWasmActive()) ? false
+        : (onWasm || !(!staticSnapshot || canRenderOverrides));
     });
   }
   // Programmatic switch (the live toggle, or a wasm-only control auto-enabling Wasm): tick the
@@ -1560,12 +1584,11 @@
   document.querySelectorAll(".cp-feature").forEach(function (el) {
     el.addEventListener("change", onKnobChanged);
   });
-  // Remote Compose knobs apply live in the browser when the RC canvas lane is active
-  // (setNamed*Override + repaint on the client player, no round-trip); otherwise they route
-  // through the server daemon like the theme selector / feature toggles. A text/number edit
-  // debounces on "input", a bool toggle on "change".
+  // Remote Compose knobs apply in-browser in both RC lanes: repaint for JS, isolated reload for
+  // CMP/Wasm. Otherwise they route through the server daemon like theme/feature controls.
   function onRcKnobChanged() {
     if (rcActive()) { refreshLinks(); applyRcOverrides(); return; }
+    if (rcWasmActive()) { refreshLinks(); openRcWasm(); return; }
     onKnobChanged();
   }
   document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
