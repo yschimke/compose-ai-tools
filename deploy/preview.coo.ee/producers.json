@@ -14,6 +14,10 @@
       "branch": "design-artifacts/*"
     },
     {
+      "repo": "yschimke/home-assistant-android",
+      "branch": "design-artifacts/*"
+    },
+    {
       "repo": "yschimke/cadence",
       "branch": "design-artifacts/*"
     },
@@ -23,6 +27,10 @@
     },
     {
       "repo": "yschimke/horologist",
+      "branch": "design-artifacts/*"
+    },
+    {
+      "repo": "yschimke/thunderbird-android",
       "branch": "design-artifacts/*"
     },
     {

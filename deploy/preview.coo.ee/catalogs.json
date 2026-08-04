@@ -12,8 +12,18 @@
       "noun": "sample(s)"
     },
     {
+      "id": "home-assistant",
+      "heading": "home-assistant/android",
+      "noun": "app(s)"
+    },
+    {
       "id": "pocket-casts",
       "heading": "Automattic/pocket-casts-android",
+      "noun": "app(s)"
+    },
+    {
+      "id": "thunderbird",
+      "heading": "thunderbird/thunderbird-android",
       "noun": "app(s)"
     }
   ],
@@ -47,6 +57,24 @@
       "listed": true
     },
     {
+      "system": "home-assistant-android",
+      "repo": "yschimke/home-assistant-android",
+      "listed": true,
+      "group": "home-assistant",
+      "attributionRepos": [
+        "home-assistant/android"
+      ]
+    },
+    {
+      "system": "home-assistant-wear",
+      "repo": "yschimke/home-assistant-android",
+      "listed": true,
+      "group": "home-assistant",
+      "attributionRepos": [
+        "home-assistant/android"
+      ]
+    },
+    {
       "system": "pocketcasts",
       "repo": "yschimke/pocket-casts-android",
       "listed": true,
@@ -68,6 +96,15 @@
       "system": "horologist",
       "repo": "yschimke/horologist",
       "listed": true
+    },
+    {
+      "system": "thunderbird",
+      "repo": "yschimke/thunderbird-android",
+      "listed": true,
+      "group": "thunderbird",
+      "attributionRepos": [
+        "thunderbird/thunderbird-android"
+      ]
     },
     {
       "system": "jetnews",
