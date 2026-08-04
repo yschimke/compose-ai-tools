@@ -1079,26 +1079,34 @@ if (values["wasm-dist"]) {
 // systems whose bundle is a DESKTOP bundle serve can run (compose-m3); the
 // Android catalogs stay baked-PNG.
 let liveBundle = null;
-
-/**
- * Copy one executable bundle onto the branch under `bundle/` and lift its heavy font resources out.
- *
- * The fonts go content-addressed under bundle/res/<sha256>, so the ~600 KB bundle drops to ~30 KB
- * and the fonts (which rarely change and are identical across variants) are fetched once per
- * branch. The `bundle externalize` step records each in the bundle's own manifest by
- * name+sha256+size; a trusted `serve --allow-render-trusted` box rehydrates them from bundle/res/
- * into a shared cache and back onto the daemon classpath. Non-fatal: if the CLI can't externalize
- * (older CLI, no fonts), the self-contained bundle is still published as-is.
- *
- * Two bundles can share one `bundle/res/` pool because the names are content hashes — a face both
- * modules embed is stored once and rehydrates identically for either daemon.
- */
-async function carryLiveBundle(sourcePath, label) {
-  const file = basename(sourcePath);
+if (values["publish-live-bundle"]) {
+  const file = basename(rendersPath);
   const dest = join(outPath, "bundle", file);
   await mkdir(dirname(dest), { recursive: true });
-  await cp(sourcePath, dest);
-  console.log(`[${spec.system}] carried ${label} → bundle/${file}`);
+  await cp(rendersPath, dest);
+  liveBundle = { path: "bundle/", file };
+  console.log(`[${spec.system}] carried live bundle → bundle/${file}`);
+
+  // Lift the heavy font resources out of the carried bundle's classes/app.jar and publish them
+  // content-addressed under bundle/res/<sha256>, so the ~600 KB bundle drops to ~30 KB and the
+  // fonts (which rarely change and are identical across variants) are fetched once per branch. The
+  // `bundle externalize` step records each in the bundle's own manifest by name+sha256+size; a
+  // trusted `serve --allow-render-trusted` box rehydrates them from bundle/res/ into a shared cache
+  // and back onto the daemon classpath. Non-fatal: if the CLI can't externalize (older CLI, no
+  // fonts), the self-contained bundle is still published as-is.
+  //
+  // Only the PRIMARY bundle is externalised, and deliberately so — including under
+  // `--extra-live-bundle`. `ServeCatalogStore` rehydrates exactly one `externalResources` manifest,
+  // the one it reads from `liveBundle.file`, and hands that single materialized directory to every
+  // per-preview daemon it pools. Externalising the supplement too would publish its blobs into the
+  // same content-addressed pool with nobody materializing the ones the primary doesn't also
+  // declare, so a supplement carrying its own faces would yield per-preview daemons that start with
+  // a resource missing from their classpath — worse than the baked lane this replaces. The
+  // workflow therefore splits the supplement RAW: each of its per-preview bundles keeps its
+  // resources embedded and depends on no shared pool. That is the shape the primary lane already
+  // ships in practice (meshcore-mobile's delivery branch has no bundle/res/ at all and its 110
+  // per-preview bundles are self-contained); the cost is duplication for a font-heavy supplement,
+  // against a live lane that otherwise intermittently can't start.
   try {
     const resOut = join(outPath, "bundle", "res");
     const out = execFileSync(
@@ -1113,26 +1121,13 @@ async function carryLiveBundle(sourcePath, label) {
     );
     console.log(
       `[${spec.system}] externalized ${(summary.externalized ?? []).length} font resource(s) ` +
-        `(${total} B) → bundle/res/  (${label} now ${summary.size} B)`,
+        `(${total} B) → bundle/res/  (bundle now ${summary.size} B)`,
     );
   } catch (err) {
     console.warn(
       `[${spec.system}] bundle externalize skipped (${err.message?.split("\n")[0] ?? err}) — ` +
-        `publishing the self-contained ${label}`,
+        `publishing the self-contained bundle`,
     );
-  }
-  return { path: "bundle/", file };
-}
-
-if (values["publish-live-bundle"]) {
-  liveBundle = await carryLiveBundle(rendersPath, "live bundle");
-  // The supplement gets the same treatment when it has its own live lane: externalised beside the
-  // primary and sharing its font pool, so the workflow's per-preview split produces runnable
-  // bundles for the functions only IT carries. It is deliberately NOT recorded as `liveBundle` in
-  // catalog.json — that field names the ONE monolithic daemon serve stands up, and the extra
-  // module's previews are reached through the per-preview lane instead.
-  if (values["extra-live-bundle"]) {
-    await carryLiveBundle(resolve(values["extra-renders"]), "extra live bundle");
   }
 }
 

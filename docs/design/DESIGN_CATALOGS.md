@@ -180,18 +180,31 @@ its whole `Screens` section lives in `:meshcore-components`.
 
 `extra-split-mode: full` fixes that half:
 
-- the supplement is externalised beside the primary bundle, sharing its
-  content-addressed `bundle/res/` font pool, and split per preview **with** its
-  re-render classpath;
+- the supplement is split per preview **with** its re-render classpath;
 - the driver aliases only its extra-**only** functions. A function present in both
   bundles is a true override and stays baked-only, exactly as before;
 - serve reaches those ids through the per-preview pool — its shared monolithic daemon
   answers `NotFound` for an id it never listed, and `renderDaemon` falls through.
 
-Requires `publish-live-bundle: true` and `split-per-preview: true`. It costs a second
-externalised bundle on the delivery branch plus one pooled daemon per supplement
-preview actually opened, so leave it off for a supplement that only overrides — it
-would add weight and change nothing.
+The supplement is split from the **raw** render, not from an externalised copy, and
+that is load-bearing: `ServeCatalogStore` rehydrates exactly one `externalResources`
+manifest — the primary `liveBundle`'s — and hands that single materialized directory
+to every pooled per-preview daemon. Externalising the supplement into the same
+content-addressed `bundle/res/` pool would publish blobs nobody materializes for any
+resource the primary doesn't also declare, so a supplement carrying its own faces
+would yield daemons that start with a missing classpath entry. Self-contained
+per-preview bundles cost duplication and owe nothing to the pool.
+
+Requires `publish-live-bundle: true` and `split-per-preview: true`. It costs one
+pooled daemon per supplement preview actually opened, plus the per-preview bundle
+weight, so leave it off for a supplement that only overrides — it would add weight and
+change nothing.
+
+Known gap: `ServeCatalogLiveHost.mergeDeclaredKnobs` grafts knob / focus / gesture
+metadata from the **monolithic** daemon's preview list, which by definition can't
+contain a supplement-only id. Those previews get their display-axis overrides (size,
+device, locale, font scale, orientation) but not author-declared knobs beyond whatever
+the catalog's own `previews/<id>.overrides.json` sidecar carries.
 
 ### Convention: the reference caller drives common features
 

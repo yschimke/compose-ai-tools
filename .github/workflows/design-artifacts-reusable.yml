@@ -108,7 +108,7 @@ on:
         type: string
         default: 'full'
       extra-split-mode:
-        description: "Per-preview split mode for the extra-module render: 'view-only' (the default — its previews are pixels-only, with no live lane) or 'full' (the extra bundle is externalised beside the primary and split with its re-render classpath, and the driver aliases its extra-ONLY functions to daemon ids so the viewer offers real overrides on them instead of the 'Pre-rendered snapshot' note). 'full' requires publish-live-bundle and split-per-preview. Functions the extra bundle OVERRIDES rather than adds stay baked-only either way — the primary daemon would draw them differently."
+        description: "Per-preview split mode for the extra-module render: 'view-only' (the default — its previews are pixels-only, with no live lane) or 'full' (the extra bundle is split per preview WITH its re-render classpath, self-contained, and the driver aliases its extra-ONLY functions to daemon ids so the viewer offers real overrides on them instead of the 'Pre-rendered snapshot' note). 'full' requires publish-live-bundle and split-per-preview. Functions the extra bundle OVERRIDES rather than adds stay baked-only either way — the primary daemon would draw them differently."
         required: false
         type: string
         default: 'view-only'
@@ -538,9 +538,12 @@ jobs:
       #   view-only → split the raw render (no live bundle), dropping the classpath
       #               but keeping the baked image + sidecars — for an Android/baked tier.
       # The extra module (if any) follows `extra-split-mode`, defaulting to --view-only.
-      # Under `full` it is split from the externalised copy the generate step carried to
-      # out/bundle/, so its per-preview bundles inherit the same shared font pool the
-      # primary's do — serve rehydrates bundle/res/ once and both lanes use it.
+      # Under `full` it is split from the RAW render, not from an externalised copy:
+      # serve rehydrates exactly one externalResources manifest (the primary liveBundle's)
+      # and shares that single materialized dir with every pooled per-preview daemon, so a
+      # supplement resource the primary doesn't also declare would be published to
+      # bundle/res/ and never materialized. Self-contained per-preview bundles cost
+      # duplication and owe nothing to the shared pool.
       - name: Split into per-preview bundles
         if: ${{ inputs.split-per-preview }}
         run: |
@@ -554,7 +557,7 @@ jobs:
           fi
           if [ -n "${{ inputs.extra-module }}" ] && [ -f "$GITHUB_WORKSPACE/extra-bundle.png" ]; then
             if [ "${{ inputs.extra-split-mode }}" = "full" ]; then
-              compose-preview bundle split "$GITHUB_WORKSPACE/out/bundle/extra-bundle.png" \
+              compose-preview bundle split "$GITHUB_WORKSPACE/extra-bundle.png" \
                 -o "$GITHUB_WORKSPACE/out/bundle/previews"
             else
               compose-preview bundle split "$GITHUB_WORKSPACE/extra-bundle.png" --view-only \
