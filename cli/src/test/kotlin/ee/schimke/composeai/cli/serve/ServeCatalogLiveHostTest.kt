@@ -712,7 +712,7 @@ class ServeCatalogLiveHostTest {
   }
 
   @Test
-  fun `catalog theme cache excludes mixed overrides`() {
+  fun `catalog generation cache accumulates mixed overrides`() {
     val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
     val live =
       RecordingHost(
@@ -726,8 +726,50 @@ class ServeCatalogLiveHostTest {
     val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
 
     composite.render(catalogId, mixed)
-    composite.render(catalogId, mixed)
-    assertEquals(2, live.renderCalls)
+    val cached = composite.render(catalogId, mixed) as RenderOutcome.Ok
+    assertEquals(1, live.renderCalls)
+    assertEquals(RenderOutcome.Generation.CATALOG_CACHE, cached.generation)
+  }
+
+  @Test
+  fun `mixed override cache survives host replacement within the catalog generation`() {
+    val cache = CatalogThemeCache()
+    val mixed =
+      themeOverride()
+        .copy(namedOverrides = mapOf("label" to PreviewOverrideValue.StringValue("First")))
+    val firstLive =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "first",
+        declaredThemes = listOf(brandTheme),
+      )
+    val first =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = firstLive,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        catalogThemeCache = cache,
+      )
+    first.render(catalogId, mixed)
+    first.close()
+
+    val replacementLive =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "replacement",
+        declaredThemes = listOf(brandTheme),
+      )
+    val replacement =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = replacementLive,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked2"),
+        catalogThemeCache = cache,
+      )
+
+    val cached = replacement.render(catalogId, mixed) as RenderOutcome.Ok
+    assertEquals(RenderOutcome.Generation.CATALOG_CACHE, cached.generation)
+    assertEquals(0, replacementLive.renderCalls)
   }
 
   @Test

@@ -181,13 +181,12 @@ class ServeCatalogLiveHost(
   private val warmingInFlight = ConcurrentHashMap.newKeySet<String>()
 
   /**
-   * Completed catalog-grid theme renders are retained in [catalogThemeCache] for this catalog
-   * generation. The per-preview daemon pool is deliberately LRU and may evict the daemon (and its
-   * local cache) between theme selections; keeping the pure `themeProvider` result here makes a
-   * repeat selection instant without pinning every preview daemon. The shared cache survives idle
-   * host suspension; a catalog refresh creates a new generation and cache. Only pure theme
-   * selections participate, so the key space is bounded by `previews × declaredThemes`; arbitrary
-   * knob combinations stay in the daemon's bounded cache.
+   * Completed catalog renders are retained in [catalogThemeCache] for this catalog generation. The
+   * per-preview daemon pool is deliberately LRU and may evict the daemon (and its local cache)
+   * between selections; keeping every successful override result here makes repeat theme, knob,
+   * locale, font-scale, and other selections instant without pinning every preview daemon. The
+   * shared cache survives idle host suspension and accumulates for the generation; a catalog
+   * refresh creates a new generation and cache, flushing pixels produced from the old content.
    */
   private val themeRendersInFlight = ConcurrentHashMap.newKeySet<String>()
   private val optimizationStarted = AtomicBoolean()
@@ -531,6 +530,7 @@ class ServeCatalogLiveHost(
     overrides: PreviewOverrides,
     leased: Boolean,
   ): RenderOutcome {
+    val catalogCacheKey = catalogCacheKey(previewId, overrides)
     val themeCacheKey = themeCacheKey(previewId, overrides)
     cachedRender(previewId, overrides)?.let {
       return it
@@ -545,7 +545,7 @@ class ServeCatalogLiveHost(
       // lane, so it must be awaited even cold and its outcome returned as-is. Everything below is
       // the baked-first routing, which such an id can't use.
       if (previewId in liveOnlyPreviewIds) {
-        return cacheThemeRender(themeCacheKey, renderDaemon(daemonId, overrides, leased))
+        return cacheCatalogRender(catalogCacheKey, renderDaemon(daemonId, overrides, leased))
       }
       // Only await the daemon when it's warm and free. A cold Android render can take minutes, and
       // blocking the browse — and the HTTP render slot it holds — on it is what saturates the whole
@@ -566,7 +566,7 @@ class ServeCatalogLiveHost(
         // for a catalog whose supplement module carries its own live lane, where an id can be
         // aliased yet reachable only through the pool.
         if (live !is RenderOutcome.Busy && live !is RenderOutcome.NotFound)
-          return cacheThemeRender(themeCacheKey, live)
+          return cacheCatalogRender(catalogCacheKey, live)
       }
       if (themeCacheKey != null) return RenderOutcome.Busy
       return baked.render(previewId, overrides)
@@ -576,12 +576,12 @@ class ServeCatalogLiveHost(
   }
 
   override fun cachedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? =
-    themeCacheKey(previewId, overrides)?.let(catalogThemeCache::get)?.let { bytes ->
+    catalogCacheKey(previewId, overrides)?.let(catalogThemeCache::get)?.let { bytes ->
       RenderOutcome.Ok(bytes, RenderOutcome.Generation.CATALOG_CACHE)
     }
 
-  /** Cache only the catalog grid's pure theme selection, never a baked fallback or a failure. */
-  private fun cacheThemeRender(key: String?, outcome: RenderOutcome): RenderOutcome {
+  /** Cache every successful live catalog render, never a baked fallback or a failure. */
+  private fun cacheCatalogRender(key: String?, outcome: RenderOutcome): RenderOutcome {
     if (
       key != null &&
         outcome is RenderOutcome.Ok &&
@@ -590,6 +590,17 @@ class ServeCatalogLiveHost(
       catalogThemeCache.put(key, outcome.png)
     }
     return outcome
+  }
+
+  /**
+   * A content-generation cache entry exists for every request that actually routes to the daemon.
+   * Override-free baked browsing stays on disk and needs no duplicate entry here. The surrounding
+   * [ServeSessionState] owns this map, so ordinary idle daemon suspension leaves it intact while a
+   * catalog refresh replaces the state (and therefore the whole map) atomically.
+   */
+  private fun catalogCacheKey(previewId: String, overrides: PreviewOverrides): String? {
+    if (daemonIdForOverrideRender(previewId, overrides) == null) return null
+    return ServeOverrides.cacheKey(previewId, overrides)
   }
 
   private fun themeCacheKey(previewId: String, overrides: PreviewOverrides): String? {
