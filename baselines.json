@@ -3447,6 +3447,14 @@
     "sha256": "abf7a62a61b6819a029798c88752ea734a58bf3865bba69726099a41b4fc073e",
     "sourceFile": null
   },
+  "samples:design-catalog-wear-m3/wearthemecatalog__KotlinConf": {
+    "captureLabel": "",
+    "functionName": "KotlinConf theme",
+    "module": "samples:design-catalog-wear-m3",
+    "renderBasename": "wearthemecatalog__KotlinConf.png",
+    "sha256": "f17cddbf320693e3c1b76b04d91d3f3a14780ab9d67b3c2d1b6403d845002abf",
+    "sourceFile": null
+  },
   "samples:design-catalog-wear-m3/wearthemecatalog__M3": {
     "captureLabel": "",
     "functionName": "M3 theme",
