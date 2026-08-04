@@ -131,8 +131,8 @@ jobs:
   # irreversible Maven Central publish) succeeded first. We deliberately do not
   # poll Central's CDN here: propagation is eventual and took 14 minutes for
   # v0.19.32 even though the publish task had succeeded. The bootstrap installer
-  # independently requires both the CLI tarball and matching plugin marker to be
-  # downloadable before offering a version, while Maven-consuming downstream jobs
+  # independently requires a readiness asset produced by a clean public-Maven
+  # resolution before offering a version, while Maven-consuming downstream jobs
   # retain their own readiness waits.
   # The `!cancelled()` override tolerates a post-cut crash in the `release-please`
   # JOB — but it must NOT tolerate a failed `release`. `release.yml` decouples the
@@ -178,10 +178,27 @@ jobs:
           gh release edit "$TAG" --draft=false --latest
           echo "published $TAG."
 
+  # Prove the exact classpath used by CLI auto-injection resolves from the public
+  # Maven Central consumer endpoint, then attach a readiness marker for the
+  # bootstrap installer. This job deliberately follows finalization: Central CDN
+  # propagation must not hold the GitHub Release back, while a missing marker
+  # makes `compose-preview update` retain the previous usable version.
+  #
+  # A clean, standalone Gradle project avoids source checkout substitutions,
+  # mavenLocal(), and repository caches masking a partial Central publication.
+  verify-maven-readiness:
+    needs: [release-please, finalize-release]
+    if: ${{ !cancelled() && needs.release-please.outputs.release_created == 'true' && needs.finalize-release.result == 'success' }}
+    uses: ./.github/workflows/maven-readiness.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+    permissions:
+      contents: write   # upload the readiness marker to the published release
+
   # Publish the prebuilt preview-host image as soon as the release tag exists.
   # It builds the CLI tarball, Android daemon, and local Maven tree directly from
   # that tag, so it can run IN PARALLEL with release.yml and never waits for the
-  # draft GitHub Release, Maven Central publish, or Central's visibility poll.
+  # draft GitHub Release, Maven Central publish, or the readiness marker.
   #
   # This is deliberately best-effort: preview.coo.ee must not be able to block the
   # core CLI/Maven/GitHub release. A failed image job remains visible, while the
