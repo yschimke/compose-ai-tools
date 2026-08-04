@@ -2696,12 +2696,15 @@ class ServeHttpServer(
         return@withLeasedSession
       }
       // The cmp-jvm lane renders the captured document server-side with the embedded desktop player
-      // (an isolated subprocess), not through the daemon — so, like the `.rc` lane above, it
-      // short-circuits ahead of the daemon override parse and renders the base document (the
-      // browser
-      // JS lane is the one that layers live knob edits; cmp-jvm shows the captured doc).
-      if (call.request.queryParameters["rcPlayer"]?.lowercase() == RcPlayerBackend.CMP_JVM.wire) {
-        renderCmpJvmResponse(renderHost, previewId)
+      // (an isolated subprocess), not through the daemon. It supports both the pixel `.png` and the
+      // structural `.svg` product; slots remain a host/daemon product and continue below.
+      if (
+        !wantSlots &&
+          call.request.queryParameters["rcPlayer"]?.lowercase() == RcPlayerBackend.CMP_JVM.wire
+      ) {
+        val format = if (wantSvg) RcJvmServerRenderer.Format.SVG else RcJvmServerRenderer.Format.PNG
+        val webMode = wantSvg && call.request.queryParameters["mode"]?.lowercase() == "web"
+        renderCmpJvmResponse(renderHost, previewId, format, webMode)
         return@withLeasedSession
       }
       // Forward the fixed render axes plus any dynamic override params (`knob.<key>=…` knobs and
@@ -2869,14 +2872,16 @@ class ServeHttpServer(
 
   /**
    * cmp-jvm lane of [handleRender]: render the captured document with the embedded desktop player
-   * in an isolated subprocess and respond the PNG. Load-shed through the same [renderSemaphore] as
-   * the daemon PNG lane. 404 when the preview carries no captured doc / render spec; 503 when the
-   * desktop player sidecar isn't installed or the queue is saturated; 500 when the player could not
-   * draw it.
+   * in an isolated subprocess and respond with [format]. Load-shed through the same
+   * [renderSemaphore] as the daemon lane. 404 when the preview carries no captured doc / render
+   * spec; 503 when the desktop player sidecar isn't installed or the queue is saturated; 500 when
+   * the player could not produce the artifact.
    */
   private suspend fun RoutingContext.renderCmpJvmResponse(
     renderHost: ServeHost,
     previewId: String,
+    format: RcJvmServerRenderer.Format,
+    webMode: Boolean,
   ) {
     val doc = renderHost.remoteComposeDoc(previewId)
     val spec = renderHost.remoteComposeRenderSpec(previewId)
@@ -2900,7 +2905,7 @@ class ServeHttpServer(
           null
         } else {
           try {
-            RcJvmServerRenderer.render(doc, spec, seeds)
+            RcJvmServerRenderer.render(doc, spec, seeds, format)
           } finally {
             renderSemaphore.release()
           }
@@ -2916,7 +2921,19 @@ class ServeHttpServer(
       }
       is RcJvmServerRenderer.RenderResult.Ok -> {
         call.response.headers.append(HttpHeaders.CacheControl, DYNAMIC_RESOURCE_CACHE_CONTROL)
-        call.respondBytes(result.png, ContentType.Image.PNG)
+        val bytes =
+          if (format == RcJvmServerRenderer.Format.SVG && webMode) {
+            webModeSvg(result.bytes.toString(Charsets.UTF_8)).toByteArray(Charsets.UTF_8)
+          } else {
+            result.bytes
+          }
+        val contentType =
+          if (format == RcJvmServerRenderer.Format.SVG) {
+            ContentType.parse(ComposeFigmaSvgProduct.MEDIA_TYPE_SVG)
+          } else {
+            ContentType.Image.PNG
+          }
+        call.respondBytes(bytes, contentType)
       }
       is RcJvmServerRenderer.RenderResult.Unavailable -> {
         // The chip is only offered when the sidecar is present, so this is a torn-down install

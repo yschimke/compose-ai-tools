@@ -288,6 +288,63 @@ class FigmaSvgDrawRasterTest {
   }
 
   @Test
+  fun anOuterClipMasksTheIsolatedDrawCapture() {
+    // Remote Compose prepends RoundedClipRect around the component's existing draw modifier. The
+    // isolated capture replays the draw but not that graphics-layer clip, so SVG must restore it.
+    val node =
+      capturedContainer()
+        .copy(
+          modifiers =
+            listOf(
+              LayoutInspectorModifier(
+                name = "graphicsLayer",
+                properties = mapOf("clip" to "true"),
+                bounds = bounds(0, 0, 200, 120),
+              ),
+              LayoutInspectorModifier(name = "drawWithContent", bounds = bounds(0, 0, 200, 120)),
+            ),
+          tokens = ComposeSemanticsTokens(cornerRadius = "60.0dp", clipsContent = true),
+        )
+
+    val m = model(node, captureCanvasDraws = true)
+    assertTrue(m.root.background!!.clipToShape)
+    val svg = FigmaLayeredSvg.render(m)
+    assertTrue(
+      "the clip is defined even when children avoid the corners:\n$svg",
+      svg.contains("<clipPath"),
+    )
+    assertTrue(
+      "only the isolated image restores the outer clip:\n$svg",
+      Regex("<image[^>]+clip-path=\\\"url\\(#clip-").containsMatchIn(svg),
+    )
+  }
+
+  @Test
+  fun aDrawOutsideTheClipRemainsUnclipped() {
+    // `drawWithContent(...).clip(shape)` paints the draw outside the inner clip. Restoring the clip
+    // on that capture would change valid Compose modifier semantics.
+    val node =
+      capturedContainer()
+        .copy(
+          modifiers =
+            listOf(
+              LayoutInspectorModifier(name = "drawWithContent", bounds = bounds(0, 0, 200, 120)),
+              LayoutInspectorModifier(
+                name = "graphicsLayer",
+                properties = mapOf("clip" to "true"),
+                bounds = bounds(0, 0, 200, 120),
+              ),
+            ),
+          tokens = ComposeSemanticsTokens(cornerRadius = "60.0dp", clipsContent = true),
+        )
+
+    val m = model(node, captureCanvasDraws = true)
+    assertFalse(m.root.background!!.clipToShape)
+    val svg = FigmaLayeredSvg.render(m)
+    assertFalse("the image must stay outside the inner clip:\n$svg", svg.contains("<clipPath"))
+  }
+
+  @Test
   fun theFrameCropStillWinsOnALeafSoExistingBehaviourIsUnchanged() {
     // A childless, text-less draw node in hybrid mode is the frame-crop path's own case. It keeps
     // it: those pixels are the composited truth for a leaf, and nothing about them double-renders.

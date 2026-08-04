@@ -24,12 +24,12 @@ import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 /**
- * Renders a captured Remote Compose document to PNG for the serve viewer's **cmp-jvm** chip, by
- * spawning the embedded desktop player ([ee.schimke.composeai.rcembedded.jvm] `RcJvmRenderMain`) as
- * a one-shot subprocess off an isolated classpath — the same subprocess isolation `BundleRenderer`
- * uses for the desktop `@Preview` renderer, and for the same reason: Compose Desktop + Skiko's
- * per-OS natives are kept off the CLI's own classpath so a cross-platform release doesn't bake in
- * one host's natives.
+ * Renders a captured Remote Compose document to PNG or layered SVG for the serve viewer's
+ * **cmp-jvm** chip, by spawning the embedded desktop player ([ee.schimke.composeai.rcembedded.jvm]
+ * `RcJvmRenderMain`) as a one-shot subprocess off an isolated classpath — the same subprocess
+ * isolation `BundleRenderer` uses for the desktop `@Preview` renderer, and for the same reason:
+ * Compose Desktop + Skiko's per-OS natives are kept off the CLI's own classpath so a cross-platform
+ * release doesn't bake in one host's natives.
  *
  * The classpath joins the CLI install's `lib-rcjvm/` (the embedded jvm player + its Compose API
  * deps, staged by the CLI build) with `lib-daemon-desktop/` (the Compose Desktop runtime + Skiko
@@ -64,21 +64,21 @@ internal object RcJvmServerRenderer {
       "${bundleSidecarSearchDescription("lib-daemon-desktop")})"
 
   /**
-   * Render [docBytes] to a PNG at [spec]'s pixel size and density, applying any [seeds] (the serve
-   * `rc.<name>=…` knob edits) on top of the document's authored defaults, or null when the
-   * subprocess is unavailable, times out, or the player could not draw the document (it prints the
-   * reason to stderr, surfaced in [RenderResult.Failed]).
+   * Render [docBytes] to [format] at [spec]'s pixel size and density, applying any [seeds] (the
+   * serve `rc.<name>=…` knob edits) on top of the document's authored defaults. Reports whether the
+   * subprocess is unavailable, timed out, or could not draw the document.
    */
   fun render(
     docBytes: ByteArray,
     spec: RcJvmRenderSpec,
     seeds: Map<String, RemoteNamedValue> = emptyMap(),
+    format: Format = Format.PNG,
   ): RenderResult {
     val cp = classpath()
     if (cp.isEmpty()) return RenderResult.Unavailable(unavailableReason())
 
     val input = File.createTempFile("rcjvm-in-", ".rc")
-    val output = File.createTempFile("rcjvm-out-", ".png")
+    val output = File.createTempFile("rcjvm-out-", ".${format.wire}")
     val seedsFile = writeSeedsFile(seeds)
     try {
       input.writeBytes(docBytes)
@@ -103,6 +103,8 @@ internal object RcJvmServerRenderer {
         add(spec.heightPx.toString())
         add("--density")
         add(spec.density.toString())
+        add("--format")
+        add(format.wire)
         if (seedsFile != null) {
           add("--seeds")
           add(seedsFile.absolutePath)
@@ -198,11 +200,16 @@ internal object RcJvmServerRenderer {
   }
 
   sealed interface RenderResult {
-    data class Ok(val png: ByteArray) : RenderResult
+    data class Ok(val bytes: ByteArray) : RenderResult
 
     data class Failed(val reason: String) : RenderResult
 
     data class Unavailable(val reason: String) : RenderResult
+  }
+
+  enum class Format(val wire: String) {
+    PNG("png"),
+    SVG("svg"),
   }
 }
 

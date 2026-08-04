@@ -39,6 +39,7 @@ import ee.schimke.composeai.data.layoutinspector.LayoutInspectorNode
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload
 import java.io.File
 import java.nio.file.Files
+import java.util.Base64
 import org.jetbrains.skia.EncodedImageFormat
 import org.junit.Assume
 import org.junit.Before
@@ -142,6 +143,66 @@ class RcJvmFigmaSvgExportTest {
     assert(w >= doc.width) {
       "the exported canvas is ${w}x$h — narrower than the ${doc.width}px document, so the drawn " +
         "card is clipped out of its own SVG:\n${lane.head()}"
+    }
+  }
+
+  @Test
+  fun productionRendererExportsSelfContainedVectorContent() {
+    val doc = fixtureDocument()
+    val svg =
+      renderRemoteDocumentToSvg(doc.bytes, doc.width, doc.height, DENSITY).toString(Charsets.UTF_8)
+
+    assert(svg.startsWith("<svg")) { "production cmp-jvm output is not SVG:\n${svg.take(200)}" }
+    assert(svg.contains("<text ")) {
+      "production cmp-jvm SVG lost editable RemoteText:\n${svg.take(1600)}"
+    }
+    assert(Regex("<(?:rect|path|image)[ >]").containsMatchIn(svg)) {
+      "production cmp-jvm SVG lost all drawn content:\n${svg.take(1600)}"
+    }
+    assert(!Regex("href=\"figma-raster/").containsMatchIn(svg)) {
+      "one-shot production SVG left a dangling raster sidecar:\n${svg.take(1600)}"
+    }
+    if (svg.contains("<image ")) {
+      assert(svg.contains("href=\"data:image/png;base64,")) {
+        "production cmp-jvm raster layers are not self-contained:\n${svg.take(1600)}"
+      }
+    }
+  }
+
+  @Test
+  fun productionRendererExportsRemoteMaterial3AppCardStructure() {
+    val bytes = base64Fixture(APP_CARD_FIXTURE)
+    val svg = renderRemoteDocumentToSvg(bytes, 640, 480, DENSITY).toString(Charsets.UTF_8)
+
+    System.getProperty(REPORT_PROPERTY)?.let { report ->
+      File("$report.appcard.svg").writeText(svg)
+      File("$report.appcard.png").writeBytes(renderRemoteDocumentToPng(bytes, 640, 480, DENSITY))
+    }
+
+    for (text in listOf("Morning run", "5.2 km", "28 min")) {
+      assert(svg.contains(text)) {
+        "AppCard lost editable '$text' text in production SVG:\n${svg.take(2400)}"
+      }
+    }
+    assert(Regex("<text[ >]").findAll(svg).count() >= 2) {
+      "AppCard collapsed instead of exporting its text structure:\n${svg.take(2400)}"
+    }
+    assert(svg.lastIndexOf("<image") < svg.indexOf("<text")) {
+      "AppCard raster chrome must remain beneath its editable text:\n${svg.take(2400)}"
+    }
+    assert(!svg.contains("href=\"figma-raster/")) {
+      "AppCard production SVG contains a dangling raster layer"
+    }
+    assert(
+      Regex(
+          "<clipPath[^>]*>\\s*<rect[^>]*x=\"0\"[^>]*y=\"132\"[^>]*width=\"640\"[^>]*height=\"216\"[^>]*rx=\"104\""
+        )
+        .containsMatchIn(svg)
+    ) {
+      "AppCard lost the RemoteRoundedClipShape around its isolated chrome:\n${svg.take(2400)}"
+    }
+    assert(Regex("<image[^>]*clip-path=\"url\\(#clip-[^)]+\\)\"[^>]*/>").containsMatchIn(svg)) {
+      "AppCard isolated draw was not restored inside its outer clip:\n${svg.take(2400)}"
     }
   }
 
@@ -323,8 +384,14 @@ class RcJvmFigmaSvgExportTest {
     return Doc(FIXTURE.substringAfterLast('/'), 640, 480, bytes)
   }
 
+  private fun base64Fixture(path: String): ByteArray =
+    checkNotNull(javaClass.getResourceAsStream("/$path")) { "missing committed fixture $path" }
+      .bufferedReader()
+      .use { Base64.getMimeDecoder().decode(it.readText()) }
+
   private companion object {
     const val FIXTURE = "rc-fixtures/TitleCardRemote-640x480.rc"
+    const val APP_CARD_FIXTURE = "rc-fixtures/AppCardRemote-640x480.rc.b64"
     const val REPORT_PROPERTY = "rc.jvm.svg.report"
 
     /**

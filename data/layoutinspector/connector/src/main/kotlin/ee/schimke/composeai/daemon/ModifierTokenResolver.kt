@@ -1,11 +1,15 @@
 package ee.schimke.composeai.daemon
 
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ModifierInfo
 import androidx.compose.ui.platform.InspectableValue
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorGradient
 import ee.schimke.composeai.data.layoutinspector.PlaceholderModifiers
 import ee.schimke.composeai.data.layoutinspector.insetsPaint
@@ -188,7 +192,9 @@ internal object ModifierTokenResolver {
         // the
         // figma-svg export can still round the corner instead of dropping to a sharp rect.
         if (cornerRadius == null && cornerRadiusPx == null) {
-          cornerRadiusPx = effectiveShape.cornerRadiusPxWire()
+          cornerRadiusPx =
+            effectiveShape.cornerRadiusPxWire()
+              ?: effectiveShape.outlineCornerRadiusPxWire(sizeWidthPx, sizeHeightPx, density)
         }
         if (shape == null) shape = effectiveShape.shapeDescriptor()
       }
@@ -1332,6 +1338,40 @@ internal object ModifierTokenResolver {
       }
     if (corners.any { it == null }) return null
     val values = corners.filterNotNull()
+    return if (values.distinct().size == 1) "${values.first()}px"
+    else values.joinToString(",") { "${it}px" }
+  }
+
+  /**
+   * Resolves a custom shape through its public outline when it does not expose `CornerSize`
+   * getters. Remote Compose's state-backed `RemoteRoundedClipShape` is such a shape: asking it for
+   * the outline preserves its density behavior, percentage fallback, and radius normalization.
+   */
+  internal fun Shape.outlineCornerRadiusPxWire(
+    widthPx: Int,
+    heightPx: Int,
+    density: Float,
+  ): String? {
+    if (widthPx <= 0 || heightPx <= 0) return null
+    val rounded =
+      runCatching {
+          createOutline(
+            Size(widthPx.toFloat(), heightPx.toFloat()),
+            LayoutDirection.Ltr,
+            Density(density),
+          )
+            as? Outline.Rounded
+        }
+        .getOrNull() ?: return null
+    val rect = rounded.roundRect
+    val values =
+      listOf(
+        rect.topLeftCornerRadius.x,
+        rect.topRightCornerRadius.x,
+        rect.bottomRightCornerRadius.x,
+        rect.bottomLeftCornerRadius.x,
+      )
+    if (values.any { !it.isFinite() || it < 0f }) return null
     return if (values.distinct().size == 1) "${values.first()}px"
     else values.joinToString(",") { "${it}px" }
   }
