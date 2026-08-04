@@ -67,6 +67,11 @@ const STYLED_FIXTURES = new Set([
     "serve-viewer-catalog-knobs",
     "serve-landing-catalog-palette",
     "serve-viewer-catalog-palette",
+    // The render-server badge is a `.cp-daemon-status` pill whose whole diffable claim is its
+    // STYLING — that "not running" reads as neutral information rather than a fault. Without the
+    // real stylesheet routed in, `/assets/serve/.../serve.css` 404s and the daemon captures shoot
+    // an unstyled span, so a change to that styling would move no baseline at all.
+    "serve-landing-declared-themes",
 ]);
 const SERVE_ASSETS = [
     ["serve.css", "text/css"],
