@@ -1165,31 +1165,45 @@ object ServeWeb {
         // meets finished pixels rather than a spinner. No lease is taken: this is a trickle behind
         // the visitor's scroll, not the burst the visible batch asks for.
         var themeObserver = null;
-        var themePending = [];
         function stopDeferredTheme() {
           if (themeObserver) themeObserver.disconnect();
           themeObserver = null;
-          themePending = [];
+        }
+        // Whether a card is close enough to the viewport to be worth rendering NOW. This is
+        // geometry, deliberately, not `hidden`: on a flat catalog with no search nothing is hidden,
+        // so partitioning on `hidden` alone would put all 80+ cards in the leased batch and defer
+        // nothing — exactly the case this is here to fix. A zero-size rect (display:none, e.g. a
+        // non-current tab panel) is never near the viewport.
+        function nearViewport(c) {
+          var r = c.getBoundingClientRect();
+          if (!r.width && !r.height) return false;
+          var h = window.innerHeight || document.documentElement.clientHeight || 0;
+          return r.bottom > -400 && r.top < h + 400;
         }
         function deferTheme(jobs, gen) {
-          themePending = jobs;
           if (!jobs.length) return;
           // No IntersectionObserver (old browser): fall back to rendering them, serially, rather
           // than leaving those cards stuck on the wrong theme forever.
           if (!window.IntersectionObserver) { runThemeQueue(jobs, gen, null, 1); return; }
-          themeObserver = new IntersectionObserver(function (entries) {
-            if (gen !== themeGen) { stopDeferredTheme(); return; }
+          // Both the observer and its worklist are per-generation locals, never shared globals: a
+          // callback already queued when the visitor picks another theme must retire ITSELF and
+          // touch nothing else. Clearing the live observer or its pending list from a stale
+          // callback would strand every not-yet-scrolled card on the previous theme's pixels.
+          var pending = jobs.slice();
+          var observer = new IntersectionObserver(function (entries) {
+            if (gen !== themeGen) { observer.disconnect(); return; }
             var due = [];
             entries.forEach(function (e) {
               if (!e.isIntersecting) return;
-              themeObserver.unobserve(e.target);
-              for (var i = 0; i < themePending.length; i++) {
-                if (themePending[i].card === e.target) { due.push(themePending.splice(i, 1)[0]); break; }
+              observer.unobserve(e.target);
+              for (var i = 0; i < pending.length; i++) {
+                if (pending[i].card === e.target) { due.push(pending.splice(i, 1)[0]); break; }
               }
             });
             if (due.length) runThemeQueue(due, gen, null, 1);
           }, { rootMargin: "400px" });
-          jobs.forEach(function (job) { themeObserver.observe(job.card); });
+          themeObserver = observer;
+          jobs.forEach(function (job) { observer.observe(job.card); });
         }
         window.addEventListener("pagehide", function () { releaseThemeLease(themeLease, true); });
         """
@@ -1247,7 +1261,7 @@ object ServeWeb {
             // sees any response to their click. On initial load c.hidden is not assigned yet, so
             // also compare the card's section with the saved current tab. During a live search the
             // existing hidden state already spans tabs and remains authoritative.
-            var themeVisible = !c.hidden;$correctInitialThemeVisibility
+            var themeVisible = !c.hidden && nearViewport(c);$correctInitialThemeVisibility
             (themeVisible ? themeQueue : themeDeferredQueue).push(job);
           });
           // Off-screen cards are NOT rendered up front. A catalog is commonly 80+ cards and the

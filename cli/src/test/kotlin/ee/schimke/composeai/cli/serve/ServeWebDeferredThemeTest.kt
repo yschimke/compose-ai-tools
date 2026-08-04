@@ -61,14 +61,39 @@ class ServeWebDeferredThemeTest {
   }
 
   @Test
+  fun `the initial batch is the cards near the viewport, not merely the unfiltered ones`() {
+    // `hidden` means "filtered out by search or another tab", NOT "off screen". On a flat catalog
+    // with no search nothing is hidden, so partitioning on it alone would put every card in the
+    // leased batch and defer nothing — the exact case this change exists to fix.
+    val html = page()
+    assertTrue(
+      html.contains("var themeVisible = !c.hidden && nearViewport(c);"),
+      "geometry decides the initial batch, not just the filter state",
+    )
+    assertTrue(html.contains("c.getBoundingClientRect()"), "measured against the viewport")
+    assertTrue(
+      html.contains("if (!r.width && !r.height) return false;"),
+      "a display:none card (a non-current tab panel) is never near the viewport",
+    )
+  }
+
+  @Test
+  fun `a stale callback retires itself without touching the live observer`() {
+    // An observer callback already queued when the visitor picks another theme must not disconnect
+    // the NEW observer or drain its worklist — that would strand every not-yet-scrolled card on the
+    // previous theme's pixels.
+    val html = page()
+    assertTrue(
+      html.contains("if (gen !== themeGen) { observer.disconnect(); return; }"),
+      "the stale callback disconnects its own observer, not whatever is current",
+    )
+    assertTrue(html.contains("var pending = jobs.slice();"), "each generation owns its worklist")
+  }
+
+  @Test
   fun `changing theme again abandons the pending observer`() {
     // Each theme choice bumps themeGen; a stale observer must not paint the previous theme's pixels
     // over the new one as the visitor scrolls.
-    val html = page()
-    assertTrue(html.contains("stopDeferredTheme();"), "torn down on a theme change")
-    assertTrue(
-      html.contains("if (gen !== themeGen) { stopDeferredTheme(); return; }"),
-      "and a late callback from the old generation does nothing",
-    )
+    assertTrue(page().contains("stopDeferredTheme();"), "torn down on a theme change")
   }
 }
