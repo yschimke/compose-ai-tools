@@ -172,13 +172,21 @@ class RenderNowAppPreviewGateTest {
     timeoutMs: Long = 10_000,
     matcher: (JsonObject) -> Boolean,
   ): JsonObject? {
+    val unmatched = mutableListOf<JsonObject>()
     val deadline = System.currentTimeMillis() + timeoutMs
-    while (System.currentTimeMillis() < deadline) {
-      val remaining = (deadline - System.currentTimeMillis()).coerceAtLeast(0)
-      val msg = queue.poll(remaining, TimeUnit.MILLISECONDS) ?: return null
-      if (matcher(msg)) return msg
+    try {
+      while (System.currentTimeMillis() < deadline) {
+        val remaining = (deadline - System.currentTimeMillis()).coerceAtLeast(0)
+        val msg = queue.poll(remaining, TimeUnit.MILLISECONDS) ?: return null
+        if (matcher(msg)) return msg
+        // Notifications and responses can arrive in either order. Preserve messages that belong
+        // to the next assertion instead of silently consuming them while looking for this one.
+        unmatched += msg
+      }
+      return null
+    } finally {
+      unmatched.forEach { queue.offer(it) }
     }
-    return null
   }
 }
 
