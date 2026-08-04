@@ -11,9 +11,9 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@design-parity/adapter-figma": "^0.1.37",
+    "@design-parity/adapter-figma": "^0.1.38",
     "@design-parity/candidate": "^0.1.25",
-    "@design-parity/catalog-export": "^0.1.37",
+    "@design-parity/catalog-export": "^0.1.38",
     "pixelmatch": "^7.0.0",
     "playwright": "^1.49.0",
     "pngjs": "^7.0.0"
