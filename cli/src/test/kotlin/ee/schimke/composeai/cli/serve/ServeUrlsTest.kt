@@ -113,6 +113,20 @@ class ServeUrlsTest {
       "https://github.com/o/r/blob/main/mod/src/main/A.kt",
       ServeUrls.githubBlobUrl("o/r", "main", "/mod/", "\\src\\main\\A.kt"),
     )
+    // Catalogs conventionally publish Gradle project paths, not repository directory paths.
+    assertEquals(
+      "https://github.com/o/r/blob/main/previews/src/main/A.kt",
+      ServeUrls.githubBlobUrl("o/r", "main", ":previews", "src/main/A.kt"),
+    )
+    assertEquals(
+      "https://github.com/o/r/blob/main/samples/android/src/main/A.kt",
+      ServeUrls.githubBlobUrl("o/r", "main", ":samples:android", "src/main/A.kt"),
+    )
+    // The root Gradle project contributes no directory prefix.
+    assertEquals(
+      "https://github.com/o/r/blob/main/src/main/A.kt",
+      ServeUrls.githubBlobUrl("o/r", "main", ":", "src/main/A.kt"),
+    )
   }
 
   @Test

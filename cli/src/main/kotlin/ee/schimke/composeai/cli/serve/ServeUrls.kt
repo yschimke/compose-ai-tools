@@ -95,9 +95,11 @@ object ServeUrls {
    * `https://github.com/<repo>/blob/<ref>/<module>/<sourceFile>`. [repo] is `owner/name`; [ref] is
    * the **source** branch/tag/sha the catalog was built from (its `catalog.json` `source.ref`, NOT
    * the `design-artifacts/<system>` delivery branch, which carries generated assets rather than
-   * Kotlin); [module] is the source module subdirectory (`source.module`, e.g.
-   * `samples/design-catalog-compose-m3`), joined ahead of the module-relative [sourceFile] that
-   * discovery recorded.
+   * Kotlin); [module] is the source module's Gradle project path (`source.module`, e.g.
+   * `:samples:design-catalog-compose-m3`) or repository-relative subdirectory, joined ahead of the
+   * module-relative [sourceFile] that discovery recorded. Gradle project separators are converted
+   * to repository path separators, so `:previews` links under `previews/` rather than the literal
+   * (and invalid) `%3Apreviews/` directory.
    *
    * Returns null when [repo], [ref], or [sourceFile] is missing/blank, so a caller can `?.let` the
    * link into existence only when it resolves. [module] is optional (a source with no module
@@ -111,7 +113,11 @@ object ServeUrls {
     val f = ref?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     val rel =
       sourceFile?.replace('\\', '/')?.trim()?.trim('/')?.takeIf { it.isNotEmpty() } ?: return null
-    val mod = module?.replace('\\', '/')?.trim()?.trim('/')?.takeIf { it.isNotEmpty() }
+    val rawModule = module?.replace('\\', '/')?.trim()?.trim('/')?.takeIf { it.isNotEmpty() }
+    val mod =
+      rawModule
+        ?.let { if (it.startsWith(':')) it.trim(':').replace(':', '/') else it }
+        ?.takeIf { it.isNotEmpty() }
     val path = if (mod != null) "$mod/$rel" else rel
     val encoded = path.split('/').joinToString("/") { WebEscaping.urlEncodeSegment(it) }
     return "https://github.com/$r/blob/$f/$encoded"
