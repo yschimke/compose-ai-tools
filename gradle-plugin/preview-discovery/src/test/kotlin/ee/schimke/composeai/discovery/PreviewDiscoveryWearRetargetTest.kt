@@ -10,6 +10,10 @@ import org.junit.Test
  * which renders a Wear sticker on a phone canvas. Discovery retargets such previews to the Wear
  * default (227dp @ 2.0x) so they render at wear scale, while leaving device-pinned and fixed-size
  * previews (and every preview off Wear) untouched.
+ *
+ * The retarget moves the *wrap sandbox*, not the frame: `widthDp`/`heightDp` MUST stay null so both
+ * axes keep wrapping and the renderer still crops each sticker to its measured bounds. Pinning them
+ * (the original #2373 shape) made every device-less Wear preview export as a 454×454 watch canvas.
  */
 class PreviewDiscoveryWearRetargetTest {
 
@@ -53,9 +57,13 @@ class PreviewDiscoveryWearRetargetTest {
         .single()
         .params
 
-    assertEquals(DeviceDimensions.DEFAULT_WEAR.widthDp, out.widthDp)
-    assertEquals(DeviceDimensions.DEFAULT_WEAR.heightDp, out.heightDp)
+    assertEquals(DeviceDimensions.DEFAULT_WEAR.widthDp, out.wrapSandboxWidthDp)
+    assertEquals(DeviceDimensions.DEFAULT_WEAR.heightDp, out.wrapSandboxHeightDp)
     assertEquals(DeviceDimensions.DEFAULT_WEAR.density, out.density)
+    // Load-bearing: the axes stay WRAPPED. Pinning them here is what turned every Wear component
+    // sticker into a 454×454 watch canvas — the sandbox moves, the frame doesn't.
+    assertNull(out.widthDp)
+    assertNull(out.heightDp)
     // The id is untouched — a device-less preview never encodes a device, so catalog references and
     // delivery filenames stay stable.
     assertEquals(
@@ -81,9 +89,12 @@ class PreviewDiscoveryWearRetargetTest {
         .params
 
     // Dimensions stay null → the renderer crops the PNG to the widget's intrinsic layout bounds
-    // (issue #2670) instead of pinning the 227dp watch canvas.
+    // (issue #2670). The sandbox stays at the renderer's generic default too, so `fillMaxWidth`
+    // inside the widget fills the widget rather than the watch screen.
     assertNull(out.widthDp)
     assertNull(out.heightDp)
+    assertNull(out.wrapSandboxWidthDp)
+    assertNull(out.wrapSandboxHeightDp)
     // Density is still swapped to the Wear default (2.0x), not the inherited phone default
     // (2.625x), so a fixed-size Wear widget asset scales to watch-density px.
     assertEquals(DeviceDimensions.DEFAULT_WEAR.density, out.density)
@@ -138,16 +149,19 @@ class PreviewDiscoveryWearRetargetTest {
         .single()
         .params
 
-    // Dimensions stay null (wrap-content → cropped), density swapped to the wear default.
+    // Dimensions stay null (wrap-content → cropped) and so does the sandbox, density swapped to the
+    // wear default.
     assertNull(out.widthDp)
     assertNull(out.heightDp)
+    assertNull(out.wrapSandboxWidthDp)
+    assertNull(out.wrapSandboxHeightDp)
     assertEquals(DeviceDimensions.DEFAULT_WEAR.density, out.density)
   }
 
   @Test
-  fun `on Wear, a non-widget device-less preview still pins the canvas with the flag on`() {
+  fun `on Wear, a non-widget device-less preview still gets the watch sandbox with the flag on`() {
     // A regular catalog component (a non-glance @PreviewParameter provider) is unaffected by the
-    // widget auto-detect — it still pins the watch canvas under the default pinWearCanvas = true.
+    // widget auto-detect — it still measures against the watch screen under pinWearCanvas = true.
     val component =
       preview(
         "UserCardPreview",
@@ -162,9 +176,11 @@ class PreviewDiscoveryWearRetargetTest {
         .single()
         .params
 
-    assertEquals(DeviceDimensions.DEFAULT_WEAR.widthDp, out.widthDp)
-    assertEquals(DeviceDimensions.DEFAULT_WEAR.heightDp, out.heightDp)
+    assertEquals(DeviceDimensions.DEFAULT_WEAR.widthDp, out.wrapSandboxWidthDp)
+    assertEquals(DeviceDimensions.DEFAULT_WEAR.heightDp, out.wrapSandboxHeightDp)
     assertEquals(DeviceDimensions.DEFAULT_WEAR.density, out.density)
+    assertNull(out.widthDp)
+    assertNull(out.heightDp)
   }
 
   @Test

@@ -209,12 +209,20 @@ object DeviceDimensions {
    * `heightDp` fields of the returned [SizeSpec] are the *sandbox* dimensions the renderer should
    * use — for wrapped axes that's [SANDBOX_DP]; for fixed axes it's the effective dp the frame was
    * resolved to.
+   *
+   * [wrapSandboxWidthDp] / [wrapSandboxHeightDp] ([PreviewParams.wrapSandboxWidthDp]) replace
+   * [SANDBOX_WIDTH_DP] / [SANDBOX_HEIGHT_DP] on a wrapped axis without fixing it — the axis still
+   * reports `wrap = true`, so the capture crops to measured size. They're ignored on a fixed axis
+   * (an explicit dp or a device frame already owns the geometry) and on the device / `showSystemUi`
+   * branch below, where nothing wraps.
    */
   fun resolveForRender(
     device: String?,
     widthDp: Int?,
     heightDp: Int?,
     showSystemUi: Boolean,
+    wrapSandboxWidthDp: Int? = null,
+    wrapSandboxHeightDp: Int? = null,
   ): SizeSpec {
     val w = widthDp?.takeIf { it > 0 }
     val h = heightDp?.takeIf { it > 0 }
@@ -232,8 +240,8 @@ object DeviceDimensions {
       )
     }
     return SizeSpec(
-      widthDp = w ?: SANDBOX_WIDTH_DP,
-      heightDp = h ?: SANDBOX_HEIGHT_DP,
+      widthDp = w ?: wrapSandboxWidthDp?.takeIf { it > 0 } ?: SANDBOX_WIDTH_DP,
+      heightDp = h ?: wrapSandboxHeightDp?.takeIf { it > 0 } ?: SANDBOX_HEIGHT_DP,
       wrapWidth = w == null,
       wrapHeight = h == null,
     )

@@ -1,11 +1,9 @@
 package com.example.designcatalogwearm3
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
@@ -27,12 +25,11 @@ import ee.schimke.composeai.overrides.previewOverrideString
  * extracts still come from the real Wear Material 3 system (read from the theme, not the pixels).
  * Full-screen components use [FullScreenWear] instead, which keeps the black round device shape.
  *
- * The content is **centred** in the pinned Wear canvas: a device-less Wear sticker is pinned to a
- * fixed 227dp square (by `PreviewDiscovery.retargetWearStickers`, so fill-width components size to
- * the watch screen and dp→px stays 2.0×), which means a wrap-content component (a button, the
- * progress ring) would otherwise sit at the frame's top-left. Centring places it mid-canvas — the
- * content-cropped figma-svg export and the content-bbox fidelity score are unaffected (both crop to
- * the component), so this only moves where the component lands in the full-frame render PNG.
+ * Deliberately no `fillMaxSize()` / centring. `PreviewDiscovery.retargetWearStickers` hands a
+ * device-less Wear preview the 227dp watch screen as its *measuring bound*, not as a fixed frame —
+ * a fill-width component (Card, ListHeader) sizes to the watch, everything else wraps and the
+ * renderer crops the PNG to it. Filling here would defeat that crop and put every sticker back on a
+ * full 454×454 canvas, which is what #2404 did while the retarget still pinned the frame.
  *
  * TLC item scaling is shown separately (see `CardScalingPreview.kt`), which hosts a component in a
  * real `TransformingLazyColumn` via `:wear-preview-runtime`; a plain sticker here is unchanged.
@@ -40,7 +37,7 @@ import ee.schimke.composeai.overrides.previewOverrideString
 @Composable
 fun WearSticker(content: @Composable () -> Unit) {
   WearCatalogTheme {
-    Box(Modifier.fillMaxSize().padding(8.dp), contentAlignment = Alignment.Center) { content() }
+    Box(Modifier.padding(8.dp)) { content() }
   }
 }
 

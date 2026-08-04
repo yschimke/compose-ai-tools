@@ -487,9 +487,13 @@ class BundleRenderer(
     // Sizing: the bundle's previews.json carries discovery-resolved widthDp/heightDp/density
     // when a `@Preview(device=...)` or explicit dims are present. When unset, fall back to a
     // wrap-content sandbox (400×800 dp @ 2.625× default density = 1050×2100 px) and let the
-    // renderer's wrap flags crop to the composable's intrinsic size on both axes.
-    val widthDp = preview.params.widthDp ?: 400
-    val heightDp = preview.params.heightDp ?: 800
+    // renderer's wrap flags crop to the composable's intrinsic size on both axes. A preview may
+    // narrow that sandbox per-axis without fixing it (`wrapSandbox*Dp` — a Wear module's
+    // device-less
+    // previews measure against the 227dp watch screen and still crop); the wrap flags below key off
+    // `widthDp`/`heightDp` only, so the crop survives.
+    val widthDp = preview.params.widthDp ?: preview.params.wrapSandboxWidthDp ?: 400
+    val heightDp = preview.params.heightDp ?: preview.params.wrapSandboxHeightDp ?: 800
     val density = preview.params.density ?: DEFAULT_DENSITY
     val widthPx = (widthDp * density).toInt().coerceAtLeast(1)
     val heightPx = (heightDp * density).toInt().coerceAtLeast(1)

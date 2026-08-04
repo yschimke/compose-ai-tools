@@ -365,8 +365,13 @@ data class PreviewManifestEntry(
     val pinned = device != null || showSystemUi
     val wrapWidth = explicitWidthPx == null && !pinned
     val wrapHeight = explicitHeightPx == null && !pinned
-    val widthPx = explicitWidthPx ?: (WRAP_SANDBOX_WIDTH_DP * density).roundHalfUpPx()
-    val heightPx = explicitHeightPx ?: (WRAP_SANDBOX_HEIGHT_DP * density).roundHalfUpPx()
+    // A per-preview wrap sandbox narrows the generic 400×800 dp bound WITHOUT fixing the axis — the
+    // `wrap*` flags above are untouched, so the capture still crops to measured size. See
+    // `discovery.PreviewParams.wrapSandboxWidthDp`.
+    val sandboxWidthDp = p?.wrapSandboxWidthDp?.takeIf { it > 0 } ?: WRAP_SANDBOX_WIDTH_DP
+    val sandboxHeightDp = p?.wrapSandboxHeightDp?.takeIf { it > 0 } ?: WRAP_SANDBOX_HEIGHT_DP
+    val widthPx = explicitWidthPx ?: (sandboxWidthDp * density).roundHalfUpPx()
+    val heightPx = explicitHeightPx ?: (sandboxHeightDp * density).roundHalfUpPx()
     val showBackground = showBackground ?: p?.showBackground ?: true
     val backgroundColor = backgroundColor ?: p?.backgroundColor ?: 0L
     val uiMode = uiMode ?: p?.uiMode ?: 0
@@ -418,6 +423,15 @@ data class PreviewParamsEntry(
   val device: String? = null,
   val widthDp: Int? = null,
   val heightDp: Int? = null,
+  /**
+   * Bound a **wrapped** axis is measured against, replacing [WRAP_SANDBOX_WIDTH_DP] /
+   * [WRAP_SANDBOX_HEIGHT_DP]. Mirrors `discovery.PreviewParams.wrapSandboxWidthDp`; unlike
+   * [widthDp] it does not fix the axis, so [PreviewManifestEntry.resolved] still reports `wrapWidth
+   * = true` and the capture still crops to measured size.
+   */
+  val wrapSandboxWidthDp: Int? = null,
+  /** See [wrapSandboxWidthDp]. */
+  val wrapSandboxHeightDp: Int? = null,
   val density: Float? = null,
   val showBackground: Boolean = false,
   val backgroundColor: Long = 0L,

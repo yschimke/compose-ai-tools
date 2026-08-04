@@ -109,6 +109,15 @@ data class PreviewParams(
   val device: String? = null,
   val widthDp: Int? = null,
   val heightDp: Int? = null,
+  /**
+   * Bound a wrapped axis was measured against without being fixed to it — see
+   * `discovery.PreviewParams.wrapSandboxWidthDp`. The viewer uses it as the window size for
+   * previews that carry no explicit dims, so a Wear sticker opens at watch size rather than the
+   * generic 400×800 dp sandbox.
+   */
+  val wrapSandboxWidthDp: Int? = null,
+  /** See [wrapSandboxWidthDp]. */
+  val wrapSandboxHeightDp: Int? = null,
   val density: Float? = null,
   val fontScale: Float = 1.0f,
   val showSystemUi: Boolean = false,

@@ -417,6 +417,8 @@ abstract class RenderPreviewsTask : DefaultTask() {
           widthDp = preview.params.widthDp,
           heightDp = preview.params.heightDp,
           showSystemUi = preview.params.showSystemUi,
+          wrapSandboxWidthDp = preview.params.wrapSandboxWidthDp,
+          wrapSandboxHeightDp = preview.params.wrapSandboxHeightDp,
         )
       // Per-device density (= densityDpi / 160), so output bitmaps match
       // what Android Studio renders for the same `@Preview`. Source: the

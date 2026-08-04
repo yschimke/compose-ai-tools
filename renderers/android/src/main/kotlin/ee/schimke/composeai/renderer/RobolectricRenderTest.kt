@@ -514,11 +514,20 @@ abstract class RobolectricRenderTestBase(
     // discovery has already pre-resolved those cases). We use a generous
     // sandbox dp for wrapped axes so the Robolectric window / Configuration
     // has a finite, coherent size; the captured PNG is cropped back down
-    // to the measured content bounds after capture.
+    // to the measured content bounds after capture. `wrapSandboxWidthDp`/`wrapSandboxHeightDp`
+    // narrow that sandbox per preview WITHOUT fixing the axis (a Wear module's device-less previews
+    // measure against the 227dp watch screen, then still crop) — see
+    // `discovery.PreviewParams.wrapSandboxWidthDp`.
     val wrapWidth = params.widthDp == null || params.widthDp <= 0
     val wrapHeight = params.heightDp == null || params.heightDp <= 0
-    val widthDp = params.widthDp?.takeIf { it > 0 } ?: SANDBOX_WIDTH_DP
-    val heightDp = params.heightDp?.takeIf { it > 0 } ?: SANDBOX_HEIGHT_DP
+    val widthDp =
+      params.widthDp?.takeIf { it > 0 }
+        ?: params.wrapSandboxWidthDp?.takeIf { it > 0 }
+        ?: SANDBOX_WIDTH_DP
+    val heightDp =
+      params.heightDp?.takeIf { it > 0 }
+        ?: params.wrapSandboxHeightDp?.takeIf { it > 0 }
+        ?: SANDBOX_HEIGHT_DP
     // Round crop fires for ordinary Compose @Preview captures with a round device, matching
     // Layoutlib / Android Studio. Tile and notification captures have their own surface renderers
     // and are intentionally left out of this Studio @Preview parity mask.
