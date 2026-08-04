@@ -405,6 +405,75 @@ applyThemeChoice();
       });
       reflectBg();
       apply();
+
+      var presenceUrl = "/compose-m3/api/presence";
+      function ping() {
+        if (document.visibilityState !== "visible") return;
+        fetch(presenceUrl, { method: "POST", credentials: "same-origin", keepalive: true })
+          .catch(function () {});
+      }
+      setInterval(ping, 240 * 1000);
+      document.addEventListener("visibilitychange", ping);
+      // Fired on arrival, not only every interval. Catalogs are no longer warmed at boot (see
+      // ServeCatalogLiveHost.eagerWarmOnOpen), so this ping is what gets a daemon ready for the
+      // catalog the visitor actually opened — while they read the grid, rather than when they
+      // first click a theme and wait out a cold start.
+      ping();
+
+      // Render-server badge. Catalogs open their daemon on first real use, so whether one is up is
+      // now a genuine question with a visible answer — a theme switch is instant against a warm
+      // daemon and pays a cold start against none. Same URL family as the presence ping, and the
+      // endpoint reads through `peekHost`, so polling it never wakes what it is reporting on.
+      var daemonUrl = presenceUrl.replace("/api/presence", "/api/daemons");
+      var daemonBadge = null;
+      function daemonBadgeEl() {
+        if (daemonBadge) return daemonBadge;
+        daemonBadge = document.getElementById("cp-daemon-status");
+        if (!daemonBadge) {
+          daemonBadge = document.createElement("span");
+          daemonBadge.id = "cp-daemon-status";
+          daemonBadge.className = "cp-daemon-status";
+          var host = document.querySelector(".cp-header-meta") || document.querySelector("header");
+          (host || document.body).appendChild(daemonBadge);
+        }
+        return daemonBadge;
+      }
+      function paintDaemonStatus(state) {
+        var el = daemonBadgeEl();
+        if (!state) { el.hidden = true; return; }
+        el.hidden = false;
+        // "not running" is a normal resting state, not a fault — a catalog nobody has rendered on
+        // simply has no process yet. Word it so it doesn't read as an error.
+        var label = state.running
+          ? "Render server: connected"
+          : "Render server: not running";
+        var count = state.instances || 0;
+        if (state.running) {
+          label += " \u00b7 " + count + (count === 1 ? " instance" : " instances");
+          if (state.activeStreams > 0) label += ", " + state.activeStreams + " live";
+        }
+        el.textContent = label;
+        el.setAttribute("data-cp-daemon-running", state.running ? "1" : "0");
+        el.title = state.pooled
+          ? state.pooled + " of " + state.poolCapacity + " per-preview daemons resident"
+          : "";
+      }
+      function pollDaemons() {
+        if (!daemonUrl || document.visibilityState !== "visible") return;
+        fetch(daemonUrl, { credentials: "same-origin" })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(paintDaemonStatus)
+          .catch(function () {});
+      }
+      setInterval(pollDaemons, 20000);
+      document.addEventListener("visibilitychange", pollDaemons);
+      pollDaemons();
+      // A theme switch is exactly when the daemon comes up, so refresh the badge shortly after one.
+      document.addEventListener("click", function (e) {
+        if (e.target && e.target.closest && e.target.closest(".cp-theme-btn")) {
+          setTimeout(pollDaemons, 1500);
+        }
+      });
     })();</script>
 <details class="cp-about cp-disclosure">
   <summary>
