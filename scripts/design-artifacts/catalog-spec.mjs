@@ -380,9 +380,11 @@ export function discoverComponentIds(sources) {
   for (const source of sources) {
     for (const m of stripComments(source).matchAll(re)) {
       // `sizes = ["smallRound", "largeRound"]` fans one annotation into a component per breakpoint
-      // with a suffixed id, so the hero can legitimately name one of those — and the plain annotated
-      // id stays valid too (it is what the annotation literally says, and the id a `@CatalogVariant`
-      // attaches by). Emit both; the check exists to catch a hero matching NOTHING.
+      // with a suffixed id, so the ids a hero may name are the EXPANSION's, not the annotated one.
+      // The plain id survives the fan-out only as an internal variant-attachment alias — no
+      // component in the published catalog carries it, so a hero naming it resolves to nothing and
+      // the server quietly falls back to another representative. Predicting the same ids the
+      // inventory mints is what makes that an error here instead of a silent wrong hero.
       const sizes = [...(m[1].match(/(?:^|,)\s*sizes\s*=\s*\[([^\]]*)\]/)?.[1] ?? "").matchAll(
         /"([^"]+)"/g,
       )].map((s) => s[1]);
@@ -396,7 +398,6 @@ export function discoverComponentIds(sources) {
       const positional = m[1].match(/^\s*"([^"]+)"/);
       const id = named?.[1] ?? positional?.[1];
       if (!id) continue;
-      ids.add(id);
       for (const entry of catalogSizeExpansion(id, sizes)) ids.add(entry.componentId);
     }
   }

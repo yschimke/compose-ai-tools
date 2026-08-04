@@ -149,6 +149,14 @@ data class CatalogEntry(
   val parallel: String? = null,
   val state: String? = null,
   val props: List<CatalogVariantProp> = emptyList(),
+  /**
+   * COMPONENT: the breakpoints (`@CatalogComponent.sizes`) this component is documented at. The
+   * design-artifacts export expands one entry per name into its own catalog component, so a reader
+   * that dropped this field would see one component where the published catalog has several.
+   */
+  val sizes: List<String> = emptyList(),
+  /** VARIANT: the breakpoint (`@CatalogVariant.size`) this variant's render is taken from. */
+  val size: String? = null,
 )
 
 @Serializable

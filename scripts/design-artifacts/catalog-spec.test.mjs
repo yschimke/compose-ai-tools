@@ -941,13 +941,12 @@ test("discoverComponentIds emits the ids a sizes fan-out mints, plus the annotat
     @CatalogComponent(id = "Button/Filled", sizes = ["largeRound"])
     @Composable fun FilledButton() {}
   `;
-  // A single size narrows without suffixing, so `Button/Filled` stays exactly one id; the
-  // multi-size fan-out adds its per-breakpoint ids alongside the annotated one, because
-  // `display.hero` may legitimately name either and this check exists to catch a hero that
-  // matches nothing at all.
+  // A single size narrows without suffixing, so `Button/Filled` stays exactly one id. The
+  // multi-size fan-out yields ONLY its per-breakpoint ids: no published component carries the
+  // plain `Layout/List` (it survives the fan-out purely as a variant-attachment alias), so a hero
+  // naming it would resolve to nothing and the server would quietly pick another representative.
   assert.deepEqual(discoverComponentIds([source]), [
     "Button/Filled",
-    "Layout/List",
     "Layout/List/largeRound",
     "Layout/List/smallRound",
   ]);
@@ -966,4 +965,24 @@ test("validateSpec resolves display.hero against a fanned-out annotation id", ()
     },
   );
   assert.deepEqual(errors, []);
+});
+
+test("validateSpec rejects a hero naming the unsuffixed id of a fanned-out component", () => {
+  // The plain id is an inventory-internal alias, not a published component — accepting it here
+  // would let a silently-ineffective hero through the one check meant to catch exactly that.
+  const { errors } = validateSpec(
+    { system: "wear-m3", title: "Wear M3", display: { hero: "Layout/List" } },
+    {
+      knownPreviews: ["ListLayout"],
+      knownComponentIds: discoverComponentIds([
+        `@CatalogComponent(id = "Layout/List", sizes = ["smallRound", "largeRound"])
+         @Composable fun ListLayout() {}`,
+      ]),
+      annotatedInventory: true,
+    },
+  );
+  assert.ok(
+    errors.some((e) => e.includes('display.hero "Layout/List" matches no componentId')),
+    `expected the hero to be rejected, got ${JSON.stringify(errors)}`,
+  );
 });
