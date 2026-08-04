@@ -943,9 +943,10 @@ abstract class BundlePreviewTask : DefaultTask() {
     }
     // Drop merged-AAR file resources a Compose render never inflates (Wear gesture-animation
     // vectors, call icons, notification templates, …) before packing. The compiled `resources.arsc`
-    // is left byte-for-byte intact — this only stops shipping file bytes nothing resolves — and the
-    // module's own `res/` files are always retained. See [AndroidResourcePruner].
-    val prunedApk = AndroidResourcePruner.prune(apkFile.readBytes(), moduleOwnFileResourceKeys())
+    // is left byte-for-byte intact — this only stops shipping file bytes nothing resolves — and
+    // every file resource authored in this build (this module's AND its sibling project modules')
+    // is retained. See [AndroidResourcePruner] and [MergedResourceOwnership].
+    val prunedApk = AndroidResourcePruner.prune(apkFile.readBytes(), firstPartyFileResourceKeys())
     zipFiles[ANDROID_RESOURCE_APK_PATH] = prunedApk.bytes
     zipFiles[ANDROID_MERGED_MANIFEST_PATH] = manifestFile.readBytes()
     val rClassesJar = packAndroidRClasses()
@@ -966,12 +967,32 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * Resource identities (`"<typeBase>/<name>"`) the module authors in its own `src/<sourceSet>/res`
-   * — the file resources [AndroidResourcePruner] must retain (a catalog's own icons its code may
+   * Resource identities (`"<typeBase>/<name>"`) authored **anywhere in this build** — the file
+   * resources [AndroidResourcePruner] must retain (an icon the catalog's code may
    * `painterResource`) as opposed to the merged-dependency file resources it drops. `values`
    * directories are skipped: those compile into `resources.arsc`, which the pruner never touches.
+   *
+   * Two sources, unioned. [MergedResourceOwnership] reads AGP's merge-blame file and so covers the
+   * **sibling project modules** a real app's catalog renders against — Pocket Casts renders from
+   * `:modules:services:compose` while its icons live in `:modules:services:ui`, and pruning those
+   * left the live daemon throwing `NotFoundException: File res/drawable/ic_play.xml …` on the first
+   * `painterResource` (issue #3260). The `src/<sourceSet>/res` scan below is the fallback for when
+   * no blame file was written, and keeps this correct for a module whose own resources haven't been
+   * merged yet.
    */
-  private fun moduleOwnFileResourceKeys(): Set<String> {
+  private fun firstPartyFileResourceKeys(): Set<String> {
+    val fromBlame =
+      moduleProjectDir.asFile.orNull?.let {
+        MergedResourceOwnership.firstPartyFileResourceKeys(File(it, "build"))
+      } ?: emptySet()
+    return fromBlame + moduleOwnSourceSetResourceKeys()
+  }
+
+  /**
+   * Resource identities the module authors in its own `src/<sourceSet>/res`. The narrow half of
+   * [firstPartyFileResourceKeys] — see there for why it is no longer the whole retain-set.
+   */
+  private fun moduleOwnSourceSetResourceKeys(): Set<String> {
     val srcDir = moduleProjectDir.asFile.orNull?.let { File(it, "src") } ?: return emptySet()
     if (!srcDir.isDirectory) return emptySet()
     val keys = mutableSetOf<String>()

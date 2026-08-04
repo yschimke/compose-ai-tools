@@ -20,11 +20,21 @@ import java.util.zip.ZipOutputStream
  * - Only View-system file types are candidates ([PRUNABLE_TYPE_BASES]): `drawable`, `layout`,
  *   `anim`, `animator`, `mipmap`. Compose draws from Kotlin — no `R.layout` inflation, no view
  *   animations, no launcher mipmaps — so a Compose render resolves none of these unless the module
- *   itself authored one, which [moduleOwnFileResources] always retains.
+ *   itself authored one — or a sibling project module did — which [firstPartyFileResources] always
+ *   retains.
  * - The baked catalog PNGs are rendered from the **full** APK *before* packing, so they are
- *   unaffected. The pruned APK feeds only the live daemon re-render, which degrades any miss to a
- *   `⟦res 0x…⟧` placeholder rather than throwing (see the daemon's `PlaceholderFallbackResources`),
- *   so even an over-aggressive drop is graceful, never a crash or a wrong sticker.
+ *   unaffected. The pruned APK feeds only the live daemon re-render.
+ *
+ * An over-aggressive drop is **not** graceful, so the retain-set is what carries the safety here.
+ * `PlaceholderFallbackResources` degrades a miss to a `⟦res 0x…⟧` placeholder only on the accessors
+ * it wraps (`getText` / `getColor` / the dimension family / every `getDrawable*` overload); Compose
+ * resolves a vector through `Resources.getValue` + `getXml`, which that wrapper's own kdoc lists as
+ * uncovered, so a pruned vector drawable aborts the whole render with `NotFoundException: File
+ * res/drawable/<name>.xml from xml type xml resource ID #0x7f…` rather than drawing a magenta box.
+ * That is issue #3260: [firstPartyFileResources] used to carry only the rendering module's own
+ * `src/<sourceSet>/res`, so a multi-module app whose icons live in sibling project modules had
+ * every one of them pruned. The retain-set now comes from AGP's merge-blame file
+ * (`MergedResourceOwnership`) and covers the whole build's first-party resources.
  *
  * For a Compose-only catalog (e.g. `:samples:design-catalog-wear-m3`, which authors no file
  * resources of its own) this drops the entire merged AAR drawable/layout payload — ~140 KB of Wear
@@ -41,11 +51,12 @@ internal object AndroidResourcePruner {
   /**
    * Re-emit [apkBytes] without the prunable merged-AAR file resources.
    *
-   * @param moduleOwnFileResources resource identities the module declares in its own
-   *   `src/<sourceSet>/res`, each `"<typeBase>/<name>"` (e.g. `"drawable/ic_logo"`); always
-   *   retained.
+   * @param firstPartyFileResources resource identities authored anywhere in this build — the
+   *   rendering module's own `src/<sourceSet>/res` and every sibling project module's — each
+   *   `"<typeBase>/<name>"` (e.g. `"drawable/ic_logo"`); always retained. See
+   *   [MergedResourceOwnership], which derives it from AGP's merge-blame file.
    */
-  fun prune(apkBytes: ByteArray, moduleOwnFileResources: Set<String>): Result {
+  fun prune(apkBytes: ByteArray, firstPartyFileResources: Set<String>): Result {
     val out = ByteArrayOutputStream(apkBytes.size)
     var dropped = 0
     var saved = 0L
@@ -54,7 +65,7 @@ internal object AndroidResourcePruner {
         while (true) {
           val entry = zis.nextEntry ?: break
           val data = zis.readBytes()
-          if (shouldDrop(entry.name, moduleOwnFileResources)) {
+          if (shouldDrop(entry.name, firstPartyFileResources)) {
             dropped++
             saved += data.size.toLong()
             continue
@@ -78,20 +89,20 @@ internal object AndroidResourcePruner {
     return Result(out.toByteArray(), dropped, saved)
   }
 
-  private fun shouldDrop(entryName: String, moduleOwn: Set<String>): Boolean {
+  private fun shouldDrop(entryName: String, firstParty: Set<String>): Boolean {
     if (!entryName.startsWith("res/")) return false
     val rest = entryName.removePrefix("res/")
     val slash = rest.indexOf('/')
     if (slash < 0) return false
     val typeBase = rest.substring(0, slash).substringBefore('-')
     if (typeBase !in PRUNABLE_TYPE_BASES) return false
-    return "$typeBase/${resourceNameOf(rest.substring(slash + 1))}" !in moduleOwn
+    return "$typeBase/${resourceNameOf(rest.substring(slash + 1))}" !in firstParty
   }
 
   /**
    * Resource name from a packed file entry: drop the extension, and normalise AAPT-generated
    * animated-vector split names (`$base__12.xml`) back to their `base` so a module-authored
-   * animated vector is matched against [moduleOwnFileResources] and kept.
+   * animated vector is matched against [firstPartyFileResources] and kept.
    */
   internal fun resourceNameOf(fileName: String): String {
     val noExt = fileName.substringBefore('.')
