@@ -2297,10 +2297,12 @@ class ServeHttpServer(
       host?.let { runCatching { it.daemonPoolStats() }.getOrDefault(emptyList()) }.orEmpty()
     val dto =
       DaemonStatusDto(
-        // A registered catalog with no subprocess reports false — see ServeHost.daemonStarted.
-        running = host?.daemonStarted ?: false,
-        // The shared monolithic daemon (0 or 1) plus whatever the per-preview pool is holding.
-        instances = (if (host?.daemonStarted == true) 1 else 0) + pools.sumOf { it.open },
+        // Counted from real subprocesses, not from `daemonStarted`: that is a host-level flag a
+        // static baked bundle inherits as true, and it is already true for a catalog whose only
+        // process is a pooled child. Either would have the page claim a render server that isn't
+        // there.
+        running = (host?.daemonProcessCount ?: 0) > 0,
+        instances = host?.daemonProcessCount ?: 0,
         pooled = pools.sumOf { it.open },
         poolCapacity = pools.sumOf { it.maxOpen },
         activeStreams = host?.let { runCatching { it.activeStreamCount() }.getOrDefault(0) } ?: 0,

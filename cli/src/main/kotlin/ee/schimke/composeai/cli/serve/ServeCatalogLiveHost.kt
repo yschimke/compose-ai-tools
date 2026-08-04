@@ -438,6 +438,15 @@ class ServeCatalogLiveHost(
    * `/status` — the opposite of what this reporting is for. The baked lane never has a subprocess,
    * so it contributes nothing.
    */
+  /**
+   * The shared daemon (0 or 1) plus the per-preview pool's residents. Delegating to
+   * [live.daemonProcessCount] rather than adding one for [daemonStarted] matters: this host reports
+   * started when only a pooled child is up, so a flat `+1` would invent a monolithic daemon that
+   * does not exist.
+   */
+  override val daemonProcessCount: Int
+    get() = live.daemonProcessCount + perPreviewPoolStats().sumOf { it.open }
+
   override val daemonStarted: Boolean
     get() =
       live.daemonStarted || perPreviewStreamCount() > 0 || perPreviewPoolStats().any { it.open > 0 }

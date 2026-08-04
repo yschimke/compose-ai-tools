@@ -118,4 +118,15 @@ class ServeWebDeferredThemeTest {
     assertTrue(html.contains("img.getAttribute(\"data-cp-blob\")"))
     assertTrue(html.contains("URL.revokeObjectURL(previous)"))
   }
+
+  @Test
+  fun `leaving a declared theme releases the blob too, not just switching between them`() {
+    // Revoking only on the next successful themed fetch left every card's full-resolution PNG
+    // retained when the visitor went back to Light / Dark / Default — on an 80+ card catalog that
+    // is a lot of blobs held until the page unloads.
+    val html = page()
+    assertTrue(html.contains("function setCardSrc(img, url)"), "one setter owns the release")
+    assertTrue(html.contains("if (withSrc) setCardSrc(img, src);"), "swap cards restore through it")
+    assertTrue(html.contains("if (img && base) setCardSrc(img, base);"), "so do non-swap cards")
+  }
 }

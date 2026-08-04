@@ -379,6 +379,10 @@ internal constructor(
    * Whether the daemon subprocess has actually been started. Lets `/status` and [close] reason
    * about a host that is registered but never woken, without waking it to find out.
    */
+  /** One subprocess, once it exists. */
+  override val daemonProcessCount: Int
+    get() = if (daemonStarted) 1 else 0
+
   override val daemonStarted: Boolean
     get() = sessionAlreadyOpen || sessionOpening.get() || sessionDelegate.isInitialized()
 

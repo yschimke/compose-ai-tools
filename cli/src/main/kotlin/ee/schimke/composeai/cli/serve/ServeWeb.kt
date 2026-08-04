@@ -1350,7 +1350,7 @@ object ServeWeb {
       if (hasDeclaredThemes)
         "\n            var img = c.querySelector(\"img\");" +
           "\n            var base = themeBase[i];" +
-          "\n            if (img && base) img.src = base;"
+          "\n            if (img && base) setCardSrc(img, base);"
       else ""
     val applyTheme =
       if (hasThemes)
@@ -1360,6 +1360,19 @@ object ServeWeb {
         });
         // Point a swap card at one of its baked variants ("l"/"d"): pixels (unless the caller is
         // supplying themed ones), alt text, label, id, viewer link and stage backing.
+        // Point a card's <img> at a plain URL, releasing whatever blob it was holding first.
+        // A themed render is handed over as an object URL (see runThemeWorker); leaving a declared
+        // theme for Light / Dark / Default replaces that source, and without this the blob behind
+        // it would stay resident until the page unloaded — one full-resolution PNG per card, on
+        // catalogs that routinely run to 80+ cards.
+        function setCardSrc(img, url) {
+          var previous = img.getAttribute("data-cp-blob");
+          img.src = url;
+          if (previous) {
+            img.removeAttribute("data-cp-blob");
+            URL.revokeObjectURL(previous);
+          }
+        }
         function applyVariant(c, k, withSrc) {
           var src = c.getAttribute("data-" + k + "-src");
           if (!src) return;
@@ -1367,7 +1380,7 @@ object ServeWeb {
           var lab = c.querySelector(".cp-label");
           var idn = c.querySelector(".cp-id");
           var lbl = c.getAttribute("data-" + k + "-label");
-          if (img) { if (withSrc) img.src = src; img.setAttribute("alt", lbl); }
+          if (img) { if (withSrc) setCardSrc(img, src); img.setAttribute("alt", lbl); }
           c.setAttribute("href", c.getAttribute("data-" + k + "-href"));
           if (lab) { lab.textContent = lbl; lab.setAttribute("title", lbl); }
           if (idn) idn.textContent = c.getAttribute("data-" + k + "-id");
