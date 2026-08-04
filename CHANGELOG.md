@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.29](https://github.com/yschimke/compose-ai-tools/compare/v0.19.28...v0.19.29) (2026-08-04)
+
+
+### Bug Fixes
+
+* **bundle:** keep sibling-module drawables out of the resource prune ([#3269](https://github.com/yschimke/compose-ai-tools/issues/3269)) ([ce30b50](https://github.com/yschimke/compose-ai-tools/commit/ce30b50794f2bce0da595e1f25bad584e0fe0d9e))
+* **catalog:** improve theme presentation ([#3268](https://github.com/yschimke/compose-ai-tools/issues/3268)) ([4822114](https://github.com/yschimke/compose-ai-tools/commit/4822114107d5313d655ee3514319f64d2f9ad2b1))
+* **serve:** close the daemon session that opens after its host was closed ([#3272](https://github.com/yschimke/compose-ai-tools/issues/3272)) ([5852b7f](https://github.com/yschimke/compose-ai-tools/commit/5852b7f2f3f4382ef24426c45be45fcc90250966))
+
+
+### Performance Improvements
+
+* **serve:** open a catalog's daemon on first use, not at registration ([#3270](https://github.com/yschimke/compose-ai-tools/issues/3270)) ([495d602](https://github.com/yschimke/compose-ai-tools/commit/495d602fa782ae84432536f3f1fee810252b86c1))
+
 ## [0.19.28](https://github.com/yschimke/compose-ai-tools/compare/v0.19.27...v0.19.28) (2026-08-04)
 
 
