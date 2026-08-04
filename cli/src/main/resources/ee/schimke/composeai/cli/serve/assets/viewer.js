@@ -346,20 +346,46 @@
     var qs = withScroll(snapshotExt, query());
     var url =
       base + "/render/" + encodeURIComponent(previewId) + snapshotExt + (qs ? "?" + qs : "");
-    var next = new Image();
-    next.onload = function () {
-      if (gen !== snapshotGen) return;
-      img.src = url;
-      status.textContent = "";
-      setSnapshotLoading(false);
-      clearModeError();
-    };
-    next.onerror = function () {
-      if (gen !== snapshotGen) return;
-      setSnapshotLoading(false);
-      showModeError((snapshotExt === ".svg" ? "SVG" : "PNG") + " render failed for this preview.");
-    };
-    next.src = url;
+    var requestedExt = snapshotExt;
+    // Override-bearing renders are deliberately `no-store`. Preloading with `new Image()` and
+    // then assigning the same URL to the visible image therefore performs two server renders,
+    // and the second one can race the first through the daemon's shared override state. Fetch the
+    // bytes once and hand the resulting blob URL to the image instead. This also keeps the current
+    // frame visible until the replacement has decoded.
+    fetch(url, { credentials: "same-origin" })
+      .then(function (response) {
+        if (!response.ok) throw new Error("render " + response.status);
+        return response.blob();
+      })
+      .then(function (blob) {
+        if (gen !== snapshotGen) return;
+        var objectUrl = URL.createObjectURL(blob);
+        var next = new Image();
+        next.onload = function () {
+          if (gen !== snapshotGen) { URL.revokeObjectURL(objectUrl); return; }
+          var previous = img.getAttribute("data-cp-blob");
+          img.src = objectUrl;
+          img.setAttribute("data-cp-blob", objectUrl);
+          if (previous) URL.revokeObjectURL(previous);
+          status.textContent = "";
+          setSnapshotLoading(false);
+          clearModeError();
+        };
+        next.onerror = function () {
+          URL.revokeObjectURL(objectUrl);
+          if (gen !== snapshotGen) return;
+          setSnapshotLoading(false);
+          showModeError((requestedExt === ".svg" ? "SVG" : "PNG") +
+            " render failed for this preview.");
+        };
+        next.src = objectUrl;
+      })
+      .catch(function () {
+        if (gen !== snapshotGen) return;
+        setSnapshotLoading(false);
+        showModeError((requestedExt === ".svg" ? "SVG" : "PNG") +
+          " render failed for this preview.");
+      });
     refreshLinks();
   }
   // The copyable direct-link panel: rebuild the absolute /render URLs (PNG + optional SVG) from

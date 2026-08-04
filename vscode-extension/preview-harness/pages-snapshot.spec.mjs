@@ -395,3 +395,118 @@ test("contract · declared theme renders use bounded parallelism", async ({ page
     expect(Array.from(attempts.values())).toEqual([2, 2, 2]);
     await expect.poll(() => released).toBe(true);
 });
+
+test("contract · snapshot overrides stay composed with a declared theme", async ({
+    page,
+}) => {
+    const requests = [];
+    for (const [name, contentType] of SERVE_ASSETS) {
+        await page.route(`**/assets/serve/**/${name}`, (route) =>
+            route.fulfill({
+                path: resolve(serveAssetsDir, name),
+                contentType,
+            }),
+        );
+    }
+    await page.route("**/render/**", async (route) => {
+        requests.push(new URL(route.request().url()));
+        await route.fulfill({
+            path: renderPlaceholder,
+            contentType: "image/png",
+        });
+    });
+    await page.goto("/preview-harness/fixtures/pages/serve-viewer-themes.html");
+    await expect.poll(() => requests.length).toBeGreaterThan(0);
+    await page.waitForTimeout(100);
+    requests.length = 0;
+
+    for (const group of ["appearance", "size", "locale", "device"]) {
+        await page
+            .locator(`details[data-cp-group="${group}"]`)
+            .evaluate((details) => {
+                details.open = true;
+            });
+    }
+
+    const themeProvider = "com.example.BrandLightThemeCatalog";
+    const assertSingleRender = async (before, expected) => {
+        await expect
+            .poll(() => requests.length, { timeout: 5_000 })
+            .toBe(before + 1);
+        // A second assignment of the no-store render URL used to arrive immediately after the
+        // preload completed. Give it a beat so an accidental duplicate cannot pass this check.
+        await page.waitForTimeout(100);
+        expect(requests).toHaveLength(before + 1);
+        const params = requests.at(-1).searchParams;
+        expect(params.get("themeProvider")).toBe(themeProvider);
+        for (const [key, value] of Object.entries(expected)) {
+            expect(params.get(key), key).toBe(value);
+        }
+    };
+    const change = async (action, expected) => {
+        const before = requests.length;
+        await action();
+        await assertSingleRender(before, expected);
+    };
+
+    await change(
+        () => page.locator("#cp-theme").selectOption(`theme:${themeProvider}`),
+        {},
+    );
+    await change(() => page.locator("#cp-background").selectOption("clear"), {
+        background: "clear",
+    });
+    await change(() => page.locator("#cp-sizeMode").selectOption("fixed"), {
+        background: "clear",
+    });
+    await change(() => page.locator("#cp-fixedW").fill("120"), {
+        widthPx: "240",
+    });
+    await change(() => page.locator("#cp-fixedH").fill("80"), {
+        widthPx: "240",
+        heightPx: "160",
+    });
+    await change(() => page.locator("#cp-sizeMode").selectOption("within"), {
+        background: "clear",
+    });
+    await change(() => page.locator("#cp-minW").fill("100"), {
+        minWidthPx: "200",
+    });
+    await change(() => page.locator("#cp-minH").fill("60"), {
+        minWidthPx: "200",
+        minHeightPx: "120",
+    });
+    await change(() => page.locator("#cp-maxW").fill("300"), {
+        minWidthPx: "200",
+        minHeightPx: "120",
+        maxWidthPx: "600",
+    });
+    await change(() => page.locator("#cp-maxH").fill("200"), {
+        minWidthPx: "200",
+        minHeightPx: "120",
+        maxWidthPx: "600",
+        maxHeightPx: "400",
+    });
+    await change(
+        async () => {
+            await page.locator("#cp-localeTag").fill("ar-XB");
+            await page.locator("#cp-localeTag").press("Tab");
+        },
+        { localeTag: "ar-XB" },
+    );
+    await change(
+        () =>
+            page.locator("#cp-fontScale").evaluate((slider) => {
+                slider.value = "1.3";
+                slider.dispatchEvent(new Event("input", { bubbles: true }));
+            }),
+        { fontScale: "1.3" },
+    );
+    await change(() => page.locator("#cp-device").selectOption("id:pixel_7"), {
+        device: "id:pixel_7",
+    });
+    await change(
+        () => page.locator("#cp-orientation").selectOption("landscape"),
+        { orientation: "landscape" },
+    );
+});
