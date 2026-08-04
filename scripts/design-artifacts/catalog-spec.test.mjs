@@ -929,3 +929,50 @@ test("validateSpec leaves select.size unchecked for a catalog with no size axis"
   };
   assert.deepEqual(validateSpec(spec).errors, []);
 });
+
+test("discoverComponentIds reads the annotated id whether or not the component fans out", () => {
+  const source = `
+    @CatalogComponent(
+      id = "Layout/List",
+      group = "Layout",
+      perBreakpoint = true,
+    )
+    @Composable fun ListLayout() {}
+    @CatalogComponent(id = "Button/Filled")
+    @Composable fun FilledButton() {}
+  `;
+  // WHICH breakpoints a `perBreakpoint` component fans out to comes from its renders, which this
+  // build-free source scan can't see — so it reports the annotated id and the hero check below
+  // resolves a `<id>/<breakpoint>` hero on its parent.
+  assert.deepEqual(discoverComponentIds([source]), ["Button/Filled", "Layout/List"]);
+});
+
+test("validateSpec resolves a per-breakpoint hero on its parent id", () => {
+  const { errors } = validateSpec(
+    { system: "wear-m3", title: "Wear M3", display: { hero: "Layout/List/largeRound" } },
+    {
+      knownPreviews: ["ListLayout"],
+      knownComponentIds: discoverComponentIds([
+        `@CatalogComponent(id = "Layout/List", perBreakpoint = true)
+         @Composable fun ListLayout() {}`,
+      ]),
+      annotatedInventory: true,
+    },
+  );
+  assert.deepEqual(errors, []);
+});
+
+test("validateSpec still rejects a hero that matches nothing at all", () => {
+  const { errors } = validateSpec(
+    { system: "wear-m3", title: "Wear M3", display: { hero: "Nope/Missing" } },
+    {
+      knownPreviews: ["ListLayout"],
+      knownComponentIds: discoverComponentIds([
+        `@CatalogComponent(id = "Layout/List", perBreakpoint = true)
+         @Composable fun ListLayout() {}`,
+      ]),
+      annotatedInventory: true,
+    },
+  );
+  assert.ok(errors.some((e) => e.includes('display.hero "Nope/Missing" matches no componentId')));
+});

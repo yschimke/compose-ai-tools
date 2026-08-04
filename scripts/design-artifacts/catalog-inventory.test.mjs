@@ -246,3 +246,172 @@ test("applyGroupOrder is a no-op when groupOrder is absent or empty", () => {
   assert.deepEqual(applyGroupOrder(groups, undefined), groups);
   assert.deepEqual(applyGroupOrder(groups, []), groups);
 });
+
+// --- @CatalogComponent(perBreakpoint = true) --------------------------------
+
+// The breakpoints come from the RENDERS, never from the annotation — so a fixture supplies the
+// `@Preview(device = …)` each expansion ran under, exactly as the bundle carries it.
+const WEAR_BREAKPOINTS = [
+  { size: "smallRound", device: "id:wearos_small_round", widthDp: 192 },
+  { size: "largeRound", device: "id:wearos_large_round", widthDp: 227 },
+  { size: "xlRound", device: "id:wearos_xl_round", widthDp: 240 },
+];
+const rendered = (functionName, device, catalog) => ({
+  functionName,
+  params: { device },
+  catalog,
+});
+
+test("perBreakpoint fans out over the breakpoints the function actually rendered", () => {
+  const { groups, withoutBreakpoints } = inventoryFromPreviews(
+    [
+      // Bundle order is large-then-small; the fan-out must follow the BREAKPOINTS table instead,
+      // so the cards read small→large the way the catalog declares them.
+      rendered("ListLayout", "id:wearos_large_round", {
+        role: "COMPONENT",
+        componentId: "Layout/List",
+        group: "Layout",
+        caption: "A transforming lazy column.",
+        perBreakpoint: true,
+      }),
+      rendered("ListLayout", "id:wearos_small_round", {
+        role: "COMPONENT",
+        componentId: "Layout/List",
+        perBreakpoint: true,
+      }),
+    ],
+    { breakpoints: WEAR_BREAKPOINTS },
+  );
+
+  assert.deepEqual(withoutBreakpoints, []);
+  assert.deepEqual(groups[0].components, [
+    {
+      componentId: "Layout/List/smallRound",
+      preview: "ListLayout",
+      caption: "A transforming lazy column.",
+      select: { size: "smallRound" },
+    },
+    {
+      componentId: "Layout/List/largeRound",
+      preview: "ListLayout",
+      caption: "A transforming lazy column.",
+      select: { size: "largeRound" },
+    },
+  ]);
+  // xlRound is in the table but this function never rendered it, so it mints no card.
+  assert.equal(groups[0].components.length, 2);
+});
+
+test("a function rendering one breakpoint keeps its plain id", () => {
+  // Suffixing here would move a published sticker's URL to say what the id already says.
+  const { groups } = inventoryFromPreviews(
+    [
+      rendered("ListLayout", "id:wearos_large_round", {
+        role: "COMPONENT",
+        componentId: "Layout/List",
+        perBreakpoint: true,
+      }),
+    ],
+    { breakpoints: WEAR_BREAKPOINTS },
+  );
+
+  assert.deepEqual(groups[0].components, [
+    { componentId: "Layout/List", preview: "ListLayout", select: { size: "largeRound" } },
+  ]);
+});
+
+test("without the flag the renders fold onto one component, exactly as before", () => {
+  const { groups } = inventoryFromPreviews(
+    [
+      rendered("ListLayout", "id:wearos_small_round", {
+        role: "COMPONENT",
+        componentId: "Layout/List",
+      }),
+      rendered("ListLayout", "id:wearos_large_round", {
+        role: "COMPONENT",
+        componentId: "Layout/List",
+      }),
+    ],
+    { breakpoints: WEAR_BREAKPOINTS },
+  );
+  assert.deepEqual(groups[0].components, [
+    { componentId: "Layout/List", preview: "ListLayout" },
+  ]);
+});
+
+test("perBreakpoint with no resolvable breakpoint keeps the component whole and reports it", () => {
+  // An undeclared device (or no breakpoints table at all) must not silently drop the component —
+  // it stays one card and the export warns, so the fix is a `breakpoints` entry, not a mystery.
+  const { groups, withoutBreakpoints } = inventoryFromPreviews(
+    [
+      rendered("ListLayout", "id:wearos_rect", {
+        role: "COMPONENT",
+        componentId: "Layout/List",
+        perBreakpoint: true,
+      }),
+    ],
+    { breakpoints: WEAR_BREAKPOINTS },
+  );
+
+  assert.deepEqual(withoutBreakpoints, ["Layout/List"]);
+  assert.deepEqual(groups[0].components, [
+    { componentId: "Layout/List", preview: "ListLayout" },
+  ]);
+});
+
+test("a variant attaches to a fanned-out parent by its annotated id, and by a suffixed one", () => {
+  // `@CatalogVariant(of = …)` names the parent as the ANNOTATION spells it, which the fan-out has
+  // suffixed — so the plain id must still resolve, or every variant on a fanned-out component
+  // silently orphans. A variant may also target one breakpoint explicitly.
+  const { groups, orphanVariants } = inventoryFromPreviews(
+    [
+      rendered("ListLayout", "id:wearos_small_round", {
+        role: "COMPONENT",
+        componentId: "Layout/List",
+        perBreakpoint: true,
+      }),
+      rendered("ListLayout", "id:wearos_large_round", {
+        role: "COMPONENT",
+        componentId: "Layout/List",
+        perBreakpoint: true,
+      }),
+      rendered("ListLayoutPressed", "id:wearos_small_round", {
+        role: "VARIANT",
+        componentId: "Layout/List",
+        state: "pressed",
+      }),
+      rendered("ListLayoutFocused", "id:wearos_large_round", {
+        role: "VARIANT",
+        componentId: "Layout/List/largeRound",
+        state: "focused",
+      }),
+    ],
+    { breakpoints: WEAR_BREAKPOINTS },
+  );
+
+  assert.deepEqual(orphanVariants, []);
+  const [small, large] = groups[0].components;
+  assert.deepEqual(small.variants, [{ preview: "ListLayoutPressed", state: "pressed" }]);
+  assert.deepEqual(large.variants, [{ preview: "ListLayoutFocused", state: "focused" }]);
+});
+
+test("a spec entry overrides an annotation-derived select", () => {
+  const base = inventoryFromPreviews(
+    [
+      rendered("ListLayout", "id:wearos_large_round", {
+        role: "COMPONENT",
+        componentId: "Layout/List",
+        perBreakpoint: true,
+      }),
+    ],
+    { breakpoints: WEAR_BREAKPOINTS },
+  ).groups;
+  const merged = mergeCatalogGroups(base, [
+    {
+      name: "Components",
+      components: [{ componentId: "Layout/List", select: { size: "smallRound" } }],
+    },
+  ]);
+  assert.deepEqual(merged[0].components[0].select, { size: "smallRound" });
+  assert.equal(merged[0].components[0].preview, "ListLayout", "join key still comes from the annotation");
+});

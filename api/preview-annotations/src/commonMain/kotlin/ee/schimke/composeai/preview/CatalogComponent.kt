@@ -20,6 +20,8 @@ package ee.schimke.composeai.preview
  *   one-off import; the render stays authoritative.
  * * [parallel] defaults to empty. Override with the component id of the counterpart in the sibling
  *   system named by the catalog's `compareWith` setting.
+ * * [perBreakpoint] defaults to false — every render of the function folds onto ONE component. Set
+ *   it when the component should be a card *per* breakpoint instead; see below.
  *
  * ```kotlin
  * @file:CatalogGroup("Buttons")
@@ -27,6 +29,33 @@ package ee.schimke.composeai.preview
  * @CatalogComponent(id = "Button/Filled", caption = "Highest emphasis; the primary action.")
  * @CatalogModes @Composable fun FilledButton() = Sticker("button-filled")
  * ```
+ *
+ * ### Breakpoints: [perBreakpoint]
+ *
+ * A multipreview annotation (`@WearPreviewDevices`, a local `@CatalogWearBreakpoints`) renders one
+ * function at several device sizes, and the export's candidate join keys on function name — so all
+ * of them fold onto this one component. [perBreakpoint] splits that fan-out into a component **per
+ * breakpoint**, each with its own id and its own sticker, without the module having to split the
+ * `@Preview` function into per-device siblings (which would also drop the multipreview's other
+ * axes, `@WearPreviewFontScales` among them):
+ * ```kotlin
+ * @CatalogComponent(id = "Layout/List", perBreakpoint = true)
+ * @CatalogWearBreakpoints @Composable fun ListLayout() = FullScreenWear { … }
+ * ```
+ *
+ * yields `Layout/List/smallRound`, `Layout/List/largeRound`, … — **one per breakpoint the function
+ * actually rendered**, named by the catalog's `breakpoints` table in `catalog.spec.json` (a Wear
+ * catalog that declares none inherits the standard round table).
+ *
+ * Deliberately a flag rather than a list of breakpoint names: the multipreview annotation directly
+ * below already declares which devices this function renders at, so naming them here too would
+ * restate — and could contradict — what the render itself knows. There is nothing to keep in sync
+ * and nothing to misspell, and adding a device to the multipreview adds its card automatically. A
+ * function that renders at only ONE breakpoint keeps its plain [id]: one breakpoint is one card,
+ * and suffixing it would move a published sticker's URL to say what the id already says.
+ *
+ * To document a *subset* of the breakpoints a function renders, or to override any of this, use a
+ * `catalog.spec.json` entry's `select` — the spec always wins over the annotation.
  *
  * Discovered by FQN off the annotated **function** — hence `@Target(FUNCTION)` plus `BINARY`
  * retention, so the annotation survives into the compiled `.class` files the plugin scans with
@@ -44,6 +73,7 @@ annotation class CatalogComponent(
   val caption: String = "",
   val reference: String = "",
   val parallel: String = "",
+  val perBreakpoint: Boolean = false,
 )
 
 /**

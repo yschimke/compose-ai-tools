@@ -1043,6 +1043,7 @@ object PreviewDiscovery {
       caption = annStringOrNull(component, "caption"),
       reference = annStringOrNull(component, "reference"),
       parallel = annStringOrNull(component, "parallel"),
+      perBreakpoint = annBoolean(component, "perBreakpoint"),
     )
   }
 
@@ -1051,6 +1052,10 @@ object PreviewDiscovery {
     val raw = runCatching { ann.parameterValues.getValue(param) as? String }.getOrNull()
     return raw?.takeIf { it.isNotBlank() }
   }
+
+  /** Reads a `Boolean` annotation parameter, defaulting to false when absent or not a boolean. */
+  private fun annBoolean(ann: AnnotationInfo, param: String): Boolean =
+    runCatching { ann.parameterValues.getValue(param) as? Boolean }.getOrNull() ?: false
 
   /** Reads a `String[]` annotation parameter (ClassGraph yields an `Object[]`) as a list. */
   private fun annStringArray(ann: AnnotationInfo, param: String): List<String> {

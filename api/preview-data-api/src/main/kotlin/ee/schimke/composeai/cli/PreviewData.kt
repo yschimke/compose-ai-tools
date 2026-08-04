@@ -149,6 +149,12 @@ data class CatalogEntry(
   val parallel: String? = null,
   val state: String? = null,
   val props: List<CatalogVariantProp> = emptyList(),
+  /**
+   * COMPONENT: `@CatalogComponent.perBreakpoint` — the design-artifacts export splits this
+   * component into one per breakpoint its function rendered at, so a reader that dropped the field
+   * would see one component where the published catalog has several.
+   */
+  val perBreakpoint: Boolean = false,
 )
 
 @Serializable

@@ -740,6 +740,12 @@ function heroErrors(spec, opts, specComponentIds) {
     ...(opts.knownPreviews ?? []),
   ]);
   if (candidates.size === 0 || candidates.has(hero)) return [];
+  // `@CatalogComponent(perBreakpoint = true)` mints `<id>/<breakpoint>` components, and WHICH
+  // breakpoints those are comes from the renders — which this build-free source scan can't see. So
+  // a hero naming one resolves on its parent id. Deliberately lenient rather than guessing at a
+  // breakpoint table the module doesn't state: the exact check runs at export time, against the
+  // real inventory (`heroResolvesInInventory`), where every id is known.
+  if (candidates.has(hero.slice(0, hero.lastIndexOf("/")))) return [];
   const hint = closest(hero, [...candidates]);
   return [
     `display.hero "${hero}" matches no componentId or @Preview function${hint ? ` — did you mean "${hint}"?` : ""}`,

@@ -813,8 +813,20 @@ if (values["extra-renders"]) {
 // or the component would render but never enter `spec.groups`. Primary previews come
 // first, so a component present in both dedupes to the primary's annotation.
 const inventoryPreviews = [...bundle.previews, ...(extraBundle?.previews ?? [])];
-const { groups: annotationGroups, orphanVariants } =
-  inventoryFromPreviews(inventoryPreviews);
+const { groups: annotationGroups, orphanVariants, withoutBreakpoints } =
+  inventoryFromPreviews(inventoryPreviews, { breakpoints: catalogBreakpoints(spec) });
+if (withoutBreakpoints.length > 0) {
+  // `perBreakpoint` asked for a card per breakpoint but no render resolved to one — an undeclared
+  // device, or a catalog with no `breakpoints` table at all. The component is kept WHOLE rather
+  // than dropped, so this is a coverage warning, not a failure; `undeclaredBreakpointDevices`
+  // above usually names the culprit device on the same run.
+  console.warn(
+    `[${spec.system}] ${withoutBreakpoints.length} @CatalogComponent(perBreakpoint = true) ` +
+      `component(s) resolved no breakpoint, so each stays a single card: ` +
+      `${withoutBreakpoints.join(", ")}. Declare the devices they render at in the spec's ` +
+      `\`breakpoints\`.`,
+  );
+}
 if (orphanVariants.length > 0) {
   console.warn(
     `[${spec.system}] ${orphanVariants.length} @CatalogVariant(s) name a parent component that ` +
@@ -856,6 +868,28 @@ if (!Array.isArray(spec.groups) || spec.groups.length === 0) {
 // first-seen, which can't express the intended order when a module's source order differs. A no-op
 // when `groupOrder` is absent, so catalogs that don't set it are unchanged.
 spec.groups = applyGroupOrder(spec.groups, spec.groupOrder);
+
+// Resolve `display.hero` against the REAL inventory, now that annotation and spec are merged.
+// The build-free pre-flight can only check the ids a source scan can see, and a `perBreakpoint`
+// component's ids come from its renders — so this is the one place every id is known. A hero that
+// matches nothing isn't fatal (the serve host falls back to another representative), but it is
+// silently NOT the front door the catalog asked for, which is exactly the kind of thing that goes
+// unnoticed for months.
+const heroId = spec.display?.hero;
+if (typeof heroId === "string" && heroId.length > 0) {
+  const heroCandidates = new Set([
+    ...(spec.groups ?? []).flatMap((group) =>
+      (group.components ?? []).flatMap((c) => [c.componentId, c.preview]),
+    ),
+  ]);
+  if (!heroCandidates.has(heroId)) {
+    console.warn(
+      `[${spec.system}] display.hero "${heroId}" matches no componentId or @Preview function in ` +
+        `the merged inventory, so the serve host will pick its own hero. A per-breakpoint ` +
+        `component is named "<id>/<breakpoint>" (e.g. "${heroId}/largeRound").`,
+    );
+  }
+}
 
 // System tokens declared via `@ColorCatalog` / `@TypographyCatalog` — carried in the
 // bundle as `previews/<id>.catalog.json` sidecars (compose-ai-tools#2167), which the

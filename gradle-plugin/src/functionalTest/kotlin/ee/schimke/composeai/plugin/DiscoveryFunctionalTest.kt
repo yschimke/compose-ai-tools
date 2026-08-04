@@ -328,6 +328,7 @@ class DiscoveryFunctionalTest {
           val caption: String = "",
           val reference: String = "",
           val parallel: String = "",
+          val perBreakpoint: Boolean = false,
         )
 
         @Retention(AnnotationRetention.BINARY)
@@ -379,6 +380,11 @@ class DiscoveryFunctionalTest {
         // No arguments: id defaults to the function name, group to the file `@CatalogGroup`.
         @CatalogComponent
         @Preview @Composable fun PlainSticker() {}
+
+        // Breakpoints: the export fans this into one component per breakpoint the function
+        // rendered at. WHICH breakpoints is decided by the renders, not restated here.
+        @CatalogComponent(id = "Layout/List", perBreakpoint = true)
+        @Preview @Composable fun ListLayout() {}
 
         // No catalog annotation at all: stays out of the inventory (catalog == null).
         @Preview @Composable fun NotACatalogPreview() {}
@@ -433,6 +439,16 @@ class DiscoveryFunctionalTest {
     assertThat(plain.group).isEqualTo("Buttons")
     assertThat(plain.caption).isNull()
     assertThat(plain.parallel).isNull()
+
+    // The fan-out intent rides the component entry as a flag; the export resolves the actual
+    // breakpoints from the renders (`Layout/List/smallRound`, `…/largeRound`) rather than from a
+    // list restated in the annotation, so there is nothing here that could contradict them.
+    val list = byFn.getValue("ListLayout").catalog
+    assertThat(list).isNotNull()
+    assertThat(list!!.perBreakpoint).isTrue()
+
+    // An un-argumented component keeps the folded default.
+    assertThat(plain.perBreakpoint).isFalse()
 
     // A preview with no catalog annotation stays out of the inventory.
     assertThat(byFn.getValue("NotACatalogPreview").catalog).isNull()
