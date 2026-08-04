@@ -41,13 +41,17 @@
     },
     "breakpoints": {
       "type": "array",
-      "description": "The named width breakpoints the sticker sheet documents and uses as image size axes. When omitted, a catalog whose library includes androidx.wear.compose defaults to smallRound at 192 dp and largeRound at 227 dp. An explicit array, including an empty array, overrides that Wear default.",
+      "description": "The named breakpoints the sticker sheet documents and uses as image size axes. Each entry names the breakpoint (`size`) and identifies the renders that belong to it by `device` (the @Preview(device = …) id, matched first — a multipreview expansion's own identity) and/or `widthDp` (matched as a fallback, and used by the live-preview lane to score which annotation produced a sticker), so declaring both is the most robust. When omitted, a catalog whose library includes androidx.wear.compose defaults to the standard Wear round devices (smallRound / largeRound / xlRound / smallSquare, by device id and width). An explicit array, including an empty array, overrides that Wear default. A device id no breakpoint names keeps the generic Material width class, which collapses two distinct renders onto one axis — the export warns when it sees one.",
       "items": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
           "size": { "type": "string" },
-          "widthDp": { "type": "number" }
+          "widthDp": { "type": "number" },
+          "device": {
+            "type": "string",
+            "description": "The @Preview(device = …) id this breakpoint names, e.g. \"id:wearos_small_round\"."
+          }
         }
       }
     },
@@ -127,6 +131,7 @@
           "minLength": 1,
           "description": "EXACT @Preview function name that renders this component. Must match a discovered @Preview (or multipreview) function in `module`."
         },
+        "select": { "$ref": "#/definitions/select" },
         "caption": {
           "type": "string",
           "description": "One-line description shown under the sticker."
@@ -164,17 +169,30 @@
         }
       }
     },
+    "select": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "Pick ONE value of a multipreview's fan-out for this entry, instead of folding every render of `preview` onto it. Lets two entries share a @Preview function and stay separate cards with their own componentId and caption — the alternative being to split the function in the module into per-breakpoint siblings (which also drops the multipreview's other axes, e.g. @WearPreviewFontScales). A selection that matches no render is reported as a missing render, naming the values the function did produce.",
+      "properties": {
+        "size": {
+          "type": "string",
+          "description": "The breakpoint name (from `breakpoints`) this entry renders at, e.g. \"largeRound\"."
+        }
+      }
+    },
     "variant": {
       "type": "object",
       "required": ["preview"],
       "additionalProperties": false,
-      "description": "A secondary render of the parent component, tagged by `state` (pressed/focused/disabled/…), named `props` content axes, or a `theme` (light/dark, for a screen whose two themes are separate @Preview functions). Give at least one so it's distinguishable from the default.",
+      "description": "A secondary render of the parent component, tagged by `state` (pressed/focused/disabled/…), named `props` content axes, or a `theme` (light/dark, for a screen whose two themes are separate @Preview functions), and optionally narrowed to one breakpoint with `select`. Give at least one so it's distinguishable from the default.",
       "properties": {
         "preview": {
           "type": "string",
           "minLength": 1,
           "description": "EXACT @Preview function name for this variant render."
         },
+        "select": { "$ref": "#/definitions/select" },
         "caption": { "type": "string" },
         "capture": {
           "enum": ["static", "none"],

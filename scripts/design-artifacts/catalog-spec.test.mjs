@@ -282,7 +282,7 @@ test("validateSpec rejects a variant with no distinguishing axis", () => {
     ],
   };
   const { errors } = validateSpec(spec);
-  assert.ok(errors.some((e) => e.includes("neither `state`, `props` nor `theme`")));
+  assert.ok(errors.some((e) => e.includes("neither `state`, `props`, `theme` nor `select`")));
   assert.ok(errors.some((e) => e.includes("overwrite the default artifact")));
 });
 
@@ -832,4 +832,100 @@ test("validateSpec accepts modePriority on a cover-sheet spec with no groups", (
     { liveBundle: true },
   );
   assert.deepEqual(errors, []);
+});
+
+// --- select: one breakpoint of a multipreview, without splitting the function ---
+
+const wearSpecWith = (components) => ({
+  system: "confetti-wear",
+  title: "Confetti Wear",
+  library: ["androidx.wear.compose:compose-material3"],
+  groups: [{ name: "Screens", components }],
+});
+
+test("validateSpec accepts two entries splitting one multipreview by select", () => {
+  const { errors, warnings } = validateSpec(
+    wearSpecWith([
+      { componentId: "Home/Small", preview: "HomeListViewPreview", select: { size: "smallRound" } },
+      { componentId: "Home/Large", preview: "HomeListViewPreview", select: { size: "largeRound" } },
+    ]),
+  );
+  assert.deepEqual(errors, []);
+  assert.ok(
+    !warnings.some((w) => w.includes("fold into one sticker")),
+    "distinct selections are the supported split, not a copy-paste bug",
+  );
+});
+
+test("validateSpec still warns when one of the references selects nothing", () => {
+  const { warnings } = validateSpec(
+    wearSpecWith([
+      { componentId: "Home", preview: "HomeListViewPreview" },
+      { componentId: "Home/Large", preview: "HomeListViewPreview", select: { size: "largeRound" } },
+    ]),
+  );
+  // The unselected entry folds in every render, including the one its sibling selected — so the
+  // two really do double up and the warning still earns its place.
+  assert.ok(warnings.some((w) => w.includes("fold into one sticker")));
+});
+
+test("validateSpec rejects a select.size that names no declared breakpoint", () => {
+  const { errors } = validateSpec(
+    wearSpecWith([
+      { componentId: "Home", preview: "HomeListViewPreview", select: { size: "largeRund" } },
+    ]),
+  );
+  assert.ok(
+    errors.some((e) => e.includes('select.size "largeRund"') && e.includes('did you mean "largeRound"')),
+    `expected a suggestion, got ${JSON.stringify(errors)}`,
+  );
+});
+
+test("validateSpec rejects an unknown select axis and a malformed select", () => {
+  const { errors } = validateSpec(
+    wearSpecWith([
+      { componentId: "A", preview: "P", select: { theme: "dark" } },
+      { componentId: "B", preview: "Q", select: "largeRound" },
+      { componentId: "C", preview: "R", select: {} },
+    ]),
+  );
+  assert.ok(errors.some((e) => e.includes("select.theme is not a selectable axis")));
+  assert.ok(errors.some((e) => e.includes("select must be an object")));
+  assert.ok(errors.some((e) => e.includes("select is empty")));
+});
+
+test("validateSpec accepts a select as a variant's only distinguishing axis", () => {
+  const { errors } = validateSpec(
+    wearSpecWith([
+      {
+        componentId: "Home",
+        preview: "HomeListViewPreview",
+        variants: [{ preview: "HomeListViewLoading", select: { size: "largeRound" } }],
+      },
+    ]),
+  );
+  assert.deepEqual(errors, []);
+});
+
+test("validateSpec checks select.size against an explicit breakpoint table", () => {
+  const spec = {
+    system: "s",
+    title: "T",
+    breakpoints: [{ size: "compact", widthDp: 412 }],
+    groups: [
+      { name: "G", components: [{ componentId: "A", preview: "P", select: { size: "expanded" } }] },
+    ],
+  };
+  assert.ok(validateSpec(spec).errors.some((e) => e.includes('select.size "expanded"')));
+});
+
+test("validateSpec leaves select.size unchecked for a catalog with no size axis", () => {
+  const spec = {
+    system: "s",
+    title: "T",
+    groups: [
+      { name: "G", components: [{ componentId: "A", preview: "P", select: { size: "whatever" } }] },
+    ],
+  };
+  assert.deepEqual(validateSpec(spec).errors, []);
 });

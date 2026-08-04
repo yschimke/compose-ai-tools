@@ -340,6 +340,59 @@ The spec shape is described by
 [`scripts/design-artifacts/catalog.spec.schema.json`](../../scripts/design-artifacts/catalog.spec.schema.json)
 (referenced via `$schema` in each sample spec for editor validation).
 
+### Breakpoints and multipreviews: `select`, not a split `@Preview`
+
+A multipreview annotation (`@WearPreviewDevices`, a local `@CatalogWearBreakpoints`)
+renders one function at several device sizes. The candidate join keys on **function
+name**, so all of those renders fold into one spec entry carrying one image per size,
+tagged from the spec's `breakpoints`:
+
+```jsonc
+"breakpoints": [
+  { "size": "smallRound", "device": "id:wearos_small_round", "widthDp": 192 },
+  { "size": "largeRound", "device": "id:wearos_large_round", "widthDp": 227 }
+]
+```
+
+Declare each breakpoint by `device` (the `@Preview(device = …)` id, matched first) as
+well as by `widthDp` (the fallback, and what the live-preview bridge scores a
+candidate annotation against). The device is the expansion's own identity; a width is
+a fingerprint two devices can share, and a device no breakpoint names keeps the
+generic Material width class — which makes two distinct renders indistinguishable on
+one axis. The export warns when it sees one. A Wear catalog that declares no
+`breakpoints` inherits the standard round table (`smallRound` / `largeRound` /
+`xlRound` / `smallSquare`, by device id and width).
+
+Folding every size onto one entry is right when the entry means "this component, at
+every breakpoint we document". When a catalog wants a **card per breakpoint** — its
+own id and caption — use `select` rather than splitting the `@Preview` function in
+the module:
+
+```jsonc
+{ "componentId": "Home/SmallRound", "preview": "HomeListViewPreview",
+  "select": { "size": "smallRound" }, "caption": "Home — small round." },
+{ "componentId": "Home/LargeRound", "preview": "HomeListViewPreview",
+  "select": { "size": "largeRound" }, "caption": "Home — large round." }
+```
+
+Two entries may share one `preview` as long as each selects a different value; the
+validator's "these fold into one sticker" warning stands down for that case, and
+fires as before when one of the references selects nothing (it would fold in the
+renders its sibling selected). A variant may `select` too, and a selection counts as
+its distinguishing axis. A selection that matches no render is reported as a missing
+render naming what the function *did* produce, so a typo — or an undeclared
+breakpoint — reads as itself rather than as a broken `preview`.
+
+Splitting the Kotlin instead costs more than the boilerplate: two `@Preview`
+functions delegating to a shared private composable replace *one* multipreview, so
+the annotation's other axes go with it (`@WearPreviewFontScales`, whose non-default
+scales the export promotes to a `props.fontScale` switcher, is the usual casualty).
+
+`select` applies to spec-authored `groups`. An annotation-led inventory
+(`@CatalogComponent`) has no equivalent yet — it fans out one card per breakpoint,
+which the preview server disambiguates by appending the breakpoint to a **colliding**
+card label (`Edgebutton · Small Round`).
+
 ### Render priority: deferring the long tail to the live server
 
 A catalog that publishes with a live path — `publish-live-bundle: true` (the bundle

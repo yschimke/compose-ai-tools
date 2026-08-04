@@ -11,6 +11,8 @@
 // init-catalog-spec.mjs.
 
 import { CAPTURE_MODES, exportsNoSticker } from "./capture-mode.mjs";
+import { catalogBreakpoints } from "./catalog-breakpoints.mjs";
+import { SELECT_AXES, selectOf } from "./catalog-select.mjs";
 import {
   DEFERRED,
   MODE_WILDCARD,
@@ -558,7 +560,15 @@ export function validateSpec(spec, opts = {}) {
   }
 
   const componentIds = new Map(); // componentId -> first path
+  // The breakpoint names a `select.size` may legitimately name — the spec's own, or the Wear
+  // default table it inherits. Undefined for a catalog with no size axis at all, in which case a
+  // selection can't be checked against anything and the shape check alone applies.
+  const declaredSizes = declaredBreakpointSizes(spec);
   const previewToPaths = new Map(); // preview name -> [paths]
+  // `preview name -> Set of select signatures`, so the "referenced twice" warning below can tell a
+  // copy-paste duplicate from the legitimate case this exists for: two entries splitting one
+  // multipreview's breakpoints between them.
+  const previewToSelects = new Map();
   // The subset of the above whose referring entry did NOT declare `"capture": "none"`. A PNG-less
   // preview is only an error for those: a `"none"` entry is *declaring* the absence.
   const staticRefPaths = new Map(); // preview name -> [paths]
@@ -584,6 +594,7 @@ export function validateSpec(spec, opts = {}) {
         componentIds.set(comp.componentId, cp);
       }
       errors.push(...captureErrors(comp, cp));
+      errors.push(...selectErrors(comp, cp, declaredSizes));
       if (typeof comp?.preview !== "string" || comp.preview.length === 0) {
         errors.push(`${cp}.preview is required (an exact @Preview function name)`);
       } else {
@@ -591,6 +602,7 @@ export function validateSpec(spec, opts = {}) {
         // the same module, so a `preview` that matches no @Preview function is just as broken when
         // it is deferred — it is simply broken later, on a viewer's request, instead of in CI.
         pushMulti(previewToPaths, comp.preview, cp);
+        recordSelect(previewToSelects, comp.preview, comp);
         if (!exportsNoSticker(comp)) pushMulti(staticRefPaths, comp.preview, cp);
       }
       errors.push(...priorityErrors(comp, cp));
@@ -607,6 +619,7 @@ export function validateSpec(spec, opts = {}) {
               "state",
               "props",
               "theme",
+              "select",
               "capture",
               "priority",
             ]);
@@ -624,11 +637,21 @@ export function validateSpec(spec, opts = {}) {
               errors.push(`${vp}.preview is required`);
             } else {
               pushMulti(previewToPaths, v.preview, vp);
+              recordSelect(previewToSelects, v.preview, v);
               if (!exportsNoSticker(v)) pushMulti(staticRefPaths, v.preview, vp);
             }
-            if (v?.state === undefined && v?.props === undefined && v?.theme === undefined) {
+            errors.push(...selectErrors(v, vp, declaredSizes));
+            // A `select` distinguishes a variant as surely as a tag does: its images carry the
+            // selected axis value, so they land on their own `…__<size>.png` rather than over the
+            // default's.
+            if (
+              v?.state === undefined &&
+              v?.props === undefined &&
+              v?.theme === undefined &&
+              selectOf(v) === undefined
+            ) {
               errors.push(
-                `${vp} has neither \`state\`, \`props\` nor \`theme\` — it would overwrite the default artifact`,
+                `${vp} has neither \`state\`, \`props\`, \`theme\` nor \`select\` — it would overwrite the default artifact`,
               );
             }
             if (v?.theme !== undefined && v.theme !== "light" && v.theme !== "dark") {
@@ -643,9 +666,12 @@ export function validateSpec(spec, opts = {}) {
 
   // A preview name used by two components folds both into one candidate at
   // render time (the join keys on function name) — almost always a copy-paste
-  // bug, so flag it.
+  // bug, so flag it. UNLESS every reference `select`s a different value: that is the
+  // supported way to split a multipreview's breakpoints across entries without splitting
+  // the @Preview function, and each reference then names its own sticker rather than
+  // folding onto one.
   for (const [preview, paths] of previewToPaths) {
-    if (paths.length > 1) {
+    if (paths.length > 1 && !selectsAreDistinct(previewToSelects.get(preview), paths.length)) {
       warnings.push(
         `preview "${preview}" is referenced ${paths.length}× (${paths.join(", ")}) — these fold into one sticker`,
       );
@@ -814,6 +840,93 @@ function pushMulti(map, key, value) {
   const arr = map.get(key);
   if (arr) arr.push(value);
   else map.set(key, [value]);
+}
+
+/**
+ * Structural checks for an entry's optional `select` (component or variant).
+ *
+ * All errors rather than warnings, for the same reason `capture` and `priority` are: an unusable
+ * selection doesn't degrade gracefully. An unknown axis would be ignored by `selectImages` and the
+ * entry would quietly fold in every render of its function — the opposite of what it asked for —
+ * while a mistyped breakpoint name matches nothing and sinks the publish much later, as a missing
+ * render on an entry whose `preview` is demonstrably fine.
+ *
+ * [declaredSizes] is undefined for a catalog with no size axis (no `breakpoints`, no Wear default),
+ * where a `select.size` can't be checked against anything; the value check is skipped rather than
+ * guessed at.
+ */
+function selectErrors(entry, path, declaredSizes) {
+  const select = entry?.select;
+  if (select === undefined) return [];
+  if (typeof select !== "object" || select === null || Array.isArray(select)) {
+    return [`${path}.select must be an object, e.g. { "size": "largeRound" }`];
+  }
+  const errors = [];
+  if (Object.keys(select).length === 0) {
+    errors.push(
+      `${path}.select is empty — drop it, or name an axis (${SELECT_AXES.map((a) => `\`${a}\``).join(", ")})`,
+    );
+  }
+  for (const [axis, value] of Object.entries(select)) {
+    if (!SELECT_AXES.includes(axis)) {
+      errors.push(
+        `${path}.select.${axis} is not a selectable axis; expected only ` +
+          `${SELECT_AXES.map((a) => `\`${a}\``).join(", ")}`,
+      );
+      continue;
+    }
+    if (typeof value !== "string" || value.length === 0) {
+      errors.push(`${path}.select.${axis} must be a non-empty string`);
+      continue;
+    }
+    if (axis === "size" && declaredSizes && !declaredSizes.has(value)) {
+      const hint = closest(value, [...declaredSizes]);
+      errors.push(
+        `${path}.select.size "${value}" is not a declared breakpoint` +
+          (hint ? ` — did you mean "${hint}"?` : ` (declared: ${[...declaredSizes].join(", ")})`),
+      );
+    }
+  }
+  return errors;
+}
+
+/** Record one reference's `select` signature (`""` for an unselected reference). */
+function recordSelect(map, preview, entry) {
+  const select = selectOf(entry);
+  const signature = select
+    ? Object.entries(select)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([axis, value]) => `${axis}=${value}`)
+        .join(",")
+    : "";
+  const seen = map.get(preview);
+  if (seen) seen.add(signature);
+  else map.set(preview, new Set([signature]));
+}
+
+/**
+ * Whether every reference to one preview selects a DIFFERENT value — the deliberate split of a
+ * multipreview across entries. Requires each reference to select something: an unselected reference
+ * folds in every render including the ones its siblings selected, so mixing the two forms really
+ * does double up stickers and stays worth a warning.
+ */
+function selectsAreDistinct(signatures, references) {
+  if (!signatures || signatures.size !== references) return false;
+  return !signatures.has("");
+}
+
+/**
+ * The breakpoint names a `select.size` may name, or undefined when the catalog declares no size
+ * axis at all — including the Wear default table a Wear catalog inherits by omitting `breakpoints`,
+ * since the export tags its stickers with those names and a spec must be able to select them.
+ */
+function declaredBreakpointSizes(spec) {
+  const declared = catalogBreakpoints(spec);
+  if (declared === undefined) return undefined;
+  const sizes = new Set(
+    declared.filter((b) => typeof b?.size === "string" && b.size.length > 0).map((b) => b.size),
+  );
+  return sizes.size > 0 ? sizes : undefined;
 }
 
 /**
