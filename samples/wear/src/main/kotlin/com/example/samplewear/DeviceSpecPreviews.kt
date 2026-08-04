@@ -29,6 +29,12 @@ import androidx.wear.compose.material3.TimeText
  * whether a round watch face "looks about 240 dp". Used by the device-matrix previews below to
  * demonstrate both halves of the `device =` grammar — a named Wear device id and a custom
  * `spec:` string.
+ *
+ * `smallestScreenWidthDp` (`sw … dp`) is printed alongside the viewport because it's a *separate*
+ * configuration field the renderer has to keep in step, not something derived from the other two at
+ * read time. It used to disagree — every Wear preview reported the renderer's baseline `sw 320 dp`
+ * next to a 227 dp screen (issue #3309) — so anything reading it as geometry inscribed itself in
+ * the wrong circle. Printing it keeps a regression visible in the PNG diff.
  */
 @Composable
 fun DeviceSpecScreen(label: String) {
@@ -54,6 +60,10 @@ fun DeviceSpecScreen(label: String) {
             Text(
               text = "${configuration.screenWidthDp} × ${configuration.screenHeightDp} dp",
               style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+              text = "sw ${configuration.smallestScreenWidthDp} dp",
+              style = MaterialTheme.typography.bodySmall,
             )
             Text(
               text = "${density.density}× · ${configuration.densityDpi} dpi",
