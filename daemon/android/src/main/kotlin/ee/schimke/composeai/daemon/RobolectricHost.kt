@@ -1147,6 +1147,20 @@ open class RobolectricHost(
       base.wrapperClassName
         ?.takeIf { it.isNotBlank() }
         ?.let { append("wrapperClassName=").append(it).append(';') }
+      // `@PreviewParameter` has BINARY retention, so the sandbox cannot recover its provider by
+      // reflecting on the preview method. The production bundle-daemon path resolves the provider
+      // from `previews.json` into [base]; carry it through this host-side payload reshape just like
+      // [PreviewManifestRouter] does. Dropping it makes the sandbox attempt the parameterless
+      // `(Composer, int)` lookup for a method compiled as `(<T>, Composer, int)`, producing the
+      // misleading `NoSuchMethodException: <class>.<function>` seen on published catalogs.
+      base.previewParameterProviderClassName
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          append("previewParameterProvider=").append(it).append(';')
+          if (base.previewParameterLimit != Int.MAX_VALUE) {
+            append("previewParameterLimit=").append(base.previewParameterLimit).append(';')
+          }
+        }
       // Key the output PNG on the (unique) previewId, like [PreviewManifestRouter]; the default
       // `className-functionName` stem would collide for the multiple `@Preview` / @WearPreview*
       // variants that share one function, overwriting each other's render.
