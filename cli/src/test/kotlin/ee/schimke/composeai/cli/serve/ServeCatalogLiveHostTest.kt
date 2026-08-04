@@ -13,6 +13,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -795,6 +796,32 @@ class ServeCatalogLiveHostTest {
     val refreshedHost = ServeCatalogLiveHost(mapOf(catalogId to daemonId), refreshedLive, baked)
     refreshedHost.render(catalogId, themeOverride())
     assertEquals(1, refreshedLive.renderCalls)
+  }
+
+  @Test
+  fun `idle theme optimization is enabled by default after the quiet window`() {
+    val idleMillis = AtomicLong(59_999)
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = RecordingHost(listOf(ServePreview(catalogId, catalogId)), "baked"),
+        serverIdleMillis = idleMillis::get,
+      )
+
+    composite.prewarm()
+    Thread.sleep(100)
+    assertEquals(0, live.renderCalls)
+
+    idleMillis.set(60_000)
+    assertTrue(awaitOptimization(composite).fullyOptimized)
+    assertEquals(1, live.renderCalls)
   }
 
   @Test

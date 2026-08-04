@@ -51,8 +51,9 @@ class ServeBackgroundWorkTest {
   }
 
   @Test
-  fun `the idle clock reports a loading server as busy and otherwise delegates`() {
-    val work = ServeBackgroundWork()
+  fun `the idle clock starts fresh when catalog loading finishes`() {
+    var now = 1_000L
+    val work = ServeBackgroundWork(clock = { now })
     val clock = work.idleClock { 90_000L }
 
     work.expectInitialCatalogLoad()
@@ -61,7 +62,24 @@ class ServeBackgroundWorkTest {
     assertNull(clock())
 
     work.initialCatalogLoadFinished()
-    assertEquals(90_000L, clock())
+    assertEquals(0L, clock())
+    now += 59_999
+    assertEquals(59_999L, clock())
+    now++
+    assertEquals(60_000L, clock())
+  }
+
+  @Test
+  fun `a catalog refresh resets the idle clock after it returns`() {
+    var now = 100_000L
+    val work = ServeBackgroundWork(clock = { now })
+    val clock = work.idleClock { 90_000L }
+
+    work.whileLoadingCatalog { now += 5_000 }
+
+    assertEquals(0L, clock())
+    now += 60_000
+    assertEquals(60_000L, clock())
   }
 
   @Test

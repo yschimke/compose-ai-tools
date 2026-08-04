@@ -131,7 +131,7 @@ class ServeStatusTest {
     val daemonId = "FilledButton"
     val theme = ServeTheme("Brand Dark", "com.example.BrandDark")
     val overrides = PreviewOverrides(themeProvider = theme.providerFqn)
-    val cache = CatalogThemeCache()
+    val cache = CatalogThemeCache(maxBytes = 1024)
     val key = ServeOverrides.cacheKey(catalogId, overrides)
     cache.configureTargets(listOf(key))
     cache.put(key, png())
@@ -175,6 +175,15 @@ class ServeStatusTest {
     assertTrue(body.contains("\"themeOptimization\":{\"state\":\"complete\""), body)
     assertTrue(body.contains("\"fullyOptimized\":true"), body)
     assertTrue(body.contains("\"cached\":1"), body)
+    assertTrue(body.contains("\"renderCache\":{"), body)
+    assertTrue(body.contains("\"entries\":1"), body)
+    assertTrue(body.contains("\"maxBytes\":1024"), body)
+    assertTrue(body.contains("\"evictions\":0"), body)
+
+    val (htmlCode, html) = get("/status")
+    assertEquals(200, htmlCode)
+    assertTrue(html.contains("preview cache 1 entries"), html)
+    assertTrue(html.contains("/ 1 KiB"), html)
   }
 
   @Test
