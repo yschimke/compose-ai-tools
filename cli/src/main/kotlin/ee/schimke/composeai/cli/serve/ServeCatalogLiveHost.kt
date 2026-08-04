@@ -119,6 +119,22 @@ class ServeCatalogLiveHost(
    */
   private val sharedDaemonRenders: Boolean =
     System.getProperty("composeai.serve.sharedDaemonRenders")?.toBooleanStrictOrNull() ?: true,
+  /**
+   * Whether [prewarm] warms this catalog's daemon when its session is **opened** — off by default.
+   *
+   * Opening happens for every catalog at boot, so this used to launch one JVM per catalog
+   * simultaneously: measured on the public box, 18 daemons resident at 6 minutes uptime against a
+   * live-seat budget that models ~1.2 GB each and permits 8. It settles — the reaper had it down to
+   * 3 by 85 minutes — so this was never permanent over-commitment, but the spike lands exactly when
+   * the box is also fetching all 18 catalogs, and for pixels nobody has asked for.
+   *
+   * The case eager warming existed for is now served on demand: a visitor's presence heartbeat
+   * ([keepLiveWarm]) warms the catalog they actually opened, and fires as soon as the page loads.
+   * `-Dcomposeai.serve.eagerWarmOnOpen=true` restores boot-time warming for a deployment that would
+   * rather pay the memory than the first visitor's cold start.
+   */
+  private val eagerWarmOnOpen: Boolean =
+    System.getProperty("composeai.serve.eagerWarmOnOpen")?.toBooleanStrictOrNull() ?: false,
   private val clock: () -> Long = System::currentTimeMillis,
 ) : ServeHost {
 
@@ -237,7 +253,7 @@ class ServeCatalogLiveHost(
    */
   fun prewarm() {
     startThemeOptimization()
-    if (!warmInBackground) return
+    if (!warmInBackground || !eagerWarmOnOpen) return
     // A per-preview catalog deliberately skips eager warming — one JVM per preview would make
     // startup fan out into dozens of them. But when snapshots share the monolithic daemon, that
     // daemon is exactly what the first theme selection will wait on, and its cold start (~68s on
