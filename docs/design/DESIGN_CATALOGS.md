@@ -146,6 +146,7 @@ jobs:
       spec: catalog.spec.json
       module: ':app'
       # extra-module: ':your-components'   # optional, folded in via --extra-renders
+      # extra-split-mode: full             # give that module its own live lane (see below)
       # desktop-render: true               # for a CMP desktop (Skiko) render
     secrets: inherit               # optional; only for buildfetch_ro_token
 ```
@@ -162,6 +163,48 @@ top-level section after generate. A caller runs its bespoke lane (e.g. re-themin
 a sibling catalog) in a prior job that uploads the bundle artifact, then passes it
 to the reusable workflow — so the render/generate/publish stays shared while the
 bespoke step lives in the caller. A Wasm tier still needs a bespoke workflow.
+
+#### Giving `extra-module` its own live lane
+
+An `extra-module` render exists to **override** same-named functions in the primary
+render — an Android-only render of a control CMP can't draw, folded into an
+otherwise-CMP catalog. Its previews are pixels-only, because the daemon serving the
+catalog runs the *primary* bundle and would redraw those functions differently.
+
+That is the wrong answer for a supplement that mostly **adds**. A module whose
+`@Preview`s the primary module doesn't carry at all overrides nothing, so there is no
+disagreement to protect against — yet those stickers still got no `previewId`, hence
+no daemon twin, hence a viewer that told visitors to "Enable a local preview server"
+for a catalog that already has one. On meshcore-mobile that was 32 of 70 components:
+its whole `Screens` section lives in `:meshcore-components`.
+
+`extra-split-mode: full` fixes that half:
+
+- the supplement is split per preview **with** its re-render classpath;
+- the driver aliases only its extra-**only** functions. A function present in both
+  bundles is a true override and stays baked-only, exactly as before;
+- serve reaches those ids through the per-preview pool — its shared monolithic daemon
+  answers `NotFound` for an id it never listed, and `renderDaemon` falls through.
+
+The supplement is split from the **raw** render, not from an externalised copy, and
+that is load-bearing: `ServeCatalogStore` rehydrates exactly one `externalResources`
+manifest — the primary `liveBundle`'s — and hands that single materialized directory
+to every pooled per-preview daemon. Externalising the supplement into the same
+content-addressed `bundle/res/` pool would publish blobs nobody materializes for any
+resource the primary doesn't also declare, so a supplement carrying its own faces
+would yield daemons that start with a missing classpath entry. Self-contained
+per-preview bundles cost duplication and owe nothing to the pool.
+
+Requires `publish-live-bundle: true` and `split-per-preview: true`. It costs one
+pooled daemon per supplement preview actually opened, plus the per-preview bundle
+weight, so leave it off for a supplement that only overrides — it would add weight and
+change nothing.
+
+Known gap: `ServeCatalogLiveHost.mergeDeclaredKnobs` grafts knob / focus / gesture
+metadata from the **monolithic** daemon's preview list, which by definition can't
+contain a supplement-only id. Those previews get their display-axis overrides (size,
+device, locale, font scale, orientation) but not author-declared knobs beyond whatever
+the catalog's own `previews/<id>.overrides.json` sidecar carries.
 
 ### Convention: the reference caller drives common features
 

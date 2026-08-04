@@ -98,7 +98,7 @@ on:
         type: boolean
         default: false
       split-per-preview:
-        description: 'After generate, split the render into one addressable bundle per preview under bundle/previews/<id>, for the serve host per-preview live lane. The extra module (if any) is split --view-only (baked, no per-preview re-render classpath). full mode requires publish-live-bundle (see split-mode).'
+        description: 'After generate, split the render into one addressable bundle per preview under bundle/previews/<id>, for the serve host per-preview live lane. The extra module (if any) is split --view-only unless extra-split-mode says otherwise. full mode requires publish-live-bundle (see split-mode).'
         required: false
         type: boolean
         default: false
@@ -107,6 +107,11 @@ on:
         required: false
         type: string
         default: 'full'
+      extra-split-mode:
+        description: "Per-preview split mode for the extra-module render: 'view-only' (the default — its previews are pixels-only, with no live lane) or 'full' (the extra bundle is split per preview WITH its re-render classpath, self-contained, and the driver aliases its extra-ONLY functions to daemon ids so the viewer offers real overrides on them instead of the 'Pre-rendered snapshot' note). 'full' requires publish-live-bundle and split-per-preview. Functions the extra bundle OVERRIDES rather than adds stay baked-only either way — the primary daemon would draw them differently."
+        required: false
+        type: string
+        default: 'view-only'
       cli-source:
         description: "How to obtain the compose-preview CLI: 'released' installs it via the install action (the default; what external consumers use), or 'build' builds it from the checked-out compose-ai-tools (driver-ref) with ./gradlew :cli:installDist — for compose-ai-tools' own catalogs, which must publish HEAD's renderer output, not a released one."
         required: false
@@ -503,6 +508,17 @@ jobs:
           if [ "${{ inputs.allow-incomplete }}" = "true" ]; then incomplete=(--allow-incomplete); fi
           live=()
           if [ "${{ inputs.publish-live-bundle }}" = "true" ]; then live=(--publish-live-bundle); fi
+          if [ "${{ inputs.extra-split-mode }}" = "full" ]; then
+            # The driver checks --extra-renders / --publish-live-bundle itself; the split flag is
+            # only knowable here. Without it the extra module's stickers would carry previewIds
+            # pointing at per-preview bundles nobody wrote, so every one of them would 404 its
+            # live render — worse than the baked-only lane this replaces.
+            if [ "${{ inputs.split-per-preview }}" != "true" ]; then
+              echo "::error title=extra-split-mode::'full' requires split-per-preview: true — the extra module's live lane IS the per-preview split."
+              exit 1
+            fi
+            live+=(--extra-live-bundle)
+          fi
           node compose-ai-tools/scripts/design-artifacts/generate-design-catalog.mjs \
             --spec "${{ inputs.spec }}" \
             --renders "$GITHUB_WORKSPACE/bundle.png" \
@@ -521,7 +537,13 @@ jobs:
       #               font pool and serve can re-render it. Needs publish-live-bundle.
       #   view-only → split the raw render (no live bundle), dropping the classpath
       #               but keeping the baked image + sidecars — for an Android/baked tier.
-      # The extra module (if any) is always split --view-only.
+      # The extra module (if any) follows `extra-split-mode`, defaulting to --view-only.
+      # Under `full` it is split from the RAW render, not from an externalised copy:
+      # serve rehydrates exactly one externalResources manifest (the primary liveBundle's)
+      # and shares that single materialized dir with every pooled per-preview daemon, so a
+      # supplement resource the primary doesn't also declare would be published to
+      # bundle/res/ and never materialized. Self-contained per-preview bundles cost
+      # duplication and owe nothing to the shared pool.
       - name: Split into per-preview bundles
         if: ${{ inputs.split-per-preview }}
         run: |
@@ -534,8 +556,13 @@ jobs:
               -o "$GITHUB_WORKSPACE/out/bundle/previews"
           fi
           if [ -n "${{ inputs.extra-module }}" ] && [ -f "$GITHUB_WORKSPACE/extra-bundle.png" ]; then
-            compose-preview bundle split "$GITHUB_WORKSPACE/extra-bundle.png" --view-only \
-              -o "$GITHUB_WORKSPACE/out/bundle/previews"
+            if [ "${{ inputs.extra-split-mode }}" = "full" ]; then
+              compose-preview bundle split "$GITHUB_WORKSPACE/extra-bundle.png" \
+                -o "$GITHUB_WORKSPACE/out/bundle/previews"
+            else
+              compose-preview bundle split "$GITHUB_WORKSPACE/extra-bundle.png" --view-only \
+                -o "$GITHUB_WORKSPACE/out/bundle/previews"
+            fi
           fi
 
       - name: Download section bundle to fold in
