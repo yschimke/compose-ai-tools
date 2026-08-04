@@ -629,5 +629,6 @@ jobs:
       # environment visitors use. This gives it an immediate per-document parity signal beside
       # the established JS, Android embedded, and cmp-jvm lanes.
       rc-cmp-wasm-lane: true
+      rc-cmp-wasm-pixel-tolerances: scripts/design-artifacts/fixtures/remote-m3-cmp-wasm-pixel-tolerances.json
     secrets:
       buildfetch_ro_token: ${{ secrets.BUILDFETCH_COMPOSEAI_GRADLE_REMOTE_CACHE_TOKEN_RO || secrets.BUILDFETCH_GRADLE_REMOTE_CACHE_TOKEN_RO }}

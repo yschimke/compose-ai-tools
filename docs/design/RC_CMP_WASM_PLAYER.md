@@ -542,6 +542,25 @@ Do not measure progress as “number of classes ported.” A cluster is complete
 - the public support matrix is regenerated and contains no unreviewed downgrade;
 - bundle size and first-frame time stay within a recorded budget.
 
+### Replacement-gate evidence
+
+The remote-m3 replacement corpus is guarded in CI, not recorded as a one-off manual result:
+
+- All 24/24 current documents render through CMP/Wasm. Pixel comparison uses a strict 1% default;
+  only WatchScreen (1.4%) and WidgetContainerSmall (1.5%) have reviewed, catalog-owned ceilings.
+  The tolerance file is stale-failing: an entry that is no longer measured above 1% must be removed.
+- The production distribution is capped at 23,000,000 raw bytes by `wasmPlayerDist`; the verified
+  distribution is 22,756,717 bytes. Source maps and development-only formatters are not shipped.
+- The strict comparison lane caps cold and warm navigation-to-painted-ready time at 10,000 ms and
+  5,000 ms respectively. The reviewed 24-document run measured 2,361 ms cold and 2,003 ms warm.
+- The live viewer forwards typed named overrides, reloads after knob changes, validates same-origin
+  host messages, and surfaces host/named actions as inert `CustomEvent` payloads. Decode, support,
+  and resource failures remain bounded inside the iframe instead of replacing the catalog page.
+- Protocol, runtime, Compose, compatibility, Wasm distribution, CLI host, and formatting checks run
+  in the dedicated player CI job. The shared renderer compiles/tests for iOS x64, device arm64, and
+  simulator arm64; the UIKit entry point reports decode/support/resource failures through `onError`
+  and forwards player events through its host callback.
+
 After cluster 1, wire the player behind an experimental viewer flag so real documents can find
 unknown operations early. Keep the static/snapshot player visible until the Wasm player posts a
 successful first-frame signal, matching the existing catalog's no-flash handoff.

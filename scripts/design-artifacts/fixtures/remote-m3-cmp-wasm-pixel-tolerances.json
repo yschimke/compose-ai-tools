@@ -1,0 +1,16 @@
+{
+  "entries": [
+    {
+      "id": "com.example.designcatalogremotem3.CatalogPreviewsKt.WatchScreenRemote_width_227dp_height_227dp_dpi_320",
+      "maxMismatchPct": 1.4,
+      "classification": "backend",
+      "reason": "Reviewed baked/CMP/diff images show matching circular clip, card bounds, and text placement; the residual 1.11% is confined to one-pixel Skia-vs-Android circle edges and glyph coverage."
+    },
+    {
+      "id": "com.example.designcatalogremotem3.WidgetContainerPreviewsKt.WidgetContainerSmallRemote",
+      "maxMismatchPct": 1.5,
+      "classification": "backend",
+      "reason": "Reviewed baked/CMP/diff images show matching bounds, corner radii, and text placement; at density 2.625 the residual 1.25% is limited to subpixel rounded-edge and glyph coverage."
+    }
+  ]
+}

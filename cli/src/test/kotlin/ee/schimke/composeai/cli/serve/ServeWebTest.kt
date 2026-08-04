@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli.serve
 
+import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
+import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -345,7 +347,13 @@ class ServeWebTest {
 
   @Test
   fun `cmp wasm backend gets its own iframe and mode`() {
-    val preview = ServePreview(id = "widget.Chip", label = "chip")
+    val preview =
+      ServePreview(
+        id = "widget.Chip",
+        label = "chip",
+        remoteComposeKnobs =
+          listOf(RemoteComposeKnobDeclaration("label", RemoteNamedValue.StringValue("Hello"))),
+      )
     val html =
       ServeWeb.viewerPage(
         preview,
@@ -361,6 +369,15 @@ class ServeWebTest {
     assertTrue(
       html.contains("sandbox=\"allow-scripts allow-same-origin\""),
       "repository-owned player can fetch the tokened document from its own origin",
+    )
+    val knob = Regex("<input[^>]*data-rc-name=\"label\"[^>]*>").find(html)?.value ?: ""
+    assertFalse(knob.contains(" disabled"), "CMP/Wasm can apply named values: '$knob'")
+    val viewerJs = ServeWebAssets.load("viewer.js")!!.bytes.decodeToString()
+    assertTrue(viewerJs.contains("namedValues="), "named values are passed to the isolated host")
+    assertTrue(viewerJs.contains("e.origin !== location.origin"), "messages are origin checked")
+    assertTrue(
+      viewerJs.contains("new CustomEvent(e.data.type"),
+      "validated host actions are exposed without executing their payload",
     )
   }
 
