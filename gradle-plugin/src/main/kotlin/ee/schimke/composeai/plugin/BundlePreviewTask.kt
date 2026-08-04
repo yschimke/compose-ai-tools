@@ -202,6 +202,18 @@ abstract class BundlePreviewTask : DefaultTask() {
   @get:Internal abstract val moduleProjectDir: DirectoryProperty
 
   /**
+   * (v6 Android) The consumer module's **configured** build directory — where
+   * [MergedResourceOwnership] looks for AGP's resource-merge blame files. Wired from
+   * `project.layout.buildDirectory` rather than assumed to be `<moduleProjectDir>/build`, because a
+   * consumer is free to relocate it (a shared root-level build dir is the common case) and AGP
+   * writes `intermediates/incremental/**/merger.xml` wherever it actually points. Getting this
+   * wrong is silent: the blame lookup finds nothing, the retain-set quietly narrows to the
+   * module-own source scan, and the sibling drawables this task exists to keep get pruned again.
+   * `@Internal` for the same reason as [moduleProjectDir] — a resolution base, not carried content.
+   */
+  @get:Internal abstract val moduleBuildDir: DirectoryProperty
+
+  /**
    * Renders directory from the preceding `composePreviewRender` task. Each selected preview's PNG
    * is read from here: the cover is prepended to the polyglot, and every selected preview is baked
    * into `previews/<id>.png`. When missing or empty, the cover falls back to a stub gray PNG so the
@@ -943,9 +955,10 @@ abstract class BundlePreviewTask : DefaultTask() {
     }
     // Drop merged-AAR file resources a Compose render never inflates (Wear gesture-animation
     // vectors, call icons, notification templates, …) before packing. The compiled `resources.arsc`
-    // is left byte-for-byte intact — this only stops shipping file bytes nothing resolves — and the
-    // module's own `res/` files are always retained. See [AndroidResourcePruner].
-    val prunedApk = AndroidResourcePruner.prune(apkFile.readBytes(), moduleOwnFileResourceKeys())
+    // is left byte-for-byte intact — this only stops shipping file bytes nothing resolves — and
+    // every file resource authored in this build (this module's AND its sibling project modules')
+    // is retained. See [AndroidResourcePruner] and [MergedResourceOwnership].
+    val prunedApk = AndroidResourcePruner.prune(apkFile.readBytes(), firstPartyFileResourceKeys())
     zipFiles[ANDROID_RESOURCE_APK_PATH] = prunedApk.bytes
     zipFiles[ANDROID_MERGED_MANIFEST_PATH] = manifestFile.readBytes()
     val rClassesJar = packAndroidRClasses()
@@ -966,12 +979,32 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * Resource identities (`"<typeBase>/<name>"`) the module authors in its own `src/<sourceSet>/res`
-   * — the file resources [AndroidResourcePruner] must retain (a catalog's own icons its code may
+   * Resource identities (`"<typeBase>/<name>"`) authored **anywhere in this build** — the file
+   * resources [AndroidResourcePruner] must retain (an icon the catalog's code may
    * `painterResource`) as opposed to the merged-dependency file resources it drops. `values`
    * directories are skipped: those compile into `resources.arsc`, which the pruner never touches.
+   *
+   * Two sources, unioned. [MergedResourceOwnership] reads AGP's merge-blame file and so covers the
+   * **sibling project modules** a real app's catalog renders against — Pocket Casts renders from
+   * `:modules:services:compose` while its icons live in `:modules:services:ui`, and pruning those
+   * left the live daemon throwing `NotFoundException: File res/drawable/ic_play.xml …` on the first
+   * `painterResource` (issue #3260). The `src/<sourceSet>/res` scan below is the fallback for when
+   * no blame file was written, and keeps this correct for a module whose own resources haven't been
+   * merged yet.
    */
-  private fun moduleOwnFileResourceKeys(): Set<String> {
+  private fun firstPartyFileResourceKeys(): Set<String> {
+    val buildDir =
+      moduleBuildDir.asFile.orNull ?: moduleProjectDir.asFile.orNull?.let { File(it, "build") }
+    val fromBlame =
+      buildDir?.let { MergedResourceOwnership.firstPartyFileResourceKeys(it) } ?: emptySet()
+    return fromBlame + moduleOwnSourceSetResourceKeys()
+  }
+
+  /**
+   * Resource identities the module authors in its own `src/<sourceSet>/res`. The narrow half of
+   * [firstPartyFileResourceKeys] — see there for why it is no longer the whole retain-set.
+   */
+  private fun moduleOwnSourceSetResourceKeys(): Set<String> {
     val srcDir = moduleProjectDir.asFile.orNull?.let { File(it, "src") } ?: return emptySet()
     if (!srcDir.isDirectory) return emptySet()
     val keys = mutableSetOf<String>()

@@ -56,7 +56,7 @@ class AndroidResourcePrunerTest {
       )
 
     val result =
-      AndroidResourcePruner.prune(input, moduleOwnFileResources = setOf("drawable/my_icon"))
+      AndroidResourcePruner.prune(input, firstPartyFileResources = setOf("drawable/my_icon"))
     val kept = entries(result.bytes)
 
     // Dropped: the four AAR file resources of prunable types (drawable, layout, mipmap).
@@ -82,7 +82,7 @@ class AndroidResourcePrunerTest {
         Triple("res/drawable/my_anim.xml", "Y".repeat(20).toByteArray(), ZipEntry.DEFLATED),
       )
     val result =
-      AndroidResourcePruner.prune(input, moduleOwnFileResources = setOf("drawable/my_anim"))
+      AndroidResourcePruner.prune(input, firstPartyFileResources = setOf("drawable/my_anim"))
     assertThat(result.droppedEntries).isEqualTo(0)
   }
 
@@ -94,7 +94,7 @@ class AndroidResourcePrunerTest {
         Triple("res/color/csl.xml", "C".toByteArray(), ZipEntry.DEFLATED),
         Triple("res/raw/data.json", "R".toByteArray(), ZipEntry.DEFLATED),
       )
-    val result = AndroidResourcePruner.prune(input, moduleOwnFileResources = emptySet())
+    val result = AndroidResourcePruner.prune(input, firstPartyFileResources = emptySet())
     assertThat(result.droppedEntries).isEqualTo(0)
     assertThat(result.bytesSaved).isEqualTo(0L)
   }
