@@ -54,7 +54,12 @@ object ComposeSemanticsProduct {
   // — 50% on JetNews's 32sp article title, enough to push captured line breaks past their bounds.
   // These fields carry what the render actually used. Additive; older entries decode them as null
   // and consumers fall back to the linear conversion.
-  const val SCHEMA_VERSION: Int = 12
+  // v13 (#3254): `tokens` may carry `shapePath` — a unit-box polyline outline for a shape none of
+  // the corner tokens can describe (an `Outline.Generic` morph/star/squircle, or a shape wrapper
+  // the resolver can't reduce to corners). Populated only after `cornerRadius`, `cornerRadiusPx`
+  // and the rounded-outline fallback have all come up empty, so an understood shape is unaffected.
+  // Additive; older entries decode with `shapePath = null`.
+  const val SCHEMA_VERSION: Int = 13
   const val FILE: String = "compose-semantics.json"
 }
 
@@ -117,7 +122,10 @@ object LayoutInspectorProduct {
   // masks, fades, clears or omits descendant pixels. The figma-svg exporter uses this
   // capability signal to crop only that composited region from the frame; no component names are
   // involved. Additive — older entries decode it as false.
-  const val SCHEMA_VERSION: Int = 13
+  // v14 (#3254): `tokens` may carry `shapePath` — see the `compose/semantics` v13 note; both
+  // products mirror the same `ModifierTokenResolver` projection. Additive — older entries decode
+  // with `shapePath = null`.
+  const val SCHEMA_VERSION: Int = 14
   const val FILE: String = "layout-inspector.json"
 }
 
@@ -495,6 +503,20 @@ data class ComposeSemanticsTokens(
    * radius is already carried by [cornerRadius]).
    */
   val shape: String? = null,
+  /**
+   * SVG path data — a polyline (`M`/`L`/`Z` only) normalised to the **unit box**, each coordinate a
+   * 0..1 fraction of the node's measured size — for a shape none of the corner tokens above could
+   * describe: an `Outline.Generic` morph/star/squircle, or a shape wrapper the resolver could not
+   * unwrap to its corners (issue #3254). Populated only when [cornerRadius], [cornerRadiusPx] and
+   * the rounded-outline fallback have all come up empty, so an understood shape keeps its editable
+   * `<rect rx>` and never degrades to a polyline.
+   *
+   * The figma-svg export draws this path in place of the layer's rect. Before it existed, such a
+   * shape exported as a *sharp rectangle* — geometry that was never established, painted over the
+   * correctly-shaped pixels underneath. Sampled as a single closed contour; the dp token-compliance
+   * consumer ignores it, as it does [cornerRadiusPx].
+   */
+  val shapePath: String? = null,
   /**
    * Resolved inter-child spacing in dp from a `Row`/`Column` `Arrangement.spacedBy(...)` (or any
    * `Arrangement.HorizontalOrVertical` carrying a non-zero `spacing`), e.g. `"8.0dp"`

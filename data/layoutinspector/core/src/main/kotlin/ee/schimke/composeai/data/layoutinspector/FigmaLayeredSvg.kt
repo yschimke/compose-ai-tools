@@ -735,8 +735,14 @@ object FigmaLayeredSvg {
         ?: ""
     val radii = effectiveRadii(layer)
     return if (radii == null) {
-      """<rect x="${layer.left}" y="${layer.top}" width="${layer.width}" height="${layer.height}" """ +
-        """$fillAttr$strokeAttr/>"""
+      // A shape we could not reduce to corners still has its sampled outline — draw *that* rather
+      // than a sharp rect, which would assert geometry we never established over the correctly
+      // shaped pixels underneath (issue #3254).
+      val outline = layer.shapePathData?.let { unitPathToBox(it, layer) }
+      if (outline != null) """<path d="$outline" $fillAttr$strokeAttr/>"""
+      else
+        """<rect x="${layer.left}" y="${layer.top}" width="${layer.width}" height="${layer.height}" """ +
+          """$fillAttr$strokeAttr/>"""
     } else if (layer.cut) {
       // A cut/chamfered corner can't be expressed as a `<rect rx>` — always a path with straight
       // corner segments, uniform or not.
@@ -748,6 +754,35 @@ object FigmaLayeredSvg {
     } else {
       """<path d="${cornerRectPath(layer, radii, cut = false)}" $fillAttr$strokeAttr/>"""
     }
+  }
+
+  /**
+   * Maps a unit-box outline ([FigmaSvgLayer.shapePathData]) onto [layer]'s absolute box. The
+   * coordinates are expanded here rather than emitted under a `transform="scale(…)"` because a
+   * non-uniform scale would stretch the stroke width with the shape. Only the `M`/`L`/`Z` grammar
+   * the sampler produces is accepted; anything else yields null and the caller falls back to the
+   * rect, so a malformed path can never emit broken SVG.
+   */
+  private fun unitPathToBox(unitPath: String, layer: FigmaSvgLayer): String? {
+    if (layer.width <= 0 || layer.height <= 0) return null
+    val out = StringBuilder()
+    for (token in unitPath.trim().split(' ')) {
+      if (token.isEmpty()) continue
+      if (token == "Z") {
+        out.append(" Z")
+        continue
+      }
+      val command = token.first()
+      if (command != 'M' && command != 'L') return null
+      val (rawX, rawY) = token.drop(1).split(',').takeIf { it.size == 2 } ?: return null
+      val x = rawX.toDoubleOrNull() ?: return null
+      val y = rawY.toDoubleOrNull() ?: return null
+      if (out.isNotEmpty()) out.append(' ')
+      out.append(command)
+      out.append(fmt(layer.left + x * layer.width)).append(',')
+      out.append(fmt(layer.top + y * layer.height))
+    }
+    return out.toString().takeIf { it.isNotBlank() }
   }
 
   /** Resolves the four px corner radii to draw with, honouring [FigmaSvgLayer.circle]. */

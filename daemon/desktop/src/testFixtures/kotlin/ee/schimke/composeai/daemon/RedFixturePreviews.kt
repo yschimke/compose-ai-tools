@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -35,7 +36,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.ColorPainter
@@ -48,6 +53,8 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 
 /**
@@ -947,4 +954,80 @@ class SquareTintProvider {
 @Composable
 fun ThemedTintedSquare(tint: Long) {
   Box(modifier = Modifier.fillMaxSize().background(Color(tint)))
+}
+
+/**
+ * Stands in for Wear M3's `AnimatedMorphShape`, the wrapper every `RoundButton`-family container —
+ * including the `Stepper` volume buttons that exposed this — puts between its corners and the
+ * modifier chain. Matches the real class field-for-field, because that is exactly what
+ * `ModifierTokenResolver` reflects on: a resting [shape] and a [pressedShape], plus a `morphState`
+ * whose name ends in `state` and so is picked up (and rejected) by the older `getMorphedShape()`
+ * unwrap before the resting-field unwrap gets its turn.
+ *
+ * Not a `CornerBasedShape`, so no corner getter sees it, and its outline is deliberately an
+ * `Outline.Generic` morph path rather than an `Outline.Rounded` — which is what defeated the
+ * rounded-outline fallback too. Used by [RenderEngineTest.figmaSvgExportUnwrapsAnimatedMorphShape].
+ */
+private class FixtureAnimatedMorphShape(
+  private val shape: Shape,
+  private val pressedShape: Shape,
+  @Suppress("unused") private val progress: () -> Float = { 0f },
+  @Suppress("unused") private val morphState: MutableMap<Size, Any> = mutableMapOf(),
+) : Shape {
+  override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density) =
+    Outline.Generic(
+      Path().apply {
+        moveTo(0f, 0f)
+        lineTo(size.width, 0f)
+        lineTo(size.width, size.height)
+        lineTo(0f, size.height)
+        close()
+      }
+    )
+}
+
+/**
+ * Wear-M3-shaped corner fixture: a 60×48 box filled through a shape wrapper that hides its corners
+ * exactly the way `AnimatedMorphShape` does. The resting shape is a full pill, so a correct export
+ * rounds it to `rx = 48`; before the resting-field unwrap the whole node exported as a sharp
+ * `<rect>` — a square drawn over the correctly-rounded pixels beneath it (issue #3254).
+ */
+@Composable
+fun AnimatedMorphShapeButton() {
+  Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(
+      modifier =
+        Modifier.size(60.dp, 48.dp)
+          .background(
+            Color(0xFF04409F),
+            FixtureAnimatedMorphShape(shape = CircleShape, pressedShape = RoundedCornerShape(8.dp)),
+          )
+    )
+  }
+}
+
+/**
+ * The general guard behind the unwrap: a bespoke shape that reduces to *no* corners at all, whose
+ * outline is only ever an `Outline.Generic` triangle. Nothing can turn this into a `<rect rx>`, so
+ * the export must fall back to the shape's sampled outline rather than asserting a sharp rectangle
+ * it never established. Used by [RenderEngineTest.figmaSvgExportVectorisesUnreducibleShape].
+ */
+private object TriangleShape : Shape {
+  override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density) =
+    Outline.Generic(
+      Path().apply {
+        moveTo(size.width / 2f, 0f)
+        lineTo(size.width, size.height)
+        lineTo(0f, size.height)
+        close()
+      }
+    )
+}
+
+/** A filled box whose shape has no corners to report at all — see [TriangleShape]. */
+@Composable
+fun GenericOutlineTriangle() {
+  Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.size(60.dp, 48.dp).background(Color(0xFF04409F), TriangleShape))
+  }
 }

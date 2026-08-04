@@ -289,6 +289,16 @@ data class FigmaSvgLayer(
    * chamfers (a bevelled corner) rather than arcs. Mutually exclusive with [circle].
    */
   val cut: Boolean = false,
+  /**
+   * SVG path data for a shape no corner radius could describe — a morph/star/squircle outline, or a
+   * shape wrapper the resolver could not reduce (issue #3254). A polyline (`M`/`L`/`Z` only) in the
+   * **unit box**: every coordinate is a 0..1 fraction of the layer's own width/height, so the
+   * renderer maps it onto the final box without a `transform` (which would distort the stroke).
+   * When set — and only when [cornerRadiiPx] is null and [circle] is false — the layer draws as
+   * this path instead of a rect. The alternative was a sharp rectangle standing in for geometry
+   * that was never resolved.
+   */
+  val shapePathData: String? = null,
   val text: FigmaSvgText? = null,
   /** Set when this layer is an opaque component rendered as an `<image>`. */
   val raster: FigmaSvgRaster? = null,
@@ -1247,6 +1257,12 @@ data class FigmaSvgModel(
         cornerRadiiPx = corners,
         circle = circle,
         cut = cut,
+        // Only meaningful when no corner radii resolved — the resolver already withholds it
+        // otherwise, and the renderer prefers radii regardless, so an understood shape keeps its
+        // editable rounded rect. Needs no scaling of its own: the path is normalised to the unit
+        // box, so the renderer maps it onto whatever box this layer ends up with — including the
+        // draw-time scale and the grow/inset heuristics applied above (issue #2615).
+        shapePathData = tokens?.shapePath?.takeIf { corners == null && !circle },
         // The captured typography is in *measured* sp/px, so a scaled node's glyphs are drawn
         // smaller than the capture says — scale the metrics with the box or the text overflows the
         // shrunken card it sits in (issue #2615).
