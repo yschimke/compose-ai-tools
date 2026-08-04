@@ -39,7 +39,9 @@ import org.robolectric.util.TempDirectory;
  * fork-heavy render session leaks roughly 200 MB per JVM. This loader is selected through
  * Robolectric's {@code NativeRuntimeLoader} service and uses a file lock plus a completion marker
  * to initialize one SDK/platform/version-specific cache directory. Every process then loads the
- * same native library and read-only data files from that directory.
+ * same read-only data files from that directory. Each Robolectric sandbox loads a short-lived copy
+ * of only the native library because both the JVM and the platform loader associate a loaded image
+ * with one classloader; the roughly 185 MB of fonts, ICU, and hyphenation data remains shared.
  *
  * <p>The extraction calls are deliberately reflective because Robolectric keeps them private. The
  * project pins Robolectric and the method signatures are covered by native-render tests; a future
@@ -72,10 +74,12 @@ public final class SharedNativeRuntimeLoader extends DefaultNativeRuntimeLoader 
         System.setProperty("graphics_native_classes", String.join(",", getGraphicsNatives()));
         System.setProperty("method_binding_format", METHOD_BINDING_FORMAT);
       }
+      Path sandboxLibrary = createSandboxLibraryCopy(cacheDirectory);
       try {
-        System.load(cacheDirectory.resolve(libraryName()).toAbsolutePath().toString());
+        System.load(sandboxLibrary.toAbsolutePath().toString());
       } finally {
         restoreRegistrationProperties(originalProperties);
+        deleteSandboxLibraryCopy(sandboxLibrary);
       }
 
       String hyphenDataDir = cacheDirectory.resolve(HYPHEN_DATA_DIR).toAbsolutePath().toString();
@@ -174,6 +178,41 @@ public final class SharedNativeRuntimeLoader extends DefaultNativeRuntimeLoader 
     }
     try (java.io.InputStream input = resource.openStream()) {
       Files.copy(input, directory.resolve(libraryName()), StandardCopyOption.REPLACE_EXISTING);
+    }
+  }
+
+  /**
+   * Gives each Robolectric sandbox a distinct native-library image while sharing the large data
+   * payload.
+   *
+   * <p>{@link System#load(String)} associates an absolute pathname with the initiating
+   * classloader. Robolectric creates multiple sandbox classloaders in one test worker, so loading
+   * the cache pathname directly fails after the first sandbox with "already loaded in another
+   * classloader". A hard link bypasses that pathname check but is still one image to the platform
+   * dynamic loader, preventing JNI registration for later sandboxes. Copying only the native
+   * library gives every sandbox a distinct image; fonts, ICU, and hyphenation data continue to use
+   * the immutable shared cache directly.
+   */
+  static Path createSandboxLibraryCopy(Path cacheDirectory) throws IOException {
+    Path source = cacheDirectory.resolve(libraryName());
+    Path copies =
+        cacheRoot().resolve("sandbox-libraries").resolve(cacheDirectory.getFileName().toString());
+    Files.createDirectories(copies);
+
+    Path copy = Files.createTempFile(copies, "sandbox-", "-" + libraryName());
+    Files.copy(source, copy, StandardCopyOption.REPLACE_EXISTING);
+    copies.toFile().deleteOnExit();
+    copy.toFile().deleteOnExit();
+    return copy;
+  }
+
+  private static void deleteSandboxLibraryCopy(Path copy) {
+    try {
+      Files.deleteIfExists(copy);
+    } catch (IOException stillLoaded) {
+      // Windows does not allow an in-use DLL to be unlinked. deleteOnExit handles the normal JVM
+      // shutdown path. Even there, each copy is only the native library rather than the full
+      // runtime data set.
     }
   }
 

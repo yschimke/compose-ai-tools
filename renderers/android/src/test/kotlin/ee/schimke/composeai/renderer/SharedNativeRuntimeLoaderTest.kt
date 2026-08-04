@@ -2,6 +2,7 @@ package ee.schimke.composeai.renderer
 
 import android.database.CursorWindow
 import java.nio.file.Files
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -27,5 +28,25 @@ class SharedNativeRuntimeLoaderTest {
     assertTrue(
       Files.isRegularFile(cache.resolve(System.mapLibraryName("robolectric-nativeruntime")))
     )
+  }
+
+  @Test
+  fun `sandbox library copies are distinct and exclude shared runtime data`() {
+    val cache = SharedNativeRuntimeLoader.cacheRoot().resolve(SharedNativeRuntimeLoader.cacheKey())
+    val cachedLibrary = cache.resolve(System.mapLibraryName("robolectric-nativeruntime"))
+
+    val first = SharedNativeRuntimeLoader.createSandboxLibraryCopy(cache)
+    val second = SharedNativeRuntimeLoader.createSandboxLibraryCopy(cache)
+    try {
+      assertNotEquals(first, second)
+      assertTrue(!Files.isSameFile(cachedLibrary, first))
+      assertTrue(!Files.isSameFile(cachedLibrary, second))
+      assertTrue(Files.size(cachedLibrary) == Files.size(first))
+      assertTrue(Files.size(cachedLibrary) == Files.size(second))
+      assertTrue(first.parent.parent.fileName.toString() == "sandbox-libraries")
+    } finally {
+      Files.deleteIfExists(first)
+      Files.deleteIfExists(second)
+    }
   }
 }
