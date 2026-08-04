@@ -90,7 +90,12 @@ each fixing a distinct cloud-specific failure:
   Foojay toolchain auto-provisioning is blocked in the sandbox, so the JDKs
   have to be placed on disk out-of-band; the primary major's `JAVA_HOME` is
   printed on stdout, additional majors are best-effort (a not-yet-published
-  major logs a warning and is skipped). (The bootstrap
+  major logs a warning and is skipped). The *release tag* is resolved via
+  `api.adoptium.net`, not github.com: some sandboxes gate github.com per
+  repository — Claude Code on the web scopes it to the session's attached
+  repos, so `adoptium/temurin17-binaries` 403s — while the release asset
+  download, which redirects out to `objects.githubusercontent.com`, is
+  still served. (The bootstrap
   [`scripts/install.sh --android-sdk`](../scripts/install.sh) tries to
   apt-install JDK 17 and fails here — `security.ubuntu.com` 404s the
   pinned `.deb`; the Adoptium tarball is the reliable path.)

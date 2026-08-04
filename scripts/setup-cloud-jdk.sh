@@ -24,6 +24,14 @@
 #     placed on disk. Adoptium publishes Temurin as GitHub release assets,
 #     which allowlists that permit github.com *do* serve.
 #
+#     Caveat that shapes how the release tag is resolved below: some sandboxes
+#     gate github.com *per repository* rather than wholesale. Claude Code on
+#     the web scopes github.com to the session's attached repos, so a request
+#     to `adoptium/temurin17-binaries` comes back 403 — while the release
+#     *asset* download (which redirects out to objects.githubusercontent.com)
+#     is still served normally. So tag resolution cannot rely on github.com,
+#     even though the download can. See `resolve_latest_tag`.
+#
 #  2. **MITM proxy CA not trusted by a freshly-downloaded JDK.** The sandbox
 #     proxy terminates TLS with its own CA. The OS trust store (and the
 #     system JDK, whose `cacerts` symlinks to it) carries that CA, which is
@@ -153,6 +161,69 @@ pinned_tag_for() {
   echo "$pinned"
 }
 
+# Resolve the latest GA Temurin tag (e.g. `jdk-17.0.20+8`) for a major.
+# Echoes the tag on stdout, returns non-zero if no source yielded a usable one.
+#
+# Adoptium's API is asked first, with the github.com `releases/latest` redirect
+# kept only as a fallback. That ordering — and the shape check on every
+# candidate — is deliberate. The previous implementation was:
+#
+#   tag="$(curl -fsSL -o /dev/null -w '%{url_effective}' "$latest_url" | sed 's#.*/tag/##')"
+#
+# which fails open in a way that is genuinely hard to see:
+#
+#   * On failure curl still emits `%{url_effective}` — the *request* URL. That
+#     URL contains no `/tag/`, so the sed matches nothing and passes it through
+#     unchanged. `tag` ends up holding a full URL, which is non-empty and so
+#     sails past the `[[ -z "$tag" ]]` guard.
+#   * `set -e` does not catch the failed curl. `pipefail` is set, so the
+#     pipeline does report curl's status — but bash suppresses `-e` for a
+#     failure raised inside a function that is itself running in a command
+#     substitution being assigned (`primary_home="$(install_major "$major")"`),
+#     which is exactly the call shape here.
+#
+# The two combined turned a 403 into a download URL with the whole failed
+# request URL interpolated into both the tag and version slots, an inevitable
+# 404, and an empty /opt/jdk<major> left on disk.
+#
+# So: never infer success from a non-empty string. Check curl's status
+# explicitly, and require the result to actually look like a Temurin tag.
+resolve_latest_tag() {
+  local major="$1"
+  local next=$((major + 1))
+  local body tag
+
+  # Preferred: Adoptium's own API. Returns exactly the tag format the asset
+  # naming below expects, and is reachable in sandboxes that gate github.com.
+  local api="https://api.adoptium.net/v3/info/release_names"
+  api+="?release_type=ga&version=%5B${major}%2C${next}%29&vendor=eclipse"
+  api+="&image_type=jdk&os=linux&architecture=${jdk_arch}&jvm_impl=hotspot"
+  api+="&page_size=1&sort_method=DEFAULT&sort_order=DESC"
+  if body="$(curl -fsSL --retry 2 --retry-delay 1 "$api" 2>/dev/null)"; then
+    tag="$(printf '%s' "$body" | grep -o '"jdk-[^"]*"' | head -n 1 | tr -d '"')"
+    if [[ "$tag" == jdk-* ]]; then
+      printf '%s\n' "$tag"
+      return 0
+    fi
+  fi
+  echo "[setup-cloud-jdk] Adoptium API did not yield a tag for JDK $major; trying github.com" >&2
+
+  # Fallback: follow github.com's `releases/latest` redirect. Capture curl's
+  # status on its own before touching the value, so a failure is actually seen.
+  local eff
+  if eff="$(curl -fsSL -o /dev/null -w '%{url_effective}' \
+    "https://github.com/adoptium/temurin${major}-binaries/releases/latest" 2>/dev/null)"; then
+    # No `/tag/` in the URL leaves `eff` unchanged — caught by the shape check.
+    tag="${eff##*/tag/}"
+    if [[ "$tag" == jdk-* ]]; then
+      printf '%s\n' "$tag"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
 # Install one JDK major. Echoes the install dir on success (stdout), returns
 # non-zero on failure. All human-readable logging goes to stderr.
 install_major() {
@@ -172,8 +243,7 @@ install_major() {
   local tag
   tag="$(pinned_tag_for "$major")"
   if [[ -z "$tag" ]]; then
-    tag="$(curl -fsSL -o /dev/null -w '%{url_effective}' \
-      "https://github.com/adoptium/temurin${major}-binaries/releases/latest" | sed 's#.*/tag/##')"
+    tag="$(resolve_latest_tag "$major")" || tag=""
   fi
   if [[ -z "$tag" ]]; then
     echo "[setup-cloud-jdk] WARNING: could not resolve a Temurin $major release tag; skipping" >&2
@@ -188,19 +258,31 @@ install_major() {
   echo "[setup-cloud-jdk] major=$major tag=$tag arch=$jdk_arch" >&2
   echo "[setup-cloud-jdk] downloading $url" >&2
 
-  mkdir -p "$install_dir"
+  # Download to a temp file *before* creating the install dir, so a failed
+  # fetch does not leave an empty /opt/jdk<major> behind masquerading as an
+  # install. `rmdir` (not `rm -rf`) cleans up on the later failure paths: it
+  # only succeeds on an empty directory, so a caller-supplied dir that already
+  # had contents is never destroyed.
   local tmp
   tmp="$(mktemp)"
-  if ! curl -fsSL -o "$tmp" "$url"; then
+  if ! curl -fsSL --retry 3 --retry-delay 2 -o "$tmp" "$url"; then
     rm -f "$tmp"
     echo "[setup-cloud-jdk] WARNING: download failed for JDK $major ($url); skipping" >&2
     return 1
   fi
-  tar -xzf "$tmp" --strip-components=1 -C "$install_dir"
+
+  mkdir -p "$install_dir"
+  if ! tar -xzf "$tmp" --strip-components=1 -C "$install_dir"; then
+    rm -f "$tmp"
+    echo "[setup-cloud-jdk] WARNING: extract failed for JDK $major ($url); skipping" >&2
+    rmdir "$install_dir" 2>/dev/null || true
+    return 1
+  fi
   rm -f "$tmp"
 
   if [[ ! -x "$install_dir/bin/java" ]]; then
     echo "[setup-cloud-jdk] WARNING: expected $install_dir/bin/java after extract (JDK $major) — skipping" >&2
+    rmdir "$install_dir" 2>/dev/null || true
     return 1
   fi
 
