@@ -346,8 +346,19 @@ internal constructor(
    */
   private val sessionLock = Any()
 
+  /**
+   * Set the instant [openSession] is entered, before the handshake completes.
+   *
+   * `Lazy.isInitialized()` stays false for the whole of a cold open — tens of seconds on an
+   * Android/Robolectric backend — even though the subprocess is already launched and consuming the
+   * box. Reporting "no daemon" across exactly that window would hide the single largest resource
+   * spike the lazy open is meant to make visible.
+   */
+  private val sessionOpening = AtomicBoolean(false)
+
   private val sessionDelegate =
     lazy(sessionLock) {
+      sessionOpening.set(true)
       val opened = openSession()
       if (closed.get()) {
         // Lost the race: [close] already ran and found nothing to reap. Tear the subprocess down
@@ -369,7 +380,7 @@ internal constructor(
    * about a host that is registered but never woken, without waking it to find out.
    */
   override val daemonStarted: Boolean
-    get() = sessionAlreadyOpen || sessionDelegate.isInitialized()
+    get() = sessionAlreadyOpen || sessionOpening.get() || sessionDelegate.isInitialized()
 
   // A daemon backs this host, so an override edit actually re-renders (unlike a static bundle).
   override val canApplyOverrides: Boolean = true
