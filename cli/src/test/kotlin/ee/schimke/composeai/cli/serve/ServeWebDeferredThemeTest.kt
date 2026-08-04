@@ -1,7 +1,6 @@
 package ee.schimke.composeai.cli.serve
 
 import kotlin.test.Test
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -27,12 +26,15 @@ class ServeWebDeferredThemeTest {
 
   @Test
   fun `off-screen cards are not queued up front with the visible ones`() {
+    // Asserted on what actually runs, not on the absence of a string: the two queues ARE joined
+    // once, to stamp the shared page lease onto both, and a negative match can't tell that apart
+    // from joining them to render them.
     val html = page()
-    assertFalse(
-      html.contains("themeQueue.concat(themeDeferredQueue)"),
-      "the deferred cards must not be appended onto the visible batch",
+    assertTrue(
+      html.contains("runThemeQueue(themeQueue, themeQueueGen, lease, concurrency);"),
+      "the leased batch is the visible queue alone",
     )
-    assertTrue(html.contains("deferTheme(themeDeferredQueue, themeQueueGen)"), "held instead")
+    assertTrue(html.contains("deferTheme(themeDeferredQueue, themeQueueGen);"), "the rest is held")
   }
 
   @Test
