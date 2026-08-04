@@ -13,6 +13,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -77,7 +80,10 @@ public fun main() {
       is LoadState.Ready -> {
         RcComposePlayer(
           state.document,
-          Modifier.fillMaxSize(),
+          Modifier.fillMaxSize().drawWithContent {
+            drawRect(Color.Transparent, blendMode = BlendMode.Clear)
+            drawContent()
+          },
           theme = theme,
           onEvent = ::postPlayerEvent,
           fontFamilies = state.fontFamilies,

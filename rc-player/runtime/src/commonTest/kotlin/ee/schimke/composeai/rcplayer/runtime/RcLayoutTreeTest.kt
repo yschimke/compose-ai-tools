@@ -414,6 +414,29 @@ class RcLayoutTreeTest {
   }
 
   @Test
+  fun promotesCanvasOperationsFromLayoutContentToItsComponent() {
+    val root =
+      requireNotNull(
+        treeOf(
+          RcRootLayout(1),
+          RcBoxLayout(2, 20, 1, 4),
+          RcLayoutContent(3),
+          RcNoArg(RcOpcodes.CANVAS_OPERATIONS),
+          RcNoArg(RcOpcodes.MATRIX_SAVE),
+          ends = 4,
+        )
+      )
+    val box = assertIs<RcLayoutNode.Box>(root.children.single())
+
+    assertEquals(
+      RcOpcodes.MATRIX_SAVE,
+      assertIs<RcLinkedNode.Operation>(requireNotNull(box.canvasOperations).single())
+        .operation
+        .opcode,
+    )
+  }
+
+  @Test
   fun rejectsMissingContentAndDuplicateIdsButKeepsFirstRequiredDimension() {
     assertFailsWith<RcLayoutException> {
       treeOf(RcRootLayout(1), RcBoxLayout(2, 20, 1, 4), ends = 2)

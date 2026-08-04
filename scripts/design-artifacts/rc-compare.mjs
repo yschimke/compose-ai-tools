@@ -144,6 +144,13 @@ function baseName(name, prefix, suffix) {
 
 const bundleBuf = fs.readFileSync(BUNDLE);
 const entries = readZipEntries(bundleBuf);
+const previewParameters = new Map();
+if (entries.has("previews.json")) {
+  const manifest = JSON.parse(entries.get("previews.json")().toString("utf8"));
+  for (const preview of manifest.previews ?? []) {
+    if (preview.id && preview.params) previewParameters.set(preview.id, preview.params);
+  }
+}
 
 const rcIds = [];
 for (const name of entries.keys()) {
@@ -372,12 +379,16 @@ async function startCmpWasmServer(dir) {
   };
 }
 
-async function cmpWasmFor(id, bytes, baked, width, height, referenceBlank) {
-  if (!cmpWasmPage) return {};
+async function cmpWasmFor(id, bytes, baked, width, height, referenceBlank, previewParams) {
+  if (!CMP_WASM) return {};
   try {
+    const density = previewParams?.density ?? 1;
+    const viewportWidth = previewParams?.widthDp ?? Math.round(width / density);
+    const viewportHeight = previewParams?.heightDp ?? Math.round(height / density);
+    const { page: cmpWasmPage, consoleErrors: cmpWasmConsoleErrors } = await cmpWasmPageFor(density);
     cmpWasmConsoleErrors.length = 0;
     cmpWasmServer.setDocument(bytes);
-    await cmpWasmPage.setViewportSize({ width, height });
+    await cmpWasmPage.setViewportSize({ width: viewportWidth, height: viewportHeight });
     await cmpWasmPage.goto(
       `${cmpWasmServer.origin}/index.html?src=${encodeURIComponent("/document.rc")}&theme=${encodeURIComponent(THEME)}`,
     );
@@ -434,13 +445,19 @@ const browser = await chromium.launch({
 });
 const page = await browser.newContext({ deviceScaleFactor: 1 }).then((c) => c.newPage());
 const cmpWasmServer = CMP_WASM ? await startCmpWasmServer(CMP_WASM) : null;
-const cmpWasmPage = CMP_WASM
-  ? await browser.newContext({ deviceScaleFactor: 1 }).then((context) => context.newPage())
-  : null;
-const cmpWasmConsoleErrors = [];
-cmpWasmPage?.on("console", (message) => {
-  if (message.type() === "error") cmpWasmConsoleErrors.push(message.text());
-});
+const cmpWasmPages = new Map();
+async function cmpWasmPageFor(density) {
+  if (cmpWasmPages.has(density)) return cmpWasmPages.get(density);
+  const context = await browser.newContext({ deviceScaleFactor: density });
+  const page = await context.newPage();
+  const consoleErrors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  const value = { page, consoleErrors };
+  cmpWasmPages.set(density, value);
+  return value;
+}
 const pageWarnings = [];
 page.on("console", (m) => {
   if (m.type() === "warning" || m.type() === "error") pageWarnings.push(m.text());
@@ -510,6 +527,7 @@ for (const id of rcIds) {
     width,
     height,
     referenceBlank,
+    previewParameters.get(id),
   );
 
   if (result.error || truncated) {
