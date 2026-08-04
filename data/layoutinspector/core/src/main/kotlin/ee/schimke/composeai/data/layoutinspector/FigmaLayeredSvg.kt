@@ -198,7 +198,12 @@ object FigmaLayeredSvg {
     // coordinator's rect, corners and all. For every ordinary layer this is the layer itself.
     val maskLayer = layer.maskShape()
     val clipId =
-      if (layer.clipChildren && maskLayer.clipsAnyDescendant()) "clip-${clipSeq[0]++}" else null
+      if (
+        layer.clipChildren &&
+          (maskLayer.clipsAnyDescendant() || layer.background?.clipToShape == true)
+      ) {
+        "clip-${clipSeq[0]++}"
+      } else null
     if (clipId != null) {
       sb.append(indent).append(clipPathDef(maskLayer, clipId)).append('\n')
     }
@@ -226,7 +231,7 @@ object FigmaLayeredSvg {
     val rasterOverShape = layer.background?.takeIf { it.aboveShape }
     if (rasterOverShape == null) {
       layer.background?.let { bg ->
-        sb.append(indent).append("  ").append(backgroundImage(bg)).append('\n')
+        sb.append(indent).append("  ").append(backgroundImage(bg, clipId)).append('\n')
       }
     }
     if (containsRaster) {
@@ -240,7 +245,7 @@ object FigmaLayeredSvg {
         }
       }
       rasterOverShape?.let {
-        sb.append(indent).append("  ").append(backgroundImage(it)).append('\n')
+        sb.append(indent).append("  ").append(backgroundImage(it, clipId)).append('\n')
       }
       val contentOpacity = outerOpacity * layer.contentOpacity
       if (layer.text != null || layer.curvedTexts.isNotEmpty()) {
@@ -265,7 +270,7 @@ object FigmaLayeredSvg {
         sb.append(indent).append("  ").append(shape(layer, gradientSeq)).append('\n')
       }
       rasterOverShape?.let {
-        sb.append(indent).append("  ").append(backgroundImage(it)).append('\n')
+        sb.append(indent).append("  ").append(backgroundImage(it, clipId)).append('\n')
       }
       val hasInnerContent =
         layer.text != null || layer.curvedTexts.isNotEmpty() || layer.children.isNotEmpty()
@@ -548,9 +553,11 @@ object FigmaLayeredSvg {
     """<image href="${escapeAttr(raster.href)}" x="${layer.left}" y="${layer.top}" """ +
       """width="${layer.width}" height="${layer.height}"/>"""
 
-  private fun backgroundImage(bg: FigmaSvgBackgroundRaster): String =
+  private fun backgroundImage(bg: FigmaSvgBackgroundRaster, clipId: String?): String =
     """<image href="${escapeAttr(bg.href)}" x="${bg.left}" y="${bg.top}" """ +
-      """width="${bg.width}" height="${bg.height}"/>"""
+      "width=\"${bg.width}\" height=\"${bg.height}\"" +
+      (if (bg.clipToShape && clipId != null) " clip-path=\"url(#$clipId)\"" else "") +
+      "/>"
 
   /**
    * A captured icon [FigmaSvgVector] fitted in its pre-transform layout slot, then mapped through

@@ -217,6 +217,17 @@ data class FigmaSvgBackgroundRaster(
    * (`drawBehind { blue() }.background(red)`) really does paint blue first, and keeps the default.
    */
   val aboveShape: Boolean = false,
+  /**
+   * Whether an outer `Modifier.clip(shape)` masks this isolated draw capture.
+   *
+   * [LayoutInspectorNode.drawRaster] replays only draw modifiers, so a clip coordinator outside
+   * those modifiers is intentionally absent from its PNG. The SVG emitter restores that mask around
+   * this image alone. Modifier order matters: a draw outside the clip must remain unclipped, just
+   * like a background outside `Modifier.clip`.
+   */
+  val clipToShape: Boolean = false,
+  /** The clipping coordinator's placed box when it differs from the layer's content box. */
+  val clipBounds: LayoutInspectorBounds? = null,
 ) {
   val width: Int
     get() = (right - left).coerceAtLeast(0)
@@ -1070,6 +1081,8 @@ data class FigmaSvgModel(
                 // `Modifier.background`, its draw-content ops to an inner `drawWithContent`), and
                 // defaulting to "under" would hide the capture behind the token rect.
                 aboveShape = drawPaintsOverTokenShape(),
+                clipToShape = drawIsInsideClip(),
+                clipBounds = drawClipBounds(),
               )
             }
       val fill = tokens?.backgroundColor?.let { argbToColor(it, ctx.colorNames) }
@@ -1247,7 +1260,7 @@ data class FigmaSvgModel(
         // Carried only when the mask really is a different rect from the layer's own box (the
         // narrowed-to-paint case above); every ordinary layer masks with its own box and leaves
         // this null.
-        clipBox = maskBox?.takeIf { it != bounds },
+        clipBox = (maskBox ?: background?.clipBounds)?.takeIf { it != bounds },
         children =
           children.map {
             // A `Modifier.clip` here becomes the clip box its subtree inherits; nested clips
@@ -1729,6 +1742,25 @@ data class FigmaSvgModel(
       if (firstDraw < 0) return false
       val lastShape = modifiers.indexOfLast { it.isTokenShapeModifier() }
       return lastShape >= 0 && firstDraw > lastShape
+    }
+
+    /** True when at least one clipping coordinator is outside the captured draw modifier. */
+    private fun LayoutInspectorNode.drawIsInsideClip(): Boolean {
+      val firstDraw = modifiers.indexOfFirst { it.isCustomDraw() }
+      if (firstDraw < 0 || tokens?.clipsContent != true) return false
+      return modifiers.take(firstDraw).any { it.isClipModifier() }
+    }
+
+    /** The innermost placed clip outside the draw, used to restore the capture's missing mask. */
+    private fun LayoutInspectorNode.drawClipBounds(): LayoutInspectorBounds? {
+      val firstDraw = modifiers.indexOfFirst { it.isCustomDraw() }
+      if (firstDraw < 0 || tokens?.clipsContent != true) return null
+      return modifiers.take(firstDraw).lastOrNull { it.isClipModifier() }?.bounds
+    }
+
+    private fun LayoutInspectorModifier.isClipModifier(): Boolean {
+      val lower = name.lowercase()
+      return properties["clip"] == "true" || lower == "clip"
     }
 
     /** The modifiers a layer's token-derived `<rect>`/`<path>` shape is resolved from. */

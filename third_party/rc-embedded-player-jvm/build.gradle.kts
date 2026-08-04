@@ -197,13 +197,13 @@ dependencies {
   @Suppress("DEPRECATION") implementation(compose.material3)
   implementation(libs.androidx.collection)
 
+  // Production `compose/figma-svg` export for the serve cmp-jvm lane. The player still owns only
+  // the Remote Compose interpretation; this connector turns the resulting ordinary CMP scene's
+  // slot tables + semantics into the same layered SVG the desktop preview daemon emits.
+  implementation(project(":data-layoutinspector-connector"))
+  implementation(project(":data-layoutinspector-core"))
+
   testImplementation(libs.junit)
-  // The production `compose/figma-svg` export pipeline, so `RcJvmFigmaSvgExportTest` can run the
-  // *real* producers over this player's composition rather than a test-local imitation of them —
-  // the same modules the desktop `RenderEngine` calls after `scene.render()`. Test-only: this is a
-  // player, and it has no business depending on the export at runtime.
-  testImplementation(project(":data-layoutinspector-connector"))
-  testImplementation(project(":data-layoutinspector-core"))
   // Manifest parsing for the rc-compare jvm render harness (RcJvmRenderHarness) — parsed via the
   // runtime `Json` API, so no serialization compiler plugin is needed.
   testImplementation(libs.kotlinx.serialization.json)
