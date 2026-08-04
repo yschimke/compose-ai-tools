@@ -3969,11 +3969,6 @@ object ServeWeb {
           "aria-label=\"Remote Compose renderer\" data-default=\"$defaultBackend\">" +
           "<span class=\"cp-rc-backends-label\">RC:</span>$chips</span>"
       }
-    val deviceOptions =
-      COMMON_DEVICES.joinToString("\n") { (value, name) ->
-        val v = WebEscaping.htmlEscape(value)
-        "<option value=\"$v\">${WebEscaping.htmlEscape(name)}</option>"
-      }
     val isAppScreen = preview.section.equals("Screens", ignoreCase = true)
     val screenDeviceOptions =
       SCREEN_DEVICES.joinToString("\n                  ") { device ->
@@ -4040,17 +4035,25 @@ object ServeWeb {
     // day/night, font scale, locale &amp; knobs apply in the browser but size/device/orientation
     // need a live server). A catalog whose carried daemon re-renders on demand ([overridesLive]
     // true) needs no note — its controls all take effect.
+    val serverOnlyOverrideNote =
+      if (isAppScreen) "Device size &amp; Orientation need the live server. "
+      else "Size needs the live server. "
+    val snapshotOverrideList =
+      if (isAppScreen) "device size, locale, font scale, orientation"
+      else "size, locale, font scale"
     val snapshotNote =
       when {
         overridesLive -> ""
         wasmSrc != null ->
           "<div class=\"cp-note\">Pre-rendered snapshot — turn on <strong>Live preview</strong> to " +
             "interact. Day/Night, Font scale, Locale, background &amp; declared knob values apply in " +
-            "the browser; Size, Device &amp; Orientation need the live server. " +
+            "the browser; " +
+            serverOnlyOverrideNote +
             "<a href=\"$LOCAL_SERVER_DOCS\">Enable a local preview server.</a></div>"
         else ->
-          "<div class=\"cp-note\">Pre-rendered snapshot — overrides (size, device, locale, font " +
-            "scale, orientation) need the live server, not a published catalog. " +
+          "<div class=\"cp-note\">Pre-rendered snapshot — overrides (" +
+            snapshotOverrideList +
+            ") need the live server, not a published catalog. " +
             "<a href=\"$LOCAL_SERVER_DOCS\">Enable a local preview server.</a></div>"
       }
     val backendLabel = WebEscaping.htmlEscape(snapshotBackend ?: "Snapshot")
@@ -4225,33 +4228,6 @@ object ServeWeb {
         """
           .trimIndent()
           .replace("\n", "\n          ")
-    val deviceControlsHtml =
-      if (isAppScreen) ""
-      else
-        """
-        <details class="cp-group" data-cp-group="device">
-          <summary>Device</summary>
-          <div class="cp-group-body">
-            <label>Device
-              <select id="cp-device"$serverDis>
-                <option value="">(default)</option>
-                DEVICE_OPTIONS_PLACEHOLDER
-              </select>
-            </label>
-            <label>Orientation
-              <select id="cp-orientation"$serverDis>
-                <option value="">(default)</option>
-                <option value="portrait">Portrait</option>
-                <option value="landscape">Landscape</option>
-              </select>
-            </label>
-          </div>
-        </details>
-        """
-          .trimIndent()
-          .replace("\n", "\n          ")
-          .replace("DEVICE_OPTIONS_PLACEHOLDER", deviceOptions)
-          .let { "          $it" }
     // Left-hand component nav drawer (default closed) and its toggle — only when the session
     // carries
     // sibling previews to move between. The right-hand overrides drawer (.cp-controls) is always
@@ -4370,7 +4346,6 @@ object ServeWeb {
               </label>
             </div>
           </details>
-$deviceControlsHtml
           $overlaysHtml
           $featureControlsHtml
           ${overrideKnobsHtml(preview, canApplyOverrides || canRenderOverrides, wasmSrc != null)}
@@ -4898,15 +4873,5 @@ $deviceControlsHtml
       ScreenDevice("id:pixel_7", "Pixel 7", "standard phone", "411 × 914 dp"),
       ScreenDevice("id:pixel_fold", "Pixel Fold", "foldable", "841 × 701 dp"),
       ScreenDevice("id:pixel_tablet", "Pixel Tablet", "tablet", "1280 × 800 dp"),
-    )
-
-  private val COMMON_DEVICES: List<Pair<String, String>> =
-    listOf(
-      "id:pixel_5" to "Pixel 5",
-      "id:pixel_7" to "Pixel 7",
-      "id:pixel_tablet" to "Pixel Tablet",
-      "id:pixel_fold" to "Pixel Fold",
-      "id:wearos_small_round" to "Wear OS (small round)",
-      "id:tv_1080p" to "TV 1080p",
     )
 }
