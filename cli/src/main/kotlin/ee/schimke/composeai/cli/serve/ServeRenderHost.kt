@@ -1235,6 +1235,7 @@ internal constructor(
       previews: List<ServePreview>,
       label: String = "",
       declaredThemes: List<ServeTheme> = emptyList(),
+      systemPropertyOverrides: Map<String, String> = emptyMap(),
       onLog: (String) -> Unit = {},
       factory: RenderSessionFactory = SubprocessRenderSessions,
     ): ServeRenderHost {
@@ -1243,6 +1244,7 @@ internal constructor(
           descriptorPath = descriptorPath,
           workspaceRoot = workspaceRoot.absoluteFile,
           workspaceName = workspaceName.ifBlank { workspaceRoot.name },
+          systemPropertyOverrides = systemPropertyOverrides,
           logSink = onLog,
         )
       return ServeRenderHost(

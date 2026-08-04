@@ -48,7 +48,7 @@ object EmbeddedDesktopRenderSessions : RenderSessionFactory {
           "Run `:<modulePath>:composePreviewDaemonStart` to materialise it."
       )
     }
-    val descriptor =
+    var descriptor =
       try {
         DaemonLaunchDescriptor.parse(fileSystem.read(descriptorFile.path.toPath()) { readUtf8() })
       } catch (e: Exception) {
@@ -58,6 +58,12 @@ object EmbeddedDesktopRenderSessions : RenderSessionFactory {
           cause = e,
         )
       }
+    if (config.systemPropertyOverrides.isNotEmpty()) {
+      descriptor =
+        descriptor.copy(
+          systemProperties = descriptor.systemProperties + config.systemPropertyOverrides
+        )
+    }
 
     // Apply the descriptor's system properties to the calling JVM. These drive PreviewIndex
     // lookup, history paths, classpath fingerprint sources etc. — the daemon code reads them

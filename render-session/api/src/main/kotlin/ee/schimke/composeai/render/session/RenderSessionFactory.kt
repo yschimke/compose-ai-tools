@@ -63,6 +63,12 @@ data class RenderSessionConfig(
    */
   val forceEnabled: Boolean = true,
   /**
+   * Per-session launch property overrides merged over the descriptor. This is primarily used by
+   * callers that intentionally open more than one daemon from the same descriptor: each process can
+   * be given its own render/data output root without copying or mutating the source descriptor.
+   */
+  val systemPropertyOverrides: Map<String, String> = emptyMap(),
+  /**
    * Log sink for the backend's diagnostic output (subprocess stderr, embedded driver
    * stderr-equivalent). Defaults to forwarding to `System.err` with a `[render-session]` prefix.
    */

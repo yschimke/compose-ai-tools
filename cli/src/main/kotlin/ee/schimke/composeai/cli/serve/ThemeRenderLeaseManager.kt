@@ -9,21 +9,22 @@ import kotlin.concurrent.withLock
  * Grants short-lived, server-wide bursts for catalog pages' themed thumbnail renders.
  *
  * This is deliberately separate from [ServeSessionRegistry.Lease]: a session lease keeps a host
- * resident, whereas this lease limits how much parallel render work one browser page may admit. A
- * grant is bound to both its session and the exact host instance, so replacing a catalog host
- * invalidates its outstanding token without relying on a generation string.
+ * resident, whereas this lease limits how much parallel render work one catalog may admit. Browser
+ * pages receive distinct capability tokens, but tokens for the same session and exact host share
+ * one catalog allocation and one in-flight counter. Capacity is therefore never multiplied by
+ * users, tabs, or reconnects. Replacing a catalog host invalidates its outstanding tokens without
+ * relying on a generation string.
  *
  * Releasing or expiring a lease stops new admissions immediately. Existing [Permit]s may finish;
- * the lease remains in a draining state until the last one closes, preventing a replacement page
- * from overlapping the old burst. The fixed TTL cannot be renewed, so a lost page cannot retain
- * burst capacity indefinitely.
+ * its claim remains in a draining state until its last permit closes. The catalog allocation is
+ * retained while any page claim or admitted render remains. The fixed TTL cannot be renewed, so a
+ * lost page cannot retain burst capacity indefinitely.
  *
- * There are [LEASE_TIERS] slots rather than one. A single grant meant that the moment two people
- * (or two tabs) looked at catalogs, the second fell all the way back to the strictly serial
- * baseline — on a box whose whole job is showing catalogs, that is the common case, not the edge
- * one. The tiers are unequal on purpose: the first page gets the full burst and a second gets a
- * smaller one, so two pages can make progress together without their combined width exceeding what
- * the box can actually render at once. A third page still falls back to serial.
+ * There are [LEASE_TIERS] catalog slots rather than one. The tiers are unequal on purpose: the
+ * first active catalog gets the full burst and a second gets a smaller one, so two catalogs can
+ * make progress together without their combined width exceeding what the box can render at once.
+ * Every page viewing either catalog shares its catalog's width. A third catalog falls back to the
+ * serial path and retries for a catalog slot.
  *
  * Thread-safe. The caller must still use the server's ordinary global render semaphore: this
  * manager narrows admission for the privileged pages and never expands the server-wide limit.
@@ -35,31 +36,41 @@ internal class ThemeRenderLeaseManager(
 ) {
   data class Grant(val token: String, val concurrency: Int, val expiresAtMillis: Long)
 
-  private class Lease(
-    /** Which of [LEASE_TIERS] this lease occupies, so the slot is freed for the same width. */
-    val tier: Int,
+  private class Claim(
     val token: String,
-    val sessionId: String,
-    val hostIdentity: Any,
-    val concurrency: Int,
     val expiresAtMillis: Long,
     var inFlight: Int = 0,
     var released: Boolean = false,
   )
 
+  private class CatalogAllocation(
+    /** Which of [LEASE_TIERS] this catalog occupies, so the slot is freed at the same width. */
+    val tier: Int,
+    val sessionId: String,
+    val hostIdentity: Any,
+    val concurrency: Int,
+    var inFlight: Int = 0,
+    val claims: MutableList<Claim> = mutableListOf(),
+  )
+
   private val lock = ReentrantLock()
-  private val active = mutableListOf<Lease>()
+  private val active = mutableListOf<CatalogAllocation>()
 
   /**
-   * Try to grant a burst for [sessionId] and this exact [hostIdentity]. At most [LEASE_TIERS]
-   * grants exist server-wide, and the widest free tier is handed out — so a page arriving after
-   * another has drained gets the full burst back rather than being stuck on the narrow one.
-   * Capacities that cannot exceed the serial baseline are denied: a grant that admits no more than
-   * the unleased path would is not worth the round-trip.
+   * Try to grant a page a capability for [sessionId] and this exact [hostIdentity]. All pages for
+   * an already-active catalog join its allocation. Otherwise, at most [LEASE_TIERS] catalogs are
+   * active server-wide and the widest free tier is handed out. Capacities that cannot exceed the
+   * serial baseline are denied: a grant that admits no more than the unleased path would is not
+   * worth the round-trip.
    */
   fun acquire(sessionId: String, hostIdentity: Any, requestedCapacity: Int): Grant? =
     lock.withLock {
       reapTerminalLease()
+      val existing = active.firstOrNull {
+        it.sessionId == sessionId && it.hostIdentity === hostIdentity
+      }
+      if (existing != null) return existing.addClaim()
+
       val tier =
         LEASE_TIERS.indices.firstOrNull { t -> active.none { it.tier == t } } ?: return null
 
@@ -73,18 +84,23 @@ internal class ThemeRenderLeaseManager(
       val concurrency = minOf(requestedCapacity, remaining, LEASE_TIERS[tier])
       if (concurrency <= BASELINE_CONCURRENCY) return null
 
-      val lease =
-        Lease(
+      val allocation =
+        CatalogAllocation(
           tier = tier,
-          token = tokenSource(),
           sessionId = sessionId,
           hostIdentity = hostIdentity,
           concurrency = concurrency,
-          expiresAtMillis = clock() + TTL_MILLIS,
         )
-      active += lease
-      Grant(lease.token, lease.concurrency, lease.expiresAtMillis)
+      active += allocation
+      allocation.addClaim()
     }
+
+  /** Caller holds [lock]. */
+  private fun CatalogAllocation.addClaim(): Grant {
+    val claim = Claim(token = tokenSource(), expiresAtMillis = clock() + TTL_MILLIS)
+    claims += claim
+    return Grant(claim.token, concurrency, claim.expiresAtMillis)
+  }
 
   /**
    * Admit one render under [token]. A token is valid only for its original session and exact host
@@ -92,24 +108,28 @@ internal class ThemeRenderLeaseManager(
    * The returned permit must be closed after the render finishes.
    */
   fun admit(token: String, sessionId: String, hostIdentity: Any): Permit? = lock.withLock {
-    val lease = active.firstOrNull { it.token == token } ?: return null
-    if (
-      lease.token != token || lease.sessionId != sessionId || lease.hostIdentity !== hostIdentity
-    ) {
+    val lease =
+      active.firstOrNull { allocation -> allocation.claims.any { it.token == token } }
+        ?: return null
+    val claim = lease.claims.first { it.token == token }
+    if (lease.sessionId != sessionId || lease.hostIdentity !== hostIdentity) {
       return null
     }
-    if (lease.released || clock() >= lease.expiresAtMillis) {
-      lease.released = true
+    if (claim.released || clock() >= claim.expiresAtMillis) {
+      claim.released = true
       reapTerminalLease()
       return null
     }
     if (lease.inFlight >= lease.concurrency) return null
 
     lease.inFlight++
+    claim.inFlight++
     Permit {
       lock.withLock {
         check(lease.inFlight > 0) { "theme render lease permit underflow" }
+        check(claim.inFlight > 0) { "theme render lease claim permit underflow" }
         lease.inFlight--
+        claim.inFlight--
         reapTerminalLease()
       }
     }
@@ -121,8 +141,10 @@ internal class ThemeRenderLeaseManager(
    * closes. Repeated releases are harmless.
    */
   fun release(token: String): Boolean = lock.withLock {
-    val lease = active.firstOrNull { it.token == token } ?: return false
-    lease.released = true
+    val lease =
+      active.firstOrNull { allocation -> allocation.claims.any { it.token == token } }
+        ?: return false
+    lease.claims.first { it.token == token }.released = true
     reapTerminalLease()
     true
   }
@@ -138,18 +160,22 @@ internal class ThemeRenderLeaseManager(
 
   /** Caller holds [lock]. Expiry drains just like an explicit release. */
   private fun reapTerminalLease() {
-    for (lease in active) if (clock() >= lease.expiresAtMillis) lease.released = true
-    active.removeAll { it.released && it.inFlight == 0 }
+    for (lease in active) {
+      for (claim in lease.claims) {
+        if (clock() >= claim.expiresAtMillis) claim.released = true
+      }
+      lease.claims.removeAll { it.released && it.inFlight == 0 }
+    }
+    active.removeAll { it.claims.isEmpty() && it.inFlight == 0 }
   }
 
   companion object {
     const val BASELINE_CONCURRENCY = 1
 
     /**
-     * Burst width per concurrent grant, widest first. Two slots so a second viewer isn't dropped to
-     * the serial baseline, and unequal so their combined width stays inside what the box can render
-     * at once — each grant is additionally clamped to the server's render slots, and to what the
-     * host says it can actually parallelise.
+     * Burst width per concurrently active catalog, widest first. All users of a catalog share one
+     * tier. Two slots let a second catalog progress, and unequal widths keep their combined work
+     * inside what the box can render at once.
      */
     val LEASE_TIERS = intArrayOf(5, 3)
 

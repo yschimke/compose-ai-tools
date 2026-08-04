@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
+import java.io.File
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -10,6 +11,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ServeSharedDaemonPoolTest {
@@ -43,6 +45,34 @@ class ServeSharedDaemonPoolTest {
     override fun close() {
       closed = true
     }
+  }
+
+  @Test
+  fun `replicas use distinct output roots and remove them when closed`() {
+    val descriptorDir = java.nio.file.Files.createTempDirectory("serve-replica-descriptor").toFile()
+    val descriptor = File(descriptorDir, "daemon-launch.json").apply { writeText("unused") }
+    val outputRoots = mutableListOf<File>()
+    val delegates = mutableListOf<BlockingHost>()
+    val entered = CountDownLatch(0)
+    val release = CountDownLatch(0)
+
+    fun openReplica(): ServeHost =
+      openIsolatedSharedDaemonReplica(descriptor) { properties ->
+        outputRoots += File(properties.getValue("composeai.render.outputDir")).parentFile
+        BlockingHost("replica", entered, release).also(delegates::add)
+      }
+
+    val first = openReplica()
+    val second = openReplica()
+    assertEquals(2, outputRoots.distinct().size)
+    assertTrue(outputRoots.all { it.isDirectory })
+
+    first.close()
+    second.close()
+    assertTrue(delegates.all { it.closed })
+    assertTrue(outputRoots.none { it.exists() })
+    descriptorDir.deleteRecursively()
+    assertFalse(descriptorDir.exists())
   }
 
   @Test
