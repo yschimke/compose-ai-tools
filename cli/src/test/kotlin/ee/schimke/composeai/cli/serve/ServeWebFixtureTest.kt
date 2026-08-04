@@ -1910,12 +1910,29 @@ class ServeWebFixtureTest {
       "a card with no prebaked hero falls back to its /render endpoint",
     )
     assertTrue(
-      homeIndex.contains("cp-badge--unverified") && homeIndex.contains("⚠ untrusted"),
-      "the discovery index deliberately presents catalog cards as untrusted",
+      !homeIndex.contains("cp-badge--trusted") && !homeIndex.contains("⚠ untrusted"),
+      "the discovery index omits badges for trusted catalog cards",
     )
-    assertFalse(
-      homeIndex.contains("cp-badge--trusted"),
-      "the discovery index leaves the actual producer verdict to /status and catalog pages",
+    val untrustedHomeIndex =
+      ServeWeb.homeIndexPage(
+        systems =
+          listOf(
+            ServeWeb.HomeSystem(
+              system = "unverified",
+              title = "Unverified catalog",
+              subtitle = null,
+              previewCount = 1,
+              trust = "unverified",
+              heroPreviewId = null,
+            )
+          ),
+        token = token,
+        isPublic = true,
+      )
+    assertTrue(
+      untrustedHomeIndex.contains("cp-badge--unverified") &&
+        untrustedHomeIndex.contains("⚠ untrusted"),
+      "the discovery index calls out a genuinely unverified catalog",
     )
     // meshcore-mobile + homeassistant-remotecompose are LISTED (`--catalogs`), so they show on the
     // front door in the "Design systems" grid — served from their own repos.
