@@ -7,6 +7,7 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
+import java.time.Instant
 import javax.imageio.ImageIO
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -31,12 +32,13 @@ class ServeStatusTest {
     label: String,
     previewIds: List<String>,
     title: String? = null,
+    provenance: ServeWeb.CatalogProvenance? = null,
   ): ServeBundleHost {
     val dir = Files.createTempDirectory("status-$label").toFile().also { it.deleteOnExit() }
     File(dir, "index.html").writeText("<html></html>")
     File(dir, "previews").apply { mkdirs() }
     previewIds.forEach { File(dir, "previews/$it.png").writeBytes(png()) }
-    return ServeBundleHost(dir, label = label, title = title)
+    return ServeBundleHost(dir, label = label, title = title, provenance = provenance)
   }
 
   private val registry = ServeSessionRegistry(open = { null })
@@ -55,7 +57,19 @@ class ServeStatusTest {
     registry.register(
       "compose-m3",
       host =
-        bundle("compose-m3", listOf("button-filled", "switch-on"), title = "Compose Material 3"),
+        bundle(
+          "compose-m3",
+          listOf("button-filled", "switch-on"),
+          title = "Compose Material 3",
+          provenance =
+            ServeWeb.CatalogProvenance(
+              repo = "yschimke/compose-ai-tools",
+              branch = "design-artifacts/compose-m3",
+              generatedAt = Instant.now().minusSeconds(2 * 60 * 60).toString(),
+              toolVersion = "0.16.54",
+              designParityVersion = "0.1.25",
+            ),
+        ),
       pinned = true,
     )
     registry.register(
@@ -117,6 +131,8 @@ class ServeStatusTest {
     assertTrue(body.contains("\"id\":\"compose-m3\""), body)
     assertTrue(body.contains("\"id\":\"cadence\""), body)
     assertTrue(body.contains("\"path\":\"/compose-m3/\""), body)
+    assertTrue(body.contains("\"composeAiToolsVersion\":\"0.16.54\""), body)
+    assertTrue(body.contains("\"designParityVersion\":\"0.1.25\""), body)
     // Config is surfaced for a monitor.
     assertTrue(body.contains("\"allowRenderTrusted\":true"), body)
     assertTrue(body.contains("\"catalogRefreshSeconds\":600"), body)
@@ -244,6 +260,15 @@ class ServeStatusTest {
     // The catalog table lists the systems with their titles, and the machine form is linked.
     assertTrue(body.contains("Compose Material 3"), body)
     assertTrue(body.contains("href=\"/status.json\""), body)
+    assertTrue(
+      body.contains(
+        "href=\"https://github.com/yschimke/compose-ai-tools/tree/design-artifacts/compose-m3\""
+      ),
+      body,
+    )
+    assertTrue(body.contains("2 hours ago"), body)
+    assertTrue(body.contains("compose-ai-tools <code>0.16.54</code>"), body)
+    assertTrue(body.contains("design-parity <code>0.1.25</code>"), body)
     // The recent failure surfaces the degraded badge + row.
     assertTrue(body.contains("degraded"), body)
     assertTrue(body.contains("daemon launch timed out"), body)
