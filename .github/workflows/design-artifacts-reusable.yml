@@ -142,6 +142,21 @@ on:
         required: false
         type: string
         default: ''
+      rc-cmp-wasm-pixel-tolerances:
+        description: 'Optional caller-repo-relative JSON file containing reviewed per-preview pixel ceilings above the strict 1% default.'
+        required: false
+        type: string
+        default: ''
+      rc-cmp-wasm-max-cold-first-frame-ms:
+        description: 'Maximum cold CMP/Wasm navigation-to-painted-ready time. The strict lane fails above it.'
+        required: false
+        type: number
+        default: 10000
+      rc-cmp-wasm-max-warm-first-frame-ms:
+        description: 'Maximum cached CMP/Wasm navigation-to-painted-ready time. The strict lane fails above it.'
+        required: false
+        type: number
+        default: 5000
       stage-font-globs:
         description: 'Whitespace-separated repo-relative globs of font files (.ttf/.otf) to stage into fontconfig BEFORE rendering — for a desktop (Skiko) render that must resolve glyphs (CJK/Arabic/…) from a bundled face rather than a system fallback. Empty ⇒ no staging.'
         required: false
@@ -611,6 +626,7 @@ jobs:
         working-directory: compose-ai-tools/scripts/design-artifacts
         env:
           RC_CMP_WASM_ALLOWLIST: ${{ inputs.rc-cmp-wasm-allowlist }}
+          RC_CMP_WASM_PIXEL_TOLERANCES: ${{ inputs.rc-cmp-wasm-pixel-tolerances }}
         run: |
           set -euo pipefail
           if ! python3 - "$GITHUB_WORKSPACE/bundle.png" <<'PY'
@@ -646,9 +662,14 @@ jobs:
               EMBEDDED_ARGS+=(
                 --cmp-wasm "$GITHUB_WORKSPACE/compose-ai-tools/rc-player/wasm/build/wasmDist"
                 --require-cmp-wasm
+                --cmp-wasm-max-cold-first-frame-ms "${{ inputs.rc-cmp-wasm-max-cold-first-frame-ms }}"
+                --cmp-wasm-max-warm-first-frame-ms "${{ inputs.rc-cmp-wasm-max-warm-first-frame-ms }}"
               )
               if [ -n "$RC_CMP_WASM_ALLOWLIST" ]; then
                 EMBEDDED_ARGS+=(--cmp-wasm-allowlist "$GITHUB_WORKSPACE/$RC_CMP_WASM_ALLOWLIST")
+              fi
+              if [ -n "$RC_CMP_WASM_PIXEL_TOLERANCES" ]; then
+                EMBEDDED_ARGS+=(--cmp-wasm-pixel-tolerances "$GITHUB_WORKSPACE/$RC_CMP_WASM_PIXEL_TOLERANCES")
               fi
             else
               echo "::error title=CMP/Wasm distribution failed::The required player distribution did not build; see the uploaded distribution-build.log." >&2
