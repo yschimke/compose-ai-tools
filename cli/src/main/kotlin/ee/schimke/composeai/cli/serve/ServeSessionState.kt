@@ -66,7 +66,9 @@ data class ServeSessionState(
   val perPreviewRenderStats: () -> List<RenderPerfSnapshot> = { emptyList() },
   /** Occupancy snapshots of the pooled per-preview daemons, surfaced on `/status.json`. */
   val perPreviewPoolStats: () -> List<DaemonPoolSnapshot> = { emptyList() },
-  /** Theme PNG cache retained across this catalog generation's daemon suspend/resume cycles. */
+  /**
+   * Rendered PNG cache retained for this catalog generation across daemon suspend/resume cycles.
+   */
   val catalogThemeCache: CatalogThemeCache? = null,
   /**
    * Whole-server idle clock used by background catalog optimization; null means traffic is active.

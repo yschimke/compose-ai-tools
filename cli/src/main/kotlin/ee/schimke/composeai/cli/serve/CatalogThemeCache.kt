@@ -20,11 +20,15 @@ data class ThemeOptimizationSnapshot(
 )
 
 /**
- * Theme PNGs and optimization progress shared by every host incarnation of one catalog generation.
+ * Rendered PNGs and theme-optimization progress shared by every host incarnation of one catalog
+ * generation.
  *
  * A live catalog host is normally suspended after an idle window. Keeping this object in
  * [ServeSessionState] lets the optimized PNGs survive that daemon suspension and be reused when the
- * catalog resumes. A catalog refresh builds a fresh session state and therefore a fresh cache.
+ * catalog resumes. Although the optimizer only targets declared themes, the render map also keeps
+ * successful on-demand override renders (knobs, locale, font scale, and so on). A catalog refresh
+ * builds a fresh session state and therefore a fresh cache, so entries accumulate for exactly as
+ * long as the catalog content they were rendered from remains current.
  */
 class CatalogThemeCache {
   private val renders = ConcurrentHashMap<String, ByteArray>()
