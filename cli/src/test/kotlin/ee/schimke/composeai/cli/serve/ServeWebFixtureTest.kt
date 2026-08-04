@@ -2052,7 +2052,7 @@ class ServeWebFixtureTest {
     // The swap re-points the image + viewer link + id + label to the chosen theme's baked render.
     assertTrue(
       landingThemed.contains(
-        "if (img) { if (withSrc) img.src = src; img.setAttribute(\"alt\", lbl); }"
+        "if (img) { if (withSrc) setCardSrc(img, src); img.setAttribute(\"alt\", lbl); }"
       ) &&
         landingThemed.contains(
           "c.setAttribute(\"href\", c.getAttribute(\"data-\" + k + \"-href\"))"
