@@ -2428,6 +2428,18 @@ class ServeWebFixtureTest {
         token,
         canApplyOverrides = true,
       )
+    val sectionlessScreen =
+      ServeWeb.viewerPage(
+        ServePreview("com.example.ProfilePreview", "Profile screen"),
+        token,
+        canApplyOverrides = true,
+      )
+    val sectionlessComponent =
+      ServeWeb.viewerPage(
+        ServePreview("com.example.SpeakerCardPreview", "Speaker card"),
+        token,
+        canApplyOverrides = true,
+      )
 
     assertTrue(screen.contains("<label>Device size"), "screen Size panel contains device presets")
     assertTrue(screen.contains("id=\"cp-orientation\""), "screen Size panel contains orientation")
@@ -2447,6 +2459,25 @@ class ServeWebFixtureTest {
       "component hides orientation overrides",
     )
     assertFalse(component.contains("data-cp-group=\"device\""), "component has no Device panel")
+
+    assertTrue(
+      sectionlessScreen.contains("<label>Device size") &&
+        sectionlessScreen.contains("id=\"cp-orientation\""),
+      "sectionless screen keeps device controls in Size",
+    )
+    assertFalse(
+      sectionlessScreen.contains("id=\"cp-sizeMode\""),
+      "sectionless screen omits component constraints",
+    )
+    assertTrue(
+      sectionlessComponent.contains("id=\"cp-sizeMode\""),
+      "sectionless component keeps size constraints",
+    )
+    assertFalse(
+      sectionlessComponent.contains("id=\"cp-device\"") ||
+        sectionlessComponent.contains("id=\"cp-orientation\""),
+      "sectionless component still hides device overrides",
+    )
   }
 
   @Test

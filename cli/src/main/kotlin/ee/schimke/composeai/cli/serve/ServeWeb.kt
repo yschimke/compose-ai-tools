@@ -2892,6 +2892,16 @@ object ServeWeb {
       }
   }
 
+  private fun isScreenPreview(preview: ServePreview): Boolean {
+    preview.section?.lowercase()?.let {
+      return it == "screens" || it == "screen"
+    }
+    return listOf(preview.id, preview.label).any { value ->
+      val lower = value.lowercase()
+      "screen" in lower || "conference" in lower
+    }
+  }
+
   /**
    * Pick a **meaningful** representative preview from a catalog's previews for the home index — the
    * most recognisable, default-state render rather than an arbitrary (often alphabetically first)
@@ -2920,14 +2930,7 @@ object ServeWeb {
       )
     // A preview is a "screen" when its catalog section says so (the reliable signal), else when its
     // id/label reads like one — so a screen wins the hero even before section metadata exists.
-    fun isScreen(p: ServePreview): Boolean {
-      p.section?.lowercase()?.let {
-        return it == "screens" || it == "screen"
-      }
-      val lower = p.id.lowercase()
-      return "screen" in lower || "conference" in lower
-    }
-    val anyScreen = previews.any { isScreen(it) }
+    val anyScreen = previews.any { isScreenPreview(it) }
     // A screen id that reads like the app's primary/landing view (its conference/home/schedule/…),
     // preferred among screens so an app fronts its main screen rather than an alphabetically-first
     // secondary one (e.g. Confetti leads with the conference screen, not bookmarks).
@@ -2938,8 +2941,8 @@ object ServeWeb {
       var s = 0
       // Prefer a real screen when the catalog has any; a screenless component library is unaffected
       // (every preview gets the same penalty, so the component heuristic below still decides).
-      if (anyScreen && !isScreen(p)) s += 100
-      if (isScreen(p) && primaryScreen.any { it in lower }) s -= 1
+      if (anyScreen && !isScreenPreview(p)) s += 100
+      if (isScreenPreview(p) && primaryScreen.any { it in lower }) s -= 1
       // A non-default component state (unchecked / pressed / …) is never the hero — trust the
       // catalog's `state` metadata, falling back to the id-substring demote list below.
       if (p.state != null && p.state != "default") s += 8
@@ -3969,7 +3972,7 @@ object ServeWeb {
           "aria-label=\"Remote Compose renderer\" data-default=\"$defaultBackend\">" +
           "<span class=\"cp-rc-backends-label\">RC:</span>$chips</span>"
       }
-    val isAppScreen = preview.section.equals("Screens", ignoreCase = true)
+    val isAppScreen = isScreenPreview(preview)
     val screenDeviceOptions =
       SCREEN_DEVICES.joinToString("\n                  ") { device ->
         val value = WebEscaping.htmlEscape(device.id)
