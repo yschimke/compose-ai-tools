@@ -1072,6 +1072,8 @@ class AndroidxWireCompatibilityTest {
       PaintBundle().apply {
         setColor(0xff336699.toInt())
         setStyle(PaintBundle.STYLE_FILL)
+        clearColorFilter()
+        setTextAxis(intArrayOf(0x77676874, 0x6974616c, 0x736c6e74), floatArrayOf(650f, 1f, 0f))
       }
     PaintData.apply(buffer, paint)
     DrawRect.apply(buffer, Utils.asNan(42), 4f, 100f, 80f)

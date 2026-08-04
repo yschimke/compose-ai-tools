@@ -407,6 +407,61 @@ class RcComposeSupportTest {
   }
 
   @Test
+  fun acceptsShaderResetAndRejectsExternalShaderIds() {
+    assertTrue(
+      RcDocument(header, listOf(RcPaintData(listOf(9, 0)))).composeSupportReport().fullyRenderable
+    )
+    val issue =
+      RcDocument(header, listOf(RcPaintData(listOf(9, 42)))).composeSupportReport().issues.single()
+    assertEquals("shader id 42 is not implemented", issue.detail)
+  }
+
+  @Test
+  fun acceptsClearColorFilterAndSupportedFontAxes() {
+    val fontAxes = 23 or (3 shl 16)
+    val document =
+      RcDocument(
+        header,
+        listOf(
+          RcPaintData(
+            listOf(
+              21,
+              fontAxes,
+              0x77676874,
+              RcFloatWord.literal(650f).bits,
+              0x6974616c,
+              RcFloatWord.literal(1f).bits,
+              0x736c6e74,
+              RcFloatWord.literal(0f).bits,
+            )
+          )
+        ),
+      )
+
+    assertTrue(document.composeSupportReport().fullyRenderable)
+  }
+
+  @Test
+  fun rejectsMalformedOrUnsupportedFontAxes() {
+    val invalidCount =
+      RcDocument(header, listOf(RcPaintData(listOf(23 or (9 shl 16)))))
+        .composeSupportReport()
+        .issues
+        .single()
+    assertEquals("font axis count 9 is invalid", invalidCount.detail)
+
+    val unsupported =
+      RcDocument(
+          header,
+          listOf(RcPaintData(listOf(23 or (1 shl 16), 0x77647468, 0))), // wdth
+        )
+        .composeSupportReport()
+        .issues
+        .single()
+    assertEquals("font axis wdth is not implemented", unsupported.detail)
+  }
+
+  @Test
   fun wasmProfileRejectsGraphicsLayersBeforeRendering() {
     val document =
       RcDocument(

@@ -1077,6 +1077,9 @@ private fun paintIssue(paint: RcPaintData): String? {
   while (index < paint.words.size) {
     val command = paint.words[index++]
     val type = command and 0xffff
+    if (type == PAINT_FONT_AXIS && command ushr 16 !in 0..8) {
+      return "font axis count ${command ushr 16} is invalid"
+    }
     val argumentWords =
       when (type) {
         PAINT_TEXT_SIZE,
@@ -1084,11 +1087,14 @@ private fun paintIssue(paint: RcPaintData): String? {
         PAINT_STROKE_WIDTH,
         PAINT_ALPHA,
         PAINT_COLOR_ID,
-        PAINT_TYPEFACE -> 1
+        PAINT_TYPEFACE,
+        PAINT_SHADER -> 1
         PAINT_STROKE_CAP,
         PAINT_STYLE,
         PAINT_STROKE_JOIN,
-        PAINT_BLEND_MODE -> 0
+        PAINT_BLEND_MODE,
+        PAINT_CLEAR_COLOR_FILTER -> 0
+        PAINT_FONT_AXIS -> (command ushr 16) * 2
         else -> return "paint command $type is not implemented"
       }
     if (index + argumentWords > paint.words.size) return "paint command $type is truncated"
@@ -1101,6 +1107,15 @@ private fun paintIssue(paint: RcPaintData): String? {
     if (type == PAINT_TYPEFACE && paint.words[index] !in 0..3) {
       return "font id ${paint.words[index]} is not implemented"
     }
+    if (type == PAINT_SHADER && paint.words[index] != 0) {
+      return "shader id ${paint.words[index]} is not implemented"
+    }
+    if (type == PAINT_FONT_AXIS) {
+      for (axisIndex in 0 until (command ushr 16)) {
+        val tag = paint.words[index + axisIndex * 2]
+        if (tag !in SUPPORTED_FONT_AXES) return "font axis ${fontAxisName(tag)} is not implemented"
+      }
+    }
     index += argumentWords
   }
   return null
@@ -1111,8 +1126,24 @@ private const val PAINT_COLOR = 4
 private const val PAINT_STROKE_WIDTH = 5
 private const val PAINT_STROKE_CAP = 7
 private const val PAINT_STYLE = 8
+private const val PAINT_SHADER = 9
 private const val PAINT_ALPHA = 12
 private const val PAINT_STROKE_JOIN = 15
 private const val PAINT_BLEND_MODE = 18
 private const val PAINT_COLOR_ID = 19
 private const val PAINT_TYPEFACE = 16
+private const val PAINT_CLEAR_COLOR_FILTER = 21
+private const val PAINT_FONT_AXIS = 23
+
+private const val FONT_AXIS_WEIGHT = 0x77676874 // wght
+private const val FONT_AXIS_ITALIC = 0x6974616c // ital
+private const val FONT_AXIS_SLANT = 0x736c6e74 // slnt
+private val SUPPORTED_FONT_AXES = setOf(FONT_AXIS_WEIGHT, FONT_AXIS_ITALIC, FONT_AXIS_SLANT)
+
+private fun fontAxisName(tag: Int): String =
+  buildString(4) {
+    append((tag ushr 24).toChar())
+    append((tag ushr 16 and 0xff).toChar())
+    append((tag ushr 8 and 0xff).toChar())
+    append((tag and 0xff).toChar())
+  }
