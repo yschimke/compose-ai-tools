@@ -1,6 +1,8 @@
 package ee.schimke.composeai.cli.serve
 
 import ee.schimke.composeai.cli.BundleReader
+import ee.schimke.composeai.data.overrides.PreviewOverrideDeclaration
+import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -338,13 +340,21 @@ class ServeCatalogStore(
             image.theme != null ||
             props != null ||
             hasSectionInfo ||
-            planned.componentSourceFile != null
+            planned.componentSourceFile != null ||
+            image.overrides.isNotEmpty() ||
+            image.remoteComposeKnobs.isNotEmpty() ||
+            image.supportsFocus ||
+            image.supportsGestures
         ) {
           variants[id] =
             VariantMeta(
               state = image.state,
               theme = image.theme,
               props = props,
+              overrides = image.overrides,
+              remoteComposeKnobs = image.remoteComposeKnobs,
+              supportsFocus = image.supportsFocus,
+              supportsGestures = image.supportsGestures,
               section = planned.section,
               group = planned.group,
               order = if (hasSectionInfo) count else null,
@@ -1459,6 +1469,14 @@ class ServeCatalogStore(
      * the component's one card (like [state]) instead of showing each as its own tile.
      */
     val props: JsonObject? = null,
+    /** Author-declared plain-Compose knobs, lifted from this preview's bundle sidecar in CI. */
+    val overrides: List<PreviewOverrideDeclaration> = emptyList(),
+    /** Author-declared Remote Compose named-value knobs, lifted from its bundle sidecar in CI. */
+    val remoteComposeKnobs: List<RemoteComposeKnobDeclaration> = emptyList(),
+    /** Discovery-time `@FocusedPreview` support, recorded without opening the live bundle. */
+    val supportsFocus: Boolean = false,
+    /** Discovery-time `@GestureHintPreview` support, recorded without opening the live bundle. */
+    val supportsGestures: Boolean = false,
   )
 
   /**
@@ -1484,6 +1502,11 @@ class ServeCatalogStore(
      * (like [state]) and offer a variant switcher. Null for a catalog that varies on neither props.
      */
     val props: JsonObject? = null,
+    /** Catalog-published controls used before a lazy per-preview daemon has been opened. */
+    val overrides: List<PreviewOverrideDeclaration> = emptyList(),
+    val remoteComposeKnobs: List<RemoteComposeKnobDeclaration> = emptyList(),
+    val supportsFocus: Boolean = false,
+    val supportsGestures: Boolean = false,
     val section: String? = null,
     val group: String? = null,
     val order: Int? = null,

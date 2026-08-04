@@ -217,8 +217,14 @@ class ServeBundleHost(
         ServePreview(
           id = id,
           label = id,
-          overrides = readOverrides(id),
-          remoteComposeKnobs = readRemoteComposeKnobs(id),
+          // A packed sidecar remains authoritative for ordinary uploaded bundles. Published
+          // catalogs additionally carry these declarations inline so a supplement-only preview's
+          // controls are visible before its per-preview daemon is opened lazily.
+          overrides = readOverrides(id).ifEmpty { meta?.overrides.orEmpty() },
+          remoteComposeKnobs =
+            readRemoteComposeKnobs(id).ifEmpty { meta?.remoteComposeKnobs.orEmpty() },
+          supportsFocus = meta?.supportsFocus == true,
+          supportsGestures = meta?.supportsGestures == true,
           // `state` comes only from a `catalog.json`-backed bundle's `variants.json`
           // (`meta.state`).
           // A plain module bundle has no manifest, so an `@OverrideVariant` synthetic preview

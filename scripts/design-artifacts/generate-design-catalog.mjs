@@ -124,6 +124,7 @@ import {
 } from "./catalog-breakpoints.mjs";
 import { applyCatalogPreviewAxes } from "./catalog-preview-axes.mjs";
 import { selectComponentImages, selectOf } from "./catalog-select.mjs";
+import { applyCatalogPreviewDeclarations } from "./catalog-preview-declarations.mjs";
 
 /**
  * Best-effort fetch + parse of a JSON URL, with a short timeout. Returns null on
@@ -1278,6 +1279,20 @@ if (values["publish-live-bundle"]) {
       [bundle, extraBundle],
       overriddenFunctions,
     );
+    // The shared live daemon opens only the primary bundle. An extra-only image renders through a
+    // per-preview supplement bundle that stays closed until first render, so the browse surface
+    // cannot discover its authored knobs / focus / gesture controls from the daemon. Record those
+    // small declarations beside the image while both bundles are already open in CI; serve can
+    // advertise them without eagerly parsing every supplement bundle.
+    const stampedDeclarations = applyCatalogPreviewDeclarations(
+      manifest,
+      [bundle, extraBundle],
+    );
+    if (stampedDeclarations > 0) {
+      console.log(
+        `[${spec.system}] stamped authored controls on ${stampedDeclarations} catalog image(s)`,
+      );
+    }
   }
   await writeFile(
     catalogJsonPath,

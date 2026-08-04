@@ -554,6 +554,44 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `catalog image declarations reach the baked browse surface`() {
+    // A supplement-only preview's daemon is opened lazily, so these catalog fields are the only
+    // declaration source available when /api/previews and the initial viewer are built.
+    val declared =
+      """
+      {"schema":"design-parity-catalog/v1","system":"meshcore","components":[
+        {"componentId":"Device","images":[{
+          "path":"images/device/ideal__default__dark.png",
+          "previewId":"Device_Dark",
+          "overrides":[{"key":"count","type":"int","label":"Count",
+            "default":{"kind":"int","value":2}}],
+          "remoteComposeKnobs":[{"name":"label",
+            "default":{"kind":"string","value":"Hello"}}],
+          "supportsFocus":true,
+          "supportsGestures":true
+        }]}]}
+      """
+        .trimIndent()
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> declared.toByteArray()
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+
+    assertTrue(
+      store(TrustStore.EMPTY, fetch = fetch).load("meshcore") is ServeCatalogStore.Result.Ok
+    )
+
+    val preview = registered.getValue("meshcore").previews.single()
+    assertEquals(listOf("count"), preview.overrides.map { it.key })
+    assertEquals(listOf("label"), preview.remoteComposeKnobs.map { it.name })
+    assertTrue(preview.supportsFocus)
+    assertTrue(preview.supportsGestures)
+  }
+
+  @Test
   fun `catalog props preserve arbitrary JSON values through the variants manifest`() {
     val flexibleProps =
       """
