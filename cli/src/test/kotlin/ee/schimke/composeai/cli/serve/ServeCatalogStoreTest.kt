@@ -107,6 +107,10 @@ class ServeCatalogStoreTest {
       listOf("button-filled__ideal__default__dark", "button-filled__ideal__default__light"),
       host.previews.map { it.id },
     )
+    assertTrue(
+      host.previews.all { it.componentId == "Button/Filled" },
+      "the original component id survives route slug generation",
+    )
     // The declared-but-unfetchable card reports NotFound; its sibling still serves.
     assertEquals(
       RenderOutcome.NotFound,
@@ -535,7 +539,8 @@ class ServeCatalogStoreTest {
     val text = manifest.readText()
     assertTrue(
       text.contains(
-        "\"checkbox__ideal__unchecked__light\":{\"state\":\"unchecked\",\"theme\":\"light\"}"
+        "\"checkbox__ideal__unchecked__light\":{" +
+          "\"state\":\"unchecked\",\"theme\":\"light\",\"componentId\":\"Checkbox\"}"
       ),
       "manifest carries the unchecked/light entry: $text",
     )

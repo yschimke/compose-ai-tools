@@ -146,6 +146,12 @@ data class ServePreview(
   val sourceFile: String? = null,
   /** Discovery-time `@Preview(uiMode=…)`; used to identify the baked Day/Night default. */
   val uiMode: Int = 0,
+  /**
+   * The catalog's original component identifier (`SessionDetails`, `Button/Filled`, …). Unlike
+   * [id], this retains word boundaries and casing after the image path is flattened into a
+   * route-safe slug. Null for ordinary uploaded bundles and live discovery previews.
+   */
+  val componentId: String? = null,
 )
 
 /**

@@ -188,6 +188,7 @@ class ServeCatalogStore(
     val id: String,
     val target: File?,
     val image: Image,
+    val componentId: String?,
     val section: String?,
     val group: String?,
     val componentSourceFile: String?,
@@ -285,6 +286,7 @@ class ServeCatalogStore(
         // section + group), so the tabbed landing can bucket + sub-head + order them.
         val section = component.section?.takeIf { it.isNotBlank() }
         val group = component.group?.takeIf { it.isNotBlank() }
+        val componentId = component.componentId?.takeIf { it.isNotBlank() }
         val componentSourceFile = component.sourceFile?.takeIf { it.isNotBlank() }
         component.images.mapNotNull { image ->
           val path = image.path
@@ -298,7 +300,7 @@ class ServeCatalogStore(
             File(previewsDir, "$id.png").takeIf {
               it.canonicalFile.toPath().startsWith(previewsRoot)
             }
-          PlannedImage(path, id, target, image, section, group, componentSourceFile)
+          PlannedImage(path, id, target, image, componentId, section, group, componentSourceFile)
         }
       }
 
@@ -339,6 +341,7 @@ class ServeCatalogStore(
           image.state != null ||
             image.theme != null ||
             props != null ||
+            planned.componentId != null ||
             hasSectionInfo ||
             planned.componentSourceFile != null ||
             image.overrides.isNotEmpty() ||
@@ -351,6 +354,7 @@ class ServeCatalogStore(
               state = image.state,
               theme = image.theme,
               props = props,
+              componentId = planned.componentId,
               overrides = image.overrides,
               remoteComposeKnobs = image.remoteComposeKnobs,
               supportsFocus = image.supportsFocus,
@@ -387,6 +391,7 @@ class ServeCatalogStore(
           state = record.state,
           theme = record.theme,
           props = record.props?.takeIf { it.isNotEmpty() },
+          componentId = record.componentId?.takeIf { it.isNotBlank() },
           section = section,
           group = group,
           order = if (section != null || group != null) count + deferredIds.size - 1 else null,
@@ -1421,6 +1426,7 @@ class ServeCatalogStore(
 
   @Serializable
   private data class Component(
+    val componentId: String? = null,
     val images: List<Image> = emptyList(),
     /**
      * Top-level **section** (the tab a preview host buckets this component under — `"Themes"`,
@@ -1502,6 +1508,8 @@ class ServeCatalogStore(
      * (like [state]) and offer a variant switcher. Null for a catalog that varies on neither props.
      */
     val props: JsonObject? = null,
+    /** Original catalog component id, retained for human-readable display labels. */
+    val componentId: String? = null,
     /** Catalog-published controls used before a lazy per-preview daemon has been opened. */
     val overrides: List<PreviewOverrideDeclaration> = emptyList(),
     val remoteComposeKnobs: List<RemoteComposeKnobDeclaration> = emptyList(),

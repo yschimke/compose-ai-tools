@@ -902,11 +902,25 @@ object ServeWeb {
    * Prefer catalog-authored labels; turn generated ids into readable component names as fallback.
    */
   private fun previewDisplayName(preview: ServePreview): String {
+    preview.componentId
+      ?.takeIf { it.isNotBlank() }
+      ?.let {
+        return humanizeComponentId(it)
+      }
     if (preview.label.isNotBlank() && preview.label != preview.id) return preview.label
     return componentKey(preview).substringBefore("__").replace('-', ' ').replaceFirstChar {
       it.uppercaseChar()
     }
   }
+
+  /** Splits catalog identifiers without changing their stable route-safe preview ids. */
+  private fun humanizeComponentId(componentId: String): String =
+    componentId
+      .replace(Regex("[/_-]+"), " ")
+      .replace(Regex("(?<=[a-z0-9])(?=[A-Z])"), " ")
+      .replace(Regex("(?<=[A-Z])(?=[A-Z][a-z])"), " ")
+      .trim()
+      .replace(Regex("\\s+"), " ")
 
   /** A compact human label for the size/breakpoint token carried in a flattened catalog id. */
   private fun previewSizeVariantLabel(id: String): String? =
