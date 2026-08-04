@@ -1024,6 +1024,8 @@ class ServeWebFixtureTest {
           ServeWeb.StatusView(
             version = version,
             public = true,
+            // Exactly two hours after the fixed catalog generation time.
+            nowMillis = 1_784_287_800_000,
             overallOk = false,
             summary =
               listOf(
@@ -1056,8 +1058,7 @@ class ServeWebFixtureTest {
                   live = true,
                   running = true,
                   degradation = null,
-                  provenance =
-                    "yschimke/compose-ai-tools@design-artifacts/compose-m3 · 2026-07-17T09:30:00.000Z",
+                  provenance = provenance,
                   themeOptimization =
                     ThemeOptimizationSnapshot(
                       state = "complete",
@@ -1081,7 +1082,10 @@ class ServeWebFixtureTest {
                   running = false,
                   degradation = "this delivery branch publishes no live bundle this server can run",
                   provenance =
-                    "yschimke/compose-ai-tools@design-artifacts/remote-m3 · 2026-07-17T09:30:00.000Z",
+                    provenance.copy(
+                      branch = "design-artifacts/remote-m3",
+                      generatedAt = "2026-07-15T08:05:00.000Z",
+                    ),
                 ),
                 // A trusted catalog whose daemon has gone idle: its facts are the last-known
                 // snapshot, so the badge renders with a "last known" qualifier instead of the blank
@@ -1096,7 +1100,10 @@ class ServeWebFixtureTest {
                   running = false,
                   degradation = null,
                   provenance =
-                    "joreilly/Confetti@design-artifacts/confetti-wear · 2026-07-17T09:30:00.000Z",
+                    provenance.copy(
+                      repo = "joreilly/Confetti",
+                      branch = "design-artifacts/confetti-wear",
+                    ),
                   stale = true,
                 ),
                 ServeWeb.StatusCatalog(
@@ -1603,6 +1610,16 @@ class ServeWebFixtureTest {
       serveStatus.contains("live · running") && serveStatus.contains("baked PNG"),
       "the catalog table distinguishes a running live catalog from a baked one",
     )
+    assertTrue(
+      serveStatus.contains(
+        "href=\"https://github.com/yschimke/compose-ai-tools/tree/design-artifacts/compose-m3\""
+      ) &&
+        serveStatus.contains("2 hours ago") &&
+        serveStatus.contains("15 Jul 2026, 08:05 UTC") &&
+        serveStatus.contains("compose-ai-tools <code>0.16.54</code>") &&
+        serveStatus.contains("design-parity <code>0.1.25</code>"),
+      "catalog status links its delivery branch and shows friendly build provenance",
+    )
     assertGolden(File(pagesDir, "serve-landing-variants.html"), landingVariants)
     assertGolden(File(pagesDir, "serve-viewer-variants.html"), viewerVariants)
     // The variant landing folds the component's props-axis renders out: eight renders yield ONE
@@ -1893,8 +1910,12 @@ class ServeWebFixtureTest {
       "a card with no prebaked hero falls back to its /render endpoint",
     )
     assertTrue(
+      homeIndex.contains("cp-badge--unverified") && homeIndex.contains("⚠ untrusted"),
+      "the discovery index deliberately presents catalog cards as untrusted",
+    )
+    assertFalse(
       homeIndex.contains("cp-badge--trusted"),
-      "the index badges each system's producer trust",
+      "the discovery index leaves the actual producer verdict to /status and catalog pages",
     )
     // meshcore-mobile + homeassistant-remotecompose are LISTED (`--catalogs`), so they show on the
     // front door in the "Design systems" grid — served from their own repos.

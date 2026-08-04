@@ -1,5 +1,9 @@
 package ee.schimke.composeai.cli.serve
 
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -138,6 +142,17 @@ object ServeWeb {
     val word = if (unverified) "unverified" else "trusted"
     val full = WebEscaping.htmlEscape(trust)
     return " <span class=\"$cls\" title=\"producer trust: $full\">$icon $word</span>"
+  }
+
+  /**
+   * The public front door is discovery, not a trust decision: keep its catalog cards deliberately
+   * orange and labelled `untrusted`. The real producer verdict remains available on `/status` and
+   * on the catalog's own pages, where there is enough context to explain its basis.
+   */
+  private fun homeTrustBadge(trust: String?): String {
+    if (trust.isNullOrBlank()) return ""
+    return " <span class=\"cp-badge cp-badge--unverified\" " +
+      "title=\"Producer trust details are available on /status\">⚠ untrusted</span>"
   }
 
   /**
@@ -1881,7 +1896,7 @@ object ServeWeb {
       <a class="cp-card cp-sys"$bg href="/$sysSeg/$suffix">
         <div class="cp-imgwrap">$img</div>
         <div class="cp-meta">
-          <div class="cp-sys-title">$title${compactTrustBadge(s.trust)}</div>
+          <div class="cp-sys-title">$title${homeTrustBadge(s.trust)}</div>
           <div class="cp-id">$sysId</div>$desc
           <div class="cp-sys-foot">${s.previewCount} preview(s)${if (s.views > 0) " · ${formatViews(s.views)}" else ""}</div>
         </div>
@@ -2597,8 +2612,8 @@ object ServeWeb {
      * Why the catalog is snapshot-only, when it is (a [ServeDegradation] detail); null otherwise.
      */
     val degradation: String?,
-    /** `repo@branch · date` provenance for a fetched catalog; null for a plain bundle. */
-    val provenance: String?,
+    /** Delivery branch and build identity for a fetched catalog; null for a plain bundle. */
+    val provenance: CatalogProvenance?,
     /** `pending`, `loaded`, `failed`, or `stale` (last good copy + latest refresh error). */
     val loadState: String = "loaded",
     /** Latest catalog load/refresh error. */
@@ -2645,6 +2660,8 @@ object ServeWeb {
   data class StatusView(
     val version: String,
     val public: Boolean,
+    /** Wall-clock instant used to turn recent catalog generation times into relative labels. */
+    val nowMillis: Long,
     /** No catalog load or recent daemon startup failures (drives the header badge). */
     val overallOk: Boolean,
     val summary: List<Stat>,
@@ -2689,7 +2706,33 @@ object ServeWeb {
         view.catalogs.joinToString("\n") { c ->
           val idSeg = WebEscaping.urlEncodeSegment(c.id)
           val listed = if (c.listed) "" else " <span class=\"cp-muted\">(unlisted)</span>"
-          val prov = c.provenance?.let { "<div class=\"cp-muted\">${esc(it)}</div>" } ?: ""
+          val prov =
+            c.provenance?.let { provenance ->
+              val repo = esc(provenance.repo)
+              val branch = esc(provenance.branch)
+              val branchUrl = esc("https://github.com/${provenance.repo}/tree/${provenance.branch}")
+              val generated =
+                provenance.generatedAt
+                  ?.takeIf { it.isNotBlank() }
+                  ?.let { iso ->
+                    val label = friendlyGeneratedAt(iso, view.nowMillis)
+                    " · <span title=\"${esc(iso)}\">${esc(label)}</span>"
+                  } ?: ""
+              val versions =
+                buildList {
+                    provenance.toolVersion
+                      ?.takeIf { it.isNotBlank() }
+                      ?.let { add("compose-ai-tools <code>${esc(it)}</code>") }
+                    provenance.designParityVersion
+                      ?.takeIf { it.isNotBlank() }
+                      ?.let { add("design-parity <code>${esc(it)}</code>") }
+                  }
+                  .takeIf { it.isNotEmpty() }
+                  ?.joinToString(" · ")
+                  ?.let { "<div class=\"cp-muted\">$it</div>" } ?: ""
+              "<div class=\"cp-muted\"><a href=\"$branchUrl\">$repo@$branch</a>" +
+                "$generated</div>$versions"
+            } ?: ""
           val stateCell =
             when {
               c.loadState == "failed" ->
@@ -2832,6 +2875,29 @@ object ServeWeb {
       navSuffix = suffix,
     )
   }
+
+  /** Recent generation times read naturally; older builds use a compact, unambiguous UTC date. */
+  private fun friendlyGeneratedAt(iso: String, nowMillis: Long): String {
+    val generated = runCatching { Instant.parse(iso) }.getOrNull() ?: return prettyDate(iso)
+    val ageSeconds = (nowMillis - generated.toEpochMilli()) / 1000
+    if (ageSeconds >= 0 && ageSeconds < 86_400) {
+      return when {
+        ageSeconds < 60 -> "just now"
+        ageSeconds < 3_600 -> {
+          val minutes = ageSeconds / 60
+          "$minutes ${if (minutes == 1L) "minute" else "minutes"} ago"
+        }
+        else -> {
+          val hours = ageSeconds / 3_600
+          "$hours ${if (hours == 1L) "hour" else "hours"} ago"
+        }
+      }
+    }
+    return STATUS_DATE_FORMAT.format(generated)
+  }
+
+  private val STATUS_DATE_FORMAT: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm 'UTC'", Locale.ENGLISH).withZone(ZoneOffset.UTC)
 
   /**
    * Per-system **display policy** — the single source of truth for what background surface each

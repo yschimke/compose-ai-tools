@@ -2027,6 +2027,8 @@ class ServeHttpServer(
               repo = c.provenance?.repo,
               branch = c.provenance?.branch,
               generatedAt = c.provenance?.generatedAt,
+              composeAiToolsVersion = c.provenance?.toolVersion,
+              designParityVersion = c.provenance?.designParityVersion,
               path = "/${c.id}/",
               metaStale = c.stale,
               loadState = c.loadState,
@@ -2115,6 +2117,7 @@ class ServeHttpServer(
       return ServeWeb.StatusView(
         version = BUNDLE_VERSION,
         public = isPublic,
+        nowMillis = nowMillis,
         overallOk = failures.isEmpty() && catalogs.none { it.loadError != null },
         summary = summary,
         config = config,
@@ -2130,13 +2133,7 @@ class ServeHttpServer(
               running = c.running,
               degradation = c.degradation,
               stale = c.stale,
-              provenance =
-                c.provenance?.let { p ->
-                  buildString {
-                    append(p.repo).append('@').append(p.branch)
-                    p.generatedAt?.let { append(" · ").append(it) }
-                  }
-                },
+              provenance = c.provenance,
               loadState = c.loadState,
               loadError = c.loadError,
               themeOptimization = c.themeOptimization,
@@ -3594,6 +3591,10 @@ private data class CatalogDto(
   val repo: String? = null,
   val branch: String? = null,
   val generatedAt: String? = null,
+  /** compose-ai-tools / compose-preview version that rendered this catalog. */
+  val composeAiToolsVersion: String? = null,
+  /** @design-parity/catalog-export version, when that producer recorded one. */
+  val designParityVersion: String? = null,
   /** Canonical catalog path (`/<id>/`). */
   val path: String,
   /**
