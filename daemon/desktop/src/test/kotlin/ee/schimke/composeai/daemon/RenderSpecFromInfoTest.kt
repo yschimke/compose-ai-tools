@@ -54,6 +54,32 @@ class RenderSpecFromInfoTest {
   }
 
   @Test
+  fun `a wrap sandbox narrows the bound without pinning either axis`() {
+    // A Wear module's device-less previews carry the 227dp watch screen as their wrap sandbox
+    // (PreviewDiscovery.retargetWearStickers). This lane must honour it, or a fillMaxWidth sticker
+    // measures against 400dp live while its baked render used 227dp, and the viewer's PNG↔Live
+    // toggle visibly resizes it. Both axes must STILL wrap — the sandbox is a bound, not a frame.
+    val spec =
+      renderSpecFromInfo(
+        info(params = PreviewParamsDto(wrapSandboxWidthDp = 227, wrapSandboxHeightDp = 227))
+      )
+    assertEquals(true, spec.wrapWidth)
+    assertEquals(true, spec.wrapHeight)
+    assertEquals(454, spec.widthPx)
+    assertEquals(454, spec.heightPx)
+  }
+
+  @Test
+  fun `an explicit widthDp still wins over the wrap sandbox`() {
+    val spec =
+      renderSpecFromInfo(info(params = PreviewParamsDto(widthDp = 120, wrapSandboxWidthDp = 227)))
+    assertEquals(false, spec.wrapWidth)
+    assertEquals(240, spec.widthPx)
+    // The untouched height axis still wraps, at its own sandbox bound.
+    assertEquals(true, spec.wrapHeight)
+  }
+
+  @Test
   fun `a null params block falls back to the fixed frame and never wraps`() {
     // A *missing* params block means "params unknown", not "params empty": the incremental
     // source-change path (IncrementalDiscovery.toDto → PreviewIndex.applyDiff) swaps an edited

@@ -836,14 +836,19 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
       ((params.kind ?: defaults.kind)?.let { it != "COMPOSE" } ?: false)
   val wrapWidth = explicitWidthPx == null && !pinned
   val wrapHeight = explicitHeightPx == null && !pinned
+  // A per-preview wrap sandbox narrows the generic 400×800 dp bound without pinning the axis, so
+  // this lane measures a Wear sticker against the same 227 dp watch screen the batch bake used.
+  // See `PreviewParamsDto.wrapSandboxWidthDp`.
+  val sandboxWidthDp =
+    params.wrapSandboxWidthDp?.takeIf { it > 0 } ?: PreviewManifestEntry.WRAP_SANDBOX_WIDTH_DP
+  val sandboxHeightDp =
+    params.wrapSandboxHeightDp?.takeIf { it > 0 } ?: PreviewManifestEntry.WRAP_SANDBOX_HEIGHT_DP
   val widthPx =
     explicitWidthPx
-      ?: if (wrapWidth) (PreviewManifestEntry.WRAP_SANDBOX_WIDTH_DP * density).roundHalfUpPx()
-      else defaults.widthPx
+      ?: if (wrapWidth) (sandboxWidthDp * density).roundHalfUpPx() else defaults.widthPx
   val heightPx =
     explicitHeightPx
-      ?: if (wrapHeight) (PreviewManifestEntry.WRAP_SANDBOX_HEIGHT_DP * density).roundHalfUpPx()
-      else defaults.heightPx
+      ?: if (wrapHeight) (sandboxHeightDp * density).roundHalfUpPx() else defaults.heightPx
   val uiMode = if (uiModeIsNight(params.uiMode)) RenderSpec.SpecUiMode.DARK else defaults.uiMode
   return RenderSpec(
     previewId = info.id,
