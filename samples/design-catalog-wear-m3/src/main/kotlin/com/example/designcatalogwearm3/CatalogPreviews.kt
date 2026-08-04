@@ -138,6 +138,7 @@ private val edgeButtonHistory =
   id = "EdgeButton",
   group = "Buttons",
   caption = "Screen-hugging bottom action unique to Wear.",
+  perBreakpoint = true,
 )
 @CatalogWearBreakpoints
 @ScrollingPreview(modes = [ScrollMode.END])
@@ -200,6 +201,7 @@ private val scalingListItems =
   id = "TransformingLazyColumn",
   group = "Lists",
   caption = "Scaling list — items scale + fade toward the curved edges (SurfaceTransformation).",
+  perBreakpoint = true,
 )
 @CatalogWearBreakpoints
 @Composable
@@ -253,6 +255,7 @@ fun ScalingListSticker() =
   caption =
     "Blank list-screen skeleton at each breakpoint — adopt the responsive structure (margins, " +
       "slots, edge button).",
+  perBreakpoint = true,
 )
 @CatalogWearBreakpoints
 @ScrollingPreview(modes = [ScrollMode.END])
@@ -316,6 +319,7 @@ private val templateListItems =
   id = "Template/TimeText",
   group = "Scaffold templates",
   caption = "Full-screen list scaffold with the curved TimeText status strip — the base Wear screen.",
+  perBreakpoint = true,
 )
 @CatalogWearBreakpoints
 @Composable
@@ -359,6 +363,7 @@ fun TimeTextScaffoldTemplate() =
   caption =
     "Horizontal pager scaffold with an edge-hugging HorizontalPageIndicator under the TimeText " +
       "strip.",
+  perBreakpoint = true,
 )
 @CatalogWearBreakpoints
 @Composable
@@ -387,6 +392,7 @@ fun PageIndicatorScaffoldTemplate() =
   id = "Template/EdgeButton",
   group = "Scaffold templates",
   caption = "List scaffold anchored by the screen-hugging EdgeButton, TimeText strip on top.",
+  perBreakpoint = true,
 )
 @CatalogWearBreakpoints
 @ScrollingPreview(modes = [ScrollMode.END])

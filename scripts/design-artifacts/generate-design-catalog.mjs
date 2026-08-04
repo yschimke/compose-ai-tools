@@ -1661,6 +1661,24 @@ if (spec.compareWith) {
             caption: c.caption,
           })),
         );
+    // A `parallel` naming no sibling component renders as an unpaired row — the compare page still
+    // builds, so the broken link is invisible unless someone eyeballs it. That is exactly how a
+    // componentId migration on the SIBLING side (a per-breakpoint fan-out, say) silently unpairs the
+    // rows pointing at the old id, since no single-spec validator can resolve across systems and the
+    // sibling's real inventory only exists here. Skipped when the sibling inventory is empty (its
+    // branch hasn't published yet), where every parallel would look broken for the wrong reason.
+    if (otherComponents.length > 0) {
+      const otherIds = new Set(otherComponents.map((c) => c.componentId));
+      const unresolved = Object.entries(parallelById)
+        .filter(([, parallelId]) => !otherIds.has(parallelId))
+        .map(([componentId, parallelId]) => `${componentId} → ${parallelId}`);
+      if (unresolved.length > 0) {
+        console.warn(
+          `[${spec.system}] ${unresolved.length} parallel(s) name no component in ` +
+            `${spec.compareWith}, so those rows pair against nothing: ${unresolved.join(", ")}.`,
+        );
+      }
+    }
     const matchesPath = join(outPath, "matches.html");
     await writeFile(
       matchesPath,

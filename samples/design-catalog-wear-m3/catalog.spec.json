@@ -1,19 +1,19 @@
 {
   "$schema": "https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/design-artifacts/catalog.spec.schema.json",
-  "$comment": "Cover-sheet spec for Wear Compose Material 3. The component inventory — ids, grouping, captions, and per-variant tags — now lives next to the `@Preview`s as `@CatalogComponent` / `@CatalogVariant` annotations (see CatalogPreviews.kt); the design-artifacts export builds the catalog from those. This file carries only the fields that aren't per-component code metadata: the system slug, title, the library covered, the primary modes (Wear is dark-first, so `modes` is the single dark capture via `@CatalogWearModes`), the round-size breakpoints the full-screen components fan out across via `@CatalogWearBreakpoints`, the `display` stage/hero hints, the `groupOrder` (the group/tab display order — presentation config the annotation-derived source order can't express), and the published-kit references seeded for the one-off import (our render stays authoritative). State variants that differ only by a `previewOverride*` knob ride the primary function via `@OverrideVariant`.",
+  "$comment": "Cover-sheet spec for Wear Compose Material 3. The component inventory — ids, grouping, captions, and per-variant tags — now lives next to the `@Preview`s as `@CatalogComponent` / `@CatalogVariant` annotations (see CatalogPreviews.kt); the design-artifacts export builds the catalog from those. This file carries only the fields that aren't per-component code metadata: the system slug, title, the library covered, the primary modes (Wear is dark-first, so `modes` is the single dark capture via `@CatalogWearModes`), the round-size breakpoints (keyed by `@Preview(device = \u2026)` id as well as width) that the full-screen components fan out across via `@CatalogWearBreakpoints` + `@CatalogComponent(perBreakpoint = true)`, each of which publishes one card per breakpoint (`Template/TimeText/largeRound`, \u2026), the `display` stage/hero hints, the `groupOrder` (the group/tab display order — presentation config the annotation-derived source order can't express), and the published-kit references seeded for the one-off import (our render stays authoritative). State variants that differ only by a `previewOverride*` knob ride the primary function via `@OverrideVariant`.",
   "system": "wear-m3",
   "title": "Wear Compose Material 3",
   "library": ["androidx.wear.compose:compose-material3"],
   "module": "samples:design-catalog-wear-m3",
   "modes": ["dark"],
   "breakpoints": [
-    { "size": "smallRound", "widthDp": 192 },
-    { "size": "largeRound", "widthDp": 227 },
-    { "size": "xlRound", "widthDp": 240 }
+    { "size": "smallRound", "widthDp": 192, "device": "id:wearos_small_round" },
+    { "size": "largeRound", "widthDp": 227, "device": "id:wearos_large_round" },
+    { "size": "xlRound", "widthDp": 240, "device": "id:wearos_xl_round" }
   ],
   "display": {
     "surface": "dark",
-    "hero": "Template/TimeText"
+    "hero": "Template/TimeText/largeRound"
   },
   "groupOrder": [
     "Buttons",
