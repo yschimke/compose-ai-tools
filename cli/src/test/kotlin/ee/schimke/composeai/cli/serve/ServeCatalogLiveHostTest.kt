@@ -1231,4 +1231,49 @@ class ServeCatalogLiveHostTest {
     assertEquals("baked:$catalogId", baked1.png.decodeToString())
     assertNull(live.lastRenderId)
   }
+
+  @Test
+  fun `a daemon that carries no such id falls back to the baked snapshot`() {
+    // Both lanes can miss an aliased id: the shared monolithic daemon lists only the primary
+    // bundle's previews, and the per-preview daemon that would cover the rest fails to start when
+    // its classpath won't resolve on this box. That is a fact about the daemons, not about the
+    // pixels — the preview has a baked PNG, so an override request must degrade to the snapshot
+    // rather than hand the browser a broken image.
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+        forcedRenderOutcome = RenderOutcome.NotFound,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    val out = composite.render(catalogId, PreviewOverrides(fontScale = 1.5f)) as RenderOutcome.Ok
+
+    assertEquals("baked:$catalogId", out.png.decodeToString())
+    assertEquals(daemonId, live.lastRenderId, "the daemon was tried first")
+  }
+
+  @Test
+  fun `a theme render on an id no daemon carries reports Busy, never baked pixels`() {
+    // The grid retries a Busy card; a 200 carrying baked pixels would make it believe the requested
+    // theme had loaded and it would sit on the wrong palette forever. So the NotFound fallback
+    // above must stop short of the theme lane.
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        streaming = true,
+        declaredThemes = listOf(ServeTheme(name = "Brand", providerFqn = "com.example.Brand")),
+        forcedRenderOutcome = RenderOutcome.NotFound,
+      )
+    val composite = ServeCatalogLiveHost(mapOf(catalogId to daemonId), live, baked)
+
+    assertEquals(
+      RenderOutcome.Busy,
+      composite.render(catalogId, PreviewOverrides(themeProvider = "com.example.Brand")),
+    )
+  }
 }

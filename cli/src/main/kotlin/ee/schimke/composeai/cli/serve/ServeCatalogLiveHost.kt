@@ -505,7 +505,15 @@ class ServeCatalogLiveHost(
       // make the grid believe the requested theme had loaded and it would never retry.
       if (daemonWarmOrScheduling(daemonId)) {
         val live = renderDaemon(daemonId, overrides)
-        if (live !is RenderOutcome.Busy) return cacheThemeRender(themeCacheKey, live)
+        // NotFound joins Busy in falling through rather than being returned. It means no daemon on
+        // either lane carries this id — the shared one never listed it and its per-preview bundle
+        // didn't start (a classpath the box can't resolve, say). That is a statement about the
+        // daemons, not about the pixels: the preview has a baked PNG right there, and showing the
+        // visitor a broken image instead of the un-overridden snapshot helps nobody. Matters most
+        // for a catalog whose supplement module carries its own live lane, where an id can be
+        // aliased yet reachable only through the pool.
+        if (live !is RenderOutcome.Busy && live !is RenderOutcome.NotFound)
+          return cacheThemeRender(themeCacheKey, live)
       }
       if (themeCacheKey != null) return RenderOutcome.Busy
       return baked.render(previewId, overrides)

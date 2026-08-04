@@ -111,6 +111,10 @@ import {
   catalogImagePath,
   derivationMismatches,
 } from "./catalog-image-path.mjs";
+import {
+  extraOnlyFunctions,
+  unbridgeableFunctions,
+} from "./extra-render-fold.mjs";
 import { applySpecSections } from "./apply-spec-sections.mjs";
 import { applySourceFiles } from "./apply-source-files.mjs";
 import {
@@ -636,6 +640,29 @@ const { values } = parseArgs({
     // checkout). Only for systems whose bundle is a DESKTOP bundle serve can run
     // (compose-m3); the Android catalogs (wear/remote) stay baked-PNG.
     "publish-live-bundle": { type: "boolean", default: false },
+    // Give `--extra-renders` its own live lane instead of treating it as a
+    // pixels-only supplement.
+    //
+    // Without this, EVERY function the extra bundle carries is marked overridden and
+    // skipped by the live-preview bridge, so none of its stickers get a `previewId`
+    // and `ServeCatalogStore` can build no alias for them — they browse as baked PNGs
+    // and the viewer shows "Pre-rendered snapshot — overrides need the live server".
+    // That is right for a function the extra bundle genuinely OVERRIDES (its pixels
+    // differ from what the primary daemon would draw), but wrong for one it only ADDS:
+    // nothing was overridden, and the extra bundle can render it itself.
+    //
+    // With this set, only the true overrides (functions present in BOTH bundles) stay
+    // unbridged; extra-ONLY functions are aliased to their daemon ids in the extra
+    // bundle, and the extra bundle is externalised alongside the primary so the
+    // workflow can split it per preview with a runnable classpath. Serve reaches those
+    // ids through the per-preview lane — its shared monolithic daemon answers
+    // `NotFound` for an id it never listed and `renderDaemon` falls through to the
+    // pool (see ServeCatalogLiveHost.renderDaemon).
+    //
+    // Requires --extra-renders and --publish-live-bundle: the per-preview bundles are
+    // fetched from the same `bundle/` prefix the primary live bundle declares, so
+    // without a declared liveBundle serve never opens the lane that would reach them.
+    "extra-live-bundle": { type: "boolean", default: false },
     // Optional buildable source for TRUSTED server-side re-render. When
     // --source-module is given, a `source: {repo, ref, module}` is written into
     // catalog.json so a `serve --allow-render-trusted` box (one with the toolchain
@@ -657,6 +684,25 @@ if (!values.spec || !values.renders || !values.out) {
     "usage: generate-design-catalog --spec <catalog.spec.json> --renders <dir|zip> --out <dir> [--renderer <s>] [--preview-base <url>]",
   );
   process.exit(2);
+}
+
+// Fail loudly rather than publish a catalog whose extra-only stickers claim a live lane
+// nothing can serve. Both prerequisites are silent when violated: with no --extra-renders
+// there is no second bundle to alias against, and with no --publish-live-bundle serve
+// never opens the per-preview lane the aliases resolve through, so every one of those
+// previews would 404 its live render instead of falling back to baked pixels.
+if (values["extra-live-bundle"]) {
+  const missing = [
+    !values["extra-renders"] && "--extra-renders",
+    !values["publish-live-bundle"] && "--publish-live-bundle",
+  ].filter(Boolean);
+  if (missing.length > 0) {
+    console.error(
+      `--extra-live-bundle requires ${missing.join(" and ")} — the extra bundle's per-preview ` +
+        `splits are served from the primary liveBundle's prefix, so both must be present.`,
+    );
+    process.exit(2);
+  }
 }
 
 const specPath = resolve(values.spec);
@@ -691,7 +737,17 @@ if (values["extra-renders"]) {
   );
   extraBundle = extraRenderBundle;
   const overridden = new Set(extra.map(functionOf));
-  for (const fn of overridden) overriddenFunctions.add(fn);
+  // Which of those the supplement actually REPLACED, as opposed to added — see
+  // extra-render-fold.mjs. Read `candidates` before the splice below, while it is still
+  // exactly the primary bundle's functions.
+  const primaryFunctions = candidates.map(functionOf);
+  const extraFunctions = [...overridden];
+  const unbridgeable = unbridgeableFunctions(
+    primaryFunctions,
+    extraFunctions,
+    values["extra-live-bundle"],
+  );
+  for (const fn of unbridgeable) overriddenFunctions.add(fn);
   for (let i = candidates.length - 1; i >= 0; i--) {
     if (overridden.has(functionOf(candidates[i]))) candidates.splice(i, 1);
   }
@@ -700,6 +756,13 @@ if (values["extra-renders"]) {
     `[${spec.system}] folded ${extra.length} extra render(s), overriding: ` +
       `${[...overridden].join(", ")}`,
   );
+  if (values["extra-live-bundle"]) {
+    const added = extraOnlyFunctions(primaryFunctions, extraFunctions);
+    console.log(
+      `[${spec.system}] extra live lane: ${added.length} extra-only function(s) keep a live ` +
+        `lane, ${unbridgeable.size} true override(s) stay baked-only`,
+    );
+  }
 }
 
 // Annotation-derived inventory (compose-ai-tools Phase 2): components discovery
@@ -1016,21 +1079,26 @@ if (values["wasm-dist"]) {
 // systems whose bundle is a DESKTOP bundle serve can run (compose-m3); the
 // Android catalogs stay baked-PNG.
 let liveBundle = null;
-if (values["publish-live-bundle"]) {
-  const file = basename(rendersPath);
+
+/**
+ * Copy one executable bundle onto the branch under `bundle/` and lift its heavy font resources out.
+ *
+ * The fonts go content-addressed under bundle/res/<sha256>, so the ~600 KB bundle drops to ~30 KB
+ * and the fonts (which rarely change and are identical across variants) are fetched once per
+ * branch. The `bundle externalize` step records each in the bundle's own manifest by
+ * name+sha256+size; a trusted `serve --allow-render-trusted` box rehydrates them from bundle/res/
+ * into a shared cache and back onto the daemon classpath. Non-fatal: if the CLI can't externalize
+ * (older CLI, no fonts), the self-contained bundle is still published as-is.
+ *
+ * Two bundles can share one `bundle/res/` pool because the names are content hashes — a face both
+ * modules embed is stored once and rehydrates identically for either daemon.
+ */
+async function carryLiveBundle(sourcePath, label) {
+  const file = basename(sourcePath);
   const dest = join(outPath, "bundle", file);
   await mkdir(dirname(dest), { recursive: true });
-  await cp(rendersPath, dest);
-  liveBundle = { path: "bundle/", file };
-  console.log(`[${spec.system}] carried live bundle → bundle/${file}`);
-
-  // Lift the heavy font resources out of the carried bundle's classes/app.jar and publish them
-  // content-addressed under bundle/res/<sha256>, so the ~600 KB bundle drops to ~30 KB and the
-  // fonts (which rarely change and are identical across variants) are fetched once per branch. The
-  // `bundle externalize` step records each in the bundle's own manifest by name+sha256+size; a
-  // trusted `serve --allow-render-trusted` box rehydrates them from bundle/res/ into a shared cache
-  // and back onto the daemon classpath. Non-fatal: if the CLI can't externalize (older CLI, no
-  // fonts), the self-contained bundle is still published as-is.
+  await cp(sourcePath, dest);
+  console.log(`[${spec.system}] carried ${label} → bundle/${file}`);
   try {
     const resOut = join(outPath, "bundle", "res");
     const out = execFileSync(
@@ -1045,13 +1113,26 @@ if (values["publish-live-bundle"]) {
     );
     console.log(
       `[${spec.system}] externalized ${(summary.externalized ?? []).length} font resource(s) ` +
-        `(${total} B) → bundle/res/  (bundle now ${summary.size} B)`,
+        `(${total} B) → bundle/res/  (${label} now ${summary.size} B)`,
     );
   } catch (err) {
     console.warn(
       `[${spec.system}] bundle externalize skipped (${err.message?.split("\n")[0] ?? err}) — ` +
-        `publishing the self-contained bundle`,
+        `publishing the self-contained ${label}`,
     );
+  }
+  return { path: "bundle/", file };
+}
+
+if (values["publish-live-bundle"]) {
+  liveBundle = await carryLiveBundle(rendersPath, "live bundle");
+  // The supplement gets the same treatment when it has its own live lane: externalised beside the
+  // primary and sharing its font pool, so the workflow's per-preview split produces runnable
+  // bundles for the functions only IT carries. It is deliberately NOT recorded as `liveBundle` in
+  // catalog.json — that field names the ONE monolithic daemon serve stands up, and the extra
+  // module's previews are reached through the per-preview lane instead.
+  if (values["extra-live-bundle"]) {
+    await carryLiveBundle(resolve(values["extra-renders"]), "extra live bundle");
   }
 }
 
