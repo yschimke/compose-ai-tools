@@ -283,6 +283,112 @@ class RenderEngineTest {
   }
 
   @Test
+  fun figmaSvgExportUnwrapsAnimatedMorphShape() {
+    // End-to-end Wear-M3 button corner: a real render of a box filled through an
+    // `AnimatedMorphShape`-shaped wrapper must export the wrapper's *resting* corner, not a sharp
+    // rect. Exercises the whole chain — ModifierTokenResolver.effectiveCornerShape unwrapping the
+    // resting `shape` field → the dp `cornerRadius` token → FigmaSvgModel → the rounded SVG.
+    //
+    // This is the Horologist `VolumeScreen` bug (issue #3254): `Stepper` always routes its
+    // increase/decrease buttons through `animateButtonShape`, so the volume buttons were always
+    // wrapped, always missed every corner path, and always exported as blue squares painted over
+    // their correctly-rounded raster.
+    val outputDir = tempFolder.newFolder("renders-morph-corner")
+    val dataDir = tempFolder.newFolder("data-morph-corner")
+    val engine = RenderEngine(outputDir = outputDir, dataDir = dataDir)
+    val host = DesktopHost(engine = engine)
+    host.start()
+    try {
+      host.submit(
+        RenderRequest.Render(
+          payload =
+            "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+              "functionName=AnimatedMorphShapeButton;" +
+              "widthPx=200;heightPx=200;density=2.0;" +
+              "showBackground=true;" +
+              "outputBaseName=morph-corner"
+        ),
+        timeoutMs = 60_000,
+      )
+
+      val figma = File(File(dataDir, "morph-corner"), "compose-figma.svg")
+      assertTrue("figma layered SVG must be produced: ${figma.absolutePath}", figma.exists())
+      val figmaSvg = figma.readText()
+      // The resting shape is a full pill on a 120×96px box → a uniform 48px corner.
+      assertTrue(
+        "figma SVG must round the wrapped resting corner (rx=48), got:\n$figmaSvg",
+        figmaSvg.contains("""rx="48""""),
+      )
+      // And it must stay an editable rounded rect rather than degrading to the sampled polyline
+      // fallback — that path is only for shapes no corner can describe.
+      assertFalse(
+        "a resolvable corner must not fall through to the outline sampler, got:\n$figmaSvg",
+        figmaSvg.contains("<path d=\"M0.5,0"),
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
+  fun figmaSvgExportVectorisesUnreducibleShape() {
+    // The general guard behind the unwrap above: a shape that reduces to no corners at all must
+    // export its actual sampled outline, not a sharp rectangle standing in for geometry the
+    // exporter never established (issue #3254). The fixture's shape is a triangle, so the apex
+    // point (half width, top) has to appear in the emitted path.
+    val outputDir = tempFolder.newFolder("renders-generic-outline")
+    val dataDir = tempFolder.newFolder("data-generic-outline")
+    val engine = RenderEngine(outputDir = outputDir, dataDir = dataDir)
+    val host = DesktopHost(engine = engine)
+    host.start()
+    try {
+      host.submit(
+        RenderRequest.Render(
+          payload =
+            "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+              "functionName=GenericOutlineTriangle;" +
+              "widthPx=200;heightPx=200;density=2.0;" +
+              "showBackground=true;" +
+              "outputBaseName=generic-outline"
+        ),
+        timeoutMs = 60_000,
+      )
+
+      val figma = File(File(dataDir, "generic-outline"), "compose-figma.svg")
+      assertTrue("figma layered SVG must be produced: ${figma.absolutePath}", figma.exists())
+      val figmaSvg = figma.readText()
+      // The 120×96 box is centred on the 200×200 canvas, so the triangle spans x 40..160, y 52..148
+      // with its apex at x=100. A `<path>` carrying that apex proves the real outline survived.
+      val path =
+        Regex("""<path d="(M[^"]+)"[^>]*fill="#04409F"""").find(figmaSvg)?.groupValues?.get(1)
+      assertNotNull("an unreducible shape must export as a sampled path, got:\n$figmaSvg", path)
+      assertTrue("the outline must be closed, got: $path", path!!.endsWith("Z"))
+      val points =
+        path.removeSuffix(" Z").split(" ").mapNotNull { token ->
+          token.drop(1).split(",").let { xy ->
+            if (xy.size == 2)
+              (xy[0].toDoubleOrNull() ?: return@mapNotNull null) to
+                (xy[1].toDoubleOrNull() ?: return@mapNotNull null)
+            else null
+          }
+        }
+      assertTrue("expected a sampled polyline, got: $path", points.size > 8)
+      assertTrue(
+        "the triangle apex (~100, ~52) must be present, got: $path",
+        points.any { (x, y) -> kotlin.math.abs(x - 100.0) < 2.0 && kotlin.math.abs(y - 52.0) < 2.0 },
+      )
+      // The base corners pin the other two vertices, so the shape is a triangle and not a bounding
+      // box drawn as a path.
+      assertTrue(
+        "the bottom-left vertex (~40, ~148) must be present, got: $path",
+        points.any { (x, y) -> kotlin.math.abs(x - 40.0) < 2.0 && kotlin.math.abs(y - 148.0) < 2.0 },
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun figmaSvgExportChamfersCutCorner() {
     // End-to-end cut corner: a real render of a box clipped with `CutCornerShape(20.dp)` must
     // export

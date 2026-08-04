@@ -3,6 +3,8 @@ package ee.schimke.composeai.daemon
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ModifierInfo
@@ -59,6 +61,7 @@ internal object ModifierTokenResolver {
     var borderWidth: String? = null
     var cornerRadius: String? = null
     var cornerRadiusPx: String? = null
+    var shapePath: String? = null
     var shape: String? = null
     var padding: ComposeSemanticsInsets? = null
     var paintInset: ComposeSemanticsInsets? = null
@@ -196,6 +199,14 @@ internal object ModifierTokenResolver {
             effectiveShape.cornerRadiusPxWire()
               ?: effectiveShape.outlineCornerRadiusPxWire(sizeWidthPx, sizeHeightPx, density)
         }
+        // Last resort for a shape no corner path could reduce — a bespoke morph/star/squircle, or
+        // a wrapper neither `effectiveCornerShape` idiom unwraps. Ask it for its outline and carry
+        // the raw geometry so the export can draw *that*, instead of silently degrading to a sharp
+        // rectangle: an unresolved shape used to emit a plain `<rect>`, which is a confident wrong
+        // answer painted over the correctly-shaped raster underneath (issue #3254).
+        if (cornerRadius == null && cornerRadiusPx == null && shapePath == null) {
+          shapePath = effectiveShape.outlineShapePathWire(sizeWidthPx, sizeHeightPx, density)
+        }
         if (shape == null) shape = effectiveShape.shapeDescriptor()
       }
     }
@@ -205,6 +216,7 @@ internal object ModifierTokenResolver {
         borderColor == null &&
         cornerRadius == null &&
         cornerRadiusPx == null &&
+        shapePath == null &&
         shape == null &&
         gap == null &&
         padding == null &&
@@ -226,6 +238,7 @@ internal object ModifierTokenResolver {
         minHeight = minHeight,
         cornerRadius = cornerRadius,
         cornerRadiusPx = cornerRadiusPx,
+        shapePath = shapePath,
         shape = shape,
         gap = gap,
         padding = padding,
@@ -1285,22 +1298,68 @@ internal object ModifierTokenResolver {
    * to Material 3 internals.
    *
    * This is deliberately a narrow fallback: normal corner shapes retain their direct getter path,
-   * and an unknown shape without a state exposing `getMorphedShape()` is returned unchanged.
+   * and an unknown shape that matches neither wrapper idiom is returned unchanged.
    */
-  private fun Shape.effectiveCornerShape(): Shape {
+  internal fun Shape.effectiveCornerShape(): Shape {
     if (invokeNoArg("getTopStart") != null) return this
-    return javaClass.declaredFields
-      .asSequence()
-      .filter { it.name.endsWith("state", ignoreCase = true) }
-      .mapNotNull { field ->
-        runCatching {
-            field.isAccessible = true
-            field.get(this)
-          }
-          .getOrNull()
+    val morphed =
+      javaClass.declaredFields
+        .asSequence()
+        .filter { it.name.endsWith("state", ignoreCase = true) }
+        .mapNotNull { field ->
+          runCatching {
+              field.isAccessible = true
+              field.get(this)
+            }
+            .getOrNull()
+        }
+        .mapNotNull { state -> state.invokeNoArg("getMorphedShape") as? Shape }
+        .firstOrNull()
+    return morphed ?: restingCornerShape() ?: this
+  }
+
+  /**
+   * Wear M3's counterpart to the `rememberAnimatedShape` wrapper above: every `RoundButton`-family
+   * container (`Button`, and — the case that exposed this — the `Stepper`'s increase/decrease
+   * buttons) routes its shape through `RoundButtonKt.animateButtonShape`, which wraps the pair in
+   * an `AnimatedMorphShape` whenever *both* the resting and pressed shapes are `CornerBasedShape`.
+   * `Stepper` always passes both, so its buttons are always wrapped.
+   *
+   * That wrapper holds its corners in plain fields rather than behind `getMorphedShape()`:
+   * ```
+   * class AnimatedMorphShape(
+   *   private val shape: CornerBasedShape,         // resting
+   *   private val pressedShape: CornerBasedShape,
+   *   private val progress: () -> Float,
+   *   private val morphState: SnapshotStateMap<Size, Morph>,
+   * )
+   * ```
+   *
+   * so none of the corner getters see it, and `createOutline` returns an `Outline.Generic` morph
+   * path once the node has been measured — which [outlineCornerRadiusPxWire] also refuses. Before
+   * this, all three corner paths missed and a full-pill volume button exported as a sharp `<rect>`
+   * drawn over its correctly-rounded raster (issue #3254).
+   *
+   * A still export shows the resting state, so `shape` is the corner to take and `pressedShape` is
+   * deliberately skipped — note `morphState` also ends in `state`, so it matches the
+   * `getMorphedShape()` filter above and falls through it, which is why this runs afterwards. Kept
+   * reflective and shape-agnostic: any wrapper holding its resting corners in a `shape`-named field
+   * resolves, and anything else is left alone for the outline path in [resolve] to vectorise.
+   */
+  internal fun Shape.restingCornerShape(): Shape? {
+    val candidates =
+      javaClass.declaredFields.filter { field ->
+        Shape::class.java.isAssignableFrom(field.type) && !field.name.contains("pressed", true)
       }
-      .mapNotNull { state -> state.invokeNoArg("getMorphedShape") as? Shape }
-      .firstOrNull() ?: this
+    // Prefer the conventionally-named resting field over whatever happens to be declared first.
+    val ordered = candidates.sortedBy { if (it.name == "shape") 0 else 1 }
+    return ordered.firstNotNullOfOrNull { field ->
+      runCatching {
+          field.isAccessible = true
+          (field.get(this) as? Shape)?.takeIf { it.invokeNoArg("getTopStart") != null }
+        }
+        .getOrNull()
+    }
   }
 
   /**
@@ -1313,7 +1372,7 @@ internal object ModifierTokenResolver {
    * corners are emitted comma-separated. Returns null for non-corner shapes and for pixel corners
    * (`PxCornerSize`, `RoundedCornerShape(12f)`), which can't be expressed as a fixed dp.
    */
-  private fun Shape.cornerRadiusWire(minSidePx: Int, density: Float): String? {
+  internal fun Shape.cornerRadiusWire(minSidePx: Int, density: Float): String? {
     val corners =
       listOf("getTopStart", "getTopEnd", "getBottomEnd", "getBottomStart").map { getter ->
         cornerSizeDp(invokeNoArg(getter), minSidePx, density)
@@ -1374,6 +1433,73 @@ internal object ModifierTokenResolver {
     if (values.any { !it.isFinite() || it < 0f }) return null
     return if (values.distinct().size == 1) "${values.first()}px"
     else values.joinToString(",") { "${it}px" }
+  }
+
+  /**
+   * The vector fallback behind [outlineCornerRadiusPxWire]: SVG path data, in the node's own raw
+   * pixel space, for a shape whose outline is **not** a rounded rect and so has no corner radii to
+   * report at all — an `Outline.Generic` morph/star/squircle, or a wrapper `effectiveCornerShape`
+   * could not unwrap.
+   *
+   * Emitted only when every corner path has already come up empty, so a shape we *do* understand
+   * keeps its editable `<rect rx>` rather than degrading to a polyline. The alternative for the
+   * shapes that land here was a sharp `<rect>` — geometry we never established, drawn over the
+   * correctly-shaped pixels beneath it (issue #3254).
+   *
+   * Sampled as a polyline via [PathMeasure] at the same cadence [DrawCaptureExtractor] uses for
+   * captured draw paths, which keeps this to common Compose API and off `PathIterator`. Same
+   * single-contour limit as that sampler: a multi-contour outline (a ring, a shape with a hole)
+   * contributes only its first contour. A container shape is one closed contour, and anything more
+   * exotic still exports closer than a rectangle would.
+   */
+  internal fun Shape.outlineShapePathWire(widthPx: Int, heightPx: Int, density: Float): String? {
+    if (widthPx <= 0 || heightPx <= 0) return null
+    val generic =
+      runCatching {
+          createOutline(
+            Size(widthPx.toFloat(), heightPx.toFloat()),
+            LayoutDirection.Ltr,
+            Density(density),
+          )
+            as? Outline.Generic
+        }
+        .getOrNull() ?: return null
+    return runCatching { sampleClosedPath(generic.path, widthPx.toFloat(), heightPx.toFloat()) }
+      .getOrNull()
+      ?.takeIf { it.isNotBlank() }
+  }
+
+  /**
+   * Polyline-samples one closed contour of [path] into SVG path data, normalised to the unit box
+   * against [widthPx] × [heightPx] — the size the outline was created at. Emitting 0..1 fractions
+   * rather than pixels lets the export map the shape onto the layer's final box (draw-time scale,
+   * min-size growth, paint inset) without a `transform`, which would distort any stroke. Returns ""
+   * when the path is empty or degenerate.
+   */
+  private fun sampleClosedPath(path: Path, widthPx: Float, heightPx: Float): String {
+    val measure = PathMeasure().apply { setPath(path, false) }
+    val length = measure.length
+    if (!length.isFinite() || length <= 0f) return ""
+    val step = 1.5f
+    val out = StringBuilder()
+    var walked = 0f
+    while (walked <= length) {
+      val point = measure.getPosition(walked)
+      if (!point.x.isFinite() || !point.y.isFinite()) return ""
+      out.append(if (out.isEmpty()) "M" else " L").append(fmtUnit(point.x / widthPx)).append(',')
+      out.append(fmtUnit(point.y / heightPx))
+      walked += step
+    }
+    if (out.isEmpty()) return ""
+    // A shape outline is a closed region; `Z` lets the consumer fill it without repeating the seam.
+    return out.append(" Z").toString()
+  }
+
+  /** Unit-box coordinate, at the precision a sub-pixel-accurate outline needs on a 1000px box. */
+  private fun fmtUnit(value: Float): String {
+    val rounded = (value * 10_000f).roundToInt() / 10_000.0
+    return if (rounded == rounded.toInt().toDouble()) rounded.toInt().toString()
+    else rounded.toString()
   }
 
   private fun cornerSizePx(corner: Any?): Float? {
