@@ -728,6 +728,8 @@ class ServeHttpRoutingTest {
     client.newCall(req).execute().use { response ->
       assertEquals(200, response.code)
       assertEquals("application/wasm", response.body?.contentType().toString())
+      assertEquals("no-cache", response.header("Cache-Control"))
+      assertTrue(response.header("ETag")?.isNotBlank() == true, "wasm response carries an ETag")
       assertTrue(
         byteArrayOf(0x00, 0x61, 0x73, 0x6d).contentEquals(response.body?.bytes()),
         "wasm bytes served verbatim",
