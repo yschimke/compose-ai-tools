@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.34](https://github.com/yschimke/compose-ai-tools/compare/v0.19.33...v0.19.34) (2026-08-04)
+
+
+### Features
+
+* **serve:** publish Home Assistant and Thunderbird catalogs ([#3304](https://github.com/yschimke/compose-ai-tools/issues/3304)) ([e292122](https://github.com/yschimke/compose-ai-tools/commit/e2921223836eebf99f68cbf99c87a6ae45c3eb90))
+
+
+### Bug Fixes
+
+* **serve:** clarify themed preview loading ([#3307](https://github.com/yschimke/compose-ai-tools/issues/3307)) ([b0e616f](https://github.com/yschimke/compose-ai-tools/commit/b0e616fff25a92d711ff57ec56463074dfe03a75))
+* **serve:** normalize Gradle source paths ([#3310](https://github.com/yschimke/compose-ai-tools/issues/3310)) ([52fb54b](https://github.com/yschimke/compose-ai-tools/commit/52fb54ba9d754842ba39e7aa1db92d53e942fbd0))
+* **serve:** only badge untrusted catalogs ([#3305](https://github.com/yschimke/compose-ai-tools/issues/3305)) ([e75c438](https://github.com/yschimke/compose-ai-tools/commit/e75c43854cf201112bd232a6a236276d0db69584))
+
 ## [0.19.33](https://github.com/yschimke/compose-ai-tools/compare/v0.19.32...v0.19.33) (2026-08-04)
 
 
