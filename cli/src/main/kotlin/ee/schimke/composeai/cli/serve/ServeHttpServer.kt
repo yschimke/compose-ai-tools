@@ -1869,6 +1869,7 @@ class ServeHttpServer(
     val loadError: String?,
     val lastLoadAttemptEpochMillis: Long?,
     val themeOptimization: ThemeOptimizationSnapshot?,
+    val renderCache: CatalogRenderCacheSnapshot?,
     /**
      * The metadata above is a **last-known snapshot** of a now-suspended catalog
      * ([catalogMetaSeen]) rather than a live read, because the session's daemon is idle. Facts a
@@ -1920,6 +1921,7 @@ class ServeHttpServer(
     val degradation: String?,
     val provenance: ServeWeb.CatalogProvenance?,
     val themeOptimization: ThemeOptimizationSnapshot?,
+    val renderCache: CatalogRenderCacheSnapshot?,
   )
 
   init {
@@ -1952,6 +1954,7 @@ class ServeHttpServer(
         degradation = host.degradations.firstOrNull()?.detail,
         provenance = bundle.provenance,
         themeOptimization = host.themeOptimizationSnapshot(),
+        renderCache = host.catalogRenderCacheSnapshot(),
       )
   }
 
@@ -2033,6 +2036,7 @@ class ServeHttpServer(
               loadError = c.loadError,
               lastLoadAttemptEpochMillis = c.lastLoadAttemptEpochMillis,
               themeOptimization = c.themeOptimization,
+              renderCache = c.renderCache,
             )
           },
         runningServers =
@@ -2140,6 +2144,7 @@ class ServeHttpServer(
               loadState = c.loadState,
               loadError = c.loadError,
               themeOptimization = c.themeOptimization,
+              renderCache = c.renderCache,
             )
           },
         servers =
@@ -2230,6 +2235,7 @@ class ServeHttpServer(
         loadError = load?.error,
         lastLoadAttemptEpochMillis = load?.lastAttemptEpochMillis,
         themeOptimization = host?.themeOptimizationSnapshot() ?: seen?.themeOptimization,
+        renderCache = host?.catalogRenderCacheSnapshot() ?: seen?.renderCache,
         stale = seen != null,
       )
     }
@@ -3611,6 +3617,8 @@ private data class CatalogDto(
   val lastLoadAttemptEpochMillis: Long? = null,
   /** Server-side idle theme-cache fill progress for this catalog generation. */
   val themeOptimization: ThemeOptimizationSnapshot? = null,
+  /** Bounded rendered-preview cache occupancy for this catalog generation. */
+  val renderCache: CatalogRenderCacheSnapshot? = null,
 )
 
 @Serializable
