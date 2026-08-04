@@ -652,6 +652,8 @@ class ServeHttpServer(
 
         get("/api/previews") { handleApiPreviews(sessionInPath = false) }
         get("/{system}/api/previews") { handleApiPreviews(sessionInPath = true) }
+        get("/api/daemons") { handleDaemonStatus(sessionInPath = false) }
+        get("/{system}/api/daemons") { handleDaemonStatus(sessionInPath = true) }
         post("/api/presence") { handlePresence(sessionInPath = false) }
         post("/{system}/api/presence") { handlePresence(sessionInPath = true) }
         post("/api/theme-render-lease") { handleThemeRenderLease(sessionInPath = false) }
@@ -2281,6 +2283,38 @@ class ServeHttpServer(
   }
 
   /**
+   * `GET /api/daemons` (query) and `GET /{system}/api/daemons` (path): whether this catalog is
+   * currently backed by a live render server, and how many processes that amounts to.
+   *
+   * Deliberately reads through [ServeSessionRegistry.peekHost], which never resumes a suspended
+   * session. A status probe that woke the daemon it is reporting on would defeat the lazy open it
+   * exists to make visible — the page would create the very process it is asking about.
+   */
+  private suspend fun RoutingContext.handleDaemonStatus(sessionInPath: Boolean) {
+    if (rejectBadToken()) return
+    val host = sessions.peekHost(selectedSessionId(sessionInPath))
+    val pools =
+      host?.let { runCatching { it.daemonPoolStats() }.getOrDefault(emptyList()) }.orEmpty()
+    val dto =
+      DaemonStatusDto(
+        // Counted from real subprocesses, not from `daemonStarted`: that is a host-level flag a
+        // static baked bundle inherits as true, and it is already true for a catalog whose only
+        // process is a pooled child. Either would have the page claim a render server that isn't
+        // there.
+        running = (host?.daemonProcessCount ?: 0) > 0,
+        instances = host?.daemonProcessCount ?: 0,
+        pooled = pools.sumOf { it.open },
+        poolCapacity = pools.sumOf { it.maxOpen },
+        activeStreams = host?.let { runCatching { it.activeStreamCount() }.getOrDefault(0) } ?: 0,
+      )
+    call.response.headers.append(HttpHeaders.CacheControl, DYNAMIC_RESOURCE_CACHE_CONTROL)
+    call.respondText(
+      JSON.encodeToString(DaemonStatusDto.serializer(), dto),
+      ContentType.Application.Json,
+    )
+  }
+
+  /**
    * `GET /api/previews` (query) and `GET /{system}/api/previews` (path): the session's preview
    * JSON.
    */
@@ -3623,6 +3657,16 @@ private data class PreviewsResponse(
 )
 
 @Serializable private data class DegradationDto(val code: String, val detail: String)
+
+/** What `/api/daemons` reports: is a render server up for this catalog, and how many processes. */
+@Serializable
+private data class DaemonStatusDto(
+  val running: Boolean,
+  val instances: Int,
+  val pooled: Int,
+  val poolCapacity: Int,
+  val activeStreams: Int,
+)
 
 @Serializable
 private data class PreviewDto(

@@ -697,3 +697,18 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-viewer.cp-controls-open .cp-controls::before,
   .cp-viewer.cp-nav-open .cp-nav::before { background: var(--cp-border-strong); }
 }
+
+/* Render-server badge (see ServeWeb.presenceScript). Catalogs open their daemon on first real use,
+   so "not running" is a normal resting state — styled as neutral information, not a fault. */
+.cp-daemon-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.6;
+  border: 1px solid currentColor;
+  opacity: 0.7;
+}
+.cp-daemon-status[data-cp-daemon-running="1"] {
+  opacity: 1;
+}

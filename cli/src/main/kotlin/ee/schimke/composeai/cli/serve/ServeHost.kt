@@ -225,6 +225,17 @@ interface ServeHost : AutoCloseable {
    * `canApplyOverrides = false` but `hasLiveStream = true`.
    */
   /**
+   * How many render subprocesses this host is actually carrying right now.
+   *
+   * Distinct from [daemonStarted], which is a host-level "is anything up" used to keep `/status`
+   * from listing catalogs that own no process. This is a count, and a host with no daemon lane at
+   * all — a static baked bundle — must report 0 rather than inherit a truthy default, or the page
+   * would tell a visitor a purely static catalog has a render server connected.
+   */
+  val daemonProcessCount: Int
+    get() = 0
+
+  /**
    * Whether this host's daemon subprocess actually exists yet.
    *
    * A daemon-backed host opens its session on first real use, so a *registered* catalog is not a
