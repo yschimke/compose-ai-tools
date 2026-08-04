@@ -30,6 +30,10 @@
       "branch": "design-artifacts/*"
     },
     {
+      "repo": "yschimke/thunderbird-android",
+      "branch": "design-artifacts/*"
+    },
+    {
       "repo": "yschimke/pocket-casts-android",
       "branch": "design-artifacts/*"
     },

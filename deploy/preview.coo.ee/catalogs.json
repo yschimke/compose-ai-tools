@@ -93,6 +93,11 @@
       "listed": true
     },
     {
+      "system": "thunderbird",
+      "repo": "yschimke/thunderbird-android",
+      "listed": true
+    },
+    {
       "system": "jetnews",
       "repo": "yschimke/compose-samples",
       "listed": true,
