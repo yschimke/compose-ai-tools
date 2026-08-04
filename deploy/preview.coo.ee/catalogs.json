@@ -20,6 +20,11 @@
       "id": "pocket-casts",
       "heading": "Automattic/pocket-casts-android",
       "noun": "app(s)"
+    },
+    {
+      "id": "thunderbird",
+      "heading": "thunderbird/thunderbird-android",
+      "noun": "app(s)"
     }
   ],
   "catalogs": [
@@ -95,7 +100,11 @@
     {
       "system": "thunderbird",
       "repo": "yschimke/thunderbird-android",
-      "listed": true
+      "listed": true,
+      "group": "thunderbird",
+      "attributionRepos": [
+        "thunderbird/thunderbird-android"
+      ]
     },
     {
       "system": "jetnews",
