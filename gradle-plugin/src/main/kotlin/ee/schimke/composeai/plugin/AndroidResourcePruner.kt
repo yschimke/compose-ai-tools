@@ -21,7 +21,11 @@ import java.util.zip.ZipOutputStream
  *   `anim`, `animator`, `mipmap`. Compose draws from Kotlin — no `R.layout` inflation, no view
  *   animations, no launcher mipmaps — so a Compose render resolves none of these unless the module
  *   itself authored one — or a sibling project module did — which [firstPartyFileResources] always
- *   retains.
+ *   retains. An empty retain-set is treated as failed ownership discovery and disables pruning;
+ *   otherwise a missing or unrecognised AGP merge-blame file would remove every file resource.
+ * - A small set of dependency resources is retained explicitly. AppCompat loads
+ *   `drawable/abc_vector_test` at runtime to validate VectorDrawableCompat, so dropping it produces
+ *   the misleading "incorrect configuration" exception even though the consumer build is valid.
  * - The baked catalog PNGs are rendered from the **full** APK *before* packing, so they are
  *   unaffected. The pruned APK feeds only the live daemon re-render.
  *
@@ -57,6 +61,12 @@ internal object AndroidResourcePruner {
    *   [MergedResourceOwnership], which derives it from AGP's merge-blame file.
    */
   fun prune(apkBytes: ByteArray, firstPartyFileResources: Set<String>): Result {
+    // Empty is ambiguous: it can mean a genuinely resource-free module, but also that AGP moved,
+    // changed, or did not emit merger.xml. Correctness wins over the bundle-size optimisation.
+    // Pocket Casts exposed the unsafe failure mode: the packed resources.arsc still referenced
+    // sibling-module icons, while every drawable file had been removed.
+    if (firstPartyFileResources.isEmpty()) return Result(apkBytes, 0, 0)
+
     val out = ByteArrayOutputStream(apkBytes.size)
     var dropped = 0
     var saved = 0L
@@ -96,7 +106,8 @@ internal object AndroidResourcePruner {
     if (slash < 0) return false
     val typeBase = rest.substring(0, slash).substringBefore('-')
     if (typeBase !in PRUNABLE_TYPE_BASES) return false
-    return "$typeBase/${resourceNameOf(rest.substring(slash + 1))}" !in firstParty
+    val key = "$typeBase/${resourceNameOf(rest.substring(slash + 1))}"
+    return key !in firstParty && key !in REQUIRED_DEPENDENCY_RESOURCES
   }
 
   /**
@@ -108,4 +119,6 @@ internal object AndroidResourcePruner {
     val noExt = fileName.substringBefore('.')
     return if (noExt.startsWith('$')) noExt.drop(1).substringBefore("__") else noExt
   }
+
+  private val REQUIRED_DEPENDENCY_RESOURCES = setOf("drawable/abc_vector_test")
 }
