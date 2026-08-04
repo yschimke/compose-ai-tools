@@ -33,9 +33,10 @@ class CatalogEntryWireTest {
 
   @Test
   fun `catalog breakpoints survive manifest decoding`() {
-    // `sizes` drives a FAN-OUT: the design-artifacts export mints one catalog component per name,
-    // so a reader that dropped the field would report one component where the published catalog has
-    // several — the exact silent loss `ignoreUnknownKeys` makes possible and this mirror prevents.
+    // `perBreakpoint` drives a FAN-OUT: the design-artifacts export mints one catalog component per
+    // breakpoint the function rendered at, so a reader that dropped the field would report one
+    // component where the published catalog has several — the exact silent loss `ignoreUnknownKeys`
+    // makes possible and this mirror prevents.
     val manifest =
       Json.decodeFromString<PreviewManifest>(
         """
@@ -49,7 +50,7 @@ class CatalogEntryWireTest {
             "catalog": {
               "role": "COMPONENT",
               "componentId": "Layout/List",
-              "sizes": ["smallRound", "largeRound"]
+              "perBreakpoint": true
             }
           }, {
             "id": "test.ListLayoutFocused",
@@ -58,8 +59,7 @@ class CatalogEntryWireTest {
             "catalog": {
               "role": "VARIANT",
               "componentId": "Layout/List",
-              "state": "focused",
-              "size": "largeRound"
+              "state": "focused"
             }
           }]
         }
@@ -68,10 +68,8 @@ class CatalogEntryWireTest {
       )
 
     val (component, variant) = manifest.previews.map { it.catalog }
-    assertEquals(listOf("smallRound", "largeRound"), component?.sizes)
-    assertEquals(null, component?.size)
-    assertEquals("largeRound", variant?.size)
-    assertEquals(emptyList(), variant?.sizes)
+    assertEquals(true, component?.perBreakpoint)
+    assertEquals(false, variant?.perBreakpoint)
   }
 
   @Test
@@ -93,8 +91,6 @@ class CatalogEntryWireTest {
           .trimIndent()
       )
 
-    val catalog = manifest.previews.single().catalog
-    assertEquals(emptyList(), catalog?.sizes)
-    assertEquals(null, catalog?.size)
+    assertEquals(false, manifest.previews.single().catalog?.perBreakpoint)
   }
 }

@@ -808,17 +808,13 @@ data class CatalogEntry(
   /** VARIANT only: named content/i18n/a11y axes distinguishing this render from the default. */
   val props: List<CatalogVariantProp> = emptyList(),
   /**
-   * COMPONENT only: the breakpoints (`@CatalogComponent.sizes`) this component is documented at,
-   * splitting one multipreview function's fan-out into a component per breakpoint. Empty — the
-   * default — folds every render onto one component, the pre-existing behaviour. A single name
-   * selects that breakpoint without splitting the id. The export turns each into a spec `select`.
+   * COMPONENT only: `@CatalogComponent.perBreakpoint` — split this function's multipreview fan-out
+   * into a component per breakpoint rather than folding every render onto one. Which breakpoints
+   * those are is NOT recorded here: they come from the renders themselves (each `@Preview`'s device
+   * / width, resolved against the catalog's `breakpoints` table), so the annotation can't contradict
+   * what the function actually rendered. `false` — the default — is the pre-existing behaviour.
    */
-  val sizes: List<String> = emptyList(),
-  /**
-   * VARIANT only: the breakpoint (`@CatalogVariant.size`) this variant's render is taken from — the
-   * singular counterpart of [sizes], since a variant folds onto one parent rather than fanning out.
-   */
-  val size: String? = null,
+  val perBreakpoint: Boolean = false,
 )
 
 /** Kind of a seeded `previewOverride*` value — mirrors `PreviewOverrideValue`'s subtypes. */

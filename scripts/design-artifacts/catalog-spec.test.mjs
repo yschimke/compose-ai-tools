@@ -930,35 +930,30 @@ test("validateSpec leaves select.size unchecked for a catalog with no size axis"
   assert.deepEqual(validateSpec(spec).errors, []);
 });
 
-test("discoverComponentIds emits the ids a sizes fan-out mints, plus the annotated one", () => {
+test("discoverComponentIds reads the annotated id whether or not the component fans out", () => {
   const source = `
     @CatalogComponent(
       id = "Layout/List",
       group = "Layout",
-      sizes = ["smallRound", "largeRound"],
+      perBreakpoint = true,
     )
     @Composable fun ListLayout() {}
-    @CatalogComponent(id = "Button/Filled", sizes = ["largeRound"])
+    @CatalogComponent(id = "Button/Filled")
     @Composable fun FilledButton() {}
   `;
-  // A single size narrows without suffixing, so `Button/Filled` stays exactly one id. The
-  // multi-size fan-out yields ONLY its per-breakpoint ids: no published component carries the
-  // plain `Layout/List` (it survives the fan-out purely as a variant-attachment alias), so a hero
-  // naming it would resolve to nothing and the server would quietly pick another representative.
-  assert.deepEqual(discoverComponentIds([source]), [
-    "Button/Filled",
-    "Layout/List/largeRound",
-    "Layout/List/smallRound",
-  ]);
+  // WHICH breakpoints a `perBreakpoint` component fans out to comes from its renders, which this
+  // build-free source scan can't see — so it reports the annotated id and the hero check below
+  // resolves a `<id>/<breakpoint>` hero on its parent.
+  assert.deepEqual(discoverComponentIds([source]), ["Button/Filled", "Layout/List"]);
 });
 
-test("validateSpec resolves display.hero against a fanned-out annotation id", () => {
+test("validateSpec resolves a per-breakpoint hero on its parent id", () => {
   const { errors } = validateSpec(
     { system: "wear-m3", title: "Wear M3", display: { hero: "Layout/List/largeRound" } },
     {
       knownPreviews: ["ListLayout"],
       knownComponentIds: discoverComponentIds([
-        `@CatalogComponent(id = "Layout/List", sizes = ["smallRound", "largeRound"])
+        `@CatalogComponent(id = "Layout/List", perBreakpoint = true)
          @Composable fun ListLayout() {}`,
       ]),
       annotatedInventory: true,
@@ -967,22 +962,17 @@ test("validateSpec resolves display.hero against a fanned-out annotation id", ()
   assert.deepEqual(errors, []);
 });
 
-test("validateSpec rejects a hero naming the unsuffixed id of a fanned-out component", () => {
-  // The plain id is an inventory-internal alias, not a published component — accepting it here
-  // would let a silently-ineffective hero through the one check meant to catch exactly that.
+test("validateSpec still rejects a hero that matches nothing at all", () => {
   const { errors } = validateSpec(
-    { system: "wear-m3", title: "Wear M3", display: { hero: "Layout/List" } },
+    { system: "wear-m3", title: "Wear M3", display: { hero: "Nope/Missing" } },
     {
       knownPreviews: ["ListLayout"],
       knownComponentIds: discoverComponentIds([
-        `@CatalogComponent(id = "Layout/List", sizes = ["smallRound", "largeRound"])
+        `@CatalogComponent(id = "Layout/List", perBreakpoint = true)
          @Composable fun ListLayout() {}`,
       ]),
       annotatedInventory: true,
     },
   );
-  assert.ok(
-    errors.some((e) => e.includes('display.hero "Layout/List" matches no componentId')),
-    `expected the hero to be rejected, got ${JSON.stringify(errors)}`,
-  );
+  assert.ok(errors.some((e) => e.includes('display.hero "Nope/Missing" matches no componentId')));
 });

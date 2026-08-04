@@ -1031,7 +1031,6 @@ object PreviewDiscovery {
           caption = annStringOrNull(variant, "caption"),
           state = annStringOrNull(variant, "state"),
           props = annStringArray(variant, "props").mapNotNull(::parseCatalogProp),
-          size = annStringOrNull(variant, "size"),
         )
       }
     val component = annotations.firstOrNull { it.name == CATALOG_COMPONENT_FQN } ?: return null
@@ -1044,9 +1043,7 @@ object PreviewDiscovery {
       caption = annStringOrNull(component, "caption"),
       reference = annStringOrNull(component, "reference"),
       parallel = annStringOrNull(component, "parallel"),
-      // Blank entries dropped: an `@CatalogComponent(sizes = [""])` would otherwise mint a
-      // component whose `select` matches no render, failing the publish on a stray comma.
-      sizes = annStringArray(component, "sizes").filter { it.isNotBlank() },
+      perBreakpoint = annBoolean(component, "perBreakpoint"),
     )
   }
 
@@ -1055,6 +1052,10 @@ object PreviewDiscovery {
     val raw = runCatching { ann.parameterValues.getValue(param) as? String }.getOrNull()
     return raw?.takeIf { it.isNotBlank() }
   }
+
+  /** Reads a `Boolean` annotation parameter, defaulting to false when absent or not a boolean. */
+  private fun annBoolean(ann: AnnotationInfo, param: String): Boolean =
+    runCatching { ann.parameterValues.getValue(param) as? Boolean }.getOrNull() ?: false
 
   /** Reads a `String[]` annotation parameter (ClassGraph yields an `Object[]`) as a list. */
   private fun annStringArray(ann: AnnotationInfo, param: String): List<String> {

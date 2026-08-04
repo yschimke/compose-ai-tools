@@ -388,43 +388,54 @@ functions delegating to a shared private composable replace *one* multipreview, 
 the annotation's other axes go with it (`@WearPreviewFontScales`, whose non-default
 scales the export promotes to a `props.fontScale` switcher, is the usual casualty).
 
-#### The annotation form: `@CatalogComponent(sizes = …)`
+#### The annotation form: `@CatalogComponent(perBreakpoint = true)`
 
 An annotation-led inventory says the same thing next to the `@Preview`, so a catalog
 that keeps its inventory in code doesn't have to reintroduce `groups` to get a card
 per breakpoint:
 
 ```kotlin
-@CatalogComponent(id = "Layout/List", sizes = ["smallRound", "largeRound"])
+@CatalogComponent(id = "Layout/List", perBreakpoint = true)
 @CatalogWearBreakpoints @Composable fun ListLayout() = FullScreenWear { … }
 ```
 
-That fans out to `Layout/List/smallRound` and `Layout/List/largeRound`, each carrying
-the `select` the export already understands — one annotation produces exactly what two
-hand-written spec entries would. The rules:
+That yields `Layout/List/smallRound`, `Layout/List/largeRound`, … — one per breakpoint
+**the function actually rendered at**, each carrying the `select` the export already
+understands, so one annotation produces exactly what the hand-written spec entries
+would.
 
-- **No `sizes`** (the default) is the pre-existing behaviour: every render folds onto
+It's a flag, not a list of breakpoint names, because the multipreview annotation on the
+line below already decides which devices this function renders at. Naming them again in
+`@CatalogComponent` would be a second source of truth that can drift from the first —
+`sizes = ["smallRound", "largeRound"]` above a `@CatalogWearBreakpoints` that renders
+three. So the names come from the renders instead: each `@Preview`'s `device` / width,
+resolved through the same matcher that tags the baked stickers. Nothing to keep in sync,
+nothing to misspell, and adding a device to the multipreview adds its card for free.
+
+The rules:
+
+- **Flag unset** (the default) is the pre-existing behaviour: every render folds onto
   one component. Every existing annotation catalog stays on this path.
-- **One name** narrows without splitting, keeping the plain `id` — suffixing there
-  would move a published sticker's URL to say what the id already says.
-- **Several** suffix `<id>/<size>`, the breakpoint name verbatim, so there is no
-  casing convention to get wrong in one place and not the other.
-- A **`@CatalogVariant(size = "largeRound")`** selects a single breakpoint (a variant
-  folds onto one parent, so it never fans out), and that counts as its distinguishing
-  axis, so a variant naming only a `size` is legal.
+- **One breakpoint rendered** → one card keeping the plain `id`; suffixing there would
+  move a published sticker's URL to say what the id already says.
+- **Several** → `<id>/<size>` each, in the order `breakpoints` declares (not bundle
+  order), so the cards read small→large.
+- **None resolved** — an undeclared device, or a catalog with no `breakpoints` table —
+  keeps the component whole and the export warns, naming it. The undeclared-device
+  warning above usually names the culprit on the same run.
 - `@CatalogVariant(of = …)` still names the parent as the annotation spells it, so a
-  variant on a fanned-out component attaches to its first breakpoint; name a suffixed
-  id explicitly to target one.
-- A spec entry still overrides the annotation, `select` included.
+  variant on a fanned-out component attaches to its first breakpoint; name a suffixed id
+  explicitly to target one.
+- A spec entry still overrides the annotation, `select` included — which is also how you
+  document a *subset* of the breakpoints a function renders.
 
-A mistyped breakpoint isn't caught by the build-free pre-flight (it reads the
-annotation from source, not the render), but it fails the publish with the selection
-report above — naming the sizes the function actually rendered — rather than as a
-mysterious missing entry.
+Because the ids depend on what rendered, the build-free pre-flight can't predict them:
+it resolves a `display.hero` of `<id>/<breakpoint>` on its parent id, and the exact
+check runs at export time against the merged inventory, where every id is known.
 
-Adopting `sizes` on an already-published catalog **moves those components' sticker
-URLs**, since the id is part of the path. It's opt-in for that reason: the preview
-server already disambiguates a *colliding* card label on its own
+Adopting `perBreakpoint` on an already-published catalog **moves those components'
+sticker URLs**, since the id is part of the path. It's opt-in for that reason: the
+preview server already disambiguates a *colliding* card label on its own
 (`Edgebutton · Small Round`), so the fan-out is for when you want authored ids and
 captions per breakpoint, not merely readable labels.
 

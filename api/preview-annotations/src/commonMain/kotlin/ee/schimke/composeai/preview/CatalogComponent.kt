@@ -20,9 +20,8 @@ package ee.schimke.composeai.preview
  *   one-off import; the render stays authoritative.
  * * [parallel] defaults to empty. Override with the component id of the counterpart in the sibling
  *   system named by the catalog's `compareWith` setting.
- * * [sizes] defaults to empty — every render of the function folds onto ONE component, which is
- *   what a component documented "at whatever breakpoints it happens to render" wants. Name
- *   breakpoints to change that; see below.
+ * * [perBreakpoint] defaults to false — every render of the function folds onto ONE component. Set
+ *   it when the component should be a card *per* breakpoint instead; see below.
  *
  * ```kotlin
  * @file:CatalogGroup("Buttons")
@@ -31,26 +30,32 @@ package ee.schimke.composeai.preview
  * @CatalogModes @Composable fun FilledButton() = Sticker("button-filled")
  * ```
  *
- * ### Breakpoints: [sizes]
+ * ### Breakpoints: [perBreakpoint]
  *
  * A multipreview annotation (`@WearPreviewDevices`, a local `@CatalogWearBreakpoints`) renders one
  * function at several device sizes, and the export's candidate join keys on function name — so all
- * of them fold onto this one component. [sizes] splits that fan-out into a component **per
+ * of them fold onto this one component. [perBreakpoint] splits that fan-out into a component **per
  * breakpoint**, each with its own id and its own sticker, without the module having to split the
  * `@Preview` function into per-device siblings (which would also drop the multipreview's other
  * axes, `@WearPreviewFontScales` among them):
  * ```kotlin
- * @CatalogComponent(id = "Layout/List", sizes = ["smallRound", "largeRound"])
+ * @CatalogComponent(id = "Layout/List", perBreakpoint = true)
  * @CatalogWearBreakpoints @Composable fun ListLayout() = FullScreenWear { … }
  * ```
  *
- * yields `Layout/List/smallRound` and `Layout/List/largeRound`. Each name must be a breakpoint the
- * catalog declares in `catalog.spec.json`'s `breakpoints` (a Wear catalog that declares none
- * inherits the standard round table). The annotation form of the spec's `select`, and the two mean
- * exactly the same thing to the export — a spec entry may still override any of it.
+ * yields `Layout/List/smallRound`, `Layout/List/largeRound`, … — **one per breakpoint the function
+ * actually rendered**, named by the catalog's `breakpoints` table in `catalog.spec.json` (a Wear
+ * catalog that declares none inherits the standard round table).
  *
- * A SINGLE name selects rather than fans out, and keeps the plain [id]: `sizes = ["largeRound"]`
- * documents this component as the large-round render only, under `Layout/List`.
+ * Deliberately a flag rather than a list of breakpoint names: the multipreview annotation directly
+ * below already declares which devices this function renders at, so naming them here too would
+ * restate — and could contradict — what the render itself knows. There is nothing to keep in sync
+ * and nothing to misspell, and adding a device to the multipreview adds its card automatically. A
+ * function that renders at only ONE breakpoint keeps its plain [id]: one breakpoint is one card,
+ * and suffixing it would move a published sticker's URL to say what the id already says.
+ *
+ * To document a *subset* of the breakpoints a function renders, or to override any of this, use a
+ * `catalog.spec.json` entry's `select` — the spec always wins over the annotation.
  *
  * Discovered by FQN off the annotated **function** — hence `@Target(FUNCTION)` plus `BINARY`
  * retention, so the annotation survives into the compiled `.class` files the plugin scans with
@@ -68,7 +73,7 @@ annotation class CatalogComponent(
   val caption: String = "",
   val reference: String = "",
   val parallel: String = "",
-  val sizes: Array<String> = [],
+  val perBreakpoint: Boolean = false,
 )
 
 /**
@@ -83,12 +88,6 @@ annotation class CatalogComponent(
  * `["content=icon+label"]` or `["locale=ar-XB"]`, `["fontScale=2.0"]`) — annotations can't hold a
  * `Map`, so the axes travel as `key=value` pairs the export splits back apart. Give at least one so
  * the variant is distinguishable from the parent's default render.
- *
- * [size] narrows the variant to ONE breakpoint of its function's multipreview fan-out — the
- * singular counterpart of [CatalogComponent.sizes], and, like it, the annotation form of the spec's
- * `select`. A variant folds onto one parent sticker, so it selects a breakpoint rather than fanning
- * out across several. It counts as a distinguishing axis in its own right, so a variant that names
- * only a [size] is legal.
  *
  * ```kotlin
  * @CatalogVariant(of = "Button/Filled", state = "pressed",
@@ -110,7 +109,6 @@ annotation class CatalogVariant(
   val state: String = "",
   val caption: String = "",
   val props: Array<String> = [],
-  val size: String = "",
 )
 
 /**

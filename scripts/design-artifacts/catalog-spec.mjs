@@ -12,7 +12,6 @@
 
 import { CAPTURE_MODES, exportsNoSticker } from "./capture-mode.mjs";
 import { catalogBreakpoints } from "./catalog-breakpoints.mjs";
-import { catalogSizeExpansion } from "./catalog-inventory.mjs";
 import { SELECT_AXES, selectOf } from "./catalog-select.mjs";
 import {
   DEFERRED,
@@ -379,15 +378,6 @@ export function discoverComponentIds(sources) {
   const re = /@CatalogComponent\s*\(([^)]*)\)/g;
   for (const source of sources) {
     for (const m of stripComments(source).matchAll(re)) {
-      // `sizes = ["smallRound", "largeRound"]` fans one annotation into a component per breakpoint
-      // with a suffixed id, so the ids a hero may name are the EXPANSION's, not the annotated one.
-      // The plain id survives the fan-out only as an internal variant-attachment alias — no
-      // component in the published catalog carries it, so a hero naming it resolves to nothing and
-      // the server quietly falls back to another representative. Predicting the same ids the
-      // inventory mints is what makes that an error here instead of a silent wrong hero.
-      const sizes = [...(m[1].match(/(?:^|,)\s*sizes\s*=\s*\[([^\]]*)\]/)?.[1] ?? "").matchAll(
-        /"([^"]+)"/g,
-      )].map((s) => s[1]);
       // `id` is the annotation's FIRST parameter, spelled either `id = "…"` or positionally. Try the
       // named form anywhere in the argument list first, then fall back to a leading positional
       // string. Deliberately two anchored patterns rather than one alternation over "any string
@@ -397,8 +387,7 @@ export function discoverComponentIds(sources) {
       const named = m[1].match(/(?:^|,)\s*id\s*=\s*"([^"]+)"/);
       const positional = m[1].match(/^\s*"([^"]+)"/);
       const id = named?.[1] ?? positional?.[1];
-      if (!id) continue;
-      for (const entry of catalogSizeExpansion(id, sizes)) ids.add(entry.componentId);
+      if (id) ids.add(id);
     }
   }
   return [...ids].sort();
@@ -751,6 +740,12 @@ function heroErrors(spec, opts, specComponentIds) {
     ...(opts.knownPreviews ?? []),
   ]);
   if (candidates.size === 0 || candidates.has(hero)) return [];
+  // `@CatalogComponent(perBreakpoint = true)` mints `<id>/<breakpoint>` components, and WHICH
+  // breakpoints those are comes from the renders — which this build-free source scan can't see. So
+  // a hero naming one resolves on its parent id. Deliberately lenient rather than guessing at a
+  // breakpoint table the module doesn't state: the exact check runs at export time, against the
+  // real inventory (`heroResolvesInInventory`), where every id is known.
+  if (candidates.has(hero.slice(0, hero.lastIndexOf("/")))) return [];
   const hint = closest(hero, [...candidates]);
   return [
     `display.hero "${hero}" matches no componentId or @Preview function${hint ? ` — did you mean "${hint}"?` : ""}`,

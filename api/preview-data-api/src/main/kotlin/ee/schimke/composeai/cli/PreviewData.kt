@@ -150,13 +150,11 @@ data class CatalogEntry(
   val state: String? = null,
   val props: List<CatalogVariantProp> = emptyList(),
   /**
-   * COMPONENT: the breakpoints (`@CatalogComponent.sizes`) this component is documented at. The
-   * design-artifacts export expands one entry per name into its own catalog component, so a reader
-   * that dropped this field would see one component where the published catalog has several.
+   * COMPONENT: `@CatalogComponent.perBreakpoint` — the design-artifacts export splits this
+   * component into one per breakpoint its function rendered at, so a reader that dropped the field
+   * would see one component where the published catalog has several.
    */
-  val sizes: List<String> = emptyList(),
-  /** VARIANT: the breakpoint (`@CatalogVariant.size`) this variant's render is taken from. */
-  val size: String? = null,
+  val perBreakpoint: Boolean = false,
 )
 
 @Serializable
