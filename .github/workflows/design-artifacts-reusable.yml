@@ -98,7 +98,7 @@ on:
         type: boolean
         default: false
       split-per-preview:
-        description: 'After generate, split the render into one addressable bundle per preview under bundle/previews/<id>, for the serve host per-preview live lane. The extra module (if any) is split --view-only (baked, no per-preview re-render classpath). full mode requires publish-live-bundle (see split-mode).'
+        description: 'After generate, split the render into one addressable bundle per preview under bundle/previews/<id>, for the serve host per-preview live lane. The extra module (if any) follows extra-split-mode, defaulting to view-only. full mode requires publish-live-bundle (see split-mode).'
         required: false
         type: boolean
         default: false
@@ -107,6 +107,11 @@ on:
         required: false
         type: string
         default: 'full'
+      extra-split-mode:
+        description: "Per-preview split mode for the extra module: 'view-only' (the default, and what every caller got before this input existed — baked stickers with no re-render classpath) or 'full' (each per-preview bundle carries the classpath from its pack, so the serve host's per-preview pool can re-render those ids instead of replaying snapshots). Unlike the primary module there is no externalisation pass for the extra render, so 'full' splits the packed bundle directly: the shared jars repeat per preview, making the output larger."
+        required: false
+        type: string
+        default: 'view-only'
       cli-source:
         description: "How to obtain the compose-preview CLI: 'released' installs it via the install action (the default; what external consumers use), or 'build' builds it from the checked-out compose-ai-tools (driver-ref) with ./gradlew :cli:installDist — for compose-ai-tools' own catalogs, which must publish HEAD's renderer output, not a released one."
         required: false
@@ -521,7 +526,10 @@ jobs:
       #               font pool and serve can re-render it. Needs publish-live-bundle.
       #   view-only → split the raw render (no live bundle), dropping the classpath
       #               but keeping the baked image + sidecars — for an Android/baked tier.
-      # The extra module (if any) is always split --view-only.
+      # The extra module (if any) follows extra-split-mode. Its 'full' differs from the primary
+      # module's: there is no externalisation pass for the extra render, so it splits the packed
+      # bundle directly. Each per-preview bundle then carries the shared classpath (and can
+      # re-render) at the cost of repeating those jars per preview.
       - name: Split into per-preview bundles
         if: ${{ inputs.split-per-preview }}
         run: |
@@ -534,7 +542,9 @@ jobs:
               -o "$GITHUB_WORKSPACE/out/bundle/previews"
           fi
           if [ -n "${{ inputs.extra-module }}" ] && [ -f "$GITHUB_WORKSPACE/extra-bundle.png" ]; then
-            compose-preview bundle split "$GITHUB_WORKSPACE/extra-bundle.png" --view-only \
+            extra_view=(--view-only)
+            if [ "${{ inputs.extra-split-mode }}" = "full" ]; then extra_view=(); fi
+            compose-preview bundle split "$GITHUB_WORKSPACE/extra-bundle.png" "${extra_view[@]}" \
               -o "$GITHUB_WORKSPACE/out/bundle/previews"
           fi
 
