@@ -67,6 +67,11 @@ const STYLED_FIXTURES = new Set([
     "serve-viewer-catalog-knobs",
     "serve-landing-catalog-palette",
     "serve-viewer-catalog-palette",
+    // The render-server badge is a `.cp-daemon-status` pill whose whole diffable claim is its
+    // STYLING — that "not running" reads as neutral information rather than a fault. Without the
+    // real stylesheet routed in, `/assets/serve/.../serve.css` 404s and the daemon captures shoot
+    // an unstyled span, so a change to that styling would move no baseline at all.
+    "serve-landing-declared-themes",
 ]);
 const SERVE_ASSETS = [
     ["serve.css", "text/css"],
@@ -108,6 +113,90 @@ const FIXTURE_STATES = [
                 root.setAttribute("data-mode", "live");
                 root.setAttribute("data-pending", "connecting…");
             });
+        },
+    },
+    {
+        // The render-server badge (#3274). Catalogs open their daemon on first use, so whether one
+        // is up is a real question the page now answers — and "connected" is the state a visitor
+        // sees while anything is warm. Stubbed rather than faked: the pill's text and styling come
+        // from the real `presenceScript`, this only supplies the JSON it polls for.
+        fixture: "serve-landing-declared-themes",
+        suffix: "daemon-connected",
+        apply: async (page) => {
+            await page.route("**/api/daemons*", (route) =>
+                route.fulfill({
+                    status: 200,
+                    contentType: "application/json",
+                    body: JSON.stringify({
+                        running: true,
+                        instances: 2,
+                        pooled: 1,
+                        poolCapacity: 8,
+                        activeStreams: 0,
+                    }),
+                }),
+            );
+            await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+            await page.waitForFunction(
+                () =>
+                    document
+                        .getElementById("cp-daemon-status")
+                        ?.getAttribute("data-cp-daemon-running") === "1",
+            );
+        },
+    },
+    {
+        // The resting state, and the one most catalogs are in: registered, nobody has rendered on
+        // it, so no process exists. It must read as neutral information rather than a fault, which
+        // is a styling claim only a screenshot can hold honest.
+        fixture: "serve-landing-declared-themes",
+        suffix: "daemon-idle",
+        apply: async (page) => {
+            await page.route("**/api/daemons*", (route) =>
+                route.fulfill({
+                    status: 200,
+                    contentType: "application/json",
+                    body: JSON.stringify({
+                        running: false,
+                        instances: 0,
+                        pooled: 0,
+                        poolCapacity: 8,
+                        activeStreams: 0,
+                    }),
+                }),
+            );
+            await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+            await page.waitForFunction(
+                () =>
+                    document
+                        .getElementById("cp-daemon-status")
+                        ?.getAttribute("data-cp-daemon-running") === "0",
+            );
+        },
+    },
+    {
+        // Mid-swap: a themed render is in flight and has NOT come back yet. This is the frame the
+        // visitor stared at for ~1s while it showed a broken-image glyph, and it is invisible to an
+        // ordinary end-state screenshot — the finished pixels are identical either way. Hold the
+        // render open and shoot: every card must still be showing its previous render under the
+        // spinner, never an empty or broken image.
+        fixture: "serve-landing-declared-themes",
+        suffix: "theme-inflight",
+        apply: async (page) => {
+            await page.route("**/render/**", (route) => {
+                const url = new URL(route.request().url());
+                // Only the themed re-renders stall; the baked pixels must still load, since the
+                // whole point is that they are what stays on screen.
+                if (!url.searchParams.has("themeProvider")) {
+                    return route.fulfill({
+                        path: renderPlaceholder,
+                        contentType: "image/png",
+                    });
+                }
+                return new Promise(() => {});
+            });
+            await page.getByRole("button", { name: "Brand Light" }).click();
+            await page.waitForSelector(".cp-reloading");
         },
     },
     {

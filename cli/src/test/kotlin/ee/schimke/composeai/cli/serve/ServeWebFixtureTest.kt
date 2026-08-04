@@ -840,6 +840,11 @@ class ServeWebFixtureTest {
           ),
         canRenderThemeFor = { true },
         themeRenderBurstCapacity = 5,
+        // Carries the presence script, which is also what injects the render-server badge. Without
+        // a fixture that emits it, neither the badge nor the themed-render swap it sits beside has
+        // any visual-diff coverage — the harness shoots this page for both (see FIXTURE_STATES in
+        // pages-snapshot.spec.mjs).
+        presenceUrl = "/compose-m3/api/presence",
       )
     // A catalog whose components carry baked non-default states: the landing folds each to ONE card
     // (the default), the non-default states reachable via the viewer switcher.
