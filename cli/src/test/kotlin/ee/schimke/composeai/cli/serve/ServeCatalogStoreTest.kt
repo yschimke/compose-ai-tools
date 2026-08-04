@@ -554,6 +554,44 @@ class ServeCatalogStoreTest {
   }
 
   @Test
+  fun `catalog image declarations reach the baked browse surface`() {
+    // A supplement-only preview's daemon is opened lazily, so these catalog fields are the only
+    // declaration source available when /api/previews and the initial viewer are built.
+    val declared =
+      """
+      {"schema":"design-parity-catalog/v1","system":"meshcore","components":[
+        {"componentId":"Device","images":[{
+          "path":"images/device/ideal__default__dark.png",
+          "previewId":"Device_Dark",
+          "overrides":[{"key":"count","type":"int","label":"Count",
+            "default":{"kind":"int","value":2}}],
+          "remoteComposeKnobs":[{"name":"label",
+            "default":{"kind":"string","value":"Hello"}}],
+          "supportsFocus":true,
+          "supportsGestures":true
+        }]}]}
+      """
+        .trimIndent()
+    val fetch: (String) -> ByteArray? = { url ->
+      when {
+        url.endsWith("/${ServeCatalogStore.CATALOG_FILE}") -> declared.toByteArray()
+        url.endsWith(".png") -> png()
+        else -> null
+      }
+    }
+
+    assertTrue(
+      store(TrustStore.EMPTY, fetch = fetch).load("meshcore") is ServeCatalogStore.Result.Ok
+    )
+
+    val preview = registered.getValue("meshcore").previews.single()
+    assertEquals(listOf("count"), preview.overrides.map { it.key })
+    assertEquals(listOf("label"), preview.remoteComposeKnobs.map { it.name })
+    assertTrue(preview.supportsFocus)
+    assertTrue(preview.supportsGestures)
+  }
+
+  @Test
   fun `catalog props preserve arbitrary JSON values through the variants manifest`() {
     val flexibleProps =
       """
@@ -1331,7 +1369,10 @@ class ServeCatalogStoreTest {
 
   @Test
   fun `a per-system sourceRepo override fetches from that repo and attributes to it`() {
-    val urls = mutableListOf<String>()
+    // Catalog vectors continue fetching on the background executor after load() publishes the
+    // host. Keep the recorder safe while that pass appends, then assert against one locked
+    // snapshot rather than iterating a list that can still be changing.
+    val urls = Collections.synchronizedList(mutableListOf<String>())
     val trust =
       TrustStore(branches = listOf(TrustedBranch("yschimke/meshcore-mobile", "design-artifacts/*")))
     val store =
@@ -1345,15 +1386,16 @@ class ServeCatalogStoreTest {
         },
       )
     val result = store.load("meshcore-mobile", sourceRepo = "yschimke/meshcore-mobile")
+    val fetchedUrls = synchronized(urls) { urls.toList() }
 
     // Every fetch went to the override repo's design-artifacts/<system> branch, not the default.
     assertTrue(
-      urls.all {
+      fetchedUrls.all {
         it.startsWith(
           "https://raw.githubusercontent.com/yschimke/meshcore-mobile/design-artifacts/meshcore-mobile/"
         )
       },
-      "fetched from the override repo: $urls",
+      "fetched from the override repo: $fetchedUrls",
     )
     assertTrue(
       result is ServeCatalogStore.Result.Ok &&

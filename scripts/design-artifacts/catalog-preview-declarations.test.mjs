@@ -1,0 +1,86 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  applyCatalogPreviewDeclarations,
+  declarationsByPreviewId,
+} from "./catalog-preview-declarations.mjs";
+
+const bytes = (value) => new TextEncoder().encode(JSON.stringify(value));
+
+test("reads authored declarations and detected features from a preview bundle", () => {
+  const bundle = {
+    previews: [
+      {
+        id: "Device_Dark",
+        captures: [{ focus: {} }, { gestureHint: { direction: "UP" } }],
+      },
+    ],
+    entries: {
+      "previews/Device_Dark.overrides.json": bytes({
+        declarations: [{ key: "count", type: "int", default: { kind: "int", value: 2 } }],
+      }),
+      "previews/Device_Dark.remotecompose.json": bytes({
+        declarations: [{ name: "label", default: { kind: "string", value: "Hi" } }],
+      }),
+    },
+  };
+
+  assert.deepEqual(declarationsByPreviewId(bundle).get("Device_Dark"), {
+    overrides: [{ key: "count", type: "int", default: { kind: "int", value: 2 } }],
+    remoteComposeKnobs: [
+      { name: "label", default: { kind: "string", value: "Hi" } },
+    ],
+    supportsFocus: true,
+    supportsGestures: true,
+  });
+});
+
+test("stamps supplement-only image declarations by bridged daemon id", () => {
+  const manifest = {
+    components: [
+      {
+        images: [
+          { path: "images/device/dark.png", previewId: "Device_Dark" },
+          { path: "images/primary/light.png", previewId: "Primary_Light" },
+        ],
+      },
+    ],
+  };
+  const primary = { previews: [{ id: "Primary_Light", captures: [] }], entries: {} };
+  const supplement = {
+    previews: [{ id: "Device_Dark", captures: [{ focusGif: {} }] }],
+    entries: {
+      "previews/Device_Dark.overrides.json": bytes({
+        declarations: [
+          { key: "expanded", type: "bool", default: { kind: "bool", value: false } },
+        ],
+      }),
+    },
+  };
+
+  assert.equal(applyCatalogPreviewDeclarations(manifest, [primary, supplement]), 1);
+  assert.deepEqual(manifest.components[0].images[0], {
+    path: "images/device/dark.png",
+    previewId: "Device_Dark",
+    overrides: [
+      { key: "expanded", type: "bool", default: { kind: "bool", value: false } },
+    ],
+    supportsFocus: true,
+  });
+  assert.deepEqual(manifest.components[0].images[1], {
+    path: "images/primary/light.png",
+    previewId: "Primary_Light",
+  });
+});
+
+test("ignores missing and malformed sidecars", () => {
+  const bundle = {
+    previews: [{ id: "Bare", captures: [] }, { id: "Broken", captures: [] }],
+    entries: {
+      "previews/Broken.overrides.json": new TextEncoder().encode("not json"),
+    },
+  };
+
+  assert.deepEqual([...declarationsByPreviewId(bundle)], []);
+});
