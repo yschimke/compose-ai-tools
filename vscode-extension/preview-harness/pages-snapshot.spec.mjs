@@ -175,11 +175,37 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // Terminal failure: after the bounded retries are exhausted, the previous theme's pixels
+        // stay visible but must be labelled as stale/unavailable rather than looking successfully
+        // updated. Zero retries keeps this visual contract case fast while exercising the real
+        // fetch-failure path.
+        fixture: "serve-landing-declared-themes",
+        suffix: "theme-error",
+        apply: async (page) => {
+            await page.route("**/render/**", (route) => {
+                const url = new URL(route.request().url());
+                if (!url.searchParams.has("themeProvider")) {
+                    return route.fulfill({
+                        path: renderPlaceholder,
+                        contentType: "image/png",
+                    });
+                }
+                return route.fulfill({ status: 503, body: "render unavailable" });
+            });
+            await page.evaluate(() => {
+                themeRenderRetries = 0;
+            });
+            await page.getByRole("button", { name: "Brand Light" }).click();
+            await page.waitForSelector(".cp-theme-render-error");
+        },
+    },
+    {
         // Mid-swap: a themed render is in flight and has NOT come back yet. This is the frame the
         // visitor stared at for ~1s while it showed a broken-image glyph, and it is invisible to an
         // ordinary end-state screenshot — the finished pixels are identical either way. Hold the
         // render open and shoot: every card must still be showing its previous render under the
-        // spinner, never an empty or broken image.
+        // spinner, never an empty or broken image. This remains the last theme state because its
+        // intentionally unresolved requests cannot be followed by another theme transition.
         fixture: "serve-landing-declared-themes",
         suffix: "theme-inflight",
         apply: async (page) => {
@@ -195,7 +221,7 @@ const FIXTURE_STATES = [
                 }
                 return new Promise(() => {});
             });
-            await page.getByRole("button", { name: "Brand Light" }).click();
+            await page.getByRole("button", { name: "Brand Dark" }).click();
             await page.waitForSelector(".cp-reloading");
         },
     },
