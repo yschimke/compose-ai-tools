@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.19.27](https://github.com/yschimke/compose-ai-tools/compare/v0.19.26...v0.19.27) (2026-08-04)
+
+
+### Features
+
+* decode alpha16 modifier draw content ([#3245](https://github.com/yschimke/compose-ai-tools/issues/3245)) ([1098784](https://github.com/yschimke/compose-ai-tools/commit/1098784223f75c958a0b30ab2b944df69ec345c5))
+* **design-artifacts:** publish reference-side annotations with the references ([#3252](https://github.com/yschimke/compose-ai-tools/issues/3252)) ([36878e6](https://github.com/yschimke/compose-ai-tools/commit/36878e6116310359952f21ca8305de135965a06b))
+
+
+### Bug Fixes
+
+* export structural SVG from RC-JVM ([#3253](https://github.com/yschimke/compose-ai-tools/issues/3253)) ([0b60edb](https://github.com/yschimke/compose-ai-tools/commit/0b60edb66d1f18da789e99c6774a6feb2c5726a9))
+
+
+### Performance Improvements
+
+* **serve:** render off-screen cards' themed pixels on scroll, not up front ([#3254](https://github.com/yschimke/compose-ai-tools/issues/3254)) ([135fa55](https://github.com/yschimke/compose-ai-tools/commit/135fa55ec2639939c7b7a77c05bbd220f65e66c7))
+
 ## [0.19.26](https://github.com/yschimke/compose-ai-tools/compare/v0.19.25...v0.19.26) (2026-08-04)
 
 
