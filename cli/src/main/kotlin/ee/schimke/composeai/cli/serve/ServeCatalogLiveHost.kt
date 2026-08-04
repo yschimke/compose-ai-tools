@@ -78,6 +78,8 @@ class ServeCatalogLiveHost(
   private val perPreviewRenderStats: () -> List<RenderPerfSnapshot> = { emptyList() },
   /** Pool occupancy snapshots for `/status.json`, supplied by the pool. */
   private val perPreviewPoolStats: () -> List<DaemonPoolSnapshot> = { emptyList() },
+  /** Identical monolithic daemon replicas used only for a leased theme-render batch. */
+  private val sharedDaemonPool: ServeSharedDaemonPool? = null,
   /**
    * Serve the baked vector immediately and warm the daemon in the background rather than blocking a
    * browse on a cold (possibly minutes-long, esp. Android/Robolectric) first render — see the
@@ -410,16 +412,18 @@ class ServeCatalogLiveHost(
    */
   override fun canRenderOverridesFor(previewId: String): Boolean = previewId in alias
 
-  /** A leased burst is safe only when distinct previews have independent pooled daemons. */
+  /** A leased burst is safe only when requests can borrow independent daemon processes. */
   /**
-   * A burst is only real if the renders can actually proceed in parallel. The per-preview pool can
-   * — one daemon per preview — but the shared daemon has a single render lock, so advertising five
-   * there would funnel five workers into one lock, hand four of them `Busy`, and the page would
-   * exhaust its three retries and leave those cards on baked pixels. Worse than serial, not better.
-   * So capacity follows the lane snapshots actually use.
+   * Shared mode borrows identical monolithic replicas, retaining one warm catalog classpath per
+   * process while allowing a leased batch to render five cards at once. The older per-preview mode
+   * remains independently parallel. Without either pool the single daemon render lock is serial.
    */
   override val themeRenderBurstCapacity: Int =
-    if (perPreviewResolve != null && !sharedDaemonRenders) 5 else 1
+    when {
+      sharedDaemonRenders -> sharedDaemonPool?.capacity ?: 1
+      perPreviewResolve != null -> ThemeRenderLeaseManager.MAX_CONCURRENCY
+      else -> 1
+    }
 
   /** The gesture override is honoured by the daemon lane, if that daemon is Android-backed. */
   // The four capability flags below are `by lazy` for one reason: reading them forces the daemon
@@ -439,17 +443,23 @@ class ServeCatalogLiveHost(
    * so it contributes nothing.
    */
   /**
-   * The shared daemon (0 or 1) plus the per-preview pool's residents. Delegating to
-   * [live.daemonProcessCount] rather than adding one for [daemonStarted] matters: this host reports
-   * started when only a pooled child is up, so a flat `+1` would invent a monolithic daemon that
-   * does not exist.
+   * The primary shared daemon, its leased-batch replicas, plus the per-preview pool's residents.
+   * Delegating to [live.daemonProcessCount] rather than adding one for [daemonStarted] matters:
+   * this host reports started when only a pooled child is up, so a flat `+1` would invent a
+   * monolithic daemon that does not exist.
    */
   override val daemonProcessCount: Int
-    get() = live.daemonProcessCount + perPreviewPoolStats().sumOf { it.open }
+    get() =
+      live.daemonProcessCount +
+        (sharedDaemonPool?.replicaProcessCount() ?: 0) +
+        perPreviewPoolStats().sumOf { it.open }
 
   override val daemonStarted: Boolean
     get() =
-      live.daemonStarted || perPreviewStreamCount() > 0 || perPreviewPoolStats().any { it.open > 0 }
+      live.daemonStarted ||
+        (sharedDaemonPool?.replicaProcessCount() ?: 0) > 0 ||
+        perPreviewStreamCount() > 0 ||
+        perPreviewPoolStats().any { it.open > 0 }
 
   override val gesturesRenderable: Boolean by lazy { live.gesturesRenderable }
 
@@ -510,7 +520,17 @@ class ServeCatalogLiveHost(
     return baked.bakedRender(previewId, overrides)
   }
 
-  override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
+  override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+    renderInternal(previewId, overrides, leased = false)
+
+  override fun renderLeased(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+    renderInternal(previewId, overrides, leased = true)
+
+  private fun renderInternal(
+    previewId: String,
+    overrides: PreviewOverrides,
+    leased: Boolean,
+  ): RenderOutcome {
     val themeCacheKey = themeCacheKey(previewId, overrides)
     cachedRender(previewId, overrides)?.let {
       return it
@@ -525,15 +545,19 @@ class ServeCatalogLiveHost(
       // lane, so it must be awaited even cold and its outcome returned as-is. Everything below is
       // the baked-first routing, which such an id can't use.
       if (previewId in liveOnlyPreviewIds) {
-        return cacheThemeRender(themeCacheKey, renderDaemon(daemonId, overrides))
+        return cacheThemeRender(themeCacheKey, renderDaemon(daemonId, overrides, leased))
       }
       // Only await the daemon when it's warm and free. A cold Android render can take minutes, and
       // blocking the browse — and the HTTP render slot it holds — on it is what saturates the whole
       // server. Ordinary override requests may fall back to baked pixels while warming. A pure
       // theme request must instead report Busy: returning baked pixels as a successful 200 would
       // make the grid believe the requested theme had loaded and it would never retry.
-      if (daemonWarmOrScheduling(daemonId)) {
-        val live = renderDaemon(daemonId, overrides)
+      // A leased batch is an explicit request to pay for parallel live pixels now. Let its shared
+      // replicas cold-start on the request path if necessary; otherwise the per-id warm guard would
+      // return Busy for every card and the pool would never grow. Ordinary renders retain the
+      // baked-first/background-warm behaviour.
+      if (leased || daemonWarmOrScheduling(daemonId)) {
+        val live = renderDaemon(daemonId, overrides, leased)
         // NotFound joins Busy in falling through rather than being returned. It means no daemon on
         // either lane carries this id — the shared one never listed it and its per-preview bundle
         // didn't start (a classpath the box can't resolve, say). That is a statement about the
@@ -642,8 +666,17 @@ class ServeCatalogLiveHost(
    * Only [RenderOutcome.NotFound] falls through — a Busy or a failure is that daemon's real answer
    * and re-running it elsewhere would just double the work.
    */
-  private fun renderDaemon(daemonId: String, overrides: PreviewOverrides): RenderOutcome {
-    val outcome = renderHostFor(daemonId).render(daemonId, overrides)
+  private fun renderDaemon(
+    daemonId: String,
+    overrides: PreviewOverrides,
+    leased: Boolean = false,
+  ): RenderOutcome {
+    val outcome =
+      if (sharedDaemonRenders && leased && sharedDaemonPool != null) {
+        sharedDaemonPool.render(daemonId, overrides)
+      } else {
+        renderHostFor(daemonId).render(daemonId, overrides)
+      }
     if (outcome != RenderOutcome.NotFound || !sharedDaemonRenders) return outcome
     val perPreview = perPreviewResolve?.invoke(daemonId) ?: return outcome
     return perPreview.render(daemonId, overrides)
@@ -756,7 +789,7 @@ class ServeCatalogLiveHost(
    * render work (mirrors how [activeStreamCount] adds the pool's streams).
    */
   override fun renderPerfStats(): RenderPerfSnapshot? {
-    val pool = perPreviewRenderStats()
+    val pool = perPreviewRenderStats() + (sharedDaemonPool?.renderPerfStats() ?: emptyList())
     val monolithic = live.renderPerfStats()
     // Aggregating a single snapshot would null its percentiles (windows don't merge), so keep the
     // monolithic view verbatim until the pool actually has daemons to fold in.
@@ -764,7 +797,9 @@ class ServeCatalogLiveHost(
     return RenderPerfSnapshot.aggregate(listOfNotNull(monolithic) + pool)
   }
 
-  override fun daemonPoolStats(): List<DaemonPoolSnapshot> = perPreviewPoolStats()
+  override fun daemonPoolStats(): List<DaemonPoolSnapshot> =
+    listOfNotNull(sharedDaemonPool?.takeIf { sharedDaemonRenders }?.snapshot()) +
+      perPreviewPoolStats()
 
   /**
    * Graft the daemon previews' per-preview metadata onto the baked browse surface. The daemon knows
@@ -812,6 +847,7 @@ class ServeCatalogLiveHost(
       }
     }
     try {
+      sharedDaemonPool?.close()
       live.close()
     } finally {
       baked.close()

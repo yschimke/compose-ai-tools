@@ -2854,6 +2854,7 @@ class ServeHttpServer(
                   } else {
                     try {
                       if (scroll) renderHost.renderScrollPng(previewId, overrides)
+                      else if (leasePermit != null) renderHost.renderLeased(previewId, overrides)
                       else renderHost.render(previewId, overrides)
                     } finally {
                       renderSemaphore.release()

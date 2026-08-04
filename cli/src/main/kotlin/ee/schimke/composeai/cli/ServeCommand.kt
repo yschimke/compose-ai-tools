@@ -50,6 +50,7 @@ import ee.schimke.composeai.cli.serve.ServeRevisionFactory
 import ee.schimke.composeai.cli.serve.ServeSessionFactory
 import ee.schimke.composeai.cli.serve.ServeSessionRegistry
 import ee.schimke.composeai.cli.serve.ServeSessionState
+import ee.schimke.composeai.cli.serve.ServeSharedDaemonPool
 import ee.schimke.composeai.cli.serve.ServeStartupBundles
 import ee.schimke.composeai.cli.serve.ServeTrustAdmin
 import ee.schimke.composeai.cli.serve.ServeTrustStoreFile
@@ -946,7 +947,7 @@ class ServeCommand(args: List<String>) : Command(args) {
    */
   private fun openHost(state: ServeSessionState): ServeHost? =
     runCatching {
-        val daemon =
+        fun openDaemon(): ServeRenderHost =
           ServeRenderHost.open(
             descriptorPath = state.descriptor,
             workspaceRoot = state.workspaceRoot,
@@ -956,6 +957,7 @@ class ServeCommand(args: List<String>) : Command(args) {
             declaredThemes = state.declaredThemes,
             onLog = { System.err.println("[daemon serve] $it") },
           )
+        val daemon = openDaemon()
         val fallback = state.bakedFallback
         if (fallback != null)
           ServeCatalogLiveHost(
@@ -966,6 +968,8 @@ class ServeCommand(args: List<String>) : Command(args) {
               perPreviewStreamCount = state.perPreviewStreamCount,
               perPreviewRenderStats = state.perPreviewRenderStats,
               perPreviewPoolStats = state.perPreviewPoolStats,
+              sharedDaemonPool =
+                ServeSharedDaemonPool(primary = daemon, openReplica = ::openDaemon),
               catalogThemeCache = state.catalogThemeCache ?: CatalogThemeCache(),
               serverIdleMillis = state.serverIdleMillis,
               backgroundWork = state.backgroundWork,

@@ -254,6 +254,14 @@ interface ServeHost : AutoCloseable {
   fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome
 
   /**
+   * Render a request admitted by the server's short-lived catalog theme lease. Hosts that cannot
+   * parallelise keep the ordinary [render] behaviour. A catalog backed by a replica pool overrides
+   * this to borrow an independent shared daemon, so only explicitly leased batches grow the pool.
+   */
+  fun renderLeased(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+    render(previewId, overrides)
+
+  /**
    * The captured Remote Compose document bytes for [previewId] — the bundle's `ir/<id>.rc` sidecar
    * — or null when this host carries none. Served over `GET /render/<id>.rc` so an in-browser
    * Remote Compose player can render the document client-side (the browser counterpart of the

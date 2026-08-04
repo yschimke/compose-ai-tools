@@ -1606,7 +1606,7 @@ object ServeWeb {
         el.textContent = label;
         el.setAttribute("data-cp-daemon-running", state.running ? "1" : "0");
         el.title = state.pooled
-          ? state.pooled + " of " + state.poolCapacity + " per-preview daemons resident"
+          ? state.pooled + " of " + state.poolCapacity + " pooled daemons resident"
           : "";
       }
       function pollDaemons() {
