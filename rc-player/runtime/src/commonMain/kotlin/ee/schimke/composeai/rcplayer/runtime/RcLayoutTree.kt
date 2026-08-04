@@ -569,8 +569,11 @@ public object RcLayoutTree {
 
   /** CoreDocument assigns the last CanvasOperations container to its enclosing component. */
   private fun canvasOperations(container: RcLinkedNode.Container): List<RcLinkedNode>? =
-    container.children
-      .filterIsInstance<RcLinkedNode.Container>()
+    (container.children.filterIsInstance<RcLinkedNode.Container>() +
+        container.children
+          .filterIsInstance<RcLinkedNode.Container>()
+          .filter { it.operation is RcLayoutContent }
+          .flatMap { it.children.filterIsInstance<RcLinkedNode.Container>() })
       .lastOrNull { it.operation.opcode == RcOpcodes.CANVAS_OPERATIONS }
       ?.children
 

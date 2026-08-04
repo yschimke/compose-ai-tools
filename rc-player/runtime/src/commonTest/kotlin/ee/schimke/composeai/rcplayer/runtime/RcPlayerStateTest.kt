@@ -71,7 +71,19 @@ class RcPlayerStateTest {
       RcComponentValue.VALID_TYPES.map { RcComponentValue(it, componentId = 7, valueId = 100 + it) }
     val state =
       RcPlayerState(
-        RcDocument(RcHeader(RcVersion(0, 1, 0)), bindings),
+        RcDocument(
+          RcHeader(RcVersion(0, 1, 0)),
+          bindings +
+            RcFloatExpression(
+              200,
+              listOf(
+                RcFloatWord(0x7fc00000 or 100),
+                RcFloatWord.literal(2f),
+                RcFloatExpressionEvaluator.operatorWord(RcFloatExpressionEvaluator.OFFSET + 4),
+              ),
+              null,
+            ),
+        ),
         onInvalidated = { invalidations += 1 },
       )
     val first = RcComponentGeometry(40f, 30f, 2f, 3f, 12f, 13f)
@@ -81,6 +93,7 @@ class RcPlayerStateTest {
       listOf(40f, 30f, 2f, 3f, 12f, 13f, 40f, 30f),
       RcComponentValue.VALID_TYPES.map { state.resolve(RcFloatWord(0x7fc00000 or (100 + it))) },
     )
+    assertEquals(20f, state.resolve(RcFloatWord(0x7fc00000 or 200)))
     assertEquals(1, invalidations)
     assertFalse(state.publishComponentGeometry(7, first))
     assertEquals(1, invalidations, "stable geometry must not schedule another measure pass")
@@ -92,6 +105,7 @@ class RcPlayerStateTest {
 
     assertTrue(state.publishComponentGeometry(7, first.copy(width = 41f)))
     assertEquals(41f, state.resolve(RcFloatWord(0x7fc00000 or 100)))
+    assertEquals(20.5f, state.resolve(RcFloatWord(0x7fc00000 or 200)))
     assertEquals(75f, state.resolve(RcFloatWord(0x7fc00000 or 106)))
     assertEquals(3, invalidations)
   }

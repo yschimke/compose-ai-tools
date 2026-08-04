@@ -133,6 +133,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
@@ -593,7 +594,8 @@ private fun RenderLayoutNode(
       }
     is RcLayoutNode.Row -> {
       val density = androidx.compose.ui.platform.LocalDensity.current
-      val spacing = with(density) { state.resolve(node.operation.spacedBy).dp.roundToPx() }
+      val spacingDp = state.resolve(node.operation.spacedBy).dp
+      val spacing = with(density) { spacingDp.roundToPx() }
       val rowModifier =
         effectiveModifier.applyComponentModifiers(
           node.modifiers,
@@ -621,7 +623,7 @@ private fun RenderLayoutNode(
         Row(
           rowModifier,
           horizontalArrangement =
-            RcHorizontalArrangement(node.operation.horizontalPositioning, spacing),
+            RcHorizontalArrangement(node.operation.horizontalPositioning, spacingDp),
           verticalAlignment = rowAlignment(node.operation.verticalPositioning),
         ) {
           node.content.children.forEach { child ->
@@ -638,8 +640,7 @@ private fun RenderLayoutNode(
       }
     }
     is RcLayoutNode.Column -> {
-      val density = androidx.compose.ui.platform.LocalDensity.current
-      val spacing = with(density) { state.resolve(node.operation.spacedBy).dp.roundToPx() }
+      val spacing = state.resolve(node.operation.spacedBy).dp
       Column(
         effectiveModifier.applyComponentModifiers(
           node.modifiers,
@@ -667,8 +668,7 @@ private fun RenderLayoutNode(
       }
     }
     is RcLayoutNode.Flow -> {
-      val density = androidx.compose.ui.platform.LocalDensity.current
-      val spacing = with(density) { state.resolve(node.operation.spacedBy).dp.roundToPx() }
+      val spacing = state.resolve(node.operation.spacedBy).dp
       @OptIn(ExperimentalLayoutApi::class)
       FlowRow(
         effectiveModifier.applyComponentModifiers(
@@ -683,7 +683,7 @@ private fun RenderLayoutNode(
         ),
         horizontalArrangement =
           RcHorizontalArrangement(node.operation.horizontalPositioning, spacing),
-        verticalArrangement = RcVerticalArrangement(node.operation.verticalPositioning, 0),
+        verticalArrangement = RcVerticalArrangement(node.operation.verticalPositioning, 0.dp),
         itemVerticalAlignment = rowAlignment(node.operation.verticalPositioning),
         maxItemsInEachRow = node.operation.maxItemsInEachRow,
         maxLines = node.operation.maxLines,
@@ -1368,7 +1368,7 @@ internal fun columnAlignment(horizontal: Int): Alignment.Horizontal =
     else -> error("Unknown AndroidX column horizontal position $horizontal")
   }
 
-private class RcHorizontalArrangement(private val positioning: Int, private val spacingPx: Int) :
+private class RcHorizontalArrangement(private val positioning: Int, override val spacing: Dp) :
   Arrangement.Horizontal {
   override fun Density.arrange(
     totalSize: Int,
@@ -1380,21 +1380,21 @@ private class RcHorizontalArrangement(private val positioning: Int, private val 
       totalSize,
       sizes,
       positioning,
-      spacingPx,
+      spacing.roundToPx(),
       reverse = layoutDirection == LayoutDirection.Rtl,
       outPositions = outPositions,
     )
   }
 }
 
-private class RcVerticalArrangement(private val positioning: Int, private val spacingPx: Int) :
+private class RcVerticalArrangement(private val positioning: Int, override val spacing: Dp) :
   Arrangement.Vertical {
   override fun Density.arrange(totalSize: Int, sizes: IntArray, outPositions: IntArray) {
     arrangeLinear(
       totalSize,
       sizes,
       positioning,
-      spacingPx,
+      spacing.roundToPx(),
       reverse = false,
       outPositions = outPositions,
     )
@@ -1469,7 +1469,7 @@ private fun Modifier.applyComponentModifiers(
       computeBase.applyLayoutComputes(modifiers, state)
     }
   modifiers.dimensionConstraints.forEach { constraint ->
-    result = result.applyDimensionConstraint(constraint, state, density)
+    result = result.applyDimensionConstraint(constraint, state)
   }
   result = result.applyWidth(modifiers, state, density, fillMissingDimensions)
   result = result.applyHeight(modifiers, state, density, fillMissingDimensions)
@@ -1512,10 +1512,10 @@ private fun Modifier.applyComponentModifiers(
   modifiers.padding.forEach { padding ->
     result =
       result.padding(
-        start = with(density) { state.resolve(padding.left).toDp() },
-        top = with(density) { state.resolve(padding.top).toDp() },
-        end = with(density) { state.resolve(padding.right).toDp() },
-        bottom = with(density) { state.resolve(padding.bottom).toDp() },
+        start = state.resolve(padding.left).dp,
+        top = state.resolve(padding.top).dp,
+        end = state.resolve(padding.right).dp,
+        bottom = state.resolve(padding.bottom).dp,
       )
   }
   if (modifiers.clicks.any { it.type != RcClickActionType.CLICK }) {
@@ -2207,39 +2207,28 @@ private fun Modifier.applyGraphicsLayer(
 private fun Modifier.applyDimensionConstraint(
   operation: ee.schimke.composeai.rcplayer.protocol.RcOperation,
   state: RcPlayerState,
-  density: Density,
 ): Modifier =
   when (operation) {
     is RcWidthInModifier ->
-      applyWidthRange(state.resolve(operation.minimum), state.resolve(operation.maximum), density)
+      applyWidthRange(state.resolve(operation.minimum), state.resolve(operation.maximum))
     is RcHeightInModifier ->
-      applyHeightRange(state.resolve(operation.minimum), state.resolve(operation.maximum), density)
+      applyHeightRange(state.resolve(operation.minimum), state.resolve(operation.maximum))
     is RcDimensionConstraintsModifier ->
       when (operation.type) {
         RcDimensionConstraintsModifier.HORIZONTAL ->
-          applyWidthRange(
-            state.resolve(operation.minimum),
-            state.resolve(operation.maximum),
-            density,
-          )
+          applyWidthRange(state.resolve(operation.minimum), state.resolve(operation.maximum))
         RcDimensionConstraintsModifier.VERTICAL ->
-          applyHeightRange(
-            state.resolve(operation.minimum),
-            state.resolve(operation.maximum),
-            density,
-          )
+          applyHeightRange(state.resolve(operation.minimum), state.resolve(operation.maximum))
         RcDimensionConstraintsModifier.REQUIRED_HORIZONTAL ->
           applyWidthRange(
             state.resolve(operation.minimum),
             state.resolve(operation.maximum),
-            density,
             required = true,
           )
         RcDimensionConstraintsModifier.REQUIRED_VERTICAL ->
           applyHeightRange(
             state.resolve(operation.minimum),
             state.resolve(operation.maximum),
-            density,
             required = true,
           )
         else -> this
@@ -2250,11 +2239,10 @@ private fun Modifier.applyDimensionConstraint(
 private fun Modifier.applyWidthRange(
   minimum: Float,
   maximum: Float,
-  density: Density,
   required: Boolean = false,
 ): Modifier {
-  val min = with(density) { minimum.toDp() }
-  val max = with(density) { maximum.toDp() }
+  val min = minimum.dp
+  val max = maximum.dp
   return when {
     minimum == -1f && maximum == -1f -> this
     required && minimum == -1f -> requiredWidthIn(max = max)
@@ -2269,11 +2257,10 @@ private fun Modifier.applyWidthRange(
 private fun Modifier.applyHeightRange(
   minimum: Float,
   maximum: Float,
-  density: Density,
   required: Boolean = false,
 ): Modifier {
-  val min = with(density) { minimum.toDp() }
-  val max = with(density) { maximum.toDp() }
+  val min = minimum.dp
+  val max = maximum.dp
   return when {
     minimum == -1f && maximum == -1f -> this
     required && minimum == -1f -> requiredHeightIn(max = max)
@@ -3386,13 +3373,7 @@ private fun DrawScope.drawTweenPath(
   val start = state.resolve(operation.start)
   val stop = state.resolve(operation.stop)
   val trimmed = trimPath(path, start, stop)
-  drawPath(
-    path = trimmed,
-    color = paint.composeColor(),
-    style = paint.style(),
-    colorFilter = paint.colorFilter,
-    blendMode = paint.blendMode,
-  )
+  drawRcPath(trimmed, paint)
 }
 
 internal fun tweenPathData(
@@ -3472,13 +3453,7 @@ private fun DrawScope.drawIdOperation(
 ) {
   when (operation.opcode) {
     RcOpcodes.DRAW_PATH -> {
-      drawPath(
-        path = pathForId(operation.id, state, computedPaths),
-        color = paint.composeColor(),
-        style = paint.style(),
-        colorFilter = paint.colorFilter,
-        blendMode = paint.blendMode,
-      )
+      drawRcPath(pathForId(operation.id, state, computedPaths), paint)
     }
     RcOpcodes.CLIP_PATH -> {
       // AndroidX packs the path id in the low 20 bits and the Region.Op in the high byte.
@@ -3489,6 +3464,28 @@ private fun DrawScope.drawIdOperation(
         if (regionOp == 1) ClipOp.Difference else ClipOp.Intersect,
       )
     }
+  }
+}
+
+private fun DrawScope.drawRcPath(path: Path, paint: RcPaintState) {
+  val brush = paint.brush
+  if (brush == null) {
+    drawPath(
+      path = path,
+      color = paint.composeColor(),
+      style = paint.style(),
+      colorFilter = paint.colorFilter,
+      blendMode = paint.blendMode,
+    )
+  } else {
+    drawPath(
+      path = path,
+      brush = brush,
+      alpha = paint.alpha,
+      style = paint.style(),
+      colorFilter = paint.colorFilter,
+      blendMode = paint.blendMode,
+    )
   }
 }
 
@@ -3621,15 +3618,34 @@ private fun DrawScope.draw6(operation: RcDraw6, paint: RcPaintState, state: RcPl
   val e = state.resolve(operation.fifth)
   val f = state.resolve(operation.sixth)
   when (operation.opcode) {
-    RcOpcodes.DRAW_ROUND_RECT ->
-      drawRoundRect(
-        paint.composeColor(),
-        Offset(a, b),
-        Size(c - a, d - b),
-        CornerRadius(e, f),
-        style = paint.style(),
-        blendMode = paint.blendMode,
-      )
+    RcOpcodes.DRAW_ROUND_RECT -> {
+      val topLeft = Offset(a, b)
+      val size = Size(c - a, d - b)
+      val cornerRadius = CornerRadius(e, f)
+      val brush = paint.brush
+      if (brush == null) {
+        drawRoundRect(
+          paint.composeColor(),
+          topLeft,
+          size,
+          cornerRadius,
+          style = paint.style(),
+          colorFilter = paint.colorFilter,
+          blendMode = paint.blendMode,
+        )
+      } else {
+        drawRoundRect(
+          brush,
+          topLeft,
+          size,
+          cornerRadius,
+          alpha = paint.alpha,
+          style = paint.style(),
+          colorFilter = paint.colorFilter,
+          blendMode = paint.blendMode,
+        )
+      }
+    }
     RcOpcodes.DRAW_ARC,
     RcOpcodes.DRAW_SECTOR ->
       drawArc(

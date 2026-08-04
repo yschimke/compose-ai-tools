@@ -873,7 +873,13 @@ public class RcPlayerState(
         changed = true
       }
     }
-    if (changed) onInvalidated()
+    if (changed) {
+      // ComponentValue is a variable source in AndroidX. Expressions listening to it are refreshed
+      // before the settling draw, including expressions used by layout modifiers rather than a
+      // CanvasOperations block.
+      document.operations.filterIsInstance<RcFloatExpression>().forEach(::applyFloatExpression)
+      onInvalidated()
+    }
     return changed
   }
 
