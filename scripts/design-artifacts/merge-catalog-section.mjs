@@ -102,6 +102,40 @@ async function sameBytes(a, b) {
  * in the host. Skipping *every* top-level file (rather than a fixed denylist)
  * stays correct if the generator grows a new top-level artifact.
  */
+/**
+ * The one nested asset that is a *map*, not a per-component file.
+ *
+ * `annotations/index.json` is keyed by preview and reference id, so two catalogs
+ * legitimately carry different copies — the host's own and the folded section's.
+ * Byte-comparing them aborts the fold (which is exactly what happened the first
+ * time the host catalog produced a non-empty one). Union the two maps instead:
+ * the folded section's components become tabs in the host, so their annotations
+ * belong alongside the host's rather than replacing or blocking them.
+ */
+const ANNOTATIONS_REL = join("annotations", "index.json");
+
+async function mergeAnnotationManifests(src, dest) {
+  const read = async (p) => {
+    try {
+      return JSON.parse(await readFile(p, "utf8"));
+    } catch {
+      return null;
+    }
+  };
+  const a = (await read(dest)) ?? {};
+  const b = (await read(src)) ?? {};
+  const schema = a.schema ?? b.schema;
+  // Host entries win a key collision: the fold is additive, and a borrowed
+  // catalog must never silently redefine an id the host already published.
+  const merged = {
+    schema,
+    previews: { ...(b.previews ?? {}), ...(a.previews ?? {}) },
+    references: { ...(b.references ?? {}), ...(a.references ?? {}) },
+  };
+  await mkdir(dirname(dest), { recursive: true });
+  await writeFile(dest, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+}
+
 async function copyAssets(fromDir, intoDir) {
   let copied = 0;
   for (const src of await listFiles(fromDir)) {
@@ -111,6 +145,11 @@ async function copyAssets(fromDir, intoDir) {
     // foldable asset lives in a subdirectory (images/ / wireframes/ / figma/).
     if (!rel.includes(sep)) continue;
     const dest = join(intoDir, rel);
+    if (rel === ANNOTATIONS_REL) {
+      await mergeAnnotationManifests(src, dest);
+      copied += 1;
+      continue;
+    }
     const existing = await stat(dest).catch(() => null);
     if (existing) {
       if (!(await sameBytes(src, dest))) {

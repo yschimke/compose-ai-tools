@@ -178,3 +178,67 @@ test("mergeCatalogSection refuses to overwrite a differing asset", async () => {
     /differs between the two catalogs/,
   );
 });
+
+test("mergeCatalogSection unions annotation manifests instead of colliding", async () => {
+  // Regression: once the host catalog emitted a non-empty annotations/index.json,
+  // the fold aborted with "differs between the two catalogs" — both sides legitimately
+  // carry one, keyed by preview/reference id rather than being a per-component file.
+  const root = await mkdtemp(join(tmpdir(), "merge-catalog-annotations-"));
+  const into = join(root, "into");
+  const from = join(root, "from");
+  await mkdir(join(into, "annotations"), { recursive: true });
+  await mkdir(join(from, "annotations"), { recursive: true });
+  await writeFile(join(into, "catalog.json"), JSON.stringify(manifest([comp("Host/One")])));
+  await writeFile(join(from, "catalog.json"), JSON.stringify(manifest([comp("M3/Two")])));
+  await writeFile(
+    join(into, "annotations/index.json"),
+    JSON.stringify({
+      schema: "compose-preview-annotations/v1",
+      previews: { "host-one__ideal__default": [{ kind: "layout", label: "pad 8dp" }] },
+      references: { "ref-host": [{ kind: "typography", label: "text 14px/20" }] },
+    }),
+  );
+  await writeFile(
+    join(from, "annotations/index.json"),
+    JSON.stringify({
+      schema: "compose-preview-annotations/v1",
+      previews: { "m3-two__ideal__default": [{ kind: "layout", label: "pad 16dp" }] },
+      references: {},
+    }),
+  );
+
+  await mergeCatalogSection({ into, from, section: "Material 3" });
+
+  const merged = JSON.parse(await readFile(join(into, "annotations/index.json"), "utf8"));
+  assert.equal(merged.schema, "compose-preview-annotations/v1");
+  assert.deepEqual(Object.keys(merged.previews).sort(), [
+    "host-one__ideal__default",
+    "m3-two__ideal__default",
+  ]);
+  // The host's reference layer survives the fold.
+  assert.deepEqual(Object.keys(merged.references), ["ref-host"]);
+});
+
+test("a folded catalog cannot redefine an id the host already published", async () => {
+  const root = await mkdtemp(join(tmpdir(), "merge-catalog-annotations-win-"));
+  const into = join(root, "into");
+  const from = join(root, "from");
+  await mkdir(join(into, "annotations"), { recursive: true });
+  await mkdir(join(from, "annotations"), { recursive: true });
+  await writeFile(join(into, "catalog.json"), JSON.stringify(manifest([comp("Host/One")])));
+  await writeFile(join(from, "catalog.json"), JSON.stringify(manifest([comp("M3/Two")])));
+  const shared = { schema: "compose-preview-annotations/v1", references: {} };
+  await writeFile(
+    join(into, "annotations/index.json"),
+    JSON.stringify({ ...shared, previews: { shared__id: [{ kind: "layout", label: "HOST" }] } }),
+  );
+  await writeFile(
+    join(from, "annotations/index.json"),
+    JSON.stringify({ ...shared, previews: { shared__id: [{ kind: "layout", label: "BORROWED" }] } }),
+  );
+
+  await mergeCatalogSection({ into, from, section: "Material 3" });
+
+  const merged = JSON.parse(await readFile(join(into, "annotations/index.json"), "utf8"));
+  assert.equal(merged.previews.shared__id[0].label, "HOST");
+});
