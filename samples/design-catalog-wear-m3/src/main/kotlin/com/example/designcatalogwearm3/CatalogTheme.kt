@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -56,6 +57,15 @@ fun WearSticker(content: @Composable () -> Unit) {
  */
 @Composable
 fun WearCatalogTheme(content: @Composable () -> Unit) {
+  // A server-selected @WearThemeCatalog provider already installed the requested theme outside
+  // this preview. Do not immediately replace it with the catalog default from inside the sticker.
+  // This mirrors Confetti Wear's PreviewThemeOverrideInstalled contract and is what makes a theme
+  // choice affect the component previews themselves, not only the generated theme specimen.
+  if (LocalWearCatalogThemeOverride.current) {
+    content()
+    return
+  }
+
   val font =
     wearCatalogFont(previewOverrideFont("theme.font", "Roboto Flex", suggestions = WEAR_FONT_NAMES))
   val colorScheme = wearColorScheme(previewOverrideString("theme.colors", "M3"), MaterialTheme.colorScheme)
@@ -84,10 +94,29 @@ fun wearCatalogFont(name: String): FontFamily =
  */
 fun wearColorScheme(name: String, base: ColorScheme): ColorScheme =
   when (name) {
+    // Confetti Wear's KotlinConf identity uses the JetBrains seed purple (#7F52FF) to build a
+    // dynamic dark scheme. This compact catalog keeps Wear's complete dark role ramp and applies
+    // that same signature seed to its primary family.
+    "KotlinConf" ->
+      base.copy(
+        primary = Color(0xFF7F52FF),
+        primaryDim = Color(0xFF633BDB),
+        primaryContainer = Color(0xFF3D247F),
+        onPrimary = Color.White,
+        onPrimaryContainer = Color(0xFFE8DDFF),
+        secondary = Color(0xFFFF8DA1),
+        secondaryDim = Color(0xFFD96C81),
+        secondaryContainer = Color(0xFF652936),
+        onSecondary = Color(0xFF3A0715),
+        onSecondaryContainer = Color(0xFFFFD9E0),
+      )
     "Coral" -> base.copy(primary = Color(0xFFFF6F61), secondary = Color(0xFFFFB4A9))
     "Teal" -> base.copy(primary = Color(0xFF4DD0E1), secondary = Color(0xFF80CBC4))
     else -> base
   }
+
+/** True while a preview-server theme provider owns the Wear Material theme for the sticker. */
+internal val LocalWearCatalogThemeOverride = compositionLocalOf { false }
 
 /**
  * The catalog's **component** multipreview: a single transparent capture, cropped to the component
