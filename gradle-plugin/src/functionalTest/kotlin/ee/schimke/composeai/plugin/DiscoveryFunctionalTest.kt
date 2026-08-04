@@ -328,6 +328,7 @@ class DiscoveryFunctionalTest {
           val caption: String = "",
           val reference: String = "",
           val parallel: String = "",
+          val sizes: Array<String> = [],
         )
 
         @Retention(AnnotationRetention.BINARY)
@@ -337,6 +338,7 @@ class DiscoveryFunctionalTest {
           val state: String = "",
           val caption: String = "",
           val props: Array<String> = [],
+          val size: String = "",
         )
 
         @Retention(AnnotationRetention.BINARY)
@@ -379,6 +381,14 @@ class DiscoveryFunctionalTest {
         // No arguments: id defaults to the function name, group to the file `@CatalogGroup`.
         @CatalogComponent
         @Preview @Composable fun PlainSticker() {}
+
+        // Breakpoints: the export fans this into one component per size, each carrying a `select`.
+        @CatalogComponent(id = "Layout/List", sizes = ["smallRound", "largeRound"])
+        @Preview @Composable fun ListLayout() {}
+
+        // A variant narrowed to one breakpoint of its function's multipreview fan-out.
+        @CatalogVariant(of = "Layout/List", state = "focused", size = "largeRound")
+        @Preview @Composable fun ListLayoutFocused() {}
 
         // No catalog annotation at all: stays out of the inventory (catalog == null).
         @Preview @Composable fun NotACatalogPreview() {}
@@ -433,6 +443,22 @@ class DiscoveryFunctionalTest {
     assertThat(plain.group).isEqualTo("Buttons")
     assertThat(plain.caption).isNull()
     assertThat(plain.parallel).isNull()
+
+    // Declared breakpoints ride the component entry verbatim; the export turns them into the
+    // per-breakpoint components (`Layout/List/smallRound`, `…/largeRound`) and their `select`.
+    val list = byFn.getValue("ListLayout").catalog
+    assertThat(list).isNotNull()
+    assertThat(list!!.sizes).containsExactly("smallRound", "largeRound").inOrder()
+    assertThat(list.size).isNull()
+
+    // A variant selects a single breakpoint instead of fanning out.
+    val focused = byFn.getValue("ListLayoutFocused").catalog
+    assertThat(focused).isNotNull()
+    assertThat(focused!!.size).isEqualTo("largeRound")
+    assertThat(focused.sizes).isEmpty()
+
+    // An un-argumented component declares no breakpoints, so nothing about the fan-out applies.
+    assertThat(plain.sizes).isEmpty()
 
     // A preview with no catalog annotation stays out of the inventory.
     assertThat(byFn.getValue("NotACatalogPreview").catalog).isNull()

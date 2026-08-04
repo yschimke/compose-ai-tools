@@ -388,10 +388,45 @@ functions delegating to a shared private composable replace *one* multipreview, 
 the annotation's other axes go with it (`@WearPreviewFontScales`, whose non-default
 scales the export promotes to a `props.fontScale` switcher, is the usual casualty).
 
-`select` applies to spec-authored `groups`. An annotation-led inventory
-(`@CatalogComponent`) has no equivalent yet — it fans out one card per breakpoint,
-which the preview server disambiguates by appending the breakpoint to a **colliding**
-card label (`Edgebutton · Small Round`).
+#### The annotation form: `@CatalogComponent(sizes = …)`
+
+An annotation-led inventory says the same thing next to the `@Preview`, so a catalog
+that keeps its inventory in code doesn't have to reintroduce `groups` to get a card
+per breakpoint:
+
+```kotlin
+@CatalogComponent(id = "Layout/List", sizes = ["smallRound", "largeRound"])
+@CatalogWearBreakpoints @Composable fun ListLayout() = FullScreenWear { … }
+```
+
+That fans out to `Layout/List/smallRound` and `Layout/List/largeRound`, each carrying
+the `select` the export already understands — one annotation produces exactly what two
+hand-written spec entries would. The rules:
+
+- **No `sizes`** (the default) is the pre-existing behaviour: every render folds onto
+  one component. Every existing annotation catalog stays on this path.
+- **One name** narrows without splitting, keeping the plain `id` — suffixing there
+  would move a published sticker's URL to say what the id already says.
+- **Several** suffix `<id>/<size>`, the breakpoint name verbatim, so there is no
+  casing convention to get wrong in one place and not the other.
+- A **`@CatalogVariant(size = "largeRound")`** selects a single breakpoint (a variant
+  folds onto one parent, so it never fans out), and that counts as its distinguishing
+  axis, so a variant naming only a `size` is legal.
+- `@CatalogVariant(of = …)` still names the parent as the annotation spells it, so a
+  variant on a fanned-out component attaches to its first breakpoint; name a suffixed
+  id explicitly to target one.
+- A spec entry still overrides the annotation, `select` included.
+
+A mistyped breakpoint isn't caught by the build-free pre-flight (it reads the
+annotation from source, not the render), but it fails the publish with the selection
+report above — naming the sizes the function actually rendered — rather than as a
+mysterious missing entry.
+
+Adopting `sizes` on an already-published catalog **moves those components' sticker
+URLs**, since the id is part of the path. It's opt-in for that reason: the preview
+server already disambiguates a *colliding* card label on its own
+(`Edgebutton · Small Round`), so the fan-out is for when you want authored ids and
+captions per breakpoint, not merely readable labels.
 
 ### Render priority: deferring the long tail to the live server
 

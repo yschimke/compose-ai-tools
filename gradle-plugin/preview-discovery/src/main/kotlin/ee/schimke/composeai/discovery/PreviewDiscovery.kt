@@ -1031,6 +1031,7 @@ object PreviewDiscovery {
           caption = annStringOrNull(variant, "caption"),
           state = annStringOrNull(variant, "state"),
           props = annStringArray(variant, "props").mapNotNull(::parseCatalogProp),
+          size = annStringOrNull(variant, "size"),
         )
       }
     val component = annotations.firstOrNull { it.name == CATALOG_COMPONENT_FQN } ?: return null
@@ -1043,6 +1044,9 @@ object PreviewDiscovery {
       caption = annStringOrNull(component, "caption"),
       reference = annStringOrNull(component, "reference"),
       parallel = annStringOrNull(component, "parallel"),
+      // Blank entries dropped: an `@CatalogComponent(sizes = [""])` would otherwise mint a
+      // component whose `select` matches no render, failing the publish on a stray comma.
+      sizes = annStringArray(component, "sizes").filter { it.isNotBlank() },
     )
   }
 

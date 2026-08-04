@@ -12,6 +12,7 @@
 
 import { CAPTURE_MODES, exportsNoSticker } from "./capture-mode.mjs";
 import { catalogBreakpoints } from "./catalog-breakpoints.mjs";
+import { catalogSizeExpansion } from "./catalog-inventory.mjs";
 import { SELECT_AXES, selectOf } from "./catalog-select.mjs";
 import {
   DEFERRED,
@@ -378,6 +379,13 @@ export function discoverComponentIds(sources) {
   const re = /@CatalogComponent\s*\(([^)]*)\)/g;
   for (const source of sources) {
     for (const m of stripComments(source).matchAll(re)) {
+      // `sizes = ["smallRound", "largeRound"]` fans one annotation into a component per breakpoint
+      // with a suffixed id, so the hero can legitimately name one of those — and the plain annotated
+      // id stays valid too (it is what the annotation literally says, and the id a `@CatalogVariant`
+      // attaches by). Emit both; the check exists to catch a hero matching NOTHING.
+      const sizes = [...(m[1].match(/(?:^|,)\s*sizes\s*=\s*\[([^\]]*)\]/)?.[1] ?? "").matchAll(
+        /"([^"]+)"/g,
+      )].map((s) => s[1]);
       // `id` is the annotation's FIRST parameter, spelled either `id = "…"` or positionally. Try the
       // named form anywhere in the argument list first, then fall back to a leading positional
       // string. Deliberately two anchored patterns rather than one alternation over "any string
@@ -387,7 +395,9 @@ export function discoverComponentIds(sources) {
       const named = m[1].match(/(?:^|,)\s*id\s*=\s*"([^"]+)"/);
       const positional = m[1].match(/^\s*"([^"]+)"/);
       const id = named?.[1] ?? positional?.[1];
-      if (id) ids.add(id);
+      if (!id) continue;
+      ids.add(id);
+      for (const entry of catalogSizeExpansion(id, sizes)) ids.add(entry.componentId);
     }
   }
   return [...ids].sort();

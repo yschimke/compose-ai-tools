@@ -929,3 +929,41 @@ test("validateSpec leaves select.size unchecked for a catalog with no size axis"
   };
   assert.deepEqual(validateSpec(spec).errors, []);
 });
+
+test("discoverComponentIds emits the ids a sizes fan-out mints, plus the annotated one", () => {
+  const source = `
+    @CatalogComponent(
+      id = "Layout/List",
+      group = "Layout",
+      sizes = ["smallRound", "largeRound"],
+    )
+    @Composable fun ListLayout() {}
+    @CatalogComponent(id = "Button/Filled", sizes = ["largeRound"])
+    @Composable fun FilledButton() {}
+  `;
+  // A single size narrows without suffixing, so `Button/Filled` stays exactly one id; the
+  // multi-size fan-out adds its per-breakpoint ids alongside the annotated one, because
+  // `display.hero` may legitimately name either and this check exists to catch a hero that
+  // matches nothing at all.
+  assert.deepEqual(discoverComponentIds([source]), [
+    "Button/Filled",
+    "Layout/List",
+    "Layout/List/largeRound",
+    "Layout/List/smallRound",
+  ]);
+});
+
+test("validateSpec resolves display.hero against a fanned-out annotation id", () => {
+  const { errors } = validateSpec(
+    { system: "wear-m3", title: "Wear M3", display: { hero: "Layout/List/largeRound" } },
+    {
+      knownPreviews: ["ListLayout"],
+      knownComponentIds: discoverComponentIds([
+        `@CatalogComponent(id = "Layout/List", sizes = ["smallRound", "largeRound"])
+         @Composable fun ListLayout() {}`,
+      ]),
+      annotatedInventory: true,
+    },
+  );
+  assert.deepEqual(errors, []);
+});

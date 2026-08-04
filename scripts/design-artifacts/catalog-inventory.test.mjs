@@ -246,3 +246,132 @@ test("applyGroupOrder is a no-op when groupOrder is absent or empty", () => {
   assert.deepEqual(applyGroupOrder(groups, undefined), groups);
   assert.deepEqual(applyGroupOrder(groups, []), groups);
 });
+
+// --- @CatalogComponent(sizes = …) / @CatalogVariant(size = …) ----------------
+
+const wearPreview = (functionName, catalog) => ({ functionName, catalog });
+
+test("a component declaring several sizes fans out into one entry per breakpoint", () => {
+  const { groups } = inventoryFromPreviews([
+    wearPreview("ListLayout", {
+      role: "COMPONENT",
+      componentId: "Layout/List",
+      group: "Layout",
+      caption: "A transforming lazy column.",
+      sizes: ["smallRound", "largeRound"],
+    }),
+  ]);
+
+  assert.deepEqual(groups[0].components, [
+    {
+      componentId: "Layout/List/smallRound",
+      preview: "ListLayout",
+      caption: "A transforming lazy column.",
+      select: { size: "smallRound" },
+    },
+    {
+      componentId: "Layout/List/largeRound",
+      preview: "ListLayout",
+      caption: "A transforming lazy column.",
+      select: { size: "largeRound" },
+    },
+  ]);
+});
+
+test("a single size narrows the component without moving its id", () => {
+  // Suffixing here would move a published sticker's URL to say something the plain id already says.
+  const { groups } = inventoryFromPreviews([
+    wearPreview("ListLayout", {
+      role: "COMPONENT",
+      componentId: "Layout/List",
+      sizes: ["largeRound"],
+    }),
+  ]);
+
+  assert.deepEqual(groups[0].components, [
+    { componentId: "Layout/List", preview: "ListLayout", select: { size: "largeRound" } },
+  ]);
+});
+
+test("no sizes leaves the component exactly as before", () => {
+  const { groups } = inventoryFromPreviews([
+    wearPreview("ListLayout", { role: "COMPONENT", componentId: "Layout/List" }),
+  ]);
+  assert.deepEqual(groups[0].components, [
+    { componentId: "Layout/List", preview: "ListLayout" },
+  ]);
+});
+
+test("duplicate size names collapse instead of minting a duplicate componentId", () => {
+  const { groups } = inventoryFromPreviews([
+    wearPreview("ListLayout", {
+      role: "COMPONENT",
+      componentId: "Layout/List",
+      sizes: ["largeRound", "largeRound"],
+    }),
+  ]);
+  assert.equal(groups[0].components.length, 1);
+  assert.equal(groups[0].components[0].componentId, "Layout/List");
+});
+
+test("a variant attaches to a fanned-out parent by its annotated id, and by a suffixed one", () => {
+  // `@CatalogVariant(of = …)` names the parent as the ANNOTATION spelled it, which the fan-out has
+  // suffixed — so the plain id must still resolve, or every variant on a fanned-out component
+  // silently orphans. A variant may also target one breakpoint explicitly.
+  const { groups, orphanVariants } = inventoryFromPreviews([
+    wearPreview("ListLayout", {
+      role: "COMPONENT",
+      componentId: "Layout/List",
+      sizes: ["smallRound", "largeRound"],
+    }),
+    wearPreview("ListLayoutPressed", {
+      role: "VARIANT",
+      componentId: "Layout/List",
+      state: "pressed",
+    }),
+    wearPreview("ListLayoutFocused", {
+      role: "VARIANT",
+      componentId: "Layout/List/largeRound",
+      state: "focused",
+    }),
+  ]);
+
+  assert.deepEqual(orphanVariants, []);
+  const [small, large] = groups[0].components;
+  assert.deepEqual(small.variants, [{ preview: "ListLayoutPressed", state: "pressed" }]);
+  assert.deepEqual(large.variants, [{ preview: "ListLayoutFocused", state: "focused" }]);
+});
+
+test("a variant's size becomes the spec select the export already understands", () => {
+  const { groups } = inventoryFromPreviews([
+    wearPreview("ListLayout", { role: "COMPONENT", componentId: "Layout/List" }),
+    wearPreview("ListLayoutLoading", {
+      role: "VARIANT",
+      componentId: "Layout/List",
+      state: "loading",
+      size: "largeRound",
+    }),
+  ]);
+
+  assert.deepEqual(groups[0].components[0].variants, [
+    { preview: "ListLayoutLoading", select: { size: "largeRound" }, state: "loading" },
+  ]);
+});
+
+test("a spec entry overrides an annotation-derived select", () => {
+  const base = inventoryFromPreviews([
+    wearPreview("ListLayout", {
+      role: "COMPONENT",
+      componentId: "Layout/List",
+      sizes: ["largeRound"],
+    }),
+  ]).groups;
+  const merged = mergeCatalogGroups(base, [
+    {
+      name: "Layout",
+      components: [{ componentId: "Layout/List", select: { size: "smallRound" } }],
+    },
+  ]);
+  assert.deepEqual(merged[0].components[0].select, { size: "smallRound" });
+  assert.equal(merged[0].components[0].preview, "ListLayout", "join key still comes from the annotation");
+});
