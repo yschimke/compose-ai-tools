@@ -44,6 +44,46 @@ class ServeWebTest {
     )
 
   @Test
+  fun `catalog component ids become readable labels without changing preview routes`() {
+    val previews =
+      listOf(
+          "appcard" to "AppCard",
+          "buttongroup" to "ButtonGroup",
+          "edgebutton" to "EdgeButton",
+          "transforminglazycolumn" to "TransformingLazyColumn",
+          "podcastdetails" to "PodcastDetails",
+          "listitem" to "ListItem",
+          "urlbutton" to "URLButton",
+        )
+        .map { (slug, componentId) ->
+          ServePreview(
+            id = "${slug}__ideal__default__light",
+            label = "${slug}__ideal__default__light",
+            componentId = componentId,
+          )
+        }
+
+    val html = ServeWeb.landingPage("catalog", previews, token = "t", basePath = "/catalog")
+
+    for (label in
+      listOf(
+        "App Card",
+        "Button Group",
+        "Edge Button",
+        "Transforming Lazy Column",
+        "Podcast Details",
+        "List Item",
+        "URL Button",
+      )) {
+      assertTrue(html.contains(">$label</"), "$label is shown with readable word boundaries")
+    }
+    assertTrue(
+      html.contains("/catalog/p/appcard__ideal__default__light"),
+      "the human label does not alter the stable preview route",
+    )
+  }
+
+  @Test
   fun `the grid folds a non-default state into the default card`() {
     val html = ServeWeb.landingPage("compose-m3", checkbox, token = "t", basePath = "/compose-m3")
 
