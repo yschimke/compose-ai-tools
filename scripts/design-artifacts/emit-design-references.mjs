@@ -53,6 +53,9 @@ import {
   referenceManifest,
 } from "./design-references.mjs";
 import { isRoundingDelta, resampleRgba } from "./png-resample.mjs";
+import { layoutFromNode } from "@design-parity/adapter-figma";
+import { scaleTree } from "./reference-layout.mjs";
+import { withReferenceAnnotations } from "@design-parity/catalog-export";
 
 function arg(name, def = undefined) {
   const i = process.argv.indexOf(`--${name}`);
@@ -224,7 +227,12 @@ async function rasterizeFigma(ref, target) {
   const png = await fetch(url);
   if (!png.ok) throw new Error(`figma image download ${png.status}`);
   const decoded = PNG.sync.read(Buffer.from(await png.arrayBuffer()));
-  return { width: decoded.width, height: decoded.height, data: decoded.data };
+  // The node document rides along so the caller can capture layout geometry from the same fetch
+  // that sized the raster — one round trip, and the geometry provably describes these pixels.
+  const document =
+    nodeJson?.nodes?.[parsed.nodeId]?.document ??
+    nodeJson?.nodes?.[parsed.nodeId.replace("-", ":")]?.document;
+  return { width: decoded.width, height: decoded.height, data: decoded.data, document };
 }
 
 /** A pre-rendered PNG for this ref under `--reference-images`, or null. */
@@ -278,6 +286,8 @@ const referencesDir = path.join(OUT, REFERENCES_DIR);
 fs.mkdirSync(referencesDir, { recursive: true });
 
 let written = 0;
+/** Reference id -> a `{ layout }` shim; `referenceAnnotations` reads only that field. */
+const annotatedReferences = {};
 for (const record of records) {
   const target = { width: record.raster.width, height: record.raster.height };
   let raster;
@@ -291,6 +301,9 @@ for (const record of records) {
     record.rastered = false;
     continue;
   }
+
+  // Captured before the resample rewrites `raster`, then scaled to the published size below.
+  const capturedLayout = raster.document ? layoutFromNode(raster.document) : undefined;
 
   if (raster.width !== target.width || raster.height !== target.height) {
     const rounding = isRoundingDelta(raster.width, raster.height, target.width, target.height);
@@ -315,6 +328,42 @@ for (const record of records) {
   // drops one row instead of showing the wrong design.
   record.raster.sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
   written++;
+
+  const scaled = capturedLayout ? scaleTree(capturedLayout, target.width) : undefined;
+  if (scaled) annotatedReferences[record.id] = { layout: scaled };
+}
+
+/**
+ * Merge the reference-side annotation layers into the bundle's `annotations/index.json`.
+ *
+ * `writeCatalog` may already have written that file with the *preview* (actual) side, so this reads
+ * and merges rather than overwriting — dropping the other half would trade one annotated column for
+ * the other instead of getting both.
+ *
+ * Fail-soft like everything else here: an unreadable existing manifest is replaced rather than
+ * fatal, and no captured geometry simply leaves the file alone. A reference lane is an enhancement
+ * and must never cost a catalog its render.
+ */
+function writeReferenceAnnotations() {
+  if (Object.keys(annotatedReferences).length === 0) return;
+  const dir = path.join(OUT, "annotations");
+  const file = path.join(dir, "index.json");
+  let existing = { schema: "compose-preview-annotations/v1", previews: {}, references: {} };
+  if (fs.existsSync(file)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+      if (parsed?.schema === existing.schema) existing = parsed;
+      else warn(`annotations/index.json has schema '${parsed?.schema}'; replacing it`);
+    } catch (error) {
+      warn(`annotations/index.json is unreadable (${error.message}); replacing it`);
+    }
+  }
+  const merged = withReferenceAnnotations(existing, annotatedReferences);
+  const count = Object.keys(merged.references).length;
+  if (count === 0) return;
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify(merged, null, 2)}\n`);
+  console.log(`design-references: annotated ${count} reference(s) in annotations/index.json`);
 }
 
 const manifest = referenceManifest(records);
@@ -322,6 +371,8 @@ fs.writeFileSync(
   path.join(referencesDir, "index.json"),
   `${JSON.stringify(manifest, null, 2)}\n`,
 );
+
+writeReferenceAnnotations();
 
 console.log(
   `design-references: published ${written}/${records.length} reference(s) to ` +
