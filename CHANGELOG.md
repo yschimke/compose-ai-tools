@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.19.33](https://github.com/yschimke/compose-ai-tools/compare/v0.19.32...v0.19.33) (2026-08-04)
+
+
+### Features
+
+* **serve:** show catalog build metadata on status ([#3302](https://github.com/yschimke/compose-ai-tools/issues/3302)) ([a7166dc](https://github.com/yschimke/compose-ai-tools/commit/a7166dcf4bfa3bbe34f69059b69a03df38b02c0e))
+
+
+### Bug Fixes
+
+* **android:** share Robolectric native runtime extraction ([#3296](https://github.com/yschimke/compose-ai-tools/issues/3296)) ([8eed4ae](https://github.com/yschimke/compose-ai-tools/commit/8eed4ae364c8efb5fff2839fd0f73ef71e78fd0f))
+* **daemon-android:** route preview parameters from bundles ([#3293](https://github.com/yschimke/compose-ai-tools/issues/3293)) ([987d71c](https://github.com/yschimke/compose-ai-tools/commit/987d71cbf262dc272ee2aec89be71de60641d94e))
+* **gradle-plugin:** distinguish unavailable resource ownership ([#3299](https://github.com/yschimke/compose-ai-tools/issues/3299)) ([ab12b11](https://github.com/yschimke/compose-ai-tools/commit/ab12b116af27b20010078796c23740e674946bea))
+* **gradle-plugin:** make resource pruning fail safe ([#3297](https://github.com/yschimke/compose-ai-tools/issues/3297)) ([87ffed1](https://github.com/yschimke/compose-ai-tools/commit/87ffed1fd86ae96acc040d56506a985c6a0ab2c2))
+* **release:** keep CLI updates available ([#3292](https://github.com/yschimke/compose-ai-tools/issues/3292)) ([547673f](https://github.com/yschimke/compose-ai-tools/commit/547673f232d33c66d07a723323873a0a5e7e58d5))
+* **release:** publish Maven readiness marker ([#3295](https://github.com/yschimke/compose-ai-tools/issues/3295)) ([69fa108](https://github.com/yschimke/compose-ai-tools/commit/69fa10886b2edab2c4bfeddc37f84c939dda2f3c))
+* **serve:** keep themes across snapshot overrides ([#3301](https://github.com/yschimke/compose-ai-tools/issues/3301)) ([a8cc181](https://github.com/yschimke/compose-ai-tools/commit/a8cc181c7f0a70cae4de580c617c95bc46bed810))
+
+
+### Performance Improvements
+
+* **serve:** cache previews by catalog generation ([#3298](https://github.com/yschimke/compose-ai-tools/issues/3298)) ([70463de](https://github.com/yschimke/compose-ai-tools/commit/70463decad85fead8fcb183d9688df3a7b4971e1))
+* **serve:** enable gentle theme optimization ([#3300](https://github.com/yschimke/compose-ai-tools/issues/3300)) ([49f8858](https://github.com/yschimke/compose-ai-tools/commit/49f88589c8a42e8badd8dbc2d9eb1486af546647))
+
 ## [0.19.32](https://github.com/yschimke/compose-ai-tools/compare/v0.19.31...v0.19.32) (2026-08-04)
 
 
