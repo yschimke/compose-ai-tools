@@ -241,17 +241,53 @@
       "sha256": "e256c473e589dec73b475b3c6ae8af2d486f36d237f8e7a95ca7044de5326591",
       "size": 44630
     },
+    "serve-landing-declared-themes-daemon-connected.dark.png": {
+      "fixture": "serve-landing-declared-themes-daemon-connected",
+      "theme": "dark",
+      "sha256": "96ec74e6e657c95b615d1d4385de8bb58b6f9ea3547a51c30f8422af0d27cd26",
+      "size": 52613
+    },
+    "serve-landing-declared-themes-daemon-connected.light.png": {
+      "fixture": "serve-landing-declared-themes-daemon-connected",
+      "theme": "light",
+      "sha256": "c6bf615409cc0501e8687f20d5a64eacbb3c26043b72b4e3c0504d9b99e94e90",
+      "size": 51472
+    },
+    "serve-landing-declared-themes-daemon-idle.dark.png": {
+      "fixture": "serve-landing-declared-themes-daemon-idle",
+      "theme": "dark",
+      "sha256": "f8981665a7f9dd124e22fa67f824d798621ee124939c94a0213470a77429877e",
+      "size": 52103
+    },
+    "serve-landing-declared-themes-daemon-idle.light.png": {
+      "fixture": "serve-landing-declared-themes-daemon-idle",
+      "theme": "light",
+      "sha256": "4ea44132b30def6d8c8faccb24bd2969b23016da3d7d615926f51aac8a791bda",
+      "size": 50935
+    },
+    "serve-landing-declared-themes-theme-inflight.dark.png": {
+      "fixture": "serve-landing-declared-themes-theme-inflight",
+      "theme": "dark",
+      "sha256": "d88efdba3807dc6fe23cc81f31a72406c8b97cf135c06f5287fd7ef9daaccc1b",
+      "size": 53522
+    },
+    "serve-landing-declared-themes-theme-inflight.light.png": {
+      "fixture": "serve-landing-declared-themes-theme-inflight",
+      "theme": "light",
+      "sha256": "8eb18ef76d578a543f22467a2991448d05b1f240f78824d4128b11bdc8f4e62a",
+      "size": 51800
+    },
     "serve-landing-declared-themes.dark.png": {
       "fixture": "serve-landing-declared-themes",
       "theme": "dark",
-      "sha256": "88ca9ff20344b6feb1d248be03dfc58dc9cd24ade34888bdc9f980a0c4518c21",
-      "size": 54397
+      "sha256": "247e11c3be5e22497651a957d1fb7320859251cd62e2f3f57a44673f6a6bf55f",
+      "size": 49601
     },
     "serve-landing-declared-themes.light.png": {
       "fixture": "serve-landing-declared-themes",
       "theme": "light",
-      "sha256": "ffa19c0852c52f4a72f364794ff85cbbd077ed50fbad0100f27d7265ca0088da",
-      "size": 54703
+      "sha256": "f05fe29b684abb3d24f013e37722f08c7c35111288d98881f1b075a6177b883b",
+      "size": 48476
     },
     "serve-landing-grouped.dark.png": {
       "fixture": "serve-landing-grouped",

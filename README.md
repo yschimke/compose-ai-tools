@@ -158,6 +158,27 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing-declared-themes/dark](renders/serve-landing-declared-themes.dark.png) |
 | `light` | ![serve-landing-declared-themes/light](renders/serve-landing-declared-themes.light.png) |
 
+## serve-landing-declared-themes-daemon-connected
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-declared-themes-daemon-connected/dark](renders/serve-landing-declared-themes-daemon-connected.dark.png) |
+| `light` | ![serve-landing-declared-themes-daemon-connected/light](renders/serve-landing-declared-themes-daemon-connected.light.png) |
+
+## serve-landing-declared-themes-daemon-idle
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-declared-themes-daemon-idle/dark](renders/serve-landing-declared-themes-daemon-idle.dark.png) |
+| `light` | ![serve-landing-declared-themes-daemon-idle/light](renders/serve-landing-declared-themes-daemon-idle.light.png) |
+
+## serve-landing-declared-themes-theme-inflight
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-declared-themes-theme-inflight/dark](renders/serve-landing-declared-themes-theme-inflight.dark.png) |
+| `light` | ![serve-landing-declared-themes-theme-inflight/light](renders/serve-landing-declared-themes-theme-inflight.light.png) |
+
 ## serve-landing-grouped
 
 | Theme | Capture |
