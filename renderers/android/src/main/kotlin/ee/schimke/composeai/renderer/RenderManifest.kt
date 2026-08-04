@@ -338,6 +338,15 @@ data class RenderPreviewParams(
    * behaviour).
    */
   val density: Float? = null,
+  /**
+   * Bound a **wrapped** width axis is measured against, replacing this renderer's generic
+   * `SANDBOX_WIDTH_DP`. Mirrors `discovery.PreviewParams.wrapSandboxWidthDp` — see its kdoc for why
+   * this is not `widthDp`. The axis still wraps, so the capture is still cropped to measured size;
+   * only the bound `Modifier.fillMaxWidth` resolves against changes. `null` keeps the sandbox.
+   */
+  val wrapSandboxWidthDp: Int? = null,
+  /** Bound a **wrapped** height axis is measured against. See [wrapSandboxWidthDp]. */
+  val wrapSandboxHeightDp: Int? = null,
   val fontScale: Float = 1.0f,
   val showSystemUi: Boolean = false,
   val showBackground: Boolean = false,

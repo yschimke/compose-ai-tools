@@ -247,13 +247,15 @@ private fun ErrorPanel(message: String) {
 
 /**
  * Resolve the [DpSize] the window should adopt for [preview]. Pinned dimensions from the
- * `@Preview(widthDp = .., heightDp = ..)` annotation win; absent ones fall back to the same
- * wrap-content sandbox (400×800 dp) the renderer uses. The 200-dp floor avoids unusable tiny
- * windows for previews that pin extreme dimensions.
+ * `@Preview(widthDp = .., heightDp = ..)` annotation win; absent ones fall back to the preview's
+ * own wrap sandbox when it declares one (`wrapSandbox*Dp` — a Wear sticker opens at watch size),
+ * and otherwise to the same 400×800 dp sandbox the renderer uses. The 200-dp floor avoids unusable
+ * tiny windows for previews that pin extreme dimensions.
  */
 private fun previewSize(preview: LoadedPreview): DpSize {
-  val widthDp = (preview.info.params.widthDp ?: 400).coerceAtLeast(200)
-  val heightDp = (preview.info.params.heightDp ?: 800).coerceAtLeast(200)
+  val params = preview.info.params
+  val widthDp = (params.widthDp ?: params.wrapSandboxWidthDp ?: 400).coerceAtLeast(200)
+  val heightDp = (params.heightDp ?: params.wrapSandboxHeightDp ?: 800).coerceAtLeast(200)
   return DpSize(widthDp.dp, heightDp.dp)
 }
 

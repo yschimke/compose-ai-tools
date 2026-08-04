@@ -39,6 +39,17 @@ data class PreviewParams(
   val maxWidthPx: Int? = null,
   val maxHeightPx: Int? = null,
   /**
+   * Bound a **wrapped** axis is measured against, in dp, replacing the renderer's generic 400×800
+   * dp sandbox. Unlike [widthDp]/[heightDp] it does NOT fix the axis: the capture still crops to
+   * the measured size, only the bound `Modifier.fillMaxWidth` and friends resolve against changes.
+   * Discovery sets it for a Wear module's device-less previews, which measure against the 227 dp
+   * watch screen and still export as tight stickers — see
+   * `discovery.PreviewDiscovery.retargetWearStickers`.
+   */
+  val wrapSandboxWidthDp: Int? = null,
+  /** See [wrapSandboxWidthDp]. */
+  val wrapSandboxHeightDp: Int? = null,
+  /**
    * Compose density factor (= densityDpi / 160) resolved at discovery from the @Preview device;
    * null means "use the renderer default". Carried through so agents can spot per-device fan-outs
    * without re-reading the Gradle manifest.

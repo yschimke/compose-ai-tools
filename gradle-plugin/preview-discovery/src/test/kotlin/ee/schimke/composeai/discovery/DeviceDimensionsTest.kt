@@ -377,4 +377,57 @@ class DeviceDimensionsTest {
     assertThat(spec.widthDp).isEqualTo(200)
     assertThat(spec.heightDp).isEqualTo(300)
   }
+
+  @Test
+  fun `resolveForRender narrows the wrap sandbox without fixing the axis`() {
+    // What a Wear module's device-less previews get from `retargetWearStickers`: the 227dp watch
+    // screen as the measuring bound, both axes still wrapped so the capture crops to content.
+    val spec =
+      DeviceDimensions.resolveForRender(
+        device = null,
+        widthDp = null,
+        heightDp = null,
+        showSystemUi = false,
+        wrapSandboxWidthDp = 227,
+        wrapSandboxHeightDp = 227,
+      )
+    assertThat(spec.wrapWidth).isTrue()
+    assertThat(spec.wrapHeight).isTrue()
+    assertThat(spec.widthDp).isEqualTo(227)
+    assertThat(spec.heightDp).isEqualTo(227)
+  }
+
+  @Test
+  fun `resolveForRender lets an explicit dp win over the wrap sandbox`() {
+    val spec =
+      DeviceDimensions.resolveForRender(
+        device = null,
+        widthDp = 120,
+        heightDp = null,
+        showSystemUi = false,
+        wrapSandboxWidthDp = 227,
+        wrapSandboxHeightDp = 227,
+      )
+    assertThat(spec.wrapWidth).isFalse()
+    assertThat(spec.widthDp).isEqualTo(120)
+    assertThat(spec.wrapHeight).isTrue()
+    assertThat(spec.heightDp).isEqualTo(227)
+  }
+
+  @Test
+  fun `resolveForRender ignores the wrap sandbox on a device frame`() {
+    val spec =
+      DeviceDimensions.resolveForRender(
+        device = "id:wearos_large_round",
+        widthDp = null,
+        heightDp = null,
+        showSystemUi = false,
+        wrapSandboxWidthDp = 999,
+        wrapSandboxHeightDp = 999,
+      )
+    assertThat(spec.wrapWidth).isFalse()
+    assertThat(spec.wrapHeight).isFalse()
+    assertThat(spec.widthDp).isEqualTo(227)
+    assertThat(spec.heightDp).isEqualTo(227)
+  }
 }

@@ -553,6 +553,21 @@ data class PreviewParams(
    * default come out at ~2.625x, not the 2.0x `xhdpi` Robolectric otherwise picks.
    */
   val density: Float? = null,
+  /**
+   * Bound a **wrapped** width axis is measured against, replacing the renderer's generic
+   * 400×800 dp sandbox ([DeviceDimensions.SANDBOX_WIDTH_DP]). `null` (the default) keeps that
+   * sandbox.
+   *
+   * Deliberately not [widthDp]: setting `widthDp` FIXES the axis, so the capture keeps the whole
+   * frame and the intrinsic crop never runs. The sandbox bound changes only what
+   * `Modifier.fillMaxWidth` and friends resolve against — a fill-width composable measures to the
+   * bound, a small one still wraps tight, and both still crop to their measured size. Set by
+   * [PreviewDiscovery.retargetWearStickers] so a Wear module's device-less previews size against
+   * the watch screen without being pinned to it (#2373).
+   */
+  val wrapSandboxWidthDp: Int? = null,
+  /** Bound a **wrapped** height axis is measured against. See [wrapSandboxWidthDp]. */
+  val wrapSandboxHeightDp: Int? = null,
   val fontScale: Float = 1.0f,
   val showSystemUi: Boolean = false,
   val showBackground: Boolean = false,

@@ -372,14 +372,17 @@ data class PreviewManifestEntry(
     // The generous sandbox bound is only for a WRAPPING axis (measured + cropped). A pinned preview
     // with no explicit size (notification / tile / Glance — their render helpers consume the concrete
     // px) keeps the historical fixed 320px frame, so this fix doesn't resize those surfaces.
+    // A per-preview wrap sandbox narrows that bound WITHOUT fixing the axis — `wrapWidth` /
+    // `wrapHeight` above are untouched, so the capture still crops to measured size. See
+    // `discovery.PreviewParams.wrapSandboxWidthDp`.
+    val sandboxWidthDp = p?.wrapSandboxWidthDp?.takeIf { it > 0 } ?: WRAP_SANDBOX_WIDTH_DP
+    val sandboxHeightDp = p?.wrapSandboxHeightDp?.takeIf { it > 0 } ?: WRAP_SANDBOX_HEIGHT_DP
     val resolvedWidthPx =
       explicitWidthPx
-        ?: if (wrapWidth) (WRAP_SANDBOX_WIDTH_DP * density).roundHalfUpPx()
-        else DEFAULT_FRAME_PX
+        ?: if (wrapWidth) (sandboxWidthDp * density).roundHalfUpPx() else DEFAULT_FRAME_PX
     val resolvedHeightPx =
       explicitHeightPx
-        ?: if (wrapHeight) (WRAP_SANDBOX_HEIGHT_DP * density).roundHalfUpPx()
-        else DEFAULT_FRAME_PX
+        ?: if (wrapHeight) (sandboxHeightDp * density).roundHalfUpPx() else DEFAULT_FRAME_PX
     val showBackground = showBackground ?: p?.showBackground ?: true
     val backgroundColor = backgroundColor ?: p?.backgroundColor ?: 0L
     val wrapperClassName = p?.wrapperClassName
@@ -442,6 +445,17 @@ data class PreviewParamsEntry(
   val device: String? = null,
   val widthDp: Int? = null,
   val heightDp: Int? = null,
+  /**
+   * Bound a **wrapped** axis is measured against, replacing [PreviewManifestEntry.Companion
+   * .WRAP_SANDBOX_WIDTH_DP] / `WRAP_SANDBOX_HEIGHT_DP`. Mirrors
+   * `discovery.PreviewParams.wrapSandboxWidthDp`; unlike [widthDp] it does not fix the axis, so
+   * [PreviewManifestEntry.resolved] still reports `wrapWidth = true` and the capture still crops to
+   * measured size. This is what lets a Wear module's device-less previews measure against the
+   * 227dp watch screen and still export as tight stickers.
+   */
+  val wrapSandboxWidthDp: Int? = null,
+  /** See [wrapSandboxWidthDp]. */
+  val wrapSandboxHeightDp: Int? = null,
   val density: Float? = null,
   /**
    * `@Preview(fontScale = …)`. One of the three axes a multi-annotation preview varies on (with
