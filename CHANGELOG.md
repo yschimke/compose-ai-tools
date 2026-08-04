@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.19.30](https://github.com/yschimke/compose-ai-tools/compare/v0.19.29...v0.19.30) (2026-08-04)
+
+
+### Bug Fixes
+
+* **design-artifacts:** merge annotation manifests when folding a catalog section ([#3276](https://github.com/yschimke/compose-ai-tools/issues/3276)) ([8d3d4d0](https://github.com/yschimke/compose-ai-tools/commit/8d3d4d01aa685a62d8a3161d1bc7faab2e3ba227))
+* **serve:** hold a card's pixels until its themed render arrives, and show the render server ([#3274](https://github.com/yschimke/compose-ai-tools/issues/3274)) ([37234b0](https://github.com/yschimke/compose-ai-tools/commit/37234b0eb02be02392ea5000cf338bc85242d5e6))
+* **wear:** measure device-less Wear previews against the watch screen, don't pin it ([#3278](https://github.com/yschimke/compose-ai-tools/issues/3278)) ([6e23440](https://github.com/yschimke/compose-ai-tools/commit/6e23440a1b05b421d47f3e13b2daabf756a2430b))
+
 ## [0.19.29](https://github.com/yschimke/compose-ai-tools/compare/v0.19.28...v0.19.29) (2026-08-04)
 
 
