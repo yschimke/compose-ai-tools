@@ -890,7 +890,7 @@ class RcLayoutRenderTest {
   }
 
   @Test
-  fun dimensionRangesClampRequestedCanvasSize() {
+  fun dimensionRangesUseRemoteDpAtNonUnitDensity() {
     val red = 0xffff0000.toInt()
     val document =
       RcDocument(
@@ -924,17 +924,17 @@ class RcLayoutRenderTest {
         ),
       )
     val scene =
-      ImageComposeScene(width = 100, height = 100, density = Density(1f)) {
+      ImageComposeScene(width = 200, height = 200, density = Density(2f)) {
         RcComposePlayer(document)
       }
     try {
       val image = scene.render()
-      val bitmap = Bitmap().apply { allocN32Pixels(100, 100) }
+      val bitmap = Bitmap().apply { allocN32Pixels(200, 200) }
       check(image.readPixels(bitmap))
 
-      assertEquals(red, bitmap.getColor(39, 29))
-      assertEquals(0, bitmap.getColor(41, 29))
-      assertEquals(0, bitmap.getColor(39, 31))
+      assertEquals(red, bitmap.getColor(79, 59))
+      assertEquals(0, bitmap.getColor(81, 59))
+      assertEquals(0, bitmap.getColor(79, 61))
     } finally {
       scene.close()
     }

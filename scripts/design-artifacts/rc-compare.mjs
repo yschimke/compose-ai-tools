@@ -23,7 +23,9 @@
  *   node rc-compare.mjs --bundle <bundle.png> --player <rc-player bundle.js> \
  *     --out <dir> [--system <id>] [--title <t>] [--threshold 0.1] [--theme light] \
  *     [--fonts <dir>] [--cmp-wasm <rc-player-wasm distribution>] \
- *     [--require-cmp-wasm] [--cmp-wasm-allowlist <json>]
+ *     [--require-cmp-wasm] [--cmp-wasm-allowlist <json>] \
+ *     [--cmp-wasm-pixel-tolerances <json>] \
+ *     [--cmp-wasm-max-cold-first-frame-ms <ms>] [--cmp-wasm-max-warm-first-frame-ms <ms>]
  *
  * `--fonts` defaults to the vendored faces the snapshot renderer itself rasterizes with (see
  * rc-fonts.mjs). Point it elsewhere to compare against a different font set, or at a
@@ -43,9 +45,12 @@ import { chromium } from "playwright";
 
 import { renderRcCompareHtml } from "./render-rc-compare-html.mjs";
 import {
+  applyCmpWasmPerformanceBudgets,
+  applyCmpWasmPixelTolerances,
   evaluateCmpWasmGate,
   formatCmpWasmGate,
   readCmpWasmAllowlist,
+  readCmpWasmPixelTolerances,
 } from "./rc-compare-gate.mjs";
 import { BG, flattenOnto, isFullyTransparent } from "./rc-compare-pixels.mjs";
 import { DEFAULT_FONTS_DIR, fontFaceCss, loadAndVerifyFonts } from "./rc-fonts.mjs";
@@ -89,6 +94,24 @@ const EMBEDDED_JVM = arg("embedded-jvm");
 const CMP_WASM = arg("cmp-wasm");
 const REQUIRE_CMP_WASM = process.argv.includes("--require-cmp-wasm");
 const CMP_WASM_ALLOWLIST = arg("cmp-wasm-allowlist");
+const CMP_WASM_PIXEL_TOLERANCES = arg("cmp-wasm-pixel-tolerances");
+const CMP_WASM_MAX_COLD_FIRST_FRAME_MS = optionalNumber(
+  "cmp-wasm-max-cold-first-frame-ms",
+);
+const CMP_WASM_MAX_WARM_FIRST_FRAME_MS = optionalNumber(
+  "cmp-wasm-max-warm-first-frame-ms",
+);
+
+function optionalNumber(name) {
+  const value = arg(name);
+  if (value === undefined) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.error(`rc-compare: --${name} must be a positive number`);
+    process.exit(2);
+  }
+  return parsed;
+}
 
 if (!BUNDLE || !PLAYER || !OUT) {
   console.error("rc-compare: --bundle, --player and --out are required");
@@ -144,6 +167,13 @@ function baseName(name, prefix, suffix) {
 
 const bundleBuf = fs.readFileSync(BUNDLE);
 const entries = readZipEntries(bundleBuf);
+const previewParameters = new Map();
+if (entries.has("previews.json")) {
+  const manifest = JSON.parse(entries.get("previews.json")().toString("utf8"));
+  for (const preview of manifest.previews ?? []) {
+    if (preview.id && preview.params) previewParameters.set(preview.id, preview.params);
+  }
+}
 
 const rcIds = [];
 for (const name of entries.keys()) {
@@ -372,12 +402,19 @@ async function startCmpWasmServer(dir) {
   };
 }
 
-async function cmpWasmFor(id, bytes, baked, width, height, referenceBlank) {
-  if (!cmpWasmPage) return {};
+async function cmpWasmFor(id, bytes, baked, width, height, referenceBlank, previewParams) {
+  if (!CMP_WASM) return {};
   try {
+    const density = previewParams?.density ?? 1;
+    const viewportWidth = previewParams?.widthDp ?? Math.round(width / density);
+    const viewportHeight = previewParams?.heightDp ?? Math.round(height / density);
+    const pageState = await cmpWasmPageFor(density);
+    const { page: cmpWasmPage, consoleErrors: cmpWasmConsoleErrors } = pageState;
+    const startup = pageState.renders++ === 0 ? "cold" : "warm";
     cmpWasmConsoleErrors.length = 0;
     cmpWasmServer.setDocument(bytes);
-    await cmpWasmPage.setViewportSize({ width, height });
+    await cmpWasmPage.setViewportSize({ width: viewportWidth, height: viewportHeight });
+    const startedAt = performance.now();
     await cmpWasmPage.goto(
       `${cmpWasmServer.origin}/index.html?src=${encodeURIComponent("/document.rc")}&theme=${encodeURIComponent(THEME)}`,
     );
@@ -390,6 +427,7 @@ async function cmpWasmFor(id, bytes, baked, width, height, referenceBlank) {
       state: document.documentElement.dataset.rcPlayerState,
       error: document.documentElement.dataset.rcPlayerError,
     }));
+    const firstFrameMs = performance.now() - startedAt;
     if (state.state !== "ready") throw new Error(state.error || "player reported an error");
     const png = flattenOnto(PNG.sync.read(await cmpWasmPage.screenshot({ omitBackground: true })), BG);
     if (cmpWasmConsoleErrors.length) {
@@ -406,6 +444,8 @@ async function cmpWasmFor(id, bytes, baked, width, height, referenceBlank) {
       cmpWasmRendered: true,
       cmpWasmMismatchPct: referenceBlank ? null : (100 * px) / (width * height),
       cmpWasmMismatchPx: referenceBlank ? null : px,
+      cmpWasmFirstFrameMs: firstFrameMs,
+      cmpWasmStartup: startup,
       cmpWasm: `rc-cmp-wasm/${id}.png`,
       cmpWasmDiff: `rc-cmp-wasm-diff/${id}.png`,
     };
@@ -434,13 +474,19 @@ const browser = await chromium.launch({
 });
 const page = await browser.newContext({ deviceScaleFactor: 1 }).then((c) => c.newPage());
 const cmpWasmServer = CMP_WASM ? await startCmpWasmServer(CMP_WASM) : null;
-const cmpWasmPage = CMP_WASM
-  ? await browser.newContext({ deviceScaleFactor: 1 }).then((context) => context.newPage())
-  : null;
-const cmpWasmConsoleErrors = [];
-cmpWasmPage?.on("console", (message) => {
-  if (message.type() === "error") cmpWasmConsoleErrors.push(message.text());
-});
+const cmpWasmPages = new Map();
+async function cmpWasmPageFor(density) {
+  if (cmpWasmPages.has(density)) return cmpWasmPages.get(density);
+  const context = await browser.newContext({ deviceScaleFactor: density });
+  const page = await context.newPage();
+  const consoleErrors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  const value = { page, consoleErrors, renders: 0 };
+  cmpWasmPages.set(density, value);
+  return value;
+}
 const pageWarnings = [];
 page.on("console", (m) => {
   if (m.type() === "warning" || m.type() === "error") pageWarnings.push(m.text());
@@ -510,6 +556,7 @@ for (const id of rcIds) {
     width,
     height,
     referenceBlank,
+    previewParameters.get(id),
   );
 
   if (result.error || truncated) {
@@ -586,7 +633,8 @@ for (const id of rcIds) {
     cmpWasm.cmpWasmRendered === undefined
       ? ""
       : cmpWasm.cmpWasmRendered
-        ? `  |  cmp-wasm ${cmpWasm.cmpWasmMismatchPct.toFixed(2)}%`
+        ? `  |  cmp-wasm ${cmpWasm.cmpWasmMismatchPct.toFixed(2)}% ` +
+          `(${cmpWasm.cmpWasmStartup} ${cmpWasm.cmpWasmFirstFrameMs.toFixed(0)} ms)`
         : `  |  cmp-wasm NOT RENDERED`;
   console.log(
     `  ${name}: ${mismatchPct.toFixed(2)}% (${mismatchPx} px, ${width}×${height})${embNote}${embJvmNote}${cmpWasmNote}`,
@@ -611,6 +659,17 @@ let cmpWasmGate = null;
 if (REQUIRE_CMP_WASM) {
   try {
     cmpWasmGate = evaluateCmpWasmGate(rcIds, rows, readCmpWasmAllowlist(CMP_WASM_ALLOWLIST));
+    applyCmpWasmPerformanceBudgets(
+      cmpWasmGate,
+      rows,
+      CMP_WASM_MAX_COLD_FIRST_FRAME_MS,
+      CMP_WASM_MAX_WARM_FIRST_FRAME_MS,
+    );
+    applyCmpWasmPixelTolerances(
+      cmpWasmGate,
+      rows,
+      readCmpWasmPixelTolerances(CMP_WASM_PIXEL_TOLERANCES),
+    );
   } catch (error) {
     cmpWasmGate = evaluateCmpWasmGate(rcIds, rows);
     cmpWasmGate.passed = false;
@@ -666,6 +725,25 @@ fs.writeFileSync(
                 ? ok.reduce((s, r) => s + r.cmpWasmMismatchPct, 0) / ok.length
                 : null;
             })(),
+            firstFrame: (() => {
+              const summarize = (kind) => {
+                const values = rows
+                  .filter((row) => row.cmpWasmRendered && row.cmpWasmStartup === kind)
+                  .map((row) => row.cmpWasmFirstFrameMs);
+                return values.length
+                  ? {
+                      count: values.length,
+                      meanMs: values.reduce((sum, value) => sum + value, 0) / values.length,
+                      maxMs: Math.max(...values),
+                      budgetMs:
+                        kind === "cold"
+                          ? CMP_WASM_MAX_COLD_FIRST_FRAME_MS
+                          : CMP_WASM_MAX_WARM_FIRST_FRAME_MS,
+                    }
+                  : null;
+              };
+              return { cold: summarize("cold"), warm: summarize("warm") };
+            })(),
           }
         : null,
       rows: rows.map((r) => ({
@@ -688,6 +766,8 @@ fs.writeFileSync(
         cmpWasmRendered: r.cmpWasmRendered ?? null,
         cmpWasmMismatchPct: r.cmpWasmMismatchPct ?? null,
         cmpWasmMismatchPx: r.cmpWasmMismatchPx ?? null,
+        cmpWasmFirstFrameMs: r.cmpWasmFirstFrameMs ?? null,
+        cmpWasmStartup: r.cmpWasmStartup ?? null,
         cmpWasmNote: r.cmpWasmNote ?? null,
         cmpWasmError: r.cmpWasmError ?? null,
       })),

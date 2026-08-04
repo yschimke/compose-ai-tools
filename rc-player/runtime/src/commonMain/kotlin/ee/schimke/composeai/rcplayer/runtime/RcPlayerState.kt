@@ -740,6 +740,9 @@ public class RcPlayerState(
             )
           )
         is RcHapticFeedback -> performHapticFeedback(operation)
+        // AndroidX applies nested TextData while inflating ClickModifier, then ignores it during
+        // onClick. RcPlayerState already loaded the flat document's text before layout.
+        is RcTextData -> Unit
         is RcValueIntegerChangeAction -> {
           setInteger(operation.targetValueId, operation.value)
           changed = true
@@ -870,7 +873,13 @@ public class RcPlayerState(
         changed = true
       }
     }
-    if (changed) onInvalidated()
+    if (changed) {
+      // ComponentValue is a variable source in AndroidX. Expressions listening to it are refreshed
+      // before the settling draw, including expressions used by layout modifiers rather than a
+      // CanvasOperations block.
+      document.operations.filterIsInstance<RcFloatExpression>().forEach(::applyFloatExpression)
+      onInvalidated()
+    }
     return changed
   }
 
