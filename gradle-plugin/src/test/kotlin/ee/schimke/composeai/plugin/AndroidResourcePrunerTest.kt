@@ -100,7 +100,7 @@ class AndroidResourcePrunerTest {
   }
 
   @Test
-  fun `empty ownership set disables pruning rather than dropping every file resource`() {
+  fun `verified empty ownership set prunes dependency file resources`() {
     val input =
       apk(
         Triple("resources.arsc", "T".toByteArray(), ZipEntry.STORED),
@@ -110,9 +110,10 @@ class AndroidResourcePrunerTest {
 
     val result = AndroidResourcePruner.prune(input, firstPartyFileResources = emptySet())
 
-    assertThat(result.bytes).isEqualTo(input)
-    assertThat(result.droppedEntries).isEqualTo(0)
-    assertThat(result.bytesSaved).isEqualTo(0L)
+    assertThat(entries(result.bytes)).doesNotContainKey("res/drawable/ic_filters_play.xml")
+    assertThat(entries(result.bytes)).doesNotContainKey("res/layout/player.xml")
+    assertThat(result.droppedEntries).isEqualTo(2)
+    assertThat(result.bytesSaved).isEqualTo(10L)
   }
 
   @Test

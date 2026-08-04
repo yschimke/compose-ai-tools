@@ -21,8 +21,8 @@ import java.util.zip.ZipOutputStream
  *   `anim`, `animator`, `mipmap`. Compose draws from Kotlin — no `R.layout` inflation, no view
  *   animations, no launcher mipmaps — so a Compose render resolves none of these unless the module
  *   itself authored one — or a sibling project module did — which [firstPartyFileResources] always
- *   retains. An empty retain-set is treated as failed ownership discovery and disables pruning;
- *   otherwise a missing or unrecognised AGP merge-blame file would remove every file resource.
+ *   retains. [BundlePreviewTask] disables pruning before calling this when ownership metadata is
+ *   unavailable; an empty set here is therefore a valid, verified resource-free build.
  * - A small set of dependency resources is retained explicitly. AppCompat loads
  *   `drawable/abc_vector_test` at runtime to validate VectorDrawableCompat, so dropping it produces
  *   the misleading "incorrect configuration" exception even though the consumer build is valid.
@@ -61,12 +61,6 @@ internal object AndroidResourcePruner {
    *   [MergedResourceOwnership], which derives it from AGP's merge-blame file.
    */
   fun prune(apkBytes: ByteArray, firstPartyFileResources: Set<String>): Result {
-    // Empty is ambiguous: it can mean a genuinely resource-free module, but also that AGP moved,
-    // changed, or did not emit merger.xml. Correctness wins over the bundle-size optimisation.
-    // Pocket Casts exposed the unsafe failure mode: the packed resources.arsc still referenced
-    // sibling-module icons, while every drawable file had been removed.
-    if (firstPartyFileResources.isEmpty()) return Result(apkBytes, 0, 0)
-
     val out = ByteArrayOutputStream(apkBytes.size)
     var dropped = 0
     var saved = 0L

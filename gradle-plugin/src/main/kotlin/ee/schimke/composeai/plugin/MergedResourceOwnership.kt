@@ -47,16 +47,25 @@ internal object MergedResourceOwnership {
   /**
    * Resource identities (`"<typeBase>/<name>"`, e.g. `"drawable/ic_play"`) contributed by
    * first-party data sets across every `merger.xml` under [moduleBuildDir], in the shape
-   * [AndroidResourcePruner.prune] expects. Empty when no blame file is present (a build that never
-   * merged resources, or a future AGP that stops writing them) — the caller then falls back to its
-   * own-source-set scan, i.e. exactly the pre-existing behaviour.
+   * [AndroidResourcePruner.prune] expects. Returns null when no usable blame file is present (a
+   * build that never merged resources, a malformed file, or a future AGP that stops writing them),
+   * so the caller can distinguish unavailable ownership metadata from a valid result containing no
+   * first-party file resources.
    */
-  fun firstPartyFileResourceKeys(moduleBuildDir: File): Set<String> {
+  fun firstPartyFileResourceKeys(moduleBuildDir: File): Set<String>? {
     val keys = mutableSetOf<String>()
+    var usableBlameFound = false
     for (blame in blameFiles(moduleBuildDir)) {
-      runCatching { collectInto(keys, blame) }
+      // Do not retain keys partially parsed from a malformed file. A second valid blame file can
+      // still make the overall result usable.
+      val fileKeys = mutableSetOf<String>()
+      runCatching { collectInto(fileKeys, blame) }
+        .onSuccess {
+          usableBlameFound = true
+          keys += fileKeys
+        }
     }
-    return keys
+    return keys.takeIf { usableBlameFound }
   }
 
   /**
