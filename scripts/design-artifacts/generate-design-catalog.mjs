@@ -33,7 +33,6 @@
  */
 import { execFileSync } from "node:child_process";
 import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { basename, dirname, resolve, join, relative } from "node:path";
 import { parseArgs } from "node:util";
 
@@ -82,6 +81,7 @@ import { targetsByFunction } from "./figma-code-connect-target.mjs";
 import { renderWireframeSvg, slug } from "./render-wireframe-svg.mjs";
 import { renderLayoutWireframeSvg } from "./render-layout-wireframe-svg.mjs";
 import { DEFAULT_PREVIEW_BASE, livePreviewUrl } from "./live-preview.mjs";
+import { installedPackageVersion } from "./package-version.mjs";
 import {
   buildFontsManifest,
   fontsPayloadsFromBundle,
@@ -916,14 +916,10 @@ const themeTokens = catalogTokens
 // engine that built it (surfaced on the serve host's provenance strip). Best-effort: a resolution
 // failure just omits the field rather than sinking the render.
 function designParityVersion() {
-  try {
-    const require = createRequire(import.meta.url);
-    return (
-      require("@design-parity/catalog-export/package.json").version || undefined
-    );
-  } catch {
-    return undefined;
-  }
+  return installedPackageVersion(
+    "@design-parity/catalog-export",
+    import.meta.url,
+  );
 }
 
 // Render priority needs a live path or it isn't a cheaper build — it is coverage quietly missing
