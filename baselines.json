@@ -3052,7 +3052,7 @@
     "functionName": "AppCardSticker",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "AppCardSticker.png",
-    "sha256": "c1f8791e77fdb1b02bb8ddb57fbef5c19c051b8231857b0e86409f755eb797e7",
+    "sha256": "19c046e6749eea296b8333ea7015c64919395a6f677e9de3177dfc703f623273",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.BlankListLayout_Extra Large Round": {
@@ -3084,7 +3084,7 @@
     "functionName": "ButtonFocused",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "ButtonFocused.png",
-    "sha256": "75328784bc2ca9d7469c12109587d666bc3b7f65b12f42ced5392847d7734ba2",
+    "sha256": "9400de0fa7037afc82707e62c9c8abe9608831093948aa191058a43059082404",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonGroupSticker": {
@@ -3092,7 +3092,7 @@
     "functionName": "ButtonGroupSticker",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "ButtonGroupSticker.png",
-    "sha256": "a4772942b9381e1e50675382bebbcca9a31aadf38d9d5470ccc2b1640c978efa",
+    "sha256": "01a0ff63d9e99697bc9680ecfc65045e216b2a2d5a7babe7bbaff2af991073f2",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ButtonPressed": {
@@ -3100,7 +3100,7 @@
     "functionName": "ButtonPressed",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "ButtonPressed.png",
-    "sha256": "59f41f5db5e866159ed57e441507df2f247e6443ce636d8d0b00b5e8abf30915",
+    "sha256": "b4c6ee40a0d705bbc144c63079c3cdce5a865a053e7684c84b47650a2bc60ed0",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.CardSticker": {
@@ -3108,7 +3108,7 @@
     "functionName": "CardSticker",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "CardSticker.png",
-    "sha256": "6295dfa08023c5a0dd09d27b4c3c3b3ef39d4d3a0fd70f9a4630db2150cee77d",
+    "sha256": "089bed11b78aa52c864f7a4b3a00588f52cbf2655d5979790241d8e5399ee6b8",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonChecked": {
@@ -3116,7 +3116,7 @@
     "functionName": "CheckboxButtonChecked",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "CheckboxButtonChecked.png",
-    "sha256": "81d695dbdeaf3f6852c7740d276df7b1eccf62a695091fb108ff7196fea0d47a",
+    "sha256": "71896e933e3ee1f6b749d2b732b2fa735e2161d93acda33562e78a090f76d622",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.CheckboxButtonChecked_VARIANT_unchecked": {
@@ -3124,7 +3124,7 @@
     "functionName": "CheckboxButtonChecked",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "CheckboxButtonChecked_VARIANT_unchecked.png",
-    "sha256": "082d666f757a14875802c73d21a428aecb308f69ab06d5cc923e89e42872d8b7",
+    "sha256": "643e0b12fa9975474dfee864f0afb50ef22728bbef6ae637b90a124a8a04ee1b",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ChildButtonSticker": {
@@ -3132,7 +3132,7 @@
     "functionName": "ChildButtonSticker",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "ChildButtonSticker.png",
-    "sha256": "e98af5e7edab6e74184f44050f10ef6bbf982c19f2d47be14a6233caec3b7e3d",
+    "sha256": "ce7ccdaa2714939e3643953d94cdfbe3a34929e85e980ee985be98b76597bed2",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.CircularProgressSticker": {
@@ -3140,7 +3140,7 @@
     "functionName": "CircularProgressSticker",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "CircularProgressSticker.png",
-    "sha256": "716b7ca5a10d63476b3bd051cef30d18ea5151e80e1f6c2ecfadea14c218738a",
+    "sha256": "e8fca6dd57e4c7580527aa89e621dd03ec4721e3ace9064bf16c9f2fe9b0b89e",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ColorSchemeSpecimen": {
@@ -3148,7 +3148,7 @@
     "functionName": "ColorSchemeSpecimen",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "ColorSchemeSpecimen.png",
-    "sha256": "a4aa3df2547166ea73425b01c89a0592459e70715b27c450e3a3a042f72905e4",
+    "sha256": "951f25ca2c1f2b8932bdee0e4a5a58d51f8f96a328562ec561a0ea2b666b0605",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.CompactButtonSticker": {
@@ -3156,7 +3156,7 @@
     "functionName": "CompactButtonSticker",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "CompactButtonSticker.png",
-    "sha256": "f9d995c1585b2c8106802978cb43859bcf6b8b71fca91eb7e5f10b08c1058b2e",
+    "sha256": "ca4d8509997d10dbb99736d03bcd2ba67d61ddb5a87dafac9f0dfd2e2047a513",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.EdgeButtonScaffoldTemplate_Extra Large Round": {
@@ -3212,7 +3212,7 @@
     "functionName": "FilledButton",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "FilledButton.png",
-    "sha256": "ac2ad08fb76a30bcef83e8548d6e9ea86db9a57c25db8c6e0e9e0c3e215c2c25",
+    "sha256": "298ccaa99e71f451ce51d311b5a2d8d43b529938c66037b0bccf50d0df8d5c38",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.FilledButton_VARIANT_disabled": {
@@ -3220,7 +3220,7 @@
     "functionName": "FilledButton",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "FilledButton_VARIANT_disabled.png",
-    "sha256": "01aeb7b2f03d68634ba56c7eab5863d9c61c2f1442ce7139570a2a500cf9fc7c",
+    "sha256": "33f2d5de67ae6982ba139cab8fb1d90112add0e89c12bc04e7d98fd488d678dd",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.FilledTonalButtonSticker": {
@@ -3228,7 +3228,7 @@
     "functionName": "FilledTonalButtonSticker",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "FilledTonalButtonSticker.png",
-    "sha256": "11f81f53a5f88488980538fedfd3b28f7160a6dd92abf87236a5c1fb5441e2b4",
+    "sha256": "21f8ba61aaf669cf31575e725e75f02aae2e985df623cff40a80a8387ab236f8",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.IconButtonSticker": {
@@ -3236,7 +3236,7 @@
     "functionName": "IconButtonSticker",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "IconButtonSticker.png",
-    "sha256": "b7cf8f141200b44b95f813390e0162466bcf0f995269b4e9c41e41ade068ee4c",
+    "sha256": "b097fe5718b1032ab2425ba4d8de19242de933696a6fc560c6a27a72798beaf9",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.IconSticker": {
@@ -3244,7 +3244,7 @@
     "functionName": "IconSticker",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "IconSticker.png",
-    "sha256": "26e61d8f611d522bc894cf86e7e65f4015feb471ead72417b620100520e1192f",
+    "sha256": "df6504ca690bd8f9d553ea83fdd99ad8d4c510c8b0fb9889b762fec51571cc16",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.IndeterminateCircularProgressGif": {
@@ -3252,7 +3252,7 @@
     "functionName": "IndeterminateCircularProgressGif",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "IndeterminateCircularProgressGif.gif",
-    "sha256": "641f1d3fca095210fa0cf15d357171114d3a4cdc321298790a6a71c4bc1a04b4",
+    "sha256": "618830830b8f4e7838643a54bc1a98366010ff604dafd38573a27f93a8ae090e",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.IndeterminateCircularProgressSticker": {
@@ -3260,7 +3260,7 @@
     "functionName": "IndeterminateCircularProgressSticker",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "IndeterminateCircularProgressSticker.png",
-    "sha256": "bbd56c89412e7d252431047035ab61f4fc13248ed619e8db1878b989a419c181",
+    "sha256": "9241375e804ba45388b755e0119aadb593552349bf8d5b3f3ef44fed27636ea5",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.ListHeaderSticker": {
@@ -3268,7 +3268,7 @@
     "functionName": "ListHeaderSticker",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "ListHeaderSticker.png",
-    "sha256": "36ea48a50454b848b174953f5e4e57c5d81d8aed5285240d22266ed651f28d5a",
+    "sha256": "f412e2afcccc85b04e0344eee0c013d86181a4b67af519c10272c1e014c6c4ea",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedButtonSticker": {
@@ -3276,7 +3276,7 @@
     "functionName": "OutlinedButtonSticker",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "OutlinedButtonSticker.png",
-    "sha256": "8c9e99286bfc90d7bf9da7c3852fdd592e298a663a898aa2493ba7a571d222c9",
+    "sha256": "e7ca65999a333f37d5471cacbaee3ce3961c04bc128ee99ea8d639c39dd96bc3",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.OutlinedCardSticker": {
@@ -3284,7 +3284,7 @@
     "functionName": "OutlinedCardSticker",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "OutlinedCardSticker.png",
-    "sha256": "e5d88edc6ffa017d0e41dc9c5040943bada109bf56d6ef85b40de91e96717457",
+    "sha256": "1f3797de5b2a423467a26001a5299d3912c2525ed58573ddc08c58a132a395ee",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.PageIndicatorScaffoldTemplate_Extra Large Round": {
@@ -3340,7 +3340,7 @@
     "functionName": "SwitchButtonOn",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "SwitchButtonOn.png",
-    "sha256": "89ebec2a844214b8e50b1f91086bbb5a150cb105d84f76e487d3408dfb9eb530",
+    "sha256": "eb4e7e0f5d27c81076996125473339a6511555f7398c5ef2a55cf70b919bdb4b",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.SwitchButtonOn_VARIANT_off": {
@@ -3348,7 +3348,7 @@
     "functionName": "SwitchButtonOn",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "SwitchButtonOn_VARIANT_off.png",
-    "sha256": "970b8564681b12dc7ea67bf26a0fe9a64741a60971b19b5e1f87923770f99a1a",
+    "sha256": "74997441ee083309c0c0213b597e9c0901e5e57d5d983241e1742c5e51c77d2d",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.TextMaxLinesTruncated": {
@@ -3356,7 +3356,7 @@
     "functionName": "TextMaxLinesTruncated",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "TextMaxLinesTruncated.png",
-    "sha256": "74d2fc6cb0e0252846ac58a0a9876a6d46f781596905534b1d8e022f692bfaad",
+    "sha256": "e5abd6637024d53e52c06ca9360486cad09dcba7f21a86459246bb3f239588d1",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.TimeTextScaffoldTemplate_Extra Large Round": {
@@ -3388,7 +3388,7 @@
     "functionName": "TitleCardSticker",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "TitleCardSticker.png",
-    "sha256": "c922578d2261a488ec8688ea3bcfb6d44c85dc47e0d68cb328ffded697ed748f",
+    "sha256": "20d22919f8f8ccbac1c758f40c876b813c1b98c9932c5f22e86e96a818f60de5",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/com.example.designcatalogwearm3.CatalogPreviewsKt.TypographySpecimen": {
@@ -3396,7 +3396,7 @@
     "functionName": "TypographySpecimen",
     "module": "samples:design-catalog-wear-m3",
     "renderBasename": "TypographySpecimen.png",
-    "sha256": "8b57c8446ab46b95516a29c2fb5cb2d0724c0a899de78df0d8d86d16b8f1fe44",
+    "sha256": "496a199ed7bd41b41594110567911eb7201652c0e7f26a3723368d1d60f6845a",
     "sourceFile": "src/main/kotlin/com/example/designcatalogwearm3/CatalogPreviews.kt"
   },
   "samples:design-catalog-wear-m3/shapecatalog__Wear_shapes": {
@@ -3804,7 +3804,7 @@
     "functionName": "PageIndicatorStickerPreview",
     "module": "samples:wear",
     "renderBasename": "PageIndicatorStickerPreview.png",
-    "sha256": "17fa9995d8f942bee8fbb7785cd9a6968b5de7d8c1774298eae743f5e188349c",
+    "sha256": "0e43864ad59307f1997ce10d8ebbb09e37465dece435dc32e7f694c13bf79e19",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
   },
   "samples:wear/com.example.samplewear.GesturesKt.PrimaryActionScreenPreview_Devices - Large Round": {
@@ -3820,7 +3820,7 @@
     "functionName": "PrimaryActionStickerPreview",
     "module": "samples:wear",
     "renderBasename": "PrimaryActionStickerPreview.png",
-    "sha256": "4adc625ceba8d2cc4f309ed4b06edfc6433cd4c788695536e59a9963ecb8766b",
+    "sha256": "24076ccfccfd5138a57bac6ce0e27f2334799307d104baec81046d6b9a665536",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
   },
   "samples:wear/com.example.samplewear.GesturesKt.ScrollGestureScreenPreview_Devices - Large Round": {
@@ -3836,7 +3836,7 @@
     "functionName": "ScrollIndicatorStickerPreview",
     "module": "samples:wear",
     "renderBasename": "ScrollIndicatorStickerPreview.png",
-    "sha256": "0e24a97e9ac1abd78f744462dfb8864656f6a8f478691af362e43a837473726a",
+    "sha256": "1e5cdf40b596945f0c48580391018d349dde518567bb1c320f6f1497b11a702d",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Gestures.kt"
   },
   "samples:wear/com.example.samplewear.PlaceholderPreviewsKt.PlaceholderCardLoaded_wearos_small_round": {
