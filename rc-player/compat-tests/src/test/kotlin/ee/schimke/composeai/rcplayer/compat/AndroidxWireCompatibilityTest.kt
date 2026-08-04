@@ -40,6 +40,7 @@ import androidx.compose.remote.core.operations.FloatConstant
 import androidx.compose.remote.core.operations.FloatExpression
 import androidx.compose.remote.core.operations.FloatFunctionCall as AndroidxFloatFunctionCall
 import androidx.compose.remote.core.operations.FloatFunctionDefine as AndroidxFloatFunctionDefine
+import androidx.compose.remote.core.operations.FontData as AndroidxFontData
 import androidx.compose.remote.core.operations.HapticFeedback as AndroidxHapticFeedback
 import androidx.compose.remote.core.operations.Header
 import androidx.compose.remote.core.operations.IdLookup
@@ -194,6 +195,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
 import ee.schimke.composeai.rcplayer.protocol.RcFlowLayout
+import ee.schimke.composeai.rcplayer.protocol.RcFontData
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHapticFeedback
@@ -217,6 +219,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcLoopOperation
 import ee.schimke.composeai.rcplayer.protocol.RcMarqueeModifier
 import ee.schimke.composeai.rcplayer.protocol.RcMultiClickModifier
 import ee.schimke.composeai.rcplayer.protocol.RcMultiClickType
+import ee.schimke.composeai.rcplayer.protocol.RcNoArg
 import ee.schimke.composeai.rcplayer.protocol.RcOffsetModifier
 import ee.schimke.composeai.rcplayer.protocol.RcOpcodes
 import ee.schimke.composeai.rcplayer.protocol.RcOperationInventory
@@ -271,6 +274,23 @@ import kotlin.test.assertTrue
  * from this test module: AndroidX remote-core/Java player is the protocol authority.
  */
 class AndroidxWireCompatibilityTest {
+  @Test
+  fun androidXEmbeddedFontPayloadRoundTripsExactly() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    val data = byteArrayOf(0, 1, -1, 127)
+    AndroidxFontData.apply(buffer, 42, 7, data)
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+    val font = assertIs<RcFontData>(document.operations.single())
+
+    assertEquals(42, font.fontId)
+    assertEquals(7, font.type)
+    assertContentEquals(data, font.data)
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
   @Test
   fun androidXComponentValueBoundaryStreamsRoundTripExactly() {
     val buffer = WireBuffer()
@@ -773,6 +793,20 @@ class AndroidxWireCompatibilityTest {
   }
 
   @Test
+  fun androidXModifierDrawContentRoundTripsAsAZeroPayloadOperation() {
+    val buffer = WireBuffer()
+    Header.apply(buffer, 120, 60, 1f, 0L)
+    DrawContentOperation.apply(buffer)
+    FloatConstant.apply(buffer, 43, 7f)
+    val bytes = buffer.buffer.copyOf(buffer.size())
+
+    val document = RcDocumentCodec.decode(bytes)
+
+    assertEquals(RcNoArg(RcOpcodes.MODIFIER_DRAW_CONTENT), document.operations[0])
+    assertContentEquals(bytes, RcDocumentCodec.encode(document))
+  }
+
+  @Test
   fun androidXFoundationalLayoutOperationsRoundTripExactly() {
     val buffer = WireBuffer()
     Header.apply(buffer, 320, 180, 1f, 0L)
@@ -1038,6 +1072,11 @@ class AndroidxWireCompatibilityTest {
       PaintBundle().apply {
         setColor(0xff336699.toInt())
         setStyle(PaintBundle.STYLE_FILL)
+        clearColorFilter()
+        setTextAxis(intArrayOf(0x77676874, 0x6974616c, 0x736c6e74), floatArrayOf(650f, 1f, 0f))
+        setLinearGradient(intArrayOf(0xffff0000.toInt(), 43), 2, null, 0f, 0f, 100f, 80f, 0)
+        setColorFilter(0xffffffff.toInt(), PaintBundle.BLEND_MODE_SRC_IN)
+        setColorFilterId(43, PaintBundle.BLEND_MODE_SRC_IN)
       }
     PaintData.apply(buffer, paint)
     DrawRect.apply(buffer, Utils.asNan(42), 4f, 100f, 80f)

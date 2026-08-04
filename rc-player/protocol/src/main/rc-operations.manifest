@@ -90,7 +90,7 @@
 171|ATTRIBUTE_IMAGE|4|implemented
 172|ATTRIBUTE_TIME|5|implemented
 173|CANVAS_OPERATIONS|1|implemented
-174|MODIFIER_DRAW_CONTENT|6|unavailable
+174|MODIFIER_DRAW_CONTENT|6|implemented
 175|PATH_COMBINE|2|implemented
 176|LAYOUT_FIT_BOX|6|implemented
 177|HAPTIC_FEEDBACK|7|implemented
@@ -105,7 +105,7 @@
 186|MATRIX_CONSTANT|2|implemented
 187|MATRIX_EXPRESSION|2|implemented
 188|MATRIX_VECTOR_MATH|2|implemented
-189|DATA_FONT|3|unsupported
+189|DATA_FONT|3|implemented
 190|DRAW_TO_BITMAP|4|unsupported
 191|WAKE_IN|8|implemented
 192|ID_LOOKUP|5|implemented

@@ -210,14 +210,20 @@ public sealed interface RcLayoutNode {
     override val animationId: Int = operation.animationId
   }
 
-  public data class Image(val operation: RcImageLayout, override val modifiers: RcLayoutModifiers) :
-    RcLayoutNode {
+  public data class Image(
+    val operation: RcImageLayout,
+    override val modifiers: RcLayoutModifiers,
+    val contentComponentId: Int?,
+  ) : RcLayoutNode {
     override val componentId: Int = operation.componentId
     override val animationId: Int = operation.animationId
   }
 
-  public data class Text(val operation: RcTextLayout, override val modifiers: RcLayoutModifiers) :
-    RcLayoutNode {
+  public data class Text(
+    val operation: RcTextLayout,
+    override val modifiers: RcLayoutModifiers,
+    val contentComponentId: Int?,
+  ) : RcLayoutNode {
     override val componentId: Int = operation.componentId
     override val animationId: Int = operation.animationId
   }
@@ -226,6 +232,7 @@ public sealed interface RcLayoutNode {
     val operation: RcCoreText,
     override val modifiers: RcLayoutModifiers,
     val resolvedStyle: List<RcTextStyleProperty>,
+    val contentComponentId: Int?,
   ) : RcLayoutNode {
     override val componentId: Int = operation.componentId
     override val animationId: Int = operation.animationId
@@ -374,10 +381,17 @@ public object RcLayoutTree {
             requiredContent(container, seenIds, styles),
             canvasOperations(container),
           )
-        is RcImageLayout -> RcLayoutNode.Image(operation, modifiers)
-        is RcTextLayout -> RcLayoutNode.Text(operation, modifiers)
+        is RcImageLayout ->
+          RcLayoutNode.Image(operation, modifiers, leafContentComponentId(container, seenIds))
+        is RcTextLayout ->
+          RcLayoutNode.Text(operation, modifiers, leafContentComponentId(container, seenIds))
         is RcCoreText ->
-          RcLayoutNode.CoreText(operation, modifiers, resolveTextStyle(operation, styles))
+          RcLayoutNode.CoreText(
+            operation,
+            modifiers,
+            resolveTextStyle(operation, styles),
+            leafContentComponentId(container, seenIds),
+          )
         else -> throw RcLayoutException("Opcode ${operation.opcode} is not a layout component")
       }
     if (!seenIds.add(node.componentId)) {
@@ -421,13 +435,29 @@ public object RcLayoutTree {
         "${container.operation::class.simpleName} requires LayoutComponentContent"
       )
 
+  /** Leaf components own an optional LayoutContent child whose bounds equal the leaf bounds. */
+  private fun leafContentComponentId(
+    container: RcLinkedNode.Container,
+    seenIds: MutableSet<Int>,
+  ): Int? {
+    val contents =
+      container.children.filterIsInstance<RcLinkedNode.Container>().filter {
+        it.operation is RcLayoutContent
+      }
+    if (contents.size > 1) {
+      throw RcLayoutException("Leaf component has ${contents.size} LayoutComponentContent children")
+    }
+    return contents.singleOrNull()?.let { content ->
+      val id = (content.operation as RcLayoutContent).componentId
+      if (!seenIds.add(id)) throw RcLayoutException("Duplicate layout component id $id")
+      id
+    }
+  }
+
   private fun resolveTextStyle(
     operation: RcCoreText,
     styles: Map<Int, RcTextStyle>,
   ): List<RcTextStyleProperty> {
-    if (operation.componentId < 0 || operation.animationId < 0) {
-      throw RcLayoutException("CoreText requires component and animation ids")
-    }
     val merged = linkedMapOf<Int, RcTextStyleProperty>()
     operation.textStyleId?.let { styleId ->
       resolveTextStyle(styleId, styles, linkedSetOf()).forEach { merged[it.id] = it }
@@ -463,8 +493,10 @@ public object RcLayoutTree {
       container.children.filterIsInstance<RcLinkedNode.Operation>().map { it.operation }
     return RcLayoutModifiers(
       animationSpec = operations.singleModifier<RcAnimationSpec>(container.operation),
-      width = operations.singleModifier<RcWidthModifier>(container.operation),
-      height = operations.singleModifier<RcHeightModifier>(container.operation),
+      // AndroidX applies dimension modifiers in wire order. Once the first required dimension
+      // fixes the constraints, later width/height modifiers cannot expand past it.
+      width = operations.filterIsInstance<RcWidthModifier>().firstOrNull(),
+      height = operations.filterIsInstance<RcHeightModifier>().firstOrNull(),
       padding = operations.filterIsInstance<RcPaddingModifier>(),
       paintDecorators =
         operations.filter {
@@ -537,8 +569,11 @@ public object RcLayoutTree {
 
   /** CoreDocument assigns the last CanvasOperations container to its enclosing component. */
   private fun canvasOperations(container: RcLinkedNode.Container): List<RcLinkedNode>? =
-    container.children
-      .filterIsInstance<RcLinkedNode.Container>()
+    (container.children.filterIsInstance<RcLinkedNode.Container>() +
+        container.children
+          .filterIsInstance<RcLinkedNode.Container>()
+          .filter { it.operation is RcLayoutContent }
+          .flatMap { it.children.filterIsInstance<RcLinkedNode.Container>() })
       .lastOrNull { it.operation.opcode == RcOpcodes.CANVAS_OPERATIONS }
       ?.children
 

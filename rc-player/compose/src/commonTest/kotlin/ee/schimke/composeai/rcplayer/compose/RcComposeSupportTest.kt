@@ -1,6 +1,7 @@
 package ee.schimke.composeai.rcplayer.compose
 
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.Role
 import ee.schimke.composeai.rcplayer.protocol.RcAccessibilitySemantics
 import ee.schimke.composeai.rcplayer.protocol.RcAnimationSpec
@@ -8,6 +9,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcBitmapData
 import ee.schimke.composeai.rcplayer.protocol.RcBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasContent
 import ee.schimke.composeai.rcplayer.protocol.RcCanvasLayout
+import ee.schimke.composeai.rcplayer.protocol.RcClickModifier
 import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
@@ -17,6 +19,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcFloatWord
+import ee.schimke.composeai.rcplayer.protocol.RcFontData
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHapticFeedback
@@ -59,6 +62,19 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RcComposeSupportTest {
+  @Test
+  fun omittedMatrixPivotUsesTheOrigin() {
+    assertEquals(Offset.Zero, rcMatrixPivot(Float.NaN, Float.NaN))
+    assertEquals(Offset.Zero, rcMatrixPivot(Float.NaN, 12f))
+    assertEquals(Offset(3f, 4f), rcMatrixPivot(3f, 4f))
+  }
+
+  @Test
+  fun fixedRoundedClipRadiiScaleButSizeDerivedRadiiDoNot() {
+    assertEquals(104f, rcRoundedClipRadius(RcFloatWord.literal(52f), resolved = 52f, density = 2f))
+    assertEquals(110f, rcRoundedClipRadius(RcFloatWord(0x7fc0002a), resolved = 110f, density = 2f))
+  }
+
   @Test
   fun boundedControlFlowIsSharedByWasmAndIosProfiles() {
     val end = RcNoArg(RcOpcodes.CONTAINER_END)
@@ -397,12 +413,111 @@ class RcComposeSupportTest {
 
   @Test
   fun reportsPaintSubcommandsThatTheRendererCannotHonor() {
-    val document = RcDocument(header, listOf(RcPaintData(listOf(11))))
+    val document = RcDocument(header, listOf(RcPaintData(listOf(10))))
 
     val support = document.composeSupportReport()
 
     assertFalse(support.fullyRenderable)
-    assertEquals("paint command 11 is not implemented", support.issues.single().detail)
+    assertEquals("paint command 10 is not implemented", support.issues.single().detail)
+  }
+
+  @Test
+  fun acceptsShaderResetAndRejectsExternalShaderIds() {
+    assertTrue(
+      RcDocument(header, listOf(RcPaintData(listOf(9, 0)))).composeSupportReport().fullyRenderable
+    )
+    val issue =
+      RcDocument(header, listOf(RcPaintData(listOf(9, 42)))).composeSupportReport().issues.single()
+    assertEquals("shader id 42 is not implemented", issue.detail)
+  }
+
+  @Test
+  fun acceptsClearColorFilterAndSupportedFontAxes() {
+    val fontAxes = 23 or (3 shl 16)
+    val document =
+      RcDocument(
+        header,
+        listOf(
+          RcPaintData(
+            listOf(
+              21,
+              fontAxes,
+              0x77676874,
+              RcFloatWord.literal(650f).bits,
+              0x6974616c,
+              RcFloatWord.literal(1f).bits,
+              0x736c6e74,
+              RcFloatWord.literal(0f).bits,
+            )
+          )
+        ),
+      )
+
+    assertTrue(document.composeSupportReport().fullyRenderable)
+  }
+
+  @Test
+  fun rejectsMalformedOrUnsupportedFontAxes() {
+    val invalidCount =
+      RcDocument(header, listOf(RcPaintData(listOf(23 or (9 shl 16)))))
+        .composeSupportReport()
+        .issues
+        .single()
+    assertEquals("font axis count 9 is invalid", invalidCount.detail)
+
+    val unsupported =
+      RcDocument(
+          header,
+          listOf(RcPaintData(listOf(23 or (1 shl 16), 0x77647468, 0))), // wdth
+        )
+        .composeSupportReport()
+        .issues
+        .single()
+    assertEquals("font axis wdth is not implemented", unsupported.detail)
+  }
+
+  @Test
+  fun acceptsInlineGradientsAndColorFilters() {
+    val document =
+      RcDocument(
+        header,
+        listOf(
+          RcPaintData(
+            listOf(
+              11,
+              2,
+              0xffff0000.toInt(),
+              0xff0000ff.toInt(),
+              0,
+              RcFloatWord.literal(0f).bits,
+              RcFloatWord.literal(0f).bits,
+              RcFloatWord.literal(100f).bits,
+              RcFloatWord.literal(100f).bits,
+              0,
+              13 or (5 shl 16),
+              0xffffffff.toInt(),
+              20 or (5 shl 16),
+              42,
+            )
+          )
+        ),
+      )
+
+    assertTrue(document.composeSupportReport().fullyRenderable)
+  }
+
+  @Test
+  fun rejectsMalformedGradientStops() {
+    val issue =
+      RcDocument(
+          header,
+          listOf(RcPaintData(listOf(11, 2, 0xffff0000.toInt(), 0xff0000ff.toInt(), 1, 0))),
+        )
+        .composeSupportReport()
+        .issues
+        .single()
+
+    assertEquals("gradient stop count 1 does not match 2 colors", issue.detail)
   }
 
   @Test
@@ -439,10 +554,7 @@ class RcComposeSupportTest {
         header,
         listOf(
           RcTextStyle(
-            listOf(
-              RcTextStyleProperty.IntValue(1, 100),
-              RcTextStyleProperty.FloatValue(12, RcFloatWord.literal(1f)),
-            )
+            listOf(RcTextStyleProperty.IntValue(1, 100), RcTextStyleProperty.BooleanValue(18, true))
           )
         ),
       )
@@ -450,7 +562,36 @@ class RcComposeSupportTest {
     val issue = document.composeSupportReport().issues.single()
 
     assertEquals("TextStyle", issue.operation)
-    assertEquals("letter spacing is not implemented", issue.detail)
+    assertEquals("underline is not implemented", issue.detail)
+  }
+
+  @Test
+  fun acceptsEmbeddedFontReferencesAndRejectsMissingOnes() {
+    fun document(fonts: List<RcFontData>, family: String? = "BrandFace") =
+      RcDocument(
+        header,
+        fonts +
+          (family?.let { listOf(RcTextData(42, it)) } ?: emptyList()) +
+          RcTextStyle(
+            listOf(RcTextStyleProperty.IntValue(1, 100), RcTextStyleProperty.IntValue(8, 42))
+          ),
+      )
+
+    val missingName = document(emptyList(), family = null).composeSupportReport().issues.single()
+    assertEquals("TextStyle", missingName.operation)
+    assertEquals("font family name id 42 is not declared", missingName.detail)
+    val missing = document(emptyList()).composeSupportReport().issues.single()
+    assertEquals("TextStyle", missing.operation)
+    assertEquals("custom font family BrandFace (42) has no DataFont", missing.detail)
+    assertTrue(
+      document(listOf(RcFontData(42, 0, byteArrayOf(1)))).composeSupportReport().fullyRenderable
+    )
+    assertTrue(document(emptyList(), family = "sans-serif").composeSupportReport().fullyRenderable)
+    assertTrue(
+      document(emptyList(), family = "google:Orbitron")
+        .composeSupportReport(availableFontFamilies = setOf("Orbitron"))
+        .fullyRenderable
+    )
   }
 
   @Test
@@ -542,15 +683,25 @@ class RcComposeSupportTest {
   }
 
   @Test
-  fun rejectsDimensionModesWithoutComposeSemantics() {
-    val issue =
-      RcDocument(header, listOf(RcWidthModifier(RcDimensionType.WEIGHT, RcFloatWord.literal(1f))))
-        .composeSupportReport()
-        .issues
-        .single()
+  fun acceptsWeightDimensionsAndTextDataInsideClickActions() {
+    val document =
+      RcDocument(
+        header,
+        listOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcCanvasLayout(3, 30),
+          RcWidthModifier(RcDimensionType.WEIGHT, RcFloatWord.literal(1f)),
+          RcClickModifier,
+          RcTextData(42, "actionName"),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+          RcNoArg(RcOpcodes.CONTAINER_END),
+        ),
+      )
 
-    assertEquals("WidthModifier", issue.operation)
-    assertEquals("dimension type 3 is not implemented", issue.detail)
+    assertTrue(document.composeSupportReport().fullyRenderable)
   }
 
   @Test

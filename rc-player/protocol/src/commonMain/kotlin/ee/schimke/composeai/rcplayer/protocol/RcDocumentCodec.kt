@@ -23,6 +23,7 @@ public object RcDocumentCodec {
         ConditionalOperationsCodec,
         LoopOperationCodec,
         BitmapDataCodec,
+        FontDataCodec,
         FloatConstantCodec,
         FloatExpressionCodec,
         TouchExpressionCodec,
@@ -74,6 +75,7 @@ public object RcDocumentCodec {
         id(RcOpcodes.CLIP_PATH, "ClipPath"),
         CanvasContentCodec,
         noArg(RcOpcodes.CANVAS_OPERATIONS, "CanvasOperations"),
+        noArg(RcOpcodes.MODIFIER_DRAW_CONTENT, "ModifierDrawContent"),
         noArg(RcOpcodes.DRAW_CONTENT, "DrawContent"),
         noArg(RcOpcodes.CONTAINER_END, "ContainerEnd"),
         four(RcOpcodes.DRAW_RECT, "DrawRect"),
@@ -2304,6 +2306,23 @@ private object BitmapDataCodec : RcOperationCodec<RcBitmapData> {
     output.writeInt(value.imageId)
     output.writeInt(value.type shl 16 or value.width)
     output.writeInt(value.encoding shl 16 or value.height)
+    output.writeByteArray(value.data)
+  }
+}
+
+private object FontDataCodec : RcOperationCodec<RcFontData> {
+  override val spec = RcOperationSpec(RcOpcodes.DATA_FONT, "FontData")
+
+  override fun decode(input: RcWireReader): RcFontData =
+    RcFontData(
+      fontId = input.readInt("fontId"),
+      type = input.readInt("type"),
+      data = input.readByteArray("data"),
+    )
+
+  override fun encode(output: RcWireWriter, value: RcFontData) {
+    output.writeInt(value.fontId)
+    output.writeInt(value.type)
     output.writeByteArray(value.data)
   }
 }

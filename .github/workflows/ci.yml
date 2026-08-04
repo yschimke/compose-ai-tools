@@ -53,6 +53,7 @@ jobs:
     outputs:
       plugin_tests: ${{ steps.scope.outputs.plugin_tests }}
       renderer_android_tests: ${{ steps.scope.outputs.renderer_android_tests }}
+      rc_player_tests: ${{ steps.scope.outputs.rc_player_tests }}
       module_unit_tests: ${{ steps.scope.outputs.module_unit_tests }}
       module_test_tasks: ${{ steps.test-scope.outputs.tasks }}
       functional_tests: ${{ steps.scope.outputs.functional_tests }}
@@ -292,6 +293,45 @@ jobs:
           path: |
             **/build/reports/tests/**
             **/build/test-results/**
+          retention-days: 7
+
+  rc-player-tests:
+    name: CMP Remote Compose Player
+    needs: changes
+    if: ${{ needs.changes.outputs.rc_player_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Run shared, Wasm, and iOS player tests
+        run: |
+          ./gradlew \
+            :rc-player-protocol:allTests \
+            :rc-player-runtime:allTests \
+            :rc-player-compose:allTests \
+            :rc-player-compat-tests:test \
+            :rc-player-wasm:wasmPlayerTestDist \
+            :rc-player-protocol:compileTestKotlinIosArm64 \
+            :rc-player-protocol:compileTestKotlinIosSimulatorArm64 \
+            :rc-player-protocol:compileTestKotlinIosX64 \
+            :rc-player-runtime:compileTestKotlinIosArm64 \
+            :rc-player-runtime:compileTestKotlinIosSimulatorArm64 \
+            :rc-player-runtime:compileTestKotlinIosX64 \
+            :rc-player-compose:compileTestKotlinIosArm64 \
+            :rc-player-compose:compileTestKotlinIosSimulatorArm64 \
+            :rc-player-compose:compileTestKotlinIosX64
+          ./gradlew :cli:test --tests ee.schimke.composeai.cli.serve.ServeWebTest
+          ./gradlew ktfmtCheck
+      - name: Upload player test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rc-player-test-reports
+          path: |
+            rc-player/**/build/reports/tests/**
+            rc-player/**/build/test-results/**
           retention-days: 7
 
   functional-tests:

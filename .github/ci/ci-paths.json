@@ -37,6 +37,14 @@
       "data/layoutinspector/**",
       "data/render/**"
     ],
+    "rc_player_tests": [
+      "rc-player/**",
+      "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**",
+      "cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/viewer.js",
+      "cli/src/test/kotlin/ee/schimke/composeai/cli/serve/**",
+      "scripts/design-artifacts/rc-compare*",
+      ".github/workflows/design-artifacts-reusable.yml"
+    ],
     "module_unit_tests": [
       "api/**",
       "bundle-viewer/**",

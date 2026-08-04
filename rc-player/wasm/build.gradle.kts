@@ -25,20 +25,43 @@ kotlin {
 }
 
 tasks.register<Sync>("wasmPlayerDist") {
-  description = "Assemble the webpack-free CMP Remote Compose Wasm player distribution."
+  description = "Assemble and size-check the optimized CMP Remote Compose Wasm distribution."
   group = "distribution"
-  dependsOn("wasmJsDevelopmentExecutableCompileSync", "processSkikoRuntimeForKWasm")
-  from(layout.buildDirectory.dir("compileSync/wasmJs/main/developmentExecutable/kotlin"))
+  dependsOn("wasmJsProductionExecutableCompileSync", "processSkikoRuntimeForKWasm")
+  from(layout.buildDirectory.dir("compileSync/wasmJs/main/productionExecutable/kotlin")) {
+    exclude("*.map", "custom-formatters.js")
+  }
   from(layout.buildDirectory.dir("compose/skiko-runtime-processed-wasmjs")) {
     include("skiko.mjs", "skiko.wasm")
   }
   from(layout.projectDirectory.dir("src/wasmJsMain/resources")) { include("index.html") }
+  from(
+    rootProject.layout.projectDirectory.dir(
+      "samples/cmp-wasm-catalog/src/wasmJsMain/resources/fonts"
+    )
+  ) {
+    into("fonts")
+  }
   from(
     rootProject.layout.projectDirectory.file(
       "samples/cmp-wasm-catalog/src/wasmJsMain/resources/js-joda.esm.js"
     )
   )
   into(layout.buildDirectory.dir("wasmDist"))
+  inputs.property(
+    "maximumDistributionBytes",
+    providers.gradleProperty("rcPlayerWasmMaxBytes").orElse("23000000"),
+  )
+  doLast {
+    val maximumBytes = inputs.properties.getValue("maximumDistributionBytes").toString().toLong()
+    val distribution = destinationDir
+    val actualBytes = distribution.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+    check(actualBytes <= maximumBytes) {
+      "CMP Remote Compose Wasm distribution is $actualBytes bytes; budget is $maximumBytes bytes " +
+        "(override deliberately with -PrcPlayerWasmMaxBytes=<bytes>)"
+    }
+    logger.lifecycle("CMP Remote Compose Wasm distribution: $actualBytes / $maximumBytes bytes")
+  }
 }
 
 tasks.register<Sync>("wasmPlayerTestDist") {

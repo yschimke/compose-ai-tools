@@ -4228,7 +4228,7 @@ $deviceControlsHtml
           $overlaysHtml
           $featureControlsHtml
           ${overrideKnobsHtml(preview, canApplyOverrides || canRenderOverrides, wasmSrc != null)}
-          ${remoteComposeKnobsHtml(preview, canApplyOverrides || canRenderOverrides)}
+          ${remoteComposeKnobsHtml(preview, canApplyOverrides || canRenderOverrides || hasRcWasm)}
           <div class="cp-status" id="cp-status"></div>
         </div>
       </div>
@@ -4636,18 +4636,16 @@ $deviceControlsHtml
    * labelled control list — the RC counterpart of [overrideKnobsHtml]. One control per knob
    * (checkbox for bool, number for int / float / dp, text for string and `#AARRGGBB` colour), whose
    * edits round-trip through the `rc.<name>=<kind>:<value>` render param ([ServeOverrides] parses
-   * it back into `PreviewOverrides.remoteCompose.namedValues`). Live only when [canApplyOverrides]
-   * — Remote Compose has no in-browser (Wasm) runtime, so a plain static bundle shows the controls
-   * disabled with a one-line note (mirroring how declared knobs render on a static bundle). Empty
-   * string when the preview declared no RC knobs (the common case). The controls are marked
-   * `.cp-rc-knob` and carry `data-rc-name` / `data-rc-kind` / `data-rc-initial`; the viewer JS
-   * collects them into `rc.<name>=<kind>:<value>` params and routes an edit through the daemon-only
-   * path.
+   * it back into `PreviewOverrides.remoteCompose.namedValues`). Live when [canApplyOverrides]
+   * includes server rendering or the CMP/Wasm host; a plain static bundle without either player
+   * shows the controls disabled with a one-line note. Empty string when the preview declared no RC
+   * knobs (the common case). The controls are marked `.cp-rc-knob` and carry `data-rc-name` /
+   * `data-rc-kind` / `data-rc-initial`; the viewer JS collects them into typed values and routes
+   * edits through the active player.
    */
   private fun remoteComposeKnobsHtml(preview: ServePreview, canApplyOverrides: Boolean): String {
     if (preview.remoteComposeKnobs.isEmpty()) return ""
-    // RC is daemon-only (no Wasm tier), so the controls are live only when the session can
-    // re-render; a static bundle shows them disabled and informational.
+    // A static bundle without either a server renderer or CMP/Wasm keeps these informational.
     val dis = if (canApplyOverrides) "" else " disabled"
     val rows =
       preview.remoteComposeKnobs.joinToString("\n") { d ->

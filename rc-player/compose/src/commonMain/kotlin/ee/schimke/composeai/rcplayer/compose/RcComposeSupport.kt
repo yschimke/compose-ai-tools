@@ -21,6 +21,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcFitBoxLayout
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionDefine
 import ee.schimke.composeai.rcplayer.protocol.RcFlowLayout
+import ee.schimke.composeai.rcplayer.protocol.RcFontData
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcGraphicsLayerModifier
 import ee.schimke.composeai.rcplayer.protocol.RcHapticFeedback
@@ -83,16 +84,17 @@ public data class RcComposeSupportReport(val issues: List<RcComposeSupportIssue>
 
 /** Backend-specific coverage, including nested PaintBundle commands hidden behind one RC opcode. */
 public fun RcDocument.composeSupportReport(
-  profile: RcOperationProfile? = null
+  profile: RcOperationProfile? = null,
+  availableFontFamilies: Set<String> = emptySet(),
 ): RcComposeSupportReport {
   val issues = mutableListOf<RcComposeSupportIssue>()
   val bitmapIds = operations.filterIsInstance<RcBitmapData>().mapTo(mutableSetOf()) { it.imageId }
-  val textIds =
-    operations.filterIsInstance<ee.schimke.composeai.rcplayer.protocol.RcTextData>().mapTo(
-      mutableSetOf()
-    ) {
-      it.id
+  val fontIds = operations.filterIsInstance<RcFontData>().mapTo(mutableSetOf()) { it.fontId }
+  val texts =
+    operations.filterIsInstance<ee.schimke.composeai.rcplayer.protocol.RcTextData>().associate {
+      it.id to it.text
     }
+  val textIds = texts.keys
   val colorIds =
     operations.filterIsInstance<ee.schimke.composeai.rcplayer.protocol.RcColorConstant>().mapTo(
       mutableSetOf()
@@ -250,12 +252,14 @@ public fun RcDocument.composeSupportReport(
               "TextLayout",
               "font style ${operation.fontStyle} is not implemented",
             )
-        operation.fontFamilyId != -1 ->
+        fontFamilyIssue(operation.fontFamilyId, texts, fontIds, availableFontFamilies) != null ->
           issues +=
             RcComposeSupportIssue(
               index,
               "TextLayout",
-              "font family ${operation.fontFamilyId} requires DataFont",
+              requireNotNull(
+                fontFamilyIssue(operation.fontFamilyId, texts, fontIds, availableFontFamilies)
+              ),
             )
         operation.textAlign !in RcTextLayout.ALIGN_LEFT..RcTextLayout.ALIGN_END ->
           issues +=
@@ -295,13 +299,13 @@ public fun RcDocument.composeSupportReport(
           issues +=
             RcComposeSupportIssue(index, "CoreText", "text id ${operation.textId} is not declared")
         else ->
-          textStyleIssue(operation.properties, colorIds)?.let { detail ->
-            issues += RcComposeSupportIssue(index, "CoreText", detail)
-          }
+          textStyleIssue(operation.properties, colorIds, texts, fontIds, availableFontFamilies)
+            ?.let { detail -> issues += RcComposeSupportIssue(index, "CoreText", detail) }
       }
     }
     if (operation is RcTextStyle) {
-      textStyleIssue(operation.properties, colorIds)?.let { detail ->
+      textStyleIssue(operation.properties, colorIds, texts, fontIds, availableFontFamilies)?.let {
+        detail ->
         issues += RcComposeSupportIssue(index, "TextStyle", detail)
       }
     }
@@ -396,6 +400,7 @@ public fun RcDocument.composeSupportReport(
           setOf(
             RcDimensionType.EXACT,
             RcDimensionType.FILL,
+            RcDimensionType.WEIGHT,
             RcDimensionType.EXACT_DP,
             RcDimensionType.FILL_PARENT_MAX_WIDTH,
           )
@@ -413,6 +418,7 @@ public fun RcDocument.composeSupportReport(
           setOf(
             RcDimensionType.EXACT,
             RcDimensionType.FILL,
+            RcDimensionType.WEIGHT,
             RcDimensionType.EXACT_DP,
             RcDimensionType.FILL_PARENT_MAX_HEIGHT,
           )
@@ -884,6 +890,7 @@ private fun invalidActionChild(
             operation !is RcHapticFeedback &&
             operation !is RcHostMetadataAction &&
             operation !is RcHostNamedAction &&
+            operation !is ee.schimke.composeai.rcplayer.protocol.RcTextData &&
             operation !is RcValueIntegerChangeAction &&
             operation !is RcValueIntegerExpressionChangeAction &&
             operation !is RcValueStringChangeAction &&
@@ -949,7 +956,13 @@ private fun RcLinkedNode.operation(): ee.schimke.composeai.rcplayer.protocol.RcO
     is RcLinkedNode.Container -> operation
   }
 
-private fun textStyleIssue(properties: List<RcTextStyleProperty>, colorIds: Set<Int>): String? {
+private fun textStyleIssue(
+  properties: List<RcTextStyleProperty>,
+  colorIds: Set<Int>,
+  texts: Map<Int, String>,
+  fontIds: Set<Int>,
+  availableFontFamilies: Set<String>,
+): String? {
   fun int(id: Int, default: Int): Int =
     properties.filterIsInstance<RcTextStyleProperty.IntValue>().lastOrNull { it.id == id }?.value
       ?: default
@@ -967,7 +980,9 @@ private fun textStyleIssue(properties: List<RcTextStyleProperty>, colorIds: Set<
   val fontStyle = int(6, 0)
   if (fontStyle !in 0..3) return "font style $fontStyle is not implemented"
   val fontFamily = int(8, -1)
-  if (fontFamily != -1) return "font family $fontFamily requires DataFont"
+  fontFamilyIssue(fontFamily, texts, fontIds, availableFontFamilies)?.let {
+    return it
+  }
   val alignment = int(9, RcTextLayout.ALIGN_LEFT)
   if (alignment !in RcTextLayout.ALIGN_LEFT..RcTextLayout.ALIGN_END) {
     return "text alignment $alignment is not implemented"
@@ -978,15 +993,6 @@ private fun textStyleIssue(properties: List<RcTextStyleProperty>, colorIds: Set<
   }
   val maxLines = int(11, Int.MAX_VALUE)
   if (maxLines <= 0) return "maxLines must be positive"
-  if (float(12, 0f) != ee.schimke.composeai.rcplayer.protocol.RcFloatWord.literal(0f)) {
-    return "letter spacing is not implemented"
-  }
-  if (float(13, 0f) != ee.schimke.composeai.rcplayer.protocol.RcFloatWord.literal(0f)) {
-    return "line height addition is not implemented"
-  }
-  if (float(14, 1f) != ee.schimke.composeai.rcplayer.protocol.RcFloatWord.literal(1f)) {
-    return "line height multiplier is not implemented"
-  }
   val breakStrategy = int(15, 0)
   if (breakStrategy != 0) return "line break strategy $breakStrategy is not implemented"
   val hyphenation = int(16, 0)
@@ -1013,6 +1019,26 @@ private fun textStyleIssue(properties: List<RcTextStyleProperty>, colorIds: Set<
   }
   val flags = int(23, 0)
   if (flags != 0) return "flags $flags are not implemented"
+  return null
+}
+
+private fun fontFamilyIssue(
+  fontFamilyId: Int,
+  texts: Map<Int, String>,
+  embeddedFontIds: Set<Int>,
+  availableFontFamilies: Set<String>,
+): String? {
+  if (fontFamilyId == -1) return null
+  val family = texts[fontFamilyId] ?: return "font family name id $fontFamilyId is not declared"
+  val normalized = family.lowercase().removePrefix("google:")
+  val available = availableFontFamilies.mapTo(mutableSetOf()) { it.lowercase() }
+  if (
+    normalized !in setOf("default", "sans-serif", "serif", "monospace") &&
+      normalized !in available &&
+      fontFamilyId !in embeddedFontIds
+  ) {
+    return "custom font family $family ($fontFamilyId) has no DataFont"
+  }
   return null
 }
 
@@ -1054,20 +1080,53 @@ private fun paintIssue(paint: RcPaintData): String? {
   while (index < paint.words.size) {
     val command = paint.words[index++]
     val type = command and 0xffff
-    val argumentWords =
-      when (type) {
-        PAINT_TEXT_SIZE,
-        PAINT_COLOR,
-        PAINT_STROKE_WIDTH,
-        PAINT_ALPHA,
-        PAINT_COLOR_ID,
-        PAINT_TYPEFACE -> 1
-        PAINT_STROKE_CAP,
-        PAINT_STYLE,
-        PAINT_STROKE_JOIN,
-        PAINT_BLEND_MODE -> 0
-        else -> return "paint command $type is not implemented"
+    if (type == PAINT_FONT_AXIS && command ushr 16 !in 0..8) {
+      return "font axis count ${command ushr 16} is invalid"
+    }
+    val gradientWords =
+      if (type == PAINT_GRADIENT) {
+        if (command ushr 16 !in 0..2) return "gradient type ${command ushr 16} is not implemented"
+        if (index >= paint.words.size) return "paint command $type is truncated"
+        val colorCount = paint.words[index] and 0xff
+        if (colorCount !in 1..16) return "gradient color count $colorCount is invalid"
+        val stopCountIndex = index + 1 + colorCount
+        if (stopCountIndex >= paint.words.size) return "paint command $type is truncated"
+        val stopCount = paint.words[stopCountIndex]
+        if (stopCount != 0 && stopCount != colorCount) {
+          return "gradient stop count $stopCount does not match $colorCount colors"
+        }
+        1 +
+          colorCount +
+          1 +
+          stopCount +
+          when (command ushr 16) {
+            0 -> 5
+            1 -> 4
+            else -> 2
+          }
+      } else {
+        null
       }
+    val argumentWords =
+      gradientWords
+        ?: when (type) {
+          PAINT_TEXT_SIZE,
+          PAINT_COLOR,
+          PAINT_STROKE_WIDTH,
+          PAINT_ALPHA,
+          PAINT_COLOR_ID,
+          PAINT_TYPEFACE,
+          PAINT_SHADER,
+          PAINT_COLOR_FILTER,
+          PAINT_COLOR_FILTER_ID -> 1
+          PAINT_STROKE_CAP,
+          PAINT_STYLE,
+          PAINT_STROKE_JOIN,
+          PAINT_BLEND_MODE,
+          PAINT_CLEAR_COLOR_FILTER -> 0
+          PAINT_FONT_AXIS -> (command ushr 16) * 2
+          else -> return "paint command $type is not implemented"
+        }
     if (index + argumentWords > paint.words.size) return "paint command $type is truncated"
     if (type == PAINT_STYLE && command ushr 16 !in 0..1) {
       return "paint style ${command ushr 16} is not implemented"
@@ -1075,8 +1134,20 @@ private fun paintIssue(paint: RcPaintData): String? {
     if (type == PAINT_BLEND_MODE && command ushr 16 !in 0..28) {
       return "blend mode ${command ushr 16} is not implemented"
     }
+    if (type in setOf(PAINT_COLOR_FILTER, PAINT_COLOR_FILTER_ID) && command ushr 16 !in 0..28) {
+      return "color filter mode ${command ushr 16} is not implemented"
+    }
     if (type == PAINT_TYPEFACE && paint.words[index] !in 0..3) {
       return "font id ${paint.words[index]} is not implemented"
+    }
+    if (type == PAINT_SHADER && paint.words[index] != 0) {
+      return "shader id ${paint.words[index]} is not implemented"
+    }
+    if (type == PAINT_FONT_AXIS) {
+      for (axisIndex in 0 until (command ushr 16)) {
+        val tag = paint.words[index + axisIndex * 2]
+        if (tag !in SUPPORTED_FONT_AXES) return "font axis ${fontAxisName(tag)} is not implemented"
+      }
     }
     index += argumentWords
   }
@@ -1088,8 +1159,27 @@ private const val PAINT_COLOR = 4
 private const val PAINT_STROKE_WIDTH = 5
 private const val PAINT_STROKE_CAP = 7
 private const val PAINT_STYLE = 8
+private const val PAINT_SHADER = 9
+private const val PAINT_GRADIENT = 11
 private const val PAINT_ALPHA = 12
+private const val PAINT_COLOR_FILTER = 13
 private const val PAINT_STROKE_JOIN = 15
 private const val PAINT_BLEND_MODE = 18
 private const val PAINT_COLOR_ID = 19
+private const val PAINT_COLOR_FILTER_ID = 20
 private const val PAINT_TYPEFACE = 16
+private const val PAINT_CLEAR_COLOR_FILTER = 21
+private const val PAINT_FONT_AXIS = 23
+
+private const val FONT_AXIS_WEIGHT = 0x77676874 // wght
+private const val FONT_AXIS_ITALIC = 0x6974616c // ital
+private const val FONT_AXIS_SLANT = 0x736c6e74 // slnt
+private val SUPPORTED_FONT_AXES = setOf(FONT_AXIS_WEIGHT, FONT_AXIS_ITALIC, FONT_AXIS_SLANT)
+
+private fun fontAxisName(tag: Int): String =
+  buildString(4) {
+    append((tag ushr 24).toChar())
+    append((tag ushr 16 and 0xff).toChar())
+    append((tag ushr 8 and 0xff).toChar())
+    append((tag and 0xff).toChar())
+  }
