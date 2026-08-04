@@ -12,6 +12,11 @@
       "noun": "sample(s)"
     },
     {
+      "id": "home-assistant",
+      "heading": "home-assistant/android",
+      "noun": "app(s)"
+    },
+    {
       "id": "pocket-casts",
       "heading": "Automattic/pocket-casts-android",
       "noun": "app(s)"
@@ -45,6 +50,24 @@
       "system": "homeassistant-remotecompose",
       "repo": "yschimke/homeassistant-remotecompose",
       "listed": true
+    },
+    {
+      "system": "home-assistant-android",
+      "repo": "yschimke/home-assistant-android",
+      "listed": true,
+      "group": "home-assistant",
+      "attributionRepos": [
+        "home-assistant/android"
+      ]
+    },
+    {
+      "system": "home-assistant-wear",
+      "repo": "yschimke/home-assistant-android",
+      "listed": true,
+      "group": "home-assistant",
+      "attributionRepos": [
+        "home-assistant/android"
+      ]
     },
     {
       "system": "pocketcasts",
