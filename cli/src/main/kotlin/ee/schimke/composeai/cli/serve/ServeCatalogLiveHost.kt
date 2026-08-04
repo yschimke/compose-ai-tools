@@ -427,6 +427,21 @@ class ServeCatalogLiveHost(
   // costs nothing until someone needs a live render — and an eager `val` here would have undone
   // that at construction, which is exactly where every catalog builds its host. The browse surface
   // never touches them; the viewer chrome that does is already a per-preview request.
+  /**
+   * Whether this catalog is carrying any daemon at all — the monolithic one OR a pooled per-preview
+   * one.
+   *
+   * The pool matters: an interactive stream and an explicit SVG / scroll export both route through
+   * [liveHostFor], which can stand a per-preview daemon up without the monolithic [live] host ever
+   * being touched. Forwarding only `live.daemonStarted` would make `runningDaemons()` drop such a
+   * catalog outright, hiding its active streams, its pool occupancy and a running process from
+   * `/status` — the opposite of what this reporting is for. The baked lane never has a subprocess,
+   * so it contributes nothing.
+   */
+  override val daemonStarted: Boolean
+    get() =
+      live.daemonStarted || perPreviewStreamCount() > 0 || perPreviewPoolStats().any { it.open > 0 }
+
   override val gesturesRenderable: Boolean by lazy { live.gesturesRenderable }
 
   /**

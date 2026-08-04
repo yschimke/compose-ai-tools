@@ -224,6 +224,18 @@ interface ServeHost : AutoCloseable {
    * stays on the published pixels) while the live stream is still offered on demand —
    * `canApplyOverrides = false` but `hasLiveStream = true`.
    */
+  /**
+   * Whether this host's daemon subprocess actually exists yet.
+   *
+   * A daemon-backed host opens its session on first real use, so a *registered* catalog is not a
+   * *running* daemon — and `/status` must not conflate them, or the running count stays pinned to
+   * the catalog count and says nothing about what the box is really carrying. Defaults to true for
+   * every host with nothing to defer (baked bundles, and daemon hosts handed an already-open
+   * session), so their reporting is unchanged.
+   */
+  val daemonStarted: Boolean
+    get() = true
+
   val hasLiveStream: Boolean
     get() = canApplyOverrides
 

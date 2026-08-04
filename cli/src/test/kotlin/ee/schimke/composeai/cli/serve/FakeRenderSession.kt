@@ -513,5 +513,12 @@ internal class FakeRenderSession(
     return AutoCloseable { listeners.remove(listener) }
   }
 
-  override fun close() = Unit
+  /** Set by [close] so a test can assert the session was actually reaped. */
+  @Volatile
+  var closed: Boolean = false
+    private set
+
+  override fun close() {
+    closed = true
+  }
 }

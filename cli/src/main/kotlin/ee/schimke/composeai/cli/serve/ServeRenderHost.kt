@@ -296,6 +296,12 @@ internal constructor(
   private val onLog: (String) -> Unit = {},
   private val renderTimeoutSeconds: Long = RENDER_TIMEOUT_SECONDS,
   private val frameRenderTimeoutSeconds: Long = FRAME_RENDER_TIMEOUT_SECONDS,
+  /**
+   * True when the caller handed over a session that is already open, so there is a live subprocess
+   * from the moment this host exists even though [sessionDelegate] has not been touched. Only the
+   * deferred [Companion.open] path leaves this false.
+   */
+  private val sessionAlreadyOpen: Boolean = false,
 ) : ServeHost {
 
   /**
@@ -320,6 +326,7 @@ internal constructor(
     onLog,
     renderTimeoutSeconds,
     frameRenderTimeoutSeconds,
+    sessionAlreadyOpen = true,
   )
 
   /**
@@ -329,11 +336,42 @@ internal constructor(
    */
   private var notificationHandle: AutoCloseable? = null
 
-  private val sessionDelegate = lazy {
-    val opened = openSession()
-    notificationHandle = opened.onNotification(::onDaemonNotification)
-    opened
-  }
+  /**
+   * Guards opening against [close]. Both take it, so a `close()` that lands while `openSession()`
+   * is still handshaking either waits for the session to be published and then tears it down, or
+   * lets the initializer below notice `closed` and tear it down itself. Without a shared lock the
+   * `isInitialized()` check in [close] reads false during the handshake, returns, and the
+   * subprocess that appears a moment later is never reaped — the exact race a catalog refresh runs
+   * into, since it closes the old host while requests may be waking it.
+   */
+  private val sessionLock = Any()
+
+  /**
+   * Set the instant [openSession] is entered, before the handshake completes.
+   *
+   * `Lazy.isInitialized()` stays false for the whole of a cold open — tens of seconds on an
+   * Android/Robolectric backend — even though the subprocess is already launched and consuming the
+   * box. Reporting "no daemon" across exactly that window would hide the single largest resource
+   * spike the lazy open is meant to make visible.
+   */
+  private val sessionOpening = AtomicBoolean(false)
+
+  private val sessionDelegate =
+    lazy(sessionLock) {
+      sessionOpening.set(true)
+      val opened = openSession()
+      if (closed.get()) {
+        // Lost the race: [close] already ran and found nothing to reap. Tear the subprocess down
+        // here instead of leaking it. The dead session is still published rather than thrown from,
+        // because callers that merely read a capability flag off a host being retired should not
+        // eat an exception for it — anything that goes on to actually use it gets the session's own
+        // closed-transport error, which is the honest answer.
+        runCatching { opened.close() }
+      } else {
+        notificationHandle = opened.onNotification(::onDaemonNotification)
+      }
+      opened
+    }
 
   private val session: RenderSession by sessionDelegate
 
@@ -341,8 +379,8 @@ internal constructor(
    * Whether the daemon subprocess has actually been started. Lets `/status` and [close] reason
    * about a host that is registered but never woken, without waking it to find out.
    */
-  internal val sessionStarted: Boolean
-    get() = sessionDelegate.isInitialized()
+  override val daemonStarted: Boolean
+    get() = sessionAlreadyOpen || sessionOpening.get() || sessionDelegate.isInitialized()
 
   // A daemon backs this host, so an override edit actually re-renders (unlike a static bundle).
   override val canApplyOverrides: Boolean = true
@@ -355,8 +393,15 @@ internal constructor(
   // them in `unknown`), so a non-figma backend cleanly offers no SVG rather than dead-ending in a
   // 500. Best-effort: an enable RPC failure disables the export, it doesn't break the host.
   private val exportEnableResult: ExtensionsEnableResult by lazy {
+    // Resolve the session OUTSIDE the runCatching. A failure to open the daemon is not the same
+    // fact as "this backend advertises no exports", but folding them together cached the latter
+    // forever: a transient open failure on the first capability lookup left `hasSvgExport` /
+    // `hasScrollExport` false for the host's lifetime, so every export 404'd even after a later
+    // render brought the daemon up fine. Letting it propagate leaves the lazy uninitialized, so the
+    // next caller retries.
+    val opened = session
     runCatching {
-        session.enableExtensions(
+        opened.enableExtensions(
           listOf(ComposeFigmaSvgProduct.KIND, ComposeFigmaSvgProduct.KIND_LONG, SCROLL_EXTENSION_ID)
         )
       }
@@ -1111,13 +1156,17 @@ internal constructor(
     // spawn one only to kill it, which on an Android backend is tens of seconds of pure waste. This
     // is the common case now that catalogs register without opening: a republish closes and
     // replaces every host, most of which nobody visited.
-    if (!sessionDelegate.isInitialized()) return
-    try {
-      notificationHandle?.close()
-    } catch (_: Exception) {
-      // best effort
+    synchronized(sessionLock) {
+      // `daemonStarted`, not `isInitialized()`: a host constructed around an already-open session
+      // owns a subprocess from birth, and must close it even if nothing ever touched the lazy.
+      if (!daemonStarted) return
+      try {
+        notificationHandle?.close()
+      } catch (_: Exception) {
+        // best effort
+      }
+      session.close()
     }
-    session.close()
   }
 
   companion object {
