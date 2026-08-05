@@ -54,6 +54,33 @@ viewer disagree about the *same* document:
    document that ships its typeface therefore renders correctly in `java`/`cmp-wasm` and in a
    substituted face everywhere else.
 
+## Where the files come from
+
+Three of the lanes (`java`, `cmp-android`, `cmp-jvm`) resolve a `google:` family through the shared
+machine-local cache in [`:data-fonts-google`](../../data/fonts/google), so a family is *the same
+file* in each of them rather than three faces that merely share a name. What that cache can serve is
+therefore the ceiling on what any of those lanes can draw, and it has two shapes:
+
+- **A static instance, from the CSS API.** `fonts.googleapis.com/css2` with a legacy User-Agent is
+  the only key-free way to get TrueType at all (modern UAs get WOFF2, which neither Android nor Skia
+  parses). Every `format('truetype')` URL it answers with is a **baked instance** — the axes have
+  already been applied and discarded. That includes the `wght@100..1000` range query, which reads
+  like it should be the variable font and is not: for Roboto Flex it returns 88 KB whose table
+  directory is `GDEF GPOS GSUB OS/2 STAT cmap gasp glyf head hhea hmtx loca maxp name post`, with no
+  `fvar` at all. This is the right file for drawing a family at a fixed weight, and it is why every
+  server-side lane's font-variation work landed correct-but-invisible: there were no axes left in
+  the file to vary.
+- **The variable file, from the `google/fonts` repository.** `GoogleFontSource.loadVariable` fetches
+  the pre-instancing original — `METADATA.pb` names it, a variable filename carrying its axis list in
+  brackets (`RobotoFlex[GRAD,…,wdth,wght].ttf`) — and verifies the bytes actually carry an `fvar`
+  table before caching them. A static-only family (Lobster Two) has none, which is a miss rather than
+  an error. For Roboto Flex this is 1,787,292 bytes, byte-identical to the variable file the browser
+  lane is fed from the catalog's vendored manifest — the lane whose axes already worked.
+
+So a lane wanting to *vary* a family asks for the second and a lane wanting to *draw* it at a fixed
+weight asks for the first; they are different files and both are cached, the variable one under a
+weight-free name because one file serves every instance.
+
 ## Lane detail
 
 ### JS — vendored TypeScript player, client-side
