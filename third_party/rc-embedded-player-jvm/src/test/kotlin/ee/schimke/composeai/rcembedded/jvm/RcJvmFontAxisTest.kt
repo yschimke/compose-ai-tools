@@ -42,14 +42,23 @@ import org.junit.Test
  */
 class RcJvmFontAxisTest {
 
-  private class FakeFonts(private val file: File) : GoogleFontSource {
+  private class FakeFonts(private val file: File, private val variable: File? = null) :
+    GoogleFontSource {
     var loads = 0
+    var variableLoads = 0
     val requested = mutableListOf<GoogleFontKey>()
+    val variableRequested = mutableListOf<Pair<String, Boolean>>()
 
     override fun load(key: GoogleFontKey): File? {
       loads++
       requested += key
       return file
+    }
+
+    override fun loadVariable(family: String, italic: Boolean): File? {
+      variableLoads++
+      variableRequested += family to italic
+      return variable
     }
   }
 
@@ -108,6 +117,62 @@ class RcJvmFontAxisTest {
     )
 
     assertEquals(listOf(GoogleFontKey("Orbitron", 700, false)), fonts.requested)
+  }
+
+  @Test
+  fun `an axis request takes the variable file, and takes it once`() {
+    // The point of the whole exercise: the static path resolves a *baked instance*, which has no
+    // axes left to apply, so an axis request has to reach for the family's variable file instead.
+    val face = File(VARIABLE_FACE_PATH)
+    assumeTrue("vendored Roboto Flex not found at $VARIABLE_FACE_PATH", face.isFile)
+    val fonts = FakeFonts(file = face, variable = face)
+    val resolver = GoogleFontTypefaceResolver(fonts)
+
+    resolver.composeFontFamily("google:Roboto Flex", 400, false, width(25f))
+    resolver.composeFontFamily("google:Roboto Flex", 400, false, width(100f))
+    resolver.composeFontFamily("google:Roboto Flex", 400, false, width(151f))
+
+    assertEquals("the static instance must not be fetched for an axis request", 0, fonts.loads)
+    // Weight-free and once per family: one file serves every instance, so a `wdth` ramp must not
+    // re-probe (and re-download 1.7 MB) per line.
+    assertEquals(1, fonts.variableLoads)
+    assertEquals(listOf("Roboto Flex" to false), fonts.variableRequested)
+  }
+
+  @Test
+  fun `an unvaried request never asks for the variable file`() {
+    val face = File(VARIABLE_FACE_PATH)
+    assumeTrue("vendored Roboto Flex not found at $VARIABLE_FACE_PATH", face.isFile)
+    val fonts = FakeFonts(file = face, variable = face)
+    val resolver = GoogleFontTypefaceResolver(fonts)
+
+    resolver.composeFontFamily("google:Roboto Flex", 400, false)
+
+    // A specimen drawn at a fixed weight keeps the smaller static download.
+    assertEquals(0, fonts.variableLoads)
+    assertEquals(1, fonts.loads)
+  }
+
+  @Test
+  fun `a family with no variable file falls back to the static instance`() {
+    // Lobster Two is the real case: catalogued, resolvable at a weight, no variable file anywhere.
+    // The axes then can't be applied — but the text still draws in the right family at the nearest
+    // weight, which is the behaviour this lane had before variable files existed.
+    val face = File(VARIABLE_FACE_PATH)
+    assumeTrue("vendored Roboto Flex not found at $VARIABLE_FACE_PATH", face.isFile)
+    val fonts = FakeFonts(file = face, variable = null)
+    val resolver = GoogleFontTypefaceResolver(fonts)
+
+    val resolved =
+      resolver.composeFontFamily(
+        "google:Lobster Two",
+        weight = 400,
+        italic = false,
+        settings = FontVariation.Settings(FontVariation.weight(700)),
+      )
+
+    assertNotNull(resolved)
+    assertEquals(listOf(GoogleFontKey("Lobster Two", 700, false)), fonts.requested)
   }
 
   @Test
