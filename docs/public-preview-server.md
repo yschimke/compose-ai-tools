@@ -551,8 +551,23 @@ that repository's visibility:
 If the repository's visibility can't be determined, the stricter (public) rule applies. The browser
 cookie stores only a signed, expiring login plus the repo access verdict, and is marked `secure` whenever
 the request arrives over HTTPS (which is why a reverse-proxied box should set
-`SERVE_GITHUB_AUTH_CALLBACK_BASE_URL`). The OAuth request includes GitHub's `repo` scope so private
-repository access can be checked during sign-in; the OAuth token is not stored.
+`SERVE_GITHUB_AUTH_CALLBACK_BASE_URL`). The OAuth token is not stored.
+
+**The requested OAuth scope follows the gating repo's visibility**, so a visitor is asked to consent
+to as little as the check actually needs:
+
+| `SERVE_GITHUB_AUTH_REPO` | scope requested |
+| --- | --- |
+| public | `read:user` |
+| private, or visibility unreadable | `read:user repo` |
+
+`repo` is GitHub's *full control of private repositories* — read and write, across every private
+repo the visitor can reach. On a public gating repo it buys nothing: the access check reads
+`GET /repos/{owner}/{repo}`, which is available there to a token with no repository scope at all. A
+private gating repo genuinely needs `repo`, because classic OAuth apps have no read-only repository
+scope. Visibility is probed once, anonymously, at first sign-in; if that probe can't answer, the
+wider scope is requested, since over-requesting inconveniences a visitor while under-requesting
+would fail their sign-in. Set `SERVE_GITHUB_AUTH_SCOPE` / `--github-auth-scope` to override.
 Reverse-proxied deployments should also set
 `SERVE_GITHUB_AUTH_CALLBACK_BASE_URL=https://preview.example.com` so the OAuth callback URL is stable.
 When `DOMAIN` is set, the prebuilt image derives

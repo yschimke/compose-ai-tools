@@ -324,6 +324,9 @@ class PlaygroundRoutingTest {
         repository = "yschimke/compose-ai-tools",
       ),
       verifier = GitHubOAuthVerifier(fakeGitHub),
+      // Also the scope probe's client: without it that anonymous GET would leave the sandbox and
+      // make this test depend on api.github.com being reachable.
+      anonymousClient = fakeGitHub,
     )
   }
 
@@ -342,9 +345,18 @@ class PlaygroundRoutingTest {
           resp.header("Location").orEmpty() to
             resp.header("Set-Cookie").orEmpty().substringBefore(";")
         }
+    // The fake answers the anonymous repo probe 200, i.e. a public gating repo — so the sign-in
+    // asks for `read:user` and NOT `repo`. `repo` is full control of the visitor's private
+    // repositories and buys nothing when the gating repo is public; see ServeGithubAuthScopeTest
+    // for the private and unreachable cases.
     assertTrue(
-      start.first.contains("scope=read%3Auser+repo"),
-      "GitHub OAuth requests repo scope so private-repo playground access can be checked: ${start.first}",
+      start.first.contains("scope=read%3Auser&") || start.first.endsWith("scope=read%3Auser"),
+      "a public gating repo must not ask for the repo scope: ${start.first}",
+    )
+    assertTrue(
+      !start.first.contains("repo", ignoreCase = true) ||
+        !start.first.substringAfter("scope=").substringBefore("&").contains("repo"),
+      "the requested scope must not include repo: ${start.first}",
     )
     val state = start.first.substringAfter("state=").substringBefore("&")
     return noRedirect

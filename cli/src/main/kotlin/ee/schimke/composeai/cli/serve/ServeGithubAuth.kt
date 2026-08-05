@@ -34,6 +34,12 @@ data class ServeGithubAuthConfig(
   val repository: String,
   val allowedUsers: Set<String> = emptySet(),
   val callbackBaseUrl: String? = null,
+  /**
+   * Overrides the OAuth scope entirely. Null (the default) derives it from the gating repo's
+   * visibility — see [ServeGithubAuth.requestedScope], which is what an operator wants unless their
+   * GitHub App or org policy needs something specific.
+   */
+  val oauthScope: String? = null,
 ) {
   init {
     require(clientId.isNotBlank()) { "GitHub OAuth client id is required" }
@@ -55,6 +61,8 @@ class ServeGithubAuth(
   private val config: ServeGithubAuthConfig,
   private val verifier: GitHubOAuthVerifier = GitHubOAuthVerifier(),
   private val clock: Clock = Clock.systemUTC(),
+  /** Unauthenticated client for the one-shot visibility probe behind [requestedScope]. */
+  private val anonymousClient: OkHttpClient = OkHttpClient(),
 ) {
   suspend fun RoutingContext.handleStart() {
     val returnTo = safeReturnTo(call.request.queryParameters["return"] ?: "/")
@@ -121,11 +129,58 @@ class ServeGithubAuth(
       listOf(
           "client_id" to config.clientId,
           "redirect_uri" to callbackUrl(call),
-          "scope" to "read:user repo",
+          "scope" to requestedScope(),
           "state" to state,
         )
         .joinToString("&") { (k, v) -> "$k=${urlEncode(v)}" }
     return "https://github.com/login/oauth/authorize?$params"
+  }
+
+  /**
+   * The OAuth scope to ask a visitor to consent to.
+   *
+   * This used to be a flat `read:user repo`. `repo` is GitHub's *full control of private
+   * repositories* — read and write, code and issues and settings, across every private repo the
+   * visitor can touch — and we were asking every signer-in for it in order to answer one question
+   * about one repository. On a public `--github-auth-repo` it buys nothing at all: `GET
+   * /repos/{owner}/{repo}`, which is now the only call the access check needs
+   * ([fetchRepositoryAccess]), is readable there by a token carrying no repo scope whatsoever.
+   *
+   * So the scope follows the gating repo: `read:user` alone when it is public, `read:user repo`
+   * when it is private or we couldn't tell. Classic OAuth apps have no read-only repository scope,
+   * so the private case genuinely needs `repo` — there is nothing narrower to ask for.
+   *
+   * [ServeGithubAuthConfig.oauthScope] overrides this outright for a deployment that needs
+   * something else.
+   */
+  internal fun requestedScope(): String =
+    config.oauthScope?.trim()?.takeIf { it.isNotEmpty() }
+      ?: if (gatingRepoIsPublic.value) PUBLIC_REPO_SCOPE else PRIVATE_REPO_SCOPE
+
+  /**
+   * Whether the gating repo is publicly readable, probed **anonymously** and once.
+   *
+   * Anonymous on purpose: this runs before anyone has signed in, so there is no token to use, and a
+   * 200 from an unauthenticated read is exactly the definition of "public". Anything else — 404, a
+   * network failure, a rate limit — is treated as not-public, which asks for the *wider* scope.
+   * That is the safe direction here: over-requesting inconveniences the visitor, while
+   * under-requesting would fail their sign-in outright.
+   *
+   * Note this is the opposite default from the visibility check inside [fetchRepositoryAccess],
+   * deliberately. That one decides whether `read` is good enough to run code, so its unknown case
+   * has to fall to the stricter *access* rule; this one only decides what to ask consent for, so
+   * its unknown case falls to the wider *scope*. Same principle, opposite directions.
+   */
+  private val gatingRepoIsPublic: Lazy<Boolean> = lazy {
+    runCatching {
+        val request =
+          Request.Builder()
+            .url("https://api.github.com/repos/${config.repository}")
+            .header(HttpHeaders.Accept, "application/vnd.github+json")
+            .build()
+        anonymousClient.newCall(request).execute().use { it.isSuccessful }
+      }
+      .getOrDefault(false)
   }
 
   private fun callbackUrl(call: ApplicationCall?): String =
@@ -222,6 +277,17 @@ class ServeGithubAuth(
     const val CALLBACK_PATH = "/auth/github/callback"
     private const val AUTH_COOKIE = "cp_gh_auth"
     private const val STATE_COOKIE = "cp_gh_state"
+    /**
+     * Enough to read `/user` and a public repo's payload. No repository write, no private repos.
+     */
+    const val PUBLIC_REPO_SCOPE = "read:user"
+
+    /**
+     * A private gating repo needs `repo` to read at all. Classic OAuth apps have no read-only
+     * repository scope, so this is already the narrowest thing that works.
+     */
+    const val PRIVATE_REPO_SCOPE = "read:user repo"
+
     private const val STATE_TTL_SECONDS = 10L * 60
     private const val SESSION_TTL_SECONDS = 12L * 60 * 60
     private val SECURE_RANDOM = SecureRandom()
@@ -313,6 +379,16 @@ class GitHubOAuthVerifier(private val client: OkHttpClient = OkHttpClient()) {
    * read the repo metadata tells us nothing that should widen a gate on code execution.
    */
   private fun fetchRepositoryAccess(token: String, repository: String, login: String): Boolean {
+    // `GET /repos/{owner}/{repo}` answers both halves at once: `private` is the visibility, and
+    // `permissions` is *this* user's access as GitHub computes it. That matters for scope as much
+    // as for round-trips — this endpoint is readable on a public repo by a token carrying no repo
+    // scope at all, where `/collaborators/{login}/permission` is not. See [scopeFor].
+    repositoryView(token, repository)?.let { repo ->
+      val access = repo.permissions ?: return@let // no permissions block — fall through below
+      return if (repo.private == true) access.any() else access.write()
+    }
+    // Fallback for a payload that carries no `permissions` block. Same logic as before, and the
+    // same two calls, so a deployment where the block is absent behaves exactly as it did.
     val request =
       Request.Builder()
         .url("https://api.github.com/repos/$repository/collaborators/$login/permission")
@@ -331,6 +407,23 @@ class GitHubOAuthVerifier(private val client: OkHttpClient = OkHttpClient()) {
       val readish = permission != "none" || (role != null && role != "none")
       readish && !isPublicRepository(token, repository)
     }
+  }
+
+  /** The repo payload, or null when it can't be read — which denies, the safe side. */
+  private fun repositoryView(token: String, repository: String): GitHubRepositoryResponse? {
+    val request =
+      Request.Builder()
+        .url("https://api.github.com/repos/$repository")
+        .header(HttpHeaders.Authorization, "Bearer $token")
+        .header(HttpHeaders.Accept, "application/vnd.github+json")
+        .build()
+    return runCatching {
+        client.newCall(request).execute().use { response ->
+          if (!response.isSuccessful) return@use null
+          JSON.decodeFromString(GitHubRepositoryResponse.serializer(), response.body.string())
+        }
+      }
+      .getOrNull()
   }
 
   /**
@@ -379,7 +472,28 @@ private data class GitHubPermissionResponse(
 )
 
 /** Only [private] is read; absent means "couldn't tell", which resolves to public. */
-@Serializable private data class GitHubRepositoryResponse(val private: Boolean? = null)
+@Serializable
+private data class GitHubRepositoryResponse(
+  val private: Boolean? = null,
+  /** The *authenticated* user's access, as GitHub computes it. Absent on an anonymous read. */
+  val permissions: GitHubRepositoryPermissions? = null,
+)
+
+/** GitHub's per-user permission flags on a repo payload. All default false: absent means no. */
+@Serializable
+private data class GitHubRepositoryPermissions(
+  val admin: Boolean = false,
+  val maintain: Boolean = false,
+  val push: Boolean = false,
+  val triage: Boolean = false,
+  val pull: Boolean = false,
+) {
+  /** Write access — the bar on a public repo, where `pull` is true for all of GitHub. */
+  fun write(): Boolean = admin || maintain || push
+
+  /** Any real grant — the bar on a private repo, where even `pull` was a deliberate decision. */
+  fun any(): Boolean = write() || triage || pull
+}
 
 private fun ApplicationCall.uriWithQuery(): String = request.uri
 

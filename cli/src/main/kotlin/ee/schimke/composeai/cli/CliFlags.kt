@@ -85,6 +85,7 @@ internal object CliFlags {
       "--github-auth-cookie-secret",
       "--github-auth-repo",
       "--github-auth-callback-base-url",
+      "--github-auth-scope",
       "--github-auth-users",
       "--catalog-repo",
       "--catalog-branch-prefix",

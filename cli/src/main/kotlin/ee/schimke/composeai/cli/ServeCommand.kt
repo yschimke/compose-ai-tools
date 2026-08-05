@@ -469,6 +469,12 @@ class ServeCommand(args: List<String>) : Command(args) {
     args.flagValue("--github-auth-repo")?.takeIf { it.isNotBlank() }
   private val githubAuthCallbackBaseUrl: String? =
     args.flagValue("--github-auth-callback-base-url")?.takeIf { it.isNotBlank() }
+  /**
+   * Overrides the OAuth scope. Unset derives it from `--github-auth-repo`'s visibility, which is
+   * what a deployment wants unless its GitHub App or org policy demands something specific.
+   */
+  private val githubAuthScope: String? =
+    args.flagValue("--github-auth-scope")?.takeIf { it.isNotBlank() }
   private val githubAuthUsers: Set<String> =
     args
       .flagValue("--github-auth-users")
@@ -2545,6 +2551,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         repository = githubAuthRepo!!,
         allowedUsers = githubAuthUsers,
         callbackBaseUrl = githubAuthCallbackBaseUrl,
+        oauthScope = githubAuthScope,
       )
     )
   }
@@ -2677,11 +2684,17 @@ class ServeCommand(args: List<String>) : Command(args) {
                           signed-in GitHub user (unless --github-auth-users narrows sign-in);
                           playground additionally requires access to <owner/repo>. After sign-in
                           the server stores only a signed, expiring login cookie plus the repo
-                          access verdict. The OAuth request includes GitHub's repo scope so private
-                          repositories can be checked. All four flags are required together.
+                          access verdict. The OAuth scope follows the repo's visibility: a public
+                          <owner/repo> needs only read:user, a private one also needs repo (classic
+                          OAuth apps have no read-only repository scope). All four flags are
+                          required together.
         --github-auth-callback-base-url <url>
                           External origin for the OAuth callback, e.g. https://preview.example.com.
                           Omit for local use; reverse-proxied deploys should set it explicitly.
+        --github-auth-scope <scope>
+                          Override the OAuth scope instead of deriving it from --github-auth-repo's
+                          visibility. Only needed when a GitHub App or org policy demands a specific
+                          one; the derived value is already the narrowest that works.
         --github-auth-users <login>[,<login>…]
                           Optional sign-in allowlist. Empty means any signed-in GitHub user may use
                           live sessions; playground still requires access to --github-auth-repo.
