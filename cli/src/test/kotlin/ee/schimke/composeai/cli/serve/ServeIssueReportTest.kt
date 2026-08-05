@@ -101,23 +101,21 @@ class ServeIssueReportTest {
   }
 
   @Test
-  fun `the issue url targets the repo and percent-encodes title and body`() {
-    val url = ServeIssueReport.issueUrl(full)
-    assertTrue(url.startsWith("https://github.com/yschimke/compose-samples/issues/new?title="), url)
-    assertTrue(url.contains("&body="), url)
-    // Nothing raw survives that would break out of the query — spaces, newlines, pipes, hashes.
-    val query = url.substringAfter("?")
-    assertFalse(query.contains(" ") || query.contains("\n") || query.contains("|"), query)
+  fun `the form action is the target repo's issue form`() {
+    // A literal the viewer's JS never touches — see ServeIssueReport.action for why the affordance
+    // is a GET form rather than a link whose href gets rewritten.
+    assertEquals(
+      "https://github.com/yschimke/compose-samples/issues/new",
+      ServeIssueReport.action(full.repo),
+    )
   }
 
   @Test
   fun `the template form leaves the render link as a placeholder the viewer JS can substitute`() {
-    val tpl = ServeIssueReport.issueUrl(full, renderPlaceholder = true)
-    // Encoded identically by WebEscaping and by JS's encodeURIComponent, so the viewer's swap is a
-    // plain string replace (see viewer.js refreshReportLink).
-    assertTrue(tpl.contains("%7B%7Brender%7D%7D"), tpl)
+    val tpl = ServeIssueReport.body(full, renderPlaceholder = true)
+    assertTrue(tpl.contains("[PNG at these settings]({{render}})"), tpl)
     assertFalse(
-      tpl.contains("Article__dark.png"),
+      tpl.contains("Article__dark.png?uiMode=dark"),
       "the served render URL is not baked into the template",
     )
   }

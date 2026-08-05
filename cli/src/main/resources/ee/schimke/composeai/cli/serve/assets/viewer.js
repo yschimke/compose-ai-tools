@@ -430,26 +430,23 @@
     updateSvgMatch();
     refreshReportLink();
   }
-  // Keep the "report an issue" link pointed at what is on screen. The server rendered a working
-  // href for the settings the page was served at (so this works with JS off); the template it
-  // carries has the render URL as an encoded placeholder, which we swap for the live /render URL
-  // so a report filed after fiddling with the knobs shows the render that prompted it. The token
-  // is stripped for the same reason the server strips it: an issue body is public, a session token
-  // is a capability.
-  var ISSUE_FORM_PREFIX = "https://github.com/";
+  // Keep the "report an issue" report pointed at what is on screen. The server filled the form's
+  // hidden `body` for the settings the page was served at (so this works with JS off); the
+  // template it carries has the render URL as a `{{render}}` placeholder, which we swap for the
+  // live /render URL so a report filed after fiddling with the knobs shows the render that
+  // prompted it. The token is stripped for the same reason the server strips it: an issue body is
+  // public, a session token is a capability.
+  //
+  // Note this writes an INPUT VALUE, never an href: the affordance is a GET form whose action is a
+  // server-rendered literal, so no page-derived string ever reaches a navigation sink. The browser
+  // does the query encoding on submit, which is why the substituted URL goes in raw here.
   function refreshReportLink() {
-    var link = document.getElementById("cp-report");
-    if (!link) return;
-    var tpl = link.getAttribute("data-report-template");
+    var body = document.getElementById("cp-report-body");
+    if (!body) return;
+    var tpl = body.getAttribute("data-report-template");
     var field = document.getElementById("cp-url-png");
     if (!tpl || !field || !field.value) return;
-    var next = tpl.replace("%7B%7Brender%7D%7D", encodeURIComponent(stripToken(field.value)));
-    // Assigning href is a navigation sink — a `javascript:` URL there would execute — and `next`
-    // is built from DOM text (the server-rendered template attribute). It is ours and escaped, but
-    // the guard costs nothing and is what makes that safe by construction rather than by trust:
-    // anything that isn't a github.com URL leaves the server-rendered href alone.
-    if (next.indexOf(ISSUE_FORM_PREFIX) !== 0) return;
-    link.href = next;
+    body.value = tpl.replace("{{render}}", stripToken(field.value));
   }
   function stripToken(url) {
     var cut = url.indexOf("?");

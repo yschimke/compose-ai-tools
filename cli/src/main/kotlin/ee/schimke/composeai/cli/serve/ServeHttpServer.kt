@@ -2647,8 +2647,10 @@ class ServeHttpServer(
         )
       val reportIssue =
         ServeWeb.ReportIssue(
-          href = ServeIssueReport.issueUrl(reportContext),
-          hrefTemplate = ServeIssueReport.issueUrl(reportContext, renderPlaceholder = true),
+          action = ServeIssueReport.action(reportContext.repo),
+          title = ServeIssueReport.title(reportContext),
+          body = ServeIssueReport.body(reportContext),
+          bodyTemplate = ServeIssueReport.body(reportContext, renderPlaceholder = true),
           repo = reportContext.repo,
           // Named in the tooltip when this box has a GitHub session for the visitor, so they know
           // whose account the issue will be authored by before they leave the page.

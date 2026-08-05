@@ -339,17 +339,21 @@ object ServeWeb {
   }
 
   /**
-   * The viewer's "report an issue" affordance: a prefilled GitHub new-issue link for the preview on
-   * screen, assembled by [ServeIssueReport]. [href] is the ready-to-click URL for the settings the
-   * page was served at (so it works with JS off); [hrefTemplate] is the same URL with the render
-   * link left as an encoded placeholder, which the viewer JS retargets at the current overrides on
-   * every refresh. [repo] names the target in the tooltip so nobody files against a repo they
-   * didn't mean to, and [login] — present only when the visitor has a GitHub session on this server
-   * — says whose account will author it.
+   * The viewer's "report an issue" affordance: a prefilled GitHub new-issue **form** for the
+   * preview on screen, assembled by [ServeIssueReport] (see [ServeIssueReport.action] for why a
+   * form rather than a link). [action] is the issue form's URL, [title] and [body] are its hidden
+   * inputs — filled for the settings the page was served at, so it works with JS off — and
+   * [bodyTemplate] is the same body with the render link left as
+   * [ServeIssueReport.RENDER_PLACEHOLDER], which the viewer JS re-substitutes as the overrides
+   * change. [repo] names the target in the tooltip so nobody files against a repo they didn't mean
+   * to, and [login] — present only when the visitor has a GitHub session on this server — says
+   * whose account will author it.
    */
   data class ReportIssue(
-    val href: String,
-    val hrefTemplate: String,
+    val action: String,
+    val title: String,
+    val body: String,
+    val bodyTemplate: String,
     val repo: String,
     val login: String? = null,
   )
@@ -371,19 +375,23 @@ object ServeWeb {
   }
 
   /**
-   * Renders [report] as the link that sits beside the per-preview "source" link. Null (a surface
-   * with no repo to file against) renders nothing.
+   * Renders [report] as the GET form that sits beside the per-preview "source" link — styled as a
+   * link, since that is what it behaves like. Null (a surface with no repo to file against) renders
+   * nothing.
    */
   private fun reportIssueHtml(report: ReportIssue?): String {
     val r = report ?: return ""
     val who =
       r.login?.takeIf { it.isNotBlank() }?.let { " as @${WebEscaping.htmlEscape(it)}" } ?: ""
     val tip = "File an issue on ${WebEscaping.htmlEscape(r.repo)}$who"
-    return "\n      <p class=\"cp-report\">" +
-      "<a class=\"cp-report-link\" id=\"cp-report\" href=\"${WebEscaping.htmlEscape(r.href)}\"" +
-      " data-report-template=\"${WebEscaping.htmlEscape(r.hrefTemplate)}\"" +
-      " target=\"_blank\" rel=\"noopener\" title=\"$tip\">" +
-      "$GITHUB_ICON report an issue</a></p>"
+    return "\n      <form class=\"cp-report\" id=\"cp-report\" method=\"get\" target=\"_blank\"" +
+      " rel=\"noopener\" action=\"${WebEscaping.htmlEscape(r.action)}\">" +
+      "<input type=\"hidden\" name=\"title\" value=\"${WebEscaping.htmlEscape(r.title)}\">" +
+      "<input type=\"hidden\" name=\"body\" id=\"cp-report-body\"" +
+      " value=\"${WebEscaping.htmlEscape(r.body)}\"" +
+      " data-report-template=\"${WebEscaping.htmlEscape(r.bodyTemplate)}\">" +
+      "<button type=\"submit\" class=\"cp-report-link\" title=\"$tip\">" +
+      "$GITHUB_ICON report an issue</button></form>"
   }
 
   /**

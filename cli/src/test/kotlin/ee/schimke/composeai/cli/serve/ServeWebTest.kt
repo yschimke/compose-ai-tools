@@ -515,21 +515,32 @@ class ServeWebTest {
         sourceHref = "https://github.com/o/r/blob/main/src/main/A.kt",
         reportIssue =
           ServeWeb.ReportIssue(
-            href = "https://github.com/o/r/issues/new?title=T&body=B",
-            hrefTemplate = "https://github.com/o/r/issues/new?title=T&body=B%7B%7Brender%7D%7D",
+            action = "https://github.com/o/r/issues/new",
+            title = "Preview issue: button",
+            body = "render: https://host/render/x.png",
+            bodyTemplate = "render: {{render}}",
             repo = "o/r",
             login = "octocat",
           ),
       )
     assertTrue(html.contains("class=\"cp-preview-links\""), "source + report share one row")
-    assertTrue(html.contains("id=\"cp-report\""), "report link rendered")
+    assertTrue(html.contains("id=\"cp-report\""), "report affordance rendered")
+    // A GET form, not a link: nothing page-derived may reach a navigation sink, so the action is a
+    // server-rendered literal and the prefill rides in hidden inputs the browser encodes on submit.
     assertTrue(
-      html.contains("href=\"https://github.com/o/r/issues/new?title=T&amp;body=B\""),
-      "the server-rendered href works without JS",
+      html.contains("<form class=\"cp-report\" id=\"cp-report\" method=\"get\"") &&
+        html.contains("action=\"https://github.com/o/r/issues/new\""),
+      "the issue form posts to the resolved repo",
     )
     assertTrue(
-      html.contains("data-report-template=") && html.contains("%7B%7Brender%7D%7D"),
-      "carries the template the viewer JS retargets at the current overrides",
+      html.contains("name=\"title\" value=\"Preview issue: button\"") &&
+        html.contains("name=\"body\" id=\"cp-report-body\"") &&
+        html.contains("value=\"render: https://host/render/x.png\""),
+      "the server-filled prefill works without JS",
+    )
+    assertTrue(
+      html.contains("data-report-template=\"render: {{render}}\""),
+      "carries the template the viewer JS re-substitutes at the current overrides",
     )
     // The tooltip names the repo the issue lands on, and — when this box knows the visitor's GitHub
     // session — whose account will author it.

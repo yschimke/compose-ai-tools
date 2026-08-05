@@ -23,11 +23,10 @@ package ee.schimke.composeai.cli.serve
 internal object ServeIssueReport {
 
   /**
-   * Stand-in for the render URL inside [issueUrl]'s body, so the viewer JS can keep the link in
-   * sync with the on-screen overrides without re-assembling the whole body client-side: the anchor
-   * carries the encoded URL with this placeholder in it and swaps in the live `/render` URL on each
-   * refresh. Chosen to be URL-encoded identically by [WebEscaping.urlEncodeSegment] and JS's
-   * `encodeURIComponent` (`%7B%7Brender%7D%7D`), so the JS substitution is a plain string replace.
+   * Stand-in for the render URL inside [body], so the viewer JS can keep the report in sync with
+   * the on-screen overrides without re-assembling the whole body client-side: the form's hidden
+   * `body` input carries the text with this placeholder in it and swaps in the live `/render` URL
+   * on each refresh.
    */
   const val RENDER_PLACEHOLDER: String = "{{render}}"
 
@@ -122,14 +121,18 @@ internal object ServeIssueReport {
   }
 
   /**
-   * The full `https://github.com/<repo>/issues/new?title=…&body=…` URL. With [renderPlaceholder]
-   * the body's render link is [RENDER_PLACEHOLDER] (already percent-encoded), giving the viewer JS
-   * a template it can retarget at the current overrides.
+   * The GitHub new-issue form for [repo], used as a `<form action>` rather than a link the JS
+   * rewrites.
+   *
+   * The viewer surfaces this as a **GET form** whose `title` / `body` are hidden inputs. That is
+   * not a styling preference: keeping the prefilled report current as the knobs change means
+   * writing page state into it, and writing a page-derived string into an anchor's `href` is a
+   * navigation sink (a `javascript:` URL there would execute) — CodeQL flags it, correctly, no
+   * matter how the value is guarded afterwards. A form has no such sink: the action is a
+   * server-rendered literal the JS never touches, the live render URL only ever lands in an input
+   * value, and the browser does the query encoding on submit.
    */
-  fun issueUrl(ctx: Context, renderPlaceholder: Boolean = false): String =
-    "https://github.com/${ctx.repo}/issues/new" +
-      "?title=${WebEscaping.urlEncodeSegment(title(ctx))}" +
-      "&body=${WebEscaping.urlEncodeSegment(body(ctx, renderPlaceholder))}"
+  fun action(repo: String): String = "https://github.com/$repo/issues/new"
 
   /**
    * [url] with any `token=` query parameter dropped. A token-gated session bakes its session token

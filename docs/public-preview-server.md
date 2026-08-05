@@ -219,7 +219,13 @@ Every viewer page carries a **report an issue** link beside its "source" link. I
 triager would otherwise have to ask for: the design system, the preview id, the source file, which
 catalog build was on screen (`repo@branch` + the compose-ai-tools version that rendered it), a deep
 link to the viewer, and the `/render` PNG **at the overrides in force when the link was clicked** —
-the viewer JS retargets the link as the knobs, theme and size change.
+the viewer keeps the prefill current as the knobs, theme and size change.
+
+Mechanically it is a **GET form**, not an anchor: keeping the prefill current means writing page
+state into it, and writing a page-derived string into an `href` is a navigation sink (a
+`javascript:` URL there would execute). The form's action is a server-rendered literal the JS never
+touches, the live render URL only ever lands in a hidden input's value, and the browser does the
+query encoding on submit — so there is no sink to guard.
 
 | Before | After |
 | --- | --- |

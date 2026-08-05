@@ -90,8 +90,10 @@ class ServeWebFixtureTest {
       )
       .let { ctx ->
         ServeWeb.ReportIssue(
-          href = ServeIssueReport.issueUrl(ctx),
-          hrefTemplate = ServeIssueReport.issueUrl(ctx, renderPlaceholder = true),
+          action = ServeIssueReport.action(ctx.repo),
+          title = ServeIssueReport.title(ctx),
+          body = ServeIssueReport.body(ctx),
+          bodyTemplate = ServeIssueReport.body(ctx, renderPlaceholder = true),
           repo = ctx.repo,
           login = "yschimke",
         )
@@ -3327,15 +3329,16 @@ class ServeWebFixtureTest {
     // session token into a body destined for a public issue.
     assertTrue(
       assetText("viewer.js").contains("function refreshReportLink()") &&
-        assetText("viewer.js").contains("%7B%7Brender%7D%7D") &&
+        assetText("viewer.js").contains("{{render}}") &&
         assetText("viewer.js").contains("stripToken("),
-      "the report link is retargeted at the current render, token stripped",
+      "the report body is re-substituted at the current render, token stripped",
     )
-    // …and the retarget only ever lands on a github.com issue form: href is a navigation sink, so
-    // a template that isn't one leaves the server-rendered href in place.
+    // …by writing an INPUT VALUE, never an href. The affordance is a GET form whose action is a
+    // server-rendered literal, so no page-derived string can reach a navigation sink.
     assertTrue(
-      assetText("viewer.js").contains("next.indexOf(ISSUE_FORM_PREFIX) !== 0"),
-      "the report href is gated on the GitHub issue-form origin",
+      assetText("viewer.js").contains("body.value = tpl.replace(") &&
+        !assetText("viewer.js").contains("link.href = "),
+      "the report prefill goes into a form input, not a navigation sink",
     )
     // The URL itself is copied by clicking the field (no separate "Copy URL" button) — the handler
     // binds to .cp-url and flashes .cp-url-copied.

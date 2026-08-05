@@ -64,8 +64,12 @@ a:hover { text-decoration: underline; }
 .cp-preview-links { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px;
   margin: 0 0 8px; }
 .cp-source, .cp-report { margin: 0; font-size: 0.8rem; }
+/* The report affordance is a GET form (its action is the GitHub issue form, its title/body are
+   hidden inputs) so no page state ever reaches a navigation sink — but it reads as a link, so the
+   submit button is stripped of its button chrome and styled as one. */
 .cp-source-link, .cp-report-link { display: inline-flex; align-items: center; gap: 5px;
   color: var(--cp-fg-muted); text-decoration: none; }
+.cp-report-link { background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }
 .cp-source-link:hover, .cp-report-link:hover { text-decoration: underline; }
 .cp-about { margin: 0 0 34px; padding: 16px 18px; border: 1px solid var(--cp-border); border-radius: 12px;
   background: var(--cp-surface); max-width: 720px; }
