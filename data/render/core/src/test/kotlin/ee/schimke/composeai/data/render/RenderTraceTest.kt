@@ -128,6 +128,48 @@ class RenderTraceTest {
     // Sections are appended as they close, so an enclosing section closes last and is the first
     // thing the cap sheds. Its children then start *after* the render did — and rebasing them onto
     // their own minimum while reporting the full duration would place every phase at 0.
+    //
+    // Explicit timestamps rather than a live recorder: real elapsed time between two adjacent
+    // `section` calls can be under a microsecond, and `startMicros` truncates — so a wall-clock
+    // version of this test would pass or fail on how fast the machine is.
+    val originNanos = 1_000_000L
+    val trace =
+      RenderTrace.of(
+        backend = "desktop",
+        // Only the children survived the cap; the enclosing `render:once` was shed.
+        events =
+          listOf(
+            RenderTrace.Recorded(
+              "compose:frame",
+              "c",
+              originNanos + 5_000_000L,
+              originNanos + 6_000_000L,
+              1,
+            ),
+            RenderTrace.Recorded(
+              "compose:frame",
+              "c",
+              originNanos + 7_000_000L,
+              originNanos + 8_000_000L,
+              1,
+            ),
+          ),
+        totalMicros = 20_000L,
+        originNanos = originNanos,
+        droppedSpans = 1,
+      )
+
+    // 5ms after the render began — not 0, which is where rebasing onto the retained minimum
+    // would have put it.
+    assertEquals(5_000L, trace.spans.first().startMicros)
+    assertEquals(7_000L, trace.spans.last().startMicros)
+    assertEquals(20_000L, trace.totalMicros)
+  }
+
+  @Test
+  fun `a live recorder that sheds its enclosing section still reports every child`() {
+    // The wall-clock half of the pair above: no offset assertions (those truncate at microsecond
+    // resolution), just that the cap sheds the enclosing section and the aggregates survive it.
     val recorder =
       PerfettoTraceDataProducer.recorder(previewId = "p", backend = "desktop", enabled = false)
 
@@ -139,11 +181,8 @@ class RenderTraceTest {
       trace.spans.none { it.name == "render:once" },
       "the outermost section closes last, so it is the one dropped",
     )
-    // The first retained child began after the render did, so its offset must not be zero.
-    assertTrue(
-      trace.spans.first().startMicros > 0,
-      "retained spans must stay on the render's origin, not their own",
-    )
+    assertEquals(1, trace.sections.single { it.name == "render:once" }.count)
+    assertEquals(5_000, trace.sections.single { it.name == "compose:frame" }.count)
   }
 
   @Test
