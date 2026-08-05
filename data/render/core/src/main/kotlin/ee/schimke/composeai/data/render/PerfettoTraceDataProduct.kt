@@ -112,7 +112,23 @@ object PerfettoTraceDataProducer {
      */
     private var depth: Int = 0
 
-    fun <T> section(name: String, category: String = "compose-preview", block: () -> T): T {
+    /**
+     * Sections opened by [beginSection] and not yet closed, innermost last.
+     *
+     * The scoped [section] does not need this — its `try`/`finally` holds the state on the call
+     * stack. It exists for callers whose start and end arrive as separate events with no lexical
+     * scope between them, which is the shape of a Compose `CompositionTracer` (`traceEventStart` /
+     * `traceEventEnd` fire from compiler-generated call sites).
+     */
+    private val openSections = ArrayDeque<OpenSection>()
+
+    private class OpenSection(val name: String, val category: String, val startNs: Long)
+
+    /**
+     * Open a section that [endSection] will close. Prefer [section] wherever the work is lexically
+     * scoped — an unbalanced pair here silently mis-nests everything after it.
+     */
+    fun beginSection(name: String, category: String = "compose-preview") {
       // Mirror the span onto the platform tracer when one is installed (see [sectionBackend]).
       // Independent of [enabled] — the JSON recorder and an atrace capture are separate opt-ins —
       // and guarded so a tracer failure can never fail the render it's observing.
@@ -122,25 +138,37 @@ object PerfettoTraceDataProducer {
           platform.begin(name)
         } catch (_: Throwable) {}
       }
-      val enteredDepth = depth
-      depth = enteredDepth + 1
-      val startNs = System.nanoTime()
+      openSections.addLast(
+        OpenSection(name = name, category = category, startNs = System.nanoTime())
+      )
+      depth += 1
+    }
+
+    /** Close the innermost section opened by [beginSection]. Ignored when none is open. */
+    fun endSection() {
+      val open = openSections.removeLastOrNull() ?: return
+      depth -= 1
+      record(
+        name = open.name,
+        category = open.category,
+        startNs = open.startNs,
+        endNs = System.nanoTime(),
+        depth = depth,
+      )
+      val platform = sectionBackend
+      if (platform != null) {
+        try {
+          platform.end()
+        } catch (_: Throwable) {}
+      }
+    }
+
+    fun <T> section(name: String, category: String = "compose-preview", block: () -> T): T {
+      beginSection(name = name, category = category)
       try {
         return block()
       } finally {
-        depth = enteredDepth
-        record(
-          name = name,
-          category = category,
-          startNs = startNs,
-          endNs = System.nanoTime(),
-          depth = enteredDepth,
-        )
-        if (platform != null) {
-          try {
-            platform.end()
-          } catch (_: Throwable) {}
-        }
+        endSection()
       }
     }
 

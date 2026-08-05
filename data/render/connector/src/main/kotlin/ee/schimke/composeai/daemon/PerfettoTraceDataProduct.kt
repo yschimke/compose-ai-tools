@@ -58,6 +58,16 @@ object PerfettoTraceDataProducer {
     fun <T> section(name: String, category: String = "compose-preview", block: () -> T): T =
       delegate.section(name = name, category = category, block = block)
 
+    /** See `PerfettoTraceDataProducer.Recorder.beginSection` — for non-lexical span pairs. */
+    fun beginSection(name: String, category: String = "compose-preview") {
+      delegate.beginSection(name = name, category = category)
+    }
+
+    /** See `PerfettoTraceDataProducer.Recorder.endSection`. */
+    fun endSection() {
+      delegate.endSection()
+    }
+
     fun record(
       name: String,
       category: String = "compose-preview",

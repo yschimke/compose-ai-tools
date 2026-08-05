@@ -102,6 +102,15 @@ export interface PerformanceBundleData {
 }
 
 const TOP_N_RECOMPOSITION = 10;
+/**
+ * Phase rows rendered before the list is elided.
+ *
+ * The engine's own phases number about a dozen, so this never bites for an ordinary trace. It
+ * exists for composable-level composition tracing (`compose.composition` spans), where a real
+ * screen produces thousands — enough to lock up the panel if painted whole. The `sections[]`
+ * aggregates are the readable view at that volume, and they are unaffected by this cap.
+ */
+const MAX_PHASE_ROWS = 200;
 const TOP_N_PERFETTO_PHASES = 3;
 
 /**
@@ -554,7 +563,7 @@ function renderRenderTraceSection(trace: RenderTraceSection): HTMLElement {
     if (trace.phases.length > 0) {
         const list = document.createElement("div");
         list.className = "perf-phase-list";
-        for (const phase of trace.phases) {
+        for (const phase of trace.phases.slice(0, MAX_PHASE_ROWS)) {
             const row = document.createElement("div");
             row.className = "perf-phase-row";
             row.dataset.depth = String(Math.min(phase.depth, 6));
@@ -591,6 +600,15 @@ function renderRenderTraceSection(trace: RenderTraceSection): HTMLElement {
             list.appendChild(row);
         }
         section.appendChild(list);
+        const elided = trace.phases.length - MAX_PHASE_ROWS;
+        if (elided > 0) {
+            const note = document.createElement("div");
+            note.className = "perf-trace-note";
+            note.textContent =
+                elided +
+                " more phases not shown — see the per-name totals below.";
+            section.appendChild(note);
+        }
     }
 
     if (trace.repeats.length > 0) {
