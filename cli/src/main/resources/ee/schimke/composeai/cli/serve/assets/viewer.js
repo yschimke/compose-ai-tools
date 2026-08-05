@@ -366,6 +366,13 @@
           var previous = img.getAttribute("data-cp-blob");
           img.src = objectUrl;
           img.setAttribute("data-cp-blob", objectUrl);
+          // The blob URL is opaque — it says nothing about which render produced the pixels on
+          // screen. Record the /render URL we actually fetched so the visible frame's provenance
+          // stays inspectable: which format, which knobs, which lane. `#cp-url-png` / `#cp-url-svg`
+          // track the *current controls*, which is not the same thing — they update the instant a
+          // knob moves, while this only lands once the matching bytes have decoded. That gap is
+          // exactly what the serve-lanes e2e asserts on.
+          img.setAttribute("data-cp-src", url);
           if (previous) URL.revokeObjectURL(previous);
           status.textContent = "";
           setSnapshotLoading(false);

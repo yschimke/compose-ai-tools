@@ -294,19 +294,23 @@ class GitHubOAuthVerifier(private val client: OkHttpClient = OkHttpClient()) {
   }
 
   /**
-   * Whether [login] has **write** access to [repository] — the gate on the playground, which
-   * compiles and runs a stranger's Kotlin.
+   * Whether [login] has access to [repository] that means something — the gate on the playground,
+   * which compiles and runs a stranger's Kotlin.
    *
-   * Write, not merely "not none". GitHub reports `read` from this endpoint for *any* authenticated
-   * user on a **public** repository, because reading is what public means — so the old `permission
-   * != "none"` test admitted every GitHub account whenever the configured `--github-auth-repo` was
-   * public, which is the documented setup. The legacy `permission` field collapses the finer roles
-   * onto `admin` / `write` / `read` / `none`, so `maintain` arrives as `write`; it is accepted by
-   * name too in case that ever changes.
+   * What "means something" is depends on the repository's visibility, and #3313 got this half
+   * right. On a **public** repo, `read` is what GitHub reports for *every* authenticated user,
+   * because reading is what public means — so a read-level gate there admits the whole of GitHub,
+   * which is the hole #3313 closed. On a **private** repo, `read` is the opposite: somebody
+   * deliberately granted this person access to a repository nobody else can see. Requiring write
+   * everywhere, as #3313 did, locked out read-only collaborators in the one case that was never
+   * broken.
    *
-   * This is deliberately narrower than before: a read-only collaborator on a private repo no longer
-   * reaches the playground. Live preview, which only needs a signed-in user, is unaffected — and
-   * `--github-auth-users` remains the way to admit named logins.
+   * So: public repo → require `admin` / `maintain` / `write`. Private repo → any permission other
+   * than `none`, exactly as before #3313. One extra API call per sign-in, on a path that already
+   * makes two.
+   *
+   * When visibility can't be determined the answer is **write**, the safe side: a token that can't
+   * read the repo metadata tells us nothing that should widen a gate on code execution.
    */
   private fun fetchRepositoryAccess(token: String, repository: String, login: String): Boolean {
     val request =
@@ -319,10 +323,36 @@ class GitHubOAuthVerifier(private val client: OkHttpClient = OkHttpClient()) {
       if (!response.isSuccessful) return@use false
       val payload =
         JSON.decodeFromString(GitHubPermissionResponse.serializer(), response.body.string())
+      val permission = payload.permission.lowercase()
       val role = payload.roleName?.trim()?.lowercase()
-      payload.permission.lowercase() in WRITE_PERMISSIONS ||
-        (role != null && role in WRITE_PERMISSIONS)
+      val write = permission in WRITE_PERMISSIONS || (role != null && role in WRITE_PERMISSIONS)
+      if (write) return@use true
+      // Not write. Only a private repo can still qualify, and only on a real (non-`none`) grant.
+      val readish = permission != "none" || (role != null && role != "none")
+      readish && !isPublicRepository(token, repository)
     }
+  }
+
+  /**
+   * Whether [repository] is public. Defaults to **true** when the lookup fails or the field is
+   * absent — see [fetchRepositoryAccess]: public is the stricter branch, so an unknown visibility
+   * falls back to requiring write rather than accepting a bare `read`.
+   */
+  private fun isPublicRepository(token: String, repository: String): Boolean {
+    val request =
+      Request.Builder()
+        .url("https://api.github.com/repos/$repository")
+        .header(HttpHeaders.Authorization, "Bearer $token")
+        .header(HttpHeaders.Accept, "application/vnd.github+json")
+        .build()
+    return runCatching {
+        client.newCall(request).execute().use { response ->
+          if (!response.isSuccessful) return@use true
+          JSON.decodeFromString(GitHubRepositoryResponse.serializer(), response.body.string())
+            .private != true
+        }
+      }
+      .getOrDefault(true)
   }
 
   companion object {
@@ -347,6 +377,9 @@ private data class GitHubPermissionResponse(
   val permission: String = "none",
   @SerialName("role_name") val roleName: String? = null,
 )
+
+/** Only [private] is read; absent means "couldn't tell", which resolves to public. */
+@Serializable private data class GitHubRepositoryResponse(val private: Boolean? = null)
 
 private fun ApplicationCall.uriWithQuery(): String = request.uri
 

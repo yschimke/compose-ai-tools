@@ -69,6 +69,7 @@ specs the code actually depends on:
 - [design/UI_BUILDER.md](design/UI_BUILDER.md) — **proposal**: assembling screens from catalog components (scaffold-first slots, a persisted composition document, Figma round-trip). Product analysis + phased plan; no code yet.
 - [design/PLAYGROUND.md](design/PLAYGROUND.md) — **proposal**: a hosted Kotlin/Compose editor over the `serve` preview server (compile-then-permalink handoff, CMP / Compose-Android / Remote-Compose modes, the preview-token capability, isolation requirements). Product analysis + phased plan; Phase 1 in progress.
 - [design/RC_CMP_WASM_PLAYER.md](design/RC_CMP_WASM_PLAYER.md) — **proposal**: an original non-JVM CMP player for Remote Compose documents, with a typed binary codec, Compose/Skiko rendering boundaries, operation clusters, and per-operation conformance gates.
+- [design/RC_PLAYER_TYPEFACES.md](design/RC_PLAYER_TYPEFACES.md) — **audit**: how each of the five Remote Compose player lanes (`js`, `cmp-wasm`, `java`, `cmp-android`, `cmp-jvm`) resolves built-in, named, downloadable, and document-embedded typefaces, and where two chips in the same viewer disagree about one document.
 
 Component-level contracts (the XR semantics tree, `FigmaLayeredSvg`, the font
 preview wrapper, `@XrSubspacePreview`) now live as **KDoc on the owning class**,

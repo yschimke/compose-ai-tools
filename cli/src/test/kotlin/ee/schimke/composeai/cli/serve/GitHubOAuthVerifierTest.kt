@@ -26,8 +26,15 @@ class GitHubOAuthVerifierTest {
       repository = "yschimke/compose-ai-tools",
     )
 
-  /** Serves the three endpoints `verify` walks, with a caller-chosen permission payload. */
-  private fun verifierReporting(permissionJson: String): GitHubOAuthVerifier {
+  /**
+   * Serves the endpoints `verify` walks, with a caller-chosen permission payload and repository
+   * visibility. [repoJson] null makes the repo lookup fail, which must resolve to the strict
+   * (public) rule.
+   */
+  private fun verifierReporting(
+    permissionJson: String,
+    repoJson: String? = PUBLIC_REPO,
+  ): GitHubOAuthVerifier {
     val client =
       OkHttpClient.Builder()
         .addInterceptor(
@@ -38,14 +45,15 @@ class GitHubOAuthVerifierTest {
                 url.contains("login/oauth/access_token") -> """{"access_token":"t"}"""
                 url.endsWith("/user") -> """{"login":"octocat"}"""
                 url.contains("/collaborators/") -> permissionJson
+                url.endsWith("/repos/${config.repository}") -> repoJson
                 else -> error("unexpected request to $url")
               }
             Response.Builder()
               .request(chain.request())
               .protocol(Protocol.HTTP_1_1)
-              .code(200)
-              .message("OK")
-              .body(body.toResponseBody("application/json".toMediaType()))
+              .code(if (body == null) 404 else 200)
+              .message(if (body == null) "Not Found" else "OK")
+              .body((body ?: "{}").toResponseBody("application/json".toMediaType()))
               .build()
           }
         )
@@ -53,9 +61,9 @@ class GitHubOAuthVerifierTest {
     return GitHubOAuthVerifier(client)
   }
 
-  private fun accessFor(permissionJson: String): Boolean {
+  private fun accessFor(permissionJson: String, repoJson: String? = PUBLIC_REPO): Boolean {
     val user =
-      verifierReporting(permissionJson)
+      verifierReporting(permissionJson, repoJson)
         .verify("code", "https://example.test/cb", config)
         .getOrThrow()
     assertEquals("octocat", user.login)
@@ -104,5 +112,42 @@ class GitHubOAuthVerifierTest {
   fun `a payload without a role name still reads the legacy permission`() {
     assertTrue(accessFor("""{"permission":"write"}"""))
     assertFalse(accessFor("""{"permission":"read"}"""))
+  }
+
+  // ── Visibility split ───────────────────────────────────────────────────────────────────────────
+  // `read` means opposite things either side of it: on a public repo GitHub hands it to everyone,
+  // on a private one somebody deliberately granted it. #3313 required write on both, which locked
+  // out read-only collaborators in the case that was never broken.
+
+  @Test
+  fun `read on a private repo is repository access`() {
+    assertTrue(accessFor("""{"permission":"read","role_name":"read"}""", PRIVATE_REPO))
+  }
+
+  @Test
+  fun `triage on a private repo is repository access`() {
+    assertTrue(accessFor("""{"permission":"read","role_name":"triage"}""", PRIVATE_REPO))
+  }
+
+  @Test
+  fun `none on a private repo is still not repository access`() {
+    assertFalse(accessFor("""{"permission":"none","role_name":"none"}""", PRIVATE_REPO))
+  }
+
+  @Test
+  fun `write on a private repo is repository access`() {
+    assertTrue(accessFor("""{"permission":"write","role_name":"write"}""", PRIVATE_REPO))
+  }
+
+  /** Unknown visibility takes the strict branch: an unreadable repo must not widen the gate. */
+  @Test
+  fun `an unreadable repo falls back to requiring write`() {
+    assertFalse(accessFor("""{"permission":"read","role_name":"read"}""", repoJson = null))
+    assertTrue(accessFor("""{"permission":"write","role_name":"write"}""", repoJson = null))
+  }
+
+  private companion object {
+    const val PUBLIC_REPO = """{"private":false}"""
+    const val PRIVATE_REPO = """{"private":true}"""
   }
 }

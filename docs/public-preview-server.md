@@ -539,12 +539,17 @@ SERVE_GITHUB_AUTH_COOKIE_SECRET=... # at least 32 chars
 
 With those set, live preview WebSockets require a signed-in GitHub user. `/playground`,
 `POST /api/<version>/compiler/run`, and `/pg/<token>` require a signed-in GitHub user that also has
-**write** access to `SERVE_GITHUB_AUTH_REPO` / `--github-auth-repo` — `admin`, `maintain`, or
-`write`. Read access is deliberately not enough: GitHub reports `read` for *any* authenticated user
-on a **public** repository, so a read-level gate on a public `SERVE_GITHUB_AUTH_REPO` would admit
-every GitHub account to a surface that compiles and runs submitted Kotlin. Use
-`SERVE_GITHUB_AUTH_USERS` to admit named logins who don't have write access. The browser cookie
-stores only a signed, expiring login plus the repo access verdict, and is marked `secure` whenever
+access to `SERVE_GITHUB_AUTH_REPO` / `--github-auth-repo`, where what counts as access depends on
+that repository's visibility:
+
+- **Public repo** — `admin`, `maintain`, or `write`. Read is deliberately not enough, because GitHub
+  reports `read` for *any* authenticated user on a public repository; a read-level gate there would
+  admit every GitHub account to a surface that compiles and runs submitted Kotlin.
+- **Private repo** — any permission other than `none`. On a private repo a `read` grant is a real
+  decision somebody made, so read-only collaborators keep playground access.
+
+If the repository's visibility can't be determined, the stricter (public) rule applies. The browser
+cookie stores only a signed, expiring login plus the repo access verdict, and is marked `secure` whenever
 the request arrives over HTTPS (which is why a reverse-proxied box should set
 `SERVE_GITHUB_AUTH_CALLBACK_BASE_URL`). The OAuth request includes GitHub's `repo` scope so private
 repository access can be checked during sign-in; the OAuth token is not stored.
@@ -554,7 +559,8 @@ When `DOMAIN` is set, the prebuilt image derives
 `SERVE_GITHUB_AUTH_CALLBACK_BASE_URL=https://$DOMAIN`. Empty `SERVE_GITHUB_AUTH_USERS` allows any
 signed-in GitHub user to use live previews; playground still requires access to
 `SERVE_GITHUB_AUTH_REPO`. Set `SERVE_GITHUB_AUTH_USERS=alice,bob` to narrow sign-in to named logins
-for both surfaces.
+for both surfaces. The allowlist only ever **restricts** — naming a login does not grant it
+playground access, which always comes from the repo check above.
 
 ### The catalog set is config, not image content
 

@@ -1180,18 +1180,37 @@ object FigmaLayeredSvg {
   private val GENERIC_EMBED_FACE = mapOf("serif" to "Noto Serif", "monospace" to "Roboto Mono")
 
   /**
+   * `FontFamily.Default`'s `toString()` — a sentinel, not a face name (issue #3209). Compose's
+   * default family carries no display name, so an Android capture that stringifies it writes this
+   * literal where a family belongs; it resolves nowhere (Figma, a browser, a font resolver), and
+   * treating it as concrete emitted `font-family="FontFamily.Default, sans-serif"` and sent the
+   * embedder hunting for a face called `Font Family.Default`. A capture stating it means "no family
+   * stated", exactly like a null capture or a sans generic. Handled here rather than only at the
+   * capture site so already-baked payloads and bundles classify correctly too.
+   */
+  private const val DEFAULT_FAMILY_SENTINEL = "fontfamily.default"
+
+  /**
+   * The captured family when it names one, else null — folding the [DEFAULT_FAMILY_SENTINEL] (and a
+   * blank capture) into the same "unstated" case a null capture takes.
+   */
+  private fun statedFamily(captured: String?): String? =
+    captured?.trim()?.takeIf { it.isNotEmpty() && it.lowercase() != DEFAULT_FAMILY_SENTINEL }
+
+  /**
    * The family name to emit on a `<text>` when no embedded face overrides it — i.e. the vector-only
-   * export or a family the embedding path couldn't resolve. A null/sans-serif capture becomes
-   * [defaultFamily]; a meaningful generic (`serif`, `monospace`, `cursive`, `fantasy`) is emitted
-   * **as-is** so the viewer renders a real face of that style rather than the sans default (which
-   * is what lost serif/monospace specimens their identity); a real captured face keeps its name.
+   * export or a family the embedding path couldn't resolve. A null / `FontFamily.Default` /
+   * sans-serif capture becomes [defaultFamily]; a meaningful generic (`serif`, `monospace`,
+   * `cursive`, `fantasy`) is emitted **as-is** so the viewer renders a real face of that style
+   * rather than the sans default (which is what lost serif/monospace specimens their identity); a
+   * real captured face keeps its name.
    */
   fun resolveFamily(captured: String?, defaultFamily: String): String {
-    if (captured == null) return defaultFamily
-    val generic = captured.lowercase()
+    val stated = statedFamily(captured) ?: return defaultFamily
+    val generic = stated.lowercase()
     if (generic in SANS_GENERICS) return defaultFamily
     if (generic in CSS_GENERICS) return generic
-    return svgFontFamily(captured)
+    return svgFontFamily(stated)
   }
 
   /**
@@ -1226,14 +1245,14 @@ object FigmaLayeredSvg {
    * embeds matches what [resolveFamily] would emit for the same capture.
    */
   fun embedFamily(captured: String?, defaultFamily: String): String? {
-    if (captured == null) return defaultFamily
-    val generic = captured.lowercase()
+    val stated = statedFamily(captured) ?: return defaultFamily
+    val generic = stated.lowercase()
     if (generic in SANS_GENERICS) return defaultFamily
     GENERIC_EMBED_FACE[generic]?.let {
       return it
     }
     if (generic in CSS_GENERICS) return null
-    return embeddableFamily(captured)
+    return embeddableFamily(stated)
   }
 
   /**
