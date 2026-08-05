@@ -82,9 +82,27 @@ class GoogleFontCache(
   private val cacheDir: File,
   private val offline: Boolean = false,
   private val downloader: (GoogleFontKey, File) -> Boolean = ::downloadFromGoogleFonts,
-  private val variableDownloader: (String, Boolean, File) -> Boolean =
-    ::downloadVariableFromGoogleFontsRepo,
 ) : GoogleFontSource {
+
+  /**
+   * Not a fourth primary-constructor parameter, deliberately: this class ships in a published
+   * artifact, and adding one would change the primary constructor's JVM descriptor (and its
+   * defaults-synthetic), so a consumer's *already-compiled* `GoogleFontCache(dir, false,
+   * downloader)` would fail with `NoSuchMethodError` on a dependency-only upgrade. A `var` set
+   * through the secondary constructor below leaves every existing descriptor exactly where it was.
+   */
+  private var variableDownloader: (String, Boolean, File) -> Boolean =
+    ::downloadVariableFromGoogleFontsRepo
+
+  /** Injects the variable-font downloader as well, for tests. */
+  constructor(
+    cacheDir: File,
+    offline: Boolean,
+    downloader: (GoogleFontKey, File) -> Boolean,
+    variableDownloader: (String, Boolean, File) -> Boolean,
+  ) : this(cacheDir, offline, downloader) {
+    this.variableDownloader = variableDownloader
+  }
 
   override fun load(key: GoogleFontKey): File? = fetch(key.fileName()) { downloader(key, it) }
 

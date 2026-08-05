@@ -287,9 +287,9 @@ class GoogleFontsTest {
     val cache =
       GoogleFontCache(
         dir,
-        offline = false,
-        downloader = { _, _ -> error("the static downloader must not serve a variable request") },
-        variableDownloader = { _, _, dest ->
+        false,
+        { _, _ -> error("the static downloader must not serve a variable request") },
+        { _, _, dest ->
           calls++
           dest.writeBytes(FAKE_TTF_BYTES)
           true
@@ -309,8 +309,9 @@ class GoogleFontsTest {
     val cache =
       GoogleFontCache(
         dir,
-        offline = false,
-        variableDownloader = { _, _, dest ->
+        false,
+        { _, _ -> error("the static downloader must not serve a variable request") },
+        { _, _, dest ->
           dest.writeBytes(FAKE_TTF_BYTES)
           true
         },
@@ -328,7 +329,7 @@ class GoogleFontsTest {
   @Test
   fun `loadVariable leaves no file behind when the family has no variable font`() {
     val dir = tempDir.newFolder("fonts")
-    val cache = GoogleFontCache(dir, offline = false, variableDownloader = { _, _, _ -> false })
+    val cache = GoogleFontCache(dir, false, { _, _ -> error("static path") }, { _, _, _ -> false })
     assertNull(cache.loadVariable("Lobster Two"))
     assertFalse(File(dir, variableFileName("Lobster Two", italic = false)).exists())
   }
@@ -339,8 +340,9 @@ class GoogleFontsTest {
     val cache =
       GoogleFontCache(
         dir,
-        offline = true,
-        variableDownloader = { _, _, _ -> error("offline mode must not invoke the downloader") },
+        true,
+        { _, _ -> error("offline mode must not invoke the downloader") },
+        { _, _, _ -> error("offline mode must not invoke the downloader") },
       )
     assertNull(cache.loadVariable("Roboto Flex"))
   }
