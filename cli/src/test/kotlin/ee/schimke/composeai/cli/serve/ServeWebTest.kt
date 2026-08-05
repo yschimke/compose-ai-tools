@@ -548,6 +548,50 @@ class ServeWebTest {
   }
 
   @Test
+  fun `the viewer links the figma node a preview is specified by`() {
+    val preview = ServePreview(id = "plain.Button", label = "button")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/meshcore-mobile",
+        siblings = listOf(preview),
+        figmaSpec =
+          ServeWeb.FigmaSpec(
+            url = "https://www.figma.com/design/abc123?node-id=73-6",
+            label = "Contact chat",
+          ),
+      )
+    assertTrue(html.contains("class=\"cp-preview-links\""), "the provenance row is rendered")
+    assertTrue(html.contains("class=\"cp-figma-link\""), "figma spec link rendered")
+    assertTrue(
+      html.contains("href=\"https://www.figma.com/design/abc123?node-id=73-6\""),
+      "links the resolved node",
+    )
+    // Opened in a new tab, and the label names which spec it is.
+    assertTrue(html.contains("rel=\"noopener noreferrer\""), html)
+    assertTrue(html.contains("specified by — Contact chat"), "the tooltip names the reference")
+  }
+
+  @Test
+  fun `the viewer renders no figma link when the catalog names no spec`() {
+    // The common case: a catalog with no references, or whose references are HTML/PNG exports.
+    val preview = ServePreview(id = "plain.Button", label = "button")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/compose-m3",
+        siblings = listOf(preview),
+      )
+    assertFalse(html.contains("cp-figma-link"), "no figma link when no spec is supplied")
+    assertFalse(
+      html.contains("class=\"cp-preview-links\""),
+      "the links row is omitted entirely when nothing fills it",
+    )
+  }
+
+  @Test
   fun `the viewer renders no report link without a report target`() {
     val preview = ServePreview(id = "plain.Button", label = "button")
     val html =

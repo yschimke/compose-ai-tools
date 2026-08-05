@@ -2731,6 +2731,10 @@ class ServeHttpServer(
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = imageUrl),
           sourceHref = sourceHref,
           reportIssue = reportIssue,
+          // The Figma node this preview is specified by, when the catalog publishes a Figma-backed
+          // design reference for it. Resolved from data the catalog already carries — nothing is
+          // fetched from Figma, here or anywhere else in serve.
+          figmaSpec = ServeFigmaSpec.of(renderHost.designReferencesFor(preview.id)),
           liveAuthPrompt = liveAuthPrompt,
           catalogTitle = catalogBundleHost(renderHost)?.title,
           // The same heartbeat the grid sends. The viewer needs it at least as much: it is where a

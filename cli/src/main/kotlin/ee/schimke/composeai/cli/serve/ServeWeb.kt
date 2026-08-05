@@ -206,6 +206,20 @@ object ServeWeb {
       "8.01 0 0016 8c0-4.42-3.58-8-8-8z\"/></svg>"
 
   /**
+   * Inline Figma mark, monochrome in `currentColor` so it sits in the same muted link row as
+   * [GITHUB_ICON]. Its own class carries the 2:3 aspect (`.cp-gh` alone would squash the tall
+   * viewBox into a square).
+   */
+  private const val FIGMA_ICON =
+    "<svg class=\"cp-gh cp-figma-mark\" viewBox=\"0 0 38 57\" aria-hidden=\"true\" " +
+      "fill=\"currentColor\">" +
+      "<path d=\"M19 28.5a9.5 9.5 0 1 1 19 0 9.5 9.5 0 0 1-19 0z\"/>" +
+      "<path d=\"M0 47.5A9.5 9.5 0 0 1 9.5 38H19v9.5a9.5 9.5 0 0 1-19 0z\"/>" +
+      "<path d=\"M19 0v19h9.5a9.5 9.5 0 1 0 0-19H19z\"/>" +
+      "<path d=\"M0 9.5A9.5 9.5 0 0 0 9.5 19H19V0H9.5A9.5 9.5 0 0 0 0 9.5z\"/>" +
+      "<path d=\"M0 28.5A9.5 9.5 0 0 0 9.5 38H19V19H9.5A9.5 9.5 0 0 0 0 28.5z\"/></svg>"
+
+  /**
    * Public-mode "about" intro: a short, static explanation of what the host is and its safety
    * model, shown on public catalog landing pages. The home page uses [homeAboutSection], keeping
    * build links in [homeFooter].
@@ -359,19 +373,46 @@ object ServeWeb {
   )
 
   /**
-   * The row under the viewer's title holding the per-preview GitHub links: "source" (where the
-   * preview is declared) and "report an issue" (a prefilled bug against the repo that owns it).
-   * They share one flex row so they read as one line of provenance actions; either can be absent,
-   * and when both are the row itself is omitted rather than left as empty vertical space.
+   * The Figma node a preview is specified by, as the viewer offers it: a ready-to-open deep [url]
+   * (assembled by [ServeFigmaSpec] from a literal origin plus a validated file key and node id, so
+   * a hostile catalog cannot put an arbitrary href on the page) and the reference's [label], which
+   * names *which* spec the link opens when a producer publishes several.
+   */
+  data class FigmaSpec(val url: String, val label: String? = null)
+
+  /**
+   * The row under the viewer's title holding the per-preview provenance links: "source" (where the
+   * preview is declared), "report an issue" (a prefilled bug against the repo that owns it), and
+   * "figma spec" (the node this preview is specified by, when the catalog names one). They share
+   * one flex row so they read as one line of provenance actions; any can be absent, and when all
+   * are the row itself is omitted rather than left as empty vertical space.
    */
   private fun previewLinksHtml(
     sourceHref: String?,
     sourcePath: String?,
     report: ReportIssue?,
+    figmaSpec: FigmaSpec?,
   ): String {
-    val links = sourceLinkHtml(sourceHref, sourcePath) + reportIssueHtml(report)
+    val links =
+      sourceLinkHtml(sourceHref, sourcePath) + reportIssueHtml(report) + figmaSpecHtml(figmaSpec)
     if (links.isBlank()) return ""
     return "\n      <div class=\"cp-preview-links\">$links\n      </div>"
+  }
+
+  /**
+   * Renders [spec] as a link opening the Figma node this preview is specified by. Null — the common
+   * case, since only a catalog that publishes Figma-backed design references names one — renders
+   * nothing at all rather than a dead or guessed link.
+   */
+  private fun figmaSpecHtml(spec: FigmaSpec?): String {
+    val s = spec ?: return ""
+    val label =
+      s.label?.takeIf { it.isNotBlank() }?.let { " — ${WebEscaping.htmlEscape(it)}" } ?: ""
+    val tip = "Open the Figma node this preview is specified by$label"
+    return "\n      <p class=\"cp-figma\">" +
+      "<a class=\"cp-figma-link\" href=\"${WebEscaping.htmlEscape(s.url)}\"" +
+      " target=\"_blank\" rel=\"noopener noreferrer\" title=\"${WebEscaping.htmlEscape(tip)}\">" +
+      "$FIGMA_ICON figma spec</a></p>"
   }
 
   /**
@@ -4002,6 +4043,12 @@ object ServeWeb {
      * surface with nothing sensible to file against); see [reportIssueHtml].
      */
     reportIssue: ReportIssue? = null,
+    /**
+     * The Figma node this preview is specified by, when the served catalog publishes a Figma-backed
+     * design reference for it (see [ServeFigmaSpec]). Null — every catalog that names none — omits
+     * the affordance entirely rather than offering a guessed or dead link.
+     */
+    figmaSpec: FigmaSpec? = null,
     /** GitHub sign-in prompt shown when the daemon live stream is present but requires auth. */
     liveAuthPrompt: LiveAuthPrompt? = null,
     /** Human catalog title used in the breadcrumb; falls back to a generic "Previews" label. */
@@ -4470,7 +4517,7 @@ object ServeWeb {
       <p class="cp-breadcrumb"><a href="$basePath/$q">$catalogName</a> / Component</p>
       <h1 class="cp-head cp-preview-title">$label${compactTrustBadge(trust)}</h1>
       <p class="cp-preview-id" title="$idText"><code>$idText</code></p>
-      ${degradeBanner(degradations)}${previewLinksHtml(sourceHref, preview.sourceFile, reportIssue)}
+      ${degradeBanner(degradations)}${previewLinksHtml(sourceHref, preview.sourceFile, reportIssue, figmaSpec)}
       ${viewerViewCountHtml(engagement.views)}
       $switchers
       <div class="cp-preview-primary" aria-label="Preview renderer">
