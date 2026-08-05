@@ -180,6 +180,9 @@ class ServeCatalogLiveHost(
   // once a daemon id has produced one successful render it's warm and the per-variant lane kicks in
   // for it. [prewarm] closes the window off the request path so the first real browse is already
   // per-variant.
+  // Whether the optimizer currently holds its turn: set once the full quiet window is met, cleared
+  // the moment a request arrives. Without it the pass re-earned the whole window per render.
+  private val optimizerHasTurn = AtomicBoolean(false)
   private val warmDaemonIds = ConcurrentHashMap.newKeySet<String>()
   private val warmingInFlight = ConcurrentHashMap.newKeySet<String>()
 
@@ -368,7 +371,7 @@ class ServeCatalogLiveHost(
           var attempts = 0
           var lastFailure: String? = null
           while (catalogThemeCache.get(job.cacheKey) == null && attempts < 3) {
-            if (!awaitServerIdle()) return@execute
+            if (!awaitOptimizerTurn()) return@execute
             catalogThemeCache.markRunning(clock())
             // One background render server-wide: the permit is taken per job, not per pass, so a
             // catalog that parks for traffic hands it straight to the next one.
@@ -400,6 +403,35 @@ class ServeCatalogLiveHost(
         optimizationStarted.set(false)
       }
     }
+  }
+
+  /**
+   * Gate one background render.
+   *
+   * The pass *enters* on the full [themeOptimizationIdleMillis] quiet window — that is the "don't
+   * start work on a box someone is using" rule and it stays. What changed is what happens once it
+   * is running: it used to re-demand the whole 60s window before **every single render**, so any
+   * request anywhere in the process reset it and the pass could only ever advance during a full
+   * minute of total silence. On a public server with 21 catalogs that is close to never — measured
+   * throughput was one entry per ~105s against a sub-second render, i.e. ~99% waiting.
+   *
+   * Now it keeps its turn while the server stays quiet and yields as soon as a request actually
+   * arrives ([OPTIMIZER_YIELD_MILLIS]), which is the property that matters: a visitor never waits
+   * behind more than the render already in flight, and an idle box fills the cache at render speed
+   * instead of one entry a minute.
+   */
+  private fun awaitOptimizerTurn(): Boolean {
+    if (!optimizerHasTurn.get()) {
+      if (!awaitServerIdle()) return false
+      optimizerHasTurn.set(true)
+      return true
+    }
+    // Holding a turn: only step aside when someone is actually using the server right now.
+    val idleMillis = serverIdleMillis()
+    if (idleMillis != null && idleMillis >= OPTIMIZER_YIELD_MILLIS) return true
+    optimizerHasTurn.set(false)
+    catalogThemeCache.markPaused()
+    return awaitServerIdle().also { if (it) optimizerHasTurn.set(true) }
   }
 
   private fun awaitServerIdle(): Boolean {
@@ -952,6 +984,13 @@ class ServeCatalogLiveHost(
      * nearly done, and lets a genuinely cold one fall through to the previous behaviour.
      */
     internal const val FOREGROUND_WARM_AWAIT_MILLIS = 15_000L
+
+    /**
+     * How recently a request must have touched the server for the optimizer to give up its turn.
+     * Short: the point is to step aside for a live visitor within one render, not to re-earn the
+     * whole entry window after every request.
+     */
+    internal const val OPTIMIZER_YIELD_MILLIS = 1_500L
 
     private const val WARM_POLL_MILLIS = 50L
   }
