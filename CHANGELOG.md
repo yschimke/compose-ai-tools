@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.19.35](https://github.com/yschimke/compose-ai-tools/compare/v0.19.34...v0.19.35) (2026-08-05)
+
+
+### Features
+
+* **rc-player-jvm:** download google: font families for the cmp-jvm lane ([#3327](https://github.com/yschimke/compose-ai-tools/issues/3327)) ([09846aa](https://github.com/yschimke/compose-ai-tools/commit/09846aa1514273147f1cc60e8932cd26e45ff039))
+* **serve:** make the playground deployable on preview.coo.ee ([#3320](https://github.com/yschimke/compose-ai-tools/issues/3320)) ([438ab8c](https://github.com/yschimke/compose-ai-tools/commit/438ab8ca1b0f4958a724a32127346584ccc4321e))
+
+
+### Bug Fixes
+
+* **android:** serialize the native-runtime cache lock within one JVM ([#3315](https://github.com/yschimke/compose-ai-tools/issues/3315)) ([c79f792](https://github.com/yschimke/compose-ai-tools/commit/c79f79280dbd198fdf3648bbadc7f241e89d3d3f))
+* **figma-svg:** read FontFamily.Default as an unstated family ([#3319](https://github.com/yschimke/compose-ai-tools/issues/3319)) ([cf0710c](https://github.com/yschimke/compose-ai-tools/commit/cf0710cc8d2cbe7e419fc361de01c1754c44905f))
+* **gradle-plugin:** require a recognised merge-blame schema before pruning ([#3314](https://github.com/yschimke/compose-ai-tools/issues/3314)) ([2ea2f4c](https://github.com/yschimke/compose-ai-tools/commit/2ea2f4c7cf3703cebfd87fa6fa6a09595fb165b5))
+* **renderer:** keep smallestScreenWidthDp in step with the preview viewport ([#3312](https://github.com/yschimke/compose-ai-tools/issues/3312)) ([45e2981](https://github.com/yschimke/compose-ai-tools/commit/45e298130da0f2ee5c8d589312c0cf216ffc2afe))
+* **serve:** hide device overrides for component previews ([#3303](https://github.com/yschimke/compose-ai-tools/issues/3303)) ([54187bc](https://github.com/yschimke/compose-ai-tools/commit/54187bc7d252f113fcdcec02c239381bcb8e5b80))
+* **serve:** keep live-seat headroom for streams, not render pools ([#3326](https://github.com/yschimke/compose-ai-tools/issues/3326)) ([9ec0102](https://github.com/yschimke/compose-ai-tools/commit/9ec0102d4cadb9493378830b4698d900359fb581))
+* **serve:** make the playground repo gate visibility-aware ([#3318](https://github.com/yschimke/compose-ai-tools/issues/3318)) ([19c92aa](https://github.com/yschimke/compose-ai-tools/commit/19c92aa90201c8fa174cef7492d38794e6c7aec5))
+* **serve:** read the compile subprocess output under its own lock ([#3316](https://github.com/yschimke/compose-ai-tools/issues/3316)) ([21e495c](https://github.com/yschimke/compose-ai-tools/commit/21e495c995a6f51651cfe5e41ac6b7da439e807d))
+* **serve:** reap idle pooled daemons, budget them, and stop retrying dead previews ([#3322](https://github.com/yschimke/compose-ai-tools/issues/3322)) ([d1fe8a4](https://github.com/yschimke/compose-ai-tools/commit/d1fe8a4ada936e0c0df5872f1b2f234617e123e6))
+* **serve:** record the render URL behind the viewer's blob frame ([#3317](https://github.com/yschimke/compose-ai-tools/issues/3317)) ([c00b205](https://github.com/yschimke/compose-ai-tools/commit/c00b20528d0c4891088d79ade3c1fe93ba7cc970))
+* **serve:** require write access for the playground repo gate ([#3313](https://github.com/yschimke/compose-ai-tools/issues/3313)) ([ae29d34](https://github.com/yschimke/compose-ai-tools/commit/ae29d34a11cbbd5fd79ee3e8243ad29f13071bb0))
+* **serve:** stop asking every visitor for the repo OAuth scope ([#3325](https://github.com/yschimke/compose-ai-tools/issues/3325)) ([f79cd20](https://github.com/yschimke/compose-ai-tools/commit/f79cd209f445377d1e617e98c66ffb00c7713d03))
+
 ## [0.19.34](https://github.com/yschimke/compose-ai-tools/compare/v0.19.33...v0.19.34) (2026-08-04)
 
 

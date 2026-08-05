@@ -66,6 +66,14 @@
       ]
     },
     {
+      "name": "Typeface",
+      "components": [
+        { "componentId": "Typeface/Specimen", "preview": "TypefaceSpecimenRemote", "caption": "Four branded Google Fonts families, each drawing its own name — geometric, script, grotesk, monospace. A lane that cannot resolve a named family renders four identical-looking lines." },
+        { "componentId": "Typeface/VariableWeight", "preview": "VariableWeightRemote", "caption": "One variable font (Roboto Flex) at wght 100/400/700/1000, written into the document as font-variation settings. A lane that resolves the family but drops the axes renders four lines in one weight." },
+        { "componentId": "Typeface/VariableWidth", "preview": "VariableWidthRemote", "caption": "The same variable font at wdth 25/100/151 — the axis nothing can fake, since no text API asks for a narrower face. Either the set widths differ or the axes were dropped." }
+      ]
+    },
+    {
       "name": "Theme",
       "components": [
         { "componentId": "Theme/Typography", "preview": "TypographyRemote", "parallel": "Typography", "caption": "A type ramp read from RemoteMaterialTheme.typography." },
