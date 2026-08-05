@@ -96,17 +96,24 @@ data class RenderTrace(
      * here would silently under-report exactly the hot repeated phase that hit the cap. Passing
      * `null` falls back to grouping [events], which is what a caller with no separate accumulator
      * (tests, and anything reconstructing a trace from a wire payload) wants.
+     *
+     * [totalMicros] is supplied for the same reason: once the cap truncates [events], the retained
+     * prefix no longer spans the whole render, so deriving the total from it would report complete
+     * section totals against a short wall time — and the phase bars would be scaled to a window
+     * that ends before the render did. `null` derives it from [events], correct whenever nothing
+     * was dropped.
      */
     fun of(
       backend: String,
       events: List<Recorded>,
       sections: List<RenderTraceSection>? = null,
+      totalMicros: Long? = null,
       droppedSpans: Int = 0,
     ): RenderTrace {
       if (events.isEmpty()) {
         return RenderTrace(
           backend = backend,
-          totalMicros = 0L,
+          totalMicros = totalMicros ?: 0L,
           spans = emptyList(),
           sections = sections.orEmpty(),
           droppedSpans = droppedSpans,
@@ -143,7 +150,7 @@ data class RenderTrace(
             .sortedByDescending { it.totalMicros }
       return RenderTrace(
         backend = backend,
-        totalMicros = (endNanos - originNanos).coerceAtLeast(0L) / 1_000L,
+        totalMicros = totalMicros ?: ((endNanos - originNanos).coerceAtLeast(0L) / 1_000L),
         spans = spans,
         sections = resolvedSections,
         droppedSpans = droppedSpans,

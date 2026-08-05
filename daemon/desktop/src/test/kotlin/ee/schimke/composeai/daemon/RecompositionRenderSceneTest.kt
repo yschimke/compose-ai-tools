@@ -75,6 +75,10 @@ class RecompositionRenderSceneTest {
           .payload
           .toString()
       assertTrue(payload, payload.contains("\"mode\":\"snapshot\""))
+      // Delta-only fields stay null: a snapshot has no previous input and no frame stream, so
+      // filling them in would describe it as the n-th step of a stream that isn't running.
+      assertTrue(payload, payload.contains("\"sinceFrameStreamId\":null"))
+      assertTrue(payload, payload.contains("\"inputSeq\":null"))
     } finally {
       scene.close()
     }

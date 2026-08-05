@@ -230,19 +230,28 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
     // payload — the client sees no `compose/recomposition` entry on `renderFinished` and
     // greys out its panel, which is the honest signal.
     if (globallyUnavailable || state.instrumentationUnavailable) return emptyList()
-    // Bump the input-seq counter once per attachment build — that's exactly one per
-    // post-input renderFinished in the interactive path (the dispatcher calls attachmentsFor
-    // once per render). Snapshot the counter map *before* incrementing so the payload reads
-    // monotonically from the client's perspective: the n-th attachment carries inputSeq=n.
     val nodes = state.snapshotAndReset()
-    state.inputSeq += 1L
+    // `sinceFrameStreamId` and `inputSeq` are the delta contract: "counts since the previous input
+    // on this frame stream". A snapshot payload has no previous input and no frame stream, so both
+    // stay null — they are declared nullable for exactly this case, and filling them in would
+    // describe an initial-composition snapshot as the n-th step of a stream that isn't running.
+    // Ordinary (non-interactive) renders take this path on every render, so it is the common one.
     val payload =
-      RecompositionPayload(
-        mode = state.mode,
-        sinceFrameStreamId = state.frameStreamId,
-        inputSeq = state.inputSeq,
-        nodes = nodes,
-      )
+      if (state.mode == MODE_DELTA) {
+        // Bump the input-seq counter once per attachment build — exactly one per post-input
+        // renderFinished (the dispatcher calls attachmentsFor once per render). The counter map is
+        // snapshotted *before* the increment so the payload reads monotonically from the client's
+        // perspective: the n-th attachment carries inputSeq=n.
+        state.inputSeq += 1L
+        RecompositionPayload(
+          mode = state.mode,
+          sinceFrameStreamId = state.frameStreamId,
+          inputSeq = state.inputSeq,
+          nodes = nodes,
+        )
+      } else {
+        RecompositionPayload(mode = state.mode, nodes = nodes)
+      }
     return listOf(
       DataProductAttachment(
         kind = KIND,
