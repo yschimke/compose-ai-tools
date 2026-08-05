@@ -14,6 +14,10 @@ import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.plugins.compression.Compression
+import io.ktor.server.plugins.compression.gzip
+import io.ktor.server.plugins.compression.matchContentType
+import io.ktor.server.plugins.compression.minimumSize
 import io.ktor.server.plugins.origin
 import io.ktor.server.request.queryString
 import io.ktor.server.request.receiveStream
@@ -317,6 +321,33 @@ class ServeHttpServer(
             onCall { call -> auth.refreshSession(call) }
           }
         )
+      }
+      // Compress the text-ish lanes only. Every page, `/status.json`, the figma-svg exports and
+      // the baked CSS/JS are markup that gzips 3-8x, and the biggest of them (a vendored editor,
+      // an SVG export) dominate their page's transfer.
+      //
+      // Deliberately an ALLOWLIST, not "everything except a few": this host's heavy lanes are
+      // already-compressed bytes — catalog PNGs (`/render`, `/hero`), packed `.bundle` images,
+      // and the multi-megabyte Wasm app tier. Gzip cannot shrink those, so compressing them would
+      // burn CPU per request on a box that is also running render daemons, and re-encoding an
+      // 8 MB Wasm payload on every visit is exactly the kind of cost this change is meant to
+      // avoid. An unlisted type is served through untouched.
+      //
+      // `minimumSize` keeps the small stuff alone: `/healthz` ("ok") and `/readyz` are polled on a
+      // ~10s healthcheck loop, and framing a 2-byte body costs more than it saves.
+      install(Compression) {
+        gzip {
+          matchContentType(
+            ContentType.Text.Html,
+            ContentType.Text.CSS,
+            ContentType.Text.Plain,
+            ContentType.Text.JavaScript,
+            ContentType.Application.JavaScript,
+            ContentType.Application.Json,
+            ContentType.Image.SVG,
+          )
+          minimumSize(1024)
+        }
       }
       routing {
         // `/healthz` — ungated liveness: "ok" the moment the listener is up. Leaks nothing, and
