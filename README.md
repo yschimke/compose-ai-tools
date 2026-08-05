@@ -137,6 +137,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-home-index/dark](renders/serve-home-index.dark.png) |
 | `light` | ![serve-home-index/light](renders/serve-home-index.light.png) |
 
+## serve-home-index-card-hover
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-home-index-card-hover/dark](renders/serve-home-index-card-hover.dark.png) |
+| `light` | ![serve-home-index-card-hover/light](renders/serve-home-index-card-hover.light.png) |
+
 ## serve-landing
 
 | Theme | Capture |
@@ -213,6 +220,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | --- | --- |
 | `dark` | ![serve-landing-public/dark](renders/serve-landing-public.dark.png) |
 | `light` | ![serve-landing-public/light](renders/serve-landing-public.light.png) |
+
+## serve-landing-public-card-hover
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-public-card-hover/dark](renders/serve-landing-public-card-hover.dark.png) |
+| `light` | ![serve-landing-public-card-hover/light](renders/serve-landing-public-card-hover.light.png) |
 
 ## serve-landing-sections
 
