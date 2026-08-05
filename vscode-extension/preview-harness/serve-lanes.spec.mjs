@@ -195,6 +195,12 @@ test("viewer wires the knob into every render lane", async ({ page }) => {
     "data-cp-src",
     new RegExp(`\\.png.*knob\\.label=${OVERRIDE}`),
   );
+  // …and `src` is still the object URL. With the override assertion moved off `src`, nothing else
+  // pins that the blob swap is happening at all: a regression to assigning the render URL straight
+  // to `img.src` would keep `data-cp-src` matching and leave this suite green, while quietly
+  // reinstating the double-fetch of an override-bearing `no-store` render that the swap exists to
+  // prevent.
+  await expect(page.locator("#cp-img")).toHaveAttribute("src", /^blob:/);
   await expect
     .poll(() => page.locator("#cp-img").evaluate((im) => im.naturalWidth), {
       timeout: 30000,
