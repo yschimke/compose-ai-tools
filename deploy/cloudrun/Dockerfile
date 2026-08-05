@@ -29,7 +29,7 @@
 # rasterize on the CPU, so LIBGL_ALWAYS_SOFTWARE=1 forces Mesa's software path
 # (no GPU on the host). This mirrors what the repo's own CI installs for headless
 # desktop renders (.github/workflows/ci.yml).
-FROM eclipse-temurin:17.0.19_10-jdk AS base
+FROM eclipse-temurin:25.0.2_10-jdk AS base
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libfreetype6 libfontconfig1 fontconfig fonts-dejavu-core \

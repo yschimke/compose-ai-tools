@@ -20,7 +20,7 @@ ARG CP_VERSION=0.19.37
 # Stage 0: base — JDK + Skiko's native deps (same rationale as the cloudrun image:
 # libGL via libgl1, Mesa software GLX/DRI, fonts; force software GL).
 # ---------------------------------------------------------------------------
-FROM eclipse-temurin:21.0.11_10-jdk AS base
+FROM eclipse-temurin:25.0.2_10-jdk AS base
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libfreetype6 libfontconfig1 fontconfig fonts-dejavu-core \
