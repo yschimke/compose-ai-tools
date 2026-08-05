@@ -9,6 +9,7 @@ import ee.schimke.composeai.data.remotecompose.RemoteComposeKnobDeclaration
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.createApplicationPlugin
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
@@ -306,6 +307,17 @@ class ServeHttpServer(
   private val server: EmbeddedServer<*, *> =
     embeddedServer(CIO, host = host, port = port) {
       install(WebSockets)
+      // Sliding sessions: any request carrying a session past its half-life gets a freshly signed
+      // cookie, so a visitor who keeps coming back is never bounced through GitHub. Runs before
+      // routing so it covers every response, and no-ops (no `Set-Cookie` at all) for a young
+      // session or no session. See [ServeGithubAuth.refreshSession].
+      githubAuth?.let { auth ->
+        install(
+          createApplicationPlugin("github-session-refresh") {
+            onCall { call -> auth.refreshSession(call) }
+          }
+        )
+      }
       routing {
         // `/healthz` — ungated liveness: "ok" the moment the listener is up. Leaks nothing, and
         // proves nothing beyond "the process is answering HTTP". The rolling-update gate is
@@ -1149,6 +1161,12 @@ class ServeHttpServer(
   private fun RoutingContext.markGeneration(generation: String, cacheControl: String? = null) {
     call.response.headers.append(GENERATION_HEADER, generation)
     cacheControl?.let { call.response.headers.append(HttpHeaders.CacheControl, it) }
+    // Belt to `private, no-store`'s braces: an intermediary that under-honours the directive still
+    // learns the body turns on the session cookie, rather than keying one visitor's HTML by URL
+    // alone.
+    if (cacheControl == SIGNED_IN_PAGE_CACHE_CONTROL) {
+      call.response.headers.append(HttpHeaders.Vary, HttpHeaders.Cookie)
+    }
   }
 
   private fun incrementPreviewViews(
@@ -2668,11 +2686,7 @@ class ServeHttpServer(
           }
       markGeneration(
         "static-page",
-        viewerCacheControl(
-          githubAuthConfigured = githubAuth != null,
-          hasLiveStream = renderHost.hasLiveStream,
-          isPublic = isPublic,
-        ),
+        viewerCacheControl(githubAuthConfigured = githubAuth != null, isPublic = isPublic),
       )
       call.respondText(
         ServeWeb.viewerPage(
@@ -3075,7 +3089,7 @@ class ServeHttpServer(
   }
 
   private fun pageCacheControl(): String =
-    if (isPublic) STATIC_PAGE_CACHE_CONTROL else DYNAMIC_RESOURCE_CACHE_CONTROL
+    pageCacheControl(githubAuthConfigured = githubAuth != null, isPublic = isPublic)
 
   private fun prebakedImageCacheControl(): String = prebakedImageCacheControl(isPublic)
 
@@ -3364,13 +3378,43 @@ class ServeHttpServer(
     /** Variant renders and all token-gated responses stay out of shared and browser caches. */
     private const val DYNAMIC_RESOURCE_CACHE_CONTROL = "no-store"
 
-    internal fun viewerCacheControl(
-      githubAuthConfigured: Boolean,
-      hasLiveStream: Boolean,
-      isPublic: Boolean,
-    ): String =
-      if (githubAuthConfigured && hasLiveStream) DYNAMIC_RESOURCE_CACHE_CONTROL
+    /**
+     * Caching for HTML whose body depends on *who is asking* — every page on a server with
+     * `--github-auth-*` configured, because they all render the sign-in chip (signed out → "Sign
+     * in"; signed in → the visitor's login), and some render more besides (the live-preview auth
+     * prompt, the issue-reporter's "filed as @you" tooltip).
+     *
+     * It cannot be [STATIC_PAGE_CACHE_CONTROL]. `public` licenses the CDN in front of the deployed
+     * server to store one visitor's HTML and hand it to the next, so a signed-in visitor's login
+     * leaks to strangers and a stranger's signed-out page comes back to them. And even with no
+     * shared cache at all, `max-age=60, stale-while-revalidate=300` means the *browser's own* cache
+     * replays the pre-sign-in HTML for a minute — served stale for five more while it revalidates
+     * behind the scenes — so returning from the GitHub callback to a page visited moments earlier
+     * paints it signed-out. That is the "it says I'm logged out until I hit refresh" report: a
+     * reload revalidates, which is why the state looks right the moment you ask for it again.
+     *
+     * `no-store` rather than `no-cache` on purpose: these pages carry no ETag, so a revalidation
+     * costs a full re-render anyway, and `no-store` additionally keeps the signed-out HTML out of
+     * the back/forward cache, where a plain Back would otherwise resurrect it.
+     */
+    internal const val SIGNED_IN_PAGE_CACHE_CONTROL = "private, no-store"
+
+    /**
+     * Caching for an assembled HTML page. Public and auth-free ⇒ short edge caching; otherwise the
+     * response is personal (sign-in state) or token-bearing, and is not stored at all.
+     */
+    internal fun pageCacheControl(githubAuthConfigured: Boolean, isPublic: Boolean): String =
+      if (githubAuthConfigured) SIGNED_IN_PAGE_CACHE_CONTROL
       else if (isPublic) STATIC_PAGE_CACHE_CONTROL else DYNAMIC_RESOURCE_CACHE_CONTROL
+
+    /**
+     * The viewer page follows [pageCacheControl]. It used to drop to `no-store` only for a
+     * *live-streaming* preview under GitHub auth, on the theory that the live lane was the only
+     * personalised thing on the page — but the sign-in chip is on every viewer, live or not, so the
+     * non-live viewer was being cached with one visitor's identity baked in.
+     */
+    internal fun viewerCacheControl(githubAuthConfigured: Boolean, isPublic: Boolean): String =
+      pageCacheControl(githubAuthConfigured, isPublic)
 
     /** Classpath location of the vendored Remote Compose player IIFE bundle (global `RC`). */
     private const val RC_PLAYER_RESOURCE = "/rc-player/bundle.js"

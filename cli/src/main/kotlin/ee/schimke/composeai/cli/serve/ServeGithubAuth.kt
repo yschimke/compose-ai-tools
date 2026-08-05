@@ -105,6 +105,34 @@ class ServeGithubAuth(
     return currentLogin(call) != null
   }
 
+  /**
+   * Slide a still-valid session forward, so an active visitor stays signed in instead of being
+   * bounced through GitHub on a fixed cadence.
+   *
+   * The session is a self-contained signed cookie: there is no server-side store to touch, so the
+   * only way to extend one is to mint a fresh cookie carrying a later expiry. This re-mints once a
+   * session is past [SESSION_REFRESH_AFTER_SECONDS] — half its life — which keeps someone who
+   * visits regularly signed in indefinitely while still re-checking their GitHub identity and
+   * repository access whenever they've been away longer than a full [SESSION_TTL_SECONDS]. Under
+   * that threshold it does nothing at all, so an ordinary page view sets no cookie.
+   *
+   * Skipped on the OAuth routes: [handleCallback] mints the authoritative cookie itself, and a
+   * second `Set-Cookie` for the same name in one response is a coin flip between them.
+   */
+  fun refreshSession(call: ApplicationCall) {
+    if (call.request.uri.substringBefore('?').startsWith(AUTH_PATH_PREFIX)) return
+    val session = call.request.cookieValue(AUTH_COOKIE)?.let { verifySession(it) } ?: return
+    val remaining = session.expiresAt - clock.millis()
+    if (remaining > SESSION_REFRESH_AFTER_SECONDS * 1000) return
+    call.response.cookies.append(
+      authCookie(
+        signedSession(session.login, session.repositoryAccess),
+        maxAge = SESSION_TTL_SECONDS,
+        secure = isSecure(call, config.callbackBaseUrl),
+      )
+    )
+  }
+
   fun currentLogin(call: ApplicationCall): String? {
     val cookie = call.request.cookieValue(AUTH_COOKIE) ?: return null
     return verifySession(cookie)?.login
@@ -216,7 +244,7 @@ class ServeGithubAuth(
         else -> return null
       }
     if (expiresAt == null || expiresAt <= clock.millis() || login.isBlank()) return null
-    return SessionPayload(login, repositoryAccess)
+    return SessionPayload(login, repositoryAccess, expiresAt)
   }
 
   private fun sign(payload: String): String {
@@ -270,7 +298,11 @@ class ServeGithubAuth(
 
   private data class StatePayload(val returnTo: String)
 
-  private data class SessionPayload(val login: String, val repositoryAccess: Boolean)
+  private data class SessionPayload(
+    val login: String,
+    val repositoryAccess: Boolean,
+    val expiresAt: Long,
+  )
 
   companion object {
     const val START_PATH = "/auth/github/start"
@@ -288,8 +320,34 @@ class ServeGithubAuth(
      */
     const val PRIVATE_REPO_SCOPE = "read:user repo"
 
+    /** Both OAuth routes, so [refreshSession] can leave the cookie-minting ones alone. */
+    private const val AUTH_PATH_PREFIX = "/auth/github/"
+
     private const val STATE_TTL_SECONDS = 10L * 60
-    private const val SESSION_TTL_SECONDS = 12L * 60 * 60
+
+    /**
+     * How long a session survives *without a visit*.
+     *
+     * This was 12 hours, which is shorter than the gap between one working day and the next: a
+     * visitor who signed in yesterday afternoon was reliably signed out this morning, and the
+     * server is a preview gallery people drop into occasionally, not a console they live in. Two
+     * weeks with [refreshSession] sliding it forward means regular visitors effectively never see
+     * the GitHub round-trip again, while anyone who stays away longer than a fortnight is
+     * re-verified.
+     *
+     * It is also the ceiling on how stale the cached repository-access flag can be — revoking
+     * someone's access to the gating repo takes up to this long to close the playground behind them
+     * — which is why it is a fortnight rather than the year a pure "remember me" would use.
+     */
+    internal const val SESSION_TTL_SECONDS = 14L * 24 * 60 * 60
+
+    /**
+     * Sessions are re-minted once they are this old (half of [SESSION_TTL_SECONDS]). Half-life
+     * rather than every request: the cookie is only worth rewriting when the extension is
+     * meaningful, and a `Set-Cookie` on every page view is noise on responses that are otherwise
+     * identical.
+     */
+    internal const val SESSION_REFRESH_AFTER_SECONDS = SESSION_TTL_SECONDS / 2
     private val SECURE_RANDOM = SecureRandom()
 
     fun safeReturnTo(value: String): String =
