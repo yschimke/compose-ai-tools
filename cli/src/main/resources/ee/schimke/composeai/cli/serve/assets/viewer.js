@@ -1809,11 +1809,22 @@
   syncServerControls();
   updateLiveToggle();
   refreshSnapshot();
-  // A bookmarked `?mode=live` / `wasm` / `rc` opens in that lane. Done last, on purpose: the
-  // snapshot render above is the always-works frame every lane falls back to, so this is exactly
-  // the state a visitor reaches by loading the page and clicking the toggle. A mode this session
-  // doesn't offer (no daemon, no Wasm app) is ignored rather than entering a lane whose control
-  // is absent or disabled — the page stays on the snapshot, and the param clears on the next sync.
+  // A bookmarked `?mode=live` / `wasm` / `rc` opens in that lane — but only once the initial
+  // snapshot has LANDED, not merely been requested.
+  //
+  // The stage's <img> is emitted with no src: the refreshSnapshot() above is the only thing that
+  // will ever put pixels in it. Entering an interactive lane cancels any in-flight snapshot
+  // (cancelSnapshotLoading bumps the generation), so switching immediately would discard that one
+  // render and leave a cold bookmarked load looking at an empty stage behind a lane that may take
+  // seconds to paint — or that fails and shows an activation error over nothing. Waiting for the
+  // frame first makes the bookmark land in exactly the state a visitor reaches by loading the page
+  // and clicking the toggle, which is the whole claim.
+  //
+  // Bounded, because the snapshot may never settle: a render that errors sets no src (so neither
+  // event fires) and one that hangs would strand the bookmark on the snapshot lane forever.
+  // A mode this session doesn't offer (no daemon, no Wasm app) is ignored rather than entering a
+  // lane whose control is absent or disabled — the page stays on the snapshot and the param clears
+  // on the next sync.
   (function () {
     var wanted = initialUrlMode;
     if (!wanted || wanted === "png" || wanted === currentMode()) return;
@@ -1822,6 +1833,16 @@
       document.querySelectorAll("input[name=\"cp-mode\"]"),
       function (r) { if (r.value === wanted) radio = r; });
     if (!radio || radio.disabled) return;
-    setMode(wanted);
+    var entered = false;
+    function enterBookmarkedMode() {
+      if (entered) return;
+      entered = true;
+      img.removeEventListener("load", enterBookmarkedMode);
+      img.removeEventListener("error", enterBookmarkedMode);
+      setMode(wanted);
+    }
+    img.addEventListener("load", enterBookmarkedMode);
+    img.addEventListener("error", enterBookmarkedMode);
+    setTimeout(enterBookmarkedMode, 8000);
   })();
 })();

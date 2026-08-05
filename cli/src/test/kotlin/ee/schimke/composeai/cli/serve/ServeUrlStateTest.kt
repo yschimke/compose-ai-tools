@@ -153,6 +153,18 @@ class ServeUrlStateTest {
       "the viewer must capture a bookmarked ?mode= before the first URL sync",
     )
     assertTrue(script.contains("var wanted = initialUrlMode;"), "…and apply it on first load")
+    // …after the first snapshot has LANDED. The stage's <img> has no server-rendered src, and
+    // entering an interactive lane cancels the in-flight render, so switching immediately leaves a
+    // cold bookmarked load with an empty stage behind a lane that may be slow — or that fails and
+    // shows an error over nothing.
+    assertTrue(
+      script.contains("""img.addEventListener("load", enterBookmarkedMode);"""),
+      "the bookmarked lane waits for the fallback frame",
+    )
+    assertTrue(
+      script.contains("setTimeout(enterBookmarkedMode, 8000);"),
+      "…but is bounded: a render that errors fires no event and must not strand the bookmark",
+    )
     assertTrue(
       script.contains("if (!radio || radio.disabled) return;"),
       "a mode this session doesn't offer is ignored, not entered",
