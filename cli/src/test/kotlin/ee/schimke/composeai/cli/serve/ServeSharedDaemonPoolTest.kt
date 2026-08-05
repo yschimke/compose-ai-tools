@@ -179,8 +179,8 @@ class ServeSharedDaemonPoolTest {
 
   @Test
   fun `does not open a replica the live-seat budget cannot afford`() {
-    val seats = LiveSeatLimiter(totalPermits = 1)
-    // Spend the whole budget elsewhere — a stream, another catalog's pool, anything.
+    val seats = LiveSeatLimiter(totalPermits = 1 + LiveSeatLimiter.STREAM_RESERVE)
+    // Spend everything above the stream reserve elsewhere — a stream, another catalog's pool.
     val held = requireNotNull(seats.acquire(1))
     val primary = InstantHost("primary")
     val opened = AtomicInteger()
@@ -208,7 +208,8 @@ class ServeSharedDaemonPoolTest {
 
   @Test
   fun `a replica whose launch throws hands its seat back`() {
-    val seats = LiveSeatLimiter(totalPermits = 4)
+    val total = 4 + LiveSeatLimiter.STREAM_RESERVE
+    val seats = LiveSeatLimiter(totalPermits = total)
     val entered = CountDownLatch(1)
     val release = CountDownLatch(1)
     // The primary is held mid-render, so a concurrent request has nothing to borrow and must go
@@ -227,7 +228,7 @@ class ServeSharedDaemonPoolTest {
       val thrown = runCatching { failed.get(5, TimeUnit.SECONDS) }.exceptionOrNull()
       assertTrue(thrown != null, "the launch failure reaches the caller")
 
-      assertEquals(4, seats.availablePermits(), "no seat is stranded on a failed launch")
+      assertEquals(total, seats.availablePermits(), "no seat is stranded on a failed launch")
 
       release.countDown()
       assertTrue(holder.get(5, TimeUnit.SECONDS) is RenderOutcome.Ok)

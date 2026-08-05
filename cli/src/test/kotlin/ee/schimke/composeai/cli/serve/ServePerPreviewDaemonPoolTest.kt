@@ -201,7 +201,8 @@ class ServePerPreviewDaemonPoolTest {
    */
   @Test
   fun `a daemon is not opened when the live-seat budget is exhausted`() {
-    val seats = LiveSeatLimiter(totalPermits = 2)
+    // Two seats for daemons on top of the reserve the pools must leave for streams.
+    val seats = LiveSeatLimiter(totalPermits = 2 + LiveSeatLimiter.STREAM_RESERVE)
     val opens = mutableListOf<String>()
     val pool =
       ServePerPreviewDaemonPool(liveSeats = seats, seatWeight = { 1 }) { id ->
@@ -211,33 +212,59 @@ class ServePerPreviewDaemonPoolTest {
     assertTrue(pool.get("B") != null)
     assertNull(pool.get("C"), "the budget is spent, so no third daemon is spawned")
     assertEquals(listOf("A", "B"), opens, "the refused open never reached the opener")
-    assertEquals(0, seats.availablePermits())
+    assertEquals(
+      LiveSeatLimiter.STREAM_RESERVE,
+      seats.availablePermits(),
+      "the stream headroom survives a pool that would otherwise have taken everything",
+    )
   }
 
   @Test
   fun `reaping and eviction return their seats to the budget`() {
     var now = 0L
-    val seats = LiveSeatLimiter(totalPermits = 2)
+    val seats = LiveSeatLimiter(totalPermits = 2 + LiveSeatLimiter.STREAM_RESERVE)
     val pool =
       ServePerPreviewDaemonPool(maxOpen = 8, clock = { now }, liveSeats = seats) { _ -> FakeHost() }
     pool.get("A")
     pool.get("B")
-    assertEquals(0, seats.availablePermits())
+    assertEquals(LiveSeatLimiter.STREAM_RESERVE, seats.availablePermits())
 
     now = 100_000
     assertEquals(2, pool.reapIdle(idleMillis = 1_000))
-    assertEquals(2, seats.availablePermits(), "reaped daemons hand their seats back")
+    assertEquals(
+      2 + LiveSeatLimiter.STREAM_RESERVE,
+      seats.availablePermits(),
+      "reaped daemons hand their seats back",
+    )
     assertTrue(pool.get("C") != null, "the freed budget admits a new daemon")
   }
 
   @Test
   fun `a throwing open hands its seat back`() {
-    val seats = LiveSeatLimiter(totalPermits = 1)
+    val total = 1 + LiveSeatLimiter.STREAM_RESERVE
+    val seats = LiveSeatLimiter(totalPermits = total)
     val pool =
       ServePerPreviewDaemonPool(liveSeats = seats) { _ -> throw IllegalStateException("launch") }
     repeat(3) {
       runCatching { pool.get("A") }
-      assertEquals(1, seats.availablePermits(), "a failed launch must not consume the budget")
+      assertEquals(total, seats.availablePermits(), "a failed launch must not consume the budget")
     }
+  }
+
+  /**
+   * The regression that broke the `serve-lanes` E2E: on a `--live-seats 1` box the pool took the
+   * only seat for a *thumbnail* and every live stream after it was refused with "Live preview is at
+   * capacity". A pooled daemon always has a fallback (baked pixels, or the monolithic daemon); a
+   * refused stream has none, so background render residency must never spend the last seats.
+   */
+  @Test
+  fun `a pool never takes the seats a stream needs`() {
+    val seats = LiveSeatLimiter(totalPermits = 1)
+    val pool = ServePerPreviewDaemonPool(liveSeats = seats) { _ -> FakeHost() }
+
+    assertNull(pool.get("A"), "a one-seat box keeps that seat for the stream")
+    assertEquals(1, seats.availablePermits())
+    // ...and the stream, which acquires in the ordinary (foreground) way, still gets in.
+    assertTrue(seats.acquire(1) != null)
   }
 }

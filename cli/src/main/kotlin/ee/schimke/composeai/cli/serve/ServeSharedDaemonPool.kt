@@ -77,7 +77,7 @@ class ServeSharedDaemonPool(
   private fun openSeatedReplica(): ServeHost {
     var ticket: LiveSeatLimiter.Ticket? = null
     if (liveSeats != null) {
-      ticket = liveSeats.acquire(seatWeight())
+      ticket = liveSeats.acquireBackground(seatWeight())
       if (ticket == null) {
         while (available.isEmpty() && !closed) hostReturned.await()
         check(!closed) { "shared daemon pool is closed" }

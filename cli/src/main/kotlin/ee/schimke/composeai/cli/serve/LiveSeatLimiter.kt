@@ -58,6 +58,31 @@ class LiveSeatLimiter(val totalPermits: Int) {
     return null
   }
 
+  /**
+   * Reserve [weight] permits for a **background** holder — a pooled render daemon — leaving at
+   * least [STREAM_RESERVE] free for an interactive stream. Returns null (without counting a
+   * refusal) when that headroom isn't there.
+   *
+   * Render pools and streams are not equal claims on the box. A pooled daemon exists to make a
+   * *thumbnail* faster and its caller always has a fallback — baked pixels, or the monolithic
+   * daemon — while a refused stream is a visitor staring at "Live preview is at capacity". Charging
+   * both against one flat budget let the cheap, deferrable work take the last seat and turn the
+   * valuable, undeferrable work away: on a `--live-seats 1` box the first pooled daemon refused
+   * every stream that followed.
+   *
+   * Implemented as "take weight + reserve atomically, then hand the reserve straight back", so it
+   * can never over-admit under a race — the worst case is a background holder briefly seeing less
+   * headroom than really exists and declining, which is the safe direction.
+   */
+  fun acquireBackground(weight: Int, reserve: Int = STREAM_RESERVE): Ticket? {
+    val sem = semaphore ?: return Ticket(0)
+    if (weight <= 0) return Ticket(0)
+    val permits = weight.coerceIn(1, totalPermits)
+    if (!sem.tryAcquire(permits + reserve.coerceAtLeast(0))) return null
+    if (reserve > 0) sem.release(reserve)
+    return Ticket(permits)
+  }
+
   /** Permits currently available — for tests/diagnostics. */
   fun availablePermits(): Int = semaphore?.availablePermits() ?: Int.MAX_VALUE
 
@@ -84,6 +109,15 @@ class LiveSeatLimiter(val totalPermits: Int) {
    * instead of it.
    */
   fun unverifiedRefusalCount(): Long = unverifiedRefusals.get()
+
+  companion object {
+    /**
+     * Permits [acquireBackground] must leave free for interactive streams. Sized at
+     * [ServeBundleDaemon.ANDROID_LIVE_SEAT_WEIGHT] — the most expensive single stream — so one can
+     * always start no matter how much render residency has built up.
+     */
+    const val STREAM_RESERVE: Int = ServeBundleDaemon.ANDROID_LIVE_SEAT_WEIGHT
+  }
 
   private val refusals = AtomicLong()
   private val unverifiedRefusals = AtomicLong()
