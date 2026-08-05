@@ -35,37 +35,87 @@ class DesktopBundleAndroidClasspathGuardTest {
     return project.tasks.getByName("composePreviewBundle") as BundlePreviewTask
   }
 
-  private fun maven(group: String, artifact: String, type: String) =
-    ClasspathEntry.Maven(group = group, artifact = artifact, version = "1.0", type = type)
+  /**
+   * Backs each decision with a real file, so `assembleClasspath(embed = true)` takes its genuine
+   * embedding branch rather than the "no file to embed" coordinate fallback.
+   */
+  private fun dep(
+    coordinate: String?,
+    kept: Boolean = true,
+    projectPath: String? = null,
+  ): DependencyDecision {
+    val name = (coordinate ?: projectPath!!).replace(':', '_').replace('.', '_') + ".jar"
+    val file = tmp.newFile(name).apply { writeText("stub") }
+    return DependencyDecision(
+      sourcePath = file.absolutePath,
+      coordinate = coordinate,
+      projectPath = projectPath,
+      totalClasses = 10,
+      reachableClasses = if (kept) 5 else 0,
+      originalBytes = 1024,
+      kept = kept,
+    )
+  }
 
-  /** The exact shape that shipped in the meshcore-mobile `:meshcore-components` bundle. */
-  private val androidComposeClasspath =
+  private fun jarsFor(deps: List<DependencyDecision>) = deps.map { java.io.File(it.sourcePath) }
+
+  /**
+   * The exact shape that shipped in the meshcore-mobile `:meshcore-components` bundle.
+   *
+   * A function, not a field: [dep] writes into [tmp], whose root only exists once the JUnit rule
+   * has run — a field initializer would evaluate at construction time and fail every test.
+   */
+  private fun androidComposeDeps() =
     listOf(
-      ClasspathEntry.Module(path = "classes/app.jar"),
-      maven("androidx.compose.ui", "ui-android", "aar"),
-      maven("androidx.compose.material3", "material3-android", "aar"),
-      maven("org.jetbrains.kotlin", "kotlin-stdlib", "jar"),
+      dep("androidx.compose.ui:ui-android:1.11.4:aar"),
+      dep("androidx.compose.material3:material3-android:1.5.0-alpha08:aar"),
+      dep("org.jetbrains.kotlin:kotlin-stdlib:2.4.10:jar"),
     )
 
   @Test
   fun `desktop bundle carrying android artifacts fails the pack`() {
     val e =
       assertThrows(GradleException::class.java) {
-        task().failOnAndroidClasspathInDesktopBundle("desktop", androidComposeClasspath)
+        task().failOnAndroidClasspathInDesktopBundle("desktop", androidComposeDeps())
       }
     assertThat(e).hasMessageThat().contains("NoClassDefFoundError: android/os/Parcelable")
-    assertThat(e).hasMessageThat().contains("androidx.compose.ui:ui-android:1.0")
-    assertThat(e).hasMessageThat().contains("androidx.compose.material3:material3-android:1.0")
+    assertThat(e).hasMessageThat().contains("androidx.compose.ui:ui-android:1.11.4")
+    assertThat(e).hasMessageThat().contains("androidx.compose.material3:material3-android")
     // Actionable next step, not just a diagnosis.
     assertThat(e).hasMessageThat().contains("jvm(\"desktop\")")
     // Pure-JVM entries are not reported as offenders.
     assertThat(e).hasMessageThat().doesNotContain("kotlin-stdlib")
   }
 
+  /**
+   * Regression for the `--embed-deps` hole: `assembleClasspath` rewrites every kept Maven dep into
+   * a metadata-free `ClasspathEntry.Embedded`, so a guard reading the assembled entries would find
+   * no coordinates and pass a bundle that is just as broken — the AGP-transformed `classes.jar` is
+   * then carried *inside* `libs/` rather than referenced. Keying on
+   * [DependencyDecision.coordinate], which is identical in both modes, is what closes it.
+   */
+  @Test
+  fun `embed mode is covered because the check reads decisions not assembled entries`() {
+    val deps = androidComposeDeps()
+    val embedded =
+      task()
+        .assembleClasspath(jars = jarsFor(deps), deps = deps, embed = true)
+        .entries
+        .filterIsInstance<ClasspathEntry.Maven>()
+    // Precondition: embed mode really does erase the Maven metadata the naive guard relied on.
+    assertThat(embedded).isEmpty()
+
+    val e =
+      assertThrows(GradleException::class.java) {
+        task().failOnAndroidClasspathInDesktopBundle("desktop", deps)
+      }
+    assertThat(e).hasMessageThat().contains("ui-android")
+  }
+
   @Test
   fun `an android bundle may carry android artifacts`() {
     // The Robolectric sandbox supplies android.jar, so this is the correct, expected shape.
-    task().failOnAndroidClasspathInDesktopBundle("android", androidComposeClasspath)
+    task().failOnAndroidClasspathInDesktopBundle("android", androidComposeDeps())
   }
 
   @Test
@@ -74,11 +124,20 @@ class DesktopBundleAndroidClasspathGuardTest {
       .failOnAndroidClasspathInDesktopBundle(
         "desktop",
         listOf(
-          ClasspathEntry.Module(path = "classes/app.jar"),
-          maven("org.jetbrains.compose.ui", "ui-desktop", "jar"),
-          maven("org.jetbrains.kotlin", "kotlin-stdlib", "jar"),
-          ClasspathEntry.Project(path = ":meshcore-core", inlinedAs = "libs/full.jar"),
+          dep("org.jetbrains.compose.ui:ui-desktop:1.11.1:jar"),
+          dep("org.jetbrains.kotlin:kotlin-stdlib:2.4.10:jar"),
+          dep(coordinate = null, projectPath = ":meshcore-core"),
         ),
+      )
+  }
+
+  @Test
+  fun `a dropped dependency is not an offender`() {
+    // Not on the bundle's classpath at all — nothing to fail over.
+    task()
+      .failOnAndroidClasspathInDesktopBundle(
+        "desktop",
+        listOf(dep("androidx.compose.ui:ui-android:1.11.4:aar", kept = false)),
       )
   }
 
@@ -89,7 +148,7 @@ class DesktopBundleAndroidClasspathGuardTest {
         task()
           .failOnAndroidClasspathInDesktopBundle(
             "desktop",
-            listOf(maven("androidx.versionedparcelable", "versionedparcelable", "aar")),
+            listOf(dep("androidx.versionedparcelable:versionedparcelable:1.1.1:aar")),
           )
       }
     assertThat(e).hasMessageThat().contains("versionedparcelable")

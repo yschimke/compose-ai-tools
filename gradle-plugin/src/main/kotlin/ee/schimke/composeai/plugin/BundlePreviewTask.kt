@@ -410,7 +410,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     val classpath = assembleClasspath(jarsList, depDecisions, embed = embedDeps.getOrElse(false))
     val classpathEntries = classpath.entries
     val inlinedJars = classpath.inlinedJars
-    failOnAndroidClasspathInDesktopBundle(backend.get(), classpathEntries)
+    failOnAndroidClasspathInDesktopBundle(backend.get(), depDecisions)
 
     val report =
       MinimizationReport(
@@ -1200,7 +1200,7 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /** The classpath manifest entries, the jars to inline under `libs/`, and the resolution mode. */
-  private data class AssembledClasspath(
+  internal data class AssembledClasspath(
     val entries: List<ClasspathEntry>,
     val inlinedJars: Map<String, File>,
     val resolution: String,
@@ -1218,7 +1218,7 @@ abstract class BundlePreviewTask : DefaultTask() {
    * carried in `libs/`, `mixed` when some Maven deps are embedded and others referenced (it isn't
    * today, but the field stays accurate if that changes), else `coordinates`.
    */
-  private fun assembleClasspath(
+  internal fun assembleClasspath(
     jars: List<File>,
     deps: List<DependencyDecision>,
     embed: Boolean,
@@ -1293,17 +1293,33 @@ abstract class BundlePreviewTask : DefaultTask() {
    * `artifactType=jar` view hands back AGP-transformed `…/transformed/<name>/jars/classes.jar`
    * paths, in which nothing of the original artifact id survives — which is why the desktop
    * classpath guard's path matcher could not have caught this.
+   *
+   * Takes [DependencyDecision]s rather than the assembled [ClasspathEntry] list so the check is
+   * mode-independent. Under `--embed-deps` / `-PbundleEmbedDeps=true`, `assembleClasspath` turns
+   * every kept Maven dep into a metadata-free [ClasspathEntry.Embedded] pointing at `libs/…`, so an
+   * entry-based filter would find no coordinates to inspect and wave the same broken bundle through
+   * — just with the AGP-transformed `classes.jar` carried inside it instead of referenced.
+   * `DependencyDecision.coordinate` is populated identically in both modes.
    */
   internal fun failOnAndroidClasspathInDesktopBundle(
     backendId: String,
-    entries: List<ClasspathEntry>,
+    decisions: List<DependencyDecision>,
   ) {
     if (backendId != "desktop") return
     val offenders =
-      entries
-        .filterIsInstance<ClasspathEntry.Maven>()
-        .filter { it.type.equals("aar", ignoreCase = true) || it.artifact.endsWith("-android") }
-        .map { "${it.group}:${it.artifact}:${it.version} (${it.type})" }
+      decisions
+        .filter { it.kept }
+        .mapNotNull { it.coordinate }
+        .mapNotNull { coord ->
+          // "<group>:<artifact>:<version>[:<type>]" — the `maven:`-stripped shape.
+          val parts = coord.split(':')
+          if (parts.size < 3) return@mapNotNull null
+          val (group, artifact, version) = parts
+          val type = parts.getOrNull(3) ?: "jar"
+          if (type.equals("aar", ignoreCase = true) || artifact.endsWith("-android")) {
+            "$group:$artifact:$version ($type)"
+          } else null
+        }
         .distinct()
         .sorted()
     if (offenders.isEmpty()) return
