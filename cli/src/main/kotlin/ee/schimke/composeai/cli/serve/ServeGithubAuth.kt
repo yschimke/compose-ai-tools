@@ -59,7 +59,13 @@ class ServeGithubAuth(
   suspend fun RoutingContext.handleStart() {
     val returnTo = safeReturnTo(call.request.queryParameters["return"] ?: "/")
     val state = signedState(nonce(), returnTo)
-    call.response.cookies.append(stateCookie(state, maxAge = STATE_TTL_SECONDS))
+    call.response.cookies.append(
+      stateCookie(
+        state,
+        maxAge = STATE_TTL_SECONDS,
+        secure = isSecure(call, config.callbackBaseUrl),
+      )
+    )
     call.respondRedirect(authorizeUrl(call, state))
   }
 
@@ -81,8 +87,9 @@ class ServeGithubAuth(
           return
         }
     val session = signedSession(user.login, user.repositoryAccess)
-    call.response.cookies.append(authCookie(session, maxAge = SESSION_TTL_SECONDS))
-    call.response.cookies.append(stateCookie("", maxAge = 0))
+    val secure = isSecure(call, config.callbackBaseUrl)
+    call.response.cookies.append(authCookie(session, maxAge = SESSION_TTL_SECONDS, secure = secure))
+    call.response.cookies.append(stateCookie("", maxAge = 0, secure = secure))
     call.respondRedirect(statePayload.returnTo)
   }
 
@@ -183,23 +190,24 @@ class ServeGithubAuth(
     return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
   }
 
-  private fun stateCookie(value: String, maxAge: Long): Cookie =
-    Cookie(
-      name = STATE_COOKIE,
-      value = value,
-      path = "/",
-      maxAge = maxAge.toInt(),
-      httpOnly = true,
-      encoding = CookieEncoding.URI_ENCODING,
-      extensions = mapOf("SameSite" to "Lax"),
-    )
+  private fun stateCookie(value: String, maxAge: Long, secure: Boolean): Cookie =
+    sessionCookie(STATE_COOKIE, value, maxAge, secure)
 
-  private fun authCookie(value: String, maxAge: Long): Cookie =
+  private fun authCookie(value: String, maxAge: Long, secure: Boolean): Cookie =
+    sessionCookie(AUTH_COOKIE, value, maxAge, secure)
+
+  /**
+   * [secure] is derived per request rather than hardcoded: a deployment terminates TLS at Caddy and
+   * must not hand the session cookie back over a plaintext downgrade, while `serve` on
+   * `http://localhost` would never see the cookie again if it were always set. See [isSecure].
+   */
+  private fun sessionCookie(name: String, value: String, maxAge: Long, secure: Boolean): Cookie =
     Cookie(
-      name = AUTH_COOKIE,
+      name = name,
       value = value,
       path = "/",
       maxAge = maxAge.toInt(),
+      secure = secure,
       httpOnly = true,
       encoding = CookieEncoding.URI_ENCODING,
       extensions = mapOf("SameSite" to "Lax"),
@@ -285,6 +293,21 @@ class GitHubOAuthVerifier(private val client: OkHttpClient = OkHttpClient()) {
     }
   }
 
+  /**
+   * Whether [login] has **write** access to [repository] — the gate on the playground, which
+   * compiles and runs a stranger's Kotlin.
+   *
+   * Write, not merely "not none". GitHub reports `read` from this endpoint for *any* authenticated
+   * user on a **public** repository, because reading is what public means — so the old `permission
+   * != "none"` test admitted every GitHub account whenever the configured `--github-auth-repo` was
+   * public, which is the documented setup. The legacy `permission` field collapses the finer roles
+   * onto `admin` / `write` / `read` / `none`, so `maintain` arrives as `write`; it is accepted by
+   * name too in case that ever changes.
+   *
+   * This is deliberately narrower than before: a read-only collaborator on a private repo no longer
+   * reaches the playground. Live preview, which only needs a signed-in user, is unaffected — and
+   * `--github-auth-users` remains the way to admit named logins.
+   */
   private fun fetchRepositoryAccess(token: String, repository: String, login: String): Boolean {
     val request =
       Request.Builder()
@@ -293,18 +316,24 @@ class GitHubOAuthVerifier(private val client: OkHttpClient = OkHttpClient()) {
         .header(HttpHeaders.Accept, "application/vnd.github+json")
         .build()
     return client.newCall(request).execute().use { response ->
-      if (response.code == 404) return@use false
       if (!response.isSuccessful) return@use false
-      val permission =
+      val payload =
         JSON.decodeFromString(GitHubPermissionResponse.serializer(), response.body.string())
-          .permission
-          .lowercase()
-      permission != "none"
+      val role = payload.roleName?.trim()?.lowercase()
+      payload.permission.lowercase() in WRITE_PERMISSIONS ||
+        (role != null && role in WRITE_PERMISSIONS)
     }
   }
 
   companion object {
     private val JSON = Json { ignoreUnknownKeys = true }
+
+    /**
+     * Values meaning "can push", across both the legacy `permission` field and the fine-grained
+     * `role_name` one. `maintain` only ever appears in the latter today, but naming it in both
+     * costs nothing and survives GitHub widening the legacy field.
+     */
+    private val WRITE_PERMISSIONS = setOf("admin", "maintain", "write")
   }
 }
 
@@ -313,7 +342,11 @@ private data class GitHubTokenResponse(@SerialName("access_token") val accessTok
 
 @Serializable private data class GitHubUserResponse(val login: String)
 
-@Serializable private data class GitHubPermissionResponse(val permission: String = "none")
+@Serializable
+private data class GitHubPermissionResponse(
+  val permission: String = "none",
+  @SerialName("role_name") val roleName: String? = null,
+)
 
 private fun ApplicationCall.uriWithQuery(): String = request.uri
 
@@ -325,6 +358,17 @@ private fun io.ktor.server.request.ApplicationRequest.cookieValue(name: String):
       val idx = part.indexOf('=')
       if (idx > 0 && part.substring(0, idx) == name) part.substring(idx + 1) else null
     }
+
+/**
+ * Whether this request reached us over TLS, so the cookies can be marked `secure`.
+ *
+ * The configured `callbackBaseUrl` is the authoritative answer where it exists — it is the operator
+ * stating the public origin — and it is what a reverse-proxied deployment is told to set. Otherwise
+ * fall back to the request's own view, which behind a proxy means `X-Forwarded-Proto`.
+ */
+internal fun isSecure(call: ApplicationCall, callbackBaseUrl: String? = null): Boolean =
+  callbackBaseUrl?.trim()?.takeIf { it.isNotEmpty() }?.startsWith("https://", ignoreCase = true)
+    ?: externalOrigin(call).startsWith("https://", ignoreCase = true)
 
 private fun externalOrigin(call: ApplicationCall): String {
   val forwardedProto = call.request.headers["X-Forwarded-Proto"]?.substringBefore(",")?.trim()
