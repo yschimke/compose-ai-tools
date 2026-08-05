@@ -45,5 +45,19 @@ class AffectedGradleTestsTest(unittest.TestCase):
         self.assertEqual(mod.resolve(["new-root/x.kt"], self.config, self.projects, self.root), "full")
 
 
+class ModuleUnitTestsGateTest(unittest.TestCase):
+    """`none` is a real output of this script, and ci.yml has to honour it.
+
+    `path-scope.py` fails open on paths it doesn't recognise and switches the Module Unit Tests
+    job on, but this script reads a different config where the same path may be ignored — so the
+    job can be enabled with nothing to run. Without the gate below it invoked `gradlew none` and
+    failed the PR. Asserted as text so the test needs no YAML parser.
+    """
+
+    def test_ci_gates_module_unit_tests_on_a_non_none_task_list(self):
+        ci = (HERE.parents[1] / ".github" / "workflows" / "ci.yml").read_text()
+        self.assertIn("needs.changes.outputs.module_test_tasks != 'none'", ci)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
