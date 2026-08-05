@@ -256,6 +256,41 @@ still works, because GitHub prompts for sign-in on the issue form.
 A token-gated (`--public` off) server strips its **session token** from both URLs in the body — that
 token is the capability to drive the server, and an issue is public.
 
+### Opening the Figma node a preview is specified by
+
+When the served catalog publishes a **Figma-backed design reference** for a preview, the viewer adds
+a third link to that row: **figma spec**, opening the file focused on that exact node.
+
+| Before | After |
+| --- | --- |
+| ![Source and report an issue](images/serve-viewer-figma-spec-before.png) | ![…plus a figma spec link](images/serve-viewer-figma-spec-after.png) |
+
+![The same row on a dark catalog](images/serve-viewer-figma-spec-after-dark.png)
+
+Nothing new is published to make this work. A producer that keeps a `design-map.json` already emits
+its Figma entries into `references/index.json` as `source.provider = "figma"` plus a
+`figma:<fileKey>/<nodeId>` handle, and the server already keeps those fields — this only turns the
+handle into a URL (Figma's URL form spells a node id `73-6` where the map and the API use `73:6`).
+
+**It appears only when the catalog names a spec.** A preview whose reference is an HTML export or a
+plain PNG — and every catalog that publishes no references at all — gets no link rather than a guess
+or a dead one. Today that means a handful of meshcore-mobile screens; `compose-m3` and `wear-m3`
+publish no Figma references, so their viewers are unchanged.
+
+**The server still never talks to Figma.** `source.uri` remains informational: the browser
+navigates, nothing is fetched, and no Figma credential exists anywhere in `serve`. Because a catalog
+is third-party data, the handle is parsed strictly and the URL assembled from a literal origin plus
+a validated file key and node id, so a catalog declaring `javascript:…` resolves to no link at all
+rather than an attacker-chosen href on the viewer page.
+
+**Posting a comment from here would be a different feature**, and a much larger one. Figma has no
+prefilled-comment URL — the equivalent of GitHub's `issues/new?body=` — so it would mean calling
+`POST /v1/files/:key/comments` with a real Figma credential: either a server-held token (every
+comment authored by one bot account, and a public box holding write access to your design file) or a
+per-visitor Figma OAuth flow (a second token to custody, which is exactly what the GitHub path
+avoids). Figma comments also carry no image attachments, so the "paste the render" trick above has
+no equivalent there.
+
 ## Design references and UI mocks
 
 A bundle or published catalog can map independently-authored UI mocks to exact preview ids. The

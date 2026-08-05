@@ -70,6 +70,22 @@ class ServeWebFixtureTest {
   // The viewer's prefilled "report an issue" link, built the way the server builds it: against the
   // catalog's SOURCE repo, carrying the preview's facts and a token-free deep link, with the
   // signed-in visitor's login named in the tooltip.
+  // The Figma node a preview is specified by, resolved the way the server resolves it — from a
+  // Figma-backed design reference the catalog published, not from a hand-written URL. Mirrors a
+  // real
+  // meshcore-mobile design-map entry (`figma:gYzowY4cQ7rNr2gYoco1M6/73:6`).
+  private val fixtureFigmaSpec =
+    ServeFigmaSpec.of(
+      DesignReference(
+        id = "contact-chat-figma",
+        previewId = "com.example.ProfileScreenPreview",
+        label = "Contact chat",
+        raster = DesignReferenceRaster(path = "references/contact-chat-figma.png"),
+        source =
+          DesignReferenceSource(provider = "figma", uri = "figma:gYzowY4cQ7rNr2gYoco1M6/73:6"),
+      )
+    )
+
   private fun fixtureReportIssue(previewId: String, label: String, sourceFile: String) =
     ServeIssueReport.Context(
         repo = "yschimke/compose-ai-tools",
@@ -655,6 +671,9 @@ class ServeWebFixtureTest {
             knobPreview.label,
             "src/main/kotlin/com/example/Button.kt",
           ),
+        // …and the third link in the row: the Figma node this preview is specified by, which only a
+        // catalog publishing Figma-backed references names.
+        figmaSpec = fixtureFigmaSpec,
       )
     // A catalog served under its canonical path (/meshcore-mobile/) rather than ?session=: same
     // pages, but links stay on the path (basePath) and drop the &session= param. Captures the
@@ -679,6 +698,9 @@ class ServeWebFixtureTest {
         trust = "branch:yschimke/meshcore-mobile@design-artifacts/meshcore-mobile",
         basePath = "/meshcore-mobile",
         siblings = previews,
+        // meshcore-mobile is the catalog that really publishes Figma-backed references, so its
+        // golden is where the affordance is captured in context.
+        figmaSpec = fixtureFigmaSpec,
       )
     // A daemon-backed viewer whose module declares `@ThemeCatalog` themes: the viewer adds an "App
     // theme" selector (grouped by `@ThemeCatalog(group=…)`) so a preview can be re-rendered under a
