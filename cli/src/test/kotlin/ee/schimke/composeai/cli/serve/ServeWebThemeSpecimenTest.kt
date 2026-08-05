@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli.serve
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -42,39 +43,34 @@ class ServeWebThemeSpecimenTest {
     return Regex("\"((?:[^\"\\\\]|\\\\.)*)\"").findAll(decl).map { it.groupValues[1] }.toList()
   }
 
+  /**
+   * A specimen alongside an ordinary card — the real catalog shape, and the only one that emits a
+   * `themeBase` array at all (a specimen-only catalog offers no chips, covered separately below).
+   */
+  private fun specimenAndComponent(specimenSection: String) =
+    page(
+      listOf(
+        ServePreview(id = "theme-meshcore-light", label = "Theme", section = specimenSection),
+        ServePreview(id = "contactrow-chat", label = "Contact row", section = "Components"),
+      )
+    )
+
   @Test
   fun `a themes-section specimen is not re-rendered under an override`() {
-    val html =
-      page(
-        listOf(
-          ServePreview(
-            id = "theme-meshcore-light",
-            label = "Theme MeshCore Light",
-            section = "Themes",
-          )
-        )
-      )
-    assertEquals(
-      listOf(""),
-      themeBases(html),
-      "a theme specimen must keep its baked pixels, not gain a themeProvider render URL",
+    val bases = themeBases(specimenAndComponent("Themes"))
+    assertTrue(
+      bases.none { it.contains("/render/theme-meshcore-light.png") },
+      "a theme specimen must never gain a themeProvider render URL",
     )
+    assertEquals(1, bases.count { it.isEmpty() }, "exactly the specimen keeps its baked pixels")
   }
 
   @Test
   fun `an ordinary card in the same catalog still re-renders`() {
     // The fix must not disable the whole Theme control — only the specimens opt out.
-    val html =
-      page(
-        listOf(
-          ServePreview(id = "theme-meshcore-light", label = "Theme", section = "Themes"),
-          ServePreview(id = "contactrow-chat", label = "Contact row", section = "Components"),
-        )
-      )
-    val bases = themeBases(html)
-    assertTrue(bases.any { it.isEmpty() }, "the specimen opts out")
+    val html = specimenAndComponent("Themes")
     assertTrue(
-      bases.any { it.contains("/render/contactrow-chat.png") },
+      themeBases(html).any { it.contains("/render/contactrow-chat.png") },
       "the component card still has a themed-render base",
     )
     assertTrue(html.contains("cp-theme-btn"), "the declared-theme chips remain offered")
@@ -82,8 +78,26 @@ class ServeWebThemeSpecimenTest {
 
   @Test
   fun `the section match is case-insensitive`() {
-    val html = page(listOf(ServePreview(id = "t", label = "T", section = "themes")))
-    assertEquals(listOf(""), themeBases(html))
+    val bases = themeBases(specimenAndComponent("themes"))
+    assertTrue(bases.none { it.contains("/render/theme-meshcore-light.png") })
+  }
+
+  @Test
+  fun `a catalog of only specimens offers no declared-theme chips`() {
+    // Otherwise the header advertises a control that redraws nothing: every themeBase would be "",
+    // and the browser's `if (!img || !base) return` would skip every card. The chip gate and the
+    // per-card URL must agree on eligibility.
+    val html =
+      page(
+        listOf(
+          ServePreview(id = "theme-light", label = "Theme Light", section = "Themes"),
+          ServePreview(id = "theme-dark", label = "Theme Dark", section = "Themes"),
+        )
+      )
+    assertFalse(
+      html.contains("data-theme-choice=\"theme:com.example.BrandTheme\""),
+      "no declared-theme chip when nothing the theme could redraw is renderable",
+    )
   }
 
   @Test

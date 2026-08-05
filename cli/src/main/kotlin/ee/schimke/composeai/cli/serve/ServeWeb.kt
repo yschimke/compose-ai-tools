@@ -3372,19 +3372,23 @@ object ServeWeb {
     // The app-declared themes join the header's Theme control only when this session can actually
     // re-render a card under one — otherwise the chips would redraw nothing.
     fun themeRenderable(p: ServePreview) = canRenderThemeFor(p.id)
+    // Whether a declared theme actually redraws this preview: it needs a daemon twin AND must not
+    // be a theme specimen, which has a twin but must keep its baked pixels ([isThemeSpecimen]).
+    // ONE predicate feeding both the chip gate and the per-card URL, deliberately: gating the chips
+    // on mere renderability while the URLs also excluded specimens would offer the control on a
+    // catalog whose only twinned cards are specimens — every `themeBase` empty, the browser's
+    // `if (!img || !base) return` skipping every card, and the chips a no-op.
+    fun themeOverridable(p: ServePreview) = themeRenderable(p) && !isThemeSpecimen(p)
     // The variant a card shows by default (server-side) — the one a declared theme re-renders.
     fun renderedVariant(card: GridCard) =
       if (card.swappable && darkFirst) card.dark!! else card.default
     val declaredThemeChips =
       if (declaredThemes.isEmpty()) emptyList()
-      else if (groups.any { themeRenderable(renderedVariant(it)) }) declaredThemes else emptyList()
-    // A card's themed-render base URL — "" when the session has no daemon twin for it, so it keeps
-    // its baked pixels (a themed render would ignore the theme anyway), and "" for a theme
-    // SPECIMEN, which has a daemon twin but must not use it (see [isThemeSpecimen]).
+      else if (groups.any { themeOverridable(renderedVariant(it)) }) declaredThemes else emptyList()
+    // A card's themed-render base URL — "" when a declared theme wouldn't redraw it, so it keeps
+    // its baked pixels.
     fun themeBase(card: GridCard) =
-      renderedVariant(card).let {
-        if (themeRenderable(it) && !isThemeSpecimen(it)) renderSrc(it) else ""
-      }
+      renderedVariant(card).let { if (themeOverridable(it)) renderSrc(it) else "" }
     fun cardViews(card: GridCard): Long =
       listOfNotNull(card.light, card.dark, card.neutral).sumOf { engagement[it.id]?.views ?: 0L }
     fun swapCard(card: GridCard): String {
