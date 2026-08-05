@@ -304,13 +304,23 @@ These are orthogonal. **Trust** decides attribution; **format** decides what dra
 ever lets untrusted code run *on the server*.
 
 > **The one deliberate exception: the playground.** `--playground-bundle` /
-> `--playground-android-bundle` exist to compile and run a stranger's snippet, which inverts the
-> constraint above. It is refused under `--public` unless the operator configures a per-session
-> sandbox (`--playground-sandbox strict`, or a `custom:` jail that supplies its own resource caps)
-> **and** the startup probe proves that jail blocks egress, contains the filesystem, and isolates
-> the process namespace. The
-> snippet then runs in its own jailed JVM — one per snippet, killed at a hard wall-clock TTL — not
-> on the server proper. Design + profiles: [`docs/design/PLAYGROUND.md` §6](design/PLAYGROUND.md).
+> `--playground-android-bundle` exist to compile and run someone else's snippet, which inverts the
+> constraint above. Under `--public` the lane is admitted on either of two independent bases:
+>
+> - **contained** — the operator configures a per-session sandbox (`--playground-sandbox strict`, or
+>   a `custom:` jail that supplies its own resource caps) **and** the startup probe proves that jail
+>   blocks egress, contains the filesystem, and isolates the process namespace. The snippet then
+>   runs in its own jailed JVM — one per snippet, killed at a hard wall-clock TTL — not on the
+>   server proper. This is the posture that lets *anyone* compile.
+> - **repo-access-gated** — GitHub auth is configured, so all three playground surfaces admit only a
+>   signed-in user with access to `--github-auth-repo`. The snippet is then a repo collaborator's,
+>   not a stranger's: the same trust level as the token-gated posture, and not the untrusted code
+>   the constraint above is about. A sandbox is still applied when configured, as defence in depth
+>   rather than as the precondition.
+>
+> Anonymous **and** uncontained is refused, and the startup log says which posture admitted the
+> lane, so "admitted because collaborators only" is never mistaken for "admitted because
+> contained". Design + profiles: [`docs/design/PLAYGROUND.md` §6](design/PLAYGROUND.md).
 > Everything else on this page keeps the original constraint unchanged.
 
 ### Trust

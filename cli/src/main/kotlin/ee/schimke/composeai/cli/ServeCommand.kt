@@ -252,8 +252,10 @@ class ServeCommand(args: List<String>) : Command(args) {
 
   /**
    * `--playground-bundle <path>`: enable the playground lane (`POST /api/{v}/compiler/run`),
-   * resolving the CMP compile classpath from this catalog liveBundle. Refused under `--public` (the
-   * compile runs **user-supplied code** in-process). See docs/design/PLAYGROUND.md.
+   * resolving the CMP compile classpath from this catalog liveBundle. Under `--public` the lane
+   * still has to clear [PlaygroundPublicGate], which admits it either behind a verified sandbox or
+   * behind GitHub repo-access gating — the compile runs **user-supplied code**, so one of the two
+   * must bound who supplies it. See docs/design/PLAYGROUND.md §6.
    */
   private val playgroundBundlePath: String? = args.flagValue("--playground-bundle")
 
@@ -262,17 +264,19 @@ class ServeCommand(args: List<String>) : Command(args) {
    * compile lane, resolving its classpath from this Android catalog liveBundle. Snippets sent with
    * `confType=remote-compose` compile against it, render on the Robolectric daemon, and their
    * captured `.rc` is published as a `/d/<id>` permalink (needs the `lib-daemon-android` sidecar +
-   * `android.jar` + the `/d/` document store). Refused under `--public` like `--playground-bundle`.
+   * `android.jar` + the `/d/` document store). Gated under `--public` like `--playground-bundle`.
    */
   private val playgroundAndroidBundlePath: String? = args.flagValue("--playground-android-bundle")
 
   /**
    * `--playground-sandbox <profile>`: the **per-session sandbox** every playground snippet JVM runs
    * inside (`none` | `unshare` | `bwrap` | `systemd` | `strict` | `custom:<argv>`), plus its
-   * resource knobs. This is Phase 4 of docs/design/PLAYGROUND.md — the gate that lets the
-   * playground run under `--public` at all: with a verified sandbox the snippet no longer executes
-   * unconfined on the serve host. Default `none`, which keeps the pre-Phase-4 behaviour (playground
-   * allowed token-gated, refused under `--public`).
+   * resource knobs. This is Phase 4 of docs/design/PLAYGROUND.md — one of the two things that lets
+   * the playground run under `--public`: with a verified sandbox the snippet no longer executes
+   * unconfined on the serve host, so *anyone* may compile. The other is GitHub repo-access gating,
+   * which bounds who may compile instead of what a compile can reach; with that configured a
+   * sandbox here is defence in depth rather than the precondition. Default `none` — playground
+   * allowed token-gated, and under `--public` only when repo-access-gated.
    */
   private val playgroundSandboxSpec: String? = args.flagValue("--playground-sandbox")
 
@@ -1021,17 +1025,22 @@ class ServeCommand(args: List<String>) : Command(args) {
    * compile classpath from the catalog liveBundle once at startup and wires the in-process BTA
    * compiler from the CLI install's `lib-bta/`.
    *
-   * **Under `--public` the lane serves only behind a verified per-session sandbox** — the Phase-4
-   * gate (docs/design/PLAYGROUND.md §6, issue #3016): `--playground-sandbox` selects the jail every
-   * snippet JVM launches inside, and a startup probe must come back showing that jail blocks
-   * egress, contains the filesystem, and isolates the process namespace before the lane is wired at
-   * all. With no sandbox configured the old flat refusal stands. Fail-soft everywhere else: any
-   * missing piece (bundle unresolvable, no `lib-bta/`) logs why and disables the lane rather than
-   * aborting serve.
+   * **Under `--public` the lane needs one of two admission postures** ([PlaygroundPublicGate]):
+   * either a verified per-session sandbox — the Phase-4 gate (docs/design/PLAYGROUND.md §6,
+   * issue #3016), where `--playground-sandbox` selects the jail every snippet JVM launches inside
+   * and a startup probe must come back showing that jail blocks egress, contains the filesystem,
+   * and isolates the process namespace — or [repoAccessGated], meaning GitHub auth is configured so
+   * the routes admit only users with access to `--github-auth-repo` (issue #3210). Anonymous *and*
+   * uncontained is still refused. Fail-soft everywhere else: any missing piece (bundle
+   * unresolvable, no `lib-bta/`) logs why and disables the lane rather than aborting serve.
+   *
+   * @param repoAccessGated GitHub auth is configured, so the playground routes' repo-access check
+   *   actually rejects a caller instead of falling through (see `rejectMissingGithubRepoAccess`).
    */
   private fun openPlaygroundService(
     docStore: ServeDocStore?,
     registry: ServeSessionRegistry,
+    repoAccessGated: Boolean,
   ): PlaygroundLane? {
     val cmpBundle = playgroundBundlePath
     val androidBundle = playgroundAndroidBundlePath
@@ -1062,7 +1071,7 @@ class ServeCommand(args: List<String>) : Command(args) {
           )
           .also { System.err.println("serve: ${it.summary()}") }
       } else null
-    when (val decision = PlaygroundPublicGate.decide(public, sandbox, probe)) {
+    when (val decision = PlaygroundPublicGate.decide(public, repoAccessGated, sandbox, probe)) {
       is PlaygroundPublicGate.Decision.Refuse -> {
         System.err.println("serve: ${decision.reason}")
         workRoot.deleteRecursively()
@@ -1070,6 +1079,17 @@ class ServeCommand(args: List<String>) : Command(args) {
       }
       is PlaygroundPublicGate.Decision.Allow ->
         System.err.println("serve: playground admitted — ${decision.detail}")
+    }
+    // A repo-access-gated lane is admitted without consulting the probe, so a broken jail would
+    // otherwise pass unremarked — the operator asked for defence in depth and isn't getting it.
+    // Say so; the lane still serves, because admission never rested on the jail here.
+    if (repoAccessGated && probe != null && (!probe.ran || probe.failedChecks().isNotEmpty())) {
+      System.err.println(
+        "serve: WARNING playground sandbox '${sandbox.profile.id}' is configured but did not " +
+          "contain the preflight (" +
+          (if (!probe.ran) probe.detail else probe.failedChecks().joinToString("; ")) +
+          "). The lane serves because it is repo-access-gated, not because it is contained."
+      )
     }
 
     val cmpClasspath = cmpBundle?.let { resolvePlaygroundClasspath(it, workRoot, "cmp") }
@@ -1555,8 +1575,12 @@ class ServeCommand(args: List<String>) : Command(args) {
     // Resolved once so the playground's remote-compose lane publishes into the SAME store the `/d/`
     // route serves from — otherwise a minted `/d/<id>` link wouldn't resolve.
     val docStore = openDocStore()
-    val playgroundLane = openPlaygroundService(docStore, registry)
+    // Built BEFORE the playground lane: whether GitHub auth is configured is one of the two bases
+    // the `--public` admission gate decides on (issue #3210), because it is what makes the routes'
+    // repo-access check a real check instead of a no-op.
     val githubAuth = buildGithubAuth()
+    val playgroundLane =
+      openPlaygroundService(docStore, registry, repoAccessGated = githubAuth != null)
     val server =
       ServeHttpServer(
         host = host,

@@ -162,10 +162,12 @@ class PlaygroundSandboxTest {
 }
 
 /**
- * The `--public` admission decision (issue #3016). The pre-Phase-4 rule was a flat refusal; the
- * rule now is "a sandbox that has *proved* it contains a snippet", and every uncertain state — no
- * profile, no probe, a probe that failed to launch, a probe with any failing check — stays a
- * refusal.
+ * The `--public` admission decision (issues #3016, #3210). Two independent postures admit the lane:
+ * **contained** — a sandbox that has *proved* it contains a snippet, where every uncertain state
+ * (no profile, no probe, a probe that failed to launch, a probe with any failing check) stays a
+ * refusal — and **repo-access-gated**, where GitHub auth limits the callers to repo collaborators
+ * and the containment evidence is no longer the thing being asked for. Only anonymous *and*
+ * uncontained is refused outright.
  */
 class PlaygroundPublicGateTest {
 
@@ -183,19 +185,32 @@ class PlaygroundPublicGateTest {
   @Test
   fun `a token-gated host serves with or without a sandbox`() {
     assertTrue(
-      PlaygroundPublicGate.decide(isPublic = false, sandbox = PlaygroundSandbox.NONE, probe = null)
-        is PlaygroundPublicGate.Decision.Allow
+      PlaygroundPublicGate.decide(
+        isPublic = false,
+        repoAccessGated = false,
+        sandbox = PlaygroundSandbox.NONE,
+        probe = null,
+      ) is PlaygroundPublicGate.Decision.Allow
     )
     assertTrue(
-      PlaygroundPublicGate.decide(isPublic = false, sandbox = bwrap, probe = null)
-        is PlaygroundPublicGate.Decision.Allow
+      PlaygroundPublicGate.decide(
+        isPublic = false,
+        repoAccessGated = false,
+        sandbox = bwrap,
+        probe = null,
+      ) is PlaygroundPublicGate.Decision.Allow
     )
   }
 
   @Test
   fun `public with no sandbox is refused, as before Phase 4`() {
     val decision =
-      PlaygroundPublicGate.decide(isPublic = true, sandbox = PlaygroundSandbox.NONE, probe = null)
+      PlaygroundPublicGate.decide(
+        isPublic = true,
+        repoAccessGated = false,
+        sandbox = PlaygroundSandbox.NONE,
+        probe = null,
+      )
 
     val refusal = assertRefused(decision)
     assertTrue("--playground-sandbox" in refusal, refusal)
@@ -203,7 +218,14 @@ class PlaygroundPublicGateTest {
 
   @Test
   fun `public with a sandbox but no probe result is refused`() {
-    assertRefused(PlaygroundPublicGate.decide(isPublic = true, sandbox = bwrap, probe = null))
+    assertRefused(
+      PlaygroundPublicGate.decide(
+        isPublic = true,
+        repoAccessGated = false,
+        sandbox = bwrap,
+        probe = null,
+      )
+    )
   }
 
   @Test
@@ -212,6 +234,7 @@ class PlaygroundPublicGateTest {
       assertRefused(
         PlaygroundPublicGate.decide(
           isPublic = true,
+          repoAccessGated = false,
           sandbox = bwrap,
           probe = PlaygroundSandboxProbe.Report(ran = false, detail = "bwrap: command not found"),
         )
@@ -222,18 +245,18 @@ class PlaygroundPublicGateTest {
   @Test
   fun `public is refused when any single check fails`() {
     val leaks = cleanProbe.copy(egressBlocked = false)
-    val refusal = assertRefused(PlaygroundPublicGate.decide(true, bwrap, leaks))
+    val refusal = assertRefused(PlaygroundPublicGate.decide(true, false, bwrap, leaks))
     assertTrue("outbound network reachable" in refusal, refusal)
 
     assertRefused(
-      PlaygroundPublicGate.decide(true, bwrap, cleanProbe.copy(filesystemContained = false))
+      PlaygroundPublicGate.decide(true, false, bwrap, cleanProbe.copy(filesystemContained = false))
     )
     assertRefused(
-      PlaygroundPublicGate.decide(true, bwrap, cleanProbe.copy(processIsolated = false))
+      PlaygroundPublicGate.decide(true, false, bwrap, cleanProbe.copy(processIsolated = false))
     )
     // A jail so tight the render can't write its PNG is also a refusal — it would fail every run.
     assertRefused(
-      PlaygroundPublicGate.decide(true, bwrap, cleanProbe.copy(workDirWritable = false))
+      PlaygroundPublicGate.decide(true, false, bwrap, cleanProbe.copy(workDirWritable = false))
     )
   }
 
@@ -242,7 +265,12 @@ class PlaygroundPublicGateTest {
     val strict = PlaygroundSandbox(profile = PlaygroundSandbox.Profile.STRICT)
 
     val decision =
-      PlaygroundPublicGate.decide(isPublic = true, sandbox = strict, probe = cleanProbe)
+      PlaygroundPublicGate.decide(
+        isPublic = true,
+        repoAccessGated = false,
+        sandbox = strict,
+        probe = cleanProbe,
+      )
 
     val allow = decision as? PlaygroundPublicGate.Decision.Allow
     requireNotNull(allow) { "expected Allow, got $decision" }
@@ -254,13 +282,13 @@ class PlaygroundPublicGateTest {
     // bwrap contains a snippet perfectly and caps nothing: -Xmx bounds heap, ActiveProcessorCount
     // only sizes JVM pools, and the probe cannot measure either. A snippet could spin CPU-bound
     // threads until the box starves, so containment alone is not admission.
-    val refusal = assertRefused(PlaygroundPublicGate.decide(true, bwrap, cleanProbe))
+    val refusal = assertRefused(PlaygroundPublicGate.decide(true, false, bwrap, cleanProbe))
 
     assertTrue("no CPU or process-count cap" in refusal, refusal)
     assertTrue("strict" in refusal, refusal)
 
     val unshare = PlaygroundSandbox(profile = PlaygroundSandbox.Profile.UNSHARE)
-    assertRefused(PlaygroundPublicGate.decide(true, unshare, cleanProbe))
+    assertRefused(PlaygroundPublicGate.decide(true, false, unshare, cleanProbe))
   }
 
   @Test
@@ -268,10 +296,108 @@ class PlaygroundPublicGateTest {
     val custom = PlaygroundSandbox.parseProfile("custom:my-jail --net=none").getOrThrow()
 
     assertTrue(
-      PlaygroundPublicGate.decide(true, custom, cleanProbe) is PlaygroundPublicGate.Decision.Allow,
+      PlaygroundPublicGate.decide(true, false, custom, cleanProbe)
+        is PlaygroundPublicGate.Decision.Allow,
       "a custom jail is admitted on evidence, not on its name",
     )
-    assertRefused(PlaygroundPublicGate.decide(true, custom, cleanProbe.copy(egressBlocked = false)))
+    assertRefused(
+      PlaygroundPublicGate.decide(true, false, custom, cleanProbe.copy(egressBlocked = false))
+    )
+  }
+
+  @Test
+  fun `a repo-access-gated public host is admitted with no sandbox at all`() {
+    // Issue #3210: the routes already reject anyone without access to --github-auth-repo, so the
+    // snippet is a collaborator's, not a stranger's — the same trust level as the token-gated
+    // posture, which `decide` admits with no sandbox.
+    val allow =
+      assertAllowed(
+        PlaygroundPublicGate.decide(
+          isPublic = true,
+          repoAccessGated = true,
+          sandbox = PlaygroundSandbox.NONE,
+          probe = null,
+        )
+      )
+
+    assertTrue("repo-access-gated" in allow, allow)
+    assertTrue("no sandbox" in allow, allow)
+  }
+
+  @Test
+  fun `a repo-access-gated public host keeps a configured sandbox, as defence in depth`() {
+    // bwrap is refused as an *admission basis* (no cpu/pid cap) but must still be applied when the
+    // lane is admitted on repo access — and the log must not read as if containment let it in.
+    val allow =
+      assertAllowed(
+        PlaygroundPublicGate.decide(
+          isPublic = true,
+          repoAccessGated = true,
+          sandbox = bwrap,
+          probe = cleanProbe,
+        )
+      )
+
+    assertTrue("repo-access-gated" in allow, allow)
+    assertTrue("defence in depth" in allow, allow)
+  }
+
+  @Test
+  fun `repo-access gating does not rescue a jail that failed its probe from being reported`() {
+    // The lane still serves — admission never rested on the jail here — so this is an Allow. The
+    // ServeCommand caller is what warns; the gate's job is only not to refuse.
+    assertAllowed(
+      PlaygroundPublicGate.decide(
+        isPublic = true,
+        repoAccessGated = true,
+        sandbox = bwrap,
+        probe = cleanProbe.copy(egressBlocked = false),
+      )
+    )
+  }
+
+  @Test
+  fun `anonymous and uncontained names both remedies`() {
+    // Issue #3214: the refusal an operator hits on a container that cannot jail a snippet used to
+    // point only at --playground-sandbox, which that box cannot satisfy. GitHub auth is the way
+    // out, so the message has to say so.
+    val refusal =
+      assertRefused(
+        PlaygroundPublicGate.decide(
+          isPublic = true,
+          repoAccessGated = false,
+          sandbox = PlaygroundSandbox.NONE,
+          probe = null,
+        )
+      )
+
+    assertTrue("--github-auth-repo" in refusal, refusal)
+    assertTrue("--playground-sandbox" in refusal, refusal)
+  }
+
+  @Test
+  fun `the anonymous contained posture says it is anonymous`() {
+    // Still admitted (PLAYGROUND.md §6's designed posture), but an operator must not read
+    // "admitted" and assume sign-in is enforced.
+    val strict = PlaygroundSandbox(profile = PlaygroundSandbox.Profile.STRICT)
+
+    val allow =
+      assertAllowed(
+        PlaygroundPublicGate.decide(
+          isPublic = true,
+          repoAccessGated = false,
+          sandbox = strict,
+          probe = cleanProbe,
+        )
+      )
+
+    assertTrue("ANONYMOUS" in allow, allow)
+  }
+
+  private fun assertAllowed(decision: PlaygroundPublicGate.Decision): String {
+    val allow = decision as? PlaygroundPublicGate.Decision.Allow
+    requireNotNull(allow) { "expected Allow, got $decision" }
+    return allow.detail
   }
 
   private fun assertRefused(decision: PlaygroundPublicGate.Decision): String {

@@ -344,6 +344,41 @@ refused under `--public` and pointed at `strict`; a `custom:` jail is taken at
 its word on caps (they're the operator's to supply, and the startup log says so)
 but must still pass the probe.
 
+#### The probe answers "is a *stranger's* snippet contained?" — sometimes nobody is asking
+
+That whole chain is the right question only when a stranger can reach the lane.
+All three playground surfaces — `/playground`, `POST /api/{v}/compiler/run`,
+`/pg/{token}` — already run `rejectMissingGithubAuth` **and**
+`rejectMissingGithubRepoAccess`, so on a host with GitHub auth configured the
+snippet comes from someone with access to `--github-auth-repo`: a collaborator
+on the repo whose CI builds this image, at the same trust level as the
+token-gated posture Phases 1–3 shipped under, which the gate admits with no
+sandbox at all.
+
+So `PlaygroundPublicGate.decide` takes `repoAccessGated` as a second, independent
+basis for admission (issue #3210):
+
+| `--public` | repo-access-gated | Decision |
+|---|---|---|
+| no | — | **Allow** — token-gated; sandbox applied if configured |
+| yes | yes | **Allow** — collaborators only; sandbox applied as defence in depth |
+| yes | no | the probe + caps chain above; refused unless it comes back clean |
+| yes | no, and no sandbox | **Refuse**, naming *both* remedies (issue #3214) |
+
+The gate measures *who can reach the lane*, not just which flag the server was
+started with. `Decision.Allow.detail` states which posture admitted it, so an
+operator cannot read "admitted" and assume containment when what they configured
+was sign-in (or vice versa — the contained-and-anonymous log line says
+`ANONYMOUS` in as many words). When a jail is configured under the repo-access
+posture and fails its preflight, the lane still serves — admission never rested
+on the jail there — but `ServeCommand` logs a warning, because the operator asked
+for defence in depth and is not getting it.
+
+This is what makes the playground deployable on a container that cannot jail a
+snippet at all: `preview.coo.ee` serves public catalogs, has no `bubblewrap` and
+no systemd to build a `strict` scope against (issue #3211), and reaches the lane
+through GitHub auth instead.
+
 ### 6.3 The compile is jailed too
 
 `kotlinc` used to run **in the serve JVM**, which was never an

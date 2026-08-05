@@ -94,18 +94,49 @@ server stores only the signed login and the access verdict, not the OAuth token.
 ### Playground on `preview.coo.ee`
 
 `/playground` is disabled unless the preview service is started with a catalog live bundle that can
-seed the snippet classpath. Add one or both bundle paths to `.env`; on public hosts also set a
-sandbox profile that passes startup preflight:
+seed the snippet classpath **and** the `--public` admission gate lets the lane through. On a public
+host the gate admits on either of two independent bases (issue #3210):
+
+| Posture | What admits it | What it costs |
+|---|---|---|
+| **repo-access-gated** | GitHub auth configured, so `/playground`, `POST /api/{v}/compiler/run` and `/pg/` all require a signed-in user with access to `SERVE_GITHUB_AUTH_REPO` | Nothing beyond OAuth secrets — **this is the posture this image supports** |
+| **contained** | `SERVE_PLAYGROUND_SANDBOX` set to a profile that both passes the startup containment probe *and* applies CPU/pid caps | A jail this image cannot currently provide (see below) |
+
+Anonymous **and** uncontained is refused outright, with a startup log line naming both remedies.
+
+**Configure the repo-access-gated posture** — set the GitHub OAuth secrets from the section above,
+then:
 
 ```bash
 SERVE_PLAYGROUND_BUNDLE=/config/playground-cmp.bundle
-SERVE_PLAYGROUND_ANDROID_BUNDLE=/config/playground-android.bundle
-SERVE_PLAYGROUND_SANDBOX=bwrap
 SERVE_PLAYGROUND_COMPILE_SLOTS=1
 ```
 
-If these are missing, `/playground` returns a styled “Playground unavailable” page instead of
-falling through as a missing design system.
+Peak compile memory is `SERVE_PLAYGROUND_COMPILE_SLOTS × SERVE_PLAYGROUND_SANDBOX_MEMORY_MB`
+(≈3 GB at defaults) on top of the catalogs already loaded, so review `SERVE_LIVE_SEATS` in the same
+change on a small box.
+
+> **Do not set `SERVE_PLAYGROUND_SANDBOX=bwrap` on a public host and expect it to admit the lane.**
+> Earlier revisions of this file recommended exactly that, and it is refused: `bwrap` contains a
+> snippet but applies no CPU or process-count cap, so the containment posture rejects it and points
+> at `strict`. `strict` in turn needs `systemd-run`, which a Docker container has no systemd to talk
+> to — and neither `bubblewrap` nor `systemd` is installed in this image. **The contained posture is
+> therefore unreachable in the shipped container**; that is tracked in issue #3211, along with the
+> options for changing it. Until it is resolved, a public playground here means the repo-access
+> posture. A sandbox profile may still be set as defence in depth on a host that *does* have the
+> tooling — the lane logs a warning if the configured jail fails its preflight, and serves anyway,
+> because admission never rested on the jail in that posture.
+
+`SERVE_PLAYGROUND_ANDROID_BUNDLE` additionally enables the Android / Remote Compose modes. Those
+need the `lib-daemon-android` sidecar plus `android.jar`, and are **not** recommended on a sandboxed
+host yet — issue #3213 tracks a suspected Robolectric `android-all` lookup failure inside the jail
+that surfaces as a silent "no image" rather than an error.
+
+If the bundle vars are missing, `/playground` returns a styled “Playground unavailable” page instead
+of falling through as a missing design system. If they are set but the gate refuses, you get the
+same page plus a refusal line in the startup log saying why — check `docker compose logs preview`
+for `serve: playground admitted` / `serve: --playground-bundle …` before assuming the config never
+landed.
 
 ## Auto-updates (zero-downtime)
 

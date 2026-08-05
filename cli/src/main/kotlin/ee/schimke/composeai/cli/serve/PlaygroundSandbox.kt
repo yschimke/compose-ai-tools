@@ -376,6 +376,26 @@ data class PlaygroundSandbox(
  * friends) is not enough: `bwrap` on a kernel with user namespaces disabled, or a `custom:` wrapper
  * with a typo, both claim everything and contain nothing. Fail-closed in every direction — an
  * absent probe report is a refusal, not a pass.
+ *
+ * ## Two admission postures (issue #3210)
+ *
+ * The chain above answers "is a **stranger's** snippet contained?". That is the right question only
+ * when a stranger can actually reach the lane. All three playground surfaces (`/playground`, `POST
+ * /api/{v}/compiler/run`, `/pg/{token}`) already reject a caller who is not a signed-in GitHub user
+ * *with access to `--github-auth-repo`* — so on a box with GitHub auth configured, the code being
+ * compiled comes from someone who can already push to the repo whose CI builds this image. That is
+ * the same trust level as the token-gated posture Phases 1–3 shipped under, where the gate returns
+ * `Allow` with no sandbox at all.
+ *
+ * So [decide] takes [repoAccessGated] as a second, independent basis for admission:
+ * - **contained** — `--public`, anyone may call, the jail is proved: the evidence chain above;
+ * - **repo-access-gated** — `--public`, but only repo collaborators may call: admitted, with the
+ *   sandbox still applied when configured (defence in depth, no longer a precondition).
+ *
+ * The one combination that is never admitted is *anonymous **and** uncontained* — the refusal now
+ * names both remedies rather than only the sandbox one (issue #3214). [Decision.Allow.detail] says
+ * which posture admitted the lane, so an operator cannot mistake "admitted because collaborators
+ * only" for "admitted because contained".
  */
 object PlaygroundPublicGate {
 
@@ -390,9 +410,14 @@ object PlaygroundPublicGate {
   /**
    * Decide whether the playground may serve. [isPublic] false ⇒ always allowed (the token-gated
    * posture Phases 1–3 shipped under), and the sandbox — configured or not — is still applied.
+   *
+   * [repoAccessGated] is true when the host has GitHub auth configured, i.e. when the playground
+   * routes' `rejectMissingGithubRepoAccess` is a real check rather than a no-op. It admits the lane
+   * on a public box without requiring containment — see the class KDoc.
    */
   fun decide(
     isPublic: Boolean,
+    repoAccessGated: Boolean,
     sandbox: PlaygroundSandbox,
     probe: PlaygroundSandboxProbe.Report?,
   ): Decision {
@@ -402,11 +427,28 @@ object PlaygroundPublicGate {
         else "token-gated; no sandbox (add --playground-sandbox to rehearse the public posture)"
       )
     }
+    // Posture 2: the routes admit only repo collaborators, so the containment evidence chain below
+    // is answering a question nobody is asking. The sandbox stays applied when configured — it is
+    // now defence in depth rather than the precondition.
+    if (repoAccessGated) {
+      return Decision.Allow(
+        "public host, repo-access-gated (GitHub sign-in with access to --github-auth-repo); " +
+          if (sandbox.isActive) "${sandbox.describe()} — defence in depth, not the admission basis"
+          else
+            "no sandbox — a collaborator's snippet runs unconfined on this host " +
+              "(add --playground-sandbox for defence in depth)"
+      )
+    }
     if (!sandbox.isActive) {
+      // Anonymous AND uncontained: the one combination that never serves. Name both remedies —
+      // configuring GitHub auth is the cheaper one on a box that cannot jail a snippet (#3214).
       return Decision.Refuse(
-        "--playground-bundle / --playground-android-bundle under --public need a per-session " +
-          "sandbox: pass --playground-sandbox <bwrap|strict|systemd|unshare|custom:…>. Without one " +
-          "a stranger's snippet would run unconfined on the server (PLAYGROUND.md §6)."
+        "--playground-bundle / --playground-android-bundle under --public need EITHER GitHub " +
+          "repo-access gating (--github-auth-client-id / --github-auth-client-secret / " +
+          "--github-auth-cookie-secret / --github-auth-repo), which limits the lane to repo " +
+          "collaborators, OR a per-session sandbox: --playground-sandbox " +
+          "<bwrap|strict|systemd|unshare|custom:…>. With neither, an anonymous stranger's snippet " +
+          "would run unconfined on the server (PLAYGROUND.md §6)."
       )
     }
     if (probe == null) {
@@ -448,6 +490,10 @@ object PlaygroundPublicGate {
         " (resource caps are the custom jail's responsibility — verify MemoryMax/CPUQuota/TasksMax " +
           "or equivalent yourself)"
       else ""
-    return Decision.Allow("public; verified ${sandbox.describe()}$caveat")
+    return Decision.Allow(
+      "public and ANONYMOUS (no GitHub auth configured); verified ${sandbox.describe()}$caveat. " +
+        "Admitted on containment alone — configure --github-auth-repo to also bound who can " +
+        "reach the lane."
+    )
   }
 }
