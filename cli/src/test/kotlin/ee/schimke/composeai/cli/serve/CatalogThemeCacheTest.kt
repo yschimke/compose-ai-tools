@@ -108,6 +108,7 @@ class CatalogThemeCacheTest {
     cache.recordTurnGranted()
     cache.recordWaiting(30_000) // half the active time spent waiting for a turn
     cache.recordBatch(width = 5, millis = 30_000)
+    cache.recordProduced(5)
     cache.recordTurnYielded()
     repeat(5) { cache.put("k${it + 1}", byteArrayOf(1)) }
 
@@ -134,5 +135,25 @@ class CatalogThemeCacheTest {
     assertNull(s.entriesPerMinute)
     assertNull(s.etaSeconds)
     assertEquals(0, s.maxBatchWidth)
+  }
+
+  /**
+   * Codex review on #3373. Foreground renders land in this same cache via `cacheCatalogRender`, so
+   * counting them toward the rate reports a prefetch throughput the prefetcher never achieved —
+   * against a denominator made only of optimizer time. The numerator has to be optimizer output.
+   */
+  @Test
+  fun `foreground-filled entries do not inflate the prefetch rate`() {
+    val cache = CatalogThemeCache()
+    cache.configureTargets((1..10).map { "k$it" })
+    cache.recordWaiting(60_000)
+
+    // Five entries arrive from foreground requests; the optimizer produced none of them.
+    repeat(5) { cache.put("k${it + 1}", byteArrayOf(1)) }
+
+    val s = cache.snapshot()
+    assertEquals(5, s.cached, "they are cached, and `cached` should say so")
+    assertNull(s.entriesPerMinute, "but the prefetcher produced nothing, so it has no rate")
+    assertNull(s.etaSeconds)
   }
 }
