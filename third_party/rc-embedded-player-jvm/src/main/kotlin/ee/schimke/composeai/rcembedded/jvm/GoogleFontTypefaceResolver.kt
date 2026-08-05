@@ -18,6 +18,7 @@ package ee.schimke.composeai.rcembedded.jvm
 
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.platform.Font
 import ee.schimke.composeai.fonts.google.GoogleFontCache
@@ -64,7 +65,13 @@ internal class GoogleFontTypefaceResolver(private val fonts: GoogleFontSource?) 
    */
   private val files = ConcurrentHashMap<GoogleFontKey, File>()
   private val skiaTypefaces = ConcurrentHashMap<GoogleFontKey, SkiaTypeface>()
-  private val fontFamilies = ConcurrentHashMap<GoogleFontKey, FontFamily>()
+  /**
+   * Resolved families keyed by request *and* axis instance. A variable file serves many instances,
+   * and they are different faces — keying on the request alone would hand a `wght 100` line the
+   * `wght 1000` family the previous line built.
+   */
+  private val fontFamilies =
+    ConcurrentHashMap<Pair<GoogleFontKey, List<Pair<String, Float>>>, FontFamily>()
 
   /**
    * The Compose [FontFamily] for [family] at [weight]/[italic], or null when [family] is not a
@@ -73,25 +80,51 @@ internal class GoogleFontTypefaceResolver(private val fonts: GoogleFontSource?) 
    * One face per family, not a full ramp: the file the cache serves is already the one for this
    * exact `(family, weight, italic)`, so Compose has nothing left to select between — and asking
    * for the weights the document never draws would mean fetches nothing needs.
+   *
+   * [settings] are the document's font-variation axes. A variable file is one file serving many
+   * instances, so they are applied when the face is built rather than selected afterwards: Compose
+   * carries variations on a `Font`, and a family's faces cannot be re-instanced once built.
    */
-  fun composeFontFamily(family: String?, weight: Int, italic: Boolean): FontFamily? {
-    val key = googleFontKey(family, weight, italic) ?: return null
-    fontFamilies[key]?.let {
+  fun composeFontFamily(
+    family: String?,
+    weight: Int,
+    italic: Boolean,
+    settings: FontVariation.Settings? = null,
+  ): FontFamily? {
+    // A `wght` axis also decides *which file to fetch*. Google Fonts serves a named family as a
+    // static instance per weight, so asking for `Roboto Flex` at 400 and then applying `wght 1000`
+    // to it varies nothing — the file has no axes to vary. Reading the axis as the requested weight
+    // fetches the instance the document actually asked for; the settings are still passed through,
+    // so a host that supplies a genuinely variable file (the browser lane's manifest) also gets the
+    // exact instance rather than the nearest static one.
+    val axes = settings?.settings.orEmpty().map { it.axisName to it.toVariationValue(null) }
+    val effectiveWeight =
+      axes.firstOrNull { (tag, _) -> tag == WEIGHT_AXIS }?.second?.toInt()?.coerceIn(1, 1000)
+        ?: weight
+    val key = googleFontKey(family, effectiveWeight, italic) ?: return null
+    val instanceKey = key to axes
+    fontFamilies[instanceKey]?.let {
       return it
     }
     val file = resolveFile(key) ?: return null
+    val style = if (key.italic) FontStyle.Italic else FontStyle.Normal
     val resolved =
       runCatching {
           FontFamily(
-            Font(
-              file = file,
-              weight = FontWeight(key.weight),
-              style = if (key.italic) FontStyle.Italic else FontStyle.Normal,
-            )
+            if (settings == null || settings.settings.isEmpty()) {
+              Font(file = file, weight = FontWeight(key.weight), style = style)
+            } else {
+              Font(
+                file = file,
+                weight = FontWeight(key.weight),
+                style = style,
+                variationSettings = settings,
+              )
+            }
           )
         }
         .getOrNull() ?: return null
-    fontFamilies[key] = resolved
+    fontFamilies[instanceKey] = resolved
     return resolved
   }
 
@@ -127,6 +160,11 @@ internal class GoogleFontTypefaceResolver(private val fonts: GoogleFontSource?) 
     /** The namespace marking a family as one to fetch from Google Fonts. */
     const val GOOGLE_PREFIX = "google:"
 
+    /**
+     * The one axis that also selects a *file*: Google Fonts serves a static instance per weight.
+     */
+    private const val WEIGHT_AXIS = "wght"
+
     /** Negative-cache marker — a request the source could not serve. Never opened. */
     private val NO_FILE = File("")
 
@@ -158,9 +196,18 @@ internal class GoogleFontTypefaceResolver(private val fonts: GoogleFontSource?) 
      * throw away. `compose-preview serve` and the CLI's daemon launchers set the property; the
      * `cmp-jvm` subprocess is handed it by [RcJvmServerRenderer][the cli's cmp-jvm launcher].
      */
-    val Default: GoogleFontTypefaceResolver by lazy {
+    private val systemPropertyDefault: GoogleFontTypefaceResolver by lazy {
       GoogleFontTypefaceResolver(systemPropertyGoogleFontSource())
     }
+
+    /**
+     * Overrides [Default] for a test that must resolve hermetically (a vendored face, no network).
+     * Null — always, in production — restores the system-property-configured resolver.
+     */
+    internal var testOverride: GoogleFontTypefaceResolver? = null
+
+    val Default: GoogleFontTypefaceResolver
+      get() = testOverride ?: systemPropertyDefault
 
     private fun systemPropertyGoogleFontSource(): GoogleFontSource? {
       val cacheDir = System.getProperty("composeai.fonts.cacheDir")?.takeIf { it.isNotBlank() }

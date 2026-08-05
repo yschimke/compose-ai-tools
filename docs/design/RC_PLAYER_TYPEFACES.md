@@ -23,6 +23,7 @@ question:
 | **Java** (AOSP `remote-player-view`, server-side) | ✅ framework typefaces | ⚠️ `/system/fonts/` filename scan | ❌ no provider call at all | ✅ `Font.Builder(ByteBuffer)` |
 | **CMP Android** (vendored embedded player, server-side) | ✅ framework typefaces | ⚠️ `Typeface.create(name)` | ✅ `FontsContractCompat` | ❌ ignored |
 | **CMP JVM** (embedded player over Skiko, server-side) | ✅ | ⚠️ host families, else nearest standard | ✅ downloaded via `GoogleFontTypefaceResolver` | ❌ ignored |
+| **CMP JVM** — font-variation axes | ✅ layout ops, applied to the resolved face | — | ⚠️ `wght` picks the instance; Google serves static TTFs | ❌ canvas ops |
 
 Two rows of that table are worth stating as findings, because they make two chips in the *same*
 viewer disagree about the *same* document:
@@ -129,6 +130,18 @@ the figma-svg embed path use — and serves both jvm text seams from that one fi
 `FontFamily` for the layout ops (`RcPlayerTextLayoutJvm`), a skiko `Typeface` for the canvas ops
 (`RcPlayerTextPlatformJvm`). Sharing the cache is the point: `Orbitron` at 400 is the *same file*
 here as in every other lane, not a second face that merely shares a name.
+
+**Font-variation axes** reach the layout seam: a `CoreText` op's axis arrays become a Compose
+`FontVariation.Settings` and the resolved face is instanced at them, and a `wght` axis additionally
+decides *which file to fetch* — Google Fonts serves a named family as a static instance per weight,
+so applying `wght 1000` to the 400 file would vary nothing. The catalog's variable specimens still
+draw flat in this lane, and the reason is upstream of the player: `:data-fonts-google` asks the CSS
+API with a legacy user-agent to get a `.ttf` at all (Skia and Android can't parse the modern woff2),
+and for a variable-only family like Roboto Flex that response is a *static default instance* with no
+`fvar` table — there are no axes left in the file to vary. A host that supplies a real variable file
+(the browser lane's manifest does) gets true instancing through this same code. Fetching the
+variable file would mean decompressing woff2, which is the next step and lives in
+`:data-fonts-google`, not here. Canvas text ops carry no axes in the shared paint state at all.
 
 The resolver is switched on by `-Dcomposeai.fonts.cacheDir`, which `serve`'s cmp-jvm subprocess
 (`RcJvmServerRenderer`) passes; without it — and on an offline miss, a failed fetch, a `device:`
