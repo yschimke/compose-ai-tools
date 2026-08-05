@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.19.38](https://github.com/yschimke/compose-ai-tools/compare/v0.19.37...v0.19.38) (2026-08-05)
+
+
+### Features
+
+* **serve:** file a preview bug from the viewer, with a link and a pasteable screenshot ([#3357](https://github.com/yschimke/compose-ai-tools/issues/3357)) ([1469755](https://github.com/yschimke/compose-ai-tools/commit/146975520f6b4f9f1df15734543f57c78403d526))
+
+
+### Bug Fixes
+
+* **figma-svg:** write an off-frame raster at its own size, not the frame crop ([#3364](https://github.com/yschimke/compose-ai-tools/issues/3364)) ([7ca39cf](https://github.com/yschimke/compose-ai-tools/commit/7ca39cf1d20869e2fbb7b2053eb5af55a65fc585))
+* **gradle-plugin:** pack desktop classes, not the android compilation ([#3356](https://github.com/yschimke/compose-ai-tools/issues/3356)) ([d428231](https://github.com/yschimke/compose-ai-tools/commit/d428231c3b3314411a2452163d591695205be0e4))
+* **serve:** charge leased burst replicas as foreground seats ([#3355](https://github.com/yschimke/compose-ai-tools/issues/3355)) ([27caacf](https://github.com/yschimke/compose-ai-tools/commit/27caacfd84825db55c8056d75d7cc47382cf46c3))
+* **vscode:** keep elided composition spans inspectable in the Performance tab ([#3353](https://github.com/yschimke/compose-ai-tools/issues/3353)) ([04ece5a](https://github.com/yschimke/compose-ai-tools/commit/04ece5a08fce4ffc9a7715480072048ffe2cc74b))
+
+
+### Performance Improvements
+
+* **serve:** prefetch themes in per-preview batches through the replica pool ([#3363](https://github.com/yschimke/compose-ai-tools/issues/3363)) ([400989e](https://github.com/yschimke/compose-ai-tools/commit/400989e590db97ddbdcebc04a97795acec1b6fe6))
+
 ## [0.19.37](https://github.com/yschimke/compose-ai-tools/compare/v0.19.36...v0.19.37) (2026-08-05)
 
 
