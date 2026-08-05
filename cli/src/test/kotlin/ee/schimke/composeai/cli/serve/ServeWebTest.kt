@@ -504,6 +504,56 @@ class ServeWebTest {
   }
 
   @Test
+  fun `the viewer offers a prefilled issue link beside the source link`() {
+    val preview = ServePreview(id = "plain.Button", label = "button", sourceFile = "src/main/A.kt")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/compose-m3",
+        siblings = listOf(preview),
+        sourceHref = "https://github.com/o/r/blob/main/src/main/A.kt",
+        reportIssue =
+          ServeWeb.ReportIssue(
+            href = "https://github.com/o/r/issues/new?title=T&body=B",
+            hrefTemplate = "https://github.com/o/r/issues/new?title=T&body=B%7B%7Brender%7D%7D",
+            repo = "o/r",
+            login = "octocat",
+          ),
+      )
+    assertTrue(html.contains("class=\"cp-preview-links\""), "source + report share one row")
+    assertTrue(html.contains("id=\"cp-report\""), "report link rendered")
+    assertTrue(
+      html.contains("href=\"https://github.com/o/r/issues/new?title=T&amp;body=B\""),
+      "the server-rendered href works without JS",
+    )
+    assertTrue(
+      html.contains("data-report-template=") && html.contains("%7B%7Brender%7D%7D"),
+      "carries the template the viewer JS retargets at the current overrides",
+    )
+    // The tooltip names the repo the issue lands on, and — when this box knows the visitor's GitHub
+    // session — whose account will author it.
+    assertTrue(html.contains("title=\"File an issue on o/r as @octocat\""), html)
+  }
+
+  @Test
+  fun `the viewer renders no report link without a report target`() {
+    val preview = ServePreview(id = "plain.Button", label = "button")
+    val html =
+      ServeWeb.viewerPage(
+        preview,
+        token = "t",
+        basePath = "/compose-m3",
+        siblings = listOf(preview),
+      )
+    assertFalse(html.contains("id=\"cp-report\""), "no report link when no target is supplied")
+    assertFalse(
+      html.contains("class=\"cp-preview-links\""),
+      "the links row is omitted entirely when neither link exists",
+    )
+  }
+
+  @Test
   fun `the viewer renders no source link without a source href`() {
     // A local / unprovenanced session (or a preview with no recorded source) passes sourceHref
     // null.

@@ -212,6 +212,44 @@ Two details make it behave under a real visitor's settings:
   backing and a dark-rendered one its dark backing, since those are pinned to the render's theme,
   not the page's.
 
+## Reporting a bad render
+
+Every viewer page carries a **report an issue** link beside its "source" link. It opens a
+**prefilled GitHub new-issue form** against the repo that owns the preview, carrying the facts a
+triager would otherwise have to ask for: the design system, the preview id, the source file, which
+catalog build was on screen (`repo@branch` + the compose-ai-tools version that rendered it), a deep
+link to the viewer, and the `/render` PNG **at the overrides in force when the link was clicked** —
+the viewer JS retargets the link as the knobs, theme and size change.
+
+| Before | After |
+| --- | --- |
+| ![Viewer title with only a source link](images/serve-viewer-report-issue-before.png) | ![Viewer title with source and "report an issue"](images/serve-viewer-report-issue-after.png) |
+
+![The same row on a dark catalog](images/serve-viewer-report-issue-after-dark.png)
+
+**Which repo it files against** is the catalog's **source** repo (the Kotlin the preview is declared
+in — `catalog.json`'s `source.repo`), falling back to the delivery repo and finally to
+`yschimke/compose-ai-tools`, whose renderer produced the pixels either way. A source repo that is a
+fork is still the right target: that fork is where the preview code that misrendered lives.
+
+**The screenshot is pasted, not linked.** The body links the render URL for convenience, but that
+URL re-renders against whatever the catalog is when someone reads the issue. So the template asks
+for a paste, and **Copy PNG** (in *Export & direct links*) now puts real `image/png` bytes on the
+clipboard rather than a base64 `data:` URI — one Ctrl-V/Cmd-V in the issue box uploads the exact
+pixels to GitHub's own CDN, where they stay put. Browsers without `ClipboardItem` fall back to the
+data URI.
+
+**The server never files the issue itself**, and asks for no extra OAuth scope to offer this. The
+auth cookie holds only a login and a repo-access verdict — [the OAuth token is discarded after the
+check](#github-auth-for-live-lanes) — so filing server-side "as the visitor" would mean holding user
+tokens on a public box. Their browser is already signed in to GitHub, so the prefilled link files
+under their own identity with nothing to custody. When the box *does* know the visitor's login it
+names it in the link's tooltip ("File an issue on `owner/repo` as @login"); signed out, the flow
+still works, because GitHub prompts for sign-in on the issue form.
+
+A token-gated (`--public` off) server strips its **session token** from both URLs in the body — that
+token is the capability to drive the server, and an issue is public.
+
 ## Design references and UI mocks
 
 A bundle or published catalog can map independently-authored UI mocks to exact preview ids. The

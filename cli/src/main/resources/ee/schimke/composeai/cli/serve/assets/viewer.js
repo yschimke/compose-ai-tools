@@ -428,6 +428,29 @@
       }
     });
     updateSvgMatch();
+    refreshReportLink();
+  }
+  // Keep the "report an issue" link pointed at what is on screen. The server rendered a working
+  // href for the settings the page was served at (so this works with JS off); the template it
+  // carries has the render URL as an encoded placeholder, which we swap for the live /render URL
+  // so a report filed after fiddling with the knobs shows the render that prompted it. The token
+  // is stripped for the same reason the server strips it: an issue body is public, a session token
+  // is a capability.
+  function refreshReportLink() {
+    var link = document.getElementById("cp-report");
+    if (!link) return;
+    var tpl = link.getAttribute("data-report-template");
+    var field = document.getElementById("cp-url-png");
+    if (!tpl || !field || !field.value) return;
+    link.href = tpl.replace("%7B%7Brender%7D%7D", encodeURIComponent(stripToken(field.value)));
+  }
+  function stripToken(url) {
+    var cut = url.indexOf("?");
+    if (cut < 0) return url;
+    var kept = url.slice(cut + 1).split("&").filter(function (p) {
+      return p && p.slice(0, 6) !== "token=";
+    });
+    return kept.length ? url.slice(0, cut) + "?" + kept.join("&") : url.slice(0, cut);
   }
   var svgMatch = document.getElementById("cp-svg-match");
   var svgDiff = document.getElementById("cp-svg-diff");
@@ -485,10 +508,11 @@
       }
     });
   });
-  // "Copy PNG" / "Copy SVG": fetch the current /render artefact and put it on the clipboard as
-  // text — SVG markup verbatim, PNG as a base64 data: URI — so it can be pasted straight into an
-  // editor, prompt, or issue without downloading a file. Uses the same live cp-url-<ext> field
-  // the URL Copy button reads, so the copied artefact matches the on-screen overrides.
+  // "Copy PNG" / "Copy SVG": fetch the current /render artefact and put it on the clipboard —
+  // PNG as real image/png bytes (falling back to a base64 data: URI), SVG as markup verbatim — so
+  // it can be pasted straight into an issue, editor, or prompt without downloading a file. Uses
+  // the same live cp-url-<ext> field the URL Copy button reads, so the copied artefact matches the
+  // on-screen overrides.
   document.querySelectorAll(".cp-copyimg").forEach(function (btn) {
     btn.addEventListener("click", function () {
       var field = document.getElementById(btn.getAttribute("data-copyimg-target"));
@@ -500,7 +524,7 @@
         btn.textContent = label;
         setTimeout(function () { btn.textContent = was; }, 1400);
       };
-      if (!navigator.clipboard || !navigator.clipboard.writeText) { reset("No clipboard"); return; }
+      if (!navigator.clipboard) { reset("No clipboard"); return; }
       btn.textContent = "Copying…";
       // Copy SVG targets the EMBEDDED variant (data-embed-url) — the field itself holds the
       // web-mode URL for Copy URL, but a copied SVG is usually pasted into Figma / an editor,
@@ -510,23 +534,41 @@
       // preview that can't export that lane), so guard on r.ok — otherwise the error body,
       // not the artefact, would land on the clipboard and still report "Copied".
       var okOrThrow = function (r) { if (!r.ok) throw new Error("render " + r.status); return r; };
-      var toText =
-        ext === ".svg"
-          ? fetch(src).then(okOrThrow).then(function (r) { return r.text(); })
-          : fetch(src)
-              .then(okOrThrow)
-              .then(function (r) { return r.blob(); })
-              .then(function (blob) {
-                return new Promise(function (resolve, reject) {
-                  var fr = new FileReader();
-                  fr.onload = function () { resolve(fr.result); };
-                  fr.onerror = function () { reject(fr.error); };
-                  fr.readAsDataURL(blob);
+      // PNG: hand the clipboard the real image/png bytes when the browser has ClipboardItem, so
+      // pasting into a GitHub issue (or a doc, or a chat) lands the picture — which is what makes
+      // "Copy PNG → paste into the bug report" a one-keystroke screenshot. The blob goes in as a
+      // *promise* because Safari requires the ClipboardItem to be constructed synchronously inside
+      // the click; awaiting the fetch first would lose the user gesture. Anything that can't do it
+      // — no ClipboardItem, a denied permission, a non-image response — falls through to the
+      // original base64 data: URI text, which still pastes into an editor or a prompt.
+      var copyAsText = function () {
+        if (!navigator.clipboard.writeText) { reset("No clipboard"); return; }
+        var toText =
+          ext === ".svg"
+            ? fetch(src).then(okOrThrow).then(function (r) { return r.text(); })
+            : fetch(src)
+                .then(okOrThrow)
+                .then(function (r) { return r.blob(); })
+                .then(function (blob) {
+                  return new Promise(function (resolve, reject) {
+                    var fr = new FileReader();
+                    fr.onload = function () { resolve(fr.result); };
+                    fr.onerror = function () { reject(fr.error); };
+                    fr.readAsDataURL(blob);
+                  });
                 });
-              });
-      toText
-        .then(function (text) { return navigator.clipboard.writeText(text); })
-        .then(function () { reset("Copied"); }, function () { reset("Failed"); });
+        toText
+          .then(function (text) { return navigator.clipboard.writeText(text); })
+          .then(function () { reset("Copied"); }, function () { reset("Failed"); });
+      };
+      if (ext === ".png" && window.ClipboardItem && navigator.clipboard.write) {
+        var pngBlob = fetch(src).then(okOrThrow).then(function (r) { return r.blob(); });
+        navigator.clipboard
+          .write([new ClipboardItem({ "image/png": pngBlob })])
+          .then(function () { reset("Copied"); }, copyAsText);
+        return;
+      }
+      copyAsText();
     });
   });
   function drawFrame(b64, codec) {

@@ -339,6 +339,54 @@ object ServeWeb {
   }
 
   /**
+   * The viewer's "report an issue" affordance: a prefilled GitHub new-issue link for the preview on
+   * screen, assembled by [ServeIssueReport]. [href] is the ready-to-click URL for the settings the
+   * page was served at (so it works with JS off); [hrefTemplate] is the same URL with the render
+   * link left as an encoded placeholder, which the viewer JS retargets at the current overrides on
+   * every refresh. [repo] names the target in the tooltip so nobody files against a repo they
+   * didn't mean to, and [login] — present only when the visitor has a GitHub session on this server
+   * — says whose account will author it.
+   */
+  data class ReportIssue(
+    val href: String,
+    val hrefTemplate: String,
+    val repo: String,
+    val login: String? = null,
+  )
+
+  /**
+   * The row under the viewer's title holding the per-preview GitHub links: "source" (where the
+   * preview is declared) and "report an issue" (a prefilled bug against the repo that owns it).
+   * They share one flex row so they read as one line of provenance actions; either can be absent,
+   * and when both are the row itself is omitted rather than left as empty vertical space.
+   */
+  private fun previewLinksHtml(
+    sourceHref: String?,
+    sourcePath: String?,
+    report: ReportIssue?,
+  ): String {
+    val links = sourceLinkHtml(sourceHref, sourcePath) + reportIssueHtml(report)
+    if (links.isBlank()) return ""
+    return "\n      <div class=\"cp-preview-links\">$links\n      </div>"
+  }
+
+  /**
+   * Renders [report] as the link that sits beside the per-preview "source" link. Null (a surface
+   * with no repo to file against) renders nothing.
+   */
+  private fun reportIssueHtml(report: ReportIssue?): String {
+    val r = report ?: return ""
+    val who =
+      r.login?.takeIf { it.isNotBlank() }?.let { " as @${WebEscaping.htmlEscape(it)}" } ?: ""
+    val tip = "File an issue on ${WebEscaping.htmlEscape(r.repo)}$who"
+    return "\n      <p class=\"cp-report\">" +
+      "<a class=\"cp-report-link\" id=\"cp-report\" href=\"${WebEscaping.htmlEscape(r.href)}\"" +
+      " data-report-template=\"${WebEscaping.htmlEscape(r.hrefTemplate)}\"" +
+      " target=\"_blank\" rel=\"noopener\" title=\"$tip\">" +
+      "$GITHUB_ICON report an issue</a></p>"
+  }
+
+  /**
    * Provenance of a served design-system catalog: the trusted GitHub [repo]/[branch] it was fetched
    * from, when it was [generatedAt] (ISO-8601), and the [toolVersion]
    * (compose-ai-tools) + [designParityVersion] that produced it. Threaded from [ServeCatalogStore]
@@ -3940,6 +3988,12 @@ object ServeWeb {
      * renders no link, matching how the footer/landing source links depend on a known repo.
      */
     sourceHref: String? = null,
+    /**
+     * Prefilled GitHub new-issue link for this preview, built by the caller from the session's
+     * catalog source/provenance via [ServeIssueReport]. Null omits the affordance entirely (a
+     * surface with nothing sensible to file against); see [reportIssueHtml].
+     */
+    reportIssue: ReportIssue? = null,
     /** GitHub sign-in prompt shown when the daemon live stream is present but requires auth. */
     liveAuthPrompt: LiveAuthPrompt? = null,
     /** Human catalog title used in the breadcrumb; falls back to a generic "Previews" label. */
@@ -4408,7 +4462,7 @@ object ServeWeb {
       <p class="cp-breadcrumb"><a href="$basePath/$q">$catalogName</a> / Component</p>
       <h1 class="cp-head cp-preview-title">$label${compactTrustBadge(trust)}</h1>
       <p class="cp-preview-id" title="$idText"><code>$idText</code></p>
-      ${degradeBanner(degradations)}${sourceLinkHtml(sourceHref, preview.sourceFile)}
+      ${degradeBanner(degradations)}${previewLinksHtml(sourceHref, preview.sourceFile, reportIssue)}
       ${viewerViewCountHtml(engagement.views)}
       $switchers
       <div class="cp-preview-primary" aria-label="Preview renderer">

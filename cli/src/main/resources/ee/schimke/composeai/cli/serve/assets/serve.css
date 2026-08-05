@@ -59,11 +59,14 @@ a:hover { text-decoration: underline; }
   color: var(--cp-fg-muted); font-weight: 500; }
 .cp-catalog-id { margin: 0 0 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cp-catalog-head { font-size: 1.35rem; }
-/* Per-preview link to the source file on GitHub, under the viewer title. */
-.cp-source { margin: 0 0 8px; font-size: 0.8rem; }
-.cp-source-link { display: inline-flex; align-items: center; gap: 5px; color: var(--cp-fg-muted);
-  text-decoration: none; }
-.cp-source-link:hover { text-decoration: underline; }
+/* Per-preview GitHub links under the viewer title: source file, and "report an issue". One flex
+   row so they read as a single line whether one or both are present. */
+.cp-preview-links { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px;
+  margin: 0 0 8px; }
+.cp-source, .cp-report { margin: 0; font-size: 0.8rem; }
+.cp-source-link, .cp-report-link { display: inline-flex; align-items: center; gap: 5px;
+  color: var(--cp-fg-muted); text-decoration: none; }
+.cp-source-link:hover, .cp-report-link:hover { text-decoration: underline; }
 .cp-about { margin: 0 0 34px; padding: 16px 18px; border: 1px solid var(--cp-border); border-radius: 12px;
   background: var(--cp-surface); max-width: 720px; }
 .cp-about-title { font-size: 0.88rem; font-weight: 600; }

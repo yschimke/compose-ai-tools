@@ -67,6 +67,36 @@ class ServeWebFixtureTest {
       designParityVersion = "0.1.25",
     )
 
+  // The viewer's prefilled "report an issue" link, built the way the server builds it: against the
+  // catalog's SOURCE repo, carrying the preview's facts and a token-free deep link, with the
+  // signed-in visitor's login named in the tooltip.
+  private fun fixtureReportIssue(previewId: String, label: String, sourceFile: String) =
+    ServeIssueReport.Context(
+        repo = "yschimke/compose-ai-tools",
+        previewId = previewId,
+        previewLabel = label,
+        system = "compose-m3",
+        sourceUrl =
+          ServeUrls.githubBlobUrl(
+            "yschimke/compose-ai-tools",
+            "design-artifacts-source",
+            "samples/design-catalog-compose-m3",
+            sourceFile,
+          ),
+        catalog = "yschimke/compose-ai-tools@design-artifacts/compose-m3",
+        toolVersion = provenance.toolVersion,
+        viewerUrl = "https://preview.coo.ee/compose-m3/p/$previewId",
+        renderUrl = "https://preview.coo.ee/compose-m3/render/$previewId.png",
+      )
+      .let { ctx ->
+        ServeWeb.ReportIssue(
+          href = ServeIssueReport.issueUrl(ctx),
+          hrefTemplate = ServeIssueReport.issueUrl(ctx, renderPlaceholder = true),
+          repo = ctx.repo,
+          login = "yschimke",
+        )
+      }
+
   // The colour half of two REAL published token files (`design-artifacts/<system>/tokens.dtcg.json`
   // — the DTCG projection of the catalog's resolved MaterialTheme), trimmed to the roles the web
   // projection reads. Kept verbatim so the themed fixtures below are the palettes a visitor to
@@ -542,6 +572,14 @@ class ServeWebFixtureTest {
             "samples/design-catalog-compose-m3",
             "src/main/kotlin/com/example/ProfileScreen.kt",
           ),
+        // …and the prefilled "report an issue" link beside it, so the golden captures the bug-
+        // reporting affordance (and a signed-in visitor's "as @login" tooltip) next to source.
+        reportIssue =
+          fixtureReportIssue(
+            "com.example.ProfileScreenPreview",
+            "Profile screen",
+            "src/main/kotlin/com/example/ProfileScreen.kt",
+          ),
       )
     // A second viewer carrying the in-browser Wasm tier, so the harness captures the "Run in
     // browser (Wasm)" toggle + iframe seam a CMP catalog session shows.
@@ -597,6 +635,23 @@ class ServeWebFixtureTest {
           listOf(
             ServeTheme("Brand Light", "com.example.BrandLightThemeCatalog", group = "Brand"),
             ServeTheme("Brand Dark", "com.example.BrandDarkThemeCatalog", group = "Brand"),
+          ),
+        // The source + "report an issue" row. `serve-viewer` carries it too, but this is the viewer
+        // fixture captured with the REAL stylesheet routed in (see STYLED_FIXTURES in
+        // pages-snapshot.spec.mjs), so it is the shot where a change to how that row is *painted*
+        // moves a baseline for the visual-diff bot rather than only changing the HTML.
+        sourceHref =
+          ServeUrls.githubBlobUrl(
+            "yschimke/compose-ai-tools",
+            "design-artifacts-source",
+            "samples/design-catalog-compose-m3",
+            "src/main/kotlin/com/example/Button.kt",
+          ),
+        reportIssue =
+          fixtureReportIssue(
+            knobPreview.id,
+            knobPreview.label,
+            "src/main/kotlin/com/example/Button.kt",
           ),
       )
     // A catalog served under its canonical path (/meshcore-mobile/) rather than ?session=: same
@@ -3259,6 +3314,22 @@ class ServeWebFixtureTest {
       assetText("viewer.js").contains("readAsDataURL") &&
         assetText("viewer.js").contains("navigator.clipboard.writeText"),
       "the Copy PNG/SVG handler fetches the render and writes it to the clipboard as text",
+    )
+    // Copy PNG puts REAL image/png bytes on the clipboard where the browser supports it, so one
+    // paste into a GitHub issue uploads the exact render — the base64 data: URI above is the
+    // fallback, not the primary path. The blob is passed as a promise (Safari builds the
+    // ClipboardItem synchronously inside the click).
+    assertTrue(
+      assetText("viewer.js").contains("new ClipboardItem({ \"image/png\": pngBlob })"),
+      "Copy PNG writes image/png to the clipboard so it pastes as a picture",
+    )
+    // The prefilled "report an issue" link follows the on-screen overrides, and never carries the
+    // session token into a body destined for a public issue.
+    assertTrue(
+      assetText("viewer.js").contains("function refreshReportLink()") &&
+        assetText("viewer.js").contains("%7B%7Brender%7D%7D") &&
+        assetText("viewer.js").contains("stripToken("),
+      "the report link is retargeted at the current render, token stripped",
     )
     // The URL itself is copied by clicking the field (no separate "Copy URL" button) — the handler
     // binds to .cp-url and flashes .cp-url-copied.
