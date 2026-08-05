@@ -47,6 +47,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcVisibilityModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthInModifier
 import ee.schimke.composeai.rcplayer.protocol.RcWidthModifier
 import ee.schimke.composeai.rcplayer.protocol.RcZIndexModifier
+import ee.schimke.composeai.rcplayer.trace.RcTraceCategory
+import ee.schimke.composeai.rcplayer.trace.rcTrace
 
 public data class RcLayoutModifiers(
   /** Last AndroidX animation policy attached to this component. */
@@ -246,7 +248,10 @@ public class RcLayoutException(message: String) : IllegalArgumentException(messa
  * this never moves operations between mutable lists or installs parent pointers.
  */
 public object RcLayoutTree {
-  public fun build(document: RcLinkedDocument): RcLayoutNode.Root? {
+  public fun build(document: RcLinkedDocument): RcLayoutNode.Root? =
+    rcTrace(RcTraceCategory.DOCUMENT, "rc:layoutTree") { buildUnchecked(document) }
+
+  private fun buildUnchecked(document: RcLinkedDocument): RcLayoutNode.Root? {
     val roots =
       document.operations.filterIsInstance<RcLinkedNode.Container>().filter {
         it.operation is RcRootLayout

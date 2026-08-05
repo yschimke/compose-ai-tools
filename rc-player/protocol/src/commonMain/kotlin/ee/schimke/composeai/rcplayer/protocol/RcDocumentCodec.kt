@@ -1,5 +1,9 @@
 package ee.schimke.composeai.rcplayer.protocol
 
+import ee.schimke.composeai.rcplayer.trace.RcTrace
+import ee.schimke.composeai.rcplayer.trace.RcTraceCategory
+import ee.schimke.composeai.rcplayer.trace.rcTrace
+
 private const val HEADER_MAGIC: Int = 0x048c0000
 
 public data class RcOperationSpec(val opcode: Int, val name: String)
@@ -160,41 +164,51 @@ public object RcDocumentCodec {
   public val supportedOperations: List<RcOperationSpec> =
     codecs.values.map { it.spec }.sortedBy { it.opcode }
 
-  public fun decode(bytes: ByteArray, limits: RcWireLimits = RcWireLimits()): RcDocument {
-    if (bytes.size > limits.maxDocumentBytes) {
-      throw RcWireException(0, message = "Document exceeds ${limits.maxDocumentBytes} bytes")
+  public fun decode(bytes: ByteArray, limits: RcWireLimits = RcWireLimits()): RcDocument =
+    rcTrace(RcTraceCategory.DOCUMENT, "rc:decode") {
+      if (bytes.size > limits.maxDocumentBytes) {
+        throw RcWireException(0, message = "Document exceeds ${limits.maxDocumentBytes} bytes")
+      }
+      val input = RcWireReader(bytes, limits)
+      val operations = mutableListOf<RcOperation>()
+      while (input.remaining > 0) {
+        val opcodeOffset = input.offset
+        val opcode = input.readU8("opcode")
+        val codec =
+          codecs[opcode]
+            ?: throw RcWireException(
+              opcodeOffset,
+              opcode,
+              fieldName = "opcode",
+              message = "Unsupported operation",
+            )
+        val operation = input.inOperation(opcode, codec.spec.name) { decodeUnchecked(codec, this) }
+        operations += operation
+      }
+      val header =
+        operations.firstOrNull() as? RcHeader
+          ?: throw RcWireException(0, message = "Document must start with Header")
+      if (operations.drop(1).any { it is RcHeader }) {
+        throw RcWireException(
+          0,
+          RcOpcodes.HEADER,
+          "Header",
+          message = "Header may only appear once",
+        )
+      }
+      // A document's operation count is the single number that best predicts what every later
+      // phase costs, so it is worth having on the same timeline as the phases themselves.
+      RcTrace.counter(RcTraceCategory.DOCUMENT, "rc:operations", operations.size.toLong() - 1)
+      RcDocument(header, operations.drop(1))
     }
-    val input = RcWireReader(bytes, limits)
-    val operations = mutableListOf<RcOperation>()
-    while (input.remaining > 0) {
-      val opcodeOffset = input.offset
-      val opcode = input.readU8("opcode")
-      val codec =
-        codecs[opcode]
-          ?: throw RcWireException(
-            opcodeOffset,
-            opcode,
-            fieldName = "opcode",
-            message = "Unsupported operation",
-          )
-      val operation = input.inOperation(opcode, codec.spec.name) { decodeUnchecked(codec, this) }
-      operations += operation
-    }
-    val header =
-      operations.firstOrNull() as? RcHeader
-        ?: throw RcWireException(0, message = "Document must start with Header")
-    if (operations.drop(1).any { it is RcHeader }) {
-      throw RcWireException(0, RcOpcodes.HEADER, "Header", message = "Header may only appear once")
-    }
-    return RcDocument(header, operations.drop(1))
-  }
 
-  public fun encode(document: RcDocument): ByteArray {
-    val output = RcWireWriter()
-    encodeOperation(output, document.header)
-    document.operations.forEach { encodeOperation(output, it) }
-    return output.toByteArray()
-  }
+  public fun encode(document: RcDocument): ByteArray =
+    rcTrace(RcTraceCategory.DOCUMENT, "rc:encode") {
+      val output = RcWireWriter()
+      encodeOperation(output, document.header)
+      document.operations.forEach { encodeOperation(output, it) }
+      output.toByteArray()
+    }
 
   public fun encodeOperation(output: RcWireWriter, operation: RcOperation) {
     val codec = codecs[operation.opcode] ?: error("No codec for opcode ${operation.opcode}")

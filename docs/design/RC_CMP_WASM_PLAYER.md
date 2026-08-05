@@ -65,6 +65,9 @@ public player API.
 Create original code outside `third_party`:
 
 ```text
+:rc-player-trace          KMP: commonMain + desktop + wasmJs + iOS
+  androidx.tracing 2.x facade every module above opens spans through
+
 :rc-player-protocol       KMP: commonMain + desktop test target + wasmJs + iOS
   immutable operation IR, wire reader/writer, codecs, validation, debug JSON
 
@@ -79,7 +82,15 @@ Create original code outside `third_party`:
 
 :rc-player-compat-tests   JVM test/tooling only
   remote-core fixture writer/oracle and cross-player comparison tooling
+
+:rc-player-profile        JVM application only
+  installs an androidx.tracing driver and profiles four reference documents headlessly
 ```
+
+Tracing and profiling are written up separately in
+[RC_PLAYER_PROFILING.md](RC_PLAYER_PROFILING.md) — what each span covers, why the tracing seam is an
+`expect`/`actual` facade (androidx.tracing 2.x ships no wasmJs or Apple klib), and the current
+per-phase numbers.
 
 The JVM target in the first three modules is a fast test and reference-render target, not a
 production dependency on `remote-core`. Only `:rc-player-compat-tests` may depend on `remote-core`.
@@ -89,9 +100,9 @@ The Wasm distribution can reuse the repository's existing webpack-free assembly 
 Dependencies point in one direction:
 
 ```text
-protocol <- runtime <- compose <- wasm host
-    ^
-    +--------- compat tests (JVM oracle only)
+trace <- protocol <- runtime <- compose <- wasm host
+             ^
+             +--------- compat tests (JVM oracle only)
 ```
 
 No Compose type belongs in `protocol`, and no browser API belongs outside the Wasm host or a

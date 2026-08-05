@@ -89,7 +89,14 @@ kotlin {
   @OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class) wasmJs { browser() }
 
   sourceSets {
-    commonMain { kotlin.srcDir(layout.buildDirectory.dir("generated/rcOperations/commonMain")) }
+    commonMain {
+      kotlin.srcDir(layout.buildDirectory.dir("generated/rcOperations/commonMain"))
+      // `api`, not `implementation`: the tracing seam is the base of the player's dependency graph
+      // (`trace <- protocol <- runtime <- compose <- wasm host`), and every module above opens
+      // spans
+      // through it. Exposing it here is what keeps that from being four separate declarations.
+      dependencies { api(project(":rc-player-trace")) }
+    }
     commonTest.dependencies { implementation(kotlin("test")) }
   }
 }

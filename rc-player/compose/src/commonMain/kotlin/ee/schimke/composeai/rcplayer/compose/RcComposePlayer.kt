@@ -250,6 +250,8 @@ import ee.schimke.composeai.rcplayer.runtime.RcTouchActionType
 import ee.schimke.composeai.rcplayer.runtime.RcTouchExpressionRuntime
 import ee.schimke.composeai.rcplayer.runtime.androidXMarqueeOffset
 import ee.schimke.composeai.rcplayer.runtime.visibilityTransform
+import ee.schimke.composeai.rcplayer.trace.RcTraceCategory
+import ee.schimke.composeai.rcplayer.trace.rcTrace
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.roundToInt
@@ -419,17 +421,19 @@ public fun RcComposePlayer(
         scale(rootTransform.scaleX, rootTransform.scaleY, Offset.Zero)
       }) {
         state.beginFrame(frameNanos / 1_000_000_000f)
-        drawOperations(
-          linkedDocument.operations,
-          state,
-          RcPaintState(),
-          mutableMapOf(),
-          textMeasurer,
-          images,
-          RcFloatFunctionRuntime(),
-          theme,
-          filterTheme = true,
-        )
+        rcTrace(RcTraceCategory.FRAME, "rc:drawRoot") {
+          drawOperations(
+            linkedDocument.operations,
+            state,
+            RcPaintState(),
+            mutableMapOf(),
+            textMeasurer,
+            images,
+            RcFloatFunctionRuntime(),
+            theme,
+            filterTheme = true,
+          )
+        }
       }
     }
 }
@@ -533,17 +537,19 @@ private fun RenderLayoutNode(
           ?.takeIf { it.isNotEmpty() }
           ?.let { operations ->
             Canvas(Modifier.fillMaxSize()) {
-              drawOperations(
-                operations,
-                state,
-                RcPaintState(),
-                mutableMapOf(),
-                textMeasurer,
-                images,
-                RcFloatFunctionRuntime(),
-                theme,
-                filterTheme = true,
-              )
+              rcTrace(RcTraceCategory.FRAME, "rc:drawCanvas") {
+                drawOperations(
+                  operations,
+                  state,
+                  RcPaintState(),
+                  mutableMapOf(),
+                  textMeasurer,
+                  images,
+                  RcFloatFunctionRuntime(),
+                  theme,
+                  filterTheme = true,
+                )
+              }
             }
           }
         node.content?.let {
@@ -558,17 +564,19 @@ private fun RenderLayoutNode(
       }
     is RcLayoutNode.CanvasContent ->
       Canvas(Modifier.fillMaxSize()) {
-        drawOperations(
-          node.operations,
-          state,
-          RcPaintState(),
-          mutableMapOf(),
-          textMeasurer,
-          images,
-          RcFloatFunctionRuntime(),
-          theme,
-          filterTheme = true,
-        )
+        rcTrace(RcTraceCategory.FRAME, "rc:drawCanvas") {
+          drawOperations(
+            node.operations,
+            state,
+            RcPaintState(),
+            mutableMapOf(),
+            textMeasurer,
+            images,
+            RcFloatFunctionRuntime(),
+            theme,
+            filterTheme = true,
+          )
+        }
       }
     is RcLayoutNode.Box ->
       Box(
@@ -1515,18 +1523,20 @@ private fun Modifier.applyComponentModifiers(
   }
   if (canvasOperations != null) {
     result = result.drawWithContent {
-      drawOperations(
-        canvasOperations,
-        state,
-        RcPaintState(),
-        mutableMapOf(),
-        textMeasurer,
-        images,
-        RcFloatFunctionRuntime(),
-        theme,
-        filterTheme = true,
-        drawContent = { drawContent() },
-      )
+      rcTrace(RcTraceCategory.FRAME, "rc:drawCanvas") {
+        drawOperations(
+          canvasOperations,
+          state,
+          RcPaintState(),
+          mutableMapOf(),
+          textMeasurer,
+          images,
+          RcFloatFunctionRuntime(),
+          theme,
+          filterTheme = true,
+          drawContent = { drawContent() },
+        )
+      }
     }
   }
   modifiers.padding.forEach { padding ->
@@ -2849,6 +2859,9 @@ private fun DrawScope.drawOperations(
 }
 
 private fun decodeInlineImages(document: RcDocument): Map<Int, ImageBitmap> =
+  rcTrace(RcTraceCategory.DOCUMENT, "rc:decodeImages") { decodeInlineImagesUncounted(document) }
+
+private fun decodeInlineImagesUncounted(document: RcDocument): Map<Int, ImageBitmap> =
   document.operations
     .filterIsInstance<RcBitmapData>()
     .mapNotNull { bitmap ->
@@ -2858,6 +2871,9 @@ private fun decodeInlineImages(document: RcDocument): Map<Int, ImageBitmap> =
     .toMap()
 
 private fun decodeInlineFonts(document: RcDocument): Map<Int, FontFamily> =
+  rcTrace(RcTraceCategory.DOCUMENT, "rc:decodeFonts") { decodeInlineFontsUncounted(document) }
+
+private fun decodeInlineFontsUncounted(document: RcDocument): Map<Int, FontFamily> =
   document.operations
     .filterIsInstance<RcFontData>()
     .mapNotNull { font ->
@@ -3147,11 +3163,13 @@ private fun DrawScope.drawTextOperation(
   val text = source.substring(operation.start, end)
   val style = textStyle(paint)
   val layout =
-    textMeasurer.measure(
-      text,
-      style,
-      layoutDirection = if (operation.rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
-    )
+    rcTrace(RcTraceCategory.FRAME, "rc:measureText") {
+      textMeasurer.measure(
+        text,
+        style,
+        layoutDirection = if (operation.rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
+      )
+    }
   drawText(
     textMeasurer = textMeasurer,
     text = text,
@@ -3193,11 +3211,13 @@ private fun DrawScope.drawTextAnchored(
   val style = textStyle(paint)
   val rtl = operation.flags and RcDrawTextAnchored.TEXT_RTL != 0
   val layout =
-    textMeasurer.measure(
-      text,
-      style,
-      layoutDirection = if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
-    )
+    rcTrace(RcTraceCategory.FRAME, "rc:measureText") {
+      textMeasurer.measure(
+        text,
+        style,
+        layoutDirection = if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
+      )
+    }
   val boxes = text.indices.map(layout::getBoundingBox)
   val left = boxes.minOfOrNull { it.left } ?: 0f
   val right = boxes.maxOfOrNull { it.right } ?: layout.size.width.toFloat()
@@ -3264,7 +3284,8 @@ private fun DrawScope.drawTextOnPathWithCompose(
   var contourLength = measure.length
   var distance = horizontalOffset
   for (segment in unicodeScalars(text)) {
-    val layout = textMeasurer.measure(segment, style)
+    val layout =
+      rcTrace(RcTraceCategory.FRAME, "rc:measureText") { textMeasurer.measure(segment, style) }
     val advance = layout.size.width.toFloat()
     val center = distance + advance / 2f
     if (center > contourLength) {
@@ -3353,7 +3374,10 @@ private fun DrawScope.measureTextOperation(
   textMeasurer: TextMeasurer,
 ) {
   val text = state.text(textId).orEmpty()
-  val layout = textMeasurer.measure(text, textStyle(paint))
+  val layout =
+    rcTrace(RcTraceCategory.FRAME, "rc:measureText") {
+      textMeasurer.measure(text, textStyle(paint))
+    }
   var left = 0f
   var right = layout.size.width.toFloat()
   var top = -layout.firstBaseline
