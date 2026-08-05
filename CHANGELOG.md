@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.19.37](https://github.com/yschimke/compose-ai-tools/compare/v0.19.36...v0.19.37) (2026-08-05)
+
+
+### Features
+
+* **daemon:** trace composition composable-by-composable into render/trace ([#3352](https://github.com/yschimke/compose-ai-tools/issues/3352)) ([c78d866](https://github.com/yschimke/compose-ai-tools/commit/c78d866e642ef2727ab4f493c5084b4bcc5114fa))
+* **rc-player:** apply a document's font-variation axes in the js lane ([#3348](https://github.com/yschimke/compose-ai-tools/issues/3348)) ([86be17e](https://github.com/yschimke/compose-ai-tools/commit/86be17e120b7d451a5f9edbdc471fdf81c010a05))
+
+
+### Bug Fixes
+
+* **daemon:** carry the trace origin alongside the overridden total ([#3349](https://github.com/yschimke/compose-ai-tools/issues/3349)) ([204cef0](https://github.com/yschimke/compose-ai-tools/commit/204cef02f797e9b8c1128f8921fa3532ebd737fd))
+* **daemon:** report complete trace bounds past the span cap and drop delta fields from snapshots ([#3346](https://github.com/yschimke/compose-ai-tools/issues/3346)) ([d96ce9e](https://github.com/yschimke/compose-ai-tools/commit/d96ce9ee6020f10be14a1e485ac889d72521c1c9))
+* **gradle-plugin:** resolve the desktop bundle classpath lazily ([#3351](https://github.com/yschimke/compose-ai-tools/issues/3351)) ([6835814](https://github.com/yschimke/compose-ai-tools/commit/68358143085f9215de6c6c85922bbc9d51d23814))
+* **serve:** let the theme optimizer keep its turn while the server is quiet ([#3347](https://github.com/yschimke/compose-ai-tools/issues/3347)) ([33a26be](https://github.com/yschimke/compose-ai-tools/commit/33a26bedc739b22db6218131acc84bfcff1283a6))
+
 ## [0.19.36](https://github.com/yschimke/compose-ai-tools/compare/v0.19.35...v0.19.36) (2026-08-05)
 
 
