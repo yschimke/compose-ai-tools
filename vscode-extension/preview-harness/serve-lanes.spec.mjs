@@ -182,9 +182,17 @@ test("viewer wires the knob into every render lane", async ({ page }) => {
     new RegExp(`knob\\.label=${OVERRIDE}`),
   );
 
-  // PNG mode (default): the on-screen <img> points at the override PNG and loads.
+  // PNG mode (default): the on-screen <img> was painted from the override PNG, and loads.
+  //
+  // Assert on `data-cp-src`, not `src`. The viewer fetches the render bytes once and hands the
+  // <img> an object URL (so an override-bearing `no-store` render isn't performed twice and raced
+  // through the daemon's shared override state), which makes `src` an opaque `blob:` with nothing
+  // to match on. `data-cp-src` carries the /render URL those bytes actually came from and is set
+  // in the same `onload` that swaps the frame in, so it still proves the *displayed* pixels are
+  // the override's — which the `#cp-url-*` fields above cannot, since they track the live control
+  // state whether or not a render followed.
   await expect(page.locator("#cp-img")).toHaveAttribute(
-    "src",
+    "data-cp-src",
     new RegExp(`\\.png.*knob\\.label=${OVERRIDE}`),
   );
   await expect
@@ -193,10 +201,10 @@ test("viewer wires the knob into every render lane", async ({ page }) => {
     })
     .toBeGreaterThan(0);
 
-  // SVG format toggle: the same <img> repoints at the override SVG and loads.
+  // SVG format toggle: the same <img> repaints from the override SVG and loads.
   await page.click("#cp-svg-toggle");
   await expect(page.locator("#cp-img")).toHaveAttribute(
-    "src",
+    "data-cp-src",
     new RegExp(`\\.svg.*knob\\.label=${OVERRIDE}`),
   );
   await expect
