@@ -146,8 +146,78 @@ class GitHubOAuthVerifierTest {
     assertTrue(accessFor("""{"permission":"write","role_name":"write"}""", repoJson = null))
   }
 
+  // ── The repo payload's own `permissions` block ────────────────────────────────────────────────
+  // Preferred over /collaborators/{login}/permission because it answers visibility AND access in
+  // one call, and — the point of the change — is readable on a public repo by a token carrying no
+  // `repo` scope. The cases above, whose payloads carry no `permissions`, still exercise the
+  // collaborator-endpoint fallback unchanged.
+
+  @Test
+  fun `pull-only on a public repo is not repository access`() {
+    assertFalse(accessFor(NEVER_CALLED, publicRepo(pull = true)))
+  }
+
+  @Test
+  fun `push on a public repo is repository access`() {
+    assertTrue(accessFor(NEVER_CALLED, publicRepo(pull = true, push = true)))
+  }
+
+  @Test
+  fun `admin on a public repo is repository access`() {
+    assertTrue(accessFor(NEVER_CALLED, publicRepo(pull = true, admin = true)))
+  }
+
+  @Test
+  fun `maintain on a public repo is repository access`() {
+    assertTrue(accessFor(NEVER_CALLED, publicRepo(pull = true, maintain = true)))
+  }
+
+  @Test
+  fun `pull-only on a private repo is repository access`() {
+    assertTrue(accessFor(NEVER_CALLED, privateRepo(pull = true)))
+  }
+
+  @Test
+  fun `no permissions at all on a private repo is not repository access`() {
+    assertFalse(accessFor(NEVER_CALLED, privateRepo()))
+  }
+
+  private fun publicRepo(
+    pull: Boolean = false,
+    push: Boolean = false,
+    admin: Boolean = false,
+    maintain: Boolean = false,
+    triage: Boolean = false,
+  ) = repo(private = false, pull, push, admin, maintain, triage)
+
+  private fun privateRepo(
+    pull: Boolean = false,
+    push: Boolean = false,
+    admin: Boolean = false,
+    maintain: Boolean = false,
+    triage: Boolean = false,
+  ) = repo(private = true, pull, push, admin, maintain, triage)
+
+  private fun repo(
+    private: Boolean,
+    pull: Boolean,
+    push: Boolean,
+    admin: Boolean,
+    maintain: Boolean,
+    triage: Boolean,
+  ) =
+    """{"private":$private,"permissions":{"admin":$admin,"maintain":$maintain,""" +
+      """"push":$push,"triage":$triage,"pull":$pull}}"""
+
   private companion object {
     const val PUBLIC_REPO = """{"private":false}"""
     const val PRIVATE_REPO = """{"private":true}"""
+
+    /**
+     * Handed to the collaborator endpoint in the `permissions`-block cases. If the code ever falls
+     * back to it there the verdict flips to `true`, so a test asserting `false` would fail loudly
+     * rather than passing for the wrong reason.
+     */
+    const val NEVER_CALLED = """{"permission":"admin","role_name":"admin"}"""
   }
 }
