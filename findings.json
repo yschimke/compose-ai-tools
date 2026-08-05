@@ -1,1318 +1,503 @@
 {
   "entries": [
     {
-      "annotatedBasename": "ActionsPreview_Actions.a11y.png",
-      "cleanBasename": "ActionsPreview_Actions.png",
+      "annotatedBasename": "AppCardRemote_width_320dp_height_240dp_dpi_320.a11y.png",
+      "cleanBasename": "AppCardRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,1050,147",
-          "level": "INFO",
-          "message": "Consider modifying the LayoutParams to allow for text expansion.",
-          "type": "TextSizeCheck",
-          "viewDescription": "android.view.NotificationHeaderView #notification_header"
-        },
-        {
-          "boundsInScreen": "0,257,1018,415",
-          "level": "INFO",
-          "message": "Consider modifying the LayoutParams to allow for text expansion.",
-          "type": "TextSizeCheck",
-          "viewDescription": "com.android.internal.widget.NotificationActionListLayout #actions"
-        }
-      ],
-      "functionName": "ActionsPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.ActionsPreview_Actions",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "AsyncImageArtworkPreview_Async_Image_Artwork.a11y.png",
-      "cleanBasename": "AsyncImageArtworkPreview_Async_Image_Artwork.png",
-      "findings": [],
-      "functionName": "AsyncImageArtworkPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.AsyncImagePreviewsKt.AsyncImageArtworkPreview_Async Image Artwork",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AsyncImagePreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "AsyncImageUnreachablePreview_Async_Image_Unreachable.a11y.png",
-      "cleanBasename": "AsyncImageUnreachablePreview_Async_Image_Unreachable.png",
-      "findings": [],
-      "functionName": "AsyncImageUnreachablePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.AsyncImagePreviewsKt.AsyncImageUnreachablePreview_Async Image Unreachable",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AsyncImagePreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "BadButtonPreview_Bad_Button.a11y.png",
-      "cleanBasename": "BadButtonPreview_Bad_Button.png",
-      "findings": [
-        {
-          "boundsInScreen": "0,0,53,53",
+          "boundsInScreen": "0,0,640,480",
           "level": "ERROR",
           "message": "This item may not have a label readable by screen readers.",
           "type": "SpeakableTextPresentCheck",
-          "viewDescription": "android.widget.Button"
-        },
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "AppCardRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.AppCardRemote_width=320dp,height=240dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=320dp,height=240dp,dpi=320"
+    },
+    {
+      "annotatedBasename": "BrandedTextRemote_width_200dp_height_200dp_dpi_320.a11y.png",
+      "cleanBasename": "BrandedTextRemote_width_200dp_height_200dp_dpi_320.png",
+      "findings": [
         {
-          "boundsInScreen": "0,0,53,53",
+          "boundsInScreen": "0,0,400,400",
           "level": "ERROR",
-          "message": "This item's size is 20dp x 20dp. Consider making this touch target 32dp wide and 32dp high or larger.",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "BrandedTextRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.BrandedTextRemote_width=200dp,height=200dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=200dp,height=200dp,dpi=320"
+    },
+    {
+      "annotatedBasename": "ButtonGroupRemote_width_320dp_height_240dp_dpi_320.a11y.png",
+      "cleanBasename": "ButtonGroupRemote_width_320dp_height_240dp_dpi_320.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,640,480",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        },
+        {
+          "boundsInScreen": "36,198,312,281",
+          "level": "ERROR",
+          "message": "This item's height is 42dp. Consider making the height of this touch target 48dp or larger.",
           "type": "TouchTargetSizeCheck",
-          "viewDescription": "android.widget.Button"
-        }
-      ],
-      "functionName": "BadButtonPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewsKt.BadButtonPreview_Bad Button",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "BigPictureStylePreview_Big_picture.a11y.png",
-      "cleanBasename": "BigPictureStylePreview_Big_picture.png",
-      "findings": [
-        {
-          "boundsInScreen": "0,0,1050,147",
-          "level": "INFO",
-          "message": "Consider modifying the LayoutParams to allow for text expansion.",
-          "type": "TextSizeCheck",
-          "viewDescription": "android.view.NotificationHeaderView #notification_header"
-        }
-      ],
-      "functionName": "BigPictureStylePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.BigPictureStylePreview_Big picture",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "BigTextVariantsPreview_Arabic.a11y.png",
-      "cleanBasename": "BigTextVariantsPreview_Arabic.png",
-      "findings": [
-        {
-          "boundsInScreen": "0,0,1050,147",
-          "level": "INFO",
-          "message": "Consider modifying the LayoutParams to allow for text expansion.",
-          "type": "TextSizeCheck",
-          "viewDescription": "android.view.NotificationHeaderView #notification_header"
-        }
-      ],
-      "functionName": "BigTextVariantsPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.NotificationVariantPreviewsKt.BigTextVariantsPreview_Arabic",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationVariantPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "BlueBoxPreview_Blue_Box.a11y.png",
-      "cleanBasename": "BlueBoxPreview_Blue_Box.png",
-      "findings": [],
-      "functionName": "BlueBoxPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewsKt.BlueBoxPreview_Blue Box",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text.a11y.png",
-      "cleanBasename": "",
-      "findings": [],
-      "functionName": "BodyTextPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "CameraPermissionDeniedPreview_Camera_permission_denied.a11y.png",
-      "cleanBasename": "CameraPermissionDeniedPreview_Camera_permission_denied.png",
-      "findings": [],
-      "functionName": "CameraPermissionDeniedPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PermissionGatedPreviewKt.CameraPermissionDeniedPreview_Camera permission \u2014 denied",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PermissionGatedPreview.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "CameraPermissionGrantedPreview_Camera_permission_granted.a11y.png",
-      "cleanBasename": "CameraPermissionGrantedPreview_Camera_permission_granted.png",
-      "findings": [],
-      "functionName": "CameraPermissionGrantedPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PermissionGatedPreviewKt.CameraPermissionGrantedPreview_Camera permission \u2014 granted",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PermissionGatedPreview.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "CircleButtonTransparentPreview_Circle_Button_Transparent.a11y.png",
-      "cleanBasename": "CircleButtonTransparentPreview_Circle_Button_Transparent.png",
-      "findings": [],
-      "functionName": "CircleButtonTransparentPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.TransparentBackgroundPreviewsKt.CircleButtonTransparentPreview_Circle Button Transparent",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/TransparentBackgroundPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "CollapsedSurfacePreview_Surface_collapsed.a11y.png",
-      "cleanBasename": "CollapsedSurfacePreview_Surface_collapsed.png",
-      "findings": [
-        {
-          "boundsInScreen": "137,108,903,161",
-          "level": "WARNING",
-          "message": "Consider modifying the LayoutParams to allow for text expansion.",
-          "type": "TextSizeCheck",
-          "viewDescription": "com.android.internal.widget.ImageFloatingTextView #text"
-        }
-      ],
-      "functionName": "CollapsedSurfacePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.CollapsedSurfacePreview_Surface \u2014 collapsed",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark.a11y.png",
-      "cleanBasename": "ColorSchemeSpecimenDarkPreview_ColorScheme_specimen_dark.png",
-      "findings": [
-        {
-          "boundsInScreen": "137,61,290,95",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"#FFD0BCFF\" is identical to that of 1 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
+          "viewDescription": "android.view.View"
         },
         {
-          "boundsInScreen": "137,2203,290,2237",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"#FF49454F\" is identical to that of 1 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
-        },
-        {
-          "boundsInScreen": "137,1825,290,1859",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"#FFE6E0E9\" is identical to that of 2 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
-        },
-        {
-          "boundsInScreen": "137,1699,290,1733",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"#FF141218\" is identical to that of 2 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
+          "boundsInScreen": "328,198,604,281",
+          "level": "ERROR",
+          "message": "This item's height is 42dp. Consider making the height of this touch target 48dp or larger.",
+          "type": "TouchTargetSizeCheck",
+          "viewDescription": "android.view.View"
         }
       ],
-      "functionName": "ColorSchemeSpecimenDarkPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.ColorGalleryKt.ColorSchemeSpecimenDarkPreview_ColorScheme specimen \u2014 dark",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt",
-      "variant": ""
+      "functionName": "ButtonGroupRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.ButtonGroupRemote_width=320dp,height=240dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
-      "annotatedBasename": "ColorSchemeSpecimenLightPreview_ColorScheme_specimen_light.a11y.png",
-      "cleanBasename": "ColorSchemeSpecimenLightPreview_ColorScheme_specimen_light.png",
+      "annotatedBasename": "CardRemote_width_320dp_height_240dp_dpi_320.a11y.png",
+      "cleanBasename": "CardRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "137,1825,290,1859",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"#FF1D1B20\" is identical to that of 1 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
-        },
-        {
-          "boundsInScreen": "137,1699,290,1733",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"#FFFEF7FF\" is identical to that of 2 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
-        },
-        {
-          "boundsInScreen": "137,61,290,95",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"#FF6750A4\" is identical to that of 1 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
-        },
-        {
-          "boundsInScreen": "137,187,290,221",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"#FFFFFFFF\" is identical to that of 4 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
+          "boundsInScreen": "0,0,640,480",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
         }
       ],
-      "functionName": "ColorSchemeSpecimenLightPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.ColorGalleryKt.ColorSchemeSpecimenLightPreview_ColorScheme specimen \u2014 light",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt",
-      "variant": ""
+      "functionName": "CardRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.CardRemote_width=320dp,height=240dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
-      "annotatedBasename": "ConfigProbePreview_Default.a11y.png",
-      "cleanBasename": "ConfigProbePreview_Default.png",
-      "findings": [],
-      "functionName": "ConfigProbePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewsKt.ConfigProbePreview_Default",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "DecoratedCustomViewPreview_Decorated_custom_view.a11y.png",
-      "cleanBasename": "DecoratedCustomViewPreview_Decorated_custom_view.png",
+      "annotatedBasename": "CircularProgressRemote_width_200dp_height_200dp_dpi_320.a11y.png",
+      "cleanBasename": "CircularProgressRemote_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,1050,147",
-          "level": "INFO",
-          "message": "Consider modifying the LayoutParams to allow for text expansion.",
-          "type": "TextSizeCheck",
-          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+          "boundsInScreen": "0,0,400,400",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
         }
       ],
-      "functionName": "DecoratedCustomViewPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.DecoratedCustomViewPreview_Decorated custom view",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
-      "variant": ""
+      "functionName": "CircularProgressRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.CircularProgressRemote_width=200dp,height=200dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase.a11y.png",
-      "cleanBasename": "DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase.png",
+      "annotatedBasename": "ColorSchemeRemote_width_320dp_height_240dp_dpi_320.a11y.png",
+      "cleanBasename": "ColorSchemeRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "42,231,616,294",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"The quick brown fox (700)\" is identical to that of 3 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
-        },
-        {
-          "boundsInScreen": "42,168,616,231",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"The quick brown fox (400)\" is identical to that of 4 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
+          "boundsInScreen": "0,0,640,480",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
         }
       ],
-      "functionName": "DeviceFontFamilyShowcasePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewsKt.DeviceFontFamilyShowcasePreview_Device Font Family Showcase",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
-      "variant": ""
+      "functionName": "ColorSchemeRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.ColorSchemeRemote_width=320dp,height=240dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
-      "annotatedBasename": "",
-      "cleanBasename": "DividerShowBackgroundDarkPreview_Divider_Dark.png",
-      "findings": [],
-      "functionName": "DividerShowBackgroundDarkPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.DividerShowBackgroundPreviewsKt.DividerShowBackgroundDarkPreview_Divider Dark",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/DividerShowBackgroundPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "EmojiCompatComparisonPreview_EmojiCompat_comparison.a11y.png",
-      "cleanBasename": "EmojiCompatComparisonPreview_EmojiCompat_comparison.png",
+      "annotatedBasename": "CompactRemoteButton_width_200dp_height_200dp_dpi_320.a11y.png",
+      "cleanBasename": "CompactRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "42,121,1263,213",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"\ud83d\udc4b \ud83c\udf0d \ud83d\ude80 \u2728 \ud83c\udfa8 \ud83e\ude77 \ud83e\ude76 \ud83e\udee9 \ud83e\uddd1\u200d\ud83d\ude80 \ud83e\udef1\ud83c\udffd\u200d\ud83e\udef2\ud83c\udfff\" is identical to that of 1 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
+          "boundsInScreen": "0,0,400,400",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
         }
       ],
-      "functionName": "EmojiCompatComparisonPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.EmojiCompatComparisonPreviewKt.EmojiCompatComparisonPreview_EmojiCompat comparison",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/EmojiCompatComparisonPreview.kt",
-      "variant": ""
+      "functionName": "CompactRemoteButton",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.CompactRemoteButton_width=200dp,height=200dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "ExpandedSurfacePreview_Surface_expanded.a11y.png",
-      "cleanBasename": "ExpandedSurfacePreview_Surface_expanded.png",
+      "annotatedBasename": "CustomShapeRemoteButton_width_200dp_height_200dp_dpi_320.a11y.png",
+      "cleanBasename": "CustomShapeRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,1050,147",
-          "level": "INFO",
-          "message": "Consider modifying the LayoutParams to allow for text expansion.",
-          "type": "TextSizeCheck",
-          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+          "boundsInScreen": "0,0,400,400",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
         }
       ],
-      "functionName": "ExpandedSurfacePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.ExpandedSurfacePreview_Surface \u2014 expanded",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
-      "variant": ""
+      "functionName": "CustomShapeRemoteButton",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.CustomShapeRemoteButton_width=200dp,height=200dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "FallbackCoverageSpecimenPreview_Fallback_coverage_specimen.a11y.png",
-      "cleanBasename": "FallbackCoverageSpecimenPreview_Fallback_coverage_specimen.png",
-      "findings": [],
-      "functionName": "FallbackCoverageSpecimenPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.TypographyGalleryKt.FallbackCoverageSpecimenPreview_Fallback coverage specimen",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/TypographyGallery.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "FitsInBoundsPreview.a11y.png",
-      "cleanBasename": "FitsInBoundsPreview.png",
-      "findings": [],
-      "functionName": "FitsInBoundsPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.TruncationPreviewsKt.FitsInBoundsPreview",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/TruncationPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "FontFamilySpecimenPreview_FontFamily_specimen.a11y.png",
-      "cleanBasename": "FontFamilySpecimenPreview_FontFamily_specimen.png",
+      "annotatedBasename": "FilledRemoteButton_width_200dp_height_200dp_dpi_320.a11y.png",
+      "cleanBasename": "FilledRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "368,5,1102,117",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"The quick brown fox jumps over the lazy dog\" is identical to that of 4 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
+          "boundsInScreen": "0,0,400,400",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
         }
       ],
-      "functionName": "FontFamilySpecimenPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.TypographyGalleryKt.FontFamilySpecimenPreview_FontFamily specimen",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/TypographyGallery.kt",
-      "variant": ""
+      "functionName": "FilledRemoteButton",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.FilledRemoteButton_width=200dp,height=200dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "FontWrapperShowcasePreview_Dark.a11y.png",
-      "cleanBasename": "FontWrapperShowcasePreview_Dark.png",
-      "findings": [],
-      "functionName": "FontWrapperShowcasePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.FontPreviewShowcaseKt.FontWrapperShowcasePreview_Dark",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/FontPreviewShowcase.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "GlanceWeatherWidgetPreview_Glance_widget_4_2.a11y.png",
-      "cleanBasename": "GlanceWeatherWidgetPreview_Glance_widget_4_2.png",
-      "findings": [],
-      "functionName": "GlanceWeatherWidgetPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.GlanceWeatherWidgetPreview_Glance widget \u2014 4\u00d72",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "GoogleFontsShowcasePreview_Google_Fonts_Showcase.a11y.png",
-      "cleanBasename": "GoogleFontsShowcasePreview_Google_Fonts_Showcase.png",
+      "annotatedBasename": "IconRemote_width_200dp_height_200dp_dpi_320.a11y.png",
+      "cleanBasename": "IconRemote_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "42,231,629,294",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"The quick brown fox (700)\" is identical to that of 3 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
-        },
-        {
-          "boundsInScreen": "42,294,634,357",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"The quick brown fox (900)\" is identical to that of 2 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
-        },
-        {
-          "boundsInScreen": "42,168,620,231",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"The quick brown fox (400)\" is identical to that of 3 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
-        },
-        {
-          "boundsInScreen": "42,105,603,168",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"The quick brown fox (100)\" is identical to that of 1 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
+          "boundsInScreen": "0,0,400,400",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
         }
       ],
-      "functionName": "GoogleFontsShowcasePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewsKt.GoogleFontsShowcasePreview_Google Fonts Showcase",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
-      "variant": ""
+      "functionName": "IconRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.IconRemote_width=200dp,height=200dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "GreenBoxPreview_Green_Box.a11y.png",
-      "cleanBasename": "GreenBoxPreview_Green_Box.png",
-      "findings": [],
-      "functionName": "GreenBoxPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewsKt.GreenBoxPreview_Green Box",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "GreetingPreview_Default.a11y.png",
-      "cleanBasename": "GreetingPreview_Default.png",
-      "findings": [],
-      "functionName": "GreetingPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewsKt.GreetingPreview_Default",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "GroupedSummaryPreview_Edge_grouped_summary.a11y.png",
-      "cleanBasename": "GroupedSummaryPreview_Edge_grouped_summary.png",
+      "annotatedBasename": "IconRemoteButton_width_200dp_height_200dp_dpi_320.a11y.png",
+      "cleanBasename": "IconRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "374,52,385,95",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"\u2022\" is identical to that of 1 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView #header_text_divider"
-        },
-        {
-          "boundsInScreen": "0,0,1050,147",
-          "level": "INFO",
-          "message": "Consider modifying the LayoutParams to allow for text expansion.",
-          "type": "TextSizeCheck",
-          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+          "boundsInScreen": "0,0,400,400",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
         }
       ],
-      "functionName": "GroupedSummaryPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.GroupedSummaryPreview_Edge \u2014 grouped summary",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
-      "variant": ""
+      "functionName": "IconRemoteButton",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.IconRemoteButton_width=200dp,height=200dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "HeadsUpSurfacePreview_Surface_heads_up.a11y.png",
-      "cleanBasename": "HeadsUpSurfacePreview_Surface_heads_up.png",
+      "annotatedBasename": "NamedLabelRemoteButton_width_200dp_height_200dp_dpi_320.a11y.png",
+      "cleanBasename": "NamedLabelRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "137,108,903,161",
-          "level": "WARNING",
-          "message": "Consider modifying the LayoutParams to allow for text expansion.",
-          "type": "TextSizeCheck",
-          "viewDescription": "com.android.internal.widget.ImageFloatingTextView #text"
+          "boundsInScreen": "0,0,400,400",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
         }
       ],
-      "functionName": "HeadsUpSurfacePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.HeadsUpSurfacePreview_Surface \u2014 heads-up",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
-      "variant": ""
+      "functionName": "NamedLabelRemoteButton",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.NamedLabelRemoteButton_width=200dp,height=200dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "ImeAwareListHiddenPreview_IME_aware_list_keyboard_hidden.a11y.png",
-      "cleanBasename": "ImeAwareListHiddenPreview_IME_aware_list_keyboard_hidden.png",
-      "findings": [],
-      "functionName": "ImeAwareListHiddenPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.SoftKeyboardImeInsetsPreviewKt.ImeAwareListHiddenPreview_IME-aware list \u2014 keyboard hidden",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SoftKeyboardImeInsetsPreview.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "ImeAwareListShownPreview_IME_aware_list_keyboard_up.a11y.png",
-      "cleanBasename": "ImeAwareListShownPreview_IME_aware_list_keyboard_up.png",
-      "findings": [],
-      "functionName": "ImeAwareListShownPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.SoftKeyboardImeInsetsPreviewKt.ImeAwareListShownPreview_IME-aware list \u2014 keyboard up",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SoftKeyboardImeInsetsPreview.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "InboxStylePreview_Inbox_style.a11y.png",
-      "cleanBasename": "InboxStylePreview_Inbox_style.png",
+      "annotatedBasename": "OutlinedCardRemote_width_320dp_height_240dp_dpi_320.a11y.png",
+      "cleanBasename": "OutlinedCardRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "374,52,385,95",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"\u2022\" is identical to that of 1 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView #header_text_divider"
-        },
-        {
-          "boundsInScreen": "0,0,1050,147",
-          "level": "INFO",
-          "message": "Consider modifying the LayoutParams to allow for text expansion.",
-          "type": "TextSizeCheck",
-          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+          "boundsInScreen": "0,0,640,480",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
         }
       ],
-      "functionName": "InboxStylePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.InboxStylePreview_Inbox style",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
-      "variant": ""
+      "functionName": "OutlinedCardRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.OutlinedCardRemote_width=320dp,height=240dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
-      "annotatedBasename": "KeyboardDemoPreview_Keyboard_Demo.a11y.png",
-      "cleanBasename": "KeyboardDemoPreview_Keyboard_Demo.png",
-      "findings": [],
-      "functionName": "KeyboardDemoPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard Demo",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/KeyboardDemoPreview.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "LauncherModeHomeScreenPreview_Launcher_mode_4_2_on_home_screen.a11y.png",
-      "cleanBasename": "LauncherModeHomeScreenPreview_Launcher_mode_4_2_on_home_screen.png",
-      "findings": [],
-      "functionName": "LauncherModeHomeScreenPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherModeHomeScreenPreview_Launcher mode \u2014 4\u00d72 on home screen",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_1x1.a11y.png",
-      "cleanBasename": "LauncherModeResizePreview_Launcher_mode_resize_on_home_screen_RESIZE_1x1.png",
-      "findings": [],
-      "functionName": "LauncherModeResizePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherModeResizePreview_Launcher mode \u2014 resize on home screen",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "LauncherWidget1x1Preview_Launcher_widget_1_1.a11y.png",
-      "cleanBasename": "LauncherWidget1x1Preview_Launcher_widget_1_1.png",
-      "findings": [],
-      "functionName": "LauncherWidget1x1Preview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidget1x1Preview_Launcher widget \u2014 1\u00d71",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "LauncherWidget4x2Preview_Launcher_widget_4_2.a11y.png",
-      "cleanBasename": "LauncherWidget4x2Preview_Launcher_widget_4_2.png",
-      "findings": [],
-      "functionName": "LauncherWidget4x2Preview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidget4x2Preview_Launcher widget \u2014 4\u00d72",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "LauncherWidgetClampedPreview_Launcher_widget_clamped_to_4_5.a11y.png",
-      "cleanBasename": "LauncherWidgetClampedPreview_Launcher_widget_clamped_to_4_5.png",
-      "findings": [],
-      "functionName": "LauncherWidgetClampedPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidgetClampedPreview_Launcher widget \u2014 clamped to 4\u00d75",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "LauncherWidgetResize1x1To4x2Preview_Launcher_widget_resize_1_1_4_2_RESIZE_1x1.a11y.png",
-      "cleanBasename": "LauncherWidgetResize1x1To4x2Preview_Launcher_widget_resize_1_1_4_2_RESIZE_1x1.png",
-      "findings": [],
-      "functionName": "LauncherWidgetResize1x1To4x2Preview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidgetResize1x1To4x2Preview_Launcher widget \u2014 resize 1\u00d71 \u2192 4\u00d72",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "LoadingPreview_Loading_Spinner.a11y.png",
-      "cleanBasename": "LoadingPreview_Loading_Spinner.png",
-      "findings": [],
-      "functionName": "LoadingPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewsKt.LoadingPreview_Loading Spinner",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "LongTitlePreview_Edge_long_title.a11y.png",
-      "cleanBasename": "LongTitlePreview_Edge_long_title.png",
+      "annotatedBasename": "OutlinedRemoteButton_width_200dp_height_200dp_dpi_320.a11y.png",
+      "cleanBasename": "OutlinedRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,1050,147",
-          "level": "INFO",
-          "message": "Consider modifying the LayoutParams to allow for text expansion.",
-          "type": "TextSizeCheck",
-          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+          "boundsInScreen": "0,0,400,400",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
         }
       ],
-      "functionName": "LongTitlePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.LongTitlePreview_Edge \u2014 long title",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
-      "variant": ""
+      "functionName": "OutlinedRemoteButton",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.OutlinedRemoteButton_width=200dp,height=200dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "ManyActionsPreview_Edge_many_actions.a11y.png",
-      "cleanBasename": "ManyActionsPreview_Edge_many_actions.png",
+      "annotatedBasename": "RemoteTextSticker_width_200dp_height_200dp_dpi_320.a11y.png",
+      "cleanBasename": "RemoteTextSticker_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,1050,147",
-          "level": "INFO",
-          "message": "Consider modifying the LayoutParams to allow for text expansion.",
-          "type": "TextSizeCheck",
-          "viewDescription": "android.view.NotificationHeaderView #notification_header"
-        },
-        {
-          "boundsInScreen": "0,257,1018,415",
-          "level": "INFO",
-          "message": "Consider modifying the LayoutParams to allow for text expansion.",
-          "type": "TextSizeCheck",
-          "viewDescription": "com.android.internal.widget.NotificationActionListLayout #actions"
+          "boundsInScreen": "0,0,400,400",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
         }
       ],
-      "functionName": "ManyActionsPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.ManyActionsPreview_Edge \u2014 many actions",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
-      "variant": ""
+      "functionName": "RemoteTextSticker",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.RemoteTextSticker_width=200dp,height=200dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "",
-      "cleanBasename": "MatrixBackgroundColorPreview_Background_colour.png",
-      "findings": [],
-      "functionName": "MatrixBackgroundColorPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixBackgroundColorPreview_Background colour",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "MatrixComponentWrapPreview_Component_wrap.a11y.png",
-      "cleanBasename": "MatrixComponentWrapPreview_Component_wrap.png",
-      "findings": [],
-      "functionName": "MatrixComponentWrapPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixComponentWrapPreview_Component wrap",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "MatrixDeviceSpecPreview_Device_spec.a11y.png",
-      "cleanBasename": "MatrixDeviceSpecPreview_Device_spec.png",
-      "findings": [],
-      "functionName": "MatrixDeviceSpecPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixDeviceSpecPreview_Device spec",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
-      "variant": "spec:width=360dp,height=640dp,dpi=320"
-    },
-    {
-      "annotatedBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes.a11y.png",
-      "cleanBasename": "MatrixFixedBothAxesPreview_Fixed_both_axes.png",
-      "findings": [],
-      "functionName": "MatrixFixedBothAxesPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFixedBothAxesPreview_Fixed both axes",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only.a11y.png",
-      "cleanBasename": "MatrixFixedWidthOnlyPreview_Fixed_width_only.png",
-      "findings": [],
-      "functionName": "MatrixFixedWidthOnlyPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFixedWidthOnlyPreview_Fixed width only",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "MatrixFoldableDevicePreview_Foldable.a11y.png",
-      "cleanBasename": "MatrixFoldableDevicePreview_Foldable.png",
-      "findings": [],
-      "functionName": "MatrixFoldableDevicePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFoldableDevicePreview_Foldable",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
-      "variant": "pixel_fold"
-    },
-    {
-      "annotatedBasename": "MatrixFontScaleMultiPreview_100.a11y.png",
-      "cleanBasename": "MatrixFontScaleMultiPreview_100.png",
-      "findings": [],
-      "functionName": "MatrixFontScaleMultiPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFontScaleMultiPreview_100%",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "MatrixFontScalePreview_Font_scale_2x.a11y.png",
-      "cleanBasename": "MatrixFontScalePreview_Font_scale_2x.png",
-      "findings": [],
-      "functionName": "MatrixFontScalePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixFontScalePreview_Font scale 2x",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "MatrixLightDarkMultiPreview_Dark.a11y.png",
-      "cleanBasename": "MatrixLightDarkMultiPreview_Dark.png",
-      "findings": [],
-      "functionName": "MatrixLightDarkMultiPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixLightDarkMultiPreview_Dark",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "MatrixLightPreview_Day.a11y.png",
-      "cleanBasename": "MatrixLightPreview_Day.png",
-      "findings": [],
-      "functionName": "MatrixLightPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixLightPreview_Day",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "MatrixLocalePreview_German.a11y.png",
-      "cleanBasename": "MatrixLocalePreview_German.png",
-      "findings": [],
-      "functionName": "MatrixLocalePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixLocalePreview_German",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch.a11y.png",
-      "cleanBasename": "MatrixMetaAnnotationMultiPreview_Meta_watch.png",
-      "findings": [],
-      "functionName": "MatrixMetaAnnotationMultiPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixMetaAnnotationMultiPreview_Meta watch",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
-      "variant": "wearos_small_round"
-    },
-    {
-      "annotatedBasename": "MatrixNightPreview_Night.a11y.png",
-      "cleanBasename": "MatrixNightPreview_Night.png",
-      "findings": [],
-      "functionName": "MatrixNightPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixNightPreview_Night",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "MatrixPhoneDevicePreview_Phone.a11y.png",
-      "cleanBasename": "MatrixPhoneDevicePreview_Phone.png",
-      "findings": [],
-      "functionName": "MatrixPhoneDevicePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixPhoneDevicePreview_Phone",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
-      "variant": "pixel_5"
-    },
-    {
-      "annotatedBasename": "MatrixScreenSizesMultiPreview_Desktop.a11y.png",
-      "cleanBasename": "MatrixScreenSizesMultiPreview_Desktop.png",
-      "findings": [],
-      "functionName": "MatrixScreenSizesMultiPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixScreenSizesMultiPreview_Desktop",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
-      "variant": "spec:width=1920dp,height=1080dp,dpi=160"
-    },
-    {
-      "annotatedBasename": "MatrixSystemUiPreview_System_UI.a11y.png",
-      "cleanBasename": "MatrixSystemUiPreview_System_UI.png",
-      "findings": [],
-      "functionName": "MatrixSystemUiPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixSystemUiPreview_System UI",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "MatrixTvDevicePreview_TV.a11y.png",
-      "cleanBasename": "MatrixTvDevicePreview_TV.png",
-      "findings": [],
-      "functionName": "MatrixTvDevicePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixTvDevicePreview_TV",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
-      "variant": "tv_1080p"
-    },
-    {
-      "annotatedBasename": "MatrixWearDevicePreview_Wear.a11y.png",
-      "cleanBasename": "MatrixWearDevicePreview_Wear.png",
-      "findings": [],
-      "functionName": "MatrixWearDevicePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewModeMatrixKt.MatrixWearDevicePreview_Wear",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewModeMatrix.kt",
-      "variant": "wearos_small_round"
-    },
-    {
-      "annotatedBasename": "MediaStylePreview_Media_style.a11y.png",
-      "cleanBasename": "MediaStylePreview_Media_style.png",
+      "annotatedBasename": "ShaderGradientSticker_width_200dp_height_200dp_dpi_320.a11y.png",
+      "cleanBasename": "ShaderGradientSticker_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "137,204,1008,257",
-          "level": "WARNING",
-          "message": "Consider modifying the LayoutParams to allow for text expansion.",
-          "type": "TextSizeCheck",
-          "viewDescription": "com.android.internal.widget.ImageFloatingTextView #text"
-        },
-        {
-          "boundsInScreen": "0,0,1050,147",
-          "level": "INFO",
-          "message": "Consider modifying the LayoutParams to allow for text expansion.",
-          "type": "TextSizeCheck",
-          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+          "boundsInScreen": "0,0,400,400",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
         }
       ],
-      "functionName": "MediaStylePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.MediaStylePreview_Media style",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
-      "variant": ""
+      "functionName": "ShaderGradientSticker",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.ShaderGradientSticker_width=200dp,height=200dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "MessagingStylePreview_Messaging_style.a11y.png",
-      "cleanBasename": "MessagingStylePreview_Messaging_style.png",
+      "annotatedBasename": "TextRemoteButton_width_200dp_height_200dp_dpi_320.a11y.png",
+      "cleanBasename": "TextRemoteButton_width_200dp_height_200dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "374,52,385,95",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"\u2022\" is identical to that of 1 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView #header_text_secondary_divider"
-        },
-        {
-          "boundsInScreen": "395,52,466,95",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"Alice\" is identical to that of 1 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView #header_text_secondary"
-        },
-        {
-          "boundsInScreen": "0,0,1050,147",
-          "level": "INFO",
-          "message": "Consider modifying the LayoutParams to allow for text expansion.",
-          "type": "TextSizeCheck",
-          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+          "boundsInScreen": "0,0,400,400",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
         }
       ],
-      "functionName": "MessagingStylePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.MessagingStylePreview_Messaging style",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
-      "variant": ""
+      "functionName": "TextRemoteButton",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TextRemoteButton_width=200dp,height=200dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=200dp,height=200dp,dpi=320"
     },
     {
-      "annotatedBasename": "NamedColorPaletteSpecimenPreview_Named_colour_palette_specimen.a11y.png",
-      "cleanBasename": "NamedColorPaletteSpecimenPreview_Named_colour_palette_specimen.png",
-      "findings": [],
-      "functionName": "NamedColorPaletteSpecimenPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.ColorGalleryKt.NamedColorPaletteSpecimenPreview_Named colour palette specimen",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ColorGallery.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "NavHostHomePreview_NavHost_Home.a11y.png",
-      "cleanBasename": "NavHostHomePreview_NavHost_Home.png",
-      "findings": [],
-      "functionName": "NavHostHomePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.NavHostPreviewKt.NavHostHomePreview_NavHost \u2014 Home",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NavHostPreview.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "NoLargeIconPreview_Edge_no_large_icon.a11y.png",
-      "cleanBasename": "NoLargeIconPreview_Edge_no_large_icon.png",
+      "annotatedBasename": "TitleCardRemote_width_320dp_height_240dp_dpi_320.a11y.png",
+      "cleanBasename": "TitleCardRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "374,52,385,95",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"\u2022\" is identical to that of 1 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView #header_text_secondary_divider"
-        },
-        {
-          "boundsInScreen": "0,0,1050,147",
-          "level": "INFO",
-          "message": "Consider modifying the LayoutParams to allow for text expansion.",
-          "type": "TextSizeCheck",
-          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+          "boundsInScreen": "0,0,640,480",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
         }
       ],
-      "functionName": "NoLargeIconPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.NoLargeIconPreview_Edge \u2014 no large icon",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
-      "variant": ""
+      "functionName": "TitleCardRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TitleCardRemote_width=320dp,height=240dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
-      "annotatedBasename": "NoTextPreview_Edge_no_text.a11y.png",
-      "cleanBasename": "NoTextPreview_Edge_no_text.png",
+      "annotatedBasename": "TruncatedTextRemote_width_320dp_height_240dp_dpi_320.a11y.png",
+      "cleanBasename": "TruncatedTextRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "0,0,1050,147",
-          "level": "INFO",
-          "message": "Consider modifying the LayoutParams to allow for text expansion.",
-          "type": "TextSizeCheck",
-          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+          "boundsInScreen": "0,0,640,480",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
         }
       ],
-      "functionName": "NoTextPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.NoTextPreview_Edge \u2014 no text",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
-      "variant": ""
+      "functionName": "TruncatedTextRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TruncatedTextRemote_width=320dp,height=240dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
-      "annotatedBasename": "PhoneGreetingPreview_Phone.a11y.png",
-      "cleanBasename": "PhoneGreetingPreview_Phone.png",
-      "findings": [],
-      "functionName": "PhoneGreetingPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewsKt.PhoneGreetingPreview_Phone",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
-      "variant": "spec:width=411dp,height=891dp"
-    },
-    {
-      "annotatedBasename": "Pixel8SystemUiPreview_Pixel_8.a11y.png",
-      "cleanBasename": "Pixel8SystemUiPreview_Pixel_8.png",
-      "findings": [],
-      "functionName": "Pixel8SystemUiPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewsKt.Pixel8SystemUiPreview_Pixel 8",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
-      "variant": "pixel_8"
-    },
-    {
-      "annotatedBasename": "PressedButtonPreview_Pressed.a11y.png",
-      "cleanBasename": "PressedButtonPreview_Pressed.png",
-      "findings": [],
-      "functionName": "PressedButtonPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.RippleStatePreviewsKt.PressedButtonPreview_Pressed",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/RippleStatePreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "com.example.sampleandroid.PreviewParameterPreviewsKt.PrivateProviderBadgePreview_Private Provider Badge.a11y.png",
-      "cleanBasename": "",
-      "findings": [],
-      "functionName": "PrivateProviderBadgePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewParameterPreviewsKt.PrivateProviderBadgePreview_Private Provider Badge",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "PseudoSampleAccent_accent.a11y.png",
-      "cleanBasename": "PseudoSampleAccent_accent.png",
-      "findings": [],
-      "functionName": "PseudoSampleAccent",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PseudolocalePreviewsKt.PseudoSampleAccent_accent",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PseudolocalePreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "PseudoSampleBidi_bidi.a11y.png",
-      "cleanBasename": "PseudoSampleBidi_bidi.png",
-      "findings": [],
-      "functionName": "PseudoSampleBidi",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PseudolocalePreviewsKt.PseudoSampleBidi_bidi",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PseudolocalePreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "PseudoSampleDefault_default.a11y.png",
-      "cleanBasename": "PseudoSampleDefault_default.png",
-      "findings": [],
-      "functionName": "PseudoSampleDefault",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PseudolocalePreviewsKt.PseudoSampleDefault_default",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PseudolocalePreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "RedBoxPreview_Red_Box.a11y.png",
-      "cleanBasename": "RedBoxPreview_Red_Box.png",
-      "findings": [],
-      "functionName": "RedBoxPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewsKt.RedBoxPreview_Red Box",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollGifPreview_ScrollGif.a11y.png",
-      "cleanBasename": "",
-      "findings": [],
-      "functionName": "RedToBlueScrollGifPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollGifPreview_ScrollGif",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ScrollPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2.a11y.png",
-      "cleanBasename": "RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2.png",
-      "findings": [],
-      "functionName": "RemoteViewsWeatherWidgetPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.RemoteViewsWeatherWidgetPreview_RemoteViews widget \u2014 4\u00d72",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "RuntimeShaderGradientBlobPreview_Runtime_Shader_Gradient_Blob_AGSL.png",
-      "findings": [],
-      "functionName": "RuntimeShaderGradientBlobPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.ShaderPreviewsKt.RuntimeShaderGradientBlobPreview_Runtime Shader \u2014 Gradient Blob (AGSL)",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "SemanticsClickableButtonPreview.a11y.png",
-      "cleanBasename": "SemanticsClickableButtonPreview.png",
-      "findings": [],
-      "functionName": "SemanticsClickableButtonPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.SemanticsCoreFieldsPreviewsKt.SemanticsClickableButtonPreview",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SemanticsCoreFieldsPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "SemanticsContentDescriptionPreview.a11y.png",
-      "cleanBasename": "SemanticsContentDescriptionPreview.png",
-      "findings": [],
-      "functionName": "SemanticsContentDescriptionPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.SemanticsCoreFieldsPreviewsKt.SemanticsContentDescriptionPreview",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SemanticsCoreFieldsPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "SemanticsMergeDescendantsPreview.a11y.png",
-      "cleanBasename": "SemanticsMergeDescendantsPreview.png",
-      "findings": [],
-      "functionName": "SemanticsMergeDescendantsPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.SemanticsCoreFieldsPreviewsKt.SemanticsMergeDescendantsPreview",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SemanticsCoreFieldsPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "SemanticsTestTagPreview.a11y.png",
-      "cleanBasename": "SemanticsTestTagPreview.png",
-      "findings": [],
-      "functionName": "SemanticsTestTagPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.SemanticsCoreFieldsPreviewsKt.SemanticsTestTagPreview",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SemanticsCoreFieldsPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "com.example.sampleandroid.SettingsListScrollGifPreviewKt.SettingsListScrollGifPreview_SettingsListScrollGif.a11y.png",
-      "cleanBasename": "",
-      "findings": [],
-      "functionName": "SettingsListScrollGifPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.SettingsListScrollGifPreviewKt.SettingsListScrollGifPreview_SettingsListScrollGif",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettingsListScrollGifPreview.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "ShaderFbmPreview_Shader_Gallery_fBm_Clouds_AGSL.png",
-      "findings": [],
-      "functionName": "ShaderFbmPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderFbmPreview_Shader Gallery \u2014 fBm Clouds (AGSL)",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "ShaderJuliaPreview_Shader_Gallery_Julia_Set_AGSL.png",
-      "findings": [],
-      "functionName": "ShaderJuliaPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderJuliaPreview_Shader Gallery \u2014 Julia Set (AGSL)",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "ShaderRaymarchPreview_Shader_Gallery_Raymarch_SDF_AGSL.png",
-      "findings": [],
-      "functionName": "ShaderRaymarchPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderRaymarchPreview_Shader Gallery \u2014 Raymarch SDF (AGSL)",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort_AGSL.a11y.png",
-      "cleanBasename": "ShaderRenderEffectPreview_Shader_Gallery_RenderEffect_Distort_AGSL.png",
-      "findings": [],
-      "functionName": "ShaderRenderEffectPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.ShaderGalleryPreviewsKt.ShaderRenderEffectPreview_Shader Gallery \u2014 RenderEffect Distort (AGSL)",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ShaderGalleryPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip.a11y.png",
-      "cleanBasename": "SharedElementFilmstripPreview_Shared_Element_Filmstrip.png",
+      "annotatedBasename": "TypefaceSpecimenRemote_width_320dp_height_240dp_dpi_320.a11y.png",
+      "cleanBasename": "TypefaceSpecimenRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "179,132,383,185",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"Aurora ridge\" is identical to that of 4 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
+          "boundsInScreen": "0,0,640,480",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
         }
       ],
-      "functionName": "SharedElementFilmstripPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.SharedElementFilmstripPreviewKt.SharedElementFilmstripPreview_Shared Element Filmstrip",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SharedElementFilmstripPreview.kt",
-      "variant": ""
+      "functionName": "TypefaceSpecimenRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TypefaceSpecimenRemote_width=320dp,height=240dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
-      "annotatedBasename": "SoftKeyboardIdlePreview_Soft_Keyboard_idle.a11y.png",
-      "cleanBasename": "SoftKeyboardIdlePreview_Soft_Keyboard_idle.png",
-      "findings": [],
-      "functionName": "SoftKeyboardIdlePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.SoftKeyboardAnimatedPreviewKt.SoftKeyboardIdlePreview_Soft Keyboard \u2014 idle",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SoftKeyboardAnimatedPreview.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "SpinnerTimelinePreview_Spinner_Timeline_TIME_0ms.a11y.png",
-      "cleanBasename": "SpinnerTimelinePreview_Spinner_Timeline_TIME_0ms.png",
-      "findings": [],
-      "functionName": "SpinnerTimelinePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewsKt.SpinnerTimelinePreview_Spinner Timeline",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "SplashDarkThemePreview_Splash_dark_theme.a11y.png",
-      "cleanBasename": "SplashDarkThemePreview_Splash_dark_theme.png",
-      "findings": [],
-      "functionName": "SplashDarkThemePreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.SplashScreenGalleryKt.SplashDarkThemePreview_Splash \u2014 dark theme",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SplashScreenGallery.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "SplashIconOnlyPreview_Splash_icon_only.a11y.png",
-      "cleanBasename": "SplashIconOnlyPreview_Splash_icon_only.png",
-      "findings": [],
-      "functionName": "SplashIconOnlyPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.SplashScreenGalleryKt.SplashIconOnlyPreview_Splash \u2014 icon only",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SplashScreenGallery.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "SplashIconWithBackgroundPreview_Splash_icon_with_background_ring.a11y.png",
-      "cleanBasename": "SplashIconWithBackgroundPreview_Splash_icon_with_background_ring.png",
-      "findings": [],
-      "functionName": "SplashIconWithBackgroundPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.SplashScreenGalleryKt.SplashIconWithBackgroundPreview_Splash \u2014 icon with background ring",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SplashScreenGallery.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "SplashWithBrandingPreview_Splash_icon_with_branding.a11y.png",
-      "cleanBasename": "SplashWithBrandingPreview_Splash_icon_with_branding.png",
-      "findings": [],
-      "functionName": "SplashWithBrandingPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.SplashScreenGalleryKt.SplashWithBrandingPreview_Splash \u2014 icon with branding",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SplashScreenGallery.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "TruncatedHeightClipPreview.a11y.png",
-      "cleanBasename": "TruncatedHeightClipPreview.png",
-      "findings": [],
-      "functionName": "TruncatedHeightClipPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.TruncationPreviewsKt.TruncatedHeightClipPreview",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/TruncationPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "TruncatedMaxLinesEllipsisPreview.a11y.png",
-      "cleanBasename": "TruncatedMaxLinesEllipsisPreview.png",
-      "findings": [],
-      "functionName": "TruncatedMaxLinesEllipsisPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.TruncationPreviewsKt.TruncatedMaxLinesEllipsisPreview",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/TruncationPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "TruncatedWidthNoWrapPreview.a11y.png",
-      "cleanBasename": "TruncatedWidthNoWrapPreview.png",
-      "findings": [],
-      "functionName": "TruncatedWidthNoWrapPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.TruncationPreviewsKt.TruncatedWidthNoWrapPreview",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/TruncationPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "TypographySpecimenPreview_Typography_specimen.a11y.png",
-      "cleanBasename": "TypographySpecimenPreview_Typography_specimen.png",
+      "annotatedBasename": "TypographyRemote_width_320dp_height_240dp_dpi_320.a11y.png",
+      "cleanBasename": "TypographyRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
         {
-          "boundsInScreen": "368,5,1102,349",
-          "level": "INFO",
-          "message": "This non-clickable item's speakable text: \"The quick brown fox\" is identical to that of 12 other item(s).",
-          "type": "DuplicateSpeakableTextCheck",
-          "viewDescription": "android.widget.TextView"
+          "boundsInScreen": "0,0,640,480",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
         }
       ],
-      "functionName": "TypographySpecimenPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.TypographyGalleryKt.TypographySpecimenPreview_Typography specimen",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/TypographyGallery.kt",
+      "functionName": "TypographyRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TypographyRemote_width=320dp,height=240dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=320dp,height=240dp,dpi=320"
+    },
+    {
+      "annotatedBasename": "VariableWeightRemote_width_320dp_height_240dp_dpi_320.a11y.png",
+      "cleanBasename": "VariableWeightRemote_width_320dp_height_240dp_dpi_320.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,640,480",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "VariableWeightRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.VariableWeightRemote_width=320dp,height=240dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=320dp,height=240dp,dpi=320"
+    },
+    {
+      "annotatedBasename": "VariableWidthRemote_width_320dp_height_240dp_dpi_320.a11y.png",
+      "cleanBasename": "VariableWidthRemote_width_320dp_height_240dp_dpi_320.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,640,480",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "VariableWidthRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.VariableWidthRemote_width=320dp,height=240dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=320dp,height=240dp,dpi=320"
+    },
+    {
+      "annotatedBasename": "WatchScreenRemote_width_227dp_height_227dp_dpi_320.a11y.png",
+      "cleanBasename": "WatchScreenRemote_width_227dp_height_227dp_dpi_320.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,454,454",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "WatchScreenRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.WatchScreenRemote_width=227dp,height=227dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=227dp,height=227dp,dpi=320"
+    },
+    {
+      "annotatedBasename": "WidgetContainerGradientRemote.a11y.png",
+      "cleanBasename": "WidgetContainerGradientRemote.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,567,199",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "WidgetContainerGradientRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.WidgetContainerPreviewsKt.WidgetContainerGradientRemote",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/WidgetContainerPreviews.kt",
       "variant": ""
     },
     {
-      "annotatedBasename": "com.example.sampleandroid.PreviewParameterPreviewsKt.UserCardPreview_User Card.a11y.png",
-      "cleanBasename": "",
-      "findings": [],
-      "functionName": "UserCardPreview",
-      "module": "android",
-      "previewId": "com.example.sampleandroid.PreviewParameterPreviewsKt.UserCardPreview_User Card",
-      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt",
+      "annotatedBasename": "WidgetContainerLargeRemote.a11y.png",
+      "cleanBasename": "WidgetContainerLargeRemote.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,567,325",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "WidgetContainerLargeRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.WidgetContainerPreviewsKt.WidgetContainerLargeRemote",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/WidgetContainerPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "WidgetContainerSmallRemote.a11y.png",
+      "cleanBasename": "WidgetContainerSmallRemote.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,567,199",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "WidgetContainerSmallRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.WidgetContainerPreviewsKt.WidgetContainerSmallRemote",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/WidgetContainerPreviews.kt",
       "variant": ""
     },
     {
