@@ -9,6 +9,45 @@ import { RemoteComposeState } from '../core/RemoteComposeState';
 import { ensureWebFont, parseFamily, cssQuoted } from './WebFonts';
 import type { ShaderData } from '../core/operations/ShaderData';
 
+/** One font-variation axis of the current paint: an OpenType tag and the value asked for. */
+interface FontAxis {
+    readonly tag: string;
+    readonly value: number;
+}
+
+/**
+ * The nine `font-stretch` keywords and the percentage each stands for.
+ *
+ * Canvas is the constraint here, not CSS. The `font` shorthand rejects a `font-stretch` percentage
+ * outright — assigning `ctx.font = "25% 32px RF"` leaves the context at its `10px sans-serif`
+ * default, i.e. the whole assignment is voided — and `ctx.fontStretch` is an *enum* attribute whose
+ * only accepted values are these keywords (`'25%'` logs "not a valid enum value of type
+ * CanvasFontStretch" and is ignored). So a `wdth` axis reaches a canvas quantised to these nine
+ * steps, and no finer. It is a real narrowing next to the CSS property, which does take a
+ * percentage, and next to what the other lanes apply — recorded in the audit doc rather than
+ * papered over.
+ */
+const FONT_STRETCH_STEPS: ReadonlyArray<readonly [number, string]> = [
+    [50, 'ultra-condensed'],
+    [62.5, 'extra-condensed'],
+    [75, 'condensed'],
+    [87.5, 'semi-condensed'],
+    [100, 'normal'],
+    [112.5, 'semi-expanded'],
+    [125, 'expanded'],
+    [150, 'extra-expanded'],
+    [200, 'ultra-expanded'],
+];
+
+/** The keyword whose percentage is closest to [percent]; the face clamps it to its own range. */
+export function nearestFontStretch(percent: number): string {
+    let best = FONT_STRETCH_STEPS[0];
+    for (const step of FONT_STRETCH_STEPS) {
+        if (Math.abs(step[0] - percent) < Math.abs(best[0] - percent)) best = step;
+    }
+    return best[1];
+}
+
 function argbToRgba(argb: number): string {
     const a = ((argb >>> 24) & 0xFF) / 255;
     const r = (argb >>> 16) & 0xFF;
@@ -88,6 +127,8 @@ export class CanvasPaintContext extends PaintContext {
     private fontFamily = cssFontStackFor(0);
     private fontWeight = 400;
     private fontItalic = false;
+    /** The document's font-variation axes for the current paint, resolved to their tag names. */
+    private fontAxes: FontAxis[] = [];
     private colorFilterColor: string | null = null;
     private colorFilterArgb = 0;
     private colorFilterMode = 3; // SRC_OVER default
@@ -198,7 +239,16 @@ export class CanvasPaintContext extends PaintContext {
         // from the same operation a few lines up, so the request is exact rather than "every face
         // the family publishes".
         if (source === 'google') {
-            ensureWebFont(name, this.fontWeight, this.fontItalic, this.onFontLoaded ?? undefined);
+            // The axes go with the request: asked for an enumerated weight list the API answers
+            // with pinned static instances, and asked for the axis *ranges* the document uses it
+            // answers with a variable face. Only the second can be varied at paint time.
+            ensureWebFont(
+                name,
+                this.fontWeight,
+                this.fontItalic,
+                this.onFontLoaded ?? undefined,
+                this.fontAxes,
+            );
         }
         return namedFontStack(name);
     }
@@ -462,13 +512,60 @@ export class CanvasPaintContext extends PaintContext {
         }
     }
 
+    /**
+     * The axis name a [tag] int stands for, in either encoding the format uses.
+     *
+     * A `CoreText` style interns its axis names in the text table like any other string and puts the
+     * *text id* in the array; the paint bundle's own `setTextAxis` carries the **raw OpenType tag**
+     * packed into four bytes (`0x77676874` = `wght`). Reading the text table first (ids start at
+     * `START_ID`, so the two ranges can't collide) and unpacking the bytes otherwise covers both
+     * without having to know which writer produced the document. Anything that is neither is dropped
+     * rather than guessed at.
+     */
+    private axisName(tag: number): string | null {
+        if (tag >= RemoteComposeState.START_ID) {
+            const name = this.getText(tag);
+            if (name) return name;
+        }
+        let packed = '';
+        for (let shift = 24; shift >= 0; shift -= 8) {
+            const code = (tag >> shift) & 0xff;
+            if (code < 0x21 || code > 0x7e) return null;
+            packed += String.fromCharCode(code);
+        }
+        return packed;
+    }
+
+    private axisValue(tag: string): number | null {
+        const axis = this.fontAxes.find((a) => a.tag === tag);
+        return axis ? axis.value : null;
+    }
+
     private setFont(): void {
         // CSS canvas font shorthand: [style] [weight] size family.
         // Anything skipped here is silently ignored at render time, so
         // weight + italic must always be folded in for them to take effect.
-        const style = this.fontItalic ? 'italic ' : '';
-        const weight = this.fontWeight !== 400 ? `${this.fontWeight} ` : '';
+        //
+        // Font-variation axes reach the canvas through the shorthand's *own* properties rather than
+        // a `font-variation-settings` (which `ctx.font` has no room for): `wght` is the weight and
+        // `wdth` is `fontStretch` as a percentage, both of which the browser resolves against a
+        // registered variable face's declared ranges. That covers the two axes a document can
+        // actually be seen to vary; anything else — `opsz`, `GRAD`, a custom axis — has no canvas
+        // expression at all and is dropped, which is a platform limit rather than a decode gap.
+        const wght = this.axisValue('wght');
+        const ital = this.axisValue('ital');
+        const italic = this.fontItalic || (ital !== null && ital >= 0.5);
+        const effectiveWeight = wght !== null ? Math.round(wght) : this.fontWeight;
+        const style = italic ? 'italic ' : '';
+        const weight = effectiveWeight !== 400 ? `${effectiveWeight} ` : '';
         this.ctx.font = `${style}${weight}${this.textSize}px ${this.fontFamily}`;
+        // After `font`, not before: assigning the shorthand resets `fontStretch` to the shorthand's
+        // own (absent, so `normal`) value, which would undo this.
+        const stretchable = this.ctx as CanvasRenderingContext2D & { fontStretch?: string };
+        if ('fontStretch' in stretchable) {
+            const wdth = this.axisValue('wdth');
+            stretchable.fontStretch = wdth !== null ? nearestFontStretch(wdth) : 'normal';
+        }
     }
 
     // --- PaintContext abstract methods ---
@@ -632,7 +729,15 @@ export class CanvasPaintContext extends PaintContext {
                     break;
                 case PaintBundle.FONT_AXIS: {
                     const axisCount = upper;
-                    i += axisCount * 2; // each axis: tag int + value float-as-int
+                    const axes: FontAxis[] = [];
+                    for (let k = 0; k < axisCount; k++) {
+                        const tag = arr[i++];
+                        const value = intBitsToFloat(arr[i++]);
+                        const name = this.axisName(tag);
+                        if (name) axes.push({ tag: name, value });
+                    }
+                    this.fontAxes = axes;
+                    this.setFont();
                     break;
                 }
                 case PaintBundle.TEXTURE: {

@@ -19,6 +19,7 @@ question:
 | | built-in ids | named (local) | `google:` downloadable | embedded `FontData` |
 | --- | --- | --- | --- | --- |
 | **JS** (vendored TS player, in-browser) | ✅ concrete stacks | ⚠️ passed to CSS; host must have the face | ✅ fetched from the Google Fonts CSS API | ❌ bytes stored, never registered |
+| **JS** — font-variation axes | ✅ `wght` exactly, `wdth` quantised to the nine `font-stretch` keywords | — | ✅ requested as axis *ranges*, which is what makes the face variable | ❌ other axes have no canvas expression |
 | **CMP Wasm** (this repo's player, in-browser) | ✅ from the host manifest | ✅ if the manifest carries it | ⚠️ manifest only — no fetch | ✅ `decodeInlineFonts` |
 | **CMP Wasm** — font-variation axes | ✅ layout ops (`CoreText`) | — | — | ❌ canvas ops (reported, not silent) |
 | **Java** (AOSP `remote-player-view`, server-side) | ✅ framework typefaces | ⚠️ `/system/fonts/` filename scan | ✅ served by `RcGoogleFontTypefaceResolver` | ✅ `Font.Builder(ByteBuffer)` |
@@ -101,6 +102,27 @@ switch for a CSP-restricted webview or a hermetic lane), an unprefixed name is o
 to the host. The first paint happens in the fallback face and the player repaints itself through
 `onFontLoaded`, so the interactive viewer needs no font-awareness; single-shot renderers await
 `player.fontsReady()` (the serve format-compare page does).
+
+**Font-variation axes are applied, and the request shape is what makes them possible.** The paint
+bundle's axes used to be parsed and skipped; they now reach the canvas. Two halves:
+
+- *What is fetched.* The default request enumerates weights (`ital,wght@0,100;…;1,900`) and css2
+  answers it with a **pinned static instance per weight** — `font-weight: 100; font-stretch: 100%`,
+  no axis to vary. Asked instead for the axis *ranges* a document uses (`wdth,wght@25..151,
+  100..1000`), the same API answers with a genuine variable face (`font-weight: 100 1000;
+  font-stretch: 25% 151%`). The player therefore accumulates the values it sees per family — the
+  three lines of a `wdth` specimen are three separate paints, each carrying one value — and asks for
+  the span. A single value is left alone: css2 rejects a degenerate `wdth@25..25` with a 400, and the
+  enumerated request already covers it. The enumerated stylesheet is registered either way, so a
+  family with no variable face at all (Lobster Two) is unaffected.
+- *What is applied.* `wght` becomes the weight in the canvas `font` shorthand, exactly. `wdth`
+  becomes `ctx.fontStretch` — and **that is quantised**: canvas rejects a `font-stretch` percentage
+  in both places it could take one (assigning `ctx.font = "25% 32px …"` voids the whole assignment,
+  and `ctx.fontStretch = '25%'` logs *not a valid enum value of type CanvasFontStretch*), so the
+  value maps to the nearest of the nine CSS keywords. `wdth 25` lands on `ultra-condensed` (50%) and
+  `wdth 151` on `extra-expanded` (150%). The ramp reads correctly and is not pixel-identical to the
+  lanes that instance the file directly. Every other axis — `opsz`, `GRAD`, a custom one — has no
+  canvas expression at all and is dropped. This is a platform ceiling, not a decode gap.
 
 ### CMP Wasm — this repo's player, client-side
 
