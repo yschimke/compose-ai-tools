@@ -51,6 +51,12 @@ internal object MergedResourceOwnership {
    * build that never merged resources, a malformed file, or a future AGP that stops writing them),
    * so the caller can distinguish unavailable ownership metadata from a valid result containing no
    * first-party file resources.
+   *
+   * "Usable" means the parse both completed *and* recognised the schema — see [collectInto]. Well-
+   * formed XML we can't read is the dangerous case: it yields zero keys without throwing, and an
+   * empty retain-set prunes every file resource while `resources.arsc` keeps pointing at them,
+   * which is issue #3260 all over again. Only a blame file that actually contained `<dataSet>`
+   * elements can prove the "this build has no first-party file resources" case.
    */
   fun firstPartyFileResourceKeys(moduleBuildDir: File): Set<String>? {
     val keys = mutableSetOf<String>()
@@ -60,9 +66,11 @@ internal object MergedResourceOwnership {
       // still make the overall result usable.
       val fileKeys = mutableSetOf<String>()
       runCatching { collectInto(fileKeys, blame) }
-        .onSuccess {
-          usableBlameFound = true
-          keys += fileKeys
+        .onSuccess { recognised ->
+          if (recognised) {
+            usableBlameFound = true
+            keys += fileKeys
+          }
         }
     }
     return keys.takeIf { usableBlameFound }
@@ -90,8 +98,15 @@ internal object MergedResourceOwnership {
    * `<dataSet>`. Streaming (StAX) rather than DOM on purpose: a merger.xml for an app-sized module
    * is megabytes of inlined `values` XML, and we only care about the element names and one
    * attribute.
+   *
+   * Returns whether the schema was recognised, i.e. whether the file carried at least one
+   * `<dataSet>`. AGP always writes one for the module's own source set, so a merger.xml with none
+   * is a file we don't understand — a future AGP that restructures it while keeping the name parses
+   * cleanly here and yields nothing, and the caller must not read that as "no first-party
+   * resources". Recognised-but-empty (data sets present, no file resources in them) stays a valid
+   * result.
    */
-  private fun collectInto(keys: MutableSet<String>, blame: File) {
+  private fun collectInto(keys: MutableSet<String>, blame: File): Boolean {
     val factory =
       XMLInputFactory.newInstance().apply {
         // Blame files are build output, not untrusted input, but a resource-merge XML never needs
@@ -99,16 +114,20 @@ internal object MergedResourceOwnership {
         setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false)
         setProperty(XMLInputFactory.SUPPORT_DTD, false)
       }
-    blame.inputStream().buffered().use { input ->
+    return blame.inputStream().buffered().use { input ->
       val reader = factory.createXMLStreamReader(input)
       // Data sets don't nest, so a single "are we inside a first-party one" flag is enough; it is
       // set on every <dataSet> open and consulted by the <file> entries that follow.
       var firstParty = false
+      var sawDataSet = false
       try {
         while (reader.hasNext()) {
           if (reader.next() != XMLStreamConstants.START_ELEMENT) continue
           when (reader.localName) {
-            "dataSet" -> firstParty = isFirstParty(reader.getAttributeValue(null, "config"))
+            "dataSet" -> {
+              sawDataSet = true
+              firstParty = isFirstParty(reader.getAttributeValue(null, "config"))
+            }
             "file" ->
               if (firstParty) {
                 // A single-file resource is written with its identity spelled out —
@@ -131,6 +150,7 @@ internal object MergedResourceOwnership {
       } finally {
         reader.close()
       }
+      sawDataSet
     }
   }
 
