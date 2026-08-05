@@ -2431,6 +2431,29 @@ class ServeWebFixtureTest {
   }
 
   @Test
+  fun `the snapshot image records the render URL its pixels came from`() {
+    // The visible <img> is painted from a fetched blob, so `src` is an opaque `blob:` UUID that
+    // says nothing about which render produced it. `data-cp-src` carries the originating /render
+    // URL — format, knobs and lane — and is the only handle on the *displayed* frame's identity.
+    // The `#cp-url-png` / `#cp-url-svg` copy fields are not a substitute: they mirror the current
+    // control state and update before (or without) any render landing.
+    //
+    // This is a unit-level guard for the serve-lanes e2e, which silently lost its teeth once the
+    // blob swap landed and `src` stopped matching the render URL it was asserting on.
+    val js = assetText("viewer.js")
+    assertTrue(
+      js.contains("img.setAttribute(\"data-cp-src\", url);"),
+      "the fetched URL is recorded",
+    )
+    assertTrue(
+      js.indexOf("img.setAttribute(\"data-cp-src\", url);") >
+        js.indexOf("img.setAttribute(\"data-cp-blob\", objectUrl);"),
+      "recorded in the same onload that swaps the frame in, so it never describes pixels that " +
+        "haven't been painted yet",
+    )
+  }
+
+  @Test
   fun `viewer defaults to fit screen and offers an explicit fit width mode`() {
     val view = ServeWeb.viewerPage(previews.first(), token)
     assertTrue(
