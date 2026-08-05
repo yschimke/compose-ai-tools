@@ -11,6 +11,7 @@ import java.lang.reflect.Method;
 import java.net.URL;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -55,6 +56,12 @@ public final class SharedNativeRuntimeLoader extends DefaultNativeRuntimeLoader 
 
   private static final String COMPLETE_MARKER = ".complete";
   private static final String HYPHEN_DATA_DIR = "hyphen-data";
+
+  /** Serializes cache initialization for every sandbox that shares this class — see below. */
+  private static final Object EXTRACTION_MONITOR = new Object();
+
+  private static final int LOCK_RETRY_LIMIT = 600;
+  private static final long LOCK_RETRY_MILLIS = 100L;
 
   @Override
   public synchronized void ensureLoaded() {
@@ -111,39 +118,97 @@ public final class SharedNativeRuntimeLoader extends DefaultNativeRuntimeLoader 
     Path destination = root.resolve(key);
     Path lockPath = root.resolve(key + ".lock");
 
-    try (FileChannel channel =
-            FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-        FileLock ignored = channel.lock()) {
-      if (isComplete(destination)) {
-        return destination;
-      }
-
-      deleteRecursively(destination);
-      Path staging = root.resolve(key + ".staging");
-      deleteRecursively(staging);
-      Files.createDirectories(staging);
-      try {
-        SharedTempDirectory extraction = new SharedTempDirectory(staging);
-        if (Build.VERSION.SDK_INT >= O) {
-          invokeExtraction("maybeCopyFonts", extraction);
-          invokeExtraction("maybeCopyHyphenData", extraction);
-        }
-        invokeExtraction("maybeCopyIcuData", extraction);
-        maybeCopyExtraResources(extraction);
-        copyNativeLibrary(staging);
-        Files.writeString(
-            staging.resolve(COMPLETE_MARKER), key, StandardCharsets.UTF_8);
-        try {
-          Files.move(staging, destination, StandardCopyOption.ATOMIC_MOVE);
-        } catch (java.nio.file.AtomicMoveNotSupportedException ignoredMove) {
-          Files.move(staging, destination);
-        }
-      } catch (IOException | ReflectiveOperationException | RuntimeException e) {
-        deleteRecursively(staging);
-        throw e;
-      }
+    // Warm-cache fast path, deliberately outside the lock. The cache directory only ever appears
+    // via the atomic move below, so a complete marker means a fully published directory — there is
+    // nothing to serialize against. This is the overwhelmingly common case (every sandbox after the
+    // first, in every process after the first), and taking a file lock for it is what made the
+    // intra-JVM overlap below reachable at all.
+    if (isComplete(destination)) {
       return destination;
     }
+
+    return withExclusiveCacheLock(lockPath, () -> extractUnderLock(destination, key, root));
+  }
+
+  /** Work that runs while this JVM holds the cache lock exclusively. */
+  @FunctionalInterface
+  interface CacheWork<T> {
+    T run() throws IOException, ReflectiveOperationException;
+  }
+
+  /**
+   * Run {@code body} while holding {@code lockPath} against both other processes and other
+   * sandboxes in this one.
+   *
+   * <p>A {@link FileLock} belongs to the JVM, not to the thread or the classloader: a second
+   * sandbox locking the same region in the same process gets {@link OverlappingFileLockException}
+   * rather than blocking, and that is an unchecked exception the caller's {@code ensureLoaded}
+   * catch does not cover. Robolectric builds a classloader per sandbox, so {@code synchronized} on
+   * a field of this class only covers sandboxes that happen to share our copy of it — the retry is
+   * what makes the cross-classloader case correct, and the monitor is what stops the common
+   * same-classloader case from spinning to get there.
+   *
+   * <p>Visible for testing.
+   */
+  static <T> T withExclusiveCacheLock(Path lockPath, CacheWork<T> body)
+      throws IOException, ReflectiveOperationException {
+    synchronized (EXTRACTION_MONITOR) {
+      for (int attempt = 0; ; attempt++) {
+        try (FileChannel channel =
+                FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            FileLock ignored = channel.lock()) {
+          return body.run();
+        } catch (OverlappingFileLockException contended) {
+          if (attempt >= LOCK_RETRY_LIMIT) {
+            throw new IOException(
+                "Another sandbox in this JVM held "
+                    + lockPath
+                    + " for over "
+                    + (LOCK_RETRY_LIMIT * LOCK_RETRY_MILLIS)
+                    + "ms",
+                contended);
+          }
+          try {
+            Thread.sleep(LOCK_RETRY_MILLIS);
+          } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted waiting for " + lockPath, interrupted);
+          }
+        }
+      }
+    }
+  }
+
+  private Path extractUnderLock(Path destination, String key, Path root)
+      throws IOException, ReflectiveOperationException {
+    if (isComplete(destination)) {
+      return destination;
+    }
+
+    deleteRecursively(destination);
+    Path staging = root.resolve(key + ".staging");
+    deleteRecursively(staging);
+    Files.createDirectories(staging);
+    try {
+      SharedTempDirectory extraction = new SharedTempDirectory(staging);
+      if (Build.VERSION.SDK_INT >= O) {
+        invokeExtraction("maybeCopyFonts", extraction);
+        invokeExtraction("maybeCopyHyphenData", extraction);
+      }
+      invokeExtraction("maybeCopyIcuData", extraction);
+      maybeCopyExtraResources(extraction);
+      copyNativeLibrary(staging);
+      Files.writeString(staging.resolve(COMPLETE_MARKER), key, StandardCharsets.UTF_8);
+      try {
+        Files.move(staging, destination, StandardCopyOption.ATOMIC_MOVE);
+      } catch (java.nio.file.AtomicMoveNotSupportedException ignoredMove) {
+        Files.move(staging, destination);
+      }
+    } catch (IOException | ReflectiveOperationException | RuntimeException e) {
+      deleteRecursively(staging);
+      throw e;
+    }
+    return destination;
   }
 
   private static boolean isComplete(Path directory) {
