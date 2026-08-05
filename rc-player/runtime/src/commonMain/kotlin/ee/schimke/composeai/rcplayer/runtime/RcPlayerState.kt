@@ -59,6 +59,8 @@ import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueIntegerExpressionChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcValueStringChangeAction
 import ee.schimke.composeai.rcplayer.protocol.RcWakeIn
+import ee.schimke.composeai.rcplayer.trace.RcTraceCategory
+import ee.schimke.composeai.rcplayer.trace.rcTrace
 
 private const val MAX_LOOP_ITERATIONS = 10_000
 
@@ -189,16 +191,17 @@ public class RcPlayerState(
   public fun beginFrame(
     timeSeconds: Float = 0f,
     epochMillis: Long = timeSource.currentTimeMillis(),
-  ) {
-    frameTimeSeconds = timeSeconds
-    frameEpochMillis = epochMillis
-    paths.clear()
-    paths.putAll(basePaths)
-    texts.clear()
-    texts.putAll(baseTexts)
-    texts.putAll(textOverrides)
-    computedMatrices.clear()
-  }
+  ): Unit =
+    rcTrace(RcTraceCategory.FRAME, "rc:beginFrame") {
+      frameTimeSeconds = timeSeconds
+      frameEpochMillis = epochMillis
+      paths.clear()
+      paths.putAll(basePaths)
+      texts.clear()
+      texts.putAll(baseTexts)
+      texts.putAll(textOverrides)
+      computedMatrices.clear()
+    }
 
   /** Evaluates AndroidX `TimeAttribute.paint` against one wall-clock snapshot for this frame. */
   public fun applyTimeAttribute(operation: RcTimeAttribute) {
@@ -677,7 +680,10 @@ public class RcPlayerState(
   }
 
   /** Dispatches every legacy click area containing the point, matching `CoreDocument.onClick`. */
-  public fun executeClickAreasAt(x: Float, y: Float): Int {
+  public fun executeClickAreasAt(x: Float, y: Float): Int =
+    rcTrace(RcTraceCategory.INPUT, "rc:clickAreaHitTest") { executeClickAreasAtUnchecked(x, y) }
+
+  private fun executeClickAreasAtUnchecked(x: Float, y: Float): Int {
     var dispatched = 0
     clickAreas.forEach { area ->
       if (
@@ -712,6 +718,15 @@ public class RcPlayerState(
   }
 
   private fun executeActions(
+    children: List<RcLinkedNode>,
+    invalidateAfterChanges: Boolean,
+    containerName: String,
+  ): Unit =
+    rcTrace(RcTraceCategory.INPUT, "rc:actions") {
+      executeActionsUnchecked(children, invalidateAfterChanges, containerName)
+    }
+
+  private fun executeActionsUnchecked(
     children: List<RcLinkedNode>,
     invalidateAfterChanges: Boolean,
     containerName: String,

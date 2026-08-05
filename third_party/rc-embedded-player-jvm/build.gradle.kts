@@ -222,6 +222,12 @@ dependencies {
   // so every lane draws the same file for the same family.
   implementation(project(":data-fonts-google"))
 
+  // androidx.tracing 2.x, used directly (not through `:rc-player-trace`) by `RcJvmRenderer`. This
+  // module renders through AndroidX's own embedded player, so it traces with AndroidX's own tracer;
+  // the category and span names deliberately line up with `RcTraceCategory`'s so a single Perfetto
+  // capture puts this lane and the CMP player's lane on comparable tracks. See `RcJvmRenderer.kt`.
+  implementation(libs.androidx.tracing.kmp)
+
   testImplementation(libs.junit)
   // Manifest parsing for the rc-compare jvm render harness (RcJvmRenderHarness) — parsed via the
   // runtime `Json` API, so no serialization compiler plugin is needed.

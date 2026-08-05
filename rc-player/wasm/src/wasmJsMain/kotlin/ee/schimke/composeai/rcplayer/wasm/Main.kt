@@ -28,6 +28,9 @@ import ee.schimke.composeai.rcplayer.protocol.RcTheme
 import ee.schimke.composeai.rcplayer.runtime.RcHostActionValue
 import ee.schimke.composeai.rcplayer.runtime.RcNamedValue
 import ee.schimke.composeai.rcplayer.runtime.RcPlayerEvent
+import ee.schimke.composeai.rcplayer.trace.RcTraceCategory
+import ee.schimke.composeai.rcplayer.trace.rcTrace
+import ee.schimke.composeai.rcplayer.trace.setRcPlatformTracingEnabled
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.io.encoding.Base64
@@ -51,6 +54,11 @@ private sealed interface LoadState {
 private var loadState by mutableStateOf<LoadState>(LoadState.Loading)
 
 public fun main() {
+  // Browser User Timing marks are opt-in: `performance`'s entry buffer is finite and shared with
+  // whatever else the embedding page measures, so a player embedded in someone's dashboard should
+  // not be filling it on every frame. `?rcTrace=1` turns the player's spans on for a session; the
+  // span names match the ones the desktop player writes into Perfetto.
+  setRcPlatformTracingEnabled(queryParameter("rcTrace") == "1")
   val source = queryParameter("src")
   val theme =
     when (queryParameter("theme")?.lowercase()) {
@@ -64,7 +72,9 @@ public fun main() {
         if (source == null) LoadState.Failed("Missing ?src=<document.rc>")
         else
           runCatching {
-              val document = RcDocumentCodec.decode(fetchBytes(source))
+              val bytes =
+                rcTrace(RcTraceCategory.DOCUMENT, "rc:fetchDocument") { fetchBytes(source) }
+              val document = RcDocumentCodec.decode(bytes)
               val fontFamilies = withTimeout(8_000) { loadHostFontFamilies() }
               document
                 .composeSupportReport(
