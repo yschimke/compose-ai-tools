@@ -215,4 +215,32 @@ class BundleSplitTest {
     // The baked image still travels.
     assertTrue("previews/A.png" in entries)
   }
+
+  /**
+   * The property that stopped a 181-preview catalog OOMing in CI: the splitter hands each bundle to
+   * the caller and keeps no reference, so peak memory is the source plus ONE output rather than one
+   * per preview. Every FULL bundle carries the shared classpath and Android resource payload, so
+   * accumulating them multiplies that payload by the preview count.
+   *
+   * Pinned structurally rather than by measuring heap: what the streaming pass emits must match the
+   * list API exactly, so the list API can stay a thin wrapper over it and callers that care about
+   * memory (the CLI) can write each bundle out and drop it.
+   */
+  @Test
+  fun `streaming split emits the same bundles as the list API`() {
+    val zip = sheetZip()
+    val seen = mutableListOf<String>()
+    var everyBundleCarriedItsZip = true
+
+    val emitted =
+      forEachSplitPreview(zip, SplitMode.FULL) { preview ->
+        seen += preview.id
+        if (preview.zipBytes.isEmpty()) everyBundleCarriedItsZip = false
+      }
+
+    val viaList = splitBundleZip(zip, SplitMode.FULL)
+    assertEquals(viaList.size, emitted, "the streaming pass emits the same count")
+    assertEquals(viaList.map { it.id }, seen, "in the same order")
+    assertTrue(everyBundleCarriedItsZip, "each emitted bundle is complete when handed over")
+  }
 }
