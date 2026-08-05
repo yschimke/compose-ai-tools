@@ -88,6 +88,32 @@ internal fun splitBundleZip(
   mode: SplitMode,
   crop: Boolean = true,
 ): List<SplitPreview> {
+  val result = ArrayList<SplitPreview>()
+  forEachSplitPreview(sheetZip, mode, crop) { result += it }
+  return result
+}
+
+/**
+ * Streaming counterpart of [splitBundleZip]: hands each [SplitPreview] to [onPreview] as it is
+ * built and keeps no reference to it, returning how many were emitted.
+ *
+ * Accumulating the whole list is what the CLI used to do, and it does not scale. Every FULL bundle
+ * carries the shared re-render payload — `classes/app.jar`, `libs/`, and the Android
+ * `resources.ap_` table — so holding N of them costs N copies of it at once. Pocket Casts' 181
+ * previews against an unpruned app-resource table OOM'd a 4 GB CI heap (`OutOfMemoryError` in
+ * [writeDeterministicZip]); the resource pruner had been masking it by shrinking that payload, and
+ * the masking stopped when the pruner was corrected to retain resources it cannot positively
+ * attribute to a dependency.
+ *
+ * Peak memory is now the source bundle plus ONE output bundle, independent of preview count. The
+ * list-returning [splitBundleZip] is kept for tests, which split a handful of previews.
+ */
+internal fun forEachSplitPreview(
+  sheetZip: ByteArray,
+  mode: SplitMode,
+  crop: Boolean = true,
+  onPreview: (SplitPreview) -> Unit,
+): Int {
   val entries = readZipEntries(sheetZip)
   val bundleJsonBytes =
     entries["bundle.json"]
@@ -123,7 +149,7 @@ internal fun splitBundleZip(
   }
   val fullMode = mode == SplitMode.FULL
 
-  val result = ArrayList<SplitPreview>(ids.size)
+  var emitted = 0
   for (id in ids) {
     val rawCover =
       entries["$BUNDLE_PREVIEWS_DIR/$id.png"] ?: continue // no image → nothing to address
@@ -179,9 +205,10 @@ internal fun splitBundleZip(
         )
         .encodeToByteArray()
 
-    result += SplitPreview(id, cover, writeDeterministicZip(out))
+    onPreview(SplitPreview(id, cover, writeDeterministicZip(out)))
+    emitted++
   }
-  return result
+  return emitted
 }
 
 /** Rewrite the sheet manifest for a single preview: cover + previewIds = [id], IR filtered, etc. */
@@ -432,35 +459,38 @@ internal class SplitSubcommand(private val args: List<String>) {
     outDir.mkdirs()
 
     val zipBytes = BundleReader.extractZipBytes(file)
-    val split =
-      try {
-        splitBundleZip(zipBytes, mode, crop = crop)
-      } catch (e: IllegalArgumentException) {
-        System.err.println("bundle split: ${e.message}")
-        exitProcess(1)
-      }
-    if (split.isEmpty()) {
-      System.err.println(
-        "bundle split: no previews with a baked image found in ${file.name} — nothing to split."
-      )
-      exitProcess(1)
-    }
 
     // Distinct ids can sanitize to the same stem (e.g. `A B` and `A_B`, or `/` vs `_`); on a
     // collision append -2/-3/… so every preview keeps its own file instead of silently overwriting.
     val usedStems = HashSet<String>()
-    val written = ArrayList<File>(split.size)
-    for (preview in split) {
-      val base = sanitizeSplitFileName(preview.id)
-      var stem = base
-      var n = 1
-      while (!usedStems.add(stem)) {
-        n++
-        stem = "$base-$n"
+    val written = ArrayList<File>()
+    // Write each bundle as it is produced and let it go. Collecting them first meant holding every
+    // per-preview bundle — each carrying the shared classpath + Android resource table — in memory
+    // simultaneously, which OOM'd on a 181-preview catalog. Only the File handles are kept, for the
+    // size summary below.
+    val emitted =
+      try {
+        forEachSplitPreview(zipBytes, mode, crop = crop) { preview ->
+          val base = sanitizeSplitFileName(preview.id)
+          var stem = base
+          var n = 1
+          while (!usedStems.add(stem)) {
+            n++
+            stem = "$base-$n"
+          }
+          val outFile = File(outDir, "$stem.png")
+          outFile.writeBytes(preview.polyglot())
+          written += outFile
+        }
+      } catch (e: IllegalArgumentException) {
+        System.err.println("bundle split: ${e.message}")
+        exitProcess(1)
       }
-      val outFile = File(outDir, "$stem.png")
-      outFile.writeBytes(preview.polyglot())
-      written += outFile
+    if (emitted == 0) {
+      System.err.println(
+        "bundle split: no previews with a baked image found in ${file.name} — nothing to split."
+      )
+      exitProcess(1)
     }
 
     val sizes = written.map { it.length() }

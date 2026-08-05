@@ -546,6 +546,15 @@ jobs:
       # duplication and owe nothing to the shared pool.
       - name: Split into per-preview bundles
         if: ${{ inputs.split-per-preview }}
+        env:
+          # Let the split use the runner's real memory instead of the JVM's default quarter-of-RAM.
+          # A FULL split writes one bundle per preview and each carries the shared re-render payload
+          # (classes/app.jar, libs/, the Android resources.ap_ table), so the working set scales with
+          # catalog size: `pocketcasts` (181 previews) OOM'd here on the default heap. The CLI no
+          # longer holds every bundle at once, but the source bundle alone is hundreds of MB for a
+          # large catalog, and a percentage scales with whatever runner this lands on rather than
+          # hardcoding a size that is wrong on half of them.
+          JAVA_OPTS: -XX:MaxRAMPercentage=75
         run: |
           set -euo pipefail
           if [ "${{ inputs.split-mode }}" = "view-only" ]; then
