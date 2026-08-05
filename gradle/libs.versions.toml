@@ -191,7 +191,7 @@ glance-wear = "1.0.0-alpha15"
 # freely; the sample is meant to ride the latest prerelease compose.
 compose-ui-prerelease = "1.11.4"
 kotlinx-coroutines = "1.11.0"
-kotlinx-datetime = "0.8.0"
+kotlinx-datetime = "0.8.0-0.6.x-compat"
 kotlinx-serialization = "1.11.0"
 mcp-kotlin-sdk = "0.15.0"
 okio = "3.18.1"
