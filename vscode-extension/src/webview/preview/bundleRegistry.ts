@@ -173,13 +173,21 @@ export const BUNDLES: readonly BundleDescriptor[] = [
         id: "performance",
         label: "Performance",
         icon: "pulse",
+        // The Performance chip is itself the advanced surface: it only paints
+        // when the panel isn't in basic mode (`availableBundles`), so every
+        // press is already a deliberate act by someone asking a perf question.
+        // The two kinds that answer that question are therefore default-ON —
+        // a chip that toggles on and shows an empty tab until you find the
+        // Configure expander isn't subtle, it's broken. `render/composeAiTrace`
+        // stays expander-only: it's the raw Perfetto blob behind a sysprop,
+        // useful for a handoff to ui.perfetto.dev rather than for reading here.
         kinds: [
             {
                 kind: "compose/recomposition",
                 label: "Recomposition",
-                defaultOn: false,
+                defaultOn: true,
             },
-            { kind: "render/trace", label: "Render trace", defaultOn: false },
+            { kind: "render/trace", label: "Render trace", defaultOn: true },
             {
                 kind: "render/composeAiTrace",
                 label: "Perfetto trace",

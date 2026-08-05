@@ -1061,6 +1061,9 @@ class RenderEngine(
       metrics = metrics,
       previewContext = previewContext,
       outputBaseName = spec.outputBaseName,
+      // Phase timings for `render/trace` v2. Taken here, after the last section closed, so it
+      // covers classloading, composable resolution, setContent, the clock advance and the capture.
+      trace = trace.renderTrace(),
     )
   }
 

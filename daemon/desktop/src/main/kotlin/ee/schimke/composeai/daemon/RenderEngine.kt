@@ -119,6 +119,22 @@ class RenderEngine(
   private val frameNanoTime: () -> Long = System::nanoTime,
   private val fileSystem: FileSystem = SystemFileSystem,
   /**
+   * Scene lifecycle hook — fires with the freshly allocated [ImageComposeScene] **before**
+   * `setContent` composes into it, and again with `null` at tearDown.
+   *
+   * This exists so `compose/recomposition` can answer for an ordinary render. That producer
+   * instruments a scene's `Recomposer`, and until now the only scene it could reach was the one a
+   * *live interactive session* held (`DesktopHost.InteractiveSessionListener`), so recomposition
+   * counts were unavailable for the plain render path — which is the path almost every preview
+   * takes. The install has to happen before `setContent` or the initial composition, the very thing
+   * worth counting, has already run by the time the observer attaches.
+   *
+   * Deliberately a plain function type rather than `DesktopHost.InteractiveSessionListener`: the
+   * engine has no business knowing about interactive sessions, and the two callers converge on the
+   * same producer method anyway. Null (the default) keeps every test's behaviour.
+   */
+  private val sceneLifecycleListener: ((String, ImageComposeScene?) -> Unit)? = null,
+  /**
    * Always-on post-capture data-artifact extensions, mirroring the Android engine's
    * `builtDataArtifactExtensions` seam. Each [PostCaptureProcessor] runs after the PNG capture,
    * reading the [RenderArtifactContextKeys] the engine populates. Defaults to the portable
@@ -196,14 +212,20 @@ class RenderEngine(
       trace.section("compose:setUp") {
         setUp(spec, classLoader, inspectionMode = spec.inspectionMode ?: true, trace = trace)
       }
-    try {
-      return trace.section("render:once") {
-        renderOnce(state, requestId, sandboxStats = sandboxStats, trace = trace)
+    val result =
+      try {
+        trace.section("render:once") {
+          renderOnce(state, requestId, sandboxStats = sandboxStats, trace = trace)
+        }
+      } finally {
+        trace.section("compose:tearDown") { tearDown(state) }
+        trace.write(dataDir)
       }
-    } finally {
-      trace.section("compose:tearDown") { tearDown(state) }
-      trace.write(dataDir)
-    }
+    // Re-stamp the trace here rather than taking `renderOnce`'s: `finally` has run by now, so this
+    // snapshot is the only one that includes `compose:setUp`, `render:once` and `compose:tearDown`.
+    // `renderOnce` still stamps its own, which is what the interactive session (which calls it
+    // directly, once per input) reports.
+    return result.copy(trace = trace.renderTrace())
   }
 
   /**
@@ -375,6 +397,19 @@ class RenderEngine(
     // interactive/recording
     // session leak its locale onto every other render in the same daemon until it closed;
     // [renderOnce] re-applies it around each frame instead. See [overrideJvmDefaultLocale].
+    // Announce the scene before anything composes into it — see [sceneLifecycleListener]. Guarded
+    // because a producer-side failure must never fail the render it is only observing.
+    val lifecyclePreviewId = spec.previewId
+    if (sceneLifecycleListener != null && lifecyclePreviewId != null) {
+      try {
+        sceneLifecycleListener.invoke(lifecyclePreviewId, scene)
+      } catch (t: Throwable) {
+        System.err.println(
+          "RenderEngine: scene lifecycle listener failed for $lifecyclePreviewId: " +
+            "${t.javaClass.simpleName}: ${t.message}"
+        )
+      }
+    }
     val previousDefaultLocale = overrideJvmDefaultLocale(effectiveLocaleTag(spec.localeTag))
     try {
       trace.section("compose:setContent") {
@@ -783,6 +818,10 @@ class RenderEngine(
       metrics = metrics,
       previewContext = previewContext,
       outputBaseName = state.spec.outputBaseName,
+      // The interactive session calls this directly, once per input, and never goes through
+      // `render`'s setUp/tearDown wrapper — so this is the trace that path reports. The one-shot
+      // `render` overwrites it with a wider snapshot that also covers setUp and tearDown.
+      trace = trace.renderTrace(),
     )
   }
 
@@ -866,6 +905,15 @@ class RenderEngine(
    */
   fun tearDown(state: SceneState) {
     try {
+      val previewId = state.spec.previewId
+      if (sceneLifecycleListener != null && previewId != null) {
+        try {
+          sceneLifecycleListener.invoke(previewId, null)
+        } catch (_: Throwable) {
+          // Already reported at install time; a teardown failure has nowhere useful to go and must
+          // not stop the scene from closing.
+        }
+      }
       state.scene.close()
     } finally {
       Thread.currentThread().contextClassLoader = state.previousContext
