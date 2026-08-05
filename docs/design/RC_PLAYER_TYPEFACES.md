@@ -20,6 +20,7 @@ question:
 | --- | --- | --- | --- | --- |
 | **JS** (vendored TS player, in-browser) | ✅ concrete stacks | ⚠️ passed to CSS; host must have the face | ✅ fetched from the Google Fonts CSS API | ❌ bytes stored, never registered |
 | **CMP Wasm** (this repo's player, in-browser) | ✅ from the host manifest | ✅ if the manifest carries it | ⚠️ manifest only — no fetch | ✅ `decodeInlineFonts` |
+| **CMP Wasm** — font-variation axes | ✅ layout ops (`CoreText`) | — | — | ❌ canvas ops (reported, not silent) |
 | **Java** (AOSP `remote-player-view`, server-side) | ✅ framework typefaces | ⚠️ `/system/fonts/` filename scan | ❌ no provider call at all | ✅ `Font.Builder(ByteBuffer)` |
 | **CMP Android** (vendored embedded player, server-side) | ✅ framework typefaces | ⚠️ `Typeface.create(name)` | ✅ `FontsContractCompat` | ❌ ignored |
 | **CMP JVM** (embedded player over Skiko, server-side) | ✅ | ⚠️ host families, else nearest standard | ✅ downloaded via `GoogleFontTypefaceResolver` | ❌ ignored |
@@ -75,13 +76,29 @@ to the host. The first paint happens in the fallback face and the player repaint
 
 ### CMP Wasm — this repo's player, client-side
 
-`RcComposePlayer` takes a `fontFamilies: Map<String, FontFamily>` and the wasm app loads it from a
+`RcComposePlayer` takes a `fontFamilies: Map<String, RcFontFaces>` and the wasm app loads it from a
 host manifest — `<fontsBase>/fonts.json`, default `./fonts/` relative to the player page
 (`rc-player/wasm/.../Main.kt`). `wasmPlayerDist` copies the catalog's vendored `fonts/` directory
 into the dist, so a `serve` that mounts `--rc-player-wasm-dir` serves the manifest at
 `/rc-player-wasm/fonts/fonts.json` and the lane has Roboto Flex (default), Noto Serif (`serif`),
 Droid Sans Mono (`monospace`) plus the catalog's named faces. Embedded `FontData` is decoded per
 document (`decodeInlineFonts`).
+
+**Every manifest role is loaded**, `default` included. A default-role family is a nameable family
+like any other — the catalog's own text face is `Roboto Flex` — and loading it only as "the
+fallback" left that name unresolvable: the support report checks a named family against exactly the
+loaded set, so a document naming the default face *failed to load* rather than rendering in it.
+
+**Font-variation axes are applied for layout text.** A `CoreText` style carries its axes as tag/value
+pairs (properties 20/21), and the player resolves them into a Compose `FontVariation.Settings`,
+instancing the host's face at those axes. That needs the face's *bytes*, not a built `FontFamily` —
+Compose carries variations on a `Font`, and a family's faces can no longer be re-instanced — so the
+host hands the player [`RcFontFaces`](../../rc-player/compose/src/commonMain/kotlin/ee/schimke/composeai/rcplayer/compose/RcHostFonts.kt)
+(bytes + weight/slant) and instances are cached per axis set. Note the instance's *identity* has to
+carry the axes too: Compose's font cache keys on it, so two instances of one file sharing an identity
+are the same cached typeface and a `wght` ramp would draw every line at the first weight it saw.
+Canvas text ops (`DrawText…`, paint-bundle axes) still map only `wght`/`ital`/`slnt`, and the support
+report says so (`font axis wdth is not implemented`) rather than dropping them silently.
 
 There is no network fetch for a `google:` name — the prefix is stripped and looked up in the same
 manifest. And unlike every other lane, an unsatisfiable family is **fatal rather than substituted**:

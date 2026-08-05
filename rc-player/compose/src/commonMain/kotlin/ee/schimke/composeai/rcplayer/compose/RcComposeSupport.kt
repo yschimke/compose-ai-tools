@@ -1012,10 +1012,18 @@ private fun textStyleIssue(
     properties.filterIsInstance<RcTextStyleProperty.IntArrayValue>().lastOrNull { it.id == 20 }
   val axisValues =
     properties.filterIsInstance<RcTextStyleProperty.FloatArrayValue>().lastOrNull { it.id == 21 }
+  // Font-variation axes ARE implemented for layout text — the player resolves properties 20/21 into
+  // a `FontVariation.Settings` and instances the host's face at them (see `fontVariationSettings`).
+  // What is still a hard error is a *malformed* pair of arrays: tags and values are positional, so
+  // unequal lengths mean the document cannot say which value belongs to which axis, and rendering
+  // it would apply a silently wrong instance rather than a missing one.
+  //
+  // Axes on a family the host doesn't supply as bytes (a generic, or an inline `FontData`) are
+  // dropped at render rather than rejected here: the text still draws in the right family, one
+  // instance off. That is a substitution the audit records, not a document this lane cannot read.
   if (!axes?.values.isNullOrEmpty() || !axisValues?.values.isNullOrEmpty()) {
-    return if (axes?.values?.size != axisValues?.values?.size)
-      "font axis arrays have different sizes"
-    else "font axes are not implemented"
+    if (axes?.values?.size != axisValues?.values?.size)
+      return "font axis arrays have different sizes"
   }
   val flags = int(23, 0)
   if (flags != 0) return "flags $flags are not implemented"

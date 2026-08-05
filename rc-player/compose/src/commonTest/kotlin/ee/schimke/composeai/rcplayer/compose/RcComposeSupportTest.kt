@@ -14,6 +14,7 @@ import ee.schimke.composeai.rcplayer.protocol.RcColorAttribute
 import ee.schimke.composeai.rcplayer.protocol.RcColorExpression
 import ee.schimke.composeai.rcplayer.protocol.RcColumnLayout
 import ee.schimke.composeai.rcplayer.protocol.RcConditionalOperations
+import ee.schimke.composeai.rcplayer.protocol.RcCoreText
 import ee.schimke.composeai.rcplayer.protocol.RcDimensionType
 import ee.schimke.composeai.rcplayer.protocol.RcDocument
 import ee.schimke.composeai.rcplayer.protocol.RcFloatFunctionCall
@@ -457,6 +458,41 @@ class RcComposeSupportTest {
   }
 
   @Test
+  fun acceptsLayoutTextFontAxesAndStillRejectsMalformedPairs() {
+    // The renderer instances the host's face at these axes (see `fontVariationSettings`), so a
+    // document carrying them must load — this gate rejecting them is what kept the catalog's
+    // variable-font specimens off the browser lane entirely.
+    fun coreText(tags: List<Int>, values: List<RcFloatWord>) =
+      RcDocument(
+        header,
+        listOf(
+          RcRootLayout(1),
+          RcLayoutContent(2),
+          RcTextData(42, "Hamburg"),
+          RcTextData(43, "wght"),
+          RcCoreText(
+            textId = 42,
+            properties =
+              listOf(
+                RcTextStyleProperty.IntArrayValue(20, tags),
+                RcTextStyleProperty.FloatArrayValue(21, values),
+              ),
+          ),
+          RcLayoutContent(3),
+        ) + List(4) { RcNoArg(RcOpcodes.CONTAINER_END) },
+      )
+
+    assertTrue(
+      coreText(listOf(43), listOf(RcFloatWord.literal(700f))).composeSupportReport().fullyRenderable
+    )
+    // Positional arrays of different lengths cannot say which value belongs to which axis.
+    assertEquals(
+      "font axis arrays have different sizes",
+      coreText(listOf(43), emptyList()).composeSupportReport().issues.single().detail,
+    )
+  }
+
+  @Test
   fun rejectsMalformedOrUnsupportedFontAxes() {
     val invalidCount =
       RcDocument(header, listOf(RcPaintData(listOf(23 or (9 shl 16)))))
@@ -590,6 +626,15 @@ class RcComposeSupportTest {
     assertTrue(
       document(emptyList(), family = "google:Orbitron")
         .composeSupportReport(availableFontFamilies = setOf("Orbitron"))
+        .fullyRenderable
+    )
+    // A host's *default* face is a nameable family like any other — the browser lane's manifest
+    // gives it a name (`Roboto Flex`) and loads it, so a document naming it must pass rather than
+    // be rejected for having no `DataFont`. This is the contract behind loading every manifest
+    // role, not just `named` / `generic`.
+    assertTrue(
+      document(emptyList(), family = "google:Roboto Flex")
+        .composeSupportReport(availableFontFamilies = setOf("Roboto Flex"))
         .fullyRenderable
     )
   }
