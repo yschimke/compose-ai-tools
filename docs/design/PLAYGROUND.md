@@ -344,6 +344,42 @@ refused under `--public` and pointed at `strict`; a `custom:` jail is taken at
 its word on caps (they're the operator's to supply, and the startup log says so)
 but must still pass the probe.
 
+#### The probe answers "is a *stranger's* snippet contained?" — sometimes nobody is asking
+
+That whole chain is the right question only when a stranger can reach the lane.
+All three playground surfaces — `/playground`, `POST /api/{v}/compiler/run`,
+`/pg/{token}` — already run `rejectMissingGithubAuth` **and**
+`rejectMissingGithubRepoAccess`, so on a host with GitHub auth configured the
+snippet comes from someone with **write** access to `--github-auth-repo` (issue
+#3313 tightened that check from "any access" to `admin`/`maintain`/`write`): a
+collaborator who can already push to the repo whose CI builds this image, at the
+same trust level as the token-gated posture Phases 1–3 shipped under, which the
+gate admits with no sandbox at all.
+
+So `PlaygroundPublicGate.decide` takes `repoAccessGated` as a second, independent
+basis for admission (issue #3210):
+
+| `--public` | repo-access-gated | Decision |
+|---|---|---|
+| no | — | **Allow** — token-gated; sandbox applied if configured |
+| yes | yes | **Allow** — collaborators only; sandbox applied as defence in depth |
+| yes | no | the probe + caps chain above; refused unless it comes back clean |
+| yes | no, and no sandbox | **Refuse**, naming *both* remedies (issue #3214) |
+
+The gate measures *who can reach the lane*, not just which flag the server was
+started with. `Decision.Allow.detail` states which posture admitted it, so an
+operator cannot read "admitted" and assume containment when what they configured
+was sign-in (or vice versa — the contained-and-anonymous log line says
+`ANONYMOUS` in as many words). When a jail is configured under the repo-access
+posture and fails its preflight, the lane still serves — admission never rested
+on the jail there — but `ServeCommand` logs a warning, because the operator asked
+for defence in depth and is not getting it.
+
+This is what makes the playground deployable on a container that cannot jail a
+snippet at all: `preview.coo.ee` serves public catalogs, has no `bubblewrap` and
+no systemd to build a `strict` scope against (issue #3211), and reaches the lane
+through GitHub auth instead.
+
 ### 6.3 The compile is jailed too
 
 `kotlinc` used to run **in the serve JVM**, which was never an
@@ -501,3 +537,48 @@ seats to account for, and a per-request choice the `--public` gate would have to
 reason about. The seam is ready when demand is (`catalogClasspath` is already a
 `(PlaygroundMode) -> Classpath?` function), so this is a wiring change plus a
 request field, not a redesign.
+
+#### Naming that catalog: a path, or a system this box already serves
+
+Both flags originally took a **local filesystem path only**, which made enabling
+the playground on a box that already serves the same catalog a manual step: fetch
+that catalog's liveBundle by hand, drop it on the config volume, keep it there.
+Two things fell out of that — it duplicated work `--catalogs` does at startup
+(fetch, verify `Trusted(Branch)`, resolve a classpath), and the hand-placed copy
+went **silently stale**, since catalog auto-refresh re-points the live lane at a
+newer bundle while the pinned file never moves.
+
+So a flag value is read as one of two forms (`PlaygroundBundleSource`, issue
+#3212):
+
+| Form | Means |
+|---|---|
+| `--playground-bundle /config/x.bundle` | a bundle file on disk — the original behaviour |
+| `--playground-bundle compose-m3` | the liveBundle of an already-served `--catalogs` system |
+
+They are told apart structurally, not guessed at: a path separator, an existing
+file, or a bundle-ish suffix (`.bundle`, `.png`, `.zip`, `.jar`) means a path; a
+bare token is a system id. A catalog system is a branch-name component
+(`design-artifacts/<system>`) and never carries a separator, so neither form can
+be read as the other. Naming a system this box does not serve is a startup error
+listing the ones it does — not a mode that quietly never works.
+
+The system form makes the natural deployment `SERVE_PLAYGROUND_BUNDLE=compose-m3`
+with no file to place, and it inherits the catalog's trust verdict instead of
+trusting whatever bytes landed on the config volume.
+
+**Resolution is deferred**, which the system form forces: catalogs are fetched by
+`InitialCatalogLoader` *after* the server is up, so a classpath resolved while the
+playground lane is being wired would find nothing and disable the mode forever.
+`PlaygroundClasspathSupplier` therefore resolves on first use and memoizes the
+first success; a mode whose bundle hasn't landed answers "mode … is not
+available" and logs why, and recovers by itself once the catalog loads. This is
+also why `PlaygroundCompileService.availableModes` is computed per read rather
+than captured in the constructor.
+
+What is deliberately **not** built: following auto-refresh. Once a classpath
+resolves it is pinned for the process's lifetime, because its jars are open in
+live snippet JVMs and swapping them mid-flight needs generation-scoped unpack
+dirs and a retirement policy. A long-running host keeps compiling against the ABI
+it first resolved; restart to pick up a newer one. Issue #3212 splits that half
+out explicitly.

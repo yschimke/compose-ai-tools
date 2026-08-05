@@ -212,6 +212,8 @@ class PlaygroundSandboxProbeTest {
     assertTrue(
       PlaygroundPublicGate.decide(
         isPublic = true,
+        // On containment alone — no GitHub auth in the picture.
+        repoAccessGated = false,
         sandbox = PlaygroundSandbox(profile = PlaygroundSandbox.Profile.STRICT),
         probe = report,
       ) is PlaygroundPublicGate.Decision.Allow
