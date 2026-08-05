@@ -32,17 +32,23 @@ export function declarationsByPreviewId(bundles) {
       const captures = preview.captures ?? [];
       const supportsFocus = captures.some((capture) => capture?.focus || capture?.focusGif);
       const supportsGestures = captures.some((capture) => capture?.gestureHint);
+      // `@FixedTheme` / a `@ThemeCatalog`-synthesised sheet: the browse surface must not re-render
+      // this card under a theme override, and it has to know that from catalog.json alone —
+      // deciding it lazily would mean the specimen re-themes until its daemon happens to be opened.
+      const fixedTheme = preview.fixedTheme === true;
       if (
         overrides.length > 0 ||
         remoteComposeKnobs.length > 0 ||
         supportsFocus ||
-        supportsGestures
+        supportsGestures ||
+        fixedTheme
       ) {
         out.set(preview.id, {
           ...(overrides.length > 0 ? { overrides } : {}),
           ...(remoteComposeKnobs.length > 0 ? { remoteComposeKnobs } : {}),
           ...(supportsFocus ? { supportsFocus: true } : {}),
           ...(supportsGestures ? { supportsGestures: true } : {}),
+          ...(fixedTheme ? { fixedTheme: true } : {}),
         });
       }
     }

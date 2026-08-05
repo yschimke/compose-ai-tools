@@ -505,6 +505,7 @@ internal object ServeBundleDaemon {
         remoteComposeKnobs = readRemoteComposeSidecar(previewsDir, it.id, fileSystem),
         supportsFocus = focus,
         supportsGestures = gestures,
+        fixedTheme = it.fixedTheme,
       )
     }
   }

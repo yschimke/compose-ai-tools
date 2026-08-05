@@ -106,4 +106,65 @@ class ServeWebThemeSpecimenTest {
     val html = page(listOf(ServePreview(id = "a", label = "A")))
     assertTrue(themeBases(html).any { it.contains("/render/a.png") })
   }
+
+  @Test
+  fun `a fixedTheme preview opts out with no section at all`() {
+    // The `@FixedTheme` half: a specimen in a plain bundle (or a section that isn't "Themes") has
+    // nothing but the annotation to speak for it.
+    val html =
+      page(
+        listOf(
+          ServePreview(id = "themecatalog__brand", label = "Brand theme", fixedTheme = true),
+          ServePreview(id = "contactrow-chat", label = "Contact row"),
+        )
+      )
+    val bases = themeBases(html)
+    assertTrue(
+      bases.none { it.contains("/render/themecatalog__brand.png") },
+      "an @FixedTheme preview must never gain a themeProvider render URL",
+    )
+    assertTrue(
+      bases.any { it.contains("/render/contactrow-chat.png") },
+      "its neighbours still re-render — the control is not disabled wholesale",
+    )
+  }
+
+  @Test
+  fun `a fixedTheme preview in a Components section still opts out`() {
+    // Section and annotation are independent signals; the wrong section must not override the
+    // author's explicit per-preview statement.
+    val bases =
+      themeBases(
+        page(
+          listOf(
+            ServePreview(
+              id = "swatches",
+              label = "Swatches",
+              section = "Foundation",
+              fixedTheme = true,
+            ),
+            ServePreview(id = "contactrow-chat", label = "Contact row", section = "Components"),
+          )
+        )
+      )
+    assertTrue(bases.none { it.contains("/render/swatches.png") })
+    assertTrue(bases.any { it.contains("/render/contactrow-chat.png") })
+  }
+
+  @Test
+  fun `a catalog of only fixedTheme previews offers no declared-theme chips`() {
+    // Same dead-control guard as the section-only case: the chip gate and the per-card URL must
+    // agree on eligibility, whichever signal decided it.
+    val html =
+      page(
+        listOf(
+          ServePreview(id = "themecatalog__light", label = "Light", fixedTheme = true),
+          ServePreview(id = "themecatalog__dark", label = "Dark", fixedTheme = true),
+        )
+      )
+    assertFalse(
+      html.contains("data-theme-choice=\"theme:com.example.BrandTheme\""),
+      "no declared-theme chip when nothing the theme could redraw is renderable",
+    )
+  }
 }

@@ -1102,6 +1102,10 @@ class ServeCatalogLiveHost(
         remoteComposeKnobs = twin.remoteComposeKnobs,
         supportsFocus = twin.supportsFocus,
         supportsGestures = twin.supportsGestures,
+        // OR rather than overwrite: the baked side may already know this card is a specimen from
+        // its catalog `section`/`fixedTheme` metadata, and a daemon twin built from an older
+        // bundle (no `fixedTheme` in its `previews.json`) must not be able to clear that.
+        fixedTheme = p.fixedTheme || twin.fixedTheme,
         uiMode = twin.uiMode,
       )
     }

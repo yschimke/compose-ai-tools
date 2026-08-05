@@ -226,6 +226,7 @@ class ServeBundleHost(
             readRemoteComposeKnobs(id).ifEmpty { meta?.remoteComposeKnobs.orEmpty() },
           supportsFocus = meta?.supportsFocus == true,
           supportsGestures = meta?.supportsGestures == true,
+          fixedTheme = meta?.fixedTheme == true,
           // `state` comes only from a `catalog.json`-backed bundle's `variants.json`
           // (`meta.state`).
           // A plain module bundle has no manifest, so an `@OverrideVariant` synthetic preview

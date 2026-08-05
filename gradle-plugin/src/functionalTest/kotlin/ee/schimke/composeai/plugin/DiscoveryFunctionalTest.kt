@@ -680,6 +680,66 @@ class DiscoveryFunctionalTest {
     // (expected-absent
     // rather than a missing-render regression) — same backend-aware policy as the token catalogs.
     assertThat(light.captures.single().optional).isTrue()
+    // A theme sheet's SUBJECT is the theme, so it is fixed by construction: a preview host that
+    // re-rendered it under another `themeProvider` would leave a sheet captioned "Brand Light"
+    // drawing Brand Dark's colours. No `@FixedTheme` needed on the consumer's side.
+    assertThat(themes.map { it.fixedTheme }).containsExactly(true, true)
+  }
+
+  @Test
+  fun `composePreviewDiscover marks an @FixedTheme preview as theme-fixed`() {
+    val projectDir = createCmpTestProject()
+
+    // Declared locally with the discovered FQN — discovery matches by FQN + target and nothing
+    // else, so the test needs no external `preview-annotations` artifact.
+    val annDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    annDir.mkdirs()
+    File(annDir, "FixedTheme.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION)
+        annotation class FixedTheme
+        """
+          .trimIndent()
+      )
+    File(projectDir, "src/main/kotlin/test/Specimens.kt")
+      .writeText(
+        """
+        package test
+
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.tooling.preview.Preview
+        import ee.schimke.composeai.preview.FixedTheme
+
+        // A specimen with no catalog section to speak for it — the annotation is the only signal.
+        @FixedTheme
+        @Preview @Composable fun BrandLightSpecimen() {}
+
+        // Its ordinary neighbour keeps re-rendering under a theme override.
+        @Preview @Composable fun ContactRow() {}
+        """
+          .trimIndent()
+      )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val byFn = manifest.previews.associateBy { it.functionName }
+    assertThat(byFn.getValue("BrandLightSpecimen").fixedTheme).isTrue()
+    assertThat(byFn.getValue("ContactRow").fixedTheme).isFalse()
   }
 
   @Test
