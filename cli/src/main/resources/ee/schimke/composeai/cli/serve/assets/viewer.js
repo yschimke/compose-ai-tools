@@ -1286,6 +1286,12 @@
     // (and its direct links) instead of skipping the still-disabled control. The live/wasm lanes
     // drive their own render (openStream / openWasm), so only the static lane renders here.
     if (m !== "live" && m !== "wasm" && m !== "rc" && m !== "rc-wasm") refreshSnapshot();
+    // The interactive lanes drive their own render and never reach refreshLinks, so the URL would
+    // still describe the snapshot the visitor just left — the chosen lane unbookmarkable until
+    // some unrelated control moved, and the pending push landing on that edit instead. Sync here
+    // so every transition writes `?mode=` at the moment it happens. (The snapshot branch already
+    // synced via refreshSnapshot; this second call is a no-op replace with identical values.)
+    else syncUrl();
   }
   // SVG format toggle: swap the static snapshot between raster and vector. Pressing it while a
   // live lane is active drops back to the static vector render; pressing it in the static lane
@@ -1783,6 +1789,10 @@
     }
   }
   hydrateFromUrl(false);
+  // Read the bookmarked lane NOW, before the first refreshSnapshot's sync clears a param no
+  // control is holding yet. It is applied at the very bottom of this file, once the snapshot every
+  // lane falls back to has been requested.
+  var initialUrlMode = new URLSearchParams(location.search).get("mode") || "";
   if (window.cpUrlState) {
     window.cpUrlState.onPop(function () {
       hydrateFromUrl(true);
@@ -1799,4 +1809,40 @@
   syncServerControls();
   updateLiveToggle();
   refreshSnapshot();
+  // A bookmarked `?mode=live` / `wasm` / `rc` opens in that lane — but only once the initial
+  // snapshot has LANDED, not merely been requested.
+  //
+  // The stage's <img> is emitted with no src: the refreshSnapshot() above is the only thing that
+  // will ever put pixels in it. Entering an interactive lane cancels any in-flight snapshot
+  // (cancelSnapshotLoading bumps the generation), so switching immediately would discard that one
+  // render and leave a cold bookmarked load looking at an empty stage behind a lane that may take
+  // seconds to paint — or that fails and shows an activation error over nothing. Waiting for the
+  // frame first makes the bookmark land in exactly the state a visitor reaches by loading the page
+  // and clicking the toggle, which is the whole claim.
+  //
+  // Bounded, because the snapshot may never settle: a render that errors sets no src (so neither
+  // event fires) and one that hangs would strand the bookmark on the snapshot lane forever.
+  // A mode this session doesn't offer (no daemon, no Wasm app) is ignored rather than entering a
+  // lane whose control is absent or disabled — the page stays on the snapshot and the param clears
+  // on the next sync.
+  (function () {
+    var wanted = initialUrlMode;
+    if (!wanted || wanted === "png" || wanted === currentMode()) return;
+    var radio = null;
+    Array.prototype.forEach.call(
+      document.querySelectorAll("input[name=\"cp-mode\"]"),
+      function (r) { if (r.value === wanted) radio = r; });
+    if (!radio || radio.disabled) return;
+    var entered = false;
+    function enterBookmarkedMode() {
+      if (entered) return;
+      entered = true;
+      img.removeEventListener("load", enterBookmarkedMode);
+      img.removeEventListener("error", enterBookmarkedMode);
+      setMode(wanted);
+    }
+    img.addEventListener("load", enterBookmarkedMode);
+    img.addEventListener("error", enterBookmarkedMode);
+    setTimeout(enterBookmarkedMode, 8000);
+  })();
 })();

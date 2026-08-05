@@ -184,6 +184,10 @@
   function pushUrl(v) { if (urlState) urlState.push(v); }
   function replaceUrl(v) { if (urlState) urlState.replace(v); }
   if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }
+  // What Back falls back to when an entry carries no `bg` — read off the class the pre-paint
+  // script set, i.e. what THIS load resolved to. Re-reading localStorage here would return the
+  // value a later click wrote, so Back out of Transparent would stay transparent.
+  var initialBg = document.documentElement.classList.contains("cp-bg-transparent") ? "off" : "on";
   var navGroups = document.querySelectorAll(".cp-subgroup");
   var tabBtns = document.querySelectorAll(".cp-tab");
   var tabSections = document.querySelectorAll(".cp-section");
@@ -272,8 +276,7 @@
       });
       reflectTabs();
       if (input) input.value = urlParam("q");
-      var poppedBg = urlParam("bg");
-      if (!poppedBg) { try { poppedBg = localStorage.getItem("cp-bg") || "on"; } catch (e) { poppedBg = "on"; } }
+      var poppedBg = urlParam("bg") || initialBg;
       document.documentElement.classList.toggle("cp-bg-transparent", poppedBg === "off");
       reflectBg();
       apply();

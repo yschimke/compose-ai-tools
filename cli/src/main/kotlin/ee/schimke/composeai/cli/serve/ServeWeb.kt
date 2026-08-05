@@ -1713,8 +1713,7 @@ object ServeWeb {
       "\n      if (urlState) {" +
         "\n        urlState.onPop(function () {$themePop$tabPop" +
         "\n          if (input) input.value = urlParam(\"q\");" +
-        "\n          var poppedBg = urlParam(\"bg\");" +
-        "\n          if (!poppedBg) { try { poppedBg = localStorage.getItem(\"cp-bg\") || \"on\"; } catch (e) { poppedBg = \"on\"; } }" +
+        "\n          var poppedBg = urlParam(\"bg\") || initialBg;" +
         "\n          document.documentElement.classList.toggle(\"cp-bg-transparent\", poppedBg === \"off\");" +
         "\n          reflectBg();" +
         "\n          apply();" +
@@ -1734,7 +1733,11 @@ object ServeWeb {
       function urlParam(n) { return urlState ? urlState.get(n) : ""; }
       function pushUrl(v) { if (urlState) urlState.push(v); }
       function replaceUrl(v) { if (urlState) urlState.replace(v); }
-      if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }$groupDecls$tabDecls
+      if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }
+      // What Back falls back to when an entry carries no `bg` — read off the class the pre-paint
+      // script set, i.e. what THIS load resolved to. Re-reading localStorage here would return the
+      // value a later click wrote, so Back out of Transparent would stay transparent.
+      var initialBg = document.documentElement.classList.contains("cp-bg-transparent") ? "off" : "on";$groupDecls$tabDecls
       ${listOf(themeInit, themeRenderInit).filter { it.isNotEmpty() }.joinToString("\n")}
       function apply() {
         $applyTheme
