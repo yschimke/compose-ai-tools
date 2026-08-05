@@ -195,4 +195,45 @@ class MergedResourceOwnershipTest {
     val keys = requireNotNull(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir()))
     assertThat(keys).isEmpty()
   }
+
+  @Test
+  fun `well-formed blame in an unrecognised schema returns null rather than an empty retain-set`() {
+    // A future AGP that keeps the file name but restructures its contents parses cleanly and yields
+    // no keys. Reading that as "this build has no first-party file resources" would prune every
+    // drawable while resources.arsc still pointed at them — issue #3260.
+    writeBlame(
+      "debug",
+      """
+      <merger version="4">
+        <contributor config=":modules:services:ui">
+          <resource name="ic_play" path="/repo/.../res/drawable/ic_play.xml" type="drawable"/>
+        </contributor>
+      </merger>
+      """
+        .trimIndent(),
+    )
+
+    assertThat(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir())).isNull()
+  }
+
+  @Test
+  fun `an unreadable blame file does not spoil a sibling one that parses`() {
+    writeBlame("debug", "<merger version=\"4\"><contributor config=\":app\"/></merger>")
+    writeBlame(
+      "debugUnitTest",
+      """
+      <merger version="3">
+        <dataSet config=":modules:services:ui">
+          <source path="/repo/modules/services/ui/res">
+            <file name="ic_play" path="/repo/modules/services/ui/res/drawable/ic_play.xml" type="drawable"/>
+          </source>
+        </dataSet>
+      </merger>
+      """
+        .trimIndent(),
+    )
+
+    val keys = requireNotNull(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir()))
+    assertThat(keys).containsExactly("drawable/ic_play")
+  }
 }
