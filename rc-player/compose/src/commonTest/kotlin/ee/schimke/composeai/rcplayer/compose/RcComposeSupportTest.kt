@@ -592,6 +592,15 @@ class RcComposeSupportTest {
         .composeSupportReport(availableFontFamilies = setOf("Orbitron"))
         .fullyRenderable
     )
+    // A host's *default* face is a nameable family like any other — the browser lane's manifest
+    // gives it a name (`Roboto Flex`) and loads it, so a document naming it must pass rather than
+    // be rejected for having no `DataFont`. This is the contract behind loading every manifest
+    // role, not just `named` / `generic`.
+    assertTrue(
+      document(emptyList(), family = "google:Roboto Flex")
+        .composeSupportReport(availableFontFamilies = setOf("Roboto Flex"))
+        .fullyRenderable
+    )
   }
 
   @Test

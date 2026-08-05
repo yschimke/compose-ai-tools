@@ -496,7 +496,10 @@ fun VariableWidthRemote() = RemoteSticker {
   RemoteColumn {
     for (width in listOf(25f, 100f, 151f)) {
       RemoteText(
-        "wdth ${width.toInt()}".rs,
+        // The same word on every line. Three different strings would each set to their own length
+        // and the axis would be invisible next to that difference; sharing a word makes the narrow
+        // instance unmistakably narrower, which is the whole claim the sticker exists to make.
+        "Hamburg · wdth ${width.toInt()}".rs,
         fontSize = 22.rsp,
         fontFamily = RemoteFontFamily.Named("google:Roboto Flex"),
         fontVariationSettings = FontVariation.Settings(FontVariation.width(width)),

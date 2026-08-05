@@ -127,6 +127,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -267,7 +268,7 @@ public fun RcComposePlayer(
   theme: Int = RcTheme.UNSPECIFIED,
   namedValues: Map<String, RcNamedValue> = emptyMap(),
   onEvent: (RcPlayerEvent) -> Unit = {},
-  fontFamilies: Map<String, FontFamily> = emptyMap(),
+  fontFamilies: Map<String, RcFontFaces> = emptyMap(),
 ) {
   val document = remember(bytes) { RcDocumentCodec.decode(bytes) }
   RcComposePlayer(document, modifier, theme, namedValues, onEvent, fontFamilies)
@@ -280,7 +281,7 @@ public fun RcComposePlayer(
   theme: Int = RcTheme.UNSPECIFIED,
   namedValues: Map<String, RcNamedValue> = emptyMap(),
   onEvent: (RcPlayerEvent) -> Unit = {},
-  fontFamilies: Map<String, FontFamily> = emptyMap(),
+  fontFamilies: Map<String, RcFontFaces> = emptyMap(),
 ) {
   val latestEventSink by rememberUpdatedState(onEvent)
   val latestHapticFeedback by rememberUpdatedState(LocalHapticFeedback.current)
@@ -843,6 +844,15 @@ private fun RenderLayoutNode(
         state.resolve(properties.floatProperty(7, 400f)).roundToInt().coerceIn(1, 1000)
       val boldWeight = if (fontStyle and 1 != 0) 700 else fontWeight
       val colorId = properties.intProperty(4, -1)
+      // Font-variation axes (properties 20/21) — a variable font's `wght` / `wdth` / … instance.
+      // The tags arrive as text ids and the values may be document floats, so both are resolved
+      // through the player state before they are paired up.
+      val variationSettings =
+        fontVariationSettings(
+          axisTags = properties.intArrayProperty(CORE_TEXT_FONT_AXIS_TAGS).map { state.text(it) },
+          axisValues =
+            properties.floatArrayProperty(CORE_TEXT_FONT_AXIS_VALUES).map { state.resolve(it) },
+        )
       BasicText(
         text = state.text(node.operation.textId).orEmpty(),
         modifier =
@@ -876,6 +886,7 @@ private fun RenderLayoutNode(
                 state,
                 fontFamilies,
                 namedFontFamilies,
+                variationSettings,
               ),
             textAlign = androidXTextAlign(properties.intProperty(9, RcTextLayout.ALIGN_LEFT)),
           ),
@@ -951,7 +962,7 @@ private data class RcAnimatedVisibility(val shouldRender: Boolean, val modifier:
 private val LocalRcLookaheadScope = compositionLocalOf<LookaheadScope?> { null }
 private val LocalRcLayoutVersion = compositionLocalOf { 0 }
 private val LocalRcFonts = compositionLocalOf<Map<Int, FontFamily>> { emptyMap() }
-private val LocalRcNamedFonts = compositionLocalOf<Map<String, FontFamily>> { emptyMap() }
+private val LocalRcNamedFonts = compositionLocalOf<Map<String, RcFontFaces>> { emptyMap() }
 
 private val DefaultRcAnimationSpec =
   RcAnimationSpec(
@@ -1326,6 +1337,15 @@ private fun List<RcTextStyleProperty>.intProperty(id: Int, default: Int): Int =
 private fun List<RcTextStyleProperty>.floatProperty(id: Int, default: Float): RcFloatWord =
   filterIsInstance<RcTextStyleProperty.FloatValue>().lastOrNull { it.id == id }?.value
     ?: RcFloatWord.literal(default)
+
+private fun List<RcTextStyleProperty>.intArrayProperty(id: Int): List<Int> =
+  filterIsInstance<RcTextStyleProperty.IntArrayValue>().lastOrNull { it.id == id }?.values.orEmpty()
+
+private fun List<RcTextStyleProperty>.floatArrayProperty(id: Int): List<RcFloatWord> =
+  filterIsInstance<RcTextStyleProperty.FloatArrayValue>()
+    .lastOrNull { it.id == id }
+    ?.values
+    .orEmpty()
 
 /** Mirrors Component.Visibility, including the override-bit precedence used by AndroidX. */
 internal fun androidXVisibility(value: Int): Int =
@@ -2846,23 +2866,57 @@ private fun decodeInlineFonts(document: RcDocument): Map<Int, FontFamily> =
     }
     .toMap()
 
+/**
+ * The [FontFamily] a text op's `fontFamilyId` names, instanced at [settings] when the host holds
+ * the face's bytes.
+ *
+ * [settings] are the document's font-variation axes. They can only be applied to a host face
+ * ([RcFontFaces] keeps the bytes for exactly this reason) — a generic family or an inline
+ * `FontData` resolves to a `FontFamily` whose faces are already built, so for those the axes are
+ * dropped rather than approximated. That is a substitution the render shows honestly; approximating
+ * `wdth` by scaling would not be.
+ */
 private fun resolveFontFamily(
   fontFamilyId: Int,
   state: RcPlayerState,
   embeddedFonts: Map<Int, FontFamily>,
-  namedFonts: Map<String, FontFamily>,
-): FontFamily =
-  when (val family = state.text(fontFamilyId)?.lowercase()) {
+  namedFonts: Map<String, RcFontFaces>,
+  settings: FontVariation.Settings? = null,
+): FontFamily {
+  fun host(name: String): FontFamily? = namedFonts[name]?.family(settings)
+  return when (val family = state.text(fontFamilyId)?.lowercase()) {
     null,
-    "default" -> FontFamily.Default
-    "sans-serif" -> namedFonts[family] ?: FontFamily.SansSerif
-    "serif" -> namedFonts[family] ?: FontFamily.Serif
-    "monospace" -> namedFonts[family] ?: FontFamily.Monospace
+    "default" -> host("default") ?: FontFamily.Default
+    "sans-serif" -> host(family) ?: FontFamily.SansSerif
+    "serif" -> host(family) ?: FontFamily.Serif
+    "monospace" -> host(family) ?: FontFamily.Monospace
     else ->
-      embeddedFonts[fontFamilyId]
-        ?: namedFonts[family.removePrefix("google:")]
-        ?: FontFamily.Default
+      embeddedFonts[fontFamilyId] ?: host(family.removePrefix("google:")) ?: FontFamily.Default
   }
+}
+
+/**
+ * The font-variation axes a `CoreText` style declares: property 20 is a list of *text ids* naming
+ * the axis tags (`wght`, `wdth`, …) and property 21 the matching values, which may themselves be
+ * document floats rather than literals. Empty when the style names none.
+ *
+ * Extracted (and pure) so the pairing rule — an axis counts only when both its tag and its value
+ * are present — is unit-testable without a document.
+ */
+private const val CORE_TEXT_FONT_AXIS_TAGS = 20
+
+private const val CORE_TEXT_FONT_AXIS_VALUES = 21
+
+internal fun fontVariationSettings(
+  axisTags: List<String?>,
+  axisValues: List<Float?>,
+): FontVariation.Settings? {
+  val axes = axisTags.mapIndexedNotNull { index, tag ->
+    val value = axisValues.getOrNull(index) ?: return@mapIndexedNotNull null
+    tag?.takeIf { it.isNotBlank() }?.let { FontVariation.Setting(it, value) }
+  }
+  return if (axes.isEmpty()) null else FontVariation.Settings(*axes.toTypedArray())
+}
 
 private fun decodeInlineImage(bitmap: RcBitmapData): ImageBitmap =
   when (bitmap.type) {
