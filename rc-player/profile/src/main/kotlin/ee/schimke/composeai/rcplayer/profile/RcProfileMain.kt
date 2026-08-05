@@ -33,26 +33,42 @@ public fun main(args: Array<String>) {
   val perfettoDirectory = outputDirectory / "perfetto"
   fileSystem.createDirectories(perfettoDirectory)
 
-  // `TraceSink(directory)` mints a `.perfetto-trace` file inside the directory it is handed. Every
-  // category is enabled: the point of this process is to capture all of them at once.
-  val driver = TraceDriver(sink = TraceSink(directory = File(perfettoDirectory.toString())))
+  // The capture phase renders every document a second time, to PNG. Those renders must not land in
+  // the trace — they would double every span count — but they must also not run against a *closed*
+  // driver, whose sink is finalized. `isCategoryEnabled` is the driver's own switch for exactly
+  // this: the flag turns spans off for the capture phase while the driver stays open, and the
+  // driver is closed only once every render is finished.
+  //
+  // `Tracer.setGlobalTracer` throws if called twice, and its counterpart `resetGlobalTracer` is
+  // `@VisibleForTesting`, so there is no supported way to swap the tracer back mid-process — one
+  // more reason the switch lives in the predicate rather than in the global.
+  var measuring = true
+  // `TraceSink(directory)` mints a `.perfetto-trace` file inside the directory it is handed.
+  val driver =
+    TraceDriver(
+      sink = TraceSink(directory = File(perfettoDirectory.toString())),
+      isCategoryEnabled = { measuring },
+    )
   Tracer.setGlobalTracer(driver.tracer)
 
   val runner = RcProfileRunner()
   val scenarios = rcProfileScenarios()
-  val results =
-    try {
-      runner.run(scenarios)
-    } finally {
-      driver.close()
-    }
+  val results: List<RcProfileResult>
+  val captures: Map<String, ByteArray>
+  try {
+    results = runner.run(scenarios)
+    measuring = false
+    captures = results.associate { it.scenario.id to runner.capture(it.scenario) }
+  } finally {
+    driver.close()
+  }
 
   results.forEach { result ->
     fileSystem.write(outputDirectory / "${result.scenario.id}.json") {
       writeUtf8(result.chromeTraceJson)
     }
     fileSystem.write(outputDirectory / "${result.scenario.id}.png") {
-      write(runner.capture(result.scenario))
+      write(captures.getValue(result.scenario.id))
     }
   }
   val report = RcProfileReport.render(results, environment())
