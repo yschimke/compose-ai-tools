@@ -102,12 +102,19 @@ data class RenderTrace(
      * section totals against a short wall time — and the phase bars would be scaled to a window
      * that ends before the render did. `null` derives it from [events], correct whenever nothing
      * was dropped.
+     *
+     * [originNanos] travels with [totalMicros] and must not be omitted when that is supplied.
+     * Sections are appended as they **close**, so the outermost one closes last and is the first
+     * thing the cap sheds — leaving the retained spans starting *after* the render began. Rebasing
+     * them onto their own minimum while reporting the full duration would scale the bars correctly
+     * but place every phase at the wrong offset.
      */
     fun of(
       backend: String,
       events: List<Recorded>,
       sections: List<RenderTraceSection>? = null,
       totalMicros: Long? = null,
+      originNanos: Long? = null,
       droppedSpans: Int = 0,
     ): RenderTrace {
       if (events.isEmpty()) {
@@ -119,7 +126,7 @@ data class RenderTrace(
           droppedSpans = droppedSpans,
         )
       }
-      val originNanos = events.minOf { it.startNanos }
+      val origin = originNanos ?: events.minOf { it.startNanos }
       val endNanos = events.maxOf { it.endNanos }
       // Start time ascending, and where two spans start together the enclosing one first, so the
       // list reads top-down as the nesting does.
@@ -128,7 +135,7 @@ data class RenderTrace(
           RenderTraceSpan(
             name = event.name,
             category = event.category,
-            startMicros = (event.startNanos - originNanos) / 1_000L,
+            startMicros = (event.startNanos - origin).coerceAtLeast(0L) / 1_000L,
             durationMicros = (event.endNanos - event.startNanos).coerceAtLeast(0L) / 1_000L,
             depth = event.depth,
           )
@@ -150,7 +157,7 @@ data class RenderTrace(
             .sortedByDescending { it.totalMicros }
       return RenderTrace(
         backend = backend,
-        totalMicros = totalMicros ?: ((endNanos - originNanos).coerceAtLeast(0L) / 1_000L),
+        totalMicros = totalMicros ?: ((endNanos - origin).coerceAtLeast(0L) / 1_000L),
         spans = spans,
         sections = resolvedSections,
         droppedSpans = droppedSpans,
