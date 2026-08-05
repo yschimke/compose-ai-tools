@@ -21,7 +21,7 @@ question:
 | **JS** (vendored TS player, in-browser) | ✅ concrete stacks | ⚠️ passed to CSS; host must have the face | ✅ fetched from the Google Fonts CSS API | ❌ bytes stored, never registered |
 | **CMP Wasm** (this repo's player, in-browser) | ✅ from the host manifest | ✅ if the manifest carries it | ⚠️ manifest only — no fetch | ✅ `decodeInlineFonts` |
 | **CMP Wasm** — font-variation axes | ✅ layout ops (`CoreText`) | — | — | ❌ canvas ops (reported, not silent) |
-| **Java** (AOSP `remote-player-view`, server-side) | ✅ framework typefaces | ⚠️ `/system/fonts/` filename scan | ❌ no provider call at all | ✅ `Font.Builder(ByteBuffer)` |
+| **Java** (AOSP `remote-player-view`, server-side) | ✅ framework typefaces | ⚠️ `/system/fonts/` filename scan | ✅ served by `RcGoogleFontTypefaceResolver` | ✅ `Font.Builder(ByteBuffer)` |
 | **CMP Android** (vendored embedded player, server-side) | ✅ framework typefaces | ⚠️ `Typeface.create(name)` | ✅ `FontsContractCompat` | ❌ ignored |
 | **CMP JVM** (embedded player over Skiko, server-side) | ✅ | ⚠️ host families, else nearest standard | ✅ downloaded via `GoogleFontTypefaceResolver` | ❌ ignored |
 
@@ -42,11 +42,10 @@ viewer disagree about the *same* document:
    serve daemon by [`ServeBundleDaemon`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt)
    and for the CLI daemon by [`BundleDaemonCommand`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/BundleDaemonCommand.kt)).
    So the branded face appears under `cmp-android`, `cmp-jvm` and `js`, and silently does not under
-   `java` — which is the **default** server-side snapshot lane. `cmp-jvm` closed the same gap the
-   way the view lane still could: a `TypefaceResolver`-shaped shim over the shared `GoogleFontCache`
-   (see the CMP JVM section). Doing it for the view player means installing a `TypefaceResolver` on
-   the `RemoteComposePlayer` that serves `google:` names from that cache and delegates everything
-   else to `DefaultTypefaceResolver`.
+   `java` — which is the **default** server-side snapshot lane. **Closed** for all three: `cmp-jvm`
+   and then `java` both got a shim over the shared `GoogleFontCache` — for the view player, a
+   `TypefaceResolver` installed on the `RemoteComposePlayer` that serves `google:` names from that
+   cache and delegates everything else to `DefaultTypefaceResolver` (see the Java section).
 2. **Embedded `FontData` is supported by exactly the two lanes nobody looks at first.** The Java and
    CMP Wasm lanes build a real face from the document's own bytes; the JS lane stores them
    (`RemoteContext.loadFont` keeps `{mFontData, fontBuilder: null}`) and never registers a
@@ -115,7 +114,23 @@ The default snapshot player for a Remote Compose preview on an Android backend. 
 `SANS_SERIF`/`MONOSPACE`; a named family is resolved by listing `/system/fonts/` and matching a
 filename that *contains* the name (which the daemon's Robolectric sandbox has no directory for — it
 prints `System fonts directory not found` and falls back); embedded `FontData` becomes an
-`android.graphics.fonts.Font.Builder(ByteBuffer)`. No downloadable-font path exists (finding 1).
+`android.graphics.fonts.Font.Builder(ByteBuffer)`.
+
+There is still no downloadable-font path *in the player*, so the connector supplies one:
+[`RcGoogleFontTypefaceResolver`](../../data/remotecompose/connector/src/main/kotlin/ee/schimke/composeai/daemon/RcGoogleFontTypefaceResolver.kt)
+is installed on the `RemoteComposePlayer` at both view-player call sites and serves a `google:` name
+from the shared machine-local Google Fonts cache — the same `(family, weight, italic) -> File`
+resolution the Robolectric downloadable-font shadow, the figma-svg embed path and the `cmp-jvm` lane
+use — delegating everything else to `DefaultTypefaceResolver` so generics, `/system/fonts/` names and
+inline `FontData` behave exactly as before. Nothing is installed when the render was given no cache
+directory, so the lane degrades to its previous behaviour rather than failing.
+
+Its `FontInstance` also implements `applyVariationSettings`, rebuilding the face from the cached file
+with `Typeface.Builder(file).setFontVariationSettings(…)` — the same thing the platform resolver does
+for a `/system/fonts/` face — so a paint bundle carrying axes gets a real variable-font instance. The
+catalog's `wght`/`wdth` specimens still draw flat in this lane: they carry their axes as `CoreText`
+*style* properties, and the AOSP CoreText renderer does not route those into the paint's variation
+settings. That is upstream plumbing, not a resolver gap.
 
 ### CMP Android — vendored embedded player, server-side
 
