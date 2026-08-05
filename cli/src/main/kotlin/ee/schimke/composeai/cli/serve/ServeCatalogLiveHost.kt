@@ -392,6 +392,11 @@ class ServeCatalogLiveHost(
         val byPreview =
           jobs.filter { catalogThemeCache.get(it.cacheKey) == null }.groupBy { it.previewId }
         for ((previewId, previewJobs) in byPreview) {
+          // Gate BEFORE the warm, not just before the renders. `daemonWarmOrScheduling` starts a
+          // cold daemon, which is the single most expensive thing this pass can do to a box that is
+          // still loading catalogs or serving traffic — exactly what the idle gate exists to
+          // prevent. Warming ahead of it let every catalog host kick off a cold start at prewarm.
+          if (!awaitOptimizerTurn()) return@execute
           val previewDaemonId = alias[previewId]
           // Await a cold warm ONCE per preview rather than letting each theme rediscover it. The
           // old per-job loop spent retry budget on this; here it is a precondition of the batch.
@@ -419,11 +424,19 @@ class ServeCatalogLiveHost(
               if (catalogThemeCache.get(job.cacheKey) != null) continue
               // Busy is "ask again", not a failure: the warm above may still be settling. Leave it
               // unmarked so a later pass retries instead of spending the `failed` count on it.
-              if (outcome != RenderOutcome.Busy) {
-                catalogThemeCache.markFailed(
-                  job.cacheKey,
-                  (outcome as? RenderOutcome.Failed)?.reason,
-                )
+              when (outcome) {
+                // "ask again" — the warm above may still be settling. Left unmarked so a later
+                // pass retries rather than spending the catalog's `failed` count on it.
+                RenderOutcome.Busy -> Unit
+                // Count the failure but do NOT latch on the first one. `failureReason` treats a
+                // latched key as terminal and answers foreground requests with a 409, so a single
+                // flaky background render — a cold-start timeout, a daemon restart — would
+                // otherwise make that thumbnail permanently unavailable until the catalog
+                // generation refreshes. `recordRenderFailure` latches only after a run of them,
+                // which is the retry budget the old per-job loop provided.
+                is RenderOutcome.Failed ->
+                  catalogThemeCache.recordRenderFailure(job.cacheKey, outcome.reason)
+                else -> catalogThemeCache.markFailed(job.cacheKey)
               }
             }
           }
@@ -441,7 +454,17 @@ class ServeCatalogLiveHost(
    * pool's capacity when it has one and 1 otherwise. Bounded by the pool itself — a replica that
    * the seat budget cannot afford narrows the batch rather than spawning a JVM the box can't run.
    */
-  private fun optimizerBatchWidth(): Int = themeRenderBurstCapacity.coerceIn(1, MAX_OPTIMIZER_BATCH)
+  private fun optimizerBatchWidth(): Int =
+    // Only the SHARED replica pool makes a per-preview batch parallel: its replicas are independent
+    // processes. Under per-preview routing (`sharedDaemonRenders=false`) every theme of one preview
+    // resolves to the SAME per-preview daemon, so a wide batch would contend on one render lock and
+    // all but one would come back Busy — `themeRenderBurstCapacity` is 5 there because different
+    // *previews* can run in parallel, which is not what this batch is.
+    if (sharedDaemonRenders && sharedDaemonPool != null) {
+      sharedDaemonPool.capacity.coerceIn(1, MAX_OPTIMIZER_BATCH)
+    } else {
+      1
+    }
 
   /**
    * Render one batch concurrently through the leased lane, preserving input order in the result.
