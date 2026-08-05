@@ -2476,7 +2476,7 @@ class ServeWebFixtureTest {
   }
 
   @Test
-  fun `screen previews move device and orientation into Size while components keep constraints`() {
+  fun `screen previews keep device controls in Size while components expose only constraints`() {
     val screen =
       ServeWeb.viewerPage(
         ServePreview("speaker-details", "Speaker details", section = "Screens"),
@@ -2486,6 +2486,18 @@ class ServeWebFixtureTest {
     val component =
       ServeWeb.viewerPage(
         ServePreview("speaker-card", "Speaker card", section = "Components"),
+        token,
+        canApplyOverrides = true,
+      )
+    val sectionlessScreen =
+      ServeWeb.viewerPage(
+        ServePreview("com.example.ProfilePreview", "Profile screen"),
+        token,
+        canApplyOverrides = true,
+      )
+    val sectionlessComponent =
+      ServeWeb.viewerPage(
+        ServePreview("com.example.SpeakerCardPreview", "Speaker card"),
         token,
         canApplyOverrides = true,
       )
@@ -2502,7 +2514,31 @@ class ServeWebFixtureTest {
     assertTrue(component.contains("id=\"cp-fixedW\""), "component keeps fixed sizing")
     assertTrue(component.contains("id=\"cp-minW\""), "component keeps minimum sizing")
     assertTrue(component.contains("id=\"cp-maxW\""), "component keeps maximum sizing")
-    assertTrue(component.contains("data-cp-group=\"device\""), "component keeps its Device panel")
+    assertFalse(component.contains("id=\"cp-device\""), "component hides device overrides")
+    assertFalse(
+      component.contains("id=\"cp-orientation\""),
+      "component hides orientation overrides",
+    )
+    assertFalse(component.contains("data-cp-group=\"device\""), "component has no Device panel")
+
+    assertTrue(
+      sectionlessScreen.contains("<label>Device size") &&
+        sectionlessScreen.contains("id=\"cp-orientation\""),
+      "sectionless screen keeps device controls in Size",
+    )
+    assertFalse(
+      sectionlessScreen.contains("id=\"cp-sizeMode\""),
+      "sectionless screen omits component constraints",
+    )
+    assertTrue(
+      sectionlessComponent.contains("id=\"cp-sizeMode\""),
+      "sectionless component keeps size constraints",
+    )
+    assertFalse(
+      sectionlessComponent.contains("id=\"cp-device\"") ||
+        sectionlessComponent.contains("id=\"cp-orientation\""),
+      "sectionless component still hides device overrides",
+    )
   }
 
   @Test
@@ -2855,8 +2891,9 @@ class ServeWebFixtureTest {
       "snapshot note links to local preview server instructions",
     )
     assertTrue(staticView.contains("value=\"1.0\" disabled"), "font scale disabled")
-    assertTrue(staticView.contains("id=\"cp-device\" disabled"), "device disabled")
-    assertTrue(staticView.contains("id=\"cp-orientation\" disabled"), "orientation disabled")
+    assertTrue(staticView.contains("id=\"cp-sizeMode\" disabled"), "component sizing disabled")
+    assertFalse(staticView.contains("id=\"cp-device\""), "component device override omitted")
+    assertFalse(staticView.contains("id=\"cp-orientation\""), "component orientation omitted")
     assertTrue(
       staticView.contains("id=\"cp-live\" tabindex=\"-1\" disabled"),
       "live transport radio disabled",
@@ -2881,8 +2918,8 @@ class ServeWebFixtureTest {
       "the unified Theme selector always carries the two default modes",
     )
 
-    // Static + Wasm: theme, font scale, and locale go LIVE (the in-browser app honours them) — only
-    // the server-render-only controls (device/orientation/live stream) stay disabled.
+    // Static + Wasm: theme, font scale, and locale go LIVE (the in-browser app honours them), while
+    // component sizing stays server-only.
     val wasmView =
       ServeWeb.viewerPage(
         previews.first { it.id.endsWith("CardPreview") },
@@ -2910,8 +2947,9 @@ class ServeWebFixtureTest {
       wasmView.contains("public-preview-server.md#running-one\">Enable a local preview server."),
       "wasm-snapshot note also links to local preview server instructions",
     )
-    assertTrue(wasmView.contains("id=\"cp-device\" disabled"), "device stays server-only")
-    assertTrue(wasmView.contains("id=\"cp-orientation\" disabled"), "orientation stays server-only")
+    assertTrue(wasmView.contains("id=\"cp-sizeMode\" disabled"), "sizing stays server-only")
+    assertFalse(wasmView.contains("id=\"cp-device\""), "component device override stays omitted")
+    assertFalse(wasmView.contains("id=\"cp-orientation\""), "component orientation stays omitted")
     // The Wasm override-patch builder forwards the honoured params (theme/font scale/locale) to the
     // running app (via postMessage / the initial `#…` fragment), not the iframe query.
     assertTrue(assetText("viewer.js").contains("\"fontScale=\""), "font scale forwarded to Wasm")
@@ -2955,8 +2993,8 @@ class ServeWebFixtureTest {
       "live catalog keeps the static note",
     )
     assertTrue(
-      liveCatalogWasm.contains("id=\"cp-device\" disabled"),
-      "server-render-only controls stay disabled on a live catalog's static snapshot",
+      liveCatalogWasm.contains("id=\"cp-sizeMode\" disabled"),
+      "server-render-only sizing stays disabled on a live catalog's static snapshot",
     )
     // A live-stream session offers the overlay toggles (talkBack / touch), rendered disabled until
     // the Live Compose mode is actually entered (the mode-transition JS flips them on).
@@ -3048,7 +3086,7 @@ class ServeWebFixtureTest {
       "live-stream setOverrides sends liveOverrides() (knobs included), not the display-only map",
     )
     // A live catalog's carried daemon re-renders an override on demand (canRenderOverrides), so the
-    // display controls (Size / Device / Locale / Orientation / Day-Night / …) render ENABLED right
+    // display controls (Size / Locale / Day-Night / …) render ENABLED right
     // in the static snapshot — editing one re-points /render, which the daemon serves freshly. This
     // is the fix for "most override modes disabled for CMP": they no longer sit greyed out until a
     // live stream is opened.
@@ -3066,15 +3104,15 @@ class ServeWebFixtureTest {
       "display controls are live whenever the server can render an override (on-demand or streaming)",
     )
     // The server-render controls render ENABLED in the baked markup (canRenderOverrides), not
-    // disabled-until-live: device, size, orientation, locale all take effect immediately via
-    // on-demand /render.
+    // disabled-until-live: size and locale take effect immediately via on-demand /render.
     assertTrue(
-      catalogKnobs.contains("id=\"cp-device\">") &&
-        catalogKnobs.contains("id=\"cp-sizeMode\">") &&
+      catalogKnobs.contains("id=\"cp-sizeMode\">") &&
+        !catalogKnobs.contains("id=\"cp-device\"") &&
+        !catalogKnobs.contains("id=\"cp-orientation\"") &&
         !catalogKnobs.contains(
           "id=\"cp-localeTag\" type=\"text\" list=\"cp-localeTag-list\" placeholder=\"e.g. en-GB, zh-Hant-TW\" autocomplete=\"off\" disabled"
         ),
-      "display controls (size/device/locale) render enabled on an on-demand-render catalog",
+      "component display controls render enabled without device overrides on an on-demand catalog",
     )
     // A plain static bundle (no daemon) still shows the knobs as DISABLED, informational controls.
     val staticKnobs = ServeWeb.viewerPage(knobPreview, token)
@@ -3207,7 +3245,8 @@ class ServeWebFixtureTest {
     val liveView = ServeWeb.viewerPage(previews.first(), token, canApplyOverrides = true)
     assertTrue(!liveView.contains("Pre-rendered snapshot"), "no static note on a live session")
     assertTrue(!liveView.contains("value=\"1.0\" disabled"), "font scale enabled on a live session")
-    assertTrue(!liveView.contains("id=\"cp-device\" disabled"), "device enabled on a live session")
+    assertTrue(liveView.contains("id=\"cp-sizeMode\">"), "sizing enabled on a live session")
+    assertFalse(liveView.contains("id=\"cp-device\""), "device remains omitted on a live component")
     assertTrue(liveView.contains("data-static-snapshot=\"false\""), "live session is not static")
   }
 

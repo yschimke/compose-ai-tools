@@ -474,7 +474,7 @@ test("contract · snapshot overrides stay composed with a declared theme", async
     await page.waitForTimeout(100);
     requests.length = 0;
 
-    for (const group of ["appearance", "size", "locale", "device"]) {
+    for (const group of ["appearance", "size", "locale"]) {
         await page
             .locator(`details[data-cp-group="${group}"]`)
             .evaluate((details) => {
@@ -509,37 +509,6 @@ test("contract · snapshot overrides stay composed with a declared theme", async
     );
     await change(() => page.locator("#cp-background").selectOption("clear"), {
         background: "clear",
-    });
-    await change(() => page.locator("#cp-sizeMode").selectOption("fixed"), {
-        background: "clear",
-    });
-    await change(() => page.locator("#cp-fixedW").fill("120"), {
-        widthPx: "240",
-    });
-    await change(() => page.locator("#cp-fixedH").fill("80"), {
-        widthPx: "240",
-        heightPx: "160",
-    });
-    await change(() => page.locator("#cp-sizeMode").selectOption("within"), {
-        background: "clear",
-    });
-    await change(() => page.locator("#cp-minW").fill("100"), {
-        minWidthPx: "200",
-    });
-    await change(() => page.locator("#cp-minH").fill("60"), {
-        minWidthPx: "200",
-        minHeightPx: "120",
-    });
-    await change(() => page.locator("#cp-maxW").fill("300"), {
-        minWidthPx: "200",
-        minHeightPx: "120",
-        maxWidthPx: "600",
-    });
-    await change(() => page.locator("#cp-maxH").fill("200"), {
-        minWidthPx: "200",
-        minHeightPx: "120",
-        maxWidthPx: "600",
-        maxHeightPx: "400",
     });
     await change(
         async () => {

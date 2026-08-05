@@ -3021,6 +3021,16 @@ object ServeWeb {
       }
   }
 
+  private fun isScreenPreview(preview: ServePreview): Boolean {
+    preview.section?.lowercase()?.let {
+      return it == "screens" || it == "screen"
+    }
+    return listOf(preview.id, preview.label).any { value ->
+      val lower = value.lowercase()
+      "screen" in lower || "conference" in lower
+    }
+  }
+
   /**
    * Pick a **meaningful** representative preview from a catalog's previews for the home index — the
    * most recognisable, default-state render rather than an arbitrary (often alphabetically first)
@@ -3049,14 +3059,7 @@ object ServeWeb {
       )
     // A preview is a "screen" when its catalog section says so (the reliable signal), else when its
     // id/label reads like one — so a screen wins the hero even before section metadata exists.
-    fun isScreen(p: ServePreview): Boolean {
-      p.section?.lowercase()?.let {
-        return it == "screens" || it == "screen"
-      }
-      val lower = p.id.lowercase()
-      return "screen" in lower || "conference" in lower
-    }
-    val anyScreen = previews.any { isScreen(it) }
+    val anyScreen = previews.any { isScreenPreview(it) }
     // A screen id that reads like the app's primary/landing view (its conference/home/schedule/…),
     // preferred among screens so an app fronts its main screen rather than an alphabetically-first
     // secondary one (e.g. Confetti leads with the conference screen, not bookmarks).
@@ -3067,8 +3070,8 @@ object ServeWeb {
       var s = 0
       // Prefer a real screen when the catalog has any; a screenless component library is unaffected
       // (every preview gets the same penalty, so the component heuristic below still decides).
-      if (anyScreen && !isScreen(p)) s += 100
-      if (isScreen(p) && primaryScreen.any { it in lower }) s -= 1
+      if (anyScreen && !isScreenPreview(p)) s += 100
+      if (isScreenPreview(p) && primaryScreen.any { it in lower }) s -= 1
       // A non-default component state (unchecked / pressed / …) is never the hero — trust the
       // catalog's `state` metadata, falling back to the id-substring demote list below.
       if (p.state != null && p.state != "default") s += 8
@@ -4098,12 +4101,7 @@ object ServeWeb {
           "aria-label=\"Remote Compose renderer\" data-default=\"$defaultBackend\">" +
           "<span class=\"cp-rc-backends-label\">RC:</span>$chips</span>"
       }
-    val deviceOptions =
-      COMMON_DEVICES.joinToString("\n") { (value, name) ->
-        val v = WebEscaping.htmlEscape(value)
-        "<option value=\"$v\">${WebEscaping.htmlEscape(name)}</option>"
-      }
-    val isAppScreen = preview.section.equals("Screens", ignoreCase = true)
+    val isAppScreen = isScreenPreview(preview)
     val screenDeviceOptions =
       SCREEN_DEVICES.joinToString("\n                  ") { device ->
         val value = WebEscaping.htmlEscape(device.id)
@@ -4169,17 +4167,25 @@ object ServeWeb {
     // day/night, font scale, locale &amp; knobs apply in the browser but size/device/orientation
     // need a live server). A catalog whose carried daemon re-renders on demand ([overridesLive]
     // true) needs no note — its controls all take effect.
+    val serverOnlyOverrideNote =
+      if (isAppScreen) "Device size &amp; Orientation need the live server. "
+      else "Size needs the live server. "
+    val snapshotOverrideList =
+      if (isAppScreen) "device size, locale, font scale, orientation"
+      else "size, locale, font scale"
     val snapshotNote =
       when {
         overridesLive -> ""
         wasmSrc != null ->
           "<div class=\"cp-note\">Pre-rendered snapshot — turn on <strong>Live preview</strong> to " +
             "interact. Day/Night, Font scale, Locale, background &amp; declared knob values apply in " +
-            "the browser; Size, Device &amp; Orientation need the live server. " +
+            "the browser; " +
+            serverOnlyOverrideNote +
             "<a href=\"$LOCAL_SERVER_DOCS\">Enable a local preview server.</a></div>"
         else ->
-          "<div class=\"cp-note\">Pre-rendered snapshot — overrides (size, device, locale, font " +
-            "scale, orientation) need the live server, not a published catalog. " +
+          "<div class=\"cp-note\">Pre-rendered snapshot — overrides (" +
+            snapshotOverrideList +
+            ") need the live server, not a published catalog. " +
             "<a href=\"$LOCAL_SERVER_DOCS\">Enable a local preview server.</a></div>"
       }
     val backendLabel = WebEscaping.htmlEscape(snapshotBackend ?: "Snapshot")
@@ -4354,33 +4360,6 @@ object ServeWeb {
         """
           .trimIndent()
           .replace("\n", "\n          ")
-    val deviceControlsHtml =
-      if (isAppScreen) ""
-      else
-        """
-        <details class="cp-group" data-cp-group="device">
-          <summary>Device</summary>
-          <div class="cp-group-body">
-            <label>Device
-              <select id="cp-device"$serverDis>
-                <option value="">(default)</option>
-                DEVICE_OPTIONS_PLACEHOLDER
-              </select>
-            </label>
-            <label>Orientation
-              <select id="cp-orientation"$serverDis>
-                <option value="">(default)</option>
-                <option value="portrait">Portrait</option>
-                <option value="landscape">Landscape</option>
-              </select>
-            </label>
-          </div>
-        </details>
-        """
-          .trimIndent()
-          .replace("\n", "\n          ")
-          .replace("DEVICE_OPTIONS_PLACEHOLDER", deviceOptions)
-          .let { "          $it" }
     // Left-hand component nav drawer (default closed) and its toggle — only when the session
     // carries
     // sibling previews to move between. The right-hand overrides drawer (.cp-controls) is always
@@ -4499,7 +4478,6 @@ object ServeWeb {
               </label>
             </div>
           </details>
-$deviceControlsHtml
           $overlaysHtml
           $featureControlsHtml
           ${overrideKnobsHtml(preview, canApplyOverrides || canRenderOverrides, wasmSrc != null)}
@@ -5027,15 +5005,5 @@ $deviceControlsHtml
       ScreenDevice("id:pixel_7", "Pixel 7", "standard phone", "411 × 914 dp"),
       ScreenDevice("id:pixel_fold", "Pixel Fold", "foldable", "841 × 701 dp"),
       ScreenDevice("id:pixel_tablet", "Pixel Tablet", "tablet", "1280 × 800 dp"),
-    )
-
-  private val COMMON_DEVICES: List<Pair<String, String>> =
-    listOf(
-      "id:pixel_5" to "Pixel 5",
-      "id:pixel_7" to "Pixel 7",
-      "id:pixel_tablet" to "Pixel Tablet",
-      "id:pixel_fold" to "Pixel Fold",
-      "id:wearos_small_round" to "Wear OS (small round)",
-      "id:tv_1080p" to "TV 1080p",
     )
 }
