@@ -109,6 +109,18 @@ class RenderTraceTest {
       trace.sections.single { it.name == "compose:frame" }.count,
       "the summary must still count every section",
     )
+    // …and the total must span the whole run, not just the retained prefix. Deriving it from the
+    // capped spans would report complete section totals against a wall time that ends early, and
+    // scale every phase bar to a window that closed before the render did.
+    assertTrue(
+      trace.totalMicros >= trace.sections.single { it.name == "compose:frame" }.totalMicros,
+      "total (${trace.totalMicros}us) must cover every recorded section",
+    )
+    val lastRetained = trace.spans.last()
+    assertTrue(
+      trace.totalMicros >= lastRetained.startMicros + lastRetained.durationMicros,
+      "total must extend past the last retained span",
+    )
   }
 
   @Test

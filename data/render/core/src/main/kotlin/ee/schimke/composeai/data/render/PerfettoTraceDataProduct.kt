@@ -97,6 +97,15 @@ object PerfettoTraceDataProducer {
     private val aggregates = LinkedHashMap<String, MutableAggregate>()
 
     /**
+     * Bounds of *every* section the recorder saw, tracked alongside [aggregates] and for the same
+     * reason: once [spans] truncates, the retained prefix ends before the render does, so a total
+     * derived from it would be short — and the phase bars would be scaled against a window that
+     * closed early.
+     */
+    private var firstStartNs: Long = Long.MAX_VALUE
+    private var lastEndNs: Long = Long.MIN_VALUE
+
+    /**
      * Current nesting level. Incremented for the duration of each [section] body, so a section
      * records the depth it was *entered* at — see [RenderTrace.Recorded.depth] for why that beats
      * reconstructing containment afterwards.
@@ -145,6 +154,8 @@ object PerfettoTraceDataProducer {
     ) {
       val durationMicros = (endNs - startNs).coerceAtLeast(0L) / 1_000L
       aggregates.getOrPut(name) { MutableAggregate(category) }.add(durationMicros)
+      if (startNs < firstStartNs) firstStartNs = startNs
+      if (endNs > lastEndNs) lastEndNs = endNs
       if (spans.size < MAX_SPANS) {
         spans +=
           RenderTrace.Recorded(
@@ -184,6 +195,9 @@ object PerfettoTraceDataProducer {
           aggregates
             .map { (name, aggregate) -> aggregate.toSection(name) }
             .sortedByDescending { it.totalMicros },
+        totalMicros =
+          if (firstStartNs == Long.MAX_VALUE) null
+          else (lastEndNs - firstStartNs).coerceAtLeast(0L) / 1_000L,
         droppedSpans = droppedSpans,
       )
 
