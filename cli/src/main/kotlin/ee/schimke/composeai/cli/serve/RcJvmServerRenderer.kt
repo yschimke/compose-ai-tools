@@ -19,6 +19,7 @@ package ee.schimke.composeai.cli.serve
 import ee.schimke.composeai.cli.bundleSidecarSearchDescription
 import ee.schimke.composeai.cli.locateBundleSidecarJars
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
+import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.File
 import java.util.Base64
 import java.util.concurrent.TimeUnit
@@ -90,6 +91,14 @@ internal object RcJvmServerRenderer {
         // Skiko draws offscreen; keep the JVM out of the macOS Dock / app-switcher when spawned
         // on a developer's Mac, matching BundleRenderer's desktop renderer launch.
         add("-Dapple.awt.UIElement=true")
+        // The player's `GoogleFontTypefaceResolver` downloads a `google:`-named family into the
+        // shared font cache — the same directory the Android and desktop daemons are pointed at,
+        // so a family already fetched for another lane is reused rather than re-downloaded. With
+        // no cache directory the resolver stays off and the lane substitutes a local face, so this
+        // is what makes the cmp-jvm chip show a branded typeface at all. The offline switch is
+        // forwarded when this process carries one.
+        add("-Dcomposeai.fonts.cacheDir=${composeAiCacheDir("fonts").absolutePath}")
+        System.getProperty("composeai.fonts.offline")?.let { add("-Dcomposeai.fonts.offline=$it") }
         add("-cp")
         add(cp.joinToString(File.pathSeparator) { it.absolutePath })
         add(MAIN_CLASS)

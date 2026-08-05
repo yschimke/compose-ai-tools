@@ -22,7 +22,7 @@ question:
 | **CMP Wasm** (this repo's player, in-browser) | ✅ from the host manifest | ✅ if the manifest carries it | ⚠️ manifest only — no fetch | ✅ `decodeInlineFonts` |
 | **Java** (AOSP `remote-player-view`, server-side) | ✅ framework typefaces | ⚠️ `/system/fonts/` filename scan | ❌ no provider call at all | ✅ `Font.Builder(ByteBuffer)` |
 | **CMP Android** (vendored embedded player, server-side) | ✅ framework typefaces | ⚠️ `Typeface.create(name)` | ✅ `FontsContractCompat` | ❌ ignored |
-| **CMP JVM** (embedded player over Skiko, server-side) | ✅ | ❌ nearest standard family | ❌ nearest standard family | ❌ ignored |
+| **CMP JVM** (embedded player over Skiko, server-side) | ✅ | ⚠️ host families, else nearest standard | ✅ downloaded via `GoogleFontTypefaceResolver` | ❌ ignored |
 
 Two rows of that table are worth stating as findings, because they make two chips in the *same*
 viewer disagree about the *same* document:
@@ -40,10 +40,12 @@ viewer disagree about the *same* document:
    and served from the machine-local Google font cache (`composeai.fonts.cacheDir`, set for the
    serve daemon by [`ServeBundleDaemon`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/serve/ServeBundleDaemon.kt)
    and for the CLI daemon by [`BundleDaemonCommand`](../../cli/src/main/kotlin/ee/schimke/composeai/cli/BundleDaemonCommand.kt)).
-   So the branded face appears under `cmp-android` and `js`, and silently does not under `java` —
-   which is the **default** server-side snapshot lane. Fixing it means giving the view player a
-   `TypefaceResolver` backed by the same `GoogleFontCache`, which is the follow-up
-   `third_party/remote-compose-player/PROVENANCE.md` already names.
+   So the branded face appears under `cmp-android`, `cmp-jvm` and `js`, and silently does not under
+   `java` — which is the **default** server-side snapshot lane. `cmp-jvm` closed the same gap the
+   way the view lane still could: a `TypefaceResolver`-shaped shim over the shared `GoogleFontCache`
+   (see the CMP JVM section). Doing it for the view player means installing a `TypefaceResolver` on
+   the `RemoteComposePlayer` that serves `google:` names from that cache and delegates everything
+   else to `DefaultTypefaceResolver`.
 2. **Embedded `FontData` is supported by exactly the two lanes nobody looks at first.** The Java and
    CMP Wasm lanes build a real face from the document's own bytes; the JS lane stores them
    (`RemoteContext.loadFont` keeps `{mFontData, fontBuilder: null}`) and never registers a
@@ -115,11 +117,25 @@ document.
 
 ### CMP JVM — embedded player over Skiko, server-side
 
-`RcPlayerTextLayoutJvm.standardFontFamily` maps the built-in ids to the multiplatform
-`FontFamily.SansSerif`/`Serif`/`Monospace` and folds everything else — named, `device:`, `google:` —
-to the nearest standard family. This is the documented parity limit of the jvm lane (its
-`PROVENANCE.md` § "downloadable fonts"), not an oversight: the Android font stack is not reachable
-off Android, and the lane exists to prove the *player* is portable, not the platform's fonts.
+Built-in ids map to the multiplatform `FontFamily.SansSerif`/`Serif`/`Monospace` (layout ops) and to
+a list of host family candidates skiko can match (canvas ops — skia has no notion of a generic
+family, so `sans-serif`/`Helvetica`/`DejaVu Sans`/… are tried in order).
+
+A `google:` family is **downloaded**. There is no font *provider* off Android, which is why this
+lane used to substitute a local face, but there is a downloader: `GoogleFontTypefaceResolver` (in
+`:third-party-rc-embedded-player-jvm`) resolves the family through `:data-fonts-google` — the same
+`(family, weight, italic) -> File` machine-local cache the Robolectric downloadable-font shadow and
+the figma-svg embed path use — and serves both jvm text seams from that one file: a Compose
+`FontFamily` for the layout ops (`RcPlayerTextLayoutJvm`), a skiko `Typeface` for the canvas ops
+(`RcPlayerTextPlatformJvm`). Sharing the cache is the point: `Orbitron` at 400 is the *same file*
+here as in every other lane, not a second face that merely shares a name.
+
+The resolver is switched on by `-Dcomposeai.fonts.cacheDir`, which `serve`'s cmp-jvm subprocess
+(`RcJvmServerRenderer`) passes; without it — and on an offline miss, a failed fetch, a `device:`
+family, or a bare local name — the lane keeps its previous behaviour: try the host's families, then
+the default face. A substitution, never a failure. Beyond fonts, the ±1px text metrics remain the
+documented parity limit of this lane (its `PROVENANCE.md` § "text"): Skia's shaping is reachable
+from both targets, Android's font stack is not.
 
 ## Where the export sits
 

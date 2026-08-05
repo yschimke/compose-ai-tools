@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
+import ee.schimke.composeai.rcembedded.jvm.GoogleFontTypefaceResolver
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -42,10 +43,15 @@ import androidx.compose.ui.unit.em
  * verbatim — they use only multiplatform Compose text APIs and desktop `material3.Text`, so text
  * layout matches Android. What differs is **font family resolution**: Android resolves `google:`
  * families through GMS downloadable fonts and `device:` / variation-axis families through the
- * platform device-font loader (`DeviceFontFamilyName`), neither of which exists off Android. As with
- * the canvas text seam's `google:` substitution, this maps any such request onto the nearest
- * standard family (sans-serif / serif / monospace / default) — a documented parity limit, not a
- * layout change: the string still renders in a real face at the right size and metrics from skiko.
+ * platform device-font loader (`DeviceFontFamilyName`), neither of which exists off Android.
+ *
+ * A `google:` family is no longer substituted: [GoogleFontTypefaceResolver] downloads it into the
+ * shared machine-local font cache — the same `(family, weight, italic) -> File` resolution the
+ * Android lane's `FontsContractCompat` shadow and the figma-svg embed path use — so the branded
+ * face this lane draws is the one every other lane draws. `device:` families, variation axes, and
+ * any request the resolver can't serve (no cache configured, offline, a fetch that failed) still
+ * map onto the nearest standard family: a documented parity limit, not a layout change — the string
+ * renders in a real face at the right size and metrics from skiko.
  */
 
 @Composable
@@ -71,7 +77,13 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
         }
 
     val fontFamilyType = if (paintState.isTypefaceSet) paintState.fontFamily else data.type
-    val fontFamily = standardFontFamily(fontFamilyType, LocalRemoteContext.current.getText(fontFamilyType))
+    val fontFamily =
+        standardFontFamily(
+            fontFamilyType,
+            LocalRemoteContext.current.getText(fontFamilyType),
+            fontWeight,
+            fontStyle,
+        )
 
     val textDecoration =
         when {
@@ -140,7 +152,13 @@ internal fun RcPlayerText(layout: TextLayout, modifier: Modifier) {
     val fontStyle = if (paintState.isTypefaceSet) paintState.fontStyle else FontStyle.Normal
 
     val fontFamilyType = if (paintState.isTypefaceSet) paintState.fontFamily else data.type
-    val fontFamily = standardFontFamily(fontFamilyType, LocalRemoteContext.current.getText(fontFamilyType))
+    val fontFamily =
+        standardFontFamily(
+            fontFamilyType,
+            LocalRemoteContext.current.getText(fontFamilyType),
+            fontWeight,
+            fontStyle,
+        )
 
     Text(
         text = text,
@@ -172,12 +190,22 @@ internal fun RcPlayerText(layout: TextLayout, modifier: Modifier) {
 }
 
 /**
- * Map the document's font-family type / name onto a standard multiplatform [FontFamily]. The
- * built-in ids (0 default, 1 sans-serif, 2 serif, 3 monospace) and a named family resolve directly;
- * `google:` / `device:` families — Android-only downloadable/device fonts — fall back to the nearest
- * standard family (the documented parity limit).
+ * Map the document's font-family type / name onto a multiplatform [FontFamily] at
+ * [weight]/[style].
+ *
+ * The built-in ids (0 default, 1 sans-serif, 2 serif, 3 monospace) resolve directly. A `google:`
+ * family is a *downloadable font* request, and [GoogleFontTypefaceResolver] serves it from the
+ * shared machine-local Google Fonts cache — the same file every other lane resolves that family to
+ * — so a branded specimen renders in its real face here too. Everything the resolver can't serve
+ * (no cache configured, an offline miss, a `device:` family, a bare local name) still falls back to
+ * the nearest standard family: a substitution, not an error.
  */
-private fun standardFontFamily(fontFamilyType: Int, customName: String?): FontFamily {
+private fun standardFontFamily(
+    fontFamilyType: Int,
+    customName: String?,
+    weight: FontWeight,
+    style: FontStyle,
+): FontFamily {
     val name =
         when (fontFamilyType) {
             0 -> "sans-serif"
@@ -185,6 +213,14 @@ private fun standardFontFamily(fontFamilyType: Int, customName: String?): FontFa
             2 -> "serif"
             3 -> "monospace"
             else -> customName
+        }
+    GoogleFontTypefaceResolver.Default.composeFontFamily(
+            family = name,
+            weight = weight.weight,
+            italic = style == FontStyle.Italic,
+        )
+        ?.let {
+            return it
         }
     val cleaned = name?.substringAfter("device:")?.substringAfter("google:")
     return when (cleaned) {

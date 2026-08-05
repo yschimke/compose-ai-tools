@@ -167,7 +167,19 @@ tasks.withType<Test>().configureEach {
   // `compose-figma.svg` export beside that path, the jvm counterpart of the Android module's
   // `rc.semantics.report` forwarding — so a run can be compared against the embedded lane's export
   // file-for-file, not just by the counts both print.
-  for (key in listOf("rc.jvm.input", "rc.jvm.output", "rc.jvm.svg.report")) {
+  // `composeai.fonts.*` are `GoogleFontTypefaceResolver`'s: with a cache directory the harness
+  // resolves a `google:` family the way `serve`'s cmp-jvm subprocess does (the cli passes the same
+  // property), so an rc-compare row for a document naming a branded face compares the real face
+  // against the other lanes' rather than a local substitute. Unset — the default — keeps the
+  // resolver off and the render hermetic, which is what `check` wants.
+  for (key in
+    listOf(
+      "rc.jvm.input",
+      "rc.jvm.output",
+      "rc.jvm.svg.report",
+      "composeai.fonts.cacheDir",
+      "composeai.fonts.offline",
+    )) {
     (project.findProperty(key) as String?)?.let { systemProperty(key, it) }
   }
 }
@@ -202,6 +214,13 @@ dependencies {
   // slot tables + semantics into the same layered SVG the desktop preview daemon emits.
   implementation(project(":data-layoutinspector-connector"))
   implementation(project(":data-layoutinspector-core"))
+
+  // Downloadable fonts for the jvm text seams (`GoogleFontTypefaceResolver`). Android resolves a
+  // `google:` family through `FontsContractCompat`; off Android there is no provider, so the face
+  // is fetched through the same `(family, weight, italic) -> File` cache the Robolectric
+  // downloadable-font shadow and the figma-svg embed path use — one cache and one resolution rule,
+  // so every lane draws the same file for the same family.
+  implementation(project(":data-fonts-google"))
 
   testImplementation(libs.junit)
   // Manifest parsing for the rc-compare jvm render harness (RcJvmRenderHarness) — parsed via the
