@@ -529,9 +529,15 @@ SERVE_GITHUB_AUTH_COOKIE_SECRET=... # at least 32 chars
 
 With those set, live preview WebSockets require a signed-in GitHub user. `/playground`,
 `POST /api/<version>/compiler/run`, and `/pg/<token>` require a signed-in GitHub user that also has
-access to `SERVE_GITHUB_AUTH_REPO` / `--github-auth-repo`. The browser cookie stores only a signed,
-expiring login plus the repo access verdict. The OAuth request includes GitHub's `repo` scope so
-private repository access can be checked during sign-in; the OAuth token is not stored.
+**write** access to `SERVE_GITHUB_AUTH_REPO` / `--github-auth-repo` — `admin`, `maintain`, or
+`write`. Read access is deliberately not enough: GitHub reports `read` for *any* authenticated user
+on a **public** repository, so a read-level gate on a public `SERVE_GITHUB_AUTH_REPO` would admit
+every GitHub account to a surface that compiles and runs submitted Kotlin. Use
+`SERVE_GITHUB_AUTH_USERS` to admit named logins who don't have write access. The browser cookie
+stores only a signed, expiring login plus the repo access verdict, and is marked `secure` whenever
+the request arrives over HTTPS (which is why a reverse-proxied box should set
+`SERVE_GITHUB_AUTH_CALLBACK_BASE_URL`). The OAuth request includes GitHub's `repo` scope so private
+repository access can be checked during sign-in; the OAuth token is not stored.
 Reverse-proxied deployments should also set
 `SERVE_GITHUB_AUTH_CALLBACK_BASE_URL=https://preview.example.com` so the OAuth callback URL is stable.
 When `DOMAIN` is set, the prebuilt image derives
