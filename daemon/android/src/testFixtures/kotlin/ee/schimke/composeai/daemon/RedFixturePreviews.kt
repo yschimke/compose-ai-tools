@@ -875,3 +875,33 @@ class SquareTintProvider : PreviewParameterProvider<Long> {
 fun ThemedTintedSquare(@PreviewParameter(SquareTintProvider::class) tint: Long) {
   Box(modifier = Modifier.fillMaxSize().background(Color(tint)))
 }
+
+/**
+ * Retired-slot fixture (issue #3324): a `Scaffold` + `TopAppBar` around a `LazyColumn` that scrolls
+ * a few rows in before the frame is captured, so the rows that left the viewport are retired —
+ * composed, still carrying their text, but **unplaced** — while the app bar stays put. Mirrors the
+ * desktop `ScrolledLazyColumnPreview`; the JetNews `Screens/Article` defect this pins reproduced on
+ * the Android backend, so the guard has to run there too.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ScrolledLazyColumnPreview() {
+  val state = androidx.compose.foundation.lazy.rememberLazyListState()
+  LaunchedEffect(Unit) {
+    androidx.compose.runtime.withFrameNanos {}
+    state.scrollToItem(8)
+  }
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    Scaffold(topBar = { TopAppBar(title = { Text("Activity") }) }) { contentPadding ->
+      LazyColumn(
+        state = state,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = contentPadding,
+      ) {
+        items((1..30).toList()) { index ->
+          Text(text = "Row $index", modifier = Modifier.fillMaxWidth().padding(4.dp))
+        }
+      }
+    }
+  }
+}
