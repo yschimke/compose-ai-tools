@@ -5,8 +5,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>compose-m3 — compose-preview</title>
         <link rel="stylesheet" href="/assets/serve/e592-c60c84bb95114e19/serve.css">
-        <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
-        <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        <!-- Apply the Background/Transparent choice before first paint (no checkerboard flash).
+             A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
+        <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
         <header class="cp-site-header">
@@ -60,15 +61,29 @@
 </a>
         </div>
 <p id="cp-empty" class="cp-empty" hidden>No previews match your filter.</p>
+<script src="/assets/serve/e8c-acead748488355b1/url-state.js"></script>
 <script>    (function () {
       var cards = document.querySelectorAll(".cp-card");
       var input = document.getElementById("cp-search");
       var count = document.getElementById("cp-count");
       var empty = document.getElementById("cp-empty");
       var total = cards.length;
+      // Address-bar state (url-state.js). Every selection below is reflected into the URL so the
+      // page someone is looking at is the page its URL describes — bookmarkable, shareable, and
+      // reachable with Back — without ever reloading: the grid re-points its own images.
+      var urlState = window.cpUrlState || null;
+      function urlParam(n) { return urlState ? urlState.get(n) : ""; }
+      function pushUrl(v) { if (urlState) urlState.push(v); }
+      function replaceUrl(v) { if (urlState) urlState.replace(v); }
+      if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }
       var stored = null;
 try { stored = localStorage.getItem("cp-theme:default"); } catch (e) {}
 var themeBtns = document.querySelectorAll(".cp-theme-btn");
+function chipOffered(t) {
+  var offered = false;
+  themeBtns.forEach(function (b) { if (b.getAttribute("data-theme-choice") === t) offered = true; });
+  return offered;
+}
 // The GRID always opens on published pixels. A stored app-declared theme
 // (`theme:<providerFqn>`) is deliberately NOT replayed here: restoring it would re-point
 // every card at a `?themeProvider=` render and put the whole grid through the daemon on
@@ -87,6 +102,16 @@ var theme = validTheme(stored) ? stored
 var known = false;
 themeBtns.forEach(function (b) { if (b.getAttribute("data-theme-choice") === theme) known = true; });
 if (!known && themeBtns.length) theme = themeBtns[0].getAttribute("data-theme-choice");
+// The URL wins over both. `?theme=` is on the address bar only because someone picked that
+// chip (or was handed the link), which makes it the one case where replaying an app-declared
+// theme IS what was asked for — the cost the stored-value rule above avoids is the cost of
+// an *unrequested* grid re-render, not of honouring an explicit link. An unknown value (a
+// theme this catalog no longer publishes) is ignored, exactly like a stale stored one.
+var urlTheme = urlParam("theme");
+if (urlTheme && chipOffered(urlTheme)) theme = urlTheme;
+// What the page falls back to when Back lands on an entry with no `?theme=` — the choice
+// this load resolved to, never the localStorage value a later click overwrote.
+var initialTheme = theme;
 var appliedTheme = null;
       function apply() {
         themeBtns.forEach(function (b) {
@@ -145,11 +170,20 @@ applyThemeChoice();
         if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
         if (empty) empty.hidden = shown !== 0;
       }
-      if (input) input.addEventListener("input", apply);
+      if (input) input.addEventListener("input", function () {
+        // Typing REPLACES rather than pushes: a five-character filter must not bury the page the
+        // visitor arrived from under five entries. The URL still carries the query, so the
+        // filtered grid is bookmarkable.
+        replaceUrl({ q: input.value.trim() });
+        apply();
+      });
       themeBtns.forEach(function (b) {
         b.addEventListener("click", function () {
           theme = b.getAttribute("data-theme-choice");
           try { localStorage.setItem("cp-theme:default", theme); } catch (e) {}
+          // A discrete pick gets its own history entry, so Back returns to the previous theme
+          // rather than leaving the catalog. No navigation: the grid re-points its own images.
+          pushUrl({ theme: theme });
           apply();
         });
       });
@@ -168,10 +202,23 @@ applyThemeChoice();
           var choice = b.getAttribute("data-bg-choice");
           document.documentElement.classList.toggle("cp-bg-transparent", choice === "off");
           try { localStorage.setItem("cp-bg", choice); } catch (e) {}
+          pushUrl({ bg: choice });
           reflectBg();
         });
       });
       reflectBg();
+      if (urlState) {
+        urlState.onPop(function () {
+          var poppedTheme = urlParam("theme") || initialTheme;
+          if (chipOffered(poppedTheme)) theme = poppedTheme;
+          if (input) input.value = urlParam("q");
+          var poppedBg = urlParam("bg");
+          if (!poppedBg) { try { poppedBg = localStorage.getItem("cp-bg") || "on"; } catch (e) { poppedBg = "on"; } }
+          document.documentElement.classList.toggle("cp-bg-transparent", poppedBg === "off");
+          reflectBg();
+          apply();
+        });
+      }
       apply();
     })();</script>
 <details class="cp-about cp-disclosure">

@@ -1,0 +1,149 @@
+package ee.schimke.composeai.cli.serve
+
+import kotlin.test.Test
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+/**
+ * The serve pages' **address-bar state**: what a visitor picked (a section tab, a theme, a filter,
+ * a viewer override) is reflected into the page URL, so the page on screen is the page its URL
+ * describes — bookmarkable, shareable, and reachable with Back.
+ *
+ * These are structural assertions on the emitted script; the behaviour itself (click a tab, read
+ * `location.search`, go Back, see the previous tab) is driven in a real browser by
+ * `preview-harness/serve-lanes.spec.mjs`. Both matter: this one fails fast in `:cli:test` when the
+ * wiring is dropped, the browser one proves it actually navigates.
+ */
+class ServeUrlStateTest {
+
+  private val sectioned =
+    listOf(
+      ServePreview("theme-light__ideal__default__light", "Theme light", section = "Themes"),
+      ServePreview("theme-dark__ideal__default__dark", "Theme dark", section = "Themes"),
+      ServePreview("button__ideal__default__light", "Button", section = "Components"),
+      ServePreview("button__ideal__default__dark", "Button", section = "Components"),
+    )
+
+  private fun landing() =
+    ServeWeb.landingPage("meshcore-mobile", sectioned, token = "t", basePath = "/meshcore-mobile")
+
+  @Test
+  fun `catalog landing loads the shared url-state helper`() {
+    assertTrue(
+      landing().contains("""<script src="${ServeWebAssets.href("url-state.js")}"></script>"""),
+      "the landing page must load url-state.js before its filter script",
+    )
+  }
+
+  @Test
+  fun `section tab and theme pick each push a history entry`() {
+    val html = landing()
+    assertTrue(html.contains("pushUrl({ tab: current });"), "a tab click must push ?tab=")
+    assertTrue(html.contains("pushUrl({ theme: theme });"), "a theme chip must push ?theme=")
+    assertTrue(html.contains("pushUrl({ bg: choice });"), "the background toggle must push ?bg=")
+  }
+
+  @Test
+  fun `typing in the filter replaces rather than pushes`() {
+    val html = landing()
+    assertTrue(
+      html.contains("replaceUrl({ q: input.value.trim() });"),
+      "the filter must replace the current entry — one entry per keystroke is unusable",
+    )
+    assertFalse(
+      html.contains("pushUrl({ q:"),
+      "the filter must never push, or Back would walk back through every keystroke",
+    )
+  }
+
+  @Test
+  fun `the url outranks the remembered tab and theme`() {
+    val html = landing()
+    assertTrue(html.contains("""var urlTab = urlParam("tab");"""), html)
+    assertTrue(html.contains("""var urlTheme = urlParam("theme");"""), html)
+    assertTrue(
+      html.contains("if (urlTheme && chipOffered(urlTheme)) theme = urlTheme;"),
+      "an explicit ?theme= is applied — including an app-declared theme, which the stored value " +
+        "deliberately never replays",
+    )
+  }
+
+  @Test
+  fun `back and forward restore the whole selection without reloading`() {
+    val html = landing()
+    assertTrue(html.contains("urlState.onPop(function () {"), "the grid must handle popstate")
+    // An entry that names no tab/theme falls back to what THIS load resolved to, not to whatever
+    // localStorage was last written with — otherwise Back out of a theme lands on that theme.
+    assertTrue(html.contains("""urlParam("tab") || initialTab"""), html)
+    assertTrue(html.contains("""urlParam("theme") || initialTheme"""), html)
+    assertFalse(
+      html.contains("location.reload()"),
+      "restoring state must re-point the grid in place, never reload the catalog",
+    )
+  }
+
+  @Test
+  fun `the pre-paint background script honours the url before the sticky choice`() {
+    assertTrue(
+      landing().contains("""var b=new URLSearchParams(location.search).get("bg")"""),
+      "?bg= must be applied before first paint, like the sticky value it outranks",
+    )
+  }
+
+  @Test
+  fun `a catalog with no previews emits no url wiring`() {
+    val empty = ServeWeb.landingPage("empty", emptyList(), token = "t")
+    assertFalse(empty.contains("url-state.js"), "nothing to select ⇒ no state to carry")
+  }
+
+  @Test
+  fun `viewer loads the helper and lets the url outrank the remembered theme`() {
+    val preview = ServePreview("plain.Button", "button")
+    val html = ServeWeb.viewerPage(preview, token = "t", siblings = listOf(preview))
+    assertTrue(
+      html.contains("""<script src="${ServeWebAssets.href("url-state.js")}"></script>"""),
+      html,
+    )
+    assertTrue(html.contains("""var provider = params.get("themeProvider");"""), html)
+    assertTrue(html.contains("""var uiMode = params.get("uiMode");"""), html)
+    assertTrue(
+      html.contains("if (!urlOption && option && !option.disabled"),
+      "the remembered theme applies only when the URL names none",
+    )
+  }
+
+  @Test
+  fun `viewer syncs its overrides into the page url and restores them on popstate`() {
+    val script = ServeWebAssets.load("viewer.js")!!.bytes.decodeToString()
+    assertTrue(script.contains("function ownsUrlParam(name)"), "the viewer must scope what it owns")
+    assertTrue(
+      script.contains("window.cpUrlState.sync(values, ownsUrlParam, !push);"),
+      "a control returning to its default has to clear its param, not pin a redundant value",
+    )
+    assertTrue(
+      script.contains("function hydrateFromUrl(popped)"),
+      "one restore path serves both the first load and Back/Forward",
+    )
+    assertTrue(script.contains("window.cpUrlState.onPop("), "the viewer must handle Back/Forward")
+    // token / session are the server's, and the viewer must never rewrite them.
+    assertFalse(
+      script.contains("values.token") || script.contains("values.session"),
+      "the viewer owns only its own override params",
+    )
+  }
+
+  @Test
+  fun `format comparison pushes its format and theme picks`() {
+    val script = ServeWebAssets.load("format-compare.js")!!.bytes.decodeToString()
+    assertTrue(script.contains("pushUrl({ format: format });"), "format is a discrete pick")
+    assertTrue(script.contains("pushUrl({ theme: theme });"), "so is the comparison theme")
+    assertTrue(
+      script.contains("replaceUrl({ q: search.value.trim() });"),
+      "the filter replaces, like every other typed filter",
+    )
+    assertFalse(
+      script.contains("history.replaceState"),
+      "URL writes go through url-state.js, which preserves token/session and never navigates",
+    )
+  }
+}

@@ -82,35 +82,11 @@
   var token = new URLSearchParams(location.search).get("token") || "";
   // Carry the tenant through follow-up requests so a non-default ?session= stays on its module.
   var session = new URLSearchParams(location.search).get("session") || "";
-  // Hydrate the declared knob controls from the page URL's `knob.<key>` params, so a deep link
-  // (or a copied "Direct links — overrides applied" URL) opens with those values already set.
-  // The initial render then carries them through whichever transport is live — including the
-  // Wasm iframe, whose fragment/patch is built purely from control state — instead of showing
-  // the author default until the control is manually edited. Only the author-declared knobs this
-  // feature drives are hydrated (display axes are unchanged, pre-existing behaviour).
-  (function () {
-    var q = new URLSearchParams(location.search);
-    document.querySelectorAll(".cp-knob").forEach(function (el) {
-      var key = el.getAttribute("data-knob-key");
-      if (!key) return;
-      var v = q.get("knob." + key);
-      if (v === null) return;
-      if (el.type === "checkbox") el.checked = (v === "true" || v === "1");
-      else el.value = v;
-    });
-    // Remote Compose knobs hydrate from `rc.<name>`, whose value is `<kind>:<value>`; strip the
-    // control's own `data-rc-kind` prefix back off before assigning the bare value.
-    document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
-      var name = el.getAttribute("data-rc-name");
-      if (!name) return;
-      var v = q.get("rc." + name);
-      if (v === null) return;
-      var kind = el.getAttribute("data-rc-kind") || "";
-      if (kind && v.indexOf(kind + ":") === 0) v = v.substring(kind.length + 1);
-      if (el.type === "checkbox") el.checked = (v === "true" || v === "1");
-      else el.value = v;
-    });
-  })();
+  // Hydrating the controls from the page URL's params — the knobs this used to do inline, plus
+  // every display axis — now happens in one place (hydrateFromUrl, at the bottom of this file),
+  // because Back/Forward needs to run exactly the same restore. It still lands before the first
+  // render, so a deep link (or a copied "Direct links — overrides applied" URL) opens with those
+  // values already set and carries them through whichever transport is live.
   // The selects + text input are opt-in (empty value = "use the preview's default"). The font
   // scale slider has no empty state, so it's gated separately: we only send fontScale once the
   // user moves it (fontScaleTouched), otherwise the slider's standing 1.0 would override a
@@ -408,6 +384,10 @@
     return url + (url.indexOf("?") >= 0 ? "&" : "?") + "mode=" + mode;
   }
   function refreshLinks() {
+    // The page's own URL is kept in step with the controls for the same reason the direct links
+    // are: what's on screen should be something you can bookmark or hand to someone. Every path
+    // that changes viewer state already refreshes the links, so this one call covers all of them.
+    syncUrl();
     [["png", ".png"], ["svg", ".svg"]].forEach(function (pair) {
       var field = document.getElementById("cp-url-" + pair[0]);
       if (!field) return;
@@ -1246,6 +1226,11 @@
     return !!(svgToggle && svgToggle.getAttribute("aria-pressed") === "true");
   }
   function enterMode(m) {
+    // A lane switch is a discrete choice, so the URL sync it ends up triggering pushes a history
+    // entry rather than replacing one — Back returns to the lane the visitor came from. Set here
+    // rather than on each control because every transition (radio, Live/Wasm/RC toggle, or an
+    // auto-enable) passes through this function.
+    urlPush = true;
     // A mode switch always clears a prior lane's error; the new lane re-raises its own if it fails.
     clearModeError();
     if (m === "live") {
@@ -1655,6 +1640,8 @@
   }
   if (themeChoice) themeChoice.addEventListener("change", function () {
     themeChoice.setAttribute("data-theme-active", "1");
+    // Like a lane switch: a picked theme earns its own history entry.
+    urlPush = true;
     if (chosenThemeProvider()) onKnobChanged();
     else onControlsChanged();
   });
@@ -1673,6 +1660,140 @@
   document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
     el.addEventListener(el.type === "checkbox" ? "change" : "input", onRcKnobChanged);
   });
+  // ——— Address-bar state ————————————————————————————————————————————————————————————————————
+  //
+  // The viewer's controls already produce a shareable /render URL; until now the *page* URL said
+  // nothing about them, so a bookmark of "this preview, Dynamic Dark, RTL, font scale 1.3"
+  // reopened on the preview's defaults. The params are exactly the /render override names, so the
+  // viewer URL and the copyable render URL describe the same state and a param learned from one
+  // works in the other.
+  //
+  // Only the params below are ours: `token` / `session` (and anything else the server put on the
+  // URL) are never touched, and a control returning to its default *removes* its param rather
+  // than pinning a redundant value, so an untouched viewer keeps the clean URL it was opened
+  // with.
+  var URL_STATE_PARAMS = [
+    "device", "localeTag", "orientation", "background", "fontScale",
+    "uiMode", "themeProvider", "focus", "gestures", "scroll", "mode", "sizeMode", "rcPlayer",
+    "widthPx", "heightPx", "minWidthPx", "minHeightPx", "maxWidthPx", "maxHeightPx",
+  ];
+  function ownsUrlParam(name) {
+    return URL_STATE_PARAMS.indexOf(name) >= 0 ||
+      name.indexOf("knob.") === 0 || name.indexOf("rc.") === 0;
+  }
+  function currentMode() {
+    var checked = document.querySelector("input[name=\"cp-mode\"]:checked");
+    return checked ? checked.value : "png";
+  }
+  // Set before a discrete choice (a lane switch, a theme pick) so the sync it triggers PUSHES a
+  // history entry — Back then returns to the previous lane/theme. Continuous edits (a slider, a
+  // typed knob) leave it false and replace instead, so one drag can't bury the catalog page under
+  // fifty entries. Consumed by the first sync that follows.
+  var urlPush = false;
+  function syncUrl() {
+    var push = urlPush;
+    urlPush = false;
+    if (!window.cpUrlState) return;
+    var values = {};
+    new URLSearchParams(query()).forEach(function (value, name) {
+      if (ownsUrlParam(name)) values[name] = value;
+    });
+    if (scrollLong && scrollLong.checked) values.scroll = "long";
+    var mode = currentMode();
+    if (mode !== "png") values.mode = mode;
+    var sizeModeEl = document.getElementById("cp-sizeMode");
+    if (sizeModeEl && sizeModeEl.value) values.sizeMode = sizeModeEl.value;
+    window.cpUrlState.sync(values, ownsUrlParam, !push);
+  }
+  // What the controls hold when the URL names nothing — captured after the server markup and the
+  // sticky-theme script have had their say, so Back out of a choice restores the page as it first
+  // opened rather than whatever localStorage was last written with.
+  var initialTheme = themeChoice ? themeChoice.value : "";
+  var initialThemeActive = themeChoice ? themeChoice.getAttribute("data-theme-active") : "0";
+  // px on the wire (like every override), dp in the input — the inverse of sizePx().
+  function setSizeInput(id, px) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var value = parseFloat(px);
+    el.value = value > 0 ? String(Math.round(value / renderDensity)) : "";
+  }
+  // Restore every owned control from the URL. Also runs for Back/Forward, so a param the entry
+  // does NOT carry has to reset its control — leaving the live value would make the restored page
+  // disagree with its own URL.
+  function hydrateFromUrl(popped) {
+    var q = new URLSearchParams(location.search);
+    fields.forEach(function (f) {
+      var el = document.getElementById("cp-" + f);
+      if (el) el.value = q.get(f) || "";
+    });
+    if (fs) {
+      var scale = q.get("fontScale");
+      fontScaleTouched = !!scale;
+      fs.value = scale || "1.0";
+      if (fsVal) fsVal.textContent = scale ? fs.value : "default";
+    }
+    if (scrollLong) scrollLong.checked = q.get("scroll") === "long";
+    ["focus", "gestures"].forEach(function (f) {
+      var el = document.getElementById("cp-" + f);
+      if (el) el.checked = q.get(f) !== null;
+    });
+    var sizeModeEl = document.getElementById("cp-sizeMode");
+    if (sizeModeEl) {
+      sizeModeEl.value = q.get("sizeMode") || "";
+      setSizeInput("cp-fixedW", q.get("widthPx"));
+      setSizeInput("cp-fixedH", q.get("heightPx"));
+      setSizeInput("cp-minW", q.get("minWidthPx"));
+      setSizeInput("cp-minH", q.get("minHeightPx"));
+      setSizeInput("cp-maxW", q.get("maxWidthPx"));
+      setSizeInput("cp-maxH", q.get("maxHeightPx"));
+      if (typeof syncSizeRows === "function") syncSizeRows();
+    }
+    document.querySelectorAll(".cp-knob").forEach(function (el) {
+      var key = el.getAttribute("data-knob-key");
+      if (!key) return;
+      var value = q.get("knob." + key);
+      if (value === null) value = el.getAttribute("data-knob-initial") || "";
+      if (el.type === "checkbox") el.checked = (value === "true" || value === "1");
+      else el.value = value;
+    });
+    document.querySelectorAll(".cp-rc-knob").forEach(function (el) {
+      var name = el.getAttribute("data-rc-name");
+      if (!name) return;
+      var kind = el.getAttribute("data-rc-kind") || "";
+      var value = q.get("rc." + name);
+      if (value === null) value = el.getAttribute("data-rc-initial") || "";
+      else if (kind && value.indexOf(kind + ":") === 0) value = value.substring(kind.length + 1);
+      if (el.type === "checkbox") el.checked = (value === "true" || value === "1");
+      else el.value = value;
+    });
+    // The theme select is seeded (from the URL first, then localStorage) by the sticky script
+    // before this file runs, so the initial pass must not touch it. A Back/Forward pass owns it:
+    // the entry's theme, or the one the page opened with when it names none.
+    if (popped && themeChoice) {
+      var provider = q.get("themeProvider");
+      var uiMode = q.get("uiMode");
+      var choice = provider ? "theme:" + provider
+        : (uiMode === "light" || uiMode === "dark" ? uiMode : "");
+      var offered = false;
+      Array.prototype.forEach.call(themeChoice.options, function (o) {
+        if (choice && o.value === choice) offered = true;
+      });
+      themeChoice.value = offered ? choice : initialTheme;
+      themeChoice.setAttribute("data-theme-active", offered ? "1" : initialThemeActive);
+    }
+  }
+  hydrateFromUrl(false);
+  if (window.cpUrlState) {
+    window.cpUrlState.onPop(function () {
+      hydrateFromUrl(true);
+      var mode = currentMode();
+      var wanted = new URLSearchParams(location.search).get("mode") || "png";
+      // A lane change re-renders through enterMode; otherwise the restored overrides go out over
+      // whichever transport is already up. Either way nothing reloads.
+      if (wanted !== mode) setMode(wanted);
+      else onControlsChanged();
+    });
+  }
   // Reconcile the control enabled-state + the toggle's initial look with the session's
   // capabilities (matches the server-rendered markup; keeps them in sync after hydration).
   syncServerControls();

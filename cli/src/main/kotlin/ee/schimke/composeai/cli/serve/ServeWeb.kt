@@ -1206,6 +1206,11 @@ object ServeWeb {
         var stored = null;
         try { stored = localStorage.getItem("$themeStorageKey"); } catch (e) {}
         var themeBtns = document.querySelectorAll(".cp-theme-btn");
+        function chipOffered(t) {
+          var offered = false;
+          themeBtns.forEach(function (b) { if (b.getAttribute("data-theme-choice") === t) offered = true; });
+          return offered;
+        }
         // The GRID always opens on published pixels. A stored app-declared theme
         // (`theme:<providerFqn>`) is deliberately NOT replayed here: restoring it would re-point
         // every card at a `?themeProvider=` render and put the whole grid through the daemon on
@@ -1224,6 +1229,16 @@ object ServeWeb {
         var known = false;
         themeBtns.forEach(function (b) { if (b.getAttribute("data-theme-choice") === theme) known = true; });
         if (!known && themeBtns.length) theme = themeBtns[0].getAttribute("data-theme-choice");
+        // The URL wins over both. `?theme=` is on the address bar only because someone picked that
+        // chip (or was handed the link), which makes it the one case where replaying an app-declared
+        // theme IS what was asked for — the cost the stored-value rule above avoids is the cost of
+        // an *unrequested* grid re-render, not of honouring an explicit link. An unknown value (a
+        // theme this catalog no longer publishes) is ignored, exactly like a stale stored one.
+        var urlTheme = urlParam("theme");
+        if (urlTheme && chipOffered(urlTheme)) theme = urlTheme;
+        // What the page falls back to when Back lands on an entry with no `?theme=` — the choice
+        // this load resolved to, never the localStorage value a later click overwrote.
+        var initialTheme = theme;
         var appliedTheme = null;
         """
           .trimIndent()
@@ -1577,6 +1592,9 @@ object ServeWeb {
         b.addEventListener("click", function () {
           theme = b.getAttribute("data-theme-choice");
           try { localStorage.setItem("$themeStorageKey", theme); } catch (e) {}
+          // A discrete pick gets its own history entry, so Back returns to the previous theme
+          // rather than leaving the catalog. No navigation: the grid re-points its own images.
+          pushUrl({ theme: theme });
           apply();
         });
       });"""
@@ -1602,9 +1620,19 @@ object ServeWeb {
           "\n          if (t.getAttribute(\"data-tab\") === storedTab) current = storedTab;" +
           "\n        });" +
           "\n      } catch (e) {}" +
+          // `?tab=` outranks the remembered tab for the same reason `?theme=` outranks the
+          // remembered chip: it is on the URL because it was chosen, here or by whoever shared it.
+          "\n      var urlTab = urlParam(\"tab\");" +
           "\n      tabBtns.forEach(function (t) {" +
-          "\n        t.setAttribute(\"aria-selected\", t.getAttribute(\"data-tab\") === current ? \"true\" : \"false\");" +
+          "\n        if (t.getAttribute(\"data-tab\") === urlTab) current = urlTab;" +
           "\n      });" +
+          "\n      var initialTab = current;" +
+          "\n      function reflectTabs() {" +
+          "\n        tabBtns.forEach(function (t) {" +
+          "\n          t.setAttribute(\"aria-selected\", t.getAttribute(\"data-tab\") === current ? \"true\" : \"false\");" +
+          "\n        });" +
+          "\n      }" +
+          "\n      reflectTabs();" +
           "\n      document.documentElement.classList.add(\"cp-js\");"
       else ""
     // A card is shown when it matches the search AND (while not searching) sits in the current tab.
@@ -1631,18 +1659,56 @@ object ServeWeb {
           "\n          e.preventDefault();" +
           "\n          current = t.getAttribute(\"data-tab\");" +
           "\n          try { localStorage.setItem(\"$tabStorageKey\", current); } catch (e) {}" +
-          "\n          tabBtns.forEach(function (x) { x.setAttribute(\"aria-selected\", x === t ? \"true\" : \"false\"); });" +
+          "\n          reflectTabs();" +
+          "\n          pushUrl({ tab: current });" +
           "\n          apply();" +
           "\n        });" +
           "\n      });"
       else ""
+    // Back / Forward: re-read the whole selection off the URL and re-apply it in place — no
+    // reload, so nothing is re-fetched that the page already has. A history entry that carries no
+    // param for a control falls back to what THIS page load resolved to, never to the
+    // localStorage value a later click wrote: otherwise Back out of a theme would land right back
+    // on the theme the visitor was leaving.
+    val themePop =
+      if (hasThemes)
+        "\n          var poppedTheme = urlParam(\"theme\") || initialTheme;" +
+          "\n          if (chipOffered(poppedTheme)) theme = poppedTheme;"
+      else ""
+    val tabPop =
+      if (hasTabs)
+        "\n          var poppedTab = urlParam(\"tab\") || initialTab;" +
+          "\n          tabBtns.forEach(function (t) {" +
+          "\n            if (t.getAttribute(\"data-tab\") === poppedTab) current = poppedTab;" +
+          "\n          });" +
+          "\n          reflectTabs();"
+      else ""
+    val popWiring =
+      "\n      if (urlState) {" +
+        "\n        urlState.onPop(function () {$themePop$tabPop" +
+        "\n          if (input) input.value = urlParam(\"q\");" +
+        "\n          var poppedBg = urlParam(\"bg\");" +
+        "\n          if (!poppedBg) { try { poppedBg = localStorage.getItem(\"cp-bg\") || \"on\"; } catch (e) { poppedBg = \"on\"; } }" +
+        "\n          document.documentElement.classList.toggle(\"cp-bg-transparent\", poppedBg === \"off\");" +
+        "\n          reflectBg();" +
+        "\n          apply();" +
+        "\n        });" +
+        "\n      }"
     return """
     (function () {
       var cards = document.querySelectorAll(".cp-card");
       var input = document.getElementById("cp-search");
       var count = document.getElementById("cp-count");
       var empty = document.getElementById("cp-empty");
-      var total = cards.length;$groupDecls$tabDecls
+      var total = cards.length;
+      // Address-bar state (url-state.js). Every selection below is reflected into the URL so the
+      // page someone is looking at is the page its URL describes — bookmarkable, shareable, and
+      // reachable with Back — without ever reloading: the grid re-points its own images.
+      var urlState = window.cpUrlState || null;
+      function urlParam(n) { return urlState ? urlState.get(n) : ""; }
+      function pushUrl(v) { if (urlState) urlState.push(v); }
+      function replaceUrl(v) { if (urlState) urlState.replace(v); }
+      if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }$groupDecls$tabDecls
       ${listOf(themeInit, themeRenderInit).filter { it.isNotEmpty() }.joinToString("\n")}
       function apply() {
         $applyTheme
@@ -1659,7 +1725,13 @@ object ServeWeb {
         if (count) count.textContent = q === "" ? (total + " preview" + (total === 1 ? "" : "s")) : (shown + " of " + total);
         if (empty) empty.hidden = shown !== 0;$groupPost$sectionPost
       }
-      if (input) input.addEventListener("input", apply);
+      if (input) input.addEventListener("input", function () {
+        // Typing REPLACES rather than pushes: a five-character filter must not bury the page the
+        // visitor arrived from under five entries. The URL still carries the query, so the
+        // filtered grid is bookmarkable.
+        replaceUrl({ q: input.value.trim() });
+        apply();
+      });
       $themeWiring$tabWiring
       // Background/Transparent toggle: flips the whole page between a solid surface (default) and the
       // transparent-checkerboard backing, persisting the choice. Independent of theme/search filters.
@@ -1676,10 +1748,11 @@ object ServeWeb {
           var choice = b.getAttribute("data-bg-choice");
           document.documentElement.classList.toggle("cp-bg-transparent", choice === "off");
           try { localStorage.setItem("cp-bg", choice); } catch (e) {}
+          pushUrl({ bg: choice });
           reflectBg();
         });
       });
-      reflectBg();
+      reflectBg();$popWiring
       apply();$presenceWiring
     })();
     """
@@ -1817,12 +1890,26 @@ object ServeWeb {
       var root = document.querySelector(".cp-viewer");
       var pid = (root && root.getAttribute("data-preview-id")) || "";
       var themed = pid.split("__").some(function (s) { return s === "light" || s === "dark"; });
+      // The page's own URL outranks the remembered choice: `?themeProvider=` / `?uiMode=` is there
+      // because someone picked it (or was handed the link), so a bookmarked viewer opens on the
+      // theme it was bookmarked in — including on an explicit __light/__dark preview.
+      var params = new URLSearchParams(location.search);
+      var provider = params.get("themeProvider");
+      var uiMode = params.get("uiMode");
+      var urlChoice = provider ? "theme:" + provider
+        : (uiMode === "light" || uiMode === "dark" ? uiMode : "");
+      var urlOption = null;
+      Array.prototype.forEach.call(el.options, function (o) { if (urlChoice && o.value === urlChoice) urlOption = o; });
+      if (urlOption) {
+        el.value = urlChoice;
+        el.setAttribute("data-theme-active", "1");
+      }
       try {
         var stored = localStorage.getItem("$themeStorageKey");
         var declared = stored && stored.indexOf("theme:") === 0;
         var option = null;
         Array.prototype.forEach.call(el.options, function (o) { if (o.value === stored) option = o; });
-        if (option && !option.disabled && (declared || (!themed && (stored === "light" || stored === "dark")))) {
+        if (!urlOption && option && !option.disabled && (declared || (!themed && (stored === "light" || stored === "dark")))) {
           el.value = stored;
           el.setAttribute("data-theme-active", "1");
         }
@@ -3533,7 +3620,7 @@ object ServeWeb {
       else orderedCards.joinToString(", ", "[", "]") { WebEscaping.jsString(themeBase(it)) }
     val filterScript =
       if (hasPreviews)
-        "\n<script>${catalogFilterScript(
+        "\n${scriptTag("url-state.js")}\n<script>${catalogFilterScript(
           hasThemes,
           hasTabs,
           hasGroups,
@@ -3755,6 +3842,7 @@ object ServeWeb {
           </div>
           $empty
         </div>
+        ${scriptTag("url-state.js")}
         ${scriptTag("format-compare.js")}
         """
           .trimIndent(),
@@ -3881,6 +3969,7 @@ object ServeWeb {
           <label class="cp-overlay-control">Overlay <input class="cp-overlay-range" type="range" min="0" max="100" value="50"><span>50%</span></label>
           <div class="cp-reference-overlay"><img src="$raster" alt=""><img src="$actual" alt=""></div>
         </div>
+        ${scriptTag("url-state.js")}
         ${scriptTag("format-compare.js")}
         """
           .trimIndent(),
@@ -4603,6 +4692,7 @@ object ServeWeb {
       <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
            tapping it dismisses the sheet. Inert on desktop. -->
       <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
+      ${scriptTag("url-state.js")}
       ${scriptTag("viewer-groups.js")}
       ${scriptTag("viewer-drawers.js")}
       <script>${viewerThemeStickyScript(themeStorageKey(sessionId, basePath))}</script>${presenceScriptTag(presenceUrl)}
@@ -4766,8 +4856,9 @@ object ServeWeb {
         <meta name="viewport" content="width=device-width, initial-scale=1">$unfurlBlock
         <title>${WebEscaping.htmlEscape(title)}</title>
         <link rel="stylesheet" href="${assetHref("serve.css")}">$themeBlock
-        <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
-        <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        <!-- Apply the Background/Transparent choice before first paint (no checkerboard flash).
+             A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
+        <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
         ${siteHeader(navSuffix, headerAction)}

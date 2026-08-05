@@ -5,8 +5,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>meshcore-mobile — compose-preview</title>
         <link rel="stylesheet" href="/assets/serve/e592-c60c84bb95114e19/serve.css">
-        <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
-        <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        <!-- Apply the Background/Transparent choice before first paint (no checkerboard flash).
+             A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
+        <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
         <header class="cp-site-header">
@@ -168,12 +169,21 @@
 </section>
 </div>
 <p id="cp-empty" class="cp-empty" hidden>No previews match your filter.</p>
+<script src="/assets/serve/e8c-acead748488355b1/url-state.js"></script>
 <script>(function () {
   var cards = document.querySelectorAll(".cp-card");
   var input = document.getElementById("cp-search");
   var count = document.getElementById("cp-count");
   var empty = document.getElementById("cp-empty");
   var total = cards.length;
+  // Address-bar state (url-state.js). Every selection below is reflected into the URL so the
+  // page someone is looking at is the page its URL describes — bookmarkable, shareable, and
+  // reachable with Back — without ever reloading: the grid re-points its own images.
+  var urlState = window.cpUrlState || null;
+  function urlParam(n) { return urlState ? urlState.get(n) : ""; }
+  function pushUrl(v) { if (urlState) urlState.push(v); }
+  function replaceUrl(v) { if (urlState) urlState.replace(v); }
+  if (input) { var urlQuery = urlParam("q"); if (urlQuery) input.value = urlQuery; }
   var navGroups = document.querySelectorAll(".cp-subgroup");
   var tabBtns = document.querySelectorAll(".cp-tab");
   var tabSections = document.querySelectorAll(".cp-section");
@@ -184,9 +194,17 @@
       if (t.getAttribute("data-tab") === storedTab) current = storedTab;
     });
   } catch (e) {}
+  var urlTab = urlParam("tab");
   tabBtns.forEach(function (t) {
-    t.setAttribute("aria-selected", t.getAttribute("data-tab") === current ? "true" : "false");
+    if (t.getAttribute("data-tab") === urlTab) current = urlTab;
   });
+  var initialTab = current;
+  function reflectTabs() {
+    tabBtns.forEach(function (t) {
+      t.setAttribute("aria-selected", t.getAttribute("data-tab") === current ? "true" : "false");
+    });
+  }
+  reflectTabs();
   document.documentElement.classList.add("cp-js");
   
   function apply() {
@@ -208,14 +226,21 @@
     navGroups.forEach(function (g) { g.hidden = !g.querySelector(".cp-card:not([hidden])"); });
     tabSections.forEach(function (s) { s.hidden = !s.querySelector(".cp-card:not([hidden])"); });
   }
-  if (input) input.addEventListener("input", apply);
+  if (input) input.addEventListener("input", function () {
+    // Typing REPLACES rather than pushes: a five-character filter must not bury the page the
+    // visitor arrived from under five entries. The URL still carries the query, so the
+    // filtered grid is bookmarkable.
+    replaceUrl({ q: input.value.trim() });
+    apply();
+  });
   
   tabBtns.forEach(function (t) {
     t.addEventListener("click", function (e) {
       e.preventDefault();
       current = t.getAttribute("data-tab");
       try { localStorage.setItem("cp-tab:meshcore-mobile", current); } catch (e) {}
-      tabBtns.forEach(function (x) { x.setAttribute("aria-selected", x === t ? "true" : "false"); });
+      reflectTabs();
+      pushUrl({ tab: current });
       apply();
     });
   });
@@ -234,10 +259,26 @@
       var choice = b.getAttribute("data-bg-choice");
       document.documentElement.classList.toggle("cp-bg-transparent", choice === "off");
       try { localStorage.setItem("cp-bg", choice); } catch (e) {}
+      pushUrl({ bg: choice });
       reflectBg();
     });
   });
   reflectBg();
+  if (urlState) {
+    urlState.onPop(function () {
+      var poppedTab = urlParam("tab") || initialTab;
+      tabBtns.forEach(function (t) {
+        if (t.getAttribute("data-tab") === poppedTab) current = poppedTab;
+      });
+      reflectTabs();
+      if (input) input.value = urlParam("q");
+      var poppedBg = urlParam("bg");
+      if (!poppedBg) { try { poppedBg = localStorage.getItem("cp-bg") || "on"; } catch (e) { poppedBg = "on"; } }
+      document.documentElement.classList.toggle("cp-bg-transparent", poppedBg === "off");
+      reflectBg();
+      apply();
+    });
+  }
   apply();
 })();</script>
 <details class="cp-about cp-disclosure">
