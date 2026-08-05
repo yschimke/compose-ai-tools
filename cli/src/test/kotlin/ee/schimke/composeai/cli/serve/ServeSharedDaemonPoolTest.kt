@@ -180,28 +180,48 @@ class ServeSharedDaemonPoolTest {
 
   @Test
   fun `does not open a replica the live-seat budget cannot afford`() {
-    val seats = LiveSeatLimiter(totalPermits = 1 + LiveSeatLimiter.STREAM_RESERVE)
-    // Spend everything above the stream reserve elsewhere — a stream, another catalog's pool.
+    // Budget fully spent elsewhere — a stream, another catalog's pool. Since a leased replica is
+    // charged as FOREGROUND (see the test below), "cannot afford" means literally nothing free:
+    // leaving the stream reserve open would leave a replica affordable, and the test would then
+    // pass or fail on whether the renders happened to overlap.
+    val seats = LiveSeatLimiter(totalPermits = 1)
     val held = requireNotNull(seats.acquire(1))
-    val primary = InstantHost("primary")
+    assertEquals(0, seats.availablePermits(), "precondition: nothing left to spend")
+
+    val entered = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    // Held mid-render, so the overlapping request has nothing to borrow and MUST reach the
+    // replica-launch path. With an InstantHost primary the overlap was a race, which is why this
+    // used to pass locally and fail on a loaded runner.
+    val primary = BlockingHost("primary", entered, release)
     val opened = AtomicInteger()
     val pool =
       ServeSharedDaemonPool(primary = primary, capacity = 3, liveSeats = seats) {
         opened.incrementAndGet()
         InstantHost("replica")
       }
+    val executor = Executors.newFixedThreadPool(2)
     try {
-      val executor = Executors.newFixedThreadPool(3)
-      try {
-        val results =
-          (1..3).map { executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) } }
-        // Every render still succeeds — they serialise onto the primary instead of spawning JVMs.
-        results.forEach { assertTrue(it.get(10, TimeUnit.SECONDS) is RenderOutcome.Ok) }
-      } finally {
-        executor.shutdownNow()
-      }
+      val first = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+      assertTrue(entered.await(5, TimeUnit.SECONDS), "the primary should be mid-render")
+
+      val second = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+      // It must still be waiting: the only host is out and the budget affords no replica. Had one
+      // been spawned this would have completed, so the timeout is the assertion.
+      assertTrue(
+        runCatching { second.get(1, TimeUnit.SECONDS) }.isFailure,
+        "the overlapping render waits for the primary instead of spawning a replica",
+      )
       assertEquals(0, opened.get(), "no replica was spawned against an exhausted budget")
+
+      // Both still succeed — the second serialises onto the primary instead of spawning a JVM.
+      release.countDown()
+      assertTrue(first.get(10, TimeUnit.SECONDS) is RenderOutcome.Ok)
+      assertTrue(second.get(10, TimeUnit.SECONDS) is RenderOutcome.Ok)
+      assertEquals(0, opened.get(), "still no replica once the burst drains")
     } finally {
+      release.countDown()
+      executor.shutdownNow()
       pool.close()
       held.close()
     }

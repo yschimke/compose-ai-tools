@@ -439,7 +439,16 @@ class ServeCatalogLiveHost(
                   catalogThemeCache.recordBatch(batch.size, clock() - renderFrom)
                 }
               } ?: return@execute
-            catalogThemeCache.recordProduced(outcomes.count { it is RenderOutcome.Ok })
+            // Only a FRESH daemon render is optimizer production. The batch is filtered for cache
+            // misses when it is built, but a foreground request can fill a target while this
+            // catalog queues for the render permit — `renderLeased` then short-circuits through
+            // `cachedRender` and hands back an Ok stamped CATALOG_CACHE. Counting that would
+            // re-open the same inflated rate this counter exists to close.
+            catalogThemeCache.recordProduced(
+              outcomes.count {
+                it is RenderOutcome.Ok && it.generation == RenderOutcome.Generation.DAEMON
+              }
+            )
             for ((job, outcome) in batch.zip(outcomes)) {
               if (catalogThemeCache.get(job.cacheKey) != null) continue
               // Busy is "ask again", not a failure: the warm above may still be settling. Leave it
