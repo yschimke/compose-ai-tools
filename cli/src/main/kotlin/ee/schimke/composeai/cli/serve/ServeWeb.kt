@@ -908,6 +908,32 @@ object ServeWeb {
   /** Fallback tab for section-bearing catalogs whose stray card carries no section of its own. */
   private const val OTHER_SECTION = "Other"
 
+  /**
+   * The catalog section whose cards ARE theme specimens — a colour-role/type sheet that exists to
+   * show one specific theme.
+   */
+  private const val THEMES_SECTION = "Themes"
+
+  /**
+   * Whether [p] is a theme **specimen**: a card that renders a named theme as its subject, so
+   * re-rendering it under a `themeProvider` override destroys the very thing it documents.
+   *
+   * meshcore-mobile's `Theme/MeshCore-Light` is the case that surfaced this. Its caption reads
+   * "MeshCore · Light · Orbitron / Space Grotesk / JetBrains Mono", and under a Dynamic Dark
+   * override the card drew dark, in the default sans — pixels contradicting their own label. Every
+   * card in a Themes tab has that property by construction.
+   *
+   * Deliberately keyed on the section rather than the id: `theme-…` id prefixes are a catalog
+   * authoring convention, not a contract, whereas `section` is the authored statement of what the
+   * tab IS (`catalog.spec.json`'s `section: "Themes"`). Specimens that live outside such a tab need
+   * an explicit per-preview opt-out, which is a separate change.
+   *
+   * This does NOT remove the theme chips: the rest of the catalog still re-renders, and a specimen
+   * simply keeps its baked pixels — the same treatment a card with no daemon twin already gets.
+   */
+  private fun isThemeSpecimen(p: ServePreview): Boolean =
+    p.section?.equals(THEMES_SECTION, ignoreCase = true) == true
+
   /** One sub-heading group inside a section tab: its [name] (null ⇒ ungrouped) and its cards. */
   private class LandingGroup(val name: String?) {
     val cards = mutableListOf<GridCard>()
@@ -3346,16 +3372,23 @@ object ServeWeb {
     // The app-declared themes join the header's Theme control only when this session can actually
     // re-render a card under one — otherwise the chips would redraw nothing.
     fun themeRenderable(p: ServePreview) = canRenderThemeFor(p.id)
+    // Whether a declared theme actually redraws this preview: it needs a daemon twin AND must not
+    // be a theme specimen, which has a twin but must keep its baked pixels ([isThemeSpecimen]).
+    // ONE predicate feeding both the chip gate and the per-card URL, deliberately: gating the chips
+    // on mere renderability while the URLs also excluded specimens would offer the control on a
+    // catalog whose only twinned cards are specimens — every `themeBase` empty, the browser's
+    // `if (!img || !base) return` skipping every card, and the chips a no-op.
+    fun themeOverridable(p: ServePreview) = themeRenderable(p) && !isThemeSpecimen(p)
     // The variant a card shows by default (server-side) — the one a declared theme re-renders.
     fun renderedVariant(card: GridCard) =
       if (card.swappable && darkFirst) card.dark!! else card.default
     val declaredThemeChips =
       if (declaredThemes.isEmpty()) emptyList()
-      else if (groups.any { themeRenderable(renderedVariant(it)) }) declaredThemes else emptyList()
-    // A card's themed-render base URL — "" when the session has no daemon twin for it, so it keeps
-    // its baked pixels (a themed render would ignore the theme anyway).
+      else if (groups.any { themeOverridable(renderedVariant(it)) }) declaredThemes else emptyList()
+    // A card's themed-render base URL — "" when a declared theme wouldn't redraw it, so it keeps
+    // its baked pixels.
     fun themeBase(card: GridCard) =
-      renderedVariant(card).let { if (themeRenderable(it)) renderSrc(it) else "" }
+      renderedVariant(card).let { if (themeOverridable(it)) renderSrc(it) else "" }
     fun cardViews(card: GridCard): Long =
       listOfNotNull(card.light, card.dark, card.neutral).sumOf { engagement[it.id]?.views ?: 0L }
     fun swapCard(card: GridCard): String {
