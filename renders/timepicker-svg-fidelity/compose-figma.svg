@@ -9,7 +9,7 @@
           <image href="figma-raster/5.png" x="94" y="2" width="128" height="450"/>
         </g>
         <g id="ReusableComposeNode">
-          <text x="222" y="239.04" font-size="32" font-family="FontFamily.Default, sans-serif" font-weight="400" letter-spacing="0.36" fill="#FFFFFF" fill-opacity="0.87">:</text>
+          <text x="222" y="239.04" font-size="32" font-family="sans-serif" font-weight="400" letter-spacing="0.36" fill="#FFFFFF" fill-opacity="0.87">:</text>
         </g>
         <g id="ReusableComposeNode">
           <image href="figma-raster/8.png" x="232" y="2" width="128" height="450"/>

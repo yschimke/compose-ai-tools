@@ -119,6 +119,18 @@ class FigmaSvgWearPickerTest {
       "the cleared-semantics separator must retain its 16sp typography at 2x density:\n$svg",
       Regex("""<text [^>]*font-size="32"[^>]*>:</text>""").containsMatchIn(svg),
     )
+    // Issue #3209: the separator's TextStyle carries `FontFamily.Default`, whose `toString()` is a
+    // sentinel and not a face name. This is the capture path that leaked it — the compact TextStyle
+    // projection the cleared-semantics text falls back to — so the export used to emit
+    // `font-family="FontFamily.Default, sans-serif"`, a stack whose first name resolves nowhere.
+    assertFalse(
+      "the FontFamily.Default sentinel must not reach the exported font stack:\n$svg",
+      svg.contains("FontFamily.Default"),
+    )
+    assertTrue(
+      "the default family must export as the plain sans default:\n$svg",
+      Regex("""<text [^>]*font-family="sans-serif"[^>]*>:</text>""").containsMatchIn(svg),
+    )
   }
 
   @Test

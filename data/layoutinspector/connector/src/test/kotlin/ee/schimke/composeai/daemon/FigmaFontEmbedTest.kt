@@ -340,6 +340,87 @@ class FigmaFontEmbedTest {
   }
 
   @Test
+  fun writeSvgTreatsADefaultFamilySentinelCaptureAsTheDefaultFace() {
+    // Issue #3209: a payload baked before the capture-side fix carries the `FontFamily.Default`
+    // sentinel as if it were a family. The export must resolve it to the default face — embed
+    // Roboto and name the `<text>` by it — not emit the sentinel verbatim (which resolved nowhere
+    // and was saved only by the appended `, sans-serif`) nor ask the resolver for the camel-split
+    // "Font Family.Default".
+    val requested = mutableListOf<String>()
+    val semantics =
+      ComposeSemanticsPayload(
+        ComposeSemanticsNode(
+          nodeId = "root",
+          boundsInRoot = "0,0,200,100",
+          children =
+            listOf(
+              ComposeSemanticsNode(
+                nodeId = "Text",
+                boundsInRoot = "8,8,192,40",
+                text = "Morning run",
+                typography =
+                  ComposeSemanticsTypography(
+                    fontSize = "16.0sp",
+                    fontWeight = 400,
+                    fontFamily = "FontFamily.Default",
+                  ),
+              )
+            ),
+        )
+      )
+    val resolver = FigmaFontResolver { family, weight, italic ->
+      requested += family
+      if (family == "Roboto" && weight == 400 && !italic) byteArrayOf(9, 9, 9) else null
+    }
+
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = dir,
+      previewId = "p",
+      layout = LayoutInspectorPayload(textNode()),
+      semantics = semantics,
+      fontResolver = resolver,
+    )
+
+    val svg = dir.resolve("p").resolve(ComposeFigmaSvgDataProducer.FILE_SVG).readText()
+    assertEquals("resolver asked for the default face", listOf("Roboto"), requested)
+    assertTrue("embeds the default Material family", svg.contains("font-family:'Roboto'"))
+    assertTrue("text names the embedded default", svg.contains("""font-family="Roboto""""))
+    assertFalse("the sentinel never reaches the SVG", svg.contains("FontFamily.Default"))
+  }
+
+  @Test
+  fun writeSvgVectorOnlyMapsTheDefaultFamilySentinelToTheSansDefault() {
+    // Same sentinel, no resolver: the vector-only export emits the plain sans default rather than
+    // `font-family="FontFamily.Default, sans-serif"`.
+    val semantics =
+      ComposeSemanticsPayload(
+        ComposeSemanticsNode(
+          nodeId = "root",
+          boundsInRoot = "0,0,200,100",
+          children =
+            listOf(
+              ComposeSemanticsNode(
+                nodeId = "Text",
+                boundsInRoot = "8,8,192,40",
+                text = "Morning run",
+                typography =
+                  ComposeSemanticsTypography(fontSize = "16.0sp", fontFamily = "FontFamily.Default"),
+              )
+            ),
+        )
+      )
+    ComposeFigmaSvgDataProducer.writeSvg(
+      rootDir = dir,
+      previewId = "p",
+      layout = LayoutInspectorPayload(textNode()),
+      semantics = semantics,
+    )
+    val svg = dir.resolve("p").resolve(ComposeFigmaSvgDataProducer.FILE_SVG).readText()
+    assertFalse("the sentinel never reaches the SVG", svg.contains("FontFamily.Default"))
+    assertTrue("plain sans default", svg.contains("""font-family="sans-serif""""))
+  }
+
+  @Test
   fun writeSvgEmbedsTheActualFontFileTheRenderLoaded() {
     // The capture records the *path* of the font the render loaded (a downloaded/bundled/custom
     // face). The export must embed that file's bytes directly — no name-based Google fetch — and

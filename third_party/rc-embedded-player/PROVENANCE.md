@@ -588,20 +588,22 @@ measurement, which decides the ink bounds the canvas and the drawn-content crop 
 | canvas | 672×206 | 672×204 |
 | drawn-content crop | 640×174 at y=153 | 640×172 at y=154 |
 | text baselines | 230.76 / 271.35 | 231.76 / 270.35 |
-| `font-family` | `FontFamily.Default, sans-serif` | `sans-serif` |
+| `font-family` | `sans-serif` (was `FontFamily.Default, sans-serif`) | `sans-serif` |
 | SVG bytes | 814 | 774 |
 
-Two of those are worth reading as findings rather than noise. The ±1px baselines / ±2px canvas are
-the documented text-parity limit (`RcPlayerTextLayoutJvm.kt` resolves the nearest standard family;
-the host's own faces measure it) — the same reason no test in this module pins text pixels. The
-`font-family` difference is the Android side being *worse*: its text style carries `FontFamily
-.Default`, whose `toString()` the capture writes verbatim into `layoutTextFontFamily`, so the export
-emits a font stack whose first name no importer can resolve and which is only saved by the
-`, sans-serif` generic `withGenericFallback` appends. The jvm text seam resolves to a real
-`GenericFontFamily`, so the same document exports the clean `sans-serif` the model intends. That is
-an Android-capture bug the jvm lane happens to expose; fixing it (mapping the `FontFamily.Default`
-sentinel to the default family in `resolveFamily`) touches every baked catalog's SVG, so it is left
-to its own change rather than smuggled in here.
+The ±1px baselines / ±2px canvas are the documented text-parity limit
+(`RcPlayerTextLayoutJvm.kt` resolves the nearest standard family; the host's own faces measure it)
+— the same reason no test in this module pins text pixels.
+
+The `font-family` row **was** the Android side being worse, and is the one difference that has since
+been closed (issue #3209). The Android text style carries `FontFamily.Default`, whose `toString()`
+the capture used to write verbatim into `layoutTextFontFamily`, so the export emitted a font stack
+whose first name no importer can resolve and which was only saved by the `, sans-serif` generic
+`withGenericFallback` appends; the jvm text seam resolves a real `GenericFontFamily`, so the same
+document already exported the clean `sans-serif`. The sentinel is now read as "no family stated" at
+both ends — dropped at capture (`ComposeSemanticsDataProducer`) and folded into the classifiers
+(`FigmaLayeredSvg.resolveFamily` / `embedFamily`, so payloads baked before the fix classify
+correctly too) — and both lanes emit `sans-serif`.
 
 Rendered from each lane's `compose-figma.svg` (figma-raster crop inlined), for what the three
 actually look like: [`docs/renders/figma-svg-lanes.png`](../rc-embedded-player-jvm/docs/renders/figma-svg-lanes.png)
