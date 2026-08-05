@@ -80,6 +80,11 @@ const STYLED_FIXTURES = new Set([
     // The catalog landing is the same claim one level down: the tab bar, the group headings and
     // the preview-card grid ARE the page, and its cards share the front door's hover treatment.
     "serve-landing-public",
+    // The Wear viewer exists for ONE claim: the Size panel offers watch shapes and no Orientation
+    // row. That claim lives entirely inside the override drawer, so it has to be painted by the
+    // real stylesheet — captured bare it is a column of unstyled labels where a panel regression
+    // moves nothing recognisable. Its `size-open` state below is what actually shows the menu.
+    "serve-viewer-wear-screen",
 ]);
 const SERVE_ASSETS = [
     ["serve.css", "text/css"],
@@ -269,6 +274,23 @@ const FIXTURE_STATES = [
         suffix: "scroll-full-page",
         apply: async (page) => {
             await page.click('[data-cp-group="scroll"] > summary');
+        },
+    },
+    {
+        // The Wear device menu. A screen's device profiles are platform-specific — watch shapes on
+        // a Wear system, phones/foldable/tablet elsewhere — and BOTH halves of that claim are
+        // invisible to an end-state shot: the Size group renders closed, and a closed `<select>`
+        // paints only its selected option, so a regression back to Pixel devices (or an Orientation
+        // row reappearing on a watch) would move no baseline at all. Open the group and expand the
+        // menu into a list box so every offered device is pixels the diff bot can see.
+        fixture: "serve-viewer-wear-screen",
+        suffix: "size-open",
+        apply: async (page) => {
+            await page.click('[data-cp-group="size"] > summary');
+            await page.evaluate(() => {
+                const devices = document.getElementById("cp-device");
+                devices.size = devices.options.length;
+            });
         },
     },
     {
