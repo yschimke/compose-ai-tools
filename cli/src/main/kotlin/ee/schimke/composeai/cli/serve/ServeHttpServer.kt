@@ -226,6 +226,12 @@ class ServeHttpServer(
    * (playground + live WebSocket sessions) require a signed-in GitHub account.
    */
   private val githubAuth: ServeGithubAuth? = null,
+  /**
+   * Observability for the playground lane on `/status.json` — which posture admitted it, whether
+   * the configured jail actually contains anything on this host, and whether each mode's classpath
+   * has resolved. Null when the lane isn't wired at all. See [PlaygroundHealth].
+   */
+  private val playgroundHealth: (() -> PlaygroundHealth)? = null,
   /** Aggregate view counts; pass a file-backed store to keep them across server restarts. */
   private val engagementStore: ServeEngagementStore = ServeEngagementStore(),
 ) {
@@ -2071,6 +2077,38 @@ class ServeHttpServer(
               .mapNotNull { it.renderStats }
               .filter { it.renders + it.cacheHits + it.busy > 0 }
           ),
+        playground =
+          playgroundHealth?.invoke()?.let { h ->
+            PlaygroundDto(
+              admittedBy = h.admittedBy,
+              sandbox =
+                SandboxDto(
+                  profile = h.sandboxProfile,
+                  active = h.sandboxActive,
+                  memoryMb = h.sandboxMemoryMb,
+                  cpus = h.sandboxCpus,
+                  ttlSeconds = h.sandboxTtlSeconds,
+                  probe =
+                    h.probe?.let { p ->
+                      ProbeDto(
+                        ran = p.ran,
+                        detail = p.detail,
+                        failedChecks = p.failedChecks(),
+                        egressBlocked = p.egressBlocked,
+                        filesystemContained = p.filesystemContained,
+                        processIsolated = p.processIsolated,
+                        workDirWritable = p.workDirWritable,
+                      )
+                    },
+                ),
+              compilerJailed = h.compilerJailed,
+              compileSlots = h.compileSlots,
+              modes =
+                h.modes().map {
+                  ModeDto(mode = it.mode, source = it.source, resolved = it.resolved)
+                },
+            )
+          },
       )
 
     fun toView(): ServeWeb.StatusView {
@@ -3530,7 +3568,58 @@ private data class StatusResponse(
    * `compose-preview-serve/status/v1`; per-daemon detail is on `runningServers[].renderStats`.
    */
   val renderStats: RenderPerfSnapshot? = null,
+  /**
+   * Playground lane health, or null when the lane isn't wired. Additive on
+   * `compose-preview-serve/status/v1`, like [renderStats]. See [PlaygroundHealth] for why each
+   * field is here — in short, the playground can be half-up in several ways that were previously
+   * invisible without shell access to the box.
+   */
+  val playground: PlaygroundDto? = null,
 )
+
+@Serializable
+private data class PlaygroundDto(
+  /** Which admission posture let the lane serve (the gate's own words). */
+  val admittedBy: String,
+  val sandbox: SandboxDto,
+  /** True when compiles run in a jailed child rather than in the serve JVM. */
+  val compilerJailed: Boolean,
+  /** Concurrent jailed compiles allowed; inert unless [compilerJailed]. */
+  val compileSlots: Int,
+  val modes: List<ModeDto>,
+)
+
+@Serializable
+private data class SandboxDto(
+  val profile: String,
+  /**
+   * False ⇒ `none`: no jail, and **no `-Xmx`, CPU cap, or hard TTL on snippet JVMs either**. On a
+   * host with a large cgroup limit that matters — an uncapped JVM sizes its default max heap at a
+   * quarter of the limit.
+   */
+  val active: Boolean,
+  val memoryMb: Int,
+  val cpus: Double,
+  val ttlSeconds: Long,
+  /** Null when no preflight ran (token-gated host, or no sandbox configured). */
+  val probe: ProbeDto? = null,
+)
+
+@Serializable
+private data class ProbeDto(
+  /** False ⇒ the jail could not even launch here; [detail] says why. */
+  val ran: Boolean,
+  val detail: String,
+  /** Empty ⇒ the jail contained the preflight on every measured axis. */
+  val failedChecks: List<String>,
+  val egressBlocked: Boolean,
+  val filesystemContained: Boolean,
+  val processIsolated: Boolean,
+  val workDirWritable: Boolean,
+)
+
+@Serializable
+private data class ModeDto(val mode: String, val source: String, val resolved: Boolean)
 
 @Serializable
 private data class CatalogSummaryDto(
