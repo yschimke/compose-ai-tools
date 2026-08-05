@@ -184,6 +184,48 @@ describe("computePerformanceBundleData — render/trace", () => {
         assert.strictEqual(rt.repeats[0].count, 2);
     });
 
+    it("keeps single-hit aggregates so elided phases stay inspectable", () => {
+        // Composition tracing makes most spans unique call sites. The timeline caps at 200 rows, so
+        // if the summary also dropped count==1 entries, a slow composable past that cap would have
+        // no row anywhere — which is what the "see the totals below" note points at.
+        const phases = Array.from({ length: 250 }, (_, i) => ({
+            name: "Composable" + i + " (File.kt:" + i + ")",
+            startMs: 0,
+            durationMs: 0,
+            startUs: i * 10,
+            durationUs: 10,
+            depth: 1,
+            category: "compose.composition",
+        }));
+        const sections = phases.map((p) => ({
+            name: p.name,
+            category: p.category,
+            count: 1,
+            totalUs: 10,
+            meanUs: 10,
+            maxUs: 10,
+        }));
+        const data = computePerformanceBundleData(
+            null,
+            {
+                totalMs: 3,
+                totalUs: 2500,
+                source: "spans",
+                backend: "desktop",
+                phases,
+                sections,
+                metrics: {},
+            },
+            null,
+        );
+        const rt = data.renderTrace!;
+        // `repeats` stays repeats-only — that is what a complete timeline wants.
+        assert.strictEqual(rt.repeats.length, 0);
+        // …but every aggregate survives, so the renderer has something to show for the elided tail.
+        assert.strictEqual(rt.allSections.length, 250);
+        assert.strictEqual(rt.allSections[0].count, 1);
+    });
+
     it("reports a metrics-sourced payload as the fallback it is", () => {
         const data = computePerformanceBundleData(
             null,

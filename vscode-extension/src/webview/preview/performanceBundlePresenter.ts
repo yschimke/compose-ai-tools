@@ -78,6 +78,15 @@ export interface RenderTraceSection {
     source: "spans" | "metrics";
     /** v2: names that occurred more than once, with their aggregates. */
     repeats: readonly RenderTraceRepeat[];
+    /**
+     * v2: **every** per-name aggregate, including single-hit ones, ordered by total time.
+     *
+     * The timeline is capped for volume; the aggregates are not. When phases are elided this is the
+     * only place an elided span is still visible, and with composition tracing on most spans are
+     * unique call sites — so filtering to `count > 1` there would hide exactly the slow composable
+     * someone turned the feature on to find.
+     */
+    allSections: readonly RenderTraceRepeat[];
 }
 
 export interface ComposeAiTraceSummary {
@@ -111,6 +120,11 @@ const TOP_N_RECOMPOSITION = 10;
  * aggregates are the readable view at that volume, and they are unaffected by this cap.
  */
 const MAX_PHASE_ROWS = 200;
+/**
+ * Per-name summary rows shown when the timeline was elided. Ordered slowest-first by the daemon, so
+ * the truncation keeps the ones worth looking at.
+ */
+const MAX_SUMMARY_ROWS = 100;
 const TOP_N_PERFETTO_PHASES = 3;
 
 /**
@@ -324,7 +338,7 @@ function parseRenderTrace(raw: unknown): RenderTraceSection | null {
     }));
 
     const rawSections = Array.isArray(payload.sections) ? payload.sections : [];
-    const repeats: RenderTraceRepeat[] = [];
+    const allSections: RenderTraceRepeat[] = [];
     for (const entry of rawSections) {
         if (!entry || typeof entry !== "object") continue;
         const sec = entry as {
@@ -335,8 +349,8 @@ function parseRenderTrace(raw: unknown): RenderTraceSection | null {
             maxUs?: unknown;
         };
         if (typeof sec.name !== "string" || sec.name.length === 0) continue;
-        if (typeof sec.count !== "number" || sec.count <= 1) continue;
-        repeats.push({
+        if (typeof sec.count !== "number" || sec.count < 1) continue;
+        allSections.push({
             name: sec.name,
             count: sec.count,
             totalUs: typeof sec.totalUs === "number" ? sec.totalUs : 0,
@@ -344,6 +358,9 @@ function parseRenderTrace(raw: unknown): RenderTraceSection | null {
             maxUs: typeof sec.maxUs === "number" ? sec.maxUs : 0,
         });
     }
+    // Only repeats are worth a summary row when the timeline is complete — a single-hit span is
+    // already on it, and duplicating every one would double the tab for no information.
+    const repeats = allSections.filter((s) => s.count > 1);
 
     const rawMetrics =
         payload.metrics && typeof payload.metrics === "object"
@@ -360,7 +377,16 @@ function parseRenderTrace(raw: unknown): RenderTraceSection | null {
     if (phases.length === 0 && metrics.length === 0 && totalMs === null) {
         return null;
     }
-    return { totalMs, totalUs, backend, source, phases, metrics, repeats };
+    return {
+        totalMs,
+        totalUs,
+        backend,
+        source,
+        phases,
+        metrics,
+        repeats,
+        allSections,
+    };
 }
 
 /** Format a microsecond duration at the precision it deserves. */
@@ -606,17 +632,27 @@ function renderRenderTraceSection(trace: RenderTraceSection): HTMLElement {
             note.className = "perf-trace-note";
             note.textContent =
                 elided +
-                " more phases not shown — see the per-name totals below.";
+                " more phases not shown — the totals below cover every one, slowest first.";
             section.appendChild(note);
         }
     }
 
-    if (trace.repeats.length > 0) {
+    // With a complete timeline, only repeated names add anything. Once phases are elided the
+    // timeline no longer shows everything, so the summary has to — otherwise an elided single-hit
+    // composable (which is most of them under composition tracing) would be inspectable nowhere.
+    const elidedPhases = trace.phases.length > MAX_PHASE_ROWS;
+    const summary = elidedPhases
+        ? trace.allSections.slice(0, MAX_SUMMARY_ROWS)
+        : trace.repeats;
+    if (summary.length > 0) {
         const repeats = document.createElement("dl");
         repeats.className = "perf-trace-repeats";
-        for (const repeat of trace.repeats) {
+        for (const repeat of summary) {
             const dt = document.createElement("dt");
-            dt.textContent = repeat.name + " ×" + repeat.count;
+            dt.textContent =
+                repeat.count > 1
+                    ? repeat.name + " ×" + repeat.count
+                    : repeat.name;
             const dd = document.createElement("dd");
             dd.textContent =
                 formatTraceDuration(repeat.totalUs) +
