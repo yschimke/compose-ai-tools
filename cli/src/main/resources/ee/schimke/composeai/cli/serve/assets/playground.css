@@ -36,3 +36,33 @@
   .cp-pg-warning { background: #2c2410; color: #ffd486; }
   .cp-pg-image { border-color: #34343a; }
 }
+
+/* CodeMirror — sized and themed to match the textarea it replaces, so the page looks the same
+   whether the vendored bundle loaded or not. CodeMirror ships a light theme only, so the dark
+   half is ours; the token colours follow the existing `prefers-color-scheme` chrome rather than
+   importing one of CodeMirror's themes (another asset, and none of them match this palette). */
+.cp-pg .CodeMirror { height: auto; min-height: 260px; border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.18); background: #fbfbfd; color: var(--cp-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px;
+  line-height: 1.5; }
+.cp-pg .CodeMirror-scroll { min-height: 260px; }
+.cp-pg .CodeMirror-gutters { background: transparent; border-right: 1px solid var(--cp-border); }
+.cp-pg .CodeMirror-linenumber { color: var(--cp-fg-faint); }
+/* Focus ring parity with the other controls — CodeMirror paints its own box, so the outline has
+   to go on the wrapper rather than the (hidden) textarea. */
+.cp-pg .CodeMirror-focused { outline: 2px solid #5b6bff; outline-offset: 1px; }
+
+@media (prefers-color-scheme: dark) {
+  .cp-pg .CodeMirror { background: #161618; border-color: #34343a; color: #e6e6ea; }
+  .cp-pg .CodeMirror-gutters { border-right-color: #34343a; }
+  .cp-pg .CodeMirror-linenumber { color: #6b6b70; }
+  .cp-pg .CodeMirror-cursor { border-left-color: #e6e6ea; }
+  .cp-pg .CodeMirror-selected { background: #33334a; }
+  .cp-pg .cm-keyword { color: #c792ea; }
+  .cp-pg .cm-def, .cp-pg .cm-variable-3, .cp-pg .cm-type { color: #82aaff; }
+  .cp-pg .cm-string, .cp-pg .cm-string-2 { color: #c3e88d; }
+  .cp-pg .cm-number { color: #f78c6c; }
+  .cp-pg .cm-comment { color: #7d8799; }
+  .cp-pg .cm-meta, .cp-pg .cm-atom { color: #ffcb6b; }
+  .cp-pg .cm-operator, .cp-pg .cm-punctuation { color: #89ddff; }
+}

@@ -11,6 +11,12 @@ internal object ServeWebAssets {
     mapOf(
       "serve.css" to "text/css; charset=utf-8",
       "playground.css" to "text/css; charset=utf-8",
+      // Vendored CodeMirror 5 (MIT), loaded ONLY by the playground page — the catalog browsing
+      // pages never pay for it. Served from our own origin rather than a CDN: this host is a
+      // public preview server, so an external script would add a third-party dependency to a
+      // code-running surface and leak visitors to it.
+      "codemirror.css" to "text/css; charset=utf-8",
+      "codemirror.js" to "text/javascript; charset=utf-8",
       "url-state.js" to "text/javascript; charset=utf-8",
       "viewer.js" to "text/javascript; charset=utf-8",
       "viewer-groups.js" to "text/javascript; charset=utf-8",
