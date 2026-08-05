@@ -159,4 +159,74 @@ class ServePerPreviewDaemonPoolTest {
     )
     assertEquals(listOf("A", "B"), opens, "snapshot is read-only")
   }
+
+  @Test
+  fun `reaps daemons idle past the window, keeping streaming and recently-used ones`() {
+    var now = 0L
+    val hosts = mutableMapOf<String, FakeHost>()
+    val streaming = FakeHost(streams = 1)
+    val pool =
+      ServePerPreviewDaemonPool(maxOpen = 8, clock = { now }) { id ->
+        (if (id == "STREAM") streaming else FakeHost()).also { hosts[id] = it }
+      }
+    pool.get("OLD")
+    pool.get("STREAM")
+    now = 5_000
+    pool.get("FRESH")
+
+    now = 10_000
+    assertEquals(1, pool.reapIdle(idleMillis = 8_000), "only OLD is past the window")
+
+    assertTrue(hosts.getValue("OLD").closed, "the idle daemon's subprocess is torn down")
+    assertEquals(false, streaming.closed, "a streaming daemon is never reaped")
+    assertEquals(false, hosts.getValue("FRESH").closed, "a recently-used daemon stays")
+    assertEquals(2, pool.openCount())
+  }
+
+  @Test
+  fun `reapIdle is inert when disabled`() {
+    var now = 0L
+    val host = FakeHost()
+    val pool = ServePerPreviewDaemonPool(clock = { now }) { _ -> host }
+    pool.get("A")
+    now = 1_000_000
+    assertEquals(0, pool.reapIdle(idleMillis = 0), "a non-positive window disables reaping")
+    assertEquals(false, host.closed)
+  }
+
+  /**
+   * Pooled daemons are real JVMs and must draw on the same whole-box budget as streams. Refusing is
+   * the safe answer: the caller falls back to baked pixels rather than the box spawning a process
+   * it can't afford.
+   */
+  @Test
+  fun `a daemon is not opened when the live-seat budget is exhausted`() {
+    val seats = LiveSeatLimiter(totalPermits = 2)
+    val opens = mutableListOf<String>()
+    val pool =
+      ServePerPreviewDaemonPool(liveSeats = seats, seatWeight = { 1 }) { id ->
+        FakeHost().also { opens.add(id) }
+      }
+    assertTrue(pool.get("A") != null)
+    assertTrue(pool.get("B") != null)
+    assertNull(pool.get("C"), "the budget is spent, so no third daemon is spawned")
+    assertEquals(listOf("A", "B"), opens, "the refused open never reached the opener")
+    assertEquals(0, seats.availablePermits())
+  }
+
+  @Test
+  fun `reaping and eviction return their seats to the budget`() {
+    var now = 0L
+    val seats = LiveSeatLimiter(totalPermits = 2)
+    val pool =
+      ServePerPreviewDaemonPool(maxOpen = 8, clock = { now }, liveSeats = seats) { _ -> FakeHost() }
+    pool.get("A")
+    pool.get("B")
+    assertEquals(0, seats.availablePermits())
+
+    now = 100_000
+    assertEquals(2, pool.reapIdle(idleMillis = 1_000))
+    assertEquals(2, seats.availablePermits(), "reaped daemons hand their seats back")
+    assertTrue(pool.get("C") != null, "the freed budget admits a new daemon")
+  }
 }

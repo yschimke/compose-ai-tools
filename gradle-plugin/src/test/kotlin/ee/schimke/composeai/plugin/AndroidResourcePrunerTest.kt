@@ -41,7 +41,7 @@ class AndroidResourcePrunerTest {
   }
 
   @Test
-  fun `drops merged aar file resources but keeps arsc, non-prunable types, and module-own`() {
+  fun `drops named aar file resources but keeps arsc, non-prunable types, and everything unnamed`() {
     val arsc = "ARSC-TABLE".toByteArray()
     val input =
       apk(
@@ -56,18 +56,23 @@ class AndroidResourcePrunerTest {
       )
 
     val result =
-      AndroidResourcePruner.prune(input, firstPartyFileResources = setOf("drawable/my_icon"))
+      AndroidResourcePruner.prune(
+        input,
+        prunableFileResources =
+          setOf("drawable/wear_anim", "layout/notif", "mipmap/ic_launcher", "color/my_csl"),
+      )
     val kept = entries(result.bytes)
 
-    // Dropped: the four AAR file resources of prunable types (drawable, layout, mipmap).
+    // Dropped: the AAR file resources of prunable types (drawable, layout, mipmap) — including the
+    // generated animated-vector split, which normalises to its base name.
     assertThat(result.droppedEntries).isEqualTo(4)
     assertThat(kept).doesNotContainKey("res/drawable/wear_anim.xml")
     assertThat(kept).doesNotContainKey("res/drawable/\$wear_anim__3.xml")
     assertThat(kept).doesNotContainKey("res/layout-v21/notif.xml")
     assertThat(kept).doesNotContainKey("res/mipmap-hdpi/ic_launcher.png")
 
-    // Kept: arsc (byte-for-byte), manifest, a non-prunable type (color), and the module-own
-    // drawable.
+    // Kept: arsc (byte-for-byte), manifest, the drawable no data set named as a dependency's, and
+    // `color/` — a non-prunable type stays even when the caller names it.
     assertThat(kept.getValue("resources.arsc")).isEqualTo(arsc)
     assertThat(kept).containsKey("AndroidManifest.xml")
     assertThat(kept).containsKey("res/color/my_csl.xml")
@@ -75,49 +80,49 @@ class AndroidResourcePrunerTest {
   }
 
   @Test
-  fun `module-authored animated-vector splits are retained by base name`() {
+  fun `animated-vector splits are dropped with their base name, not independently`() {
     val input =
       apk(
         Triple("res/drawable/\$my_anim__0.xml", "X".repeat(20).toByteArray(), ZipEntry.DEFLATED),
         Triple("res/drawable/my_anim.xml", "Y".repeat(20).toByteArray(), ZipEntry.DEFLATED),
       )
-    val result =
-      AndroidResourcePruner.prune(input, firstPartyFileResources = setOf("drawable/my_anim"))
-    assertThat(result.droppedEntries).isEqualTo(0)
+    assertThat(
+        AndroidResourcePruner.prune(input, prunableFileResources = setOf("drawable/my_anim"))
+          .droppedEntries
+      )
+      .isEqualTo(2)
+    assertThat(
+        AndroidResourcePruner.prune(input, prunableFileResources = emptySet()).droppedEntries
+      )
+      .isEqualTo(0)
   }
 
+  /**
+   * The regression that motivated the positive drop-set (issues #3260 / #3299). An empty set now
+   * means "nothing was attributed to a dependency" and must drop nothing — under the old retain-set
+   * it meant "this build authors no resources" and deleted the lot, which is how an unreadable
+   * blame file turned into `NotFoundException: File res/drawable/ic_play.xml` at render time.
+   */
   @Test
-  fun `nothing dropped when there are no prunable file resources`() {
+  fun `empty ownership prunes nothing`() {
     val input =
       apk(
         Triple("resources.arsc", "T".toByteArray(), ZipEntry.STORED),
-        Triple("res/color/csl.xml", "C".toByteArray(), ZipEntry.DEFLATED),
-        Triple("res/raw/data.json", "R".toByteArray(), ZipEntry.DEFLATED),
+        Triple("res/drawable/ic_play.xml", "ICON".toByteArray(), ZipEntry.DEFLATED),
+        Triple("res/layout/player.xml", "LAYOUT".toByteArray(), ZipEntry.DEFLATED),
       )
-    val result = AndroidResourcePruner.prune(input, firstPartyFileResources = emptySet())
+
+    val result = AndroidResourcePruner.prune(input, prunableFileResources = emptySet())
+    val kept = entries(result.bytes)
+
+    assertThat(kept).containsKey("res/drawable/ic_play.xml")
+    assertThat(kept).containsKey("res/layout/player.xml")
     assertThat(result.droppedEntries).isEqualTo(0)
     assertThat(result.bytesSaved).isEqualTo(0L)
   }
 
   @Test
-  fun `verified empty ownership set prunes dependency file resources`() {
-    val input =
-      apk(
-        Triple("resources.arsc", "T".toByteArray(), ZipEntry.STORED),
-        Triple("res/drawable/ic_filters_play.xml", "ICON".toByteArray(), ZipEntry.DEFLATED),
-        Triple("res/layout/player.xml", "LAYOUT".toByteArray(), ZipEntry.DEFLATED),
-      )
-
-    val result = AndroidResourcePruner.prune(input, firstPartyFileResources = emptySet())
-
-    assertThat(entries(result.bytes)).doesNotContainKey("res/drawable/ic_filters_play.xml")
-    assertThat(entries(result.bytes)).doesNotContainKey("res/layout/player.xml")
-    assertThat(result.droppedEntries).isEqualTo(2)
-    assertThat(result.bytesSaved).isEqualTo(10L)
-  }
-
-  @Test
-  fun `keeps AppCompat vector configuration probe`() {
+  fun `keeps AppCompat vector configuration probe even when named prunable`() {
     val input =
       apk(
         Triple("res/drawable/abc_vector_test.xml", "VECTOR".toByteArray(), ZipEntry.DEFLATED),
@@ -126,7 +131,10 @@ class AndroidResourcePrunerTest {
       )
 
     val result =
-      AndroidResourcePruner.prune(input, firstPartyFileResources = setOf("drawable/my_icon"))
+      AndroidResourcePruner.prune(
+        input,
+        prunableFileResources = setOf("drawable/abc_vector_test", "drawable/dependency_icon"),
+      )
     val kept = entries(result.bytes)
 
     assertThat(kept).containsKey("res/drawable/abc_vector_test.xml")

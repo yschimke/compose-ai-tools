@@ -33,4 +33,43 @@ class CatalogThemeCacheTest {
     assertEquals(0, cache.renderCacheSnapshot().entries)
     assertEquals(0, cache.renderCacheSnapshot().bytes)
   }
+
+  /**
+   * A preview the daemon can never render (a `painterResource` whose drawable was pruned out of the
+   * bundle) must stop being re-attempted, or every request pays a render-lock wait that pushes the
+   * rest of the grid into a Busy back-off.
+   */
+  @Test
+  fun `a run of render failures latches, and the reason is readable`() {
+    val cache = CatalogThemeCache()
+
+    assertEquals(false, cache.recordRenderFailure("k", "boom"))
+    assertNull(cache.failureReason("k"), "one failure may still be a cold-start blip")
+    assertEquals(false, cache.recordRenderFailure("k", "boom"))
+    assertNull(cache.failureReason("k"))
+
+    assertEquals(true, cache.recordRenderFailure("k", "NotFoundException: ic_play.xml"))
+    assertEquals("NotFoundException: ic_play.xml", cache.failureReason("k"))
+  }
+
+  @Test
+  fun `a successful render clears the latch and its failure count`() {
+    val cache = CatalogThemeCache()
+    repeat(CatalogThemeCache.FAILURE_LATCH) { cache.recordRenderFailure("k", "boom") }
+    assertEquals("boom", cache.failureReason("k"))
+
+    cache.put("k", byteArrayOf(1, 2, 3))
+
+    assertNull(cache.failureReason("k"), "a render that worked un-latches the key")
+    // ...and the count restarts, so it takes a fresh run of failures to latch again.
+    assertEquals(false, cache.recordRenderFailure("k", "boom"))
+  }
+
+  @Test
+  fun `an optimizer-marked failure reports a reason even when none was captured`() {
+    val cache = CatalogThemeCache()
+    cache.markFailed("k")
+    assertEquals(true, cache.failureReason("k") != null)
+    assertNull(cache.failureReason("other"))
+  }
 }

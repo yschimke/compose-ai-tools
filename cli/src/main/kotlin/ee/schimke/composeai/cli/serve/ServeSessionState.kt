@@ -67,6 +67,12 @@ data class ServeSessionState(
   /** Occupancy snapshots of the pooled per-preview daemons, surfaced on `/status.json`. */
   val perPreviewPoolStats: () -> List<DaemonPoolSnapshot> = { emptyList() },
   /**
+   * Closes per-preview daemons idle past the given window, returning how many. Drives the pooled
+   * half of [ServeHost.releaseIdleDaemons] so a pinned catalog sheds processes without being
+   * unregistered.
+   */
+  val perPreviewReapIdle: (idleMillis: Long) -> Int = { 0 },
+  /**
    * Rendered PNG cache retained for this catalog generation across daemon suspend/resume cycles.
    */
   val catalogThemeCache: CatalogThemeCache? = null,

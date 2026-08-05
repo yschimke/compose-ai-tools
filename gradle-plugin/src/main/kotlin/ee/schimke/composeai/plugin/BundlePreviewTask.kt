@@ -959,13 +959,14 @@ abstract class BundlePreviewTask : DefaultTask() {
     // every file resource authored in this build (this module's AND its sibling project modules')
     // is retained. See [AndroidResourcePruner] and [MergedResourceOwnership].
     val apkBytes = apkFile.readBytes()
-    val firstPartyFileResources = firstPartyFileResourceKeys()
+    val prunableFileResources = prunableFileResourceKeys()
     val prunedApk =
-      if (firstPartyFileResources != null) {
-        AndroidResourcePruner.prune(apkBytes, firstPartyFileResources)
+      if (prunableFileResources.isNotEmpty()) {
+        AndroidResourcePruner.prune(apkBytes, prunableFileResources)
       } else {
-        // Without usable merge ownership metadata we cannot distinguish sibling-project resources
-        // from dependency resources. Keep the full APK rather than create dangling table entries.
+        // Nothing was positively attributed to a dependency — either there is genuinely no AAR file
+        // payload, or the blame metadata is unavailable. Both keep the full APK: a dangling table
+        // entry kills the live render, and the saving is tens of KB.
         AndroidResourcePruner.Result(apkBytes, droppedEntries = 0, bytesSaved = 0)
       }
     zipFiles[ANDROID_RESOURCE_APK_PATH] = prunedApk.bytes
@@ -988,30 +989,35 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * Resource identities (`"<typeBase>/<name>"`) authored **anywhere in this build** — the file
-   * resources [AndroidResourcePruner] must retain (an icon the catalog's code may
-   * `painterResource`) as opposed to the merged-dependency file resources it drops. `values`
-   * directories are skipped: those compile into `resources.arsc`, which the pruner never touches.
+   * Resource identities (`"<typeBase>/<name>"`) [AndroidResourcePruner] may drop: merged **from a
+   * third-party AAR** and contributed by no project in this build. Everything else — including
+   * anything the blame data doesn't classify — is left in the APK. `values` directories never
+   * appear: those compile into `resources.arsc`, which the pruner never touches.
    *
-   * Two sources, unioned. [MergedResourceOwnership] reads AGP's merge-blame file and so covers the
-   * **sibling project modules** a real app's catalog renders against — Pocket Casts renders from
-   * `:modules:services:compose` while its icons live in `:modules:services:ui`, and pruning those
-   * left the live daemon throwing `NotFoundException: File res/drawable/ic_play.xml …` on the first
-   * `painterResource` (issue #3260). Null means the blame metadata is unavailable or unusable and
-   * disables pruning; an empty non-null set means metadata successfully proved that the build has
-   * no first-party file resources, so pruning remains safe.
+   * The set is what [MergedResourceOwnership] attributes to AAR data sets, minus everything
+   * attributed to a project data set, minus this module's own `src/<sourceSet>/res` as a
+   * belt-and-braces floor. That last subtraction matters when the blame file is present but
+   * incomplete: it is read straight off disk and needs no merge metadata to be right.
+   *
+   * Empty means "drop nothing", and covers both an unusable blame file and a build with no AAR file
+   * payload. Distinguishing them would buy nothing — the action is identical, and it is the safe
+   * one. Getting this backwards is what produced issue #3260 (Pocket Casts renders from
+   * `:modules:services:compose` while `ic_play` lives in `:modules:services:ui`; the sibling
+   * module's icons were pruned and the live daemon threw `NotFoundException: File
+   * res/drawable/ic_play.xml …` on the first `painterResource`) and #3299.
    */
-  private fun firstPartyFileResourceKeys(): Set<String>? {
+  private fun prunableFileResourceKeys(): Set<String> {
     val buildDir =
       moduleBuildDir.asFile.orNull ?: moduleProjectDir.asFile.orNull?.let { File(it, "build") }
-    val fromBlame =
-      buildDir?.let { MergedResourceOwnership.firstPartyFileResourceKeys(it) } ?: return null
-    return fromBlame + moduleOwnSourceSetResourceKeys()
+    val ownership =
+      buildDir?.let { MergedResourceOwnership.fileResourceOwnership(it) } ?: return emptySet()
+    return ownership.prunable - moduleOwnSourceSetResourceKeys()
   }
 
   /**
-   * Resource identities the module authors in its own `src/<sourceSet>/res`. The narrow half of
-   * [firstPartyFileResourceKeys] — see there for why it is no longer the whole retain-set.
+   * Resource identities the module authors in its own `src/<sourceSet>/res` — subtracted from
+   * [prunableFileResourceKeys] so a resource this module demonstrably owns is never dropped, even
+   * if the merge blame also attributes the name to a dependency.
    */
   private fun moduleOwnSourceSetResourceKeys(): Set<String> {
     val srcDir = moduleProjectDir.asFile.orNull?.let { File(it, "src") } ?: return emptySet()

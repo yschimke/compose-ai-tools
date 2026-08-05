@@ -44,7 +44,7 @@ class MergedResourceOwnershipTest {
         .trimIndent(),
     )
 
-    val keys = requireNotNull(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir()))
+    val keys = requireNotNull(MergedResourceOwnership.fileResourceOwnership(buildDir())).firstParty
 
     assertThat(keys).containsAtLeast("drawable/ic_play", "drawable/ic_logo")
     assertThat(keys).doesNotContain("drawable/aar_bg")
@@ -72,7 +72,7 @@ class MergedResourceOwnershipTest {
         .trimIndent(),
     )
 
-    val keys = requireNotNull(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir()))
+    val keys = requireNotNull(MergedResourceOwnership.fileResourceOwnership(buildDir())).firstParty
 
     assertThat(keys).contains("drawable/ic_generated")
     assertThat(keys).doesNotContain("drawable/core_bg")
@@ -98,7 +98,7 @@ class MergedResourceOwnershipTest {
         .trimIndent(),
     )
 
-    val keys = requireNotNull(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir()))
+    val keys = requireNotNull(MergedResourceOwnership.fileResourceOwnership(buildDir())).firstParty
 
     assertThat(keys).contains("drawable/avd_spin")
     assertThat(keys.none { it.startsWith("values/") }).isTrue()
@@ -125,7 +125,7 @@ class MergedResourceOwnershipTest {
         .trimIndent(),
     )
 
-    val keys = requireNotNull(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir()))
+    val keys = requireNotNull(MergedResourceOwnership.fileResourceOwnership(buildDir())).firstParty
 
     assertThat(keys).containsAtLeast("drawable/from_debug", "drawable/from_unit_test")
   }
@@ -158,26 +158,26 @@ class MergedResourceOwnershipTest {
         .trimIndent(),
     )
 
-    val keys = requireNotNull(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir()))
+    val keys = requireNotNull(MergedResourceOwnership.fileResourceOwnership(buildDir())).firstParty
 
     assertThat(keys).contains("drawable/probe_icon")
     assertThat(keys).doesNotContain("drawable/aar_bg")
   }
 
   @Test
-  fun `returns null when no blame file exists so the caller disables pruning`() {
-    assertThat(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir())).isNull()
+  fun `returns null when no blame file exists so the caller prunes nothing`() {
+    assertThat(MergedResourceOwnership.fileResourceOwnership(buildDir())).isNull()
   }
 
   @Test
   fun `a malformed blame file returns null instead of trusting partial ownership`() {
     writeBlame("debug", "<merger><dataSet config=\":app\"><source path=\"/a\">")
 
-    assertThat(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir())).isNull()
+    assertThat(MergedResourceOwnership.fileResourceOwnership(buildDir())).isNull()
   }
 
   @Test
-  fun `valid blame with no first-party file resources returns empty rather than unavailable`() {
+  fun `valid blame with no first-party file resources still reports the aar side`() {
     writeBlame(
       "debug",
       """
@@ -192,15 +192,51 @@ class MergedResourceOwnershipTest {
         .trimIndent(),
     )
 
-    val keys = requireNotNull(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir()))
-    assertThat(keys).isEmpty()
+    val ownership = requireNotNull(MergedResourceOwnership.fileResourceOwnership(buildDir()))
+    assertThat(ownership.firstParty).isEmpty()
+    assertThat(ownership.prunable).containsExactly("drawable/aar_bg")
+  }
+
+  /**
+   * A name contributed by BOTH an AAR and a project module is an override: the app's file is what
+   * resolves at runtime, so it must survive the prune. Keyed by name rather than by path, the two
+   * data sets collide on `drawable/ic_play`, and only subtracting first-party from third-party
+   * keeps it.
+   */
+  @Test
+  fun `a resource an app overrides from a dependency is not prunable`() {
+    writeBlame(
+      "debugUnitTest",
+      """
+      <merger version="3">
+        <dataSet config="androidx.media3:media3-ui:1.0.0">
+          <source path="/caches/media3/res">
+            <file name="ic_play" path="/caches/media3/res/drawable/ic_play.xml" type="drawable"/>
+            <file name="ic_pause" path="/caches/media3/res/drawable/ic_pause.xml" type="drawable"/>
+          </source>
+        </dataSet>
+        <dataSet config=":modules:services:ui">
+          <source path="/repo/modules/services/ui/res">
+            <file name="ic_play" path="/repo/modules/services/ui/res/drawable/ic_play.xml" type="drawable"/>
+          </source>
+        </dataSet>
+      </merger>
+      """
+        .trimIndent(),
+    )
+
+    val ownership = requireNotNull(MergedResourceOwnership.fileResourceOwnership(buildDir()))
+
+    assertThat(ownership.prunable).containsExactly("drawable/ic_pause")
+    assertThat(ownership.prunable).doesNotContain("drawable/ic_play")
   }
 
   @Test
-  fun `well-formed blame in an unrecognised schema returns null rather than an empty retain-set`() {
-    // A future AGP that keeps the file name but restructures its contents parses cleanly and yields
-    // no keys. Reading that as "this build has no first-party file resources" would prune every
-    // drawable while resources.arsc still pointed at them — issue #3260.
+  fun `well-formed blame in an unrecognised schema returns null rather than a bogus answer`() {
+    // A future AGP that keeps the file name but restructures its contents parses cleanly and
+    // yields no keys. Null keeps that honest: nothing was classified, so nothing is claimed. (The
+    // positive drop-set means an unrecognised file can no longer prune anything either way — this
+    // is the metadata-availability signal, not the safety net it once was.)
     writeBlame(
       "debug",
       """
@@ -213,7 +249,7 @@ class MergedResourceOwnershipTest {
         .trimIndent(),
     )
 
-    assertThat(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir())).isNull()
+    assertThat(MergedResourceOwnership.fileResourceOwnership(buildDir())).isNull()
   }
 
   @Test
@@ -233,7 +269,7 @@ class MergedResourceOwnershipTest {
         .trimIndent(),
     )
 
-    val keys = requireNotNull(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir()))
-    assertThat(keys).containsExactly("drawable/ic_play")
+    val ownership = requireNotNull(MergedResourceOwnership.fileResourceOwnership(buildDir()))
+    assertThat(ownership.firstParty).containsExactly("drawable/ic_play")
   }
 }

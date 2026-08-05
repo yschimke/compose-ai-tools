@@ -155,13 +155,19 @@ function clearThemeError(card) {
   var error = card.querySelector(".cp-theme-error");
   if (error) error.remove();
 }
-function showThemeError(card) {
+function showThemeError(card, terminal) {
   clearThemeError(card);
   card.classList.add("cp-theme-render-error");
   var error = document.createElement("span");
   error.className = "cp-theme-error";
   error.setAttribute("role", "status");
-  error.textContent = "Theme preview unavailable";
+  // Two different facts, and conflating them is misleading: a retryable failure really may
+  // resolve on the next attempt, while a terminal one (the server latched this preview as
+  // unrenderable) never will. Saying "unavailable" for both left a permanently broken card
+  // looking like it was still loading.
+  error.textContent = terminal
+    ? "This preview can't render live"
+    : "Theme preview unavailable";
   var wrap = card.querySelector(".cp-imgwrap");
   if (wrap) wrap.appendChild(error);
 }
@@ -178,10 +184,10 @@ function runThemeWorker(queue, gen, batch) {
   job.card.setAttribute("aria-busy", "true");
   var img = job.img;
   var settled = false;
-  function finish(ok) {
+  function finish(ok, terminal) {
     if (settled || gen !== themeGen) return;
     settled = true;
-    if (!ok && job.retries < themeRenderRetries) {
+    if (!ok && !terminal && job.retries < themeRenderRetries) {
       // Re-request rather than re-assign the identical (failed, uncached) URL. Exponential
       // backoff gives a busy daemon time to finish without stalling the other worker.
       job.retries++;
@@ -195,7 +201,7 @@ function runThemeWorker(queue, gen, batch) {
     }
     job.card.classList.remove("cp-reloading");
     job.card.removeAttribute("aria-busy");
-    if (!ok) showThemeError(job.card);
+    if (!ok) showThemeError(job.card, terminal);
     finishThemeJob(batch);
     runThemeWorker(queue, gen, batch);
   }
@@ -213,6 +219,14 @@ function runThemeWorker(queue, gen, batch) {
   // request by construction.
   fetch(job.src, { credentials: "same-origin" })
     .then(function (response) {
+      // 409 is the server saying it has permanently given up on this preview, not that it
+      // is busy. Retrying it three times with backoff only occupies a worker that the rest
+      // of the grid needs, so retire the job on the spot.
+      if (response.status === 409) {
+        var terminal = new Error("render 409");
+        terminal.cpTerminal = true;
+        throw terminal;
+      }
       if (!response.ok) throw new Error("render " + response.status);
       return response.blob();
     })
@@ -227,7 +241,7 @@ function runThemeWorker(queue, gen, batch) {
       if (previous) URL.revokeObjectURL(previous);
       finish(true);
     })
-    .catch(function () { finish(false); });
+    .catch(function (e) { finish(false, !!(e && e.cpTerminal)); });
 }
 function runThemeQueue(queue, gen, lease, concurrency) {
   var batch = { lease: lease, remaining: queue.length };

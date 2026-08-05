@@ -150,6 +150,14 @@ class ServeHttpServer(
    */
   maxLiveSeats: Int = 0,
   /**
+   * The seat budget to charge, when the caller needs to share one with something built earlier.
+   * `serve` passes the same limiter it hands the catalog daemon pools, so a pooled render daemon
+   * and a live stream draw on one budget instead of two independent ones — the whole point of the
+   * budget being "what this box can run at once". Null builds a private limiter from
+   * [maxLiveSeats], which is what every other entry point (and every test) wants.
+   */
+  liveSeatLimiter: LiveSeatLimiter? = null,
+  /**
    * Recent daemon **startup failures** — the render/live daemon a session tried to (re)open but
    * couldn't. Populated by [ServeCommand.openHost] (the single choke point every registry-driven
    * relaunch passes through) and surfaced on `/status` + `/status.json`. Null ⇒ no log wired
@@ -270,7 +278,7 @@ class ServeHttpServer(
    * weight, so a heavy Android daemon costs more of the box than a cheap desktop CMP one. `<= 0` ⇒
    * unbounded. See [maxLiveSeats] and [LiveSeatLimiter].
    */
-  private val liveSeats: LiveSeatLimiter = LiveSeatLimiter(maxLiveSeats)
+  private val liveSeats: LiveSeatLimiter = liveSeatLimiter ?: LiveSeatLimiter(maxLiveSeats)
 
   /**
    * Prebaked front-door hero thumbnails, served by the `/hero/` route. Baked once per catalog host
@@ -2821,6 +2829,16 @@ class ServeHttpServer(
               overrides == PreviewOverrides(themeProvider = it) &&
                 renderHost.declaredThemes.any { theme -> theme.providerFqn == it }
             }
+          // A preview this catalog has permanently failed to render is answered here, before any
+          // lease or render slot is taken. 409 rather than 503/500: the request will never succeed,
+          // so the page must stop retrying it. Retrying a latched preview is exactly what kept the
+          // grid's workers busy and the daemon's render lock contended.
+          val latchedFailure =
+            if (cached == null) renderHost.renderFailureLatch(previewId, overrides) else null
+          if (latchedFailure != null) {
+            call.respondText(latchedFailure, status = HttpStatusCode.Conflict)
+            return@withLeasedSession
+          }
           val leaseToken = call.request.queryParameters["_themeLease"]
           val leasePermit =
             if (cached == null && pureThemeProvider != null && leaseToken != null) {

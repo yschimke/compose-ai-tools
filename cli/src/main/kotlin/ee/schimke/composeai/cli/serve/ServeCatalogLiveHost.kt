@@ -78,6 +78,11 @@ class ServeCatalogLiveHost(
   private val perPreviewRenderStats: () -> List<RenderPerfSnapshot> = { emptyList() },
   /** Pool occupancy snapshots for `/status.json`, supplied by the pool. */
   private val perPreviewPoolStats: () -> List<DaemonPoolSnapshot> = { emptyList() },
+  /**
+   * Close per-preview daemons idle for the given window, returning how many (supplied by the pool).
+   * Drives the pooled half of [releaseIdleDaemons]; the default no-ops for a host with no pool.
+   */
+  private val perPreviewReapIdle: (idleMillis: Long) -> Int = { 0 },
   /** Identical monolithic daemon replicas used only for a leased theme-render batch. */
   private val sharedDaemonPool: ServeSharedDaemonPool? = null,
   /**
@@ -330,6 +335,7 @@ class ServeCatalogLiveHost(
         for (job in jobs) {
           if (catalogThemeCache.get(job.cacheKey) != null) continue
           var attempts = 0
+          var lastFailure: String? = null
           while (catalogThemeCache.get(job.cacheKey) == null && attempts < 3) {
             if (!awaitServerIdle()) return@execute
             catalogThemeCache.markRunning(clock())
@@ -339,6 +345,7 @@ class ServeCatalogLiveHost(
               backgroundWork.withRenderPermit { render(job.previewId, job.overrides) }
                 ?: return@execute
             if (outcome is RenderOutcome.Ok) break
+            if (outcome is RenderOutcome.Failed) lastFailure = outcome.reason
             val daemonId = alias[job.previewId]
             if (
               outcome == RenderOutcome.Busy &&
@@ -354,7 +361,7 @@ class ServeCatalogLiveHost(
             if (attempts < 3 && !pauseOptimization(250)) return@execute
           }
           if (catalogThemeCache.get(job.cacheKey) == null)
-            catalogThemeCache.markFailed(job.cacheKey)
+            catalogThemeCache.markFailed(job.cacheKey, lastFailure)
         }
         catalogThemeCache.markPassFinished(clock())
       } finally {
@@ -523,6 +530,17 @@ class ServeCatalogLiveHost(
   override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
     renderInternal(previewId, overrides, leased = false)
 
+  override fun renderFailureLatch(previewId: String, overrides: PreviewOverrides): String? =
+    themeCacheKey(previewId, overrides)?.let(catalogThemeCache::failureReason)
+
+  /**
+   * Shed the pooled daemons — burst replicas and per-preview residents — while keeping the
+   * monolithic [live] daemon, which is this catalog's warm browse lane and the thing the whole
+   * cold-start design exists to hold on to. Both pools reopen on demand.
+   */
+  override fun releaseIdleDaemons(idleMillis: Long): Int =
+    (sharedDaemonPool?.reapIdle(idleMillis) ?: 0) + perPreviewReapIdle(idleMillis)
+
   override fun renderLeased(previewId: String, overrides: PreviewOverrides): RenderOutcome =
     renderInternal(previewId, overrides, leased = true)
 
@@ -535,6 +553,15 @@ class ServeCatalogLiveHost(
     val themeCacheKey = themeCacheKey(previewId, overrides)
     cachedRender(previewId, overrides)?.let {
       return it
+    }
+    // A theme render this catalog has already proved it cannot produce is answered from the latch,
+    // not by asking the daemon again. The daemon's answer would be the same failure, but arriving
+    // via the render lock — which is what let a handful of broken cards keep the lock busy and push
+    // every *other* card on the grid into a Busy back-off.
+    if (themeCacheKey != null) {
+      catalogThemeCache.failureReason(themeCacheKey)?.let {
+        return RenderOutcome.Failed(it)
+      }
     }
     if (themeCacheKey != null && !themeRendersInFlight.add(themeCacheKey)) {
       return RenderOutcome.Busy
@@ -559,6 +586,12 @@ class ServeCatalogLiveHost(
       // baked-first/background-warm behaviour.
       if (leased || daemonWarmOrScheduling(daemonId)) {
         val live = renderDaemon(daemonId, overrides, leased)
+        // Count a real render failure against this theme key so a permanently broken preview stops
+        // being re-attempted (see [CatalogThemeCache.recordRenderFailure]). Busy / NotFound are not
+        // failures of the render — they are "ask again" and "wrong lane" — and must not latch.
+        if (themeCacheKey != null && live is RenderOutcome.Failed) {
+          catalogThemeCache.recordRenderFailure(themeCacheKey, live.reason)
+        }
         // NotFound joins Busy in falling through rather than being returned. It means no daemon on
         // either lane carries this id — the shared one never listed it and its per-preview bundle
         // didn't start (a classpath the box can't resolve, say). That is a statement about the
