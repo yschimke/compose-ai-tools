@@ -508,26 +508,26 @@
     "serve-viewer-catalog-knobs-scroll-full-page.dark.png": {
       "fixture": "serve-viewer-catalog-knobs-scroll-full-page",
       "theme": "dark",
-      "sha256": "8ff69ef3fb26443ebd4908bc5bcedcff36684f5c3ed1954ceae16fc355219980",
-      "size": 58904
+      "sha256": "075d5bb19068a4d1aad33086b416fc1816db7e1e6c428a1c42fc60d15a65d471",
+      "size": 60168
     },
     "serve-viewer-catalog-knobs-scroll-full-page.light.png": {
       "fixture": "serve-viewer-catalog-knobs-scroll-full-page",
       "theme": "light",
-      "sha256": "bd624cc1013be7b733885901b67c48b4eacbdecb1b347f3841b308c31b4408eb",
-      "size": 58169
+      "sha256": "70ad200b218c4c175d5ffd9db9933efc52726a3585aa25dc58cdd5323f928a50",
+      "size": 59419
     },
     "serve-viewer-catalog-knobs.dark.png": {
       "fixture": "serve-viewer-catalog-knobs",
       "theme": "dark",
-      "sha256": "a30f45eeb58972ad5b84e7c922127180a3ad4d3beffefe0af178f594ae9ea4c0",
-      "size": 53426
+      "sha256": "21adc8ca0346156c09fc677274e9af7d1636c60236018f38c74cffedcf038820",
+      "size": 54686
     },
     "serve-viewer-catalog-knobs.light.png": {
       "fixture": "serve-viewer-catalog-knobs",
       "theme": "light",
-      "sha256": "bf1833dac3f3f329bd0ad18202409524df5ccce7bd6cf2bfe820bfc0461a58a1",
-      "size": 52811
+      "sha256": "eb2e82158532ca4f7039ffa09907cdac0956140fbea2f51459093b9efa17f263",
+      "size": 54019
     },
     "serve-viewer-catalog-palette.dark.png": {
       "fixture": "serve-viewer-catalog-palette",
@@ -592,14 +592,14 @@
     "serve-viewer-path.dark.png": {
       "fixture": "serve-viewer-path",
       "theme": "dark",
-      "sha256": "98d0de6bf86afec9ca24e0092cd6c15cac43e4b49a514f3f86061a40ba97b091",
-      "size": 74060
+      "sha256": "b60c24ca2dcd33be49b08bf084489bddbbb75f5946db00022235de363f1b3eea",
+      "size": 115294
     },
     "serve-viewer-path.light.png": {
       "fixture": "serve-viewer-path",
       "theme": "light",
-      "sha256": "98d0de6bf86afec9ca24e0092cd6c15cac43e4b49a514f3f86061a40ba97b091",
-      "size": 74060
+      "sha256": "b60c24ca2dcd33be49b08bf084489bddbbb75f5946db00022235de363f1b3eea",
+      "size": 115294
     },
     "serve-viewer-states.dark.png": {
       "fixture": "serve-viewer-states",
