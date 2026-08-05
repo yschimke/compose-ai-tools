@@ -1991,8 +1991,8 @@ class RenderEngine(
    * `RuntimeEnvironment` entrypoint as `RobolectricRenderTest.applyPreviewQualifiers`; the
    * difference is that the daemon takes locale / uiMode / orientation as overrides on the
    * [RenderSpec] (see PROTOCOL.md § 5 `renderNow.overrides`) rather than reading them off
-   * `@Preview` annotation fields. Qualifier grammar is order-sensitive — locale, width, height,
-   * round, orientation, uiMode (notnight/night), density.
+   * `@Preview` annotation fields. Qualifier grammar is order-sensitive — locale, smallest width,
+   * width, height, round, orientation, uiMode (notnight/night), density.
    */
   private fun applyPreviewQualifiers(
     widthDp: Int,
@@ -2027,8 +2027,11 @@ class RenderEngine(
       // below.
       add(localeTagToQualifier(effectiveLocaleTag?.takeIf { it.isNotBlank() } ?: DEFAULT_LOCALE_TAG))
       add(if (rtl) "ldrtl" else "ldltr")
-      if (widthDp > 0) add("w${widthDp}dp")
-      if (heightDp > 0) add("h${heightDp}dp")
+      // `sw<n>dp-w<n>dp-h<n>dp` — smallest width has to precede available width in the grammar,
+      // and it has to be emitted at all, or Robolectric's baseline `sw320dp` survives the
+      // incremental `setQualifiers("+…")` and the Configuration contradicts the viewport we just
+      // set (issue #3309).
+      addAll(ee.schimke.composeai.data.render.previewSizeQualifiers(widthDp, heightDp))
       if (isRound) add("round")
       val derivedOrientation =
         when (orientation) {

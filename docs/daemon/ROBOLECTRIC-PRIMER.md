@@ -159,6 +159,16 @@ The canonical handle once inside the sandbox:
 These are per-sandbox global state. Mutating them from one test affects
 the next test in the same sandbox unless `@Resetter` runs between them.
 
+A leading `+` on the qualifier string means **merge with the current
+state**, not replace it — so a token you leave out keeps whatever the
+previous render set. That's why every size override has to spell out
+`sw<n>dp` as well as `w<n>dp`/`h<n>dp`: Robolectric's baseline carries
+`sw320dp`, and overriding only the available width left a 227 dp round
+Wear preview reporting `smallestScreenWidthDp == 320` alongside a
+`screenWidthDp` of 227 (issue #3309). The shared
+[`previewSizeQualifiers`](../../data/render/core/src/main/kotlin/ee/schimke/composeai/data/render/PreviewSizeQualifiers.kt)
+emits the triple in grammar order for all three render paths.
+
 ## Native code and graphics
 
 Some Android APIs ultimately call native code (Skia rendering, SQLite,

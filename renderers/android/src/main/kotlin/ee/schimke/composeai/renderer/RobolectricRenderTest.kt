@@ -1746,9 +1746,9 @@ abstract class RobolectricRenderTestBase(
    *
    * Order matters: Robolectric's parser (and Android's underlying grammar —
    * https://developer.android.com/guide/topics/resources/providing-resources#QualifierRules) is
-   * strict about the sequence. Locale comes before width/height, which come before orientation,
-   * which comes before night-mode, which comes before density. Out-of-order qualifiers produce
-   * `IllegalArgumentException: failed to parse qualifiers` at runtime.
+   * strict about the sequence. Locale comes before smallest-width/width/height, which come before
+   * orientation, which comes before night-mode, which comes before density. Out-of-order qualifiers
+   * produce `IllegalArgumentException: failed to parse qualifiers` at runtime.
    */
   private fun applyPreviewQualifiers(
     widthDp: Int,
@@ -1775,8 +1775,11 @@ abstract class RobolectricRenderTestBase(
     val qualifiers = buildList {
       if (!effectiveLocale.isNullOrBlank()) add(effectiveLocale)
       if (rtl) add("ldrtl")
-      if (widthDp > 0) add("w${widthDp}dp")
-      if (heightDp > 0) add("h${heightDp}dp")
+      // `sw<n>dp-w<n>dp-h<n>dp` — smallest width has to precede available width in the grammar,
+      // and it has to be emitted at all, or Robolectric's baseline `sw320dp` survives our
+      // incremental `setQualifiers("+…")` and the Configuration contradicts the viewport we just
+      // set (issue #3309).
+      addAll(ee.schimke.composeai.data.render.previewSizeQualifiers(widthDp, heightDp))
       if (isRound) add("round")
       if (widthDp > 0 && heightDp > 0) {
         add(if (widthDp > heightDp) "land" else "port")
