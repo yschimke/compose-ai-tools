@@ -661,6 +661,30 @@
       "sha256": "9b5466925e6c8107358043f036cc21426c7fbd65edb63facb1281d18eb006da1",
       "size": 40861
     },
+    "serve-viewer-wear-screen-size-open.dark.png": {
+      "fixture": "serve-viewer-wear-screen-size-open",
+      "theme": "dark",
+      "sha256": "4cf1362601ec4657515248b3cd13c4cc72aa79bf64a2f1b2d4ad05b6f92fdd5d",
+      "size": 62045
+    },
+    "serve-viewer-wear-screen-size-open.light.png": {
+      "fixture": "serve-viewer-wear-screen-size-open",
+      "theme": "light",
+      "sha256": "bf6f390626890650645af6b66eda2ff3616fa9f4336d7bfd5742be89b1195a14",
+      "size": 59759
+    },
+    "serve-viewer-wear-screen.dark.png": {
+      "fixture": "serve-viewer-wear-screen",
+      "theme": "dark",
+      "sha256": "e08838fc4f7e92027d7426ffed18d8c96ac88ae96c05df0d2efb2e23eda946e9",
+      "size": 42774
+    },
+    "serve-viewer-wear-screen.light.png": {
+      "fixture": "serve-viewer-wear-screen",
+      "theme": "light",
+      "sha256": "ff78a2b5cbc24b15fa330a203532985ada3c60c6143891bd26e69da341bda4a8",
+      "size": 42420
+    },
     "serve-viewer.dark.png": {
       "fixture": "serve-viewer",
       "theme": "dark",

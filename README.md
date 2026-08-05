@@ -396,6 +396,20 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-viewer-wasm-live/dark](renders/serve-viewer-wasm-live.dark.png) |
 | `light` | ![serve-viewer-wasm-live/light](renders/serve-viewer-wasm-live.light.png) |
 
+## serve-viewer-wear-screen
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-wear-screen/dark](renders/serve-viewer-wear-screen.dark.png) |
+| `light` | ![serve-viewer-wear-screen/light](renders/serve-viewer-wear-screen.light.png) |
+
+## serve-viewer-wear-screen-size-open
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-viewer-wear-screen-size-open/dark](renders/serve-viewer-wear-screen-size-open.dark.png) |
+| `light` | ![serve-viewer-wear-screen-size-open/light](renders/serve-viewer-wear-screen-size-open.light.png) |
+
 ## serve-wear-scroll-long-capsule
 
 | Theme | Capture |
