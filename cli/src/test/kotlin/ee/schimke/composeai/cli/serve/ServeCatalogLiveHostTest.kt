@@ -1390,4 +1390,74 @@ class ServeCatalogLiveHostTest {
       composite.render(catalogId, PreviewOverrides(themeProvider = "com.example.Brand")),
     )
   }
+
+  /**
+   * The theme cache is an optimization, not a correctness requirement. A cache miss on a cold
+   * daemon id used to schedule a warm and then abandon the request — returning Busy despite the
+   * caller already holding a render slot — which made a server restart (empty cache) break the
+   * whole grid until the hours-long background pass refilled it.
+   */
+  @Test
+  fun `a pure theme render on a cold id waits for its warm instead of reporting busy`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = baked,
+        warmInBackground = true,
+      )
+
+    // Nothing has warmed this id: under the old gate this returned Busy without rendering.
+    val outcome = composite.render(catalogId, themeOverride())
+
+    assertTrue(
+      outcome is RenderOutcome.Ok,
+      "a cold id must still produce themed pixels, got $outcome",
+    )
+    assertTrue(
+      live.renderCalls >= 2,
+      "one warm render plus the themed one, got ${live.renderCalls}",
+    )
+  }
+
+  /** A warm that never succeeds must not hold the request for the whole budget. */
+  @Test
+  fun `a pure theme render gives up when the warm itself fails`() {
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        forcedRenderOutcome = RenderOutcome.Busy,
+        declaredThemes = listOf(brandTheme),
+      )
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = baked,
+        warmInBackground = true,
+      )
+
+    val startedAt = System.nanoTime()
+    val outcome = composite.render(catalogId, themeOverride())
+    val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
+
+    assertEquals(
+      RenderOutcome.Busy,
+      outcome,
+      "a theme render that cannot succeed still reports busy",
+    )
+    assertTrue(
+      elapsedMs < ServeCatalogLiveHost.FOREGROUND_WARM_AWAIT_MILLIS,
+      "it must not burn the whole warm budget on a failing warm (took ${elapsedMs}ms)",
+    )
+  }
 }

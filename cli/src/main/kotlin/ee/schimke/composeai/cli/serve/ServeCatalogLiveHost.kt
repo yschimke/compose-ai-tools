@@ -231,6 +231,37 @@ class ServeCatalogLiveHost(
     return false
   }
 
+  /**
+   * Wait, briefly, for the background warm [daemonWarmOrScheduling] just scheduled for [daemonId],
+   * so a cold-id request can render instead of failing. Returns whether the daemon came up warm.
+   *
+   * Only for a **pure theme** request ([themeCacheKey] non-null): those have no useful fallback —
+   * serving baked pixels for a requested theme would show the wrong colours under a successful
+   * status — whereas an ordinary override request drops to baked and loses nothing by not waiting.
+   *
+   * Bounded by [FOREGROUND_WARM_AWAIT_MILLIS] rather than the full cold-start time: the caller is
+   * holding one of the server's render slots while it waits, so an unbounded wait would let a burst
+   * of cold ids consume every slot. Past the bound the caller still gets Busy — the same answer as
+   * before, just after actually trying.
+   */
+  private fun awaitForegroundWarm(daemonId: String, themeCacheKey: String?): Boolean {
+    if (themeCacheKey == null || !warmInBackground) return false
+    val deadline = clock() + FOREGROUND_WARM_AWAIT_MILLIS
+    while (clock() < deadline) {
+      if (warmDaemonIds.contains(daemonId)) return true
+      // The warm finished without succeeding (a genuinely failing preview): stop waiting and let
+      // the caller take its normal path rather than burning the whole budget on a lost cause.
+      if (!warmingInFlight.contains(daemonId)) return false
+      try {
+        Thread.sleep(WARM_POLL_MILLIS)
+      } catch (_: InterruptedException) {
+        Thread.currentThread().interrupt()
+        return false
+      }
+    }
+    return warmDaemonIds.contains(daemonId)
+  }
+
   private fun scheduleWarm(daemonId: String, host: ServeHost = live) {
     if (!warmInBackground || warmDaemonIds.contains(daemonId)) return
     if (warmingInFlight.add(daemonId)) {
@@ -584,7 +615,19 @@ class ServeCatalogLiveHost(
       // replicas cold-start on the request path if necessary; otherwise the per-id warm guard would
       // return Busy for every card and the pool would never grow. Ordinary renders retain the
       // baked-first/background-warm behaviour.
-      if (leased || daemonWarmOrScheduling(daemonId)) {
+      // A pure theme request on a cold id used to schedule a warm and then abandon its own render
+      // — returning Busy despite already holding a render slot it was prepared to wait 30s on. That
+      // made the theme cache load-bearing for correctness rather than an optimization: a cache miss
+      // was an error, so a restart (which empties the cache) broke the whole grid until the
+      // background pass refilled it, which on a busy box takes hours.
+      //
+      // A warm render is sub-second (p50 ~0.25-1.1s on the public box), so the honest answer is to
+      // render. The gate exists for the one case where that isn't true — a COLD daemon, 34-68s —
+      // so wait for the warm this request just scheduled, bounded, and only give up if the cold
+      // start really is going to outlast the request.
+      if (
+        leased || daemonWarmOrScheduling(daemonId) || awaitForegroundWarm(daemonId, themeCacheKey)
+      ) {
         val live = renderDaemon(daemonId, overrides, leased)
         // Count a real render failure against this theme key so a permanently broken preview stops
         // being re-attempted (see [CatalogThemeCache.recordRenderFailure]). Busy / NotFound are not
@@ -897,5 +940,19 @@ class ServeCatalogLiveHost(
     } finally {
       baked.close()
     }
+  }
+
+  companion object {
+    /**
+     * How long a pure-theme request will wait for the daemon warm it scheduled before giving up.
+     *
+     * Sized between the two render regimes: a warm render is sub-second, a cold Android start is
+     * 34-68s. Waiting the full cold start would tie up a render slot for a minute; not waiting at
+     * all is what made a cache miss an error. This covers a warm that is already in flight and
+     * nearly done, and lets a genuinely cold one fall through to the previous behaviour.
+     */
+    internal const val FOREGROUND_WARM_AWAIT_MILLIS = 15_000L
+
+    private const val WARM_POLL_MILLIS = 50L
   }
 }
