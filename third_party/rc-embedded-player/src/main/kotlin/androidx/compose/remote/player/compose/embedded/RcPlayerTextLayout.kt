@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.googlefonts.Font as GoogleFontFactory
 import androidx.compose.ui.text.googlefonts.GoogleFont
+import ee.schimke.composeai.rcembedded.GoogleVariableFontFamilies
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -254,9 +255,23 @@ private fun resolveFontFamily(
                 )
             }
             fontName.startsWith("google:") -> {
+                // Axes first, when the document carries any: the downloadable-font factory below
+                // takes a weight and a style and has no `variationSettings` parameter, so it can
+                // resolve this family but not vary it. `GoogleVariableFontFamilies` instances the
+                // family's variable file at the requested axes; it returns null for an unvaried
+                // request, or when there is no variable file to be had, and the factory path
+                // (unchanged) takes over.
+                GoogleVariableFontFamilies.Default.composeFontFamily(
+                        family = fontName,
+                        weight = fontWeight,
+                        style = fontStyle,
+                        axes = fontVariationAxes(fontAxis, fontAxisValues, context),
+                    )
+                    ?.let {
+                        return it
+                    }
                 val actualName = fontName.substring("google:".length)
                 val googleFont = GoogleFont(actualName)
-                // TODO: Support variation settings for Google fonts if needed
                 return FontFamily(
                     GoogleFontFactory(
                         googleFont = googleFont,
@@ -310,6 +325,42 @@ private fun resolveFontFamily(
 
     return standardFontFamily
 }
+
+/**
+ * The document's font-variation axes as `(tag, value)` pairs, empty when it declares none.
+ *
+ * Tags and values are positional, so an axis counts only when *both* halves are present: pairing a
+ * tag with a neighbour's value would draw a real face at silently the wrong instance, which is worse
+ * than dropping it. Kept as pairs rather than a `FontVariation.Settings` because the resolver caches
+ * on them, and `Settings` compares by identity for this purpose.
+ */
+private fun fontVariationAxes(
+    axisTagIds: IntArray?,
+    axisValues: FloatArray?,
+    context: RemoteContext,
+): List<Pair<String, Float>> {
+    if (axisTagIds == null || axisValues == null) return emptyList()
+    return axisTagIds.asList().mapIndexedNotNull { index, tag ->
+        val value = axisValues.getOrNull(index) ?: return@mapIndexedNotNull null
+        axisName(tag, context)?.let { it to value }
+    }
+}
+
+/**
+ * The axis name a [tag] int stands for, in either encoding the format uses.
+ *
+ * A `CoreText` style interns its axis names like any other string, so the int is a **text id** — a
+ * captured `RemoteText` carrying `wght` writes `TextData(44, "wght")` and puts `44` in the array.
+ * The paint bundle's `setTextAxis` op instead carries the **raw OpenType tag** packed into four
+ * bytes (`0x77676874` = `wght`). Reading the text table first and falling back to unpacking the
+ * bytes covers both without having to know which writer produced the document; anything that is
+ * neither is dropped rather than guessed at. Mirrors the jvm player's seam.
+ */
+private fun axisName(tag: Int, context: RemoteContext): String? =
+    context.getText(tag)?.takeIf { it.isNotBlank() }
+        ?: CharArray(4) { index -> ((tag shr (24 - index * 8)) and 0xff).toChar() }
+            .concatToString()
+            .takeIf { name -> name.all { it in '!'..'~' } }
 
 private fun createDeviceFontFamily(
     familyName: String,
