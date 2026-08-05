@@ -279,4 +279,40 @@ class ServeSharedDaemonPoolTest {
       pool.close()
     }
   }
+
+  /**
+   * Codex review on #3355. `liveSeatRefusals` is the evidence any change to the seat budget rests
+   * on, so it must only count callers that actually turned someone away. A leased burst that can't
+   * widen still serves its render off a host already in circulation — throttled, not refused.
+   */
+  @Test
+  fun `replica backpressure is not counted as a live-seat refusal`() {
+    val seats = LiveSeatLimiter(totalPermits = 1)
+    val held = requireNotNull(seats.acquire(1))
+    val entered = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    val primary = BlockingHost("primary", entered, release)
+    val pool =
+      ServeSharedDaemonPool(primary = primary, capacity = 2, liveSeats = seats) {
+        InstantHost("replica")
+      }
+    val executor = Executors.newFixedThreadPool(2)
+    try {
+      val first = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+      assertTrue(entered.await(5, TimeUnit.SECONDS))
+      // Wants to widen, cannot (budget spent elsewhere), so it waits for the primary instead.
+      val second = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+
+      release.countDown()
+      assertTrue(first.get(5, TimeUnit.SECONDS) is RenderOutcome.Ok)
+      assertTrue(second.get(10, TimeUnit.SECONDS) is RenderOutcome.Ok, "the render still succeeded")
+      assertEquals(0L, seats.refusalCount(), "narrowing a burst is not a refusal")
+      assertEquals(0L, seats.unverifiedRefusalCount())
+    } finally {
+      release.countDown()
+      executor.shutdownNow()
+      pool.close()
+      held.close()
+    }
+  }
 }

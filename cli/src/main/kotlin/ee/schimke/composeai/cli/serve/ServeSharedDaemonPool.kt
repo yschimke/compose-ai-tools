@@ -84,7 +84,11 @@ class ServeSharedDaemonPool(
   private fun openSeatedReplica(): ServeHost {
     var ticket: LiveSeatLimiter.Ticket? = null
     if (liveSeats != null) {
-      ticket = liveSeats.acquire(seatWeight())
+      // countRefusal = false: a miss here does NOT refuse the render. The burst simply narrows
+      // onto a host already in circulation (below), so counting it would report throttled widening
+      // as visitors turned away — and `liveSeatRefusals` is the evidence any budget change rests
+      // on.
+      ticket = liveSeats.acquire(seatWeight(), countRefusal = false)
       if (ticket == null) {
         while (available.isEmpty() && !closed) hostReturned.await()
         check(!closed) { "shared daemon pool is closed" }
