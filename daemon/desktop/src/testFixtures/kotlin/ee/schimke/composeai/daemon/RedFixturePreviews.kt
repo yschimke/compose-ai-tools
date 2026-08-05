@@ -1031,3 +1031,49 @@ fun GenericOutlineTriangle() {
     Box(modifier = Modifier.size(60.dp, 48.dp).background(Color(0xFF04409F), TriangleShape))
   }
 }
+
+/**
+ * Reuse-pool fixture (issue #3324): a `LazyColumn` whose first row disappears one frame in, so its
+ * `LayoutNode` is retired into `SubcomposeLayout`'s slot-reuse pool — **deactivated**, unplaced,
+ * still holding the retired row's text — while the surviving rows shift up.
+ */
+@Composable
+fun ReusedSlotGhostPreview() {
+  var dropFirst by remember { mutableStateOf(false) }
+  LaunchedEffect(Unit) {
+    withFrameNanos {}
+    dropFirst = true
+  }
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    Surface(color = Color.White) {
+      LazyColumn(modifier = Modifier.fillMaxSize()) {
+        items(if (dropFirst) listOf("Kept row") else listOf("Ghost row", "Kept row")) { label ->
+          Text(text = label, modifier = Modifier.fillMaxWidth().padding(4.dp))
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Scroll-then-capture fixture (issue #3324): a `LazyColumn` that scrolls a few rows in before the
+ * frame is captured, so the rows that left the viewport are retired into `SubcomposeLayout`'s
+ * slot-reuse pool — deactivated, unplaced, still holding their text.
+ */
+@Composable
+fun ScrolledLazyColumnPreview() {
+  val state = androidx.compose.foundation.lazy.rememberLazyListState()
+  LaunchedEffect(Unit) {
+    withFrameNanos {}
+    state.scrollToItem(8)
+  }
+  MaterialTheme(colorScheme = lightColorScheme()) {
+    Surface(color = Color.White) {
+      LazyColumn(state = state, modifier = Modifier.fillMaxSize()) {
+        items((1..30).toList()) { index ->
+          Text(text = "Row $index", modifier = Modifier.fillMaxWidth().padding(4.dp))
+        }
+      }
+    }
+  }
+}

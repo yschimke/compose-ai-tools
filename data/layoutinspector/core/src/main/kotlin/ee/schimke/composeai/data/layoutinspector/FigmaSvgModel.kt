@@ -557,8 +557,11 @@ data class FigmaSvgModel(
       frameWidthPx: Int? = null,
       frameHeightPx: Int? = null,
     ): FigmaSvgModel {
+      // Everything below works off the *drawn* tree — the retired slots are dropped first, before
+      // text matching, layer building and extent measuring all get a chance to believe in them.
+      val layoutRoot = layout.root.withoutRetiredSubtrees()
       val textByNodeId =
-        semantics?.let { assignTextToLayers(layout.root, it, density, fontScale) } ?: emptyMap()
+        semantics?.let { assignTextToLayers(layoutRoot, it, density, fontScale) } ?: emptyMap()
       val names = colorNames.mapKeys { it.key.uppercase() }
       val ctx =
         BuildContext(
@@ -570,13 +573,13 @@ data class FigmaSvgModel(
           rasterHref,
           captureCanvasDraws,
         )
-      val rootLayer = collapsePassthroughGroups(layout.root.toLayer(ctx))
+      val rootLayer = collapsePassthroughGroups(layoutRoot.toLayer(ctx))
       // A round Wear device screen is masked to the inscribed circle of the frame (the root node's
       // bounds) — content outside it (the corners, and any list item scrolled below the frame) is
       // clipped away, matching Roborazzi's device crop. Clamp the extent to that frame so the
       // canvas
       // is the watch face, not the taller off-screen content bbox.
-      val frame = layout.root.bounds
+      val frame = layoutRoot.bounds
       val w = frame.right - frame.left
       val h = frame.bottom - frame.top
       // A tall Wear scroll frame is masked to a vertical stadium (capsule), not the inscribed
@@ -1487,6 +1490,30 @@ data class FigmaSvgModel(
         bottom = parent.top + rectH,
       )
     }
+
+    /**
+     * The tree with every **retired** subtree removed — a node Compose composed but did not
+     * [place][LayoutInspectorNode.placed], and everything under it.
+     *
+     * A lazy container does not discard a row the moment it leaves the viewport: `SubcomposeLayout`
+     * keeps the row composed, text and all, and simply stops placing it, so the capture still walks
+     * it as an ordinary child of its parent. Compose never *draws* an unplaced node, but the export
+     * did — and because an unplaced node's `LayoutCoordinates` report `(0,0,0,0)`, [recoverBounds]
+     * (there for a *placed* subcomposed child whose coordinates were detached) then anchored the
+     * retired content at its **parent's** origin, where it painted over whatever the parent really
+     * draws. That is the JetNews `Screens/Article` article body reappearing inside the `TopAppBar`
+     * over the hero image, and the JetLagged `1Y` tab reappearing at its card's top-left (#3324).
+     *
+     * Dropping the whole subtree is the right granularity: a child of an unplaced node is not drawn
+     * either, whatever its own flag says. The root is kept regardless — an export of a tree whose
+     * root reports unplaced should still emit the frame rather than nothing.
+     *
+     * Placement, not zero-area bounds, is the discriminator, so the recovery this protects keeps
+     * working: a *placed* node whose bounds collapsed still recovers its rect from its measured
+     * size, exactly as before.
+     */
+    private fun LayoutInspectorNode.withoutRetiredSubtrees(): LayoutInspectorNode =
+      copy(children = children.filter { it.placed }.map { it.withoutRetiredSubtrees() })
 
     /** True when the composable name matches a [rasterComponents] fragment. */
     /**
