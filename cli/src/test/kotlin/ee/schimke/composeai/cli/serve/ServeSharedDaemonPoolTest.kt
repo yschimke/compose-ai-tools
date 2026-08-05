@@ -110,4 +110,131 @@ class ServeSharedDaemonPoolTest {
     assertEquals(4, replicas.count { it.closed })
     assertEquals(false, primary.closed, "the composite owns the primary daemon")
   }
+
+  /** A trivially-completing host, for the tests that don't need to hold a render open. */
+  private class InstantHost(private val name: String) : ServeHost {
+    override val previews: List<ServePreview> = emptyList()
+    override val label: String = name
+    override val daemonProcessCount: Int = 1
+    var closed = false
+
+    override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome =
+      RenderOutcome.Ok(name.encodeToByteArray())
+
+    override fun subscribeStream(
+      previewId: String,
+      overrides: PreviewOverrides,
+      codec: StreamCodec?,
+      maxFps: Int?,
+      onUnavailable: ((String) -> Unit)?,
+      onFrame: (StreamFrameParams) -> Unit,
+    ): StreamHandle? = null
+
+    override fun activeStreamCount(): Int = 0
+
+    override fun close() {
+      closed = true
+    }
+  }
+
+  /**
+   * Replicas outlive the burst that opened them unless something reaps them; nothing else does,
+   * because a catalog session is pinned and [ServeSessionRegistry.suspendIdle] skips those.
+   */
+  @Test
+  fun `reaps idle replicas and never the primary`() {
+    var now = 0L
+    val primary = InstantHost("primary")
+    val replicas = Collections.synchronizedList(mutableListOf<InstantHost>())
+    val pool =
+      ServeSharedDaemonPool(primary = primary, capacity = 3, clock = { now }) {
+        InstantHost("replica-${replicas.size}").also { replicas.add(it) }
+      }
+    try {
+      // Overlapping renders are what open replicas at all; a sequential batch stays on the primary.
+      val executor = Executors.newFixedThreadPool(3)
+      try {
+        (1..3)
+          .map { executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) } }
+          .forEach { it.get(5, TimeUnit.SECONDS) }
+      } finally {
+        executor.shutdownNow()
+      }
+      // Whether the race actually opened replicas is timing-dependent; the reap assertions below
+      // are written against however many it opened, and the primary must survive either way.
+
+      now = 60_000
+      val reaped = pool.reapIdle(idleMillis = 30_000)
+      assertEquals(replicas.size, reaped, "every idle replica is closed")
+      assertTrue(replicas.all { it.closed })
+      assertFalse(primary.closed, "the primary belongs to the catalog host")
+      assertEquals(0, pool.replicaProcessCount())
+
+      // The pool still works afterwards, reopening on demand.
+      assertTrue(pool.render("p", PreviewOverrides()) is RenderOutcome.Ok)
+    } finally {
+      pool.close()
+    }
+  }
+
+  @Test
+  fun `does not open a replica the live-seat budget cannot afford`() {
+    val seats = LiveSeatLimiter(totalPermits = 1)
+    // Spend the whole budget elsewhere — a stream, another catalog's pool, anything.
+    val held = requireNotNull(seats.acquire(1))
+    val primary = InstantHost("primary")
+    val opened = AtomicInteger()
+    val pool =
+      ServeSharedDaemonPool(primary = primary, capacity = 3, liveSeats = seats) {
+        opened.incrementAndGet()
+        InstantHost("replica")
+      }
+    try {
+      val executor = Executors.newFixedThreadPool(3)
+      try {
+        val results =
+          (1..3).map { executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) } }
+        // Every render still succeeds — they serialise onto the primary instead of spawning JVMs.
+        results.forEach { assertTrue(it.get(10, TimeUnit.SECONDS) is RenderOutcome.Ok) }
+      } finally {
+        executor.shutdownNow()
+      }
+      assertEquals(0, opened.get(), "no replica was spawned against an exhausted budget")
+    } finally {
+      pool.close()
+      held.close()
+    }
+  }
+
+  @Test
+  fun `a replica whose launch throws hands its seat back`() {
+    val seats = LiveSeatLimiter(totalPermits = 4)
+    val entered = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    // The primary is held mid-render, so a concurrent request has nothing to borrow and must go
+    // down the replica-launch path — which is the one that can strand a ticket.
+    val primary = BlockingHost("primary", entered, release)
+    val pool =
+      ServeSharedDaemonPool(primary = primary, capacity = 3, liveSeats = seats) {
+        throw IllegalStateException("daemon launch failed")
+      }
+    val executor = Executors.newFixedThreadPool(2)
+    try {
+      val holder = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+      assertTrue(entered.await(5, TimeUnit.SECONDS), "the primary should be mid-render")
+
+      val failed = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+      val thrown = runCatching { failed.get(5, TimeUnit.SECONDS) }.exceptionOrNull()
+      assertTrue(thrown != null, "the launch failure reaches the caller")
+
+      assertEquals(4, seats.availablePermits(), "no seat is stranded on a failed launch")
+
+      release.countDown()
+      assertTrue(holder.get(5, TimeUnit.SECONDS) is RenderOutcome.Ok)
+    } finally {
+      release.countDown()
+      executor.shutdownNow()
+      pool.close()
+    }
+  }
 }

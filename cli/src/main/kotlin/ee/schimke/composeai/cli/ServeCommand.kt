@@ -7,6 +7,7 @@ import ee.schimke.composeai.cli.serve.CatalogThemeCache
 import ee.schimke.composeai.cli.serve.DaemonStartupLog
 import ee.schimke.composeai.cli.serve.GitWorktrees
 import ee.schimke.composeai.cli.serve.GradleRevisionBuilder
+import ee.schimke.composeai.cli.serve.LiveSeatLimiter
 import ee.schimke.composeai.cli.serve.MutableTrustStore
 import ee.schimke.composeai.cli.serve.PlaygroundAndroidRenderService
 import ee.schimke.composeai.cli.serve.PlaygroundAndroidSessionOpener
@@ -102,6 +103,14 @@ class ServeCommand(args: List<String>) : Command(args) {
    * session; the snapshot + Wasm tiers never take a seat.
    */
   private val liveSeats: Int = args.flagValue("--live-seats")?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+
+  /**
+   * The one live-seat budget for this server, shared by the HTTP stream lane and by every catalog
+   * daemon pool. Built here rather than inside [ServeHttpServer] so the pools — which are
+   * constructed while catalogs load, before the server exists — charge the same budget. Two
+   * separate limiters would each believe it owned the whole box.
+   */
+  private val liveSeatLimiter: LiveSeatLimiter = LiveSeatLimiter(liveSeats)
   private val exportPath: String? = args.flagValue("--export")?.takeIf { it.isNotBlank() }
   private val inlineBundle: Boolean = "--inline" in args
 
@@ -970,8 +979,13 @@ class ServeCommand(args: List<String>) : Command(args) {
               perPreviewStreamCount = state.perPreviewStreamCount,
               perPreviewRenderStats = state.perPreviewRenderStats,
               perPreviewPoolStats = state.perPreviewPoolStats,
+              perPreviewReapIdle = state.perPreviewReapIdle,
               sharedDaemonPool =
-                ServeSharedDaemonPool(primary = daemon) {
+                ServeSharedDaemonPool(
+                  primary = daemon,
+                  liveSeats = liveSeatLimiter,
+                  seatWeight = { state.liveSeatWeight },
+                ) {
                   // Every daemon writes <outputBaseName>.png and its data products below the
                   // descriptor's output root. Replicas therefore need separate roots even though
                   // they share the catalog classpath; otherwise overlapping themes can overwrite
@@ -1575,6 +1589,7 @@ class ServeCommand(args: List<String>) : Command(args) {
         catalogLoads = catalogLoads,
         catalogRefresh = catalogRefresh,
         maxLiveSeats = liveSeats,
+        liveSeatLimiter = liveSeatLimiter,
         daemonLog = daemonLog,
         allowRenderTrusted = allowRenderTrusted,
         trustStoreConfigured = trustStorePath != null,
@@ -2159,22 +2174,30 @@ class ServeCommand(args: List<String>) : Command(args) {
     // state carries no alias/bakedFallback, so openHost returns the bare single-preview daemon (not
     // another composite). When the fetch/materialise fails the pool yields null and
     // ServeCatalogLiveHost falls back to the monolithic daemon, so the lane never regresses.
-    val perPreviewPool = ServePerPreviewDaemonPool { daemonId ->
-      val ppFile = fetchPerPreviewBundle(daemonId) ?: return@ServePerPreviewDaemonPool null
-      val ppDest =
-        java.nio.file.Files.createTempDirectory("serve-catalog-preview-$system").toFile().also {
-          it.deleteOnExit()
-        }
-      val ppState =
-        ServeBundleDaemon.materialize(
-          ppFile,
-          ppDest,
-          system,
-          extraMavenRepos = extraMavenRepos,
-          extraClasspathDirs = listOfNotNull(externalResourcesDir),
-        ) ?: return@ServePerPreviewDaemonPool null
-      openHost(ppState)
-    }
+    // The per-preview daemons cost whatever this catalog's backend costs, but the pool is built
+    // before the bundle is materialised (the pool's opener is what materialises it), so the weight
+    // is read through a holder set below rather than captured now.
+    var perPreviewSeatWeight = 1
+    val perPreviewPool =
+      ServePerPreviewDaemonPool(
+        liveSeats = liveSeatLimiter,
+        seatWeight = { perPreviewSeatWeight },
+      ) { daemonId ->
+        val ppFile = fetchPerPreviewBundle(daemonId) ?: return@ServePerPreviewDaemonPool null
+        val ppDest =
+          java.nio.file.Files.createTempDirectory("serve-catalog-preview-$system").toFile().also {
+            it.deleteOnExit()
+          }
+        val ppState =
+          ServeBundleDaemon.materialize(
+            ppFile,
+            ppDest,
+            system,
+            extraMavenRepos = extraMavenRepos,
+            extraClasspathDirs = listOfNotNull(externalResourcesDir),
+          ) ?: return@ServePerPreviewDaemonPool null
+        openHost(ppState)
+      }
     // Carry the catalog-id→daemon-id alias + the baked-PNG fallback + the per-preview lane on the
     // state so openHost fronts the daemon with the baked catalog: the published /p/<id> deep links
     // +
@@ -2197,10 +2220,14 @@ class ServeCommand(args: List<String>) : Command(args) {
           perPreviewStreamCount = perPreviewPool::activeStreamCount,
           perPreviewRenderStats = perPreviewPool::renderPerfStats,
           perPreviewPoolStats = { listOf(perPreviewPool.snapshot()) },
+          perPreviewReapIdle = perPreviewPool::reapIdle,
           catalogThemeCache = CatalogThemeCache(),
           serverIdleMillis = backgroundWork.idleClock(registry::idleMillis),
           backgroundWork = backgroundWork,
         ) ?: return false
+    // Now that the backend is known, the pool's daemons charge this catalog's real weight — an
+    // Android/Robolectric per-preview daemon is not the same cost to the box as a desktop one.
+    perPreviewSeatWeight = state.liveSeatWeight
     val host = openHost(state) ?: return false
     registry.register(system, state, host = host)
     // Track the new pool and close the one it replaces — but only AFTER the fresh host is

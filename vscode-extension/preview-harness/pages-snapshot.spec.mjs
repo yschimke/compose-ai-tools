@@ -235,6 +235,34 @@ const FIXTURE_STATES = [
         },
     },
     {
+        // A preview the server has permanently given up on (#3317). The theme grid used to retry
+        // any failure three times and then say "Theme preview unavailable", which reads as "still
+        // working on it" for a card that will never render — a `painterResource` whose drawable was
+        // pruned out of the bundle, say. The server now answers those with a terminal 409 and the
+        // card retires immediately with its own wording, so capture that state: the claim is what
+        // the visitor is told, which only a screenshot holds honest.
+        fixture: "serve-landing-declared-themes",
+        suffix: "theme-render-terminal",
+        apply: async (page) => {
+            // Registered after the generic image lane, so this wins for render requests.
+            await page.route("**/render/**", (route) =>
+                route.fulfill({
+                    status: 409,
+                    contentType: "text/plain",
+                    body: "NotFoundException: File res/drawable/ic_play.xml",
+                }),
+            );
+            await page.click('[data-theme-choice^="theme:"]');
+            await page.waitForSelector(".cp-theme-error");
+            // Hold until the workers have settled, so the shot isn't racing a spinner. A terminal
+            // failure takes no retries, so this resolves without waiting out any backoff — which is
+            // itself the behaviour under test.
+            await page.waitForFunction(
+                () => !document.querySelector('[aria-busy="true"]'),
+            );
+        },
+    },
+    {
         // The annotation layers default to off — the page's first job is the pixel diff, and boxes
         // drawn over both panels would obscure exactly what is being judged. That leaves the drawn
         // state invisible to the diff bot unless it is captured deliberately, so switch both layers

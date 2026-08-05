@@ -153,6 +153,7 @@ class ServeSessionRegistry(
               // Suspend first, then GC: a session must be suspended (host released) before it's
               // eligible for the longer-window forked-session reclaim below.
               runCatching { suspendIdle() }
+              runCatching { releaseIdleDaemons() }
               runCatching { reclaimIdleForked() }
             },
             reaperIntervalMillis,
@@ -333,6 +334,27 @@ class ServeSessionRegistry(
       }
     }
     return detached.size
+  }
+
+  /**
+   * Ask every resident host to close the daemon subprocesses it has held idle past
+   * [idleTimeoutMillis], returning the total closed. Complements [suspendIdle] rather than
+   * duplicating it: that one releases a whole host and skips **pinned** sessions, which is exactly
+   * the set (registered bundle/catalog hosts) whose pooled daemons were accumulating unbounded —
+   * one catalog on the public box held ten resident daemon processes with no streams and no
+   * traffic. A pinned host stays listed and instantly resumable; only its idle pool shrinks.
+   *
+   * Runs outside the lock: closing a subprocess can block, and a host doing so must not stall an
+   * unrelated session's acquire. A host closed concurrently by [suspendIdle] just reports zero.
+   */
+  fun releaseIdleDaemons(): Int {
+    if (idleTimeoutMillis <= 0) return 0
+    val hosts = lock.withLock {
+      if (closed) emptyList() else sessions.values.mapNotNull { it.host }
+    }
+    return hosts.sumOf { host ->
+      runCatching { host.releaseIdleDaemons(idleTimeoutMillis) }.getOrDefault(0)
+    }
   }
 
   /**

@@ -50,6 +50,10 @@ class CatalogThemeCache(
   private val renders = LinkedHashMap<String, ByteArray>(16, 0.75f, true)
   private val targetKeys = ConcurrentHashMap.newKeySet<String>()
   private val failedKeys = ConcurrentHashMap.newKeySet<String>()
+  // Consecutive live-render failures per key, and the last reason seen. Both are cleared by a
+  // successful [put], so a key only stays latched while it keeps failing.
+  private val failureCounts = ConcurrentHashMap<String, Int>()
+  private val failureReasons = ConcurrentHashMap<String, String>()
   private val byteCount = AtomicLong(0)
   private val evictionCount = AtomicLong(0)
   private val state = AtomicReference("waiting")
@@ -81,6 +85,8 @@ class CatalogThemeCache(
       }
     }
     failedKeys.remove(key)
+    failureCounts.remove(key)
+    failureReasons.remove(key)
     refreshCompletion()
   }
 
@@ -93,9 +99,52 @@ class CatalogThemeCache(
     if (!snapshot().fullyOptimized) state.set("paused")
   }
 
-  fun markFailed(key: String) {
+  /**
+   * Mark [key] as one the optimizer could not fill, for the `/status` `failed` count.
+   *
+   * This is a **metric**, not a verdict: the optimizer gives up after a bounded number of attempts,
+   * and it gives up on a key the daemon was merely too busy to get to just as it does on one that
+   * genuinely threw. Only a [reason] — captured from a real [RenderOutcome.Failed] — makes the key
+   * terminal for [failureReason]. Without that distinction, three `Busy` outcomes during a warm
+   * would tell the next visitor the preview can never render.
+   */
+  fun markFailed(key: String, reason: String? = null) {
     failedKeys += key
+    reason?.let { failureReasons[key] = it }
   }
+
+  /**
+   * Record one live-render failure for [key] on the **on-demand** lane and report whether that key
+   * has now latched as unrenderable ([FAILURE_LATCH] consecutive failures).
+   *
+   * Without this, only the background optimizer ever marked a key failed, so a preview the daemon
+   * genuinely cannot render — a `painterResource` whose drawable isn't in the bundle, say — was
+   * re-attempted on every request forever. Each attempt occupies the daemon's render lock long
+   * enough to make *other* previews back off as [RenderOutcome.Busy], so one broken card degrades
+   * the whole grid. Latching lets the render lane answer immediately instead.
+   *
+   * [FAILURE_LATCH] rather than one strike because a first failure can be a cold-start timeout or a
+   * daemon restart; a successful [put] clears the count, so only a run of failures latches.
+   */
+  fun recordRenderFailure(key: String, reason: String): Boolean {
+    failureReasons[key] = reason
+    val count = failureCounts.merge(key, 1, Int::plus) ?: 1
+    if (count < FAILURE_LATCH) return false
+    failedKeys += key
+    return true
+  }
+
+  /**
+   * Why [key] cannot be rendered, once it has latched as failed; null while it may still succeed.
+   * Callers use this to answer a request without going near the daemon.
+   *
+   * Requires **both** halves: the key is latched, *and* a real render failure supplied a reason. A
+   * key in [failedKeys] with no reason is one the optimizer ran out of attempts on — retryable
+   * `Busy`, most often — and must stay retryable for a request, or a preview that was merely
+   * contended during the optimization pass would be reported as permanently dead to every later
+   * visitor.
+   */
+  fun failureReason(key: String): String? = if (key in failedKeys) failureReasons[key] else null
 
   fun markPassFinished(nowMillis: Long) {
     if (synchronized(renderLock) { targetKeys.all(renders::containsKey) }) {
@@ -147,5 +196,10 @@ class CatalogThemeCache(
 
   companion object {
     const val DEFAULT_MAX_BYTES: Long = 128L * 1024 * 1024
+
+    /**
+     * Consecutive on-demand render failures before a key is treated as permanently unrenderable.
+     */
+    const val FAILURE_LATCH = 3
   }
 }

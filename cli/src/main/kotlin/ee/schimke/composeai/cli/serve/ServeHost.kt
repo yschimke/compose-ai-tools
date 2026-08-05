@@ -257,6 +257,29 @@ interface ServeHost : AutoCloseable {
   fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome
 
   /**
+   * Why this host has permanently given up on rendering [previewId] at [overrides], or null while
+   * the render may still succeed. Lets the HTTP layer answer a repeat request with a **terminal**
+   * status instead of the retryable one a transient [RenderOutcome.Busy] earns — a preview whose
+   * live render always fails (a `painterResource` whose drawable never made it into the bundle,
+   * say) otherwise reads to the browser as "try again", forever. Hosts with no such memory report
+   * null and behave exactly as before.
+   */
+  fun renderFailureLatch(previewId: String, overrides: PreviewOverrides): String? = null
+
+  /**
+   * Close daemon subprocesses this host has held idle for [idleMillis] without closing the host
+   * itself, returning how many were closed. Default: nothing to shed.
+   *
+   * A **pinned** session (a registered bundle/catalog) is deliberately never suspended by
+   * [ServeSessionRegistry.suspendIdle] — it must stay listed and instantly resumable. That
+   * protection was reaching further than intended: it also kept every daemon process hanging off
+   * the host alive for the life of the server, so a catalog that once served a burst sat on its
+   * replica and per-preview pools forever. This is the narrower action — shed the processes, keep
+   * the host.
+   */
+  fun releaseIdleDaemons(idleMillis: Long): Int = 0
+
+  /**
    * Render a request admitted by the server's short-lived catalog theme lease. Hosts that cannot
    * parallelise keep the ordinary [render] behaviour. A catalog backed by a replica pool overrides
    * this to borrow an independent shared daemon, so only explicitly leased batches grow the pool.

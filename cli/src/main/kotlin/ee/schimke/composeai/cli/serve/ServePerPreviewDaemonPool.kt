@@ -26,6 +26,20 @@ import kotlin.concurrent.withLock
  */
 class ServePerPreviewDaemonPool(
   private val maxOpen: Int = DEFAULT_MAX_OPEN,
+  private val clock: () -> Long = System::currentTimeMillis,
+  /**
+   * Whole-box daemon budget ([LiveSeatLimiter]). Every daemon this pool opens holds [seatWeight]
+   * permits until it is evicted, reaped or closed, so pooled processes count against the same
+   * ceiling as streams instead of being free. Null keeps the historical unbudgeted behaviour (the
+   * default, and what tests use).
+   *
+   * Before this, [maxOpen] was the only bound and it is *per catalog*: with a dozen catalogs
+   * registered, the seat budget could read 8 of 8 free while thirty daemon JVMs were resident,
+   * because the budget was charged at exactly one place — the WebSocket stream lane — and pooled
+   * daemons went through none of it.
+   */
+  private val liveSeats: LiveSeatLimiter? = null,
+  private val seatWeight: () -> Int = { 1 },
   private val open: (daemonId: String) -> ServeHost?,
 ) : AutoCloseable {
 
@@ -34,6 +48,13 @@ class ServePerPreviewDaemonPool(
   // Access-order LRU: reading a key moves it to most-recently-used; the eldest entry is the LRU one
   // evicted first when the pool is over [maxOpen].
   private val hosts = LinkedHashMap<String, ServeHost>(16, 0.75f, true)
+
+  // Wall-clock of the last [get] per daemon id — the basis for [reapIdle]. Kept beside `hosts`
+  // rather than in it so the LRU's access ordering stays the only thing `hosts` encodes.
+  private val lastUsed = mutableMapOf<String, Long>()
+
+  // The seat reservation each open daemon holds, released when it goes.
+  private val seatTickets = mutableMapOf<String, LiveSeatLimiter.Ticket>()
 
   private var closed = false
 
@@ -46,12 +67,62 @@ class ServePerPreviewDaemonPool(
   fun get(daemonId: String): ServeHost? = lock.withLock {
     if (closed) return null
     hosts[daemonId]?.let {
+      lastUsed[daemonId] = clock()
       return it
     }
-    val host = open(daemonId) ?: return null
+    // Take the seat BEFORE opening: a refused daemon must not have been spawned. A miss returns
+    // null exactly like an unusable bundle does, so the caller replays the baked PNG — a slightly
+    // stale thumbnail under memory pressure, rather than a process the box can't afford.
+    val ticket = liveSeats?.let { it.acquire(seatWeight()) ?: return null }
+    // A null open (no usable per-preview bundle) and a throwing one both have to hand the seat
+    // back: neither leaves a daemon behind, and a leaked ticket shrinks the whole box's budget for
+    // the life of the server.
+    val host =
+      try {
+        open(daemonId)
+      } catch (e: Throwable) {
+        ticket?.close()
+        throw e
+      }
+    if (host == null) {
+      ticket?.close()
+      return null
+    }
     hosts[daemonId] = host
+    lastUsed[daemonId] = clock()
+    ticket?.let { seatTickets[daemonId] = it }
     evictExcess()
     host
+  }
+
+  /**
+   * Close every pooled daemon untouched for [idleMillis] and not backing a live stream, returning
+   * how many were closed.
+   *
+   * The LRU in [evictExcess] only fires when the pool is **over** [maxOpen], so a pool that filled
+   * up during a burst and then went quiet held its daemons — up to [maxOpen] JVMs — indefinitely.
+   * That is fine for a workstation and wrong for a long-lived public box: measured on
+   * `preview.coo.ee`, one catalog sat on ten resident daemon processes with zero active streams and
+   * no traffic, because nothing else reaps them either (a catalog session is registered `pinned`,
+   * which [ServeSessionRegistry.suspendIdle] skips by design). A reopened daemon costs one cold
+   * start; holding it costs a JVM for as long as the server runs.
+   */
+  fun reapIdle(idleMillis: Long): Int = lock.withLock {
+    if (closed || idleMillis <= 0) return 0
+    val now = clock()
+    val stale =
+      hosts.entries
+        .filter { (id, host) ->
+          host.activeStreamCount() == 0 && now - (lastUsed[id] ?: now) >= idleMillis
+        }
+        .map { it.key }
+    for (id in stale) {
+      val host = hosts.remove(id) ?: continue
+      lastUsed.remove(id)
+      seatTickets.remove(id)?.close()
+      runCatching { host.close() }
+    }
+    stale.size
   }
 
   /**
@@ -67,6 +138,8 @@ class ServePerPreviewDaemonPool(
     while (hosts.size > maxOpen) {
       val evictable = hosts.entries.firstOrNull { it.value.activeStreamCount() == 0 } ?: break
       hosts.remove(evictable.key)
+      lastUsed.remove(evictable.key)
+      seatTickets.remove(evictable.key)?.close()
       runCatching { evictable.value.close() }
     }
   }
@@ -103,6 +176,9 @@ class ServePerPreviewDaemonPool(
     closed = true
     hosts.values.forEach { runCatching { it.close() } }
     hosts.clear()
+    lastUsed.clear()
+    seatTickets.values.forEach { it.close() }
+    seatTickets.clear()
   }
 
   companion object {

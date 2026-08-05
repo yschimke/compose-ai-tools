@@ -74,10 +74,18 @@ class ServeWebDeferredThemeTest {
   @Test
   fun `a terminal render failure leaves an explicit error over the old theme`() {
     val html = page()
-    assertTrue(html.contains("if (!ok) showThemeError(job.card);"), "failure is surfaced")
+    assertTrue(html.contains("if (!ok) showThemeError(job.card, terminal);"), "failure is surfaced")
     assertTrue(
-      html.contains("error.textContent = \"Theme preview unavailable\";"),
-      "the old pixels cannot look like a successful theme update",
+      html.contains("? \"This preview can't render live\"") &&
+        html.contains(": \"Theme preview unavailable\";"),
+      "the old pixels cannot look like a successful theme update, and a preview the server has " +
+        "permanently given up on says so rather than implying another attempt might work",
+    )
+    // A 409 is terminal: retrying it only occupies a worker the rest of the grid needs.
+    assertTrue(html.contains("if (response.status === 409)"), "a terminal status is recognised")
+    assertTrue(
+      html.contains("if (!ok && !terminal && job.retries < themeRenderRetries)"),
+      "a terminal failure skips the retry ladder",
     )
     assertTrue(html.contains("error.setAttribute(\"role\", \"status\")"), "announced accessibly")
     val clearsError = html.indexOf("clearThemeError(job.card);")
