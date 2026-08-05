@@ -27,6 +27,7 @@ import org.jetbrains.skia.FontSlant
 import org.jetbrains.skia.FontStyle
 import org.jetbrains.skia.FontWidth
 import org.jetbrains.skia.PathMeasure
+import ee.schimke.composeai.rcembedded.jvm.GoogleFontTypefaceResolver
 import org.jetbrains.skia.Point
 import org.jetbrains.skia.RSXform
 import org.jetbrains.skia.TextBlob
@@ -76,11 +77,13 @@ private val GENERIC_FAMILY_CANDIDATES =
  * `EmbeddedPlayerTypefaceResolver` does on Android.
  *
  * The two prefixes the Android resolver understands are handled the same way it does — strip and look
- * the remainder up as a family name. The difference is `google:`, which on Android triggers a
- * `FontsContractCompat` download: there is no JVM equivalent, so the name is tried locally and falls
- * back to the default face rather than being fetched. That is the "downloadable fonts" parity limit
- * in PROVENANCE.md, and it is a *substitution*, not an error — a document naming a Google font still
- * renders, in the default face.
+ * the remainder up as a family name. `google:` is the one that used to end there: on Android it
+ * triggers a `FontsContractCompat` download, and with no JVM font provider the name was merely tried
+ * locally and fell back to the default face. It is now downloaded instead, through
+ * [GoogleFontTypefaceResolver] and the shared machine-local Google Fonts cache, so this seam draws
+ * the same file the other lanes resolve that family to. A request the resolver can't serve (no cache
+ * configured, offline, a failed fetch) still falls back to a local match and then the default face —
+ * a *substitution*, not an error, exactly as before.
  *
  * **Never resolves to null while the host has any font at all**, which matters more than it looks:
  * `Font(null, size)` maps every character to the missing glyph and measures zero, so a null typeface
@@ -115,6 +118,14 @@ private fun resolveSkiaTypeface(spec: TextPaintSpec, context: RemoteContext): Ty
         return match(GENERIC_FAMILY_CANDIDATES.getValue(spec.fontFamily)) ?: default()
     }
     val name = context.getText(spec.fontFamily) ?: return default()
+    GoogleFontTypefaceResolver.Default.skiaTypeface(
+            family = name,
+            weight = spec.fontWeight,
+            italic = spec.italic,
+        )
+        ?.let {
+            return it
+        }
     val bare = name.removePrefix("device:").removePrefix("google:")
     return match(listOf(bare)) ?: default()
 }

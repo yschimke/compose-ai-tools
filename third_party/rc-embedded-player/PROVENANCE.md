@@ -535,8 +535,9 @@ shares the entire op interpreter / paint decoder / component-tree dispatch (`RcP
 `RcPlayerPaint.kt`, `RcPlayerDispatch.kt`, `RcPlayerCanvas.kt`, the modifiers, and every layout
 composable) and answers the three Android-only draw seams with jvm siblings: image decode over skiko
 (`RcPlayerImagePlatformJvm.kt`, reading back the `ImageBitmap` the jvm draw context caches), the text
-layout composables (`RcPlayerTextLayoutJvm.kt` — font families resolve to the nearest standard family,
-the documented parity limit), the image layout composable (`layout/RcPlayerImageLayoutJvm.kt` — the
+layout composables (`RcPlayerTextLayoutJvm.kt` — a `google:` family is downloaded through
+`GoogleFontTypefaceResolver`; everything else resolves to the nearest standard family, the documented
+parity limit), the image layout composable (`layout/RcPlayerImageLayoutJvm.kt` — the
 embedded `ImageBitmap` decode in place of the `Drawable` host loader), and no-op stubs for the
 deferred AGSL shaders and particles. The two path utilities the draw path calls (`PathUtils.kt`,
 `FloatsToPath.kt`) are vendored from the `remote-player-compose` AAR a `kotlin("jvm")` module cannot
@@ -657,9 +658,17 @@ Android-only in a first cut rather than forcing a Skia `PaintContext` port.
   be exact — and note the embedded player's shader path already diverges from the View player on
   *Android* (89% on `ShaderGradientSticker`), so that wants fixing before it is used as a jvm
   baseline.
-- **Downloadable fonts.** `google:`-prefixed fonts go through `FontRequest`/`FontsContractCompat`,
-  which is Android-only. The jvm side substitutes a local face rather than fetching, so such a
-  document renders in the wrong face rather than failing — see the seam section above.
+- **Downloadable fonts — closed.** `google:`-prefixed fonts go through
+  `FontRequest`/`FontsContractCompat`, which is Android-only, so the jvm side used to substitute a
+  local face and render such a document in the wrong face. There is no font *provider* off Android,
+  but there is a *downloader*: `GoogleFontTypefaceResolver` (in the jvm module) resolves a `google:`
+  family through `:data-fonts-google` — the same `(family, weight, italic) -> File` machine-local
+  cache the Robolectric downloadable-font shadow and the figma-svg embed path use — and hands the
+  file to both jvm text seams (a Compose `FontFamily` for the layout ops, a skiko `Typeface` for the
+  canvas ops). So the branded face this lane draws is the same file every other lane draws. The
+  fallback chain is unchanged for everything else: no cache directory configured (`-Dcomposeai.fonts
+  .cacheDir`, which `serve`'s cmp-jvm subprocess sets), an offline miss, a failed fetch, or a
+  `device:` family still substitutes a local face rather than failing.
 - **Shaping on a path.** Three of the four seam functions shape through HarfBuzz with fallback; the
   text-on-path one resolves glyphs per character instead, so cross-character kerning and joining are
   not applied along a path. Blocked on a skiko crash rather than on design — details in the seam
