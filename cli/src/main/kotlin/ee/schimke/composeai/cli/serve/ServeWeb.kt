@@ -908,6 +908,32 @@ object ServeWeb {
   /** Fallback tab for section-bearing catalogs whose stray card carries no section of its own. */
   private const val OTHER_SECTION = "Other"
 
+  /**
+   * The catalog section whose cards ARE theme specimens — a colour-role/type sheet that exists to
+   * show one specific theme.
+   */
+  private const val THEMES_SECTION = "Themes"
+
+  /**
+   * Whether [p] is a theme **specimen**: a card that renders a named theme as its subject, so
+   * re-rendering it under a `themeProvider` override destroys the very thing it documents.
+   *
+   * meshcore-mobile's `Theme/MeshCore-Light` is the case that surfaced this. Its caption reads
+   * "MeshCore · Light · Orbitron / Space Grotesk / JetBrains Mono", and under a Dynamic Dark
+   * override the card drew dark, in the default sans — pixels contradicting their own label. Every
+   * card in a Themes tab has that property by construction.
+   *
+   * Deliberately keyed on the section rather than the id: `theme-…` id prefixes are a catalog
+   * authoring convention, not a contract, whereas `section` is the authored statement of what the
+   * tab IS (`catalog.spec.json`'s `section: "Themes"`). Specimens that live outside such a tab need
+   * an explicit per-preview opt-out, which is a separate change.
+   *
+   * This does NOT remove the theme chips: the rest of the catalog still re-renders, and a specimen
+   * simply keeps its baked pixels — the same treatment a card with no daemon twin already gets.
+   */
+  private fun isThemeSpecimen(p: ServePreview): Boolean =
+    p.section?.equals(THEMES_SECTION, ignoreCase = true) == true
+
   /** One sub-heading group inside a section tab: its [name] (null ⇒ ungrouped) and its cards. */
   private class LandingGroup(val name: String?) {
     val cards = mutableListOf<GridCard>()
@@ -3353,9 +3379,12 @@ object ServeWeb {
       if (declaredThemes.isEmpty()) emptyList()
       else if (groups.any { themeRenderable(renderedVariant(it)) }) declaredThemes else emptyList()
     // A card's themed-render base URL — "" when the session has no daemon twin for it, so it keeps
-    // its baked pixels (a themed render would ignore the theme anyway).
+    // its baked pixels (a themed render would ignore the theme anyway), and "" for a theme
+    // SPECIMEN, which has a daemon twin but must not use it (see [isThemeSpecimen]).
     fun themeBase(card: GridCard) =
-      renderedVariant(card).let { if (themeRenderable(it)) renderSrc(it) else "" }
+      renderedVariant(card).let {
+        if (themeRenderable(it) && !isThemeSpecimen(it)) renderSrc(it) else ""
+      }
     fun cardViews(card: GridCard): Long =
       listOfNotNull(card.light, card.dark, card.neutral).sumOf { engagement[it.id]?.views ?: 0L }
     fun swapCard(card: GridCard): String {
