@@ -59,6 +59,16 @@ internal object ServeIssueReport {
     val viewerUrl: String? = null,
     /** Absolute `/render/<id>.png` URL at the overrides in force when the page was served. */
     val renderUrl: String? = null,
+    /**
+     * Whether the render lane answers **without a session token** — i.e. the server is `--public`.
+     *
+     * [withoutToken] strips the token from every URL that reaches an issue body, because the token
+     * is the capability to drive the server. On a token-gated box that makes [renderUrl] a URL the
+     * lane itself 404s ([ServeHttpServer]'s render handler rejects a tokenless request), so an
+     * embedded image would be broken in every filed issue no matter how reachable the host is.
+     * Defaults to false so a caller that doesn't know keeps the link form.
+     */
+    val publicRender: Boolean = false,
   )
 
   /**
@@ -99,25 +109,82 @@ internal object ServeIssueReport {
     }
     val render =
       if (renderPlaceholder) RENDER_PLACEHOLDER else ctx.renderUrl?.takeIf { it.isNotBlank() }
+    // Whether the render can be *embedded* is decided by the real URL even when the body is the
+    // JS template, so both forms of the body have the same shape and the placeholder swap can't
+    // turn a working image into a broken one. Two independent conditions have to hold: GitHub's
+    // proxy must be able to *reach* the URL, and the lane must *answer* it without the token this
+    // body strips.
+    val embed = render != null && ctx.publicRender && isEmbeddable(ctx.renderUrl)
     val links = buildList {
       ctx.viewerUrl?.takeIf { it.isNotBlank() }?.let { add("[Open this preview]($it)") }
-      render?.let { add("[PNG at these settings]($it)") }
+      // Only worth its own line when the image isn't already showing it.
+      if (!embed) render?.let { add("[PNG at these settings]($it)") }
     }
     return buildString {
       append("### What's wrong\n\n")
       append("<!-- What did you expect to see, and what did you get? -->\n\n\n")
       append("### Screenshot\n\n")
-      append(
-        "<!-- Paste it here. The viewer's \"Export & direct links\" panel has a Copy PNG button " +
-          "that puts the image itself on your clipboard, so Ctrl-V / Cmd-V lands the exact render " +
-          "in this issue. -->\n\n\n"
-      )
+      if (embed) {
+        append("![${altText(ctx)}]($render)\n\n")
+        append(
+          "<!-- That image is a LIVE render: it re-renders if the catalog changes, so it may " +
+            "stop showing what you saw. For a copy that stays put, use Copy PNG in the viewer's " +
+            "\"Export & direct links\" panel and paste it here — GitHub then hosts the pixels " +
+            "itself. -->\n\n\n"
+        )
+      } else {
+        append(
+          "<!-- Paste it here. The viewer's \"Export & direct links\" panel has a Copy PNG " +
+            "button that puts the image itself on your clipboard, so Ctrl-V / Cmd-V lands the " +
+            "exact render in this issue. -->\n\n\n"
+        )
+      }
       append("### Which preview\n\n")
       append("| | |\n| --- | --- |\n")
       append(rows.joinToString("\n"))
       if (links.isNotEmpty()) append("\n\n").append(links.joinToString(" · "))
       append("\n")
     }
+  }
+
+  /** Markdown-safe alt text: the preview's label or id, with `]` and `[` stripped. */
+  private fun altText(ctx: Context): String {
+    val what = ctx.previewLabel?.trim()?.takeIf { it.isNotEmpty() } ?: ctx.previewId
+    return what.replace('[', ' ').replace(']', ' ').trim()
+  }
+
+  /**
+   * Whether [url] is one GitHub can actually render inline.
+   *
+   * An embedded image is fetched **by GitHub's camo proxy, not by the reader's browser**, so it has
+   * to be reachable from the public internet over HTTPS. A developer's `compose-preview serve` on
+   * `http://127.0.0.1:8080` (or a box on a private LAN, or a plain-HTTP host) fails that, and an
+   * embed would put a broken-image icon in their issue where a working link belongs — so those
+   * bodies keep the link form instead. Deliberately conservative: anything not clearly public is
+   * treated as not embeddable.
+   *
+   * This is **reachability only**. Whether the lane will actually serve the request is a separate
+   * question — see [Context.publicRender], which [body] requires as well.
+   */
+  fun isEmbeddable(url: String?): Boolean {
+    val u = url?.trim() ?: return false
+    if (!u.startsWith("https://")) return false
+    val host = u.removePrefix("https://").substringBefore('/').substringBefore('?').lowercase()
+    val name = host.substringBeforeLast(':').trim('[', ']')
+    if (name.isEmpty()) return false
+    // A public host is a dotted name. Single-label intranet names, `.local`, and raw loopback /
+    // private addresses are all unreachable from camo.
+    if (!name.contains('.') || name.endsWith(".local") || name.endsWith(".internal")) return false
+    if (name == "localhost" || name.endsWith(".localhost")) return false
+    return !isPrivateIpv4(name)
+  }
+
+  /** Loopback and RFC 1918 literals, which are dotted but still unreachable from outside. */
+  private fun isPrivateIpv4(host: String): Boolean {
+    val parts = host.split('.')
+    if (parts.size != 4 || parts.any { it.toIntOrNull() == null }) return false
+    val (a, b) = parts[0].toInt() to parts[1].toInt()
+    return a == 127 || a == 10 || a == 0 || (a == 192 && b == 168) || (a == 172 && b in 16..31)
   }
 
   /**

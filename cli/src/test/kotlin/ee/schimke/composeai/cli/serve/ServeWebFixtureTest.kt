@@ -103,6 +103,9 @@ class ServeWebFixtureTest {
         toolVersion = provenance.toolVersion,
         viewerUrl = "https://preview.coo.ee/compose-m3/p/$previewId",
         renderUrl = "https://preview.coo.ee/compose-m3/render/$previewId.png",
+        // The goldens stand in for preview.coo.ee, whose render lane is token-free — so they
+        // capture the embedded-image form of the body.
+        publicRender = true,
       )
       .let { ctx ->
         ServeWeb.ReportIssue(

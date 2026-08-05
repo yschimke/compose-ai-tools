@@ -279,12 +279,24 @@ in — `catalog.json`'s `source.repo`), falling back to the delivery repo and fi
 `yschimke/compose-ai-tools`, whose renderer produced the pixels either way. A source repo that is a
 fork is still the right target: that fork is where the preview code that misrendered lives.
 
-**The screenshot is pasted, not linked.** The body links the render URL for convenience, but that
-URL re-renders against whatever the catalog is when someone reads the issue. So the template asks
-for a paste, and **Copy PNG** (in *Export & direct links*) now puts real `image/png` bytes on the
-clipboard rather than a base64 `data:` URI — one Ctrl-V/Cmd-V in the issue box uploads the exact
-pixels to GitHub's own CDN, where they stay put. Browsers without `ClipboardItem` fall back to the
-data URI.
+**The render is embedded, and a paste is still offered.** The body carries the render as a markdown
+image (`![…](…/render/<id>.png?…)`), so GitHub shows the pixels inline and a triager sees the
+problem without clicking anything. That embed is a **live** render, though: it re-renders against
+whatever the catalog is when someone reads the issue, so it can drift away from what the reporter
+saw. The template says so, and still asks for a paste — **Copy PNG** (in *Export & direct links*)
+puts real `image/png` bytes on the clipboard rather than a base64 `data:` URI, so one Ctrl-V/Cmd-V
+uploads the exact pixels to GitHub's own CDN, where they stay put. Browsers without `ClipboardItem`
+fall back to the data URI.
+
+**The embed appears only when GitHub can actually load the URL**, which takes two things.
+*Reachable*: an inline image is fetched by GitHub's camo proxy, not by the reader's browser, so it
+must be reachable from the public internet over HTTPS — a `compose-preview serve` on
+`http://127.0.0.1:8080`, a box on a private LAN, or plain HTTP is not. *Answerable*: the render lane
+must serve the URL **without a session token**, because the token is stripped from everything that
+reaches an issue body. A token-gated (`--public` off) server 404s that tokenless request however
+public its hostname is, so its reports keep the `[PNG at these settings](…)` link form too. Both
+conditions are evaluated against the server's own external URL and mode, so the viewer's live
+re-substitution can never turn a working image into a broken one.
 
 **The server never files the issue itself**, and asks for no extra OAuth scope to offer this. The
 auth cookie holds only a login and a repo-access verdict — [the OAuth token is discarded after the

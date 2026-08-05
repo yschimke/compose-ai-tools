@@ -2662,6 +2662,9 @@ class ServeHttpServer(
           toolVersion = bundleHost?.provenance?.toolVersion,
           viewerUrl = ServeIssueReport.withoutToken(externalPageUrl()),
           renderUrl = ServeIssueReport.withoutToken(imageUrl),
+          // A token-gated box 404s the tokenless render URL this body carries, so its report keeps
+          // the link form rather than embedding an image that could never load.
+          publicRender = isPublic,
         )
       val reportIssue =
         ServeWeb.ReportIssue(

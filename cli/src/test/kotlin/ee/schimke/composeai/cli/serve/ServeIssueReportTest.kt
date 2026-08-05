@@ -19,6 +19,7 @@ class ServeIssueReportTest {
       toolVersion = "0.19.37",
       viewerUrl = "https://preview.coo.ee/jetnews/p/Article__dark",
       renderUrl = "https://preview.coo.ee/jetnews/render/Article__dark.png?uiMode=dark",
+      publicRender = true,
     )
 
   @Test
@@ -79,15 +80,86 @@ class ServeIssueReportTest {
       body.contains("[Open this preview](https://preview.coo.ee/jetnews/p/Article__dark)"),
       body,
     )
-    assertTrue(
-      body.contains(
-        "[PNG at these settings](https://preview.coo.ee/jetnews/render/Article__dark.png?uiMode=dark)"
-      ),
-      body,
-    )
     // The screenshot is asked for as a paste, because that lands the pixels on GitHub's own CDN
     // rather than leaving the evidence pointed at a URL that re-renders later.
     assertTrue(body.contains("Copy PNG"), "the body tells the reporter how to attach the render")
+  }
+
+  @Test
+  fun `a public render is embedded as an image, not just linked`() {
+    val body = ServeIssueReport.body(full)
+    // GitHub renders this inline (via its camo proxy), so the reporter's evidence is visible in the
+    // issue without anyone clicking through.
+    assertTrue(
+      body.contains(
+        "![Article](https://preview.coo.ee/jetnews/render/Article__dark.png?uiMode=dark)"
+      ),
+      body,
+    )
+    // …and the separate link is dropped, since the image already carries that URL.
+    assertFalse(body.contains("[PNG at these settings]"), body)
+    // The embed is honest about what it is: a live render that moves when the catalog does.
+    assertTrue(body.contains("LIVE render"), body)
+    assertTrue(body.contains("Copy PNG"), "the durable paste path is still offered")
+  }
+
+  @Test
+  fun `a render GitHub cannot reach stays a link rather than a broken image`() {
+    // A developer's local `compose-preview serve`. Camo cannot fetch this, so an embed would put a
+    // broken-image icon in their issue where a working link belongs.
+    val local = full.copy(renderUrl = "http://127.0.0.1:8080/render/Article__dark.png")
+    val body = ServeIssueReport.body(local)
+    assertFalse(body.contains("!["), body)
+    assertTrue(body.contains("[PNG at these settings](http://127.0.0.1:8080/"), body)
+  }
+
+  @Test
+  fun `a token-gated server keeps the link form even on a public hostname`() {
+    // withoutToken strips the session token from every URL in the body, and a non-public render
+    // lane 404s a tokenless request — so camo would fetch a 404 and every filed issue would show a
+    // broken screenshot. Reachability is not authorization.
+    val gated = full.copy(publicRender = false)
+    val body = ServeIssueReport.body(gated)
+    assertFalse(body.contains("!["), body)
+    assertTrue(
+      body.contains("[PNG at these settings](https://preview.coo.ee/jetnews/render/"),
+      body,
+    )
+    // …and the template agrees, so the viewer's live swap cannot reintroduce the embed.
+    assertFalse(ServeIssueReport.body(gated, renderPlaceholder = true).contains("!["))
+  }
+
+  @Test
+  fun `only a publicly reachable https URL is embeddable`() {
+    assertTrue(ServeIssueReport.isEmbeddable("https://preview.coo.ee/x/render/a.png"))
+    assertTrue(ServeIssueReport.isEmbeddable("https://previews.example.com:8443/render/a.png"))
+    // Plain HTTP, loopback, RFC 1918, single-label intranet names and `.local` are all unreachable
+    // from GitHub's proxy.
+    assertFalse(ServeIssueReport.isEmbeddable("http://preview.coo.ee/x.png"))
+    assertFalse(ServeIssueReport.isEmbeddable("https://localhost:8080/x.png"))
+    assertFalse(ServeIssueReport.isEmbeddable("https://127.0.0.1/x.png"))
+    assertFalse(ServeIssueReport.isEmbeddable("https://10.1.2.3/x.png"))
+    assertFalse(ServeIssueReport.isEmbeddable("https://192.168.1.10/x.png"))
+    assertFalse(ServeIssueReport.isEmbeddable("https://172.20.0.5/x.png"))
+    assertFalse(ServeIssueReport.isEmbeddable("https://build-box/x.png"))
+    assertFalse(ServeIssueReport.isEmbeddable("https://previews.local/x.png"))
+    assertFalse(ServeIssueReport.isEmbeddable(null))
+    assertFalse(ServeIssueReport.isEmbeddable("  "))
+    // …but a public address that merely looks private-ish is fine.
+    assertTrue(ServeIssueReport.isEmbeddable("https://172.32.0.5/x.png"))
+  }
+
+  @Test
+  fun `the template keeps the shape the real URL earned`() {
+    // The placeholder is not itself a URL, so embeddability is decided by the real render URL —
+    // otherwise the JS swap could turn a working image into a broken one, or vice versa.
+    assertTrue(
+      ServeIssueReport.body(full, renderPlaceholder = true).contains("![Article]({{render}})")
+    )
+    val local = full.copy(renderUrl = "http://127.0.0.1:8080/render/a.png")
+    val tpl = ServeIssueReport.body(local, renderPlaceholder = true)
+    assertFalse(tpl.contains("!["), tpl)
+    assertTrue(tpl.contains("[PNG at these settings]({{render}})"), tpl)
   }
 
   @Test
@@ -113,7 +185,7 @@ class ServeIssueReportTest {
   @Test
   fun `the template form leaves the render link as a placeholder the viewer JS can substitute`() {
     val tpl = ServeIssueReport.body(full, renderPlaceholder = true)
-    assertTrue(tpl.contains("[PNG at these settings]({{render}})"), tpl)
+    assertTrue(tpl.contains("({{render}})"), tpl)
     assertFalse(
       tpl.contains("Article__dark.png?uiMode=dark"),
       "the served render URL is not baked into the template",
