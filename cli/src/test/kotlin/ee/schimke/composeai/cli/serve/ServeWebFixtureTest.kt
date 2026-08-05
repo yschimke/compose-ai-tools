@@ -2590,6 +2590,48 @@ class ServeWebFixtureTest {
   }
 
   @Test
+  fun `a card answers the pointer as a tile, not as an underlined hyperlink`() {
+    // Every clickable tile on the site — a front-door catalog card and a catalog's preview cards
+    // alike — is one `<a class="cp-card">` wrapping an image and several lines of metadata. The
+    // sheet's global `a:hover { text-decoration: underline }` therefore underlined ALL of that
+    // metadata at once, which reads as four stacked links rather than one target. The card must
+    // suppress that and answer as an object instead (lift + shadow + accent rim + top-edge wipe),
+    // and the same treatment must be reachable from the keyboard.
+    val css = assetText("serve.css")
+    assertTrue(
+      css.contains(".cp-card:hover, .cp-card:focus-visible {") &&
+        css.contains(
+          "transform: translateY(-3px); border-color: var(--cp-accent-ring); text-decoration: none;"
+        ),
+      "hovering a card lifts and rims it instead of underlining its text",
+    )
+    assertTrue(
+      css.contains(
+        ".cp-card:hover::after, .cp-card:focus-visible::after { transform: scaleX(1); }"
+      ),
+      "the accent bar wipes along the card's top edge on hover",
+    )
+    assertTrue(
+      css.contains(
+        ".cp-card:hover .cp-imgwrap img, .cp-card:focus-visible .cp-imgwrap img { transform: scale(1.035); }"
+      ),
+      "the card's artwork eases in under the pointer",
+    )
+    assertTrue(
+      css.contains(
+        ".cp-card:focus-visible { outline: 2px solid var(--cp-accent-ring); outline-offset: 2px; }"
+      ),
+      "keyboard focus gets the card treatment plus a visible ring",
+    )
+    // Motion is an enhancement, never the affordance: a visitor who asked for less motion still
+    // gets the rim, the shadow and the wipe target — just no travel.
+    assertTrue(
+      css.contains(".cp-card:hover, .cp-card:focus-visible { transform: none; }"),
+      "the lift and zoom are dropped under prefers-reduced-motion",
+    )
+  }
+
+  @Test
   fun `pages are mobile-responsive with a viewport meta and a narrow breakpoint`() {
     // Every page carries the viewport meta (so mobile browsers don't zoom out to a desktop width)
     // and the shared stylesheet includes the narrow breakpoint that collapses the viewer's
@@ -2642,7 +2684,7 @@ class ServeWebFixtureTest {
     )
     assertTrue(
       assetText("serve.css")
-        .contains(".cp-sys { display: grid; grid-template-rows: 220px auto; }") &&
+        .contains(".cp-card.cp-sys { display: grid; grid-template-rows: 220px 1fr; }") &&
         assetText("serve.css").contains(".cp-syslist .cp-imgwrap { min-height: 0; height: 220px;"),
       "system cards reserve one consistent hero region so metadata aligns across aspect ratios",
     )
