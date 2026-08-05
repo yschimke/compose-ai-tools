@@ -108,6 +108,40 @@ internal object ComposePreviewTasks {
     configName != "androidRuntimeClasspath"
 
   /**
+   * The consumer runtime configuration the desktop pipeline resolves against, in preference order.
+   * `androidRuntimeClasspath` is the LAST-RESORT KMP-Android fallback — it carries `*-android`
+   * Compose AARs the JVM renderer can't load, so anything with a real JVM-flavoured runtime must
+   * win ahead of it.
+   *
+   * MUST be called lazily (from inside a `tasks.register {}` block or an `afterEvaluate`), never
+   * from [registerDesktopTasks]'s body: a KMP-Android module reaches that body via
+   * `pluginManager.withPlugin`, which fires before the consumer's `kotlin { jvm("desktop") }` block
+   * has created `desktopRuntimeClasspath`. `internal` for unit testing.
+   */
+  internal fun desktopDependencyConfigName(project: Project): String =
+    listOf(
+        "jvmRuntimeClasspath",
+        "desktopRuntimeClasspath",
+        "androidRuntimeClasspath",
+        "runtimeClasspath",
+      )
+      .firstOrNull { project.configurations.findByName(it) != null } ?: "runtimeClasspath"
+
+  /**
+   * The dependency-classpath inputs [registerBundleTask] feeds `BundlePreviewTask`: the jars the
+   * closure walk sees, and the coordinate map folded into `bundle.json`'s `classpath`.
+   *
+   * Bundled together so both are derived from ONE resolution of the consumer runtime config — see
+   * the note at the [registerBundleTask] call site for the `backend: desktop` / `*-android`
+   * classpath mismatch that eager resolution produced.
+   */
+  internal class DependencyClasspathBinding(
+    val configName: String,
+    val jarFiles: org.gradle.api.file.FileCollection?,
+    val coordinates: Provider<Map<String, String>>,
+  )
+
+  /**
    * Lazily-resolved, config-cache-safe view of the consumer runtime classpath [configName], pinned
    * to `artifactType=jar`.
    *
@@ -131,6 +165,94 @@ internal object ComposePreviewTasks {
         attributes.attribute(consumerArtifactTypeAttribute, "jar")
       }
       .files
+  }
+
+  /** Builds the [DependencyClasspathBinding] for consumer runtime config [configName]. */
+  private fun dependencyClasspathBinding(
+    project: Project,
+    configName: String,
+    artifactTypeAttr: Attribute<String>,
+  ): DependencyClasspathBinding {
+    val depConfig = project.configurations.findByName(configName)
+    // Only the KMP-Android fallback (`androidRuntimeClasspath`, a `:shared` module with no
+    // `jvm("desktop")` target) needs a lenient artifact view — its single AGP `android` variant
+    // can't satisfy a forced `artifactType=jar` selection and would otherwise raise
+    // `AmbiguousArtifactsFailure` and sink the whole bundle. Normal JVM/desktop classpaths stay
+    // STRICT so an unresolved/unselectable runtime dep fails the task loudly instead of silently
+    // dropping out of the bundle's closure + coordinate map (Codex review on #1850).
+    val depViewLenient = configName == "androidRuntimeClasspath"
+    // `artifactType=jar` view: AAR consumers transform to extracted classes.jar; pure JVM consumers
+    // pass through. Either way we get real jars on the closure walk. The coordinate map below MUST
+    // be built from THIS SAME view's resolvedArtifacts, not the configuration's untransformed
+    // artifacts — otherwise an AAR dep's transformed classes.jar path (what `dependencyJars` and
+    // the
+    // closure walk see) wouldn't match the coordinate-map key (the untransformed `.aar` path), so
+    // the task would treat the Maven dep as an anonymous/project jar and inline it instead of
+    // recording a `ClasspathEntry.Maven`. On JVM this view is a passthrough, so desktop is
+    // unchanged; on Android it's what makes coordinate-mode bundles stay small + re-resolvable.
+    val depJarView =
+      depConfig?.incoming?.artifactView {
+        // Lenient ONLY for the androidRuntimeClasspath fallback (see [depViewLenient]); strict for
+        // normal JVM/desktop classpaths so a broken dep surfaces here instead of in the player.
+        if (depViewLenient) lenient(true)
+        attributes.attribute(artifactTypeAttr, "jar")
+      }
+    // The `artifactType=jar` view extracts every AAR to its `classes.jar`, erasing the aar/jar
+    // distinction — but the player's `CoordinateResolver` needs the real packaging to find the
+    // artifact (`<artifact>-<version>.aar`) in a Maven/Gradle cache and unpack its classes. So read
+    // the *untransformed* artifacts too and key each component's packaging off its file extension
+    // (Android deps resolve to `.aar`, JVM deps to `.jar`), then stamp it into the coordinate
+    // below.
+    //
+    // This read goes through a `lenient(true)` artifactView rather than the raw
+    // `incoming.artifacts`. The raw read selects artifacts using the configuration's full runtime
+    // attributes, which a dependency exposing AGP secondary variants without the standard
+    // `org.gradle.category` / jvm-environment / `kotlin.platform.type` attributes (e.g. an Android
+    // library relying on AGP's built-in Kotlin, consumed on an app's `…RuntimeClasspath`) can't
+    // satisfy — turning packaging detection into a hard `AmbiguousArtifactsFailure` that fails the
+    // whole bundle. `lenient(true)` skips any such unselectable dep here; it simply isn't keyed in
+    // the packaging map and falls back to the `"jar"` default at the coordinate below. The
+    // `artifactType=jar` view that feeds the actual classpath/closure walk is unaffected — it
+    // selects each dep's `jar` secondary variant unambiguously.
+    val typeByComponent: Provider<Map<String, String>> =
+      depConfig
+        ?.incoming
+        ?.artifactView { lenient(true) }
+        ?.artifacts
+        ?.resolvedArtifacts
+        ?.map { artifacts ->
+          artifacts.associate { artifact ->
+            artifact.id.componentIdentifier.displayName to
+              if (artifact.file.name.endsWith(".aar", ignoreCase = true)) "aar" else "jar"
+          }
+        } ?: project.providers.provider { emptyMap<String, String>() }
+    // Map each resolved dependency jar to a coordinate string the task action can fold into
+    // `bundle.json`'s `classpath`:
+    // - `maven:<group>:<artifact>:<version>:<aar|jar>` for Maven-resolved deps (the player resolves
+    //   at open time — small bundle, no inlined jars).
+    // - `project:<gradle path>` for project-local deps (the task inlines those into the bundle
+    //   since they can't be re-resolved from Maven).
+    //
+    // Resolution happens via `Provider` transformations, so this stays config-cache-safe. The
+    // transformed artifact keeps its original `componentIdentifier` (the Maven module / project),
+    // so coordinates resolve correctly even though `.file` points at the extracted classes.jar.
+    val coordMapProvider: Provider<Map<String, String>> =
+      depJarView?.artifacts?.resolvedArtifacts?.zip(typeByComponent) { artifacts, typeByComponentMap
+        ->
+        artifacts.associate { artifact ->
+          val id = artifact.id.componentIdentifier
+          val value =
+            when (id) {
+              is org.gradle.api.artifacts.component.ModuleComponentIdentifier ->
+                "maven:${id.group}:${id.module}:${id.version}:${typeByComponentMap[id.displayName] ?: "jar"}"
+              is org.gradle.api.artifacts.component.ProjectComponentIdentifier ->
+                "project:${id.projectPath}"
+              else -> "unknown:${id.displayName}"
+            }
+          artifact.file.absolutePath to value
+        }
+      } ?: project.providers.provider { emptyMap<String, String>() }
+    return DependencyClasspathBinding(configName, depJarView?.files, coordMapProvider)
   }
 
   fun registerDesktopTasks(project: Project, extension: PreviewExtension) {
@@ -185,15 +307,7 @@ internal object ComposePreviewTasks {
     // `androidx.compose.ui:ui-android` AAR variants, which the new
     // [ValidateComposePreviewClasspathTask] correctly rejects (and
     // `ImageComposeScene` would crash on too).
-    val resolveDependencyConfigName: () -> String = {
-      listOf(
-          "jvmRuntimeClasspath",
-          "desktopRuntimeClasspath",
-          "androidRuntimeClasspath",
-          "runtimeClasspath",
-        )
-        .firstOrNull { project.configurations.findByName(it) != null } ?: "runtimeClasspath"
-    }
+    val resolveDependencyConfigName: () -> String = { desktopDependencyConfigName(project) }
 
     val discoverTask =
       registerDiscoverTask(
@@ -373,87 +487,21 @@ internal object ComposePreviewTasks {
     val pluginVersionProperty = PluginVersion.value
 
     val artifactTypeAttr = Attribute.of("artifactType", String::class.java)
-    val depConfigName = resolveDependencyConfigName()
-    val depConfig = project.configurations.findByName(depConfigName)
-    // Only the KMP-Android fallback (`androidRuntimeClasspath`, a `:shared` module with no
-    // `jvm("desktop")` target) needs a lenient artifact view — its single AGP `android` variant
-    // can't satisfy a forced `artifactType=jar` selection and would otherwise raise
-    // `AmbiguousArtifactsFailure` and sink the whole bundle. Normal JVM/desktop classpaths stay
-    // STRICT so an unresolved/unselectable runtime dep fails the task loudly instead of silently
-    // dropping out of the bundle's closure + coordinate map (Codex review on #1850).
-    val depViewLenient = depConfigName == "androidRuntimeClasspath"
-    // `artifactType=jar` view: AAR consumers transform to extracted classes.jar; pure JVM consumers
-    // pass through. Either way we get real jars on the closure walk. The coordinate map below MUST
-    // be built from THIS SAME view's resolvedArtifacts, not the configuration's untransformed
-    // artifacts — otherwise an AAR dep's transformed classes.jar path (what `dependencyJars` and
-    // the
-    // closure walk see) wouldn't match the coordinate-map key (the untransformed `.aar` path), so
-    // the task would treat the Maven dep as an anonymous/project jar and inline it instead of
-    // recording a `ClasspathEntry.Maven`. On JVM this view is a passthrough, so desktop is
-    // unchanged; on Android it's what makes coordinate-mode bundles stay small + re-resolvable.
-    val depJarView =
-      depConfig?.incoming?.artifactView {
-        // Lenient ONLY for the androidRuntimeClasspath fallback (see [depViewLenient]); strict for
-        // normal JVM/desktop classpaths so a broken dep surfaces here instead of in the player.
-        if (depViewLenient) lenient(true)
-        attributes.attribute(artifactTypeAttr, "jar")
-      }
-    val depJarFiles = depJarView?.files
-    // The `artifactType=jar` view extracts every AAR to its `classes.jar`, erasing the aar/jar
-    // distinction — but the player's `CoordinateResolver` needs the real packaging to find the
-    // artifact (`<artifact>-<version>.aar`) in a Maven/Gradle cache and unpack its classes. So read
-    // the *untransformed* artifacts too and key each component's packaging off its file extension
-    // (Android deps resolve to `.aar`, JVM deps to `.jar`), then stamp it into the coordinate
-    // below.
-    //
-    // This read goes through a `lenient(true)` artifactView rather than the raw
-    // `incoming.artifacts`. The raw read selects artifacts using the configuration's full runtime
-    // attributes, which a dependency exposing AGP secondary variants without the standard
-    // `org.gradle.category` / jvm-environment / `kotlin.platform.type` attributes (e.g. an Android
-    // library relying on AGP's built-in Kotlin, consumed on an app's `…RuntimeClasspath`) can't
-    // satisfy — turning packaging detection into a hard `AmbiguousArtifactsFailure` that fails the
-    // whole bundle. `lenient(true)` skips any such unselectable dep here; it simply isn't keyed in
-    // the packaging map and falls back to the `"jar"` default at the coordinate below. The
-    // `artifactType=jar` view that feeds the actual classpath/closure walk is unaffected — it
-    // selects each dep's `jar` secondary variant unambiguously.
-    val typeByComponent: Provider<Map<String, String>> =
-      depConfig
-        ?.incoming
-        ?.artifactView { lenient(true) }
-        ?.artifacts
-        ?.resolvedArtifacts
-        ?.map { artifacts ->
-          artifacts.associate { artifact ->
-            artifact.id.componentIdentifier.displayName to
-              if (artifact.file.name.endsWith(".aar", ignoreCase = true)) "aar" else "jar"
-          }
-        } ?: project.providers.provider { emptyMap<String, String>() }
-    // Map each resolved dependency jar to a coordinate string the task action can fold into
-    // `bundle.json`'s `classpath`:
-    // - `maven:<group>:<artifact>:<version>:<aar|jar>` for Maven-resolved deps (the player resolves
-    //   at open time — small bundle, no inlined jars).
-    // - `project:<gradle path>` for project-local deps (the task inlines those into the bundle
-    //   since they can't be re-resolved from Maven).
-    //
-    // Resolution happens via `Provider` transformations, so this stays config-cache-safe. The
-    // transformed artifact keeps its original `componentIdentifier` (the Maven module / project),
-    // so coordinates resolve correctly even though `.file` points at the extracted classes.jar.
-    val coordMapProvider: Provider<Map<String, String>> =
-      depJarView?.artifacts?.resolvedArtifacts?.zip(typeByComponent) { artifacts, typeByComponentMap
-        ->
-        artifacts.associate { artifact ->
-          val id = artifact.id.componentIdentifier
-          val value =
-            when (id) {
-              is org.gradle.api.artifacts.component.ModuleComponentIdentifier ->
-                "maven:${id.group}:${id.module}:${id.version}:${typeByComponentMap[id.displayName] ?: "jar"}"
-              is org.gradle.api.artifacts.component.ProjectComponentIdentifier ->
-                "project:${id.projectPath}"
-              else -> "unknown:${id.displayName}"
-            }
-          artifact.file.absolutePath to value
-        }
-      } ?: project.providers.provider { emptyMap<String, String>() }
+    // Resolved at task-realization time, NOT here. `registerBundleTask` runs from
+    // [registerDesktopTasks], which a KMP-Android module reaches via
+    // `pluginManager.withPlugin("com.android.kotlin.multiplatform.library")` — and that fires
+    // BEFORE the consumer's `kotlin { jvm("desktop") }` block creates `desktopRuntimeClasspath`.
+    // Resolving eagerly therefore fell through to the `androidRuntimeClasspath` fallback on a
+    // `samples/cmp-shared`-shape module (KMP-Android *plus* a `jvm("desktop")` target) and packed
+    // its `*-android` Compose AARs into a bundle stamped `backend: desktop`. Nothing failed the
+    // build — the `onlyIf` renderability gate below already re-resolved lazily and so saw the
+    // correct `desktopRuntimeClasspath` — but every render of the published bundle then died on the
+    // host JVM with `NoClassDefFoundError: android/os/Parcelable` (no `android.jar` outside a
+    // Robolectric sandbox). Deferring makes the classpath the bundle *carries* agree with the
+    // config the renderability gate *checks*.
+    val depBinding: () -> DependencyClasspathBinding = {
+      dependencyClasspathBinding(project, resolveDependencyConfigName(), artifactTypeAttr)
+    }
 
     val defaultOutput = previewOutputDir.map { it.file("bundle.png").asFile }
     val resolvedOutput = outputProperty.map { java.io.File(it) }.orElse(defaultOutput)
@@ -486,7 +534,10 @@ internal object ComposePreviewTasks {
       // literal
       // `androidRuntimeClasspath` fallback, so this is a no-op on the Android bundle path and on
       // real desktop modules.
-      val bundleRenderable = isDesktopRenderableConfig(resolveDependencyConfigName())
+      // ONE lazy resolution feeds both the renderability gate and the classpath the bundle carries,
+      // so the two can no longer disagree about which consumer runtime config this module has.
+      val deps = depBinding()
+      val bundleRenderable = isDesktopRenderableConfig(deps.configName)
       onlyIf { extension.enabled.get() && bundleRenderable }
       previewsJson.set(previewOutputDir.map { it.file("previews.json") })
       moduleClassDirs.from(sourceClassDirs)
@@ -509,8 +560,8 @@ internal object ComposePreviewTasks {
           project.layout.buildDirectory.dir("processedResources/desktop/main"),
         )
       )
-      depJarFiles?.let { dependencyJars.from(it) }
-      dependencyCoordinates.set(coordMapProvider)
+      deps.jarFiles?.let { dependencyJars.from(it) }
+      dependencyCoordinates.set(deps.coordinates)
       // (v6 Android) Inputs for protolayout resource carriage; null on desktop (no-op). The
       // unit-test classpath supplier is invoked here (inside the task-config lambda) so AGP's
       // `test<Variant>UnitTest` task is registered by the time we query its classpath.
