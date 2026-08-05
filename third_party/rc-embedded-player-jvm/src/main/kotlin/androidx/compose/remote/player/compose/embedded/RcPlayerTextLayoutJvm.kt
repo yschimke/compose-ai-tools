@@ -19,6 +19,7 @@
 package androidx.compose.remote.player.compose.embedded
 
 import androidx.compose.material3.Text
+import androidx.compose.remote.core.RemoteContext
 import androidx.compose.remote.core.operations.layout.managers.CoreText
 import androidx.compose.remote.core.operations.layout.managers.TextLayout
 import androidx.compose.remote.player.compose.embedded.state.rememberRemoteStringAsState
@@ -30,6 +31,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import ee.schimke.composeai.rcembedded.jvm.GoogleFontTypefaceResolver
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -83,6 +85,7 @@ internal fun RcPlayerText(layout: CoreText, modifier: Modifier) {
             LocalRemoteContext.current.getText(fontFamilyType),
             fontWeight,
             fontStyle,
+            fontVariationSettings(data.fontAxis, data.fontAxisValues, LocalRemoteContext.current),
         )
 
     val textDecoration =
@@ -158,6 +161,9 @@ internal fun RcPlayerText(layout: TextLayout, modifier: Modifier) {
             LocalRemoteContext.current.getText(fontFamilyType),
             fontWeight,
             fontStyle,
+            // `TextLayout` carries no axis arrays upstream (only `CoreText` does), so there is
+            // nothing to apply here.
+            variationSettings = null,
         )
 
     Text(
@@ -200,11 +206,59 @@ internal fun RcPlayerText(layout: TextLayout, modifier: Modifier) {
  * (no cache configured, an offline miss, a `device:` family, a bare local name) still falls back to
  * the nearest standard family: a substitution, not an error.
  */
+/**
+ * The document's font-variation axes as a Compose [FontVariation.Settings], or null when the text
+ * declares none.
+ *
+ * Axis tags arrive as *text ids* — the document interns `"wght"` like any other string — so each is
+ * resolved through the [context] before it is paired with its value. Tags and values are positional,
+ * so an axis counts only when both halves are present: pairing a tag with a neighbour's value would
+ * draw a real face at silently the wrong instance, which is worse than dropping it.
+ */
+private fun fontVariationSettings(
+    axisTagIds: IntArray?,
+    axisValues: FloatArray?,
+    context: RemoteContext,
+): FontVariation.Settings? {
+    if (axisTagIds == null || axisValues == null) return null
+    val axes =
+        axisTagIds.asList().mapIndexedNotNull { index, tag ->
+            val value = axisValues.getOrNull(index) ?: return@mapIndexedNotNull null
+            axisName(tag, context)?.let { FontVariation.Setting(it, value) }
+        }
+    return if (axes.isEmpty()) null else FontVariation.Settings(*axes.toTypedArray())
+}
+
+/**
+ * The axis name an [tag] int stands for, in either encoding the format uses.
+ *
+ * A `CoreText` style interns its axis names like any other string, so the int is a **text id** — a
+ * captured `RemoteText` carrying `wght` writes `TextData(44, "wght")` and puts `44` in the array.
+ * The paint bundle's `setTextAxis` op instead carries the **raw OpenType tag** packed into four
+ * bytes (`0x77676874` = `wght`), which is how the baseline players decode that path. Reading the
+ * text table first and falling back to unpacking the bytes covers both without having to know which
+ * writer produced the document; anything that is neither is dropped rather than guessed at.
+ */
+private fun axisName(tag: Int, context: RemoteContext): String? =
+    context.getText(tag)?.takeIf { it.isNotBlank() } ?: packedAxisName(tag)
+
+/**
+ * The four-character axis name packed into [tag]'s bytes (`0x77676874` → `wght`), or null when the
+ * bytes aren't printable ASCII — a small text id, for instance, unpacks to control characters and is
+ * not a tag. Split out (and `internal`) so the unpacking is testable without a `RemoteContext`.
+ */
+internal fun packedAxisName(tag: Int): String? {
+    val packed =
+        CharArray(4) { index -> ((tag shr (24 - index * 8)) and 0xff).toChar() }.concatToString()
+    return packed.takeIf { name -> name.all { it in '!'..'~' } }
+}
+
 private fun standardFontFamily(
     fontFamilyType: Int,
     customName: String?,
     weight: FontWeight,
     style: FontStyle,
+    variationSettings: FontVariation.Settings? = null,
 ): FontFamily {
     val name =
         when (fontFamilyType) {
@@ -218,6 +272,7 @@ private fun standardFontFamily(
             family = name,
             weight = weight.weight,
             italic = style == FontStyle.Italic,
+            settings = variationSettings,
         )
         ?.let {
             return it
