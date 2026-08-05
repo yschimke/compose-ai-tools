@@ -536,3 +536,48 @@ seats to account for, and a per-request choice the `--public` gate would have to
 reason about. The seam is ready when demand is (`catalogClasspath` is already a
 `(PlaygroundMode) -> Classpath?` function), so this is a wiring change plus a
 request field, not a redesign.
+
+#### Naming that catalog: a path, or a system this box already serves
+
+Both flags originally took a **local filesystem path only**, which made enabling
+the playground on a box that already serves the same catalog a manual step: fetch
+that catalog's liveBundle by hand, drop it on the config volume, keep it there.
+Two things fell out of that — it duplicated work `--catalogs` does at startup
+(fetch, verify `Trusted(Branch)`, resolve a classpath), and the hand-placed copy
+went **silently stale**, since catalog auto-refresh re-points the live lane at a
+newer bundle while the pinned file never moves.
+
+So a flag value is read as one of two forms (`PlaygroundBundleSource`, issue
+#3212):
+
+| Form | Means |
+|---|---|
+| `--playground-bundle /config/x.bundle` | a bundle file on disk — the original behaviour |
+| `--playground-bundle compose-m3` | the liveBundle of an already-served `--catalogs` system |
+
+They are told apart structurally, not guessed at: a path separator, an existing
+file, or a bundle-ish suffix (`.bundle`, `.png`, `.zip`, `.jar`) means a path; a
+bare token is a system id. A catalog system is a branch-name component
+(`design-artifacts/<system>`) and never carries a separator, so neither form can
+be read as the other. Naming a system this box does not serve is a startup error
+listing the ones it does — not a mode that quietly never works.
+
+The system form makes the natural deployment `SERVE_PLAYGROUND_BUNDLE=compose-m3`
+with no file to place, and it inherits the catalog's trust verdict instead of
+trusting whatever bytes landed on the config volume.
+
+**Resolution is deferred**, which the system form forces: catalogs are fetched by
+`InitialCatalogLoader` *after* the server is up, so a classpath resolved while the
+playground lane is being wired would find nothing and disable the mode forever.
+`PlaygroundClasspathSupplier` therefore resolves on first use and memoizes the
+first success; a mode whose bundle hasn't landed answers "mode … is not
+available" and logs why, and recovers by itself once the catalog loads. This is
+also why `PlaygroundCompileService.availableModes` is computed per read rather
+than captured in the constructor.
+
+What is deliberately **not** built: following auto-refresh. Once a classpath
+resolves it is pinned for the process's lifetime, because its jars are open in
+live snippet JVMs and swapping them mid-flight needs generation-scoped unpack
+dirs and a retirement policy. A long-running host keeps compiling against the ABI
+it first resolved; restart to pick up a newer one. Issue #3212 splits that half
+out explicitly.

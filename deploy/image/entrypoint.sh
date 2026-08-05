@@ -204,8 +204,10 @@ if [[ "${SERVE_ALLOW_RENDER_TRUSTED}" == "1" || "${SERVE_ALLOW_RENDER_TRUSTED}" 
 fi
 
 # Playground compile lane. Off by default because it compiles and runs visitor-supplied Kotlin.
-# A public server must set a sandbox profile that passes the CLI preflight, otherwise serve refuses
-# the lane and `/playground` shows an explanatory disabled page.
+# SERVE_PLAYGROUND_BUNDLE takes a served catalog system id (`compose-m3`) or a local .bundle path.
+# A public server must be admitted by one of the two postures the CLI gate accepts — GitHub auth
+# configured (repo-access-gated), or a sandbox profile that passes the preflight — otherwise serve
+# refuses the lane and `/playground` shows an explanatory disabled page.
 [[ -n "${SERVE_PLAYGROUND_BUNDLE:-}" ]] &&
   args+=(--playground-bundle "${SERVE_PLAYGROUND_BUNDLE}")
 [[ -n "${SERVE_PLAYGROUND_ANDROID_BUNDLE:-}" ]] &&

@@ -11,7 +11,9 @@ import ee.schimke.composeai.cli.serve.MutableTrustStore
 import ee.schimke.composeai.cli.serve.PlaygroundAndroidRenderService
 import ee.schimke.composeai.cli.serve.PlaygroundAndroidSessionOpener
 import ee.schimke.composeai.cli.serve.PlaygroundBtaCompiler
+import ee.schimke.composeai.cli.serve.PlaygroundBundleSource
 import ee.schimke.composeai.cli.serve.PlaygroundCatalogClasspath
+import ee.schimke.composeai.cli.serve.PlaygroundClasspathSupplier
 import ee.schimke.composeai.cli.serve.PlaygroundCompileService
 import ee.schimke.composeai.cli.serve.PlaygroundJailedCompiler
 import ee.schimke.composeai.cli.serve.PlaygroundMode
@@ -251,17 +253,32 @@ class ServeCommand(args: List<String>) : Command(args) {
       ?: emptyList()
 
   /**
-   * `--playground-bundle <path>`: enable the playground lane (`POST /api/{v}/compiler/run`),
-   * resolving the CMP compile classpath from this catalog liveBundle. Under `--public` the lane
-   * still has to clear [PlaygroundPublicGate], which admits it either behind a verified sandbox or
-   * behind GitHub repo-access gating — the compile runs **user-supplied code**, so one of the two
-   * must bound who supplies it. See docs/design/PLAYGROUND.md §6.
+   * Where each `--catalogs` system's fetched, trust-verified `liveBundle` landed on disk, filled in
+   * by [registerCatalogs] as catalogs load (and refreshed in place when a branch head moves). Read
+   * by the playground's `--playground-bundle <system>` form so a compile classpath can come from a
+   * catalog this box already serves instead of a hand-placed copy (issue #3212). Concurrent:
+   * written by catalog load / refresh threads, read from request threads.
+   */
+  private val catalogLiveBundles = java.util.concurrent.ConcurrentHashMap<String, java.io.File>()
+
+  /**
+   * `--playground-bundle <path|system>`: enable the playground lane (`POST /api/{v}/compiler/run`),
+   * resolving the CMP compile classpath from a catalog liveBundle. Takes either a local `.bundle`
+   * path or — since issue #3212 — the id of a system this box already serves via `--catalogs`
+   * (`--playground-bundle compose-m3`), which reuses that catalog's fetched, trust-verified bundle
+   * instead of a hand-placed copy that would silently go stale. See [PlaygroundBundleSource].
+   *
+   * Under `--public` the lane still has to clear [PlaygroundPublicGate], which admits it either
+   * behind a verified sandbox or behind GitHub repo-access gating — the compile runs
+   * **user-supplied code**, so one of the two must bound who supplies it. See
+   * docs/design/PLAYGROUND.md §6.
    */
   private val playgroundBundlePath: String? = args.flagValue("--playground-bundle")
 
   /**
-   * `--playground-android-bundle <path>`: enable the playground's **Android / Remote Compose**
-   * compile lane, resolving its classpath from this Android catalog liveBundle. Snippets sent with
+   * `--playground-android-bundle <path|system>`: enable the playground's **Android / Remote
+   * Compose** compile lane, resolving its classpath from an Android catalog liveBundle — a local
+   * path or a served `--catalogs` system id, exactly like `--playground-bundle`. Snippets sent with
    * `confType=remote-compose` compile against it, render on the Robolectric daemon, and their
    * captured `.rc` is published as a `/d/<id>` permalink (needs the `lib-daemon-android` sidecar +
    * `android.jar` + the `/d/` document store). Gated under `--public` like `--playground-bundle`.
@@ -1092,12 +1109,18 @@ class ServeCommand(args: List<String>) : Command(args) {
       )
     }
 
-    val cmpClasspath = cmpBundle?.let { resolvePlaygroundClasspath(it, workRoot, "cmp") }
-    val androidClasspath = androidBundle?.let {
-      resolvePlaygroundClasspath(it, workRoot, "android")
+    // Each mode's classpath resolves on FIRST USE, not here (issue #3212): a `--playground-bundle
+    // compose-m3` names a catalog that `InitialCatalogLoader` fetches in the background *after* the
+    // server is up, so resolving at this point would find nothing and disable the mode forever. A
+    // local path is deferred the same way, for one code path and one set of log lines.
+    val cmpSupplier = cmpBundle?.let { playgroundClasspathSupplier(it, workRoot, "cmp") }
+    val androidSupplier = androidBundle?.let {
+      playgroundClasspathSupplier(it, workRoot, "android")
     }
-    if (cmpClasspath == null && androidClasspath == null) {
-      System.err.println("serve: playground resolved no compile classpath; playground disabled.")
+    if (cmpSupplier == null && androidSupplier == null) {
+      // Both configured sources were rejected outright (an unknown system id) — the specific reason
+      // is already on stderr from the supplier factory.
+      System.err.println("serve: playground has no usable bundle source; playground disabled.")
       return null
     }
 
@@ -1132,7 +1155,7 @@ class ServeCommand(args: List<String>) : Command(args) {
     // CMP is unaffected. Remote-compose additionally needs the `/d/` document store to publish
     // into.
     val androidDaemonOpener =
-      if (androidClasspath != null) buildPlaygroundAndroidDaemonOpener(sandbox) else null
+      if (androidSupplier != null) buildPlaygroundAndroidDaemonOpener(sandbox) else null
     val androidRender = androidDaemonOpener?.let { opener ->
       buildPlaygroundAndroidRenderService(workRoot, opener)
     }
@@ -1145,17 +1168,20 @@ class ServeCommand(args: List<String>) : Command(args) {
     // simply
     // carries no still image; its live `/pg/` redemption still renders on demand.
     val cmpDaemonOpener =
-      if (cmpClasspath != null) buildPlaygroundDesktopDaemonOpener(sandbox) else null
+      if (cmpSupplier != null) buildPlaygroundDesktopDaemonOpener(sandbox) else null
     val cmpRender = cmpDaemonOpener?.let { opener ->
       buildPlaygroundAndroidRenderService(workRoot, opener)
     }
 
+    // Says which modes are WIRED, not which have already resolved a classpath — a served-catalog
+    // source resolves on first use, well after this line. A mode whose bundle never materializes
+    // answers "mode … is not available" per request and logs why there.
     System.err.println(
       "serve: playground enabled (POST /api/1/compiler/run) — " +
         listOfNotNull(
-            cmpClasspath?.let { "cmp✓" },
+            cmpSupplier?.let { "cmp✓" },
             cmpRender?.let { "cmp-render✓" },
-            androidClasspath?.let { "android✓" },
+            androidSupplier?.let { "android✓" },
             androidRender?.let { "android-render✓" },
             rcCapture?.let { "remote-compose✓" },
           )
@@ -1174,7 +1200,7 @@ class ServeCommand(args: List<String>) : Command(args) {
       PlaygroundCompileService(
         catalogClasspath = { mode ->
           when (mode) {
-            PlaygroundMode.CMP -> cmpClasspath
+            PlaygroundMode.CMP -> cmpSupplier?.classpath()
             // Only advertise the Android modes when their daemon backend actually came up — absent
             // the
             // sidecar/android.jar the host would otherwise accept the mode, run a full Android
@@ -1182,8 +1208,9 @@ class ServeCommand(args: List<String>) : Command(args) {
             // then mint a dead token with no image (ANDROID) / report the preview drew no document
             // (REMOTE_COMPOSE), contradicting the "Android modes disabled" startup log. A null
             // classpath routes to the existing "mode … is not available" response.
-            PlaygroundMode.ANDROID -> androidClasspath?.takeIf { androidRender != null }
-            PlaygroundMode.REMOTE_COMPOSE -> androidClasspath?.takeIf { rcCapture != null }
+            PlaygroundMode.ANDROID -> androidSupplier?.classpath()?.takeIf { androidRender != null }
+            PlaygroundMode.REMOTE_COMPOSE ->
+              androidSupplier?.classpath()?.takeIf { rcCapture != null }
           }
         },
         compiler = compiler,
@@ -1215,11 +1242,22 @@ class ServeCommand(args: List<String>) : Command(args) {
       )
     // No mode survived gating (e.g. an Android-only host whose daemon sidecar / android.jar is
     // absent, so every classpath gated to null): don't enable a lane that would render an empty
-    // mode selector and mint dead tokens on Run. Disable it, like the no-classpath case above.
-    if (service.availableModes.isEmpty()) {
+    // mode selector and mint dead tokens on Run. Disable it, like the no-source case above.
+    //
+    // Asks whether any mode is *wired*, mirroring the `catalogClasspath` gating above minus the
+    // classpath itself — reading `service.availableModes` here would resolve every supplier at
+    // startup, which is exactly what a served-catalog source cannot do yet (its catalog loads
+    // later). A wired mode whose bundle never materializes answers "not available" per request.
+    val wiredModes =
+      listOfNotNull(
+        cmpSupplier?.let { PlaygroundMode.CMP },
+        androidSupplier?.takeIf { androidRender != null }?.let { PlaygroundMode.ANDROID },
+        androidSupplier?.takeIf { rcCapture != null }?.let { PlaygroundMode.REMOTE_COMPOSE },
+      )
+    if (wiredModes.isEmpty()) {
       System.err.println(
-        "serve: playground resolved no runnable mode (a classpath resolved but its render backend " +
-          "is unavailable); playground disabled."
+        "serve: playground resolved no runnable mode (a bundle source is configured but its " +
+          "render backend is unavailable); playground disabled."
       )
       return null
     }
@@ -1261,25 +1299,63 @@ class ServeCommand(args: List<String>) : Command(args) {
     val redeem: PlaygroundRedeemService,
   )
 
-  /** Resolve a playground compile classpath from a catalog liveBundle; null (logged) on failure. */
-  private fun resolvePlaygroundClasspath(
-    bundlePath: String,
+  /**
+   * Build the lazy classpath supplier for one playground mode from its `--playground-bundle` /
+   * `--playground-android-bundle` value, or null (having said why) when the value can't name a
+   * bundle at all.
+   *
+   * The only failure decided *here* is an unknown served-catalog id: naming a system this box
+   * doesn't serve is a config error the operator should hear about at startup, with the list of
+   * what is configured, rather than as a mode that quietly never works. Everything else — a path
+   * that doesn't exist, a bundle that won't resolve, a catalog that hasn't loaded yet — is deferred
+   * to [PlaygroundClasspathSupplier], because at this point in startup the catalogs have not been
+   * fetched (issue #3212).
+   */
+  private fun playgroundClasspathSupplier(
+    raw: String,
     workRoot: java.io.File,
-    system: String,
-  ): PlaygroundCompileService.Classpath? {
-    val classpath =
-      PlaygroundCatalogClasspath.resolve(
-        bundleFile = java.io.File(bundlePath),
-        destDir = java.io.File(workRoot, "catalog-$system"),
-        system = "playground-$system",
-        onLog = { System.err.println("serve playground: $it") },
-      )
-    if (classpath == null) {
-      System.err.println(
-        "serve: playground could not resolve a $system classpath from $bundlePath; that mode disabled."
-      )
+    mode: String,
+  ): PlaygroundClasspathSupplier? {
+    val source = PlaygroundBundleSource.parse(raw)
+    if (source is PlaygroundBundleSource.ServedCatalog) {
+      // Compared against the CONFIGURED catalog set, not the loaded one: nothing has loaded yet.
+      val configured = catalogRefs.map { it.system }
+      if (source.system !in configured) {
+        System.err.println(
+          "serve: playground $mode bundle '${source.system}' is neither a readable file nor a " +
+            "catalog this server is configured to serve" +
+            (if (configured.isEmpty()) " (no --catalogs configured)"
+            else " (configured: ${configured.sorted().joinToString(", ")})") +
+            ". That mode is disabled — pass a .bundle path, or a served system id."
+        )
+        return null
+      }
     }
-    return classpath
+    return PlaygroundClasspathSupplier(
+      source = source,
+      locateServedBundle = { catalogLiveBundles[it] },
+      resolve = { bundleFile ->
+        PlaygroundCatalogClasspath.resolve(
+            bundleFile = bundleFile,
+            destDir = java.io.File(workRoot, "catalog-$mode"),
+            system = "playground-$mode",
+            onLog = { System.err.println("serve playground: $it") },
+          )
+          .also {
+            if (it == null) {
+              System.err.println(
+                "serve: playground could not resolve a $mode classpath from " +
+                  "${bundleFile.absolutePath}; that mode is unavailable."
+              )
+            } else {
+              System.err.println(
+                "serve: playground $mode classpath resolved from ${source.describe()}"
+              )
+            }
+          }
+      },
+      onLog = { System.err.println("serve: playground $mode — $it") },
+    )
   }
 
   /**
@@ -2026,6 +2102,13 @@ class ServeCommand(args: List<String>) : Command(args) {
           alias,
           bakedFallback,
           fetchPerPreviewBundle ->
+          // Record where this catalog's verified liveBundle landed, so `--playground-bundle
+          // <system>` can compile against the very bytes the live lane runs — no second copy on the
+          // config volume, and the playground inherits the catalog's Trusted(Branch) verdict rather
+          // than trusting whatever an operator scp'd there (issue #3212). Only reached for a
+          // catalog that verified Trusted AND declared a liveBundle, which is exactly the set a
+          // playground mode may name.
+          catalogLiveBundles[system] = bundleFile
           buildTrustedCatalogBundle(
             system,
             bundleFile,

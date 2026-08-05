@@ -105,12 +105,26 @@ host the gate admits on either of two independent bases (issue #3210):
 Anonymous **and** uncontained is refused outright, with a startup log line naming both remedies.
 
 **Configure the repo-access-gated posture** — set the GitHub OAuth secrets from the section above,
-then:
+then name a catalog this box already serves:
 
 ```bash
-SERVE_PLAYGROUND_BUNDLE=/config/playground-cmp.bundle
+SERVE_PLAYGROUND_BUNDLE=compose-m3
 SERVE_PLAYGROUND_COMPILE_SLOTS=1
 ```
+
+`SERVE_PLAYGROUND_BUNDLE` takes either a **served catalog system id** (as above) or a local
+`.bundle` path (`/config/playground-cmp.bundle`); a value with a path separator, a `.bundle`/`.png`
+suffix, or one that names an existing file is read as a path, anything else as a system id. Prefer
+the system id: it reuses the bundle `--catalogs` already fetched and verified, so there is no file
+to place on `/config` and nothing to go stale when the catalog's delivery branch moves. Naming a
+system this box doesn't serve is a startup error listing the ones it does.
+
+The classpath resolves the first time someone compiles, not at boot — the catalog it names is
+fetched in the background after startup, so `serve: playground cmp classpath resolved from served
+catalog 'compose-m3'` appears on the first run, and until then `/playground` reports the mode as
+unavailable. Once resolved it is **pinned for the life of the process**: a later catalog refresh
+does not move it, because live snippet JVMs hold those jars open. Restart the container to compile
+against a newer catalog ABI.
 
 Peak compile memory is `SERVE_PLAYGROUND_COMPILE_SLOTS × SERVE_PLAYGROUND_SANDBOX_MEMORY_MB`
 (≈3 GB at defaults) on top of the catalogs already loaded, so review `SERVE_LIVE_SEATS` in the same

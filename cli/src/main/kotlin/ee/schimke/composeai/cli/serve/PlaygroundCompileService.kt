@@ -72,9 +72,15 @@ class PlaygroundCompileService(
    * The modes this host can actually serve — the ones whose [catalogClasspath] resolved to a real
    * classpath. Drives the editor's mode selector so it never offers a mode that would immediately
    * answer "mode … is not available" (e.g. an Android-only host must not default to CMP).
+   *
+   * Computed per read, not captured once: a mode configured as a served catalog id
+   * (`--playground-bundle compose-m3`, issue #3212) resolves on first use, because the catalog it
+   * names is fetched in the background *after* the playground lane is wired. Reading this at
+   * construction time would find every such mode unavailable. [catalogClasspath] memoizes, so a
+   * read after the first resolve is a field access.
    */
-  val availableModes: List<PlaygroundMode> =
-    PlaygroundMode.entries.filter { catalogClasspath(it) != null }
+  val availableModes: List<PlaygroundMode>
+    get() = PlaygroundMode.entries.filter { catalogClasspath(it) != null }
 
   /**
    * The resolved classpath a snippet compiles and renders against. Backed in production by a
