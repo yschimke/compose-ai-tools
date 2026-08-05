@@ -222,11 +222,35 @@ private fun fontVariationSettings(
 ): FontVariation.Settings? {
     if (axisTagIds == null || axisValues == null) return null
     val axes =
-        axisTagIds.asList().mapIndexedNotNull { index, tagId ->
+        axisTagIds.asList().mapIndexedNotNull { index, tag ->
             val value = axisValues.getOrNull(index) ?: return@mapIndexedNotNull null
-            context.getText(tagId)?.takeIf { it.isNotBlank() }?.let { FontVariation.Setting(it, value) }
+            axisName(tag, context)?.let { FontVariation.Setting(it, value) }
         }
     return if (axes.isEmpty()) null else FontVariation.Settings(*axes.toTypedArray())
+}
+
+/**
+ * The axis name an [tag] int stands for, in either encoding the format uses.
+ *
+ * A `CoreText` style interns its axis names like any other string, so the int is a **text id** — a
+ * captured `RemoteText` carrying `wght` writes `TextData(44, "wght")` and puts `44` in the array.
+ * The paint bundle's `setTextAxis` op instead carries the **raw OpenType tag** packed into four
+ * bytes (`0x77676874` = `wght`), which is how the baseline players decode that path. Reading the
+ * text table first and falling back to unpacking the bytes covers both without having to know which
+ * writer produced the document; anything that is neither is dropped rather than guessed at.
+ */
+private fun axisName(tag: Int, context: RemoteContext): String? =
+    context.getText(tag)?.takeIf { it.isNotBlank() } ?: packedAxisName(tag)
+
+/**
+ * The four-character axis name packed into [tag]'s bytes (`0x77676874` → `wght`), or null when the
+ * bytes aren't printable ASCII — a small text id, for instance, unpacks to control characters and is
+ * not a tag. Split out (and `internal`) so the unpacking is testable without a `RemoteContext`.
+ */
+internal fun packedAxisName(tag: Int): String? {
+    val packed =
+        CharArray(4) { index -> ((tag shr (24 - index * 8)) and 0xff).toChar() }.concatToString()
+    return packed.takeIf { name -> name.all { it in '!'..'~' } }
 }
 
 private fun standardFontFamily(

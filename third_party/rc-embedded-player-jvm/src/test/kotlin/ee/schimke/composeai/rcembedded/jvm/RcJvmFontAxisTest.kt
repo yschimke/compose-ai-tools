@@ -16,6 +16,7 @@
 
 package ee.schimke.composeai.rcembedded.jvm
 
+import androidx.compose.remote.player.compose.embedded.packedAxisName
 import androidx.compose.ui.text.font.FontVariation
 import ee.schimke.composeai.fonts.google.GoogleFontKey
 import ee.schimke.composeai.fonts.google.GoogleFontSource
@@ -107,6 +108,18 @@ class RcJvmFontAxisTest {
     )
 
     assertEquals(listOf(GoogleFontKey("Orbitron", 700, false)), fonts.requested)
+  }
+
+  @Test
+  fun `a raw OpenType tag unpacks to its axis name, a text id does not`() {
+    // Two encodings reach the seam: a `CoreText` style interns its axis names, so the int is a text
+    // id; the paint bundle's `setTextAxis` carries the raw four-byte tag. Unpacking must answer for
+    // the second without claiming the first — a small id's bytes are control characters, not a
+    // name.
+    assertEquals("wght", packedAxisName(0x77676874))
+    assertEquals("wdth", packedAxisName(0x77647468))
+    assertEquals(null, packedAxisName(44))
+    assertEquals(null, packedAxisName(0))
   }
 
   private fun width(value: Float) = FontVariation.Settings(FontVariation.width(value))
