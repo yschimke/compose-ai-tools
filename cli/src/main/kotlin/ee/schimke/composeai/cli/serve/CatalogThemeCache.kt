@@ -93,6 +93,10 @@ class CatalogThemeCache(
   private val turnsYielded = java.util.concurrent.atomic.AtomicInteger(0)
   private val lastBatchWidth = java.util.concurrent.atomic.AtomicInteger(0)
   private val maxBatchWidth = java.util.concurrent.atomic.AtomicInteger(0)
+  // Entries the OPTIMIZER produced. The rate's denominator is optimizer time, so its numerator has
+  // to be optimizer output: foreground renders land in this same cache via `cacheCatalogRender`,
+  // and counting them would report a prefetch rate the prefetcher never achieved.
+  private val optimizerProduced = java.util.concurrent.atomic.AtomicInteger(0)
 
   /** The idle gate handed the pass its turn. */
   fun recordTurnGranted() {
@@ -113,6 +117,20 @@ class CatalogThemeCache(
   fun recordBatch(width: Int, millis: Long) {
     lastBatchWidth.set(width)
     maxBatchWidth.accumulateAndGet(width, ::maxOf)
+    if (millis > 0) renderMillis.addAndGet(millis)
+  }
+
+  /** Entries this batch actually produced — the rate's numerator. */
+  fun recordProduced(count: Int) {
+    if (count > 0) optimizerProduced.addAndGet(count)
+  }
+
+  /**
+   * A cold daemon warm the optimizer waited out. Real render work and often the most expensive part
+   * of the pass, so it belongs in [renderMillis] — leaving it out of both buckets shrank the rate's
+   * denominator and made a cold catalog report a rate it was nowhere near.
+   */
+  fun recordWarm(millis: Long) {
     if (millis > 0) renderMillis.addAndGet(millis)
   }
 
@@ -232,9 +250,9 @@ class CatalogThemeCache(
       // Rate over the pass's ACTIVE time (render + gate wait), not wall-clock since it started:
       // wall-clock includes stretches where the pass held no turn at all, which drags the figure
       // toward zero and hides whether it is keeping up while it runs.
-      entriesPerMinute = ratePerMinute(cachedTargets),
+      entriesPerMinute = ratePerMinute(),
       etaSeconds =
-        ratePerMinute(cachedTargets)
+        ratePerMinute()
           ?.takeIf { it > 0 }
           ?.let { ((total - cachedTargets).coerceAtLeast(0) / it * 60).toLong() },
       renderMillis = renderMillis.get(),
@@ -256,10 +274,11 @@ class CatalogThemeCache(
       )
     }
 
-  private fun ratePerMinute(cached: Int): Double? {
+  private fun ratePerMinute(): Double? {
+    val produced = optimizerProduced.get()
     val activeMillis = renderMillis.get() + waitingMillis.get()
-    if (cached <= 0 || activeMillis <= 0) return null
-    return cached / (activeMillis / 60_000.0)
+    if (produced <= 0 || activeMillis <= 0) return null
+    return produced / (activeMillis / 60_000.0)
   }
 
   private fun refreshCompletion() {

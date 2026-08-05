@@ -402,11 +402,17 @@ class ServeCatalogLiveHost(
           // old per-job loop spent retry budget on this; here it is a precondition of the batch.
           if (previewDaemonId != null && !warmDaemonIds.contains(previewDaemonId)) {
             daemonWarmOrScheduling(previewDaemonId)
+            // A cold warm is real render work and can run to minutes. Excluding it from both
+            // buckets shrank the rate's denominator, so a cold catalog reported a rate it was
+            // nowhere near.
+            val warmFrom = clock()
             if (
               warmingInFlight.contains(previewDaemonId) && !awaitWarmCompletion(previewDaemonId)
             ) {
+              catalogThemeCache.recordWarm(clock() - warmFrom)
               return@execute
             }
+            catalogThemeCache.recordWarm(clock() - warmFrom)
           }
           var index = 0
           while (index < previewJobs.size) {
@@ -418,13 +424,22 @@ class ServeCatalogLiveHost(
               previewJobs.subList(index, minOf(index + optimizerBatchWidth(), previewJobs.size))
             index += batch.size
             catalogThemeCache.markRunning(clock())
-            val batchStartedAt = clock()
+            // Time the RENDER inside the permit. Starting the clock before `withRenderPermit`
+            // charged the server-wide queue to renderMillis, which would make a permit-bound
+            // deployment read as render-bound — defeating the one diagnostic this exists for.
+            val permitWaitFrom = clock()
             val outcomes =
-              backgroundWork.withRenderPermit { renderOptimizerBatch(batch) } ?: return@execute
-            // Width recorded from the batch actually issued, not the requested ceiling — a batch
-            // that collapses to 1 (single-daemon lane, or a seat budget with no replicas to spare)
-            // is exactly the case that is invisible from `cached` alone.
-            catalogThemeCache.recordBatch(batch.size, clock() - batchStartedAt)
+              backgroundWork.withRenderPermit {
+                val renderFrom = clock()
+                catalogThemeCache.recordWaiting(renderFrom - permitWaitFrom)
+                renderOptimizerBatch(batch).also {
+                  // Width from the batch actually issued, not the requested ceiling — a batch that
+                  // collapses to 1 (single-daemon lane, or a seat budget with no replicas to spare)
+                  // is exactly the case that is invisible from `cached` alone.
+                  catalogThemeCache.recordBatch(batch.size, clock() - renderFrom)
+                }
+              } ?: return@execute
+            catalogThemeCache.recordProduced(outcomes.count { it is RenderOutcome.Ok })
             for ((job, outcome) in batch.zip(outcomes)) {
               if (catalogThemeCache.get(job.cacheKey) != null) continue
               // Busy is "ask again", not a failure: the warm above may still be settling. Leave it
@@ -550,6 +565,9 @@ class ServeCatalogLiveHost(
     return awaitQuiet(OPTIMIZER_RESUME_MILLIS).also {
       catalogThemeCache.recordWaiting(clock() - resumeFrom)
       if (it) {
+        // A resume IS a grant. Counting only cold entries made yields exceed grants after any
+        // interrupted pass, which reads as the gate losing turns it never handed out.
+        catalogThemeCache.recordTurnGranted()
         optimizerHasTurn.set(true)
         optimizerSampledAt.set(clock())
       }
