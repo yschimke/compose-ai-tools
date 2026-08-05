@@ -183,10 +183,14 @@ test("viewer wires the knob into every render lane", async ({ page }) => {
   );
 
   // PNG mode (default): the on-screen <img> points at the override PNG and loads.
+  // The viewer fetches the render and shows it as an object URL (so the previous frame stays up
+  // until the replacement decodes), which makes `src` a `blob:` with no knobs in it. `data-cp-src`
+  // is the logical /render URL behind those pixels — that's what carries the override.
   await expect(page.locator("#cp-img")).toHaveAttribute(
-    "src",
+    "data-cp-src",
     new RegExp(`\\.png.*knob\\.label=${OVERRIDE}`),
   );
+  await expect(page.locator("#cp-img")).toHaveAttribute("src", /^blob:/);
   await expect
     .poll(() => page.locator("#cp-img").evaluate((im) => im.naturalWidth), {
       timeout: 30000,
@@ -196,7 +200,7 @@ test("viewer wires the knob into every render lane", async ({ page }) => {
   // SVG format toggle: the same <img> repoints at the override SVG and loads.
   await page.click("#cp-svg-toggle");
   await expect(page.locator("#cp-img")).toHaveAttribute(
-    "src",
+    "data-cp-src",
     new RegExp(`\\.svg.*knob\\.label=${OVERRIDE}`),
   );
   await expect

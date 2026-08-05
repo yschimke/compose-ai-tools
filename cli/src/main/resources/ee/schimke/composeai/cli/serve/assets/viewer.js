@@ -366,6 +366,11 @@
           var previous = img.getAttribute("data-cp-blob");
           img.src = objectUrl;
           img.setAttribute("data-cp-blob", objectUrl);
+          // The blob is opaque: once `src` is an object URL, nothing in the DOM says which render
+          // these pixels came from. Record the logical /render URL alongside it so "what produced
+          // this image" stays answerable — from devtools, and from the serve-lanes harness, which
+          // asserts the knobs reached the render URL and can no longer read that off `src`.
+          img.setAttribute("data-cp-src", url);
           if (previous) URL.revokeObjectURL(previous);
           status.textContent = "";
           setSnapshotLoading(false);
