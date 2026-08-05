@@ -85,7 +85,7 @@ SERVE_GITHUB_AUTH_COOKIE_SECRET=... # openssl rand -hex 32
 
 The compose profile derives the callback base URL from `DOMAIN`; set
 `SERVE_GITHUB_AUTH_CALLBACK_BASE_URL` to override. Empty `SERVE_GITHUB_AUTH_USERS` allows any
-signed-in GitHub user to use live previews; playground additionally requires access to
+signed-in GitHub user to use live previews; playground additionally requires **write** access to
 `SERVE_GITHUB_AUTH_REPO` (default `yschimke/compose-ai-tools`). Set `SERVE_GITHUB_AUTH_USERS` to a
 comma-separated login list only if you want to narrow sign-in for both surfaces. The OAuth app
 requests GitHub's `repo` scope so private repository access can be checked during sign-in; the
@@ -99,7 +99,7 @@ host the gate admits on either of two independent bases (issue #3210):
 
 | Posture | What admits it | What it costs |
 |---|---|---|
-| **repo-access-gated** | GitHub auth configured, so `/playground`, `POST /api/{v}/compiler/run` and `/pg/` all require a signed-in user with access to `SERVE_GITHUB_AUTH_REPO` | Nothing beyond OAuth secrets — **this is the posture this image supports** |
+| **repo-access-gated** | GitHub auth configured, so `/playground`, `POST /api/{v}/compiler/run` and `/pg/` all require a signed-in user with **write** access to `SERVE_GITHUB_AUTH_REPO` | Nothing beyond OAuth secrets — **this is the posture this image supports** |
 | **contained** | `SERVE_PLAYGROUND_SANDBOX` set to a profile that both passes the startup containment probe *and* applies CPU/pid caps | A jail this image cannot currently provide (see below) |
 
 Anonymous **and** uncontained is refused outright, with a startup log line naming both remedies.

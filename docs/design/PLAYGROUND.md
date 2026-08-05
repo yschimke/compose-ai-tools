@@ -350,10 +350,11 @@ That whole chain is the right question only when a stranger can reach the lane.
 All three playground surfaces — `/playground`, `POST /api/{v}/compiler/run`,
 `/pg/{token}` — already run `rejectMissingGithubAuth` **and**
 `rejectMissingGithubRepoAccess`, so on a host with GitHub auth configured the
-snippet comes from someone with access to `--github-auth-repo`: a collaborator
-on the repo whose CI builds this image, at the same trust level as the
-token-gated posture Phases 1–3 shipped under, which the gate admits with no
-sandbox at all.
+snippet comes from someone with **write** access to `--github-auth-repo` (issue
+#3313 tightened that check from "any access" to `admin`/`maintain`/`write`): a
+collaborator who can already push to the repo whose CI builds this image, at the
+same trust level as the token-gated posture Phases 1–3 shipped under, which the
+gate admits with no sandbox at all.
 
 So `PlaygroundPublicGate.decide` takes `repoAccessGated` as a second, independent
 basis for admission (issue #3210):

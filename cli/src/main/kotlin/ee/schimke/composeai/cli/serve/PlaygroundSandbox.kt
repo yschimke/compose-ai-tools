@@ -382,10 +382,10 @@ data class PlaygroundSandbox(
  * The chain above answers "is a **stranger's** snippet contained?". That is the right question only
  * when a stranger can actually reach the lane. All three playground surfaces (`/playground`, `POST
  * /api/{v}/compiler/run`, `/pg/{token}`) already reject a caller who is not a signed-in GitHub user
- * *with access to `--github-auth-repo`* — so on a box with GitHub auth configured, the code being
- * compiled comes from someone who can already push to the repo whose CI builds this image. That is
- * the same trust level as the token-gated posture Phases 1–3 shipped under, where the gate returns
- * `Allow` with no sandbox at all.
+ * *with **write** access to `--github-auth-repo`* (#3313) — so on a box with GitHub auth
+ * configured, the code being compiled comes from someone who can already push to the repo whose CI
+ * builds this image. That is the same trust level as the token-gated posture Phases 1–3 shipped
+ * under, where the gate returns `Allow` with no sandbox at all.
  *
  * So [decide] takes [repoAccessGated] as a second, independent basis for admission:
  * - **contained** — `--public`, anyone may call, the jail is proved: the evidence chain above;
@@ -432,7 +432,7 @@ object PlaygroundPublicGate {
     // now defence in depth rather than the precondition.
     if (repoAccessGated) {
       return Decision.Allow(
-        "public host, repo-access-gated (GitHub sign-in with access to --github-auth-repo); " +
+        "public host, repo-access-gated (GitHub sign-in with write access to --github-auth-repo); " +
           if (sandbox.isActive) "${sandbox.describe()} — defence in depth, not the admission basis"
           else
             "no sandbox — a collaborator's snippet runs unconfined on this host " +
