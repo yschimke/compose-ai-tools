@@ -188,6 +188,7 @@ fun RemoteOverridablePreview(
       modifier = modifier,
       init = { remotePlayer ->
         applyConnectorOverrides(remotePlayer.stateUpdater, seededOverrides)
+        installGoogleFontTypefaceResolver(remotePlayer)
       },
     )
   }

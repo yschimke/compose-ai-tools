@@ -75,6 +75,13 @@ dependencies {
   // `project` dependency.
   api(project(":data-remotecompose-core"))
 
+  // Google Fonts resolution for `RcGoogleFontTypefaceResolver` — the view player's lane has no
+  // downloadable-font path of its own. Shared with the Robolectric downloadable-font shadow and
+  // the figma-svg embed path on purpose: one cache, one downloader, so a family resolves to the
+  // same file in every lane. `implementation` — the resolver is internal, no consumer names these
+  // types.
+  implementation(project(":data-fonts-google"))
+
   // DataProductRegistry interface, DataExtension, AroundComposableExtension. Re-exported via
   // `api` so the connector's planner / extension classes can be referenced from
   // `RobolectricHost`'s `previewOverrideExtensions` list.
