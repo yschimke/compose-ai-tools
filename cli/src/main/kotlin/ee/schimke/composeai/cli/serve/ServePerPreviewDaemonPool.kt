@@ -73,7 +73,7 @@ class ServePerPreviewDaemonPool(
     // Take the seat BEFORE opening: a refused daemon must not have been spawned. A miss returns
     // null exactly like an unusable bundle does, so the caller replays the baked PNG — a slightly
     // stale thumbnail under memory pressure, rather than a process the box can't afford.
-    val ticket = liveSeats?.let { it.acquire(seatWeight()) ?: return null }
+    val ticket = liveSeats?.let { it.acquireBackground(seatWeight()) ?: return null }
     // A null open (no usable per-preview bundle) and a throwing one both have to hand the seat
     // back: neither leaves a daemon behind, and a leaked ticket shrinks the whole box's budget for
     // the life of the server.
