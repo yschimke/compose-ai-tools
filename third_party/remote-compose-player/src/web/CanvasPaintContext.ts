@@ -129,6 +129,17 @@ export class CanvasPaintContext extends PaintContext {
     private fontItalic = false;
     /** The document's font-variation axes for the current paint, resolved to their tag names. */
     private fontAxes: FontAxis[] = [];
+    /**
+     * The bare `google:` family of the current paint, or null when it names none.
+     *
+     * Kept because the axes arrive *after* the family does: a paint bundle serialises `setTextStyle`
+     * (TYPEFACE) before `setTextAxis` (FONT_AXIS), so the request made while resolving the typeface
+     * necessarily has no axes yet. Re-requesting once they are decoded is what actually asks the API
+     * for the variable face; without it a networked render keeps the enumerated static stylesheet and
+     * paints a `wdth` ramp as identical lines. (It looks fine on a page that vendored the variable
+     * face itself, which is exactly how this hid.)
+     */
+    private googleFamily: string | null = null;
     private colorFilterColor: string | null = null;
     private colorFilterArgb = 0;
     private colorFilterMode = 3; // SRC_OVER default
@@ -145,6 +156,7 @@ export class CanvasPaintContext extends PaintContext {
         miterLimit: number; blendMode: GlobalCompositeOperation; antiAlias: boolean;
         letterSpacing: number; gradientStyle: CanvasGradient | CanvasPattern | null;
         fontFamily: string; fontWeight: number; fontItalic: boolean;
+        fontAxes: FontAxis[]; googleFamily: string | null;
         filterBitmap: boolean;
         colorFilterColor: string | null; colorFilterArgb: number; colorFilterMode: number;
         activeShaderData: ShaderData | null;
@@ -238,10 +250,13 @@ export class CanvasPaintContext extends PaintContext {
         // Only the weight/style this op actually asks for. `fontWeight`/`fontItalic` were decoded
         // from the same operation a few lines up, so the request is exact rather than "every face
         // the family publishes".
+        this.googleFamily = source === 'google' ? name : null;
         if (source === 'google') {
             // The axes go with the request: asked for an enumerated weight list the API answers
             // with pinned static instances, and asked for the axis *ranges* the document uses it
-            // answers with a variable face. Only the second can be varied at paint time.
+            // answers with a variable face. Only the second can be varied at paint time. This first
+            // ask carries whatever axes the paint has so far — none, for the usual TYPEFACE-then-
+            // FONT_AXIS order — and the FONT_AXIS branch repeats it once they are known.
             ensureWebFont(
                 name,
                 this.fontWeight,
@@ -737,6 +752,18 @@ export class CanvasPaintContext extends PaintContext {
                         if (name) axes.push({ tag: name, value });
                     }
                     this.fontAxes = axes;
+                    // Now that the axes are known, ask again: this is the request that can come
+                    // back variable. `ensureWebFont` is idempotent per (family, weight, style,
+                    // axes), so the repeat costs one map lookup when nothing changed.
+                    if (this.googleFamily && axes.length > 0) {
+                        ensureWebFont(
+                            this.googleFamily,
+                            this.fontWeight,
+                            this.fontItalic,
+                            this.onFontLoaded ?? undefined,
+                            axes,
+                        );
+                    }
                     this.setFont();
                     break;
                 }
@@ -815,6 +842,11 @@ export class CanvasPaintContext extends PaintContext {
         this.fontFamily = cssFontStackFor(0);
         this.fontWeight = 400;
         this.fontItalic = false;
+        // Axes belong to the paint like weight and slant do. Left behind, the previous op's `wdth`
+        // would keep being applied to text that asked for none — and, worse, keep being *requested*,
+        // widening a family's axis span with values no document line uses.
+        this.fontAxes = [];
+        this.googleFamily = null;
         this.colorFilterColor = null;
         this.colorFilterArgb = 0;
         this.colorFilterMode = 3;
@@ -869,7 +901,8 @@ export class CanvasPaintContext extends PaintContext {
             letterSpacing: this.letterSpacing, gradientStyle: this.gradientStyle,
             activeShaderData: this.activeShaderData,
             fontFamily: this.fontFamily, fontWeight: this.fontWeight,
-            fontItalic: this.fontItalic, filterBitmap: this.filterBitmap,
+            fontItalic: this.fontItalic, fontAxes: this.fontAxes,
+            googleFamily: this.googleFamily, filterBitmap: this.filterBitmap,
             colorFilterColor: this.colorFilterColor,
             colorFilterArgb: this.colorFilterArgb, colorFilterMode: this.colorFilterMode
         });

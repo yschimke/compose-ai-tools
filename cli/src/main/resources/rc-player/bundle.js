@@ -17465,6 +17465,17 @@ void main() {
       this.fontItalic = false;
       /** The document's font-variation axes for the current paint, resolved to their tag names. */
       this.fontAxes = [];
+      /**
+       * The bare `google:` family of the current paint, or null when it names none.
+       *
+       * Kept because the axes arrive *after* the family does: a paint bundle serialises `setTextStyle`
+       * (TYPEFACE) before `setTextAxis` (FONT_AXIS), so the request made while resolving the typeface
+       * necessarily has no axes yet. Re-requesting once they are decoded is what actually asks the API
+       * for the variable face; without it a networked render keeps the enumerated static stylesheet and
+       * paints a `wdth` ramp as identical lines. (It looks fine on a page that vendored the variable
+       * face itself, which is exactly how this hid.)
+       */
+      this.googleFamily = null;
       this.colorFilterColor = null;
       this.colorFilterArgb = 0;
       this.colorFilterMode = 3;
@@ -17547,6 +17558,7 @@ void main() {
       if (!family) return cssFontStackFor(0);
       const { source, name } = parseFamily(family);
       if (!name) return cssFontStackFor(0);
+      this.googleFamily = source === "google" ? name : null;
       if (source === "google") {
         ensureWebFont(
           name,
@@ -18015,6 +18027,15 @@ void main() {
               if (name) axes.push({ tag: name, value });
             }
             this.fontAxes = axes;
+            if (this.googleFamily && axes.length > 0) {
+              ensureWebFont(
+                this.googleFamily,
+                this.fontWeight,
+                this.fontItalic,
+                this.onFontLoaded ?? void 0,
+                axes
+              );
+            }
             this.setFont();
             break;
           }
@@ -18085,6 +18106,8 @@ void main() {
       this.fontFamily = cssFontStackFor(0);
       this.fontWeight = 400;
       this.fontItalic = false;
+      this.fontAxes = [];
+      this.googleFamily = null;
       this.colorFilterColor = null;
       this.colorFilterArgb = 0;
       this.colorFilterMode = 3;
@@ -18207,6 +18230,8 @@ void main() {
         fontFamily: this.fontFamily,
         fontWeight: this.fontWeight,
         fontItalic: this.fontItalic,
+        fontAxes: this.fontAxes,
+        googleFamily: this.googleFamily,
         filterBitmap: this.filterBitmap,
         colorFilterColor: this.colorFilterColor,
         colorFilterArgb: this.colorFilterArgb,

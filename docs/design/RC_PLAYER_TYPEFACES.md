@@ -50,11 +50,20 @@ viewer disagree about the *same* document:
    `TypefaceResolver` installed on the `RemoteComposePlayer` that serves `google:` names from that
    cache and delegates everything else to `DefaultTypefaceResolver` (see the Java section).
 2. **Embedded `FontData` is supported by exactly the two lanes nobody looks at first.** The Java and
-   CMP Wasm lanes build a real face from the document's own bytes; the JS lane stores them
-   (`RemoteContext.loadFont` keeps `{mFontData, fontBuilder: null}`) and never registers a
-   `FontFace`, and neither vendored embedded player (Android or JVM) consults them at all. A
-   document that ships its typeface therefore renders correctly in `java`/`cmp-wasm` and in a
-   substituted face everywhere else.
+   CMP Wasm lanes build a real face from the document's own bytes; neither vendored embedded player
+   (Android or JVM) consults them at all, and the JS lane is **worse than "ignores them"** — the
+   `FontData` opcode (189) is not in its operation registry, and an opcode the registry doesn't know
+   makes `RemoteComposeBuffer.inflateFromBuffer` warn `Unknown operation opcode` and **return**,
+   dropping every remaining operation in the buffer. So a document that ships its typeface doesn't
+   merely render in a substituted face there; it renders *truncated* from the font onward. (The
+   player does carry a `RemoteContext.loadFont` that would stash the bytes, but nothing calls it —
+   it is dead code with no decoder in front of it. `rc-compare` already flags such a render, via the
+   same `Unknown operation opcode` warning, as `truncated`.)
+
+   Closing it in the JS lane is a decoder (a `FontData` operation reading `fontId`/`type`/`data` and
+   calling the existing `loadFont`) plus a `FontFace` registration keyed by font id, so a paint's
+   typeface id resolves to the embedded family rather than to a text-table name. That is the one
+   typeface gap this document still records as open.
 
 ## Where the files come from
 

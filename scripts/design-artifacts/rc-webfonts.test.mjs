@@ -380,3 +380,33 @@ test("a document's axis values accumulate into one range across paints", async (
     `expected the enumerated request as well, saw: ${JSON.stringify(stylesheetQueries)}`,
   );
 });
+
+test("axes that arrive after the family still reach the request", async (t) => {
+  if (skip) return t.skip(skip);
+  const page = await playerPage();
+  stylesheetQueries.length = 0;
+  await page.evaluate(
+    async ({ base, family }) => {
+      RC.resetWebFonts();
+      RC.configureWebFonts({ baseUrl: base });
+      // The order a paint bundle actually serialises in: `setTextStyle` (which resolves the family,
+      // and is where the request is made) comes *before* `setTextAxis`. So the first ask for a line
+      // necessarily carries no axes, and the axes are known only afterwards.
+      for (const value of [25, 151]) {
+        await RC.ensureWebFont(family, 400, false, undefined, []);
+        await RC.ensureWebFont(family, 400, false, undefined, [{ tag: "wdth", value }]);
+      }
+      await RC.webFontsReady();
+    },
+    { base: `${origin}/css2`, family: FIXTURE_FAMILY },
+  );
+
+  // Without a request made *after* the axes are decoded, this span is never asked for and the page
+  // keeps the enumerated static stylesheet — which is a face with nothing to vary, so the ramp draws
+  // as identical lines. It looks correct on a page that vendored the variable face itself, which is
+  // exactly how it would hide.
+  assert.ok(
+    stylesheetQueries.some((q) => q.includes("wdth@25..151")),
+    `expected the span requested after the axes arrived, saw: ${JSON.stringify(stylesheetQueries)}`,
+  );
+});
