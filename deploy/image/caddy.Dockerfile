@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.25
+# syntax=docker/dockerfile:1.26
 
 # Bakes deploy/image/Caddyfile into a caddy:2 image so a Caddyfile change ships to
 # the running host over the SAME Watchtower auto-update path as the preview server.
