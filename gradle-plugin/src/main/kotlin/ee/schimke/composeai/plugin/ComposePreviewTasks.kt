@@ -268,12 +268,29 @@ internal object ComposePreviewTasks {
     // `@Preview` functions in `androidMain` without any classic-AGP wiring.
     // [DiscoverPreviewsTask] silently skips dirs that don't exist, so listing
     // it on JVM-only consumers is harmless.
+    // `classes/kotlin/android/main` is the issue-#248 fallback for a module whose ONLY compilation
+    // is the KMP-Android one. It must not be packed alongside a real JVM/desktop compilation: on a
+    // dual-target module (KMP-Android *plus* `jvm("desktop")`, the `samples/cmp-shared` /
+    // `:meshcore-components` shape) both dirs exist and carry the same commonMain classes compiled
+    // for different targets. Packing both mixes them — the android-compiled `MeshcoreFontsKt`
+    // facade wins and calls `MeshcoreFonts_androidKt`, while the desktop pack carries
+    // `MeshcoreFonts_desktopKt` — so the render dies with `NoClassDefFoundError` on the module's
+    // OWN class, one layer past the `*-android` dependency problem.
+    //
+    // Gate it on the same resolution the dependency classpath uses, so the classes the bundle
+    // carries and the dependencies it resolves always describe one target. Lazy for the reason
+    // given at [desktopDependencyConfigName]: `desktopRuntimeClasspath` does not exist yet while
+    // `registerDesktopTasks` runs.
     val sourceClassDirs =
       project.files(
         project.layout.buildDirectory.dir("classes/kotlin/main"),
         project.layout.buildDirectory.dir("classes/kotlin/jvm/main"),
         project.layout.buildDirectory.dir("classes/kotlin/desktop/main"),
-        project.layout.buildDirectory.dir("classes/kotlin/android/main"),
+        project.provider {
+          if (desktopDependencyConfigName(project) == "androidRuntimeClasspath")
+            listOf(project.layout.buildDirectory.dir("classes/kotlin/android/main").get())
+          else emptyList()
+        },
       )
 
     // Processed-resources output dirs, in the same priority order as [sourceClassDirs]. Linked onto
