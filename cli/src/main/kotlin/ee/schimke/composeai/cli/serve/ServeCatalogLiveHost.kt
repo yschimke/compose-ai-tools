@@ -183,6 +183,9 @@ class ServeCatalogLiveHost(
   // Whether the optimizer currently holds its turn: set once the full quiet window is met, cleared
   // the moment a request arrives. Without it the pass re-earned the whole window per render.
   private val optimizerHasTurn = AtomicBoolean(false)
+  // When the optimizer last checked for activity. Any activity newer than this happened while it
+  // was rendering, and must cost it the turn even if the server looks quiet again by now.
+  private val optimizerSampledAt = java.util.concurrent.atomic.AtomicLong(0)
   private val warmDaemonIds = ConcurrentHashMap.newKeySet<String>()
   private val warmingInFlight = ConcurrentHashMap.newKeySet<String>()
 
@@ -424,14 +427,32 @@ class ServeCatalogLiveHost(
     if (!optimizerHasTurn.get()) {
       if (!awaitServerIdle()) return false
       optimizerHasTurn.set(true)
+      optimizerSampledAt.set(clock())
       return true
     }
-    // Holding a turn: only step aside when someone is actually using the server right now.
+    // Holding a turn. The question is NOT "is the server idle right this instant" — sampling that
+    // misses every request that arrived *during* the render we just finished. A render can outlast
+    // OPTIMIZER_YIELD_MILLIS several times over, so by the time we look, a visitor's request has
+    // come and gone and the instantaneous idle reads as quiet again. That visitor never caused a
+    // yield, which is precisely the starvation this gate exists to prevent.
+    //
+    // Ask instead whether anything happened SINCE we last looked. `serverIdleMillis` is the age of
+    // the last activity, so `now - idle` is when that activity happened; if that timestamp is newer
+    // than our previous sample, a request landed while we were busy.
+    val now = clock()
     val idleMillis = serverIdleMillis()
-    if (idleMillis != null && idleMillis >= OPTIMIZER_YIELD_MILLIS) return true
+    val lastActivityAt = idleMillis?.let { now - it }
+    val quiet = lastActivityAt != null && lastActivityAt <= optimizerSampledAt.get()
+    optimizerSampledAt.set(now)
+    if (quiet) return true
     optimizerHasTurn.set(false)
     catalogThemeCache.markPaused()
-    return awaitServerIdle().also { if (it) optimizerHasTurn.set(true) }
+    return awaitServerIdle().also {
+      if (it) {
+        optimizerHasTurn.set(true)
+        optimizerSampledAt.set(clock())
+      }
+    }
   }
 
   private fun awaitServerIdle(): Boolean {
