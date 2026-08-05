@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.19.39](https://github.com/yschimke/compose-ai-tools/compare/v0.19.38...v0.19.39) (2026-08-05)
+
+
+### Features
+
+* **serve:** embed the render in the prefilled issue body instead of only linking it ([#3377](https://github.com/yschimke/compose-ai-tools/issues/3377)) ([1e94d16](https://github.com/yschimke/compose-ai-tools/commit/1e94d1619f85090b363ca5ddd39eb1044db8f049))
+* **serve:** link the Figma node a preview is specified by, when the catalog names one ([#3366](https://github.com/yschimke/compose-ai-tools/issues/3366)) ([6424371](https://github.com/yschimke/compose-ai-tools/commit/642437190ab1b689cff33fc2e65d9e50b07e6434))
+* **serve:** put every page selection in the URL ([#3371](https://github.com/yschimke/compose-ai-tools/issues/3371)) ([7245e55](https://github.com/yschimke/compose-ai-tools/commit/7245e55a9644593c504dddb45dcbb018f4bef4c5))
+* **serve:** report prefetch rate, time split and observed batch width on /status ([#3373](https://github.com/yschimke/compose-ai-tools/issues/3373)) ([27f5700](https://github.com/yschimke/compose-ai-tools/commit/27f57003e548b8acf8aa589de89f4a9e8ffe39c7))
+
+
+### Bug Fixes
+
+* correct the theme-optimizer prefetch stats ([#3376](https://github.com/yschimke/compose-ai-tools/issues/3376)) ([e7db9ae](https://github.com/yschimke/compose-ai-tools/commit/e7db9ae3ff953692336aeb626dbf455efb4235ec))
+* count only fresh renders as optimizer production ([#3379](https://github.com/yschimke/compose-ai-tools/issues/3379)) ([2213b69](https://github.com/yschimke/compose-ai-tools/commit/2213b690841d5450419df1f5ebcfc8ee4387d55f))
+* **figma-svg:** drop retired subcomposition slots from the export ([#3367](https://github.com/yschimke/compose-ai-tools/issues/3367)) ([e426c77](https://github.com/yschimke/compose-ai-tools/commit/e426c776e1650216e3776d85968af734bc51c23d))
+* **serve:** keep a Themes-tab specimen out of the theme override ([#3369](https://github.com/yschimke/compose-ai-tools/issues/3369)) ([f890511](https://github.com/yschimke/compose-ai-tools/commit/f89051198bf7c212c77ee5e320d21456f1820ead))
+* **serve:** make the viewer's lane and the grid's background survive the URL round trip ([#3372](https://github.com/yschimke/compose-ai-tools/issues/3372)) ([9fe2a8b](https://github.com/yschimke/compose-ai-tools/commit/9fe2a8b29b321fe46c826c5ada83b1dd4630bfb5))
+* **serve:** offer Wear watch shapes, not Pixel phones, for a Wear screen ([#3370](https://github.com/yschimke/compose-ai-tools/issues/3370)) ([bc102fa](https://github.com/yschimke/compose-ai-tools/commit/bc102fa93da380156066c6d82b40295a13396a5d))
+* **serve:** overlay the whole Compose Multiplatform graph on the daemon parent ([#3378](https://github.com/yschimke/compose-ai-tools/issues/3378)) ([016565b](https://github.com/yschimke/compose-ai-tools/commit/016565b6968f9177938d6ad77a2a91b12e514385))
+* **serve:** stop caching signed-in pages, and slide the GitHub session ([#3375](https://github.com/yschimke/compose-ai-tools/issues/3375)) ([c40e0b9](https://github.com/yschimke/compose-ai-tools/commit/c40e0b99706ed2dc88ad6221507f54971c2922b6))
+
 ## [0.19.38](https://github.com/yschimke/compose-ai-tools/compare/v0.19.37...v0.19.38) (2026-08-05)
 
 
