@@ -3004,7 +3004,7 @@
     "functionName": "VariableWidthRemote",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "VariableWidthRemote_width_320dp_height_240dp_dpi_320.png",
-    "sha256": "754ffd6e2155561f3708ec658f715273ad68442406bf5a319011850ad88d4b73",
+    "sha256": "b2a04994076d8c07e7b0efb0d2deba15d8695c6eae1b29c52d241489c303f185",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.WatchScreenRemote_width=227dp,height=227dp,dpi=320": {
