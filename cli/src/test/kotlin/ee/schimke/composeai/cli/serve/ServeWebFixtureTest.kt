@@ -702,6 +702,24 @@ class ServeWebFixtureTest {
         // golden is where the affordance is captured in context.
         figmaSpec = fixtureFigmaSpec,
       )
+    // The Wear counterpart of [viewerPath]: a screen served under a Wear system path. Its Size
+    // panel must offer the watch shapes (not Pixel phones / a foldable / a tablet) and drop the
+    // Orientation control a watch can't honour — captured so the visual-diff bot covers the Wear
+    // control panel, which no other page fixture reaches.
+    val viewerWearScreen =
+      ServeWeb.viewerPage(
+        ServePreview(
+          "settings-complication",
+          "Settings complication",
+          section = "Screens",
+          componentId = "SettingsComplication",
+        ),
+        token,
+        sessionId = "home-assistant-wear",
+        canApplyOverrides = true,
+        basePath = "/home-assistant-wear",
+        trust = "branch:yschimke/home-assistant-wear@design-artifacts/home-assistant-wear",
+      )
     // A daemon-backed viewer whose module declares `@ThemeCatalog` themes: the viewer adds an "App
     // theme" selector (grouped by `@ThemeCatalog(group=…)`) so a preview can be re-rendered under a
     // chosen theme via the `themeProvider` override. Captured so the visual-diff bot covers the
@@ -1241,6 +1259,7 @@ class ServeWebFixtureTest {
       File(pagesDir, "serve-viewer-gestures.html").writeText(viewerGestures)
       File(pagesDir, "serve-landing-path.html").writeText(landingPath)
       File(pagesDir, "serve-viewer-path.html").writeText(viewerPath)
+      File(pagesDir, "serve-viewer-wear-screen.html").writeText(viewerWearScreen)
       File(pagesDir, "serve-landing-themed.html").writeText(landingThemed)
       File(pagesDir, "serve-landing-catalog-palette.html").writeText(landingCatalogPalette)
       File(pagesDir, "serve-viewer-catalog-palette.html").writeText(viewerCatalogPalette)
@@ -1359,6 +1378,7 @@ class ServeWebFixtureTest {
     )
     assertGolden(File(pagesDir, "serve-landing-path.html"), landingPath)
     assertGolden(File(pagesDir, "serve-viewer-path.html"), viewerPath)
+    assertGolden(File(pagesDir, "serve-viewer-wear-screen.html"), viewerWearScreen)
     assertGolden(File(pagesDir, "serve-landing-themed.html"), landingThemed)
     assertGolden(File(pagesDir, "serve-landing-catalog-palette.html"), landingCatalogPalette)
     assertGolden(File(pagesDir, "serve-viewer-catalog-palette.html"), viewerCatalogPalette)
@@ -2617,6 +2637,58 @@ class ServeWebFixtureTest {
       sectionlessComponent.contains("id=\"cp-device\"") ||
         sectionlessComponent.contains("id=\"cp-orientation\""),
       "sectionless component still hides device overrides",
+    )
+  }
+
+  @Test
+  fun `a Wear system's screens offer watch shapes instead of phones and no orientation`() {
+    val wearScreen =
+      ServeWeb.viewerPage(
+        ServePreview("settings-complication", "Settings complication", section = "Screens"),
+        token,
+        canApplyOverrides = true,
+        basePath = "/home-assistant-wear",
+      )
+    val phoneScreen =
+      ServeWeb.viewerPage(
+        ServePreview("settings", "Settings", section = "Screens"),
+        token,
+        canApplyOverrides = true,
+        basePath = "/meshcore-mobile",
+      )
+
+    assertTrue(wearScreen.contains("<label>Device size"), "a Wear screen keeps the device picker")
+    listOf(
+        "id:wearos_small_round",
+        "id:wearos_large_round",
+        "id:wearos_xl_round",
+        "id:wearos_square",
+        "id:wearos_rect",
+      )
+      .forEach { assertTrue(wearScreen.contains("value=\"$it\""), "Wear screen offers $it") }
+    listOf("id:pixel_5", "id:pixel_7", "id:pixel_fold", "id:pixel_tablet").forEach {
+      assertFalse(wearScreen.contains("value=\"$it\""), "Wear screen must not offer $it")
+      assertTrue(phoneScreen.contains("value=\"$it\""), "a handheld screen still offers $it")
+    }
+    // Watches don't rotate — the control is omitted rather than left as a dead knob, and neither
+    // static-snapshot note may advertise it.
+    assertFalse(wearScreen.contains("id=\"cp-orientation\""), "Wear screen omits orientation")
+    assertTrue(phoneScreen.contains("id=\"cp-orientation\""), "a handheld screen keeps orientation")
+
+    val staticWearScreen =
+      ServeWeb.viewerPage(
+        ServePreview("settings-complication", "Settings complication", section = "Screens"),
+        token,
+        canApplyOverrides = false,
+        basePath = "/home-assistant-wear",
+      )
+    assertFalse(
+      staticWearScreen.lowercase().contains("orientation"),
+      "the Wear snapshot note must not promise an orientation override",
+    )
+    assertTrue(
+      staticWearScreen.contains("device size, locale, font scale"),
+      "the Wear snapshot note still lists the overrides it does carry",
     )
   }
 
