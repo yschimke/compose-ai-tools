@@ -2975,12 +2975,36 @@
     "sha256": "2d45179cd5fb1be50c5a1cdefdc30f41a8302a22b9260eaeeacb6f19c01e3d9c",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.TypefaceSpecimenRemote_width=320dp,height=240dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "TypefaceSpecimenRemote",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "TypefaceSpecimenRemote_width_320dp_height_240dp_dpi_320.png",
+    "sha256": "5e7daa8b3f89be00ac69f28038d815941ffeff186166a6210fe839aeb3c4994f",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
+  },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.TypographyRemote_width=320dp,height=240dp,dpi=320": {
     "captureLabel": "",
     "functionName": "TypographyRemote",
     "module": "samples:design-catalog-remote-m3",
     "renderBasename": "TypographyRemote_width_320dp_height_240dp_dpi_320.png",
     "sha256": "eeb5c4e4f78a64538d38cbacd3d1db8f985a2a1fb80b0db46b9e21ca7775fb5c",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.VariableWeightRemote_width=320dp,height=240dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "VariableWeightRemote",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "VariableWeightRemote_width_320dp_height_240dp_dpi_320.png",
+    "sha256": "dce0928a38837626649084dd372db41d305ad013ffa64293bcaffafefc3a160f",
+    "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
+  },
+  "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.VariableWidthRemote_width=320dp,height=240dp,dpi=320": {
+    "captureLabel": "",
+    "functionName": "VariableWidthRemote",
+    "module": "samples:design-catalog-remote-m3",
+    "renderBasename": "VariableWidthRemote_width_320dp_height_240dp_dpi_320.png",
+    "sha256": "754ffd6e2155561f3708ec658f715273ad68442406bf5a319011850ad88d4b73",
     "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt"
   },
   "samples:design-catalog-remote-m3/com.example.designcatalogremotem3.CatalogPreviewsKt.WatchScreenRemote_width=227dp,height=227dp,dpi=320": {
