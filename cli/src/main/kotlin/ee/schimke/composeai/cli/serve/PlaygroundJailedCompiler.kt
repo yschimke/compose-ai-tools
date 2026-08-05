@@ -183,13 +183,17 @@ class PlaygroundJailedCompiler(
       process.destroyForcibly()
       process.waitFor(5, TimeUnit.SECONDS)
     }
-    outThread.join(2_000)
-    errThread.join(2_000)
+    // Best-effort: a drain thread that outlives this is still appending, so both reads below stay
+    // under the same monitor its appends take. Without that, `toString()` copies the backing array
+    // while a concurrent `append` may be resizing it — a torn read, or an
+    // ArrayIndexOutOfBoundsException out of StringBuilder itself.
+    outThread.join(DRAIN_JOIN_MILLIS)
+    errThread.join(DRAIN_JOIN_MILLIS)
     return PlaygroundSandboxProbe.Launch(
       exitCode = if (finished) process.exitValue() else -1,
-      stdout = out.toString(),
+      stdout = synchronized(out) { out.toString() },
       stderr =
-        if (finished) err.toString()
+        if (finished) synchronized(err) { err.toString() }
         else "the compile exceeded its ${effectiveTimeoutSeconds}s budget",
     )
   }
@@ -228,6 +232,13 @@ class PlaygroundJailedCompiler(
 
     /** Long enough to ride out one in-flight compile, short enough that a client isn't stranded. */
     const val DEFAULT_SLOT_WAIT_SECONDS = 30L
+
+    /**
+     * How long to wait for a drain thread after the child exits. The pipes are closed by then, so
+     * this only ever expires on a wedged reader — and the reads it guards are synchronized, so
+     * expiring costs a truncated log rather than a corrupted one.
+     */
+    private const val DRAIN_JOIN_MILLIS = 2_000L
 
     private val JSON = Json { ignoreUnknownKeys = true }
 
