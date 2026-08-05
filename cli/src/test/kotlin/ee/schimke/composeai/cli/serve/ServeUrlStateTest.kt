@@ -83,6 +83,18 @@ class ServeUrlStateTest {
   }
 
   @Test
+  fun `back restores the background this load opened with, not the stored one`() {
+    val html = landing()
+    // Re-reading localStorage on popstate returns the value the click that we are backing OUT of
+    // just wrote, so Transparent would survive its own Back.
+    assertTrue(html.contains("""var poppedBg = urlParam("bg") || initialBg;"""), html)
+    assertTrue(
+      html.contains("""var initialBg = document.documentElement.classList.contains("""),
+      "the fallback is the class the pre-paint script resolved, like tab/theme's initial values",
+    )
+  }
+
+  @Test
   fun `the pre-paint background script honours the url before the sticky choice`() {
     assertTrue(
       landing().contains("""var b=new URLSearchParams(location.search).get("bg")"""),
@@ -125,6 +137,26 @@ class ServeUrlStateTest {
       "one restore path serves both the first load and Back/Forward",
     )
     assertTrue(script.contains("window.cpUrlState.onPop("), "the viewer must handle Back/Forward")
+    // The interactive lanes render themselves and never reach refreshLinks, so without this the
+    // chosen lane never reaches the URL and the pending push lands on some later edit instead.
+    assertTrue(
+      script.contains("else syncUrl();"),
+      "entering Live / Wasm / RC must write ?mode= at the moment of the transition",
+    )
+    // …and the other half of the round trip: a bookmarked lane has to open in that lane. The
+    // param is read BEFORE the first sync, which would otherwise clear a mode no control is
+    // holding yet — reading it at apply time restored nothing at all.
+    assertTrue(
+      script.contains(
+        """var initialUrlMode = new URLSearchParams(location.search).get("mode") || "";"""
+      ),
+      "the viewer must capture a bookmarked ?mode= before the first URL sync",
+    )
+    assertTrue(script.contains("var wanted = initialUrlMode;"), "…and apply it on first load")
+    assertTrue(
+      script.contains("if (!radio || radio.disabled) return;"),
+      "a mode this session doesn't offer is ignored, not entered",
+    )
     // token / session are the server's, and the viewer must never rewrite them.
     assertFalse(
       script.contains("values.token") || script.contains("values.session"),
