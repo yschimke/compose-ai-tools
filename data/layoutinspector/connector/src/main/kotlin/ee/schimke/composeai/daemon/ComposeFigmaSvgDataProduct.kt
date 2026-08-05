@@ -504,16 +504,40 @@ object ComposeFigmaSvgDataProducer {
   }
 
   /**
-   * The [target] bounds clipped to [frame], cropped; a degenerate box → a 1×1 transparent pixel.
+   * The [target] box cropped out of [frame], always at the target's **own** size; a degenerate box
+   * → a 1×1 transparent pixel.
+   *
+   * The emitted `<image>` is placed at the target's full box (`x`/`y`/`width`/`height` from the
+   * layer), so the PNG has to be that box — the part of it that falls outside the frame is
+   * transparent, not missing. Returning the frame-clipped sub-image instead made the browser scale
+   * a short bitmap up to the declared width: Jetsnack `Search/Categories` places its minimum-size
+   * dessert image at 575..1270 under a `.clip(CategoryShape)` card, the crop clamped to the 1050px
+   * frame produced a 475×695 PNG, and the `<image width="695">` stretched it 1.46× so nothing
+   * inside the rounded card lined up with the PNG (issue #2852). The off-frame columns are pixels
+   * the render never drew — and here also pixels the clip removes — so transparent is exactly
+   * right.
    */
   private fun cropOrTransparent(frame: BufferedImage, target: FigmaSvgRasterTarget): BufferedImage {
+    val fullW = target.right - target.left
+    val fullH = target.bottom - target.top
+    if (fullW <= 0 || fullH <= 0) return transparentPixel()
     val x = target.left.coerceIn(0, frame.width)
     val y = target.top.coerceIn(0, frame.height)
     val right = target.right.coerceIn(x, frame.width)
     val bottom = target.bottom.coerceIn(y, frame.height)
     val w = right - x
     val h = bottom - y
-    return if (w > 0 && h > 0) frame.getSubimage(x, y, w, h) else transparentPixel()
+    if (w <= 0 || h <= 0) return transparentPixel()
+    // Fully inside the frame: the sub-image already is the target box, no copy needed.
+    if (w == fullW && h == fullH) return frame.getSubimage(x, y, w, h)
+    val out = BufferedImage(fullW, fullH, BufferedImage.TYPE_INT_ARGB)
+    val g = out.createGraphics()
+    try {
+      g.drawImage(frame.getSubimage(x, y, w, h), x - target.left, y - target.top, null)
+    } finally {
+      g.dispose()
+    }
+    return out
   }
 
   private fun transparentPixel(): BufferedImage = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB)
