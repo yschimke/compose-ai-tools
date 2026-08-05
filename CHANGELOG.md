@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.19.36](https://github.com/yschimke/compose-ai-tools/compare/v0.19.35...v0.19.36) (2026-08-05)
+
+
+### Features
+
+* **daemon:** give render/trace real phase spans and reach recomposition from ordinary renders ([#3343](https://github.com/yschimke/compose-ai-tools/issues/3343)) ([5d4c407](https://github.com/yschimke/compose-ai-tools/commit/5d4c407eed2d284e550aec64189d0e628a774cdc))
+* **design-catalog-remote-m3:** add typeface and font-variation specimens ([#3329](https://github.com/yschimke/compose-ai-tools/issues/3329)) ([bc38d93](https://github.com/yschimke/compose-ai-tools/commit/bc38d9313e65721eef754183e77dbe3e14be34bb))
+* **fonts:** fetch a family's real variable font file, not a baked instance ([#3339](https://github.com/yschimke/compose-ai-tools/issues/3339)) ([98d6098](https://github.com/yschimke/compose-ai-tools/commit/98d6098c20318b5980f47866ed8c20f442fda2a2))
+* **rc-player-compose:** resolve the default face by name and apply font axes ([#3334](https://github.com/yschimke/compose-ai-tools/issues/3334)) ([4afba97](https://github.com/yschimke/compose-ai-tools/commit/4afba97c8655688bfca1800535a62a33a51782a1))
+* **rc-player-jvm:** apply a document's font-variation axes ([#3336](https://github.com/yschimke/compose-ai-tools/issues/3336)) ([51dab43](https://github.com/yschimke/compose-ai-tools/commit/51dab432da292b3064743a110170e3f6eb0e59e9))
+* **rc-player:** trace the CMP players with androidx.tracing 2 and profile four documents ([#3341](https://github.com/yschimke/compose-ai-tools/issues/3341)) ([a015ed7](https://github.com/yschimke/compose-ai-tools/commit/a015ed71ffd1314b6a33ec37ca4d566a6a37ae6d))
+* **remotecompose:** serve google: font families to the view player ([#3335](https://github.com/yschimke/compose-ai-tools/issues/3335)) ([27ea28c](https://github.com/yschimke/compose-ai-tools/commit/27ea28c1043b2758e3e206f8c98b4e0202cd9762))
+* **serve:** give the preview server room to breathe and cards a real hover ([#3333](https://github.com/yschimke/compose-ai-tools/issues/3333)) ([42654cb](https://github.com/yschimke/compose-ai-tools/commit/42654cb4797e820b1e953e9ee36f99c617234684))
+* **serve:** report playground health on /status.json ([#3330](https://github.com/yschimke/compose-ai-tools/issues/3330)) ([aec17a2](https://github.com/yschimke/compose-ai-tools/commit/aec17a2cffff8f4eafd80425c102dace6a0fb9d3))
+
+
+### Bug Fixes
+
+* **cli:** stream per-preview bundles out of bundle split instead of holding them all ([#3337](https://github.com/yschimke/compose-ai-tools/issues/3337)) ([03ecb67](https://github.com/yschimke/compose-ai-tools/commit/03ecb67993ff014ab379d352d8d7694358a01274))
+* **daemon:** keep render/trace aggregates complete and ordinary-render recomposition in snapshot mode ([#3344](https://github.com/yschimke/compose-ai-tools/issues/3344)) ([a253e9c](https://github.com/yschimke/compose-ai-tools/commit/a253e9c2f758721bed78d63e1a1368cc4a962dd8))
+* **serve:** render a cold-id theme request instead of abandoning it ([#3345](https://github.com/yschimke/compose-ai-tools/issues/3345)) ([b6e1fc3](https://github.com/yschimke/compose-ai-tools/commit/b6e1fc336859ad65683cd3e5d03fda2061ddf07f))
+
 ## [0.19.35](https://github.com/yschimke/compose-ai-tools/compare/v0.19.34...v0.19.35) (2026-08-05)
 
 
