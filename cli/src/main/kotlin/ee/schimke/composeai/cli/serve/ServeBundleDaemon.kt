@@ -675,8 +675,15 @@ internal object ServeBundleDaemon {
    */
   internal fun shouldPrecedeDaemonSidecar(coordinate: BundleReader.ClasspathEntry.Maven): Boolean =
     coordinate.group.startsWith("androidx.") ||
-      (coordinate.group == "org.jetbrains.compose.components" &&
-        coordinate.artifact.startsWith("components-resources")) ||
+      // Compose Multiplatform artifacts are `org.jetbrains.compose.*` by GROUP but ship
+      // `androidx.compose.*` PACKAGES — the same overlap [ValidateComposePreviewClasspathTask]
+      // warns about. [UserClassLoaderHolder.mustDelegateToParent] keys on the package, so those
+      // classes are force-delegated to the parent; leaving the jars in the isolated child means
+      // the child copy is never consulted and the sidecar's own Compose answers instead. A
+      // consumer pinning a different version than the renderer ships then gets a hard
+      // `NoSuchMethodError` mid-render — meshcore-mobile on material3 1.10.0-alpha05 against a
+      // 1.11.x sidecar died on `AppBarKt.TopAppBar-gNPyAyM`. Group and package rule must agree.
+      coordinate.group.startsWith("org.jetbrains.compose") ||
       (coordinate.group == "org.jetbrains.kotlinx" &&
         (coordinate.artifact.startsWith("kotlinx-coroutines") ||
           coordinate.artifact.startsWith("kotlinx-io")))
@@ -687,16 +694,25 @@ internal object ServeBundleDaemon {
    * only the resolved files (the coordinates were dropped during catalog resolution). Both the
    * Maven-local (`…/androidx/compose/…`) and Gradle-cache (`…/androidx.compose.material3/…`)
    * layouts put the dotted/slashed group right after a path separator, so a `/androidx` segment
-   * identifies the AndroidX graph, `components-resources` the Compose resources runtime, and
+   * identifies the AndroidX graph, `org.jetbrains.compose` the Compose Multiplatform graph (whose
+   * artifacts ship `androidx.compose.*` packages — see [shouldPrecedeDaemonSidecar]), and
    * `kotlinx-coroutines` / `kotlinx-io` the kotlinx artifacts whose namespaces
    * `UserClassLoaderHolder` delegates to the daemon parent.
    */
   internal fun jarPrecedesDaemonSidecar(jar: File): Boolean {
     val path = jar.path.replace('\\', '/')
     return path.contains("/androidx") ||
-      path.contains("components-resources") ||
+      JETBRAINS_COMPOSE_ARTIFACT_PATH.containsMatchIn(path) ||
       KOTLINX_SHARED_ARTIFACT_PATH.containsMatchIn(path)
   }
+
+  /**
+   * The `org.jetbrains.compose.*` graph in either cache layout. Broader than the old
+   * `components-resources` check it replaces — every Compose Multiplatform artifact ships
+   * `androidx.compose.*` packages the child delegates to the parent, not just the resources one.
+   */
+  private val JETBRAINS_COMPOSE_ARTIFACT_PATH =
+    Regex("/(?:org\\.jetbrains\\.compose|org/jetbrains/compose)[./]")
 
   /** Matches Gradle-cache and Maven-local group layouts without inspecting unrelated path parts. */
   private val KOTLINX_SHARED_ARTIFACT_PATH =
