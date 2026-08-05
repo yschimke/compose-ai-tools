@@ -94,7 +94,10 @@ class ServeGithubAuth(
           call.respondText("GitHub sign-in failed.", status = HttpStatusCode.Forbidden)
           return
         }
-    val session = signedSession(user.login, user.repositoryAccess)
+    // This is the moment GitHub actually vouched for the visitor, so it anchors the absolute cap
+    // that [refreshSession] may never slide a session past.
+    val authenticatedAt = clock.millis()
+    val session = signedSession(user.login, user.repositoryAccess, authenticatedAt)
     val secure = isSecure(call, config.callbackBaseUrl)
     call.response.cookies.append(authCookie(session, maxAge = SESSION_TTL_SECONDS, secure = secure))
     call.response.cookies.append(stateCookie("", maxAge = 0, secure = secure))
@@ -107,14 +110,21 @@ class ServeGithubAuth(
 
   /**
    * Slide a still-valid session forward, so an active visitor stays signed in instead of being
-   * bounced through GitHub on a fixed cadence.
+   * bounced through GitHub on a fixed cadence — but never past the absolute cap stamped at sign-in.
    *
-   * The session is a self-contained signed cookie: there is no server-side store to touch, so the
-   * only way to extend one is to mint a fresh cookie carrying a later expiry. This re-mints once a
-   * session is past [SESSION_REFRESH_AFTER_SECONDS] — half its life — which keeps someone who
-   * visits regularly signed in indefinitely while still re-checking their GitHub identity and
-   * repository access whenever they've been away longer than a full [SESSION_TTL_SECONDS]. Under
-   * that threshold it does nothing at all, so an ordinary page view sets no cookie.
+   * The session is a self-contained signed cookie: there is no server-side store to touch and the
+   * access token is deliberately not kept, so the only way to extend one is to mint a fresh cookie
+   * carrying a later expiry, and there is nothing to re-ask GitHub with at refresh time. That is
+   * precisely why the cap exists. A refreshed cookie copies the `repositoryAccess` flag GitHub
+   * computed at sign-in, and that flag is the playground gate; without a ceiling, somebody whose
+   * access to the gating repo was revoked would keep it for as long as they kept visiting —
+   * forever, for a daily visitor. [SESSION_ABSOLUTE_TTL_SECONDS] from [handleCallback] is the
+   * ceiling, and reaching it costs the visitor one silent redirect through GitHub (an OAuth app
+   * they have already approved re-authorises without a consent screen) which re-computes the flag.
+   *
+   * So: idle expiry [SESSION_TTL_SECONDS] slides on every visit past its half-life
+   * ([SESSION_REFRESH_AFTER_SECONDS]); the absolute expiry never moves. Under the half-life, or
+   * once the cap is reached, this does nothing at all — an ordinary page view sets no cookie.
    *
    * Skipped on the OAuth routes: [handleCallback] mints the authoritative cookie itself, and a
    * second `Set-Cookie` for the same name in one response is a coin flip between them.
@@ -122,12 +132,20 @@ class ServeGithubAuth(
   fun refreshSession(call: ApplicationCall) {
     if (call.request.uri.substringBefore('?').startsWith(AUTH_PATH_PREFIX)) return
     val session = call.request.cookieValue(AUTH_COOKIE)?.let { verifySession(it) } ?: return
-    val remaining = session.expiresAt - clock.millis()
-    if (remaining > SESSION_REFRESH_AFTER_SECONDS * 1000) return
+    val now = clock.millis()
+    if (session.expiresAt - now > SESSION_REFRESH_AFTER_SECONDS * 1000) return
+    // Legacy cookies (minted before the sign-in stamp existed) carry no anchor, so they cannot be
+    // shown to be inside the cap and are left to expire on their own terms.
+    val authenticatedAt = session.authenticatedAt ?: return
+    val expiresAt =
+      minOf(now + SESSION_TTL_SECONDS * 1000, authenticatedAt + SESSION_ABSOLUTE_TTL_SECONDS * 1000)
+    if (expiresAt <= session.expiresAt) return
     call.response.cookies.append(
       authCookie(
-        signedSession(session.login, session.repositoryAccess),
-        maxAge = SESSION_TTL_SECONDS,
+        signedSession(session.login, session.repositoryAccess, authenticatedAt, expiresAt),
+        // The cookie dies with the payload it carries, rather than outliving it as a cookie the
+        // browser keeps sending and the server keeps rejecting.
+        maxAge = (expiresAt - now) / 1000,
         secure = isSecure(call, config.callbackBaseUrl),
       )
     )
@@ -226,10 +244,14 @@ class ServeGithubAuth(
     return StatePayload(returnTo)
   }
 
-  private fun signedSession(login: String, repositoryAccess: Boolean): String {
-    val expiresAt = clock.millis() + SESSION_TTL_SECONDS * 1000
+  private fun signedSession(
+    login: String,
+    repositoryAccess: Boolean,
+    authenticatedAt: Long,
+    expiresAt: Long = clock.millis() + SESSION_TTL_SECONDS * 1000,
+  ): String {
     val repoFlag = if (repositoryAccess) "repo" else "no-repo"
-    return sign("${login.lowercase()}|$repoFlag|$expiresAt")
+    return sign("${login.lowercase()}|$repoFlag|$expiresAt|$authenticatedAt")
   }
 
   private fun verifySession(value: String): SessionPayload? {
@@ -241,10 +263,14 @@ class ServeGithubAuth(
         // authenticated for live preview, but do not satisfy the stricter playground gate.
         2 -> Triple(parts[0], false, parts[1].toLongOrNull())
         3 -> Triple(parts[0], parts[1] == "repo", parts[2].toLongOrNull())
+        4 -> Triple(parts[0], parts[1] == "repo", parts[2].toLongOrNull())
         else -> return null
       }
     if (expiresAt == null || expiresAt <= clock.millis() || login.isBlank()) return null
-    return SessionPayload(login, repositoryAccess, expiresAt)
+    // Absent on the 2- and 3-part forms: those predate the sign-in stamp, so their session simply
+    // can't be slid ([refreshSession]) and runs out at its own expiry.
+    val authenticatedAt = parts.getOrNull(3)?.toLongOrNull()
+    return SessionPayload(login, repositoryAccess, expiresAt, authenticatedAt)
   }
 
   private fun sign(payload: String): String {
@@ -302,6 +328,8 @@ class ServeGithubAuth(
     val login: String,
     val repositoryAccess: Boolean,
     val expiresAt: Long,
+    /** When GitHub last vouched for this visitor; null on a cookie minted before the stamp. */
+    val authenticatedAt: Long?,
   )
 
   companion object {
@@ -326,24 +354,35 @@ class ServeGithubAuth(
     private const val STATE_TTL_SECONDS = 10L * 60
 
     /**
-     * How long a session survives *without a visit*.
+     * The **idle** expiry: how long a session survives without a visit. [refreshSession] slides it
+     * forward on each visit, up to [SESSION_ABSOLUTE_TTL_SECONDS].
      *
-     * This was 12 hours, which is shorter than the gap between one working day and the next: a
-     * visitor who signed in yesterday afternoon was reliably signed out this morning, and the
-     * server is a preview gallery people drop into occasionally, not a console they live in. Two
-     * weeks with [refreshSession] sliding it forward means regular visitors effectively never see
-     * the GitHub round-trip again, while anyone who stays away longer than a fortnight is
-     * re-verified.
-     *
-     * It is also the ceiling on how stale the cached repository-access flag can be — revoking
-     * someone's access to the gating repo takes up to this long to close the playground behind them
-     * — which is why it is a fortnight rather than the year a pure "remember me" would use.
+     * This was 12 hours *absolute*, which is shorter than the gap between one working day and the
+     * next: a visitor who signed in yesterday afternoon was reliably signed out this morning, and
+     * the server is a preview gallery people drop into occasionally, not a console they live in. A
+     * week of idle means the normal rhythm of visiting — daily, or on Monday after a quiet weekend
+     * — never lands on a sign-in.
      */
-    internal const val SESSION_TTL_SECONDS = 14L * 24 * 60 * 60
+    internal const val SESSION_TTL_SECONDS = 7L * 24 * 60 * 60
 
     /**
-     * Sessions are re-minted once they are this old (half of [SESSION_TTL_SECONDS]). Half-life
-     * rather than every request: the cookie is only worth rewriting when the extension is
+     * The **absolute** expiry, measured from the sign-in itself and never extended: however
+     * regularly someone visits, GitHub gets asked about them again this often.
+     *
+     * It is the ceiling on how stale the cached `repositoryAccess` flag — the playground gate — can
+     * be, so revoking someone's access to the gating repo closes the playground behind them within
+     * a fortnight rather than never. That is what makes the sliding idle expiry above safe: an
+     * entitlement decided once at sign-in cannot ride along indefinitely on the strength of the
+     * visitor simply continuing to visit.
+     *
+     * Reaching it is cheap for the visitor: an OAuth app they have already approved re-authorises
+     * without a consent screen, so it reads as a page load rather than a sign-in.
+     */
+    internal const val SESSION_ABSOLUTE_TTL_SECONDS = 14L * 24 * 60 * 60
+
+    /**
+     * Sessions are re-minted once their idle expiry is this close (half of [SESSION_TTL_SECONDS]).
+     * Half-life rather than every request: the cookie is only worth rewriting when the extension is
      * meaningful, and a `Set-Cookie` on every page view is noise on responses that are otherwise
      * identical.
      */

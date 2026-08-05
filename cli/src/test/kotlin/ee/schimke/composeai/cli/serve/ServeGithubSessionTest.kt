@@ -6,6 +6,7 @@ import java.time.ZoneOffset
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import okhttp3.MediaType.Companion.toMediaType
@@ -14,6 +15,8 @@ import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
+import okio.Path.Companion.toPath
+import okio.fakefilesystem.FakeFileSystem
 
 /**
  * How long a GitHub sign-in lasts, and how it renews.
@@ -72,6 +75,24 @@ class ServeGithubSessionTest {
 
   private val registry = ServeSessionRegistry(open = { null })
 
+  private val fs = FakeFileSystem()
+
+  /**
+   * Wired only so `/playground` exists: it is the route that actually *consults* the session (302
+   * to sign-in when there is none, 200 for a signed-in visitor whom the fake GitHub grants repo
+   * rights), which makes it the honest probe for "is this cookie still an authenticated visitor
+   * with playground rights". No compile is performed.
+   */
+  private val playground =
+    PlaygroundCompileService(
+      catalogClasspath = { _ -> null },
+      compiler = PlaygroundCompileService.Compiler { _, _, _ -> emptyList() },
+      discoverer = PlaygroundCompileService.PreviewDiscoverer { _, _ -> emptyList() },
+      tokenStore = PlaygroundTokenStore(fileSystem = fs),
+      newWorkDir = { "/work/run".toPath() },
+      fileSystem = fs,
+    )
+
   private val server: ServeHttpServer by lazy {
     ServeHttpServer(
         host = "127.0.0.1",
@@ -81,6 +102,7 @@ class ServeGithubSessionTest {
         defaultSessionId = "none",
         isPublic = true,
         githubAuth = auth,
+        playgroundService = playground,
       )
       .also { it.start() }
   }
@@ -141,8 +163,8 @@ class ServeGithubSessionTest {
       .toLong()
 
   @Test
-  fun `a sign-in lasts a fortnight, not an afternoon`() {
-    assertEquals(14L * 24 * 60 * 60, ServeGithubAuth.SESSION_TTL_SECONDS)
+  fun `a sign-in lasts a week idle, not an afternoon`() {
+    assertEquals(7L * 24 * 60 * 60, ServeGithubAuth.SESSION_TTL_SECONDS)
     assertEquals(ServeGithubAuth.SESSION_TTL_SECONDS, maxAge(signIn()))
   }
 
@@ -182,4 +204,54 @@ class ServeGithubSessionTest {
     now = now.plusSeconds(ServeGithubAuth.SESSION_TTL_SECONDS + 60)
     assertNull(visit(cookie), "an expired cookie must be re-authenticated, not extended")
   }
+
+  /**
+   * The cap that makes the sliding expiry safe. A refreshed cookie copies the `repositoryAccess`
+   * flag GitHub computed at sign-in — the playground gate — and there is no stored access token to
+   * re-ask with, so without an absolute ceiling somebody whose repo access was revoked would keep
+   * the gate open simply by continuing to visit. Sliding must therefore run out.
+   */
+  @Test
+  fun `sliding never carries a session past its absolute cap`() {
+    val signedInAt = now
+    var cookie = signIn()
+    assertTrue(signedIn(cookie), "the front door greets a fresh session by name")
+    // Visit diligently, every half-life, for well past the cap.
+    var slides = 0
+    while (now < signedInAt.plusSeconds(ServeGithubAuth.SESSION_ABSOLUTE_TTL_SECONDS * 2)) {
+      now = now.plusSeconds(ServeGithubAuth.SESSION_REFRESH_AFTER_SECONDS + 60)
+      val refreshed = visit(cookie) ?: continue
+      slides++
+      cookie = refreshed
+      assertTrue(
+        now.plusSeconds(maxAge(refreshed)) <=
+          signedInAt.plusSeconds(ServeGithubAuth.SESSION_ABSOLUTE_TTL_SECONDS),
+        "a slide must never push the expiry past the cap stamped at sign-in",
+      )
+    }
+    assertTrue(slides > 0, "the session must have slid at least once before the cap bit")
+    // Past the cap the visitor is signed out and has to go through GitHub again, which is what
+    // re-computes their repository access.
+    assertNull(visit(cookie), "a session at its absolute cap must not be extended")
+    assertFalse(signedIn(cookie), "a session past its absolute cap must not authenticate")
+  }
+
+  /**
+   * Whether this cookie still opens the repo-gated playground — 200 for a signed-in visitor the
+   * fake GitHub granted push rights, a redirect to the sign-in for anyone the session no longer
+   * authenticates. This is the gate the absolute cap exists to close.
+   */
+  private fun signedIn(cookie: String): Boolean =
+    client
+      .newBuilder()
+      .followRedirects(false)
+      .build()
+      .newCall(
+        Request.Builder()
+          .url("http://127.0.0.1:${server.port}/playground")
+          .header("Cookie", cookie.substringBefore(";"))
+          .build()
+      )
+      .execute()
+      .use { resp -> resp.code == 200 }
 }
