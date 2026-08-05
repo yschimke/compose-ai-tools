@@ -3193,17 +3193,27 @@ object ServeWeb {
     /**
      * A Wear / watch system id, matched on a `-`/`_` token so `confetti-wear` and `wear-m3` hit.
      */
-    private val darkFirstIdPattern = Regex("(^|[-_])(wear|watch)([-_]|$)")
+    private val wearIdPattern = Regex("(^|[-_])(wear|watch)([-_]|$)")
+
+    /**
+     * Whether [system] targets Wear OS, from the served id alone. Drives the platform-shaped bits
+     * of the viewer that are true of a watch regardless of surface colour — the watch device
+     * profiles in a screen's size picker, and the absence of an orientation control. Generic (any
+     * Wear/watch system), never per-app.
+     */
+    fun isWearOs(system: String): Boolean {
+      val s = system.trim('/').lowercase()
+      if (s.isBlank()) return false
+      return wearIdPattern.containsMatchIn(s)
+    }
 
     /**
      * Fallback dark-first guess from the system id alone, for a catalog that declares no
-     * `display.surface`. Generic (any Wear/watch system), never per-app.
+     * `display.surface`: a Wear system is black-watch-face-first, so [isWearOs] *is* the guess.
+     * Kept as its own name because a future non-Wear dark-first platform belongs here, not in
+     * [isWearOs].
      */
-    fun isDarkFirst(system: String): Boolean {
-      val s = system.trim('/').lowercase()
-      if (s.isBlank()) return false
-      return darkFirstIdPattern.containsMatchIn(s)
-    }
+    fun isDarkFirst(system: String): Boolean = isWearOs(system)
 
     /**
      * Wear/watch renders have no day mode; discard a generic UI's accidental light override.
@@ -4333,8 +4343,13 @@ object ServeWeb {
           "<span class=\"cp-rc-backends-label\">RC:</span>$chips</span>"
       }
     val isAppScreen = isScreenPreview(preview)
+    // A Wear catalog's screens are watch faces/tiles/activities — offering Pixel phones, a foldable
+    // and a tablet there is nonsense (and renders a watch-shaped composable onto a 1280dp stage).
+    // Same system-id signal the always-dark stage uses, so one heuristic decides "this is a Wear
+    // system" for both.
+    val isWearSystem = SystemDisplay.isWearOs(basePath.trim('/').ifBlank { sessionId ?: "" })
     val screenDeviceOptions =
-      SCREEN_DEVICES.joinToString("\n                  ") { device ->
+      screenDevicesFor(isWearSystem).joinToString("\n                  ") { device ->
         val value = WebEscaping.htmlEscape(device.id)
         val label = WebEscaping.htmlEscape("${device.name} · ${device.kind} (${device.sizeDp})")
         "<option value=\"$value\">$label</option>"
@@ -4398,12 +4413,21 @@ object ServeWeb {
     // day/night, font scale, locale &amp; knobs apply in the browser but size/device/orientation
     // need a live server). A catalog whose carried daemon re-renders on demand ([overridesLive]
     // true) needs no note — its controls all take effect.
+    // Watches don't rotate, so a Wear screen gets the device picker without the Orientation control
+    // — and the notes below must not promise a knob that isn't on the page.
+    val showOrientation = isAppScreen && !isWearSystem
     val serverOnlyOverrideNote =
-      if (isAppScreen) "Device size &amp; Orientation need the live server. "
-      else "Size needs the live server. "
+      when {
+        showOrientation -> "Device size &amp; Orientation need the live server. "
+        isAppScreen -> "Device size needs the live server. "
+        else -> "Size needs the live server. "
+      }
     val snapshotOverrideList =
-      if (isAppScreen) "device size, locale, font scale, orientation"
-      else "size, locale, font scale"
+      when {
+        showOrientation -> "device size, locale, font scale, orientation"
+        isAppScreen -> "device size, locale, font scale"
+        else -> "size, locale, font scale"
+      }
     val snapshotNote =
       when {
         overridesLive -> ""
@@ -4530,9 +4554,24 @@ object ServeWeb {
         """
           .trimIndent()
     // Catalog app screens represent a whole device surface. Arbitrary min/max constraints are
-    // useful for components, but are a poor model for a screen; give screens four recognisable,
-    // deliberately varied Android device profiles instead. The select retains #cp-device, so the
-    // existing override transport and deep-link behaviour apply unchanged.
+    // useful for components, but are a poor model for a screen; give screens a handful of
+    // recognisable, deliberately varied device profiles instead — Android phones/foldable/tablet
+    // for a phone catalog, the Wear OS watch shapes for a Wear one. The select retains #cp-device,
+    // so the existing override transport and deep-link behaviour apply unchanged.
+    val orientationControlHtml =
+      if (showOrientation)
+        """
+        <label>Orientation
+          <select id="cp-orientation"$serverDis>
+            <option value="">(device default)</option>
+            <option value="portrait">Portrait</option>
+            <option value="landscape">Landscape</option>
+          </select>
+        </label>
+        """
+          .trimIndent()
+          .prependIndent("    ") + "\n"
+      else ""
     val sizeControlsHtml =
       if (isAppScreen)
         """
@@ -4545,17 +4584,12 @@ object ServeWeb {
                 SCREEN_DEVICE_OPTIONS_PLACEHOLDER
               </select>
             </label>
-            <label>Orientation
-              <select id="cp-orientation"$serverDis>
-                <option value="">(device default)</option>
-                <option value="portrait">Portrait</option>
-                <option value="landscape">Landscape</option>
-              </select>
-            </label>
+        ORIENTATION_CONTROL_PLACEHOLDER
           </div>
         </details>
         """
           .trimIndent()
+          .replace("ORIENTATION_CONTROL_PLACEHOLDER\n", orientationControlHtml)
           .replace("\n", "\n          ")
           .replace("SCREEN_DEVICE_OPTIONS_PLACEHOLDER", screenDeviceOptions)
       else
@@ -5232,6 +5266,7 @@ object ServeWeb {
     val sizeDp: String,
   )
 
+  /** Phone-family device profiles offered for an ordinary (handheld) catalog's screens. */
   private val SCREEN_DEVICES: List<ScreenDevice> =
     listOf(
       ScreenDevice("id:pixel_5", "Pixel 5", "compact phone", "393 × 851 dp"),
@@ -5239,4 +5274,27 @@ object ServeWeb {
       ScreenDevice("id:pixel_fold", "Pixel Fold", "foldable", "841 × 701 dp"),
       ScreenDevice("id:pixel_tablet", "Pixel Tablet", "tablet", "1280 × 800 dp"),
     )
+
+  /**
+   * Watch profiles offered instead for a Wear system's screens. Same ids and dimensions the
+   * renderer already resolves for `@Preview(device = …)`
+   * ([ee.schimke.composeai.daemon.devices.DeviceDimensions]), so a chosen override renders at the
+   * shape the author would have got from the annotation. Round shapes lead because Wear OS is
+   * overwhelmingly round; square/rectangular stay available for the shapes that still ship.
+   */
+  private val WEAR_SCREEN_DEVICES: List<ScreenDevice> =
+    listOf(
+      ScreenDevice("id:wearos_small_round", "Small round", "Wear OS watch", "192 × 192 dp"),
+      ScreenDevice("id:wearos_large_round", "Large round", "Wear OS watch", "227 × 227 dp"),
+      ScreenDevice("id:wearos_xl_round", "Extra large round", "Wear OS watch", "240 × 240 dp"),
+      ScreenDevice("id:wearos_square", "Square", "Wear OS watch", "180 × 180 dp"),
+      ScreenDevice("id:wearos_rect", "Rectangular", "Wear OS watch", "201 × 238 dp"),
+    )
+
+  /**
+   * The device profiles a screen's "Device size" picker offers — watch shapes for a Wear system,
+   * phones/foldable/tablet otherwise.
+   */
+  private fun screenDevicesFor(isWearSystem: Boolean): List<ScreenDevice> =
+    if (isWearSystem) WEAR_SCREEN_DEVICES else SCREEN_DEVICES
 }
