@@ -255,7 +255,13 @@ jobs:
   module-unit-tests:
     name: Module Unit Tests
     needs: changes
-    if: ${{ needs.changes.outputs.module_unit_tests == 'true' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    # `module_test_tasks != 'none'` is load-bearing, not belt-and-braces: the two scopes are
+    # resolved from different configs and can disagree. `path-scope.py` fails OPEN on a path it
+    # doesn't recognise (turning every group on, this job included), while
+    # `affected-gradle-tests.py` reads `gradle-test-scope.json`, where e.g. `.github/**` is
+    # ignored — so a PR touching only such a path enabled the job with `tasks=none` and it died
+    # on `gradlew none` ("Task 'none' not found"). `none` means there is nothing to run: skip.
+    if: ${{ needs.changes.outputs.module_unit_tests == 'true' && needs.changes.outputs.module_test_tasks != 'none' && !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -281,6 +287,10 @@ jobs:
               -x :samples:wear-widget:test \
               -x :samples:xr-glimmer:test \
               -x :samples:xr-spatial:test
+          elif [ -z "$TEST_TASKS" ] || [ "$TEST_TASKS" = none ]; then
+            # The job `if` normally keeps this branch unreached; it's here so a future skew
+            # between the two scope configs is a no-op run, never a `gradlew none` failure.
+            echo "No affected module test tasks — nothing to run."
           else
             read -r -a tasks <<< "$TEST_TASKS"
             ./gradlew "${tasks[@]}" --continue
