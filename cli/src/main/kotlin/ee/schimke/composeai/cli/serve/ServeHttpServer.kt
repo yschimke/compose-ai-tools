@@ -2622,6 +2622,40 @@ class ServeHttpServer(
       val imageUrl =
         "$origin$basePath/render/${WebEscaping.urlEncodeSegment(preview.id)}.png${requestQuerySuffix()}"
       val engagement = incrementPreviewViews(sessionId, preview.id)
+      val bundleHost = catalogBundleHost(renderHost)
+      // Link the preview to its source file on GitHub, built from the catalog's SOURCE (repo/ref/
+      // module of the Kotlin — NOT the delivery branch) joined with the preview's module-relative
+      // sourceFile. Null when the session has no catalog source or the preview recorded no path.
+      val sourceHref =
+        bundleHost?.catalogSource?.let { src ->
+          ServeUrls.githubBlobUrl(src.repo, src.ref, src.module, preview.sourceFile)
+        }
+      // The prefilled "report an issue" link. Both URLs it carries are stripped of the session
+      // token: on a token-gated box every link on the page bakes the token in, and that token is
+      // the capability to drive this server — it must not ride along into a public issue body.
+      val reportContext =
+        ServeIssueReport.Context(
+          repo = ServeIssueReport.repoFor(bundleHost?.catalogSource, bundleHost?.provenance),
+          previewId = preview.id,
+          previewLabel = preview.label,
+          system = basePath.trim('/').takeIf { it.isNotEmpty() },
+          sourceUrl = sourceHref,
+          catalog = bundleHost?.provenance?.let { "${it.repo}@${it.branch}" },
+          toolVersion = bundleHost?.provenance?.toolVersion,
+          viewerUrl = ServeIssueReport.withoutToken(externalPageUrl()),
+          renderUrl = ServeIssueReport.withoutToken(imageUrl),
+        )
+      val reportIssue =
+        ServeWeb.ReportIssue(
+          action = ServeIssueReport.action(reportContext.repo),
+          title = ServeIssueReport.title(reportContext),
+          body = ServeIssueReport.body(reportContext),
+          bodyTemplate = ServeIssueReport.body(reportContext, renderPlaceholder = true),
+          repo = reportContext.repo,
+          // Named in the tooltip when this box has a GitHub session for the visitor, so they know
+          // whose account the issue will be authored by before they leave the page.
+          login = githubAuth?.currentLogin(call),
+        )
       val liveAuthPrompt =
         githubAuth
           ?.takeIf { renderHost.hasLiveStream }
@@ -2695,15 +2729,8 @@ class ServeHttpServer(
           degradations = renderHost.degradations,
           engagement = engagement,
           unfurl = ServeWeb.UnfurlMetadata(pageUrl = externalPageUrl(), imageUrl = imageUrl),
-          // Per-preview: link the preview to its source file on GitHub, built from the catalog's
-          // SOURCE (repo/ref/module of the Kotlin — NOT the delivery branch) joined with the
-          // preview's module-relative sourceFile. Null when the session has no catalog source or
-          // the
-          // preview recorded no path ⇒ no link.
-          sourceHref =
-            catalogBundleHost(renderHost)?.catalogSource?.let { src ->
-              ServeUrls.githubBlobUrl(src.repo, src.ref, src.module, preview.sourceFile)
-            },
+          sourceHref = sourceHref,
+          reportIssue = reportIssue,
           liveAuthPrompt = liveAuthPrompt,
           catalogTitle = catalogBundleHost(renderHost)?.title,
           // The same heartbeat the grid sends. The viewer needs it at least as much: it is where a
