@@ -213,6 +213,18 @@ class ServeCatalogLiveHost(
   private val optimizationExecutor by optimizationExecutorDelegate
 
   /**
+   * Workers for one prefetch batch. Sized to the burst width, daemon threads so a shutdown mid
+   * batch never holds the process open. Lazy like the pass itself — a catalog that never optimizes
+   * never creates it.
+   */
+  private val optimizerBatchExecutorDelegate = lazy {
+    Executors.newFixedThreadPool(MAX_OPTIMIZER_BATCH) { r ->
+      Thread(r, "serve-catalog-theme-batch").apply { isDaemon = true }
+    }
+  }
+  private val optimizerBatchExecutor by optimizerBatchExecutorDelegate
+
+  /**
    * True when [daemonId] is warm (a live render is safe to await now). When it isn't and
    * [warmInBackground] is on, kick a one-shot background warm (a throwaway render that flips it
    * warm on success) and return false so the caller falls back to baked — the request never blocks
@@ -369,36 +381,65 @@ class ServeCatalogLiveHost(
     optimizationActive.set(true)
     optimizationExecutor.execute {
       try {
-        for (job in jobs) {
-          if (catalogThemeCache.get(job.cacheKey) != null) continue
-          var attempts = 0
-          var lastFailure: String? = null
-          while (catalogThemeCache.get(job.cacheKey) == null && attempts < 3) {
-            if (!awaitOptimizerTurn()) return@execute
-            catalogThemeCache.markRunning(clock())
-            // One background render server-wide: the permit is taken per job, not per pass, so a
-            // catalog that parks for traffic hands it straight to the next one.
-            val outcome =
-              backgroundWork.withRenderPermit { render(job.previewId, job.overrides) }
-                ?: return@execute
-            if (outcome is RenderOutcome.Ok) break
-            if (outcome is RenderOutcome.Failed) lastFailure = outcome.reason
-            val daemonId = alias[job.previewId]
+        // Render in BATCHES through the replica pool rather than one at a time through the
+        // monolithic daemon. The pool is already five wide — it is what a visitor gets when they
+        // pick a theme — and the prefetcher was queueing behind a single daemon lock right next to
+        // it. One catalog at a time still (the background permit now wraps the batch, not each
+        // render), so the box sees one bursting catalog rather than 21 taking turns per render.
+        // Batched by PREVIEW, which is both the unit the daemon warms for and the unit the job
+        // list is already ordered by: every theme of one preview renders together, so one warm is
+        // amortised across all of them and the pass never interleaves two previews' daemon opens.
+        val byPreview =
+          jobs.filter { catalogThemeCache.get(it.cacheKey) == null }.groupBy { it.previewId }
+        for ((previewId, previewJobs) in byPreview) {
+          // Gate BEFORE the warm, not just before the renders. `daemonWarmOrScheduling` starts a
+          // cold daemon, which is the single most expensive thing this pass can do to a box that is
+          // still loading catalogs or serving traffic — exactly what the idle gate exists to
+          // prevent. Warming ahead of it let every catalog host kick off a cold start at prewarm.
+          if (!awaitOptimizerTurn()) return@execute
+          val previewDaemonId = alias[previewId]
+          // Await a cold warm ONCE per preview rather than letting each theme rediscover it. The
+          // old per-job loop spent retry budget on this; here it is a precondition of the batch.
+          if (previewDaemonId != null && !warmDaemonIds.contains(previewDaemonId)) {
+            daemonWarmOrScheduling(previewDaemonId)
             if (
-              outcome == RenderOutcome.Busy &&
-                daemonId != null &&
-                warmingInFlight.contains(daemonId)
+              warmingInFlight.contains(previewDaemonId) && !awaitWarmCompletion(previewDaemonId)
             ) {
-              if (!awaitWarmCompletion(daemonId)) return@execute
-              // A successful cold warm should not consume the optimizer's retry budget: the Busy
-              // response only meant "warming asynchronously", not that the theme render failed.
-              if (warmDaemonIds.contains(daemonId)) continue
+              return@execute
             }
-            attempts++
-            if (attempts < 3 && !pauseOptimization(250)) return@execute
           }
-          if (catalogThemeCache.get(job.cacheKey) == null)
-            catalogThemeCache.markFailed(job.cacheKey, lastFailure)
+          var index = 0
+          while (index < previewJobs.size) {
+            // Checked per batch, and a batch is bounded by ONE render — so a visitor arriving mid
+            // batch still waits at most a render, which is the guarantee the old per-render permit
+            // was expressing.
+            if (!awaitOptimizerTurn()) return@execute
+            val batch =
+              previewJobs.subList(index, minOf(index + optimizerBatchWidth(), previewJobs.size))
+            index += batch.size
+            catalogThemeCache.markRunning(clock())
+            val outcomes =
+              backgroundWork.withRenderPermit { renderOptimizerBatch(batch) } ?: return@execute
+            for ((job, outcome) in batch.zip(outcomes)) {
+              if (catalogThemeCache.get(job.cacheKey) != null) continue
+              // Busy is "ask again", not a failure: the warm above may still be settling. Leave it
+              // unmarked so a later pass retries instead of spending the `failed` count on it.
+              when (outcome) {
+                // "ask again" — the warm above may still be settling. Left unmarked so a later
+                // pass retries rather than spending the catalog's `failed` count on it.
+                RenderOutcome.Busy -> Unit
+                // Count the failure but do NOT latch on the first one. `failureReason` treats a
+                // latched key as terminal and answers foreground requests with a 409, so a single
+                // flaky background render — a cold-start timeout, a daemon restart — would
+                // otherwise make that thumbnail permanently unavailable until the catalog
+                // generation refreshes. `recordRenderFailure` latches only after a run of them,
+                // which is the retry budget the old per-job loop provided.
+                is RenderOutcome.Failed ->
+                  catalogThemeCache.recordRenderFailure(job.cacheKey, outcome.reason)
+                else -> catalogThemeCache.markFailed(job.cacheKey)
+              }
+            }
+          }
         }
         catalogThemeCache.markPassFinished(clock())
       } finally {
@@ -406,6 +447,48 @@ class ServeCatalogLiveHost(
         optimizationStarted.set(false)
       }
     }
+  }
+
+  /**
+   * How many prefetch renders to run at once: the catalog's own burst width, which is the replica
+   * pool's capacity when it has one and 1 otherwise. Bounded by the pool itself — a replica that
+   * the seat budget cannot afford narrows the batch rather than spawning a JVM the box can't run.
+   */
+  private fun optimizerBatchWidth(): Int =
+    // Only the SHARED replica pool makes a per-preview batch parallel: its replicas are independent
+    // processes. Under per-preview routing (`sharedDaemonRenders=false`) every theme of one preview
+    // resolves to the SAME per-preview daemon, so a wide batch would contend on one render lock and
+    // all but one would come back Busy — `themeRenderBurstCapacity` is 5 there because different
+    // *previews* can run in parallel, which is not what this batch is.
+    if (sharedDaemonRenders && sharedDaemonPool != null) {
+      sharedDaemonPool.capacity.coerceIn(1, MAX_OPTIMIZER_BATCH)
+    } else {
+      1
+    }
+
+  /**
+   * Render one batch concurrently through the leased lane, preserving input order in the result.
+   *
+   * `renderLeased` is the same entry point a visitor's theme burst uses, so the prefetcher borrows
+   * the same replicas — which is the whole point: a five-wide lane sitting idle next to a serial
+   * prefetcher was the throughput bug.
+   */
+  private fun renderOptimizerBatch(batch: List<ThemeOptimizationJob>): List<RenderOutcome> {
+    if (batch.size == 1) {
+      val job = batch.single()
+      return listOf(renderLeased(job.previewId, job.overrides))
+    }
+    return batch
+      .map { job ->
+        optimizerBatchExecutor.submit<RenderOutcome> {
+          runCatching { renderLeased(job.previewId, job.overrides) }
+            .getOrElse { RenderOutcome.Failed("prefetch render threw: ${it.message}") }
+        }
+      }
+      .map { future ->
+        runCatching { future.get() }
+          .getOrElse { RenderOutcome.Failed("prefetch batch: ${it.message}") }
+      }
   }
 
   /**
@@ -447,7 +530,13 @@ class ServeCatalogLiveHost(
     if (quiet) return true
     optimizerHasTurn.set(false)
     catalogThemeCache.markPaused()
-    return awaitServerIdle().also {
+    // Re-enter on the SHORT window, not the full entry one. [themeOptimizationIdleMillis] answers
+    // "may I start work on a box someone might be using?" — a cold-start question, asked once. Once
+    // the pass has been running, the box has already proved it goes quiet, and the only question
+    // left is "has the visitor who just interrupted me finished?". Charging the full entry window
+    // per interruption is what capped throughput: at a ~50% yield rate a 60s re-entry averages
+    // ~30s/entry against a sub-second render, i.e. ~97% waiting.
+    return awaitQuiet(OPTIMIZER_RESUME_MILLIS).also {
       if (it) {
         optimizerHasTurn.set(true)
         optimizerSampledAt.set(clock())
@@ -455,13 +544,21 @@ class ServeCatalogLiveHost(
     }
   }
 
-  private fun awaitServerIdle(): Boolean {
+  private fun awaitServerIdle(): Boolean = awaitQuiet(themeOptimizationIdleMillis)
+
+  /**
+   * Block until the server has been untouched for [quietMillis]. Polls at a fraction of the window
+   * so a short resume window is not rounded up to a full second of dead time — a 1s poll against a
+   * 1.5s window would put the floor back where it started.
+   */
+  private fun awaitQuiet(quietMillis: Long): Boolean {
+    val pollMillis = quietMillis.coerceAtMost(1_000L).coerceAtLeast(50L) / 2
     while (true) {
       if (Thread.currentThread().isInterrupted) return false
       val idleMillis = serverIdleMillis()
-      if (idleMillis != null && idleMillis >= themeOptimizationIdleMillis) return true
+      if (idleMillis != null && idleMillis >= quietMillis) return true
       catalogThemeCache.markPaused()
-      if (!pauseOptimization(1_000)) return false
+      if (!pauseOptimization(pollMillis)) return false
     }
   }
 
@@ -980,6 +1077,13 @@ class ServeCatalogLiveHost(
         // ignore — best-effort shutdown of the daemon-thread optimization pool
       }
     }
+    if (optimizerBatchExecutorDelegate.isInitialized()) {
+      try {
+        optimizerBatchExecutor.shutdownNow()
+      } catch (_: Throwable) {
+        // ignore — best-effort shutdown of the daemon-thread prefetch batch pool
+      }
+    }
     if (warmInBackground) {
       try {
         warmExecutor.shutdownNow()
@@ -1012,6 +1116,21 @@ class ServeCatalogLiveHost(
      * whole entry window after every request.
      */
     internal const val OPTIMIZER_YIELD_MILLIS = 1_500L
+
+    /**
+     * Quiet window required to RESUME after yielding, as opposed to the cold-entry window. Short on
+     * purpose: the visitor who interrupted has stopped, and the pass is trying to fill a cache at
+     * render speed (sub-second per entry). It must still exceed [OPTIMIZER_YIELD_MILLIS], or a
+     * resume could immediately re-detect the activity it just waited out and livelock.
+     */
+    internal const val OPTIMIZER_RESUME_MILLIS = 2_000L
+
+    /**
+     * Ceiling on prefetch batch width. Matches the replica pool's own capacity, so the batch can
+     * never ask the pool for more lanes than it has; the seat budget narrows it further on a small
+     * box.
+     */
+    internal const val MAX_OPTIMIZER_BATCH = ServeSharedDaemonPool.DEFAULT_CAPACITY
 
     private const val WARM_POLL_MILLIS = 50L
   }
