@@ -20,12 +20,12 @@ fun LibraryGreeting(name: String, modifier: Modifier = Modifier) {
   Text(text = "Library: $name", modifier = modifier)
 }
 
-// churn probe: comment-only edit, no bytecode or pixel change expected.
+// churn probe phase 2: deliberate visible tweak - this preview MUST render as changed.
 @Preview(name = "Library Greeting", showBackground = true)
 @Composable
 fun LibraryGreetingPreview() {
   MaterialTheme {
-    Surface { Column(modifier = Modifier.padding(16.dp)) { LibraryGreeting("Hello") } }
+    Surface { Column(modifier = Modifier.padding(40.dp)) { LibraryGreeting("Hello") } }
   }
 }
 

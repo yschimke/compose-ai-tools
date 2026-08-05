@@ -48,7 +48,7 @@ internal fun GlimmerSurface(content: @Composable () -> Unit) {
   }
 }
 
-// churn probe: comment-only edit, no bytecode or pixel change expected.
+// churn probe phase 2: deliberate visible tweak - this preview MUST render as changed.
 @Preview(
   name = "Glimmer · Light",
   device = AI_GLASSES_DEVICE_SPEC,
@@ -83,7 +83,7 @@ fun NowPlayingCard() {
     // accessor (it's a @Composable getter that can't be inlined from a regular `val`) and
     // to keep the sample's dependency list to Glimmer + Compose foundation only.
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-      TitleChip { Text("NOW PLAYING") }
+      TitleChip { Text("NOW PLAYING LIVE") }
       Spacer(Modifier.height(8.dp))
       Card(
         onClick = {},

@@ -20,12 +20,12 @@ import androidx.compose.ui.unit.dp
  * applying the Google screenshot plugin hasn't broken our ordinary discovery path (shared
  * `sourceClassDirs` still picks up main).
  */
-// churn probe: comment-only edit, no bytecode or pixel change expected.
+// churn probe phase 2: deliberate visible tweak - this preview MUST render as changed.
 @Preview(name = "main-square", showBackground = true)
 @Composable
 fun MainSquarePreview() {
   MaterialTheme {
-    Surface(color = Color(0xFF4285F4)) {
+    Surface(color = Color(0xFFDB4437)) {
       Box(
         Modifier.size(96.dp).padding(16.dp).clip(RoundedCornerShape(12.dp)).background(Color.White)
       ) {

@@ -40,8 +40,8 @@ private fun WithRippleConfig(config: RippleThemeConfiguration, content: @Composa
   CompositionLocalProvider(LocalRippleThemeConfiguration provides config, content = content)
 }
 
-// churn probe: comment-only edit, no bytecode or pixel change expected.
-@Preview(name = "Inset Focus Ring — fan-out", widthDp = 480, heightDp = 96, showBackground = true)
+// churn probe phase 2: deliberate visible tweak - this preview MUST render as changed.
+@Preview(name = "Inset Focus Ring — fan-out", widthDp = 480, heightDp = 128, showBackground = true)
 @FocusedPreview(indices = [0, 1, 2, 3])
 @Composable
 fun InsetFocusRingFanOutPreview() {

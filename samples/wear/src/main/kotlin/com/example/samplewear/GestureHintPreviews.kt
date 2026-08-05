@@ -112,8 +112,13 @@ fun MediaGestureScreen(onDismiss: () -> Unit = {}) {
 // ---------------------------------------------------------------------------
 
 /** The resting screen — no override, so both gesture hints stay hidden (as they would off-watch). */
-// churn probe: comment-only edit, no bytecode or pixel change expected.
-@Preview(name = "Media — hints off", device = WearDevices.LARGE_ROUND, showBackground = true)
+// churn probe phase 2: deliberate visible tweak - this preview MUST render as changed.
+@Preview(
+  name = "Media — hints off",
+  device = WearDevices.LARGE_ROUND,
+  showBackground = true,
+  fontScale = 1.3f,
+)
 @Composable
 fun MediaGestureScreenPreview() {
   MaterialTheme { MediaGestureScreen() }

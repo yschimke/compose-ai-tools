@@ -71,7 +71,7 @@ private fun focusedSource(): MutableInteractionSource {
 // Light + dark, matching the CMP catalog's `@CatalogModes` so the folded variant carries both.
 // The `@Preview`s are inlined (not a shared multipreview annotation) so discovery reliably resolves
 // them on this single-preview module.
-// churn probe: comment-only edit, no bytecode or pixel change expected.
+// churn probe phase 2: deliberate visible tweak - this preview MUST render as changed.
 @Preview(name = "Light", showBackground = true, group = "modes")
 @Preview(
   name = "Dark",
@@ -81,5 +81,5 @@ private fun focusedSource(): MutableInteractionSource {
 )
 @Composable
 fun FilledButtonFocused() = FocusRingSticker {
-  Button(onClick = {}, interactionSource = focusedSource()) { Text("Focused") }
+  Button(onClick = {}, interactionSource = focusedSource()) { Text("Focused now") }
 }

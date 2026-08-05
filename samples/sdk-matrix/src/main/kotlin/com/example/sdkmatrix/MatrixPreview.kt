@@ -26,14 +26,14 @@ import androidx.compose.ui.unit.sp
  * self-documenting: each matrix cell's artifact literally shows the observed values for that cell.
  * The nightly aggregator just reads the cells' pass/fail state and surfaces the PNGs.
  */
-// churn probe: comment-only edit, no bytecode or pixel change expected.
+// churn probe phase 2: deliberate visible tweak - this preview MUST render as changed.
 @Preview(name = "SdkMatrixPreview", widthDp = 280, heightDp = 160)
 @Composable
 fun SdkMatrixPreview() {
   val context = LocalContext.current
   val observedTarget = context.applicationInfo.targetSdkVersion
   Column(
-    modifier = Modifier.size(280.dp, 160.dp).background(Color(0xFF1B1B1F)).padding(12.dp),
+    modifier = Modifier.size(280.dp, 160.dp).background(Color(0xFF102A22)).padding(12.dp),
     verticalArrangement = Arrangement.spacedBy(4.dp),
   ) {
     Text(

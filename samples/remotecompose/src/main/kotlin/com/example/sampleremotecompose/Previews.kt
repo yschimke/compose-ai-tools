@@ -29,8 +29,8 @@ import ee.schimke.composeai.preview.AnimatedPreview
 // releases paired with stable Compose).
 // ---------------------------------------------------------------------------
 
-// churn probe: comment-only edit, no bytecode or pixel change expected.
-@Preview(showBackground = true, widthDp = 200, heightDp = 200)
+// churn probe phase 2: deliberate visible tweak - this preview MUST render as changed.
+@Preview(showBackground = true, widthDp = 260, heightDp = 260)
 @Composable
 fun RemoteButtonEnabledPreview() {
   RemoteContentPreview(profile = RcPlatformProfiles.ANDROIDX) {

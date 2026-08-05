@@ -32,7 +32,7 @@ import ee.schimke.composeai.preview.ScrollingPreview
  * 100 items is enough to ensure several slice steps (default stride is 80% of viewport ≈ 192 px per
  * step on a 240 px tall sandbox) and a few fling bursts in the GIF script.
  */
-// churn probe: comment-only edit, no bytecode or pixel change expected.
+// churn probe phase 2: deliberate visible tweak - this preview MUST render as changed.
 @Preview(name = "Scrolling List", widthDp = 240, heightDp = 240, showBackground = true)
 @ScrollingPreview(modes = [ScrollMode.LONG, ScrollMode.GIF])
 @Composable
@@ -43,7 +43,7 @@ fun ScrollingListPreview() {
         Column(
           modifier =
             Modifier.fillMaxWidth()
-              .background(if (index % 2 == 0) Color(0xFFEEEEEE) else Color.White)
+              .background(if (index % 2 == 0) Color(0xFFFFE0B2) else Color.White)
               .padding(12.dp)
         ) {
           Text(text = "Row $index", style = MaterialTheme.typography.titleMedium)

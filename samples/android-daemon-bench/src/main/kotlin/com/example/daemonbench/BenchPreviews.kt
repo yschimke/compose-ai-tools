@@ -32,12 +32,12 @@ import androidx.compose.ui.unit.dp
 // If you grow this set, update the per-render baseline numbers in
 // docs/daemon/baseline-latency.csv at the same time.
 
-// churn probe: comment-only edit, no bytecode or pixel change expected.
+// churn probe phase 2: deliberate visible tweak - this preview MUST render as changed.
 @Preview(name = "RedSquare", showBackground = true)
 @Composable
 fun RedSquarePreview() {
   MaterialTheme {
-    Surface(color = Color(0xFFEF5350)) {
+    Surface(color = Color(0xFF7E57C2)) {
       Box(
         Modifier.size(96.dp).padding(16.dp).clip(RoundedCornerShape(12.dp)).background(Color.White)
       )

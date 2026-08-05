@@ -10,11 +10,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 
-// churn probe: comment-only edit, no bytecode or pixel change expected.
+// churn probe phase 2: deliberate visible tweak - this preview MUST render as changed.
 @Preview
 @Composable
 fun SharedRedBoxPreview() {
-  Box(modifier = Modifier.size(120.dp).background(Color.Red)) { Text("shared red") }
+  Box(modifier = Modifier.size(160.dp).background(Color.Red)) { Text("shared red") }
 }
 
 @Preview(name = "Blue", showBackground = true, backgroundColor = 0xFFFFFFFF)

@@ -2,14 +2,18 @@
 
 package com.example.wearwidget
 
+import androidx.compose.remote.creation.compose.state.rc
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
+import androidx.glance.wear.WearWidgetBrush
 import androidx.glance.wear.core.ContainerInfo
 import androidx.glance.wear.core.WearWidgetParams
 import androidx.glance.wear.core.WidgetInstanceId
 import androidx.glance.wear.tooling.preview.SquircleAllWidgetPreviewParams
 import androidx.glance.wear.tooling.preview.SquircleLargeWidgetPreviewParams
+import androidx.glance.wear.verticalGradient
 import ee.schimke.composeai.wear.preview.CapturingWearWidgetPreview
 
 /**
@@ -28,15 +32,17 @@ import ee.schimke.composeai.wear.preview.CapturingWearWidgetPreview
  * squircle instead of a rounded frame with a square-cornered rectangle sitting inside it.
  */
 // Fans out over every squircle footprint the platform ships (`SquircleAllWidgetPreviewParams`).
-// churn probe: comment-only edit, no bytecode or pixel change expected.
+// churn probe phase 2: deliberate visible tweak - this preview MUST render as changed.
 @Preview(name = "Image Widget Squircle")
 @Composable
 fun ImageWidgetSquirclePreview(
   @PreviewParameter(SquircleAllWidgetPreviewParams::class) params: WearWidgetParams
 ) {
-  CapturingWearWidgetPreview(params = params, background = RemoteImageWidgetBackground) {
-    RemoteImageWidget()
-  }
+  // Inlined (rather than editing the shared `RemoteImageWidgetBackground`) so the phase-2 tweak
+  // stays scoped to this one preview — the other two stickers must stay byte-identical.
+  val background =
+    WearWidgetBrush.verticalGradient(listOf(Color(0xFFE53935).rc, Color(0xFFB71C1C).rc))
+  CapturingWearWidgetPreview(params = params, background = background) { RemoteImageWidget() }
 }
 
 // A single fixed footprint (`SquircleLargeWidgetPreviewParams`) to show the crop tracks the params.
