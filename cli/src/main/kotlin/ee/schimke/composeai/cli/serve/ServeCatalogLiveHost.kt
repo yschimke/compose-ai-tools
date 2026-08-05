@@ -418,8 +418,13 @@ class ServeCatalogLiveHost(
               previewJobs.subList(index, minOf(index + optimizerBatchWidth(), previewJobs.size))
             index += batch.size
             catalogThemeCache.markRunning(clock())
+            val batchStartedAt = clock()
             val outcomes =
               backgroundWork.withRenderPermit { renderOptimizerBatch(batch) } ?: return@execute
+            // Width recorded from the batch actually issued, not the requested ceiling — a batch
+            // that collapses to 1 (single-daemon lane, or a seat budget with no replicas to spare)
+            // is exactly the case that is invisible from `cached` alone.
+            catalogThemeCache.recordBatch(batch.size, clock() - batchStartedAt)
             for ((job, outcome) in batch.zip(outcomes)) {
               if (catalogThemeCache.get(job.cacheKey) != null) continue
               // Busy is "ask again", not a failure: the warm above may still be settling. Leave it
@@ -508,7 +513,11 @@ class ServeCatalogLiveHost(
    */
   private fun awaitOptimizerTurn(): Boolean {
     if (!optimizerHasTurn.get()) {
-      if (!awaitServerIdle()) return false
+      val waitedFrom = clock()
+      val granted = awaitServerIdle()
+      catalogThemeCache.recordWaiting(clock() - waitedFrom)
+      if (!granted) return false
+      catalogThemeCache.recordTurnGranted()
       optimizerHasTurn.set(true)
       optimizerSampledAt.set(clock())
       return true
@@ -529,7 +538,9 @@ class ServeCatalogLiveHost(
     optimizerSampledAt.set(now)
     if (quiet) return true
     optimizerHasTurn.set(false)
+    catalogThemeCache.recordTurnYielded()
     catalogThemeCache.markPaused()
+    val resumeFrom = clock()
     // Re-enter on the SHORT window, not the full entry one. [themeOptimizationIdleMillis] answers
     // "may I start work on a box someone might be using?" — a cold-start question, asked once. Once
     // the pass has been running, the box has already proved it goes quiet, and the only question
@@ -537,6 +548,7 @@ class ServeCatalogLiveHost(
     // per interruption is what capped throughput: at a ~50% yield rate a 60s re-entry averages
     // ~30s/entry against a sub-second render, i.e. ~97% waiting.
     return awaitQuiet(OPTIMIZER_RESUME_MILLIS).also {
+      catalogThemeCache.recordWaiting(clock() - resumeFrom)
       if (it) {
         optimizerHasTurn.set(true)
         optimizerSampledAt.set(clock())

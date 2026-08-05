@@ -93,4 +93,46 @@ class CatalogThemeCacheTest {
     cache.recordRenderFailure("k", "boom")
     assertNull(cache.failureReason("k"))
   }
+
+  /**
+   * The instrumentation exists because `cached`/`remaining` alone cannot answer the question that
+   * actually matters — is the pass keeping up, and if not, is it render-bound or gate-bound. Two
+   * throughput readings against the live server were wrong before this existed: one measured a
+   * different lane entirely, one divided by lifetime instead of active time.
+   */
+  @Test
+  fun `optimizer stats report rate, ETA, time split and observed batch width`() {
+    val cache = CatalogThemeCache()
+    cache.configureTargets((1..10).map { "k$it" })
+
+    cache.recordTurnGranted()
+    cache.recordWaiting(30_000) // half the active time spent waiting for a turn
+    cache.recordBatch(width = 5, millis = 30_000)
+    cache.recordTurnYielded()
+    repeat(5) { cache.put("k${it + 1}", byteArrayOf(1)) }
+
+    val s = cache.snapshot()
+    assertEquals(5, s.cached)
+    // 5 entries over 60s of ACTIVE time = 5/min; 5 remaining at that rate = 60s.
+    assertEquals(5.0, s.entriesPerMinute)
+    assertEquals(60L, s.etaSeconds)
+    // The split is the diagnostic: half the time rendering, half waiting at the gate.
+    assertEquals(30_000L, s.renderMillis)
+    assertEquals(30_000L, s.waitingMillis)
+    assertEquals(1, s.turnsGranted)
+    assertEquals(1, s.turnsYielded)
+    // Width is what actually ran, so a batch collapsing to 1 is visible rather than assumed.
+    assertEquals(5, s.lastBatchWidth)
+    assertEquals(5, s.maxBatchWidth)
+  }
+
+  @Test
+  fun `rate and ETA stay null before the pass has done anything to divide by`() {
+    val cache = CatalogThemeCache()
+    cache.configureTargets(listOf("a", "b"))
+    val s = cache.snapshot()
+    assertNull(s.entriesPerMinute)
+    assertNull(s.etaSeconds)
+    assertEquals(0, s.maxBatchWidth)
+  }
 }
