@@ -1460,4 +1460,42 @@ class ServeCatalogLiveHostTest {
       "it must not burn the whole warm budget on a failing warm (took ${elapsedMs}ms)",
     )
   }
+
+  /**
+   * The optimizer used to re-demand the whole 60s entry window before EVERY render, so a server
+   * that was quiet-but-not-silent-for-a-minute advanced one entry and then stalled. On the public
+   * box that measured one entry per ~105s against a sub-second render — ~99% waiting.
+   *
+   * Modelled here by an idle clock that reports a full minute once (letting the pass start) and
+   * then a steady 10s: quiet by any reasonable measure, but under the entry window. The old gate
+   * caches exactly one entry and blocks; keeping the turn caches them all.
+   */
+  @Test
+  fun `the optimizer keeps its turn while the server stays quiet`() {
+    val secondTheme = ServeTheme("Brand Light", "com.example.BrandLight")
+    val baked = RecordingHost(previews = listOf(ServePreview(catalogId, catalogId)), tag = "baked")
+    val live =
+      RecordingHost(
+        previews = listOf(ServePreview(daemonId, daemonId)),
+        tag = "live",
+        declaredThemes = listOf(brandTheme, secondTheme),
+      )
+    val cache = CatalogThemeCache()
+    val firstCall = java.util.concurrent.atomic.AtomicBoolean(true)
+    val composite =
+      ServeCatalogLiveHost(
+        alias = mapOf(catalogId to daemonId),
+        live = live,
+        baked = baked,
+        catalogThemeCache = cache,
+        // Quiet enough to keep a turn (>= OPTIMIZER_YIELD_MILLIS), never enough to re-earn entry.
+        serverIdleMillis = { if (firstCall.getAndSet(false)) 60_000L else 10_000L },
+        themeOptimizationIdleMillis = 60_000L,
+      )
+
+    composite.prewarm()
+
+    val snapshot = awaitOk(10_000) { cache.snapshot().takeIf { it.cached >= 2 } }
+    assertEquals(2, snapshot.cached, "both themes cached without re-earning the entry window")
+  }
 }
