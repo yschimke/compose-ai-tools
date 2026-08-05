@@ -149,7 +149,14 @@ kotlin {
     srcDir("../rc-embedded-player/src/main/kotlin")
     // `include` filters every srcDir of this source set, so this module's own sources need a
     // pattern too — otherwise the explicit list above would silently exclude them.
-    include(sharedPlayerSources + jvmPlayerSources + "ee/**")
+    //
+    // Scoped to `…/rcembedded/jvm/**` rather than `ee/**` for the same reason the file lists above
+    // are explicit: the pattern is matched across *both* srcDirs, so a bare `ee/**` also sweeps in
+    // whatever the Android module keeps under `ee/` — which is Android-only by construction (it
+    // names `androidx.compose.ui.text.font.Font(File, …)`, whose jvm counterpart lives in
+    // `…text.platform`). This module's own sources are all under the `jvm` package, so scoping the
+    // pattern to it keeps the boundary a build-level fact rather than a convention to remember.
+    include(sharedPlayerSources + jvmPlayerSources + "ee/schimke/composeai/rcembedded/jvm/**")
   }
 }
 
