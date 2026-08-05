@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 
+// churn probe: comment-only edit, no bytecode or pixel change expected.
 @Preview
 @Composable
 fun SharedRedBoxPreview() {

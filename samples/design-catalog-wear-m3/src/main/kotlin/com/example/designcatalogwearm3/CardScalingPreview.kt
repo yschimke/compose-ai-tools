@@ -34,6 +34,7 @@ private const val WEAR_LARGE_ROUND = "id:wearos_large_round"
  * faded. `reduceMotion = false` keeps the real scaling transforms on. `maxScrollPx` is tuned to the
  * large-round canvas (454px) so END lands the card at the top edge rather than scrolling it off.
  */
+// churn probe: comment-only edit, no bytecode or pixel change expected.
 @Preview(name = "Large Round", device = WEAR_LARGE_ROUND, showBackground = true, backgroundColor = 0xFF000000)
 @ScrollingPreview(modes = [ScrollMode.TOP, ScrollMode.END], maxScrollPx = 180, reduceMotion = false)
 @Composable

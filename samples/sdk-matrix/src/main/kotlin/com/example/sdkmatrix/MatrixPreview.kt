@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
  * self-documenting: each matrix cell's artifact literally shows the observed values for that cell.
  * The nightly aggregator just reads the cells' pass/fail state and surfaces the PNGs.
  */
+// churn probe: comment-only edit, no bytecode or pixel change expected.
 @Preview(name = "SdkMatrixPreview", widthDp = 280, heightDp = 160)
 @Composable
 fun SdkMatrixPreview() {

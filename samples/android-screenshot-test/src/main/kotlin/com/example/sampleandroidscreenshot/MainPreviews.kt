@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
  * applying the Google screenshot plugin hasn't broken our ordinary discovery path (shared
  * `sourceClassDirs` still picks up main).
  */
+// churn probe: comment-only edit, no bytecode or pixel change expected.
 @Preview(name = "main-square", showBackground = true)
 @Composable
 fun MainSquarePreview() {

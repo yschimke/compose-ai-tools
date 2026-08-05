@@ -72,6 +72,7 @@ private enum class DebugScreen {
  * rectangles and key labels — no red, no green. This is the "what correct looks like" baseline.
  */
 @OptIn(ExperimentalLookaheadAnimationVisualDebugApi::class)
+// churn probe: comment-only edit, no bytecode or pixel change expected.
 @Preview(
   name = "Shared Element Debug — Matched",
   widthDp = 300,

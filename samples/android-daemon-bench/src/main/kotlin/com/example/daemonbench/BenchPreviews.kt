@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 // If you grow this set, update the per-render baseline numbers in
 // docs/daemon/baseline-latency.csv at the same time.
 
+// churn probe: comment-only edit, no bytecode or pixel change expected.
 @Preview(name = "RedSquare", showBackground = true)
 @Composable
 fun RedSquarePreview() {

@@ -48,6 +48,7 @@ internal fun GlimmerSurface(content: @Composable () -> Unit) {
   }
 }
 
+// churn probe: comment-only edit, no bytecode or pixel change expected.
 @Preview(
   name = "Glimmer · Light",
   device = AI_GLASSES_DEVICE_SPEC,

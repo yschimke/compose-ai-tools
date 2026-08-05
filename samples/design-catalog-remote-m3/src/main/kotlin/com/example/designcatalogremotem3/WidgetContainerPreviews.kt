@@ -116,6 +116,7 @@ private fun CenteredWidgetContent(content: @Composable @RemoteComposable () -> U
  * frame every widget that declares no background gets. `RemoteText`'s near-white default content
  * colour reads correctly on it.
  */
+// churn probe: comment-only edit, no bytecode or pixel change expected.
 @CatalogRemoteWidgetSmall
 @Composable
 fun WidgetContainerSmallRemote() {

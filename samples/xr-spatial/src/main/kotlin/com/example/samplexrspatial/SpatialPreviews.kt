@@ -36,6 +36,7 @@ import androidx.xr.compose.spatial.SpatialElevationLevel
 internal const val SPATIAL_PANEL_DEVICE: String = "spec:width=1280,height=720,dpi=160"
 
 /** The plain 2D panel content — the recommended unit to preview (no XR dependency at all). */
+// churn probe: comment-only edit, no bytecode or pixel change expected.
 @Preview(name = "Panel · Content", device = SPATIAL_PANEL_DEVICE, showBackground = true)
 @Composable
 fun NowPlayingPanelPreview() {

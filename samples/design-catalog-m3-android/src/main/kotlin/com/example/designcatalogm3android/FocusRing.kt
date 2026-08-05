@@ -71,6 +71,7 @@ private fun focusedSource(): MutableInteractionSource {
 // Light + dark, matching the CMP catalog's `@CatalogModes` so the folded variant carries both.
 // The `@Preview`s are inlined (not a shared multipreview annotation) so discovery reliably resolves
 // them on this single-preview module.
+// churn probe: comment-only edit, no bytecode or pixel change expected.
 @Preview(name = "Light", showBackground = true, group = "modes")
 @Preview(
   name = "Dark",

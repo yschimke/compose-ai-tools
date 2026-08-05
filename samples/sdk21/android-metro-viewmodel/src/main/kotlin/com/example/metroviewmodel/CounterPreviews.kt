@@ -11,6 +11,7 @@ import dev.zacsweers.metrox.viewmodel.LocalMetroViewModelFactory
  * Idiomatic preview path: render the stateless presenter with a literal state. Fast, no DI
  * involved, the canonical pattern for design previews.
  */
+// churn probe: comment-only edit, no bytecode or pixel change expected.
 @Preview(name = "Content — literal state", showBackground = true, backgroundColor = 0xFFFFFFFF)
 @Composable
 fun CounterScreenContentPreview() {

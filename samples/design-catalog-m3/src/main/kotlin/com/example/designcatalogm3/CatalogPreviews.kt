@@ -354,6 +354,7 @@ fun SegmentedToggle() = Sticker("segmentedbutton")
     "i18n axis: the ar-XB bidi pseudolocale — flips the button to RTL layout so mirroring bugs " +
       "surface (desktop CMP pseudolocalises layout direction, not text).",
 )
+// churn probe: comment-only edit, no bytecode or pixel change expected.
 @Preview(name = "Light", locale = "ar-XB", group = "modes")
 @Preview(name = "Dark", locale = "ar-XB", uiMode = 32, group = "modes")
 @Composable

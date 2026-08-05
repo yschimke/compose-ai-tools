@@ -20,6 +20,7 @@ fun LibraryGreeting(name: String, modifier: Modifier = Modifier) {
   Text(text = "Library: $name", modifier = modifier)
 }
 
+// churn probe: comment-only edit, no bytecode or pixel change expected.
 @Preview(name = "Library Greeting", showBackground = true)
 @Composable
 fun LibraryGreetingPreview() {

@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 // this set, mirror the change in :samples:android-daemon-bench at the
 // same time and update docs/daemon/baseline-latency.csv.
 
+// churn probe: comment-only edit, no bytecode or pixel change expected.
 @Preview(name = "RedSquare", showBackground = true)
 @Composable
 fun RedSquarePreview() {

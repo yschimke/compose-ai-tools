@@ -28,6 +28,7 @@ import ee.schimke.composeai.wear.preview.CapturingWearWidgetPreview
  * squircle instead of a rounded frame with a square-cornered rectangle sitting inside it.
  */
 // Fans out over every squircle footprint the platform ships (`SquircleAllWidgetPreviewParams`).
+// churn probe: comment-only edit, no bytecode or pixel change expected.
 @Preview(name = "Image Widget Squircle")
 @Composable
 fun ImageWidgetSquirclePreview(

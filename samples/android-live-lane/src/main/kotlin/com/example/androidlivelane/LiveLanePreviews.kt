@@ -25,6 +25,7 @@ import ee.schimke.composeai.overrides.previewOverrideString
  * dominant thing on screen, and nothing here should need app resources or a theme the bundle would
  * have to carry.
  */
+// churn probe: comment-only edit, no bytecode or pixel change expected.
 @Preview(name = "LiveLaneCard", showBackground = true)
 @Composable
 fun LiveLaneCard() {

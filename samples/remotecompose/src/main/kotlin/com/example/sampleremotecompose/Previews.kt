@@ -29,6 +29,7 @@ import ee.schimke.composeai.preview.AnimatedPreview
 // releases paired with stable Compose).
 // ---------------------------------------------------------------------------
 
+// churn probe: comment-only edit, no bytecode or pixel change expected.
 @Preview(showBackground = true, widthDp = 200, heightDp = 200)
 @Composable
 fun RemoteButtonEnabledPreview() {
