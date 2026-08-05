@@ -124,6 +124,29 @@ class RenderTraceTest {
   }
 
   @Test
+  fun `dropping the outermost section keeps the retained offsets on the real origin`() {
+    // Sections are appended as they close, so an enclosing section closes last and is the first
+    // thing the cap sheds. Its children then start *after* the render did — and rebasing them onto
+    // their own minimum while reporting the full duration would place every phase at 0.
+    val recorder =
+      PerfettoTraceDataProducer.recorder(previewId = "p", backend = "desktop", enabled = false)
+
+    recorder.section("render:once") { repeat(5_000) { recorder.section("compose:frame") {} } }
+
+    val trace = recorder.renderTrace()
+    assertTrue(trace.droppedSpans > 0, "the enclosing section should have been shed")
+    assertTrue(
+      trace.spans.none { it.name == "render:once" },
+      "the outermost section closes last, so it is the one dropped",
+    )
+    // The first retained child began after the render did, so its offset must not be zero.
+    assertTrue(
+      trace.spans.first().startMicros > 0,
+      "retained spans must stay on the render's origin, not their own",
+    )
+  }
+
+  @Test
   fun `payload keeps the v1 shape when no spans were recorded`() {
     val payload = RenderTraceDataProduct.payloadFrom(mapOf("tookMs" to 7L), trace = null)
 

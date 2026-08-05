@@ -198,6 +198,10 @@ object PerfettoTraceDataProducer {
         totalMicros =
           if (firstStartNs == Long.MAX_VALUE) null
           else (lastEndNs - firstStartNs).coerceAtLeast(0L) / 1_000L,
+        // Must travel with the total: the cap sheds the outermost section first (it closes last),
+        // so the retained spans can start after the render did. Rebasing them onto their own
+        // minimum would place every phase at the wrong offset under a correctly-scaled total.
+        originNanos = firstStartNs.takeIf { it != Long.MAX_VALUE },
         droppedSpans = droppedSpans,
       )
 
