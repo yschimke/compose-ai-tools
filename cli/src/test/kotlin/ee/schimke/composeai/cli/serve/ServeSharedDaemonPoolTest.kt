@@ -205,4 +205,36 @@ class ServeSharedDaemonPoolTest {
       held.close()
     }
   }
+
+  @Test
+  fun `a replica whose launch throws hands its seat back`() {
+    val seats = LiveSeatLimiter(totalPermits = 4)
+    val entered = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    // The primary is held mid-render, so a concurrent request has nothing to borrow and must go
+    // down the replica-launch path — which is the one that can strand a ticket.
+    val primary = BlockingHost("primary", entered, release)
+    val pool =
+      ServeSharedDaemonPool(primary = primary, capacity = 3, liveSeats = seats) {
+        throw IllegalStateException("daemon launch failed")
+      }
+    val executor = Executors.newFixedThreadPool(2)
+    try {
+      val holder = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+      assertTrue(entered.await(5, TimeUnit.SECONDS), "the primary should be mid-render")
+
+      val failed = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+      val thrown = runCatching { failed.get(5, TimeUnit.SECONDS) }.exceptionOrNull()
+      assertTrue(thrown != null, "the launch failure reaches the caller")
+
+      assertEquals(4, seats.availablePermits(), "no seat is stranded on a failed launch")
+
+      release.countDown()
+      assertTrue(holder.get(5, TimeUnit.SECONDS) is RenderOutcome.Ok)
+    } finally {
+      release.countDown()
+      executor.shutdownNow()
+      pool.close()
+    }
+  }
 }

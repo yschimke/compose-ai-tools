@@ -229,4 +229,15 @@ class ServePerPreviewDaemonPoolTest {
     assertEquals(2, seats.availablePermits(), "reaped daemons hand their seats back")
     assertTrue(pool.get("C") != null, "the freed budget admits a new daemon")
   }
+
+  @Test
+  fun `a throwing open hands its seat back`() {
+    val seats = LiveSeatLimiter(totalPermits = 1)
+    val pool =
+      ServePerPreviewDaemonPool(liveSeats = seats) { _ -> throw IllegalStateException("launch") }
+    repeat(3) {
+      runCatching { pool.get("A") }
+      assertEquals(1, seats.availablePermits(), "a failed launch must not consume the budget")
+    }
+  }
 }

@@ -65,11 +65,32 @@ class CatalogThemeCacheTest {
     assertEquals(false, cache.recordRenderFailure("k", "boom"))
   }
 
+  /**
+   * The optimizer gives up after a bounded number of attempts, and it gives up on a key the daemon
+   * was merely too busy to reach just as it does on one that threw. Only the latter may be reported
+   * to a visitor as terminal — otherwise a preview that happened to be contended during the
+   * optimization pass 409s forever.
+   */
   @Test
-  fun `an optimizer-marked failure reports a reason even when none was captured`() {
+  fun `an optimizer miss with no captured failure stays retryable`() {
     val cache = CatalogThemeCache()
-    cache.markFailed("k")
-    assertEquals(true, cache.failureReason("k") != null)
-    assertNull(cache.failureReason("other"))
+
+    cache.markFailed("busy-only")
+    assertNull(cache.failureReason("busy-only"), "running out of attempts is not a render failure")
+    // It still counts toward the /status `failed` metric, which is what markFailed is for.
+    cache.configureTargets(listOf("busy-only"))
+    assertEquals(1, cache.snapshot().failed)
+
+    cache.markFailed("really-broken", "NotFoundException: ic_play.xml")
+    assertEquals("NotFoundException: ic_play.xml", cache.failureReason("really-broken"))
+    assertNull(cache.failureReason("never-seen"))
+  }
+
+  /** A reason recorded before the latch closes must not make the key terminal on its own. */
+  @Test
+  fun `a reason without the full run of failures is not yet terminal`() {
+    val cache = CatalogThemeCache()
+    cache.recordRenderFailure("k", "boom")
+    assertNull(cache.failureReason("k"))
   }
 }

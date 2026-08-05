@@ -74,7 +74,16 @@ class ServePerPreviewDaemonPool(
     // null exactly like an unusable bundle does, so the caller replays the baked PNG — a slightly
     // stale thumbnail under memory pressure, rather than a process the box can't afford.
     val ticket = liveSeats?.let { it.acquire(seatWeight()) ?: return null }
-    val host = open(daemonId)
+    // A null open (no usable per-preview bundle) and a throwing one both have to hand the seat
+    // back: neither leaves a daemon behind, and a leaked ticket shrinks the whole box's budget for
+    // the life of the server.
+    val host =
+      try {
+        open(daemonId)
+      } catch (e: Throwable) {
+        ticket?.close()
+        throw e
+      }
     if (host == null) {
       ticket?.close()
       return null

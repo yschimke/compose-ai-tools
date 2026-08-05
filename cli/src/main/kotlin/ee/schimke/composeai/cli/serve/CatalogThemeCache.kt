@@ -99,6 +99,15 @@ class CatalogThemeCache(
     if (!snapshot().fullyOptimized) state.set("paused")
   }
 
+  /**
+   * Mark [key] as one the optimizer could not fill, for the `/status` `failed` count.
+   *
+   * This is a **metric**, not a verdict: the optimizer gives up after a bounded number of attempts,
+   * and it gives up on a key the daemon was merely too busy to get to just as it does on one that
+   * genuinely threw. Only a [reason] — captured from a real [RenderOutcome.Failed] — makes the key
+   * terminal for [failureReason]. Without that distinction, three `Busy` outcomes during a warm
+   * would tell the next visitor the preview can never render.
+   */
   fun markFailed(key: String, reason: String? = null) {
     failedKeys += key
     reason?.let { failureReasons[key] = it }
@@ -128,9 +137,14 @@ class CatalogThemeCache(
   /**
    * Why [key] cannot be rendered, once it has latched as failed; null while it may still succeed.
    * Callers use this to answer a request without going near the daemon.
+   *
+   * Requires **both** halves: the key is latched, *and* a real render failure supplied a reason. A
+   * key in [failedKeys] with no reason is one the optimizer ran out of attempts on — retryable
+   * `Busy`, most often — and must stay retryable for a request, or a preview that was merely
+   * contended during the optimization pass would be reported as permanently dead to every later
+   * visitor.
    */
-  fun failureReason(key: String): String? =
-    if (key in failedKeys) failureReasons[key] ?: DEFAULT_FAILURE_REASON else null
+  fun failureReason(key: String): String? = if (key in failedKeys) failureReasons[key] else null
 
   fun markPassFinished(nowMillis: Long) {
     if (synchronized(renderLock) { targetKeys.all(renders::containsKey) }) {
@@ -187,7 +201,5 @@ class CatalogThemeCache(
      * Consecutive on-demand render failures before a key is treated as permanently unrenderable.
      */
     const val FAILURE_LATCH = 3
-
-    private const val DEFAULT_FAILURE_REASON = "this preview could not be rendered live"
   }
 }

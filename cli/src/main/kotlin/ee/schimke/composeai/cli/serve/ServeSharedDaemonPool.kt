@@ -84,7 +84,17 @@ class ServeSharedDaemonPool(
         return available.removeFirst()
       }
     }
-    val replica = openReplica()
+    // Hand the seat back if the launch throws (temp-dir setup, `openHost`, the daemon process
+    // itself). The ticket isn't in `seatTickets` yet, so nothing else would ever release it and the
+    // budget would shrink permanently — refusing later streams and replicas for a process that
+    // doesn't exist.
+    val replica =
+      try {
+        openReplica()
+      } catch (e: Throwable) {
+        ticket?.close()
+        throw e
+      }
     replicas += replica
     ticket?.let { seatTickets[replica] = it }
     return replica
