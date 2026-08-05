@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.data.render.PreviewContext
+import ee.schimke.composeai.data.render.RenderTrace
 import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import java.util.concurrent.atomic.AtomicLong
 
@@ -334,6 +335,13 @@ sealed interface RenderRequest {
  * [outputBaseName] is the concrete artifact identity selected by the renderer. It can differ from
  * the protocol preview id when one discovered function expands into multiple annotation or catalog
  * variants; file-backed products use it to resolve the artifact produced by this exact render.
+ *
+ * [trace] carries the phase timings the engine's own `trace.section(...)` calls recorded — what
+ * `render/trace` v2 reports. It rides on the result rather than through a process-global the
+ * registry reads, because the recorder is created per render deep inside the engine and the result
+ * is the channel that already runs from there to the daemon. Null from hosts that don't run a
+ * recorder (the harness fake, sandbox-worker replies), which is exactly when `render/trace` falls
+ * back to its v1 single-phase shape over `metrics["tookMs"]`.
  */
 data class RenderResult(
   val id: Long,
@@ -343,4 +351,5 @@ data class RenderResult(
   val metrics: Map<String, Long>? = null,
   val previewContext: PreviewContext? = null,
   val outputBaseName: String? = null,
+  val trace: RenderTrace? = null,
 )

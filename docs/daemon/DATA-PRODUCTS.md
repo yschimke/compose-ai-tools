@@ -291,7 +291,7 @@ A `data/fetch` that needs a re-render:
 | `i18n/translations` | default | low | Per-string locale coverage from `values*/strings.xml`. Android only. |
 | _(pseudolocale, no kind)_ | default | low | Triggered by `localeTag` in `{en-XA, ar-XB}` on a `@Preview` or `renderNow.overrides`. Visual-only — Android wraps `LocalContext.resources` to pseudolocalise `getString*` returns and (for `ar-XB`) provides `LayoutDirection.Rtl`; CMP Desktop provides `LayoutDirection.Rtl` only (string-resource interception not viable through `compose.components.resources`). No build-time `pseudoLocalesEnabled` / `resConfigs` required. Modules: `:data-pseudolocale-core`, `:data-pseudolocale-connector` (Android), `:data-pseudolocale-connector-desktop` (CMP Desktop). |
 | `render/composeAiTrace` | default/live | low | Render pipeline trace as Perfetto-importable Chrome trace JSON. |
-| `render/trace` | default | low | Phase breakdown from render metrics. |
+| `render/trace` | default | low | schemaVersion 2: the engine's own `trace.section(...)` phases — `phases: [{name, category, depth, startMs, durationMs, startUs, durationUs}]`, nested, plus `sections[]` per-name aggregates (`count`/`totalUs`/`meanUs`/`maxUs`), `backend`, and `source`. `source` is `"spans"` for real phases and `"metrics"` for the v1 fallback (one synthetic `render` phase over `tookMs`) used by hosts that run no recorder. The v1 field shapes (`totalMs`, `phases[].name/startMs/durationMs`, `metrics{}`) are unchanged and still populated, so a v1 client reads a v2 payload without noticing. Collected on every render — unlike `render/composeAiTrace`, which is the same spans written to disk as Chrome trace JSON behind a system property. |
 | `fonts/used` | default | low | Font families with weight/style fallback chain. |
 | `history/diff/regions` | default | low | Per-pixel bbox of changed regions vs. another history entry. |
 | `test/failure` | failed render | low | Postmortem bundle: phase, error type/message/stack, fallback fields for what's not yet captured. Fetch-only after `renderFailed`. |
@@ -332,13 +332,13 @@ Which `kind` strings each backend's `extensions/list` advertises and serves thro
 | `kind` | Android | Desktop (CMP) | Notes |
 |---|---|---|---|
 | `render/deviceClip` / `render/deviceBackground` | ✅ | ✅ | Renderer-agnostic device-bound previewer. |
-| `render/trace` | ✅ | ✅ | Phase breakdown from render metrics. |
+| `render/trace` | ✅ | ✅ | schemaVersion 2 — real nested phase spans from the engine's recorder, with per-name aggregates. Falls back to the v1 single-phase shape when a host carries no spans. |
 | `render/composeAiTrace` | ✅ | ✅ | Both backends, gated on `composeai.perfetto.enabled` + `composeai.render.outputDir`. |
 | `test/failure` | ✅ | ✅ | Postmortem bundle on `renderFailed`. Renderer-agnostic. |
 | `compose/theme` | ✅ | ✅ | Material 3 theme tokens. Override-extension shape. |
 | `compose/wallpaper` | ✅ | ✅ | Wallpaper override shape. |
 | `compose/permissions` | ✅ | ❌ Android-only | Runtime-permissions surface — Robolectric `ShadowApplication` grant seed + `ContextWrapper.checkPermission` query tracker. Desktop has no Android permission model; CMP panel chip greys out on `serverCapabilities.backend == "desktop"`. |
-| `compose/recomposition` | ✅ producer | ✅ producer | Compose-runtime observer install on both backends (desktop in-process; Android via the in-sandbox bridge). schemaVersion 2 adds the per-scope `reason` (#1605), derived symmetrically from `onScopeInvalidated`. |
+| `compose/recomposition` | ✅ producer | ✅ producer | Compose-runtime observer install on both backends (desktop in-process; Android via the in-sandbox bridge). schemaVersion 2 adds the per-scope `reason` (#1605), derived symmetrically from `onScopeInvalidated`. Desktop no longer needs a held interactive session: `RenderEngine` announces each scene through its `sceneLifecycleListener` **before** `setContent`, which is the only moment an observer can attach in time to see the initial composition — so an ordinary render answers too. |
 | `displayfilter/variants` | ✅ | ✅ | Both backends, gated on `composeai.displayfilter.filters`. Producer is pure `BufferedImage` post-capture. |
 | `fonts/used` | ✅ producer | 📁 registry-only | Android: `GoogleFontInterceptor` + Typeface accounting. Desktop: registry returns `NotAvailable` until a Skia-side font producer ports. |
 | `compose/semantics` / `layout/inspector` | ✅ producer | ✅ producer | Android producer reads the Robolectric semantics tree. Desktop drives both from the held `ImageComposeScene`'s `semanticsOwners` unmerged root after `scene.render()`: `compose/semantics` via `ComposeSemanticsDataProducer` (#1885 follow-up), `layout/inspector` via the CMP-portable `LayoutInspectorDataProducer.writeArtifacts(root, slotTables, density)` overload — `ComposeLayoutInspector` reflects the `LayoutNode` reachable from the semantics root identically on both backends (#1903). |

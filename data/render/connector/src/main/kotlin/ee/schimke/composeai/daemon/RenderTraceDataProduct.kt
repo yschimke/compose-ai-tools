@@ -11,10 +11,13 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.JsonElement
 
 /**
- * `render/trace` v1 backed by the latest host render metrics.
+ * `render/trace` v2 backed by the latest host render: the engine's recorded phase spans, with the
+ * render metrics alongside.
  *
  * The payload builder lives in `:data-render-core`; this class only adapts it to the daemon
- * registry surface.
+ * registry surface. A result with no [RenderResult.trace] still produces a payload — the v1
+ * single-phase shape over `tookMs` — so hosts that don't run a recorder degrade rather than
+ * disappear.
  */
 class RenderTraceDataProductRegistry : DataProductRegistry {
 
@@ -37,10 +40,11 @@ class RenderTraceDataProductRegistry : DataProductRegistry {
 
   override fun onRender(previewId: String, result: RenderResult) {
     val metrics = result.metrics
-    if (metrics == null) {
+    if (metrics == null && result.trace == null) {
       latestPayloads.remove(previewId)
     } else {
-      latestPayloads[previewId] = RenderTraceDataProduct.payloadFrom(metrics)
+      latestPayloads[previewId] =
+        RenderTraceDataProduct.payloadFrom(metrics.orEmpty(), result.trace)
     }
   }
 

@@ -269,6 +269,16 @@ fun runDaemon(
             extensions.isActive("data/theme") && themeRegistry.shouldCapture(previewId, renderMode)
         },
       previewOverrideExtensions = extensions.activeOverrideExtensions(),
+      // Lets `compose/recomposition` instrument an *ordinary* render, not only a held interactive
+      // session — the engine announces each scene before it composes, which is the only moment the
+      // observer can be installed in time to see the initial composition. Gated on the extension
+      // being active so an untoggled panel pays nothing: the registry's own subscribe bookkeeping
+      // decides whether to attach an observer, and with no subscription this is a map write.
+      sceneLifecycleListener = { previewId, scene ->
+        if (extensions.isActive("data/recomposition")) {
+          recompositionRegistry.onSessionLifecycle(previewId, scene)
+        }
+      },
     )
 
   // `composeai.harness.previewsManifest` is set unconditionally by the gradle plugin for production

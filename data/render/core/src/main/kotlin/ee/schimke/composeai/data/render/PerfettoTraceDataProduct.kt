@@ -68,6 +68,28 @@ object PerfettoTraceDataProducer {
     private val originNs: Long = System.nanoTime()
     private val events = mutableListOf<TraceEvent>()
 
+    /**
+     * Closed sections, always collected — this is what [renderTrace] turns into the `render/trace`
+     * data product.
+     *
+     * Deliberately *not* gated on [enabled]. That flag is the opt-in for writing the Perfetto JSON
+     * artefact to disk, which is a different question from whether the daemon can answer "how long
+     * did each phase of this render take" over the wire. The cost of always collecting is one
+     * `System.nanoTime()` pair and one small object per section, and a render opens on the order of
+     * a dozen — far below the noise floor of the work each section wraps.
+     */
+    private val spans = mutableListOf<RenderTrace.Recorded>()
+
+    /** Sections shed once [MAX_SPANS] was reached. Reported on [RenderTrace.droppedSpans]. */
+    private var droppedSpans: Int = 0
+
+    /**
+     * Current nesting level. Incremented for the duration of each [section] body, so a section
+     * records the depth it was *entered* at — see [RenderTrace.Recorded.depth] for why that beats
+     * reconstructing containment afterwards.
+     */
+    private var depth: Int = 0
+
     fun <T> section(name: String, category: String = "compose-preview", block: () -> T): T {
       // Mirror the span onto the platform tracer when one is installed (see [sectionBackend]).
       // Independent of [enabled] — the JSON recorder and an atrace capture are separate opt-ins —
@@ -78,15 +100,20 @@ object PerfettoTraceDataProducer {
           platform.begin(name)
         } catch (_: Throwable) {}
       }
+      val enteredDepth = depth
+      depth = enteredDepth + 1
+      val startNs = System.nanoTime()
       try {
-        if (!enabled) return block()
-        val startNs = System.nanoTime()
-        try {
-          return block()
-        } finally {
-          record(name = name, category = category, startNs = startNs, endNs = System.nanoTime())
-        }
+        return block()
       } finally {
+        depth = enteredDepth
+        record(
+          name = name,
+          category = category,
+          startNs = startNs,
+          endNs = System.nanoTime(),
+          depth = enteredDepth,
+        )
         if (platform != null) {
           try {
             platform.end()
@@ -95,7 +122,28 @@ object PerfettoTraceDataProducer {
       }
     }
 
-    fun record(name: String, category: String = "compose-preview", startNs: Long, endNs: Long) {
+    @JvmOverloads
+    fun record(
+      name: String,
+      category: String = "compose-preview",
+      startNs: Long,
+      endNs: Long,
+      depth: Int = 0,
+    ) {
+      if (spans.size < MAX_SPANS) {
+        spans +=
+          RenderTrace.Recorded(
+            name = name,
+            category = category,
+            startNanos = startNs,
+            endNanos = endNs,
+            depth = depth,
+          )
+      } else {
+        droppedSpans += 1
+      }
+      // The Chrome-trace event list stays behind the disk opt-in: it exists only to be written out
+      // as `render-perfetto-trace.json`, and building it for every render would be pure waste.
       if (!enabled) return
       events +=
         TraceEvent(
@@ -106,6 +154,15 @@ object PerfettoTraceDataProducer {
           args = mapOf("previewId" to previewId, "backend" to backend),
         )
     }
+
+    /**
+     * The structured phase timings for this render, for `RenderResult.trace`.
+     *
+     * Snapshot semantics: call it after the outermost section has closed, or the phases still open
+     * are simply absent. Cheap enough to call more than once.
+     */
+    fun renderTrace(): RenderTrace =
+      RenderTrace.of(backend = backend, events = spans.toList(), droppedSpans = droppedSpans)
 
     fun payload(): TracePayload =
       TracePayload(
@@ -120,6 +177,15 @@ object PerfettoTraceDataProducer {
 
     fun write(rootDir: File) {
       if (enabled) writeArtifacts(rootDir = rootDir, previewId = previewId, trace = payload())
+    }
+
+    private companion object {
+      /**
+       * Retention cap on the in-memory span list. A one-shot render opens a dozen sections; a long
+       * interactive session reuses one recorder across many frames, so the bound exists to keep a
+       * pathological case from growing without limit rather than to constrain normal use.
+       */
+      const val MAX_SPANS = 4_096
     }
   }
 

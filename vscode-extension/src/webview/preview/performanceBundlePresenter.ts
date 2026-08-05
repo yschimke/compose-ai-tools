@@ -31,9 +31,29 @@ export interface RenderTracePhase {
     name: string;
     startMs: number;
     durationMs: number;
+    /** v2: microseconds. Most phases of a fast render round to `0ms`,
+     *  and a column of zeroes is worse than no column — the label
+     *  formats from this and falls back to the ms fields on a v1
+     *  payload. */
+    durationUs: number;
+    startUs: number;
+    /** v2: nesting level. `render:once` encloses `compose:setContent`
+     *  encloses …; the indent is most of what makes the list readable. */
+    depth: number;
+    /** v2: span category, for grouping/filtering. */
+    category: string;
     /** Per-phase % of `chartScale`, pre-computed so the renderer
      *  doesn't redo the divide on each paint. */
     widthPct: number;
+}
+
+/** v2: aggregate over every phase sharing a name within one render. */
+export interface RenderTraceRepeat {
+    name: string;
+    count: number;
+    totalUs: number;
+    meanUs: number;
+    maxUs: number;
 }
 
 export interface RenderTraceMetric {
@@ -45,6 +65,19 @@ export interface RenderTraceSection {
     totalMs: number | null;
     phases: readonly RenderTracePhase[];
     metrics: readonly RenderTraceMetric[];
+    /** Total render wall time in microseconds. From the v2 `totalUs`
+     *  field, or derived from the v1 `totalMs` so the bar scale and the
+     *  header label behave identically on either payload. */
+    totalUs: number | null;
+    /** v2: which engine produced the trace (`desktop` / `android`). */
+    backend: string | null;
+    /** v2 `source`: `"spans"` when the phases are the engine's real
+     *  sections, `"metrics"` for the v1-shaped single synthetic phase.
+     *  Surfaced rather than inferred so the panel can say plainly that
+     *  a one-phase trace is a fallback, not a one-phase render. */
+    source: "spans" | "metrics";
+    /** v2: names that occurred more than once, with their aggregates. */
+    repeats: readonly RenderTraceRepeat[];
 }
 
 export interface ComposeAiTraceSummary {
@@ -192,25 +225,44 @@ function parseRenderTrace(raw: unknown): RenderTraceSection | null {
     if (!raw || typeof raw !== "object") return null;
     const payload = raw as {
         totalMs?: unknown;
+        totalUs?: unknown;
+        backend?: unknown;
+        source?: unknown;
         phases?: unknown;
+        sections?: unknown;
         metrics?: unknown;
     };
     const totalMs =
         typeof payload.totalMs === "number" && Number.isFinite(payload.totalMs)
             ? payload.totalMs
             : null;
+    // v2 carries microseconds; a v1 payload only has milliseconds, so derive
+    // from those rather than dropping to null — the bar scale and the header
+    // label both read this, and a v1 trace must keep rendering exactly as it
+    // did before.
+    const totalUs =
+        typeof payload.totalUs === "number" && Number.isFinite(payload.totalUs)
+            ? payload.totalUs
+            : totalMs !== null
+              ? totalMs * 1000
+              : null;
+    const backend =
+        typeof payload.backend === "string" && payload.backend.length > 0
+            ? payload.backend
+            : null;
+    const source = payload.source === "spans" ? "spans" : "metrics";
     const rawPhases = Array.isArray(payload.phases) ? payload.phases : [];
-    const phasesNoWidth: Array<{
-        name: string;
-        startMs: number;
-        durationMs: number;
-    }> = [];
+    const phasesNoWidth: Array<Omit<RenderTracePhase, "widthPct">> = [];
     for (const p of rawPhases) {
         if (!p || typeof p !== "object") continue;
         const ph = p as {
             name?: unknown;
             startMs?: unknown;
             durationMs?: unknown;
+            startUs?: unknown;
+            durationUs?: unknown;
+            depth?: unknown;
+            category?: unknown;
         };
         if (typeof ph.name !== "string" || ph.name.length === 0) continue;
         if (
@@ -223,24 +275,66 @@ function parseRenderTrace(raw: unknown): RenderTraceSection | null {
             typeof ph.startMs === "number" && Number.isFinite(ph.startMs)
                 ? ph.startMs
                 : 0;
+        // Fall back to the millisecond fields so a v1 payload still
+        // produces sane microsecond values rather than zeroes.
+        const durationUs =
+            typeof ph.durationUs === "number" && Number.isFinite(ph.durationUs)
+                ? ph.durationUs
+                : ph.durationMs * 1000;
+        const startUs =
+            typeof ph.startUs === "number" && Number.isFinite(ph.startUs)
+                ? ph.startUs
+                : startMs * 1000;
         phasesNoWidth.push({
             name: ph.name,
             startMs,
             durationMs: ph.durationMs,
+            startUs,
+            durationUs,
+            depth:
+                typeof ph.depth === "number" && Number.isFinite(ph.depth)
+                    ? Math.max(0, Math.trunc(ph.depth))
+                    : 0,
+            category: typeof ph.category === "string" ? ph.category : "",
         });
     }
-    const maxDuration = phasesNoWidth.reduce(
-        (acc, p) => (p.durationMs > acc ? p.durationMs : acc),
+    // Scale the bars in microseconds: a render whose phases are all
+    // sub-millisecond has a `totalMs` of 0 or 1, and dividing by that
+    // makes every bar either empty or full.
+    const maxDurationUs = phasesNoWidth.reduce(
+        (acc, p) => (p.durationUs > acc ? p.durationUs : acc),
         0,
     );
-    const chartScale = totalMs && totalMs > 0 ? totalMs : maxDuration;
+    const chartScale = totalUs && totalUs > 0 ? totalUs : maxDurationUs;
     const phases: RenderTracePhase[] = phasesNoWidth.map((p) => ({
         ...p,
         widthPct:
             chartScale > 0
-                ? Math.max(0, Math.min(100, (p.durationMs / chartScale) * 100))
+                ? Math.max(0, Math.min(100, (p.durationUs / chartScale) * 100))
                 : 0,
     }));
+
+    const rawSections = Array.isArray(payload.sections) ? payload.sections : [];
+    const repeats: RenderTraceRepeat[] = [];
+    for (const entry of rawSections) {
+        if (!entry || typeof entry !== "object") continue;
+        const sec = entry as {
+            name?: unknown;
+            count?: unknown;
+            totalUs?: unknown;
+            meanUs?: unknown;
+            maxUs?: unknown;
+        };
+        if (typeof sec.name !== "string" || sec.name.length === 0) continue;
+        if (typeof sec.count !== "number" || sec.count <= 1) continue;
+        repeats.push({
+            name: sec.name,
+            count: sec.count,
+            totalUs: typeof sec.totalUs === "number" ? sec.totalUs : 0,
+            meanUs: typeof sec.meanUs === "number" ? sec.meanUs : 0,
+            maxUs: typeof sec.maxUs === "number" ? sec.maxUs : 0,
+        });
+    }
 
     const rawMetrics =
         payload.metrics && typeof payload.metrics === "object"
@@ -257,7 +351,16 @@ function parseRenderTrace(raw: unknown): RenderTraceSection | null {
     if (phases.length === 0 && metrics.length === 0 && totalMs === null) {
         return null;
     }
-    return { totalMs, phases, metrics };
+    return { totalMs, totalUs, backend, source, phases, metrics, repeats };
+}
+
+/** Format a microsecond duration at the precision it deserves. */
+export function formatTraceDuration(micros: number): string {
+    if (!Number.isFinite(micros) || micros < 0) return "—";
+    if (micros >= 10000) return (micros / 1000).toFixed(1) + " ms";
+    if (micros >= 1000) return (micros / 1000).toFixed(2) + " ms";
+    if (micros >= 10) return Math.round(micros) + " µs";
+    return micros.toFixed(1) + " µs";
 }
 
 function parseComposeAiTrace(raw: unknown): ComposeAiTraceSummary | null {
@@ -420,29 +523,94 @@ function renderRenderTraceSection(trace: RenderTraceSection): HTMLElement {
     title.className = "perf-section-title";
     title.textContent = "Render trace";
     header.appendChild(title);
-    if (trace.totalMs !== null) {
+    const totalLabel =
+        trace.totalUs !== null
+            ? formatTraceDuration(trace.totalUs)
+            : trace.totalMs !== null
+              ? trace.totalMs + " ms"
+              : null;
+    if (totalLabel !== null) {
         const total = document.createElement("span");
         total.className = "perf-section-summary";
-        total.textContent = trace.totalMs + " ms total";
+        total.textContent =
+            totalLabel +
+            " total" +
+            (trace.backend ? " · " + trace.backend : "");
         header.appendChild(total);
     }
     section.appendChild(header);
 
+    // A `metrics`-sourced trace has one synthetic phase covering the whole
+    // render. Say so — otherwise it reads as "this render had exactly one
+    // phase", which is a very different claim.
+    if (trace.source === "metrics" && trace.phases.length > 0) {
+        const note = document.createElement("div");
+        note.className = "perf-trace-note";
+        note.textContent =
+            "No phase spans for this render — showing total time only.";
+        section.appendChild(note);
+    }
+
     if (trace.phases.length > 0) {
-        const bar = document.createElement("div");
-        bar.className = "perf-phase-bar";
+        const list = document.createElement("div");
+        list.className = "perf-phase-list";
         for (const phase of trace.phases) {
-            const seg = document.createElement("div");
-            seg.className = "perf-phase-bar-segment";
-            seg.style.width = phase.widthPct + "%";
-            seg.title = phase.name + ": " + phase.durationMs + " ms";
-            const label = document.createElement("span");
-            label.className = "perf-phase-bar-segment-label";
-            label.textContent = phase.name + " · " + phase.durationMs + " ms";
-            seg.appendChild(label);
-            bar.appendChild(seg);
+            const row = document.createElement("div");
+            row.className = "perf-phase-row";
+            row.dataset.depth = String(Math.min(phase.depth, 6));
+            // Indent by nesting depth. The structure is the point: a flat
+            // list of thirteen phases says far less than the same thirteen
+            // showing what contains what.
+            row.style.paddingInlineStart = phase.depth * 12 + "px";
+
+            const name = document.createElement("span");
+            name.className = "perf-phase-name";
+            name.textContent = phase.name;
+            if (phase.category) name.title = phase.category;
+            row.appendChild(name);
+
+            const track = document.createElement("div");
+            track.className = "perf-phase-track";
+            const fill = document.createElement("div");
+            fill.className = "perf-phase-fill";
+            fill.style.width = Math.max(phase.widthPct, 0.5) + "%";
+            track.appendChild(fill);
+            row.appendChild(track);
+
+            const duration = document.createElement("span");
+            duration.className = "perf-phase-duration";
+            duration.textContent = formatTraceDuration(phase.durationUs);
+            row.appendChild(duration);
+
+            row.title =
+                phase.name +
+                " · " +
+                formatTraceDuration(phase.durationUs) +
+                " · starts at " +
+                formatTraceDuration(phase.startUs);
+            list.appendChild(row);
         }
-        section.appendChild(bar);
+        section.appendChild(list);
+    }
+
+    if (trace.repeats.length > 0) {
+        const repeats = document.createElement("dl");
+        repeats.className = "perf-trace-repeats";
+        for (const repeat of trace.repeats) {
+            const dt = document.createElement("dt");
+            dt.textContent = repeat.name + " ×" + repeat.count;
+            const dd = document.createElement("dd");
+            dd.textContent =
+                formatTraceDuration(repeat.totalUs) +
+                " total · " +
+                formatTraceDuration(repeat.meanUs) +
+                " mean · " +
+                formatTraceDuration(repeat.maxUs) +
+                " max";
+            repeats.appendChild(dt);
+            repeats.appendChild(dd);
+        }
+        section.appendChild(repeats);
     }
 
     if (trace.metrics.length > 0) {
