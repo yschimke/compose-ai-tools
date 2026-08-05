@@ -346,7 +346,7 @@ export { createPlayer, RcPlayerElement, base64ToArrayBuffer };
 export type { RcPlayerOptions, RcPlayerHandle } from './RcPlayerElement';
 // Named-family web fonts. `configureWebFonts` is the switch an embedder needs: a webview whose CSP
 // forbids the font origins, or a hermetic CI lane, turns it off and renders the fallback stack.
-export { configureWebFonts, webFontsReady, googleFontsUrl, ensureWebFont, parseFamily, cssQuoted, resetWebFonts, GOOGLE_PREFIX } from './WebFonts';
+export { configureWebFonts, webFontsReady, googleFontsUrl, googleFontsAxisUrl, ensureWebFont, parseFamily, cssQuoted, resetWebFonts, GOOGLE_PREFIX } from './WebFonts';
 export { namedFontStack, cssFontStackFor } from './CanvasPaintContext';
 export type { WebFontConfig } from './WebFonts';
 

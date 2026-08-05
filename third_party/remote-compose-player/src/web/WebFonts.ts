@@ -69,6 +69,52 @@ export function googleFontsUrl(family: string, baseUrl: string = config.baseUrl)
     return `${baseUrl}?family=${name}:ital,wght@${axis}&display=block`;
 }
 
+/**
+ * A font-variation axis the document actually asks for, and the span of values it asks for.
+ *
+ * The span matters because it decides *what file the API serves*. Asked for an enumerated weight
+ * list — the [googleFontsUrl] form — css2 answers with one **pinned static instance per weight**
+ * (`font-weight: 100; font-stretch: 100%`). Asked for a range with the axes named, it answers with a
+ * genuine variable face (`font-weight: 100 1000; font-stretch: 25% 151%`). Only the second can be
+ * varied, so a document carrying axes has to ask the second way or its `wdth` ramp draws three
+ * identical lines however correctly the canvas sets the axis.
+ */
+export interface AxisSpan {
+    readonly tag: string;
+    readonly min: number;
+    readonly max: number;
+}
+
+/**
+ * The css2 URL for [family] varying over [axes], or null when there is nothing to ask for.
+ *
+ * Ranges are built from the values the document *uses*, not from the family's declared bounds — the
+ * player has no way to know those, and a range outside them is a 400. The document's own values are
+ * inside them by construction.
+ *
+ * A degenerate span (one value) yields null on purpose: css2 rejects `wdth@25..25` with a 400, and a
+ * single value needs no variable face anyway — the enumerated [googleFontsUrl] already covers it.
+ * Axis tags must be listed alphabetically, which the API enforces, and the values follow in the same
+ * order.
+ */
+export function googleFontsAxisUrl(
+    family: string,
+    axes: readonly AxisSpan[],
+    baseUrl: string = config.baseUrl,
+): string | null {
+    const varying = axes.filter((a) => a.max > a.min).sort((a, b) => (a.tag < b.tag ? -1 : 1));
+    if (varying.length === 0) return null;
+    const tags = varying.map((a) => a.tag).join(',');
+    const ranges = varying.map((a) => `${trimNumber(a.min)}..${trimNumber(a.max)}`).join(',');
+    const name = encodeURIComponent(family.trim()).replace(/%20/g, '+');
+    return `${baseUrl}?family=${name}:${tags}@${ranges}&display=block`;
+}
+
+/** `25` rather than `25.0` — css2 rejects a trailing `.0` on an axis bound. */
+function trimNumber(value: number): string {
+    return Number.isInteger(value) ? `${value}` : `${value}`.replace(/0+$/, '');
+}
+
 /** The namespace marking a family as one to fetch from Google Fonts. */
 export const GOOGLE_PREFIX = 'google:';
 
@@ -110,8 +156,14 @@ const done = new Set<string>();
 /** Callbacks still waiting on a variant, by variant key. Cleared when it settles. */
 const waiting = new Map<string, Set<() => void>>();
 
-function variantKey(family: string, weight: number, italic: boolean): string {
-    return `${family.toLowerCase()}|${weight}|${italic ? 'i' : 'n'}`;
+function variantKey(
+    family: string,
+    weight: number,
+    italic: boolean,
+    axes: readonly { tag: string; value: number }[] = [],
+): string {
+    const axisPart = axes.map(({ tag, value }) => `${tag}=${value}`).join(',');
+    return `${family.toLowerCase()}|${weight}|${italic ? 'i' : 'n'}|${axisPart}`;
 }
 
 /**
@@ -165,6 +217,26 @@ function hasLocalFace(family: string): boolean {
     return found;
 }
 
+/**
+ * Whether the page already carries a face for [family] that can be *varied* — one declaring a
+ * `font-weight` or `font-stretch` **range** rather than a single value.
+ *
+ * The distinction matters because [hasLocalFace] is too coarse for an axis request: the enumerated
+ * stylesheet has by then declared a pinned instance per weight, so "a face exists" is true while
+ * "the axes can be applied to it" is false, and skipping the range request on that basis would leave
+ * a `wdth` ramp drawing identical lines. A range in the declaration is exactly what a variable face
+ * advertises (`font-weight: 100 1000`), so it is the right question to ask.
+ */
+function hasLocalVariableFace(family: string): boolean {
+    const want = family.toLowerCase();
+    let found = false;
+    document.fonts.forEach((face: FontFace) => {
+        if (unquote(face.family).toLowerCase() !== want) return;
+        if (face.weight.includes(' ') || face.stretch.includes(' ')) found = true;
+    });
+    return found;
+}
+
 function loadStylesheet(url: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
         const link = document.createElement('link');
@@ -178,9 +250,49 @@ function loadStylesheet(url: string): Promise<void> {
     });
 }
 
-/** Declare [family]'s faces on the page, once. Resolves having declared nothing when disabled. */
-function registerStylesheet(family: string): Promise<void> {
+/**
+ * The widest span seen so far per family and axis, so a stylesheet can be asked for a range rather
+ * than a point.
+ *
+ * Accumulated because axes arrive *one paint at a time*: the three lines of a `wdth` specimen are
+ * three separate text ops carrying 25, then 100, then 151. Each on its own is a degenerate span
+ * with no variable face to ask for; together they are the range the document needs. A single-shot
+ * renderer awaits [webFontsReady] and repaints, so the frame it keeps is drawn after the full span
+ * is known; an interactive one repaints through `onLoaded` as each wider face arrives.
+ */
+const axisSpans = new Map<string, Map<string, { min: number; max: number }>>();
+
+/** Widen [family]'s recorded spans by [axes], and return them all. */
+function recordAxes(family: string, axes: readonly { tag: string; value: number }[]): AxisSpan[] {
     const key = family.toLowerCase();
+    const spans = axisSpans.get(key) ?? new Map<string, { min: number; max: number }>();
+    for (const { tag, value } of axes) {
+        const span = spans.get(tag);
+        if (span) {
+            span.min = Math.min(span.min, value);
+            span.max = Math.max(span.max, value);
+        } else {
+            spans.set(tag, { min: value, max: value });
+        }
+    }
+    axisSpans.set(key, spans);
+    return [...spans].map(([tag, { min, max }]) => ({ tag, min, max }));
+}
+
+/**
+ * Declare [family]'s faces on the page, once. Resolves having declared nothing when disabled.
+ *
+ * [url] defaults to the enumerated request; an axis request passes its own, and says so with
+ * [variable] so the "already have it locally" check asks whether the local face can be *varied*
+ * rather than merely whether one exists — by then this function's own enumerated request has
+ * declared several, none of them variable.
+ */
+function registerStylesheet(
+    family: string,
+    url: string = googleFontsUrl(family),
+    variable = false,
+): Promise<void> {
+    const key = `${family.toLowerCase()}|${url}`;
     const existing = stylesheets.get(key);
     if (existing) return existing;
     let p: Promise<void>;
@@ -190,12 +302,12 @@ function registerStylesheet(family: string): Promise<void> {
         // The bundle also runs under node-canvas, where there is no document and no font registry;
         // a named family there simply falls through to the fallback generic.
         p = Promise.resolve();
-    } else if (hasLocalFace(family)) {
+    } else if (variable ? hasLocalVariableFace(family) : hasLocalFace(family)) {
         // The page already carries a vendored face for this family — faster and more faithful than
         // the network copy, so it wins and no request is made.
         p = Promise.resolve();
     } else {
-        p = loadStylesheet(googleFontsUrl(family));
+        p = loadStylesheet(url);
     }
     stylesheets.set(key, p);
     return p;
@@ -216,8 +328,22 @@ function registerStylesheet(family: string): Promise<void> {
  * publishes — six files for Orbitron — to draw one regular label, and would hold `fontsReady()` open
  * until the unused ones finished, which is exactly the wait a single-shot renderer is blocked on.
  */
-async function loadVariant(family: string, weight: number, italic: boolean): Promise<void> {
+async function loadVariant(
+    family: string,
+    weight: number,
+    italic: boolean,
+    axes: readonly { tag: string; value: number }[],
+): Promise<void> {
+    // The enumerated stylesheet always: it is what serves a static family, and it is the fallback
+    // when the axis range below is refused (a family that publishes no variable face 400s on any
+    // range, which from the `<link>` is indistinguishable from a network failure).
     await registerStylesheet(family);
+    if (axes.length > 0) {
+        const url = googleFontsAxisUrl(family, recordAxes(family, axes));
+        // Failure here is not the caller's problem: the enumerated faces are already declared, so a
+        // refused range means the axes go unapplied rather than the family going unpainted.
+        if (url) await registerStylesheet(family, url, true).catch(() => {});
+    }
     if (typeof document === 'undefined' || !document.fonts) return;
     await document.fonts.load(`${italic ? 'italic ' : ''}${weight} 16px "${cssQuoted(family)}"`);
 }
@@ -236,8 +362,12 @@ export function ensureWebFont(
     weight: number = 400,
     italic: boolean = false,
     onLoaded?: () => void,
+    axes: readonly { tag: string; value: number }[] = [],
 ): Promise<void> {
-    const key = variantKey(family, weight, italic);
+    // The axis values are part of the variant key, so a second line of a `wdth` ramp is a *new*
+    // variant rather than a hit on the first one's promise — which is what gets the wider range
+    // requested at all. Without it the family would be marked loaded at the first value seen.
+    const key = variantKey(family, weight, italic, axes);
     if (onLoaded && !done.has(key)) {
         const set = waiting.get(key) ?? new Set<() => void>();
         set.add(onLoaded);
@@ -245,7 +375,7 @@ export function ensureWebFont(
     }
     const existing = variants.get(key);
     if (existing) return existing;
-    const p = loadVariant(family, weight, italic)
+    const p = loadVariant(family, weight, italic, axes)
         .catch((e) => {
             const famKey = family.toLowerCase();
             if (!failed.has(famKey)) {
@@ -279,6 +409,7 @@ export async function webFontsReady(): Promise<void> {
 /** Drop all registration state. Tests only. */
 export function resetWebFonts(): void {
     stylesheets.clear();
+    axisSpans.clear();
     variants.clear();
     done.clear();
     waiting.clear();
