@@ -186,6 +186,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![serve-landing-declared-themes-theme-inflight/dark](renders/serve-landing-declared-themes-theme-inflight.dark.png) |
 | `light` | ![serve-landing-declared-themes-theme-inflight/light](renders/serve-landing-declared-themes-theme-inflight.light.png) |
 
+## serve-landing-declared-themes-theme-render-terminal
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![serve-landing-declared-themes-theme-render-terminal/dark](renders/serve-landing-declared-themes-theme-render-terminal.dark.png) |
+| `light` | ![serve-landing-declared-themes-theme-render-terminal/light](renders/serve-landing-declared-themes-theme-render-terminal.light.png) |
+
 ## serve-landing-grouped
 
 | Theme | Capture |

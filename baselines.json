@@ -289,6 +289,18 @@
       "sha256": "6257bb50041ae27401d554686f941fccf84fd69ef3b0be7dd8f24a11e73fd50f",
       "size": 51789
     },
+    "serve-landing-declared-themes-theme-render-terminal.dark.png": {
+      "fixture": "serve-landing-declared-themes-theme-render-terminal",
+      "theme": "dark",
+      "sha256": "8a632f655b199a752ca23b0e0b5b8288e4f4e9000618b43f9469781a0ffbf38d",
+      "size": 57140
+    },
+    "serve-landing-declared-themes-theme-render-terminal.light.png": {
+      "fixture": "serve-landing-declared-themes-theme-render-terminal",
+      "theme": "light",
+      "sha256": "8e3854b22799f0b813b62901e96a547938ca1e2bdbc75f26b7e85549eeaff375",
+      "size": 53446
+    },
     "serve-landing-declared-themes.dark.png": {
       "fixture": "serve-landing-declared-themes",
       "theme": "dark",
