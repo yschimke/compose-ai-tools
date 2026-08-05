@@ -392,7 +392,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_xhdpi_SHAPE_circle.png",
     "resourceId": "mipmap/ic_launcher",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "d90102077f9518ee06c253af27ca9a0c4b9038e0efcc1cde86fefb035dfae258",
+    "sha256": "5302f77c300e9a80fe7036f884e1601cf0d8413f745eec80dc9422d239d72bad",
     "shape": "CIRCLE"
   },
   "samples/remotecompose::mipmap/ic_launcher::renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle_themed-dark.png": {
@@ -419,7 +419,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_xhdpi_SHAPE_rounded_square.png",
     "resourceId": "mipmap/ic_launcher",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "cb7252b516fb64949e2a64ce1238b177d11360a8af59585a987df541d15cadb8",
+    "sha256": "5afefb4637b86e51b3410c7bba12caefcfb77a1e49322868cc180593d1698e84",
     "shape": "ROUNDED_SQUARE"
   },
   "samples/remotecompose::mipmap/ic_launcher::renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_rounded_square_themed-dark.png": {
@@ -446,7 +446,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_xhdpi_SHAPE_square.png",
     "resourceId": "mipmap/ic_launcher",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "c29c14ed7853753bc4415196f8d87cdc4a1cce497846fc5f44af892f26769115",
+    "sha256": "f2b18c0440d2ff98bda1d6d2dd1bae258347be500d31c8e400093ef60059e3f0",
     "shape": "SQUARE"
   },
   "samples/remotecompose::mipmap/ic_launcher::renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_square_themed-dark.png": {
@@ -473,7 +473,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle.png",
     "resourceId": "mipmap/ic_launcher",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "03a18cf9d78050d8fcae98c3f4dbc004d7d56e3cba16069ae1b6e6668db63af0",
+    "sha256": "1f1d9f75daefda45ad3a4f7dadc8965c2f8a4cfa20fa338fd7d8bbf3537438da",
     "shape": "SQUIRCLE"
   },
   "samples/remotecompose::mipmap/ic_launcher::renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle_themed-dark.png": {
@@ -509,7 +509,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_round_xhdpi_SHAPE_circle.png",
     "resourceId": "mipmap/ic_launcher_round",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "d90102077f9518ee06c253af27ca9a0c4b9038e0efcc1cde86fefb035dfae258",
+    "sha256": "5302f77c300e9a80fe7036f884e1601cf0d8413f745eec80dc9422d239d72bad",
     "shape": "CIRCLE"
   },
   "samples/remotecompose::mipmap/ic_launcher_round::renders/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_circle_themed-dark.png": {
@@ -536,7 +536,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_round_xhdpi_SHAPE_rounded_square.png",
     "resourceId": "mipmap/ic_launcher_round",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "cb7252b516fb64949e2a64ce1238b177d11360a8af59585a987df541d15cadb8",
+    "sha256": "5afefb4637b86e51b3410c7bba12caefcfb77a1e49322868cc180593d1698e84",
     "shape": "ROUNDED_SQUARE"
   },
   "samples/remotecompose::mipmap/ic_launcher_round::renders/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_rounded_square_themed-dark.png": {
@@ -563,7 +563,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_round_xhdpi_SHAPE_square.png",
     "resourceId": "mipmap/ic_launcher_round",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "c29c14ed7853753bc4415196f8d87cdc4a1cce497846fc5f44af892f26769115",
+    "sha256": "f2b18c0440d2ff98bda1d6d2dd1bae258347be500d31c8e400093ef60059e3f0",
     "shape": "SQUARE"
   },
   "samples/remotecompose::mipmap/ic_launcher_round::renders/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_square_themed-dark.png": {
@@ -590,7 +590,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_round_xhdpi_SHAPE_squircle.png",
     "resourceId": "mipmap/ic_launcher_round",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "03a18cf9d78050d8fcae98c3f4dbc004d7d56e3cba16069ae1b6e6668db63af0",
+    "sha256": "1f1d9f75daefda45ad3a4f7dadc8965c2f8a4cfa20fa338fd7d8bbf3537438da",
     "shape": "SQUIRCLE"
   },
   "samples/remotecompose::mipmap/ic_launcher_round::renders/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_squircle_themed-dark.png": {
