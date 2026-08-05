@@ -16,7 +16,7 @@ package ee.schimke.composeai.cli
  */
 internal object CliRouter {
   /** Top-level commands shown first and not nested under a group. */
-  val CORE: List<String> = listOf("render", "show", "list", "show-resources", "doctor", "mcp")
+  val CORE: List<String> = listOf("render", "show", "list", "show-resources", "doctor", "mcp", "verify-figma")
 
   /**
    * Command groups, in display order. `compose-preview <group> <command>` dispatches to the
