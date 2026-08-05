@@ -54,7 +54,7 @@ internal class RcGoogleFontTypefaceResolver(
    * Faces resolved so far, keyed by request. `resolve` is called per paint change, so without this
    * a text-heavy document re-reads (and re-parses) the same file on every op.
    */
-  private val instances = HashMap<GoogleFontKey, FontInstance>()
+  private val instances = HashMap<GoogleFontKey, FontInstance?>()
 
   override fun resolve(
     fontType: Int,
@@ -106,12 +106,18 @@ internal class RcGoogleFontTypefaceResolver(
 
   private fun googleInstance(family: String?, weight: Int, italic: Boolean): FontInstance? {
     val key = googleFontKey(family, weight, italic) ?: return null
-    instances[key]?.let {
-      return it
-    }
-    val file = fonts.load(key) ?: return null
-    val typeface = typefaceLoader(file, weight, italic) ?: return null
-    return VariableFontInstance(typeface, file, weight, italic).also { instances[key] = it }
+    if (instances.containsKey(key)) return instances[key]
+    // A miss is remembered too. `resolve` runs per text op, so a family the source can't serve —
+    // a typo, an offline cache miss, a failed download, a file the platform won't parse — would
+    // otherwise re-attempt the (network-backed) fetch for every run in the document. Storing null
+    // makes it one attempt per key, and the caller falls back to `DefaultTypefaceResolver` as fast
+    // as it did the first time.
+    val instance =
+      fonts.load(key)?.let { file ->
+        typefaceLoader(file, weight, italic)?.let { VariableFontInstance(it, file, weight, italic) }
+      }
+    instances[key] = instance
+    return instance
   }
 
   /**
