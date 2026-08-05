@@ -578,15 +578,21 @@ object ComposeSemanticsDataProducer {
    * stable per-face handle Compose exposes. Null when the range inherits its family (no explicit
    * `fontFamily`).
    */
-  private fun fontFamilyLabel(
+  internal fun fontFamilyLabel(
     family: FontFamily?,
     weight: FontWeight?,
     style: FontStyle?,
   ): String? =
-    when (family) {
-      null -> null
-      is GenericFontFamily -> family.name.takeIf { it.isNotBlank() }
-      is FontListFontFamily -> matchingFont(family, weight, style)?.let(::fontIdentity)
+    when {
+      family == null -> null
+      // `FontFamily.Default` names no face — its `toString()` is the literal "FontFamily.Default",
+      // a sentinel that resolves nowhere. Reporting it made the figma-svg export emit
+      // `font-family="FontFamily.Default, sans-serif"` and sent the font embedder looking for a
+      // face called "Font Family.Default" (issue #3209). It carries exactly as much information as
+      // an inherited (null) family, so report it the same way: unstated.
+      family == FontFamily.Default -> null
+      family is GenericFontFamily -> family.name.takeIf { it.isNotBlank() }
+      family is FontListFontFamily -> matchingFont(family, weight, style)?.let(::fontIdentity)
       else -> family.toString().takeIf { it.isNotBlank() }
     }
 
@@ -926,6 +932,27 @@ internal fun chooseWeight(available: List<Int>, target: Int): Int? {
     else -> available.filter { it in target..500 }.minOrNull() ?: lighter ?: heavier
   }
 }
+
+/**
+ * The family name for the compact `TextStyle` projection retained on a text layout modifier, or
+ * null when the style names no face.
+ *
+ * `FontFamily.Default` is the one family whose `toString()` is a *sentinel* — the literal
+ * `"FontFamily.Default"` — rather than a name anything can resolve: writing it into
+ * `layoutTextFontFamily` made the `compose/figma-svg` export emit `font-family="FontFamily.Default,
+ * sans-serif"` (saved only by the appended generic) and sent the font-embedding path hunting for a
+ * face called `Font Family.Default` (issue #3209). The default family states no more than an
+ * inherited one, so it reports as unstated. A `GenericFontFamily` (`FontFamily.SansSerif` …)
+ * reports the CSS-ish `name` the export classifies on — the same value the `TextLayoutResult`
+ * path's `fontFamilyLabel` reports — rather than whatever its `toString()` happens to spell, so the
+ * two capture paths can't disagree about the same style.
+ */
+internal fun layoutTextFontFamilyLabel(family: FontFamily?): String? =
+  when {
+    family == null || family == FontFamily.Default -> null
+    family is GenericFontFamily -> family.name.takeIf { it.isNotBlank() }
+    else -> family.toString().takeIf { it.isNotBlank() }
+  }
 
 typealias ComposeSemanticsPayload =
   ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
@@ -1305,7 +1332,9 @@ internal object ComposeLayoutInspector {
         val fontSizePx = it.fontSize.resolveLayoutTextPx(density, fontScale)
         it.fontSize.toLayoutTextUnit()?.let { value -> properties["layoutTextFontSize"] = value }
         fontSizePx?.let { value -> properties["layoutTextFontSizePx"] = value.toString() }
-        it.fontFamily?.toString()?.let { family -> properties["layoutTextFontFamily"] = family }
+        layoutTextFontFamilyLabel(it.fontFamily)?.let { family ->
+          properties["layoutTextFontFamily"] = family
+        }
         it.fontWeight?.weight?.let { weight ->
           properties["layoutTextFontWeight"] = weight.toString()
         }

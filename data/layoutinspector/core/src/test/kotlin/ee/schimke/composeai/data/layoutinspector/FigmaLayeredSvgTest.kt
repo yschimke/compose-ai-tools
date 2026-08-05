@@ -2704,6 +2704,23 @@ class FigmaLayeredSvgTest {
   }
 
   @Test
+  fun defaultFamilySentinelClassifiesAsUnstatedRatherThanAConcreteFace() {
+    // Issue #3209: an Android capture of `FontFamily.Default` writes the sentinel's `toString()`,
+    // not a face name. Emitting it verbatim gave `font-family="FontFamily.Default, sans-serif"`
+    // (a first name that resolves nowhere) and made the embed path hunt for `Font Family.Default`.
+    // Both classifiers must read it as "no family stated", exactly like null / a sans generic.
+    assertEquals("Roboto", FigmaLayeredSvg.resolveFamily("FontFamily.Default", "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.resolveFamily("fontfamily.default", "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.resolveFamily(" FontFamily.Default ", "Roboto"))
+    assertEquals("sans-serif", FigmaLayeredSvg.resolveFamily("FontFamily.Default", "sans-serif"))
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily("FontFamily.Default", "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily("FONTFAMILY.DEFAULT", "Roboto"))
+    // A blank capture is the same "unstated" case, not a face named "".
+    assertEquals("Roboto", FigmaLayeredSvg.resolveFamily("  ", "Roboto"))
+    assertEquals("Roboto", FigmaLayeredSvg.embedFamily("", "Roboto"))
+  }
+
+  @Test
   fun resolveFamilyKeepsMeaningfulGenericsSoSerifStaysSerif() {
     // The sans default must NOT swallow serif/monospace — that's what erased specimen identity.
     assertEquals("serif", FigmaLayeredSvg.resolveFamily("serif", "Roboto"))

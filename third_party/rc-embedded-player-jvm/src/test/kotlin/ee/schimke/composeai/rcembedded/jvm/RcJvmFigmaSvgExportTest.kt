@@ -74,11 +74,13 @@ import org.junit.Test
  * within text metrics: same 10 layout-inspector nodes and 2 semantics text nodes, same 10 elements
  * (2 `<text>`, 1 `<image>`, 6 `<g>`, no `<path>`/`<rect>`), same layer order. What differs is
  * downstream of text measurement — canvas 672x204 vs 672x206, drawn-content crop 640x172 at y=154
- * vs 640x174 at y=153, baselines within a pixel — plus one difference that is not about metrics at
- * all: the Android capture writes `FontFamily.Default` (the sentinel's `toString()`) into the text
- * node's family, so its SVG carries `font-family="FontFamily.Default, sans-serif"`, where the jvm
- * text seam resolves a real `GenericFontFamily` and the export emits the plain `sans-serif`. See
- * `PROVENANCE.md` § "the `compose/figma-svg` export runs over the jvm player".
+ * vs 640x174 at y=153, baselines within a pixel. The one non-metric difference this lane used to
+ * expose — the Android capture writing `FontFamily.Default` (the sentinel's `toString()`) into the
+ * text node's family, so its SVG carried `font-family="FontFamily.Default, sans-serif"` where the
+ * jvm seam's real `GenericFontFamily` emitted the plain `sans-serif` — is fixed (issue #3209): the
+ * sentinel now reads as "no family stated" at capture and in the export's classifiers, so both
+ * lanes emit `sans-serif`. See `PROVENANCE.md` § "the `compose/figma-svg` export runs over the jvm
+ * player".
  *
  * ## What is asserted, and what deliberately is not
  *
