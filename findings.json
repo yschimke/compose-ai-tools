@@ -2660,6 +2660,24 @@
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
     {
+      "annotatedBasename": "TypefaceSpecimenRemote_width_320dp_height_240dp_dpi_320.a11y.png",
+      "cleanBasename": "TypefaceSpecimenRemote_width_320dp_height_240dp_dpi_320.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,640,480",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "TypefaceSpecimenRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TypefaceSpecimenRemote_width=320dp,height=240dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=320dp,height=240dp,dpi=320"
+    },
+    {
       "annotatedBasename": "TypographyRemote_width_320dp_height_240dp_dpi_320.a11y.png",
       "cleanBasename": "TypographyRemote_width_320dp_height_240dp_dpi_320.png",
       "findings": [
@@ -2674,6 +2692,42 @@
       "functionName": "TypographyRemote",
       "module": "design-catalog-remote-m3",
       "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.TypographyRemote_width=320dp,height=240dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=320dp,height=240dp,dpi=320"
+    },
+    {
+      "annotatedBasename": "VariableWeightRemote_width_320dp_height_240dp_dpi_320.a11y.png",
+      "cleanBasename": "VariableWeightRemote_width_320dp_height_240dp_dpi_320.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,640,480",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "VariableWeightRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.VariableWeightRemote_width=320dp,height=240dp,dpi=320",
+      "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
+      "variant": "spec:width=320dp,height=240dp,dpi=320"
+    },
+    {
+      "annotatedBasename": "VariableWidthRemote_width_320dp_height_240dp_dpi_320.a11y.png",
+      "cleanBasename": "VariableWidthRemote_width_320dp_height_240dp_dpi_320.png",
+      "findings": [
+        {
+          "boundsInScreen": "0,0,640,480",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
+      "functionName": "VariableWidthRemote",
+      "module": "design-catalog-remote-m3",
+      "previewId": "com.example.designcatalogremotem3.CatalogPreviewsKt.VariableWidthRemote_width=320dp,height=240dp,dpi=320",
       "sourceFile": "src/main/kotlin/com/example/designcatalogremotem3/CatalogPreviews.kt",
       "variant": "spec:width=320dp,height=240dp,dpi=320"
     },
