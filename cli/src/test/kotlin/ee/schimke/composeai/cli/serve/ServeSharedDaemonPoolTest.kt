@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ServeSharedDaemonPoolTest {
@@ -232,6 +233,46 @@ class ServeSharedDaemonPoolTest {
 
       release.countDown()
       assertTrue(holder.get(5, TimeUnit.SECONDS) is RenderOutcome.Ok)
+    } finally {
+      release.countDown()
+      executor.shutdownNow()
+      pool.close()
+    }
+  }
+
+  /**
+   * A leased burst is a visitor waiting on the grid, so its replicas draw on the FOREGROUND budget
+   * — the same class as a stream — rather than the background remainder the prefetcher leaves. The
+   * per-preview pool stays on the background path, so the stream reserve still protects streams.
+   */
+  @Test
+  fun `a leased replica may use the seats reserved against background work`() {
+    // Exactly the stream reserve free: a background holder (the per-preview pool) would be refused
+    // here, but a leased burst is foreground and may take it.
+    val seats = LiveSeatLimiter(totalPermits = LiveSeatLimiter.STREAM_RESERVE)
+    assertNull(seats.acquireBackground(1), "precondition: background cannot touch the reserve")
+
+    val entered = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    val primary = BlockingHost("primary", entered, release)
+    val opened = AtomicInteger()
+    val pool =
+      ServeSharedDaemonPool(primary = primary, capacity = 2, liveSeats = seats) {
+        opened.incrementAndGet()
+        InstantHost("replica")
+      }
+    val executor = Executors.newFixedThreadPool(2)
+    try {
+      val held = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+      assertTrue(entered.await(5, TimeUnit.SECONDS), "primary is mid-render")
+
+      // Overlapping leased render: the primary is out, so this must open a replica.
+      val second = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+      assertTrue(second.get(10, TimeUnit.SECONDS) is RenderOutcome.Ok)
+      assertEquals(1, opened.get(), "the burst widened onto a replica")
+
+      release.countDown()
+      assertTrue(held.get(5, TimeUnit.SECONDS) is RenderOutcome.Ok)
     } finally {
       release.countDown()
       executor.shutdownNow()

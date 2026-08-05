@@ -23,6 +23,13 @@ class ServeSharedDaemonPool(
    * Whole-box daemon budget ([LiveSeatLimiter]). A replica holds [seatWeight] permits for as long
    * as it is open, so burst width is bounded by what the box can actually afford and not only by
    * [capacity], which is per catalog. Null keeps the historical unbudgeted behaviour.
+   *
+   * Charged as **foreground** ([LiveSeatLimiter.acquire]), unlike the per-preview pool. A replica
+   * opens only when *leased* renders overlap — a visitor is sitting in front of the grid waiting
+   * for those pixels — so it is the same class of demand as a stream, not background residency. It
+   * is also short-lived: the burst ends, the replica goes idle, and [reapIdle] returns the seat.
+   * Making it compete for the background remainder instead capped a visitor's burst at whatever the
+   * prefetcher had left over, which is backwards.
    */
   private val liveSeats: LiveSeatLimiter? = null,
   private val seatWeight: () -> Int = { 1 },
@@ -77,7 +84,7 @@ class ServeSharedDaemonPool(
   private fun openSeatedReplica(): ServeHost {
     var ticket: LiveSeatLimiter.Ticket? = null
     if (liveSeats != null) {
-      ticket = liveSeats.acquireBackground(seatWeight())
+      ticket = liveSeats.acquire(seatWeight())
       if (ticket == null) {
         while (available.isEmpty() && !closed) hostReturned.await()
         check(!closed) { "shared daemon pool is closed" }
