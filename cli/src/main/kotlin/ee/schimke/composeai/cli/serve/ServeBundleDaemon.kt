@@ -683,7 +683,16 @@ internal object ServeBundleDaemon {
       // consumer pinning a different version than the renderer ships then gets a hard
       // `NoSuchMethodError` mid-render — meshcore-mobile on material3 1.10.0-alpha05 against a
       // 1.11.x sidecar died on `AppBarKt.TopAppBar-gNPyAyM`. Group and package rule must agree.
+      //
+      // Skiko travels WITH Compose, and for the same reason: `org.jetbrains.skiko:skiko-awt`
+      // carries `org.jetbrains.skia.*` (bindings) as well as `org.jetbrains.skiko.*`, and
+      // `mustDelegateToParent` force-delegates `org.jetbrains.skia.`. Promoting Compose without it
+      // would pair the consumer's newer bindings with the sidecar's older native library — the
+      // `UnsatisfiedLinkError` on `skia.paragraph.TextStyleKt._nSetFontEdging` that
+      // [DesktopRendererGraphAlignmentFunctionalTest] documents (issue #1844). The two must move
+      // together or the graph is incoherent either way.
       coordinate.group.startsWith("org.jetbrains.compose") ||
+      coordinate.group.startsWith("org.jetbrains.skiko") ||
       (coordinate.group == "org.jetbrains.kotlinx" &&
         (coordinate.artifact.startsWith("kotlinx-coroutines") ||
           coordinate.artifact.startsWith("kotlinx-io")))
@@ -707,12 +716,14 @@ internal object ServeBundleDaemon {
   }
 
   /**
-   * The `org.jetbrains.compose.*` graph in either cache layout. Broader than the old
-   * `components-resources` check it replaces — every Compose Multiplatform artifact ships
-   * `androidx.compose.*` packages the child delegates to the parent, not just the resources one.
+   * The `org.jetbrains.compose.*` and `org.jetbrains.skiko` graphs in either cache layout. Broader
+   * than the old `components-resources` check it replaces — every Compose Multiplatform artifact
+   * ships `androidx.compose.*` packages the child delegates to the parent, not just the resources
+   * one, and Skiko ships the `org.jetbrains.skia.*` bindings that are delegated too. Both must be
+   * promoted together so the bindings and the native library stay one coherent version.
    */
   private val JETBRAINS_COMPOSE_ARTIFACT_PATH =
-    Regex("/(?:org\\.jetbrains\\.compose|org/jetbrains/compose)[./]")
+    Regex("/(?:org\\.jetbrains\\.(?:compose|skiko)|org/jetbrains/(?:compose|skiko))[./]")
 
   /** Matches Gradle-cache and Maven-local group layouts without inspecting unrelated path parts. */
   private val KOTLINX_SHARED_ARTIFACT_PATH =

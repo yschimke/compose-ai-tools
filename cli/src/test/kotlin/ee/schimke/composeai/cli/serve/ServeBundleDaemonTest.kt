@@ -233,6 +233,15 @@ class ServeBundleDaemonTest {
         "$group ships androidx.compose.* packages, so the consumer ABI must win over the sidecar",
       )
     }
+    // Skiko must travel WITH Compose. `skiko-awt` carries the `org.jetbrains.skia.*` bindings that
+    // mustDelegateToParent force-delegates as well as `org.jetbrains.skiko.*`; promoting Compose
+    // without it pairs the consumer's newer bindings with the sidecar's older native library —
+    // the UnsatisfiedLinkError on skia.paragraph.TextStyleKt._nSetFontEdging that
+    // DesktopRendererGraphAlignmentFunctionalTest documents (#1844).
+    assertTrue(
+      ServeBundleDaemon.shouldPrecedeDaemonSidecar(coordinate("org.jetbrains.skiko", "skiko-awt")),
+      "Skiko bindings and native must stay version-coherent with the promoted Compose graph",
+    )
     assertTrue(
       !ServeBundleDaemon.shouldPrecedeDaemonSidecar(
         coordinate("org.jetbrains.kotlinx", "kotlinx-serialization-json-jvm")
@@ -272,6 +281,18 @@ class ServeBundleDaemonTest {
       ServeBundleDaemon.jarPrecedesDaemonSidecar(
         File("/m2/org/jetbrains/compose/ui/ui-desktop/1.11.1/ui-desktop-1.11.1.jar")
       )
+    )
+    assertTrue(
+      ServeBundleDaemon.jarPrecedesDaemonSidecar(
+        File("/cache/org.jetbrains.skiko/skiko-awt/0.9.4.2/skiko-awt-0.9.4.2.jar")
+      ),
+      "Skiko carries the parent-delegated org.jetbrains.skia bindings, so it moves with Compose",
+    )
+    assertTrue(
+      ServeBundleDaemon.jarPrecedesDaemonSidecar(
+        File("/m2/org/jetbrains/skiko/skiko-awt-runtime-linux-x64/0.9.4.2/native.jar")
+      ),
+      "the native runtime artifact must not be split from its bindings",
     )
     assertTrue(
       !ServeBundleDaemon.jarPrecedesDaemonSidecar(
