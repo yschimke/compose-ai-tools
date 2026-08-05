@@ -59,6 +59,16 @@ internal object ServeIssueReport {
     val viewerUrl: String? = null,
     /** Absolute `/render/<id>.png` URL at the overrides in force when the page was served. */
     val renderUrl: String? = null,
+    /**
+     * Whether the render lane answers **without a session token** — i.e. the server is `--public`.
+     *
+     * [withoutToken] strips the token from every URL that reaches an issue body, because the token
+     * is the capability to drive the server. On a token-gated box that makes [renderUrl] a URL the
+     * lane itself 404s ([ServeHttpServer]'s render handler rejects a tokenless request), so an
+     * embedded image would be broken in every filed issue no matter how reachable the host is.
+     * Defaults to false so a caller that doesn't know keeps the link form.
+     */
+    val publicRender: Boolean = false,
   )
 
   /**
@@ -101,8 +111,10 @@ internal object ServeIssueReport {
       if (renderPlaceholder) RENDER_PLACEHOLDER else ctx.renderUrl?.takeIf { it.isNotBlank() }
     // Whether the render can be *embedded* is decided by the real URL even when the body is the
     // JS template, so both forms of the body have the same shape and the placeholder swap can't
-    // turn a working image into a broken one.
-    val embed = render != null && isEmbeddable(ctx.renderUrl)
+    // turn a working image into a broken one. Two independent conditions have to hold: GitHub's
+    // proxy must be able to *reach* the URL, and the lane must *answer* it without the token this
+    // body strips.
+    val embed = render != null && ctx.publicRender && isEmbeddable(ctx.renderUrl)
     val links = buildList {
       ctx.viewerUrl?.takeIf { it.isNotBlank() }?.let { add("[Open this preview]($it)") }
       // Only worth its own line when the image isn't already showing it.
@@ -150,6 +162,9 @@ internal object ServeIssueReport {
    * embed would put a broken-image icon in their issue where a working link belongs — so those
    * bodies keep the link form instead. Deliberately conservative: anything not clearly public is
    * treated as not embeddable.
+   *
+   * This is **reachability only**. Whether the lane will actually serve the request is a separate
+   * question — see [Context.publicRender], which [body] requires as well.
    */
   fun isEmbeddable(url: String?): Boolean {
     val u = url?.trim() ?: return false

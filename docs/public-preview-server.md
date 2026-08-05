@@ -288,12 +288,15 @@ puts real `image/png` bytes on the clipboard rather than a base64 `data:` URI, s
 uploads the exact pixels to GitHub's own CDN, where they stay put. Browsers without `ClipboardItem`
 fall back to the data URI.
 
-**The embed appears only when GitHub can actually fetch the URL.** An inline image is loaded by
-GitHub's camo proxy, not by the reader's browser, so it must be reachable from the public internet
-over HTTPS. A developer's `compose-preview serve` on `http://127.0.0.1:8080` — or a box on a private
-LAN, or plain HTTP — would put a broken-image icon in the issue, so those bodies keep the
-`[PNG at these settings](…)` link form instead. The choice is made from the server's own external
-URL, so the viewer's live re-substitution can never turn a working image into a broken one.
+**The embed appears only when GitHub can actually load the URL**, which takes two things.
+*Reachable*: an inline image is fetched by GitHub's camo proxy, not by the reader's browser, so it
+must be reachable from the public internet over HTTPS — a `compose-preview serve` on
+`http://127.0.0.1:8080`, a box on a private LAN, or plain HTTP is not. *Answerable*: the render lane
+must serve the URL **without a session token**, because the token is stripped from everything that
+reaches an issue body. A token-gated (`--public` off) server 404s that tokenless request however
+public its hostname is, so its reports keep the `[PNG at these settings](…)` link form too. Both
+conditions are evaluated against the server's own external URL and mode, so the viewer's live
+re-substitution can never turn a working image into a broken one.
 
 **The server never files the issue itself**, and asks for no extra OAuth scope to offer this. The
 auth cookie holds only a login and a repo-access verdict — [the OAuth token is discarded after the

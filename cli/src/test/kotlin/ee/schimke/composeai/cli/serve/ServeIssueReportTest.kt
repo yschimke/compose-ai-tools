@@ -19,6 +19,7 @@ class ServeIssueReportTest {
       toolVersion = "0.19.37",
       viewerUrl = "https://preview.coo.ee/jetnews/p/Article__dark",
       renderUrl = "https://preview.coo.ee/jetnews/render/Article__dark.png?uiMode=dark",
+      publicRender = true,
     )
 
   @Test
@@ -110,6 +111,22 @@ class ServeIssueReportTest {
     val body = ServeIssueReport.body(local)
     assertFalse(body.contains("!["), body)
     assertTrue(body.contains("[PNG at these settings](http://127.0.0.1:8080/"), body)
+  }
+
+  @Test
+  fun `a token-gated server keeps the link form even on a public hostname`() {
+    // withoutToken strips the session token from every URL in the body, and a non-public render
+    // lane 404s a tokenless request — so camo would fetch a 404 and every filed issue would show a
+    // broken screenshot. Reachability is not authorization.
+    val gated = full.copy(publicRender = false)
+    val body = ServeIssueReport.body(gated)
+    assertFalse(body.contains("!["), body)
+    assertTrue(
+      body.contains("[PNG at these settings](https://preview.coo.ee/jetnews/render/"),
+      body,
+    )
+    // …and the template agrees, so the viewer's live swap cannot reintroduce the embed.
+    assertFalse(ServeIssueReport.body(gated, renderPlaceholder = true).contains("!["))
   }
 
   @Test
