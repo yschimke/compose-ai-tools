@@ -331,6 +331,37 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
     }
   }
 
+  /**
+   * One-shot render scene lifecycle — the *transient* counterpart of [onSessionLifecycle].
+   *
+   * The desktop `RenderEngine` announces every scene it builds, before `setContent` composes into
+   * it, so an ordinary (non-interactive) render can be instrumented too. That scene is torn down
+   * again a few milliseconds later, and the difference from a held session matters in two ways:
+   * - **No mode promotion.** [onSessionLifecycle] promotes a `snapshot` subscription to `delta`,
+   *   which is right when a live session means per-input deltas are about to become meaningful.
+   *   Here it would be a lie: the scene is gone before `attachmentsFor` builds the payload, so what
+   *   the panel receives is the initial composition of one render — a snapshot. Reporting it as
+   *   `delta` with an `inputSeq` would mislead every consumer of the wire contract.
+   * - **Not registered in [liveScenes].** That map answers "is there a live session for this
+   *   preview?" at subscribe time; a scene that will not outlive the render must not answer yes.
+   *
+   * `scene == null` disposes the observer and leaves the subscription (and its counters) in place,
+   * because `attachmentsFor` runs *after* teardown and still has to report the render it measured.
+   */
+  fun onRenderSceneLifecycle(previewId: String, scene: ImageComposeScene?) {
+    if (scene == null) {
+      subscriptions[previewId]?.disposeObserver()
+      return
+    }
+    val state = subscriptions[previewId] ?: return
+    if (state.observerHandle != null || state.instrumentationUnavailable) return
+    if (globallyUnavailable) {
+      state.instrumentationUnavailable = true
+      return
+    }
+    installObserverSafely(state, scene)
+  }
+
   private fun installObserverSafely(state: SubscriptionState, scene: ImageComposeScene) {
     val handle =
       try {

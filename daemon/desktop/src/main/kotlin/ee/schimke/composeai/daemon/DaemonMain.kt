@@ -276,7 +276,10 @@ fun runDaemon(
       // decides whether to attach an observer, and with no subscription this is a map write.
       sceneLifecycleListener = { previewId, scene ->
         if (extensions.isActive("data/recomposition")) {
-          recompositionRegistry.onSessionLifecycle(previewId, scene)
+          // `onRenderSceneLifecycle`, not `onSessionLifecycle`: a one-shot render's scene is gone
+          // before the payload is built, so the subscription must keep its `snapshot` mode rather
+          // than being promoted to the per-input `delta` contract a held session implies.
+          recompositionRegistry.onRenderSceneLifecycle(previewId, scene)
         }
       },
     )

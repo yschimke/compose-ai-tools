@@ -87,14 +87,28 @@ data class RenderTrace(
   )
 
   companion object {
-    /** Build a trace from the recorder's closed sections, rebasing times onto the first span. */
-    fun of(backend: String, events: List<Recorded>, droppedSpans: Int = 0): RenderTrace {
+    /**
+     * Build a trace from the recorder's closed sections, rebasing times onto the first span.
+     *
+     * [sections] is supplied by the caller rather than derived from [events] because the two can
+     * legitimately disagree: [events] is a timeline that the recorder's retention cap may truncate,
+     * while the aggregates are accumulated for every section the recorder ever saw. Deriving them
+     * here would silently under-report exactly the hot repeated phase that hit the cap. Passing
+     * `null` falls back to grouping [events], which is what a caller with no separate accumulator
+     * (tests, and anything reconstructing a trace from a wire payload) wants.
+     */
+    fun of(
+      backend: String,
+      events: List<Recorded>,
+      sections: List<RenderTraceSection>? = null,
+      droppedSpans: Int = 0,
+    ): RenderTrace {
       if (events.isEmpty()) {
         return RenderTrace(
           backend = backend,
           totalMicros = 0L,
           spans = emptyList(),
-          sections = emptyList(),
+          sections = sections.orEmpty(),
           droppedSpans = droppedSpans,
         )
       }
@@ -112,25 +126,26 @@ data class RenderTrace(
             depth = event.depth,
           )
         }
-      val sections =
-        spans
-          .groupBy { it.name }
-          .map { (name, group) ->
-            RenderTraceSection(
-              name = name,
-              category = group.first().category,
-              count = group.size,
-              totalMicros = group.sumOf { it.durationMicros },
-              meanMicros = group.sumOf { it.durationMicros } / group.size,
-              maxMicros = group.maxOf { it.durationMicros },
-            )
-          }
-          .sortedByDescending { it.totalMicros }
+      val resolvedSections =
+        sections
+          ?: spans
+            .groupBy { it.name }
+            .map { (name, group) ->
+              RenderTraceSection(
+                name = name,
+                category = group.first().category,
+                count = group.size,
+                totalMicros = group.sumOf { it.durationMicros },
+                meanMicros = group.sumOf { it.durationMicros } / group.size,
+                maxMicros = group.maxOf { it.durationMicros },
+              )
+            }
+            .sortedByDescending { it.totalMicros }
       return RenderTrace(
         backend = backend,
         totalMicros = (endNanos - originNanos).coerceAtLeast(0L) / 1_000L,
         spans = spans,
-        sections = sections,
+        sections = resolvedSections,
         droppedSpans = droppedSpans,
       )
     }

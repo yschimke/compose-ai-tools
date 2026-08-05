@@ -84,6 +84,19 @@ object PerfettoTraceDataProducer {
     private var droppedSpans: Int = 0
 
     /**
+     * Running per-name aggregates, accumulated for **every** section including the ones the
+     * retention cap sheds.
+     *
+     * Kept separately from [spans] rather than derived from them at the end, because those are two
+     * different promises. `spans` is a timeline and is allowed to truncate — a UI can only draw so
+     * many rows, and [RenderTrace.droppedSpans] says when it did. `sections` is the "where did the
+     * time actually go" summary, and a summary that silently omits phases is worse than no summary:
+     * it under-reports exactly the hot repeated phase that made a long session hit the cap in the
+     * first place.
+     */
+    private val aggregates = LinkedHashMap<String, MutableAggregate>()
+
+    /**
      * Current nesting level. Incremented for the duration of each [section] body, so a section
      * records the depth it was *entered* at — see [RenderTrace.Recorded.depth] for why that beats
      * reconstructing containment afterwards.
@@ -130,6 +143,8 @@ object PerfettoTraceDataProducer {
       endNs: Long,
       depth: Int = 0,
     ) {
+      val durationMicros = (endNs - startNs).coerceAtLeast(0L) / 1_000L
+      aggregates.getOrPut(name) { MutableAggregate(category) }.add(durationMicros)
       if (spans.size < MAX_SPANS) {
         spans +=
           RenderTrace.Recorded(
@@ -162,7 +177,38 @@ object PerfettoTraceDataProducer {
      * are simply absent. Cheap enough to call more than once.
      */
     fun renderTrace(): RenderTrace =
-      RenderTrace.of(backend = backend, events = spans.toList(), droppedSpans = droppedSpans)
+      RenderTrace.of(
+        backend = backend,
+        events = spans.toList(),
+        sections =
+          aggregates
+            .map { (name, aggregate) -> aggregate.toSection(name) }
+            .sortedByDescending { it.totalMicros },
+        droppedSpans = droppedSpans,
+      )
+
+    /** Mutable accumulator behind one [RenderTraceSection]. */
+    private class MutableAggregate(private val category: String) {
+      private var count: Int = 0
+      private var totalMicros: Long = 0L
+      private var maxMicros: Long = 0L
+
+      fun add(durationMicros: Long) {
+        count += 1
+        totalMicros += durationMicros
+        if (durationMicros > maxMicros) maxMicros = durationMicros
+      }
+
+      fun toSection(name: String): RenderTraceSection =
+        RenderTraceSection(
+          name = name,
+          category = category,
+          count = count,
+          totalMicros = totalMicros,
+          meanMicros = if (count == 0) 0L else totalMicros / count,
+          maxMicros = maxMicros,
+        )
+    }
 
     fun payload(): TracePayload =
       TracePayload(

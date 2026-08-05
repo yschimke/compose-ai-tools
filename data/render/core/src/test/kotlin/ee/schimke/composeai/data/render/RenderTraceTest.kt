@@ -91,6 +91,27 @@ class RenderTraceTest {
   }
 
   @Test
+  fun `aggregates survive the span retention cap`() {
+    // The cap truncates the *timeline*; it must not truncate the summary. A long interactive
+    // session hits the cap precisely because one phase repeats a lot, so aggregates built from the
+    // retained spans would under-report exactly the phase worth looking at.
+    val recorder =
+      PerfettoTraceDataProducer.recorder(previewId = "p", backend = "desktop", enabled = false)
+    val iterations = 5_000
+
+    repeat(iterations) { recorder.section("compose:frame") {} }
+
+    val trace = recorder.renderTrace()
+    assertTrue(trace.droppedSpans > 0, "timeline should have truncated")
+    assertTrue(trace.spans.size < iterations, "timeline should be capped")
+    assertEquals(
+      iterations,
+      trace.sections.single { it.name == "compose:frame" }.count,
+      "the summary must still count every section",
+    )
+  }
+
+  @Test
   fun `payload keeps the v1 shape when no spans were recorded`() {
     val payload = RenderTraceDataProduct.payloadFrom(mapOf("tookMs" to 7L), trace = null)
 
