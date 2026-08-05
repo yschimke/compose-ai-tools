@@ -64,6 +64,12 @@ internal class GoogleFontTypefaceResolver(private val fonts: GoogleFontSource?) 
    * ask the (possibly network-backed) source once per (family, weight, italic), not once per op.
    */
   private val files = ConcurrentHashMap<GoogleFontKey, File>()
+
+  /** Variable files by `(name, italic)` — weight-free, because one file serves every instance. */
+  private val variableFiles = ConcurrentHashMap<Pair<String, Boolean>, File>()
+
+  /** Font bytes by path, so building N instances of one variable file reads it once. */
+  private val fileContents = ConcurrentHashMap<String, ByteArray>()
   private val skiaTypefaces = ConcurrentHashMap<GoogleFontKey, SkiaTypeface>()
   /**
    * Resolved families keyed by request *and* axis instance. A variable file serves many instances,
@@ -91,12 +97,11 @@ internal class GoogleFontTypefaceResolver(private val fonts: GoogleFontSource?) 
     italic: Boolean,
     settings: FontVariation.Settings? = null,
   ): FontFamily? {
-    // A `wght` axis also decides *which file to fetch*. Google Fonts serves a named family as a
-    // static instance per weight, so asking for `Roboto Flex` at 400 and then applying `wght 1000`
-    // to it varies nothing — the file has no axes to vary. Reading the axis as the requested weight
-    // fetches the instance the document actually asked for; the settings are still passed through,
-    // so a host that supplies a genuinely variable file (the browser lane's manifest) also gets the
-    // exact instance rather than the nearest static one.
+    // A `wght` axis also decides *which file to fetch* when all we can get is a static instance:
+    // the CSS API serves a named family as one baked instance per weight, so asking for
+    // `Roboto Flex` at 400 and then applying `wght 1000` to it varies nothing. Reading the axis as
+    // the requested weight at least fetches the instance nearest what the document asked for. This
+    // stays the fallback; the variable file below is the real answer.
     val axes = settings?.settings.orEmpty().map { it.axisName to it.toVariationValue(null) }
     val effectiveWeight =
       axes.firstOrNull { (tag, _) -> tag == WEIGHT_AXIS }?.second?.toInt()?.coerceIn(1, 1000)
@@ -106,7 +111,13 @@ internal class GoogleFontTypefaceResolver(private val fonts: GoogleFontSource?) 
     fontFamilies[instanceKey]?.let {
       return it
     }
-    val file = resolveFile(key) ?: return null
+    // With axes to apply, prefer the family's **variable** file — the one that still carries an
+    // `fvar` table. Everything above resolves to a baked instance, so a `wdth` ramp built on it
+    // draws three identical lines however correctly the axes are attached. Falling back rather than
+    // failing keeps the previous behaviour for a family that ships no variable file (Lobster Two)
+    // and for a render given no font cache.
+    val variable = if (axes.isEmpty()) null else variableFile(key)
+    val file = variable ?: resolveFile(key) ?: return null
     val style = if (key.italic) FontStyle.Italic else FontStyle.Normal
     val resolved =
       runCatching {
@@ -114,8 +125,15 @@ internal class GoogleFontTypefaceResolver(private val fonts: GoogleFontSource?) 
             if (settings == null || settings.settings.isEmpty()) {
               Font(file = file, weight = FontWeight(key.weight), style = style)
             } else {
+              // Deliberately the `(identity, data)` overload rather than `Font(file = …)`, and the
+              // identity carries the axes. Compose's skiko font cache keys on a font's *identity*,
+              // and a `FileFont`'s identity is its path alone — so every instance of one variable
+              // file shares a cache entry and the first one built is handed to all of them. That
+              // renders a `wdth` ramp as three identical lines while a `wght` ramp still looks
+              // plausible, because weight alone can be synthesised. Same trap the browser lane hit.
               Font(
-                file = file,
+                identity = "${file.path}|${axes.joinToString(",") { (t, v) -> "$t=$v" }}",
+                data = fileBytes(file),
                 weight = FontWeight(key.weight),
                 style = style,
                 variationSettings = settings,
@@ -153,6 +171,31 @@ internal class GoogleFontTypefaceResolver(private val fonts: GoogleFontSource?) 
     if (cached != null) return cached.takeIf { it !== NO_FILE }
     val file = runCatching { source.load(key) }.getOrNull()
     files[key] = file ?: NO_FILE
+    return file
+  }
+
+  /**
+   * [file]'s bytes, read once per file however many instances are built from it — a variable face
+   * is ~1.7 MB and a `wght` ramp asks for four of them.
+   */
+  private fun fileBytes(file: File): ByteArray =
+    fileContents.getOrPut(file.path) { file.readBytes() }
+
+  /**
+   * The family's variable file, or null when it has none.
+   *
+   * Keyed by `(name, italic)` and not by weight, because one variable file serves every weight —
+   * asking per weight would probe (and download) the same 1.7 MB once per line of a `wght` ramp.
+   * Misses are remembered for the same reason they are in [resolveFile]: a static-only family
+   * shouldn't cost a lookup per text op.
+   */
+  private fun variableFile(key: GoogleFontKey): File? {
+    val source = fonts ?: return null
+    val variableKey = key.name to key.italic
+    val cached = variableFiles[variableKey]
+    if (cached != null) return cached.takeIf { it !== NO_FILE }
+    val file = runCatching { source.loadVariable(key.name, key.italic) }.getOrNull()
+    variableFiles[variableKey] = file ?: NO_FILE
     return file
   }
 

@@ -51,6 +51,24 @@ data class GoogleFontKey(val name: String, val weight: Int, val italic: Boolean)
 /** Where a resolved font file comes from. Swappable so tests never touch the network. */
 interface GoogleFontSource {
   fun load(key: GoogleFontKey): File?
+
+  /**
+   * The **variable** file for [family] — the one carrying an `fvar` table, so a caller can instance
+   * it at arbitrary axis values — or null when the family has none (a static family) or it could
+   * not be fetched.
+   *
+   * Separate from [load] because it is a different file from a different place, and a caller that
+   * doesn't need axes shouldn't pay for it. [load] resolves through the CSS API, which serves a
+   * *static instance* even for a purely variable family: the range query (`wght@100..1000`) answers
+   * with a single `@font-face` whose TTF has no `fvar` at all — 88 KB of one frozen instance where
+   * the family's real variable file is 1.7 MB. Nothing downstream can apply `wdth` to that, which
+   * is why a `wdth` ramp rendered flat in every lane resolving fonts here while the browser lane
+   * (fed a genuine variable file from a host manifest) drew it correctly.
+   *
+   * Default implementation returns null so a source that only serves static faces — and every
+   * existing test fake — keeps compiling and behaving as before.
+   */
+  fun loadVariable(family: String, italic: Boolean = false): File? = null
 }
 
 /**
@@ -66,13 +84,44 @@ class GoogleFontCache(
   private val downloader: (GoogleFontKey, File) -> Boolean = ::downloadFromGoogleFonts,
 ) : GoogleFontSource {
 
-  override fun load(key: GoogleFontKey): File? {
-    val file = File(cacheDir, key.fileName())
+  /**
+   * Not a fourth primary-constructor parameter, deliberately: this class ships in a published
+   * artifact, and adding one would change the primary constructor's JVM descriptor (and its
+   * defaults-synthetic), so a consumer's *already-compiled* `GoogleFontCache(dir, false,
+   * downloader)` would fail with `NoSuchMethodError` on a dependency-only upgrade. A `var` set
+   * through the secondary constructor below leaves every existing descriptor exactly where it was.
+   */
+  private var variableDownloader: (String, Boolean, File) -> Boolean =
+    ::downloadVariableFromGoogleFontsRepo
+
+  /** Injects the variable-font downloader as well, for tests. */
+  constructor(
+    cacheDir: File,
+    offline: Boolean,
+    downloader: (GoogleFontKey, File) -> Boolean,
+    variableDownloader: (String, Boolean, File) -> Boolean,
+  ) : this(cacheDir, offline, downloader) {
+    this.variableDownloader = variableDownloader
+  }
+
+  override fun load(key: GoogleFontKey): File? = fetch(key.fileName()) { downloader(key, it) }
+
+  override fun loadVariable(family: String, italic: Boolean): File? =
+    fetch(variableFileName(family, italic)) { variableDownloader(family, italic, it) }
+
+  /**
+   * The cached file named [fileName], downloading it through [download] on a miss.
+   *
+   * A download writes to a sibling `.tmp` and renames, so a crashed or half-finished fetch can
+   * never leave a truncated file that later runs would happily serve as the real face.
+   */
+  private inline fun fetch(fileName: String, download: (File) -> Boolean): File? {
+    val file = File(cacheDir, fileName)
     if (file.exists() && file.length() > 0) return file
     if (offline) return null
     cacheDir.mkdirs()
-    val tmp = File(cacheDir, "${file.name}.tmp")
-    val ok = runCatching { downloader(key, tmp) }.getOrDefault(false)
+    val tmp = File(cacheDir, "$fileName.tmp")
+    val ok = runCatching { download(tmp) }.getOrDefault(false)
     if (!ok || !tmp.exists() || tmp.length() == 0L) {
       tmp.delete()
       return null
@@ -87,6 +136,14 @@ class GoogleFontCache(
 }
 
 /**
+ * Cache filename for a family's variable file. Deliberately *not* [GoogleFontKey.fileName]'s shape:
+ * a variable file serves every weight, so keying it by one would download the same 1.7 MB file once
+ * per weight the document happens to ask for.
+ */
+fun variableFileName(family: String, italic: Boolean): String =
+  "${GoogleFontKey.slugify(family)}-variable${if (italic) "-italic" else ""}.ttf"
+
+/**
  * Fetches a TTF for [key] into [destination]. Returns `true` on success.
  *
  * Two-stage lookup:
@@ -94,9 +151,13 @@ class GoogleFontCache(
  *    weight of variable families.
  * 2. If that request *succeeded but carried no TTF URL* (purely-variable fonts like Roboto Flex
  *    reject single-weight requests at non-default weights), retry with `wght@<min>..<max>` covering
- *    the full 1–1000 range. For variable fonts the response is a single `@font-face` pointing at
- *    the variable TTF; for static fonts it's multiple blocks and we pick the closest to the
- *    requested weight.
+ *    the full 1–1000 range. For variable fonts the response is a single `@font-face`; for static
+ *    fonts it's multiple blocks and we pick the closest to the requested weight.
+ *
+ * Either way what arrives is a **static** TTF — the CSS API bakes an instance and serves that, so
+ * even the range query's answer has no `fvar` table. A caller that needs to *vary* axes wants
+ * [GoogleFontSource.loadVariable] instead; this function is the right one for drawing a family at a
+ * fixed weight, which is what the downloadable-font lanes ask for.
  *
  * The stage-1/stage-2 distinction is load-bearing for reproducibility, which is why a *failed*
  * stage-1 request returns false rather than falling through. The two stages can legitimately
@@ -131,6 +192,118 @@ fun downloadFromGoogleFonts(
   destination.parentFile?.mkdirs()
   fileSystem.write(destination.path.toPath()) { write(bytes) }
   return true
+}
+
+/**
+ * Fetches the **variable** TTF for [family] into [destination]. Returns `true` on success.
+ *
+ * Source is the `google/fonts` repository rather than the CSS API, because the CSS API has no way
+ * to ask for one: every `format('truetype')` URL it serves is a static instance, including the
+ * range query that reads like it should be the variable file (see [GoogleFontSource.loadVariable]).
+ * The repository is where those instances are *built from*, so it is the only key-free source of
+ * the file with the `fvar` table still in it.
+ *
+ * Three steps, all plain unauthenticated GETs of raw files:
+ * 1. the family's directory is its name lowercased with everything non-alphanumeric removed
+ *    (`Roboto Flex` → `robotoflex`), under one of the three licence roots — try each, first hit
+ *    wins;
+ * 2. `METADATA.pb` in that directory names the font files, and a variable one is recognisable by
+ *    the axis list in its filename (`RobotoFlex[GRAD,…,wdth,wght].ttf`). A static-only family
+ *    (Lobster Two) simply has none, which is a null rather than an error;
+ * 3. the file is fetched and **verified to actually carry an `fvar` table** before it is accepted.
+ *
+ * That last check is the one worth keeping. Everything downstream treats "the variable file" as the
+ * thing it can instance at arbitrary axes; caching a static file under that name would make every
+ * later render draw a `wdth` ramp flat with no error anywhere to explain it. Verifying the table is
+ * cheap (a table-directory scan) and turns a bad upstream answer into a clean miss.
+ */
+fun downloadVariableFromGoogleFontsRepo(
+  family: String,
+  italic: Boolean,
+  destination: File,
+  fileSystem: FileSystem = SystemFileSystem,
+): Boolean {
+  val slug = googleFontsRepoSlug(family)
+  if (slug.isEmpty()) return false
+  val metadata =
+    GOOGLE_FONTS_LICENCE_DIRS.firstNotNullOfOrNull { licence ->
+      httpGet(googleFontsRepoMetadataUrl(licence, slug), REPO_USER_AGENT)?.let { licence to it }
+    } ?: return false
+  val (licence, body) = metadata
+  val fileName = pickVariableFileName(body, italic) ?: return false
+  val bytes =
+    httpGetBytes(googleFontsRepoFileUrl(licence, slug, fileName), REPO_USER_AGENT) ?: return false
+  if (!hasFvarTable(bytes)) return false
+  destination.parentFile?.mkdirs()
+  fileSystem.write(destination.path.toPath()) { write(bytes) }
+  return true
+}
+
+/** Licence roots in `google/fonts`, in the order they are probed. */
+private val GOOGLE_FONTS_LICENCE_DIRS = listOf("ofl", "apache", "ufl")
+
+/**
+ * The family's directory name in `google/fonts`: lowercase, alphanumerics only. Note this is *not*
+ * [GoogleFontKey.slugify] — that one hyphenates (`roboto-flex`) for readable cache filenames, and
+ * the repository uses the unseparated form (`robotoflex`).
+ */
+fun googleFontsRepoSlug(family: String): String = family.filter { it.isLetterOrDigit() }.lowercase()
+
+fun googleFontsRepoMetadataUrl(licence: String, slug: String): String =
+  "$GOOGLE_FONTS_REPO_BASE/$licence/$slug/METADATA.pb"
+
+fun googleFontsRepoFileUrl(licence: String, slug: String, fileName: String): String {
+  // A variable filename carries its axis list in square brackets, which are not legal in a URL
+  // path.
+  val encoded = fileName.replace("[", "%5B").replace("]", "%5D")
+  return "$GOOGLE_FONTS_REPO_BASE/$licence/$slug/$encoded"
+}
+
+private const val GOOGLE_FONTS_REPO_BASE = "https://raw.githubusercontent.com/google/fonts/main"
+
+// raw.githubusercontent.com serves the file the same to anyone; the UA only keeps the request
+// identifiable in a proxy log rather than arriving as a bare default.
+private const val REPO_USER_AGENT = "composeai-fonts"
+
+/**
+ * The variable font filename in a `METADATA.pb` body, matching [italic], or null when the family
+ * ships none.
+ *
+ * A variable file is the one whose name carries an axis list — `RobotoFlex[…,wght].ttf`. Families
+ * that vary in both uprights and italics ship two, distinguished by an `-Italic` in the name before
+ * the bracket, so the upright request must not accept the italic file (or a roman specimen would
+ * silently render slanted).
+ */
+fun pickVariableFileName(metadata: String, italic: Boolean): String? {
+  val names =
+    Regex("""filename:\s*"([^"]*\[[^"]*][^"]*)"""").findAll(metadata).map { it.groupValues[1] }
+  val (italics, uprights) = names.partition { it.substringBefore('[').endsWith("-Italic") }
+  return if (italic) italics.firstOrNull() ?: uprights.firstOrNull() else uprights.firstOrNull()
+}
+
+/**
+ * Whether [bytes] is an sfnt font carrying an `fvar` table — i.e. a real variable font.
+ *
+ * Reads only the 12-byte header and the table directory: a `numTables` count followed by 16-byte
+ * records whose first four bytes are the tag. Anything shorter, or with a table count the buffer
+ * can't hold, is not a font we can use and reads as false rather than throwing.
+ */
+fun hasFvarTable(bytes: ByteArray): Boolean {
+  if (bytes.size < 12) return false
+  val numTables = ((bytes[4].toInt() and 0xFF) shl 8) or (bytes[5].toInt() and 0xFF)
+  if (bytes.size < 12 + numTables * 16) return false
+  for (i in 0 until numTables) {
+    val at = 12 + i * 16
+    if (
+      bytes[at] == 'f'.code.toByte() &&
+        bytes[at + 1] == 'v'.code.toByte() &&
+        bytes[at + 2] == 'a'.code.toByte() &&
+        bytes[at + 3] == 'r'.code.toByte()
+    ) {
+      return true
+    }
+  }
+  return false
 }
 
 // The CSS2 endpoint picks the `src: url(...) format(...)` format based on
@@ -179,8 +352,9 @@ fun extractFirstTruetypeUrl(css: String): String? {
  * Parse a CSS response with one-or-many `@font-face` blocks and pick the TTF URL whose declared
  * `font-weight` is closest to [requestedWeight].
  *
- * - Variable-font responses have a single block with `font-weight: 400` but the TTF itself supports
- *   the full axis range — just return that URL.
+ * - Variable families answer with a single block at `font-weight: 400`; return that URL. Note what
+ *   comes back is a *static instance* of the family, not its variable file — the axes are already
+ *   baked out of it. [GoogleFontSource.loadVariable] is the way to the file that still has them.
  * - Static-family range responses carry one block per discrete weight (100, 200, …, 900); pick the
  *   nearest and the consumer's text renders in the closest existing static sub-font.
  */

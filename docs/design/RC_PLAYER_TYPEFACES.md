@@ -23,8 +23,9 @@ question:
 | **CMP Wasm** — font-variation axes | ✅ layout ops (`CoreText`) | — | — | ❌ canvas ops (reported, not silent) |
 | **Java** (AOSP `remote-player-view`, server-side) | ✅ framework typefaces | ⚠️ `/system/fonts/` filename scan | ✅ served by `RcGoogleFontTypefaceResolver` | ✅ `Font.Builder(ByteBuffer)` |
 | **CMP Android** (vendored embedded player, server-side) | ✅ framework typefaces | ⚠️ `Typeface.create(name)` | ✅ `FontsContractCompat` | ❌ ignored |
+| **CMP Android** — font-variation axes | ✅ layout ops, on the family's variable file | — | ✅ `loadVariable` + `Font(File, …, variationSettings)` | ❌ canvas ops |
 | **CMP JVM** (embedded player over Skiko, server-side) | ✅ | ⚠️ host families, else nearest standard | ✅ downloaded via `GoogleFontTypefaceResolver` | ❌ ignored |
-| **CMP JVM** — font-variation axes | ✅ layout ops, applied to the resolved face | — | ⚠️ `wght` picks the instance; Google serves static TTFs | ❌ canvas ops |
+| **CMP JVM** — font-variation axes | ✅ layout ops, on the family's variable file | — | ✅ `loadVariable` + an axis-carrying font identity | ❌ canvas ops |
 
 Two rows of that table are worth stating as findings, because they make two chips in the *same*
 viewer disagree about the *same* document:
@@ -53,6 +54,33 @@ viewer disagree about the *same* document:
    `FontFace`, and neither vendored embedded player (Android or JVM) consults them at all. A
    document that ships its typeface therefore renders correctly in `java`/`cmp-wasm` and in a
    substituted face everywhere else.
+
+## Where the files come from
+
+Three of the lanes (`java`, `cmp-android`, `cmp-jvm`) resolve a `google:` family through the shared
+machine-local cache in [`:data-fonts-google`](../../data/fonts/google), so a family is *the same
+file* in each of them rather than three faces that merely share a name. What that cache can serve is
+therefore the ceiling on what any of those lanes can draw, and it has two shapes:
+
+- **A static instance, from the CSS API.** `fonts.googleapis.com/css2` with a legacy User-Agent is
+  the only key-free way to get TrueType at all (modern UAs get WOFF2, which neither Android nor Skia
+  parses). Every `format('truetype')` URL it answers with is a **baked instance** — the axes have
+  already been applied and discarded. That includes the `wght@100..1000` range query, which reads
+  like it should be the variable font and is not: for Roboto Flex it returns 88 KB whose table
+  directory is `GDEF GPOS GSUB OS/2 STAT cmap gasp glyf head hhea hmtx loca maxp name post`, with no
+  `fvar` at all. This is the right file for drawing a family at a fixed weight, and it is why every
+  server-side lane's font-variation work landed correct-but-invisible: there were no axes left in
+  the file to vary.
+- **The variable file, from the `google/fonts` repository.** `GoogleFontSource.loadVariable` fetches
+  the pre-instancing original — `METADATA.pb` names it, a variable filename carrying its axis list in
+  brackets (`RobotoFlex[GRAD,…,wdth,wght].ttf`) — and verifies the bytes actually carry an `fvar`
+  table before caching them. A static-only family (Lobster Two) has none, which is a miss rather than
+  an error. For Roboto Flex this is 1,787,292 bytes, byte-identical to the variable file the browser
+  lane is fed from the catalog's vendored manifest — the lane whose axes already worked.
+
+So a lane wanting to *vary* a family asks for the second and a lane wanting to *draw* it at a fixed
+weight asks for the first; they are different files and both are cached, the variable one under a
+weight-free name because one file serves every instance.
 
 ## Lane detail
 
@@ -148,6 +176,21 @@ Two different code paths, and they do not agree with each other:
 So in this lane a branded typeface applies to laid-out text and not to canvas-drawn text in the same
 document.
 
+**Font-variation axes are applied for layout text, on a different file from the unvaried path.**
+Compose's downloadable-font factory takes a weight and a style and has no `variationSettings`
+parameter, so it can resolve a `google:` family but not vary it — the vendored `TODO: Support
+variation settings for Google fonts`. Applying axes needs the face's bytes, and specifically the
+*pre-instancing* file: the CSS API serves a baked static instance with no `fvar` table (see
+[Where the files come from](#where-the-files-come-from) below), so there is nothing in the file the
+unvaried path resolves to vary.
+[`GoogleVariableFontFamilies`](../../third_party/rc-embedded-player/src/main/kotlin/ee/schimke/composeai/rcembedded/GoogleVariableFontFamilies.kt)
+resolves the family's **variable** file through `GoogleFontSource.loadVariable` and builds a
+`Font(File, …, variationSettings)`, which reaches
+`Typeface.Builder.setFontVariationSettings` on API 26+. It is consulted only when a document
+actually carries axes, so an unvaried specimen keeps the smaller static download; families are cached
+per axis set, because a variable file's instances are different faces and a family-keyed cache would
+hand a `wght 100` line the previous line's `wght 1000` family.
+
 ### CMP JVM — embedded player over Skiko, server-side
 
 Built-in ids map to the multiplatform `FontFamily.SansSerif`/`Serif`/`Monospace` (layout ops) and to
@@ -164,16 +207,24 @@ the figma-svg embed path use — and serves both jvm text seams from that one fi
 here as in every other lane, not a second face that merely shares a name.
 
 **Font-variation axes** reach the layout seam: a `CoreText` op's axis arrays become a Compose
-`FontVariation.Settings` and the resolved face is instanced at them, and a `wght` axis additionally
-decides *which file to fetch* — Google Fonts serves a named family as a static instance per weight,
-so applying `wght 1000` to the 400 file would vary nothing. The catalog's variable specimens still
-draw flat in this lane, and the reason is upstream of the player: `:data-fonts-google` asks the CSS
-API with a legacy user-agent to get a `.ttf` at all (Skia and Android can't parse the modern woff2),
-and for a variable-only family like Roboto Flex that response is a *static default instance* with no
-`fvar` table — there are no axes left in the file to vary. A host that supplies a real variable file
-(the browser lane's manifest does) gets true instancing through this same code. Fetching the
-variable file would mean decompressing woff2, which is the next step and lives in
-`:data-fonts-google`, not here. Canvas text ops carry no axes in the shared paint state at all.
+`FontVariation.Settings`, and a request carrying any is served from the family's **variable** file
+(`loadVariable`) rather than the static instance the unvaried path resolves — see
+[Where the files come from](#where-the-files-come-from). The static path remains the fallback for a
+family that has no variable file, and there a `wght` axis decides *which instance to fetch*, since
+applying `wght 1000` to the 400 file would vary nothing.
+
+Two things about instancing here are easy to get wrong and both were:
+
+- The face is built through the `Font(identity, data, …)` overload with **the axes folded into the
+  identity**, not `Font(file = …)`. Compose's skiko font cache keys on a font's identity and a
+  `FileFont`'s identity is its path alone, so every instance of one variable file otherwise shares a
+  cache entry and the first one built is handed to all of them.
+- That failure is *invisible on a `wght` ramp* — weight alone can be synthesised, so the lines still
+  look different — and obvious on `wdth`. Measured ink widths for the three-line `wdth` specimen:
+  368 / 393 / 386 px before (no progression; the deltas are just the digits in the label) and
+  329 / 393 / 438 px after. Which is why the catalog carries a width specimen at all.
+
+Canvas text ops carry no axes in the shared paint state, so they are unaffected.
 
 The resolver is switched on by `-Dcomposeai.fonts.cacheDir`, which `serve`'s cmp-jvm subprocess
 (`RcJvmServerRenderer`) passes; without it — and on an offline miss, a failed fetch, a `device:`
