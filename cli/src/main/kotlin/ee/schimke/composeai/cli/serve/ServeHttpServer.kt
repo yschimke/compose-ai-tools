@@ -1869,6 +1869,7 @@ class ServeHttpServer(
     val loadError: String?,
     val lastLoadAttemptEpochMillis: Long?,
     val themeOptimization: ThemeOptimizationSnapshot?,
+    val renderCache: CatalogRenderCacheSnapshot?,
     /**
      * The metadata above is a **last-known snapshot** of a now-suspended catalog
      * ([catalogMetaSeen]) rather than a live read, because the session's daemon is idle. Facts a
@@ -1920,6 +1921,7 @@ class ServeHttpServer(
     val degradation: String?,
     val provenance: ServeWeb.CatalogProvenance?,
     val themeOptimization: ThemeOptimizationSnapshot?,
+    val renderCache: CatalogRenderCacheSnapshot?,
   )
 
   init {
@@ -1952,6 +1954,7 @@ class ServeHttpServer(
         degradation = host.degradations.firstOrNull()?.detail,
         provenance = bundle.provenance,
         themeOptimization = host.themeOptimizationSnapshot(),
+        renderCache = host.catalogRenderCacheSnapshot(),
       )
   }
 
@@ -2027,12 +2030,15 @@ class ServeHttpServer(
               repo = c.provenance?.repo,
               branch = c.provenance?.branch,
               generatedAt = c.provenance?.generatedAt,
+              composeAiToolsVersion = c.provenance?.toolVersion,
+              designParityVersion = c.provenance?.designParityVersion,
               path = "/${c.id}/",
               metaStale = c.stale,
               loadState = c.loadState,
               loadError = c.loadError,
               lastLoadAttemptEpochMillis = c.lastLoadAttemptEpochMillis,
               themeOptimization = c.themeOptimization,
+              renderCache = c.renderCache,
             )
           },
         runningServers =
@@ -2115,6 +2121,7 @@ class ServeHttpServer(
       return ServeWeb.StatusView(
         version = BUNDLE_VERSION,
         public = isPublic,
+        nowMillis = nowMillis,
         overallOk = failures.isEmpty() && catalogs.none { it.loadError != null },
         summary = summary,
         config = config,
@@ -2130,16 +2137,11 @@ class ServeHttpServer(
               running = c.running,
               degradation = c.degradation,
               stale = c.stale,
-              provenance =
-                c.provenance?.let { p ->
-                  buildString {
-                    append(p.repo).append('@').append(p.branch)
-                    p.generatedAt?.let { append(" · ").append(it) }
-                  }
-                },
+              provenance = c.provenance,
               loadState = c.loadState,
               loadError = c.loadError,
               themeOptimization = c.themeOptimization,
+              renderCache = c.renderCache,
             )
           },
         servers =
@@ -2230,6 +2232,7 @@ class ServeHttpServer(
         loadError = load?.error,
         lastLoadAttemptEpochMillis = load?.lastAttemptEpochMillis,
         themeOptimization = host?.themeOptimizationSnapshot() ?: seen?.themeOptimization,
+        renderCache = host?.catalogRenderCacheSnapshot() ?: seen?.renderCache,
         stale = seen != null,
       )
     }
@@ -3594,6 +3597,10 @@ private data class CatalogDto(
   val repo: String? = null,
   val branch: String? = null,
   val generatedAt: String? = null,
+  /** compose-ai-tools / compose-preview version that rendered this catalog. */
+  val composeAiToolsVersion: String? = null,
+  /** @design-parity/catalog-export version, when that producer recorded one. */
+  val designParityVersion: String? = null,
   /** Canonical catalog path (`/<id>/`). */
   val path: String,
   /**
@@ -3611,6 +3618,8 @@ private data class CatalogDto(
   val lastLoadAttemptEpochMillis: Long? = null,
   /** Server-side idle theme-cache fill progress for this catalog generation. */
   val themeOptimization: ThemeOptimizationSnapshot? = null,
+  /** Bounded rendered-preview cache occupancy for this catalog generation. */
+  val renderCache: CatalogRenderCacheSnapshot? = null,
 )
 
 @Serializable

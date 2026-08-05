@@ -44,7 +44,7 @@ class MergedResourceOwnershipTest {
         .trimIndent(),
     )
 
-    val keys = MergedResourceOwnership.firstPartyFileResourceKeys(buildDir())
+    val keys = requireNotNull(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir()))
 
     assertThat(keys).containsAtLeast("drawable/ic_play", "drawable/ic_logo")
     assertThat(keys).doesNotContain("drawable/aar_bg")
@@ -72,7 +72,7 @@ class MergedResourceOwnershipTest {
         .trimIndent(),
     )
 
-    val keys = MergedResourceOwnership.firstPartyFileResourceKeys(buildDir())
+    val keys = requireNotNull(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir()))
 
     assertThat(keys).contains("drawable/ic_generated")
     assertThat(keys).doesNotContain("drawable/core_bg")
@@ -98,7 +98,7 @@ class MergedResourceOwnershipTest {
         .trimIndent(),
     )
 
-    val keys = MergedResourceOwnership.firstPartyFileResourceKeys(buildDir())
+    val keys = requireNotNull(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir()))
 
     assertThat(keys).contains("drawable/avd_spin")
     assertThat(keys.none { it.startsWith("values/") }).isTrue()
@@ -125,7 +125,7 @@ class MergedResourceOwnershipTest {
         .trimIndent(),
     )
 
-    val keys = MergedResourceOwnership.firstPartyFileResourceKeys(buildDir())
+    val keys = requireNotNull(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir()))
 
     assertThat(keys).containsAtLeast("drawable/from_debug", "drawable/from_unit_test")
   }
@@ -158,22 +158,41 @@ class MergedResourceOwnershipTest {
         .trimIndent(),
     )
 
-    val keys = MergedResourceOwnership.firstPartyFileResourceKeys(buildDir())
+    val keys = requireNotNull(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir()))
 
     assertThat(keys).contains("drawable/probe_icon")
     assertThat(keys).doesNotContain("drawable/aar_bg")
   }
 
   @Test
-  fun `returns empty when no blame file exists so the caller can fall back`() {
-    assertThat(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir())).isEmpty()
+  fun `returns null when no blame file exists so the caller disables pruning`() {
+    assertThat(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir())).isNull()
   }
 
   @Test
-  fun `a malformed blame file yields no keys instead of failing the pack`() {
+  fun `a malformed blame file returns null instead of trusting partial ownership`() {
     writeBlame("debug", "<merger><dataSet config=\":app\"><source path=\"/a\">")
 
-    // Truncated XML: whatever was parsed before the error is dropped, but the pack survives.
-    MergedResourceOwnership.firstPartyFileResourceKeys(buildDir())
+    assertThat(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir())).isNull()
+  }
+
+  @Test
+  fun `valid blame with no first-party file resources returns empty rather than unavailable`() {
+    writeBlame(
+      "debug",
+      """
+      <merger version="3">
+        <dataSet config="androidx.cardview:cardview:1.0.0">
+          <source path="/caches/cardview/res">
+            <file name="aar_bg" path="/caches/cardview/res/drawable/aar_bg.xml" type="drawable"/>
+          </source>
+        </dataSet>
+      </merger>
+      """
+        .trimIndent(),
+    )
+
+    val keys = requireNotNull(MergedResourceOwnership.firstPartyFileResourceKeys(buildDir()))
+    assertThat(keys).isEmpty()
   }
 }

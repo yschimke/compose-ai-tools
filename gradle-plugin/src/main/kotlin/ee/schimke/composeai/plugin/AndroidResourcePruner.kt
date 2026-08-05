@@ -21,7 +21,11 @@ import java.util.zip.ZipOutputStream
  *   `anim`, `animator`, `mipmap`. Compose draws from Kotlin — no `R.layout` inflation, no view
  *   animations, no launcher mipmaps — so a Compose render resolves none of these unless the module
  *   itself authored one — or a sibling project module did — which [firstPartyFileResources] always
- *   retains.
+ *   retains. [BundlePreviewTask] disables pruning before calling this when ownership metadata is
+ *   unavailable; an empty set here is therefore a valid, verified resource-free build.
+ * - A small set of dependency resources is retained explicitly. AppCompat loads
+ *   `drawable/abc_vector_test` at runtime to validate VectorDrawableCompat, so dropping it produces
+ *   the misleading "incorrect configuration" exception even though the consumer build is valid.
  * - The baked catalog PNGs are rendered from the **full** APK *before* packing, so they are
  *   unaffected. The pruned APK feeds only the live daemon re-render.
  *
@@ -96,7 +100,8 @@ internal object AndroidResourcePruner {
     if (slash < 0) return false
     val typeBase = rest.substring(0, slash).substringBefore('-')
     if (typeBase !in PRUNABLE_TYPE_BASES) return false
-    return "$typeBase/${resourceNameOf(rest.substring(slash + 1))}" !in firstParty
+    val key = "$typeBase/${resourceNameOf(rest.substring(slash + 1))}"
+    return key !in firstParty && key !in REQUIRED_DEPENDENCY_RESOURCES
   }
 
   /**
@@ -108,4 +113,6 @@ internal object AndroidResourcePruner {
     val noExt = fileName.substringBefore('.')
     return if (noExt.startsWith('$')) noExt.drop(1).substringBefore("__") else noExt
   }
+
+  private val REQUIRED_DEPENDENCY_RESOURCES = setOf("drawable/abc_vector_test")
 }

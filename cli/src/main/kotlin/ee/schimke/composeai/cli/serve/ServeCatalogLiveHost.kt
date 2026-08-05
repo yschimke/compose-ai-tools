@@ -91,20 +91,18 @@ class ServeCatalogLiveHost(
     System.getProperty("composeai.serve.warmInBackground")?.toBooleanStrictOrNull() ?: false,
   private val catalogThemeCache: CatalogThemeCache = CatalogThemeCache(),
   /**
-   * Whether to **eagerly** fill [catalogThemeCache] on the idle pass below — off by default.
+   * Whether to **eagerly** fill [catalogThemeCache] on the idle pass below — on by default.
    *
-   * The pass renders `previews × declaredThemes` for every catalog: hundreds of daemon renders,
-   * server-wide, for pixels no visitor has asked for. Even parked behind [ServeBackgroundWork] it
-   * competes with the work that is actually on a request path, and on the public box it is what
-   * turned a quiet server into a permanently busy one. The *reactive* half of the cache is
-   * untouched and is where the value was: a theme a visitor actually selects is still cached on
-   * completion (see [cachedRender]), so re-selecting it stays instant.
+   * The pass renders `previews × declaredThemes` for every catalog: potentially hundreds of daemon
+   * renders. It used to start too eagerly and could keep a public box permanently busy. The
+   * default-on version is guarded by [ServeBackgroundWork], the one-minute quiet window below, and
+   * the cache's byte-bounded LRU; foreground traffic or catalog loading parks it between images.
    *
-   * `-Dcomposeai.serve.themeOptimization=true` turns the eager pass back on for a deployment that
-   * wants it.
+   * The pass is deliberately gentle: it waits for the server-wide quiet window and takes one
+   * background render permit at a time. `-Dcomposeai.serve.themeOptimization=false` disables it.
    */
   private val themeOptimizationEnabled: Boolean =
-    System.getProperty("composeai.serve.themeOptimization")?.toBooleanStrictOrNull() ?: false,
+    System.getProperty("composeai.serve.themeOptimization")?.toBooleanStrictOrNull() ?: true,
   private val serverIdleMillis: () -> Long? = { Long.MAX_VALUE },
   /**
    * Server-wide admission for the idle theme optimizer below. Shared by every catalog host in a
@@ -113,7 +111,7 @@ class ServeCatalogLiveHost(
    */
   private val backgroundWork: ServeBackgroundWork = ServeBackgroundWork(),
   private val themeOptimizationIdleMillis: Long =
-    System.getProperty("composeai.serve.themeOptimizationIdleMillis")?.toLongOrNull() ?: 30_000L,
+    System.getProperty("composeai.serve.themeOptimizationIdleMillis")?.toLongOrNull() ?: 60_000L,
   /**
    * Route snapshot renders to the shared monolithic daemon rather than the per-preview pool — see
    * [renderHostFor]. `-Dcomposeai.serve.sharedDaemonRenders=false` restores per-preview routing for
@@ -181,13 +179,12 @@ class ServeCatalogLiveHost(
   private val warmingInFlight = ConcurrentHashMap.newKeySet<String>()
 
   /**
-   * Completed catalog-grid theme renders are retained in [catalogThemeCache] for this catalog
-   * generation. The per-preview daemon pool is deliberately LRU and may evict the daemon (and its
-   * local cache) between theme selections; keeping the pure `themeProvider` result here makes a
-   * repeat selection instant without pinning every preview daemon. The shared cache survives idle
-   * host suspension; a catalog refresh creates a new generation and cache. Only pure theme
-   * selections participate, so the key space is bounded by `previews × declaredThemes`; arbitrary
-   * knob combinations stay in the daemon's bounded cache.
+   * Completed catalog renders are retained in [catalogThemeCache] for this catalog generation. The
+   * per-preview daemon pool is deliberately LRU and may evict the daemon (and its local cache)
+   * between selections; keeping every successful override result here makes repeat theme, knob,
+   * locale, font-scale, and other selections instant without pinning every preview daemon. The
+   * shared cache survives idle host suspension and accumulates for the generation; a catalog
+   * refresh creates a new generation and cache, flushing pixels produced from the old content.
    */
   private val themeRendersInFlight = ConcurrentHashMap.newKeySet<String>()
   private val optimizationStarted = AtomicBoolean()
@@ -293,6 +290,9 @@ class ServeCatalogLiveHost(
 
   override fun themeOptimizationSnapshot(): ThemeOptimizationSnapshot? =
     catalogThemeCache.snapshot().takeIf { it.total > 0 }
+
+  override fun catalogRenderCacheSnapshot(): CatalogRenderCacheSnapshot =
+    catalogThemeCache.renderCacheSnapshot()
 
   override val backgroundWorkActive: Boolean
     get() = optimizationActive.get()
@@ -531,6 +531,7 @@ class ServeCatalogLiveHost(
     overrides: PreviewOverrides,
     leased: Boolean,
   ): RenderOutcome {
+    val catalogCacheKey = catalogCacheKey(previewId, overrides)
     val themeCacheKey = themeCacheKey(previewId, overrides)
     cachedRender(previewId, overrides)?.let {
       return it
@@ -545,7 +546,7 @@ class ServeCatalogLiveHost(
       // lane, so it must be awaited even cold and its outcome returned as-is. Everything below is
       // the baked-first routing, which such an id can't use.
       if (previewId in liveOnlyPreviewIds) {
-        return cacheThemeRender(themeCacheKey, renderDaemon(daemonId, overrides, leased))
+        return cacheCatalogRender(catalogCacheKey, renderDaemon(daemonId, overrides, leased))
       }
       // Only await the daemon when it's warm and free. A cold Android render can take minutes, and
       // blocking the browse — and the HTTP render slot it holds — on it is what saturates the whole
@@ -566,7 +567,7 @@ class ServeCatalogLiveHost(
         // for a catalog whose supplement module carries its own live lane, where an id can be
         // aliased yet reachable only through the pool.
         if (live !is RenderOutcome.Busy && live !is RenderOutcome.NotFound)
-          return cacheThemeRender(themeCacheKey, live)
+          return cacheCatalogRender(catalogCacheKey, live)
       }
       if (themeCacheKey != null) return RenderOutcome.Busy
       return baked.render(previewId, overrides)
@@ -576,12 +577,12 @@ class ServeCatalogLiveHost(
   }
 
   override fun cachedRender(previewId: String, overrides: PreviewOverrides): RenderOutcome.Ok? =
-    themeCacheKey(previewId, overrides)?.let(catalogThemeCache::get)?.let { bytes ->
+    catalogCacheKey(previewId, overrides)?.let(catalogThemeCache::get)?.let { bytes ->
       RenderOutcome.Ok(bytes, RenderOutcome.Generation.CATALOG_CACHE)
     }
 
-  /** Cache only the catalog grid's pure theme selection, never a baked fallback or a failure. */
-  private fun cacheThemeRender(key: String?, outcome: RenderOutcome): RenderOutcome {
+  /** Cache every successful live catalog render, never a baked fallback or a failure. */
+  private fun cacheCatalogRender(key: String?, outcome: RenderOutcome): RenderOutcome {
     if (
       key != null &&
         outcome is RenderOutcome.Ok &&
@@ -590,6 +591,17 @@ class ServeCatalogLiveHost(
       catalogThemeCache.put(key, outcome.png)
     }
     return outcome
+  }
+
+  /**
+   * A content-generation cache entry exists for every request that actually routes to the daemon.
+   * Override-free baked browsing stays on disk and needs no duplicate entry here. The surrounding
+   * [ServeSessionState] owns this map, so ordinary idle daemon suspension leaves it intact while a
+   * catalog refresh replaces the state (and therefore the whole map) atomically.
+   */
+  private fun catalogCacheKey(previewId: String, overrides: PreviewOverrides): String? {
+    if (daemonIdForOverrideRender(previewId, overrides) == null) return null
+    return ServeOverrides.cacheKey(previewId, overrides)
   }
 
   private fun themeCacheKey(previewId: String, overrides: PreviewOverrides): String? {

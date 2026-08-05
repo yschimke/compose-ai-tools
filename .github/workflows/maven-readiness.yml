@@ -1,0 +1,88 @@
+name: Maven readiness
+
+# Verifies that a published compose-preview plugin is fully resolvable from the
+# public Maven Central consumer endpoint, then attaches the marker consumed by
+# scripts/install.sh in yschimke/skills. The primary release chain calls this
+# after making the GitHub Release public. workflow_dispatch is the repair path
+# for manual/tag releases and transient Central or network failures.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Release tag to verify (for example v0.19.33).'
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to verify (for example v0.19.33).'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: maven-readiness-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ inputs.tag }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # upload the readiness marker to the published release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Resolve the released plugin from public Maven Central
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          V="${TAG#v}"
+          [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || { echo "::error::unexpected release version: $V"; exit 1; }
+
+          smoke="$RUNNER_TEMP/compose-preview-maven-readiness"
+          gradle_home="$RUNNER_TEMP/compose-preview-maven-readiness-gradle-home"
+          mkdir -p "$smoke" "$gradle_home"
+          printf 'rootProject.name = "compose-preview-maven-readiness"\n' \
+            > "$smoke/settings.gradle.kts"
+          printf '%s\n' \
+            'buildscript {' \
+            '  repositories { mavenCentral() }' \
+            "  dependencies { classpath(\"ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:${V}\") }" \
+            '}' \
+            > "$smoke/build.gradle.kts"
+
+          ready=0
+          for attempt in $(seq 1 40); do
+            if GRADLE_USER_HOME="$gradle_home" ./gradlew \
+                -p "$smoke" help --no-daemon --refresh-dependencies \
+                > "$smoke/gradle.log" 2>&1; then
+              ready=1
+              echo "plugin ${V} resolved from public Maven Central on attempt ${attempt}."
+              break
+            fi
+            echo "plugin ${V} not fully resolvable from public Maven Central (attempt ${attempt}/40)."
+            tail -n 30 "$smoke/gradle.log"
+            sleep 30
+          done
+          [ "$ready" -eq 1 ] \
+            || { echo "::error::plugin ${V} was not resolvable after ~20 minutes"; exit 1; }
+
+          marker="$RUNNER_TEMP/compose-preview-maven-ready-${V}.json"
+          printf '{"version":"%s","verifiedAt":"%s"}\n' \
+            "$V" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$marker"
+          gh release upload "$TAG" "$marker" --clobber
+          echo "uploaded $(basename "$marker")."

@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli.serve
 import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Server-wide admission for **background, best-effort catalog work** — today the catalog
@@ -29,10 +30,14 @@ import java.util.concurrent.atomic.AtomicInteger
  * Both knobs are process-wide: one instance is built per `serve` run and shared by every catalog
  * host it opens.
  */
-class ServeBackgroundWork(maxConcurrentRenders: Int = 1) {
+class ServeBackgroundWork(
+  maxConcurrentRenders: Int = 1,
+  private val clock: () -> Long = System::currentTimeMillis,
+) {
   private val loadsInFlight = AtomicInteger()
   private val initialLoadPending = AtomicBoolean(false)
   private val renderPermits = Semaphore(maxConcurrentRenders.coerceAtLeast(1))
+  private val lastCatalogLoadFinishedAt = AtomicLong(Long.MIN_VALUE)
 
   /**
    * True while the server is bringing catalogs up: the startup pass hasn't finished, or a refresh /
@@ -54,6 +59,7 @@ class ServeBackgroundWork(maxConcurrentRenders: Int = 1) {
   /** The startup pass is done (however it ended — loaded, failed, or shut down mid-pass). */
   fun initialCatalogLoadFinished() {
     initialLoadPending.set(false)
+    lastCatalogLoadFinishedAt.set(clock())
   }
 
   /** Run one catalog load, counted so background work stays parked for its duration. */
@@ -63,15 +69,30 @@ class ServeBackgroundWork(maxConcurrentRenders: Int = 1) {
       return block()
     } finally {
       loadsInFlight.decrementAndGet()
+      lastCatalogLoadFinishedAt.set(clock())
     }
   }
 
   /**
-   * Wrap the registry's whole-server idle clock so a loading server reads as busy (`null`), which
-   * is how [ServeCatalogLiveHost]'s optimizer already spells "not now".
+   * Wrap the registry's whole-server idle clock so a loading server reads as busy (`null`) and the
+   * clock restarts at zero when startup, refresh, or admin registration finishes. The catalog host
+   * applies its quiet-window threshold to the smaller of this and request/render idleness.
    */
   fun idleClock(idleMillis: () -> Long?): () -> Long? = {
-    if (catalogsLoading) null else idleMillis()
+    if (catalogsLoading) {
+      null
+    } else {
+      val requestIdleMillis = idleMillis()
+      if (requestIdleMillis == null || catalogsLoading) {
+        null
+      } else {
+        val finishedAt = lastCatalogLoadFinishedAt.get()
+        val catalogIdleMillis =
+          if (finishedAt == Long.MIN_VALUE) Long.MAX_VALUE
+          else (clock() - finishedAt).coerceAtLeast(0)
+        minOf(requestIdleMillis, catalogIdleMillis)
+      }
+    }
   }
 
   /**

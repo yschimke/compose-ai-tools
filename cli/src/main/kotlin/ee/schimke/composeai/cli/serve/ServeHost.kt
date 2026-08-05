@@ -174,6 +174,9 @@ interface ServeHost : AutoCloseable {
   /** Server-side catalog theme optimization progress, or null for hosts without that cache. */
   fun themeOptimizationSnapshot(): ThemeOptimizationSnapshot? = null
 
+  /** Memory occupancy of this catalog generation's durable rendered-preview cache. */
+  fun catalogRenderCacheSnapshot(): CatalogRenderCacheSnapshot? = null
+
   /** True while low-priority work still needs this host resident. */
   val backgroundWorkActive: Boolean
     get() = false

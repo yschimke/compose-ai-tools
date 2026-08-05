@@ -1,5 +1,9 @@
 package ee.schimke.composeai.cli.serve
 
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -138,6 +142,17 @@ object ServeWeb {
     val word = if (unverified) "unverified" else "trusted"
     val full = WebEscaping.htmlEscape(trust)
     return " <span class=\"$cls\" title=\"producer trust: $full\">$icon $word</span>"
+  }
+
+  /**
+   * The public front door only calls out a negative producer verdict: unverified catalogs are
+   * orange and labelled `untrusted`, while trusted catalogs carry no badge. The full verdict and
+   * its basis remain available on `/status` and on the catalog's own pages.
+   */
+  private fun homeTrustBadge(trust: String?): String {
+    if (trust != "unverified") return ""
+    return " <span class=\"cp-badge cp-badge--unverified\" " +
+      "title=\"producer trust: unverified\">⚠ untrusted</span>"
   }
 
   /**
@@ -1159,10 +1174,32 @@ object ServeWeb {
           batch.remaining--;
           if (batch.remaining === 0) releaseThemeLease(batch.lease, false);
         }
+        function clearThemeError(card) {
+          card.classList.remove("cp-theme-render-error");
+          var error = card.querySelector(".cp-theme-error");
+          if (error) error.remove();
+        }
+        function showThemeError(card) {
+          clearThemeError(card);
+          card.classList.add("cp-theme-render-error");
+          var error = document.createElement("span");
+          error.className = "cp-theme-error";
+          error.setAttribute("role", "status");
+          error.textContent = "Theme preview unavailable";
+          var wrap = card.querySelector(".cp-imgwrap");
+          if (wrap) wrap.appendChild(error);
+        }
         function runThemeWorker(queue, gen, batch) {
           if (gen !== themeGen) return;
           var job = queue.shift();
           if (!job) return;
+          // A deferred card is not loading yet: it deliberately has no request until its tab or
+          // viewport reaches it. Mark it busy only when a worker actually starts the fetch. Doing
+          // this while every job was being classified left hidden-tab cards aria-busy forever,
+          // making a completed cold daemon burst look as though it had never woken the page.
+          clearThemeError(job.card);
+          job.card.classList.add("cp-reloading");
+          job.card.setAttribute("aria-busy", "true");
           var img = job.img;
           var settled = false;
           function finish(ok) {
@@ -1182,6 +1219,7 @@ object ServeWeb {
             }
             job.card.classList.remove("cp-reloading");
             job.card.removeAttribute("aria-busy");
+            if (!ok) showThemeError(job.card);
             finishThemeJob(batch);
             runThemeWorker(queue, gen, batch);
           }
@@ -1301,6 +1339,7 @@ object ServeWeb {
         cards.forEach(function (c) {
           c.classList.remove("cp-reloading");
           c.removeAttribute("aria-busy");
+          clearThemeError(c);
         });
         if (provider) {
           cards.forEach(function (c, i) {
@@ -1308,8 +1347,6 @@ object ServeWeb {
             var img = c.querySelector("img");
             var base = themeBase[i];
             if (!img || !base) return;
-            c.classList.add("cp-reloading");
-            c.setAttribute("aria-busy", "true");
             var themedSrc = base + (base.indexOf("?") === -1 ? "?" : "&") + "themeProvider=" + encodeURIComponent(provider);
             var job = {
               card: c,
@@ -1323,7 +1360,16 @@ object ServeWeb {
             // also compare the card's section with the saved current tab. During a live search the
             // existing hidden state already spans tabs and remains authoritative.
             var themeVisible = !c.hidden && nearViewport(c);$correctInitialThemeVisibility
-            (themeVisible ? themeQueue : themeDeferredQueue).push(job);
+            if (themeVisible) {
+              // Visible work is queued now even when the lease falls back to one worker. Mark the
+              // whole on-screen batch busy immediately so cards waiting behind that worker cannot
+              // pass their old-theme pixels off as finished.
+              c.classList.add("cp-reloading");
+              c.setAttribute("aria-busy", "true");
+              themeQueue.push(job);
+            } else {
+              themeDeferredQueue.push(job);
+            }
           });
           // Off-screen cards are NOT rendered up front. A catalog is commonly 80+ cards and the
           // shared daemon renders them one at a time (~1s each), so draining the whole grid costs a
@@ -1881,7 +1927,7 @@ object ServeWeb {
       <a class="cp-card cp-sys"$bg href="/$sysSeg/$suffix">
         <div class="cp-imgwrap">$img</div>
         <div class="cp-meta">
-          <div class="cp-sys-title">$title${compactTrustBadge(s.trust)}</div>
+          <div class="cp-sys-title">$title${homeTrustBadge(s.trust)}</div>
           <div class="cp-id">$sysId</div>$desc
           <div class="cp-sys-foot">${s.previewCount} preview(s)${if (s.views > 0) " · ${formatViews(s.views)}" else ""}</div>
         </div>
@@ -2575,6 +2621,14 @@ object ServeWeb {
       else -> "${seconds}s"
     }
 
+  private fun humanBytes(bytes: Long): String =
+    when {
+      bytes >= 1024L * 1024 * 1024 -> "${bytes / (1024L * 1024 * 1024)} GiB"
+      bytes >= 1024L * 1024 -> "${bytes / (1024L * 1024)} MiB"
+      bytes >= 1024L -> "${bytes / 1024L} KiB"
+      else -> "$bytes B"
+    }
+
   /** A JS string literal for [value] — escaped via the JSON encoder, so quotes/slashes are safe. */
   private fun jsString(value: String): String = JsonPrimitive(value).toString()
 
@@ -2597,14 +2651,16 @@ object ServeWeb {
      * Why the catalog is snapshot-only, when it is (a [ServeDegradation] detail); null otherwise.
      */
     val degradation: String?,
-    /** `repo@branch · date` provenance for a fetched catalog; null for a plain bundle. */
-    val provenance: String?,
+    /** Delivery branch and build identity for a fetched catalog; null for a plain bundle. */
+    val provenance: CatalogProvenance?,
     /** `pending`, `loaded`, `failed`, or `stale` (last good copy + latest refresh error). */
     val loadState: String = "loaded",
     /** Latest catalog load/refresh error. */
     val loadError: String? = null,
     /** Server-side idle theme-cache fill progress for this catalog generation. */
     val themeOptimization: ThemeOptimizationSnapshot? = null,
+    /** Bounded rendered-preview cache occupancy for this catalog generation. */
+    val renderCache: CatalogRenderCacheSnapshot? = null,
     /**
      * The row's facts are a last-known snapshot of a catalog whose daemon is idle, not a live read
      * (`/status` never resumes one). Rendered as a "last known" qualifier next to the trust badge,
@@ -2645,6 +2701,8 @@ object ServeWeb {
   data class StatusView(
     val version: String,
     val public: Boolean,
+    /** Wall-clock instant used to turn recent catalog generation times into relative labels. */
+    val nowMillis: Long,
     /** No catalog load or recent daemon startup failures (drives the header badge). */
     val overallOk: Boolean,
     val summary: List<Stat>,
@@ -2689,7 +2747,33 @@ object ServeWeb {
         view.catalogs.joinToString("\n") { c ->
           val idSeg = WebEscaping.urlEncodeSegment(c.id)
           val listed = if (c.listed) "" else " <span class=\"cp-muted\">(unlisted)</span>"
-          val prov = c.provenance?.let { "<div class=\"cp-muted\">${esc(it)}</div>" } ?: ""
+          val prov =
+            c.provenance?.let { provenance ->
+              val repo = esc(provenance.repo)
+              val branch = esc(provenance.branch)
+              val branchUrl = esc("https://github.com/${provenance.repo}/tree/${provenance.branch}")
+              val generated =
+                provenance.generatedAt
+                  ?.takeIf { it.isNotBlank() }
+                  ?.let { iso ->
+                    val label = friendlyGeneratedAt(iso, view.nowMillis)
+                    " · <span title=\"${esc(iso)}\">${esc(label)}</span>"
+                  } ?: ""
+              val versions =
+                buildList {
+                    provenance.toolVersion
+                      ?.takeIf { it.isNotBlank() }
+                      ?.let { add("compose-ai-tools <code>${esc(it)}</code>") }
+                    provenance.designParityVersion
+                      ?.takeIf { it.isNotBlank() }
+                      ?.let { add("design-parity <code>${esc(it)}</code>") }
+                  }
+                  .takeIf { it.isNotEmpty() }
+                  ?.joinToString(" · ")
+                  ?.let { "<div class=\"cp-muted\">$it</div>" } ?: ""
+              "<div class=\"cp-muted\"><a href=\"$branchUrl\">$repo@$branch</a>" +
+                "$generated</div>$versions"
+            } ?: ""
           val stateCell =
             when {
               c.loadState == "failed" ->
@@ -2715,6 +2799,14 @@ object ServeWeb {
                 }
               "<div class=\"cp-muted\">${esc(detail)}</div>"
             } ?: ""
+          val renderCache =
+            c.renderCache?.let { cache ->
+              val detail =
+                "preview cache ${cache.entries} entries · " +
+                  "${humanBytes(cache.bytes)} / ${humanBytes(cache.maxBytes)}" +
+                  if (cache.evictions > 0) " · ${cache.evictions} evicted" else ""
+              "<div class=\"cp-muted\">${esc(detail)}</div>"
+            } ?: ""
           // An idle catalog's facts are last-known, not live — say so next to the badge rather than
           // leaving the cell blank, which would read as untrusted.
           val staleNote = if (c.stale) "<div class=\"cp-muted\">last known</div>" else ""
@@ -2728,7 +2820,7 @@ object ServeWeb {
             "<div class=\"cp-muted\">${esc(c.id)}</div>$prov</td>" +
             "<td>$trustCell</td>" +
             "<td>${c.previews}</td>" +
-            "<td>$stateCell$themeOptimization$loadError$degrade</td>" +
+            "<td>$stateCell$themeOptimization$renderCache$loadError$degrade</td>" +
             "</tr>"
         }
 
@@ -2832,6 +2924,29 @@ object ServeWeb {
       navSuffix = suffix,
     )
   }
+
+  /** Recent generation times read naturally; older builds use a compact, unambiguous UTC date. */
+  private fun friendlyGeneratedAt(iso: String, nowMillis: Long): String {
+    val generated = runCatching { Instant.parse(iso) }.getOrNull() ?: return prettyDate(iso)
+    val ageSeconds = (nowMillis - generated.toEpochMilli()) / 1000
+    if (ageSeconds >= 0 && ageSeconds < 86_400) {
+      return when {
+        ageSeconds < 60 -> "just now"
+        ageSeconds < 3_600 -> {
+          val minutes = ageSeconds / 60
+          "$minutes ${if (minutes == 1L) "minute" else "minutes"} ago"
+        }
+        else -> {
+          val hours = ageSeconds / 3_600
+          "$hours ${if (hours == 1L) "hour" else "hours"} ago"
+        }
+      }
+    }
+    return STATUS_DATE_FORMAT.format(generated)
+  }
+
+  private val STATUS_DATE_FORMAT: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm 'UTC'", Locale.ENGLISH).withZone(ZoneOffset.UTC)
 
   /**
    * Per-system **display policy** — the single source of truth for what background surface each

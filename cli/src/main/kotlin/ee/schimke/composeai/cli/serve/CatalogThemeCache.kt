@@ -19,18 +19,39 @@ data class ThemeOptimizationSnapshot(
   val completedAtEpochMillis: Long? = null,
 )
 
+/** Memory occupancy of one catalog generation's rendered-preview cache. */
+@Serializable
+data class CatalogRenderCacheSnapshot(
+  val entries: Int,
+  val bytes: Long,
+  val maxBytes: Long,
+  val evictions: Long,
+)
+
 /**
- * Theme PNGs and optimization progress shared by every host incarnation of one catalog generation.
+ * Rendered PNGs and theme-optimization progress shared by every host incarnation of one catalog
+ * generation.
  *
  * A live catalog host is normally suspended after an idle window. Keeping this object in
  * [ServeSessionState] lets the optimized PNGs survive that daemon suspension and be reused when the
- * catalog resumes. A catalog refresh builds a fresh session state and therefore a fresh cache.
+ * catalog resumes. Although the optimizer only targets declared themes, the render map also keeps
+ * successful on-demand override renders (knobs, locale, font scale, and so on). A catalog refresh
+ * builds a fresh session state and therefore a fresh cache, so entries accumulate for exactly as
+ * long as the catalog content they were rendered from remains current.
  */
-class CatalogThemeCache {
-  private val renders = ConcurrentHashMap<String, ByteArray>()
+class CatalogThemeCache(
+  maxBytes: Long =
+    System.getProperty("composeai.serve.catalogRenderCacheMaxBytes")?.toLongOrNull()
+      ?: DEFAULT_MAX_BYTES
+) {
+  val maxBytes: Long = maxBytes.coerceAtLeast(0)
+  private val renderLock = Any()
+  // Access-order map: the byte cap evicts the least-recently-read render first.
+  private val renders = LinkedHashMap<String, ByteArray>(16, 0.75f, true)
   private val targetKeys = ConcurrentHashMap.newKeySet<String>()
   private val failedKeys = ConcurrentHashMap.newKeySet<String>()
   private val byteCount = AtomicLong(0)
+  private val evictionCount = AtomicLong(0)
   private val state = AtomicReference("waiting")
   private val startedAt = AtomicLong(0)
   private val completedAt = AtomicLong(0)
@@ -40,10 +61,25 @@ class CatalogThemeCache {
     refreshCompletion()
   }
 
-  fun get(key: String): ByteArray? = renders[key]
+  fun get(key: String): ByteArray? = synchronized(renderLock) { renders[key] }
 
   fun put(key: String, png: ByteArray) {
-    if (renders.putIfAbsent(key, png) == null) byteCount.addAndGet(png.size.toLong())
+    synchronized(renderLock) {
+      if (renders.containsKey(key)) return@synchronized
+      if (png.size.toLong() > maxBytes) return@synchronized
+      renders[key] = png
+      byteCount.addAndGet(png.size.toLong())
+      while (byteCount.get() > maxBytes && renders.isNotEmpty()) {
+        val eldest = renders.entries.iterator().next()
+        renders.remove(eldest.key)
+        byteCount.addAndGet(-eldest.value.size.toLong())
+        evictionCount.incrementAndGet()
+        if (eldest.key in targetKeys) {
+          state.set("paused")
+          completedAt.set(0)
+        }
+      }
+    }
     failedKeys.remove(key)
     refreshCompletion()
   }
@@ -62,7 +98,7 @@ class CatalogThemeCache {
   }
 
   fun markPassFinished(nowMillis: Long) {
-    if (targetKeys.all(renders::containsKey)) {
+    if (synchronized(renderLock) { targetKeys.all(renders::containsKey) }) {
       completedAt.compareAndSet(0, nowMillis)
       state.set("complete")
     } else {
@@ -71,15 +107,19 @@ class CatalogThemeCache {
   }
 
   fun snapshot(): ThemeOptimizationSnapshot {
-    val cachedTargets = targetKeys.count(renders::containsKey)
+    val cachedTargets = synchronized(renderLock) { targetKeys.count(renders::containsKey) }
     val total = targetKeys.size
     val complete = total > 0 && cachedTargets == total
     return ThemeOptimizationSnapshot(
-      state = if (complete) "complete" else state.get(),
+      state =
+        if (complete) "complete" else state.get().let { if (it == "complete") "paused" else it },
       total = total,
       cached = cachedTargets,
       remaining = (total - cachedTargets).coerceAtLeast(0),
-      failed = failedKeys.count { it in targetKeys && !renders.containsKey(it) },
+      failed =
+        synchronized(renderLock) {
+          failedKeys.count { it in targetKeys && !renders.containsKey(it) }
+        },
       cachedBytes = byteCount.get(),
       fullyOptimized = complete,
       startedAtEpochMillis = startedAt.get().takeIf { it > 0 },
@@ -87,9 +127,25 @@ class CatalogThemeCache {
     )
   }
 
+  fun renderCacheSnapshot(): CatalogRenderCacheSnapshot =
+    synchronized(renderLock) {
+      CatalogRenderCacheSnapshot(
+        entries = renders.size,
+        bytes = byteCount.get(),
+        maxBytes = maxBytes,
+        evictions = evictionCount.get(),
+      )
+    }
+
   private fun refreshCompletion() {
-    if (targetKeys.isNotEmpty() && targetKeys.all(renders::containsKey)) {
+    if (
+      targetKeys.isNotEmpty() && synchronized(renderLock) { targetKeys.all(renders::containsKey) }
+    ) {
       state.set("complete")
     }
+  }
+
+  companion object {
+    const val DEFAULT_MAX_BYTES: Long = 128L * 1024 * 1024
   }
 }

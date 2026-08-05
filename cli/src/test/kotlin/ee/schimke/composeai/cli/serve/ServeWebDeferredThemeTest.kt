@@ -53,6 +53,42 @@ class ServeWebDeferredThemeTest {
   }
 
   @Test
+  fun `visible queued cards are busy while deferred cards stay settled`() {
+    val html = page()
+    val worker = html.indexOf("function runThemeWorker(queue, gen, batch)")
+    val startsBusy = html.indexOf("job.card.classList.add(\"cp-reloading\")")
+    val visibleBranch = html.indexOf("if (themeVisible) {")
+    val queuesVisible = html.indexOf("themeQueue.push(job)", visibleBranch)
+    val deferredBranch = html.indexOf("themeDeferredQueue.push(job)", queuesVisible)
+
+    assertTrue(worker >= 0 && startsBusy > worker, "the worker owns the loading state")
+    assertTrue(
+      visibleBranch >= 0 &&
+        html.contains("c.classList.add(\"cp-reloading\")") &&
+        queuesVisible > visibleBranch &&
+        deferredBranch > queuesVisible,
+      "every visible queued card is busy, while deferred cards take the settled branch",
+    )
+  }
+
+  @Test
+  fun `a terminal render failure leaves an explicit error over the old theme`() {
+    val html = page()
+    assertTrue(html.contains("if (!ok) showThemeError(job.card);"), "failure is surfaced")
+    assertTrue(
+      html.contains("error.textContent = \"Theme preview unavailable\";"),
+      "the old pixels cannot look like a successful theme update",
+    )
+    assertTrue(html.contains("error.setAttribute(\"role\", \"status\")"), "announced accessibly")
+    val clearsError = html.indexOf("clearThemeError(job.card);")
+    val showsSpinner = html.indexOf("job.card.classList.add(\"cp-reloading\")")
+    assertTrue(
+      clearsError >= 0 && showsSpinner > clearsError,
+      "a retry or later theme request clears the prior error before showing its spinner",
+    )
+  }
+
+  @Test
   fun `a browser without IntersectionObserver still renders every card`() {
     // Otherwise those cards would sit on the wrong theme forever.
     assertTrue(

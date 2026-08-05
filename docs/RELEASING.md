@@ -18,9 +18,9 @@ In **Settings → Actions → General → Workflow permissions**, tick **"Allow 
 
    Requires repo setting **Settings → General → Pull Requests → "Default to pull request title for squash merges"**. The repo-level API field is `squash_merge_commit_title=PR_TITLE` (not the default `COMMIT_OR_PR_TITLE`, which reuses the first commit's headline on single-commit PRs — that's the gap that let #94 through).
 2. **Review the release PR.** Titled `chore(main): release X.Y.Z`. Check the proposed `CHANGELOG.md`, the version bumps in `README.md`, `docs/*.md`, `DoctorCommand.kt`, and `.release-please-manifest.json`. Amend commit messages on `main` if the bump isn't right — the PR updates itself.
-3. **Merge the release PR.** On the next `release-please.yml` run (fires immediately on the merge commit), it creates the `vX.Y.Z` tag + a **draft** GitHub Release, then starts two independent paths from that tag. `release.yml` builds and uploads the core artifacts and publishes the Maven deployment; a `finalize-release` job verifies the required assets, un-drafts the Release, and marks it `latest` without waiting for Maven Central's CDN to propagate. The bootstrap installer still withholds the new CLI until both its tarball and matching plugin marker are downloadable, preventing an update that fails on its first Gradle-backed command. In parallel, `preview-host-image.yml` builds its CLI, Android daemon, and local Maven tree directly from the tag, pushes the image, and rolls `preview.coo.ee` without waiting for either Maven Central or the draft Release to become public. The preview deployment is best-effort and cannot block the core release. Once the release is finalized, `regenerate-design-artifacts` also fires, rebuilding the `design-artifacts/<system>` delivery branches against the just-released preview-runtime coordinates; those jobs own their own Maven Central readiness wait. If a required core asset is missing the release **stays a draft** so it's never half-published — re-run `release.yml` for the tag, then re-run the finalize step.
+3. **Merge the release PR.** On the next `release-please.yml` run (fires immediately on the merge commit), it creates the `vX.Y.Z` tag + a **draft** GitHub Release, then starts two independent paths from that tag. `release.yml` builds and uploads the core artifacts and publishes the Maven deployment; a `finalize-release` job verifies the required assets, un-drafts the Release, and marks it `latest` without waiting for Maven Central's CDN to propagate. A separate readiness job resolves the CLI's exact auto-injected plugin classpath from public Maven Central and then attaches a `compose-preview-maven-ready-<version>.json` marker. The bootstrap installer withholds the new CLI until that marker is downloadable, preventing an update that fails on its first Gradle-backed command. In parallel, `preview-host-image.yml` builds its CLI, Android daemon, and local Maven tree directly from the tag, pushes the image, and rolls `preview.coo.ee` without waiting for either Maven Central or the draft Release to become public. The preview deployment is best-effort and cannot block the core release. Once the release is finalized, `regenerate-design-artifacts` also fires, rebuilding the `design-artifacts/<system>` delivery branches against the just-released preview-runtime coordinates; those jobs own their own Maven Central readiness wait. If a required core asset is missing the release **stays a draft** so it's never half-published — re-run `release.yml` for the tag, then re-run the finalize step.
 
-   > **Why draft-then-finalize.** release-please used to publish the Release immediately on merge, so `/releases/latest` flipped to the new version ~20 min before the CLI tarball finished uploading — anyone installing in that window hit "release not found" (a 404 on `latest/download/compose-preview-<v>.tar.gz`). A **draft** Release is excluded from `/releases/latest` and the `latest/download/…` redirect, so those endpoints only expose releases whose assets are present. GitHub does include drafts in the public Atom feed used by the rate-limit-resistant bootstrap installer; the installer therefore verifies that the candidate tarball is downloadable and falls back to the previous complete release while a draft is building. One other gotcha the workflow handles: a draft Release does **not** create its git tag (GitHub writes the tag only on publish), so `release-please.yml` creates the tag itself at the merge commit before the build jobs check it out.
+   > **Why draft-then-finalize.** release-please used to publish the Release immediately on merge, so `/releases/latest` flipped to the new version ~20 min before the CLI tarball finished uploading — anyone installing in that window hit "release not found" (a 404 on `latest/download/compose-preview-<v>.tar.gz`). A **draft** Release is excluded from `/releases/latest` and the `latest/download/…` redirect, so those endpoints only expose releases whose assets are present. GitHub does include drafts in the public Atom feed used by the rate-limit-resistant bootstrap installer; marker-era releases are therefore eligible only after their CLI tarball and Maven-readiness marker are downloadable, while older releases retain direct artifact probes. One other gotcha the workflow handles: a draft Release does **not** create its git tag (GitHub writes the tag only on publish), so `release-please.yml` creates the tag itself at the merge commit before the build jobs check it out.
 
    > **The heavy CI suite is skipped on release PRs, so no admin bypass is needed to merge.** A release PR only bumps the version manifest / `CHANGELOG.md` / version strings in docs — no source or build inputs change. The build/test/security/preview workflows (`ci`, `codeql`, `compose-preview`, `daemon-harness`, `integration`, `report-schemas`, `format`) gate each job with `if: ${{ !(startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'github-actions[bot]') }}`, so they report **skipped** only on a release PR — i.e. one whose head branch is `release-please--*` **and** whose author is the release bot. (The branch name alone is contributor-controlled, so the author check is what stops a human/fork PR from naming its branch `release-please--…` to skip CI and abuse "skipped == passing"; switch the login if you move release-please to a GitHub App token.) Branch protection treats a skipped required check as passing, so the required checks go green instantly. The cheap PR-hygiene checks (`pr-title`, `no-agent-attribution`) still run — a release PR passes both. The guard is at job level on purpose: a `branches` filter on the trigger would leave the required check stuck *pending* and block the merge instead.
 
@@ -38,6 +38,13 @@ If the automatic chain ever leaves a release half-published (e.g. Maven Central 
   The `push: tags` trigger on `release.yml` picks it up. Only use this when you deliberately want to release without a release-please PR.
 
 Both fallbacks share the same concurrency group as the primary path, so they can't race each other. The final upload step is idempotent — it uploads onto an existing Release (or creates one if none exists).
+
+If the GitHub Release is public but `compose-preview update` still selects the
+previous version, check the original **Release PR** run's
+`verify-maven-readiness` job. Re-run that failed job after Central recovers, or
+run **Maven readiness** manually with the release tag. It performs the clean
+resolution again and uploads the missing readiness marker without rebuilding or
+republishing the release.
 
 ### What the `release.yml` workflow does
 
@@ -142,7 +149,7 @@ live there), just apply the plugin:
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
-    id("ee.schimke.composeai.preview") version "0.19.32"
+    id("ee.schimke.composeai.preview") version "0.19.34"
 }
 ```
 <!-- x-release-please-end -->
@@ -198,9 +205,9 @@ Download from the [Releases page](https://github.com/yschimke/compose-ai-tools/r
 <!-- x-release-please-start-version -->
 ```bash
 curl -L -o compose-preview.tar.gz \
-    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-0.19.32.tar.gz
+    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-0.19.34.tar.gz
 tar xzf compose-preview.tar.gz
-./compose-preview-0.19.32/bin/compose-preview list
+./compose-preview-0.19.34/bin/compose-preview list
 ```
 <!-- x-release-please-end -->
 
@@ -213,9 +220,9 @@ want the server binary:
 <!-- x-release-please-start-version -->
 ```bash
 curl -L -o compose-preview-mcp.tar.gz \
-    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-mcp-0.19.32.tar.gz
+    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-mcp-0.19.34.tar.gz
 tar xzf compose-preview-mcp.tar.gz
-./compose-preview-mcp-0.19.32/bin/compose-preview-mcp
+./compose-preview-mcp-0.19.34/bin/compose-preview-mcp
 ```
 <!-- x-release-please-end -->
 

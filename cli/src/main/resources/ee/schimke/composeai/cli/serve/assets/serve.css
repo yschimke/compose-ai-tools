@@ -267,6 +267,13 @@ html:not(.cp-bg-transparent) .cp-viewer[data-bg-theme="light"] .cp-stage { backg
   .cp-card.cp-reloading .cp-imgwrap::after,
   .cp-viewer[data-reloading="true"] .cp-stage::after { animation-duration: 1.5s; }
 }
+.cp-card.cp-theme-render-error .cp-imgwrap img { opacity: 0.55; }
+.cp-theme-error {
+  position: absolute; left: 50%; top: 50%; z-index: 2; transform: translate(-50%, -50%);
+  max-width: calc(100% - 24px); padding: 5px 9px; border-radius: 6px;
+  background: rgba(126, 24, 24, 0.92); color: #fff; font-size: 0.7rem; font-weight: 600;
+  line-height: 1.2; text-align: center; pointer-events: none;
+}
 .cp-backend { position: absolute; top: 8px; right: 8px; font-size: 0.62rem; font-weight: 600;
   letter-spacing: 0.02em; padding: 2px 8px; border-radius: 999px; background: rgba(20,20,22,0.72);
   color: #fff; pointer-events: none; }

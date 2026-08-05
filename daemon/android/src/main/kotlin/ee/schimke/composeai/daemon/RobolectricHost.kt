@@ -1147,6 +1147,20 @@ open class RobolectricHost(
       base.wrapperClassName
         ?.takeIf { it.isNotBlank() }
         ?.let { append("wrapperClassName=").append(it).append(';') }
+      // `@PreviewParameter` has BINARY retention, so the sandbox cannot recover its provider by
+      // reflecting on the preview method. The production bundle-daemon path resolves the provider
+      // from `previews.json` into [base]; carry it through this host-side payload reshape just like
+      // [PreviewManifestRouter] does. Dropping it makes the sandbox attempt the parameterless
+      // `(Composer, int)` lookup for a method compiled as `(<T>, Composer, int)`, producing the
+      // misleading `NoSuchMethodException: <class>.<function>` seen on published catalogs.
+      base.previewParameterProviderClassName
+        ?.takeIf { it.isNotBlank() }
+        ?.let {
+          append("previewParameterProvider=").append(it).append(';')
+          if (base.previewParameterLimit != Int.MAX_VALUE) {
+            append("previewParameterLimit=").append(base.previewParameterLimit).append(';')
+          }
+        }
       // Key the output PNG on the (unique) previewId, like [PreviewManifestRouter]; the default
       // `className-functionName` stem would collide for the multiple `@Preview` / @WearPreview*
       // variants that share one function, overwriting each other's render.
@@ -2573,11 +2587,11 @@ open class RobolectricHost(
         )
 
       // INTERACTIVE-ANDROID.md § 10.3 / PR C — full v1 RenderSpec qualifier set. Mirrors
-      // RenderEngine.applyPreviewQualifiers's grammar verbatim (locale, width, height, round,
-      // orientation, uiMode, density) so a held-session capture matches a one-shot capture for
-      // the same RenderSpec bit-for-bit. fontScale rides RuntimeEnvironment.setFontScale rather
-      // than the qualifier string — same Configuration knob RoborazziCompose's FontScaleOption
-      // uses on the standalone JUnit path.
+      // RenderEngine.applyPreviewQualifiers's grammar verbatim (locale, smallest width, width,
+      // height, round, orientation, uiMode, density) so a held-session capture matches a one-shot
+      // capture for the same RenderSpec bit-for-bit. fontScale rides
+      // RuntimeEnvironment.setFontScale rather than the qualifier string — same Configuration knob
+      // RoborazziCompose's FontScaleOption uses on the standalone JUnit path.
       val widthDp = pxToDp(start.widthPx, start.density)
       val heightDp = pxToDp(start.heightPx, start.density)
       val isRound = isRoundDevice(start.device)
@@ -2590,8 +2604,10 @@ open class RobolectricHost(
         }
       val qualifiers = buildList {
         if (!start.localeTag.isNullOrBlank()) add(localeTagToQualifier(start.localeTag))
-        if (widthDp > 0) add("w${widthDp}dp")
-        if (heightDp > 0) add("h${heightDp}dp")
+        // Same `sw<n>dp-w<n>dp-h<n>dp` triple RenderEngine emits — without the smallest-width
+        // token Robolectric's baseline `sw320dp` outlives the incremental `setQualifiers("+…")`
+        // and the held session's Configuration disagrees with its own viewport (issue #3309).
+        addAll(ee.schimke.composeai.data.render.previewSizeQualifiers(widthDp, heightDp))
         if (isRound) add("round")
         if (derivedOrientation != null) add(derivedOrientation)
         when (start.uiMode) {

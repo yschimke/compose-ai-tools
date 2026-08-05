@@ -100,6 +100,42 @@ class AndroidResourcePrunerTest {
   }
 
   @Test
+  fun `verified empty ownership set prunes dependency file resources`() {
+    val input =
+      apk(
+        Triple("resources.arsc", "T".toByteArray(), ZipEntry.STORED),
+        Triple("res/drawable/ic_filters_play.xml", "ICON".toByteArray(), ZipEntry.DEFLATED),
+        Triple("res/layout/player.xml", "LAYOUT".toByteArray(), ZipEntry.DEFLATED),
+      )
+
+    val result = AndroidResourcePruner.prune(input, firstPartyFileResources = emptySet())
+
+    assertThat(entries(result.bytes)).doesNotContainKey("res/drawable/ic_filters_play.xml")
+    assertThat(entries(result.bytes)).doesNotContainKey("res/layout/player.xml")
+    assertThat(result.droppedEntries).isEqualTo(2)
+    assertThat(result.bytesSaved).isEqualTo(10L)
+  }
+
+  @Test
+  fun `keeps AppCompat vector configuration probe`() {
+    val input =
+      apk(
+        Triple("res/drawable/abc_vector_test.xml", "VECTOR".toByteArray(), ZipEntry.DEFLATED),
+        Triple("res/drawable/dependency_icon.xml", "OTHER".toByteArray(), ZipEntry.DEFLATED),
+        Triple("res/drawable/my_icon.xml", "OWN".toByteArray(), ZipEntry.DEFLATED),
+      )
+
+    val result =
+      AndroidResourcePruner.prune(input, firstPartyFileResources = setOf("drawable/my_icon"))
+    val kept = entries(result.bytes)
+
+    assertThat(kept).containsKey("res/drawable/abc_vector_test.xml")
+    assertThat(kept).containsKey("res/drawable/my_icon.xml")
+    assertThat(kept).doesNotContainKey("res/drawable/dependency_icon.xml")
+    assertThat(result.droppedEntries).isEqualTo(1)
+  }
+
+  @Test
   fun `resourceNameOf strips extension and normalises generated splits`() {
     assertThat(AndroidResourcePruner.resourceNameOf("ic_foo.xml")).isEqualTo("ic_foo")
     assertThat(AndroidResourcePruner.resourceNameOf("ic_foo.9.png")).isEqualTo("ic_foo")
