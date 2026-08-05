@@ -12,6 +12,7 @@ class ServeWebAssetsTest {
     for (name in
       listOf(
         "serve.css",
+        "url-state.js",
         "viewer.js",
         "viewer-groups.js",
         "viewer-drawers.js",
@@ -39,6 +40,10 @@ class ServeWebAssetsTest {
       html,
     )
     assertTrue(
+      html.contains("""<script src="${ServeWebAssets.href("url-state.js")}"></script>"""),
+      html,
+    )
+    assertTrue(
       html.contains("""<script src="${ServeWebAssets.href("backend-badge.js")}"></script>"""),
       html,
     )
@@ -54,6 +59,7 @@ class ServeWebAssetsTest {
   fun `extracted javascript assets pass syntax check when node is available`() {
     for (name in
       listOf(
+        "url-state.js",
         "viewer.js",
         "viewer-groups.js",
         "viewer-drawers.js",

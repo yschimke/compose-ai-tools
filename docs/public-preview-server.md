@@ -91,6 +91,47 @@ design systems today) keeps the single flat grid, unchanged.
 
 ![Tabbed catalog page — meshcore-mobile (dark)](images/serve-tabs-sections-dark.png)
 
+## Every selection is in the URL
+
+What a visitor picks is reflected into the page URL, so the page on screen is the page its URL
+describes — bookmarkable, shareable, and reachable with **Back**. Picking Components and then a
+theme on `https://preview.coo.ee/meshcore-mobile/` lands on
+`…/meshcore-mobile/?tab=components&theme=theme:app.ui.DynamicDarkTheme`, and opening that link
+later reopens exactly there.
+
+Nothing reloads. Every write is a `history.pushState` / `replaceState` from
+[`assets/url-state.js`](../cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/url-state.js),
+and Back/Forward re-points the grid (or the viewer's controls) in place — no second fetch of a page
+the browser already has, and no re-render the visitor didn't ask for. Params the server owns
+(`token`, `session`, …) are never touched, and a control back at its default **clears** its param
+rather than pinning a redundant value, so an untouched page keeps the clean URL it was opened with.
+
+| Surface | Carried in the URL |
+| --- | --- |
+| Catalog landing | `tab` (section), `theme` (a baked chip or `theme:<providerFqn>`), `q` (filter), `bg` |
+| Viewer | every override the render URL takes — `device`, `localeTag`, `orientation`, `background`, `fontScale`, `uiMode` / `themeProvider`, size bounds, `focus`, `gestures`, `scroll`, `mode`, `knob.<key>`, `rc.<name>` |
+| Format comparison | `format`, `theme`, `q` |
+
+Opening a bookmarked catalog URL — the tab it names is the selected one, and the theme it names is
+applied (here an app-declared theme, re-rendered on arrival because the link asked for it):
+
+| `…/meshcore-mobile/` | `…/meshcore-mobile/?tab=screens` |
+| --- | --- |
+| ![Catalog landing on its first tab](images/serve-url-state-tab-default.png) | ![Same catalog opened on the Screens tab from the URL](images/serve-url-state-tab-bookmarked.png) |
+
+| `…/compose-m3/` | `…/compose-m3/?theme=theme:com.example.HighContrastThemeCatalog` |
+| --- | --- |
+| ![Catalog landing on its baked Light chip](images/serve-url-state-theme-default.png) | ![Same catalog opened under the declared High Contrast theme from the URL](images/serve-url-state-theme-bookmarked.png) |
+
+A **discrete** choice (a tab, a theme, a lane) pushes its own history entry; **continuous** input (a
+filter, a slider) replaces the current one, so typing six characters costs one entry, not six.
+
+The URL outranks the remembered (`localStorage`) choice wherever the two disagree — it is on the
+address bar only because someone picked it here or was handed the link. That is also the one place a
+declared theme is replayed on load: a *stored* app-declared theme deliberately isn't (it would put
+the whole grid through the daemon on an ordinary page view), but a link that names one is a request
+for exactly that.
+
 In `--public` mode the landing page opens with a short **"about" intro** explaining what the host is
 and its safety model, with a link to the machine-readable [`/version`](#endpoints):
 

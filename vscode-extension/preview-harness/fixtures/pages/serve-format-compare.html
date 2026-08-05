@@ -5,8 +5,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>compose-m3 — format comparison</title>
         <link rel="stylesheet" href="/assets/serve/e592-c60c84bb95114e19/serve.css">
-        <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
-        <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        <!-- Apply the Background/Transparent choice before first paint (no checkerboard flash).
+             A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
+        <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
         <header class="cp-site-header">
@@ -58,7 +59,8 @@
         </div>
         <p id="cp-compare-empty" class="cp-empty" hidden>No comparisons match this filter.</p>
         </div>
-        <script src="/assets/serve/61d1-bc55e9642f5f9e1e/format-compare.js"></script>
+        <script src="/assets/serve/e8c-acead748488355b1/url-state.js"></script>
+        <script src="/assets/serve/687c-53907949b56bf8b1/format-compare.js"></script>
         </main>
       </body>
     </html>

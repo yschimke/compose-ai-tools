@@ -5,8 +5,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Focus ring — compose-preview</title>
         <link rel="stylesheet" href="/assets/serve/e592-c60c84bb95114e19/serve.css">
-        <!-- Apply the sticky Background/Transparent choice before first paint (no checkerboard flash). -->
-        <script>try{if(localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
+        <!-- Apply the Background/Transparent choice before first paint (no checkerboard flash).
+             A `?bg=` on the URL is an explicit, shareable choice and outranks the sticky one. -->
+        <script>try{var b=new URLSearchParams(location.search).get("bg");if(b?b==="off":localStorage.getItem("cp-bg")==="off")document.documentElement.classList.add("cp-bg-transparent");}catch(e){}</script>
       </head>
       <body>
         <header class="cp-site-header">
@@ -177,6 +178,7 @@
       <!-- Backdrop shown behind an open drawer on mobile (drawers become bottom sheets there);
            tapping it dismisses the sheet. Inert on desktop. -->
       <div class="cp-scrim" id="cp-scrim" aria-hidden="true"></div>
+      <script src="/assets/serve/e8c-acead748488355b1/url-state.js"></script>
       <script src="/assets/serve/22e-68c7d41937f0dccd/viewer-groups.js"></script>
       <script src="/assets/serve/c0f-86b66f86ed745fcf/viewer-drawers.js"></script>
       <script>(function () {
@@ -188,12 +190,26 @@
   var root = document.querySelector(".cp-viewer");
   var pid = (root && root.getAttribute("data-preview-id")) || "";
   var themed = pid.split("__").some(function (s) { return s === "light" || s === "dark"; });
+  // The page's own URL outranks the remembered choice: `?themeProvider=` / `?uiMode=` is there
+  // because someone picked it (or was handed the link), so a bookmarked viewer opens on the
+  // theme it was bookmarked in — including on an explicit __light/__dark preview.
+  var params = new URLSearchParams(location.search);
+  var provider = params.get("themeProvider");
+  var uiMode = params.get("uiMode");
+  var urlChoice = provider ? "theme:" + provider
+    : (uiMode === "light" || uiMode === "dark" ? uiMode : "");
+  var urlOption = null;
+  Array.prototype.forEach.call(el.options, function (o) { if (urlChoice && o.value === urlChoice) urlOption = o; });
+  if (urlOption) {
+    el.value = urlChoice;
+    el.setAttribute("data-theme-active", "1");
+  }
   try {
     var stored = localStorage.getItem("cp-theme:compose-m3");
     var declared = stored && stored.indexOf("theme:") === 0;
     var option = null;
     Array.prototype.forEach.call(el.options, function (o) { if (o.value === stored) option = o; });
-    if (option && !option.disabled && (declared || (!themed && (stored === "light" || stored === "dark")))) {
+    if (!urlOption && option && !option.disabled && (declared || (!themed && (stored === "light" || stored === "dark")))) {
       el.value = stored;
       el.setAttribute("data-theme-active", "1");
     }
@@ -223,7 +239,7 @@
   });
   syncBg();
 })();</script>
-      <script src="/assets/serve/15868-ddb18ebfb39038c0/viewer.js"></script>
+      <script src="/assets/serve/171ab-704460f93edf0e5f/viewer.js"></script>
       <script src="/assets/serve/580-33b18e7b310ae1cc/backend-badge.js"></script>
         </main>
       </body>

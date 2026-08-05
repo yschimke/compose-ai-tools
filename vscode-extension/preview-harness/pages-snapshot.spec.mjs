@@ -83,6 +83,7 @@ const STYLED_FIXTURES = new Set([
 ]);
 const SERVE_ASSETS = [
     ["serve.css", "text/css"],
+    ["url-state.js", "text/javascript"],
     ["viewer.js", "text/javascript"],
     ["viewer-groups.js", "text/javascript"],
     ["viewer-drawers.js", "text/javascript"],

@@ -26,6 +26,10 @@ on:
     branches: [main]
     paths:
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**"
+      # The browser-side half of the serve UI (viewer.js, url-state.js, format-compare.js, the
+      # stylesheet). These specs drive it in Chromium, so a change here is exactly what they exist
+      # to catch — and it used to slip through, since only the Kotlin side was listed.
+      - "cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/**"
       # ServeCommand owns openPlaygroundService, the daemon-opener wiring, and the ServeHttpServer
       # hookup — it lives one directory up from serve/**, so trigger on it explicitly.
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/ServeCommand.kt"
@@ -56,6 +60,10 @@ on:
   pull_request:
     paths:
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/serve/**"
+      # The browser-side half of the serve UI (viewer.js, url-state.js, format-compare.js, the
+      # stylesheet). These specs drive it in Chromium, so a change here is exactly what they exist
+      # to catch — and it used to slip through, since only the Kotlin side was listed.
+      - "cli/src/main/resources/ee/schimke/composeai/cli/serve/assets/**"
       # ServeCommand owns openPlaygroundService, the daemon-opener wiring, and the ServeHttpServer
       # hookup — it lives one directory up from serve/**, so trigger on it explicitly.
       - "cli/src/main/kotlin/ee/schimke/composeai/cli/ServeCommand.kt"
