@@ -3331,6 +3331,12 @@ class ServeWebFixtureTest {
         assetText("viewer.js").contains("stripToken("),
       "the report link is retargeted at the current render, token stripped",
     )
+    // …and the retarget only ever lands on a github.com issue form: href is a navigation sink, so
+    // a template that isn't one leaves the server-rendered href in place.
+    assertTrue(
+      assetText("viewer.js").contains("next.indexOf(ISSUE_FORM_PREFIX) !== 0"),
+      "the report href is gated on the GitHub issue-form origin",
+    )
     // The URL itself is copied by clicking the field (no separate "Copy URL" button) — the handler
     // binds to .cp-url and flashes .cp-url-copied.
     assertFalse(
