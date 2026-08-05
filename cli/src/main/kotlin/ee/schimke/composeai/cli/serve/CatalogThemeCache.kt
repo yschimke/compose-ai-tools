@@ -17,6 +17,34 @@ data class ThemeOptimizationSnapshot(
   val fullyOptimized: Boolean,
   val startedAtEpochMillis: Long? = null,
   val completedAtEpochMillis: Long? = null,
+  /**
+   * Entries cached per minute over the pass's lifetime, and the projected seconds to finish at that
+   * rate. Null before the pass has done enough to divide by.
+   *
+   * The point of publishing a RATE rather than only `cached`/`remaining`: a cumulative count read
+   * twice looks the same whether the pass is keeping up or crawling, and reading progress off a
+   * lifetime average (which includes the server's startup, when the pass is parked) understates the
+   * current rate. Both mistakes were made against this catalog before this existed.
+   */
+  val entriesPerMinute: Double? = null,
+  val etaSeconds: Long? = null,
+  /**
+   * Where the pass's wall-clock actually goes: inside renders vs. waiting for its turn at the idle
+   * gate. This is the split that says whether throughput is render-bound (nothing to fix without a
+   * faster renderer) or gate-bound (a scheduling problem), which `cached` alone cannot distinguish.
+   */
+  val renderMillis: Long = 0,
+  val waitingMillis: Long = 0,
+  /** How often the idle gate granted the pass its turn, and how often traffic took it back. */
+  val turnsGranted: Int = 0,
+  val turnsYielded: Int = 0,
+  /**
+   * Renders actually issued concurrently in the last batch, and the widest so far. Makes "five
+   * wide" an observed fact rather than an assumption — a batch that silently collapses to 1 (a
+   * single-daemon lane, or a seat budget that affords no replicas) is otherwise invisible.
+   */
+  val lastBatchWidth: Int = 0,
+  val maxBatchWidth: Int = 0,
 )
 
 /** Memory occupancy of one catalog generation's rendered-preview cache. */
@@ -59,6 +87,34 @@ class CatalogThemeCache(
   private val state = AtomicReference("waiting")
   private val startedAt = AtomicLong(0)
   private val completedAt = AtomicLong(0)
+  private val renderMillis = AtomicLong(0)
+  private val waitingMillis = AtomicLong(0)
+  private val turnsGranted = java.util.concurrent.atomic.AtomicInteger(0)
+  private val turnsYielded = java.util.concurrent.atomic.AtomicInteger(0)
+  private val lastBatchWidth = java.util.concurrent.atomic.AtomicInteger(0)
+  private val maxBatchWidth = java.util.concurrent.atomic.AtomicInteger(0)
+
+  /** The idle gate handed the pass its turn. */
+  fun recordTurnGranted() {
+    turnsGranted.incrementAndGet()
+  }
+
+  /** Traffic took the turn back. */
+  fun recordTurnYielded() {
+    turnsYielded.incrementAndGet()
+  }
+
+  /** Wall-clock spent waiting at the idle gate rather than rendering. */
+  fun recordWaiting(millis: Long) {
+    if (millis > 0) waitingMillis.addAndGet(millis)
+  }
+
+  /** One batch completed: how wide it actually ran, and how long its renders took. */
+  fun recordBatch(width: Int, millis: Long) {
+    lastBatchWidth.set(width)
+    maxBatchWidth.accumulateAndGet(width, ::maxOf)
+    if (millis > 0) renderMillis.addAndGet(millis)
+  }
 
   fun configureTargets(keys: Collection<String>) {
     targetKeys += keys
@@ -173,6 +229,20 @@ class CatalogThemeCache(
       fullyOptimized = complete,
       startedAtEpochMillis = startedAt.get().takeIf { it > 0 },
       completedAtEpochMillis = completedAt.get().takeIf { it > 0 },
+      // Rate over the pass's ACTIVE time (render + gate wait), not wall-clock since it started:
+      // wall-clock includes stretches where the pass held no turn at all, which drags the figure
+      // toward zero and hides whether it is keeping up while it runs.
+      entriesPerMinute = ratePerMinute(cachedTargets),
+      etaSeconds =
+        ratePerMinute(cachedTargets)
+          ?.takeIf { it > 0 }
+          ?.let { ((total - cachedTargets).coerceAtLeast(0) / it * 60).toLong() },
+      renderMillis = renderMillis.get(),
+      waitingMillis = waitingMillis.get(),
+      turnsGranted = turnsGranted.get(),
+      turnsYielded = turnsYielded.get(),
+      lastBatchWidth = lastBatchWidth.get(),
+      maxBatchWidth = maxBatchWidth.get(),
     )
   }
 
@@ -185,6 +255,12 @@ class CatalogThemeCache(
         evictions = evictionCount.get(),
       )
     }
+
+  private fun ratePerMinute(cached: Int): Double? {
+    val activeMillis = renderMillis.get() + waitingMillis.get()
+    if (cached <= 0 || activeMillis <= 0) return null
+    return cached / (activeMillis / 60_000.0)
+  }
 
   private fun refreshCompletion() {
     if (
