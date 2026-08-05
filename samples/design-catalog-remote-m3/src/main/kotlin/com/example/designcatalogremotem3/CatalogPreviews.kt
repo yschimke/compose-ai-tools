@@ -28,9 +28,11 @@ import ee.schimke.composeai.daemon.rememberOverridableRemoteFloat
 import ee.schimke.composeai.daemon.rememberOverridableRemoteString
 import androidx.compose.remote.creation.compose.state.rf
 import androidx.compose.remote.creation.compose.state.rs
+import androidx.compose.remote.creation.compose.state.rsp
 import androidx.compose.remote.creation.compose.text.RemoteFontFamily
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
@@ -416,6 +418,91 @@ fun BrandedTextRemote() = RemoteSticker {
   // player draws a wider face into a box measured for a narrower one. That clip is the renderer gap
   // showing through, not a player bug — it closes when the snapshot lane resolves the family too.
   RemoteText("Orbitron".rs, fontFamily = RemoteFontFamily.Named("google:Orbitron"))
+}
+
+// A *specimen sheet*: four branded families, each drawing its own name. One sticker, four different
+// typefaces — which is the point. A lane that cannot resolve a named family substitutes one face for
+// all four, and four identical-looking lines is a failure nobody has to measure to see; a single
+// branded line (`BrandedTextRemote` above) only looks "a bit off" unless you already know the face.
+//
+// The four are the ones the catalog vendors (`role: "named"` in the wasm app's fonts manifest), and
+// they are deliberately unalike — geometric, script, grotesk, monospace — so a substitution cannot
+// hide in a family resemblance. `google:` namespaces each name as a Google Fonts family: the browser
+// lane fetches it from the CSS API, the wasm lane reads the vendored copy, and the server-side lanes
+// resolve it through the shared font cache.
+@CatalogRemoteLarge
+@Composable
+fun TypefaceSpecimenRemote() = RemoteSticker {
+  RemoteColumn {
+    RemoteText(
+      "Orbitron".rs,
+      fontSize = 22.rsp,
+      fontFamily = RemoteFontFamily.Named("google:Orbitron"),
+    )
+    RemoteText(
+      "Lobster Two".rs,
+      fontSize = 22.rsp,
+      fontFamily = RemoteFontFamily.Named("google:Lobster Two"),
+    )
+    RemoteText(
+      "Space Grotesk".rs,
+      fontSize = 22.rsp,
+      fontFamily = RemoteFontFamily.Named("google:Space Grotesk"),
+    )
+    RemoteText(
+      "JetBrains Mono".rs,
+      fontSize = 22.rsp,
+      fontFamily = RemoteFontFamily.Named("google:JetBrains Mono"),
+    )
+  }
+}
+
+// The `wght` axis of a **variable** font, four instances of one face.
+//
+// This is a different capability from the specimen above, and no other document in any catalog
+// carries it: `RemoteText` writes `fontVariationSettings` into the document as an axis-tag/value
+// pair list, so the player must both resolve the family *and* apply the axes to the instance it
+// draws. A lane that resolves the family but drops the axes renders four lines in one weight —
+// visibly wrong, and wrong in a way that a static-weight specimen cannot expose.
+//
+// Roboto Flex because it is the catalog's own default face (`role: "default"` in the fonts
+// manifest) and a genuine variable font: one file serving `wght` 100..1000, so the four lines below
+// are four *instances* of a single downloaded file rather than four separate faces.
+@CatalogRemoteLarge
+@Composable
+fun VariableWeightRemote() = RemoteSticker {
+  RemoteColumn {
+    for (weight in listOf(100, 400, 700, 1000)) {
+      RemoteText(
+        "wght $weight".rs,
+        fontSize = 20.rsp,
+        fontFamily = RemoteFontFamily.Named("google:Roboto Flex"),
+        fontVariationSettings = FontVariation.Settings(FontVariation.weight(weight)),
+      )
+    }
+  }
+}
+
+// The `wdth` axis of the same variable font — the axis a weight-only implementation misses.
+//
+// Weight is the axis every text stack can fake: a player that ignores `wght` but honours
+// `FontWeight` still lands near the right thickness, so a `wght` ramp alone cannot tell "applied the
+// axis" from "synthesised a bold". Width can't be faked — nothing in a text API asks for a narrower
+// face — so three lines at `wdth` 25 / 100 / 151 either differ in set width or the axes were
+// dropped. Roboto Flex serves that whole range from the one file.
+@CatalogRemoteLarge
+@Composable
+fun VariableWidthRemote() = RemoteSticker {
+  RemoteColumn {
+    for (width in listOf(25f, 100f, 151f)) {
+      RemoteText(
+        "wdth ${width.toInt()}".rs,
+        fontSize = 22.rsp,
+        fontFamily = RemoteFontFamily.Named("google:Roboto Flex"),
+        fontVariationSettings = FontVariation.Settings(FontVariation.width(width)),
+      )
+    }
+  }
 }
 
 // NOTE: `RemoteTimeText` is intentionally NOT catalogued. It draws the time as
