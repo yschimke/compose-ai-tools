@@ -23,6 +23,7 @@ question:
 | **CMP Wasm** — font-variation axes | ✅ layout ops (`CoreText`) | — | — | ❌ canvas ops (reported, not silent) |
 | **Java** (AOSP `remote-player-view`, server-side) | ✅ framework typefaces | ⚠️ `/system/fonts/` filename scan | ✅ served by `RcGoogleFontTypefaceResolver` | ✅ `Font.Builder(ByteBuffer)` |
 | **CMP Android** (vendored embedded player, server-side) | ✅ framework typefaces | ⚠️ `Typeface.create(name)` | ✅ `FontsContractCompat` | ❌ ignored |
+| **CMP Android** — font-variation axes | ✅ layout ops, on the family's variable file | — | ✅ `loadVariable` + `Font(File, …, variationSettings)` | ❌ canvas ops |
 | **CMP JVM** (embedded player over Skiko, server-side) | ✅ | ⚠️ host families, else nearest standard | ✅ downloaded via `GoogleFontTypefaceResolver` | ❌ ignored |
 | **CMP JVM** — font-variation axes | ✅ layout ops, applied to the resolved face | — | ⚠️ `wght` picks the instance; Google serves static TTFs | ❌ canvas ops |
 
@@ -174,6 +175,21 @@ Two different code paths, and they do not agree with each other:
 
 So in this lane a branded typeface applies to laid-out text and not to canvas-drawn text in the same
 document.
+
+**Font-variation axes are applied for layout text, on a different file from the unvaried path.**
+Compose's downloadable-font factory takes a weight and a style and has no `variationSettings`
+parameter, so it can resolve a `google:` family but not vary it — the vendored `TODO: Support
+variation settings for Google fonts`. Applying axes needs the face's bytes, and specifically the
+*pre-instancing* file: the CSS API serves a baked static instance with no `fvar` table (see
+[Where the files come from](#where-the-files-come-from) below), so there is nothing in the file the
+unvaried path resolves to vary.
+[`GoogleVariableFontFamilies`](../../third_party/rc-embedded-player/src/main/kotlin/ee/schimke/composeai/rcembedded/GoogleVariableFontFamilies.kt)
+resolves the family's **variable** file through `GoogleFontSource.loadVariable` and builds a
+`Font(File, …, variationSettings)`, which reaches
+`Typeface.Builder.setFontVariationSettings` on API 26+. It is consulted only when a document
+actually carries axes, so an unvaried specimen keeps the smaller static download; families are cached
+per axis set, because a variable file's instances are different faces and a family-keyed cache would
+hand a `wght 100` line the previous line's `wght 1000` family.
 
 ### CMP JVM — embedded player over Skiko, server-side
 
