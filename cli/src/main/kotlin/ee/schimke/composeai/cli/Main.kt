@@ -28,6 +28,7 @@ internal val COMMANDS: Map<String, (List<String>) -> Unit> =
     "bundle" to { a -> BundleCommand(a).run() },
     "mcp" to { a -> McpCommand(a).run() },
     "update" to { a -> UpdateCommand(a).run() },
+    "verify-figma" to { a -> VerifyFigmaCommand(a).run() },
     "init-script" to { a -> InitScriptCommand(a).run() },
     "version" to { _ -> println("compose-preview $BUNDLE_VERSION") },
     "help" to { a -> printUsage(full = "--all" in a) },
@@ -110,6 +111,7 @@ private fun printUsage(full: Boolean = false) {
       show-resources   Render Android XML resource previews (vector / adaptive-icon / …)
       doctor           Verify Java 17 + Compose/AGP environment before editing Gradle files
       mcp              MCP server lifecycle for agents: serve | install | doctor
+      verify-figma     Verify rendered preview against a Figma source
       version          Print the installed bundle version and exit
       help             Show this message (`help --all` for every command + flag)
 
