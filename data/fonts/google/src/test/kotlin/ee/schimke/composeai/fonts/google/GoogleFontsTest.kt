@@ -208,10 +208,170 @@ class GoogleFontsTest {
     assertFalse(File(dir, key.fileName()).exists())
   }
 
+  @Test
+  fun `googleFontsRepoSlug strips separators rather than hyphenating them`() {
+    // Not the same rule as `GoogleFontKey.slugify` (which produces `roboto-flex` for readable cache
+    // filenames) — the repository's directories carry no separators at all, and a hyphen here is a
+    // 404 rather than a wrong file.
+    assertEquals("robotoflex", googleFontsRepoSlug("Roboto Flex"))
+    assertEquals("jetbrainsmono", googleFontsRepoSlug("JetBrains Mono"))
+    assertEquals("robotoflex", GoogleFontKey.slugify("Roboto Flex").replace("-", ""))
+  }
+
+  @Test
+  fun `googleFontsRepoFileUrl percent-encodes the axis brackets`() {
+    assertEquals(
+      "https://raw.githubusercontent.com/google/fonts/main/ofl/robotoflex/" +
+        "RobotoFlex%5Bwdth,wght%5D.ttf",
+      googleFontsRepoFileUrl("ofl", "robotoflex", "RobotoFlex[wdth,wght].ttf"),
+    )
+  }
+
+  @Test
+  fun `pickVariableFileName takes the bracketed filename and honours the italic split`() {
+    val metadata =
+      """
+      fonts {
+        filename: "Family-Regular.ttf"
+      }
+      fonts {
+        filename: "Family[wdth,wght].ttf"
+      }
+      fonts {
+        filename: "Family-Italic[wdth,wght].ttf"
+      }
+      """
+        .trimIndent()
+    assertEquals("Family[wdth,wght].ttf", pickVariableFileName(metadata, italic = false))
+    assertEquals("Family-Italic[wdth,wght].ttf", pickVariableFileName(metadata, italic = true))
+  }
+
+  @Test
+  fun `pickVariableFileName returns null for a family that ships only static files`() {
+    // Lobster Two is the real case: catalogued, resolvable at a weight, no variable file anywhere.
+    val metadata =
+      """
+      fonts {
+        filename: "LobsterTwo-Regular.ttf"
+      }
+      fonts {
+        filename: "LobsterTwo-Bold.ttf"
+      }
+      """
+        .trimIndent()
+    assertNull(pickVariableFileName(metadata, italic = false))
+    assertNull(pickVariableFileName(metadata, italic = true))
+  }
+
+  @Test
+  fun `pickVariableFileName falls back to the upright file when a family has no italic variable`() {
+    val metadata = """fonts { filename: "Family[wght].ttf" }"""
+    assertEquals("Family[wght].ttf", pickVariableFileName(metadata, italic = true))
+  }
+
+  @Test
+  fun `hasFvarTable reads the table directory`() {
+    assertTrue(hasFvarTable(sfntWithTables("glyf", "fvar", "head")))
+    // The shape the CSS API actually serves for a variable family: a baked static instance. Caching
+    // that as "the variable file" is the failure this guard exists to prevent.
+    assertFalse(hasFvarTable(sfntWithTables("glyf", "head", "STAT")))
+    assertFalse(hasFvarTable(byteArrayOf(0, 1, 0)))
+    // A header claiming more tables than the buffer holds is a truncated download, not a font.
+    assertFalse(hasFvarTable(byteArrayOf(0, 1, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0)))
+  }
+
+  @Test
+  fun `loadVariable caches under a weight-free name and asks the source once`() {
+    val dir = tempDir.newFolder("fonts")
+    var calls = 0
+    val cache =
+      GoogleFontCache(
+        dir,
+        offline = false,
+        downloader = { _, _ -> error("the static downloader must not serve a variable request") },
+        variableDownloader = { _, _, dest ->
+          calls++
+          dest.writeBytes(FAKE_TTF_BYTES)
+          true
+        },
+      )
+    val file = cache.loadVariable("Roboto Flex")
+    assertNotNull(file)
+    assertEquals("roboto-flex-variable.ttf", file!!.name)
+    // One file serves every weight — a second ask must not re-download 1.7 MB.
+    assertEquals(file, cache.loadVariable("Roboto Flex"))
+    assertEquals(1, calls)
+  }
+
+  @Test
+  fun `loadVariable keeps upright and italic as separate files`() {
+    val dir = tempDir.newFolder("fonts")
+    val cache =
+      GoogleFontCache(
+        dir,
+        offline = false,
+        variableDownloader = { _, _, dest ->
+          dest.writeBytes(FAKE_TTF_BYTES)
+          true
+        },
+      )
+    assertEquals(
+      "roboto-flex-variable.ttf",
+      cache.loadVariable("Roboto Flex", italic = false)?.name,
+    )
+    assertEquals(
+      "roboto-flex-variable-italic.ttf",
+      cache.loadVariable("Roboto Flex", italic = true)?.name,
+    )
+  }
+
+  @Test
+  fun `loadVariable leaves no file behind when the family has no variable font`() {
+    val dir = tempDir.newFolder("fonts")
+    val cache = GoogleFontCache(dir, offline = false, variableDownloader = { _, _, _ -> false })
+    assertNull(cache.loadVariable("Lobster Two"))
+    assertFalse(File(dir, variableFileName("Lobster Two", italic = false)).exists())
+  }
+
+  @Test
+  fun `loadVariable returns null on miss when offline`() {
+    val dir = tempDir.newFolder("fonts")
+    val cache =
+      GoogleFontCache(
+        dir,
+        offline = true,
+        variableDownloader = { _, _, _ -> error("offline mode must not invoke the downloader") },
+      )
+    assertNull(cache.loadVariable("Roboto Flex"))
+  }
+
+  @Test
+  fun `a source that serves only static faces reports no variable file`() {
+    // The interface default: every existing fake keeps compiling, and says "no axes here".
+    val staticOnly =
+      object : GoogleFontSource {
+        override fun load(key: GoogleFontKey): File? = null
+      }
+    assertNull(staticOnly.loadVariable("Roboto Flex"))
+  }
+
   companion object {
     // Minimum byte sequence the cache round-trips. No need to be a valid
     // TTF — the unit tests never parse the file, only the
     // shadow/end-to-end path hands it to `Typeface.createFromFile`.
     private val FAKE_TTF_BYTES = byteArrayOf(0, 1, 0, 0, 0, 0)
+
+    /** An sfnt header + table directory naming [tags]; the tables themselves are not written. */
+    private fun sfntWithTables(vararg tags: String): ByteArray {
+      val out = ByteArray(12 + tags.size * 16)
+      // sfnt version 1.0, then numTables.
+      out[1] = 1
+      out[4] = (tags.size shr 8).toByte()
+      out[5] = tags.size.toByte()
+      tags.forEachIndexed { i, tag ->
+        tag.forEachIndexed { c, ch -> out[12 + i * 16 + c] = ch.code.toByte() }
+      }
+      return out
+    }
   }
 }
