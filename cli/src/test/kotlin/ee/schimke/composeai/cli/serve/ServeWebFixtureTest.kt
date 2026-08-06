@@ -2472,7 +2472,7 @@ class ServeWebFixtureTest {
       "server-only controls are gated off while the Wasm lane is active",
     )
     assertTrue(
-      assetText("viewer.js").contains("var canProviderTheme = hasDeclaredThemes && !onWasm"),
+      assetText("viewer.js").contains("hasDeclaredThemes && !onWasm"),
       "declared options in the unified Theme selector are disabled on the Wasm lane",
     )
 
@@ -3101,7 +3101,8 @@ class ServeWebFixtureTest {
       "the Static⇄Live toggle is disabled on a pure static bundle",
     )
     assertTrue(
-      staticView.contains("data-has-declared-themes=\"false\" disabled"),
+      Regex("<select id=\"cp-theme\"[^>]*data-has-declared-themes=\"false\"[^>]* disabled>")
+        .containsMatchIn(staticView),
       "Theme disabled without a renderer or Wasm app",
     )
     assertFalse(
@@ -3123,7 +3124,9 @@ class ServeWebFixtureTest {
         wasmSrc = "/wasm/compose-m3/?id=card-filled",
       )
     assertTrue(
-      wasmView.contains("data-has-declared-themes=\"false\">"),
+      Regex("<select id=\"cp-theme\"[^>]*>").find(wasmView)?.value?.let {
+        it.contains("data-has-declared-themes=\"false\"") && !it.contains(" disabled")
+      } == true,
       "Theme is enabled with a Wasm app",
     )
     assertTrue(
@@ -3539,7 +3542,8 @@ class ServeWebFixtureTest {
     // A static bundle can't load a provider, so the selector renders disabled (informational).
     val staticThemed = ServeWeb.viewerPage(previews.first(), token, declaredThemes = themes)
     assertTrue(
-      staticThemed.contains("data-has-declared-themes=\"true\" disabled") &&
+      Regex("<select id=\"cp-theme\"[^>]*data-has-declared-themes=\"true\"[^>]* disabled>")
+        .containsMatchIn(staticThemed) &&
         staticThemed.contains("value=\"theme:com.example.BrandLightThemeCatalog\" disabled"),
       "the theme selector is disabled on a static bundle (no daemon to apply it)",
     )

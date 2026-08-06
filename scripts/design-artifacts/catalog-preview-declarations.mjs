@@ -68,5 +68,21 @@ export function applyCatalogPreviewDeclarations(manifest, bundles) {
       stamped += 1;
     }
   }
+  // Deferred records carry no image — CI declared them live-only rather than rasterising them — so
+  // the loop above never sees them. A live-only theme specimen needs the flag MORE than a baked
+  // one: its only render is the live one, so without it the browse surface re-renders it under
+  // every declared theme with no baked pixels to fall back to.
+  //
+  // Only `fixedTheme` is stamped here. The knob declarations describe controls the viewer offers
+  // once a daemon is open, and a deferred record already resolves those through its live twin;
+  // `fixedTheme` is the one that has to be known BEFORE anything is opened, because it decides
+  // whether the card is asked to re-render at all.
+  for (const record of manifest.deferred ?? []) {
+    const previewId = record.previewId ?? (record.previewIds?.length === 1 ? record.previewIds[0] : null);
+    if (!previewId) continue;
+    if (byId.get(previewId)?.fixedTheme !== true) continue;
+    record.fixedTheme = true;
+    stamped += 1;
+  }
   return stamped;
 }

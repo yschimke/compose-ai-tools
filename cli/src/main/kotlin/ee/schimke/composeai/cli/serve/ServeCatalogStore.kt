@@ -394,6 +394,7 @@ class ServeCatalogStore(
           theme = record.theme,
           props = record.props?.takeIf { it.isNotEmpty() },
           componentId = record.componentId?.takeIf { it.isNotBlank() },
+          fixedTheme = record.fixedTheme,
           section = section,
           group = group,
           order = if (section != null || group != null) count + deferredIds.size - 1 else null,
@@ -1402,6 +1403,13 @@ class ServeCatalogStore(
     val props: JsonObject? = null,
     /** Why it was deferred (`entry` / `variant` / `mode`) — carried for diagnostics. */
     val reason: String? = null,
+    /**
+     * Discovery-time `@FixedTheme` — see [Image.fixedTheme]. A live-only specimen needs this more
+     * than a baked one, not less: it has no baked PNG to fall back to, so its ONLY render is the
+     * live one, and without the flag the browse surface would re-render it under every declared
+     * theme with nothing to fall back to.
+     */
+    val fixedTheme: Boolean = false,
   ) {
     /** The daemon preview to render this record through, or null when it has no live twin. */
     val daemonId: String?

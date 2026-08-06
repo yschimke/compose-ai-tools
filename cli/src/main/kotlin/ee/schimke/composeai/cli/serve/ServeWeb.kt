@@ -4457,10 +4457,25 @@ object ServeWeb {
     // uiMode; every `theme:<provider>` option maps to themeProvider and deliberately clears uiMode,
     // because an app-declared theme already owns its day/night palette.
     val themeSelectorHtml = run {
+      // A theme specimen documents ONE named theme, so the whole Theme axis is withdrawn here
+      // exactly as the landing withholds its themed-render URL. Without this the annotation stopped
+      // working the moment the card was opened: the viewer received every declared theme and
+      // happily re-rendered the specimen under another one, contradicting its own caption.
+      //
+      // BOTH axes go, not just `theme:<provider>`. Day/Night is not a navigation control — it maps
+      // to a `uiMode` override, and `CatalogLiveRouting.overridesAffectRender` routes a uiMode
+      // differing from the id's baked `__light`/`__dark` segment to a fresh daemon render. So on a
+      // specimen it either redraws a supposedly fixed sheet in the opposite mode, or (when the
+      // sheet hard-codes its theme) leaves the selector reading "Night" over unchanged light
+      // pixels. A light/dark pair of specimens is authored as two previews with their own cards;
+      // this control never reached the sibling.
+      val themeFixed = isThemeSpecimen(preview)
+      val declaredThemes = if (themeFixed) emptyList() else declaredThemes
       val themeDis =
         if (
-          (!wearAlwaysDark && (overridesLive || wasmSrc != null)) ||
-            (declaredThemes.isNotEmpty() && overridesLive)
+          !themeFixed &&
+            ((!wearAlwaysDark && (overridesLive || wasmSrc != null)) ||
+              (declaredThemes.isNotEmpty() && overridesLive))
         )
           ""
         else " disabled"
@@ -4493,7 +4508,7 @@ object ServeWeb {
       val providerOptions = body.trimEnd().let { if (it.isEmpty()) "" else "\n            $it" }
       """
         <label>Theme
-          <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="${declaredThemes.isNotEmpty()}"$themeDis>
+          <select id="cp-theme" class="cp-knob-theme" data-theme-active="0" data-has-declared-themes="${declaredThemes.isNotEmpty()}" data-fixed-theme="$themeFixed"$themeDis>
             $defaults$providerOptions
           </select>
         </label>
