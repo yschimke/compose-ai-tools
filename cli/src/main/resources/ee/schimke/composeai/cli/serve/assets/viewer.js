@@ -1423,6 +1423,11 @@
   // lane, so the Wasm tier is reachable rather than hidden behind bestLiveMode()'s daemon
   // preference. Null in the daemon-only / wasm-only cases, where the single toggle stays generic.
   var wasmBtn = document.getElementById("cp-wasm-btn");
+  // Present only when GitHub auth is the one thing blocking the daemon lane (see ServeWeb's
+  // liveSignInLink). Deliberately not `#cp-live-toggle` — it's a link, so the toggle's
+  // `.disabled` / `aria-pressed` handling must not touch it — which is why it's looked up
+  // separately here rather than inferred from `liveToggle`.
+  var liveSignIn = document.getElementById("cp-live-signin");
   var modeHint = document.getElementById("cp-mode-hint");
   function liveTransportAvailable() { return (live && !live.disabled) || !!wasmToggle; }
   function bestLiveMode() { return (live && !live.disabled) ? "live" : (wasmToggle ? "wasm" : null); }
@@ -1440,7 +1445,14 @@
     if (wasmBtn) { wasmBtn.setAttribute("aria-pressed", wasmOn ? "true" : "false"); }
     if (modeHint) {
       modeHint.textContent = (liveOn || wasmOn) ? "interactive — click / scroll the preview"
-        : (liveTransportAvailable() ? "static snapshot" : "static snapshot (no live lane)");
+        // "no live lane" is only true when there is genuinely nothing to switch to. When the lane
+        // exists and is merely behind sign-in, the transport radio is (correctly) disabled, so
+        // liveTransportAvailable() is false and this used to read "no live lane" right beside a
+        // chip offering to sign in for one — telling the visitor in the same breath that the thing
+        // is available and that it doesn't exist. The sign-in link's presence is the signal.
+        : (liveTransportAvailable() ? "static snapshot"
+          : (liveSignIn ? "static snapshot — sign in for live"
+            : "static snapshot (no live lane)"));
     }
   }
   if (liveToggle) {

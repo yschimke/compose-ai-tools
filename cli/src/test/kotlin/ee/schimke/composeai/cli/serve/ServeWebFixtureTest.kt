@@ -2499,6 +2499,20 @@ class ServeWebFixtureTest {
       openLive.contains("id=\"cp-live-toggle\" class=\"cp-live-toggle\" aria-pressed=\"false\">"),
       "live preview remains an ordinary toggle when no GitHub sign-in prompt is required",
     )
+
+    // The mode hint must not contradict the chip. The transport radio stays disabled while auth
+    // blocks the lane, so the old hint read "no live lane" directly beside an offer to sign in for
+    // one — the page asserting in the same breath that the thing is available and that it does not
+    // exist. Caught only once the fixture was captured WITH the stylesheet.
+    assertTrue(
+      assetText("viewer.js").contains("static snapshot — sign in for live"),
+      "an auth-blocked lane is reported as needing sign-in, not as absent",
+    )
+    assertTrue(
+      assetText("viewer.js")
+        .contains("var liveSignIn = document.getElementById(\"cp-live-signin\")"),
+      "the hint keys off the sign-in link, which is the only marker of the auth-blocked state",
+    )
   }
 
   @Test
