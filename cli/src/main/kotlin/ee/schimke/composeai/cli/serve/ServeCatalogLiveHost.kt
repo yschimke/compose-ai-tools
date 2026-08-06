@@ -447,11 +447,13 @@ class ServeCatalogLiveHost(
             // Time the RENDER inside the permit. Starting the clock before `withRenderPermit`
             // charged the server-wide queue to renderMillis, which would make a permit-bound
             // deployment read as render-bound — defeating the one diagnostic this exists for.
+            // The queue time is its own bucket: this pass HAS its turn and is merely outnumbered by
+            // other catalogs, which is a different problem from the gate withholding the turn.
             val permitWaitFrom = clock()
             val outcomes =
               backgroundWork.withRenderPermit {
                 val renderFrom = clock()
-                catalogThemeCache.recordWaiting(renderFrom - permitWaitFrom)
+                catalogThemeCache.recordPermitWait(renderFrom - permitWaitFrom)
                 renderOptimizerBatch(batch).also {
                   // Width from the batch actually issued, not the requested ceiling — a batch that
                   // collapses to 1 (single-daemon lane, or a seat budget with no replicas to spare)
@@ -563,7 +565,7 @@ class ServeCatalogLiveHost(
     if (!optimizerHasTurn.get()) {
       val waitedFrom = clock()
       val granted = awaitServerIdle()
-      catalogThemeCache.recordWaiting(clock() - waitedFrom)
+      catalogThemeCache.recordGateWait(clock() - waitedFrom)
       if (!granted) return false
       catalogThemeCache.recordTurnGranted()
       optimizerHasTurn.set(true)
@@ -596,7 +598,7 @@ class ServeCatalogLiveHost(
     // per interruption is what capped throughput: at a ~50% yield rate a 60s re-entry averages
     // ~30s/entry against a sub-second render, i.e. ~97% waiting.
     return awaitQuiet(OPTIMIZER_RESUME_MILLIS).also {
-      catalogThemeCache.recordWaiting(clock() - resumeFrom)
+      catalogThemeCache.recordGateWait(clock() - resumeFrom)
       if (it) {
         // A resume IS a grant. Counting only cold entries made yields exceed grants after any
         // interrupted pass, which reads as the gate losing turns it never handed out.

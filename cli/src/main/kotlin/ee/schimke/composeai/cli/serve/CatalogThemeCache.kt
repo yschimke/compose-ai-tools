@@ -29,12 +29,27 @@ data class ThemeOptimizationSnapshot(
   val entriesPerMinute: Double? = null,
   val etaSeconds: Long? = null,
   /**
-   * Where the pass's wall-clock actually goes: inside renders vs. waiting for its turn at the idle
-   * gate. This is the split that says whether throughput is render-bound (nothing to fix without a
-   * faster renderer) or gate-bound (a scheduling problem), which `cached` alone cannot distinguish.
+   * Where the pass's wall-clock actually goes: inside renders vs. waiting. This is the split that
+   * says whether throughput is render-bound (nothing to fix without a faster renderer) or
+   * wait-bound (a scheduling problem), which `cached` alone cannot distinguish.
    */
   val renderMillis: Long = 0,
+  /** [gateWaitMillis] + [permitWaitMillis], kept as the single "not rendering" total. */
   val waitingMillis: Long = 0,
+  /**
+   * The two waits, separated — because they have opposite fixes and the sum cannot tell them apart.
+   *
+   * [gateWaitMillis] is time the idle gate withheld a turn: the box looked busy, so the pass is
+   * being deliberately polite and the lever is the quiet window. [permitWaitMillis] is time the
+   * pass HAD its turn and queued behind other catalogs for a server-wide render permit: the box was
+   * idle and the pass was merely outnumbered, and the lever is how many catalogs prefetch at once.
+   *
+   * Reading only the total, a deployment where every catalog optimizes simultaneously and starves
+   * on permits is indistinguishable from one where a trickle of traffic keeps the gate shut — and
+   * loosening the quiet window, the obvious response to the latter, does nothing for the former.
+   */
+  val gateWaitMillis: Long = 0,
+  val permitWaitMillis: Long = 0,
   /** How often the idle gate granted the pass its turn, and how often traffic took it back. */
   val turnsGranted: Int = 0,
   val turnsYielded: Int = 0,
@@ -91,7 +106,8 @@ class CatalogThemeCache(
   private val startedAt = AtomicLong(0)
   private val completedAt = AtomicLong(0)
   private val renderMillis = AtomicLong(0)
-  private val waitingMillis = AtomicLong(0)
+  private val gateWaitMillis = AtomicLong(0)
+  private val permitWaitMillis = AtomicLong(0)
   private val turnsGranted = java.util.concurrent.atomic.AtomicInteger(0)
   private val turnsYielded = java.util.concurrent.atomic.AtomicInteger(0)
   private val lastBatchWidth = java.util.concurrent.atomic.AtomicInteger(0)
@@ -111,10 +127,17 @@ class CatalogThemeCache(
     turnsYielded.incrementAndGet()
   }
 
-  /** Wall-clock spent waiting at the idle gate rather than rendering. */
-  fun recordWaiting(millis: Long) {
-    if (millis > 0) waitingMillis.addAndGet(millis)
+  /** Wall-clock the idle gate withheld a turn because the box looked busy. */
+  fun recordGateWait(millis: Long) {
+    if (millis > 0) gateWaitMillis.addAndGet(millis)
   }
+
+  /** Wall-clock spent holding a turn but queued behind other catalogs for a render permit. */
+  fun recordPermitWait(millis: Long) {
+    if (millis > 0) permitWaitMillis.addAndGet(millis)
+  }
+
+  private fun waitingMillis(): Long = gateWaitMillis.get() + permitWaitMillis.get()
 
   /** One batch completed: how wide it actually ran, and how long its renders took. */
   fun recordBatch(width: Int, millis: Long) {
@@ -285,7 +308,9 @@ class CatalogThemeCache(
           ?.takeIf { it > 0 }
           ?.let { ((total - cachedTargets).coerceAtLeast(0) / it * 60).toLong() },
       renderMillis = renderMillis.get(),
-      waitingMillis = waitingMillis.get(),
+      waitingMillis = waitingMillis(),
+      gateWaitMillis = gateWaitMillis.get(),
+      permitWaitMillis = permitWaitMillis.get(),
       turnsGranted = turnsGranted.get(),
       turnsYielded = turnsYielded.get(),
       lastBatchWidth = lastBatchWidth.get(),
@@ -305,7 +330,7 @@ class CatalogThemeCache(
 
   private fun ratePerMinute(): Double? {
     val produced = optimizerProduced.get()
-    val activeMillis = renderMillis.get() + waitingMillis.get()
+    val activeMillis = renderMillis.get() + waitingMillis()
     if (produced <= 0 || activeMillis <= 0) return null
     return produced / (activeMillis / 60_000.0)
   }
