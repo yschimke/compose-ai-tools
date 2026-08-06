@@ -203,6 +203,69 @@ class ServeSharedDaemonPoolTest {
     }
   }
 
+  /**
+   * Codex review on #3390. `ServeRenderHost.render` answers `NotFound` from its id set BEFORE it
+   * touches its lazy session — `ServeCatalogLiveHost.renderDaemon` reaches that path whenever the
+   * shared descriptor lacks an id. Consuming the cold marker there would mark a daemon warm that
+   * has never started, so the real cold start, paid by whichever later render does start it, would
+   * land back in `batchMillis` unreported.
+   */
+  @Test
+  fun `a NotFound leaves the replica cold, so the real cold start is still reported`() {
+    var now = 0L
+    var started = false
+    val entered = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    val primary = BlockingHost("primary", entered, release)
+    val pool =
+      ServeSharedDaemonPool(primary = primary, capacity = 2, clock = { now }) {
+        object : ServeHost by InstantHost("replica") {
+          override fun render(previewId: String, overrides: PreviewOverrides): RenderOutcome {
+            // An id this host doesn't carry never reaches the session — no cold start is paid.
+            if (previewId == "absent") return RenderOutcome.NotFound
+            if (!started) {
+              started = true
+              now += 40_000
+            }
+            return RenderOutcome.Ok("replica".encodeToByteArray())
+          }
+        }
+      }
+    val executor = Executors.newFixedThreadPool(2)
+    try {
+      val held = executor.submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+      assertTrue(entered.await(5, TimeUnit.SECONDS), "primary is mid-render")
+
+      // Opens the replica, but asks for an id it doesn't have.
+      assertEquals(
+        RenderOutcome.NotFound,
+        executor
+          .submit<RenderOutcome> { pool.render("absent", PreviewOverrides()) }
+          .get(10, TimeUnit.SECONDS),
+      )
+      assertEquals(0L, pool.takeColdStartMillis(), "no session was entered, so no cold start yet")
+
+      // The next render on that same replica is the one that actually starts the daemon.
+      assertTrue(
+        executor
+          .submit<RenderOutcome> { pool.render("p", PreviewOverrides()) }
+          .get(10, TimeUnit.SECONDS) is RenderOutcome.Ok
+      )
+      assertEquals(
+        40_000L,
+        pool.takeColdStartMillis(),
+        "and it is reported, not lost to batch time",
+      )
+
+      release.countDown()
+      assertTrue(held.get(5, TimeUnit.SECONDS) is RenderOutcome.Ok)
+    } finally {
+      release.countDown()
+      executor.shutdownNow()
+      pool.close()
+    }
+  }
+
   /** The other direction: when replicas ARE affordable, the peak sees them. */
   @Test
   fun `peak in-flight rises with genuinely concurrent renders`() {

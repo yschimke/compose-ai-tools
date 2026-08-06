@@ -91,6 +91,10 @@ class ServeSharedDaemonPool(
    *
    * The **longest**, not the sum: the cold starts overlap inside one batch, whose wall-clock is
    * bounded by its slowest lane. Summing them would exceed the interval being attributed.
+   *
+   * A replica stays cold until a render actually enters its session — a `NotFound` (answered from
+   * the id set first) or a throw leaves it cold, so the cold start is still reported when whichever
+   * later render does start the daemon pays it.
    */
   fun takeColdStartMillis(): Long = peakColdStartMillis.getAndSet(0)
 
@@ -101,6 +105,7 @@ class ServeSharedDaemonPool(
     // legitimately starts at 0, which would silently disable the measurement.
     var cold = false
     var coldStartFrom = 0L
+    var startedDaemon = false
     try {
       borrowed = lock.withLock {
         check(!closed) { "shared daemon pool is closed" }
@@ -111,15 +116,22 @@ class ServeSharedDaemonPool(
         host
       }
       peakInFlight.accumulateAndGet(inFlight.incrementAndGet(), ::maxOf)
-      return borrowed.render(previewId, overrides)
+      return borrowed.render(previewId, overrides).also {
+        // `ServeRenderHost.render` answers NotFound from its id set BEFORE touching its lazy
+        // session, so an id this replica doesn't carry leaves the daemon just as cold as it was.
+        // Consuming the marker there would hand the real cold start — paid by whichever later
+        // render does start the session — straight to `batchMillis`. A throw is the same case.
+        startedDaemon = it !is RenderOutcome.NotFound
+      }
     } finally {
-      if (cold) {
+      if (cold && startedDaemon) {
         peakColdStartMillis.accumulateAndGet(clock() - coldStartFrom, ::maxOf)
       }
       borrowed?.let { host ->
         inFlight.decrementAndGet()
         lock.withLock {
           if (!closed) {
+            if (cold && !startedDaemon) coldReplicas += host
             available.addLast(host)
             replicaLastUsed[host] = clock()
             hostReturned.signalAll()
