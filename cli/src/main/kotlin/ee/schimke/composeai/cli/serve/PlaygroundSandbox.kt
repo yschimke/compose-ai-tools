@@ -44,6 +44,12 @@ data class PlaygroundSandbox(
   val extraReadOnlyPaths: List<String> = emptyList(),
   /** Operator-supplied argv for [Profile.CUSTOM]; ignored by every other profile. */
   val customCommand: List<String> = emptyList(),
+  /**
+   * Set by [droppingJail] when the configured jail **cannot launch on this host** and the lane was
+   * admitted on something other than containment. [command] then yields no argv while every other
+   * cap stays on — see that function for why this state exists at all.
+   */
+  val jailDropped: Boolean = false,
 ) {
 
   /**
@@ -112,19 +118,45 @@ data class PlaygroundSandbox(
     get() = profile != Profile.NONE
 
   /**
-   * The argv prefix the snippet JVM launches behind, or empty for [Profile.NONE]. Paths are bound
-   * with the `-try` variants where a host may legitimately lack them, so one missing `/lib64` can't
-   * turn a containment profile into a failed spawn.
+   * Drop the jail argv but keep every other cap — the recovery for a configured jail that cannot
+   * launch on this host (`unshare` under a seccomp/AppArmor policy that forbids user namespaces,
+   * `bwrap` absent from the image).
+   *
+   * Without this, that host is *silently broken*: [PlaygroundPublicGate] admits the lane on the
+   * repo-access posture, `/playground` answers normally, and then every snippet JVM and every
+   * jailed compile fails to spawn because they all launch behind an argv that returns EPERM. The
+   * failure surfaces to a user as a compile that never produces an image, and to an operator as
+   * nothing at all.
+   *
+   * Dropping the jail is strictly better than both alternatives. Against *keeping* it: a jail that
+   * cannot launch contains nothing, so there is no isolation to lose. Against *disabling the
+   * sandbox entirely* ([Profile.NONE]): that would also discard `-Xmx`, the CPU cap,
+   * `ExitOnOutOfMemoryError`, the temp-dir confinement and the hard TTL — and on a host with a
+   * large cgroup limit an uncapped snippet JVM sizes its default heap at a quarter of that limit,
+   * which is the more dangerous failure of the two.
+   *
+   * Deliberately **not** reachable when containment is what admitted the lane: an anonymous
+   * `--public` host whose probe never ran is refused outright by [PlaygroundPublicGate], so the
+   * caller never gets far enough to call this.
+   */
+  fun droppingJail(): PlaygroundSandbox = copy(jailDropped = true)
+
+  /**
+   * The argv prefix the snippet JVM launches behind — empty for [Profile.NONE], and empty when
+   * [jailDropped]. Paths are bound with the `-try` variants where a host may legitimately lack
+   * them, so one missing `/lib64` can't turn a containment profile into a failed spawn.
    */
   fun command(paths: Paths): List<String> =
-    when (profile) {
-      Profile.NONE -> emptyList()
-      Profile.UNSHARE -> unshareCommand()
-      Profile.BWRAP -> bwrapCommand(paths)
-      Profile.SYSTEMD -> systemdCommand()
-      Profile.STRICT -> systemdCommand() + bwrapCommand(paths)
-      Profile.CUSTOM -> customCommand
-    }
+    if (jailDropped) emptyList()
+    else
+      when (profile) {
+        Profile.NONE -> emptyList()
+        Profile.UNSHARE -> unshareCommand()
+        Profile.BWRAP -> bwrapCommand(paths)
+        Profile.SYSTEMD -> systemdCommand()
+        Profile.STRICT -> systemdCommand() + bwrapCommand(paths)
+        Profile.CUSTOM -> customCommand
+      }
 
   /**
    * JVM-level caps applied to **every** active profile, so heap and CPU are bounded even where the
@@ -158,8 +190,8 @@ data class PlaygroundSandbox(
   fun describe(): String =
     if (!isActive) "sandbox=none (playground refused under --public)"
     else
-      "sandbox=${profile.id} mem=${memoryMb}MB heap=${heapMb()}MB cpus=$cpus pids=$pids " +
-        "ttl=${ttlSeconds}s"
+      "sandbox=${profile.id}${if (jailDropped) " (jail dropped — caps only)" else ""} " +
+        "mem=${memoryMb}MB heap=${heapMb()}MB cpus=$cpus pids=$pids ttl=${ttlSeconds}s"
 
   private fun unshareCommand(): List<String> =
     listOf(

@@ -2134,6 +2134,7 @@ class ServeHttpServer(
                 SandboxDto(
                   profile = h.sandboxProfile,
                   active = h.sandboxActive,
+                  jailDropped = h.jailDropped,
                   memoryMb = h.sandboxMemoryMb,
                   cpus = h.sandboxCpus,
                   ttlSeconds = h.sandboxTtlSeconds,
@@ -3707,6 +3708,11 @@ private data class SandboxDto(
    * quarter of the limit.
    */
   val active: Boolean,
+  /**
+   * True ⇒ the configured jail could not launch on this host and was dropped; the JVM caps still
+   * apply but the snippet is not contained. Look at `probe.detail` for why it couldn't launch.
+   */
+  val jailDropped: Boolean = false,
   val memoryMb: Int,
   val cpus: Double,
   val ttlSeconds: Long,

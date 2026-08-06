@@ -28,6 +28,13 @@ data class PlaygroundHealth(
   val sandboxProfile: String,
   /** False for `none`: no jail argv, and **no JVM caps or hard TTL either**. */
   val sandboxActive: Boolean,
+  /**
+   * True when the configured jail could not launch here and was dropped, keeping the JVM caps
+   * (`PlaygroundSandbox.droppingJail`). Snippets are capped but **uncontained** — the operator
+   * asked for a jail and this host cannot give them one, which is worth seeing without reading a
+   * startup log.
+   */
+  val jailDropped: Boolean,
   /** Per-snippet-JVM heap/CPU/pid budget. Only applied when [sandboxActive]. */
   val sandboxMemoryMb: Int,
   val sandboxCpus: Double,

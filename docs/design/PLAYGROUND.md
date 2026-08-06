@@ -380,6 +380,39 @@ refused under `--public` and pointed at `strict`; a `custom:` jail is taken at
 its word on caps (they're the operator's to supply, and the startup log says so)
 but must still pass the probe.
 
+#### A jail that cannot launch is dropped, not obeyed
+
+The probe answers a second question the gate does not: **can this jail launch on
+this host at all?** A configured `unshare` under a kernel/AppArmor policy that
+forbids unprivileged user namespaces, or a `bwrap` that isn't installed, does not
+merely fail to contain — it fails to *start*, and every snippet JVM and every
+jailed compile launches behind that same argv.
+
+Left alone, that is a silent breakage of the worst kind. The gate admits the lane
+(on repo access, or because the host is token-gated), `/playground` answers
+normally, `status` reports `ok` — and every compile fails to spawn. It reads to a
+user as a playground that never renders anything, and to an operator as nothing
+at all. It happened on `preview.coo.ee`: `SERVE_PLAYGROUND_SANDBOX=unshare` was
+set, the lane came up looking healthy, and the only evidence was
+`probe.ran: false` in `/status.json`.
+
+So when the preflight reports that the jail could not launch, and the lane was
+admitted on something *other* than containment, `serve` **drops the jail argv and
+keeps every other cap** (`PlaygroundSandbox.droppingJail`). Snippets still run in
+a disposable child under `-Xmx`, the CPU cap, `ExitOnOutOfMemoryError`, the
+temp-dir confinement and the hard TTL — they are simply not contained.
+
+That is strictly better than either alternative. Keeping a jail that cannot
+launch preserves no isolation, because it never ran. Falling back to
+`Profile.NONE` would also discard the caps — and on a host with a large cgroup
+limit an uncapped snippet JVM sizes its default heap at a *quarter of that
+limit*, which is the more dangerous of the two failures.
+
+It cannot rescue the posture where containment *is* the admission basis: an
+anonymous `--public` host whose probe did not run is refused by the gate before
+the fallback is reachable. The drop is reported in the startup log, in
+`describe()`, and as `playground.sandbox.jailDropped` on `/status.json`.
+
 #### The probe answers "is a *stranger's* snippet contained?" — sometimes nobody is asking
 
 That whole chain is the right question only when a stranger can reach the lane.

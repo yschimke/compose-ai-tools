@@ -272,9 +272,16 @@ class PlaygroundJailedCompiler(
         )
         return inProcess
       }
+      // A dropped jail still gets a disposable, capped child — better than the in-process
+      // compiler — but saying it runs "inside the sandbox" would be a lie, and this line is
+      // exactly where an operator looks to confirm the jail took.
       onLog(
-        "playground: compiles run inside the ${sandbox.profile.id} sandbox, " +
-          "$slots at a time (peak ${slots * sandbox.memoryMb}MB)"
+        if (sandbox.jailDropped)
+          "playground: compiles run in a capped child with NO jail (the ${sandbox.profile.id} " +
+            "sandbox could not launch here), $slots at a time (peak ${slots * sandbox.memoryMb}MB)"
+        else
+          "playground: compiles run inside the ${sandbox.profile.id} sandbox, " +
+            "$slots at a time (peak ${slots * sandbox.memoryMb}MB)"
       )
       return PlaygroundJailedCompiler(
         sandbox = sandbox,
