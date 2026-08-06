@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.19.41](https://github.com/yschimke/compose-ai-tools/compare/v0.19.40...v0.19.41) (2026-08-06)
+
+
+### Features
+
+* **serve:** split optimizer wait time into gate wait and permit wait ([#3386](https://github.com/yschimke/compose-ai-tools/issues/3386)) ([ef56346](https://github.com/yschimke/compose-ai-tools/commit/ef563465fd0e335265b492947f9d05010c536e95))
+* **serve:** split render time and report real batch concurrency ([#3389](https://github.com/yschimke/compose-ai-tools/issues/3389)) ([de7e3b4](https://github.com/yschimke/compose-ai-tools/commit/de7e3b4729281c4ce1d4eb61a25b688e25f18737))
+* **serve:** use CodeMirror for the playground editor ([#3388](https://github.com/yschimke/compose-ai-tools/issues/3388)) ([59e118e](https://github.com/yschimke/compose-ai-tools/commit/59e118e860588bea466799153fb8829caf68cfe5))
+
+
+### Bug Fixes
+
+* **serve:** charge replica cold starts to the warm bucket ([#3390](https://github.com/yschimke/compose-ai-tools/issues/3390)) ([0751935](https://github.com/yschimke/compose-ai-tools/commit/07519354737ac512707aaf2862c4626ca3a7732b))
+* **serve:** honour @FixedTheme in the viewer and on deferred records ([#3384](https://github.com/yschimke/compose-ai-tools/issues/3384)) ([00cdeb1](https://github.com/yschimke/compose-ai-tools/commit/00cdeb154df3a3681d316c97e40316bc7c30a918))
+* **serve:** reserve a live seat for the per-preview daemon lane ([#3391](https://github.com/yschimke/compose-ai-tools/issues/3391)) ([8cdcc94](https://github.com/yschimke/compose-ai-tools/commit/8cdcc94fc8e0a28125614fb2f1a151439f77314a))
+
+
+### Performance Improvements
+
+* **serve:** gzip the text lanes ([#3380](https://github.com/yschimke/compose-ai-tools/issues/3380)) ([cf5dcd7](https://github.com/yschimke/compose-ai-tools/commit/cf5dcd7fda06221ec06f71842aa4dd7555202668))
+
 ## [0.19.40](https://github.com/yschimke/compose-ai-tools/compare/v0.19.39...v0.19.40) (2026-08-06)
 
 
