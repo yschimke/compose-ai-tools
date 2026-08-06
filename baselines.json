@@ -337,6 +337,42 @@
       "sha256": "e4d6c5b43b088022f0cd4decff39601eb186d91a599d1d5b5748f6e7bf5e5d2f",
       "size": 96386
     },
+    "serve-landing-live-live-card.dark.png": {
+      "fixture": "serve-landing-live-live-card",
+      "theme": "dark",
+      "sha256": "171fda09e227309152854a0c1c3f6b1e421cf717cf4dc4c0aa3d2218263aa32e",
+      "size": 56409
+    },
+    "serve-landing-live-live-card.light.png": {
+      "fixture": "serve-landing-live-live-card",
+      "theme": "light",
+      "sha256": "023d1b674ae4c52ab17096e77999b34597f2f946a1c0223252d8abc36f0ff1c9",
+      "size": 55213
+    },
+    "serve-landing-live-live-hint.dark.png": {
+      "fixture": "serve-landing-live-live-hint",
+      "theme": "dark",
+      "sha256": "6b1ca12acf5dc673c3efdb75d6aac84d753a0c9ac998ddf7917981a2283213e2",
+      "size": 56120
+    },
+    "serve-landing-live-live-hint.light.png": {
+      "fixture": "serve-landing-live-live-hint",
+      "theme": "light",
+      "sha256": "6889269ad1ecfc21871ebeb7d6d5cc2ecdfe032d86a7d28ae684162453381b54",
+      "size": 54948
+    },
+    "serve-landing-live.dark.png": {
+      "fixture": "serve-landing-live",
+      "theme": "dark",
+      "sha256": "72cb79115c0b8b4d56261c3c8e72050325196237059766f0c2c5938b29431940",
+      "size": 49474
+    },
+    "serve-landing-live.light.png": {
+      "fixture": "serve-landing-live",
+      "theme": "light",
+      "sha256": "58cddd08705a091fecb7e444b7e33224e5653cc6ebb453b7a8bd8bc661870b87",
+      "size": 48356
+    },
     "serve-landing-path.dark.png": {
       "fixture": "serve-landing-path",
       "theme": "dark",
@@ -612,6 +648,18 @@
       "theme": "light",
       "sha256": "b60c24ca2dcd33be49b08bf084489bddbbb75f5946db00022235de363f1b3eea",
       "size": 115294
+    },
+    "serve-viewer-signin.dark.png": {
+      "fixture": "serve-viewer-signin",
+      "theme": "dark",
+      "sha256": "5a7051c663dc32047ac275efe6cd5b1546a0f83dd8fbfd6869a8f9853fd8af7c",
+      "size": 51219
+    },
+    "serve-viewer-signin.light.png": {
+      "fixture": "serve-viewer-signin",
+      "theme": "light",
+      "sha256": "d201a71094a5b2b9cea90aa5ae37694394beabad7053bc28d9bb428d33808c27",
+      "size": 50907
     },
     "serve-viewer-states.dark.png": {
       "fixture": "serve-viewer-states",
